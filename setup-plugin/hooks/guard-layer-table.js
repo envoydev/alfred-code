@@ -14,8 +14,12 @@
 // audit (`audit-install.js`) without `--json`. Fires only when
 // the LATEST such call has no proof in the assistant text after it. It keeps denying: the measured skills turn announced 'pasted
 // below' three times running with no table, and once in the ask's preview panel, which the user
-// never saw. A valve lets the ask through after MAX_DENIALS for the same table call, so a paste
-// the transcript never shows cannot loop the walk forever.
+// never saw. A valve lets the ask through after MAX_DENIALS for the same table since the last ANSWERED
+// ask (a re-run table does not reset it), so a paste the transcript never shows cannot loop the walk.
+// The transcript is written asynchronously: at PreToolUse time the ask's OWN message (the pasted text
+// rows sharing message.id with the AskUserQuestion tool_use) may not be on disk yet. The hook waits for
+// the row carrying the payload's tool_use_id, and allows when it never lands - it cannot judge a
+// message it cannot see. ALFRED_CODE_LAYER_GATE_WAIT_MS overrides the 2000ms budget (tests).
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unreadable.
 const fs = require('fs');
 
@@ -30,16 +34,42 @@ try {
 }
 if (!payload || payload.tool_name !== 'AskUserQuestion' || !payload.transcript_path) process.exit(0);
 
+const readRows = () => {
+  const size = fs.statSync(payload.transcript_path).size;
+  const start = Math.max(0, size - 512 * 1024);
+  const fd = fs.openSync(payload.transcript_path, 'r');
+  try {
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    return buf.toString('utf8').split('\n');
+  } finally {
+    fs.closeSync(fd);
+  }
+};
+
+const ownId = typeof payload.tool_use_id === 'string' ? payload.tool_use_id : '';
+const hasOwnRow = (rs) => rs.some((line) => line.includes(ownId) && (() => {
+  try {
+    const c = JSON.parse(line).message.content;
+    return Array.isArray(c) && c.some((b) => b && b.type === 'tool_use' && b.id === ownId);
+  } catch { return false; }
+})());
+const waitMs = (() => {
+  const v = Number(process.env.ALFRED_CODE_LAYER_GATE_WAIT_MS);
+  return process.env.ALFRED_CODE_LAYER_GATE_WAIT_MS !== undefined && Number.isFinite(v) && v >= 0 ? v : 2000;
+})();
+
 let rows;
 try {
-  const p = payload.transcript_path;
-  const size = fs.statSync(p).size;
-  const start = Math.max(0, size - 512 * 1024);
-  const fd = fs.openSync(p, 'r');
-  const buf = Buffer.alloc(size - start);
-  fs.readSync(fd, buf, 0, buf.length, start);
-  fs.closeSync(fd);
-  rows = buf.toString('utf8').split('\n');
+  rows = readRows();
+  if (ownId && !hasOwnRow(rows)) {
+    const until = Date.now() + waitMs;
+    while (Date.now() < until && !hasOwnRow(rows)) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+      rows = readRows();
+    }
+    if (!hasOwnRow(rows)) process.exit(0);
+  }
 } catch {
   process.exit(0);
 }
@@ -60,24 +90,33 @@ const resultText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map(
 
 // Walk backwards: collect assistant text, tool results and our own earlier denials until the latest
 // decision-table call.
+// The walk goes on PAST the latest table call, only to count our own denials of that table back to the
+// last answered ask (or typed prompt), so re-running the table cannot reset the valve.
 let texts = '';
-let denials = 0;
 let table = null;   // { name, proof: RegExp | null, id }
 const results = {};
-for (let i = rows.length - 1; i >= 0 && !table; i--) {
+const denialTexts = [];
+let stop = false;
+for (let i = rows.length - 1; i >= 0 && !stop; i--) {
   let o;
   try { o = JSON.parse(rows[i]); } catch { continue; }
   const content = o && o.message && o.message.content;
+  if (o && o.type === 'user' && typeof content === 'string') break;
   if (!Array.isArray(content)) continue;
   for (const b of content) {
     if (!b) continue;
-    if (o.type === 'assistant' && b.type === 'text') texts += `\n${b.text || ''}`;
+    if (o.type === 'assistant' && b.type === 'text' && !table) texts += `\n${b.text || ''}`;
     if (o.type === 'user' && b.type === 'tool_result') {
       const r = resultText(b.content);
-      if (r.includes(MARKER)) denials += 1;
+      if (r.includes(MARKER)) denialTexts.push(r);
       results[b.tool_use_id] = r;
     }
-    if (o.type === 'assistant' && b.type === 'tool_use') {
+    if (o.type === 'assistant' && b.type === 'tool_use' && b.name === 'AskUserQuestion' && b.id !== ownId
+        && b.id in results && !results[b.id].includes(MARKER)) {
+      stop = true;   // an answered ask: a new decision point
+      break;
+    }
+    if (o.type === 'assistant' && b.type === 'tool_use' && !table) {
       const cmd = String((b.input && b.input.command) || '');
       const m = TABLE_RE.exec(cmd);
       const am = !m && AUDIT_RE.exec(cmd);
@@ -96,12 +135,14 @@ for (let i = rows.length - 1; i >= 0 && !table; i--) {
   }
 }
 
+const denials = table ? denialTexts.filter((t) => t.includes(`the ${table.name} ran`)).length : 0;
 if (!table || !table.proof || denials >= MAX_DENIALS) process.exit(0);
 if (table.proof.test(texts)) process.exit(0);
 
 process.stderr.write(
   `${MARKER}: the ${table.name} ran but its output is not in your message - the tool result is ` +
-  `collapsed, so the user sees no table. Table before question: re-send this turn as the step banner, ` +
-  `then the tool output byte-for-byte inside a fenced code block, then this same ask. Writing 'pasted below' or 'shown above' ` +
+  `collapsed, so the user sees no table. Table before question: do not re-run the table - its output is already ` +
+  `in your context from the call above. Send ONE message: the step banner, that output byte-for-byte inside a fenced ` +
+  `code block, then this same ask. Writing 'pasted below' or 'shown above' ` +
   `is not a paste, and the ask's preview panel does not count. Never summarize the rows into prose.\n`);
 process.exit(2);

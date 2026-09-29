@@ -68,6 +68,9 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
     // of them may reach the run, or land in the sandbox.
     for (const k of ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY']) delete env[k];
     scrubLegacyEnv(env);
+    // The memory model pre-warm starts the service the snapshot declares (~166MB on a cold machine): off in the
+    // sandbox unless a case switches it on with its own stand-in for uvx.
+    env.ALFRED_CODE_MEMORY_WARM = '0';
     const envAt = (i) =>
     {
         const out = { ...env };

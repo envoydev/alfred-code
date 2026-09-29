@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const PRELUDE = path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js');
-const { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, standDown, neverSetUp } = require(PRELUDE);
+const { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, standDown, neverSetUp, cursorHost, cursorStandDown, PROTECTIVE: PROTECTIVE_SET } = require(PRELUDE);
 const { spawnSync, execFileSync } = require('node:child_process');
 const { coreEntry } = require('./build-marketplace.js');
 
@@ -560,4 +560,82 @@ test('in a repo never set up the three protective guards stay live and write not
         assert.ok(fs.existsSync(path.join(dir, '.alfred', 'docs', 'hook-blocks', 's.jsonl')), 'a set-up repo records the block');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// GATE 6 - a Cursor host. Cursor loads Claude hooks by default and turns a Stop block into an unbounded
+// automatic follow-up, so under a Cursor PAYLOAD only the three protective guards run. Judged from the
+// payload alone: a `claude` session inside Cursor's terminal inherits Cursor's variables and keeps every hook.
+// Each non-protective hook makes the call itself, after parsing its own payload (no stdin is read by the prelude).
+const HOOKS_DIR = path.join(__dirname, '..', 'stack', 'hooks');
+
+test('cursorHost reads the payload only: cursor_version or a camelCase event name', () => {
+    assert.strictEqual(cursorHost({ cursor_version: '2.1.0', hook_event_name: 'Stop' }), true);
+    assert.strictEqual(cursorHost({ hook_event_name: 'preToolUse' }), true);
+    assert.strictEqual(cursorHost({ hook_event_name: 'stop' }), true);
+    for (const claude of [{ hook_event_name: 'Stop' }, { hook_event_name: 'PreToolUse', tool_name: 'Bash' }, {}, null, undefined, 'x', [], { cursor_version: '' }, { cursor_version: 3 }])
+        assert.strictEqual(cursorHost(claude), false, JSON.stringify(claude));
+});
+
+test('cursorStandDown: a Cursor payload stands a non-protective hook down and never a protective one or a CLI', () => {
+    const input = { cursor_version: '2.1.0', hook_event_name: 'stop' };
+    for (const hook of ['guard-stop-contract', 'guard-answer-length', 'docs-session', 'guard-fresh-session-start', 'memory-session'])
+        assert.strictEqual(cursorStandDown(input, `/p/${hook}.js`), true, hook);
+    for (const hook of PROTECTIVE_SET) assert.strictEqual(cursorStandDown(input, `/p/${hook}.js`), false, hook);
+    assert.strictEqual(cursorStandDown(input, '/p/guard-stop-contract.js', ['node', 'x.js', '--flag']), false, 'a CLI is never gated');
+});
+
+test('cursorStandDown: a Claude payload (Cursor variables set, or not) and a malformed one run every hook', () => {
+    process.env.CURSOR_VERSION = '2.1.0';
+    try
+    {
+        for (const input of [{ hook_event_name: 'Stop' }, {}, null, 'garbage', 42, [], { hook_event_name: 7 }, undefined])
+            assert.strictEqual(cursorStandDown(input, '/p/guard-stop-contract.js'), false, JSON.stringify(input));
+    }
+    finally { delete process.env.CURSOR_VERSION; }
+});
+
+test('every non-protective hook file carries the cursorStandDown call, so a new hook cannot forget it', () => {
+    const wired = fs.readdirSync(HOOKS_DIR).filter((f) => f.endsWith('.js') && f !== 'hook-prelude.js'
+        && /standDown\('/.test(fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8')));
+    assert.ok(wired.length >= 14, `found ${wired.length} prelude-gated hooks`);
+    for (const f of wired)
+    {
+        const has = /cursorStandDown\(\w+, __filename\)/.test(fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8'));
+        assert.strictEqual(has, !PROTECTIVE_SET.has(f.replace(/\.js$/, '')), `${f}: cursorStandDown ${has ? 'present' : 'missing'}`);
+    }
+});
+
+function runHook(file, payload, extra)
+{
+    return spawnSync(process.execPath, [path.join(HOOKS_DIR, file)], {
+        input: payload, encoding: 'utf8', env: { ...process.env, ...extra, CLAUDE_PROJECT_DIR: os.tmpdir() },
+    });
+}
+
+test('as a process: a Cursor payload is left alone by a non-protective hook, silently; a Claude one is judged', () => {
+    const question = 'Which of these two options do you prefer, and should I proceed now?';
+    const cursor = runHook('guard-stop-contract.js', JSON.stringify({ cursor_version: '2.1.0', hook_event_name: 'stop', last_assistant_message: question }), {});
+    assert.strictEqual(cursor.status, 0);
+    assert.strictEqual(cursor.stdout + cursor.stderr, '', 'stood down silently');
+    const claude = runHook('guard-stop-contract.js', JSON.stringify({ hook_event_name: 'Stop', session_id: 'cs', last_assistant_message: question }), { CURSOR_VERSION: '2.1.0' });
+    assert.strictEqual(claude.status, 2, claude.stderr);
+});
+
+test('as a process: the rm guard still blocks rm -rf ~ under a Cursor payload, and the dispatcher stands the rest down', () => {
+    const payload = JSON.stringify({ cursor_version: '2.1.0', hook_event_name: 'preToolUse', tool_name: 'Bash', tool_input: { command: 'rm -rf ~' } });
+    const r = runHook('shell-guards.js', payload, {});
+    assert.strictEqual(r.status, 2, `${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /catastrophic/);
+    assert.doesNotMatch(r.stderr, /outside this session's project/, 'the non-protective cross-project guard stood down');
+});
+
+test('as a process: memory-session with a stdin that never closes still exits within its bound', () => {
+    const { spawn } = require('node:child_process');
+    return new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, [path.join(HOOKS_DIR, 'memory-session.js')], { env: { ...process.env, CLAUDE_PROJECT_DIR: os.tmpdir() }, stdio: ['pipe', 'pipe', 'pipe'] });
+        const started = Date.now();
+        const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('memory-session hung past 6s on an open stdin')); }, 6000);
+        child.on('exit', () => { clearTimeout(timer); assert.ok(Date.now() - started < 6000); resolve(); });
+        // stdin is left open: never ended, never written
+    });
 });

@@ -128,6 +128,30 @@ test('derive: with the shipped catalog, only a stack hook is a hook item - a use
     assert.deepStrictEqual(sel.deriveFromDisk({ claudeDir: own, knownPlugins: [], shippedHooks: ['docs-session'] }), [], 'a lone user file is no install evidence');
 });
 
+// Task 3 (2.1.0): `.claude/skills`, `agents` and `rules` are the project's folders too. With the stack's
+// names to go by - the catalog, the renamed map's old names and the retired lists - only a stack name is an
+// item: a project's own skill was read back as a pick, and alone it made --installed-only claim an install.
+test('derive: with the stack\'s names, a project\'s own skill, seat or rule is no item - old and retired names still are', () =>
+{
+    const { stackNames, loadManifest: load } = require('./install/manifest.js');
+    const known = stackNames(load(path.join(__dirname, '..')));
+    const oldSkill = Object.keys(known.renamedSkills)[0];
+    const dir = target({ skills: ['markdown-style', oldSkill, 'my-own-helper'], agents: ['security-auditor', 'my-own-seat'], rules: ['baseline-security', 'my-own-rule'] });
+    const lines = sel.deriveFromDisk({ claudeDir: dir, knownPlugins: [], known });
+    assert.deepStrictEqual(lines.filter((l) => /^(skill|agent|rule) /.test(l)).sort(),
+        ['agent security-auditor', 'rule baseline-security', `skill ${oldSkill}`, 'skill markdown-style'].sort());
+    const own = target({ skills: ['my-own-helper'], agents: ['my-own-seat'], rules: ['my-own-rule'] });
+    assert.deepStrictEqual(sel.deriveFromDisk({ claudeDir: own, knownPlugins: [], known }), [], 'the project\'s own files are no install evidence');
+    assert.ok(sel.deriveFromDisk({ claudeDir: own, knownPlugins: [] }).includes('skill my-own-helper'), 'with no names to go by every folder is read, as before');
+});
+
+test('read-back: a project holding only its own skill is no install', () =>
+{
+    const claudeDir = target({ skills: ['my-own-helper'] });
+    const r = sel.readBack({ claudeDir, mcpServers: [], listing: [], settings: {}, routes: { skills: true, hooks: true, mcps: true }, manifest: require('./install/manifest.js').loadManifest(path.join(__dirname, '..')), sourceDir: path.join(__dirname, '..'), always: {} });
+    assert.strictEqual(r.installed, false, r.lines.join(', '));
+});
+
 test('derive: a skill folder without a SKILL.md is not a skill', () =>
 {
     const dir = target({ skills: ['project-aspnet'] });
@@ -256,12 +280,17 @@ test('read-back: a healthy listing reads seats, hooks and MCP entries back, and 
     assert.deepStrictEqual(r.answered, { hooks: true, agents: true });
 });
 
-test('read-back: an EMPTY listing (the CLI failed) answers neither surface - nothing is switched off', () =>
+test('read-back: an EMPTY listing (the CLI failed) answers neither surface of a 2.1 install - nothing is switched off', () =>
 {
-    const r = readBackCase({ listing: [] });
+    const claudeDir = target({ rules: ['baseline-security'] });
+    const r = sel.readBack({ claudeDir, mcpServers: [], listing: [], settings: {}, routes: ALL, manifest: MANIFEST, sourceDir: ROOT_DIR, always: ALWAYS,
+        stampPicked: { skills: [], agents: ['aspnet-implementer@alfred-code'] }, seatsRoute: 'plugin' });
     assert.ok(r.installed, 'the rules on disk still prove an install');
-    assert.deepStrictEqual(r.answered, { hooks: false, agents: false });
-    assert.ok(!r.lines.some((l) => /^(agent|hook) /.test(l)));
+    assert.deepStrictEqual(r.answered, { hooks: false, agents: false }, 'its seats ride the core - on no disk');
+    // Before 2.1.0 (no `seats-route:`) every seat but the always ones was a disk copy: the disk answers.
+    const older = readBackCase({ listing: [] });
+    assert.deepStrictEqual(older.answered, { hooks: false, agents: true });
+    assert.ok(!older.lines.some((l) => /^hook /.test(l)));
 });
 
 test('read-back: a plugin-route install with nothing on disk is still an install - its own project entries prove it', () =>
@@ -362,7 +391,8 @@ test('read-back: with the stamp\'s record, an engine it does not name is never r
 
 test('read-back: the core reads as enabled whatever the listing flag says (S22) - only an item\'s own off-switch holds', () =>
 {
-    const core = require('./plugin-placement.js').placement().plugins['alfred-code'];
+    // No `seats-route:` in the stamp: a 2.0.x install, whose core carried the always closure.
+    const core = require('./plugin-placement.js').formerCore();
     const seat = 'code-style-analyzer';
     assert.ok(core.agents.includes(seat) && core.skills.includes('markdown-style'), 'fixture: the core carries both');
     const stale = { enabled: false };
@@ -486,12 +516,18 @@ test('closeLines: no graph is a logged no-op, never a crash', () =>
     assert.match(logs[0], /closure skipped/);
 });
 
-test('read-back: closeFrom is the picked set - disk and the stamp - never the carried-only items', () =>
+test('read-back: closeFrom is the picked set - disk and the stamp - never an item the core merely carries', () =>
 {
-    const r = readBackCase({ listing: [row('alfred-code@envoydev')], stampPicked: { skills: ['markdown-style'], agents: [] } });
-    assert.ok(r.closeFrom.includes('rule baseline-security'), 'disk');
-    assert.ok(r.closeFrom.includes('skill markdown-style'), 'the stamp');
-    assert.ok(r.lines.includes('agent evidence-gatherer') && !r.closeFrom.includes('agent evidence-gatherer'), 'carried only');
+    const claudeDir = target({ skills: ['markdown-style'], rules: ['baseline-security'] });
+    const r = sel.readBack({ claudeDir, mcpServers: [], listing: [row('alfred-code@envoydev')], settings: {}, routes: ALL, manifest: MANIFEST, sourceDir: ROOT_DIR, always: {},
+        stampPicked: { skills: ['markdown-style'], agents: ['security-auditor@alfred-code'] }, seatsRoute: 'plugin' });
+    assert.ok(r.closeFrom.includes('rule baseline-security') && r.closeFrom.includes('skill markdown-style'), 'disk');
+    assert.ok(r.closeFrom.includes('agent security-auditor'), 'the stamp');
+    assert.ok(!r.lines.includes('agent evidence-gatherer') && !r.closeFrom.includes('agent evidence-gatherer'), 'carried by the core, never picked');
+    // A stamp from before 2.1.0: what its core carried ran here, and is copies and allowed seats from now
+    // on - so it is recorded as picked in the same run, or the next run's stamp would differ.
+    const older = readBackCase({ listing: [row('alfred-code@envoydev')], stampPicked: { skills: ['markdown-style'], agents: [] } });
+    assert.ok(older.closeFrom.includes('agent evidence-gatherer') && older.closeFrom.includes('skill alfred-habits-done-gate'), older.closeFrom.join(','));
 });
 
 test('closeLines: a requirement never switches back on a parked entry or a denied seat - it is left out and said so', () =>
@@ -671,7 +707,8 @@ test('read-back: a flip to the hooks copy route carries the plugin route\'s ALFR
 // once it is off, the copies on disk are the record, and a dropped copy must not come back.
 test('read-back: a switch onto the full copy route reads back what the core still ON at this scope carried - an off or other-scope core adds nothing (R116)', () =>
 {
-    const core = require('./plugin-placement.js').placement().plugins['alfred-code'];
+    // No `seats-route:` in the stamp: a 2.0.x install, whose core carried the always closure.
+    const core = require('./plugin-placement.js').formerCore();
     const seat = 'code-style-analyzer';
     const back = ({ listing, isOn, scope = 'project', settings = {} }) => sel.readBack({
         claudeDir: target({ rules: ['baseline-security'] }), mcpServers: [], listing, settings, routes: {}, manifest: MANIFEST,
@@ -886,4 +923,81 @@ test('selection lines: an older walk\'s mcp serena / context7 / playwright read 
     const out = sel.renameLines(['mcp serena', 'mcp context7', 'mcp playwright', 'mcp memory', 'mcp serena', 'skill csharp'], { renamed: MANIFEST.renamed, log: (m) => logs.push(m), said });
     assert.deepStrictEqual(out, ['mcp navigation', 'mcp documentation', 'mcp browser', 'mcp memory', 'mcp navigation', 'skill csharp']);
     assert.deepStrictEqual(logs, ['renamed: mcp serena -> navigation', 'renamed: mcp context7 -> documentation', 'renamed: mcp playwright -> browser']);
+});
+
+// ---------------------------------------------------------------------------------------------
+// 2.1.0: every skill a project copy, every seat on the core, an unpicked seat denied. THE BLOCKER the
+// flip brings: a 2.0.0 install read as 'what the core carries minus what is denied' reads all 44 seats
+// as picked (its unpicked stack seats were library, never denied) and loses its always skills (carried
+// by nothing now). Its stamp has no `seats-route:` line, so its core is read as the always closure.
+const { formerCore } = require('./plugin-placement.js');
+const ALWAYS = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'meta', 'recommendations.json'), 'utf8')).always;
+
+test('read-back (2.1.0 BLOCKER): a 2.0.0 install keeps its picks - always skills as copies, library seats off disk, no other seat', () =>
+{
+    const claudeDir = target({ skills: ['csharp'], agents: ['aspnet-implementer'], rules: ['baseline-security'] });
+    const former = formerCore();
+    const stampPicked = { skills: [...former.skills.map((s) => `${s}@alfred-code`), 'csharp'], agents: ['security-auditor@alfred-code', 'evidence-gatherer@alfred-code', 'aspnet-implementer'] };
+    const r = sel.readBack({
+        claudeDir, mcpServers: [], listing: [row('alfred-code@envoydev'), row('navigation@envoydev')],
+        settings: { permissions: { deny: ['Agent(alfred-code:code-style-analyzer)'] } }, routes: ALL, manifest: MANIFEST, sourceDir: ROOT_DIR,
+        always: ALWAYS, stampPicked, seatsRoute: null, ledgerSeats: ['code-style-analyzer'],
+    });
+    for (const s of former.skills) assert.ok(r.lines.includes(`skill ${s}`) && r.closeFrom.includes(`skill ${s}`), `the always skill ${s} is kept as a pick`);
+    assert.ok(r.closeFrom.includes('skill csharp') && r.closeFrom.includes('agent aspnet-implementer'), 'the library picks on disk');
+    assert.ok(r.lines.includes('agent security-auditor') && r.lines.includes('agent evidence-gatherer'));
+    assert.ok(!r.lines.includes('agent code-style-analyzer'), 'a denied 2.0.0 core seat stays off');
+    const seats = r.lines.filter((l) => l.startsWith('agent ')).map((l) => l.slice(6));
+    assert.deepStrictEqual(seats.filter((a) => !former.agents.includes(a)), ['aspnet-implementer'], `no stack seat 2.0.0 never copied: ${seats.join(',')}`);
+});
+
+test('read-back (2.1.0): a 2.1 install reads its seats off the core minus denied, as its stamp knew them - a seat a release added waits for its offer', () =>
+{
+    const claudeDir = target({ skills: ['csharp', 'alfred-habits-done-gate'], rules: ['baseline-security'] });
+    const r = sel.readBack({
+        claudeDir, mcpServers: [], listing: [row('alfred-code@envoydev')], routes: ALL, manifest: MANIFEST, sourceDir: ROOT_DIR, always: {},
+        settings: { permissions: { deny: ['Agent(alfred-code:web-angular-implementer)'] } },
+        stampPicked: { skills: ['csharp', 'alfred-habits-done-gate'], agents: ['security-auditor@alfred-code', 'aspnet-implementer@alfred-code'] },
+        seatsRoute: 'plugin', ledgerSeats: ['web-angular-implementer', 'aspnet-verifier'],
+    });
+    assert.ok(r.lines.includes('agent aspnet-implementer') && r.lines.includes('agent security-auditor'));
+    assert.ok(r.lines.includes('agent aspnet-verifier'), 'the stack denied it and the deny is gone - the user allowed it by hand');
+    assert.ok(!r.lines.includes('agent web-angular-implementer'), 'denied');
+    assert.ok(!r.lines.includes('agent dotnet-console-implementer'), 'unknown to the last install - a new seat');
+    assert.ok(r.lines.includes('skill csharp') && !r.lines.includes('skill alfred-habits-clarify'), 'the skills come off the disk');
+});
+
+test('read-back (2.1.0): after a run that copied the seats, they are read off the disk alone', () =>
+{
+    const claudeDir = target({ skills: ['csharp'], agents: ['aspnet-implementer'], rules: ['baseline-security'] });
+    const r = sel.readBack({
+        claudeDir, mcpServers: [], listing: [row('alfred-code@envoydev')], routes: ALL, manifest: MANIFEST, sourceDir: ROOT_DIR, always: {},
+        settings: {}, stampPicked: { skills: ['csharp'], agents: ['aspnet-implementer@alfred-code'] }, seatsRoute: 'copy',
+    });
+    assert.deepStrictEqual(r.lines.filter((l) => l.startsWith('agent ')), ['agent aspnet-implementer']);
+});
+
+test('adopt-always (2.1.0): the always skills are adopted with no drop exception; an always seat unless denied, and only while the core loads it', () =>
+{
+    const always = { skills: ['alfred-habits-done-gate'], agents: ['security-auditor', 'code-style-analyzer'], rules: ['baseline-security'] };
+    const out = sel.adoptAlways({ lines: ['rule baseline-security', 'skill csharp'], always, deny: ['Agent(alfred-code:code-style-analyzer)'], coreOn: true });
+    assert.ok(out.includes('skill alfred-habits-done-gate'), out.join(','));
+    assert.ok(out.includes('agent security-auditor') && !out.includes('agent code-style-analyzer'), 'a denied always seat stays off');
+    const noCore = sel.adoptAlways({ lines: ['rule baseline-security', 'skill csharp'], always, coreOn: false });
+    assert.ok(noCore.includes('skill alfred-habits-done-gate') && !noCore.includes('agent security-auditor'), 'with no core, absence on disk is the seat\'s off-state');
+});
+
+test('read-back (2.1.0): a stamp missing its `seats-route:` line never reads a seat it homes in the core as unrun', () =>
+{
+    const claudeDir = target({ skills: ['csharp'], rules: ['baseline-security'] });
+    const r = sel.readBack({
+        claudeDir, mcpServers: [], listing: [row('alfred-code@envoydev')], routes: ALL, manifest: MANIFEST, sourceDir: ROOT_DIR, always: ALWAYS,
+        settings: { permissions: { deny: ['Agent(alfred-code:aspnet-verifier)'] } },
+        stampPicked: { skills: ['csharp'], agents: ['aspnet-implementer@alfred-code', 'aspnet-verifier@alfred-code', 'no-such-seat@alfred-code', 'web-angular-verifier'] },
+        seatsRoute: null,
+    });
+    assert.ok(r.lines.includes('agent aspnet-implementer') && r.closeFrom.includes('agent aspnet-implementer'), 'homed in the core: it ran there');
+    assert.ok(!r.lines.includes('agent aspnet-verifier'), 'denied since - off');
+    assert.ok(!r.lines.includes('agent no-such-seat'), 'a name the release does not ship is never read');
+    assert.ok(!r.lines.includes('agent web-angular-verifier'), 'a library seat with no copy on disk was dropped by hand');
 });

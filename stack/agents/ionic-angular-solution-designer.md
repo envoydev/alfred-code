@@ -9,7 +9,7 @@ skills:
   - ionic
   - angular-conventions
   - angular-testing
-  - alfred-code:alfred-task-design
+  - alfred-task-design
 
 ---
 

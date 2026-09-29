@@ -133,8 +133,10 @@ const SAVE_WINDOW = 3;
 const MEMORY_STORE_RE = /^mcp__(?:plugin_memory_)?memory__memory_store$/;
 const CHECK_WINDOW = 40;    // tool calls a check may sit before a commit and still count as its check
 // Build output, package trees, caches and lockfiles - a read there is a read of nothing the session
-// wrote. `bin/` catches a script dir too, so the report prints the paths and the reader judges.
-const BUILD_DIR_RE = /(?:^|[\/\\])(?:node_modules|bin|obj|dist|coverage|TestResults|target|__pycache__|\.venv|venv|vendor|\.git|\.angular|\.nuget|\.serena|\.playwright|\.next|\.nuxt|\.gradle|\.idea|\.vs)(?:[\/\\]|$)|(?:^|[\/\\])(?:package-lock\.json|yarn\.lock|pnpm-lock\.yaml|packages\.lock\.json|Cargo\.lock|poetry\.lock|composer\.lock)$|\.(?:log|min\.js|min\.css|map)$/;
+// wrote. `bin/` catches a script dir too, so the report prints the paths and the reader judges. The data
+// root's server folders count (the default `.alfred`: serena's index and language servers, the browser
+// profiles, a project memory database) - its docs do not.
+const BUILD_DIR_RE = /(?:^|[\/\\])(?:node_modules|bin|obj|dist|coverage|TestResults|target|__pycache__|\.venv|venv|vendor|\.git|\.angular|\.nuget|\.serena|\.playwright|\.alfred-memory|\.alfred[\/\\](?:serena|browser)|\.next|\.nuxt|\.gradle|\.idea|\.vs)(?:[\/\\]|$)|(?:^|[\/\\])(?:package-lock\.json|yarn\.lock|pnpm-lock\.yaml|packages\.lock\.json|Cargo\.lock|poetry\.lock|composer\.lock)$|\.(?:log|min\.js|min\.css|map)$/;
 // The first file a dump verb names - the same read routed through the shell.
 const isShellTool = (name) => name === 'Bash' || name === 'PowerShell';
 function shellReadTarget(cmd) {

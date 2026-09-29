@@ -26,6 +26,10 @@ install records the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp
 - `legacy-global` -> a 1.x global install whose stamp still sits in the account dir: say so and
   route to `/alfred-code:update`, which moves it into the project. Render nothing else - its copies
   are not where this command reads.
+- `legacy-unstamped` -> say so and route to `/alfred-code:update`: a legacy copy-route install that never
+  wrote a stamp (no install record, but two of the stack's own signatures in `.claude/`), whose picks
+  update reads off disk before it writes the stamp. Render nothing else - with no stamp every table below
+  reads nothing.
 - `installed` or `initialised` -> go on.
 
 Every install lives in the PROJECT at every scope: the stamp, the library copies, the rules, the
@@ -47,6 +51,7 @@ One table, no ask - it is five rows and every other area reads against it:
 | stack version (stamp) | 2.0.0 @ <short-sha> |
 | running plugin | 2.0.0 - `alfred-code@<key>`, enabled at project scope |
 | scope | project |
+| data root | .alfred (default) - 1 move waiting for a server's next start |
 | docs root | .alfred/docs (default) |
 | initialised | 2026-09-24 |
 
@@ -57,6 +62,10 @@ One table, no ask - it is five rows and every other area reads against it:
   marketplace key (the part after `@`; a 1.x install keeps its own for the whole 2.x line) and its
   scope. No CLI: `claude CLI unavailable`.
 - `scope`: the stamp's `scope:` line; absent = `project`.
+- `data root`: `ALFRED_CODE_DATA_PATH` from the scope file (`settings.local.json` over `settings.json`),
+  `(default)` when absent - the one folder for this project's docs and its servers' data - plus the count
+  of the stamp's `data-pending:` lines when there are any (moves a server's launcher makes at its next
+  start) and `data move kept` when the stamp says `data-move: kept`.
 - `docs root`: `ALFRED_CODE_DOCS_PATH` from the scope file, `(default)` when absent.
 - `initialised`: the stamp's `initialised:` line - a date, or `pending` (run `/alfred-code:init`).
 
@@ -88,19 +97,19 @@ output.
 `claude-stack-<stack>` entry an older release installed and update has not removed yet) enabled in <!-- legacy-name -->
 the plugins listing, the installed set is what those plugins CARRY - `node
 "${CLAUDE_PLUGIN_ROOT}/scripts/selection-plugins.js" --items <their names, comma-separated>` prints
-one `skill <name>` / `agent <name>` line each - UNIONED with the LIBRARY copies on disk
-(`.claude/skills/<name>/`, `.claude/agents/<name>.md`: every item outside the core, copied per
-pick). Without any such entry the disk is the whole set.
+one `skill <name>` / `agent <name>` line each (the core: every seat, no skill) - minus every seat
+`permissions.deny` names (`Agent(alfred-code:<seat>)`, each seat the project did not pick), UNIONED
+with the LIBRARY copies on disk (`.claude/skills/<name>/`: every skill, copied per pick;
+`.claude/agents/<name>.md` on the copy route). Without any such entry the disk is the whole set.
 
 | skill | origin |
 |---|---|
-| dotnet-testing | plugin |
-| angular-signals | library |
+| dotnet-testing | library |
 | my-team-notes | user-authored |
 
 | agent | origin | model | effort |
 |---|---|---|---|
-| web-angular-solution-designer | library | opus | xhigh |
+| web-angular-solution-designer | plugin | opus | xhigh |
 
 `origin`: `plugin` for a carried row, `library` for a copy the stamp's `library-skills` /
 `library-agents` names, `user-authored` for a copy it does not name. A carried seat named in
@@ -135,12 +144,14 @@ text was 12.6k-13.8k). Path-scoped rules are excluded - they load only on a matc
 
 Add a SECOND line for the plugins' share of the same floor, which is the half no repo-side check
 can ever see (the repo's lint reads this repo; the injections live in the plugin cache on THIS
-machine). `<key>` is the marketplace key from the general table. The stack's OWN entries are
-counted by one script, never by hand: `node "${CLAUDE_PLUGIN_ROOT}/scripts/derive-state.js" --floor --plugins <the enabled @<key> entries, comma-separated> --settings <account settings.json> --settings .claude/settings.json --settings .claude/settings.local.json`
-(deny rules merge across scopes, so pass every one that exists) prints the skill descriptions they
-carry (a `disable-model-invocation` skill costs nothing, which is why this number sits below the
-repo lint's always-on budget, which counts every description) plus the SEATS' descriptions minus
-every seat `permissions.deny` switches off - take its `chars`. The entries it lists under `skipped`
+machine). `<key>` is the marketplace key from the general table. The stack's OWN share is
+counted by one script, never by hand: `node "${CLAUDE_PLUGIN_ROOT}/scripts/derive-state.js" --floor --plugins <the enabled @<key> entries, comma-separated> --skills-dir .claude/skills --settings <account settings.json> --settings .claude/settings.json --settings .claude/settings.local.json`
+(deny rules and `skillOverrides` merge across scopes, so pass every one that exists, in that order)
+prints the descriptions of the stack skills copied into the project (2.1.0: no plugin carries a
+skill; a `disable-model-invocation` copy, or one `skillOverrides` sets to anything but `on`, costs
+nothing, which is why this number sits below the repo lint's always-on budget, which counts every
+description) plus the SEATS' descriptions minus every seat `permissions.deny` switches off - take its
+`chars`. The entries it lists under `skipped`
 (the MCP entries) are OTHER plugins for the next sentence, and the core joins them for its HOOKS
 alone - the stack hooks ride the core, and `--floor` counts only its skills and seats. For each
 OTHER enabled plugin, total its skill, command and agent DESCRIPTION frontmatter (skipping a
@@ -152,8 +163,8 @@ matters because a SessionStart injection is invisible everywhere else - `claude 
 does not show it, and one measured install paid 8,337 injected chars a session for two plugins on
 top of their descriptions.
 
-The library copies - skills, agents AND rules alike, since no plugin ever carries a rule - get one
-more table, from the stamp's hashes, checked against the running plugin:
+The library copies - every skill, a seat on its copy route, AND every rule, since no plugin ever
+carries a rule - get one more table, from the stamp's hashes, checked against the running plugin:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/library-check.js" --project . --source "${CLAUDE_PLUGIN_ROOT}" --json
@@ -325,7 +336,7 @@ The navigation server's local memory:
 | related-projects/RELATED-PROJECTS.md | no | - | - |
 | test-coverage/COVERAGE.md | yes | (bar 85%) | 2026-07-25 |
 | loops/ | yes | 3 prompt files | 2026-07-24 |
-| .serena/memories/ | yes | 4 notes | 2026-07-25 |
+| <data root>/serena/memories/ | yes | 4 notes | 2026-07-25 |
 
 `captured` is the doc's own `Captured:` stamp line read from the file (the related-projects doc
 stamps per entry - show the newest); the two `quality/` docs carry no `Captured:` stamp at all -

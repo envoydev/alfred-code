@@ -15,6 +15,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
@@ -224,6 +225,30 @@ function pluginCoveredLayers(pluginRows)
         seats: [...new Set(seats)].sort((a, b) => a.localeCompare(b)),
         from,
     };
+}
+
+// The seats `permissions.deny` switches off, merged across the account, project and local settings
+// (deny rules merge across scopes) - `Agent(<dispatch name>)`, the exact name Claude Code matches. From
+// 2.1.0 the core carries every seat and the project denies each one it did not pick: a denied seat is
+// not in the listing (spike S3) and fails at dispatch, so the rule must never route to one. A 1.x core
+// spelling still blocks the renamed seat (rebrand-evidence S6), so it reads as the core's. An
+// unreadable file denies nothing.
+function deniedSeats(projectRoot)
+{
+    const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+    const out = new Set();
+    for (const file of [path.join(account, 'settings.json'), path.join(projectRoot, '.claude', 'settings.json'), path.join(projectRoot, '.claude', 'settings.local.json')])
+    {
+        let data = null;
+        try { data = JSON.parse(readText(file) || 'null'); } catch { data = null; }
+        const deny = data && data.permissions && Array.isArray(data.permissions.deny) ? data.permissions.deny : [];
+        for (const rule of deny)
+        {
+            const m = /^Agent\(([^()\s]+)\)$/.exec(String(rule).trim());
+            if (m) out.add(m[1].replace(/^claude-stack:/, 'alfred-code:')); // legacy-name
+        }
+    }
+    return out;
 }
 
 // ---------------------------------------------------------------- the CLI probes
@@ -575,7 +600,9 @@ function report(projectRoot)
         // A local copy WINS a name clash: it is what the harness would load first.
         const seen = new Set(skills.map((s) => s.name));
         skills = [...skills, ...plug.skills.filter((s) => !seen.has(s.name))].sort((a, b) => a.name.localeCompare(b.name));
-        seats = [...new Set([...seats, ...plug.seats])].sort((a, b) => a.localeCompare(b));
+        // A seat copied under .claude/agents wins its name too: the project keeps it as its own (a tuned or
+        // edited seat), and a flow dispatches the roster's spelling - the core's twin would run the stack's pins.
+        seats = [...new Set([...seats, ...plug.seats.filter((s) => !seats.includes(bareSeat(s)))])].sort((a, b) => a.localeCompare(b));
         say('SOURCE', `PLUGIN-COVERED - ${plug.from.length} enabled plugin(s) carry ${plug.skills.length} skill(s) and ${plug.seats.length} seat(s), beside ${localCount.skills} skill(s) and ${localCount.seats} seat(s) copied under .claude/: ${plug.from.join(', ')}`);
     }
     else if (localCount.skills === 0 || localCount.seats === 0)
@@ -586,7 +613,10 @@ function report(projectRoot)
     for (const s of orchestration) sub(`/${s.name} - ${s.clause}${s.byDesign ? ' (model-invocable-by-design)' : ''}`);
     for (const s of skills.filter((s) => s.unreadable)) sub(`UNREADABLE ${s.name}: ${s.unreadable} - report it as unreadable, never fill it from memory`);
 
-    say('SEATS', `${seats.length} total`);
+    const denied = deniedSeats(projectRoot);
+    const offSeats = seats.filter((s) => denied.has(s));
+    seats = seats.filter((s) => !denied.has(s));
+    say('SEATS', `${seats.length} total${offSeats.length ? ` (${offSeats.length} denied in permissions.deny, left out)` : ''}`);
     sub(seats.join(', ') || 'none');
     const fams = seatFamilies(seats);
     sub(`seat families (${fams.length}): ${fams.join(', ') || 'none'}`);

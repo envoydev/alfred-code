@@ -787,9 +787,10 @@ for (const [key, rows] of [['envoydev', STACK_ROWS('envoydev')], ['claude-stack'
 {
     test(`seed update (full copy route, key ${key}): what the enabled core carried is copied before the switch disables it, a denied seat left off (R116)`, POSIX_ONLY, () =>
     {
+        // 2.1.0: the core carries every seat and no skill - the skills were copies all along.
         const core = require('./plugin-placement.js').placement().plugins['alfred-code'];
         const seat = 'code-style-analyzer';
-        assert.ok(core.agents.includes(seat) && core.skills.length > 1, 'fixture: the core carries the seat and more than one skill');
+        assert.ok(core.agents.includes(seat) && core.agents.length === 44 && core.skills.length === 0, 'fixture: the core carries every seat and no skill');
         const names = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir) : []);
         // Every core seat picked (an unpicked one is denied at install), then one switched off by hand.
         const { out, result } = seedRun(['install', 'update'], `skill markdown-style\n${core.agents.map((a) => `agent ${a}\n`).join('')}`, {
@@ -808,7 +809,7 @@ for (const [key, rows] of [['envoydev', STACK_ROWS('envoydev')], ['claude-stack'
             },
             inspect: (repo) => ({ skills: names(path.join(repo, '.claude', 'skills')), agents: names(path.join(repo, '.claude', 'agents')) }),
         });
-        assert.deepStrictEqual(core.skills.filter((s) => !result.skills.includes(s)), [], `core skills not copied:\n${out}`);
+        assert.ok(result.skills.includes('markdown-style'), `the picked skill copy stays:\n${out}`);
         assert.deepStrictEqual(core.agents.filter((a) => a !== seat && !result.agents.includes(`${a}.md`)), [], `core seats not copied:\n${out}`);
         assert.ok(!result.agents.includes(`${seat}.md`), `the seat the user denied came back: ${result.agents.join(',')}`);
     });
@@ -1176,7 +1177,7 @@ test('seed install + update --scope user (full copy route): every stack server l
         assert.deepStrictEqual(userCalls, [], `step ${i} registered at user scope:\n${userCalls.join('\n')}\n${outs[i]}`);
         for (const name of ['navigation', 'memory', 'documentation', 'browser-chrome'])
             assert.ok(step.mcp[name], `step ${i}: ${name} is not in this project's .mcp.json: ${Object.keys(step.mcp).join(',')}\n${outs[i]}`);
-        assert.strictEqual(step.mcp.memory.env.MCP_MEMORY_SQLITE_PATH, path.join(step.real, '.memory-mcp', 'memory.db'), 'the project-level database is this project\'s');
+        assert.strictEqual(step.mcp.memory.env.MCP_MEMORY_SQLITE_PATH, path.join(step.real, '.alfred', '.alfred-memory', 'memory.db'), 'the project-level database is this project\'s');
         for (const name of ['navigation', 'memory', 'documentation', 'browser-chrome']) assert.ok((step.trusted || []).includes(name), `step ${i}: ${name} is not pre-approved`);
         assert.match(step.stamp, /^scope: user$/m);
         assert.match(outs[i], /mcp: navigation still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run \/alfred-code:update: claude mcp remove navigation -s user/, outs[i]);
@@ -1520,13 +1521,20 @@ test('ensurePlaywrightIgnore: a kept engine ignores its profile folder, once, an
     assert.strictEqual(fs.readFileSync(file, 'utf8'), '# mine\nchrome/\n', 'the user\'s own file was rewritten');
 });
 
-test('seed install: a kept playwright engine leaves .playwright/.gitignore behind, and no engine leaves no folder', POSIX_ONLY, () =>
+test('seed install: a kept engine\'s profile folder is out of git - the data root ignores it, a 2.0.0 .playwright keeps its own file - and no engine leaves no folder', POSIX_ONLY, () =>
 {
     const kept = seedRun('install', 'skill markdown-style\nrule markdown-docs\nmcp browser\n', {
         plugins: JSON.stringify(STACK_ROWS('envoydev')), args: ['--playwright-browsers', 'chrome'],
+        inspect: (repo) => ({ data: fs.readFileSync(path.join(repo, '.alfred', '.gitignore'), 'utf8'), old: fs.existsSync(path.join(repo, '.playwright')) }),
+    });
+    assert.match(kept.result.data, /^\/\*$/m, kept.out);
+    assert.strictEqual(kept.result.old, false, 'nothing at the 2.0.0 place on a fresh install');
+    const legacy = seedRun('install', 'skill markdown-style\nrule markdown-docs\nmcp browser\n', {
+        plugins: JSON.stringify(STACK_ROWS('envoydev')), args: ['--playwright-browsers', 'chrome'],
+        prepare: (repo) => { fs.mkdirSync(path.join(repo, '.playwright', 'chrome'), { recursive: true }); fs.writeFileSync(path.join(repo, '.playwright', 'chrome', 'Cookies'), 'c'); },
         inspect: (repo) => { try { return fs.readFileSync(path.join(repo, '.playwright', '.gitignore'), 'utf8'); } catch { return null; } },
     });
-    assert.strictEqual(kept.result, '*\n', kept.out);
+    assert.strictEqual(legacy.result, '*\n', legacy.out);
     const none = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
         plugins: JSON.stringify(STACK_ROWS('envoydev')),
         inspect: (repo) => fs.existsSync(path.join(repo, '.playwright')),
@@ -1630,12 +1638,32 @@ test('seed install + re-run (full copy route): copies hold the registered tool n
     assert.deepStrictEqual(touched, [], `a re-run rewrote unchanged copies:\n${outs[1]}`);
 });
 
-test('seed install (plugin route): a library seat keeps its shipped alfred-code: preloads (B seam)', POSIX_ONLY, () =>
+// 2.1.0: every seat rides the core and every skill is a copy - a fresh selection copies its skills,
+// copies no seat, and denies each seat it did not pick, so a seat whose preloads were not copied never
+// reaches a dispatch; the stamp records how the seats came (`seats-route: plugin`).
+test('seed install (plugin route): the skills are copied, no seat is, and every seat the selection did not pick is denied', POSIX_ONLY, () =>
 {
-    const { result } = seedRun('install', 'skill markdown-style\nrule markdown-docs\nagent angular-test-resolver\n', {
-        inspect: (repo) => fs.readFileSync(path.join(repo, '.claude', 'agents', 'angular-test-resolver.md'), 'utf8'),
+    const { computeClosure } = require('./stack-select.js');
+    const graph = require('../meta/stack-graph.json');
+    const closed = computeClosure(graph, { skills: ['markdown-style'], rules: ['markdown-docs'], agents: ['angular-test-resolver'] });
+    const selection = [...closed.skills.map((x) => `skill ${x}`), ...closed.rules.map((x) => `rule ${x}`), ...closed.agents.map((x) => `agent ${x}`)].join('\n') + '\n';
+    const { result } = seedRun('install', selection, {
+        inspect: (repo) => ({
+            skills: fs.readdirSync(path.join(repo, '.claude', 'skills')).sort(),
+            agents: fs.existsSync(path.join(repo, '.claude', 'agents')) ? fs.readdirSync(path.join(repo, '.claude', 'agents')) : [],
+            deny: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).permissions.deny,
+            stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
+        }),
     });
-    assert.match(result, /^ {2}- alfred-code:alfred-habits-root-cause$/m);
+    assert.deepStrictEqual(result.skills, [...closed.skills].sort(), 'every picked skill, the seat\'s preloads included, is a copy');
+    assert.deepStrictEqual(result.agents, [], 'no seat is copied - the core carries them');
+    const seats = Object.keys(graph.agents);
+    const denied = result.deny.filter((d) => d.startsWith('Agent('));
+    assert.deepStrictEqual(denied.sort(), seats.filter((a) => a !== 'angular-test-resolver').map((a) => `Agent(alfred-code:${a})`).sort(), 'a deny per seat not picked, none for the one picked');
+    assert.match(result.stamp, /^seats-route: plugin$/m);
+    assert.match(result.stamp, /^picked-agents: angular-test-resolver@alfred-code$/m);
+    assert.match(result.stamp, /^picked-skills: (?!.*@)/m, 'a skill has no plugin home - plain names');
+    assert.match(result.stamp, /^library-agents: $/m);
 });
 
 // F7 (F1 D, pre-existing since 1.3.0): every engine was re-spelled as `playwright`, a name no run

@@ -1,21 +1,25 @@
 'use strict';
-// Where every skill and agent lives. Placement is COMPUTED from meta/recommendations.json +
-// meta/stack-graph.json, never hand-written, so `stack/` stays the one home per piece and a new skill
-// lands by the same rule as every other.
+// Where every skill and agent lives. Placement is COMPUTED from meta/stack-graph.json, never
+// hand-written, so `stack/` stays the one home per piece and a new skill or seat lands by the same
+// rule as every other.
 //
-// The rule, whole:
-//   1. Close the ALWAYS selection. Everything in it is the CORE plugin, enabled in every install.
-//   2. Everything else is LIBRARY: shipped in this repo, listed by no marketplace entry, copied into
-//      a project per pick by the installer.
+// The rule, whole (2.1.0):
+//   1. Every SEAT rides the CORE plugin, enabled in every install. A seat the selection did not pick
+//      is switched off per project by `permissions.deny: ["Agent(alfred-code:<seat>)"]` - spike S3
+//      measured the seat leave the listing and its description leave the bill (-434 tokens), and
+//      rebrand-evidence S6 measured the same under the alfred-code spelling.
+//   2. Every SKILL is LIBRARY: shipped in this repo, listed by no marketplace entry, copied into a
+//      project per pick by the installer.
 //
-// Why not a plugin per stack (the 1.0 rule, owner sets named in GROUP_NAMES): a plugin skill is
-// LOCKED on. Claude Code resolves a plugin skill's `skillOverrides` value to 'on' before any
-// setting is read, and a `Skill(...)` deny removes nothing from the listing - both measured in the
-// 2026-09-24 library test on 2.1.281. So a skill that rode a per-stack plugin could never be
-// switched off in the one project that did not want it; a project COPY can - deleted, or set to
-// 'off' / 'name-only' in `skillOverrides`, or hidden by a `paths:` line until a matching file is
-// touched. The per-stack entries v1.2.0 shipped are frozen in meta/retired-entries.json and listed
-// while any install may still resolve through them.
+// Why skills are never plugin items: a plugin skill is LOCKED on. Claude Code resolves a plugin
+// skill's `skillOverrides` value to 'on' before any setting is read, and a `Skill(...)` deny removes
+// nothing from the listing - both measured in the 2026-09-24 library test on 2.1.281. A project COPY
+// can be switched off - deleted, set to 'off' / 'name-only' in `skillOverrides`, or hidden by a
+// `paths:` line until a matching file is touched. A seat has its lever in the deny list, so it can
+// ride the plugin, and a seat's bare `skills:` preload resolves the project copy (plugin-migration
+// evidence S6). Before 2.1.0 the core carried the always closure instead (`formerCore` below), and
+// every other seat was a library copy too. The per-stack entries v1.2.0 shipped are frozen in
+// meta/retired-entries.json and listed while any install may still resolve through them.
 const fs = require('node:fs');
 const path = require('node:path');
 const { computeClosure } = require('./stack-select.js');
@@ -53,18 +57,20 @@ function placement(options = {})
     const graph = options.graph || readJson('meta/stack-graph.json');
     const recs = options.recs || readJson('meta/recommendations.json');
     const stacks = Object.keys(recs.stacks);
-
-    const core = computeClosure(graph, recs.always);
-    const coreSkills = new Set(core.skills);
-    const coreAgents = new Set(core.agents);
-    const plugins = { [CORE]: { skills: [...core.skills].sort(), agents: [...core.agents].sort(), dependencies: [] } };
-
-    const library = { skills: [], agents: [] };
-    for (const name of Object.keys(graph.skills)) if (!coreSkills.has(name)) library.skills.push(name);
-    for (const name of Object.keys(graph.agents)) if (!coreAgents.has(name)) library.agents.push(name);
-    library.skills.sort();
-    library.agents.sort();
+    const plugins = { [CORE]: { skills: [], agents: Object.keys(graph.agents).sort(), dependencies: [] } };
+    const library = { skills: Object.keys(graph.skills).sort(), agents: [] };
     return { plugins, library, stacks };
+}
+
+// What the core carried BEFORE 2.1.0: the always closure. A 2.0.x install was written under that
+// placement - its read-back goes by it until its first 2.1 update stamps `seats-route:` - and the 1.x
+// alias keeps listing it, so a straggler still on that id keeps its habit skills until it updates.
+function formerCore(options = {})
+{
+    const graph = options.graph || readJson('meta/stack-graph.json');
+    const recs = options.recs || readJson('meta/recommendations.json');
+    const closed = computeClosure(graph, recs.always);
+    return { skills: [...closed.skills].sort(), agents: [...closed.agents].sort() };
 }
 
 // What a project pays: the core plus its stacks' library closure, each item counted once - which
@@ -107,4 +113,4 @@ function readRetiredPlugins(repo = REPO)
     catch { return []; }
 }
 
-module.exports = { placement, costOf, costToday, descriptionChars, mergeSelections, readJson, readRetiredEntries, readRetiredPlugins, CORE, LIBRARY };
+module.exports = { placement, formerCore, costOf, costToday, descriptionChars, mergeSelections, readJson, readRetiredEntries, readRetiredPlugins, CORE, LIBRARY };

@@ -3,7 +3,7 @@
   "skills": [
     {
       "repo": "envoydev/alfred-code",
-      "name": "create-ticket",
+      "name": "alfred-habits-create-ticket",
       "note": "ticket generator (bug/story/epic/task) - tracker-agnostic EN Markdown, routes to references/<type>.md"
     },
     {
@@ -13,7 +13,7 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "explain-code-tutor",
+      "name": "alfred-habits-explain-code",
       "note": "senior-mentor explainer for code/bug/concept/trade-off via real-file walkthrough; depth ELI5/intermediate/expert"
     },
     {
@@ -43,7 +43,7 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-capture-claude-md",
+      "name": "alfred-habits-adjust-claude-md",
       "note": "create or improve a project's CLAUDE.md - the template's outline (Setup and Key files among it), a part's own <part>/CLAUDE.md, changes shown before an improve writes, and scripts/claude-md-check.js last; the one home of the CLAUDE.md fill /alfred-code:init runs"
     },
     {
@@ -75,6 +75,11 @@
       "repo": "envoydev/alfred-code",
       "name": "alfred-capture-agent-capabilities",
       "note": "deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule baseline-project-agent-capabilities.md; manual /-only"
+    },
+    {
+      "repo": "envoydev/alfred-code",
+      "name": "alfred-capture-project-capabilities",
+      "note": "deliberate run-book capture - reads the repo first (the first-look scan, launch configs, compose, README), asks only for the gaps (start and reach, login and where the credentials live, flows and edge cases, before-you-run and debugging), writes docs/project-capabilities/PROJECT-CAPABILITIES.md (its own docs domain) + the generated pointer rule baseline-project-run-book.md; credentials by location, never by value; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -154,7 +159,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "alfred-habits-skill-writing",
-      "note": "skill writing (Task 21, written fresh): skill vs rule / hook / reference, the description as the trigger, one home per piece, a lean platform-neutral body, proven without and with the skill plus the adverse phrasing; loaded by the skill-authoring rule on every skill file, pointed at by plugin-authoring"
+      "note": "skill writing (Task 21, written fresh): skill vs rule / hook / reference, the description as the trigger, one home per piece, a lean platform-neutral body, proven without and with the skill plus the adverse phrasing; loaded by the skill-authoring rule on every skill file"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -170,11 +175,6 @@
       "repo": "envoydev/alfred-code",
       "name": "alfred-capture-stack-usage",
       "note": "token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/alfred-code-usage-report/"
-    },
-    {
-      "repo": "envoydev/alfred-code",
-      "name": "plugin-authoring",
-      "note": "Claude Code plugin authoring: manifest + marketplace schema, layout and precedence, plugin root vs data paths, per-component rules, the validate / plugin-dir / details / eval loop, security review"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -960,11 +960,11 @@
     {
       "name": "navigation",
       "args": "-e SERENA_HOME=@SERENA_HOME@ -- uvx --python @UV_PYTHON@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd",
-      "note": "the navigation server (Serena): LSP symbol navigation; per-project SERENA_HOME (.serena/home - gitignore it, holds ~327MB LSP) isolates its registry/memories/logs/LSP, no pooling across projects/accounts; --project-from-cwd self-activates the repo (.serena/project.yml in cwd) on launch; PyPI (not git), dashboard off"
+      "note": "the navigation server (Serena): LSP symbol navigation; per-project SERENA_HOME (<data root>/serena/home - the data root ignores it, ~327MB LSP) isolates its registry/memories/logs/LSP, no pooling across projects/accounts; its home config points serena at <data root>/serena; --project-from-cwd self-activates the repo on launch; PyPI (not git), dashboard off"
     },
     {
       "name": "browser",
-      "args": "-- npx -y @playwright/mcp@PW_PIN@ --user-data-dir ${CLAUDE_PROJECT_DIR:-.}/.playwright --output-dir ${CLAUDE_PROJECT_DIR:-.}/.playwright/output",
+      "args": "-- npx -y @playwright/mcp@PW_PIN@ --user-data-dir ${CLAUDE_PROJECT_DIR:-.}/@BROWSER_DIR@ --output-dir ${CLAUDE_PROJECT_DIR:-.}/@BROWSER_DIR@/output",
       "note": "the browser server (Playwright MCP): drive a real browser for visual checks / web app verification - expanded after the selection into one browser-<engine> server per kept browser"
     },
     {
@@ -1030,7 +1030,11 @@
       "project-quality-loop",
       "project-architecture-quality-loop",
       "project-test-coverage-loop",
-      "project-commit-checkpoint"
+      "project-commit-checkpoint",
+      "alfred-capture-claude-md",
+      "create-ticket",
+      "explain-code-tutor",
+      "plugin-authoring"
     ],
     "agents": [
       "angular-solution-designer.md",
@@ -1101,7 +1105,10 @@
       "project-quality-loop": "alfred-loop-quality",
       "project-architecture-quality-loop": "alfred-loop-architecture-quality",
       "project-test-coverage-loop": "alfred-loop-test-coverage",
-      "project-commit-checkpoint": "alfred-habits-commit-checkpoint"
+      "project-commit-checkpoint": "alfred-habits-commit-checkpoint",
+      "alfred-capture-claude-md": "alfred-habits-adjust-claude-md",
+      "create-ticket": "alfred-habits-create-ticket",
+      "explain-code-tutor": "alfred-habits-explain-code"
     },
     "agents": {
       "ci-failure-diagnoser": "alfred-issue-diagnoser-ci",

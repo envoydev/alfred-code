@@ -18,8 +18,25 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 // ~327MB of language servers, the stack's own files, and the playwright MCP's browser profile -
-// none of them project source.
+// none of them project source. 2.0.0's value, before the data root; still the stack's own to rewrite.
 const IGNORED_PATHS = '[".serena", ".claude", ".playwright"]';
+// Since the data root (stack/mcp/data-root.js): the root first - it holds serena's own home and folder,
+// the browser profiles and the docs - then the stack files and the 2.0.0 places a project not yet moved
+// still holds.
+const ignoredPathsFor = (root) => (root ? `["${root}", ".claude", ".serena", ".playwright"]` : IGNORED_PATHS);
+// True when an ignored_paths line holds a value the stack wrote: 2.0.0's, or the data-root shape for any
+// root - never a list of the user's own.
+function stackIgnored(text)
+{
+    const m = /^[ \t]*ignored_paths[ \t]*:[ \t]*(\[.*\])[ \t]*$/m.exec(String(text));
+    if (!m) return false;
+    let items;
+    try { items = JSON.parse(m[1]); } catch { return false; }
+    if (!Array.isArray(items)) return false;
+    if (JSON.stringify(items) === IGNORED_PATHS.replace(/, /g, ',')) return true;
+    return items.length === 4 && typeof items[0] === 'string' && require('../../stack/mcp/data-root.js').checkDataPath(items[0]).ok
+        && JSON.stringify(items.slice(1)) === '[".claude",".serena",".playwright"]';
+}
 
 const CSHARP = /\.(sln|slnx|csproj)$/i;
 const TYPESCRIPT = /(^tsconfig.*\.json$)|(^package\.json$)|\.(ts|tsx|js|jsx|mjs)$/i;
@@ -99,10 +116,13 @@ function setListKey(cfgFile, key, value, comment, { log = () => {} } = {})
 
 const quoteList = (ids) => `[${ids.map((id) => `"${id}"`).join(', ')}]`;
 
-function seedProject({ projectRoot, selected = true, log = () => {} })
+// `dir` is serena's per-project folder this run (data-root.js liveDir): <data root>/serena, or a 2.0.0
+// `.serena` not moved yet - the file is seeded where serena reads it now, and moves with the folder.
+function seedProject({ projectRoot, selected = true, dir = '.serena', root = null, log = () => {} })
 {
     if (!selected) return { written: false, reason: 'serena is not in this selection' };
-    const cfg = path.join(projectRoot, '.serena', 'project.yml');
+    const cfg = path.join(projectRoot, ...dir.split('/'), 'project.yml');
+    const ignored = ignoredPathsFor(root);
 
     if (fs.existsSync(cfg))
     {
@@ -118,9 +138,16 @@ function seedProject({ projectRoot, selected = true, log = () => {} })
                     'serena writes this key empty (async) or with only the single top language.', { log });
             else log("  serena: no C#/TypeScript/JS sources found - language_servers left to serena's own detection");
         }
-        // ALWAYS, independent of the branch above.
-        setListKey(cfg, 'ignored_paths', IGNORED_PATHS,
-            '.serena holds the ~327MB of language servers, .claude the stack files, .playwright the MCP browser profile - none are project source.', { log });
+        // ALWAYS, independent of the branch above. A value the stack wrote follows the data root; one the
+        // user wrote is theirs.
+        const now = (/^[ \t]*ignored_paths[ \t]*:[ \t]*(.*?)[ \t]*$/m.exec(text) || [])[1];
+        if (stackIgnored(text) && now !== ignored)
+        {
+            fs.writeFileSync(cfg, text.replace(/^[ \t]*ignored_paths[ \t]*:.*$/m, `ignored_paths: ${ignored}`));
+            log(`  serena: ignored_paths set to ${ignored} (the stack's own value, re-pointed at the data root)`);
+        }
+        else setListKey(cfg, 'ignored_paths', ignored,
+            'the data root holds the ~327MB of language servers and the browser profiles, .claude the stack files - none are project source.', { log });
         return { written: false, existing: true };
     }
 
@@ -139,17 +166,17 @@ function seedProject({ projectRoot, selected = true, log = () => {} })
 # single top language otherwise, so it is stated here explicitly. Detected from the files in this
 # repo at install time; edit freely - a key that carries entries is never rewritten by an update.
 # The C# (Roslyn) server needs .NET 10+; serena installs it itself when the runtime is not on
-# PATH, into SERENA_HOME (.serena/home, ~327MB - keep .serena ignored).
+# PATH, into SERENA_HOME (${dir}/home, ~327MB - keep it ignored).
 project_name: "${name}"
 language_servers: ${quoteList(langs)}
-# .serena holds SERENA_HOME (the language servers, ~327MB of DLLs and node_modules),
-# .claude the stack's own files, .playwright the browser profile/traces the playwright MCP
-# writes - none of them project source. Without this line serena's indexer walks into them:
-# measured on a 14-file fixture it tried 126 files and failed 112, every one of them inside
-# .serena/home.
-ignored_paths: ${IGNORED_PATHS}
+# The data root holds SERENA_HOME (the language servers, ~327MB of DLLs and node_modules) and
+# the browser profiles, .claude the stack's own files, .serena and .playwright the same data
+# where a project not yet moved keeps it - none of them project source. Without this line
+# serena's indexer walks into them: measured on a 14-file fixture it tried 126 files and failed
+# 112, every one of them inside .serena/home.
+ignored_paths: ${ignored}
 `);
-    log(`  serena: seeded .serena/project.yml (project_name=${name}, language_servers=${quoteList(langs)})`);
+    log(`  serena: seeded ${dir}/project.yml (project_name=${name}, language_servers=${quoteList(langs)})`);
     return { written: true, languages: langs, name };
 }
 
@@ -178,4 +205,4 @@ function ensureSerenaIgnore({ projectRoot, selected = true, log = () => {} })
     return have === null ? 'written' : 'replaced';
 }
 
-module.exports = { detectLanguages, hasEntries, setListKey, seedProject, ensureSerenaIgnore, IGNORED_PATHS };
+module.exports = { detectLanguages, hasEntries, setListKey, seedProject, ensureSerenaIgnore, stackIgnored, ignoredPathsFor, IGNORED_PATHS };

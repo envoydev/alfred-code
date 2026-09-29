@@ -234,7 +234,7 @@ function retireAndReseed(env, migrations, log, label, only = () => true)
 // C8: a PERSONAL_KEYS value always goes to the overlay when there is one, and leaves this file.
 // `sharedKeys` (C5): a decision that shapes committed state lands in THIS file even when the overlay
 // holds the key - the hooks copy route's HOOKS_OFF complement, which is the committed wiring's mirror.
-function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, memoryDb, hooksOff, hooksAnswered, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json' })
+function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, memoryDb, hooksOff, hooksAnswered, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json' })
 {
     let changed = renameEnv(env, migrations, log, label);
     const beneath = inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? { ...inherited } : {};
@@ -263,6 +263,20 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, memoryDb
             into.ALFRED_CODE_DOCS_PATH = docsPath.value;
             if (mine) changed = true;
             log(`  ${lab} env: ALFRED_CODE_DOCS_PATH ${old === undefined ? 'absent' : `'${old}'`} -> '${docsPath.value}' (${docsPath.why})`);
+        }
+    }
+
+    // 3c. THE DATA ROOT DECISION (alfred-code.js dataRootStep) - a root this run moved the data to, or a
+    // fresh install's chosen one; the absent-only seed below writes the default otherwise.
+    if (dataPath && dataPath.value)
+    {
+        const { into, lab, mine } = at('ALFRED_CODE_DATA_PATH');
+        const old = into.ALFRED_CODE_DATA_PATH;
+        if (old !== dataPath.value)
+        {
+            into.ALFRED_CODE_DATA_PATH = dataPath.value;
+            if (mine) changed = true;
+            log(`  ${lab} env: ALFRED_CODE_DATA_PATH ${old === undefined ? 'absent' : `'${old}'`} -> '${dataPath.value}' (${dataPath.why})`);
         }
     }
 
@@ -452,8 +466,8 @@ function writeSettings(opts)
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [], retiredEntries = [], liveEntries = null,
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], mcpjsonDisable = [], mcpjsonEnable = [], catalog = [], migrations = {},
-        docsVersioning, docsPath = null, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
-        inheritedOverrides = null, sharedKeys = [], attribution = null, worktreeBase = null, ledger = {},
+        docsVersioning, docsPath = null, dataPath = null, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
+        inheritedOverrides = null, sharedFile = null, sharedKeys = [], attribution = null, worktreeBase = null, ledger = {},
         log = () => {}, note = () => {},
     } = opts;
     // R10: the last run's ledger (null - no stamp, or one from before it: the fallback) and the hook
@@ -562,10 +576,14 @@ function writeSettings(opts)
     // it was; an --installed-only refresh passes the lists it READ BACK from this array, so it
     // writes the same seat state it found. A seat's OTHER stack spellings go either way: a release
     // that moved the seat to another entry left an entry addressing nothing.
+    // A deny leaves the spelling of a retired entry (or the 1.x core) that still loads here: Claude Code
+    // matches the exact home name, so that spelling is what keeps the seat off while the entry loads
+    // (the respell pass above); an allow clears every spelling.
+    const liveSpelling = (entry) => { const m = /^Agent\(([a-z0-9-]+):/.exec(entry); return Boolean(m && homes.includes(m[1]) && live(m[1])); };
     const dropSeat = (rule, keep) =>
     {
         const seat = stackSeat(rule);
-        for (const entry of [...deny]) if (entry !== keep && seat && stackSeat(entry) === seat)
+        for (const entry of [...deny]) if (entry !== keep && seat && stackSeat(entry) === seat && !(keep && liveSpelling(entry)))
         { deny.splice(deny.indexOf(entry), 1); changed = true; log(entry === rule ? `  ${label}: agent allowed again ${entry}` : `  ${label}: agent entry dropped ${entry} (the seat's old spelling)`); }
     };
     for (const rule of agentDeny)
@@ -649,7 +667,7 @@ function writeSettings(opts)
     }
     const overlay = local && local.env && typeof local.env === 'object' && !Array.isArray(local.env) ? local.env : null;
     const overlayBefore = overlay && !createdLocal ? JSON.stringify(overlay) : null;
-    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
+    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
         overlayLabel: localFile ? path.basename(localFile) : undefined })) changed = true;
     // R10: the ledger pass, over the env of each file this run writes, the deny lists and the wirings.
     const localName = localFile ? path.basename(localFile) : null;
@@ -760,6 +778,37 @@ function writeSettings(opts)
         fs.writeFileSync(localFile, `${JSON.stringify(local, null, 2)}\n`);
     }
     const createdLocalFile = createdLocal && localChanged;
+
+    // A local-scope run writes settings.local.json, but the stack's OWN stale rows may sit in the shared
+    // settings.json a legacy copy-route install wrote: its hook wiring (a hook file this route no longer
+    // copies, run on every call) and its 1.x env keys. Those go - by file name and by key, never a hook
+    // or key the user wrote. Nothing is added to the shared file; an unreadable one is left as it is.
+    if (sharedFile && sharedFile !== file && fs.existsSync(sharedFile))
+    {
+        let shared = null;
+        try { ({ data: shared } = readSettings(sharedFile)); }
+        catch (err) { note(`${err.message} - its stale stack rows are not removed this run`); }
+        if (shared)
+        {
+            const sharedName = path.basename(sharedFile);
+            const before = JSON.stringify(shared);
+            wireHooks(shared, [], retiredHooks);
+            const priorShared = prior && prior.hooks ? prior.hooks.filter((h) => h.file === sharedName) : [];
+            const releaseIds = new Set([...releaseWirings(shellGuards.wiringRows(ledger.releaseHooks || hookSpecs)), ...releaseWirings(wired)]);
+            for (const g of unwireIds(shared, new Set(priorShared.filter((h) => !releaseIds.has(h.id)).map((h) => h.id))))
+                log(`  ${sharedName}: hook wiring ${g.hook} (${g.event}) removed - the stack wired it and this release no longer does`);
+            if (plain(shared.env))
+            {
+                renameEnv(shared.env, migrations, log, sharedName);
+                retireAndReseed(shared.env, migrations, log, sharedName);
+            }
+            if (JSON.stringify(shared) !== before)
+            {
+                fs.writeFileSync(sharedFile, `${JSON.stringify(shared, null, 2)}\n`);
+                log(`  ${sharedName}: the stack's stale rows removed (a local-scope run writes ${label})`);
+            }
+        }
+    }
 
     if (!changed) return { written: localChanged, refused: false, createdLocal: createdLocalFile, managed };
     fs.mkdirSync(path.dirname(file), { recursive: true });

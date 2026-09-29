@@ -338,3 +338,11 @@ test('uninstall prints the user-scope registrations\' remove commands and never 
     assert.deepStrictEqual(result, ['browser-chrome'], outs[0]);
     assert.match(outs[1], /browser-chrome is registered at user scope.*claude mcp remove browser-chrome -s user/);
 });
+
+// M4: the kept-data line read ALFRED_CODE_DATA_PATH after the settings pass had removed it, so a custom root was
+// named as the default .alfred/ - the folder the user would then look in is the wrong one.
+test('uninstall: the kept data root is the one in effect - a custom root named, never the default', POSIX_ONLY, () =>
+{
+    const { outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', { args: [['--scope', 'project', '--data-path', '.data'], []] });
+    assert.match(outs[1], /kept, yours or your data: .* - \.data\/, or a 2\.0\.0/, outs[1]);
+});

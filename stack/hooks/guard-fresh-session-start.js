@@ -52,6 +52,10 @@ try {
   process.exit(0);
 }
 if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/null - nothing to judge
+// GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
+let cursorOff = false;
+try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filename); } catch { /* no prelude: run */ }
+if (cursorOff) process.exit(0);
 
 // --- block telemetry (shared by every guard hook; keep the copies identical) ------------
 // A block costs a whole turn - the stderr goes back to the model and the work is re-done - so a
@@ -225,7 +229,7 @@ function compactPointer() {
 // after that spend. `alfred-capture-agent-capabilities` is here because the stack's own next-steps card
 // tells the user to run it after every update. The guided plugin commands are here because
 // they are multi-phase walks too, and the UserPromptSubmit route is what finally reaches them.
-const ORCHESTRATION = /^(alfred-(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|stack-usage|related-projects|agent-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|alfred-code:(init|setup|update|configure|validate))$/;
+const ORCHESTRATION = /^(alfred-(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|stack-usage|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|alfred-code:(init|setup|update|configure|validate))$/;
 // a plugin-namespaced Skill call arrives as `<plugin>:<skill>`; the guided commands are
 // matched on their FULL name, so a bare `/setup` from some other plugin is not read as one of them
 const isOrchestration = (n) => ORCHESTRATION.test(n) || ORCHESTRATION.test(n.replace(/^.*:/, ''));

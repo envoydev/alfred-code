@@ -41,11 +41,13 @@ test('the release pins cover every package server, and the generator spells a pi
         assert.strictEqual(PACKAGES[name].package, pkg, `refresh-mcp-pins resolves the wrong package for ${name}`);
         assert.ok(pins[name].package === pkg && /^\d+\.\d+\.\d+/.test(pins[name].version || ''), `meta/mcp-pins.json has no committed pin for ${name}`);
     }
-    const args = (pins) => mcpServerShapes({ pins })['browser-chrome'].servers['browser-chrome'].args.slice(0, 2);
-    assert.deepStrictEqual(args({ browser: { version: '9.8.7', spelling: '@<v>' } }), ['-y', '@playwright/mcp@9.8.7']);
+    // The entry starts the browser launcher (the profile's place is the project's data root), which hands
+    // npx the package it is given.
+    const args = (pins) => { const a = mcpServerShapes({ pins })['browser-chrome'].servers['browser-chrome'].args; return a.slice(a.indexOf('--package'), a.indexOf('--package') + 2); };
+    assert.deepStrictEqual(args({ browser: { version: '9.8.7', spelling: '@<v>' } }), ['--package', '@playwright/mcp@9.8.7']);
     // A pin that never resolved ships unpinned - npx then takes the newest, which is what @latest
     // said out loud; the fallback is the same, only the default moved.
-    assert.deepStrictEqual(args({ browser: { version: null } }), ['-y', '@playwright/mcp']);
+    assert.deepStrictEqual(args({ browser: { version: null } }), ['--package', '@playwright/mcp']);
 });
 
 test('the seed takes each pin from the release, never from a registry', () =>

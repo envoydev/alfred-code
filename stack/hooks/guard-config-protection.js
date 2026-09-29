@@ -65,6 +65,10 @@ const unq = (s) => String(s).replace(/^["']|["']$/g, '');
 let payload;
 try { payload = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.exit(0); }
 if (!payload || typeof payload !== 'object') process.exit(0);
+// GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
+let cursorOff = false;
+try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filename); } catch { /* no prelude: run */ }
+if (cursorOff) process.exit(0);
 
     // --- block telemetry (shared by every guard hook; keep the copies identical) ------------
     // A block costs a whole turn - the stderr goes back to the model and the work is re-done - so a

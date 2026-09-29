@@ -103,11 +103,6 @@ const NON_SKILL_TOKENS = new Set([
     'default-days',
     'run-s',
     'run-p',
-    // a command frontmatter field and the reserved marketplace names named in the plugin-authoring skill - identifiers, not skills.
-    'allowed-tools',
-    'claude-plugins-official',
-    'claude-community',
-    'anthropic-plugins',
     // CSP directive + npm package named in the browser-extension skill - identifiers, not skills.
     'unsafe-eval',
     'chrome-types',
@@ -1128,6 +1123,46 @@ function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
 // pinned per skill, so a rewrite that drops even one stop back to prose goes red (a new stop raises the pin).
 const ASK_FLOW_TEMPLATES = { 'alfred-task-solve': 6, 'alfred-task-solve-cross': 5, 'alfred-issue-diagnoser': 4 };
 const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
+// The setup / configure walk's layer asks are templates too (2026-09-29: a walk with whole-layer verdicts only left every
+// per-row change to typing). Pinned per file like the flow skills, so a layer ask dropped back to prose goes red.
+const SETUP_ASK_TEMPLATES = {
+    'setup-plugin/references/walk.md': 9,
+    'setup-plugin/commands/setup.md': 2,
+    'setup-plugin/commands/configure.md': 1,
+};
+// The setup-plugin files that carry ask templates, read from `root` (the repo, or a fixture).
+function setupAskFiles(root, fsLike = fs)
+{
+    const files = [];
+    for (const rel of Object.keys(SETUP_ASK_TEMPLATES))
+    {
+        const full = path.join(root, rel);
+        if (fsLike.existsSync(full)) files.push({ skill: 'setup-plugin', file: rel, text: fsLike.readFileSync(full, 'utf8') });
+    }
+    for (const dir of ['references', 'commands'])
+    {
+        const d = path.join(root, 'setup-plugin', dir);
+        if (!fsLike.existsSync(d)) continue;
+        for (const f of fsLike.readdirSync(d))
+        {
+            const rel = `setup-plugin/${dir}/${f}`;
+            if (f.endsWith('.md') && !files.some((x) => x.file === rel)) files.push({ skill: 'setup-plugin', file: rel, text: fsLike.readFileSync(path.join(d, f), 'utf8') });
+        }
+    }
+    return files;
+}
+function lintSetupAskPresence(files)
+{
+    const findings = [];
+    for (const [rel, pinned] of Object.entries(SETUP_ASK_TEMPLATES))
+    {
+        const f = files.find((x) => x.file === rel);
+        const n = f ? [...f.text.matchAll(/^[ \t]*```ask[ \t]*$/gm)].length : 0;
+        if (n !== pinned) findings.push(`${rel}: carries ${n} \`ask\` template(s), pinned at ${pinned} - `
+            + (n < pinned ? 'a layer ask went back to prose (check 61)' : 'a new ask raises the pin in SETUP_ASK_TEMPLATES (check 61)'));
+    }
+    return findings;
+}
 // A label is the text between `- '` and the LAST quote before ` - `, so an apostrophe inside it ('Hold - don't commit')
 // stays in the label; an option with no why ends at its closing quote.
 const askLabel = (line) => { const m = line.match(/^- '(.*)' - /) || line.match(/^- '(.*)'\s*$/); return m ? m[1] : ''; };
@@ -2276,7 +2311,9 @@ function main()
             if (fs.existsSync(refDir)) for (const r of fs.readdirSync(refDir)) if (r.endsWith('.md')) files.push(path.join(refDir, r));
             for (const f of files) if (fs.existsSync(f)) askFiles.push({ skill: d, file: path.relative(ROOT, f), text: fs.readFileSync(f, 'utf8') });
         }
-        for (const finding of lintAskTemplates(askFiles)) flag(finding);
+        const setupFiles = setupAskFiles(ROOT);
+        for (const finding of lintAskTemplates([...askFiles, ...setupFiles])) flag(finding);
+        for (const finding of lintSetupAskPresence(setupFiles)) flag(finding);
         const flowTexts = {};
         for (const d of ASK_FLOW_SKILLS) { const f = path.join(SKILLS_DIR, d, 'SKILL.md'); flowTexts[d] = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : undefined; }
         for (const finding of lintFlowAskPresence(flowTexts)) flag(finding);
@@ -2336,7 +2373,7 @@ function main()
     // too, so a hand edit to any entry is drift, not a change; the two 1.x aliases are generated
     // like the retired entries, and a `renames` key or a hooks entry is a finding.
     for (const finding of lintMarketplaceEntries()) flag(finding);
-    // 50. Every agent's `skills:` preload carries the plugin prefix the placement gives it.
+    // 50. Every agent's `skills:` preload is spelled as the placement homes it - bare, the project copy.
     for (const finding of lintAgentPreloads()) flag(finding);
     // 51. The seed's CORE_DEP_PLUGINS mirrors the manifest's parked cross-marketplace dependencies.
     for (const finding of lintCoreDependencies()) flag(finding);
@@ -2380,9 +2417,10 @@ function main()
 // ---------------------------------------------------------------------------------------------
 // 44 + 45. Placement is COMPUTED from meta/recommendations.json + meta/stack-graph.json, so the
 // generated entries are derivable - and a drift between what the rule computes and what is committed
-// is exactly the failure this pair exists to catch. Since 1.3.0 the rule has ONE plugin, the core; every
-// other item is library, copied per pick, so a project pays exactly its per-item closure by
-// construction and the old cost gate has nothing left to measure.
+// is exactly the failure this pair exists to catch. Since 1.3.0 the rule has ONE plugin, the core; since
+// 2.1.0 it carries every seat and no skill, every skill is library, copied per pick, and a seat nobody
+// picked is denied - so a project pays exactly its per-item closure by construction and the old cost
+// gate has nothing left to measure.
 function lintPluginPlacement(placeIn)
 {
     const out = [];
@@ -2406,7 +2444,7 @@ function lintPluginPlacement(placeIn)
     }
 
     if (Object.keys(place.plugins).length !== 1 || !place.plugins[placeMod.CORE])
-        out.push(`the placement ships plugins other than ${placeMod.CORE} - every non-core item is library, copied per pick.`);
+        out.push(`the placement ships plugins other than ${placeMod.CORE} - every skill is library, copied per pick, and every seat rides the core.`);
 
     const seen = new Map();
     const note = (key, where) =>
@@ -2755,7 +2793,7 @@ const RETIRED_TERMS = [
     { name: 'ponytail', re: /\bponytail/i, use: "the house terms are 'build lean' / 'question the need' / 'over-build review'" },
     // 2.0.0 (the plugins audit, 2026-09-26): two third-party picks no install used.
     { name: 'security-guidance', re: /\bsecurity-guidance\b/i, use: 'what took its place is `/security-review`, the security-auditor seat and the commit checkpoint\'s security half' },
-    { name: 'claude-md-management', re: /\bclaude-md-management\b/i, use: 'what took its place is the CLAUDE.md skill in the core (alfred-capture-claude-md)' },
+    { name: 'claude-md-management', re: /\bclaude-md-management\b/i, use: 'what took its place is the CLAUDE.md skill in the core (alfred-habits-adjust-claude-md)' },
 ];
 function lintRetiredNames(files)
 {
@@ -2970,9 +3008,9 @@ function lintHooksEntry(liveIn)
     return out;
 }
 
-// 50. A preload names a plugin skill, and a BARE name silently preloads a stale `.claude/skills/`
-// copy when one is present (spike S6) - the exact shape every migrating project has for a session.
-// The prefix is computed from the placement, so this only checks that the files agree with it.
+// 50. A preload's spelling is computed from the placement (2.1.0: every house skill is a project copy,
+// so every house cite is bare - spike S6 measured a plugin seat's bare preload load the project copy),
+// and a manual-only skill is never preloadable. This only checks that the files agree with it.
 function lintAgentPreloads()
 {
     let rows;
@@ -3178,6 +3216,9 @@ module.exports = {
     lintFlowAskPresence,
     ASK_FLOW_SKILLS,
     ASK_FLOW_TEMPLATES,
+    SETUP_ASK_TEMPLATES,
+    setupAskFiles,
+    lintSetupAskPresence,
     optionalSkills,
     optionalAgents,
     lintSuggestionEdges,

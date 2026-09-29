@@ -9,7 +9,9 @@
 //   missing - the stamp lists it, the project has no copy
 //   behind  - the running stack ships a different version of it: /alfred-code:update takes it
 //   stale   - the stamp's release is older than the running stack's (plugins update themselves,
-//             library copies only move on /alfred-code:update)
+//             library copies only move on /alfred-code:update); a stamp from before 2.1.0 (no
+//             `seats-route:`) under a stack at or past it also names the move - every skill into the
+//             project, every seat into the core - since until the update the house skills are not here
 //
 // T16 (R29): every scope's stamp and library copies live in the PROJECT now - `--config-dir` is a
 // LEGACY fallback only, for a 1.x global install this project has not yet run an `update` over (the
@@ -21,7 +23,7 @@
 // lines (an older release, the shell twin, a project the stack never installed): nothing to check.
 const fs = require('node:fs');
 const path = require('node:path');
-const { readLibrary, validItemName } = require('./install/stamp.js');
+const { readLibrary, validItemName, readSeatsRoute } = require('./install/stamp.js');
 const { stampFile, LEGACY } = require('./install/brand.js');
 const { hashItem, hashBuffer } = require('./install/library.js');
 const { resolveDocsRoot } = require('./install/copy.js');
@@ -129,7 +131,10 @@ function check({ project, source, configDir })
             }
             rows.push(row);
         }
-    return { version: stamp.version, sourceVersion, rows, invalid, stale: Boolean(sourceVersion && stamp.version && newer(sourceVersion, stamp.version)) };
+    const stale = Boolean(sourceVersion && stamp.version && newer(sourceVersion, stamp.version));
+    // The 2.1.0 move: a stamp from before it names no `seats-route:`.
+    const moved = stale && !newer('2.1.0', sourceVersion) && newer('2.1.0', stamp.version) && !readSeatsRoute(base === claudeDir ? own : path.join(base, LEGACY.stamp));
+    return { version: stamp.version, sourceVersion, rows, invalid, stale, moved };
 }
 
 function main(argv)
@@ -144,7 +149,8 @@ function main(argv)
     const shadowed = res.rows.filter((r) => r.shadowedByAccount);
     const findings = bad.length + (res.stale ? 1 : 0) + shadowed.length + res.invalid;
     if (argv.includes('--json')) { console.log(JSON.stringify(res)); return findings ? 1 : 0; }
-    if (res.stale) console.log(`stale stamp: the project copies are from ${res.version}, the stack is ${res.sourceVersion} - run /alfred-code:update`);
+    if (res.stale) console.log(`stale stamp: the project copies are from ${res.version}, the stack is ${res.sourceVersion} - run /alfred-code:update${res.moved
+        ? ' (2.1.0 moved every skill into the project and every seat into the core - until the update runs here, the house skills are not copied and every seat is listed undenied)' : ''}`);
     const say = { drift: 'edited in the project since update wrote it', missing: 'listed in the stamp, absent from the project', behind: 'the running stack ships a newer version' };
     for (const r of bad) console.log(`${r.state}: ${r.kind} ${r.name} - ${say[r.state]}`);
     if (res.invalid) console.log(`invalid: ${res.invalid} stamp name(s) are not valid item names - skipped, never read`);

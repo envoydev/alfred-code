@@ -23,14 +23,22 @@
 //                          or none) are deleted and stored again THROUGH the service, their tags, type,
 //                          metadata and dates carried. A row tied to another memory (superseded, a
 //                          child, a graph edge) is listed and left alone. The whole rows are backed up
-//                          first under ~/.memory-mcp/backups (owner-only); the first row goes alone and a
+//                          first under ~/.alfred-memory/backups (owner-only); the first row goes alone and a
 //                          vector that is still not unit length stops the run; a row that does not come
 //                          back is retried once, then reported with its --restore command.
+//   warm [--root <dir>] [--plugin-root <dir>] [--timeout <ms>]
+//                          fetches the service's embedding model (~166MB) ahead of a session: the server
+//                          started against a scratch database, one search, then stopped - `memory warm:
+//                          cached | ready (<n>s) | failed - <why>`, exit 1 on a failure. Bounded (4 minutes).
 //   reembed --restore <backup> [--db <file>] [--root <dir>]
 //                          stores again every backed-up row that is missing, and gives back the dates
 //                          of every one that lost them - through the service. A re-run changes nothing.
-// Levels -> db (FACT-SCHEMA / cross-task-facts.md): global ~/.memory-mcp/memory.db; scoped
-// ~/.memory-mcp/memory_<space>.db (no space: memory_default.db); project <project>/.memory-mcp/memory.db.
+// Levels -> db (FACT-SCHEMA / cross-task-facts.md): global ~/.alfred-memory/memory.db; scoped
+// ~/.alfred-memory/memory_<space>.db (no space: memory_default.db); project
+// <project>/<data root>/.alfred-memory/memory.db (ALFRED_CODE_DATA_PATH, default .alfred). The 2.0.0 folder
+// `.memory-mcp` (~/.memory-mcp, <project>/.memory-mcp) still reads as its level, and a database the memory
+// launcher has not moved yet is read where it is (liveDbPath) - the shapes are stack/mcp/data-root.js's,
+// inlined here because this engine ships alone.
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -50,21 +58,41 @@ function envOf(env, suffix)
     return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name
 }
 
-function pathForLevel(level, { home, space, projectRoot } = {}) {
-  if (level === 'global') return path.join(home, '.memory-mcp', 'memory.db');
-  if (level === 'scoped') return path.join(home, '.memory-mcp', `memory_${space || 'default'}.db`);
-  if (level === 'project') return path.join(projectRoot, '.memory-mcp', 'memory.db');
+const MEMORY_FOLDER = '.alfred-memory';
+const LEGACY_MEMORY_FOLDER = '.memory-mcp';
+
+// The project's data root, as the launchers read it (a project settings value, settings.local.json first),
+// else `.alfred`. Only a plain relative folder counts - data-root.js checkDataPath's rule, simplified.
+function dataRootOf(projectRoot) {
+  for (const name of ['settings.local.json', 'settings.json']) {
+    const data = readJson(path.join(projectRoot, '.claude', name));
+    const raw = data && data.env && envOf(data.env, 'DATA_PATH');
+    if (typeof raw !== 'string' || !raw.trim()) continue;
+    const value = raw.trim().replace(/\\/g, '/').replace(/^(\.\/)+/, '').replace(/\/+$/, '');
+    const parts = value.split('/');
+    const ok = value && !value.startsWith('/') && !/^[A-Za-z]:/.test(value) && !/\s/.test(value)
+      && !parts.some((p) => p === '.' || p === '..') && parts[0] !== '.claude' && parts[0] !== '.git';
+    return ok ? value : '.alfred';
+  }
+  return '.alfred';
+}
+
+function pathForLevel(level, { home, space, projectRoot, root } = {}) {
+  if (level === 'global') return path.join(home, MEMORY_FOLDER, 'memory.db');
+  if (level === 'scoped') return path.join(home, MEMORY_FOLDER, `memory_${space || 'default'}.db`);
+  if (level === 'project') return path.join(projectRoot, ...(root || dataRootOf(projectRoot)).split('/'), MEMORY_FOLDER, 'memory.db');
   throw new Error(`unknown memory level: ${level}`);
 }
 
-// dbPath -> { root, file } when it is shaped '<root>/.memory-mcp/<file>', else null. The file itself
-// is never required to exist (a fresh registration's db may not be created yet), only its '.memory-mcp'
-// parent and root are ever resolved.
+// dbPath -> { root, file, legacy } when it is shaped '<root>/.alfred-memory/<file>' or the 2.0.0
+// '<root>/.memory-mcp/<file>', else null. The file itself is never required to exist (a fresh
+// registration's db may not be created yet), only its folder and root are ever resolved.
 function splitMemoryMcpLeaf(dbPath) {
   const norm = path.normalize(String(dbPath));
   const parent = path.dirname(norm);
-  if (path.basename(parent) !== '.memory-mcp') return null;
-  return { root: path.dirname(parent), file: path.basename(norm) };
+  const folder = path.basename(parent);
+  if (folder !== MEMORY_FOLDER && folder !== LEGACY_MEMORY_FOLDER) return null;
+  return { root: path.dirname(parent), file: path.basename(norm), legacy: folder === LEGACY_MEMORY_FOLDER };
 }
 
 // A directory's real, symlink-resolved form - macOS routes os.tmpdir() (and some other mounts)
@@ -96,8 +124,9 @@ function levelOfPath(dbPath, { home, projectRoot } = {}) {
   const root = dirKey(leaf.root);
   if (leaf.file === 'memory.db') {
     if (projectRoot) {
-      const roots = new Set([mainCheckoutRoot(projectRoot), projectRoot].map(dirKey));
-      if (roots.has(root)) return 'project';
+      const roots = [...new Set([mainCheckoutRoot(projectRoot), projectRoot].map(dirKey))];
+      // The 2.0.0 folder sits at the project root itself; the new one under the data root, a folder inside it.
+      if (leaf.legacy ? roots.includes(root) : roots.some((r) => root !== r && root.startsWith(r + path.sep))) return 'project';
     }
     if (home && root === dirKey(home)) return 'global';
   }
@@ -156,7 +185,41 @@ function settingsEnvDbPath(projectRoot, home, configDir) {
   return null;
 }
 
+// The database a named path reads as NOW: the path itself once it exists, else - while the memory launcher
+// has not moved it yet (stack/mcp/memory-launch.js) - its 2.0.0 place: the account folder by name, or a
+// project database at the move the stamp records as pending, else at <project>/.memory-mcp. Never throws.
+function liveDbPath(dbPath, { home, projectRoot } = {}) {
+  try {
+    if (!dbPath || fs.existsSync(dbPath)) return dbPath;
+    const leaf = splitMemoryMcpLeaf(dbPath);
+    if (!leaf) return dbPath;
+    // A 2.0.0 home path that is gone: the launcher moved the folder and could not link it back (data-root.js
+    // liveMemoryDb) - the moved file is the one to read.
+    if (leaf.legacy) {
+      const moved = home && dirKey(leaf.root) === dirKey(home) ? path.join(home, MEMORY_FOLDER, leaf.file) : null;
+      return moved && fs.existsSync(moved) ? moved : dbPath;
+    }
+    const candidates = [];
+    if (home && dirKey(leaf.root) === dirKey(home)) candidates.push(path.join(home, LEGACY_MEMORY_FOLDER, leaf.file));
+    else if (projectRoot && leaf.file === 'memory.db') {
+      const main = mainCheckoutRoot(projectRoot);
+      try {
+        const stamp = fs.readFileSync(path.join(main, '.claude', 'alfred-code.stamp'), 'utf8');
+        const m = /^data-pending: *memory +(\S+) +-> +\S+ *$/m.exec(stamp);
+        if (m && !m[1].split('/').includes('..')) candidates.push(path.join(main, ...m[1].split('/'), 'memory.db'));
+      } catch {}
+      candidates.push(path.join(main, LEGACY_MEMORY_FOLDER, 'memory.db'));
+    }
+    return candidates.find((c) => fs.existsSync(c)) || dbPath;
+  } catch { return dbPath; }
+}
+
 function registeredDbPath(projectRoot, { home = os.homedir(), configDir } = {}) {
+  const found = namedDbPath(projectRoot, { home, configDir });
+  return found ? liveDbPath(found, { home, projectRoot }) : found;
+}
+
+function namedDbPath(projectRoot, { home = os.homedir(), configDir } = {}) {
   try {
     const fromEnv = settingsEnvDbPath(projectRoot, home, configDir);
     if (fromEnv) return fromEnv;
@@ -609,7 +672,13 @@ const RETRY_MODE = { missing: 'store', date: 'update', untouched: 'full' };
 
 // The backups live under the account, never beside the database: a project-level database sits inside
 // a repo whose ignore rules were never written for them, and a backup holds every row's text.
-const backupDir = () => path.join(os.homedir(), '.memory-mcp', 'backups');
+// Beside the live account folder: ~/.alfred-memory once it exists, else a 2.0.0 ~/.memory-mcp the launcher
+// has not moved yet - a new folder created here would stop that move (both would hold data).
+const backupDir = () => {
+  const home = os.homedir();
+  const folder = fs.existsSync(path.join(home, MEMORY_FOLDER)) || !fs.existsSync(path.join(home, LEGACY_MEMORY_FOLDER)) ? MEMORY_FOLDER : LEGACY_MEMORY_FOLDER;
+  return path.join(home, folder, 'backups');
+};
 const backupLine = (row) => JSON.stringify({ ...row, tags: splitTags(row.tags), metadata: parseMeta(row.metadata) });
 const fromBackup = (b) => ({ ...b, tags: Array.isArray(b.tags) ? b.tags.join(',') : String(b.tags || ''), metadata: JSON.stringify(b.metadata && typeof b.metadata === 'object' ? b.metadata : {}) });
 
@@ -1064,9 +1133,59 @@ async function cliRestore(opts, dbPath) {
   return failed ? 1 : 0;
 }
 
+// THE MODEL PRE-WARM (live check F2, 2026-09-29). The service downloads its embedding model (~166MB of ONNX
+// files, ~/.cache/mcp_memory - its own DOWNLOAD_PATH) on its FIRST start: measured 33s cold, 2s warm, against
+// Claude Code's 30s MCP connect budget - and a server that misses it is cached as failed
+// (<config>/mcp-needs-auth-cache.json), so the next session does not even start it. `warm` fetches it once,
+// outside any session: the server the project runs (or the one --plugin-root declares), started against a
+// SCRATCH database so the user's own is never opened, one search so the model loads, then shut down.
+const MODEL_MARKER = ['.cache', 'mcp_memory', 'onnx_models', 'all-MiniLM-L6-v2', 'onnx', 'model.onnx'];
+const WARM_TIMEOUT_MS = 240000;
+const modelCached = (home = os.homedir()) => fs.existsSync(path.join(home, ...MODEL_MARKER));
+
+async function warmModel({ entry, cwd, home = os.homedir(), timeoutMs = WARM_TIMEOUT_MS }) {
+  if (modelCached(home)) return { state: 'cached' };
+  if (!entry) return { state: 'failed', why: NO_SERVER };
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'alfred-memory-warm-'));
+  const started = Date.now();
+  const left = () => Math.max(1, started + timeoutMs - Date.now());
+  let child = null;
+  try {
+    child = spawn(entry.command, Array.isArray(entry.args) ? entry.args : [], {
+      cwd, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true,
+      env: { ...process.env, ...(entry.env || {}), MCP_MEMORY_SQLITE_PATH: path.join(scratch, 'warm.db') },
+    });
+    const rpc = rpcClient(child);
+    await rpc.call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'alfred-code-memory-warm', version: '1.0.0' } }, left());
+    rpc.notify('notifications/initialized');
+    // A search needs an embedding of its query: the model is downloaded and loaded before it answers.
+    await rpc.call('tools/call', { name: 'memory_search', arguments: { query: 'warm-up', limit: 1 } }, left());
+    const secs = Math.round((Date.now() - started) / 1000);
+    return modelCached(home) ? { state: 'ready', secs } : { state: 'failed', why: 'the service answered, but no model is in ~/.cache/mcp_memory' };
+  } catch (err) {
+    return { state: 'failed', why: err && err.message ? err.message : String(err) };
+  } finally {
+    if (child) await shutdownServer(child);
+    try { fs.rmSync(scratch, { recursive: true, force: true }); } catch {}
+  }
+}
+
+async function cliWarm(args) {
+  const flag = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
+  const projectRoot = path.resolve(flag('--root') || process.cwd());
+  const entry = flag('--plugin-root') ? pluginServerEntry(path.resolve(flag('--plugin-root'))) : serviceEntry(projectRoot);
+  const timeoutMs = Number(flag('--timeout')) > 0 ? Number(flag('--timeout')) : WARM_TIMEOUT_MS;
+  const got = await warmModel({ entry, cwd: projectRoot, timeoutMs });
+  if (got.state === 'cached') console.log('memory warm: cached');
+  else if (got.state === 'ready') console.log(`memory warm: ready (${got.secs}s)`);
+  else console.log(`memory warm: failed - ${got.why}`);
+  return got.state === 'failed' ? 1 : 0;
+}
+
 module.exports = {
   pathForLevel, levelOfPath, registeredDbPath, projectName, relatedProjects, selectForSession, MEMORY_FRAME,
   contentHash, exportRows, serviceEntry, storeThroughService, parseJsonl, INIT_TIMEOUT_MS, OVERALL_TIMEOUT_MS,
+  modelCached, warmModel, MODEL_MARKER, WARM_TIMEOUT_MS,
 };
 
 if (require.main === module) {
@@ -1084,6 +1203,9 @@ if (require.main === module) {
       return;
     } else if (cmd === 'duplicates') {
       process.exit(cliDuplicates(args));
+    } else if (cmd === 'warm') {
+      cliWarm(args).then((code) => process.exit(code), (err) => { console.log(`memory warm: failed - ${err && err.message ? err.message : err}`); process.exit(1); });
+      return;
     } else if (cmd === 'reembed') {
       cliReembed(args).then((code) => process.exit(code), (err) => { process.stderr.write(`memory reembed: ${err && err.message ? err.message : err}\n`); process.exit(1); });
       return;

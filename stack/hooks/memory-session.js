@@ -63,6 +63,10 @@ const emit = (event, text) => process.stdout.write(JSON.stringify({ hookSpecific
 
 async function main() {
   const input = await readInput();
+  // GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
+  let cursorOff = false;
+  try { cursorOff = require('./hook-prelude.js').cursorStandDown(input, __filename); } catch { /* no prelude: run */ }
+  if (cursorOff) return;
   if (input.hook_event_name !== 'SessionStart') return;
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   process.env.CLAUDE_PROJECT_DIR = root;

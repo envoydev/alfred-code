@@ -233,6 +233,10 @@ function main() {
   const input = readInput();
   const event = input.hook_event_name;
   if (!event) return;
+  // GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
+  let cursorOff = false;
+  try { cursorOff = require('./hook-prelude.js').cursorStandDown(input, __filename); } catch { /* no prelude: run */ }
+  if (cursorOff) return;
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   process.env.CLAUDE_PROJECT_DIR = root;
   if (event === 'SessionStart') startNote = recordUntracked(input, root);

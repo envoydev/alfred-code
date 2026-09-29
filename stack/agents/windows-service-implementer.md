@@ -10,8 +10,8 @@ skills:
   - csharp
   - dotnet-hosted-services
   - dotnet-testing
-  - alfred-code:alfred-habits-done-gate
-  - alfred-code:alfred-habits-test-first
+  - alfred-habits-done-gate
+  - alfred-habits-test-first
 
 ---
 

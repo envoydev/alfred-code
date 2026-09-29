@@ -31,15 +31,28 @@ const GATE = (root, over = {}) => ({
 
 // --- the level -> path rule ----------------------------------------------
 
-test('level: the three levels resolve to the three shapes, and back again', () =>
+test('level: the three levels resolve to the three shapes under .alfred-memory, and back again', () =>
 {
     const at = { home: '/home/u', space: 'work', projectRoot: '/repo' };
-    assert.strictEqual(memory.pathForLevel('global', at), path.join('/home/u', '.memory-mcp', 'memory.db'));
-    assert.strictEqual(memory.pathForLevel('scoped', at), path.join('/home/u', '.memory-mcp', 'memory_work.db'));
-    assert.strictEqual(memory.pathForLevel('project', at), path.join('/repo', '.memory-mcp', 'memory.db'));
-    assert.strictEqual(memory.pathForLevel('scoped', { ...at, space: '' }), path.join('/home/u', '.memory-mcp', 'memory_default.db'));
+    assert.strictEqual(memory.pathForLevel('global', at), path.join('/home/u', '.alfred-memory', 'memory.db'));
+    assert.strictEqual(memory.pathForLevel('scoped', at), path.join('/home/u', '.alfred-memory', 'memory_work.db'));
+    assert.strictEqual(memory.pathForLevel('project', at), path.join('/repo', '.alfred', '.alfred-memory', 'memory.db'));
+    assert.strictEqual(memory.pathForLevel('project', { ...at, root: '.data' }), path.join('/repo', '.data', '.alfred-memory', 'memory.db'), 'the project database follows the data root');
+    assert.strictEqual(memory.pathForLevel('scoped', { ...at, space: '' }), path.join('/home/u', '.alfred-memory', 'memory_default.db'));
     for (const level of ['global', 'scoped', 'project'])
         assert.strictEqual(memory.levelOfPath(memory.pathForLevel(level, at), at), level, level);
+});
+
+test('level: a 2.0.0 .memory-mcp path still reads as its level, and resolving it names the .alfred-memory path', () =>
+{
+    const at = { home: '/home/u', space: 'work', projectRoot: '/repo' };
+    assert.strictEqual(memory.levelOfPath(path.join('/home/u', '.memory-mcp', 'memory.db'), at), 'global');
+    assert.strictEqual(memory.levelOfPath(path.join('/home/u', '.memory-mcp', 'memory_work.db'), at), 'scoped');
+    assert.strictEqual(memory.levelOfPath(path.join('/repo', '.memory-mcp', 'memory.db'), at), 'project');
+    assert.deepStrictEqual(memory.resolveLevel({ registeredPath: path.join('/home/u', '.memory-mcp', 'memory_work.db'), ...at }),
+        { level: 'scoped', dbPath: path.join('/home/u', '.alfred-memory', 'memory_work.db'), from: 'registration' });
+    assert.strictEqual(memory.resolveLevel({ registeredPath: path.join('/repo', '.memory-mcp', 'memory.db'), ...at, root: '.data' }).dbPath,
+        path.join('/repo', '.data', '.alfred-memory', 'memory.db'));
 });
 
 test('level: a foreign path is never mistaken for one of ours', () =>
@@ -209,13 +222,13 @@ test('level: the flag wins, an existing registration is kept BYTE-FOR-BYTE, else
 {
     const at = { home: '/home/u', space: 'work', projectRoot: '/repo' };
     assert.deepStrictEqual(memory.resolveLevel({ flag: 'scoped', ...at }),
-        { level: 'scoped', dbPath: path.join('/home/u', '.memory-mcp', 'memory_work.db'), from: 'flag' });
+        { level: 'scoped', dbPath: path.join('/home/u', '.alfred-memory', 'memory_work.db'), from: 'flag' });
     // A level change never copies or deletes a database, so an absent flag must not re-point one.
     const kept = memory.resolveLevel({ registeredPath: '/somewhere/else/memory.db', ...at });
     assert.strictEqual(kept.dbPath, '/somewhere/else/memory.db');
     assert.strictEqual(kept.level, 'custom', 'a foreign path was labelled as one of our three levels');
     assert.deepStrictEqual(memory.resolveLevel(at),
-        { level: 'global', dbPath: path.join('/home/u', '.memory-mcp', 'memory.db'), from: 'default' });
+        { level: 'global', dbPath: path.join('/home/u', '.alfred-memory', 'memory.db'), from: 'default' });
 });
 
 test('level: a registration already at one of the three shapes keeps that NAME, not custom', () =>
@@ -315,7 +328,7 @@ test('init: scoped names the space\'s file, global the machine\'s; the key goes 
     fs.writeFileSync(path.join(sb.root, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: '/old.db', X: '1' } }));
     const r = sb.run('--level', 'scoped', '--space', 'work');
     const local = JSON.parse(fs.readFileSync(path.join(sb.root, '.claude', 'settings.local.json'), 'utf8'));
-    assert.strictEqual(local.env.ALFRED_CODE_MEMORY_DB, path.join(sb.work, '.memory-mcp', 'memory_work.db'));
+    assert.strictEqual(local.env.ALFRED_CODE_MEMORY_DB, path.join(sb.work, '.alfred-memory', 'memory_work.db'));
     assert.strictEqual(local.env.X, '1');
     assert.strictEqual(sb.settingsNow().env.ALFRED_CODE_MEMORY_DB, '/elsewhere/memory.db', 'the shared file is not written when the local one holds the key');
     // No uvx: the level is set, the import is not run, and Claude's own memory stays on - a failure exit.
@@ -328,13 +341,19 @@ test('init: scoped names the space\'s file, global the machine\'s; the key goes 
     const l = initSandbox({ uvx: false });
     fs.writeFileSync(path.join(l.root, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\nscope: local\n');
     l.run('--level', 'global');
-    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(l.root, '.claude', 'settings.local.json'), 'utf8')).env.ALFRED_CODE_MEMORY_DB, path.join(l.work, '.memory-mcp', 'memory.db'));
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(l.root, '.claude', 'settings.local.json'), 'utf8')).env.ALFRED_CODE_MEMORY_DB, path.join(l.work, '.alfred-memory', 'memory.db'));
     assert.strictEqual(l.settingsNow().env.ALFRED_CODE_MEMORY_DB, '/elsewhere/memory.db', 'the shared file every teammate reads is left alone');
     const g = initSandbox({ settings: null, uvx: false });
     g.run('--level', 'global');
-    assert.strictEqual(g.localNow().env.ALFRED_CODE_MEMORY_DB, path.join(g.work, '.memory-mcp', 'memory.db'), 'an absent settings.local.json is created with the key (C8)');
+    assert.strictEqual(g.localNow().env.ALFRED_CODE_MEMORY_DB, path.join(g.work, '.alfred-memory', 'memory.db'), 'an absent settings.local.json is created with the key (C8)');
     assert.ok(!fs.existsSync(settingsOf(g.root)), 'no settings.json is created for a machine path');
-    assert.ok(!fs.existsSync(path.join(g.root, '.memory-mcp')), 'no project folder for a machine-level database');
+    assert.ok(!fs.existsSync(path.join(g.root, '.memory-mcp')) && !fs.existsSync(path.join(g.root, '.alfred')), 'no project folder for a machine-level database');
+    // A 2.0.0 database the launcher has not moved yet is the one the level names - never a second, empty one.
+    const old = initSandbox({ settings: null, uvx: false });
+    fs.mkdirSync(path.join(old.work, '.memory-mcp'), { recursive: true });
+    fs.writeFileSync(path.join(old.work, '.memory-mcp', 'memory.db'), '');
+    old.run('--level', 'global');
+    assert.strictEqual(old.localNow().env.ALFRED_CODE_MEMORY_DB, path.join(old.work, '.memory-mcp', 'memory.db'));
 });
 
 test('init: refuses a registration it cannot re-point, a malformed settings file and an unknown level - nothing written', { skip: POSIX_ONLY.skip }, () =>
@@ -365,11 +384,14 @@ test('init: refuses a registration it cannot re-point, a malformed settings file
         assert.strictEqual(fs.readFileSync(settingsOf(a.root), 'utf8'), settingsBefore, 'nothing written');
         assert.strictEqual(a.callCount(), 0);
     }
-    // The same path registered is no mismatch.
-    const same = initSandbox({ uvx: false });
-    fs.mkdirSync(same.acct, { recursive: true });
-    fs.writeFileSync(path.join(same.acct, '.claude.json'), JSON.stringify({ mcpServers: { memory: { command: 'uvx', env: { MCP_MEMORY_SQLITE_PATH: path.join(same.work, '.memory-mcp', 'memory.db') } } } }));
-    assert.doesNotMatch(same.run('--level', 'global').stdout, /registers memory at/);
+    // The same path registered is no mismatch - under its 2.0.0 spelling too, which the installer re-spells.
+    for (const folder of ['.alfred-memory', '.memory-mcp'])
+    {
+        const same = initSandbox({ uvx: false });
+        fs.mkdirSync(same.acct, { recursive: true });
+        fs.writeFileSync(path.join(same.acct, '.claude.json'), JSON.stringify({ mcpServers: { memory: { command: 'uvx', env: { MCP_MEMORY_SQLITE_PATH: path.join(same.work, folder, 'memory.db') } } } }));
+        assert.doesNotMatch(same.run('--level', 'global').stdout, /registers memory at/, folder);
+    }
 
     const bad = initSandbox({ settings: '{ not json' });
     const b = bad.run('--level', 'global');
@@ -409,7 +431,7 @@ test('seed: with no notes, install switches Claude\'s own memory off, imports no
     assert.match(outs[0], /memory: no Claude memory notes for this project - nothing to import, so Claude's own memory is off from this install/);
     assert.match(outs[0], /autoMemoryEnabled set to false/);
     for (const i of [1, 2]) assert.match(outs[i], /memory: Claude's own memory is already off/, `run ${i}: reported, never rewritten`);
-    assert.match(steps[2].l.env.ALFRED_CODE_MEMORY_DB, /\.memory-mcp[/\\]memory\.db$/, 'the named level still applies - only the import waits');
+    assert.match(steps[2].l.env.ALFRED_CODE_MEMORY_DB, /\.alfred[/\\]\.alfred-memory[/\\]memory\.db$/, 'the named level still applies - only the import waits');
 });
 
 // Review A, I1: the memory server launches through uvx, which INIT installs after setup - so the install-time
@@ -494,10 +516,10 @@ test('seed: once init marked the stamp, an update carries the line and the impor
 // M5 (Task 18a review): every run that lands the project level writes the database's own .gitignore -
 // update and configure with --memory-level project too, not only init - so post-install's 'the
 // installer already wrote it' holds whichever command set the level.
-test('seed: a project-level run writes .memory-mcp/.gitignore, and a machine level writes no project folder (M5)', POSIX_ONLY, () =>
+test('seed: a project-level run writes the database folder\'s .gitignore, and a machine level writes no memory folder in the project (M5)', POSIX_ONLY, () =>
 {
     const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
-    const ignore = (repo) => path.join(repo, '.memory-mcp', '.gitignore');
+    const ignore = (repo) => path.join(repo, '.alfred', '.alfred-memory', '.gitignore');
     const { steps } = seedRun(['install', 'update'], SEL, {
         args: [['--memory-level', 'global'], ['--memory-level', 'project']],
         each: (repo) => (fs.existsSync(ignore(repo)) ? fs.readFileSync(ignore(repo), 'utf8') : null),
@@ -506,7 +528,7 @@ test('seed: a project-level run writes .memory-mcp/.gitignore, and a machine lev
     assert.strictEqual(steps[1], '*\n', 'the update that moved the level to project ignores the database');
     const { result } = seedRun('install', SEL, {
         args: ['--memory-level', 'project'],
-        prepare: (repo) => { fs.mkdirSync(path.join(repo, '.memory-mcp')); fs.writeFileSync(ignore(repo), '# mine\n*\n'); },
+        prepare: (repo) => { fs.mkdirSync(path.dirname(ignore(repo)), { recursive: true }); fs.writeFileSync(ignore(repo), '# mine\n*\n'); },
         inspect: (repo) => fs.readFileSync(ignore(repo), 'utf8'),
     });
     assert.strictEqual(result, '# mine\n*\n', 'an existing .gitignore is left as the user wrote it');
@@ -532,7 +554,8 @@ test('seed: an update with no --memory-level keeps the level the settings key re
             },
             inspect: (repo) => ({ repo: fs.realpathSync(repo), s: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')), l: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')) }),
         });
-        assert.strictEqual(result.l.env.ALFRED_CODE_MEMORY_DB, path.join(result.repo, '.memory-mcp', 'memory.db'), `${home}: the update re-pointed the level init set`);
+        // The level stays project; with no database at either place its path is the current one (Task 7a).
+        assert.strictEqual(result.l.env.ALFRED_CODE_MEMORY_DB, path.join(result.repo, '.alfred', '.alfred-memory', 'memory.db'), `${home}: the update re-pointed the level init set`);
         assert.ok(!('ALFRED_CODE_MEMORY_DB' in result.s.env), `${home}: the machine path is in the committed settings.json (C8)`);
         assert.match(out, /memory=project/);
     }

@@ -22,6 +22,8 @@ worktree), before anything is downloaded:
 - `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:uninstall from there' and stop - the installer refuses this tree too.
 - `legacy-global` -> a 1.x global install: route to `/alfred-code:update` first (it moves the
   install into the project and records the ledger), and stop.
+- `legacy-unstamped` -> a legacy copy-route install that never wrote a stamp: route to `/alfred-code:update` first (it writes the
+  stamp and the ledger this command removes by - with neither it refuses), and stop.
 - `installed` / `initialised` -> go on.
 
 ## 2. Confirm once
@@ -29,8 +31,9 @@ worktree), before anything is downloaded:
 Put ONE AskUserQuestion: 'Uninstall the stack from this project (Recommended)' vs 'Keep it'. The
 question names what goes (the stack's plugin rows and MCP registrations at this project's scope, its
 settings entries, hook wirings and copied files, the stamp) and what stays (anything the user added or
-changed since the stack wrote it, a user-scope plugin row or MCP registration, the docs root,
-`.serena/`, the memory database; at user scope also the seats denied here and `ALFRED_CODE_HOOKS_OFF`,
+changed since the stack wrote it, a user-scope plugin row or MCP registration, the data root (the
+docs, the navigation index, the browser profiles - `.alfred/` by default, or a 2.0.0 `.serena/` /
+`.playwright/`), the memory database; at user scope also the seats denied here and `ALFRED_CODE_HOOKS_OFF`,
 since the user-scope core stays loaded). 'Keep it' -> end the turn, nothing downloaded.
 
 ## 3. Resolve the snapshot, then run the seed

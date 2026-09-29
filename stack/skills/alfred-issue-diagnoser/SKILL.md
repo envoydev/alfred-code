@@ -35,7 +35,7 @@ Read it at step 1, before the tier is named.
   last part is the reusable half, keyed to the signature, never a dump of the log.
 
 **On invocation, resume before starting:** `list_memories` -> `read_memory` the slug's note (or
-an equivalent direct read of `.serena/memories/`) and read the findings file's stamps. A run
+an equivalent direct read of `<data root>/serena/memories/`, `.alfred` by default) and read the findings file's stamps. A run
 mid-flight resumes at its cursor - never re-run a step already stamped. A run between steps 2
 and 3 looks like:
 
@@ -111,7 +111,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    stop rather than re-deriving it here. Write the findings file with the observable and
    `Tier: <n>`. *Stop.*
 2. **GATHER** - per the mode: dispatch one evidence-gatherer per source (reproduce this path,
-   pull and grep that log window, capture that screen), several in parallel when several
+   pull and grep that log window, capture that screen) exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), several in parallel when several
    hypotheses need confirming, and reason over the compact digests they return; or run the
    bounded commands inline. Correlate multiple sources on a shared key - a correlation/trace id,
    a timestamp window, a release version - and say which sources agreed and which did not. At

@@ -1,25 +1,26 @@
 #!/usr/bin/env node
 'use strict';
-// Rewrites every agent's `skills:` frontmatter to the spelling its placement needs: a CORE skill
-// scoped to the core plugin (`alfred-code:<name>`), a LIBRARY skill bare - it is the project copy
-// the installer wrote beside the agent.
+// Rewrites every agent's `skills:` frontmatter to the spelling its placement needs. From 2.1.0 every
+// house skill is a LIBRARY copy in the project's `.claude/skills` and every seat rides the core, so
+// every house cite is BARE - the project copy. A cite scoped to a plugin that carries the skill
+// (`<plugin>:<name>`) would still be written scoped, and the placement says none does.
 //
 //   node scripts/scope-agent-preloads.js --write    rewrite stack/agents/*.md in place
 //   node scripts/scope-agent-preloads.js --check    exit 1 when any line disagrees (the lint path)
 //
-// Why it is generated and not hand-written. Spike S6 measured that a BARE `skills:` line preloads a
-// stale `.claude/skills/` copy when one is present, silently, with no error and no sign in the
-// transcript - and every project being migrated has exactly that shape for at least one session.
-// Spike S11 then measured that a scoped name resolves even when the skill lives in a DIFFERENT
-// plugin. So a core skill is always cited scoped. A library skill has no plugin to scope to: since
-// 1.3.0 its copy in `.claude/skills` IS the intended one, so the bare name is the right cite, and
-// the graph closes an agent's preloads into its selection, so the copy is there whenever the agent is.
+// Why a bare cite is safe on a plugin seat: plugin-migration-evidence S6 measured a plugin seat's bare
+// `skills:` line preload the PROJECT copy, ranked over the plugin's own - which is the copy the
+// installer wrote. The graph closes a seat's preloads into its selection, so the copy is there whenever
+// the seat is picked; a seat whose preloads were not copied is not picked, and so is denied. What a
+// preload can never reach is a skill with `disable-model-invocation: true` ('preloading draws from the
+// same set of skills Claude can invoke', code.claude.com/docs/en/sub-agents) - skipped with no error, so
+// it is reported here.
 //
 // A cite that already carries a colon is FOREIGN (another plugin's `<plugin>:<skill>`) and is left
-// exactly as it is - this script owns house skills only.
+// exactly as it is - this script owns house skills only; an `alfred-code:` cite is a house one.
 const fs = require('node:fs');
 const path = require('node:path');
-const { placement, CORE, LIBRARY } = require('./plugin-placement.js');
+const { placement, LIBRARY } = require('./plugin-placement.js');
 
 const REPO = path.resolve(__dirname, '..');
 const AGENTS_DIR = path.join(REPO, 'stack/agents');
@@ -54,6 +55,14 @@ function homes(place)
     return { skillHome, agentHome };
 }
 
+// Read from the source SKILL.md's FRONTMATTER, the flag's only home.
+function manualOnly(skill)
+{
+    let text = '';
+    try { text = fs.readFileSync(path.join(REPO, 'stack', 'skills', skill, 'SKILL.md'), 'utf8'); } catch { return false; }
+    return /^disable-model-invocation:\s*true\s*$/m.test((/^---\r?\n([\s\S]*?)\r?\n---/.exec(text) || [])[1] || '');
+}
+
 function scopedFor(options = {})
 {
     const place = options.placement || placement(options);
@@ -77,8 +86,7 @@ function scopedFor(options = {})
             const home = skillHome.get(bare);
             if (home) return `${home}:${bare}`;
             if (!library.has(bare)) { problems.push(`${bare} is neither a core nor a library skill`); return name; }
-            // A core seat is in every project; a library skill is only where it was picked.
-            if (own === CORE) problems.push(`${bare} is library, and ${agent} is a core seat that every project carries`);
+            if (manualOnly(bare)) problems.push(`${bare} is manual-only (disable-model-invocation) - a preload can never load it`);
             return bare;
         });
         const block = `skills:\n${wanted.map(n => `  - ${n}\n`).join('')}`;

@@ -20,6 +20,12 @@
 // leaves the same empty folder - so the None is read back from this line alone. A stamp without it (1.x,
 // or 2.0.0 before it) is an unknown route, never a None.
 //
+// `seats-route` is `plugin` or `copy`: how THIS run delivered the seats (2.1.0: every seat rides the
+// core on the plugin route, each unpicked one denied; the copy route copies the picked ones). The next
+// `--installed-only` reads the seats back by it - off the core minus the denied on `plugin`, off the
+// disk on `copy` - and a stamp WITHOUT the line is from before 2.1.0, when the core carried only the
+// always closure and every other seat was a library copy (derive-state readInstalled's `core`).
+//
 // `picked-skills` / `picked-agents` are the skills and seats this run installed. The next
 // `--installed-only` reads the plugin state back through THAT release's placement, so an item a
 // release moved into an entry this project has not enabled would drop out; these two lines carry it
@@ -36,6 +42,12 @@
 // each, the scope the disable was written at (a user-scope row is switched off at project scope, I2).
 // The settings file cannot tell that off from the user's own /plugin disable, so this line is the only
 // reason a switch back enables the core: it lists what is still owed and is gone once it is enabled.
+//
+// `data-root` is the project's data root this run left in effect (ALFRED_CODE_DATA_PATH, stack/mcp/data-root.js):
+// the next run's baseline for a root change, even one made by hand in settings. `data-pending` is each move of
+// a server's own data the run recorded for that server's launcher to make at its next start
+// (`<class> <from> -> <to>`), kept until the data has left `from`. `data-move: kept` is the user's answer to
+// keep the old layout - no later update offers the move again (configure still can).
 //
 // `initialised` is the one line only /alfred-code:init writes (its memory step, `memory.js init`, once
 // the notes are in and Claude's own memory is off): a date. A fresh install writes `pending`, every
@@ -215,7 +227,7 @@ function readLedger(file)
 
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, action, scope, initialised, hooks, hooksRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, stoodDown = [], library = {}, ledger = null } = fields;
+    const { repoUrl, ref, sha, version, installed, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, stoodDown = [], library = {}, ledger = null, data = null } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
@@ -233,6 +245,7 @@ function renderStamp(fields)
         ...(initialised ? [`initialised: ${initialised}`] : []),
         `shipped-hooks: ${hooks.join(',')}`,
         ...(hooksRoute ? [`hooks-route: ${hooksRoute}`] : []),
+        ...(seatsRoute ? [`seats-route: ${seatsRoute}`] : []),
         `installed-always-rules: ${alwaysRules.join(',')}`,
         `installed-always-mcps: ${alwaysMcps.join(',')}`,
         `picked-skills: ${(picked.skills || []).join(',')}`,
@@ -240,6 +253,9 @@ function renderStamp(fields)
         `browser-engines: ${(playwright || []).join(',')}`,
         ...(Array.isArray(playwrightEnabled) ? [`browser-enabled: ${playwrightEnabled.join(',')}`] : []),
         ...(stoodDown.length ? [`stood-down: ${stoodDown.map((e) => `${e.scope}:${e.spec}`).join(',')}`] : []),
+        ...(data && data.root ? [`data-root: ${data.root}`] : []),
+        ...(data ? require('../../stack/mcp/data-root.js').renderPending(data.pending || []) : []),
+        ...(data && data.kept ? ['data-move: kept'] : []),
         `library-skills: ${hashes(library.skills)}`,
         `library-agents: ${hashes(library.agents)}`,
         `library-rules: ${hashes(library.rules)}`,
@@ -266,7 +282,7 @@ function stampFiles(at)
 function writeStamp(opts)
 {
     const {
-        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, picked, playwright, playwrightEnabled, stoodDown, library, ledger,
+        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, seatsRoute, picked, playwright, playwrightEnabled, stoodDown, library, ledger, data,
         version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
     const initialised = opts.initialised || initialisedValue({ claudeDir: stampDir({ projectRoot }), now });
@@ -294,8 +310,8 @@ function writeStamp(opts)
             repoUrl: source.repoUrl, ref: source.ref, sha: source.sha, version,
             installed: now.toISOString().replace(/\.\d{3}Z$/, 'Z'),
             action, scope, initialised,
-            hooks: shippedHooks(hooksCatalog), hooksRoute,
-            alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, playwrightEnabled, stoodDown, library, ledger,
+            hooks: shippedHooks(hooksCatalog), hooksRoute, seatsRoute,
+            alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, playwrightEnabled, stoodDown, library, ledger, data,
         }));
     }
     catch (err) { note(`stamp could not be written to ${dest} (${err.message})`); return null; }
@@ -372,6 +388,16 @@ function readHooksRoute(file)
     return route === 'copy' || route === 'plugin' ? route : null;
 }
 
+// The route the last run delivered the SEATS by - `plugin` or `copy` - else null: no stamp, or one from
+// before 2.1.0 (its core carried the always closure).
+function readSeatsRoute(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
+    const route = ((/^seats-route: (.*)$/m.exec(text) || [])[1] || '').trim();
+    return route === 'copy' || route === 'plugin' ? route : null;
+}
+
 // The browser engines the last install installed (or, with `browser-enabled`, enabled), in the
 // one canonical order - [] when it recorded none, null when the stamp has no such line (no stamp, or
 // one from before the line): nothing recorded. A stamp written before the 2.0.0 rename spells the lines
@@ -410,6 +436,16 @@ function readStoodDown(file)
     if (!m) return [];
     return m[1].split(',').map((s) => STOOD_DOWN.exec(s.trim())).filter(Boolean).map(([, scope, spec]) => ({ scope, spec }));
 }
+// The data lines - { root: '' when none, pending: [], kept } with no stamp or none of them.
+function readDataLines(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return { root: '', pending: [], kept: false }; }
+    const dr = require('../../stack/mcp/data-root.js');
+    const root = (/^data-root: *(\S+) *$/m.exec(text) || [])[1] || '';
+    return { root: dr.checkDataPath(root).ok ? root : '', pending: dr.readPending(text), kept: /^data-move: *kept *$/m.test(text) };
+}
+
 // NM1 (fix round 3): the full stamp - including this same `hooks-route:` line - is only written once,
 // at the very END of a run, after installHooksAndRules has already pruned the OTHER route's copies.
 // A run that dies in between (the process killed, a later fail-soft step's uncaught error) leaves the
@@ -517,15 +553,55 @@ function worktreeMain(projectRoot)
     return at && !ownCheckouts(projectRoot).includes(at) ? at : null;
 }
 
-// The router's one read: not-installed | legacy-global | worktree-of-installed | installed (never
-// initialised) | initialised. The stamp is read in the checkout that holds the record.
+// Task 3 (2.1.0): a legacy COPY-route install that never wrote a stamp and copied no `hooks/docs.js` holds
+// no install record, so the router read it `not-installed` - setup took the fresh ladder and update sent
+// it back to setup. Its signatures, each an independent hit: (a) the stack's hook files in `.claude/hooks`,
+// (b) a stack env key (either prefix) in settings.json or settings.local.json, (c) three or more skill,
+// seat or rule names the stack ever shipped - the catalog, a renamed item's old name, a retired one. TWO
+// hits claim the tree; one never does - skills alone are the project's own as often as the stack's. The
+// hooks' record list is NOT extended, so they stay down until the update writes the stamp. `manifest`
+// defaults to this tree's own; an unreadable one claims nothing.
+const STACK_ENV_KEY = /^(ALFRED_CODE_|CLAUDE_STACK_)/; // legacy-name
+function legacySignature(root, { manifest } = {})
+{
+    let names;
+    try { names = require('./manifest.js').stackNames(manifest || require('./manifest.js').loadManifest(path.join(__dirname, '..', '..'))); }
+    catch { return false; }
+    const claudeDir = path.join(root, '.claude');
+    const list = (dir, test) => { try { return fs.readdirSync(path.join(claudeDir, dir), { withFileTypes: true }).filter(test).map((d) => d.name); } catch { return []; } };
+    const hooks = list('hooks', (d) => d.isFile() && d.name.endsWith('.js')).some((f) => names.hooks.has(f.replace(/\.js$/, '')));
+    const envKeys = ['settings.json', 'settings.local.json'].some((file) =>
+    {
+        try
+        {
+            const env = (JSON.parse(fs.readFileSync(path.join(claudeDir, file), 'utf8')) || {}).env;
+            return Boolean(env) && typeof env === 'object' && !Array.isArray(env) && Object.keys(env).some((k) => STACK_ENV_KEY.test(k));
+        }
+        catch { return false; }
+    });
+    const items = list('skills', (d) => d.isDirectory()).filter((n) => names.skills.has(n)).length
+        + list('agents', (d) => d.isFile() && d.name.endsWith('.md')).filter((f) => names.agents.has(f.replace(/\.md$/, ''))).length
+        + list('rules', (d) => d.isFile() && d.name.endsWith('.md')).filter((f) => names.rules.has(f.replace(/\.md$/, ''))).length;
+    return [hooks, envKeys, items >= 3].filter(Boolean).length >= 2;
+}
+
+// No install record in this directory's checkouts, and the legacy signature in the dir or its git top level
+// - the trees a run started here installs into. The router, the preflight and the installer all ask this.
+function legacyUnstamped(projectRoot, { manifest } = {})
+{
+    if (recordCheckout(projectRoot).at) return false;
+    return ownCheckouts(projectRoot).some((at) => legacySignature(at, { manifest }));
+}
+
+// The router's one read: not-installed | legacy-global | legacy-unstamped | worktree-of-installed |
+// installed (never initialised) | initialised. The stamp is read in the checkout that holds the record.
 // worktree-of-installed is R95 above - the CLI prints the main checkout's path after it. legacy-global
 // is a 1.x global install whose stamp the first update has not moved into the project yet: update's to
-// take, never init's (N1).
+// take, never init's (N1). legacy-unstamped is the record-less copy-route install above, update's too.
 function installState(projectRoot, env = process.env)
 {
     const { at } = recordCheckout(projectRoot);
-    if (!at) return 'not-installed';
+    if (!at) return legacyUnstamped(projectRoot) ? 'legacy-unstamped' : 'not-installed';
     if (worktreeMain(projectRoot)) return 'worktree-of-installed';
     const claudeDir = path.join(at, '.claude');
     if (legacyGlobalStamp(projectRoot, env)) return 'legacy-global';
@@ -658,8 +734,8 @@ function migrateLegacyGlobal({ configDir, projectRoot, renamed = null, log = () 
 
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
-    readPicked, readLibrary, readLedger, emptyLedger, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, readStoodDown, readVersion, migrateLegacyGlobal, validItemName,
-    readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacyAccountStamp, legacyGlobalStamp, worktreeMain, installScope,
+    readPicked, readLibrary, readLedger, emptyLedger, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, readStoodDown, readVersion, migrateLegacyGlobal, validItemName,
+    readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacyAccountStamp, legacyGlobalStamp, legacySignature, legacyUnstamped, worktreeMain, installScope, readDataLines,
     accountDir,
 };
 

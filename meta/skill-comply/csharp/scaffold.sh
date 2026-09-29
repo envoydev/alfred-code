@@ -6,7 +6,7 @@ set -e
 git config user.email fixture@example.invalid
 git config user.name fixture
 mkdir -p src/Orders tests/Orders.Tests
-printf '.alfred/docs/\n.serena/\n.memory-mcp/\nbin/\nobj/\n' >> .gitignore
+printf '.alfred/\n.serena/\n.memory-mcp/\nbin/\nobj/\n' >> .gitignore
 cat > CLAUDE.md <<'MD'
 # Orders
 

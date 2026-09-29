@@ -151,8 +151,11 @@ test('--keep-pins: the stamp records the hash AFTER the restore, never the stale
         const catalogAgent = path.join(sourceB, 'stack', 'agents', 'related-project-analyzer.md');
         fs.writeFileSync(catalogAgent, fs.readFileSync(catalogAgent, 'utf8').replace(/^effort: medium$/m, 'effort: high'));
 
+        // 2.1.0: a seat is a COPY only on the skills copy route (on the plugin route it rides the core), so
+        // that is where a local pin lives to be kept; its hash is the ledger's `managed-files` row there.
         const SELECTION = 'skill markdown-style\nagent related-project-analyzer\nrule markdown-docs\nmcp serena\nmcp context7\nmcp memory\n';
         const { result } = seedRun(['install', 'update'], SELECTION, {
+            env: { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' },
             source: [ROOT, sourceB],
             args: [[], ['--keep-pins']],
             // The user hand-tunes the pin locally, right after the fresh install and before the update.
@@ -170,7 +173,7 @@ test('--keep-pins: the stamp records the hash AFTER the restore, never the stale
                 const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
                 return {
                     agent: fs.readFileSync(agentFile, 'utf8'),
-                    recorded: (/^library-agents:.*\brelated-project-analyzer=([0-9a-f]+)/m.exec(stamp) || [])[1],
+                    recorded: (/^managed-files:.*\bagents\/related-project-analyzer\.md=([0-9a-f]+)/m.exec(stamp) || [])[1],
                     computed: hashItem(agentFile),
                 };
             },

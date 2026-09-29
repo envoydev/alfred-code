@@ -143,10 +143,10 @@ test('init: the bootstrap order - read, plan, one machine ask, memory, captures 
     assert.match(flat(init), /`# adds <n> claude-hud keys: <names>`/);
     assert.match(flat(init), /settings\.json\.bak\.<time>/);
     assert.match(flat(init), /follow it inline, start to finish - never a Skill call/);
-    // The four captures, in the brief's order, are the SCRIPT's table - the body cites the script.
+    // The five captures, in the brief's order, are the SCRIPT's table - the body cites the script.
     const { CAPTURES } = require('./init-plan.js');
-    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), ['alfred-capture-related-projects', 'alfred-capture-architecture', 'alfred-capture-code-style', 'alfred-capture-agent-capabilities']);
-    assert.deepStrictEqual(CAPTURES.map((c) => c.seat), ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer', null]);
+    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), ['alfred-capture-related-projects', 'alfred-capture-architecture', 'alfred-capture-code-style', 'alfred-capture-project-capabilities', 'alfred-capture-agent-capabilities']);
+    assert.deepStrictEqual(CAPTURES.map((c) => c.seat), ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer', null, null]);
     assert.ok(!/sentry/i.test(init), 'no sentry step (R28)');
     assert.ok(!/allowed-tools/.test(init.split('---')[1]), 'no command carries allowed-tools');
 });
@@ -542,6 +542,23 @@ test('status and configure name the 1.x stamp beside alfred-code.stamp', () => {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         assert.ok(body.includes('claude-stack.stamp'), `${name} names only alfred-code.stamp`); // legacy-name
     }
+});
+
+// Task 3 (2.1.0): a legacy copy-route install that never wrote a stamp read `not-installed`, so setup took
+// the fresh ladder and update sent it back to setup - the same ping-pong. The state is its own now: update
+// takes it on its normal path, setup asks once (update recommended), every other gate routes it to update.
+test('an unstamped legacy install routes to update from every gate; setup asks once, update recommended', () =>
+{
+    const router = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md'), 'utf8'));
+    assert.match(router, /prints `not-installed`, `legacy-global`, `legacy-unstamped`,/);
+    assert.match(router, /Legacy unstamped -> `\/alfred-code:update`, whatever the ask/);
+    const setup = flat(cmdBody('setup'));
+    assert.match(setup, /`legacy-unstamped` \([^)]*\) -> ONE AskUserQuestion: 'Update this install \(Recommended\)'[^;]*'Fresh setup anyway'/);
+    assert.match(setup, /'Update this install' -> stop and route to `\/alfred-code:update`/);
+    assert.match(setup, /'Fresh setup anyway' -> go on/);
+    assert.match(flat(cmdBody('update')), /`legacy-unstamped` [^;]*-> go on: this command is its route/);
+    for (const name of ['init', 'configure', 'validate', 'status', 'uninstall'])
+        assert.match(flat(cmdBody(name)), /`legacy-unstamped`[^`]*`\/alfred-code:update`/, `${name} routes it to update`);
 });
 
 // R95 (Task 18b fix round 1): the review measured a loop in a git worktree of an installed checkout -
@@ -1013,4 +1030,77 @@ test('N9: update.md states the claude-hud status-line line prints on every run, 
     const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
     assert.doesNotMatch(body, /When claude-hud is installed this run and the account has no/, 'update.md must not narrow the trigger to a fresh install this run');
     assert.match(body, /claude-hud is installed - this run or already/, 'update.md must say the line fires on every run while claude-hud is installed and statusLine is missing');
+});
+
+// ---- layer asks: every walk layer offers pickable options, never only whole-layer verdicts --------
+const { lintAskTemplates, setupAskFiles, SETUP_ASK_TEMPLATES } = require('./lint-skills.js');
+const askBlocks = (text) => [...text.matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?)^[ \t]*```/gm)]
+    .map((m) => m[1].split('\n').map((l) => l.trim()).filter(Boolean));
+const sectionOf = (text, heading) =>
+{
+    const at = text.indexOf(`\n## ${heading}\n`);
+    assert.ok(at >= 0, `walk.md has a '## ${heading}' section`);
+    const next = text.indexOf('\n## ', at + 4);
+    return text.slice(at, next < 0 ? undefined : next);
+};
+
+test('lint check 61 reads setup-plugin: a template with no recommended option is a finding', () =>
+{
+    const tmp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'alfred-ask-'));
+    try
+    {
+        fs.mkdirSync(path.join(tmp, 'setup-plugin', 'references'), { recursive: true });
+        fs.mkdirSync(path.join(tmp, 'setup-plugin', 'commands'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'setup-plugin', 'references', 'walk.md'), "```ask\nKeep the rows?\n- 'Keep' - why\n- 'Drop' - why\n```\n");
+        fs.writeFileSync(path.join(tmp, 'setup-plugin', 'commands', 'setup.md'), "```ask\nGo?\n- 'Go (Recommended)' - why\n- 'Stop' - why\n```\n");
+        const files = setupAskFiles(tmp);
+        assert.deepStrictEqual(files.map((f) => f.file).sort(), ['setup-plugin/commands/setup.md', 'setup-plugin/references/walk.md']);
+        const findings = lintAskTemplates(files);
+        assert.strictEqual(findings.length, 1);
+        assert.match(findings[0], /walk\.md.*no option marked '\(Recommended\)'/);
+    }
+    finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
+test('every layer ask in walk.md offers 2-4 options with the recommended one first', () =>
+{
+    const walk = fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'walk.md'), 'utf8');
+    const blocks = askBlocks(walk);
+    assert.strictEqual(blocks.length, SETUP_ASK_TEMPLATES['setup-plugin/references/walk.md'], 'the walk.md template count is pinned');
+    for (const b of blocks)
+    {
+        const opts = b.filter((l) => /^- '/.test(l));
+        assert.ok(opts.length >= 2 && opts.length <= 4, `'${b[0].slice(0, 50)}' offers ${opts.length} options - AskUserQuestion takes 2-4`);
+        assert.match(opts[0], /\(Recommended\)'/, `'${b[0].slice(0, 50)}' lists the recommended option first`);
+        assert.strictEqual(opts.filter((l) => /\(Recommended\)'/.test(l)).length, 1);
+    }
+    for (const layer of ['Rules', 'Agents', 'Skills', 'Hooks', 'MCPs', 'Plugins'])
+        assert.ok(askBlocks(sectionOf(walk, layer)).length >= 1, `the ${layer} layer carries its own ask template`);
+    assert.match(walk, /one AskUserQuestion call of up to 4 multi-select questions/i, 'the Pick follow-up is one call of up to 4 questions');
+});
+
+// The data-root question (2.1.0) rides the same template shape as the walk's layer asks, so lint 61 holds
+// its recommended option - '.alfred (Recommended)' - first in both homes that ask it.
+// M12: setup has no data yet, so .alfred is its recommendation; configure reads a live install, and the walk's rule
+// is that the current state is the recommended answer - a custom root the user chose is never moved back.
+test('the data-root question is one ask template in setup and configure - .alfred recommended on setup, the current root on configure', () =>
+{
+    for (const [rel, first] of [['commands/setup.md', /^- '\.alfred \(Recommended\)'/], ['commands/configure.md', /^- 'Keep <current> \(Recommended\)'/]])
+    {
+        const text = fs.readFileSync(path.join(PLUGIN_DIR, rel), 'utf8');
+        const data = askBlocks(text).filter((b) => /keep this project's data/i.test(b[0]));
+        assert.strictEqual(data.length, 1, `${rel} carries the data question as one ask template`);
+        const opts = data[0].filter((l) => /^- '/.test(l));
+        assert.match(opts[0], first, `${rel}: the recommended first option`);
+    }
+});
+
+test('setup and configure name option asks, not typed numbers, for stacks and the add/drop rounds', () =>
+{
+    const setup = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'setup.md'), 'utf8');
+    const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
+    assert.strictEqual(askBlocks(setup).length, SETUP_ASK_TEMPLATES['setup-plugin/commands/setup.md']);
+    assert.doesNotMatch(setup, /Recommended \/ All \/ None, or typed numbers/);
+    assert.doesNotMatch(configure, /an ADD round and a DROP round/);
+    assert.match(configure, /walk\.md's DELTA/);
 });

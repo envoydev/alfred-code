@@ -22,45 +22,44 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const MEMORY_DIR = '.memory-mcp';
+// The folder is `.alfred-memory` wherever it sits (Task 7a): ~/.alfred-memory for the global and scoped
+// levels, <project>/<data root>/.alfred-memory for the project level. stack/mcp/data-root.js is the one
+// home of the shapes - the launcher, this layer and (inline, since it ships alone) the hook engine agree.
+const dataRoot = require('../../stack/mcp/data-root.js');
+const MEMORY_DIR = dataRoot.MEMORY_FOLDER;
 
-// Mirrors the memory.js hook engine's pathForLevel. Three shapes, nothing else.
-function pathForLevel(level, { home, space, projectRoot })
+// Three shapes, nothing else. `root` is the project's data root (ALFRED_CODE_DATA_PATH).
+function pathForLevel(level, { home, space, projectRoot, root = dataRoot.DATA_ROOT_DEFAULT })
 {
-    const dir = path.join(home, MEMORY_DIR);
-    if (level === 'global') return path.join(dir, 'memory.db');
-    if (level === 'scoped') return path.join(dir, `memory_${space || 'default'}.db`);
-    if (level === 'project') return projectRoot ? path.join(projectRoot, MEMORY_DIR, 'memory.db') : '';
-    return '';
+    return dataRoot.memoryDbFor(level, { home, space, projectRoot, root });
 }
 
 // The inverse, matching one of the three shapes EXACTLY - never a prefix or substring match, so a
-// foreign path is never mistaken for one of ours. '' when it is none of them.
+// foreign path is never mistaken for one of ours - under the new folder or the 2.0.0 `.memory-mcp`.
+// '' when it is none of them.
 function levelOfPath(p, { home, projectRoot })
 {
-    if (!p) return '';
-    const norm = path.normalize(p);
-    if (projectRoot && norm === path.normalize(path.join(projectRoot, MEMORY_DIR, 'memory.db'))) return 'project';
-    const dir = path.join(home, MEMORY_DIR);
-    if (norm === path.join(dir, 'memory.db')) return 'global';
-    if (path.dirname(norm) === dir && /^memory_.+\.db$/.test(path.basename(norm))) return 'scoped';
-    return '';
+    return dataRoot.memoryLevelOf(p, { home, projectRoot });
 }
 
-// --memory-level, resolved. GIVEN: that level's default path. ABSENT: an EXISTING registration
-// keeps its MCP_MEMORY_SQLITE_PATH byte-for-byte - only the runtime extra and the pragmas are
-// upgraded, never the path - and with no registration at all it is `global`. A level change never
-// copies or deletes a database: whichever file the old memories are in stays there, which is why
-// the caller's log line names both.
-function resolveLevel({ flag, registeredPath, home, space, projectRoot })
+// --memory-level, resolved. GIVEN: that level's default path. ABSENT: an EXISTING registration keeps its
+// level - and a CUSTOM path its MCP_MEMORY_SQLITE_PATH byte-for-byte; one of the three shapes is re-spelled
+// to its current place (the `.alfred-memory` folder, the project level under the data root), which is where
+// its launcher moves the file and where every reader looks first (data-root.js liveMemoryDb falls back to
+// the old place until then). With no registration at all it is `global`. A level change never copies or
+// deletes a database: whichever file the old memories are in stays there, which is why the caller's log
+// line names both.
+function resolveLevel({ flag, registeredPath, home, space, projectRoot, root = dataRoot.DATA_ROOT_DEFAULT })
 {
-    if (flag) return { level: flag, dbPath: pathForLevel(flag, { home, space, projectRoot }), from: 'flag' };
+    if (flag) return { level: flag, dbPath: pathForLevel(flag, { home, space, projectRoot, root }), from: 'flag' };
     if (registeredPath)
     {
         const level = levelOfPath(registeredPath, { home, projectRoot });
-        return { level: level || 'custom', dbPath: registeredPath, from: 'registration' };
+        if (!level) return { level: 'custom', dbPath: registeredPath, from: 'registration' };
+        const scopedSpace = level === 'scoped' ? /^memory_(.+)\.db$/.exec(path.basename(registeredPath))[1] : space;
+        return { level, dbPath: pathForLevel(level, { home, space: scopedSpace, projectRoot, root }), from: 'registration' };
     }
-    return { level: 'global', dbPath: pathForLevel('global', { home, space, projectRoot }), from: 'default' };
+    return { level: 'global', dbPath: pathForLevel('global', { home, space, projectRoot, root }), from: 'default' };
 }
 
 // 'true' / 'false' / 'absent' / 'malformed'. A missing file is 'absent' - nothing has switched
@@ -236,15 +235,17 @@ function registeredMemory(projectRoot, { home, configDir })
     return withPath(acctFile, own && own.mcpServers && own.mcpServers.memory);
 }
 
-// A project-level database lives in the repo, so it gets its own `.gitignore` (`*`) the moment the
-// level lands - from init, update or configure alike (M5). An existing one is the user's, left alone.
-function ensureProjectIgnore(projectRoot, log = () => {})
+// A project-level database lives in the repo, so its folder gets its own `.gitignore` (`*`) the moment
+// the level lands - from init, update or configure alike (M5) - on top of the data root's own. `dbPath` is
+// the database the level names; with none, the 2.0.0 place. An existing file is the user's, left alone.
+function ensureProjectIgnore(projectRoot, log = () => {}, dbPath = '')
 {
-    const ignore = path.join(projectRoot, MEMORY_DIR, '.gitignore');
+    const dir = dbPath ? path.dirname(dbPath) : path.join(projectRoot, dataRoot.LEGACY_MEMORY_FOLDER);
+    const ignore = path.join(dir, '.gitignore');
     if (fs.existsSync(ignore)) return false;
-    fs.mkdirSync(path.dirname(ignore), { recursive: true });
+    fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(ignore, '*\n');
-    log(`  memory: ${MEMORY_DIR}/.gitignore written - the project database is never committed`);
+    log(`  memory: ${path.relative(projectRoot, ignore).split(path.sep).join('/')} written - the project database is never committed`);
     return true;
 }
 
@@ -260,11 +261,25 @@ function initMemory(argv, { which, runNode, homedir, log = console.log, err = co
     }
     const projectRoot = path.resolve(root);
     const home = homedir();
-    const dbPath = pathForLevel(level, { home, space: flag('--space'), projectRoot });
+    // The project level sits under the data root this project's settings name (the launchers read it the
+    // same way, data-root.js dataRootOf), never a shell export.
+    const { root: data } = dataRoot.dataRootOf({ env: flag('--config-dir') ? { CLAUDE_CONFIG_DIR: flag('--config-dir') } : {}, projectDir: projectRoot });
+    const named = pathForLevel(level, { home, space: flag('--space'), projectRoot, root: data });
+    // Where that level's database LIVES now: a 2.0.0 file its launcher has not moved yet is the one the
+    // notes go into and the key names (data-root.js - the installer names it the same way).
+    let dbPath = dataRoot.liveMemoryDb(named, { home, projectRoot });
+    if (level === 'project' && !fs.existsSync(dbPath))
+    {
+        const dir = dataRoot.liveDir({ projectDir: projectRoot, cls: 'memory', root: data, pending: dataRoot.pendingOf(projectRoot), move: false }).dir;
+        const found = path.join(projectRoot, ...dir.split('/'), 'memory.db');
+        if (fs.existsSync(found)) dbPath = found;
+    }
     const claudeDir = path.join(projectRoot, '.claude');
 
     const registered = registeredMemory(projectRoot, { home, configDir: flag('--config-dir') });
-    if (registered && registered.path && path.normalize(registered.path) !== path.normalize(dbPath))
+    // The same database under its 2.0.0 spelling is no mismatch: the installer re-spells the registration.
+    const sameDb = (p) => [dbPath, named, dataRoot.legacyTwinOf(named, { home, projectRoot })].some((q) => q && path.normalize(p) === path.normalize(q));
+    if (registered && registered.path && !sameDb(registered.path))
     {
         const where = path.basename(registered.file) === '.mcp.json' ? '.mcp.json' : registered.file;
         log(`  !! memory: ${where} registers memory at ${registered.path} - the copy route re-points it through the installer: /alfred-code:update --memory-level ${level}`);
@@ -304,7 +319,7 @@ function initMemory(argv, { which, runNode, homedir, log = console.log, err = co
         log("  settings.json env: ALFRED_CODE_MEMORY_DB removed - this machine's database path, kept in settings.local.json from here on");
     }
     log(`memory: level ${level} -> ${dbPath} (settings.local.json env ALFRED_CODE_MEMORY_DB)`);
-    if (level === 'project') ensureProjectIgnore(projectRoot, log);
+    if (level === 'project') ensureProjectIgnore(projectRoot, log, dbPath);
 
     const settingsFile = target;
     const gate = importGate({ projectRoot, settingsFile, mcps: ['memory'], rules: ['baseline-memory.md'], tools: { uvx: which('uvx') } });

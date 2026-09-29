@@ -6,8 +6,8 @@ model: sonnet
 effort: high
 color: orange
 skills:
-  - alfred-code:alfred-habits-root-cause
-  - alfred-code:alfred-habits-done-gate
+  - alfred-habits-root-cause
+  - alfred-habits-done-gate
 
 ---
 

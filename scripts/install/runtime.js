@@ -208,9 +208,9 @@ function gitRoot(cwd)
 
 // A node script from the source snapshot, run with its own argv. Used for selection-plugins.js and
 // the memory importer - both of which ship in the snapshot rather than beside this file.
-function runNode(script, argv, { cwd, env } = {})
+function runNode(script, argv, { cwd, env, timeout } = {})
 {
-    const r = spawnSync(process.execPath, [script, ...argv], { cwd, env, encoding: 'utf8' });
+    const r = spawnSync(process.execPath, [script, ...argv], { cwd, env, encoding: 'utf8', ...(timeout ? { timeout } : {}) });
     return { ok: r.status === 0, stdout: r.stdout || '', stderr: r.stderr || '' };
 }
 

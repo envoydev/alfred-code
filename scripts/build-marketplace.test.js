@@ -52,11 +52,11 @@ test('the core entry carries the commands, the router skill, the inline hook, an
 });
 
 test('the core is the only generated entry, listing skill FOLDERS and agent FILES that exist', () => {
-    assert.deepStrictEqual(entries.map(e => e.name), ['alfred-code'], 'every other skill and agent is library, listed by no entry');
+    assert.deepStrictEqual(entries.map(e => e.name), ['alfred-code'], 'every skill is library, listed by no entry');
     const core = byName['alfred-code'];
-    assert.ok(core.skills.includes('./stack/skills/alfred-task-solve-cross'));
-    assert.ok(core.agents.includes('./stack/agents/integration-reviewer.md'));
-    assert.ok(!core.skills.includes('./stack/skills/angular-conventions'), 'a library skill is not in the core');
+    assert.deepStrictEqual(core.skills, ['./setup-plugin/skills/alfred-code'], '2.1.0: the router is the one skill the core carries - every stack skill is a project copy');
+    assert.strictEqual(core.agents.length, 44, 'every seat rides the core');
+    assert.ok(core.agents.includes('./stack/agents/integration-reviewer.md') && core.agents.includes('./stack/agents/aspnet-implementer.md'));
     for (const p of [...core.skills, ...core.agents])
         assert.ok(fs.existsSync(path.join(__dirname, '..', p)), `${p} must exist in the tree`);
 });
@@ -149,7 +149,13 @@ test('the two 1.x ids are generated retired aliases: the core under its old name
     const wantDescription = `RETIRED in 2.0.0 - Alfred Code under its 1.x name. Run /${LEGACY.core}:update: it installs alfred-code and removes this entry.`;
     assert.strictEqual(core.name, LEGACY.core);
     assert.strictEqual(core.description, wantDescription);
-    assert.deepStrictEqual({ ...core, name: 'alfred-code', description: coreEntry().description }, coreEntry(), 'the core alias is the 2.0.0 core, renamed');
+    // The core renamed, carrying what the core carried BEFORE 2.1.0 - the always closure: a straggler on
+    // the 1.x id has no project copies yet, so the 2.1.0 lists would take its habit skills away.
+    const former = require('./plugin-placement.js').formerCore();
+    assert.deepStrictEqual({ ...core, name: 'alfred-code', description: coreEntry().description, skills: coreEntry().skills, agents: coreEntry().agents }, coreEntry(), 'the core alias is the core, renamed');
+    assert.deepStrictEqual(core.skills, ['./setup-plugin/skills/alfred-code', ...former.skills.map((s) => `./stack/skills/${s}`)]);
+    assert.deepStrictEqual(core.agents, former.agents.map((a) => `./stack/agents/${a}.md`));
+    assert.ok(core.skills.includes('./stack/skills/alfred-habits-done-gate') && !core.agents.includes('./stack/agents/aspnet-implementer.md'));
     // S20: validated under --strict with no component but an explicit empty skills list - omitting
     // the key would auto-discover the shared root's skill folders.
     assert.deepStrictEqual(Object.keys(hooks), ['name', 'source', 'description', 'version', 'author', 'strict', 'skills']);
@@ -382,9 +388,9 @@ test('the README trust surface counts what the core entry carries', () =>
     const scripted = core.skills.filter((s) => fs.existsSync(path.join(__dirname, '..', s, 'scripts'))).map((s) => path.basename(s));
     const references = fs.readdirSync(path.join(__dirname, '..', 'setup-plugin', 'references')).length;
     const row = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8').split('\n').find((l) => l.startsWith('| **Starts** |'));
-    const m = /which is (\S+) command bodies, (\S+) skills \(only ((?:`[^`]+`(?:, | and )?)+) ships? a script\), (\S+) agents, (\S+) references and (\S+) hooks - the core's own (\S+) .*?and the (\S+) stack hooks/.exec(row || '');
+    const m = /which is (\S+) command bodies, (\S+) skills? \((?:the `\/alfred-code` router; )?(?:only ((?:`[^`]+`(?:, | and )?)+) ships? a script|none ships a script)\), (\S+) agents, (\S+) references and (\S+) hooks - the core's own (\S+) .*?and the (\S+) stack hooks/.exec(row || '');
     assert.ok(m, `the Starts row names what the core carries: ${row}`);
-    m[3] = [...m[3].matchAll(/`([^`]+)`/g)].map((x) => x[1]).join(); // the skills that ship a script, as a list
+    m[3] = [...String(m[3] || '').matchAll(/`([^`]+)`/g)].map((x) => x[1]).join(); // the skills that ship a script, as a list
     assert.deepStrictEqual(m.slice(1), [word(core.commands.length), word(core.skills.length), scripted.join(), word(core.agents.length),
         word(references), word(files.size), word(own), word(files.size - own)]);
     assert.doesNotMatch(row, /entries carrying this project's skills|needs no call of its own/, 'no clause stale since 1.3.0');

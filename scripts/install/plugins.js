@@ -249,6 +249,9 @@ function stackMarket({ listing = [], marketplaces = [], readMarketplaces, cli, e
 {
     const found = marketOf({ listing, marketplaces, env });
     if (found.key !== BRAND.marketplace) return found.key;
+    // A registration under the key already - GitHub's, or a local or fork directory the user added (F1: the CLI
+    // refuses a GitHub add over a directory of the same name and the run ended on a failure line).
+    if ((Array.isArray(marketplaces) ? marketplaces : []).some((m) => m && m.name === BRAND.marketplace)) return found.key;
     cli(['plugin', 'marketplace', 'add', STACK_MARKETPLACE], { quiet: true });
     if (found.known || !readMarketplaces) return found.key;
     return marketKey({ listing, marketplaces: readMarketplaces(), env });

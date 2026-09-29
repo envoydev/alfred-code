@@ -1081,6 +1081,10 @@
         {
           "file": "stack/skills/alfred-capture-test-coverage/references/doc-shape.md",
           "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
+        },
+        {
+          "file": "stack/skills/alfred-capture-project-capabilities/SKILL.md",
+          "marker": "Captured: <branch>@<short-sha>, <date>"
         }
       ]
     },
@@ -1457,6 +1461,10 @@
         {
           "file": "stack/skills/alfred-capture-agent-capabilities/SKILL.md",
           "marker": "stays out of the installer's fetch manifest"
+        },
+        {
+          "file": "stack/skills/alfred-capture-project-capabilities/SKILL.md",
+          "marker": "It stays out of the installer's fetch manifest"
         }
       ]
     },
@@ -2478,7 +2486,7 @@
       ]
     },
     "memories-purge-count": {
-      "_note": "The purge receipt made a FACT: at close the orchestrator counts what is left of .serena/memories/<feature>__* with one shell line, and above zero the close is not done. Lives in the trio protocol's bookkeeping, so it rides every vendored copy; pinned on its own marker because domain-trio-protocol-vendored checks only one sentence of the whole file.",
+      "_note": "The purge receipt made a FACT: at close the orchestrator counts what is left of <data root>/serena/memories/<feature>__* (and a 2.0.0 .serena/memories) with one shell line, and above zero the close is not done. Lives in the trio protocol's bookkeeping, so it rides every vendored copy; pinned on its own marker because domain-trio-protocol-vendored checks only one sentence of the whole file.",
       "owner": {
         "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
         "marker": "The purge is counted, not claimed"
@@ -4932,6 +4940,10 @@
         {
           "file": "stack/skills/alfred-capture-code-style/SKILL.md",
           "marker": "READ the existing rule first (it is short), then Write the fresh one over it"
+        },
+        {
+          "file": "stack/skills/alfred-capture-project-capabilities/SKILL.md",
+          "marker": "READ the existing rule first, then Write the fresh one over it"
         }
       ]
     },
@@ -5857,6 +5869,176 @@
         {
           "file": "scripts/analyze-usage.js",
           "marker": "const CORRECTION_STRONG_RE = /^\\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\\b|(?:^|[.,;:!?]\\s*|\\b(?:but|and|please|pls|so|then|also|just)\\s+)(?:do not|don'?t|dont|never|stop \\w+ing)\\b|\\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\\b|\\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\\b(?! (?:cannot|can'?t|can not|couldn'?t)\\b)|\\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\\b|\\b(?:still|again) (?:there|broken|fail\\w*|wrong|the same|red|happen\\w*|error\\w*|doesn'?t|does not|isn'?t|is not|not)\\b|\\bsame (?:error|issue|problem|bug)\\b|\\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\\b|\\bnot what i\\b|\\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\\b|\\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\\b|\\bnot working\\b|\\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\\b/i;\nconst CORRECTION_WEAK_RE = /^\\W*but\\b|^\\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\\b\\W*but\\b|^\\W*stop\\b|\\binstead\\b|\\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\\b/i;\nconst CORRECTION_CYR_RE = /(?<![\\p{L}])(?:ні(?=[\\s,.!]|$)|нет(?=[\\s,.!]|$)|не (?:так|те|то)(?![\\p{L}])|не ?правильн|не (?:треба|потрібно|надо|нужно|роби|делай)(?![\\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав|говорил|просил|сказал)|(?:чому ти|почему ты)(?! не мож)|навіщо ти|зачем ты|коротше|покороче|простіше|проще|забагато|слишком|(?:та сама|та ж|та же|та самая) (?:помилк|ошибк|проблем)|не (?:працює|работает)|(?:досі|все ще|всё ещё|все еще) не(?![\\p{L}]))/iu;\nfunction correctionMarker(text) {\n  const t = String(text || '').replace(/[‘’]/g, \"'\").trim();\n  const m = t.match(CORRECTION_STRONG_RE) || t.match(CORRECTION_CYR_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));\n  return m ? m[0].trim().slice(0, 40) : null;\n}\n// --- end correction-turn test"
+        }
+      ]
+    },
+    "run-book-read-first": {
+      "_note": "The run book is read before a seat builds, starts, logs into or hand-checks the app. The generated pointer rule (baseline-project-run-book.md, from the capture's template) is canonical and reaches every session and subagent once the capture ran; the seats that run the app restate it as a step, because a seat dispatched before the capture ran still needs to know where the doc will be.",
+      "owner": {
+        "file": "stack/skills/alfred-capture-project-capabilities/references/run-book-rule.template.md",
+        "marker": "read it before you build, start, log into or hand-check the app"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-verifier.md",
+          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+        },
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+        },
+        {
+          "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
+          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+        },
+        {
+          "file": "stack/agents/evidence-gatherer.md",
+          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+        },
+        {
+          "file": "stack/agents/integration-reviewer.md",
+          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+        }
+      ]
+    },
+    "seat-dispatch-spelling": {
+      "_note": "A plugin seat resolves only as `<plugin>:<seat>` (plugin-migration spike S1 run 4: the bare name returns 'Agent type not found'), and 2.1.0 ships all 44 seats in the core plugin, while the full copy route and cursor-stack still resolve the bare name. So every body that dispatches a named seat - or one built from the `<stack>-implementer` pattern - dispatches it as the roster spells it. Owned by the trio protocol; restated at each dispatch instruction because a flow that never reads the protocol still dispatches (scripts/seat-dispatch-spelling.test.js fails a new dispatch site without it).",
+      "owner": {
+        "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
+        "marker": "exactly as the roster spells it"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/alfred-issue-diagnoser-ci.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/rules/angular-repair-agents.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/rules/dotnet-repair-agents.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-capture-architecture/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-capture-code-style/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-capture-related-projects/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-capture-test-coverage/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-issue-diagnoser/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-loop-architecture-quality/references/domain-trio-protocol.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/references/domain-trio-protocol.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-loop-test-coverage/references/domain-trio-protocol.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-task-build-from-scratch/references/domain-trio-protocol.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-task-design/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-task-implement/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-task-solve-cross/references/cross-domain-run.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-task-solve-cross/references/issue-investigation.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-task-solve/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-task-verify-code/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-task-verify-plan/SKILL.md",
+          "marker": "exactly as the roster spells it"
         }
       ]
     }

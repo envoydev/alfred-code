@@ -1,5 +1,5 @@
 ---
-description: "One-time bootstrap of an Alfred Code install, run in the session AFTER setup's restart - installs what the kept MCP servers need to start (uv, the pinned Python, csharp-ls when csharp-lsp is kept, the picked browsers, the navigation-server index, claude-hud's status line in its compact layout - every machine-level install through ONE ask first), sets this project's shared-memory level and imports Claude's old notes (no reinstall), runs the captures the install carries (related projects, architecture, code style, agent capabilities) by following each SKILL.md inline, then offers the CLAUDE.md fill. Nothing installed yet routes to /alfred-code:setup."
+description: "One-time bootstrap of an Alfred Code install, run in the session AFTER setup's restart - installs what the kept MCP servers need to start (uv, the pinned Python, csharp-ls when csharp-lsp is kept, the picked browsers, the navigation-server index, claude-hud's status line in its compact layout - every machine-level install through ONE ask first), sets this project's shared-memory level and imports Claude's old notes (no reinstall), runs the captures the install carries (related projects, architecture, code style, the run book, agent capabilities) by following each SKILL.md inline, then offers the CLAUDE.md fill. Nothing installed yet routes to /alfred-code:setup."
 disable-model-invocation: true
 ---
 
@@ -16,7 +16,9 @@ main checkout; its second, `unattended: on|off`, says whether anyone answers thi
 
 - **Nothing installed** - `not-installed`: stop and name `/alfred-code:setup` for the USER to type,
   then end the turn. `legacy-global` (a 1.x global install whose stamp still sits in the account
-  dir): stop the same way on `/alfred-code:update`, which moves it into the project. Both are
+  dir): stop the same way on `/alfred-code:update`, which moves it into the project. `legacy-unstamped`
+  (a legacy copy-route install that never wrote a stamp): stop the same way on `/alfred-code:update`,
+  which reads its picks off disk and writes the stamp. All are
   `disable-model-invocation` - the user's to type, never a Skill call from this run - and each
   belongs in its own session. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:init from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here.
 - **Setup ran in THIS session** - stop: name the restart, then `/alfred-code:init` in the new
@@ -72,8 +74,9 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
   browsers (a firefox / webkit setup's install failed to download; a chrome / msedge the
   machine does not have), the navigation-server index, then the account's claude-hud status line and compact
   layout. The command is the exact one to run.
-- `capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - the four
-  captures in their fixed order, each only when the install lists its skill AND its seat.
+- `capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - the five
+  captures in their fixed order, each only when the install lists its skill AND its seat (the run
+  book and agent capabilities have none).
 
 Nothing is inferred beyond those lines: a machine item the plan does not name is not this run's.
 
@@ -98,8 +101,9 @@ Run the picked commands in plan order, uv first - the `after uv` ones need it. A
 directory the running shell may not have on PATH yet: its installer prints where. When `uv` is not
 found afterwards, EVERY later command of this run carries that directory first -
 `PATH="<dir>:$PATH" <command>` - step 3's `after uv` commands and step 4's `memory.js init` alike,
-since the import it runs needs `uvx`. The navigation-server index and a browser download take minutes:
-start them in the background and go on to step 4, collecting each result before step 5's
+since the import it runs needs `uvx`. The navigation-server index, a browser download and the memory
+model (the service's ~166MB embedding model, fetched so its first start fits Claude Code's 30s connect
+budget) take minutes: start them in the background and go on to step 4, collecting each result before step 5's
 architecture capture (it navigates by symbol) and the close. Report each as installed, failed (its
 error line quoted) or skipped by the answer. A server this session started before its runtime existed
 connects only after a restart - the close names it.
@@ -111,10 +115,14 @@ The shared memory database the `memory` server reads. Paste this table first:
 ```
 | level | database | who shares it |
 |---|---|---|
-| global (Recommended) | ~/.memory-mcp/memory.db | every Claude account and Cursor on this machine |
-| scoped | ~/.memory-mcp/memory_<space>.db (memory_default.db with no space) | just this one Claude account, and Cursor installed with the same space |
-| project | <project>/.memory-mcp/memory.db, gitignored | this project only, from any account |
+| global (Recommended) | ~/.alfred-memory/memory.db | every Claude account and Cursor on this machine |
+| scoped | ~/.alfred-memory/memory_<space>.db (memory_default.db with no space) | just this one Claude account, and Cursor installed with the same space |
+| project | <project>/.alfred/.alfred-memory/memory.db (under the data root), gitignored | this project only, from any account |
 ```
+
+A 2.0.0 database under `~/.memory-mcp` (or `<project>/.memory-mcp`) is the same level: the memory
+server's launcher moves the folder at its next start once no server holds it, and links the old path
+so Cursor and an install not yet updated reach the same file; until then the level names it where it is.
 
 Then ONE AskUserQuestion with those three options, `global` marked Recommended - the whole point of
 shared memory. Picking `project` while this project's related-projects domain names sibling repos
@@ -127,7 +135,7 @@ stamp's `initialised:` line change:
 (`--space` when this session's account dir is `~/.claude-<name>`; the same `PATH` prefix as step 3
 after a fresh uv). It writes the level into the
 `ALFRED_CODE_MEMORY_DB` key the server's launcher reads (the settings file the stamp's scope names),
-writes `.memory-mcp/.gitignore` at `project` level, imports this project's old `MEMORY.md` /
+writes the database folder's own `.gitignore` at `project` level, imports this project's old `MEMORY.md` /
 `memory/*.md` notes into THAT database once through the memory service, and - only when the import
 succeeds - switches Claude's own memory off (`autoMemoryEnabled: false`; an install that found no notes
 already did, and the step reports it as already off) and marks the stamp
@@ -163,7 +171,7 @@ Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQues
 recommended / skip); a 'no' ends the step cleanly. The installer seeded `.claude/CLAUDE.md` from
 `stack/CLAUDE.template.md` when the project had none; a CLAUDE.md with the project's own text (root,
 `.claude/` or a part's own) is NEVER overwritten. On a yes, read
-`$TMP/repo/stack/skills/alfred-capture-claude-md/SKILL.md` (through Bash) and follow it inline, start to finish,
+`$TMP/repo/stack/skills/alfred-habits-adjust-claude-md/SKILL.md` (through Bash) and follow it inline, start to finish,
 with `STACK=$TMP/repo` - it is this step's instructions, the one home of the fill: its script picks
 create (the seed is still unfilled) or improve (every change shown before it is written), and the
 check closes it. The captures just run are what it cites for structure. Never offer skill, agent or

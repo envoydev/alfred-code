@@ -9,7 +9,7 @@
 //   machine: <what> - present | missing: <command> | missing after uv: <command> | refresh: <command> | blocked: <why> | skip: <why>
 //     What the kept MCPs need before they can start, probed on this machine, in install order: uv,
 //     the pinned Python fetched through it, csharp-ls when csharp-lsp is kept, the picked playwright
-//     browsers, and the serena index. Setup's install already downloaded a picked firefox / webkit, so
+//     browsers, the serena index and the memory service's embedding model. Setup's install already downloaded a picked firefox / webkit, so
 //     one is here only when that download failed; chrome and msedge run the machine's own browser,
 //     probed like stack-select's msedge check, and one that is not there is `blocked` with its fix.
 //     Last, the account's claude-hud status line + compact layout (hud-statusline.js, the account dir
@@ -19,8 +19,8 @@
 //     The command is the exact one to run; init puts every missing one through ONE ask.
 //
 //   capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>
-//     The four captures in their fixed order, each only when the install lists its skill AND its seat
-//     (agent-capabilities has none). init READS the SKILL.md and follows it inline: these skills are
+//     The five captures in their fixed order, each only when the install lists its skill AND its seat
+//     (project-capabilities and agent-capabilities have none). init READS the SKILL.md and follows it inline: these skills are
 //     manual-only, so a Skill call is denied. An existing output is done - re-capturing is the user's
 //     call, later. The library copy in .claude/skills wins over the plugin's.
 //
@@ -38,6 +38,7 @@ const rt = require('./install/runtime.js');  // R105: every external command thr
 const REPO = path.join(__dirname, '..');
 const { pythonRequest } = require(path.join(REPO, 'stack', 'mcp', 'uv-python.js'));
 const { serenaHomeFor } = require(path.join(REPO, 'stack', 'mcp', 'serena-launch.js'));
+const dataRoot = require(path.join(REPO, 'stack', 'mcp', 'data-root.js'));
 const { resolveDocsRoot } = require(path.join(REPO, 'scripts', 'install', 'copy.js'));
 const { browserCandidates } = require(path.join(REPO, 'scripts', 'stack-select.js'));
 const { planHud, resolveConfigDir } = require(path.join(REPO, 'scripts', 'hud-statusline.js'));
@@ -54,6 +55,8 @@ const CAPTURES = [
     { skill: 'alfred-capture-related-projects', seat: 'related-project-analyzer', output: () => '.claude/rules/baseline-project-related-context.md' },
     { skill: 'alfred-capture-architecture', seat: 'architecture-analyzer', output: (docs) => `${docs}/architecture/ARCHITECTURE.md` },
     { skill: 'alfred-capture-code-style', seat: 'code-style-analyzer', output: (docs) => `${docs}/code-style/CODE-STYLE.md` },
+    // The run book: no seat - it reads the repo and asks for the gaps in the main session.
+    { skill: 'alfred-capture-project-capabilities', seat: null, output: (docs) => `${docs}/project-capabilities/PROJECT-CAPABILITIES.md` },
     // Its own precheck decides whether the generated rule is current - always run when installed.
     { skill: 'alfred-capture-agent-capabilities', seat: null, output: null },
 ];
@@ -126,10 +129,20 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
         }
     }
 
-    const serenaHome = serenaHomeFor(platform);
+    // serena's folder this start: under the data root, or a 2.0.0 .serena its launcher has not moved yet.
+    const data = dataRoot.dataRootOf({ env, projectDir: root }).root;
+    const serenaDir = dataRoot.liveDir({ projectDir: root, cls: 'serena', root: data, pending: dataRoot.pendingOf(root), move: false }).dir;
+    const serenaHome = serenaHomeFor(platform, data, serenaDir);
     const index = `uvx --python ${request} --from serena-agent${pinOf('navigation')} serena project index`;
-    add('serena index', nonEmptyDir(path.join(root, '.serena', 'cache')) ? 'present' : afterUv,
+    add('serena index', nonEmptyDir(path.join(root, ...serenaDir.split('/'), 'cache')) ? 'present' : afterUv,
         win ? `$env:SERENA_HOME='${serenaHome}'; ${index}` : `SERENA_HOME=${serenaHome} ${index}`);
+
+    // The memory service's embedding model (~166MB), fetched ahead: its first start downloads it, 33s cold
+    // against Claude Code's 30s connect budget, and a server that misses it is cached as failed (live check F2).
+    // Setup's install fetches it where uvx already was; here it follows the uv this init installs.
+    const marker = path.join(home, '.cache', 'mcp_memory', 'onnx_models', 'all-MiniLM-L6-v2', 'onnx', 'model.onnx');
+    add('memory model', (probe.file || fs.existsSync)(marker) ? 'present' : afterUv,
+        `node "${path.join(REPO, 'stack', 'hooks', 'memory.js')}" warm --root "${root}" --plugin-root "${REPO}"`);
 
     // claude-hud arrives configured: its account statusLine plus the plugin-settings row, one command.
     // The runtime is planHud's default - the node the command itself finds on this PATH.
