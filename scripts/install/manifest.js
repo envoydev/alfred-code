@@ -77,4 +77,16 @@ function stackNames(manifest)
     };
 }
 
-module.exports = { loadManifest, stackNames, renderHook, renderSkill, renderMcp, MANIFEST };
+// M3: a name ONLY the stack uses - its `alfred-` / `project-` prefixes, or a renamed item's old name - of a
+// kind `stackNames` read (`skills`, `agents`, `rules`). A catalog name like `typescript`, `npm` or
+// `markdown-docs` is a project's own as often as the stack's, so on its own it proves nothing: not an
+// install to take over (stamp.js legacySignature), not a copy the stack may overwrite (the library layer).
+function stackOwnName(names, kind, name)
+{
+    if (!names || !names[kind] || !names[kind].has(name)) return false;
+    if (/^(alfred|project)-/.test(name)) return true;
+    const was = kind === 'skills' ? names.renamedSkills : kind === 'agents' ? names.renamedAgents : null;
+    return Boolean(was) && Object.hasOwn(was, name);
+}
+
+module.exports = { loadManifest, stackNames, stackOwnName, renderHook, renderSkill, renderMcp, MANIFEST };

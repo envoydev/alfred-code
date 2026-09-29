@@ -244,6 +244,31 @@ function profileLocks(dir)
     return PROFILE_LOCKS.filter((name) => { try { fs.lstatSync(path.join(dir, name)); return true; } catch { return false; } });
 }
 
+// A serena serving this folder (M2): serena 1.7.0 names each start's log after its own pid -
+// `<folder>/home/logs/<date>/mcp_<stamp>_<pid>.txt` (measured) - so a log whose pid is a live process is a
+// server holding the folder: on the copy route the very session running the installer, else a second
+// session's. A reused pid reads as busy, the safe side; this process's own pid is never one.
+function serenaBusy(dir)
+{
+    const logs = path.join(dir, 'home', 'logs');
+    let days;
+    try { days = fs.readdirSync(logs, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { return []; }
+    const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (err) { return err.code === 'EPERM'; } };
+    const held = new Set();
+    for (const day of days)
+    {
+        let names;
+        try { names = fs.readdirSync(path.join(logs, day)); } catch { continue; }
+        for (const name of names)
+        {
+            const m = /^mcp_.*_(\d+)\.txt$/.exec(name);
+            const pid = m ? Number(m[1]) : 0;
+            if (pid > 0 && pid !== process.pid && !held.has(pid) && alive(pid)) held.add(pid);
+        }
+    }
+    return [...held].sort((a, b) => a - b).map((pid) => `serena pid ${pid}`);
+}
+
 // ------------------------------------------------------------------ moving
 
 const isDir = (p) => { try { return fs.lstatSync(p).isDirectory(); } catch { return false; } };
@@ -296,6 +321,27 @@ function moveHomeMemory({ home, platform = process.platform, symlink = fs.symlin
         return { state: 'moved', from, to, linked: true };
     }
     catch (err) { return { state: 'moved', from, to, linked: false, why: err.code || err.message }; }
+}
+
+// M5: one server's data from `from` to `to` (both project-relative), and for the project memory folder
+// leaving its 2.0.0 place, the link back the home folder gets - Cursor, and an install not yet updated,
+// still open <project>/.memory-mcp/memory.db, and without the link would create a second, empty database
+// there. Only that place: a server's other data and a move between two of the stack's own roots leave none
+// (a link would keep the old root from ever being pruned). The link is no data to every reader (hasData
+// reads the entry itself), so it never reads as a clash or an offer.
+// { state (moveEntry's), linked?, why? }.
+function movePlace({ projectDir, cls, from, to, platform = process.platform, symlink = fs.symlinkSync })
+{
+    const abs = (rel) => path.join(projectDir, ...rel.split('/'));
+    const moved = moveEntry(abs(from), abs(to));
+    if (moved.state !== 'moved' || cls !== 'memory' || from !== LEGACY.memory) return moved;
+    try
+    {
+        if (platform === 'win32') symlink(abs(to), abs(from), 'junction');
+        else symlink(path.relative(path.dirname(abs(from)), abs(to)), abs(from), 'dir');
+        return { ...moved, linked: true };
+    }
+    catch (err) { return { ...moved, linked: false, why: err.code || err.message }; }
 }
 
 // ------------------------------------------------------------------ the move plan and the pending record
@@ -361,8 +407,8 @@ function liveDir({ projectDir, cls, root = DATA_ROOT_DEFAULT, pending = [], busy
         if (!move) return { dir: line.from, state: 'pending' };
         const held = busy(abs(line.from));
         if (held.length) return { dir: line.from, state: 'busy', why: held.join(', ') };
-        const moved = moveEntry(abs(line.from), abs(want));
-        if (moved.state === 'moved') return { dir: want, state: 'moved', from: line.from };
+        const moved = movePlace({ projectDir, cls, from: line.from, to: want });
+        if (moved.state === 'moved') return { dir: want, state: 'moved', from: line.from, ...('linked' in moved ? { linked: moved.linked, why: moved.why } : {}) };
         // Another server's start may have made the same move a moment ago: its result is the answer.
         if (hasData(abs(want)) && !hasData(abs(line.from))) return { dir: want, state: 'current' };
         return { dir: line.from, state: 'failed', why: moved.why || moved.state };
@@ -414,6 +460,6 @@ module.exports = {
     checkDataPath, dataRootOf, layout, targetOf, rootOfPlace, legacyOf,
     DATA_IGNORE_HEAD, dataIgnoreText, ensureRootIgnore,
     memoryDbFor, memoryLevelOf, legacyTwinOf, homeTwinOf, liveMemoryDb,
-    busyDbs, profileLocks, moveEntry, moveHomeMemory,
+    busyDbs, profileLocks, serenaBusy, moveEntry, movePlace, moveHomeMemory,
     dataMovePlan, renderPending, readPending, pendingOf, liveDir, ensureSerenaConfig,
 };

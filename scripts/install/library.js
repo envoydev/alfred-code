@@ -56,9 +56,14 @@ function hashBuffer(name, buf)
 // `render` maps `<kind>/<name>` of a single-file item to a function of its source text: the copy is
 // compared with, and written as, the rendered text - so a copy the installer itself substitutes into
 // (baseline-docs-root's `__DOCS_ROOT__`) is rewritten only when the substitution changes it.
-function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], agents = [], rules = [], stamped = null, render = {}, log = () => {}, note = () => {} })
+// `claims(kind, name)` (M3) says whether the stack may treat a same-named copy it holds no hash for as its own
+// - the caller knows the stamp's picks and which names only the stack uses. One it cannot claim is the
+// project's: kept byte for byte, named once with the `!!` marker every update body surfaces, never recorded
+// (`foreign` lists it for the stamp's picks), so the next run finds it unclaimed again. No `claims` is the old
+// behaviour: every copy is the stack's.
+function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], agents = [], rules = [], stamped = null, render = {}, claims = null, log = () => {}, note = () => {} })
 {
-    const out = { skills: {}, agents: {}, rules: {} };
+    const out = { skills: {}, agents: {}, rules: {}, foreign: [] };
     const plan = [
         ...skills.map((name) => ({ kind: 'skills', label: 'skill', name, src: path.join(sourceDir, 'stack', 'skills', name), dst: path.join(skillsDir, name) })),
         ...agents.map((name) => ({ kind: 'agents', label: 'agent', name, src: path.join(sourceDir, 'stack', 'agents', `${name}.md`), dst: path.join(agentsDir, `${name}.md`) })),
@@ -74,6 +79,12 @@ function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], a
         const have = hashItem(item.dst);
         if (have === want) { out[item.kind][item.name] = want; continue; }
         const was = stamped && stamped[item.kind] ? stamped[item.kind][item.name] : undefined;
+        if (have && !was && claims && !claims(item.kind, item.name))
+        {
+            log(`  !! ${item.label} kept: ${item.name} - a project ${item.label} of that name the stamp does not record, so it is yours; the stack's ${item.name} is not installed here - rename or remove yours, then /alfred-code:configure adds it`);
+            out.foreign.push(item.name);
+            continue;
+        }
         if (have && was && have !== was) log(`  overwriting a hand-edited copy: ${item.label} ${item.name}`);
         fs.rmSync(item.dst, { recursive: true, force: true });
         fs.mkdirSync(path.dirname(item.dst), { recursive: true });

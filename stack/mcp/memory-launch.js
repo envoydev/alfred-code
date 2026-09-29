@@ -122,7 +122,7 @@ function liveDb(db, { projectDir, home = os.homedir(), log = () => {}, symlink }
             try { dataRoot.ensureRootIgnore({ projectDir, root }); }
             catch (err) { log(`memory-launch: ${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore`); }
         }
-        if (live.state === 'moved') log(`memory-launch: moved ${live.from} -> ${live.dir}`);
+        if (live.state === 'moved') log(`memory-launch: moved ${live.from} -> ${live.dir}${live.linked ? ', the old path linked to it (git lists the link: ignore it in the project\'s .gitignore or .git/info/exclude)' : live.linked === false ? ` - the old path could not be linked (${live.why}); Cursor and any install still naming ${live.from} do not see these memories until pointed at ${live.dir}` : ''}`);
         if (live.state === 'busy' || live.state === 'failed') log(`memory-launch: ${live.dir} not moved (${live.why}) - served where it is`);
         const found = path.join(projectDir, ...live.dir.split('/'), 'memory.db');
         return fs.existsSync(found) ? found : dataRoot.liveMemoryDb(db, { home, projectRoot: projectDir });

@@ -20,7 +20,7 @@ const path = require('node:path');
 
 const { parseArgs, FLAG_LIST, ENUMS } = require('./args.js');
 const { createSource, compareVersions } = require('./source.js');
-const { loadManifest } = require('./manifest.js');
+const { loadManifest, stackNames, stackOwnName } = require('./manifest.js');
 const selection = require('./selection.js');
 const plugins = require('./plugins.js');
 const { pythonRequest } = require('../../stack/mcp/uv-python.js');
@@ -409,6 +409,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             const lastPicked = selection.renamePicked(stampLayer.readPicked(stampFile), renaming);
             const back = selection.readBack({
                 claudeDir, skillsDir,
+                foreignSkill: skillTest({ skillsDir, stampFile, manifest, sourceDir: resolved.dir }).foreign,
                 mcpServers: Object.keys(readJson(mcpFile).mcpServers || {}),
                 listing, stackListing,
                 // I2 / N5: the file this run writes, or at local scope settings.local.json laid over
@@ -640,6 +641,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // The desktop servers this project held before the run (its plugin rows, or on the copy route its
             // registrations) - set by the layer that reads them, so the prerequisites are said once.
             desktopHeld: null,
+            // M3: the skills a same-named project folder kept from this run - never recorded as the stack's picks.
+            foreignSkills: new Set(),
         };
         // R116 (j): an engine left off does not load. At project scope the copy route lists it in
         // disabledMcpjsonServers; at local and user scope no settings key reaches a registration, so
@@ -654,7 +657,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             : null;
 
         copy.removeDropped({
-            drop: args.dropApplied || [], log,
+            drop: args.dropApplied || [], log, keep: (category, name) => category === 'skill' && foreignSkill(ctx, name),
             dirs: { skill: skillsDir, agent: path.join(claudeDir, 'agents'), rule: path.join(claudeDir, 'rules'), hook: path.join(claudeDir, 'hooks') },
             shipped: {
                 skill: manifest.catalogs.skills.map((e) => e.split('|').pop()),
@@ -679,7 +682,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             source: resolved, action: args.action, scope: args.scope, configDir, projectRoot, mcpFile,
             hooksCatalog: manifest.catalogs.hooks, hooksRoute: ctx.routes.hooks ? 'plugin' : 'copy', seatsRoute: ctx.routes.skills ? 'plugin' : 'copy',
             version: releaseVersion(resolved.dir), log, note,
-            picked: stampPickLists(lists, stampPicks, carriedPicks), playwright: pwEngines(ctx), playwrightEnabled: ctx.pw.enabled,
+            picked: withoutForeign(stampPickLists(lists, stampPicks, carriedPicks), ctx.foreignSkills), playwright: pwEngines(ctx), playwrightEnabled: ctx.pw.enabled,
             stoodDown: stoodDownRecord(ctx),
             library: ctx.library || { skills: {}, agents: {}, rules: {} },
             ledger: ledgerOf(ctx),
@@ -829,16 +832,21 @@ function planDataMove({ projectRoot, info, engines, memoryProject, launched, ans
 {
     const abs = (rel) => path.join(projectRoot, ...rel.split('/'));
     // A folder holding nothing but its `.gitignore` holds no data (data-root.js reads it the same way).
-    const holds = (rel) => { try { return fs.readdirSync(abs(rel)).some((n) => n !== '.gitignore'); } catch { return false; } };
+    // A link is no data (M5: the project memory folder's 2.0.0 place, linked to its moved folder).
+    const holds = (rel) => { try { return !fs.lstatSync(abs(rel)).isSymbolicLink() && fs.readdirSync(abs(rel)).some((n) => n !== '.gitignore'); } catch { return false; } };
     const same = (a, b) => a.cls === b.cls && a.from === b.from && a.to === b.to;
     const server = (cls) => (cls === 'serena' ? 'navigation' : cls === 'memory' ? 'memory' : cls);
     const inline = (row) =>
     {
-        const busy = row.cls.startsWith('browser-') ? dataRoot.profileLocks : row.cls === 'memory' ? dataRoot.busyDbs : () => [];
+        // M2: serena's own check too - on the copy route the session running this installer has its serena open there.
+        const busy = row.cls.startsWith('browser-') ? dataRoot.profileLocks : row.cls === 'memory' ? dataRoot.busyDbs : row.cls === 'serena' ? dataRoot.serenaBusy : () => [];
         const held = busy(abs(row.from));
         if (held.length) return { ok: false, why: `held open: ${held.join(', ')}` };
-        const r = dataRoot.moveEntry(abs(row.from), abs(row.to));
-        return r.state === 'moved' ? { ok: true } : { ok: false, why: r.why || r.state };
+        const r = dataRoot.movePlace({ projectDir: projectRoot, cls: row.cls, from: row.from, to: row.to });
+        if (r.state !== 'moved') return { ok: false, why: r.why || r.state };
+        // M5: the project memory folder's 2.0.0 place is linked back, as the home folder is.
+        return { ok: true, said: r.linked ? ', the old path linked to it (git lists the link: ignore it in the project\'s .gitignore or .git/info/exclude)'
+            : r.linked === false ? ` - the old path could not be linked (${r.why}); Cursor and any install still naming ${row.from} do not see it until pointed at ${row.to}` : '' };
     };
     const moved = [];
     // A root a recorded move has now emptied (its launcher ran) is pruned by the data-root layer.
@@ -860,7 +868,8 @@ function planDataMove({ projectRoot, info, engines, memoryProject, launched, ans
     {
         if (launched(p.cls)) return true;
         const r = inline(p);
-        if (r.ok) { moved.push(p); left.push(dataRoot.rootOfPlace(p.cls, p.from)); log(`data root: moved ${p.from} -> ${p.to}`); }
+        if (r.ok) { moved.push(p); left.push(dataRoot.rootOfPlace(p.cls, p.from)); log(`data root: moved ${p.from} -> ${p.to}${r.said}`); }
+        else log(`data root: ${p.from} not moved yet (${r.why}) - the next run tries again`);
         return !r.ok;
     });
     const rows = stamped ? dataRoot.dataMovePlan({ projectRoot, root: info.root, prior: info.prior, engines, memory: memoryProject }) : [];
@@ -877,7 +886,7 @@ function planDataMove({ projectRoot, info, engines, memoryProject, launched, ans
                 continue;
             }
             const r = inline(row);
-            if (r.ok) { moved.push(row); log(`data root: moved ${row.from} -> ${row.to}`); }
+            if (r.ok) { moved.push(row); log(`data root: moved ${row.from} -> ${row.to}${r.said}`); }
             else { pending.push({ cls: row.cls, from: row.from, to: row.to }); log(`data root: ${row.from} not moved yet (${r.why}) - the next run tries again`); }
         }
     }
@@ -933,6 +942,7 @@ function docsRootStep(ctx)
     {
         ctx.docsPath = { value: plan.to, own: 'stack', why: 'the old root held nothing' };
         log(`docs root: ${plan.from} holds nothing - re-pointed to ${plan.to}`);
+        selection.respellDocsRoot({ projectRoot: ctx.projectRoot, from: plan.from, to: plan.to, log, note });
     }
     // A first install lays the docs under the data root it was given - unless a docs root is already set.
     else if (!stamped && plan.state === 'none' && !['ALFRED_CODE_DOCS_PATH', 'CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH'].some((k) => views.env[k] || (views.personal && views.personal[k]))) // legacy-name
@@ -957,6 +967,7 @@ function docsRootStep(ctx)
             if (moved.ok)
             {
                 ctx.docsPath = { value: plan.to, own: 'stack', why: '--data-move move' };
+                selection.respellDocsRoot({ projectRoot: ctx.projectRoot, from: plan.from, to: plan.to, log, note });
                 // A move keeps what git saw: an old root git ignored, with nothing tracked, stays out of git
                 // as a `local` root (its own `.gitignore` of `*`) - unless this run names a versioning itself.
                 if (plan.ignored && !args.docsVersioning) ctx.docsVersioningCarry = 'local';
@@ -1016,12 +1027,17 @@ function gitTracks(ctx, target)
     return r.status === 0 && String(r.stdout || '').length > 0;
 }
 
-function pruneCopies(ctx, dir, names, label, why, { keepTracked = false } = {})
+function pruneCopies(ctx, dir, names, label, why, { keepTracked = false, keep = null } = {})
 {
     for (const name of names)
     {
         const target = path.join(dir, name);
         if (!fs.existsSync(target)) continue;
+        if (keep && keep(name))
+        {
+            ctx.log(`  ${label} kept (${why}, but the project's own - the stamp does not record it): ${name}`);
+            continue;
+        }
         if (keepTracked && gitTracks(ctx, target))
         {
             ctx.log(`  ${label} kept (${why}, tracked in git): ${name}`);
@@ -1030,6 +1046,45 @@ function pruneCopies(ctx, dir, names, label, why, { keepTracked = false } = {})
         fs.rmSync(target, { recursive: true, force: true });
         ctx.log(`  ${label} pruned (${why}): ${name}`);
     }
+}
+
+// M3: a skill folder already in `.claude/skills` the stack may treat as its own copy (`claims`) - the stamp
+// records it (a library hash, or a pick), only the stack uses the name (manifest.js stackOwnName), or its
+// SKILL.md carries the stack's own heading (the shipped frontmatter `name` and `description`: a copy whose body,
+// references or tool spellings moved on is still the stack's; a project's own skill has words of its own). Any
+// other folder under a catalog name is the project's (`foreign`): never overwritten, pruned, dropped or read back
+// as a pick - named, and left out of the stamp. Read once per run, from the stamp as the run found it.
+function skillTest({ skillsDir, stampFile, manifest, sourceDir })
+{
+    const lib = stampLayer.readLibrary(stampFile) || {};
+    const picked = stampLayer.readPicked(stampFile) || { skills: [] };
+    const recorded = new Set([...Object.keys(lib.skills || {}), ...picked.skills.map((e) => e.split('@')[0])]);
+    const names = stackNames(manifest);
+    const heading = (file) =>
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
+        const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+        const key = (k) => ((front && new RegExp(`^${k}:[ \\t]*(.*)$`, 'm').exec(front[1])) || [])[1];
+        return front ? `${key('name')}\n${key('description')}` : null;
+    };
+    const stackText = (name) =>
+    {
+        const ours = heading(path.join(sourceDir, 'stack', 'skills', name, 'SKILL.md'));
+        return Boolean(ours) && heading(path.join(skillsDir, name, 'SKILL.md')) === ours;
+    };
+    const claims = (name) => recorded.has(name) || stackOwnName(names, 'skills', name) || stackText(name);
+    const foreign = (name) => fs.existsSync(path.join(skillsDir, name)) && !claims(name);
+    return { claims, foreign };
+}
+const skillTestOf = (ctx) => (ctx.skillTest ||= skillTest({ skillsDir: ctx.skillsDir, stampFile: ctx.stampFile, manifest: ctx.manifest, sourceDir: ctx.source.dir }));
+const skillClaim = (ctx) => skillTestOf(ctx).claims;
+const foreignSkill = (ctx, name) => skillTestOf(ctx).foreign(name);
+const foreignLine = (name) => `  !! skill kept: ${name} - a project skill of that name the stamp does not record, so it is yours; the stack's ${name} is not installed here - rename or remove yours, then /alfred-code:configure adds it`;
+function withoutForeign(picked, foreign)
+{
+    if (!foreign || !foreign.size) return picked;
+    return { ...picked, skills: (picked.skills || []).filter((e) => !foreign.has(String(e).split('@')[0])) };
 }
 
 function installSkillsAndAgents(ctx)
@@ -1086,15 +1141,17 @@ function installSkillsAndAgents(ctx)
             const why = [edited(n) ? 'edited in the project since the stack copied it' : '', tuning(n) || ''].filter(Boolean).join(' - ');
             ctx.log(`  agent kept: ${n}.md - ${why}, so it is yours; dispatched as '${n}' (the project copy) - the capabilities rule names it that way, so a flow runs it and never ${CORE}:${n}, which still lists beside it; delete the copy to use the plugin's seat`);
         }
-        pruneCopies(ctx, ctx.skillsDir, skills.filter((n) => core.skills.includes(n)), 'skill', 'now carried by a plugin');
-        pruneCopies(ctx, ctx.skillsDir, skills.filter((n) => !core.skills.includes(n)), 'skill', 'library item not picked');
+        const foreign = (n) => foreignSkill(ctx, n);
+        pruneCopies(ctx, ctx.skillsDir, skills.filter((n) => core.skills.includes(n)), 'skill', 'now carried by a plugin', { keep: foreign });
+        pruneCopies(ctx, ctx.skillsDir, skills.filter((n) => !core.skills.includes(n)), 'skill', 'library item not picked', { keep: foreign });
         pruneCopies(ctx, agentsDir, agents.filter((n) => core.agents.includes(n) && !keptSeats.includes(n)).map((n) => `${n}.md`), 'agent', 'now carried by a plugin');
         pruneCopies(ctx, agentsDir, agents.filter((n) => !core.agents.includes(n)).map((n) => `${n}.md`), 'agent', 'library item not picked');
         ctx.library = library.copyLibrary({
             sourceDir: ctx.source.dir, skillsDir: ctx.skillsDir, agentsDir,
             skills: closure.extraSkills, agents: closure.extraAgents,
-            stamped, log: ctx.log, note: ctx.note,
+            stamped, claims: (kind, name) => kind !== 'skills' || skillClaim(ctx)(name), log: ctx.log, note: ctx.note,
         });
+        for (const n of ctx.library.foreign) ctx.foreignSkills.add(n);
         for (const n of keptSeats) ctx.library.agents[n] = stamped.agents[n];
         return;
     }
@@ -1106,6 +1163,7 @@ function installSkillsAndAgents(ctx)
     {
         const src = path.join(ctx.source.dir, 'stack', 'skills', name);
         if (!fs.existsSync(src)) { ctx.note(`skill '${name}' not found in the stack source`); continue; }
+        if (foreignSkill(ctx, name)) { ctx.log(foreignLine(name)); ctx.foreignSkills.add(name); continue; }
         if (copy.syncTree({ src, dest: path.join(ctx.skillsDir, name), render: copyRender(ctx, 'skill') })) ctx.log(`skill [${ctx.args.scope}]: ${name}`);
         else ctx.log(`  skill current: ${name}`);
     }

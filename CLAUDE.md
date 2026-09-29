@@ -28,7 +28,11 @@ change (see the invariants below).
   `.claude/rules` the same way (`scripts/install/library.js`, each copy's hash in the stamp), because a
   plugin skill is locked on and only a project copy can be switched off per project (measured, the
   2026-09-24 library test). `scripts/library-check.js` reports drift and staleness for validate and
-  status; the core's SessionStart line (`setup-plugin/hooks/library-stamp.js`) says when the copies
+  status. A folder already under a catalog skill name that the stamp does not record (a library hash or a
+  pick), whose name a project uses too and whose SKILL.md heading (frontmatter `name` + `description`) is not
+  the stack's, is the project's own (M3): never overwritten, pruned, dropped or read back as a pick - named
+  once with `!!` where it was picked, and left out of the stamp. The core's SessionStart line
+  (`setup-plugin/hooks/library-stamp.js`) says when the copies
   are older than the stack - and, for a stamp from before 2.1.0 (no `seats-route:`) under a core at or
   past it, that the skills and seat denies wait for `/alfred-code:update` (the skew window: the core
   updates itself, the copies do not). `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` restores the 0.2.x copy
@@ -71,7 +75,10 @@ change (see the invariants below).
   the plugin copy standing down beside a still-wired copied twin; a repo never set up (no install
   record in it, its git top level or - for a git worktree - its main checkout, so a worktree of an
   installed checkout counts as set up; under a user-scope core such a repo is written nothing and only
-  the rm, secret and force-push guards stay live, writing no row - R54, R86); and the 1.x ALIAS - a
+  the rm, secret and force-push guards stay live, writing no row - R54, R86 - plus the dispatch guard's
+  implementer gate, M9. Known ceiling: such a repo still lists all 44 core seats, 12,531 characters of
+  descriptions in every session's first call where 2.0.0 listed 9, since no deny is written into a repo the
+  stack never touched - revisit when a plugin's agents can be scoped per project); and the 1.x ALIAS - a
   hook launched from a `.../claude-stack/<version>` root stands down while settings enable an <!-- legacy-name -->
   `alfred-code@*` its `installed_plugins.json` row can load (S26); and a Cursor host, judged from the PAYLOAD alone (`cursor_version`, or a camelCase event name - never Cursor's environment variables, which a `claude` session in its terminal inherits): Cursor loads Claude hooks by default and turns a Stop block into an unbounded follow-up, so only the rm, secret and force-push guards run there and every other hook stands down silently, no ledger row. Each non-protective hook makes the call itself, `cursorStandDown(payload, __filename)`, right after parsing its own payload (no stdin is read or patched by the prelude; a test fails a hook file that lacks it). All fail open. Beside the gates,
   `unattended(input)` says nobody is at the terminal - `ALFRED_CODE_UNATTENDED=1`; else
@@ -141,6 +148,8 @@ change (see the invariants below).
     blocks a generic `general-purpose`/`claude` dispatch while that stamp is live (stamps older than 8h
     or the session are absent), and blocks an `Explore`/generic dispatch asking a SYMBOL question. An
     `Explore` / `Plan` brief gets the untrusted-content sentence appended (`updatedInput`, never a deny).
+    In a repo never set up only the implementer gate runs, for the `alfred-code:` spelling alone, and writes
+    no block row (M9, `standDown(..., { setUp: false })`).
   - `guard-ungated-commit.js` (PreToolUse `Bash`) - blocks a non-trivial `git commit` without the
     `<docs-path>/flow/COMMIT-GATE` receipt, and `git push` / `gh pr merge` without `PUSH-GATE`. A dry
     run or a branch level with upstream is never gated; `ALFRED_CODE_PUSH_GATE=0` turns the push half off.
@@ -337,7 +346,9 @@ change (see the invariants below).
     (the seed's `uninstall` over the stamp's ledger, below; user-scope plugin rows and MCP registrations printed, never run). In a git
     worktree of an installed checkout every command stops and names the main checkout. A legacy copy-route install that never
     wrote a stamp reads `legacy-unstamped` (`stamp.js legacySignature`: no install record, and TWO of the stack's hook files, a
-    stack env key, three or more stack skill / seat / rule names - never skills alone); update takes it as a pre-ledger install
+    stack env key, three or more skill / seat / rule names only the stack uses - its `alfred-` / `project-` prefixes or a renamed
+    item's old name, `manifest.js stackOwnName`, M3: a catalog name like `typescript` or `npm` is a project's own as often -
+    never skills alone); update takes it as a pre-ledger install
     (picks off disk, old names renamed, docs move offered), setup asks once with update recommended, the rest route to update, and
     the hooks' record list is NOT extended, so they stay down until that update writes the stamp.
   - configure and validate never inventory by hand: `update --installed-only --print-plan --plan-out`
@@ -369,7 +380,7 @@ change (see the invariants below).
   - The `/alfred-code` router is a SKILL and the workers are COMMANDS on purpose (commands list
     namespaced, skills list bare) - do not convert either back.
   - Table before question: `hooks/guard-layer-table.js` (PreToolUse `AskUserQuestion`) denies an ask
-    (up to 3 times per table since the last answered ask; it waits for the ask's own transcript row and fails open) whose decision table was run but never pasted - a `stack-select.js
+    (up to 3 times per table since the last answered ask; it waits for the ask's own transcript row - only when a table call sits in the tail since the typed prompt, M15 - and fails open) whose decision table was run but never pasted - a `stack-select.js
     --table` catalog, the `plugin-settings.js` report or validate's install audit. It ships in the plugin because a fresh setup
     has no stack hooks yet; the rule text is pinned as `table-before-question`.
   - None of the seven carries `allowed-tools` - settled: it is a per-turn permission pre-approval, not a
@@ -566,7 +577,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   made (no junction, or a reader re-created the old folder first) leaves the data at the new place: the
   launcher serves the new file and names what still reads the old path (Cursor), every reader resolves an old
   home path that is gone to its new spelling (`liveMemoryDb`, the engine's `liveDbPath`), and the old folder is
-  never re-created. A 2.0.0 path reads as
+  never re-created. A project-level database's 2.0.0 `<project>/.memory-mcp` gets the same link after its move
+  (the launcher's, or the copy route's inline one - `data-root.js movePlace`, M5), relative so a moved checkout
+  keeps it; the link is no data to any reader, and git lists it as an untracked file, which the move's log line
+  names. A 2.0.0 path reads as
   its level and resolves to the new spelling, and the settings name where the file LIVES now. The service's
   embedding model (~166MB into `~/.cache/mcp_memory`) downloads at its FIRST start - 33s cold against Claude
   Code's 30s MCP connect budget, and a server that misses it is cached as failed
@@ -665,7 +679,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   move below: `update-preflight.js` names it in its `data-move: offer` line, update asks move (recommended)
   or keep, and the answer is `--data-move move|keep`. Move: one step, `git mv` for tracked files (history kept, staged as
   renames), a rename for the rest, every file put back on any failure, the key re-pointed and the rule
-  re-stamped, a restart named. Keep: the key becomes the user's own value, out of the ledger, and no
+  re-stamped - with every generated pointer rule (`baseline-project-*`, `project-code-style`) that names the
+  old root, which a capture baked in literally (`selection.respellDocsRoot`, M11) - a restart named. Keep: the key becomes the user's own value, out of the ledger, and no
   update offers again. No answer: nothing moves, and an absent key is written back as the old root so
   the hooks keep reading where the docs are. A value the user set is never offered: one the ledger does
   not record, or any root in `settings.local.json` at project or user scope (the stamped rule is
@@ -690,9 +705,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   stack's docs under an earlier root); a server's own data is LIVE while the session running the installer holds it, so on
   a route where its launcher runs the installer records a stamp line `data-pending: <class> <from> -> <to>` and
   the launcher moves it at its next start, only when nothing holds it (a database with no `-wal`/`-shm`/
-  `-journal`, a browser profile with no Chromium `Singleton*` or Firefox `lock`; serena none - the launcher
-  starts before serena does); on the copy route, which runs no launcher, the installer moves inline with the
-  same checks, and a refused move stays pending for the next run. A pending line whose target already holds the
+  `-journal`, a browser profile with no Chromium `Singleton*` or Firefox `lock`, a serena folder whose logs
+  name no live pid - `<folder>/home/logs/<date>/mcp_<stamp>_<pid>.txt`, `data-root.js serenaBusy`, M2: a second
+  session's serena, or on the copy route the running session's own); on the copy route, which runs no launcher,
+  the installer moves inline with the same checks, and a refused move stays pending for the next run. A pending line whose target already holds the
   data clears: its launcher made the move, and data at the old place again was written after it by a reader
   still on that place (a second session's server, Cursor's) - named once as a `!!` line, then each run as a
   plain clash, and a 2.0.0 place holding data again gets its own `.gitignore` back. With no pending line a
@@ -704,7 +720,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   --data-move move`. A `--data-path` over a root that holds data without `--data-move move` is not applied. The
   stamp's `data-root:` line is the next run's baseline, so a root changed by hand is still found; a root the
   data left is removed once only its `.gitignore` remains. The cursor-stack twin still reads `.serena` /
-  `.memory-mcp` until its mirror lands - the home memory link covers the database, not the index.
+  `.memory-mcp` until its mirror lands - the home and project memory links cover the database, not the index.
 - **Two stores, split by durability** (hard rule). The committed architecture docs
   (`<docs-path>/architecture/ARCHITECTURE.md` + `references/`, owned by
   `alfred-capture-architecture`) are the DURABLE truth every seat reads to orient, refreshed

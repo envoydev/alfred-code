@@ -38,12 +38,19 @@ const path = require('path');
 // hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
 // this hook running.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+// M9: a repo never set up under a user-scope core still lists every seat the core carries, so the
+// implementer approval gate stays live there - for the core's own spelling only, writing no block row
+// (R54). Every other rule of this hook stands down there with the rest of the non-protective hooks.
+let unsetRepo = false;
 if (require.main === module) {
+  let off = false;
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
-    if (prelude.standDown('guard-unapproved-dispatch')) process.exit(0);
+    off = prelude.standDown('guard-unapproved-dispatch', undefined, undefined, { setUp: false });
+    unsetRepo = !off && prelude.neverSetUp();
   } catch { /* an install without the prelude runs the hook unchanged */ }
+  if (off) process.exit(0);
 }
 let payload;
 try {
@@ -70,7 +77,7 @@ if (cursorOff) process.exit(0);
   process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
   const exit = process.exit.bind(process);
   process.exit = (code) => {
-    if (code === 2) {
+    if (code === 2 && !unsetRepo) {
       try {
         const fs = require('fs');
         const path = require('path');
@@ -119,6 +126,9 @@ const SEARCH_SEATS = new Set(['Explore', 'general-purpose', 'claude', 'fork']);
 const HOUSE_PREFIX = /^(?:alfred-code|claude-stack)(?:-[a-z0-9-]+)?:/; // legacy-name
 const houseSeat = !seat.includes(':') ? seat : (HOUSE_PREFIX.test(seat) ? seat.slice(seat.indexOf(':') + 1) : null);
 const isImplementer = houseSeat !== null && /-implementer$/.test(houseSeat);
+// M9: in a repo never set up only a core implementer (`alfred-code:<stack>-implementer`) is judged - a bare
+// name there is the project's own agent, since the stack copied nothing into it.
+if (unsetRepo && !(isImplementer && seat.includes(':'))) process.exit(0);
 
 // A symbol question routed at a grep-shaped seat: block and send it back to the navigation server.
 // The patterns are the QUESTION shapes baseline-navigation names, not tool words - a

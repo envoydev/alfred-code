@@ -306,12 +306,21 @@ are the whole catalog. A server 2.0.0 cut (`angular-cli`, `chrome-devtools`, `ap
 `context7-local`) is offered nowhere: the run uninstalls the stack's own copy and prints the `claude
 mcp add` line that brings it back as the user's own.
 
-FRESH asks, one per free row (navigation, documentation and memory are locked and never an option):
+FRESH asks, one per free row (navigation, documentation and memory are locked and never an option).
+Each enabled browser puts about 25 tools into every session, so keeping it is recommended only where it
+was earned: when the browser row reads `stack:<name>`, `recommended` or `evidence` in the table, ask the
+first template; otherwise (a `-` row, nothing seeded or proved it) ask the second, which leads with the drop:
 
 ```ask
 MCPs: navigation, documentation and memory always install. Keep the browser server (Playwright)?
-- 'Keep the browser server (Recommended)' - seeded by the web stacks; each enabled browser adds about 25 tools
+- 'Keep the browser server (Recommended)' - seeded by a web stack or proved by the evidence scan; each enabled browser adds about 25 tools
 - 'Drop the browser server' - no browser tools in any session
+```
+
+```ask
+MCPs: navigation, documentation and memory always install. Keep the browser server (Playwright)?
+- 'Drop the browser server (Recommended)' - no stack or evidence here needs it, and each enabled browser adds about 25 tools to every session
+- 'Keep the browser server' - browser tools for driving and checking a web UI
 ```
 
 ```ask
@@ -320,8 +329,8 @@ Add <windows-desktop | macos-desktop>? It clicks through your desktop apps with 
 - 'Add the desktop server' - needs the OS grants the installer prints (Accessibility and Screen Recording on macOS)
 ```
 
-Ask only the rows this OS and selection have. In DELTA the same two questions read the live state
-and the Recommended option is the current one.
+Ask only the rows this OS and selection have. In DELTA the browser and desktop questions read the live
+state and the Recommended option is the current one.
 
 
 Only if the browser server stayed selected, ask two AskUserQuestions, in order. FRESH has no install to

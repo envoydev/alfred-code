@@ -487,6 +487,28 @@ test('serena-launch: the move the installer recorded runs at start, and a projec
     assert.deepStrictEqual(argv.slice(argv.indexOf('--project'), argv.indexOf('--project') + 2), ['--project', fs.realpathSync(dir)]);
 });
 
+// M2: the launcher takes the same idle check as the installer's inline move - a second session's serena still
+// serving from .serena keeps it where it is this start.
+test('M2 serena-launch: a recorded move waits while another serena holds the folder', POSIX, () =>
+{
+    const { spawn } = require('node:child_process');
+    const { dir } = project('serena-held');
+    put(path.join(dir, '.serena', 'project.yml'), 'project_name: x\n');
+    stamp(dir, ['data-pending: serena .serena -> .alfred/serena']);
+    const live = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
+    try
+    {
+        put(path.join(dir, '.serena', 'home', 'logs', '2026-09-29', `mcp_20260929-111111_${live.pid}.txt`), 'live');
+        const rec = stubRecorder('serena-held', 'uvx');
+        const r = require('node:child_process').spawnSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server', '--project-from-cwd'],
+            { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, encoding: 'utf8' });
+        assert.strictEqual(rec.got().home, '.serena/home', r.stderr);
+        assert.match(r.stderr, new RegExp(`not moved \\(serena pid ${live.pid}\\)`));
+        assert.ok(fs.existsSync(path.join(dir, '.serena', 'project.yml')) && !fs.existsSync(path.join(dir, '.alfred', 'serena')));
+    }
+    finally { live.kill(); }
+});
+
 test('serena-launch: a custom data root from the project settings', POSIX, () =>
 {
     const { dir } = project('serena-custom', { settings: { ALFRED_CODE_DATA_PATH: '.data' } });
@@ -579,7 +601,11 @@ test('memory-launch: a project-level database moves under the data root when the
     execFileSync(process.execPath, [LAUNCH, '--package', 'mcp-memory-service[sqlite]==11.13.0'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: path.join(dir, 'h'), USERPROFILE: path.join(dir, 'h') }, stdio: 'pipe' });
     assert.strictEqual(rec.got().db, path.join(real, '.alfred', '.alfred-memory', 'memory.db'));
     assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', '.alfred-memory', 'memory.db'), 'utf8'), 'PROJ');
-    assert.ok(!fs.existsSync(path.join(dir, '.memory-mcp')));
+    // M5: the old place is linked back, as the home folder is - Cursor, still on .memory-mcp, reads the same file
+    // instead of creating a second, empty database there (and the next update a clash forever).
+    assert.ok(fs.lstatSync(path.join(dir, '.memory-mcp')).isSymbolicLink(), 'M5: the old project place is a link');
+    assert.strictEqual(fs.realpathSync(path.join(dir, '.memory-mcp', 'memory.db')), fs.realpathSync(path.join(dir, '.alfred', '.alfred-memory', 'memory.db')));
+    assert.strictEqual(fs.readlinkSync(path.join(dir, '.memory-mcp')), path.join('.alfred', '.alfred-memory'), 'a relative link, so a moved checkout keeps it');
 });
 
 // ------------------------------------------------------------------ I1: every writer under the data root ignores it first

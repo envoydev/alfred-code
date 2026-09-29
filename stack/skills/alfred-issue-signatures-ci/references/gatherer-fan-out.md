@@ -14,7 +14,8 @@ lacks the tool) and stay inline on an inline answer. A shape that stays inline n
 
 ## The shapes
 
-- **Dispatch gatherers** (parallel, one per failing job) when any of these holds: the evidence
+- **Dispatch gatherers** (parallel, one per failing job, each seat named exactly as the roster spells it -
+  `alfred-code:evidence-gatherer` where the core plugin carries it) when any of these holds: the evidence
   spans two or more independent sources (more than one job or matrix leg is red, or a step log
   AND a re-run); the failed step's log is huge, or `--log-failed` came back empty so the full
   step log must be walked; the triage is a matrix (first bad run vs last good, or several

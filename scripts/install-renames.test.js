@@ -630,6 +630,9 @@ test('seed update: a retired skill name whose copy is git-tracked is kept and na
 function unstampedLegacy(repo)
 {
     for (const n of ['project-solve-task', 'project-commit-checkpoint', 'project-related-context', 'markdown-style']) write(repo, `.claude/skills/${n}/SKILL.md`, skill(n));
+    // M3: a generic catalog name carrying the stack's own heading (its shipped name and description) is the
+    // stack's copy; `markdown-style` above, in words of its own, is the project's (a legacy tree cannot tell).
+    write(repo, '.claude/skills/typescript/SKILL.md', fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'typescript', 'SKILL.md'), 'utf8').replace(/\n---\n[\s\S]*$/, '\n---\nan older body\n'));
     write(repo, '.claude/skills/my-own-helper/SKILL.md', skill('my-own-helper'));
     for (const n of ['guard-catastrophic-rm', 'guard-read-whole-file', 'hook-prelude']) write(repo, `.claude/hooks/${n}.js`, '// old\n');
     write(repo, '.claude/agents/ci-failure-diagnoser.md', '---\nname: ci-failure-diagnoser\n---\n');
@@ -654,6 +657,7 @@ test('seed update --installed-only over an UNSTAMPED legacy install: picks under
         {
             if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'plugins.json'), listed);
             return { ...inspect(repo), mine: fs.readFileSync(path.join(repo, '.claude', 'skills', 'my-own-helper', 'SKILL.md'), 'utf8'),
+                markdownStyle: fs.readFileSync(path.join(repo, '.claude', 'skills', 'markdown-style', 'SKILL.md'), 'utf8'),
                 state: stampLayer.installState(repo, { CLAUDE_CONFIG_DIR: path.join(repo, 'no-account') }) };
         },
     });
@@ -661,8 +665,12 @@ test('seed update --installed-only over an UNSTAMPED legacy install: picks under
     const [first, second] = steps;
     assert.strictEqual(first.state, 'installed', 'the update wrote the stamp');
     const names = (list) => list.map((e) => e.split('@')[0]);
-    for (const n of ['alfred-task-solve', 'alfred-habits-commit-checkpoint', 'alfred-capture-related-projects', 'markdown-style'])
+    for (const n of ['alfred-task-solve', 'alfred-habits-commit-checkpoint', 'alfred-capture-related-projects', 'typescript'])
         assert.ok(names(first.pickedSkills).includes(n), `${n} is a pick: ${first.pickedSkills.join(',')}`);
+    // M3: the generic name in words of its own is never taken over: not a pick, not rewritten, not recorded.
+    assert.ok(![...first.pickedSkills, ...first.librarySkills].some((e) => /^markdown-style\b/.test(e)), `markdown-style is recorded: ${first.pickedSkills.join(',')}`);
+    assert.strictEqual(first.markdownStyle, skill('markdown-style'), 'the project\'s own markdown-style is not rewritten');
+    assert.match(outs[0], /skill kept[^\n]*markdown-style/, outs[0]);
     assert.ok(names(first.pickedAgents).includes('alfred-issue-diagnoser-ci'), first.pickedAgents.join(','));
     const old = new Set([...Object.keys(RENAMED.skills), ...Object.keys(RENAMED.agents)]);
     assert.deepStrictEqual([...first.skills, ...first.agents.map((f) => f.replace(/\.md$/, ''))].filter((n) => old.has(n)), [], 'every old copy is pruned');

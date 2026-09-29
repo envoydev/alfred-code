@@ -65,6 +65,30 @@ test('a hand-edited copy is overwritten, and the log says so', () =>
     fs.rmSync(f.root, { recursive: true, force: true });
 });
 
+// M3: with no stamp hash to judge by, a same-named folder the caller cannot claim for the stack (not recorded, a
+// name a project uses of its own) is the project's: kept byte for byte, named with the `!!` marker every update
+// body surfaces, left out of the returned hashes so the stamp never records it - and a later run keeps it again.
+test('M3 a same-named skill the caller cannot claim is kept, named and not recorded', () =>
+{
+    const f = fixture();
+    const mine = '---\nname: demo\ndescription: our own\n---\nours\n';
+    fs.mkdirSync(path.join(f.skillsDir, 'demo'), { recursive: true });
+    fs.writeFileSync(path.join(f.skillsDir, 'demo', 'SKILL.md'), mine);
+    const logs = [];
+    const opts = { sourceDir: f.src, skillsDir: f.skillsDir, agentsDir: f.agentsDir, skills: ['demo'], agents: ['seat'], stamped: null, note: () => {} };
+    const got = copyLibrary({ ...opts, claims: (kind) => kind !== 'skills', log: (l) => logs.push(l) });
+    assert.strictEqual(fs.readFileSync(path.join(f.skillsDir, 'demo', 'SKILL.md'), 'utf8'), mine, 'not overwritten');
+    assert.ok(!fs.existsSync(path.join(f.skillsDir, 'demo', 'references')), 'nothing of the stack\'s copy mixed in');
+    assert.ok(!Object.hasOwn(got.skills, 'demo'), 'not recorded');
+    assert.deepStrictEqual(got.foreign, ['demo']);
+    assert.ok(logs.some((l) => /^ {2}!! skill kept: demo - /.test(l)), logs.join('\n'));
+    assert.ok(got.agents.seat, 'an agent the caller claims still copies');
+    // A caller that claims it (the stamp records it, or only the stack uses the name) overwrites as before.
+    copyLibrary({ ...opts, claims: () => true, log: () => {} });
+    assert.strictEqual(fs.readFileSync(path.join(f.skillsDir, 'demo', 'SKILL.md'), 'utf8'), fs.readFileSync(path.join(f.src, 'stack/skills/demo/SKILL.md'), 'utf8'));
+    fs.rmSync(f.root, { recursive: true, force: true });
+});
+
 test('a missing source is reported and the existing copy kept', () =>
 {
     const f = fixture();
@@ -292,3 +316,51 @@ test('copy route: a rule is logged as rewritten only when its content changed - 
     assert.match(outs[2], /overwriting a hand-edited copy: rule baseline-navigation/);
     assert.strictEqual(steps[2], steps[0], 'restored to the re-spelled text');
 });
+
+// M3 end to end: a project's own `typescript` skill (its own text, no stamp to record it) sits where the pick
+// would copy, and its own `npm` skill beside it is no pick at all. The install neither overwrites nor prunes
+// either, names the first once per run with the `!!` marker, and records neither as the stack's - so the re-run
+// finds them unclaimed again. The same holds on the skills copy route, which copies without hashes.
+const OURS = (n) => `---\nname: ${n}\ndescription: our team's ${n} notes\n---\nOurs, not the stack's.\n`;
+for (const [label, env] of [['plugin route', {}], ['skills copy route', { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' }]])
+{
+    test(`M3 install + update (${label}): a same-named project skill is never overwritten, pruned or recorded`, POSIX_ONLY, () =>
+    {
+        const { steps, outs } = seedRun(['install', 'update'], 'skill typescript\nskill javascript\nrule baseline-docs-root\nmcp navigation\nmcp documentation\nmcp memory\n', {
+            env, args: [[], ['--installed-only']],
+            prepare: (repo) =>
+            {
+                for (const n of ['typescript', 'npm'])
+                {
+                    fs.mkdirSync(path.join(repo, '.claude', 'skills', n), { recursive: true });
+                    fs.writeFileSync(path.join(repo, '.claude', 'skills', n, 'SKILL.md'), OURS(n));
+                }
+            },
+            each: (repo) =>
+            {
+                const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
+                const line = (key) => ((new RegExp(`^${key}: (.*)$`, 'm').exec(stamp) || [])[1] || '');
+                return {
+                    typescript: fs.readFileSync(path.join(repo, '.claude', 'skills', 'typescript', 'SKILL.md'), 'utf8'),
+                    npm: fs.readFileSync(path.join(repo, '.claude', 'skills', 'npm', 'SKILL.md'), 'utf8'),
+                    javascript: fs.existsSync(path.join(repo, '.claude', 'skills', 'javascript', 'SKILL.md')),
+                    recorded: `${line('picked-skills')},${line('library-skills')}`.split(',').map((e) => e.split(/[@=]/)[0]).filter((n) => n === 'typescript' || n === 'npm'),
+                };
+            },
+        });
+        for (const [i, step] of steps.entries())
+        {
+            assert.strictEqual(step.typescript, OURS('typescript'), `run ${i} overwrote the project's own typescript skill:\n${outs[i]}`);
+            assert.strictEqual(step.npm, OURS('npm'), `run ${i} pruned or rewrote the project's own npm skill`);
+            assert.ok(step.javascript, 'a pick with no folder in the way still copies');
+            assert.deepStrictEqual(step.recorded, [], `run ${i}: the stamp records a skill the stack did not write`);
+            assert.doesNotMatch(outs[i], /!! skill kept: npm/, 'a folder nobody picked is no warning');
+        }
+        // The pick is named once, where it was made; the update's read-back never takes the folder for a pick.
+        assert.match(outs[0], /!! skill kept: typescript - .*rename or remove yours, then \/alfred-code:configure adds it/, outs[0]);
+        // The plugin route prunes what was not picked, so it says why it leaves the folder; the copy route never
+        // prunes a skill and has nothing to say.
+        if (!env.ALFRED_CODE_SKILLS_VIA_PLUGIN) assert.match(outs[1], /skill kept \([^)]*the project's own[^)]*\): typescript/, outs[1]);
+        assert.doesNotMatch(outs[1], /!! skill kept: typescript/, outs[1]);
+    });
+}

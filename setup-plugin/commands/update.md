@@ -164,10 +164,11 @@ the sibling `/alfred-code:setup` command. `worktree-of-installed <main>` -> prin
 sits in the account dir: this command is its route - step 2's preflight reads that stamp and the
 installer moves it into the project. `legacy-unstamped` is a legacy copy-route install that never wrote a
 stamp (no install record, but two of the stack's own signatures in `.claude/`: its hook files, its env keys,
-three or more of its skill, seat or rule names) -> go on: this command is its route - step 2's preflight
-prints `no-stamp` (the fast path) and offers its data move like any older install's, and the installer logs
-`no stamp: an unstamped legacy install`, reads the picks off disk (each old name under its new one, a
-project's own skill never one of them), prunes the old copies and writes the stamp. `installed` /
+three or more skill, seat or rule names only it uses - never a catalog name like `typescript` alone) -> go on:
+this command is its route - step 2's preflight prints `no-stamp` (the fast path) and offers its data move like
+any older install's, and the installer logs `no stamp: an unstamped legacy install`, reads the picks off disk
+(each old name under its new one; a project's own skill - a folder under a catalog name without the stack's
+own heading - never one of them, never overwritten, and named), prunes the old copies and writes the stamp. `installed` /
 `initialised` -> go on. Every scope - project,
 user or local - keeps the stamp, the library copies and the settings in the project's `.claude/`,
 so there is one mode. The user names items to add or drop -> that is the sibling

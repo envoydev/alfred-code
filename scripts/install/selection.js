@@ -112,12 +112,13 @@ const listDir = (dir, test) =>
 // `known` (manifest.js stackNames): the same for skills, seats and rules - only a name the stack ever
 // shipped (the catalog, a renamed item's old name, a retired one) is an item, so a project's own skill is
 // neither a pick nor install evidence; null reads every folder.
-function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'), mcpServers = [], plugins = [], knownPlugins = [], shippedHooks = null, known = null })
+// `foreignSkill(name)` (M3): a folder under a catalog skill name that is the project's own, never a pick.
+function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'), mcpServers = [], plugins = [], knownPlugins = [], shippedHooks = null, known = null, foreignSkill = () => false })
 {
     const lines = [];
     const ours = (kind, name) => !known || known[kind].has(name);
     for (const name of listDir(skillsDir, (d) => d.isDirectory()))
-        if (ours('skills', name) && fs.existsSync(path.join(skillsDir, name, 'SKILL.md'))) lines.push(`skill ${name}`);
+        if (ours('skills', name) && fs.existsSync(path.join(skillsDir, name, 'SKILL.md')) && !foreignSkill(name)) lines.push(`skill ${name}`);
     for (const f of listDir(path.join(claudeDir, 'agents'), (d) => d.isFile() && d.name.endsWith('.md')))
         if (ours('agents', f.replace(/\.md$/, ''))) lines.push(`agent ${f.replace(/\.md$/, '')}`);
     for (const f of listDir(path.join(claudeDir, 'rules'), (d) => d.isFile() && d.name.endsWith('.md')))
@@ -211,7 +212,7 @@ function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = f
 // `seatsRoute`: the stamp's `seats-route:` (null on a stamp from before 2.1.0) - what the enabled core
 // carried when the last install ran (derive-state readInstalled's `core`). `ledgerSeats`: the seats
 // whose deny the last run's ledger records as the stack's own (`managed-deny`).
-function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, stampEngines, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [], committedEnv = null, scope, isOn = () => undefined, seatsRoute = null, ledgerSeats = [], log = () => {} })
+function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, stampEngines, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [], committedEnv = null, scope, isOn = () => undefined, seatsRoute = null, ledgerSeats = [], log = () => {} })
 {
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
     // A copy an older release wrote under a name this one renamed is the renamed item (`renamed` below).
@@ -219,7 +220,7 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     // An MCP name from before the 2.0.0 rename - a listing row, a .mcp.json server - is read under its
     // new one: the same server the user picked (manifest `renamed.mcps`).
     const cur = (name) => currentMcp(name, (manifest.renamed && manifest.renamed.mcps) || {});
-    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, mcpServers: mcpServers.map(cur), plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped, known: stackNames(manifest) }), renaming);
+    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, mcpServers: mcpServers.map(cur), plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped, known: stackNames(manifest), foreignSkill }), renaming);
     const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [] };
     const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
     // On the plugin routes an install whose every pick an entry carries, with no rule copied, leaves
@@ -511,6 +512,38 @@ function mcpRespellPairs(renamedMcps = {})
     return out;
 }
 
+// The rules a capture GENERATED into the project (`baseline-project-*`, `project-code-style`) - never a
+// catalog rule, never one of the project's own.
+function generatedRules(projectRoot)
+{
+    const rules = path.join(projectRoot, '.claude', 'rules');
+    try { return fs.readdirSync(rules).filter((f) => /^(baseline-project-.+|project-code-style)\.md$/.test(f)).sort().map((f) => path.join(rules, f)); }
+    catch { return []; }
+}
+
+// M11: a capture bakes the LITERAL docs root into its generated pointer rule (a rule cannot resolve a
+// setting at load), so a data move that carried the docs from `from` to `to` re-stamps each of them, as the
+// installer re-stamps baseline-docs-root. Only the root as a whole path segment is replaced (`.alfred/docs`
+// never inside `.alfred/docs-old` or `x/.alfred/docs`); a rule naming it nowhere is left as it is.
+function respellDocsRoot({ projectRoot, from, to, log = () => {}, note = () => {} })
+{
+    if (!from || !to || from === to) return 0;
+    const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?<![A-Za-z0-9_./-])${escape(from)}(?![A-Za-z0-9_.-])`, 'g');
+    const done = [];
+    for (const file of generatedRules(projectRoot))
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        const out = text.replace(re, to);
+        if (out === text) continue;
+        try { fs.writeFileSync(file, out); done.push(path.basename(file)); }
+        catch (err) { note(`${path.basename(file)} still names the docs root ${from} and could not be re-stamped (${err.message}) - re-run its capture`); }
+    }
+    if (done.length) log(`  docs root: ${done.length} generated rule(s) re-stamped: ${from} -> ${to} (${done.join(', ')})`);
+    return done.length;
+}
+
 function respellRenamed({ projectRoot, renamed, log = () => {}, note = () => {} })
 {
     const pairs = { ...((renamed && renamed.skills) || {}), ...((renamed && renamed.agents) || {}) };
@@ -521,12 +554,8 @@ function respellRenamed({ projectRoot, renamed, log = () => {}, note = () => {} 
     if (!olds.length && !mcpOlds.length) return 0;
     const re = olds.length ? new RegExp(`(?<![A-Za-z0-9_-])(${olds.map(escape).join('|')})(?![A-Za-z0-9_-])`, 'g') : null;
     const mcpRe = mcpOlds.length ? new RegExp(mcpOlds.map(escape).join('|'), 'g') : null;
-    const rules = path.join(projectRoot, '.claude', 'rules');
-    let generated = [];
-    try { generated = fs.readdirSync(rules).filter((f) => /^(baseline-project-.+|project-code-style)\.md$/.test(f)).sort().map((f) => path.join(rules, f)); }
-    catch { generated = []; }
     let total = 0;
-    for (const file of [path.join(projectRoot, 'CLAUDE.md'), path.join(projectRoot, '.claude', 'CLAUDE.md'), ...generated])
+    for (const file of [path.join(projectRoot, 'CLAUDE.md'), path.join(projectRoot, '.claude', 'CLAUDE.md'), ...generatedRules(projectRoot)])
     {
         let text;
         try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
@@ -745,6 +774,6 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 }
 
 module.exports = {
-    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, respellRenamed, respellRosterSeats, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, respellRenamed, respellRosterSeats, respellDocsRoot, generatedRules, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, FORMER_PLUGINS,
 };

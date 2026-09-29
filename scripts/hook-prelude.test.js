@@ -562,6 +562,46 @@ test('in a repo never set up the three protective guards stay live and write not
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// M9: under a user-scope core a repo never set up lists every seat the core carries, so an implementer
+// can be dispatched there too - and the dispatch guard stood down with every other non-protective hook,
+// leaving that dispatch with no approval gate. The implementer check stays live there, for the core's own
+// spelling only (a bare `*-implementer` in a repo the stack never touched is not its seat), writing no
+// block row (R54); the rest of the guard - the generic-seat and symbol rules - still stands down.
+test('M9 in a repo never set up the dispatch guard still gates an alfred-code implementer, and writes nothing', () => {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-m9-')));
+    try
+    {
+        const implementer = fireIn('guard-unapproved-dispatch.js', dir, { subagent_type: 'alfred-code:aspnet-implementer', prompt: 'build it' }, 'Agent');
+        assert.strictEqual(implementer.status, 2, `an unapproved core implementer must be blocked: ${implementer.stderr}`);
+        assert.match(implementer.stderr, /without an approval gate/);
+        for (const input of [
+            { subagent_type: 'aspnet-implementer', prompt: 'x' },                       // not the core's spelling: the project's own
+            { subagent_type: 'alfred-code:aspnet-verifier', prompt: 'x' },               // a verifier was never gated
+            { subagent_type: 'Explore', prompt: 'who calls OrderService.Place?' },       // the symbol rule stands down
+            { subagent_type: 'general-purpose', prompt: 'x' },
+        ])
+        {
+            const r = fireIn('guard-unapproved-dispatch.js', dir, input, 'Agent');
+            assert.strictEqual(r.status, 0, `${input.subagent_type}: ${r.stderr}`);
+            assert.strictEqual(r.stdout, '', `${input.subagent_type}: nothing rewritten in a repo never set up`);
+        }
+        assert.ok(!fs.existsSync(path.join(dir, '.alfred')), 'a block, and no block row - nothing written into a repo never set up');
+
+        // The flow's approval opens it, as anywhere.
+        fs.mkdirSync(path.join(dir, '.alfred', 'docs', 'flow'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.alfred', 'docs', 'flow', 'APPROVAL'), 'APPROVED plan-1 - "go"\n');
+        assert.strictEqual(fireIn('guard-unapproved-dispatch.js', dir, { subagent_type: 'alfred-code:aspnet-implementer', prompt: 'x' }, 'Agent').status, 0);
+        // The csv opt-out still wins.
+        fs.rmSync(path.join(dir, '.alfred'), { recursive: true });
+        const off = spawnSync(process.execPath, [HOOK_FILE('guard-unapproved-dispatch.js')], {
+            input: JSON.stringify({ session_id: 's', cwd: dir, hook_event_name: 'PreToolUse', tool_name: 'Agent', tool_input: { subagent_type: 'alfred-code:aspnet-implementer', prompt: 'x' } }),
+            env: { PATH: process.env.PATH, HOME: path.join(os.tmpdir(), 'prelude-no-home'), ...unsetEnv(dir), ALFRED_CODE_HOOKS_OFF: 'guard-unapproved-dispatch' }, encoding: 'utf8',
+        });
+        assert.strictEqual(off.status, 0, off.stderr);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // GATE 6 - a Cursor host. Cursor loads Claude hooks by default and turns a Stop block into an unbounded
 // automatic follow-up, so under a Cursor PAYLOAD only the three protective guards run. Judged from the
 // payload alone: a `claude` session inside Cursor's terminal inherits Cursor's variables and keeps every hook.
