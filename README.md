@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/envoydev/alfred-code/releases"><img alt="release" src="https://img.shields.io/github/v/release/envoydev/alfred-code"></a>
   <a href="LICENSE"><img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <img alt="node >= 22.12" src="https://img.shields.io/badge/node-%E2%89%A5%2022.12-339933">
+  <img alt="node 22.12 or newer" src="https://img.shields.io/badge/node-%E2%89%A5%2022.12-339933">
 </p>
 
 Alfred Code is an installable stack for [Claude Code](https://claude.com/claude-code): house skills, subagents, rules, hooks and MCP servers, applied to the projects you actually work in. This repo is the single source of truth - a project pulls from it and never owns a copy. Its twin for Cursor is [`cursor-stack`](https://github.com/envoydev/cursor-stack), a separate repo with its own skills, agents and installers.
