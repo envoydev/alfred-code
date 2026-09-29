@@ -47,4 +47,5 @@ A design, plan or decision the user proposes gets an adversarial review - valida
 - Non-trivial code is written test-first - the FIRST action is the `alfred-habits-test-first` Skill call, before the first production edit.
 - A mechanical change across 10+ files: confirm the scope list, no plan. No planning at all for typos, one-line fixes, formatting, dep bumps, a single-file rename.
 - Code fails - the FIRST action is the `alfred-habits-root-cause` Skill call, before the next fix lands.
+- Several FIRST actions due at once (two habit pointers, or one beside a convention rule's attach) load in the same call - one message of Skill calls, before the act any of them guards.
 - Inherited code: its conventions win over these rules unless broken or unsafe.

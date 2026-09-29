@@ -24,7 +24,9 @@ change (see the invariants below).
 - `stack/skills/` - the house-style skills (`SKILL.md` each), auto-activating on their keywords /
   file types. Every one is LIBRARY (2.1.0) - listed by no marketplace entry, copied into
   `.claude/skills` per pick, the always ones included (locked: adopted by every update, a drop
-  refused; `skillOverrides` is the per-project lever) - and every rule is a library copy in
+  refused; `skillOverrides` is the per-project lever, and `library-check.js` flags a `blocked` row where
+  one set `off` or `user-invocable-only` hits a skill a shipped rule still sends the model to - 2.1.5 audit
+  M75) - and every rule is a library copy in
   `.claude/rules` the same way (`scripts/install/library.js`, each copy's hash in the stamp), because a
   plugin skill is locked on and only a project copy can be switched off per project (measured, the
   2026-09-24 library test). `scripts/library-check.js` reports drift and staleness for validate and
@@ -350,7 +352,8 @@ change (see the invariants below).
   Thirteen path-scoped: `markdown-docs.md`, `skill-authoring.md`, the repair routers
   (`dotnet-repair-agents.md`, `angular-repair-agents.md`) and nine convention rules, each
   glob-attaching ONE file family to its house-style skill. Every convention rule uses the imperative form pinned as
-  `convention-rule-first-action` in shared-rules.json - a new one copies that form, never paraphrases it.
+  `convention-rule-first-action` in shared-rules.json, and the load receipt pinned as `convention-rule-load-receipt`
+  in the same eleven files (`scripts/rule-prose.test.js` fails a mismatch) - a new one copies both, never paraphrases them.
 - `setup-plugin/` - the Alfred Code plugin: seven COMMANDS and one router SKILL.
   - `/alfred-code:setup` is the selection walk and the install (reports `derive-state.js`'s `written`
     block first) and ends on 'restart, then /alfred-code:init'; `/alfred-code:init` is the one-time

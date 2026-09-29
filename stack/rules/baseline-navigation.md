@@ -10,7 +10,6 @@ description: House baseline - code navigation and reading. Always-on (no paths),
 - A shell read (`cat`, `sed`, `head`, `awk`, python, a heredoc) is the same read under the same rules; path-scoped rules do not attach on the shell route, so the read guard names the governing rule on the first shell write.
 - Never fetch what is already in context, by any route - no repeat `find_symbol`, no second read of an unchanged file or range; re-check an edit at the edited range only.
 - Poll background output through the harness's task tool (`Monitor`) or its NEW lines, never by re-reading the whole log.
-- Never Read a screenshot mid-loop - an image is re-sent on every later turn; verify with DOM assertions while iterating, and read one target-scoped image for the final state.
 - Orient from the architecture docs before deriving the project from code: `<docs-path>/architecture/ARCHITECTURE.md` (deep dives in `architecture/references/`, pros and cons in `quality/ASSESSMENT.md`), read by section - `node .claude/hooks/docs.js where <path>`, then `show <file>#<id>`. For a specific symbol the code wins; no `architecture/` means the capture never ran - say so once and navigate from code.
 - What the STACK does or wants is read from its own artifacts - the owning command's doc for a reconcile, the rule or hook that reads a setting for what it does - never guessed by hand-comparing files.
 
@@ -22,7 +21,7 @@ description: House baseline - code navigation and reading. Always-on (no paths),
 - `Active language servers: []` is a run-level fact: say so once, take that fallback, never re-issue the call class this run, and hand the fact to the seats you dispatch next.
 - A language serena's `project.yml` (`<data root>/serena/`) does not list takes the fallback from its first call; a large JSON / YAML / lock / fixture file is queried (`jq '.path'`, `grep -n`, then a ranged Read), never read whole.
 - A large symbol is fetched WITHOUT its body first (signature, children), then read by range.
-- `get_symbols_overview` takes ONE file, never a directory - list the directory first.
+- `get_symbols_overview` takes ONE file, never a directory - list the directory first; on C# pass `depth: 2` (the default stops at the namespace, so it returns only its name; 2 reaches the type members, nested-type members need 3; a top-level-statements file returns `{}` at any depth).
 - An EMPTY reference result for a symbol that plausibly has callers is suspect (a multi-tsconfig monorepo hides cross-lib callers): cross-check with a grep before saying 'no callers'.
 - Navigation-server memories are name-addressed: `write_memory` replaces a note whole; check the tool list before an edit call, and read its parameters after a schema error instead of guessing.
 

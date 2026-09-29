@@ -580,3 +580,12 @@ test('report: the composed body is written under <docs root>/flow/, and the skil
 });
 
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
+
+// 2.1.5 audit M74: 'never to answer a question' told a user asking 'what is our C# convention for X'
+// that the convention skill was not for them - the convention rules call it the source of truth.
+test('policy: a skill is not loaded only for a question the code or the conversation already answers (M74)', () =>
+{
+    const skill = fs.readFileSync(SKILL_MD, 'utf8').replace(/\s+/g, ' ');
+    assert.ok(skill.includes('never to answer a question the code or the conversation already answers'), 'the policy line');
+    assert.ok(!/never to answer a question\.\s/.test(skill), 'the unqualified form is gone');
+});

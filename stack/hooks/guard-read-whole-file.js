@@ -206,7 +206,8 @@ const CONVENTION_RULES = [
   [/\.tsx?\b/i, 'typescript-conventions.md'],
   [/\.(jsx?|mjs|cjs)\b/i, 'javascript-conventions.md'],
   [/\.sql\b/i, 'sql-conventions.md'],
-  [/\bDockerfile\b|\b(docker-)?compose[^\s]*\.ya?ml\b|\.github\/workflows\/[^\s]+\.ya?ml\b/i, 'devops-conventions.md'],
+  // Twin of the rule's own `paths:` - containers, compose, the three pipeline families, deploy scripts and env templates.
+  [/\bDockerfile\b|\b(docker-)?compose[^\s]*\.ya?ml\b|\.github\/workflows\/[^\s]+\.ya?ml\b|\.github\/actions\/(?:\S+\/)?action\.ya?ml$|(?:^|\/)azure-pipelines[^\s\/]*\.ya?ml$|(?:^|\/)\.gitlab-ci\.yml$|(?:^|\/)deploy[^\s\/]*\.(?:sh|ps1)$|(?:^|\/)[^\s\/]*\.env\.(?:example|template)$/i, 'devops-conventions.md'],
   [/(?:^|\/)SKILL\.md$|(?:^|\/)skills\/\S*\.md$/, 'skill-authoring.md'], // twin of the rule's paths: **/SKILL.md + **/skills/**/*.md, case-sensitive, no .bak
   [/\.md\b/i, 'markdown-docs.md'],
 ];

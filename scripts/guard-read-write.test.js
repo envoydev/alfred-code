@@ -265,3 +265,13 @@ test('guard-cross-project-write: a PowerShell <# #> block comment ends at #>, an
   const ansi = `echo $'it\\'s # x' > ${target}`;
   assert.strictEqual(scanShell(ansi).command, ansi, 'an ANSI-C string blanks nothing');
 });
+
+test('guard-read-whole-file: a shell write to any delivery surface devops-conventions.md covers names that rule (2.1.5 audit M73)', () => {
+  // Twin of the rule's own `paths:`: the deploy scripts it always globbed, plus the pipeline and env
+  // template families the audit added - a shell-only run gets no attach, so this is its one reminder.
+  for (const target of ['scripts/deploy.sh', 'ops/deploy-prod.ps1', '.github/actions/setup/action.yml', 'ci/.github/actions/x/action.yaml',
+    'azure-pipelines.yml', 'build/azure-pipelines-release.yaml', '.gitlab-ci.yml', '.env.example', 'api/.env.template', 'config/prod.env.template'])
+    assert.match(announce(`printf x > ${target}`, sid()), /devops-conventions\.md/, target);
+  for (const target of ['src/deployment.ts', 'notes/deploy.md', '.env', 'src/actions/action.yml.bak'])
+    assert.doesNotMatch(announce(`printf x > ${target}`, sid()), /devops-conventions\.md/, target);
+});

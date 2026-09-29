@@ -2,15 +2,15 @@
   "_comment": "Shared-rules registry - the sanctioned exceptions to one-home-per-piece: rules whose text deliberately lives in more than one stack file (one canonical owner + inline restatements, no prose cross-mentions). Each copy is pinned by a marker - a distinctive phrase from that file's own wording, matched whitespace-normalized so md line wrapping never breaks it. Lint check 24 fails the moment any copy's marker no longer matches, and the finding lists every other copy - the multi-home sync is forced by the lint, not remembered. Repo-internal, never shipped.",
   "rules": {
     "repair-router-delegation-protocol": {
-      "_note": "The repair routers' shared delegation protocol (BLOCKED_CONTRACT_CHANGE routing, the no-Agent-tool seat carve-out, the diagnoser's gatherer-only dispatch) - verbatim in both routers because either may be absent per project.",
+      "_note": "The repair routers' shared delegation protocol (BLOCKED_CONTRACT_CHANGE routing, the no-Agent-tool seat carve-out, the read-only seat's report-and-name action - verifiers, designers, reviewers and analyzers hold no Edit, audit M62 - the diagnoser's gatherer-only dispatch) - verbatim in both routers because either may be absent per project.",
       "owner": {
         "file": "stack/rules/dotnet-repair-agents.md",
-        "marker": "A seat with no Agent tool (an implementer or a resolver) does NOT delegate"
+        "marker": "A seat with no Agent tool (an implementer or a resolver) does NOT delegate - this routing policy is the orchestrator's; run your own bounded fix loop and report the red per your cap. A read-only seat (a verifier, a designer, a reviewer, an analyzer) has no Edit to loop with: it reports the red and names the resolver."
       },
       "sites": [
         {
           "file": "stack/rules/angular-repair-agents.md",
-          "marker": "A seat with no Agent tool (an implementer or a resolver) does NOT delegate"
+          "marker": "A seat with no Agent tool (an implementer or a resolver) does NOT delegate - this routing policy is the orchestrator's; run your own bounded fix loop and report the red per your cap. A read-only seat (a verifier, a designer, a reviewer, an analyzer) has no Edit to loop with: it reports the red and names the resolver."
         }
       ]
     },
@@ -31,10 +31,10 @@
       ]
     },
     "docs-root-resolution": {
-      "_note": "The docs-root default: ALFRED_CODE_DOCS_PATH from .claude/settings.json env, absent = .alfred/docs - outside .claude/, the directory Claude Code protects (2.0.0; an install on the old default .claude/docs - environment.json former_defaults - is moved only on update's one-time ask, scripts/install/docs.js docsMovePlan) (CLAUDE_DOCS_PATH is the pre-0.2.43 spelling, still read as a fallback by every consumer until the rename reaches every install; the installer renames the key in place). The always-on baseline-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (each hook's docsRootEnv() fallback, the skill line that quotes it, the re-probe script) must state the same value. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to carry this default too, as their own two sites. Every other code home of the fallback (each hook's inline docsRootEnv, the analyzers) is held to the same value by scripts/docs-root-default.test.js, which also fails on a NEW home spelling the old one.",
+      "_note": "The docs-root default: ALFRED_CODE_DOCS_PATH from the settings env (.claude/settings.local.json over .claude/settings.json, the order Claude Code merges them in - audit M61), absent = .alfred/docs - outside .claude/, the directory Claude Code protects (2.0.0; an install on the old default .claude/docs - environment.json former_defaults - is moved only on update's one-time ask, scripts/install/docs.js docsMovePlan) (CLAUDE_DOCS_PATH is the pre-0.2.43 spelling, still read as a fallback by every consumer until the rename reaches every install; the installer renames the key in place). The always-on baseline-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (each hook's docsRootEnv() fallback, the skill line that quotes it, the re-probe script) must state the same value. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to carry this default too, as their own two sites. Every other code home of the fallback (each hook's inline docsRootEnv, the analyzers) is held to the same value by scripts/docs-root-default.test.js, which also fails on a NEW home spelling the old one.",
       "owner": {
         "file": "stack/rules/baseline-docs-root.md",
-        "marker": "the `ALFRED_CODE_DOCS_PATH` env value in `.claude/settings.json`; absent = `.alfred/docs`"
+        "marker": "the `ALFRED_CODE_DOCS_PATH` env value, `.claude/settings.local.json` over `.claude/settings.json`; absent = `.alfred/docs`"
       },
       "sites": [
         {
@@ -1609,9 +1609,9 @@
       ]
     },
     "serena-csharp-overview-depth": {
-      "_note": "get_symbols_overview's language-specific depth default resolves to 0 for C#, whose top-level symbol is the namespace - so the default hides every type/member; depth 2 is the C# floor (measured 2026-07-29, serena-agent 1.6.1). Owned by the navigation baseline; restated at architecture-analyzer's operative overview step because its module digest silently degrades without it.",
+      "_note": "get_symbols_overview's language-specific depth default resolves to 0 for C#, whose top-level symbol is the namespace - so the default hides every type/member; depth 2 is the C# floor (measured 2026-07-29, serena-agent 1.6.1). Owned by the navigation baseline, on its get_symbols_overview line (audit M64: the C# path rule carried it until 2.1.5, but a Serena call never attaches a path rule, so the hint arrived only after a file-tool touch); restated at the two analyzers' operative overview step because their module digest silently degrades without it.",
       "owner": {
-        "file": "stack/rules/csharp-conventions.md",
+        "file": "stack/rules/baseline-navigation.md",
         "marker": "C# pass `depth: 2`"
       },
       "sites": [
@@ -3727,7 +3727,7 @@
       ]
     },
     "convention-rule-load-receipt": {
-      "_note": "The second half of the convention-rule attach contract, restated in all nine rules beside [convention-rule-first-action]: the load is SAID out loud, because an unstated load is indistinguishable from no load in the transcript and in the user's reading alike. Pinned separately because the two halves are edited independently.",
+      "_note": "The second half of the convention-rule attach contract, restated in every rule that carries [convention-rule-first-action] - the nine convention rules, markdown-docs and skill-authoring (audit M66: skill-authoring carried the text unregistered, markdown-docs had no receipt at all; scripts/rule-prose.test.js fails when the two entries list different files): the load is SAID out loud, because an unstated load is indistinguishable from no load in the transcript and in the user's reading alike. Pinned separately because the two halves are edited independently.",
       "owner": {
         "file": "stack/rules/csharp-conventions.md",
         "marker": "the receipt is what makes the load happen"
@@ -3763,6 +3763,14 @@
         },
         {
           "file": "stack/rules/devops-conventions.md",
+          "marker": "the receipt is what makes the load happen"
+        },
+        {
+          "file": "stack/rules/markdown-docs.md",
+          "marker": "the receipt is what makes the load happen"
+        },
+        {
+          "file": "stack/rules/skill-authoring.md",
           "marker": "the receipt is what makes the load happen"
         }
       ]

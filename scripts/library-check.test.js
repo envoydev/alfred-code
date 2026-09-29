@@ -17,7 +17,7 @@ test.after(() => { for (const r of roots) fs.rmSync(r, { recursive: true, force:
 
 function fx({
     sourceVersion = '1.3.0', sourceEdit = false, settings, local, rawSettings, noStamp = false, legacy = false,
-    ruleEdit = false, docsRoot,
+    ruleEdit = false, docsRoot, gitRule = '# git\n',
 } = {})
 {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'libcheck-'));
@@ -28,7 +28,7 @@ function fx({
     fs.mkdirSync(path.join(src, 'stack/agents'), { recursive: true });
     fs.writeFileSync(path.join(src, 'stack/agents/seat.md'), '---\nname: seat\ndescription: s\n---\nbody\n');
     fs.mkdirSync(path.join(src, 'stack/rules'), { recursive: true });
-    fs.writeFileSync(path.join(src, 'stack/rules/baseline-git.md'), '# git\n');
+    fs.writeFileSync(path.join(src, 'stack/rules/baseline-git.md'), gitRule);
     // A pristine copy of the placeholder rule, exactly as `stack/rules/baseline-docs-root.md` ships
     // it - the one rule whose PROJECT copy never matches its source byte for byte (the source holds
     // `__DOCS_ROOT__`, the project a substituted path), so `behind` needs the normalised comparison.
@@ -331,4 +331,36 @@ test('at local scope the docs-root rule is compared against the local docs path,
     const r = run(f);
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /library: clean \(4 copies\)/);
+});
+
+// 2.1.5 audit M75: skillOverrides is the sanctioned per-project lever for a locked skill, but a shipped
+// rule that still sends the model to the skill makes that call fail - 'off' and 'user-invocable-only'
+// both refuse a model Skill call (code.claude.com/docs/en/skills, 'Override skill visibility from
+// settings'), while 'name-only' only hides the description and keeps it callable.
+const POINTER = '# git\n\nA commit is next - the FIRST action is the `demo` Skill call, before the command runs.\n';
+
+test('a skill a shipped rule sends the model to, switched off in skillOverrides, is a blocked finding (M75)', () =>
+{
+    const off = run(fx({ gitRule: POINTER, settings: { skillOverrides: { demo: 'off' } } }));
+    assert.equal(off.code, 1, off.out);
+    assert.match(off.out, /blocked: skill demo is 'off' in skillOverrides, but baseline-git\.md sends the model to it/);
+    const json = JSON.parse(run(fx({ gitRule: POINTER, local: { skillOverrides: { demo: 'user-invocable-only' } } }), ['--json']).out);
+    assert.deepStrictEqual(json.blocked, [{ skill: 'demo', mode: 'user-invocable-only', rules: ['baseline-git'] }], 'user-invocable-only refuses a model call too');
+});
+
+test('name-only, a local on over a shared off, an unnamed skill and a malformed settings file raise no blocked row (M75)', () =>
+{
+    for (const [label, f] of [
+        ['name-only keeps the call', fx({ gitRule: POINTER, settings: { skillOverrides: { demo: 'name-only' } } })],
+        ['the local file wins', fx({ gitRule: POINTER, settings: { skillOverrides: { demo: 'off' } }, local: { skillOverrides: { demo: 'on' } } })],
+        ['no rule names it', fx({ settings: { skillOverrides: { demo: 'off' } } })],
+        ['a bare word is no pointer', fx({ gitRule: '# git\n\nrun the demo first\n', settings: { skillOverrides: { demo: 'off' } } })],
+        ['malformed settings', fx({ gitRule: POINTER, rawSettings: '{ not json' })],
+    ])
+    {
+        const r = run(f);
+        assert.doesNotMatch(r.out, /blocked:/, `${label}: ${r.out}`);
+        assert.equal(r.code, 0, `${label}: ${r.out}`);
+        assert.deepStrictEqual(JSON.parse(run(f, ['--json']).out).blocked, [], label);
+    }
 });

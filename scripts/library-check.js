@@ -12,6 +12,8 @@
 //             library copies only move on /alfred-code:update); a stamp from before 2.1.0 (no
 //             `seats-route:`) under a stack at or past it also names the move - every skill into the
 //             project, every seat into the core - since until the update the house skills are not here
+//   blocked - a skill set to 'off' or 'user-invocable-only' in skillOverrides that a rule copy still sends
+//             the model to (a backticked name): that Skill call fails
 //
 // T16 (R29): every scope's stamp and library copies live in the PROJECT now - `--config-dir` is a
 // LEGACY fallback only, for a 1.x global install this project has not yet run an `update` over (the
@@ -131,10 +133,29 @@ function check({ project, source, configDir })
             }
             rows.push(row);
         }
+    // M75 (2.1.5 audit): `skillOverrides` is the per-project lever for a locked skill, but a shipped rule
+    // that still sends the model to that skill makes the call fail - 'off' and 'user-invocable-only' both
+    // refuse a model Skill call ('name-only' only hides the description). A rule names a skill as a
+    // backticked name; only the stamp's own rule copies are read, each name validated before it is joined.
+    const REFUSED = new Set(['off', 'user-invocable-only']);
+    const refused = Object.entries({ ...settings, ...local })
+        .filter(([name, mode]) => REFUSED.has(mode) && validItemName(name, dirs.skills))
+        .sort(([a], [b]) => a.localeCompare(b));
+    const blocked = [];
+    for (const [skill, mode] of refused)
+    {
+        const cite = new RegExp('`' + skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '`');
+        const rules = Object.keys(stamp.rules || {}).sort().filter((name) =>
+        {
+            if (!validItemName(name, dirs.rules)) return false;
+            try { return cite.test(fs.readFileSync(path.join(dirs.rules, `${name}.md`), 'utf8')); } catch { return false; }
+        });
+        if (rules.length) blocked.push({ skill, mode, rules });
+    }
     const stale = Boolean(sourceVersion && stamp.version && newer(sourceVersion, stamp.version));
     // The 2.1.0 move: a stamp from before it names no `seats-route:`.
     const moved = stale && !newer('2.1.0', sourceVersion) && newer('2.1.0', stamp.version) && !readSeatsRoute(base === claudeDir ? own : path.join(base, LEGACY.stamp));
-    return { version: stamp.version, sourceVersion, rows, invalid, stale, moved };
+    return { version: stamp.version, sourceVersion, rows, invalid, stale, moved, blocked };
 }
 
 function main(argv)
@@ -147,7 +168,7 @@ function main(argv)
     if (!res) { console.log('library: no library stamp - nothing to check'); return 0; }
     const bad = res.rows.filter((r) => r.state !== 'ok');
     const shadowed = res.rows.filter((r) => r.shadowedByAccount);
-    const findings = bad.length + (res.stale ? 1 : 0) + shadowed.length + res.invalid;
+    const findings = bad.length + (res.stale ? 1 : 0) + shadowed.length + res.invalid + res.blocked.length;
     if (argv.includes('--json')) { console.log(JSON.stringify(res)); return findings ? 1 : 0; }
     if (res.stale) console.log(`stale stamp: the project copies are from ${res.version}, the stack is ${res.sourceVersion} - run /alfred-code:update${res.moved
         ? ' (2.1.0 moved every skill into the project and every seat into the core - until the update runs here, the house skills are not copied and every seat is listed undenied)' : ''}`);
@@ -155,6 +176,9 @@ function main(argv)
     for (const r of bad) console.log(`${r.state}: ${r.kind} ${r.name} - ${say[r.state]}`);
     if (res.invalid) console.log(`invalid: ${res.invalid} stamp name(s) are not valid item names - skipped, never read`);
     for (const r of res.rows.filter((row) => row.mode && row.mode !== 'on')) console.log(`switched: skill ${r.name} is '${r.mode}' in skillOverrides`);
+    for (const b of res.blocked)
+        console.log(`blocked: skill ${b.skill} is '${b.mode}' in skillOverrides, but ${b.rules.map((r) => `${r}.md`).join(', ')} sends the model to it - `
+            + `that Skill call fails; set it to 'name-only' (hides the description, keeps the call) or 'on', or drop the rule`);
     for (const r of shadowed)
         console.log(`shadowed: skill ${r.name} - an account copy at ${path.join(configDir, 'skills', r.name)} overrides this project's own `
             + `(Claude Code runs a personal skill over a project one of the same name) - once every project has updated, `

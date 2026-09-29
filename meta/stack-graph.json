@@ -1039,8 +1039,17 @@
         "**/compose*.yaml",
         "**/.github/workflows/*.yml",
         "**/.github/workflows/*.yaml",
+        "**/.github/actions/**/action.yml",
+        "**/.github/actions/**/action.yaml",
+        "**/azure-pipelines*.yml",
+        "**/azure-pipelines*.yaml",
+        "**/.gitlab-ci.yml",
         "**/deploy*.sh",
-        "**/deploy*.ps1"
+        "**/deploy*.ps1",
+        "**/.env.example",
+        "**/.env.template",
+        "**/*.env.example",
+        "**/*.env.template"
       ]
     },
     "dotnet-repair-agents": {
