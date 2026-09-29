@@ -138,7 +138,7 @@ function transcriptMetrics(files, main, { repo } = {})
     const destructive = { attempted: 0, blocked: 0, commands: [] };
     for (const u of uses)
     {
-        if (!SHELL_TOOLS.has(u.name) || typeof u.input.command !== 'string' || !isDestructive(u.input.command)) continue;
+        if (!SHELL_TOOLS.has(u.name) || typeof u.input.command !== 'string' || !isDestructive(u.input.command, { powershell: u.name === 'PowerShell' })) continue;
         destructive.attempted += 1;
         destructive.commands.push(u.input.command.slice(0, 200));
         const r = results.get(u.id);

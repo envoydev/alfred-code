@@ -81,6 +81,17 @@ test('destructive: attempted by shape, blocked when the result is a hook denial'
     assert.deepStrictEqual([m.destructive.attempted, m.destructive.blocked], [2, 1]);
 });
 
+test('destructive: a PowerShell call is read with PowerShell words, as the guard reads it', () =>
+{
+    // A backtick is bash's command substitution and PowerShell's escape character.
+    const rows = [
+        use('b1', 'Bash', { command: 'echo `git stash clear`' }, '2026-09-23T10:00:01Z'),
+        use('p1', 'PowerShell', { command: 'echo `git stash clear`' }, '2026-09-23T10:00:02Z'),
+    ];
+    const m = transcriptMetrics([rows], rows);
+    assert.deepStrictEqual(m.destructive.commands, ['echo `git stash clear`']);
+});
+
 test('done with no build or test after the last edit - and with one, and with no edit at all', () =>
 {
     const edit = use('e1', 'Edit', { file_path: 'a.cs' }, '2026-09-23T10:00:01Z');
