@@ -49,7 +49,8 @@ change (see the invariants below).
   frozen shell twins are deleted (2.0.0) and `ALFRED_CODE_SEED=shell` refuses with one line.
   `meta/stack-manifest.json`, hand-edited, is the one source of the six lists the seed reads;
   `docs/alfred-code.html` is the browser inventory (lint check 60 runs `node --check` over its inline
-  script: an unescaped quote in one row string left the page with no tables).
+  script: an unescaped quote in one row string left the page with no tables; check 60b holds every seat's
+  `mdl` pin badge and row 'Pinned <model>/<effort>' to its frontmatter - 2.1.5 M57).
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
   `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`. Its
   authoring outline (Setup and Key files among it) and keep-out list say WHAT a CLAUDE.md holds; the
@@ -167,8 +168,10 @@ change (see the invariants below).
     'usages of' count only before a code identifier - backticked, CamelCase, `name(`, `A.B` / `A::B` - never a
     kebab-case or file-shaped token: I5, a text sweep for a skill name was the week's one block). An
     `Explore` / `Plan` brief gets the untrusted-content sentence appended (`updatedInput`, never a deny).
-    In a repo never set up only the implementer gate runs, for the `alfred-code:` spelling alone, and writes
-    no block row (M9, `standDown(..., { setUp: false })`).
+    A diagnoser CALLER (the payload's `agent_type`, bare or house-prefixed) dispatches only `evidence-gatherer` -
+    a subagent's `Agent(<type>)` list is ignored, so the grant alone let it start a writing seat (2.1.5 M48).
+    In a repo never set up only an `alfred-code:`-spelled implementer target is judged - the diagnoser pin,
+    then the implementer gate - and no block row is written (M9, `standDown(..., { setUp: false })`).
   - `guard-ungated-commit.js` (PreToolUse `Bash`) - blocks a non-trivial `git commit` without the
     `<docs-path>/flow/COMMIT-GATE` receipt, and `git push` / `gh pr merge` without `PUSH-GATE`. A dry
     run or a branch level with upstream is never gated; `ALFRED_CODE_PUSH_GATE=0` turns the push half off.
@@ -325,7 +328,9 @@ change (see the invariants below).
   SubagentHandback when its tools include it, else its last message (`verifier-memory-before-report`);
   `scripts/audit-214-agents.test.js` holds the grants.
   Pins: resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers
-  `sonnet`/`medium`, support seats `sonnet`. Captures are deliberate-only
+  `sonnet`/`medium`, support seats `sonnet`, and three read-only reasoners on `opus` - `alfred-issue-diagnoser-ci`
+  `high`, `alfred-issue-diagnoser-runtime` and `security-auditor` `xhigh` (the reasons, and the A/B they still lack, in
+  `stack/skills/alfred-task-solve-cross/references/model-routing.md`). Captures are deliberate-only
   (`alfred-capture-architecture` writes `architecture/ARCHITECTURE.md` and
   `baseline-project-architecture.md`; the findings go to `alfred-capture-architecture-quality`
   (`quality/ASSESSMENT.md`), the code's to `alfred-capture-code-quality` (`quality/CODE-ASSESSMENT.md`), and the
@@ -900,7 +905,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   50,719; the whole-file count it replaced read 51,473 and missed the generated rule). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor. An AGENT description is capped at 300 chars (check 15b): the 'Use when...' sentence and its
-  'Do NOT use' clause, the rest in the agent's `## Scope` body section - the dispatcher's listing carries
+  'Do NOT use' (or 'Not for') clause, the rest in the agent's ONE `## Scope` body section (both held by 15b since
+  2.1.5, M55) - the dispatcher's listing carries
   every enabled seat's description in every session's first call. A SKILL description (plus any
   `when_to_use`) is capped at 160 chars (check 15c): 'Use when' / 'Load when' with the strongest trigger
   phrases and at most one short 'Not for', the rest in the body's `## When to use` section. Claude Code

@@ -584,7 +584,6 @@
     "devops-implementer": {
       "skills": [
         "alfred-habits-done-gate",
-        "alfred-habits-test-first",
         "devops"
       ],
       "skillsSource": "frontmatter",

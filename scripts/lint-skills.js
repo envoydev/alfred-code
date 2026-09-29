@@ -867,6 +867,17 @@ function lintAgentDescription(label, description)
     if (typeof description !== 'string' || description.length <= AGENT_DESC_LIMIT) return [];
     return [`${label} description is ${description.length} chars (> ${AGENT_DESC_LIMIT}) - keep the 'Use when...' sentence and its 'Do NOT use' clause, and move the rest into the agent body`];
 }
+// 15b's shape (2.1.5 M55): the clause, and ONE `## Scope` section holding what the cap cut - code-style-analyzer
+// had no clause, test-coverage-analyzer two Scope headings (the second its dispatch inputs), a resolver none.
+function lintAgentShape(label, description, body)
+{
+    const out = [];
+    if (typeof description === 'string' && !/\b(Do NOT use|Not for)\b/.test(description))
+        out.push(`${label} description has no 'Do NOT use' or 'Not for' clause - the listing is where a dispatcher learns when not to pick the seat`);
+    const scopes = (String(body || '').match(/^## Scope[ \t]*$/gm) || []).length;
+    if (scopes !== 1) out.push(`${label} has ${scopes} '## Scope' sections (want exactly 1) - the 'Use when...' paragraph and what the 300-char description left out live there`);
+    return out;
+}
 
 // 15c. A SKILL description is capped too, for the skill listing's own budget: Claude Code lists every
 // model-invocable skill's description (with `when_to_use` appended) in every turn, within 1% of the
@@ -1799,7 +1810,8 @@ function main()
             continue;
         }
 
-        const fm = fs.readFileSync(file, 'utf8').match(/^---\r?\n([\s\S]*?)\r?\n---/);
+        const source = fs.readFileSync(file, 'utf8');
+        const fm = source.match(/^---\r?\n([\s\S]*?)\r?\n---/);
         if (!fm)
         {
             continue;
@@ -1819,7 +1831,7 @@ function main()
         {
             flag(`${label} description is ${meta.description.length} chars (> ${DESC_LIMIT}) - trim it; every description is always-on context in every install`);
         }
-        if (label.startsWith('agents/')) for (const finding of lintAgentDescription(label, meta && meta.description)) flag(finding);
+        if (label.startsWith('agents/')) for (const finding of [...lintAgentDescription(label, meta && meta.description), ...lintAgentShape(label, meta && meta.description, source.slice(fm[0].length))]) flag(finding);
         if (label.startsWith('skills/')) for (const finding of lintSkillDescription(label, meta && meta.description, meta && meta.when_to_use)) flag(finding);
     }
 
@@ -2391,6 +2403,8 @@ function main()
     for (const finding of lintStaleMcpToolNames()) flag(finding);
     // 60. The inventory page's inline script parses - a broken string there renders an empty page.
     for (const finding of lintPageScripts()) flag(finding);
+    // 60b. The inventory page shows every seat at its frontmatter pin.
+    for (const finding of lintHtmlSeatPins()) flag(finding);
     // 55. Our own workflows: no event field spliced into run, no floating third-party action, no
     //     pull_request_target checkout of the PR head.
     for (const finding of lintWorkflows(workflowFiles())) flag(finding);
@@ -2762,6 +2776,45 @@ function lintPageScripts({ file = 'docs/alfred-code.html', html } = {})
         const line = at ? bodyStart + Number(at[1]) - 1 : bodyStart;
         const why = ((r.stderr || '').split('\n').find((l) => /Error/.test(l)) || `exit ${r.status}`).trim();
         out.push(`${file}:${line} - its inline script fails node --check (${why}), so the page renders no table`);
+    }
+    return out;
+}
+
+// 60b (2.1.5 M57). The page states each seat's pin twice - the `mdl` badge (text and tier class) and the row's
+// 'Pinned <model>/<effort>' - and nothing compared them with the frontmatter: architecture-analyzer read
+// 'sonnet · low' for two weeks after its pin moved to medium. A badge in a shape this cannot read is flagged too,
+// so a changed markup cannot pass as an empty check.
+function lintHtmlSeatPins(html, pins)
+{
+    const page = 'docs/alfred-code.html';
+    let text = html;
+    if (text === undefined)
+    {
+        try { text = fs.readFileSync(STACK_HTML, 'utf8'); }
+        catch (err) { return [`${page}: unreadable, so its seat pins were not checked (${err.message})`]; }
+    }
+    const pinOf = pins || new Map(fs.readdirSync(AGENTS_DIR).filter((f) => f.endsWith('.md')).map((f) =>
+    {
+        const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.readFileSync(path.join(AGENTS_DIR, f), 'utf8'));
+        const meta = fm ? yaml.load(fm[1]) || {} : {};
+        return [f.slice(0, -3), { model: meta.model, effort: meta.effort }];
+    }));
+    const out = [];
+    const badges = [...text.matchAll(/class="agent [^"]*">([a-z0-9-]+)<span class="role">[^<]*<\/span><span class="mdl ([a-z]+)">([^<]*)<\/span>/g)];
+    const all = (text.match(/class="mdl /g) || []).length;
+    if (badges.length !== all) out.push(`${page}: ${all - badges.length} model badge(s) are not in the seat-badge shape this check reads`);
+    for (const [, seat, tier, shown] of badges)
+    {
+        const pin = pinOf.get(seat);
+        if (!pin) { out.push(`${page}: a model badge names '${seat}', which is no seat in stack/agents`); continue; }
+        if (shown !== `${pin.model} · ${pin.effort}`) out.push(`${page}: the model badge for '${seat}' reads '${shown}' but its frontmatter pins ${pin.model} · ${pin.effort}`);
+        if (tier !== pin.model) out.push(`${page}: the model badge for '${seat}' carries class 'mdl ${tier}' but the seat runs ${pin.model}`);
+    }
+    for (const [, seat, model, effort] of text.matchAll(/\["([a-z0-9-]+)", "subagent",[^\n]*?\bPinned (\w+)\/(\w+)/g))
+    {
+        const pin = pinOf.get(seat);
+        if (!pin) out.push(`${page}: an inventory row names '${seat}', which is no seat in stack/agents`);
+        else if (model !== pin.model || effort !== pin.effort) out.push(`${page}: the inventory row for '${seat}' says 'Pinned ${model}/${effort}' but its frontmatter pins ${pin.model}/${pin.effort}`);
     }
     return out;
 }
@@ -3212,6 +3265,8 @@ module.exports = {
     lintOptionalCites,
     lintPluginCites,
     lintAgentDescription,
+    lintAgentShape,
+    lintHtmlSeatPins,
     lintSkillDescription,
     SKILL_DESC_LIMIT,
     lintAgentTools,

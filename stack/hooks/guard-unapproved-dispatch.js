@@ -130,6 +130,22 @@ const isImplementer = houseSeat !== null && /-implementer$/.test(houseSeat);
 // name there is the project's own agent, since the stack copied nothing into it.
 if (unsetRepo && !(isImplementer && seat.includes(':'))) process.exit(0);
 
+// 2.1.5 M48: the two diagnosers hold `Agent` to fan out evidence gatherers, and a subagent's `Agent(<type>)`
+// list is ignored (code.claude.com/docs/en/sub-agents, verified 2026-09-29), so a read-only diagnoser could
+// dispatch a writing seat whenever no flow was stamped. Inside a subagent the payload names the CALLER as
+// `agent_type` - its frontmatter name, or `<plugin>:<name>` for a plugin seat - read with the house spellings
+// above, so a foreign plugin's namesake is not pinned.
+const caller = typeof payload.agent_type === 'string' ? payload.agent_type : '';
+const callerSeat = !caller.includes(':') ? caller : (HOUSE_PREFIX.test(caller) ? caller.slice(caller.indexOf(':') + 1) : '');
+if (/^alfred-issue-diagnoser-(?:ci|runtime)$/.test(callerSeat) && houseSeat !== 'evidence-gatherer') {
+  process.stderr.write(
+    `Blocked: ${caller} dispatched ${seat}. A diagnoser is read-only and dispatches only the evidence gatherer\n` +
+      `(\`alfred-code:evidence-gatherer\` where the core plugin carries it, else \`evidence-gatherer\`), one gather task each.\n` +
+      `A fix, a design or a review is the ROUTE in your report - the session dispatches it.`,
+  );
+  process.exit(2);
+}
+
 // A symbol question routed at a grep-shaped seat: block and send it back to the navigation server.
 // The patterns are the QUESTION shapes baseline-navigation names, not tool words - a
 // sweep brief ('map the auth module', 'which files configure logging') carries none.

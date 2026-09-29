@@ -1713,7 +1713,7 @@
       ]
     },
     "rubric-dispatch-carveout-verifier": {
-      "_note": "The verifiers' quality-loop stage-rubric carve-out (rubric is the audit spec; skip plan diff, build+test rerun, and the memory-handoff WRITE unless the brief asks - read-only orientation stays fine) - identical in all 10 verifier seats for the same selective-install reason.",
+      "_note": "The verifiers' quality-loop stage-rubric carve-out (rubric is the audit spec; skip plan diff, build+test rerun, and the memory-handoff WRITE unless the brief asks - read-only orientation stays fine) - identical in all 10 verifier seats for the same selective-install reason. security-auditor carries only the parts its Method has (the keyed shape, no posture footer, the memory-handoff WRITE skip) - 2.1.5 M51.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
         "marker": "the memory handoff WRITE unless the dispatch brief asks for it"
@@ -3041,10 +3041,6 @@
           "marker": "your skill list has"
         },
         {
-          "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "your skill list has"
-        },
-        {
           "file": "stack/skills/angular-conventions/SKILL.md",
           "marker": "skill list by what"
         },
@@ -3086,6 +3082,18 @@
         },
         {
           "file": "stack/agents/code-quality-analyzer.md",
+          "marker": "says it covers"
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "says it covers"
+        },
+        {
+          "file": "stack/agents/ionic-angular-solution-designer.md",
+          "marker": "says it covers"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
           "marker": "says it covers"
         }
       ]
@@ -4207,6 +4215,18 @@
         {
           "file": "stack/agents/wpf-implementer.md",
           "marker": "The trio contract above applies to designer-decomposition tasks, where the memory bus IS the handoff"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "The trio contract above applies to designer-decomposition tasks, where the memory bus IS the handoff"
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "The trio contract above applies to designer-decomposition tasks, where the memory bus IS the handoff"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "The trio contract above applies to designer-decomposition tasks, where the memory bus IS the handoff"
         }
       ]
     },
@@ -5314,7 +5334,7 @@
       ]
     },
     "seat-report-size-bound": {
-      "_note": "Every seat's return is bounded in the seat body, because the caller pays for it in the window it was dispatched from and an unbounded 'report lean' is advice, not a bound. 30 copies, one per seat carrying the Report lean paragraph.",
+      "_note": "Every seat's return is bounded in the seat body, because the caller pays for it in the window it was dispatched from and an unbounded 'report lean' is advice, not a bound. 31 copies, one per seat carrying the Report lean paragraph - code-quality-analyzer's own fold-by-rule variant included (2.1.5 M54).",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
         "marker": "the whole report under ~1.5k tokens"
@@ -5435,6 +5455,10 @@
         {
           "file": "stack/agents/wpf-verifier.md",
           "marker": "the whole report under ~1.5k tokens"
+        },
+        {
+          "file": "stack/agents/code-quality-analyzer.md",
+          "marker": "the whole report under ~1.5k tokens"
         }
       ]
     },
@@ -5496,7 +5520,7 @@
       ]
     },
     "verifier-left-running-line": {
-      "_note": "A seat that starts a dev server, an emulator, a container or a desktop app must SAY so in its report, on a literal line the orchestrator can read without parsing prose - the quality-gates rule's tear-down ask can only cover what it is told is up. Carried by the five verifiers whose gates start something, plus the integration reviewer.",
+      "_note": "A seat that starts a dev server, an emulator, a container or a desktop app must SAY so in its report, on a literal line the orchestrator can read without parsing prose - the quality-gates rule's tear-down ask can only cover what it is told is up. Carried by the seven verifiers whose gates start something, plus the integration reviewer - console- and aspnet-verifier joined in 2.1.5 (M47): their app run had no bound and no line.",
       "owner": {
         "file": "stack/agents/web-angular-verifier.md",
         "marker": "a literal `left_running:` line"
@@ -5520,6 +5544,14 @@
         },
         {
           "file": "stack/agents/wpf-verifier.md",
+          "marker": "a literal `left_running:` line"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "a literal `left_running:` line"
+        },
+        {
+          "file": "stack/agents/aspnet-verifier.md",
           "marker": "a literal `left_running:` line"
         }
       ]
@@ -6058,7 +6090,7 @@
       ]
     },
     "run-book-read-first": {
-      "_note": "The run book is read before a seat builds, starts, logs into or hand-checks the app. The generated pointer rule (baseline-project-run-book.md, from the capture's template) is canonical and reaches every session and subagent once the capture ran; the seats that run the app restate it as a step, because a seat dispatched before the capture ran still needs to know where the doc will be.",
+      "_note": "The run book is read before a seat builds, starts, logs into or hand-checks the app. The generated pointer rule (baseline-project-run-book.md, from the capture's template) is canonical and reaches every session and subagent once the capture ran; the seats that run the app restate it as a step, because a seat dispatched before the capture ran still needs to know where the doc will be. The seat line leaves 'build' to the generated rule (2.1.5 M60): the resolvers and implementers build too and carry no seat line.",
       "owner": {
         "file": "stack/skills/alfred-capture-project-capabilities/references/run-book-rule.template.md",
         "marker": "read it before you build, start, log into or hand-check the app"
@@ -6066,55 +6098,55 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
         },
         {
           "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
-          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
         },
         {
           "file": "stack/agents/evidence-gatherer.md",
-          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
         }
       ]
     },

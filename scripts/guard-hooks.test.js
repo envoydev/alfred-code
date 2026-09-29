@@ -1348,6 +1348,35 @@ test('guard-unapproved-dispatch: an untyped dispatch is the general-purpose seat
   assert.match(r.stderr, /general-purpose/, 'the denial names the seat that would have run');
 });
 
+// 2.1.5 M48: the two diagnosers hold `Agent` so they can fan out evidence-gatherers, and a subagent's
+// `Agent(<type>)` list is ignored (code.claude.com/docs/en/sub-agents), so the grant was unrestricted: with
+// no flow stamped, a read-only diagnoser could dispatch a writing general-purpose seat. Inside a subagent the
+// payload carries the CALLER as `agent_type` (the frontmatter name, or `<plugin>:<name>` for a plugin seat).
+test('guard-unapproved-dispatch: a diagnoser dispatches the evidence gatherer and nothing else', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  const disp = (caller, seat, prompt = 'pull the failing job log and grep it to the first error') => runIn('guard-unapproved-dispatch.js',
+    { tool_name: 'Agent', ...(caller ? { agent_type: caller, agent_id: 'a1' } : {}), tool_input: { subagent_type: seat, prompt } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+  for (const caller of ['alfred-code:alfred-issue-diagnoser-ci', 'alfred-code:alfred-issue-diagnoser-runtime', 'alfred-issue-diagnoser-runtime']) {
+    assert.equal(disp(caller, 'alfred-code:evidence-gatherer').status, 0, `${caller}: the core's gatherer`);
+    assert.equal(disp(caller, 'evidence-gatherer').status, 0, `${caller}: the copy route's gatherer`);
+    for (const seat of ['general-purpose', 'claude', 'fork', 'Explore', 'Plan', 'alfred-code:aspnet-implementer', 'alfred-code:aspnet-verifier', 'someone-else:evidence-gatherer']) {
+      const r = disp(caller, seat);
+      assert.equal(r.status, 2, `${caller} -> ${seat}: refused`);
+      assert.match(r.stderr, /dispatches only the evidence gatherer/, 'the denial names the one seat it may dispatch');
+    }
+  }
+  const untyped = runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', agent_type: 'alfred-code:alfred-issue-diagnoser-ci', tool_input: { prompt: 'x' } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+  assert.equal(untyped.status, 2, 'an untyped dispatch runs general-purpose - refused too');
+  // every other caller keeps the rules it had
+  assert.equal(disp(undefined, 'general-purpose').status, 0, 'the main session, no flow stamped');
+  assert.equal(disp('alfred-code:aspnet-verifier', 'general-purpose').status, 0, 'another seat is not pinned here');
+  assert.equal(disp('someone-else:alfred-issue-diagnoser-ci', 'general-purpose').status, 0, 'a foreign plugin\'s namesake is not the house diagnoser');
+  assert.equal(disp('alfred-code:alfred-issue-diagnoser-ci', 'alfred-code:evidence-gatherer', 'who calls SocketConnection.Send').status, 0,
+    'the gatherer\'s locate-a-symbol task is its job, not a grep-shaped seat\'s');
+});
+
 test('guard-stop-contract: the fresh-session offer lands at turn end, once per cost step', () => {
   const logDir = fs.mkdtempSync(path.join(TMP, 'freshstop-'));
   const at = (name, ctx, text) => transcript(name, ctxRows(name, ctx, text || 'Applied the change; tests pass.'));

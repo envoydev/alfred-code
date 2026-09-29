@@ -1176,6 +1176,47 @@ test('an agent description is capped at 300 chars', () =>
     assert.deepStrictEqual(lintAgentDescription('agents/a.md', undefined), [], 'no description is check 1\'s finding, not this one');
 });
 
+// 2.1.5 M55: the 300-char shape is a 'Use when...' sentence plus its 'Do NOT use' clause, the rest in ONE
+// `## Scope` section - code-style-analyzer had no clause, test-coverage-analyzer two Scope headings,
+// dotnet-test-failure-resolver none.
+test('an agent keeps the 15b shape: a Do NOT use / Not for clause and exactly one ## Scope', () =>
+{
+    const { lintAgentShape } = require('./lint-skills.js');
+    const scope = '## Scope\n\nUse when x.\n\n## Conventions\n- y\n';
+    assert.deepStrictEqual(lintAgentShape('agents/a.md', 'Use when x. Do NOT use for y.', scope), [], 'the shape');
+    assert.deepStrictEqual(lintAgentShape('agents/a.md', 'Use when x. Not for y.', scope), [], "'Not for' is the other form");
+    const noClause = lintAgentShape('agents/a.md', 'Use when x; the capture is its caller.', scope);
+    assert.strictEqual(noClause.length, 1);
+    assert.match(noClause[0], /agents\/a\.md description has no 'Do NOT use' or 'Not for' clause/);
+    const none = lintAgentShape('agents/a.md', 'Use when x. Do NOT use for y.', '## Conventions\n- y\n');
+    assert.match(none[0], /agents\/a\.md has 0 '## Scope' sections \(want exactly 1\)/);
+    const two = lintAgentShape('agents/a.md', 'Use when x. Do NOT use for y.', `${scope}\n## Scope\n- inputs\n`);
+    assert.match(two[0], /has 2 '## Scope' sections/);
+    assert.deepStrictEqual(lintAgentShape('agents/a.md', 'Use when x. Do NOT use for y.', '### Scope\n## Scope notes\n'), [
+        "agents/a.md has 0 '## Scope' sections (want exactly 1) - the 'Use when...' paragraph and what the 300-char description left out live there",
+    ], 'only an exact H2 counts');
+    assert.deepStrictEqual(lintAgentShape('agents/a.md', undefined, scope), [], 'no description is check 1\'s finding');
+});
+
+// 2.1.5 M57: the inventory page showed architecture-analyzer as 'sonnet · low' for two weeks after its
+// frontmatter moved to medium - nothing compared the page's pin badges with the seats.
+test('the inventory page shows every seat at its frontmatter pin', () =>
+{
+    const { lintHtmlSeatPins } = require('./lint-skills.js');
+    const pins = new Map([['a-seat', { model: 'sonnet', effort: 'medium' }], ['b-seat', { model: 'opus', effort: 'xhigh' }]]);
+    const badge = (seat, model, text) => `<span class="agent x">${seat}<span class="role">r</span><span class="mdl ${model}">${text}</span></span>`;
+    const row = (seat, pinned) => `["${seat}", "subagent", "k", "home", "url", "Does a thing. Pinned ${pinned}. More."],`;
+    const good = [badge('a-seat', 'sonnet', 'sonnet · medium'), badge('b-seat', 'opus', 'opus · xhigh'), row('a-seat', 'sonnet/medium')].join('\n');
+    assert.deepStrictEqual(lintHtmlSeatPins(good, pins), []);
+    const stale = lintHtmlSeatPins([badge('a-seat', 'sonnet', 'sonnet · low'), badge('b-seat', 'opus', 'opus · xhigh')].join('\n'), pins);
+    assert.strictEqual(stale.length, 1);
+    assert.match(stale[0], /badge for 'a-seat' reads 'sonnet · low' but its frontmatter pins sonnet · medium/);
+    assert.match(lintHtmlSeatPins(badge('b-seat', 'sonnet', 'opus · xhigh'), pins)[0], /class 'mdl sonnet'/, 'the tier class follows the model');
+    assert.match(lintHtmlSeatPins(row('a-seat', 'sonnet/low'), pins)[0], /row for 'a-seat' says 'Pinned sonnet\/low' but its frontmatter pins sonnet\/medium/);
+    assert.match(lintHtmlSeatPins(badge('ghost', 'sonnet', 'sonnet · low'), pins)[0], /names 'ghost', which is no seat/);
+    assert.deepStrictEqual(lintHtmlSeatPins(), [], 'docs/alfred-code.html: every badge and row at its pin');
+});
+
 // 2.1.2 (live check F3, 2026-09-29): a 200K-window session logged 'Skill listing over budget: 39 skills,
 // 19901 chars > 8000' - the listing budget is 1% of the context window, so Claude Code dropped the
 // descriptions that carry the trigger words. A skill description (plus any `when_to_use`, which the listing

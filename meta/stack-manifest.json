@@ -144,7 +144,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "alfred-habits-test-first",
-      "note": "test-first (R106): write the test, watch it fail for the expected reason, minimal code, green, refactor; pointed at by baseline-interaction, preloaded by every implementer, loaded by alfred-task-implement"
+      "note": "test-first (R106): write the test, watch it fail for the expected reason, minimal code, green, refactor; pointed at by baseline-interaction, preloaded by every implementer but devops-implementer (2.1.5 M53: its loop validates config and writes no test), loaded by alfred-task-implement"
     },
     {
       "repo": "envoydev/alfred-code",
