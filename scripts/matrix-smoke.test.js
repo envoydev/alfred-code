@@ -79,7 +79,9 @@ for (const route of Object.keys(ROUTES))
             assert.ok(result.skill, 'the skill is copied');
             assert.deepStrictEqual(LOCKED.filter((n) => !(n in result.mcp.mcpServers)), [], 'the three locked servers are in .mcp.json');
             const wired = JSON.stringify(result.settings.hooks || {});
-            assert.match(wired, /guard-secret-value\.js/, 'the picked hook is wired');
+            // the secret guard rides both dispatchers (the shell tools, and since 2.1.5 M3 the file tools), named in their args
+            assert.match(wired, /file-guards\.js\\" guard-secret-value/, 'the picked hook is wired on the file tools');
+            assert.match(wired, /shell-guards\.js\\" guard-secret-value/, 'and on the shell tools');
         }
     });
 

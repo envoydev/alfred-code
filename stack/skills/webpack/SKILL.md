@@ -5,7 +5,7 @@ description: "Use when working on a webpack config, a library bundle, or a tree-
 
 # Webpack 5 - library builds that stay fast and correct
 
-Webpack earns its keep where its loader/plugin ecosystem, Module Federation, or an existing monorepo standard demands it - for a pure library with no such constraint, a Rollup-class tool gives cleaner ESM+types output; say so rather than defaulting here. Once webpack is the tool, these are the rules. Pin `webpack@~5.108` (tilde, not caret) whenever any `experiments.*` flag is on - experimental flags carry relaxed semver - with webpack-cli 7 (Node >= 20.9, native TS configs, `--config-node-env`).
+Webpack earns its keep where its loader/plugin ecosystem, Module Federation, or an existing monorepo standard demands it - for a pure library with no such constraint, a Rollup-class tool gives cleaner ESM+types output; say so rather than defaulting here. Once webpack is the tool, these are the rules. Whenever any `experiments.*` flag is on, tilde-pin the webpack minor you verified at use (`webpack@~5.<minor>`, tilde not caret - experimental flags carry relaxed semver), fetching the current minor through the documentation server or `npm view webpack version` rather than recall; 5.108 is only the floor for `defineConfig`. Pair it with webpack-cli 7 (Node >= 20.9, native TS configs, `--config-node-env`).
 
 ## When to use
 

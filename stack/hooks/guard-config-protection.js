@@ -10,6 +10,12 @@
 // spells it, a bare file name, or `*`; this session's own, under 8h).
 // ALFRED_CODE_CONFIG_PROTECT=0 switches the gate off. The shell route is a segment parser, not a
 // full parse: a write it cannot see passes, and the block rate is read before it is widened.
+// Declined (2.1.5 M13), on the record so the gap is a choice: a lockfile (package-lock.json, yarn.lock,
+// packages.lock.json), a migration, the central package file (Directory.Packages.props) and a solution file
+// (.sln). None is a CHECK a change weakens, and legitimate work edits each - a dependency bump, a new project, a
+// migration still in review; whether a migration was APPLIED lives in a database no hook reads. A block there
+// would fire on honest work far more than on a weakened check. Revisit when the block-rate ledger shows a
+// hand edit of one of them costing a run.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -37,10 +43,9 @@ if (envOf(process.env, 'CONFIG_PROTECT') === '0') process.exit(0);
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 
 // Git Bash / MSYS spell a Windows path in POSIX mount form; translate before any resolution.
-const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
-const nativePath = (p) => (process.platform === 'win32'
-  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\`)
-  : String(p));
+// The translation is shell-writes.js's one home (2.1.5 M8); without the module a path is taken as written.
+let nativePath = (p) => String(p);
+try { ({ nativePath } = require(path.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
 
 // Whole-file protection: the file IS the check.
 const WHOLE_FILE = [

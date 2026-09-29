@@ -41,6 +41,13 @@ other stdio server means its runtime is not installed on this machine - fix it, 
 `/alfred-code:configure` rather than carrying a dead registration whose tool schemas are injected into
 every session.
 
+Behind a package index that publishes no upload times (a private PyPI mirror), every uvx server - `navigation`,
+`memory` and the desktop servers - fails at start: uv treats each file as unavailable under the release's dependency
+cut-off, and its error never names the cut-off. Set `UV_EXCLUDE_NEWER=false` in the shell or a settings file's `env`
+(the launchers read it at every start; on the opt-out `.mcp.json` route run `/alfred-code:update` once so the rows
+drop the cut-off too), or give that index `exclude-newer = false` in its `[[index]]` entry of the user-level
+`uv.toml` (`~/.config/uv/uv.toml` - uvx ignores a project one).
+
 **And check the plugins are ENABLED, not merely installed.** Installing a plugin does not enable it
 at that scope, and a disabled one is silent in both directions - it does nothing and says nothing.
 Measured on this machine: 24 of 40 stack-plugin project installs sat disabled across four plugins,
@@ -114,19 +121,21 @@ Init builds it once; by hand, run it from the project root (the first run also d
 C# Roslyn, which needs .NET 10+; the navigation server installs the runtime itself if it is missing):
 
 ```bash
-SERENA_HOME=.alfred/serena/home uvx --python 3.13 --from serena-agent serena project index
+SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer 2026-09-29T23:59:59Z --from serena-agent@1.7.0 serena project index
 ```
 
 (Your data root in place of `.alfred` when you chose another; `.serena/home` while a 2.0.0 `.serena`
 has not moved yet.)
 
 `--python 3.13` is the interpreter every compiled dependency has a wheel for - uvx would otherwise
-take the newest, and 3.14 has no pyyaml wheel. (Windows PowerShell: `$env:SERENA_HOME='.alfred\serena\home'` - the navigation server hands the path to cmd.exe unquoted, where a `/` cuts it, and so would a space in an absolute path - and, on Windows on ARM, `--python cpython-3.13-windows-x86_64-none`).
+take the newest, and 3.14 has no pyyaml wheel. The version and `--exclude-newer` are the release's own pin and
+dependency cut-off (`meta/mcp-pins.json`), the ones the navigation server starts on, so the index is built by the
+serena that serves it. (Windows PowerShell: `$env:SERENA_HOME='.alfred\serena\home'` - the navigation server hands the path to cmd.exe unquoted, where a `/` cuts it, and so would a space in an absolute path - and, on Windows on ARM, `--python cpython-3.13-windows-x86_64-none`).
 
 Or paste this prompt and let the session do it:
 
 ```text
-Index this project for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --from serena-agent serena project index` - on Windows the spelling above), then verify with
+Index this project for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --exclude-newer 2026-09-29T23:59:59Z --from serena-agent@1.7.0 serena project index` - on Windows the spelling above), then verify with
 find_symbol and find_referencing_symbols on a symbol you pick from the code. If the run reports
 failed files, look at .alfred/serena/project.yml - its language_servers and ignored_paths - and tell me
 what you changed.
@@ -175,7 +184,7 @@ dependencies) leaves session-side state describing the OLD tree. Worth pasting t
 
 ```text
 I switched branches and the structure changed. Re-run dependency install if needed, restart the
-language server, re-index for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --from serena-agent serena project index` - on Windows the spelling above), and check
+language server, re-index for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --exclude-newer 2026-09-29T23:59:59Z --from serena-agent@1.7.0 serena project index` - on Windows the spelling above), and check
 whether the navigation-server memories still describe this branch accurately.
 ```
 

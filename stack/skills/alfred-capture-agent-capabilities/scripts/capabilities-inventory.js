@@ -366,7 +366,7 @@ function routingMap()
 // shell env, then settings.local.json, settings.json and the account settings.json - and refused back to
 // `.alfred` where stack/mcp/data-root.js (checkDataPath) refuses it. That module is the one home, but this
 // script ships inside a skill copy with no stack/mcp beside it, so the read is inline; a parity test
-// (scripts/audit-214-rules.test.js) holds the two to one answer.
+// (scripts/capabilities-rule.test.js) holds the two to one answer.
 const DATA_ROOT_DEFAULT = '.alfred';
 function dataRoot(projectRoot, env = process.env)
 {

@@ -755,6 +755,29 @@ test('check 46: the repo root reserves every name a shared-source entry auto-dis
     fs.rmSync(tmp, { recursive: true, force: true });
 });
 
+// M21: the plugin reference's standard layout auto-loads more default locations than check 46 listed: `bin/` (on
+// the Bash PATH of every entry), `output-styles/`, `workflows/`, `themes/`, and a root SKILL.md (a single-skill
+// plugin) - code.claude.com/docs/en/plugins-reference, 'Path behavior rules'. Nothing sits there today.
+test('M21 check 46 reserves the default bin, output-styles, workflows and themes folders and a root SKILL.md', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const { lintRepoRootReserved, RESERVED_ROOT_NAMES } = require('./lint-skills.js');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rootlint46-'));
+    try
+    {
+        for (const name of ['bin', 'output-styles', 'workflows', 'themes', 'SKILL.md'])
+        {
+            assert.ok(RESERVED_ROOT_NAMES.includes(name), `${name} is reserved`);
+            const full = path.join(tmp, name);
+            if (name.endsWith('.md')) fs.writeFileSync(full, '---\nname: x\n---\n'); else fs.mkdirSync(full);
+            assert.ok(lintRepoRootReserved(tmp).some((f) => f.includes(`\`${name}\``)), `a root ${name} is a finding`);
+        }
+        assert.deepStrictEqual(lintRepoRootReserved(), [], 'this repo root is clean');
+    }
+    finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
 test('check 48: the core carries the manifest\'s hook wiring, and every wired hook carries the gate', () => {
     const { lintHooksEntry } = require('./lint-skills.js');
     assert.deepStrictEqual(lintHooksEntry(), [],
@@ -800,8 +823,8 @@ test('check 49: the two 1.x aliases pass as generated, and a drifted alias, a re
 test('check 48: a drifted matcher, a missing file and a missing gate are all findings', () => {
     const build = require('./build-marketplace.js');
     const wirings = build.parseHookWirings();
-    const drifted = build.hooksBlock(wirings.map(w => (w.file === 'guard-read-whole-file.js' && w.matcher === 'Read'
-        ? { ...w, matcher: 'Read|Glob' } : w)));
+    const drifted = build.hooksBlock(wirings.map(w => (w.file === 'guard-unapproved-dispatch.js' && w.matcher === 'Task|Agent'
+        ? { ...w, matcher: 'Task|Agent|Glob' } : w)));
     assert.notStrictEqual(JSON.stringify(drifted), JSON.stringify(build.hooksBlock(wirings)),
         'a changed matcher must change the generated block, which is what check 48 compares');
 
@@ -1126,6 +1149,54 @@ test('check 58: lintEnvironmentCatalog catches catalog/seed/command/migration dr
         .some((f) => /ALFRED_CODE_FOO does not record renamed_from 'OLD_FOO'/.test(f)));
 });
 
+// M31 (check 54): the bare registration spelling of a server the stack RENAMED or RETIRED resolves to nothing too,
+// and the check built its pattern from today's names only - the old serena spelling passed it. The fixture lines below
+// carry the marker the check skips, which is what a deliberate old spelling in a test does.
+test('M31 check 54 flags a renamed or retired server\'s bare spelling, and skips a marked fixture line', () => {
+    const { lintMcpToolNames } = require('./lint-skills.js');
+    for (const text of ['x mcp__serena__find_symbol y\n', 'mcp__context7__query-docs\n', 'mcp__playwright__browser_navigate\n', // mcp-fixture
+        'mcp__playwright-chrome__browser_snapshot\n', 'mcp__sentry__find_issues\n', 'mcp__navigation__find_symbol\n']) // mcp-fixture
+    {
+        const hit = lintMcpToolNames({ files: [{ file: 'stack/agents/a.md', text }] });
+        assert.strictEqual(hit.length, 1, `${text.trim()}: ${JSON.stringify(hit)}`);
+        assert.match(hit[0], /stack\/agents\/a\.md:1 /);
+    }
+    assert.deepStrictEqual(lintMcpToolNames({ files: [{ file: 'scripts/t.test.js', text: 'mcp__serena__find_symbol // mcp-fixture\n' }] }), [], 'a marked fixture line passes'); // mcp-fixture
+    assert.deepStrictEqual(lintMcpToolNames(), [], 'the live tree carries none');
+});
+
+// M35 (check 59): the renamed MCP aliases stay LISTED for installs not yet updated, and the nine seats the 1.x core
+// alias carries grant their old spellings for that window - on a seat's `tools:` / `disallowedTools:` line only.
+// Anywhere else an alias spelling is the stale one check 59 exists for.
+test('M35 check 59 lets a seat\'s grant line name a listed alias, and nothing else', () => {
+    const { lintStaleMcpToolNames } = require('./lint-skills.js');
+    const entries = [{ name: 'navigation', mcpServers: { navigation: {} } }];
+    const aliases = [{ name: 'serena', mcpServers: { serena: {} } }];
+    const grant = 'tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_serena_serena__find_symbol\n'; // mcp-fixture
+    assert.deepStrictEqual(lintStaleMcpToolNames({ entries, aliases, files: [{ file: 'stack/agents/a.md', text: grant }] }), []);
+    assert.strictEqual(lintStaleMcpToolNames({ entries, aliases, files: [{ file: 'stack/agents/a.md', text: 'Call `mcp__plugin_serena_serena__find_symbol`.\n' }] }).length, 1, 'a body line'); // mcp-fixture
+    assert.strictEqual(lintStaleMcpToolNames({ entries, aliases, files: [{ file: 'stack/skills/x/SKILL.md', text: grant }] }).length, 1, 'a skill'); // mcp-fixture
+    assert.strictEqual(lintStaleMcpToolNames({ entries, aliases: [], files: [{ file: 'stack/agents/a.md', text: grant }] }).length, 1, 'an id no alias lists');
+});
+
+// M31 (check 62): a pin bump that renames or drops a tool ships a silent drop - check 59 reads only the plugin and
+// server part of a spelling. meta/mcp-tools.json records each pinned server's tool names (refresh-mcp-pins.js
+// --write), and a shipped plugin spelling whose TOOL is not listed there is a finding; an alias spelling is judged
+// by its successor's list, and a wildcard names no tool.
+test('M31 check 62 flags a plugin tool spelling whose tool the pinned server does not have', () => {
+    const { lintMcpToolsAtPin } = require('./lint-mcp-tools.js');
+    const tools = { servers: { memory: { version: '1', tools: ['memory_store', 'memory_search'] }, browser: { version: '1', tools: ['browser_navigate'] }, navigation: { version: '1', tools: ['find_symbol'] } } };
+    const ok = 'mcp__plugin_memory_memory__memory_store, mcp__plugin_browser-webkit_browser-webkit__browser_navigate, mcp__plugin_browser-chrome_browser-chrome__*\n';
+    assert.deepStrictEqual(lintMcpToolsAtPin({ tools, files: [{ file: 'stack/a.md', text: ok }] }), []);
+    const bad = lintMcpToolsAtPin({ tools, files: [{ file: 'stack/b.md', text: 'x\nmcp__plugin_memory_memory__retrieve_memory\n' }] }); // mcp-fixture
+    assert.strictEqual(bad.length, 1);
+    assert.match(bad[0], /stack\/b\.md:2 .*retrieve_memory.*memory/);
+    const alias = lintMcpToolsAtPin({ tools, files: [{ file: 'stack/c.md', text: 'mcp__plugin_serena_serena__find_symbol mcp__plugin_serena_serena__nope\n' }] }); // mcp-fixture
+    assert.strictEqual(alias.length, 1, 'an alias spelling is judged by its successor\'s list');
+    assert.deepStrictEqual(lintMcpToolsAtPin({ tools, files: [{ file: 'scripts/t.js', text: 'mcp__plugin_memory_memory__nope // mcp-fixture\n' }] }), [], 'a marked fixture line passes');
+    assert.deepStrictEqual(lintMcpToolsAtPin(), [], 'every shipped spelling names a tool its pinned server has');
+});
+
 // Check 59. A renamed MCP server leaves its old plugin spelling behind in every `tools:` allowlist and
 // `ToolSearch select:` line - a spelling check 54 cannot see, since it only bans the BARE form. The
 // stale spellings below are fixtures, so each line carries the marker the check skips.
@@ -1174,6 +1245,47 @@ test('an agent description is capped at 300 chars', () =>
     assert.strictEqual(over.length, 1, 'one over');
     assert.match(over[0], /agents\/a\.md description is 301 chars \(> 300\)/);
     assert.deepStrictEqual(lintAgentDescription('agents/a.md', undefined), [], 'no description is check 1\'s finding, not this one');
+});
+
+// 2.1.5 M55: the 300-char shape is a 'Use when...' sentence plus its 'Do NOT use' clause, the rest in ONE
+// `## Scope` section - code-style-analyzer had no clause, test-coverage-analyzer two Scope headings,
+// dotnet-test-failure-resolver none.
+test('an agent keeps the 15b shape: a Do NOT use / Not for clause and exactly one ## Scope', () =>
+{
+    const { lintAgentShape } = require('./lint-skills.js');
+    const scope = '## Scope\n\nUse when x.\n\n## Conventions\n- y\n';
+    assert.deepStrictEqual(lintAgentShape('agents/a.md', 'Use when x. Do NOT use for y.', scope), [], 'the shape');
+    assert.deepStrictEqual(lintAgentShape('agents/a.md', 'Use when x. Not for y.', scope), [], "'Not for' is the other form");
+    const noClause = lintAgentShape('agents/a.md', 'Use when x; the capture is its caller.', scope);
+    assert.strictEqual(noClause.length, 1);
+    assert.match(noClause[0], /agents\/a\.md description has no 'Do NOT use' or 'Not for' clause/);
+    const none = lintAgentShape('agents/a.md', 'Use when x. Do NOT use for y.', '## Conventions\n- y\n');
+    assert.match(none[0], /agents\/a\.md has 0 '## Scope' sections \(want exactly 1\)/);
+    const two = lintAgentShape('agents/a.md', 'Use when x. Do NOT use for y.', `${scope}\n## Scope\n- inputs\n`);
+    assert.match(two[0], /has 2 '## Scope' sections/);
+    assert.deepStrictEqual(lintAgentShape('agents/a.md', 'Use when x. Do NOT use for y.', '### Scope\n## Scope notes\n'), [
+        "agents/a.md has 0 '## Scope' sections (want exactly 1) - the 'Use when...' paragraph and what the 300-char description left out live there",
+    ], 'only an exact H2 counts');
+    assert.deepStrictEqual(lintAgentShape('agents/a.md', undefined, scope), [], 'no description is check 1\'s finding');
+});
+
+// 2.1.5 M57: the inventory page showed architecture-analyzer as 'sonnet · low' for two weeks after its
+// frontmatter moved to medium - nothing compared the page's pin badges with the seats.
+test('the inventory page shows every seat at its frontmatter pin', () =>
+{
+    const { lintHtmlSeatPins } = require('./lint-skills.js');
+    const pins = new Map([['a-seat', { model: 'sonnet', effort: 'medium' }], ['b-seat', { model: 'opus', effort: 'xhigh' }]]);
+    const badge = (seat, model, text) => `<span class="agent x">${seat}<span class="role">r</span><span class="mdl ${model}">${text}</span></span>`;
+    const row = (seat, pinned) => `["${seat}", "subagent", "k", "home", "url", "Does a thing. Pinned ${pinned}. More."],`;
+    const good = [badge('a-seat', 'sonnet', 'sonnet · medium'), badge('b-seat', 'opus', 'opus · xhigh'), row('a-seat', 'sonnet/medium')].join('\n');
+    assert.deepStrictEqual(lintHtmlSeatPins(good, pins), []);
+    const stale = lintHtmlSeatPins([badge('a-seat', 'sonnet', 'sonnet · low'), badge('b-seat', 'opus', 'opus · xhigh')].join('\n'), pins);
+    assert.strictEqual(stale.length, 1);
+    assert.match(stale[0], /badge for 'a-seat' reads 'sonnet · low' but its frontmatter pins sonnet · medium/);
+    assert.match(lintHtmlSeatPins(badge('b-seat', 'sonnet', 'opus · xhigh'), pins)[0], /class 'mdl sonnet'/, 'the tier class follows the model');
+    assert.match(lintHtmlSeatPins(row('a-seat', 'sonnet/low'), pins)[0], /row for 'a-seat' says 'Pinned sonnet\/low' but its frontmatter pins sonnet\/medium/);
+    assert.match(lintHtmlSeatPins(badge('ghost', 'sonnet', 'sonnet · low'), pins)[0], /names 'ghost', which is no seat/);
+    assert.deepStrictEqual(lintHtmlSeatPins(), [], 'docs/alfred-code.html: every badge and row at its pin');
 });
 
 // 2.1.2 (live check F3, 2026-09-29): a 200K-window session logged 'Skill listing over budget: 39 skills,

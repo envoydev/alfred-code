@@ -9,9 +9,8 @@ Transforms a raw description into a clean, professional ticket written in Englis
 
 ## When to use
 
-Use whenever the user wants a ticket written from a raw description for any tracker (Jira, Azure DevOps, GitHub, GitLab, YouTrack) - bug, user story, epic, or technical task - or a not-yet-filed draft reworked (shorter, different focus), even casually or in Ukrainian: 'create a bug/story/epic/task ticket', 'create user story', 'create jira ticket', 'file a bug'.
-
-Do NOT fire to write code or fix the bug instead of filing it, to touch a ticket already in the tracker (query / update / comment / close), or for a commit / PR message.
+- Any tracker (Jira, Azure DevOps, GitHub, GitLab, YouTrack) and type (bug, user story, epic, technical task), from a raw description or a not-yet-filed draft to rework (shorter, a different focus) - asked casually or in Ukrainian.
+- Not for a ticket already in the tracker (query / update / comment / close), or a commit / PR message.
 
 ## Procedure
 

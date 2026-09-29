@@ -171,8 +171,9 @@ function secretIn(file) {
 // Git Bash / MSYS spell a Windows path in POSIX mount form (`/c/Users/...`), which node on win32
 // resolves against the CURRENT drive instead. Translate before resolving; off Windows the spelling
 // is a real POSIX path and is never touched.
-const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
-const nativePath = (p) => (process.platform === 'win32' ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\`) : String(p));
+// The translation is shell-writes.js's one home (2.1.5 M8); without the module a path is taken as written.
+let nativePath = (p) => String(p);
+try { ({ nativePath } = require(pathMod.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
 const HOME = os.homedir() || '';
 const accountDir = () => process.env.CLAUDE_CONFIG_DIR || pathMod.join(HOME, '.claude');
 // The variables a credential path is spelled with (`~`, $HOME, $CLAUDE_PROJECT_DIR,
@@ -639,6 +640,22 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
   };
 })();
 
+// One MEASUREMENT row for a rewrite (2.1.5 M17): the shell route's main verdict is the rewrite, not a block, so
+// the block rate alone never said how often the model reaches for a value. A `mode` row, which the analyzer
+// reads as a probe and never as a block; tool, branch and a file's BASENAME only - never the value. A repo never
+// set up gets none (R54), like a block. Best-effort - a lost row is a lost measurement, never a changed verdict.
+function rewriteRow(detail) {
+  if (unsetRepo) return;
+  try {
+    const dir = pathMod.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(pathMod.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
+      ts: new Date().toISOString(), hook: pathMod.basename(__filename), event: payload.hook_event_name || payload.tool_name || '',
+      tool: payload.tool_name || '', mode: 'rewrite', reason: `rewrite: ${detail.branch}`, detail,
+    }) + '\n');
+  } catch { /* never throws */ }
+}
+
 const input = payload.tool_input || {};
 const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), payload.transcript_path);
 const receiptLive = receipt.live;
@@ -651,11 +668,12 @@ const askHint = () => '\nIf PRESENCE answers the question, take the presence rou
 const block = (msg) => { process.stderr.write(msg + askHint()); process.exit(2); };
 // The shell route's verdict: the call is REPLACED (hookSpecificOutput.updatedInput) by one that
 // prints the placeholder form, and the tool runs that instead - no denial, no retried turn, and the
-// note on its first line carries the route to the value. Not a block, so no ledger row: the ledger
-// counts the turns a gate costs, and a rewrite costs none. `updatedInput` REPLACES the tool's
+// note on its first line carries the route to the value. Not a block: it costs no turn, so it writes a
+// `mode: rewrite` row (rewriteRow), counted apart from the block rate. `updatedInput` REPLACES the tool's
 // arguments (code.claude.com/docs/en/hooks), so every other field - timeout, description,
 // run_in_background - is carried over.
-const rewrite = (command) => {
+const rewrite = (command, detail) => {
+  rewriteRow(detail);
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: { ...input, command } } }));
   process.exit(0);
 };
@@ -1088,8 +1106,10 @@ if (isShellTool(payload.tool_name)) {
   // A whole-environment dump is replaced WHERE IT STANDS - its filter and every other step kept - and the
   // result is judged like any command, so a credential printed elsewhere still takes its own form.
   // A git command that prints file content gets the stream redactor piped in the same way (redactGitStages).
-  const inPlace = !IS_PWSH && command === raw && !allowAll ? redactGitStages(redactEnvStages(raw)) : raw;
-  if (inPlace !== raw) { judgeShell(inPlace, false, true); rewrite(inPlace); }
+  const staged = !IS_PWSH && command === raw && !allowAll;
+  const envStaged = staged ? redactEnvStages(raw) : raw;
+  const inPlace = staged ? redactGitStages(envStaged) : raw;
+  if (inPlace !== raw) { judgeShell(inPlace, false, true); rewrite(inPlace, { branch: envStaged !== raw ? 'env-stage' : 'git-stage' }); }
   // `main` says this text IS the command the tool will run - the one text a segment splice may
   // rebuild. A heredoc-blanked command is not (the bodies are spaces by then), and neither is a body.
   judgeShell(command, false, command === raw);
@@ -1110,9 +1130,9 @@ function blockVariable(name) {
   if (IS_PWSH) {
     rewrite(`Write-Output ${psSingle(note)}; $cgv = [Environment]::GetEnvironmentVariable('${name}'); ` +
       `if (-not $cgv) { $cgv = Get-Variable -Name '${name}' -ValueOnly -ErrorAction SilentlyContinue }; ` +
-      `if ($cgv) { Write-Output "${name}=set ($(([string]$cgv).Length) chars)" } else { Write-Output '${name}=absent' }`);
+      `if ($cgv) { Write-Output "${name}=set ($(([string]$cgv).Length) chars)" } else { Write-Output '${name}=absent' }`, { branch: 'variable', name });
   }
-  rewrite(`echo "${shDouble(note)}"; [ -n "$${name}" ] && echo "${name}=set (\${#${name}} chars)" || echo "${name}=absent"`);
+  rewrite(`echo "${shDouble(note)}"; [ -n "$${name}" ] && echo "${name}=set (\${#${name}} chars)" || echo "${name}=absent"`, { branch: 'variable', name });
 }
 // Every stage of `text` that dumps the whole environment, replaced by the masked listing IN PLACE: the rest of
 // its pipeline (a filter) and every other step stay exactly as written, so nothing is dropped and a step that
@@ -1225,7 +1245,7 @@ function gitOutputLeaks(stage) {
 function blockEnvDump() {
   if (allowAll) return; // only `*` covers every variable at once
   refuseDroppedSteps('the whole environment');
-  rewrite(IS_PWSH ? `node ${psSingle(__filename)} --redacted-env` : `node "${shDouble(__filename)}" --redacted-env`);
+  rewrite(IS_PWSH ? `node ${psSingle(__filename)} --redacted-env` : `node "${shDouble(__filename)}" --redacted-env`, { branch: 'env' });
 }
 
 // PowerShell prints a value four ways Bash does not: a bare expression statement (`$env:NAME`,
@@ -1374,7 +1394,7 @@ function judgeShell(text, forceRuntime, main) {
           refuseDroppedSteps(`${file}, which holds a credential under \`${key}\``);
           const view = IS_PWSH ? `node ${psSingle(__filename)} --redacted ${psSingle(file)}` : `node "${shDouble(__filename)}" --redacted "${shDouble(file)}"`;
           const narrow = !IS_PWSH && !isRuntime && sj === 0 && narrowFilter(stages, tok);
-          rewrite(spliceOrWhole(narrow ? `${view} --note-to-stderr | ${narrow}` : view, file));
+          rewrite(spliceOrWhole(narrow ? `${view} --note-to-stderr | ${narrow}` : view, file), { branch: 'file', file: pathMod.basename(file) });
         }
       }
     }

@@ -99,8 +99,10 @@ function sessionModelId() {
   } catch { /* no home and no cwd */ }
   return null;
 }
-// A key matches the id itself, a dated snapshot (`claude-haiku-4-5-20251001`) and a provider-prefixed
-// id (`us.anthropic.claude-opus-5-v1:0`); the longest matching key wins.
+// A key matches the id itself, a dated snapshot (`claude-haiku-4-5-20251001`, Vertex's `@20251101`), a
+// Bedrock version (`-v1:0`), Claude Code's `[1m]` suffix and a provider-prefixed id
+// (`us.anthropic.claude-opus-5-v1:0`); the longest matching key wins. Nothing else may follow the key: a
+// bare `-` let `claude-opus-5-5` read as a snapshot of `claude-opus-5` and take its window silently (2.1.5 M6).
 function tableWindow() {
   const id = String(sessionModelId() || '').toLowerCase();
   if (!id) return null;
@@ -109,7 +111,7 @@ function tableWindow() {
   let best = null;
   for (const [key, n] of Object.entries(models)) {
     const k = key.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (!(Number(n) >= 100000) || !new RegExp(`(^|[./])${k}($|[-@:[])`).test(id)) continue;
+    if (!(Number(n) >= 100000) || !new RegExp(`(^|[./])${k}(?=$|-\\d{8}(?!\\d)|-v\\d|@|:|\\[)`).test(id)) continue;
     if (!best || key.length > best.key.length) best = { key, n: Number(n) };
   }
   return best ? best.n : null;

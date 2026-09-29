@@ -87,3 +87,7 @@ You don't lose the type checker by writing `.js`. The same language server check
 - Type-check in CI as its own step (`tsc --noEmit`), separate from bundling. A bundler can transpile past a type error; an explicit `tsc` pass cannot, so a green build genuinely means a type-clean build.
 - Public API surfaces carry JSDoc - `@param`, `@returns`, `@throws`. It documents intent and feeds editor tooling for both TS and JS consumers.
 - Class-member style - the `public` modifier, `#private` vs `private`, `readonly` on injected fields, `override`, parameter properties, and member ordering - is `references/typescript-style.md`'s ground; follow it there rather than from recall.
+
+## Prove it
+
+Before any done word on a TypeScript change, run the project's type check (`tsc --noEmit`, with `-p` naming the tsconfig that covers the change, or the workspace's own typecheck script) and its lint over what changed, and quote both result lines. A bundle that built is no type check; with neither command available, the close says the change is type-unchecked.

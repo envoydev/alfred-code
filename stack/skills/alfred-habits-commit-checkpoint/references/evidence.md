@@ -27,3 +27,18 @@ one audited session took the atomic shape, and two of those left the receipt unc
 Measured before the CROSS-WRITE-ALLOW receipt existed: an ask presented a sibling-repo commit +
 push + PR as its `(Recommended)` option, the user took it, and the cross-project write guard denied
 it at the first git verb - the run recommended a route the stack bans.
+
+## Why the pre-existing untracked files stay out of the change
+
+In one benchmark round ~150 files that were untracked before the change began drove 19 gate denials,
+and one close committed them.
+
+## Why a multi-project push names its `scope:`
+
+One project's narrow test run passed both gates, the push broke CI right after, and 6.4M tokens of
+triage followed.
+
+## Why a no-fast-forward publish writes its receipt after the merge
+
+A receipt minted before the merge named the pre-merge tip; the guard read it as reviewing a different
+tree, and the retry cost a full edit-and-redo - measured at ~471k tokens.

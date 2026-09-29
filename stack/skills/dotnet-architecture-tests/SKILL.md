@@ -41,7 +41,7 @@ In priority order - start at the top, add lower rows as conventions actually sta
 - **Slice / module isolation**. A feature namespace must not reference another feature's internals - the property that keeps vertical slices independent.
 - **Naming, sealing, placement**. Conventions the team relies on: handlers end in `Handler` and are `sealed`, abstractions live in the abstractions namespace, nothing is `public` that was meant to be `internal`.
 - **No cycles** between namespaces or modules.
-- **No leftover debug output**. Fail the build when a production assembly depends on `Console.WriteLine`, `Debug.WriteLine`, or `Debugger.Break` - a `ShouldNot().HaveDependencyOn` over those types, so a stray trace statement left in mid-debug can never ship.
+- **No leftover debug output** in the assemblies that must never write to a console - domain, application, infrastructure and library assemblies. Fail the build when one depends on those types - `ShouldNot().HaveDependencyOnAny("System.Console", "System.Diagnostics.Debug", "System.Diagnostics.Debugger")` - so a stray trace left in mid-debug can never ship. The match is by type, not method, so any `Console` call counts; a console app's own entry assembly is exempt, since writing to the console is its job.
 
 ## Wire it as a real test
 

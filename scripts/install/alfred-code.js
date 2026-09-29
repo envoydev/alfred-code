@@ -23,8 +23,8 @@ const { createSource, compareVersions } = require('./source.js');
 const { loadManifest, stackNames, stackOwnName } = require('./manifest.js');
 const selection = require('./selection.js');
 const plugins = require('./plugins.js');
-const { pythonRequest } = require('../../stack/mcp/uv-python.js');
-const { serenaHomeFor } = require('../../stack/mcp/serena-launch.js');
+const { pythonRequest, userExcludeNewer } = require('../../stack/mcp/uv-python.js');
+const { serenaHomeFor, copyRouteProject } = require('../../stack/mcp/serena-launch.js');
 const dataRoot = require('../../stack/mcp/data-root.js');
 const { copyRouteExclude, platformOf, prereqNotes, DESKTOP_OS } = require('../../stack/mcp/desktop-launch.js');
 const mcp = require('./mcp.js');
@@ -84,8 +84,8 @@ const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json'
 const NAV_CONTEXT = 'navigation-context.yml';
 // What only a COPIED hook loads - the engines inline their own helpers and a plugin hook loads these
 // from its own root - so the copy route ships them and the plugin route removes them with the hooks.
-// shell-guards.js is the dispatcher the copy route wires for the picked shell guards (no catalog row).
-const HOOK_MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'shell-guards.js'];
+// shell-guards.js and file-guards.js are the dispatchers the copy route wires for the picked shell and file guards (no catalog row).
+const HOOK_MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'shell-guards.js', 'file-guards.js'];
 // The one rule copy.stampDocsRoot rewrites in place, after copyLibrary already hashed it - its
 // bare name, matching a copyLibrary/stamp key (no .md).
 const DOCS_ROOT_RULE = 'baseline-docs-root';
@@ -326,7 +326,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 (seeds[key] ??= []).push(shippedSeed);
             const move = settings.leaveLocalScope({
                 claudeDir,
-                hookFiles: [...new Set(manifest.catalogs.hooks.map((e) => e.split('::')[0]))].concat('shell-guards.js'),
+                hookFiles: [...new Set(manifest.catalogs.hooks.map((e) => e.split('::')[0]))].concat('shell-guards.js', 'file-guards.js'),
                 mcpNames: manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS, mcp.renamedFrom(manifest.renamed.mcps)),
                 denySpecs: SECRET_DENY, seeds, written: rows.filter((r) => r.written).map((r) => r.key), log, note,
                 // R10: the ledger says exactly which local keys the stack wrote; the seeds are the fallback.
@@ -357,7 +357,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // each the settings files' disabledMcpjsonServers - an entry in any of them rejects the server.
         const mcpjsonOff = [path.join(claudeDir, 'settings.json'), path.join(claudeDir, 'settings.local.json'), path.join(configDir, 'settings.json')]
             .flatMap((f) => { const v = readJson(f).disabledMcpjsonServers; return Array.isArray(v) ? v : []; });
-        const mcpjsonEngines = registeredEngines(mcpFile);
+        // X1: an engine is read from .mcp.json only when the prior stamp's managed-mcp ledger records its browser-<e>
+        // or playwright-<e> name - a user's own server under that name was otherwise adopted, overwritten and ledgered.
+        // A stamp with no ledger, or no stamp, keeps every engine, as mcpjsonPicks does; the stamp's line stays the record.
+        const engineLedger = stampFile && priorLedger && priorLedger.mcp;
+        const mcpjsonEngines = registeredEngines(mcpFile)
+            .filter((e) => !engineLedger || [`browser-${e}`, `playwright-${e}`].some((n) => Object.hasOwn(engineLedger, n)));
         // Registered under the CURRENT name: one .mcp.json still holds as `playwright-<engine>` registers
         // anew as `browser-<engine>`, so its off-state is listed anew too (mcp.mcpjsonSwitch).
         const mcpjsonCurrent = registeredEngines(mcpFile, { legacy: false });
@@ -419,6 +424,16 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 const ours = (priorLedger && priorLedger.mcpAt && priorLedger.mcpAt[regScope]) || {};
                 return Object.keys(mcp.registrationsAt({ scope: regScope, mcpFile, accountFile, projectRoot }).servers).filter((name) => Object.hasOwn(ours, name));
             };
+            // X1: a .mcp.json name is a pick only when the prior stamp's managed-mcp ledger says the stack wrote it
+            // there - a server of the user's own under a stack name was otherwise adopted, overwritten with the
+            // stack's entry and ledgered (matrix 2.1.4 re-run, observation 1). A stamp with no ledger (a pre-ledger
+            // install), or no stamp, keeps every name, as before.
+            const mcpjsonPicks = () =>
+            {
+                const names = Object.keys(readJson(mcpFile).mcpServers || {});
+                const ours = stampFile && priorLedger && priorLedger.mcp;
+                return ours ? names.filter((name) => Object.hasOwn(ours, name)) : names;
+            };
             const back = selection.readBack({
                 claudeDir, skillsDir,
                 foreignSkill: skillTest({ skillsDir, stampFile, manifest, sourceDir: resolved.dir }).foreign,
@@ -427,7 +442,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 // as absent, so the update re-spelled its skill and seat to plugin tools nothing served). Only
                 // the names the ledger says the stack registered there: a server of the user's own under a
                 // stack name is theirs, never a pick (the matrix re-run saw one adopted and rewritten).
-                mcpServers: [...new Set([...Object.keys(readJson(mcpFile).mcpServers || {}), ...ledgeredRegistrations()])],
+                mcpServers: [...new Set([...mcpjsonPicks(), ...ledgeredRegistrations()])],
                 listing, stackListing,
                 // I2 / N5: the file this run writes, or at local scope settings.local.json laid over
                 // settings.json for `env` and `permissions.deny` (settings.js readBackSettings).
@@ -531,8 +546,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
 
         // --- the two entries assembled at install time -----------------------------
         const pins = args.printPlan
-            ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', WINDOWS_DESKTOP_PIN: '', MACOS_DESKTOP_PIN: '', MEMORY_BACKEND: 'sqlite_vec' }
-            : mcp.resolvePins({ pins: readJson(path.join(resolved.dir, 'meta', 'mcp-pins.json')).pins, log });
+            ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', WINDOWS_DESKTOP_PIN: '', MACOS_DESKTOP_PIN: '', MEMORY_BACKEND: 'sqlite_vec', UV_EXCLUDE_FLAG: '', UV_EXCLUDE_NEWER: '' }
+            : (() =>
+            {
+                const file = readJson(path.join(resolved.dir, 'meta', 'mcp-pins.json'));
+                return mcp.resolvePins({ pins: file.pins, refreshed: file.refreshed, own: userExcludeNewer({ env: cliEnv, projectDir: projectRoot }), log });
+            })();
 
         const pw = mcp.expandPlaywright({
             mcps: lists.mcps,
@@ -616,14 +635,17 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // serena's home in the platform's own separator: a '/' reaches cmd.exe on Windows - under the data
             // root, or in a 2.0.0 .serena not moved yet.
             SERENA_HOME: serenaHomeFor(process.platform, dataInfo.root, liveOf('serena')),
+            // M26: how serena finds this project - the cwd walk, or `--project .` where the walk cannot.
+            ...copyRouteProject({ projectDir: projectRoot, serenaDir: liveOf('serena') }),
             // Each browser engine's profile folder (mcp.pwArgsFor spells the manifest's @BROWSER_DIR@ per engine).
             ...Object.fromEntries(dataRoot.ENGINES.map((e) => [`BROWSER_DIR_${e.toUpperCase()}`, liveOf(`browser-${e}`)])),
-            SERENA_PIN: pins.SERENA_PIN, PW_PIN: pins.PW_PIN,
+            SERENA_PIN: pins.SERENA_PIN, PW_PIN: pins.PW_PIN, UV_EXCLUDE_FLAG: pins.UV_EXCLUDE_FLAG, UV_EXCLUDE_NEWER: pins.UV_EXCLUDE_NEWER,
             MEMORY_PIN: pins.MEMORY_PIN, MEMORY_BACKEND: pins.MEMORY_BACKEND,
             WINDOWS_DESKTOP_PIN: pins.WINDOWS_DESKTOP_PIN, MACOS_DESKTOP_PIN: pins.MACOS_DESKTOP_PIN,
             // windows-desktop's tool gate on the copy route, which registers no launcher: the list the
             // launcher would pass, as Windows-MCP's own WINDOWS_MCP_EXCLUDE_TOOLS.
-            WINDOWS_DESKTOP_EXCLUDE: copyRouteExclude({ env: cliEnv, projectDir: projectRoot }),
+            WINDOWS_DESKTOP_EXCLUDE: copyRouteExclude({ env: cliEnv, projectDir: projectRoot,
+                log: lists.mcps.some((e) => String(e).split('|')[0] === 'windows-desktop') ? (line) => log(`  desktop: ${line}`) : () => {} }),
         };
         // The one remote server the copy route registers: documentation (Context7), the hosted transport only (2.0.0).
         const remotes = { documentation: mcp.CONTEXT7_REMOTE };
@@ -743,7 +765,7 @@ function runLayers(ctx)
     }
     catch (err) { ctx.note(`${docsPath}/.gitignore could not be written (${err.message}) - add the docs root's machine state to the repo's own .gitignore`); }
     if (args.action === 'install') ctx.seededClaudeMd = seeds.seedClaudeMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
-    selection.respellRenamed({ projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, log: ctx.log, note: ctx.note });
+    selection.respellRenamed({ projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, engines: pwEngines(ctx), log: ctx.log, note: ctx.note });
     if (plugins.corePluginOn(ctx.routes))
         selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, seats: placement().plugins[CORE].agents, log: ctx.log, note: ctx.note });
     dataRootLayer(ctx, docsPath);
@@ -1346,7 +1368,7 @@ function desktopNotes(ctx)
     {
         const name = String(entry).split('|')[0];
         if (!DESKTOP_OS[name] || ctx.desktopHeld.has(name)) continue;
-        for (const line of prereqNotes(name, { uvx })) ctx.log(line);
+        for (const line of prereqNotes(name, { uvx, exclude: ctx.tokens.WINDOWS_DESKTOP_EXCLUDE })) ctx.log(line);
     }
 }
 
@@ -1510,9 +1532,12 @@ function warnShadowed(ctx, carried)
 }
 
 // I12: the full copy route's serena context - the shipped file copied into the project's .claude (beside
-// the .mcp.json that names it, so a teammate's clone carries both), named RELATIVE: serena resolves it
-// against its cwd, the project, like SERENA_HOME. A snapshot that ships no such file (older than 2.1.4)
-// keeps serena's own claude-code context.
+// the .mcp.json that names it, so a teammate's clone carries both). R6: serena raises FileNotFoundError on a
+// context path that does not resolve, so it is anchored as the browser row anchors its profile -
+// `${CLAUDE_PROJECT_DIR:-.}/.claude/...`: absolute where the variable reaches the expansion, else the default,
+// today's cwd-relative path (Claude Code sets the variable in the server's environment, not its own, so a
+// `.mcp.json` expansion sees it only when the launching shell exports it - code.claude.com/docs/en/mcp). A
+// snapshot that ships no such file (older than 2.1.4) keeps serena's own claude-code context.
 function navigationContext(ctx)
 {
     const { copied, skipped } = copy.installFromSource({
@@ -1521,7 +1546,7 @@ function navigationContext(ctx)
     });
     if (!copied.length && !skipped.length) return 'claude-code';
     ctx.navContextCopied = true;
-    return path.relative(ctx.projectRoot, path.join(ctx.claudeDir, NAV_CONTEXT)).split(path.sep).join('/');
+    return `\${CLAUDE_PROJECT_DIR:-.}/${path.relative(ctx.projectRoot, path.join(ctx.claudeDir, NAV_CONTEXT)).split(path.sep).join('/')}`;
 }
 
 function installMcps(ctx)

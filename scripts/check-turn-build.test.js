@@ -4,6 +4,8 @@
 // TypeScript, dotnet build --no-restore -v q for C# - and the first 20 error lines go back as a Stop
 // block, once per turn. Seeded OFF: nothing runs unless ALFRED_CODE_TURN_CHECK=1.
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');

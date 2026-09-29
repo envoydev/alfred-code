@@ -190,10 +190,9 @@ if (!commitMatch && !publishMatch && !addCalls.length) process.exit(0);
 // worktree commit through ungated whenever main was clean (measured on 2.1.283).
 const projectDir = process.env.CLAUDE_PROJECT_DIR || '';
 let root = payload.cwd || projectDir || process.cwd();
-const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
-const nativePath = (p) => (process.platform === 'win32'
-  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\`)
-  : String(p));
+// The translation is shell-writes.js's one home (2.1.5 M8); without the module a path is taken as written.
+let nativePath = (p) => String(p);
+try { ({ nativePath } = require(path.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
 const unq = (s) => s.replace(/^["']|["']$/g, '');
 // the FIRST of the two acts anchors the cd scan - everything before it moved the cwd
 const actIndex = Math.min(

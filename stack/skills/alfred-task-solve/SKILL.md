@@ -113,12 +113,13 @@ SPEC=.claude/skills/alfred-task-solve/scripts/spec-check.js
   f="$d/stack/skills/alfred-task-solve/scripts/spec-check.js"
   [ -f "$f" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
-node "$SPEC" <<'REQUEST'
+if [ -n "$SPEC" ]; then node "$SPEC" <<'REQUEST'
 <the user's request, verbatim>
 REQUEST
+else echo 'path: gated - spec-check not found'; fi
 ```
 
-Its `path: gated` is final. Its `path: merged` you may raise to gated, never lower. An empty `$SPEC` means neither home has it: keep every gate.
+Its `path: gated` is final. Its `path: merged` you may raise to gated, never lower.
 
 On `path: merged`, steps 1 and 2 are ONE step: the design and the plan audit both in this session (neither twin asks its mode), no stop between them. A gap the audit finds that the spec settles is fixed in the plan in the same step and named in the ask; a gap only the user can settle stamps the gaps and takes step 2's stop. Step 3's read comes first (`mechanics: read` in `Result:`), then ONE approval ask in place of step 3's:
 
@@ -173,7 +174,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
      repair-agent rules; tick the same plan file per task as reports land. MINT the run's contract
      version - `<the plan's Approved: date>-<plan slug>` - and put it in EVERY dispatch prompt
      verbatim, with the seat's memory-handoff line spelled out:
-     `write_memory('<feature>__<contract_version>__<seat>__<task>', ...)`. Each seat's green gate
+     `mcp__plugin_navigation_navigation__write_memory('<feature>__<contract_version>__<seat>__<task>', ...)`. Each seat's green gate
      stays fast - build + fast tests, never integration replays or another minutes-long run; the
      slow full run happens once, in this session, at the step-5 review / step-6 done-gate.
    Both modes build to the step mechanics' bar, and the plan's `## Decisions` ledger grows as they

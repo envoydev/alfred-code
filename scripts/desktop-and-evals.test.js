@@ -39,7 +39,7 @@ test('I45: the installer\'s macOS prerequisite line names the failed start first
 {
     const { prereqNotes } = require('../stack/mcp/desktop-launch.js');
     const lines = prereqNotes('macos-desktop').join('\n');
-    assert.match(lines, /a server that fails to connect at start while System Settings opens is missing a grant - its log names which; black screenshots mean Screen Recording is missing/);
+    assert.match(lines, /a server that fails to connect at start while System Settings opens is missing a grant - its log names which; a black vision snapshot means Screen Recording is missing/);
     assert.doesNotMatch(lines, /an empty snapshot means Accessibility is missing/);
 });
 
@@ -119,7 +119,7 @@ test('I9: every setup-plugin/evals case invokes a command or skill the core entr
 test('I9: the size-first cases live with the library cases, where the eval bundle carries alfred-task-solve', () =>
 {
     const { build } = require('./build-eval-bundle.js');
-    const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'audit-214-bundle-')), 'b');
+    const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-and-evals-bundle-')), 'b');
     try
     {
         build(out);

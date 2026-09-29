@@ -14,7 +14,7 @@
 // It never prints the path to stdout: stdout is the MCP stream, and one stray line kills the
 // session. Diagnostics go to stderr, which Claude Code shows in the server's log.
 //
-//   node memory-launch.js --package 'mcp-memory-service[sqlite]==<ver>'
+//   node memory-launch.js --package 'mcp-memory-service[sqlite]==<ver>' [--exclude-newer <cut-off>]
 //
 // Resolution order for the database, first hit wins:
 //   1. MCP_MEMORY_SQLITE_PATH already in the environment - someone set it deliberately, obey it
@@ -147,11 +147,13 @@ function main(argv)
     // not a start-up failure the user has to decode from a python traceback.
     try { fs.mkdirSync(path.dirname(db), { recursive: true }); } catch { /* read-only home: let the service say so */ }
     process.stderr.write(`memory-launch: ${spec}, db ${db}\n`);
-    // runUvx puts the pinned Python in front (uv-python.js). numpy is injected because the sqlite_vec
-    // backend needs it but does not declare it, so uvx's isolated env omits it and the server dies
-    // with "No module named 'numpy'".
+    // runUvx puts the pinned Python and the release's dependency cut-off in front (uv-python.js). numpy:
+    // mcp-memory-service 11.13.0 and later declare it themselves (numpy>=1.24.0 among its core
+    // requires_dist, PyPI), so `--with numpy` only restates it - kept because an older pin that did
+    // not declare it died with "No module named 'numpy'", and a redundant --with costs nothing.
+    const cut = argv.indexOf('--exclude-newer');
     runUvx(['--with', 'numpy', '--from', spec, 'memory', 'server'], {
-        cwd: projectDir, projectDir, label: 'memory-launch',
+        cwd: projectDir, projectDir, label: 'memory-launch', excludeNewer: cut >= 0 && argv[cut + 1] ? argv[cut + 1] : '',
         env: { ...process.env, MCP_MEMORY_SQLITE_PATH: db },
     });
     return null;   // the process lives as long as the child does

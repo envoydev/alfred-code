@@ -11,7 +11,7 @@ WPF is a retained-mode XAML UI on the data-binding engine. The whole discipline 
 view concerns (visuals, the visual tree, the dispatcher) on one side of a line and application state
 on the other, so the state side stays a plain testable C# object. Floor is .NET 8 / C# 12.
 
-**XAML formatting and naming style - attribute ordering (XAML Styler), `x:Name` vs `Name`, property-element syntax, namespace prefixes, value-converter naming, and binding style - live in `references/xaml-style.md`.** This SKILL.md owns the WPF architecture (strict MVVM, dependency/attached properties, threading); styles, resource dictionaries, and theming are `references/styling-theming.md`; the C# naming baseline is the `csharp` skill. Above these general conventions, a project's own `Settings.XamlStyler` / `.editorconfig` and its `<docs-path>/code-style/CODE-STYLE.md` win where they diverge.
+**XAML formatting and naming style - attribute ordering (XAML Styler), `x:Name` vs `Name`, property-element syntax, namespace prefixes, value-converter naming, and binding style - live in `references/xaml-style.md`.** This SKILL.md owns the WPF architecture (strict MVVM, dependency/attached properties, threading); styles, resource dictionaries, and theming are `references/styling-theming.md`; the C# naming baseline is the `csharp` skill. Above these general conventions, a project's own `Settings.XamlStyler` / `.editorconfig` and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority - follow the project where it diverges.
 
 On .NET Framework 4.8 these conventions hold, but the CommunityToolkit.Mvvm source generators, Generic
 Host composition, and app-level exception wiring carry net48-specific constraints - see

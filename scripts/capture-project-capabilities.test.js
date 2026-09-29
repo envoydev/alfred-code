@@ -153,9 +153,15 @@ test('the seats that run the app read the run book first', () =>
     const agents = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).map((f) => f.replace(/\.md$/, ''));
     const seats = [...agents.filter((a) => a.endsWith('-verifier')), 'alfred-issue-diagnoser-runtime', 'evidence-gatherer', 'integration-reviewer'];
     assert.strictEqual(seats.length, 13);
+    // 2.1.5 M60: the seat line leaves 'build' to the generated rule - the resolvers and implementers build
+    // too and carry no seat line, so a seat trigger naming it reached only some of the seats that build.
     for (const seat of seats)
-        assert.ok(squash(fs.readFileSync(path.join(ROOT, 'stack', 'agents', `${seat}.md`), 'utf8'))
-            .includes('Before you build, start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists'), `${seat} reads the run book first`);
+    {
+        const text = squash(fs.readFileSync(path.join(ROOT, 'stack', 'agents', `${seat}.md`), 'utf8'));
+        assert.ok(text.includes('Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists'), `${seat} reads the run book first`);
+        assert.ok(!text.includes('Before you build, start'), `${seat}: build commands are the generated rule's`);
+    }
+    assert.ok(squash(read('references/run-book-rule.template.md')).includes('read it before you build, start, log into or hand-check the app'), 'the generated rule keeps build');
 });
 
 test('the docs engine: the watch.json shape lints clean, and a doc written to the shape is found by where and show', () =>

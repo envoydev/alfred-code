@@ -33,7 +33,9 @@ const { loadManifest } = require('./install/manifest.js');
 const { LEGACY } = require('./install/brand.js');
 const { HOOK_PROFILES } = require('../stack/hooks/hook-prelude.js');
 const { wiringRows } = require('../stack/hooks/shell-guards.js');
+const fileGuards = require('../stack/hooks/file-guards.js');
 const { DEFAULT_EXCLUDE, DESKTOP_ENV } = require('../stack/mcp/desktop-launch.js');
+const { excludeNewerOf } = require('../stack/mcp/uv-python.js');
 
 const REPO = path.resolve(__dirname, '..');
 const ENTRIES_FILE = path.join(REPO, 'meta/plugin-entries.json');
@@ -163,7 +165,8 @@ function retiredMarketplaceEntries(options = {})
         const entry = {
             name: row.name,
             source: './',
-            description: 'RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.',
+            // M22: its audience is a 1.x install, whose update command carries the 1.x plugin name.
+            description: `RETIRED in 1.3.0 - run /${LEGACY.core}:update: it copies the skills and agents you picked into the project and removes this entry.`,
             version,
             author,
             strict: false,
@@ -244,8 +247,9 @@ function parseHookWirings(sourceDir)
 {
     const { catalogs } = loadManifest(sourceDir || REPO);
     if (!catalogs.hooks.length) throw new Error('build-marketplace: meta/stack-manifest.json hooks[] is empty - the wiring table moved');
-    // The shell guards' rows fold into ONE shell-guards.js row: one process per shell call, not eight.
-    const rows = wiringRows(catalogs.hooks);
+    // The shell guards' rows fold into ONE shell-guards.js row: one process per shell call, not eight - and the
+    // file guards' into ONE file-guards.js row (2.1.5 M3): one process per file-tool call, not three.
+    const rows = fileGuards.wiringRows(wiringRows(catalogs.hooks));
     const out = [];
     for (const line of rows)
     {
@@ -308,7 +312,10 @@ const PINS_FILE = path.join(REPO, 'meta/mcp-pins.json');
 
 function readPins(options = {})
 {
-    const pins = options.pins || readJson(PINS_FILE, 'mcp-pins').pins || {};
+    const file = options.pins ? null : readJson(PINS_FILE, 'mcp-pins');
+    const pins = options.pins || file.pins || {};
+    // M24: the release's dependency cut-off for uvx (uv-python.js excludeNewerOf), from the same file.
+    const cutoff = excludeNewerOf(options.pins ? options.refreshed : file.refreshed);
     // '@<v>' for the npx/uvx packages, '==<v>' inside memory's extras brackets. A null version is
     // the offline fallback the installer already had: ship unpinned rather than ship nothing.
     const suffix = name =>
@@ -317,7 +324,7 @@ function readPins(options = {})
         if (!row || !row.version) return '';
         return String(row.spelling || '@<v>').replace('<v>', row.version);
     };
-    return { suffix, pins };
+    return { suffix, pins, cutoff };
 }
 
 // The four browsers the browser catalog entry expands into - ONE PLUGIN EACH, not one plugin
@@ -340,7 +347,9 @@ const PW_ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
 
 function mcpServerShapes(options = {})
 {
-    const { suffix } = readPins(options);
+    const { suffix, cutoff } = readPins(options);
+    // A launcher flag, before the server's own `--` arguments; an older launcher ignores it.
+    const cut = cutoff ? ['--exclude-newer', cutoff] : [];
     const root = '${CLAUDE_PLUGIN_ROOT}';
     const browsers = {};
     for (const engine of PW_ENGINES)
@@ -371,7 +380,7 @@ function mcpServerShapes(options = {})
                     // and it sets SERENA_HOME to the data root's own home, RELATIVE, resolved against the
                     // server's cwd, which is the project (stack/mcp/serena-launch.js).
                     command: 'node',
-                    args: [`${root}/stack/mcp/serena-launch.js`, '--package', `serena-agent${suffix('navigation')}`, '--', 'start-mcp-server',
+                    args: [`${root}/stack/mcp/serena-launch.js`, '--package', `serena-agent${suffix('navigation')}`, ...cut, '--', 'start-mcp-server',
                         // claude-code inside a Claude Code plugin (the ide-assistant value is
                         // cursor-stack's). The launcher swaps it for the stack's own context file beside
                         // it (navigation-context.yml, I12) - named here as claude-code so a project whose
@@ -390,7 +399,10 @@ function mcpServerShapes(options = {})
                     // ':-' so an UNSET key sends an EMPTY header = the keyless free tier. A literal
                     // ${CONTEXT7_API_KEY} is rejected as an invalid key on every call (measured), and
                     // an unset ${VAR} with no default stays literal in a plugin entry too (S14).
-                    headers: { CONTEXT7_API_KEY: '${CONTEXT7_API_KEY:-}' },
+                    // M25: the header NAME is Context7's documented `Context7-API-Key` - a proxy may drop
+                    // one with an underscore, which drops a keyed user to the free tier silently (upstash
+                    // docs/clients/cursor.mdx; probed: empty = anonymous, a bogus key = 'Invalid API key').
+                    headers: { 'Context7-API-Key': '${CONTEXT7_API_KEY:-}' },
                 },
             },
         },
@@ -403,7 +415,7 @@ function mcpServerShapes(options = {})
                     // <cwd>/.claude/settings.json for ALFRED_CODE_MEMORY_DB and exec uvx itself.
                     command: 'node',
                     args: [`${root}/stack/mcp/memory-launch.js`, '--package',
-                        `mcp-memory-service[sqlite]${suffix('memory')}`],
+                        `mcp-memory-service[sqlite]${suffix('memory')}`, ...cut],
                     env: { MCP_MEMORY_STORAGE_BACKEND: 'sqlite_vec',
                         // A shared file with several writers: the busy timeout is not optional.
                         MCP_MEMORY_SQLITE_PRAGMAS: 'busy_timeout=15000' },
@@ -420,7 +432,7 @@ function mcpServerShapes(options = {})
             servers: {
                 'windows-desktop': {
                     command: 'node',
-                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'windows-desktop', '--package', `windows-mcp${suffix('windows-desktop')}`,
+                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'windows-desktop', '--package', `windows-mcp${suffix('windows-desktop')}`, ...cut,
                         '--', 'serve', '--exclude-tools', DEFAULT_EXCLUDE],
                     env: DESKTOP_ENV,
                 },
@@ -431,7 +443,7 @@ function mcpServerShapes(options = {})
             servers: {
                 'macos-desktop': {
                     command: 'node',
-                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'macos-desktop', '--package', `macos-mcp${suffix('macos-desktop')}`, '--', 'serve'],
+                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'macos-desktop', '--package', `macos-mcp${suffix('macos-desktop')}`, ...cut, '--', 'serve'],
                     env: DESKTOP_ENV,
                 },
             },
@@ -492,7 +504,7 @@ function mcpAliasEntries(options = {})
             const alias = {
                 ...entry,
                 name: old,
-                description: `RETIRED in 2.0.0 - renamed ${now}. Run /alfred-code:update: it installs ${now} in its place and removes this entry.`,
+                description: `RETIRED in 2.0.0 - renamed ${now}. Run /${LEGACY.core}:update: it installs ${now} in its place and removes this entry.`,
                 mcpServers: { [old]: entry.mcpServers[now] },
             };
             out.push(alias);

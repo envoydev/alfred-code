@@ -9,13 +9,14 @@ disable-model-invocation: true
 One reported failure, four steps, the user holds the gate between them. This skill owns the
 chain, the stops, the evidence accounting, and the fork at the end; the catalogues and the
 seats do the specialist work. It is READ-ONLY from start to finish - no step here writes code,
-so no approval stamp and no commit gate come into play.
+so no approval stamp and no commit gate come into play. The measurements behind these rules live in
+`references/evidence.md` - an audit appendix, not a run-time load.
 
 ## When to use
 
 - Evidence can be a pasted error-monitor event, one log file, several log sources at once, a red CI run, a stack trace, a screenshot, or nothing but a customer saying checkout is slow.
 - Four gated steps: triage the evidence to a tier, gather (inline or evidence-gatherer seats), prove the root cause, then a user fork - write a report, plan the fix as contracted tasks, or add log points and re-run.
-- Read-only throughout: it never writes the fix. Triggers also on 'investigate this bug', 'diagnose this failure', 'triage this report'.
+- Read-only throughout: it never writes the fix.
 - Not the fix build (alfred-task-solve takes the tasks from here), not a signature lookup you already have the answer for.
 
 ## Evidence tiers - name the tier, carry it as the confidence label
@@ -85,8 +86,7 @@ emitting each stop, not a memory: resume needs only the findings file plus the n
 
 **Every ask marks exactly one option `(Recommended)`, listed first** - the move this stop's rule
 recommends, the reason in its description; an ask with no mark is malformed, rebuild it before
-sending (pilot 3: both diagnose runs of the flow block asked with no mark, and the first option
-was taken). A step-done stop:
+sending - an unmarked ask gets its first option taken whatever it says. A step-done stop:
 
 ```ask
 <Step> done - <findings path>. Continue to <next step>: <the one reason it is next>.

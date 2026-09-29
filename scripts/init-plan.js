@@ -36,7 +36,7 @@ const path = require('node:path');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 const REPO = path.join(__dirname, '..');
-const { pythonRequest } = require(path.join(REPO, 'stack', 'mcp', 'uv-python.js'));
+const { pythonRequest, excludeNewerOf, userExcludeNewer, cutoffFor } = require(path.join(REPO, 'stack', 'mcp', 'uv-python.js'));
 const { serenaHomeFor } = require(path.join(REPO, 'stack', 'mcp', 'serena-launch.js'));
 const dataRoot = require(path.join(REPO, 'stack', 'mcp', 'data-root.js'));
 const { resolveDocsRoot } = require(path.join(REPO, 'scripts', 'install', 'copy.js'));
@@ -80,14 +80,16 @@ const probes = {
     dir: (dir, prefix) => { try { return fs.readdirSync(dir).some((n) => n.startsWith(prefix)); } catch { return false; } },
 };
 
+function pinsFile()
+{
+    try { return JSON.parse(fs.readFileSync(path.join(REPO, 'meta', 'mcp-pins.json'), 'utf8')) || {}; }
+    catch { return {}; }
+}
+
 function pinOf(name)
 {
-    try
-    {
-        const row = JSON.parse(fs.readFileSync(path.join(REPO, 'meta', 'mcp-pins.json'), 'utf8')).pins[name];
-        return row && row.version ? row.spelling.replace('<v>', row.version) : '';
-    }
-    catch { return ''; }
+    const row = (pinsFile().pins || {})[name];
+    return row && row.version ? String(row.spelling || '@<v>').replace('<v>', row.version) : '';
 }
 
 const nonEmptyDir = (dir) => { try { return fs.readdirSync(dir).length > 0; } catch { return false; } };
@@ -133,7 +135,10 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
     const data = dataRoot.dataRootOf({ env, projectDir: root }).root;
     const serenaDir = dataRoot.liveDir({ projectDir: root, cls: 'serena', root: data, pending: dataRoot.pendingOf(root), move: false }).dir;
     const serenaHome = serenaHomeFor(platform, data, serenaDir);
-    const index = `uvx --python ${request} --from serena-agent${pinOf('navigation')} serena project index`;
+    // The same pin and dependency cut-off the server itself starts on (M24), so the index and the server agree -
+    // a UV_EXCLUDE_NEWER the user set included (a mirror with no upload times serves nothing under a cut-off).
+    const cutoff = cutoffFor(excludeNewerOf(pinsFile().refreshed), userExcludeNewer({ env, projectDir: root }));
+    const index = `uvx --python ${request}${cutoff ? ` --exclude-newer ${cutoff}` : ''} --from serena-agent${pinOf('navigation')} serena project index`;
     add('serena index', nonEmptyDir(path.join(root, ...serenaDir.split('/'), 'cache')) ? 'present' : afterUv,
         win ? `$env:SERENA_HOME='${serenaHome}'; ${index}` : `SERENA_HOME=${serenaHome} ${index}`);
 

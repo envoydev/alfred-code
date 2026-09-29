@@ -180,7 +180,9 @@ Render its `rows` as
 for an agent or a rule row), `on` when unset. When `stale` is true, put one line under the table:
 'the project copies are from `<version>`, the stack is `<sourceVersion>` - /alfred-code:update
 takes them'. When `invalid` is above 0, one more line: `invalid: <n> stamp name(s) are not valid
-item names - skipped, never read` (a hand-edited stamp; `/alfred-code:update` rewrites it).
+item names - skipped, never read` (a hand-edited stamp; `/alfred-code:update` rewrites it). For each
+`blocked` entry, one line: `blocked: skill <skill> is '<mode>' in skillOverrides, but <rules> send the
+model to it` (that Skill call fails; `name-only` keeps it callable).
 `library: no library stamp` prints instead of JSON on an install older than the library route -
 say so in one line and skip the table.
 
@@ -215,7 +217,7 @@ listed`. No CLI: the banner + `claude CLI unavailable - skipped` for the column.
 | navigation | stdio | node .../serena-launch.js ... --project-from-cwd | ✔ Connected |
 | memory | stdio | node .../memory-launch.js | ✔ Connected |
 | documentation | http | https://mcp.context7.com/mcp | ✔ Connected |
-| browser-firefox | stdio | npx -y @playwright/mcp@0.0.80 --browser firefox ... | ✘ Failed to connect |
+| browser-firefox | stdio | node .../browser-launch.js --package @playwright/mcp@<pin> --browser firefox | ✘ Failed to connect |
 
 `target` is the command or URL, middle-truncated to keep the row one line; on the plugin route it
 is the entry's own declaration. The browser server has one server per installed browser

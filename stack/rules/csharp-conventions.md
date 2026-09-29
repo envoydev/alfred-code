@@ -4,12 +4,14 @@ paths: ["**/*.cs"]
 
 Editing C# - the FIRST action after this rule attaches is the `csharp` Skill call, before the NEXT
 edit lands (a path-scoped rule attaches ON the touch, so it can never precede its own trigger -
-measured 9.9-22 s late; and a run working through the shell gets no attach at all until it uses a
-file tool, which is why `guard-read-whole-file.js` names this rule on the first shell write) - even
-when the `.cs` touch is incidental to the session's main thread (measured: two sessions edited `.cs`
-files with this rule attached and never loaded it; the sessions whose focus WAS the C# work loaded it
-on cue). Name the skill you loaded, or say it was already in context - the receipt is what makes the
-load happen.
+measured 9.9-22 s late) - even when the `.cs` touch is incidental to the session's main thread
+(measured: two sessions edited `.cs` files with this rule attached and never loaded it; the sessions
+whose focus WAS the C# work loaded it on cue). Name the skill you loaded, or say it was already in
+context - the receipt is what makes the load happen.
+
+<!-- Maintainer note: a run working through the shell gets no attach at all until it uses a file tool,
+     so a sentence saying so here could never reach the run it describes - guard-read-whole-file.js
+     names this rule on the first shell write instead (audit M67). -->
 
 Where a FRAMEWORK or SURFACE rule attached on the same touch, its skill loads in that SAME first
 action, on top of this baseline, and that rule's list is the authority on what to load - one first
@@ -26,7 +28,5 @@ with no testing skill loaded).
 This is the C# baseline for every `.cs` file, backend or desktop - a WPF view-model is still C#, so it
 loads here too, while WPF's .xaml view layer is governed separately. Skip one-line tweaks.
 
-On C# pass `depth: 2` to `get_symbols_overview` - the default stops at the file's top-level symbol,
-in C# the NAMESPACE, so it returns only the namespace name. 2 reaches type members (names only -
-stays cheap); nested-type members need one more; a top-level-statements file returns `{}` at any
-depth.
+<!-- Maintainer note: the Serena `depth: 2` hint for C# lives in baseline-navigation.md - a Serena call
+     never attaches a path rule, so the hint here arrived only after a file-tool touch (audit M64). -->

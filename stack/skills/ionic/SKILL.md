@@ -95,3 +95,7 @@ App.addListener('backButton', ({ canGoBack }) =>
 - Unit-test the wrapping service with the plugin mocked, never the device - a jsdom test that 'exercises' the native path is exercising your mock.
 
 **Read `references/native-seam.md` before adopting a plugin, wiring a permission cycle, writing a web fallback, or planning device/E2E smoke** - it carries the vetting checklist, the full permission cycle, the three fallback shapes in preference order, and the UNVERIFIED reporting rule for native flows no device E2E suite covers. The push / deep-link / offline-sync service shapes are `references/native-features.md`.
+
+## Prove it
+
+Before any done word, run the web build (`ionic build`, or the workspace's `ng build`) and `npx cap sync` (copy, then update the native projects), and quote both result lines; then run the changed native flow on a device or simulator and quote what it showed. A native flow with no device run is reported UNVERIFIED, the flow named - never inferred from a jsdom test.

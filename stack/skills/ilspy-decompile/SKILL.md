@@ -14,15 +14,25 @@ Decompile a compiled assembly when you need the real implementation - a framewor
 
 ## Tool
 
-`ilspycmd`. Default to the no-install form:
+`ilspycmd`, pinned. It is a third-party tool, so running it is the user's call - ONE AskUserQuestion before any dnx or install command:
 
-```bash
-dnx ilspycmd -h                       # needs the .NET 10 SDK, installs nothing
+```ask
+Decompiling needs ilspycmd, a third-party tool. Run it once through dnx, pinned: nothing is installed and the version is fixed.
+- 'Run it once through dnx (Recommended)' - `dnx ilspycmd@<version> --yes -- ...`; the package lands only in the NuGet cache
+- 'Pin it per-repo' - `.config/dotnet-tools.json` commits the version and the machine stays clean
+- 'Install it globally' - `dotnet tool install --global ilspycmd --version <version>`
+- 'Skip the decompile' - report the question UNANSWERED
 ```
 
-Where `dnx` is unavailable, the tool has to be installed, and that is the user's call, never yours. Ask ONE AskUserQuestion before running any install, with these options: pin it per-repo in `.config/dotnet-tools.json` (recommended - the version is committed and the machine stays clean), install it globally (`dotnet tool install --global ilspycmd`), or skip the decompile and report the question UNANSWERED. Where the harness has no AskUserQuestion tool, ask the same three options in plain text and wait. Never install on your own judgement.
+Where `dnx` is unavailable (an SDK before .NET 10), drop the first option and recommend the per-repo pin. Where the harness has no AskUserQuestion tool, ask the same options in plain text and wait. Never download or install on your own judgement.
 
-Flags vary by version - confirm with `ilspycmd -h`.
+Once approved, the no-install form (the .NET 10 SDK; nothing lands on `PATH`):
+
+```bash
+dnx ilspycmd@<version> --yes -- -h    # <version>: the ilspycmd release you checked on NuGet at use
+```
+
+Arguments after `--` go to the tool - without it, `-h` prints dnx's own help. `dnx` asks before it downloads and runs a package: in a shell with no terminal it stops with 'Tool package download needs confirmation' (measured on the 10.0.203 SDK). `--yes` answers it for the user, which is why it rides only on the approval above. A release built for a newer runtime than the machine has needs `--allow-roll-forward`. Flags vary by version - confirm with the `-h` run; with dnx, run each command below as `dnx ilspycmd@<version> --yes -- <arguments>`.
 
 ## Locate the assembly
 

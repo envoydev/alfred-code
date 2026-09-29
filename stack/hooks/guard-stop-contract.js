@@ -689,6 +689,10 @@ if (payload.hook_event_name === 'SubagentStop') {
 // package install counts, and so does a dispatched agent (its own runs are in its own transcript).
 // A run's own output file is no edit. A call a hook denied before it ran counts as neither.
 const EDIT_TOOL_RE = /^(?:Edit|Write|MultiEdit|NotebookEdit)$/;
+// The navigation server's two kept edit tools (the I12 ruling), both routes' spellings: a rename or a safe
+// delete changes source, credited to its declaring file (`relative_path`) - the references it rewrote elsewhere
+// are not named in the call (2.1.5 final review R8/R9).
+const NAV_EDIT_RE = /^mcp__(?:plugin_navigation_)?navigation__(?:rename_symbol|safe_delete_symbol)$/;
 const DONE_GATE_SKILL_RE = /(?:^|:)alfred-habits-done-gate$/;
 const DISPATCH_TOOL_RE = /^(?:Agent|Task)$/;
 const PROSE_FILE_RE = /\.(?:md|mdx|markdown|txt|rst|adoc)$/i;
@@ -904,9 +908,14 @@ function turnWork() {
         const added = [input.new_string, input.content, ...multi.map((e) => e && e.new_string)].filter((x) => typeof x === 'string').join('\n');
         const removed = [input.old_string, ...multi.map((e) => e && e.old_string)].filter((x) => typeof x === 'string').join('\n');
         if (rel && SKIP_MARKER_RE.test(added) && !SKIP_MARKER_RE.test(removed)) skipEdit = true;
+      } else if (NAV_EDIT_RE.test(name)) {
+        const rel = res && !res.error && input.relative_path ? sourceEdit(String(input.relative_path)) : null;
+        if (rel) edits.push({ at, rel, file: path.resolve(root, String(input.relative_path)) });
       } else if (DISPATCH_TOOL_RE.test(name)) {
         if (!res || !res.error) lastRun = { at, kind: `the dispatched ${input.subagent_type || 'agent'}` };
-      } else if (SHELL_TOOL_RE.test(name)) {
+      } else if (shellWrites ? shellWrites.isShellTool(name) : SHELL_TOOL_RE.test(name)) {
+        // The whole shell route (R8): Monitor runs its command under Bash's rules. The PostToolUse probes above
+        // stay on Bash|PowerShell, the shell tools they are wired on.
         if (res && res.error && !ranCode(res)) continue;
         const command = String(typeof input === 'string' ? input : input.command || '');
         const bt = res ? buildTestRun(command) : null;
@@ -1332,11 +1341,17 @@ if (payload.tool_name === 'AskUserQuestion') {
     // land next to the tool result, which for an ask is the user's answer, and 'fix the text before sending
     // it' arrived after it was sent. Once per ask text and session: the same ask re-sent unchanged passes with
     // the note, so a model that keeps the slip is never looped.
+    // Code is not prose (R5, 2.1.5 final review): a string's delimiters in code or JSON stay double
+    // (baseline-interaction.md), so a backticked span or a fenced block is blanked before the check and handed
+    // back unchanged by the fix - rewriting it corrupted the snippet the corrected ask carried.
+    const CODE_SPAN = /```[\s\S]*?```|`[^`\n]*`/g;
+    const proseText = askText.replace(CODE_SPAN, (m) => ' '.repeat(m.length));
     const voice = [];
-    if (/[\u2014\u2013]/.test(askText)) voice.push('an em- or en-dash (use a single dash)');
-    if (/"/.test(askText)) voice.push('a double quote (use single quotes)');
+    if (/[\u2014\u2013]/.test(proseText)) voice.push('an em- or en-dash (use a single dash)');
+    if (/"/.test(proseText)) voice.push('a double quote (use single quotes)');
     if (voice.length) {
-      const fix = (t) => String(t).replace(/\s*[\u2014\u2013]\s*/g, ' - ').replace(/"/g, "'");
+      const fixProse = (t) => String(t).replace(/\s*[\u2014\u2013]\s*/g, ' - ').replace(/"/g, "'");
+      const fix = (t) => String(t).split(/(```[\s\S]*?```|`[^`\n]*`)/).map((s, i) => (i % 2 ? s : fixProse(s))).join('');
       const fixed = (((payload.tool_input || {}).questions) || []).map((q) => (q && typeof q === 'object' ? {
         ...q,
         ...(q.question !== undefined ? { question: fix(q.question) } : {}),

@@ -6,7 +6,7 @@
       "name": "alfred-code",
       "source": "./",
       "description": "The Claude Code stack, guided: setup installs it from scratch into a project, init bootstraps it once after the restart (services, memory, captures, CLAUDE.md), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables; uninstall removes what the install ledger says the stack wrote, and nothing of the user's.",
-      "version": "2.1.4",
+      "version": "2.1.5",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -115,27 +115,12 @@
             ]
           },
           {
-            "matcher": "Read",
+            "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob",
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-read-whole-file.js\"",
-                "timeout": 10
-              },
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
-                "timeout": 10
-              }
-            ]
-          },
-          {
-            "matcher": "Grep",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
-                "timeout": 10
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js\"",
+                "timeout": 50
               }
             ]
           },
@@ -160,41 +145,11 @@
             ]
           },
           {
-            "matcher": "Write|Edit|MultiEdit|NotebookEdit",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-config-protection.js\"",
-                "timeout": 10
-              }
-            ]
-          },
-          {
-            "matcher": "Write|Edit|NotebookEdit",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-cross-project-write.js\"",
-                "timeout": 10
-              }
-            ]
-          },
-          {
             "matcher": "^mcp__(plugin_windows-desktop_)?windows-desktop__App$|^mcp__(plugin_macos-desktop_)?macos-desktop__Shell$",
             "hooks": [
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-desktop-exec.js\"",
-                "timeout": 10
-              }
-            ]
-          },
-          {
-            "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
                 "timeout": 10
               }
             ]
@@ -366,22 +321,13 @@
             ]
           }
         ],
-        "UserPromptSubmit": [
+        "UserPromptExpansion": [
           {
+            "matcher": "(^|[^A-Za-z0-9_-])(alfred-(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|stack-usage|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
             "hooks": [
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
-                "timeout": 10
-              },
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
-                "timeout": 10
-              },
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/monitor-session.js\"",
                 "timeout": 10
               }
             ]
@@ -393,6 +339,22 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "UserPromptSubmit": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/monitor-session.js\"",
                 "timeout": 10
               }
             ]

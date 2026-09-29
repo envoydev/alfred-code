@@ -71,6 +71,7 @@ const { spawnSync } = require('child_process');   // `node --check` only - node 
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const yaml = require('js-yaml');
 const { SIGNAL_KINDS } = require('./scan-evidence.js');
+const { lintMcpToolNames, lintStaleMcpToolNames, lintMcpToolsAtPin } = require('./lint-mcp-tools.js');  // checks 54, 59, 62
 
 const ROOT = path.resolve(__dirname, '..');
 const SKILLS_DIR = path.join(ROOT, 'stack', 'skills');
@@ -866,6 +867,17 @@ function lintAgentDescription(label, description)
 {
     if (typeof description !== 'string' || description.length <= AGENT_DESC_LIMIT) return [];
     return [`${label} description is ${description.length} chars (> ${AGENT_DESC_LIMIT}) - keep the 'Use when...' sentence and its 'Do NOT use' clause, and move the rest into the agent body`];
+}
+// 15b's shape (2.1.5 M55): the clause, and ONE `## Scope` section holding what the cap cut - code-style-analyzer
+// had no clause, test-coverage-analyzer two Scope headings (the second its dispatch inputs), a resolver none.
+function lintAgentShape(label, description, body)
+{
+    const out = [];
+    if (typeof description === 'string' && !/\b(Do NOT use|Not for)\b/.test(description))
+        out.push(`${label} description has no 'Do NOT use' or 'Not for' clause - the listing is where a dispatcher learns when not to pick the seat`);
+    const scopes = (String(body || '').match(/^## Scope[ \t]*$/gm) || []).length;
+    if (scopes !== 1) out.push(`${label} has ${scopes} '## Scope' sections (want exactly 1) - the 'Use when...' paragraph and what the 300-char description left out live there`);
+    return out;
 }
 
 // 15c. A SKILL description is capped too, for the skill listing's own budget: Claude Code lists every
@@ -1799,7 +1811,8 @@ function main()
             continue;
         }
 
-        const fm = fs.readFileSync(file, 'utf8').match(/^---\r?\n([\s\S]*?)\r?\n---/);
+        const source = fs.readFileSync(file, 'utf8');
+        const fm = source.match(/^---\r?\n([\s\S]*?)\r?\n---/);
         if (!fm)
         {
             continue;
@@ -1819,7 +1832,7 @@ function main()
         {
             flag(`${label} description is ${meta.description.length} chars (> ${DESC_LIMIT}) - trim it; every description is always-on context in every install`);
         }
-        if (label.startsWith('agents/')) for (const finding of lintAgentDescription(label, meta && meta.description)) flag(finding);
+        if (label.startsWith('agents/')) for (const finding of [...lintAgentDescription(label, meta && meta.description), ...lintAgentShape(label, meta && meta.description, source.slice(fm[0].length))]) flag(finding);
         if (label.startsWith('skills/')) for (const finding of lintSkillDescription(label, meta && meta.description, meta && meta.when_to_use)) flag(finding);
     }
 
@@ -2351,7 +2364,7 @@ function main()
     try
     {
         alwaysOn = alwaysOnSurface({ rulesDir: CLAUDE_RULES_DIR, agentsDir: AGENTS_DIR, skillsDir: SKILLS_DIR });
-        // The ceiling sits about 40% over the measured surface (48,868 on 2026-09-29): a budget to
+        // The ceiling sits about 40% over the measured surface (48,977 on 2026-09-29): a budget to
         // DEFEND, not a target to grow into. Raising it is a deliberate edit with a reason, which is the point.
         const ALWAYS_ON_MAX = 70000;
         if (alwaysOn.total > ALWAYS_ON_MAX)
@@ -2389,8 +2402,12 @@ function main()
     for (const finding of lintMcpToolNames()) flag(finding);
     // 59. No shipped file names a plugin tool whose plugin carries no server - a renamed server's old spelling.
     for (const finding of lintStaleMcpToolNames()) flag(finding);
+    // 62. No shipped file names a tool its pinned server does not have (meta/mcp-tools.json).
+    for (const finding of lintMcpToolsAtPin()) flag(finding);
     // 60. The inventory page's inline script parses - a broken string there renders an empty page.
     for (const finding of lintPageScripts()) flag(finding);
+    // 60b. The inventory page shows every seat at its frontmatter pin.
+    for (const finding of lintHtmlSeatPins()) flag(finding);
     // 55. Our own workflows: no event field spliced into run, no floating third-party action, no
     //     pull_request_target checkout of the PR head.
     for (const finding of lintWorkflows(workflowFiles())) flag(finding);
@@ -2485,7 +2502,9 @@ function lintPluginPlacement(placeIn)
 // are reserved at the repo root. `.mcp.json` is the one exception: this repo is itself a consuming
 // project, so a machine-local one is expected - but it must stay UNTRACKED, or every install from a
 // local-path marketplace registers this repo's own servers into the consuming project.
-const RESERVED_ROOT_NAMES = ['skills', 'commands', 'agents', 'hooks', 'monitors', 'settings.json', '.lsp.json'];
+// M21: the reference's standard layout also auto-loads `bin/` (on every entry's Bash PATH), `output-styles/`,
+// `workflows/`, `themes/` and a root SKILL.md (a single-skill plugin) - code.claude.com/docs/en/plugins-reference.
+const RESERVED_ROOT_NAMES = ['skills', 'commands', 'agents', 'hooks', 'monitors', 'settings.json', '.lsp.json', 'bin', 'output-styles', 'workflows', 'themes', 'SKILL.md'];
 function lintRepoRootReserved(root)
 {
     const base = root || ROOT;
@@ -2667,79 +2686,6 @@ function lintMcpEntries()
     return out;
 }
 
-// 54. Every MCP server the stack ships arrives through a PLUGIN, so its tools are addressed
-// `mcp__plugin_<plugin>_<server>__<tool>`. The bare `mcp__<server>__<tool>` spelling belonged to
-// the registration route and resolves to nothing now: a `tools:` allowlist written that way
-// silently drops the tool, and a `ToolSearch select:` line written that way silently finds none.
-// The names are read from the generated entries, never typed here - so this file cannot itself
-// contain the spelling it bans, and a new server is covered the day its entry lands.
-function lintMcpToolNames()
-{
-    const out = [];
-    let names;
-    try { names = require('./build-marketplace.js').mcpPlugins().map(e => e.name); }
-    catch (err) { return [`the MCP entries could not be generated, so the tool-name sweep did not run: ${err.message}`]; }
-    const bare = new RegExp(`mcp__(${names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})__`, 'g');
-    const roots = ['stack', 'setup-plugin', 'meta', 'scripts'];
-    const skip = /(^|\/)(node_modules|\.git)(\/|$)/;
-    const walk = (dir, hit) =>
-    {
-        let names2;
-        try { names2 = fs.readdirSync(dir, { withFileTypes: true }); }
-        catch { return hit; }
-        for (const d of names2)
-        {
-            const full = path.join(dir, d.name);
-            if (skip.test(path.relative(ROOT, full))) continue;
-            if (d.isDirectory()) { walk(full, hit); continue; }
-            if (!/\.(md|mdc|js|json|sh|ps1|html|txt)$/.test(d.name)) continue;
-            let body;
-            try { body = fs.readFileSync(full, 'utf8'); } catch { continue; }
-            const found = body.match(bare);
-            if (found) hit.push([path.relative(ROOT, full), found.length, found[0]]);
-        }
-        return hit;
-    };
-    const hits = [];
-    for (const r of roots) walk(path.join(ROOT, r), hits);
-    for (const [file, count, sample] of hits)
-        out.push(`${file} names an MCP tool by its bare server spelling (${count}x, e.g. \`${sample}\`) - a plugin server's tools are \`mcp__plugin_<plugin>_<server>__<tool>\`, so the bare form resolves to nothing.`);
-    return out;
-}
-
-// 59. Every PLUGIN tool spelling names a server the marketplace ships. Check 54 bans the bare form;
-// this one catches the plugin form outliving its plugin - a renamed server (serena -> navigation)
-// leaves `mcp__plugin_<old>_<old>__` in every allowlist and ToolSearch line, and each resolves to
-// nothing, silently. The shipped names are read from the generator, never typed here. A line that
-// spells a plugin the stack does not ship ON PURPOSE (a test fixture, a third-party plugin in a usage
-// sample) carries the whole word `mcp-fixture` in a comment.
-const MCP_FIXTURE_MARKER = /(?:\/\/|#|<!--)[^\n]*?(?<![\w-])mcp-fixture(?![\w-])/;
-const PLUGIN_TOOL_SPELLING = /mcp__plugin_([A-Za-z0-9][A-Za-z0-9.-]*)_([A-Za-z0-9][A-Za-z0-9.-]*)__/g;
-function lintStaleMcpToolNames({ files, entries } = {})
-{
-    let shipped = entries;
-    if (!shipped)
-    {
-        try { shipped = require('./build-marketplace.js').mcpPlugins(); }
-        catch (err) { return [`the MCP entries could not be generated, so the stale tool-name sweep did not run: ${err.message}`]; }
-    }
-    const servers = new Map(shipped.map((e) => [e.name, new Set(Object.keys(e.mcpServers || {}))]));
-    const out = [];
-    for (const { file, text } of files || shippedTextFiles(['stack', 'setup-plugin', 'meta', 'scripts']))
-        text.split('\n').forEach((line, i) =>
-        {
-            if (MCP_FIXTURE_MARKER.test(line)) return;
-            for (const [full, plugin, server] of line.matchAll(PLUGIN_TOOL_SPELLING))
-            {
-                if (!servers.has(plugin))
-                    out.push(`${file}:${i + 1} names \`${full}\`, but no marketplace entry named '${plugin}' carries a server - the tool resolves to nothing. Re-spell it to the shipped server; a deliberate fixture line carries \`mcp-fixture\` in a comment.`);
-                else if (!servers.get(plugin).has(server))
-                    out.push(`${file}:${i + 1} names \`${full}\`, but the plugin '${plugin}' carries no server '${server}' - one plugin, one server, same name (check 53).`);
-            }
-        });
-    return out;
-}
-
 // 60. The inventory page builds every table from ONE inline script, so a row string that does not
 // parse (an unescaped double quote) leaves the page blank in the browser - and every other check reads
 // that script as text. Each inline script goes through `node --check` on stdin; the finding maps the
@@ -2766,28 +2712,43 @@ function lintPageScripts({ file = 'docs/alfred-code.html', html } = {})
     return out;
 }
 
-// The text files under the given roots, the way checks 54 and 59 read them.
-function shippedTextFiles(roots, root = ROOT)
+// 60b (2.1.5 M57). The page states each seat's pin twice - the `mdl` badge (text and tier class) and the row's
+// 'Pinned <model>/<effort>' - and nothing compared them with the frontmatter: architecture-analyzer read
+// 'sonnet · low' for two weeks after its pin moved to medium. A badge in a shape this cannot read is flagged too,
+// so a changed markup cannot pass as an empty check.
+function lintHtmlSeatPins(html, pins)
 {
-    const files = [];
-    const skip = /(^|\/)(node_modules|\.git)(\/|$)/;
-    const walk = (dir) =>
+    const page = 'docs/alfred-code.html';
+    let text = html;
+    if (text === undefined)
     {
-        let entries;
-        try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
-        catch { return; }
-        for (const d of entries)
-        {
-            const full = path.join(dir, d.name);
-            const rel = path.relative(root, full).split(path.sep).join('/');
-            if (skip.test(rel)) continue;
-            if (d.isDirectory()) { walk(full); continue; }
-            if (!/\.(md|mdc|js|json|sh|ps1|html|txt)$/.test(d.name)) continue;
-            try { files.push({ file: rel, text: fs.readFileSync(full, 'utf8') }); } catch { /* unreadable: nothing to sweep */ }
-        }
-    };
-    for (const r of roots) walk(path.join(root, r));
-    return files;
+        try { text = fs.readFileSync(STACK_HTML, 'utf8'); }
+        catch (err) { return [`${page}: unreadable, so its seat pins were not checked (${err.message})`]; }
+    }
+    const pinOf = pins || new Map(fs.readdirSync(AGENTS_DIR).filter((f) => f.endsWith('.md')).map((f) =>
+    {
+        const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.readFileSync(path.join(AGENTS_DIR, f), 'utf8'));
+        const meta = fm ? yaml.load(fm[1]) || {} : {};
+        return [f.slice(0, -3), { model: meta.model, effort: meta.effort }];
+    }));
+    const out = [];
+    const badges = [...text.matchAll(/class="agent [^"]*">([a-z0-9-]+)<span class="role">[^<]*<\/span><span class="mdl ([a-z]+)">([^<]*)<\/span>/g)];
+    const all = (text.match(/class="mdl /g) || []).length;
+    if (badges.length !== all) out.push(`${page}: ${all - badges.length} model badge(s) are not in the seat-badge shape this check reads`);
+    for (const [, seat, tier, shown] of badges)
+    {
+        const pin = pinOf.get(seat);
+        if (!pin) { out.push(`${page}: a model badge names '${seat}', which is no seat in stack/agents`); continue; }
+        if (shown !== `${pin.model} · ${pin.effort}`) out.push(`${page}: the model badge for '${seat}' reads '${shown}' but its frontmatter pins ${pin.model} · ${pin.effort}`);
+        if (tier !== pin.model) out.push(`${page}: the model badge for '${seat}' carries class 'mdl ${tier}' but the seat runs ${pin.model}`);
+    }
+    for (const [, seat, model, effort] of text.matchAll(/\["([a-z0-9-]+)", "subagent",[^\n]*?\bPinned (\w+)\/(\w+)/g))
+    {
+        const pin = pinOf.get(seat);
+        if (!pin) out.push(`${page}: an inventory row names '${seat}', which is no seat in stack/agents`);
+        else if (model !== pin.model || effort !== pin.effort) out.push(`${page}: the inventory row for '${seat}' says 'Pinned ${model}/${effort}' but its frontmatter pins ${pin.model}/${pin.effort}`);
+    }
+    return out;
 }
 
 // 56. A retired plugin's NAME does not outlive the plugin in shipped text. The seats kept its
@@ -2984,10 +2945,13 @@ function lintHooksEntry(liveIn)
                 if (!fs.existsSync(path.join(ROOT, 'stack/hooks', file)))
                     out.push(`the core wires ${file}, which is not in stack/hooks/.`);
             }
-    // The shell-guard dispatcher runs its guards in-process: a guard it lists is wired through it.
+    // The shell- and file-guard dispatchers run their guards in-process: a guard one lists is wired through it.
     const dispatcher = require(path.join(ROOT, 'stack/hooks/shell-guards.js'));
+    const fileDispatcher = require(path.join(ROOT, 'stack/hooks/file-guards.js'));
     if (wired.has(`${dispatcher.SELF}.js`))
         for (const guard of dispatcher.GUARDS) wired.add(`${guard}.js`);
+    if (wired.has(`${fileDispatcher.SELF}.js`))
+        for (const guard of fileDispatcher.NAMES) wired.add(`${guard}.js`);
     for (const file of fs.readdirSync(path.join(ROOT, 'stack/hooks')))
     {
         if (!file.endsWith('.js') || ENGINES.has(file) || wired.has(file)) continue;
@@ -3000,11 +2964,12 @@ function lintHooksEntry(liveIn)
         const text = fs.readFileSync(path.join(ROOT, 'stack/hooks', file), 'utf8');
         if (!text.includes('STACK HOOK GATES'))
             out.push(`stack/hooks/${file} carries no stand-down gate - a plugin copy would fire beside a still-wired project copy.`);
-        else if (file === `${dispatcher.SELF}.js`)
+        else if (file === `${dispatcher.SELF}.js` || file === `${fileDispatcher.SELF}.js`)
         {
             // Its guards gate themselves; its own gate is the copied-twin stand-down alone.
-            if (!text.includes(`yieldToCopiedTwin('${dispatcher.SELF}')`))
-                out.push(`stack/hooks/${file} does not step aside for its copied twin - yieldToCopiedTwin('${dispatcher.SELF}').`);
+            const self = file.replace(/\.js$/, '');
+            if (!text.includes(`yieldToCopiedTwin('${self}')`))
+                out.push(`stack/hooks/${file} does not step aside for its copied twin - yieldToCopiedTwin('${self}').`);
         }
         // Options may follow the name (the dispatch guard's `{ setUp: false }`, M9); the name is what is held.
         else if (!new RegExp(`standDown\\('${file.replace(/\.js$/, '').replace(/[-]/g, '\\-')}'[,)]`).test(text))
@@ -3212,6 +3177,8 @@ module.exports = {
     lintOptionalCites,
     lintPluginCites,
     lintAgentDescription,
+    lintAgentShape,
+    lintHtmlSeatPins,
     lintSkillDescription,
     SKILL_DESC_LIMIT,
     lintAgentTools,

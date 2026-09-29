@@ -2,6 +2,8 @@
 // mandate failed in a real setup run: the agents ask named rows 3-5, 11-19, 32-34 and the user
 // answered 'I do not see any table'. The plugin hook denies that ask - both directions pinned here.
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');

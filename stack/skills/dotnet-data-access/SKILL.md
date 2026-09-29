@@ -41,14 +41,14 @@ Out of scope, by design: raw SQL / index / planner tuning -> the engine skill (P
 
 ```csharp
 // one query, three columns, no tracked entities, bounded
-public Task<List<OrderSummary>> RecentAsync(Guid customerId, int limit, CancellationToken ct) =>
-    _db.Orders
-       .AsNoTracking()
-       .Where(o => o.CustomerId == customerId)
-       .OrderByDescending(o => o.PlacedAt)
-       .Take(limit)                                     // required, never unbounded
-       .Select(o => new OrderSummary(o.Id, o.PlacedAt, o.Total))
-       .ToListAsync(ct);
+public async Task<IReadOnlyList<OrderSummary>> RecentAsync(Guid customerId, int limit, CancellationToken ct) =>
+    await _db.Orders
+             .AsNoTracking()
+             .Where(o => o.CustomerId == customerId)
+             .OrderByDescending(o => o.PlacedAt)
+             .Take(limit)                               // required, never unbounded
+             .Select(o => new OrderSummary(o.Id, o.PlacedAt, o.Total))
+             .ToListAsync(ct);                          // List<T> converts to the read-only return type
 ```
 - Separate read and write stores (CQRS-lite): read stores return denormalized projections with no tracking; write stores take commands and return minimal data (the new id, or void).
 - Every read method takes a required `limit` / `Take` - never return unbounded. Keyset pagination for large sets (the SQL and its supporting index belong to the database-conventions and per-engine skills, where the project installed them - without one, write the keyset predicate and add the covering index yourself rather than falling back to offset paging); offset paging otherwise with a separate count.

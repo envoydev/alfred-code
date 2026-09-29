@@ -31,3 +31,7 @@ Off the hot path, do not contort a domain model for allocations you never measur
 The format decision is a wire-compatibility decision, and it is hard to reverse once data is persisted or a contract is published. Decide by where the bytes go - the pick-by-destination table is in `references/serialization.md`.
 
 Inside a single process (in-memory only), format is irrelevant - do not serialize at all. The rules that override taste: never `BinaryFormatter`, and never embed .NET type names in a payload (it breaks on the first rename). Load `references/serialization.md` for setup, the Newtonsoft migration, and the versioning rules; the Roslyn source-generator skill owns the source-gen mechanics and the ASP.NET web hub the JSON wiring - with neither installed, the `JsonSerializerContext` snippet in that reference is enough to ship.
+
+## Prove it
+
+A performance change is done only when its measurement is: quote the before and after numbers from the same benchmark or profile, run the same way (BenchmarkDotNet's Mean and Allocated columns (with `[MemoryDiagnoser]`) for a hot path, the profiler's figure for a live regression), plus the green test run. A change with no before number is a guess, and the close says so.

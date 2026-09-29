@@ -53,6 +53,33 @@ if (order is null)
 }
 ```
 
+### Switch case blocks
+
+Every `switch` case body sits in its own `{ }` block, even a one-statement case - the house rule `SKILL.md` states - so each case gets its own scope and no variable leaks into the next. A blank line goes before `break` / `return` when another statement precedes it, and none when the transfer is the only statement after `{` (the `default` below).
+
+```csharp
+switch (x)
+{
+    case A:
+    {
+        DoA();
+
+        break;
+    }
+    case B:
+    {
+        var y = Compute();
+        Use(y);
+
+        return;
+    }
+    default:
+    {
+        return;
+    }
+}
+```
+
 ### Line length and wrapping
 - Soft limit 120 columns. Wrap long member access chains and long argument lists one item per line.
 - When wrapping a chain, put each `.` on a new line aligned under the receiver.

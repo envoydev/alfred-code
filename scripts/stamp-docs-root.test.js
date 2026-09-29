@@ -421,3 +421,18 @@ test('--seed-versioning at project scope seeds settings.json even when settings.
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+// 2.1.5 audit M61: the stamped line states which file wins - at local scope the root lives in
+// settings.local.json, which Claude Code lays over settings.json - and carries no installer narration.
+test('the stamped root line names settings.local.json over settings.json, and no installer narration (M61)', () => {
+    const root = makeProject('{"env":{"ALFRED_CODE_DOCS_PATH":"docs"}}');
+    try
+    {
+        run(root);
+        const line = stampLine(root);
+        assert.match(line, /This install's root: `docs`/);
+        assert.match(line, /`\.claude\/settings\.local\.json` over `\.claude\/settings\.json`/, line);
+        assert.doesNotMatch(line, /stamped by every install|where every write prompts/, line);
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

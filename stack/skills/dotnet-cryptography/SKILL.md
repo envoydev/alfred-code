@@ -16,7 +16,7 @@ Two boundaries this skill does not cross. Where keys and secrets *live* - a vaul
 
 ## First principle: use the static one-shots
 
-Each algorithm exposes static helpers (`SHA256.HashData`, `AesGcm`, `RSA.Encrypt`) that own buffer sizing and disposal. Reach for those before constructing and managing an instance yourself. Two rules sit above every section below:
+Where an algorithm has a static one-shot (`SHA256.HashData`, `HMACSHA256.HashData`, `Rfc2898DeriveBytes.Pbkdf2`), it owns buffer sizing and disposal - reach for it before constructing and managing an instance yourself. `AesGcm` and `RSA` have no one-shot: construct the instance in a `using` so it is disposed. Two rules sit above every section below:
 
 - **Entropy comes from `RandomNumberGenerator`** (`RandomNumberGenerator.GetBytes(n)`), the only acceptable source for keys, salts, and nonces. `System.Random` / `Guid` are not random in the security sense - never seed crypto from them.
 - **Compare any two secrets with `CryptographicOperations.FixedTimeEquals`**, never `==` or `SequenceEqual`. A short-circuiting comparison leaks how many leading bytes matched through its timing, which is enough to recover a MAC or token byte by byte.

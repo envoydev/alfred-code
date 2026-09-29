@@ -1,7 +1,7 @@
 ---
 name: test-coverage-analyzer
 description: "Use to characterize one surface's coverage from an already-produced instrumented run: parses cobertura / lcov / summary output into per-module numbers, uncovered hot spots and test smells; the coverage capture's seat. Do NOT use to run the suite or write files."
-tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Bash, Grep, Glob, Skill
+tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Bash, Grep, Glob, Skill, mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview
 model: sonnet
 effort: medium
 color: orange
@@ -20,7 +20,7 @@ alfred-capture-test-coverage skill that dispatched you (usually one of several, 
 surface) aggregates the digests, judges against the user's requirement, and writes the doc - so
 return raw structured data, not prose for a human.
 
-## Scope
+## Dispatch inputs
 - Your dispatch prompt names the surface, its raw-results path (`<docs-path>/test-coverage/raw/<stack>/`),
   the suite location, and the recorded requirement + exclusion list. Work ONLY that surface.
 - Parse the machine-readable output the tooling produced (cobertura XML, lcov.info,
@@ -57,7 +57,11 @@ divergence is the signal. Never soften a weak point because the aggregate meets 
 never propose widening exclusions to close a gap - that decision is the user's, upstream.
 
 ## Digest - the structured return
-Return exactly this shape (Markdown headings, so the skill can aggregate mechanically):
+Open with a literal `status: CHARACTERIZED | PARTIAL | UNPARSED` line - CHARACTERIZED when every raw
+file parsed, PARTIAL when some did not or the locating cap cut the read, UNPARSED when none did
+and nothing was measured - since the capture fans one dispatch out per surface and branches on
+that word before it reads the digest. Then exactly this shape (Markdown headings, so the skill
+can aggregate mechanically):
 
 1. **Surface** - which stack/surface, the raw files parsed, the suite runner observed - one line.
 2. **Numbers** - overall line (and branch where present) after the recorded exclusions, plus a

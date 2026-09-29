@@ -48,10 +48,12 @@ function isWindowsArm({ arch, env })
 
 // One ALFRED_CODE_<suffix> setting as a launcher sees it: the shell env, then this machine's file before
 // the shared one, the way Claude Code layers them - a plugin server never gets a PROJECT settings env
-// key, so the files are read here. '' when none of them names it.
-function settingFrom({ env, projectDir, suffix })
+// key, so the files are read here. '' when none of them names it. `key` reads another tool's own variable
+// by its exact name instead (UV_EXCLUDE_NEWER), with no ALFRED_CODE_ or legacy spelling.
+function settingFrom({ env, projectDir, suffix, key })
 {
-    const own = String(envOf(env, suffix) || '').trim();
+    const read = key ? (e) => e[key] : (e) => envOf(e, suffix);
+    const own = String(read(env) || '').trim();
     if (own || !projectDir) return own;
     const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
     for (const file of [
@@ -62,7 +64,7 @@ function settingFrom({ env, projectDir, suffix })
     {
         try
         {
-            const value = String(envOf((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}, suffix) || '').trim();
+            const value = String(read((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}) || '').trim();
             if (value) return value;
         }
         catch { /* absent, unreadable or malformed: the next file answers */ }
@@ -79,13 +81,49 @@ function pythonRequest({ platform = process.platform, arch = process.arch, env =
     return platform === 'win32' && isWindowsArm({ arch, env }) ? WINDOWS_ARM_PYTHON : PYTHON;
 }
 
+// THE DEPENDENCY CUT-OFF. The pin fixes the top package only; its dependencies float, so two starts a week
+// apart could resolve different trees - the drift the pins exist to stop. uv's `--exclude-newer` takes only
+// what was uploaded before a date, and the date is the pins file's own `refreshed` day (UTC, the day the
+// refresh saw every pinned release), spelled as that day's last second in RFC 3339 so no machine's time
+// zone moves it (docs.astral.sh/uv/concepts/resolution, 'Reproducible resolutions'). The plugin entry and
+// the copy-route row each carry it beside the pin they were generated with, so the two never disagree.
+// '' for a missing or malformed day: ship without the cut-off rather than a flag uv refuses.
+const excludeNewerOf = (refreshed) => (/^\d{4}-\d{2}-\d{2}$/.test(String(refreshed || '')) ? `${refreshed}T23:59:59Z` : '');
+const EXCLUDE_NEWER_SHAPE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}Z)?$/;
+
+// UV_EXCLUDE_NEWER as the user set it - uv's own variable, read where the stack reads its other settings (the
+// env, then settings.local.json, settings.json and the account settings.json `env`), since a plugin server never
+// sees a PROJECT settings env key. An index that publishes no PEP 700 upload time (a private mirror) makes every
+// file unavailable under a cut-off, and uv's error never names the cut-off; `false` lifts it
+// (docs.astral.sh/uv/reference/environment, UV_EXCLUDE_NEWER).
+const userExcludeNewer = ({ env = process.env, projectDir } = {}) => settingFrom({ env, projectDir, key: 'UV_EXCLUDE_NEWER' });
+
+// The cut-off a row registers where no launcher runs (the copy route, init's index command): the release's, unless
+// the user set their own - that value verbatim (uv reads it; a flag would beat their variable), or none for `false`.
+const cutoffFor = (release, own) => (!own ? release : /^false$/i.test(own) ? '' : own);
+
+// The cut-off a launcher hands uvx: the entry's own, unless the user set UV_EXCLUDE_NEWER themselves -
+// uv's own variable, which the flag would override (`false` lifts it). A malformed value is dropped.
+function excludeNewerArgs(value, { env = process.env, log = () => {} } = {})
+{
+    const own = String((env && env.UV_EXCLUDE_NEWER) || '').trim();
+    if (!value) return [];
+    if (own) { log(`UV_EXCLUDE_NEWER=${own} is set - it replaces the release cut-off ${value}`); return []; }
+    if (!EXCLUDE_NEWER_SHAPE.test(value)) { log(`--exclude-newer ${value} is not a date - started without the cut-off`); return []; }
+    return ['--exclude-newer', value];
+}
+
 // uvx with the pin in front of `args`, for as long as it lives. Its exit code is the launcher's, and
 // a stop signal is passed on: Claude Code stops a server by signalling the process it started - the
 // launcher - and uvx, the server and its language servers would otherwise outlive it (measured: a
 // SIGTERM to the launcher left the server running).
-function runUvx(args, { env = process.env, cwd, projectDir, label = 'launcher' } = {})
+function runUvx(args, { env: given = process.env, cwd, projectDir, label = 'launcher', excludeNewer = '' } = {})
 {
-    const child = spawn('uvx', ['--python', pythonRequest({ env, projectDir }), ...args], { stdio: 'inherit', env, cwd });
+    // A UV_EXCLUDE_NEWER only a settings file names is put where uv reads it - the child's own environment.
+    const own = String(given.UV_EXCLUDE_NEWER || '').trim() ? '' : userExcludeNewer({ env: given, projectDir });
+    const env = own ? { ...given, UV_EXCLUDE_NEWER: own } : given;
+    const cutoff = excludeNewerArgs(excludeNewer, { env, log: (line) => process.stderr.write(`${label}: ${line}\n`) });
+    const child = spawn('uvx', ['--python', pythonRequest({ env, projectDir }), ...cutoff, ...args], { stdio: 'inherit', env, cwd });
     const forward = (signal) => { try { child.kill(signal); } catch { /* already gone */ } };
     for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(signal, forward);
     child.on('error', err =>
@@ -100,4 +138,4 @@ function runUvx(args, { env = process.env, cwd, projectDir, label = 'launcher' }
 // `node uv-python.js [projectDir]` prints the request: the frozen installer twins resolve their
 // @UV_PYTHON@ with it.
 if (require.main === module) process.stdout.write(pythonRequest({ projectDir: process.argv[2] }));
-module.exports = { pythonRequest, runUvx, settingFrom, PYTHON, WINDOWS_ARM_PYTHON };
+module.exports = { pythonRequest, runUvx, settingFrom, excludeNewerOf, excludeNewerArgs, userExcludeNewer, cutoffFor, PYTHON, WINDOWS_ARM_PYTHON };

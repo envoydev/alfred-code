@@ -15,13 +15,12 @@ A database is the one part of a system where a careless change is permanent: a d
 
 Load before designing or modifying a schema, writing SQL raw or through an ORM, modeling a document store, or creating a migration, view, procedure, or index.
 
-Database conventions across Postgres, SQL Server/T-SQL, SQLite, and MongoDB - the engine-neutral rules for schema design, migrations, indexes, foreign keys, transactions, connection management, query safety, N+1 prevention, and secret handling, plus the per-engine pitfalls that bite. Deeper work routes out per engine and per stack - the body names each route and what to do when the project installed none of them.
+Database conventions across Postgres, SQL Server/T-SQL, SQLite, and MongoDB - the engine-neutral rules for schema design, migrations, indexes, foreign keys, transactions, connection management, query safety, N+1 prevention, and secret handling, plus the per-engine pitfalls that bite.
 
 Do NOT load for app-only in-memory data structures or a project with no persistence layer.
 
 ## Choosing a store
-
-Relational is the default store; reach for a document, key-value, graph, or time-series engine only when the access pattern genuinely mismatches SQL, and expect to run it alongside the relational database rather than in place of it. A cache (Redis and the like) is a performance layer, never the source of truth - the system must be able to rebuild it from the database, and every cached key carries a TTL so a stale or orphaned entry cannot grow until it runs the instance out of memory.
+Relational is the default. Read `references/stores-procedures-views.md` before choosing another store (document, key-value, graph, time-series, a cache), modeling a document store, or writing a stored procedure, view or trigger, or reviewing a change that does.
 
 ## Schema design
 
@@ -42,13 +41,13 @@ full per-engine data-type tables (text, numbers, boolean, date/time, UUID) are i
 - **PostgreSQL** - the Postgres engine skill (index-type selection, JSONB/full-text, SARGable rewrites, the planner - EXPLAIN / pg_stat_statements / autovacuum - and connection pooling), installed on Npgsql / pg evidence; without it, the rules here plus `references/sql-style.md`'s PostgreSQL columns are the whole guidance. Trap: `SERIAL` is legacy (`GENERATED ALWAYS AS IDENTITY` for new tables), and `TEXT` beats `VARCHAR(n)` without a hard length cap.
 - **SQLite** - the SQLite engine skill (the WAL / single-writer concurrency model, PRAGMAs, type affinity, limited ALTER TABLE, connection-per-thread), installed on SQLite provider evidence; without it, `references/sql-style.md`'s SQLite columns are the whole guidance. Trap: foreign keys are OFF by default - `PRAGMA foreign_keys = ON` on every connection.
 - **SQL Server / T-SQL** - no dedicated engine skill; the engine-neutral rules here, plus `references/sql-style.md`'s T-SQL style and dialect gotchas (`TOP`/`OFFSET-FETCH`, `MERGE`, `THROW`, `IDENTITY`, `TRY/CATCH`), plus its SARGability section, cover most of it. Traps: `NVARCHAR` over `VARCHAR` for any user-facing text so Unicode survives, and `DATETIME2` (or `DATETIMEOFFSET` when the value is timezone-aware) over `DATETIME`.
-- **MongoDB / document stores** - no dedicated skill; apply document-modeling care. Embed versus reference by access pattern, index every queried field path, bound array growth, and never run an unbounded `$lookup`. Traps: the 16 MB document limit is a hard ceiling, so design to sit well under it, and `ObjectId` already embeds a creation timestamp - read it from there rather than duplicating a created-at field.
+- **MongoDB / document stores** - no dedicated skill; the document-modeling rules and traps are `references/stores-procedures-views.md`.
 
 ## Query safety
 
-The query-*writing* style - explicit column lists over `SELECT *`, ANSI `JOIN` syntax, `AS` aliases, column qualification, SARGable predicates, and clause order - is in `references/sql-style.md`. The operational safety rules here:
+The query-*writing* style - explicit column lists over `SELECT *`, ANSI `JOIN` syntax, `AS` aliases, column qualification, SARGable predicates, and clause order - is in `references/sql-style.md`. The data-layer hardening posture - injection per ORM and in dynamic SQL, identifier allowlisting, least-privilege accounts, connection-string secrets - is owned by `database-security`; this skill stops at the query. The operational safety rules here:
 
-- **Every query is either parameterized or it is a vulnerability.** Never build SQL by string concatenation - the full injection treatment (per-ORM mechanics, dynamic SQL, identifier allowlisting) is owned by `database-security`. Keep parameter values out of logs too: query text that carries PII or secrets must never be logged verbatim.
+- **Every query is either parameterized or it is a vulnerability.** Never build SQL by string concatenation. Keep parameter values out of logs too: query text that carries PII or secrets must never be logged verbatim.
 - **Read with the least authority the work needs.** Default reads to read-only intent and `READ COMMITTED` isolation; reach for `SNAPSHOT` or `REPEATABLE READ` only when a specific consistency requirement justifies the extra cost, and say why.
 - **Bound every result set that could grow** - a `LIMIT` or `TOP` on any open-ended query - and never `SELECT *`, which drags unused columns over the wire and breaks the moment the schema changes.
 - **Deep pagination is keyset (seek), never `OFFSET`.** `OFFSET 20000` still scans and discards those 20000 rows, so page 1000 keeps getting slower; a keyset seek with a unique tiebreaker column holds every page equally fast:
@@ -63,11 +62,9 @@ LIMIT 20;
 
 (SQL Server has no row-value comparison - expand to `created_at < :ts OR (created_at = :ts AND id < :id)`.)
 
-- The data-layer hardening posture around injection and connection strings - parameterization at every sink, least-privilege accounts, secrets out of the connection string - is owned by `database-security`; this skill stops at the query.
-
 ## N+1 prevention
 
-- The N+1 query hides in code that reads perfectly - a loop over rows lazily fetching a relation per iteration; the fix (eager fetch or one set query) is the ORM's read-path shape, owned by the .NET data-access skill where the install has one - for a document store, a single shaped read.
+- The N+1 query hides in code that reads perfectly - a loop over rows lazily fetching a relation per iteration; the fix is one eager fetch or one set query (for a document store, a single shaped read), shaped in the ORM as the last bullet routes.
 - Do the join in the database - never pull two tables into the application and join them in memory, which fetches more rows than the result needs and throws away the engine's join optimizer.
 - This skill is engine and SQL only. All .NET data access routes out: the ORM mechanics (`Include` / `ThenInclude`, `AsSplitQuery`, `AsNoTracking`, and their NHibernate equivalents) and read-path shape belong to the .NET data-access skill (EF Core / NHibernate / Dapper) where the install has one; without it, fetch the ORM's current API through `documentation`. Do not restate them here.
 
@@ -77,10 +74,10 @@ The migration *workflow* - previewing the generated SQL, carrying a rollback, re
 
 - **Every migration is reversible.** No destructive change ships without an explicit down path; an irreversible step is a deliberate, reviewed exception, not a default.
 - **One logical change per migration**, with a descriptive name (`AddOrderShippingAddress`, never `Migration1` or `Update001`) so the history reads as a log.
-- **Idempotent at deploy time** - running the migration twice produces the same schema, so a re-run after a partial deploy is safe.
+- **Idempotent at deploy time** - the script a deploy runs is safe to run again after a partial deploy, so a retry never fails on what the first attempt already did.
 - **Backfills run separately from schema changes** when the row count is large. Reshape the schema in one step and move the data in batches in another, so neither holds a long table lock.
 - **Production migrations are reviewed for lock impact** before they ship: an `ALTER TABLE` or an index rebuild on a large table can lock it for the duration, and that is a downtime decision, not an afterthought.
-- **Prove the idempotence, do not assert it.** Run the migration, run it a second time against the same database, and quote both exit lines. A second run that errors is a migration that cannot survive a partial deploy.
+- **Prove the rerun and the rollback, do not assert them** - a second run through a history-tracked tool (EF Core, Flyway, Liquibase) is a no-op and proves nothing, so against a scratch copy of the database: run the tool's guarded script (EF Core `migrations script --idempotent`, where the provider emits one) twice from the previous state, then roll back through the down path, then apply again - quoting each exit line. A step that fails its second pass cannot survive a partial deploy.
 
 ## Naming
 
@@ -109,12 +106,8 @@ Integrity belongs in the schema, where it cannot be bypassed, not in application
 - Never store a derived value that can drift from its inputs (an order `total` kept beside its `subtotal` and `tax`): compute it in the query or a view, or materialize it as a generated column the engine keeps consistent, so the stored copy can never disagree with its source.
 
 ## Transactions and connections
-Read `references/transactions-and-connections.md` before opening a transaction, tuning a pool, or wiring a database-backed work queue: it holds the one-unit-of-work scope rule, the lock-ordering and `FOR UPDATE SKIP LOCKED` claims, the timeout settings and the pooler caveats. Placement decision: those fire when application code drives the database, not on every `.sql` touch this skill is attached to, so they sit one hop out while the schema, query-safety, index and migration rules a routine edit needs stay inline here.
+Read `references/transactions-and-connections.md` before opening a transaction, tuning a pool, or wiring a database-backed work queue: it holds the one-unit-of-work scope rule, the lock-ordering and `FOR UPDATE SKIP LOCKED` claims, the timeout settings and the pooler caveats.
 
 ## Secrets
 
-A connection string is a credential. It comes from configuration or a secret store, never from a source-controlled file, and production credentials stay separate from local and staging so a leaked dev secret cannot reach production data. If a credential is even suspected of exposure, rotate it - and never commit a connection string carrying a password to git history, where it survives every later 'deletion'. The wider secret-handling posture is `database-security`.
-
-## Stored procedures and views
-
-Default to keeping logic in the application, where it is testable, diffable, and version-controlled with the rest of the code. Reach for a stored procedure only when set-based work in the engine genuinely beats application-side composition - a bulk operation that would otherwise round-trip per row. Use views for stable read projections, and a materialized view when the refresh cost is acceptable for the staleness it buys. Keep business logic out of triggers entirely: a trigger is reserved for auditing or for an integrity rule the schema itself cannot express, never for behavior a reader of the application code would never think to look for.
+A connection string is a credential. It comes from configuration or a secret store, never from a source-controlled file, and production credentials stay separate from local and staging so a leaked dev secret cannot reach production data. If a credential is even suspected of exposure, rotate it - and never commit a connection string carrying a password to git history, where it survives every later 'deletion'.

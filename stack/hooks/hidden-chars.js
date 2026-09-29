@@ -1,5 +1,5 @@
-// hidden-chars.js - characters a reader cannot see: zero-width and joiner marks, bidi overrides and
-// isolates (the Trojan Source class, CVE-2021-42574), word joiners, a byte-order mark past byte 0,
+// hidden-chars.js - characters a reader cannot see: zero-width and joiner marks, bidi marks (LRM, RLM and
+// the Arabic letter mark U+061C), overrides and isolates (the Trojan Source class, CVE-2021-42574), word joiners, a byte-order mark past byte 0,
 // and the Unicode tag block (U+E0000-E007F), which carries invisible text a model reads and a
 // reviewer does not. ONE class, two readers: guard-ungated-commit.js scans a commit's added lines
 // with it, and scripts/lint-skills.js sweeps this repo with it (lint check 32). Written as escapes
@@ -7,12 +7,12 @@
 // route loads it from its own directory.
 'use strict';
 
-const HIDDEN_CHAR_RE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]|\uDB40[\uDC00-\uDC7F]/g;
+const HIDDEN_CHAR_RE = /[\u061C\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]|\uDB40[\uDC00-\uDC7F]/g;
 
-// Three members are TEXT where a script needs them, and hidden anywhere else: a zero-width joiner
+// The joiners and the bidi marks are TEXT where a script needs them, and hidden anywhere else: a zero-width joiner
 // between two emoji parts (the sequence that builds one emoji) or two non-ASCII letters, a zero-width
-// non-joiner between two non-ASCII letters (Persian, Indic), and a left-to-right or right-to-left mark
-// beside a non-ASCII letter. Flagging them told a README emoji and a Persian word to be written as an
+// non-joiner between two non-ASCII letters (Persian, Indic), and a left-to-right, right-to-left or Arabic
+// letter mark beside a non-ASCII letter. Flagging them told a README emoji and a Persian word to be written as an
 // escape, which Markdown and JSON prose cannot do (the 2026-09-26 hooks review). Everything else in
 // the class - the bidi embeddings, overrides and isolates, the zero-width space, the word joiners,
 // the tag block, a BOM past byte 0 - is hidden whatever its neighbours. A neighbour that is itself in
@@ -26,7 +26,7 @@ function isScriptText(ch, before, after)
     const letter = (c) => qualifies(c, LETTER);
     if (ch === '\u200D') return (qualifies(before, EMOJI_PART) && qualifies(after, EMOJI_PART)) || (letter(before) && letter(after));
     if (ch === '\u200C') return letter(before) && letter(after);
-    if (ch === '\u200E' || ch === '\u200F') return letter(before) || letter(after);
+    if (ch === '\u200E' || ch === '\u200F' || ch === '\u061C') return letter(before) || letter(after);
     return false;
 }
 // The whole code point ending just before `i`, and the one starting at `i`.

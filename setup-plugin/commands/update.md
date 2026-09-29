@@ -607,8 +607,8 @@ is the VALIDATE bullet's `policy-rev:` trigger above, one printed row, not a re-
 When the navigation server is installed, also name the one-off re-index as a next step whenever this run
 re-seeded serena's `project.yml` (under the data root, or a 2.0.0 `.serena` not moved yet) - an install
 predating the seeding has no `ignored_paths`, so its cache was built over the navigation server's own
-language-server directory: `SERENA_HOME=.alfred/serena/home uvx --python 3.13 --from serena-agent serena
-project index` (the data root's own folder in place of `.alfred`; `.serena/home` while a 2.0.0 folder has
+language-server directory: `SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer 2026-09-29T23:59:59Z
+--from serena-agent@1.7.0 serena project index` (the release pin and cut-off from `meta/mcp-pins.json`) (the data root's own folder in place of `.alfred`; `.serena/home` while a 2.0.0 folder has
 not moved; Windows PowerShell: `$env:SERENA_HOME='.alfred\serena\home'` - the navigation server hands the path to cmd.exe unquoted, where a `/` cuts it, and so would a space in an absolute path - and, on Windows on ARM, `--python cpython-3.13-windows-x86_64-none`). Never invoke it from this run - the skill is manual-only (`disable-model-invocation`), so a
 Skill call is DENIED by `guard-fresh-session-start.js`, which reads that flag from the skill's own
 frontmatter. Do not lean on the harness for it: measured both ways, one update run's call was

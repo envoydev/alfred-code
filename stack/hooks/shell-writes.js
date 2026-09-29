@@ -18,6 +18,17 @@ const path = require('path');
 const SHELL_TOOLS = ['Bash', 'PowerShell', 'Monitor'];
 const isShellTool = (name) => SHELL_TOOLS.includes(String(name || ''));
 
+// A GIT BASH MOUNT PATH. Git Bash / MSYS spell a Windows path in POSIX mount form (`/c/Users/...`,
+// `/cygdrive/c/...`), which node on win32 resolves against the CURRENT drive - the falsehood that made the
+// cross-project guard block a session cleaning its own temp scratch. Every guard that resolves a path off a
+// command line translates it here, before any resolution; off Windows the spelling is a real POSIX path and is
+// never touched. The one home (2.1.5 M8): it was inlined in five guards, pinned as a shared rule on the premise
+// that no hook had a shared module. `platform` is for the tests.
+const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
+const nativePath = (p, platform = process.platform) => (platform === 'win32'
+  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\`)
+  : String(p));
+
 // A heredoc BODY is DATA, not shell - a plan that DESCRIBES a command is inert text, and
 // matching it blocks a document write for its own prose. Blank the body, keep the length. The
 // heredoc's own first line stays: `cat <<'EOF' > ../other/f.txt` carries its redirect THERE, and
@@ -325,4 +336,4 @@ function scanShell(rawCommand) {
   return { command, quoted, inQuotes, expandVars, cds, targets, gitWrites };
 }
 
-module.exports = { scanShell, anchorAt, blankHeredocs, quotedSpans, shellWords, unquote, isVar, SHELL_TOOLS, isShellTool };
+module.exports = { scanShell, anchorAt, blankHeredocs, quotedSpans, shellWords, unquote, isVar, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath };

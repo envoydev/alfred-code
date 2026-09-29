@@ -67,6 +67,8 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
     // This runner may sit in a session whose account env carries real keys and stack settings - none
     // of them may reach the run, or land in the sandbox.
     for (const k of ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY']) delete env[k];
+    // uv's own cut-off variable changes what the copy route registers (M24) - a case sets it through `env`.
+    delete env.UV_EXCLUDE_NEWER;
     scrubLegacyEnv(env);
     // The memory model pre-warm starts the service the snapshot declares (~166MB on a cold machine): off in the
     // sandbox unless a case switches it on with its own stand-in for uvx.

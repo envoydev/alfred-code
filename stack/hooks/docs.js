@@ -114,7 +114,7 @@ const norm = (t) => String(t).replace(/\r\n/g, '\n').replace(/\n+$/, '');
 
 const git = (args, { raw = false, ...opts } = {}) => {
   try {
-    const out = execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], ...opts });
+    const out = execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000, ...opts });
     return raw ? out : out.trim(); // porcelain rows start with a status column that may be a space
   } catch { return null; }
 };
@@ -387,7 +387,7 @@ function merge3(ours, base, theirs, name) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-merge-'));
   const trim = (t) => `${String(t).replace(/\n+$/, '')}\n`;
   const [a, o, b] = ['mainline', 'base', 'branch'].map((n, i) => { const p = path.join(tmp, n); fs.writeFileSync(p, trim([ours, base, theirs][i])); return p; });
-  const r = spawnSync('git', ['merge-file', '-p', '-L', 'mainline', '-L', 'base', '-L', name, a, o, b], { encoding: 'utf8' });
+  const r = spawnSync('git', ['merge-file', '-p', '-L', 'mainline', '-L', 'base', '-L', name, a, o, b], { encoding: 'utf8', timeout: 5000 });
   fs.rmSync(tmp, { recursive: true, force: true });
   if (r.status === null || r.status > 127) return { error: (r.stderr || 'git merge-file failed').trim() };
   return { text: r.stdout, conflicts: r.status };
@@ -798,7 +798,7 @@ function branchFiles(base, ref = 'HEAD') {
 const ANCESTRY = new Map();
 const isAncestor = (sha, ref) => {
   const k = `${sha}..${ref}`;
-  if (!ANCESTRY.has(k)) ANCESTRY.set(k, spawnSync('git', ['merge-base', '--is-ancestor', sha, ref], { cwd: ROOT }).status === 0);
+  if (!ANCESTRY.has(k)) ANCESTRY.set(k, spawnSync('git', ['merge-base', '--is-ancestor', sha, ref], { cwd: ROOT, timeout: 5000 }).status === 0);
   return ANCESTRY.get(k);
 };
 // Is this a commit the repo actually has? A recorded fork point can name one it does not - pruned, re-cloned,

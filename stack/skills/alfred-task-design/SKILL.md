@@ -14,7 +14,6 @@ Design inline in this chat, the method below, so you inspect each step. On an ag
 ## When to use / not
 
 - Use to settle how a feature or change fits the existing code before writing any, in this chat: orient, judge the fit, split into an ordered minimal plan.
-- Triggers also on 'break this into tasks'.
 - Not for a change with an obvious single home - just make it.
 - Not plan *audit* (`alfred-task-verify-plan`) or built-code review (`alfred-task-verify-code`) - those come after.
 
@@ -76,27 +75,12 @@ Two header lines open the plan file, both required fields and not niceties:
 - `Oriented:` - the architecture doc read (or the bounded pass) from step 1 plus the house skill(s) loaded in step 2, or `none - <reason>`. If you cannot fill it, those steps did not happen - do them now; a plan designed blind ships the traps it never saw.
 - `Asked: "<the user's words, verbatim>"` - the request as the user put it, including what must NOT survive (a method to remove, a path to replace). The fit verdict is judged against this line and `alfred-task-verify-plan`'s scope pass reads it (the designer seats already restate the requirement as capabilities and constraints - this is the in-chat form's copy).
 
-`alfred-task-verify-plan` fails a plan without them.
+`alfred-task-verify-plan` grades both: a missing `Oriented:` is a MAJOR finding, a missing `Asked:` a MINOR one.
 
 ## Write and hand off
 
-Write the plan to `<docs-path>/superpowers/plans/<feature>.md` before handing off - a design flow writes it as its handoff, the case the interaction baseline's plan-file rule names: the FILE survives compaction and a fresh session, where the chat copy does not. A DISPATCHED designer seat has no Write tool: it returns the whole plan in its report, `Oriented:` line first, and the orchestrator writes the file from it. Then verify the write, in the same turn: `wc -l` the plan file (it exists and is not empty) and grep it for `Oriented:` and `Asked:` - the two header lines `alfred-task-verify-plan` fails a plan without - plus one anchor from the first task, which proves the located `file:symbol` references survived the write. Quote the three results. A plan nobody can find, or one missing a header, is a design run with no output.
-
-Then hand off: gate the plan with `alfred-task-verify-plan` before building, build each task with `alfred-task-implement` under the stack skill (a task the build proves wrong comes back here only through that skill's user ask, never on its own), and review the built code with `alfred-task-verify-code` (`alfred-task-solve` drives this whole chain with a user gate between every step).
+A DISPATCHED designer seat has no Write tool: it returns the whole plan in its report, `Oriented:` line first, and the orchestrator writes the file from it - the seat's work ends there. In this chat the plan goes to `<docs-path>/superpowers/plans/<feature>.md` before handing off - a design flow writes it as its handoff, the case the interaction baseline's plan-file rule names. Read `references/write-and-hand-off.md` once the plan is settled and follow it: it writes and verifies the file, hands off to the gate, the build and the review, and carries a worked plan.
 
 ## Plan format
 
 The plan file's one shape - the header lines, the task card, the status marks the build adds, the `## Decisions` ledger, the resume line - is the `alfred-habits-plan-writing` skill: load it at method step 4 with the design rules, before the plan is written. The execution mode belongs to `alfred-task-solve`'s mode ask, never to the plan. Consulting a prior plan as a format reference, scope the read: the header plus one task entry, never the whole file, and never another ticket's plan as a substitute for the format authority. An external claim in the plan - a vendor API's behavior, a package's capability, a rate limit - is verified via the documentation server or the vendor doc and cited, or marked `unverified`; never recall stated as fact.
-
-## Example
-
-Brief: 'Add data export to the records list.'
-
-Plan (single-chat output):
-- **Fit - extend an existing seam.** The records module already owns the read paths and an export is another read projection, so no new boundary. Forcing edge: the export must not pull the full object graph, so it reads through the existing query-projection seam, never the raw persistence surface.
-- **Task 1** - add the export projection to the query seam and its implementation. Trap: stream the rows, never materialize the full set (the stack skill's unbounded-result trap). Anchor: the located query seam (`file:symbol`).
-- **Task 2** - add the export entry point returning a streamed response. Trap: map to a transfer shape at the edge, never the persistence entity (the stack skill's boundary trap). Anchor: the located edge (`file:symbol`). Log points: the export's outcome at the entry point - information with the row count and the request's correlation id, error with the exception on a mid-stream failure; the framework's request log already covers the start, so nothing at the projection seam.
-- **Task 3** - an integration test asserting the header row, one data row, and the success status. Anchor: the located test suite.
-- **Decisions** - the export streams through the framework's own writer, not a new package - precedent: the existing report download (`file:symbol`). No row ceiling: no precedent - decided, the projection already streams.
-
-Then gate with `alfred-task-verify-plan`, build each task with `alfred-task-implement` under the stack's house skills, and review with `alfred-task-verify-code`.

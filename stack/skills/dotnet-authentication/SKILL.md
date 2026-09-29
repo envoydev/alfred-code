@@ -102,18 +102,27 @@ public sealed class MinimumAgeHandler(TimeProvider clock) : AuthorizationHandler
     protected override Task HandleRequirementAsync(
         AuthorizationHandlerContext context, MinimumAgeRequirement requirement)
     {
-        var dob = context.User.FindFirst(c => c.Type == ClaimTypes.DateOfBirth);
+        var dob = context.User.FindFirst(c => c.Type == ClaimTypes.DateOfBirth)?.Value;
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);   // injected TimeProvider, never DateTime.UtcNow
-        if (dob is not null && DateOnly.Parse(dob.Value) <= today.AddYears(-requirement.Age))
+        if (DateOnly.TryParseExact(dob, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var born)
+            && born <= today.AddYears(-requirement.Age))   // ISO date, invariant culture; a malformed claim fails closed
         {
             context.Succeed(requirement);
         }
+
         return Task.CompletedTask;
     }
 }
 ```
 
-Register the handler as a singleton and the policy resolves it automatically. For rules that depend on the specific entity (this caller may edit *this* document), use resource-based authorization via `IAuthorizationService.AuthorizeAsync(user, resource, policy)` inside the handler rather than trying to encode the entity into a static policy.
+Register the handler, and the clock it takes - the host registers no `TimeProvider` (measured on .NET 10):
+
+```csharp
+builder.Services.AddSingleton<IAuthorizationHandler, MinimumAgeHandler>();
+builder.Services.TryAddSingleton(TimeProvider.System);
+```
+
+For rules that depend on the specific entity (this caller may edit *this* document), call `IAuthorizationService.AuthorizeAsync(user, resource, policy)` in the endpoint or action, once the resource is loaded, rather than trying to encode the entity into a static policy.
 
 ## Protecting endpoints and reading the caller
 

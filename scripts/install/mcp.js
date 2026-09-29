@@ -27,6 +27,7 @@ const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
 const { entryHash } = require('./stamp.js');
 const { offeredOn, skipNote } = require('../../stack/mcp/desktop-launch.js');
+const { excludeNewerOf, cutoffFor } = require('../../stack/mcp/uv-python.js');
 
 // The three that can never be dropped - see R7 above.
 const LOCKED = ['navigation', 'documentation', 'memory'];
@@ -116,8 +117,12 @@ function bareNamedMcps({ routes, mcps = [] })
 function mcpArgv(args, tokens = {})
 {
     return String(args).split(/\s+/).filter(Boolean)
-        .map((word) => Object.entries(tokens)
-            .reduce((w, [key, value]) => w.split(`@${key}@`).join(value ?? ''), word));
+        .map((word) => [word, Object.entries(tokens)
+            .reduce((w, [key, value]) => w.split(`@${key}@`).join(value ?? ''), word)])
+        // A word that is ONE placeholder and resolves to nothing is no argument (an optional flag pair);
+        // a placeholder inside a word (`-e KEY=@VALUE@`) keeps its word, empty value and all.
+        .filter(([word, out]) => out !== '' || !/^@[A-Z0-9_]+@$/.test(word))
+        .map(([, out]) => out);
 }
 
 // The argv for ONE `claude mcp add`. One site for install, update and the user-scope repair retry:
@@ -299,10 +304,17 @@ const PIN_ROWS = {
     'windows-desktop': ['WINDOWS_DESKTOP_PIN', '==<v>'], 'macos-desktop': ['MACOS_DESKTOP_PIN', '==<v>'],
 };
 
-function resolvePins({ pins, log = () => {} })
+function resolvePins({ pins, refreshed, own = '', log = () => {} })
 {
     const rows = pins && typeof pins === 'object' && !Array.isArray(pins) ? pins : {};
-    const out = { MEMORY_BACKEND: 'sqlite_vec', versions: {} };
+    // M24: the release's dependency cut-off for every uvx row (uv-python.js excludeNewerOf) - two words,
+    // each '' when the pins file names no day, so the row then carries no cut-off at all (mcpArgv).
+    // `own` is the user's UV_EXCLUDE_NEWER (uv-python.js userExcludeNewer): their value replaces it, `false` none -
+    // a baked flag would beat their variable, and a mirror with no upload times serves nothing under a cut-off.
+    const release = excludeNewerOf(refreshed);
+    const cutoff = cutoffFor(release, own);
+    if (own) log(`  UV_EXCLUDE_NEWER=${own} is set - every uvx server starts with ${cutoff ? `the cut-off ${cutoff}` : 'no dependency cut-off'} (the release's: ${release || 'none'})`);
+    const out = { MEMORY_BACKEND: 'sqlite_vec', versions: {}, UV_EXCLUDE_FLAG: cutoff ? '--exclude-newer' : '', UV_EXCLUDE_NEWER: cutoff };
     for (const [name, [token, spelling]] of Object.entries(PIN_ROWS))
     {
         const row = rows[name] && typeof rows[name] === 'object' ? rows[name] : {};
@@ -498,7 +510,7 @@ const registrationScope = (routes, scope) => (scope === 'user' && !corePluginOn(
 // part of its shape that does not move with a pin, a flag, a path or the Windows `cmd /c` wrapper. A
 // registration of the stack's own shape is the stack's to remove; another under the same name is the
 // user's. '' when the entry names neither.
-const VALUED_FLAGS = ['--python', '--with', '--from', '--package', '-p', '--index-url', '--extra-index-url'];
+const VALUED_FLAGS = ['--python', '--with', '--from', '--package', '-p', '--index-url', '--extra-index-url', '--exclude-newer'];
 function packageName(word)
 {
     let w = String(word || '').replace(/@[A-Z][A-Z0-9_]*@/g, '').replace(/\[[^\]]*\]/, '');
@@ -658,8 +670,9 @@ function ensurePlaywrightIgnore({ projectRoot, engines = [], log = () => {} })
 
 // The hosted Context7 - the one transport since 2.0.0 cut the local npx one (R32) - as the documentation
 // plugin entry registers it: `:-` sends an EMPTY header when the key is unset - the keyless free tier -
-// where a literal `${CONTEXT7_API_KEY}` is rejected as an invalid key.
-const CONTEXT7_REMOTE = { url: 'https://mcp.context7.com/mcp', header: 'CONTEXT7_API_KEY: ${CONTEXT7_API_KEY:-}' };
+// where a literal `${CONTEXT7_API_KEY}` is rejected as an invalid key. The header is Context7's documented
+// `Context7-API-Key` (M25): a proxy may drop a name with an underscore, and the key with it.
+const CONTEXT7_REMOTE = { url: 'https://mcp.context7.com/mcp', header: 'Context7-API-Key: ${CONTEXT7_API_KEY:-}' };
 
 // R83 a: every LOCKED server's catalog entry, added where `mcps` lacks it. On the FULL copy route the
 // registrations come from this list alone, and a selection or read-back with no `mcp` line (the

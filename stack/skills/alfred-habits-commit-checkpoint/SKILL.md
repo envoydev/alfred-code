@@ -41,8 +41,7 @@ it: the docs hook lists it at session start, once per HEAD (`<docs-path>/flow/un
 sha>`, named in the start block), so a later session on the same HEAD keeps the earlier one's files. Stage the session's own paths by name, review and count only those in
 `spec:`, and name the pre-existing ones in one line as outside the change. One goes in only when the
 user names it - the commit guard blocks a `git add` that would sweep it in (`-A`, `.`, a directory)
-until `<docs-path>/flow/UNTRACKED-ALLOW` lists it (pilot 3: ~150 such files drove 19 gate denials,
-and one close committed them).
+until `<docs-path>/flow/UNTRACKED-ALLOW` lists it.
 
 **Exemptions.** Skip the checkpoint for typos / one-line / formatting-only diffs - and for a diff an
 equivalent-or-stronger check just cleared: the active quality-loop's own dispatched re-verify plus
@@ -93,7 +92,7 @@ not be an option label this run wrote: consent given by picking an option is spe
 chosen label>` instead, which is a different claim and reads as one. A review carried from an
 earlier cycle says so: `carried: <cycle id>, reviewed <date>`.
 
-On a security-relevant diff the receipt adds a sixth line: `security:` naming each category
+On a security-relevant diff the receipt adds an extra line: `security:` naming each category
 checked and its verdict (`security: auth ok, secrets ok, injection ok, data-access n/a`). A
 VERIFIED line that claims a security review with no `security:` line, or one that just repeats
 'no findings' with no categories named, is the one-line nod `baseline-security.md` rejects - the
@@ -142,7 +141,15 @@ published, one phrase>`, `authorized: "<the user's words asking for THIS publish
 the spec differs in kind: a publish's spec names what LEAVES the machine, not what is uncommitted
 here, so it is required and never counted against the working tree.
 
-1. Say what is going out and to which branch, and get the answer.
+1. Name what is going out and to which branch, then confirm it through ONE AskUserQuestion - a picked
+   option is the receipt's `answered: <the chosen label>` line, words the user typed its `authorized:`:
+
+   ```ask
+   Publish <the commit set> to <remote>/<branch>? It leaves this machine for CI and everyone on the branch.
+   - 'Publish (Recommended)' - push or merge exactly the set named above
+   - 'Hold' - nothing leaves the machine and no receipt is written
+   ```
+
 2. Write the receipt as its own call.
 3. Publish, then clear the receipt.
 
@@ -152,14 +159,14 @@ by branch protection or a required review turns the half off for good with
 `ALFRED_CODE_PUSH_GATE=0` in the settings.json env block.
 
 When the probe actually ran something and the commit set touches more than one identifiable
-project, the receipt adds a sixth line - `scope: <workspace, or the project list the probe ran>`.
-One project's narrow test run passed both gates once, the push broke CI right after, and 6.4M
-tokens of triage followed; name the whole workspace run (`nx affected`, a full suite) or every
-project the diff touches, never just the one that was convenient to test. A single-project or
+project, the receipt adds an extra line - `scope: <workspace, or the project list the probe ran>`:
+name the whole workspace run (`nx affected`, a full suite) or every project the diff touches, never
+just the one that was convenient to test - a narrow run passes both gates and leaves CI to find the
+rest. A single-project or
 docs-only push, or a probe that genuinely ran nothing (`NOT RUN - <reason>`), needs no `scope:` line.
 
 **A no-fast-forward publish (`git merge --no-ff`, or a PR merge) creates a NEW head.** Run the
 merge first, then write the receipt: `head:` names the resulting merge commit, never the pre-merge
-tip - a receipt minted before the merge still reads develop's old tip, the guard correctly reads it
-as reviewing a different tree than what actually pushes, and the retry costs a full edit-and-redo
-(measured: ~471k tokens). Probe, write the receipt naming the merge commit, then push.
+tip - a receipt minted before the merge still reads the pre-merge tip, the guard correctly reads it
+as reviewing a different tree than what actually pushes, and the retry costs a full edit-and-redo.
+Probe, write the receipt naming the merge commit, then push.

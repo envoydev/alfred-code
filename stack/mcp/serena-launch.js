@@ -8,7 +8,9 @@
 // marketplace refresh - measured: the entry Claude Code launches is read from the marketplace clone,
 // not the plugin cache, so a patch there too is overwritten by `claude plugin marketplace update`.
 //
-//   node serena-launch.js --package serena-agent@<ver> -- <serena arguments>
+//   node serena-launch.js --package serena-agent@<ver> [--exclude-newer <cut-off>] -- <serena arguments>
+//
+// `--exclude-newer` is the release's dependency cut-off (uv-python.js excludeNewerOf), passed on to uvx.
 //
 // Everything after `--` goes to serena unchanged, but for one swap below. stdout is the MCP stream:
 // nothing is written to it here, diagnostics go to stderr, which Claude Code shows in the server's log.
@@ -91,6 +93,22 @@ function projectArgs(args, { projectDir, legacy })
     return [...args.slice(0, at), '--project', projectDir, ...args.slice(at + 1)];
 }
 
+// A launcher flag's value - only BEFORE the `--` that starts the server's own arguments.
+function flagValue(argv, flag, rest = argv.indexOf('--'))
+{
+    const at = argv.indexOf(flag);
+    return at >= 0 && (rest < 0 || at < rest) && argv[at + 1] && argv[at + 1] !== '--' ? argv[at + 1] : '';
+}
+
+// The copy route registers no launcher, so it registers the same choice as two manifest words (M26): the cwd-walk
+// wherever it still finds this project, else `--project .` - serena resolves the path against its cwd, the project,
+// so the committed .mcp.json names no machine's absolute path.
+function copyRouteProject({ projectDir, serenaDir })
+{
+    const walks = serenaDir === dataRoot.LEGACY.serena || fs.existsSync(path.join(projectDir, '.git'));
+    return walks ? { SERENA_PROJECT_FLAG: '--project-from-cwd', SERENA_PROJECT_DIR: '' } : { SERENA_PROJECT_FLAG: '--project', SERENA_PROJECT_DIR: '.' };
+}
+
 function main(argv)
 {
     const at = argv.indexOf('--package');
@@ -109,7 +127,7 @@ function main(argv)
     const args = contextArgs(projectArgs(rest < 0 ? [] : argv.slice(rest + 1), { projectDir, legacy: data.legacy }));
     const env = { ...process.env, SERENA_HOME: data.home };
     log(`serena-launch: ${spec}, python ${pythonRequest({ env, projectDir })}, home ${env.SERENA_HOME}`);
-    runUvx(['--from', spec, 'serena', ...args], { env, projectDir, label: 'serena-launch' });
+    runUvx(['--from', spec, 'serena', ...args], { env, projectDir, label: 'serena-launch', excludeNewer: flagValue(argv, '--exclude-newer', rest) });
     return null;   // the process lives as long as the child does
 }
 
@@ -118,4 +136,4 @@ if (require.main === module)
     const rc = main(process.argv.slice(2));
     if (rc !== null) process.exit(rc);
 }
-module.exports = { main, nativeHome, serenaHomeFor, serenaData, projectArgs, contextArgs, STACK_CONTEXT };
+module.exports = { main, nativeHome, serenaHomeFor, serenaData, projectArgs, contextArgs, copyRouteProject, STACK_CONTEXT };

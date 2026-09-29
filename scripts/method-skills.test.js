@@ -27,7 +27,7 @@ test('each baseline keeps one pointer per method, in the pinned imperative form,
         assert.ok(!interaction.includes(moved), `baseline-interaction still carries method text: '${moved}'`);
 });
 
-test('every verifier, implementer and resolver preloads the done gate, every implementer test-first, the resolvers root-cause', () => {
+test('every verifier, implementer and resolver preloads the done gate, every implementer but devops test-first, the resolvers root-cause', () => {
     const preloads = (seat) => graph.agents[seat].skills;
     const verifiers = agents.filter((a) => a.endsWith('-verifier'));
     const implementers = agents.filter((a) => a.endsWith('-implementer'));
@@ -37,8 +37,11 @@ test('every verifier, implementer and resolver preloads the done gate, every imp
     // a resolver's whole output is a 'green' claim, and the done gate is Stop-only - the preload is its trigger
     for (const seat of [...verifiers, ...implementers, ...resolvers])
         assert.ok(preloads(seat).includes('alfred-habits-done-gate'), `${seat} preloads alfred-habits-done-gate`);
-    for (const seat of implementers)
+    // 2.1.5 M53: devops-implementer's loop validates config and scripts, never writes a test, and the skill
+    // itself says it is not for a config-only edit - 2,766 chars per dispatch for a method it never runs.
+    for (const seat of implementers.filter((s) => s !== 'devops-implementer'))
         assert.ok(preloads(seat).includes('alfred-habits-test-first'), `${seat} preloads alfred-habits-test-first`);
+    assert.ok(!preloads('devops-implementer').includes('alfred-habits-test-first'), 'devops-implementer does not');
     for (const seat of ['dotnet-build-error-resolver', 'dotnet-test-failure-resolver', 'ng-build-error-resolver', 'angular-test-resolver',
         'alfred-issue-diagnoser-ci', 'alfred-issue-diagnoser-runtime'])
         assert.ok(preloads(seat).includes('alfred-habits-root-cause'), `${seat} preloads alfred-habits-root-cause`);

@@ -30,7 +30,7 @@ The other modes - `None` (every selector goes global), `ShadowDom` (real isolati
 
 ## ::ng-deep is discouraged - the three sanctioned ways out
 
-Angular's docs state the team **strongly discourages new use of `::ng-deep`**; it survives only for backwards compatibility and is slated to go. It pierces encapsulation to style a child's internals, and that override shatters the moment the child's markup changes. Never reach for it - or its dead aliases `/deep/` and `>>>` - in new code. When you genuinely must style something outside your component's scope, pick one of these instead, in order of preference:
+Angular's docs: 'The Angular team strongly discourages new use of `::ng-deep`. These APIs remain exclusively for backwards compatibility.' It pierces encapsulation to style a child's internals, and that override shatters the moment the child's markup changes. Never reach for it - or its dead aliases `/deep/` and `>>>` - in new code. When you genuinely must style something outside your component's scope, pick one of these instead, in order of preference:
 
 1. **A CSS custom property as a theming contract.** The child exposes a variable (`--card-padding`, `--badge-color`) and reads it internally; the parent sets it. Custom properties pierce encapsulation by design and cross shadow boundaries, so this is the only override that survives a child refactor. This is the default answer.
 

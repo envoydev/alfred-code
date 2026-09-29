@@ -3,16 +3,19 @@
 // Three routes into ONE decision: a DELIBERATE orchestration run - a capture, a loop, a solve
 // flow - must start in a session that is not already carrying a finished run's history.
 //   PreToolUse (Skill)      - the run arrives as a Skill call. Blocks (exit 2).
-//   UserPromptSubmit        - the run arrives as a SLASH COMMAND, which emits NO Skill event at
+//   UserPromptExpansion     - the run arrives as a SLASH COMMAND, which emits NO Skill event at
 //                             all: measured 4 of 4 runs slash-injected, ZERO Skill tool_use events
 //                             in 45 messages, two captures entered at 150k and 164k, both ungated.
-//                             This route INJECTS the ask; it never denies, because a
-//                             UserPromptSubmit exit 2 ERASES the user's prompt and shows the
-//                             reason to the user only - the run would be lost and the model would
-//                             never learn why.
+//                             The event fires exactly on a typed command and names it
+//                             (`command_name`), and its matcher lists the orchestration commands, so
+//                             no ordinary prompt spawns this hook (2.1.5 M14 - it was UserPromptSubmit,
+//                             which fired on every prompt and parsed a `<command-name>` marker, missing
+//                             one typed with a leading space). This route INJECTS the ask; it never
+//                             blocks, because a blocked expansion shows its reason to the user only -
+//                             the run would be lost and the model would never learn why.
 //   SessionStart (compact)  - the harness has just auto-compacted, which is PROOF the session
-//                             reached the ceiling the gate exists for (~390k measured across three
-//                             projects), at a moment a Stop may never come (measured: 23m27s /
+//                             reached the ceiling the gate exists for (the harness's own compaction
+//                             point, which moves with the window), at a moment a Stop may never come (measured: 23m27s /
 //                             277 messages / +178k ctx, zero Stop events; and a conforming
 //                             solve-task run emits zero Stops BY DESIGN). Injects, cannot block. The rule existed as
 // prose in the generated capabilities rule and lost every time it was tested: measured across 4
@@ -111,7 +114,7 @@ const UNATTENDED_SKIP = 'skip: nobody is at the terminal - logged, not offered';
 
 const EVENT = payload.hook_event_name || '';
 const IS_SKILL_CALL = payload.tool_name === 'Skill';
-if (!IS_SKILL_CALL && EVENT !== 'UserPromptSubmit' && EVENT !== 'SessionStart' && EVENT !== 'PreCompact') process.exit(0);
+if (!IS_SKILL_CALL && EVENT !== 'UserPromptExpansion' && EVENT !== 'SessionStart' && EVENT !== 'PreCompact') process.exit(0);
 
 // The fresh-session arithmetic lives in fresh-session.js beside this hook, shared with
 // guard-stop-contract.js. An update from an older install can run this hook before that file
@@ -169,8 +172,8 @@ function flowStamps() {
   try {
     const dir = nodePath.dirname(COMPACT_STATE());
     return fs.readdirSync(dir)
-      // the monitor's state and the turn check's edit list are working state, not stamps
-      .filter((f) => f !== 'COMPACT-STATE' && !/^monitor-.*\.json$/.test(f) && !/^turn-edits-/.test(f))
+      // the monitor's state (its turn log and context marker) and the turn check's edit list are working state, not stamps
+      .filter((f) => f !== 'COMPACT-STATE' && !/^monitor-.*\.(?:json|jsonl|context)$/.test(f) && !/^turn-edits-/.test(f))
       .map((f) => ({ f, age: Math.round((Date.now() - fs.statSync(nodePath.join(dir, f)).mtimeMs) / 60000) }))
       .sort((a, b) => a.f.localeCompare(b.f));
   } catch { return []; }
@@ -228,7 +231,7 @@ function compactPointer() {
 // cache-read - 27% of the whole session - for 20.5k of output, and the offer arrived nine minutes
 // after that spend. `alfred-capture-agent-capabilities` is here because the stack's own next-steps card
 // tells the user to run it after every update. The guided plugin commands are here because
-// they are multi-phase walks too, and the UserPromptSubmit route is what finally reaches them.
+// they are multi-phase walks too, and the slash route is what finally reaches them.
 const ORCHESTRATION = /^(alfred-(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|stack-usage|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|alfred-code:(init|setup|update|configure|validate))$/;
 // a plugin-namespaced Skill call arrives as `<plugin>:<skill>`; the guided commands are
 // matched on their FULL name, so a bare `/setup` from some other plugin is not read as one of them
@@ -236,14 +239,12 @@ const isOrchestration = (n) => ORCHESTRATION.test(n) || ORCHESTRATION.test(n.rep
 let skill = '';
 if (IS_SKILL_CALL) {
   skill = String((payload.tool_input || {}).skill || (payload.tool_input || {}).name || '');
-} else if (EVENT === 'UserPromptSubmit') {
-  // A slash turn reaches this event as the expanded prompt: the harness wraps the invocation in a
-  // `<command-name>` marker (confirmed twice from live transcripts, matching origin.kind 'human'),
-  // and a hand-typed `/name` is the same intent spelled without it.
-  const prompt = String(payload.prompt || '');
-  const m = prompt.match(/<command-name>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-name>/)
-    || prompt.match(/(?:^|\s)\/([A-Za-z0-9:_-]+)/);
-  skill = m ? m[1] : '';
+} else if (EVENT === 'UserPromptExpansion') {
+  // The harness names the typed command (`command_name`). The typed prompt's own `/name` settles a plugin
+  // command's namespace when the name arrives bare - the guided walks count only as `alfred-code:<walk>`.
+  const named = String(payload.command_name || '');
+  const typed = (String(payload.prompt || '').match(/^\s*\/([A-Za-z0-9:_-]+)/) || [])[1] || '';
+  skill = typed && (!named || typed.replace(/^.*:/, '') === named.replace(/^.*:/, '')) ? typed : named;
 }
 // --- a `disable-model-invocation` skill is the USER's to type, and this is what enforces it ---
 // Every project's generated capabilities rule used to stamp 'the harness BLOCKS the Skill call'.
@@ -252,16 +253,19 @@ if (IS_SKILL_CALL) {
 // LEADING SPACE, so no `<command-name>` marker fired, and the model reached the flagged skill through a `Skill` tool call four seconds
 // later - body injected, run started. An ASSERTED harness behaviour is the weakest form of a gate,
 // and one that varies by build is no gate at all, so the assertion became this gate. Only the MODEL's own Skill call is denied: a slash turn
-// arrives as UserPromptSubmit and never reaches here, so the user's own route is untouched. No env
+// arrives as UserPromptExpansion and never reaches here, so the user's own route is untouched. No env
 // switch - the verdict is the skill's own frontmatter, not a judgment that can be wrong.
 // A skill has TWO homes: copied into `.claude/skills/` (the 0.2.x route, and still where an EXTRA
 // lands), or served from an enabled plugin's cache. Reading only the project copy made this gate
 // silently stop firing for every skill a plugin carries - the catch below swallowed the missing
-// file, and 13 skills carry the flag. So both homes are tried, project copy first.
+// file, and 13 skills carry the flag. So every home is tried, in the order Claude Code resolves a name:
+// the PERSONAL copy (`<config dir>/skills/`) first - 'personal over project' (code.claude.com/docs/en/skills),
+// so reading the project copy first judged the copy that never runs (2.1.5 M10) - then the project copy,
+// then the plugin caches.
 function skillHeads(root, skill) {
   const bare = skill.replace(/^.*:/, '');
-  const out = [nodePath.join(root, '.claude', 'skills', bare, 'SKILL.md')];
   const cfg = process.env.CLAUDE_CONFIG_DIR || nodePath.join(process.env.HOME || process.env.USERPROFILE || '', '.claude');
+  const out = [nodePath.join(cfg, 'skills', bare, 'SKILL.md'), nodePath.join(root, '.claude', 'skills', bare, 'SKILL.md')];
   const cache = nodePath.join(cfg, 'plugins', 'cache');
   // <cache>/<marketplace>/<plugin>/<version>/stack/skills/<bare>/SKILL.md - the plugin is known
   // when the call carries a scoped name, and is a short scan otherwise.
@@ -330,14 +334,14 @@ if (EVENT === 'SessionStart') {
     hookSpecificOutput: {
       hookEventName: 'SessionStart',
       additionalContext:
-        'This session just AUTO-COMPACTED, which means it reached the harness ceiling (~390k ' +
-        'tokens per message measured) and the harness - not the user - decided what to drop. ' +
+        'This session just AUTO-COMPACTED, which means it reached the point where the harness compacts ' +
+        'and the harness - not the user - decided what to drop. ' +
         'Before continuing, put the choice to the user as ONE AskUserQuestion: resume in a fresh ' +
         'session (recommended - end this turn with the paste-ready invocation and the state file ' +
         'or plan file it resumes from), or continue here on the summary with the cost stated. If ' +
         'the remaining work is a single short step, say so and just finish it instead of asking. ' +
         'Two more things for the moment after a compaction. The summary above is the harness' + String.fromCharCode(39) + 's own ' +
-        'and it is in English: keep answering in the language of the user' + String.fromCharCode(39) + 's own prompts (measured: ' +
+        'and it is in English: keep answering in the language of the user' + String.fromCharCode(39) + 's own prompts, unless a loaded skill sets the answer language (measured: ' +
         'two sessions switched to English right after compacting). And when a plan or state file is ' +
         'live, re-read its HEADER first - it holds the anchors and the next step - before re-orienting ' +
         'from the code (measured: a resume grepped the tree and read a 10k-char source range before ' +
@@ -417,9 +421,10 @@ function priorOrchestrationRun() {
     // offered a fresh session).
     const re = /<command-name>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-name>/;
     // ONE test does both jobs: an earlier run counts only when a HUMAN turn follows it - a `user`
-    // record that is not a tool_result. That excludes the prompt being judged without having to
-    // guess whether it is on disk yet (it is: the prompt row is written before UserPromptSubmit
-    // fires), because nothing human follows it. It also keeps the SAME command chained twice,
+    // record that is not a tool_result. That excludes the prompt being judged whether or not its row
+    // is on disk yet, because nothing human follows it - and when it is NOT (UserPromptExpansion fires
+    // as the command expands), the command being judged is itself the human turn after the last
+    // answered run, which the return below counts. It also keeps the SAME command chained twice,
     // which matching the last hit by NAME did not.
     // ...and a typed marker is not a RUN until the model answered it. Measured (AUDIT/_tools/
     // dupslash.js): 7 of 115 sessions re-submitted an orchestration command before any assistant
@@ -447,7 +452,8 @@ function priorOrchestrationRun() {
       const m = re.exec(typeof c === 'string' ? c : (Array.isArray(c) ? c.map((x) => (x && x.type === 'text' && x.text) || '').join('\n') : ''));
       if (m && isOrchestration(m[1])) { seenRun = true; answered = false; }
     }
-    return false;
+    // The command being judged, not on disk yet, is the human turn after an answered run.
+    return EVENT === 'UserPromptExpansion' && seenRun && answered;
   } catch {
     return false;   // unreadable transcript - the size trigger still covers this session
   }
@@ -500,7 +506,7 @@ const overSize = !FRESH_OFF && FRESH_AT !== null && ctx > FRESH_AT && worthResum
   && (!sizeAlreadyOffered || ctx >= sizeAlreadyOffered * REOFFER_GROWTH);
 // The chained trigger judges only a run the user TYPED (the slash route); a Skill call is a phase
 // of a run already in flight, and the size trigger still covers that route.
-const chained = EVENT === 'UserPromptSubmit' && !FRESH_OFF && !overSize && worthResuming(ctx)
+const chained = EVENT === 'UserPromptExpansion' && !FRESH_OFF && !overSize && worthResuming(ctx)
   && !fs.existsSync(chainedOfferFile()) && priorOrchestrationRun();
 if (!overSize && !chained) process.exit(0);
 // Nobody at the terminal (hook-prelude.js unattended) has nobody to offer it to: one row, and no offer state is
@@ -524,12 +530,12 @@ const why = chained
     + `per message of another run's history - every turn of the new run re-sends all of it\n`
     + `(measured: the same step cost 260k/message chained vs 134k fresh).`;
 
-// UserPromptSubmit can only ADD context - exit 2 there erases the prompt and tells the user, not
-// the model - so the slash route states the same thing as an instruction and lets the model ask.
-if (EVENT === 'UserPromptSubmit') {
+// The slash route only ADDS context - a blocked expansion shows its reason to the user, not the
+// model - so it states the same thing as an instruction and lets the model ask.
+if (EVENT === 'UserPromptExpansion') {
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
-      hookEventName: 'UserPromptSubmit',
+      hookEventName: 'UserPromptExpansion',
       additionalContext:
         `/${skill} ${why.replace(/\n/g, ' ')} ` +
         `Do NOT start the run yet. Put it to the user as ONE AskUserQuestion: start it in a fresh ` +

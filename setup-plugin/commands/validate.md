@@ -591,7 +591,14 @@ Paste the output byte-for-byte in the same fenced block. A `drift` row is a copy
 project: the next update overwrites it and says so, so the edit belongs upstream or in a skill of
 the project's own, never in the copy. `behind` rows and the `stale stamp` line are what
 `/alfred-code:update` takes, and so is an `invalid:` line (exit 1 - a stamp name that failed
-validation, reported by count). `library: no library stamp` is the whole paste on an install older
+validation, reported by count). A `blocked:` row (exit 1) is a skill switched to `off` or
+`user-invocable-only` in `skillOverrides` that a shipped rule still sends the model to - a baseline's
+FIRST-action pointer or a convention rule's load - so that Skill call fails every time it is due: name
+the rule and the skill, and say the fix is the user's - `name-only` hides the description and keeps
+the call, `on` restores it, or the rule goes through `/alfred-code:configure` (a locked baseline cannot).
+Never edit the override here. The check reads the project's `settings.json` and `settings.local.json`
+only: an `off` in the account settings is not seen, so no `blocked:` row is no proof of none there.
+`library: no library stamp` is the whole paste on an install older
 than the library route.
 
 Then hold the project's CLAUDE.md files to the tree they describe - the drift a release never

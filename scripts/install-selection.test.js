@@ -109,7 +109,7 @@ test('derive: generated project-owned files and the engine modules are NOT items
     // engines and hook-prelude.js the shared gate module - none of them is a hook.
     const dir = target({
         rules: ['baseline-security', 'baseline-project-agent-capabilities', 'project-code-style'],
-        hooks: ['docs-session', 'docs', 'memory', 'hook-prelude', 'fresh-session', 'shell-writes', 'hidden-chars', 'shell-guards'],
+        hooks: ['docs-session', 'docs', 'memory', 'hook-prelude', 'fresh-session', 'shell-writes', 'hidden-chars', 'shell-guards', 'file-guards'],
     });
     const lines = sel.deriveFromDisk({ claudeDir: dir, knownPlugins: [] });
     assert.deepStrictEqual(lines.filter((l) => l.startsWith('rule ')), ['rule baseline-security']);
@@ -647,7 +647,7 @@ test('read-back: a partial hook folder is no pick unless the copy route made it 
         assert.deepStrictEqual(hookLines(userWired), [], `${route}, no line, only the user's own hook wired: no copy-route evidence`);
     }
     // The R56 probe the review measured: no line, ONE stack hook left in the folder, the stored off list,
-    // the run on the hooks copy route - 16 of 17 hooks on, never 1 of 17.
+    // the run on the hooks copy route - every hook but the one named off stays on, never the one left in the folder alone.
     const probe = readBackCase({ listing: [core], routes: { hooks: false, skills: true, mcps: true }, hooks: ['guard-secret-value'], stampHooks: shipped, lastHooksRoute: null,
         settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } } });
     assert.strictEqual(hookLines(probe).length, shipped.length - 1, hookLines(probe).join(', '));

@@ -5,6 +5,8 @@
 // (analyze -> fix by tier -> loop), and an existing loops/ folder keeps working both ways: as the
 // capture's rule source, and through the numbered-prompt run kept as the STAGED mode.
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -171,7 +173,7 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     assert.match(b, /\*\*Reads decisions, never writes them - hard rule\.\*\*/);
     // No rule source at all: stop, write nothing - a doc judged against nothing reads as clean code.
     assert.match(b, /\*\*No rule source at all - stop\.\*\*[^*]*writing nothing/);
-    assert.match(b, /No rule source at all - stop\.\*\*[^*]*`alfred-capture-code-style`[^*]*`\/alfred-loop-quality`/, 'and names the two ways to get rules');
+    assert.match(b, /No rule source at all - stop\.\*\*[^*]*`\/alfred-capture-code-style`[^*]*`\/alfred-loop-quality`/, 'and names the two ways to get rules, both slash-typed');
     // A remediation is checked against the OTHER handed rules, or the loop oscillates between them.
     const judge = squash(raw.slice(raw.indexOf('### 3. JUDGE'), raw.indexOf('### 4. RE-GATHER')));
     assert.match(judge, /Cross-check every Must-fix remediation against the other rules/);
@@ -348,9 +350,16 @@ test('the loop runs the capture each round and routes its findings by tier', () 
     // The substantial tier is the domain-trio vertical, vendored like the other two loops' copies.
     assert.strictEqual(read(`${LOOP}/references/domain-trio-protocol.md`), read('stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md'));
 
-    // The starter set still ships, so a project without a loops folder is seeded as before.
+    // The starter set still ships, so a project without a loops folder is seeded as before. It is a copy
+    // source, never a read, so it sits in assets/ rather than references/ (2.1.5 audit M85).
     for (const f of ['fix-discipline.md', 'structure.md', 'code-quality.md', 'naming.md', 'logging.md', 'comments.md'])
-        assert.ok(exists(`${LOOP}/references/${f}`), `starter prompt ${f}`);
+    {
+        assert.ok(exists(`${LOOP}/assets/loops-starter/${f}`), `starter prompt ${f}`);
+        assert.ok(!exists(`${LOOP}/references/${f}`), `starter prompt ${f} left references/`);
+    }
+    assert.match(squash(read(`${LOOP}/SKILL.md`)), /`assets\/loops-starter\/`/, 'SKILL.md names the starter folder');
+    assert.match(squash(read(`${LOOP}/references/bootstrap.md`)), /`assets\/loops-starter\/`/, 'bootstrap copies from it');
+    assert.match(squash(read(`${LOOP}/references/staged-mode.md`)), /`assets\/loops-starter\/`/, 'the staged run seeds from it');
 });
 
 // The fresh-session guard's roster, read the way lint 29 reads it.

@@ -1,5 +1,5 @@
 {
-  "note": "The six lists, the `retired` block and the `renamed` map the seed reads (scripts/install/manifest.js). `renamed` is the ONE home of a shipped skill, seat or MCP server name that changed (old -> new, agents without `.md`; an MCP name is its plugin and its server alike, a browser engine renamed by its prefix): update carries a pick, a seat deny and a selection line across it, each old skill or seat name is also retired so its copy is pruned, and an old MCP plugin is swapped for the new one where it is installed. Hand-edited since R33 deleted the shell twins and the script that generated it; the lint holds it to disk, the HTML and the skill count.",
+  "note": "The six lists, the `retired` block and the `renamed` map the seed reads (scripts/install/manifest.js). `renamed` is the ONE home of a shipped skill, seat or MCP server name that changed (old -> new, agents without `.md`; an MCP name is its plugin and its server alike, a browser engine renamed by its prefix): update carries a pick, a seat deny and a selection line across it, each old skill or seat name is also retired so its copy is pruned, and an old MCP plugin is swapped for the new one where it is installed. Hand-edited since R33 deleted the shell twins and the script that generated it; the lint holds it to disk, the HTML and the skill count. The file-write matchers all name `MultiEdit` and the dispatch matcher names `Task` beside `Agent` (2.1.5 M7): the tools reference lists neither tool, but a matcher token no tool carries never matches, and the 2.1.284 CLI still spells both - MultiEdit among its edit-tool names, Task as the agent tool's old name - so a build that sends either is still gated.",
   "skills": [
     {
       "repo": "envoydev/alfred-code",
@@ -144,7 +144,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "alfred-habits-test-first",
-      "note": "test-first (R106): write the test, watch it fail for the expected reason, minimal code, green, refactor; pointed at by baseline-interaction, preloaded by every implementer, loaded by alfred-task-implement"
+      "note": "test-first (R106): write the test, watch it fail for the expected reason, minimal code, green, refactor; pointed at by baseline-interaction, preloaded by every implementer but devops-implementer (2.1.5 M53: its loop validates config and writes no test), loaded by alfred-task-implement"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -797,15 +797,15 @@
     },
     {
       "file": "guard-fresh-session-start.js",
-      "matcher": "@UserPromptSubmit",
+      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])(alfred-(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|stack-usage|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
       "event": "",
-      "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - this route injects the ask, never denies (a UserPromptSubmit denial erases the prompt)"
+      "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling, so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only)"
     },
     {
       "file": "guard-fresh-session-start.js",
       "matcher": "@SessionStart:compact",
       "event": "",
-      "note": "the harness just auto-compacted, which proves the session hit the ~390k ceiling at a moment a Stop may never come - inject the fresh-session ask there too"
+      "note": "the harness just auto-compacted, which proves the session hit its compaction point at a moment a Stop may never come - inject the fresh-session ask there too"
     },
     {
       "file": "guard-fresh-session-start.js",
@@ -827,7 +827,7 @@
     },
     {
       "file": "guard-cross-project-write.js",
-      "matcher": "Write|Edit|NotebookEdit",
+      "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
       "note": "one session, one project: block a WRITE that lands outside the project root (reads/investigation untouched) - the change another repo needs is handed off as a task card"
     },
@@ -977,8 +977,8 @@
   "mcps": [
     {
       "name": "navigation",
-      "args": "-e SERENA_HOME=@SERENA_HOME@ -- uvx --python @UV_PYTHON@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd",
-      "note": "the navigation server (Serena): LSP symbol navigation; per-project SERENA_HOME (<data root>/serena/home - the data root ignores it, ~327MB LSP) isolates its registry/memories/logs/LSP, no pooling across projects/accounts; its home config points serena at <data root>/serena; --project-from-cwd self-activates the repo on launch; PyPI (not git), dashboard off; --context names the stack's own serena context (@SERENA_CONTEXT@ = .claude/navigation-context.yml, copied there from stack/mcp) - the upstream claude-code one minus five editing tools and onboarding"
+      "args": "-e SERENA_HOME=@SERENA_HOME@ -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false @SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@",
+      "note": "the navigation server (Serena): LSP symbol navigation; per-project SERENA_HOME (<data root>/serena/home - the data root ignores it, ~327MB LSP) isolates its registry/memories/logs/LSP, no pooling across projects/accounts; its home config points serena at <data root>/serena; --project-from-cwd self-activates the repo on launch (@SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@; a project with no .git whose serena folder moved under the data root registers --project . instead, which the cwd walk cannot find); PyPI (not git), dashboard off; --context names the stack's own serena context (@SERENA_CONTEXT@ = .claude/navigation-context.yml, copied there from stack/mcp) - the upstream claude-code one minus five editing tools and onboarding"
     },
     {
       "name": "browser",
@@ -987,7 +987,7 @@
     },
     {
       "name": "memory",
-      "args": "-e MCP_MEMORY_STORAGE_BACKEND=@MEMORY_BACKEND@ -e MCP_MEMORY_SQLITE_PATH=@MEMORY_DB_PATH@ -e MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000 -- uvx --python @UV_PYTHON@ --with numpy --from mcp-memory-service[sqlite]@MEMORY_PIN@ memory server",
+      "args": "-e MCP_MEMORY_STORAGE_BACKEND=@MEMORY_BACKEND@ -e MCP_MEMORY_SQLITE_PATH=@MEMORY_DB_PATH@ -e MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000 -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --with numpy --from mcp-memory-service[sqlite]@MEMORY_PIN@ memory server",
       "note": "memory: required, like navigation and documentation (baseline-memory.md locks it in) - shared recall across sessions/projects; --memory-level picks where its db lives"
     },
     {
@@ -998,16 +998,16 @@
     {
       "name": "windows-desktop",
       "active": false,
-      "args": "-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_DESKTOP_EXCLUDE@ -e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ --from windows-mcp@WINDOWS_DESKTOP_PIN@ windows-mcp serve",
+      "args": "-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_DESKTOP_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from windows-mcp@WINDOWS_DESKTOP_PIN@ windows-mcp serve",
       "skills": [
         "desktop-automation"
       ],
-      "note": "the Windows desktop server (Windows-MCP): drives native Windows apps through UI Automation; Windows only, seeded for wpf / winforms there; opt-in (active: false - never in a no-selection run); PowerShell, Registry, Process and FileSystem off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE says otherwise; App's launch_executable mode is denied by a house guard unless DESKTOP-EXEC-ALLOW allows it"
+      "note": "the Windows desktop server (Windows-MCP): drives native Windows apps through UI Automation; Windows only, seeded for wpf / winforms there; opt-in (active: false - never in a no-selection run); PowerShell, Registry, Process and FileSystem off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE says otherwise (WINDOWS_MCP_TOOLS registered empty, so an inherited one never overrides the list); App's launch_executable mode is denied by a house guard unless DESKTOP-EXEC-ALLOW allows it"
     },
     {
       "name": "macos-desktop",
       "active": false,
-      "args": "-e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ --from macos-mcp@MACOS_DESKTOP_PIN@ macos-mcp serve",
+      "args": "-e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from macos-mcp@MACOS_DESKTOP_PIN@ macos-mcp serve",
       "skills": [
         "desktop-automation"
       ],

@@ -24,7 +24,9 @@ change (see the invariants below).
 - `stack/skills/` - the house-style skills (`SKILL.md` each), auto-activating on their keywords /
   file types. Every one is LIBRARY (2.1.0) - listed by no marketplace entry, copied into
   `.claude/skills` per pick, the always ones included (locked: adopted by every update, a drop
-  refused; `skillOverrides` is the per-project lever) - and every rule is a library copy in
+  refused; `skillOverrides` is the per-project lever, and `library-check.js` flags a `blocked` row where
+  one set `off` or `user-invocable-only` hits a skill a shipped rule still sends the model to - 2.1.5 audit
+  M75) - and every rule is a library copy in
   `.claude/rules` the same way (`scripts/install/library.js`, each copy's hash in the stamp), because a
   plugin skill is locked on and only a project copy can be switched off per project (measured, the
   2026-09-24 library test). `scripts/library-check.js` reports drift and staleness for validate and
@@ -47,7 +49,8 @@ change (see the invariants below).
   frozen shell twins are deleted (2.0.0) and `ALFRED_CODE_SEED=shell` refuses with one line.
   `meta/stack-manifest.json`, hand-edited, is the one source of the six lists the seed reads;
   `docs/alfred-code.html` is the browser inventory (lint check 60 runs `node --check` over its inline
-  script: an unescaped quote in one row string left the page with no tables).
+  script: an unescaped quote in one row string left the page with no tables; check 60b holds every seat's
+  `mdl` pin badge and row 'Pinned <model>/<effort>' to its frontmatter - 2.1.5 M57).
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
   `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`. Its
   authoring outline (Setup and Key files among it) and keep-out list say WHAT a CLAUDE.md holds; the
@@ -65,7 +68,7 @@ change (see the invariants below).
   with cursor-stack run `node .claude/hooks/docs.js` (and the history block points at `history.js
   rulings`). The core's hooks block is GENERATED from the manifest's `hooks[]` table after the core's
   own two per event (`mergeHooks`, lint check 48); every hook carries `"timeout": 10` (a hook with none
-  gets Claude Code's 600s) except `check-turn-build.js`'s 60 on its `Stop` wiring and `shell-guards.js`'s 80, from the
+  gets Claude Code's 600s) except `check-turn-build.js`'s 60 on its `Stop` wiring, `shell-guards.js`'s 80 and `file-guards.js`'s 50, from the
   `HOOK_TIMEOUTS` table (per file, per event) the seed writes, and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec bit, and
   never runs on Windows). `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the
   core's copies stand down for the wired ones); the walk writes the hooks it did NOT pick into
@@ -76,7 +79,7 @@ change (see the invariants below).
   record in it, its git top level or - for a git worktree - its main checkout, so a worktree of an
   installed checkout counts as set up; under a user-scope core such a repo is written nothing and only
   the rm, secret, force-push and desktop exec guards stay live, writing no row - R54, R86 - plus the dispatch guard's
-  implementer gate, M9. Known ceiling: such a repo still lists all 44 core seats, 12,531 characters of
+  implementer gate, M9. Known ceiling: such a repo still lists all 44 core seats, 12,532 characters of
   descriptions in every session's first call where 2.0.0 listed 9, since no deny is written into a repo the
   stack never touched - revisit when a plugin's agents can be scoped per project); and the 1.x ALIAS - a
   hook launched from a `.../claude-stack/<version>` root stands down while settings enable an <!-- legacy-name -->
@@ -101,13 +104,22 @@ change (see the invariants below).
   Monitor command). The eight guards with a
   `Bash|PowerShell|Monitor` row are wired as ONE hook, `shell-guards.js` (R11; both generators fold the rows,
   `wiringRows`): each guard runs in-process with its own gates and ledger row (its `global.BLOCK_DETAIL` cleared before and after it), every block reason
-  reaches the model, a throwing guard fails open alone.
+  reaches the model, a throwing guard fails open alone - except that a PROTECTIVE guard's exit 2 (force-push, rm,
+  secret) is answered at once, since the guards run one after another and a later one stalling past the budget would
+  drop it (a timed-out hook lets the call through; 2.1.5 M2 - every git call in the docs engine carries a 5s timeout),
+  and the protective ones run first (`RUN_ORDER`; the messages keep the manifest's order).
+  The five guards with a file-tool row ride ONE hook the same way, `file-guards.js` (2.1.5 M3: a Read or a Write paid
+  three node processes): the read guard, the secret guard, the config and cross-project guards and docs-session, each
+  run only for the tools its own manifest row names (its `GUARDS` table, held to the manifest by a test), the secret
+  guard run first and its exit 2 answered at once; instrumentation stays its own `.*` row. Both still launch in shell form (below).
   Every guard appends one row per BLOCK to `<docs-path>/hook-blocks/<session>.jsonl`
   (`analyze-usage.js --hook-blocks` tallies it) - the block RATE is what says a gate earns its keep.
   A denial that needs the user's decision ends in ONE AskUserQuestion, and an 'allow' answer is
   honoured through a `<docs-path>/flow/*-ALLOW` receipt (this session's own, under 8h).
   - `guard-protected-force-push.js` - blocks force-push to protected branches.
-  - `guard-catastrophic-rm.js` (PreToolUse `Bash`) - a recursive `rm` of an unrecoverable target, and
+  - `guard-catastrophic-rm.js` (PreToolUse, the shell route) - a recursive `rm` of an unrecoverable target (and a
+    literal `find <target> -delete` / `-exec rm` with no filter test before the action in its `-o` branch, or a piped `Get-ChildItem <target> | Remove-Item`
+    with `-Recurse` on either side - 2.1.5 M1; `xargs` and wrappers stay the stated ceiling), and
     EVERY git call in the command, read from its argv (flags anywhere, a tree-ish before the paths): a
     path `checkout` / `restore` of the working tree / `reset --hard` / a forced `checkout` or `switch` only
     when the PATHSPEC it names is dirty (judged where git runs: cwd, a leading `cd`, `-C`; `status -z`, so
@@ -157,7 +169,9 @@ change (see the invariants below).
     in the plugin, so every denial and view names it by its absolute path. 'Show' is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt. The
     name rule is what catches a credential a `$(...)` COMPUTES (`gh auth token`, a keychain or vault read),
     so a stack snippet never assigns a credential-shaped name (the source-protocol snippet's marketplace key
-    is `MKT`; as `KEY` it was blocked twice in pilot 2).
+    is `MKT`; as `KEY` it was blocked twice in pilot 2). A rewrite is no block but is counted: one `mode: rewrite` row
+    (tool, branch - `file`, `env`, `env-stage`, `git-stage`, `variable` - and a file's basename, never the value), which
+    the block rate skips like the probe rows (2.1.5 M17).
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch (bare or
     `alfred-code:`-prefixed; a foreign plugin's is not the flow's seat) without the `<docs-path>/flow/APPROVAL` gate file (written on explicit approval or an AUTO waiver),
     blocks a generic `general-purpose`/`claude` dispatch while that stamp is live (stamps older than 8h
@@ -165,9 +179,11 @@ change (see the invariants below).
     'usages of' count only before a code identifier - backticked, CamelCase, `name(`, `A.B` / `A::B` - never a
     kebab-case or file-shaped token: I5, a text sweep for a skill name was the week's one block). An
     `Explore` / `Plan` brief gets the untrusted-content sentence appended (`updatedInput`, never a deny).
-    In a repo never set up only the implementer gate runs, for the `alfred-code:` spelling alone, and writes
-    no block row (M9, `standDown(..., { setUp: false })`).
-  - `guard-ungated-commit.js` (PreToolUse `Bash`) - blocks a non-trivial `git commit` without the
+    A diagnoser CALLER (the payload's `agent_type`, bare or house-prefixed) dispatches only `evidence-gatherer` -
+    a subagent's `Agent(<type>)` list is ignored, so the grant alone let it start a writing seat (2.1.5 M48).
+    In a repo never set up only an `alfred-code:`-spelled implementer target is judged - the diagnoser pin,
+    then the implementer gate - and no block row is written (M9, `standDown(..., { setUp: false })`).
+  - `guard-ungated-commit.js` (PreToolUse, the shell route) - blocks a non-trivial `git commit` without the
     `<docs-path>/flow/COMMIT-GATE` receipt, and `git push` / `gh pr merge` without `PUSH-GATE`. A dry
     run or a branch level with upstream is never gated; `ALFRED_CODE_PUSH_GATE=0` turns the push half off.
     Both are judged in the repo git runs in (the shell's cwd, a leading `cd`, `-C`) - a worktree is its own.
@@ -187,7 +203,8 @@ change (see the invariants below).
   - `guard-stop-contract.js` (`Stop` + `SubagentStop`; PreToolUse `AskUserQuestion` - its notes INJECTED, and a
     PreToolUse note lands beside the tool result, which for an ask is the user's ANSWER, so each is worded for that
     moment ('the ask just answered ... verify, re-ask if it moved'); the one DENY is the ask's own house voice (an
-    em- or en-dash, a double quote), once per ask text, carrying the corrected strings (I3);
+    em- or en-dash, a double quote) outside a backticked span or fenced block, which it neither judges nor rewrites
+    (R5: a string's delimiters in code stay double), once per ask text, carrying the corrected strings (I3);
     LOG-ONLY: `PostToolUse` + `PostToolUseFailure` on the shell tools) - blocks a turn ending on a decision-shaped question in prose (the quality
     loop's mode and stage-close asks worded as statements included), or a 'done, next step pending' close; holds ONCE a subagent that stops on a wait nobody will end ('I'll wait for...' or its own
     ScheduleWakeup) with no background work of its own; a close saying the RUN has nothing pending (the pinned line in shared-rules.json) is
@@ -197,7 +214,8 @@ change (see the invariants below).
     Edit's `originalFile` held a JWT the secret guard had kept out of context, pilot 3).
     Three LOG-ONLY probes (2026-09-25 - the habits skills lean on their descriptions and the flows that load
     them, and the misses are counted, never held or injected): a done claim over a turn's source edit
-    (file tool or shell write) writes one `done-gate` row per turn - `unrun` when nothing ran after the edit,
+    (file tool, a shell write on the whole shell route, or a navigation `rename_symbol` / `safe_delete_symbol` credited to
+    its declaring file - R8) writes one `done-gate` row per turn - `unrun` when nothing ran after the edit,
     with the skill load, the project's test markers and any instruction line against running tests
     (`ALFRED_CODE_DONE_GATE=0` off) - and the first red build or test run of a streak writes one
     `root-cause` row (one streak per actor) that `analyze-usage.js --hook-blocks` resolves against the
@@ -208,29 +226,33 @@ change (see the invariants below).
     `ALFRED_CODE_FRESH_SESSION_200K` (default 150000), `_1M` (400000), `_DEFAULT` (180000, any other or
     unreadable window); `0` switches that case off; seeded absent-only. The window comes from ONE table (the session
     model's row in the shipped `model-windows.json`, else `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW`, seeded 1000000; no id
-    suffix, carry or compaction is read), never declared. A trigger at or above its window is clamped
+    suffix, carry or compaction is read), never declared. A key matches its id, a dated snapshot, a Bedrock version, the `[1m]` suffix and a provider prefix, never a point release: `claude-opus-5-5` took `claude-opus-5`'s row until every model got its own (2.1.5 M6, which added Opus 4.5 and Sonnet 4.5 at 200K). A trigger at or above its window is clamped
     inside it, and `_DEFAULT` must stay below the smallest window it can land on. The offer fires only
     when a resume recovers something (carry minus the session's first-message floor >= 40% of carry),
     re-arms at 1.5x growth, and never mid-response. A long-idle or long-span session takes the same
     offer under the window (`ALFRED_CODE_FRESH_SESSION_AFTER_HOURS`, default 2, unseeded, `0` off).
   - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
-    `disable-model-invocation` skill (read from its frontmatter; the user's slash turn is untouched), and
+    `disable-model-invocation` skill (read from its frontmatter - the personal copy first, then the project's, then the
+    plugin caches, the order Claude Code resolves a name in, M10; the user's slash turn is untouched), and
     offers a fresh session before a deliberate orchestration run (capture, loop, solve flow, review,
     guided walk) when the context is past the window trigger OR (slash route only) this session already
     TYPED a run - a Skill call is a phase of a run in flight, and harness-written user rows are no turn. Routes:
-    PreToolUse `Skill` BLOCKS; `UserPromptSubmit` INJECTS for slash-invoked runs (never denies - that
-    would erase the prompt); `SessionStart` matcher `compact` injects the ask plus two lines: answer in
-    the language of the user's prompts, and re-read a live plan file's header first. `PreCompact` writes
+    PreToolUse `Skill` BLOCKS; `UserPromptExpansion` INJECTS for slash-invoked runs (2.1.5 M14: the event fires on a
+    typed command and names it in `command_name`, the typed prompt settling a plugin command's namespace; its matcher, a
+    regex with no colon, lists the orchestration commands, so no ordinary prompt spawns it; never blocks - a blocked
+    expansion shows its reason to the user only); `SessionStart` matcher `compact` injects the ask plus two lines: answer in
+    the language of the user's prompts (unless a loaded skill sets it), and re-read a live plan file's header first. `PreCompact` writes
     `<docs-path>/flow/COMPACT-STATE` first (the live plan, the open flow stamps with their ages, the
     files this session wrote, no model call), and the compact start points at it - even with every
     fresh-session offer off.
-  - `guard-cross-project-write.js` (PreToolUse `Write`/`Edit`/`NotebookEdit` + the shell route) - a write outside
+  - `guard-cross-project-write.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route) - a write outside
     the project root is blocked (file tools and shell routes: redirection, `tee`, in-place `sed`/`perl`,
     `cp`/`mv` destination, `rm`/`mkdir`/`chmod`, `git -C <other>` mutating, `cd <other>` then a write);
     the change goes to a task card under `<docs-path>/cross-project-tasks/`. Reading stays open. Session
-    scratch, `~/.claude` / `~/.claude-<space>` and `/dev` stay writable; paths compared as REAL paths; a
-    Git Bash mount path (`/c/...`, `/cygdrive/c/...`) is translated first (the same regex is inlined in
-    five hooks, pinned as `gitbash-mount-path`). 'Allow' is honoured through the
+    scratch, `~/.claude` / `~/.claude-<space>` and `/dev` stay writable; paths compared as REAL paths in their on-disk
+    letter case (the native realpath, and on win32 a case-folded compare as well - M9); a Git Bash mount path (`/c/...`,
+    `/cygdrive/c/...`) is translated first (`shell-writes.js` `nativePath`, the one home every path-resolving guard
+    requires - 2.1.5 M8). 'Allow' is honoured through the
     `<docs-path>/flow/CROSS-WRITE-ALLOW` receipt; `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` opens a second
     tree permanently. Also carries the log-only fork-liveness PROBE (`mode: probe` rows, denies nothing).
   - `guard-config-protection.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route) - a
@@ -239,7 +261,9 @@ change (see the invariants below).
     tsconfig / MSBuild files only a change to the strictness keys (compared as key=value pairs, so any
     other edit passes). Creating a config passes; the shell routes are the in-place edit, redirect, `tee`,
     `rm`, `mv` and a `cp` onto it. 'Allow' is honoured through `<docs-path>/flow/CONFIG-EDIT-ALLOW` (a
-    file, its basename or `*`); `ALFRED_CODE_CONFIG_PROTECT=0` turns it off.
+    file, its basename or `*`); `ALFRED_CODE_CONFIG_PROTECT=0` turns it off. A lockfile, a migration, the central
+    package file and a solution file are a recorded DECLINE (2.1.5 M13, in its header): legitimate work edits each, and
+    whether a migration was applied lives in a database no hook reads.
   - `guard-desktop-exec.js` (PreToolUse on the desktop servers' two process launchers, both routes' spellings, one
     anchored pattern each - the copy route's bare server spelling is never literal text, lint check 54) - the
     user's ruling of 2026-09-29 (I10): Windows-MCP's `App` with `mode: launch_executable` (any executable, caller-given
@@ -251,7 +275,9 @@ change (see the invariants below).
   - `monitor-session.js` (`PostToolUse` on every tool + `UserPromptSubmit`) - a live monitor that never
     denies: one actor running the same tool with the same input 5 times in a turn, more than 20 distinct files
     written in a turn, the context at 80% of the fresh-session trigger (read from `fresh-session.js`, once per
-    session). Each note is one `mode: monitor` row in the hook-blocks ledger; `ALFRED_CODE_MONITOR` is seeded
+    session). Each call appends its own row to the turn's log (`<docs-path>/flow/monitor-<session>.jsonl`, emptied at a
+    prompt) and counts the rows up to it, so parallel calls lose no count (2.1.5 M15); the context note is claimed by an
+    exclusive marker. Each note is one `mode: monitor` row in the hook-blocks ledger; `ALFRED_CODE_MONITOR` is seeded
     `log` (rows only, the observation week), `inject` hands the note back as `additionalContext`, `0` is off.
   - `check-turn-build.js` (`PostToolUse` on `Write|Edit|MultiEdit` and the navigation server's `rename_symbol` /
     `safe_delete_symbol` - the file in `relative_path`, from the project root, both routes' spellings - + `Stop`) - seeded OFF
@@ -267,10 +293,11 @@ change (see the invariants below).
     prose at any length. After the third consecutive short correction following a long answer it injects
     the format ask (injection only). A correction turn (short, after an answer, carrying a correction marker -
     the test the analyzer shares, `correction-turn-test`) writes one `correction` probe row;
-    `ALFRED_CODE_CORRECTION_NUDGE` is seeded `log`, `inject` adds the memory-save line, `0` is off.
+    `ALFRED_CODE_CORRECTION_NUDGE` is seeded `log`, `inject` adds the memory-save line with the `ToolSearch select:`
+    line that loads the deferred `memory_store` (M11), `0` is off.
   - `instrument-tool-usage.js` - wired env-gated: skipped unless `ALFRED_CODE_INSTRUMENT` (seeded "0")
     is "1".
-  - `docs-session.js` (`SessionStart`, `SubagentStart`, `SubagentStop`, PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Grep/Glob, the shell route and the navigation server's two kept edit tools `rename_symbol` / `safe_delete_symbol` - held like an Edit, the file in `relative_path`, both routes' spellings (I12) - `Stop`) with its engine `docs.js` (copied beside it, not wired) - every docs DOMAIN (a top-level folder under the docs root holding a `watch.json`, plus the grandfathered `architecture/`) follows the branch, and HOW is declared at install time in `ALFRED_CODE_DOCS_VERSIONING` (`--docs-versioning` writes it; absent, ONE rule seeds it and is the engine's fallback, in three homes - `install/docs.js`, `stamp-docs-root.js`, `docs.js` - pinned by one table-driven test: `local` only when the docs are kept out of git - no domain tracked, and a domain exists or git ignores the docs root - else `git`, a fresh project included): `git` means the docs are committed and git versions them per branch, `local` means per-branch section overlays under `<docs-path>/.branches/`, folded into mainline at the first mainline session after the branch merges. The setting WINS over what the repo does, and a disagreement is reported in `status` and the start block rather than resolved the other way. The start block pushes `ORIENTATION.md` (4KB cap) - a PROVISIONAL one (the first-look scan's, `scan-evidence.js --orientation`) with a stale warning, and `status` / `stale` call it stale by definition; the first change under a source root waits for a section read (two holds, then a logged bypass; no hold when no doc file can be read by section); the FINISH ask fires only when a changed file hits the capture's `watch.json` - at `SubagentStop` for what that agent WROTE (a tool event carries `agent_id` only inside a subagent, so every write is attributed to its actor - the main session included, under one key of its own - and intersected with the tree diff; a read-only seat running beside a writer is never asked, a write the gate DENIED is never credited, and paths are compared in git's spelling on every platform), then once at `Stop` for what the session wrote itself plus every change no actor claimed (a script's output, a tool this hook is not wired on), both in the same shape: the section named, its file, its current FIRST SENTENCE quoted, and a `set ... --expect <hash>` that refuses a rewrite of a section another agent moved meanwhile. At `Stop` the ask also says its reply is the session's last message: the docs line, then the task summary in at most three lines (pilot 4: all 8 flow cells ended on 'docs ok'); a seat's `SubagentStop` ask keeps its shape. At `SessionStart`, before any domain check, it writes `<docs-path>/flow/untracked-at-start-<HEAD sha>` ONCE per HEAD - the paths untracked when the change began, at most 20,000 (past the cap a path reads as the change's own), which the commit guard and `alfred-habits-commit-checkpoint` keep out of the change. Every later session on that HEAD (a resume, a compact start, a fresh-session hand-off, a `/clear`) reuses it, so an earlier session's new files stay the change's own; a commit moves HEAD, the next session takes a fresh one, and the guard falls back to the newest record until then. Writing a record sweeps the ones past 7 days. It is named in one start line when it is not empty. `ALFRED_CODE_DOCS_BLOCK` / `_GATE` / `_ASK` = `0` switch the parts off.
+  - `docs-session.js` (`SessionStart`, `SubagentStart`, `SubagentStop`, PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Grep/Glob, the shell route and the navigation server's two kept edit tools `rename_symbol` / `safe_delete_symbol` - held like an Edit, the file in `relative_path`, both routes' spellings (I12); a rename is credited to that declaring file alone - the references it rewrote in other files fall to the Stop ask's 'no actor claimed' bucket and outside the turn check's root, an accepted gap (final review R9) - `Stop`) with its engine `docs.js` (copied beside it, not wired) - every docs DOMAIN (a top-level folder under the docs root holding a `watch.json`, plus the grandfathered `architecture/`) follows the branch, and HOW is declared at install time in `ALFRED_CODE_DOCS_VERSIONING` (`--docs-versioning` writes it; absent, ONE rule seeds it and is the engine's fallback, in three homes - `install/docs.js`, `stamp-docs-root.js`, `docs.js` - pinned by one table-driven test: `local` only when the docs are kept out of git - no domain tracked, and a domain exists or git ignores the docs root - else `git`, a fresh project included): `git` means the docs are committed and git versions them per branch, `local` means per-branch section overlays under `<docs-path>/.branches/`, folded into mainline at the first mainline session after the branch merges. The setting WINS over what the repo does, and a disagreement is reported in `status` and the start block rather than resolved the other way. The start block pushes `ORIENTATION.md` (4KB cap) - a PROVISIONAL one (the first-look scan's, `scan-evidence.js --orientation`) with a stale warning, and `status` / `stale` call it stale by definition; the first change under a source root waits for a section read (two holds, then a logged bypass; no hold when no doc file can be read by section); the FINISH ask fires only when a changed file hits the capture's `watch.json` - at `SubagentStop` for what that agent WROTE (a tool event carries `agent_id` only inside a subagent, so every write is attributed to its actor - the main session included, under one key of its own - and intersected with the tree diff; a read-only seat running beside a writer is never asked, a write the gate DENIED is never credited, and paths are compared in git's spelling on every platform), then once at `Stop` for what the session wrote itself plus every change no actor claimed (a script's output, a tool this hook is not wired on), both in the same shape: the section named, its file, its current FIRST SENTENCE quoted, and a `set ... --expect <hash>` that refuses a rewrite of a section another agent moved meanwhile. At `Stop` the ask also says its reply is the session's last message: the docs line, then the task summary in at most three lines (pilot 4: all 8 flow cells ended on 'docs ok'); a seat's `SubagentStop` ask keeps its shape. At `SessionStart`, before any domain check, it writes `<docs-path>/flow/untracked-at-start-<HEAD sha>` ONCE per HEAD - the paths untracked when the change began, at most 20,000 (past the cap a path reads as the change's own), which the commit guard and `alfred-habits-commit-checkpoint` keep out of the change. Every later session on that HEAD (a resume, a compact start, a fresh-session hand-off, a `/clear`) reuses it, so an earlier session's new files stay the change's own; a commit moves HEAD, the next session takes a fresh one, and the guard falls back to the newest record until then. Writing a record sweeps the ones past 7 days. It is named in one start line when it is not empty. `ALFRED_CODE_DOCS_BLOCK` / `_GATE` / `_ASK` = `0` switch the parts off.
   - `memory-session.js` (`SessionStart`) with its engine `memory.js` (copied beside it, not wired -
     the `docs.js` pattern) - reads the shared memory database FILE directly (`node:sqlite`, no
     server, no model call) and injects this project's memories plus every `preference` /
@@ -321,9 +348,15 @@ change (see the invariants below).
   Every seat that judges or writes code holds `mcp__plugin_documentation_documentation__*` (baseline-quality-gates
   sends its outside-world claims there); the five read-only gatherers do not. A seat reports through
   SubagentHandback when its tools include it, else its last message (`verifier-memory-before-report`);
-  `scripts/audit-214-agents.test.js` holds the grants.
+  `scripts/seat-grants.test.js` holds the grants. For the 2.x line the nine seats the retired 1.x core alias
+  carries also grant (and deny) the OLD spelling of each renamed server they hold - `serena`, `context7`,
+  `playwright-<engine>` - because those alias ids still serve their successor's server under the old name to an
+  install not yet updated (2.1.5 M35); an absent server's tool is inert, and check 59 allows an alias spelling on a
+  seat's `tools:` / `disallowedTools:` line only.
   Pins: resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers
-  `sonnet`/`medium`, support seats `sonnet`. Captures are deliberate-only
+  `sonnet`/`medium`, support seats `sonnet`, and three read-only reasoners on `opus` - `alfred-issue-diagnoser-ci`
+  `high`, `alfred-issue-diagnoser-runtime` and `security-auditor` `xhigh` (the reasons, and the A/B they still lack, in
+  `stack/skills/alfred-task-solve-cross/references/model-routing.md`). Captures are deliberate-only
   (`alfred-capture-architecture` writes `architecture/ARCHITECTURE.md` and
   `baseline-project-architecture.md`; the findings go to `alfred-capture-architecture-quality`
   (`quality/ASSESSMENT.md`), the code's to `alfred-capture-code-quality` (`quality/CODE-ASSESSMENT.md`), and the
@@ -350,7 +383,8 @@ change (see the invariants below).
   Thirteen path-scoped: `markdown-docs.md`, `skill-authoring.md`, the repair routers
   (`dotnet-repair-agents.md`, `angular-repair-agents.md`) and nine convention rules, each
   glob-attaching ONE file family to its house-style skill. Every convention rule uses the imperative form pinned as
-  `convention-rule-first-action` in shared-rules.json - a new one copies that form, never paraphrases it.
+  `convention-rule-first-action` in shared-rules.json, and the load receipt pinned as `convention-rule-load-receipt`
+  in the same eleven files (`scripts/rule-prose.test.js` fails a mismatch) - a new one copies both, never paraphrases them.
 - `setup-plugin/` - the Alfred Code plugin: seven COMMANDS and one router SKILL.
   - `/alfred-code:setup` is the selection walk and the install (reports `derive-state.js`'s `written`
     block first) and ends on 'restart, then /alfred-code:init'; `/alfred-code:init` is the one-time
@@ -415,7 +449,10 @@ change (see the invariants below).
   - Table before question: `hooks/guard-layer-table.js` (PreToolUse `AskUserQuestion`) denies an ask
     (up to 3 times per table since the last answered ask; it waits for the ask's own transcript row - only when a table call sits in the tail since the typed prompt, M15 - and fails open) whose decision table was run but never pasted - a `stack-select.js
     --table` catalog, the `plugin-settings.js` report or validate's install audit. It ships in the plugin because a fresh setup
-    has no stack hooks yet; the rule text is pinned as `table-before-question`.
+    has no stack hooks yet; the rule text is pinned as `table-before-question`. It and `library-stamp.js` run the
+    core's prelude gates from the plugin root (2.1.5 M4: the csv, `hook_profile: minimal`, the alias and a Cursor payload
+    stand them down; GATE 4 is skipped, `setUp: false`, since the gate serves setup), and a layer-table denial writes a
+    block row where the repo is set up; the Cursor-gate test takes its file list from the commands the core launches.
   - None of the seven carries `allowed-tools` - settled: it is a per-turn permission pre-approval, not a
     restriction or a context saving.
 - `meta/` - never installed:
@@ -459,6 +496,9 @@ change (see the invariants below).
   - `plugin-settings.json` - recommended config for INSTALLED plugins, applied by
     `scripts/plugin-settings.js`: walks report and ask in the plugins layer turn, apply after install;
     add-only by default (`--replace` overwrites); each row names the verified plugin VERSION (lint 28).
+  - `mcp-pins.json` / `mcp-tools.json` - the MCP runtime pins with their `refreshed` day (the uvx dependency
+    cut-off), and each pinned server's tool names at its pin (lint check 62), both written only by
+    `node scripts/refresh-mcp-pins.js --write`.
   - `model-prices.json` - the list prices `analyze-usage.js` bills its cost row from, with the source page and
     fetch date inside; refreshed from that page, never from memory (a unit test pins the page's multipliers).
   - `judgment.json`, `migrations.json` - existence-detected retirements of GENERATED artifacts plus the
@@ -468,7 +508,7 @@ change (see the invariants below).
   Commands reach `meta/` through the run's snapshot (`$TMP/repo/meta/`), never `${CLAUDE_PLUGIN_ROOT}`.
 - `scripts/lint-skills.js` - the parity lint. `scripts/analyze-usage.js` - offline token/tool report over
   a session transcript (+ `subagents/`), with an EFFICIENCY scorecard (one measured number per practice);
-  it reads `PowerShell` as a shell route, writes with `--out <file>` (never a `>` redirect), and
+  it reads `PowerShell` and `Monitor` as the shell route, writes with `--out <file>` (never a `>` redirect), and
   `--check-report <file>` re-reads a finished report, printing every judgment number that cites no
   machine row of that same report. Its rollup skips the live session (`CLAUDE_CODE_SESSION_ID`,
   `--exclude-session <id>`) and counts a plugin only where a registry record reaches or it was used.
@@ -500,10 +540,13 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 - **Every MCP server ships as its OWN plugin, and the tool names say so.** ONE PLUGIN, ONE SERVER,
   SAME NAME (lint check 53): a plugin server's tools are `mcp__plugin_<plugin>_<server>__<tool>`, so
   every shipped tool name is `mcp__plugin_<n>_<n>__<tool>`, and lint check 54 fails on a bare
-  `mcp__<server>__` under `stack/`, `setup-plugin/`, `meta/` or `scripts/` (it resolves to nothing: a
+  `mcp__<server>__` under `stack/`, `setup-plugin/`, `meta/` or `scripts/` - today's servers and every name
+  `renamed.mcps` / `retired.mcps` left behind (it resolves to nothing: a
   `tools:` allowlist silently drops the tool, a `ToolSearch select:` line finds none); check 59 fails
-  on a plugin spelling whose plugin ships no server there - a renamed server's old spelling (a
-  deliberate fixture line carries `mcp-fixture` in a comment). A plugin's
+  on a plugin spelling whose plugin ships no server there - a renamed server's old spelling; check 62 fails
+  on one whose TOOL its pinned server lacks (`meta/mcp-tools.json`, each server's tool names at its pin, written
+  by `refresh-mcp-pins.js --write`), so a pin bump that renames a tool is a finding, not a silent drop. All three
+  live in `scripts/lint-mcp-tools.js`, and a deliberate fixture line carries `mcp-fixture` in a comment. A plugin's
   servers LOAD TOGETHER, so a second server in one entry would put a second set of tool schemas in
   every session. The entries are GENERATED (`scripts/build-marketplace.js --mcp-entries`, from
   `meta/mcp-pins.json`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0.2.x registration route for
@@ -582,9 +625,12 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     (2.1.4, I10: FileSystem writes, moves and deletes where no house guard looks);
     `ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` replaces the list (`none` lifts it) - read by the launcher from
     the shell and the three settings files, and on the copy route resolved into Windows-MCP's own
-    `WINDOWS_MCP_EXCLUDE_TOOLS`. The gate is by tool NAME, so `App` stays whole, and its `launch_executable`
+    `WINDOWS_MCP_EXCLUDE_TOOLS`; each name is checked against the pinned tool list (`desktop-launch.js WINDOWS_TOOLS`,
+    held equal to `meta/mcp-tools.json`: case mended, an unknown one named and dropped, a list naming none keeps the
+    default), and Windows-MCP's own `WINDOWS_MCP_TOOLS`, which OVERRIDES the list, never reaches it - the launcher
+    drops it from the child's environment and the copy route registers it empty (2.1.5 M41). The gate is by tool NAME, so `App` stays whole, and its `launch_executable`
     mode starts any program: a house guard denies that mode and every MacOS-MCP `Shell` call unless
-    `<docs-path>/flow/DESKTOP-EXEC-ALLOW` allows it. MacOS-MCP 0.4.6 has no such flag, and runs as `macos-mcp serve` (with
+    `<docs-path>/flow/DESKTOP-EXEC-ALLOW` allows it. MacOS-MCP 0.4.6 has no exclude flag; its own config.toml `[tools] exclude` removes a tool, which the stack does not write, and it runs as `macos-mcp serve` (with
     no subcommand it exits with usage, measured); it checks its Accessibility grant (and a System Events
     probe it calls Screen Recording) before it serves and EXITS when one is missing - the server fails to
     connect and System Settings opens - unless `MACOS_MCP_SKIP_PERMISSION_CHECK=1` starts it ungranted. On
@@ -599,9 +645,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     and `evidence-gatherer` hold only its read-only observe tools (Windows `Snapshot` / `Screenshot` / `WaitFor`,
     macOS `Snapshot` / `Wait` - the pinned wheels' readOnlyHint tools that look at the desktop), named in `tools:`
     and described in the body, so no graph edge pulls the opt-in server into an install; a stack that seeds a
-    server no seat of it holds is listed main-thread-only in `scripts/audit-214-agents.test.js` (browser-extension's browser).
-  - plus `navigation` (Serena), `documentation` (Context7, the hosted remote only - its `CONTEXT7_API_KEY` header expands from
-    the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,
+    server no seat of it holds is listed main-thread-only in `scripts/seat-grants.test.js` (browser-extension's browser).
+  - plus `navigation` (Serena), `documentation` (Context7, the hosted remote only - its `Context7-API-Key` header, the name
+    Context7 documents (2.1.5 M25: a proxy may drop a header name with an underscore, and a keyed user with it), expands
+    `CONTEXT7_API_KEY` from the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,
     `chrome-devtools`, `appium-mcp`, `sentry` and `context7-local` (manifest `retired.mcps`,
     `meta/retired-plugins.json`): update uninstalls each only as `name@<stack key>` and prints its
     add-back line.
@@ -673,7 +720,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   deletes nothing.
 - **The navigation server (Serena) self-activates via `--project-from-cwd`** (finds `.serena/project.yml` or `.git` walking
   up from its cwd); a project with no `.git` of its own whose folder has moved under the data root gets
-  `--project <cwd>` from the launcher instead (the literal directory, not the failed expansion below). Its
+  `--project <cwd>` from the launcher instead (the literal directory, not the failed expansion below), and the
+  copy route registers `--project .` there (`@SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@`, serena resolving it against
+  its cwd - 2.1.5 M26). Its
   AUTO-GENERATED config is not a substitute (empty language list filled async, only the top language
   enabled), so the installer SEEDS serena's `project.yml` (`<data root>/serena/`, or a 2.0.0 `.serena` not
   moved yet) on install and update: project name, the `language_servers` their own scan detects (C#,
@@ -696,8 +745,11 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `serena-launch.js` swaps in the file beside it (`contextArgs`) - an entry naming the file would stop a
   project whose plugin cache predates it, since Claude Code launches the refreshed entry against the
   installed version. The full copy route copies it to `.claude/navigation-context.yml` (beside the
-  `.mcp.json` that names it, so a clone carries both) and registers `--context .claude/navigation-context.yml`
-  (`@SERENA_CONTEXT@`, relative like `SERENA_HOME`; a snapshot without the file keeps `claude-code`); the
+  `.mcp.json` that names it, so a clone carries both) and registers `--context ${CLAUDE_PROJECT_DIR:-.}/.claude/navigation-context.yml`
+  (`@SERENA_CONTEXT@`; 2.1.5 R6: serena fails CLOSED on a context path that does not resolve, so it is anchored the
+  way the browser row anchors its profile - Claude Code sets `CLAUDE_PROJECT_DIR` in the server's environment, not its
+  own, so the `.mcp.json` expansion usually takes the default, today's cwd-relative path, and is absolute only where
+  the launching shell exports it (code.claude.com/docs/en/mcp); a snapshot without the file keeps `claude-code`); the
   verify pass reads the same token, the ledger's `managed-files` records the copy, and a run that no
   longer registers navigation (a plugin route) removes an unchanged copy, as uninstall does.
 - **The navigation server's state is isolated per project** under the data root: `SERENA_HOME` is
@@ -724,7 +776,18 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   in the platform's separator, and the copy route registers `.alfred\serena\home` on Windows
   (`@SERENA_HOME@`) - which is why the data root may hold no space: serena 1.7.0 execs its TypeScript server through npm's `.bin` shim, so cmd.exe
   gets the path UNQUOTED and cuts it at its first `/` (an absolute one at the first space). Both
-  launchers pass a stop signal on to uvx (`runUvx`), or the server outlives them.
+  launchers pass a stop signal on to uvx (`runUvx`), or the server outlives them. The pin fixes only the top
+  package, so every uvx start also takes the release's dependency CUT-OFF (2.1.5 M24): `--exclude-newer
+  <refreshed>T23:59:59Z`, the pins file's own day (uv takes only what was uploaded before it -
+  docs.astral.sh/uv/concepts/resolution), passed by each plugin entry to its launcher beside the pin it was
+  generated with (an older launcher ignores the flag), resolved into the copy route's rows (`@UV_EXCLUDE_FLAG@
+  @UV_EXCLUDE_NEWER@`, two words dropped when the day is missing) and spelled into init's and the docs' index
+  command; a `UV_EXCLUDE_NEWER` the user set (the env, then the three settings files - `uv-python.js
+  userExcludeNewer`) replaces it everywhere: the launcher hands it to uv, the copy route registers it and init's
+  index command spells it, `false` meaning no cut-off (a mirror that publishes no upload time serves nothing under
+  one - the post-install connect check names the escape). `refresh-mcp-pins.js` also REFUSES a serena bump (exit 1, the pin kept) until the new release's
+  `claude-code.yml` hashes as the `# upstream:` line in `navigation-context.yml` records - re-diff, re-record,
+  refresh (2.1.5 R7).
 - **Three memory stores and one record, don't conflate:** the `memory` MCP is the SHARED memory - preferences,
   corrections, project facts and agent lessons, searchable by meaning, one database per chosen
   level (global/scoped/project) read by every Claude account and Cursor at that level; the navigation server's
@@ -820,7 +883,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 - **`develop` is where work lands; `main` is the release branch.** Merging `develop` -> `main` IS the
   release: the workflow rebuilds the archive and tags `v<version>` from
   `setup-plugin/.claude-plugin/plugin.json`. Bump it (plus `marketplace.json` metadata; lint enforces
-  equality) on `develop` with any release-worthy change. Never commit feature work to `main`; keep `main`
+  equality) on `develop` with any release-worthy change - a merge that reuses a version whose tag names another
+  commit FAILS the release job (2.1.5 M27; only a manual run with `replace_tag` moves it). Never commit feature work to `main`; keep `main`
   the GitHub default branch. Lint + test workflows gate every push and PR.
 - **Public repo.** No private project names or absolute local paths in tracked files.
 - **The 1.x name is retired, never reused.** Its spellings (`CLAUDE_STACK_*`, the older <!-- legacy-name -->
@@ -831,12 +895,14 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   in code), and only history (`docs/*-evidence.md`, `meta/migrations.json`,
   `meta/retired-entries.json`), the marketplace's generated `plugins[]` and the retired entry names
   pass unmarked. Anything NEW is `alfred-code` / `ALFRED_CODE_` from day one.
-- **The repo root is a plugin source, so seven names are RESERVED there.** Every marketplace entry
+- **The repo root is a plugin source, so twelve names are RESERVED there.** Every marketplace entry
   shares this root as its `source` and lists the paths it ships, but a shared root is auto-discovered
   whatever an entry lists (measured, spike S9c in `docs/plugin-migration-evidence.md`): a root
   `agents/` or `commands/` loads once PER ENTRY, a root `.mcp.json` or `hooks/hooks.json` loads once
   and is attributed to a different entry each time. So `skills/`, `commands/`, `agents/`,
-  `hooks/hooks.json`, `monitors/`, `settings.json` and `.lsp.json` never appear at the root (lint
+  `hooks/hooks.json`, `monitors/`, `settings.json` and `.lsp.json` never appear at the root, nor the other
+  default locations the plugin reference names - `bin/` (it would sit on every entry's Bash PATH),
+  `output-styles/`, `workflows/`, `themes/` and a root `SKILL.md` (a single-skill plugin) (lint
   check 46), and hooks and MCP servers are declared INLINE in each entry instead. `.mcp.json` is the
   one exception, because this repo is also a consuming project: it stays machine-local and
   gitignored, and the temp-project matrix installs from `scripts/clean-export.js` so it cannot leak
@@ -884,20 +950,21 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   those plus `scripts/` for characters nobody can see (zero-width, bidi, a BOM past byte 0 outside a
   `.ps1`, the tag block) - write one as an escape. A joiner or direction mark a script needs is text:
   a ZWJ between two emoji parts or two non-ASCII letters, a ZWNJ between two non-ASCII letters, an
-  LRM / RLM beside one.
+  LRM / RLM / Arabic letter mark (U+061C) beside one.
 - **The always-on surface has a BUDGET.** Lint check 33 (`scripts/always-on-surface.js`) sums what the model is sent - the pathless
   `baseline-*.md` rules as injected (frontmatter and HTML comments stripped), every agent DESCRIPTION,
   every skill DESCRIPTION plus `when_to_use` (a `disable-model-invocation` skill's is not in context, so
   its description is skipped), and the fixed text every generated capabilities rule carries (the usage
   policy and the locked-server row) - prints each part, and fails over 70,000 chars (lowered from 160,000
-  on 2026-09-29, about 40% over the measured total; 48,868 on 2026-09-29: pathless rules 22,946, agent
-  descriptions 12,531, skill descriptions 11,634 with 13 manual-only skipped, capabilities fixed text
-  1,757 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories
+  on 2026-09-29, about 40% over the measured total; 48,977 on 2026-09-29 (2.1.5): pathless rules 23,052, agent
+  descriptions 12,532, skill descriptions 11,589 with 13 manual-only skipped, capabilities fixed text
+  1,804 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories
   moving to `docs/baseline-rules-evidence.md`, and the 2.1.2 cap below cut the skill descriptions from
   50,719; the whole-file count it replaced read 51,473 and missed the generated rule). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor. An AGENT description is capped at 300 chars (check 15b): the 'Use when...' sentence and its
-  'Do NOT use' clause, the rest in the agent's `## Scope` body section - the dispatcher's listing carries
+  'Do NOT use' (or 'Not for') clause, the rest in the agent's ONE `## Scope` body section (both held by 15b since
+  2.1.5, M55) - the dispatcher's listing carries
   every enabled seat's description in every session's first call. A SKILL description (plus any
   `when_to_use`) is capped at 160 chars (check 15c): 'Use when' / 'Load when' with the strongest trigger
   phrases and at most one short 'Not for', the rest in the body's `## When to use` section. Claude Code

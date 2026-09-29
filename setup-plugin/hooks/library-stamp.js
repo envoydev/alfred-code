@@ -22,11 +22,21 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+// STACK HOOK GATES (2.1.5 M4) - the core's hook-prelude.js from the plugin root: the csv opt-out, `hook_profile:
+// minimal`, the 1.x alias and a Cursor payload stand it down; GATE 4 is skipped (`setUp: false`) - the stamp
+// reads below already say nothing in a repo never set up.
+const PRELUDE = path.join(__dirname, '..', '..', 'stack', 'hooks', 'hook-prelude.js');
 
 function main()
 {
+    let off = false;
+    try { off = require(PRELUDE).standDown('library-stamp', process.env, process.argv, { setUp: false }); } catch { /* no prelude: run */ }
+    if (off) return;
     let input = {};
     try { input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}') || {}; } catch { input = {}; }
+    let cursorOff = false;
+    try { cursorOff = require(PRELUDE).cursorStandDown(input, __filename); } catch { /* no prelude: run */ }
+    if (cursorOff) return;
     const root = process.env.CLAUDE_PLUGIN_ROOT;
     if (!root) return;
     const project = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();

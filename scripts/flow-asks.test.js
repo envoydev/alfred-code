@@ -5,6 +5,8 @@
 // in-session route. These pins hold the fixes in the skill text, the review seat's brief, the stop-contract
 // hook's close push, and lint check 61 over every `ask` template.
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');

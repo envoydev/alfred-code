@@ -136,7 +136,7 @@ and treat it as a pasted value (above). A `PROBLEM` line from the lint is fixed 
 
 ### 4. RULE - write .claude/rules/baseline-project-run-book.md
 
-Generated from `references/run-book-rule.template.md` with `__DOC_PATH__` replaced by the LITERAL docs root (`baseline-docs-root.md` names it; a rule is static text and cannot resolve the setting at load). A REPLACE, never a delete: READ the existing rule first, then Write the fresh one over it. Verify: `grep -c __DOC_PATH__` prints 0 and `wc -c` stays at or under 300 - the rule loads in every session and every subagent. It stays out of the installer's fetch manifest, so an update never overwrites it.
+Generated from `references/run-book-rule.template.md` with `__DOC_PATH__` replaced by the LITERAL docs root (`baseline-docs-root.md` names it; a rule is static text and cannot resolve the setting at load). A REPLACE, never a delete: READ the existing rule first, then Write the fresh one over it. Verify: `grep -c __DOC_PATH__` prints 0 and `wc -c` stays at or under 300 - the rule loads in every session and every subagent. It stays out of the installer's catalog, so an update never overwrites it.
 
 ### 5. REPORT
 

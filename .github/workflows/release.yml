@@ -10,16 +10,28 @@ name: release
 # plugin skills download releases/latest/download/... (always the newest release); a shallow
 # clone of main is their fallback - which covers the brief delete/recreate window this
 # job opens.
+#
+# One version, one commit: a merge to main that did not bump the version would move v<version> onto new
+# content that an install already on that version never receives (a plugin's version keeps its users on it
+# until it changes). The guard step fails the job when the tag already names another commit; a re-run of the
+# same commit passes, and only a manual run with replace_tag set moves the tag.
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      replace_tag:
+        description: 'Move an existing v<version> tag onto this commit (a same-version re-release)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
   release:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -27,6 +39,21 @@ jobs:
       - name: Resolve the version (the plugin/marketplace version)
         id: ver
         run: echo "version=$(node -p "require('./setup-plugin/.claude-plugin/plugin.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse a same-version re-release
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          REPLACE_TAG: ${{ inputs.replace_tag || 'false' }}
+        run: |
+          # The commit the remote tag names: the peeled line of an annotated tag, else the tag itself.
+          tagged=$(git ls-remote origin "refs/tags/v$VERSION" "refs/tags/v$VERSION^{}" | sort -k2 | tail -n 1 | cut -f1)
+          if [ -z "$tagged" ] || [ "$tagged" = "$GITHUB_SHA" ]; then exit 0; fi
+          if [ "$REPLACE_TAG" = "true" ]; then
+            echo "::warning::v$VERSION names $tagged - replace_tag moves it to $GITHUB_SHA"
+            exit 0
+          fi
+          echo "::error::v$VERSION already names $tagged, not $GITHUB_SHA - bump the version in setup-plugin/.claude-plugin/plugin.json (and marketplace.json), or re-run by hand with replace_tag"
+          exit 1
 
       - name: Build the source archives
         run: |
@@ -45,7 +72,7 @@ jobs:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true      # the pre-versioning rolling release; no-op once gone
-          gh release delete "v$VERSION" --yes --cleanup-tag 2>/dev/null || true # a same-version re-release refreshes the assets
+          gh release delete "v$VERSION" --yes --cleanup-tag 2>/dev/null || true # the guard above let only this commit, or replace_tag, through
           # The assets go last, after `--` (gh's own release process passes them the same way), so the
           # line naming the pre-rebrand pair can carry its marker.
           gh release create "v$VERSION" --latest --title "v$VERSION" \

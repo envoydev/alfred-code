@@ -5,6 +5,8 @@
 // different numbers in one session. Boundaries are pinned exactly: the offer fires when
 // context > trigger, so trigger itself passes and trigger + 1 fires.
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -65,6 +67,32 @@ function offered(route, tp, extra = {}, logDir) {
 }
 // The trigger a window takes with the seeded defaults.
 const triggerFor = (window) => (window === 1000000 ? 400000 : window === 200000 ? 150000 : 180000);
+
+// Every id the models pages list (platform.claude.com models overview and each legacy model's page, fetched
+// 2026-09-29), spelled as each platform spells it, against the page's context window. The fallback is the
+// seeded 1M, so a 200K model the table misses shows here (2.1.5 M6: Opus 4.5 and Sonnet 4.5 took 1M), and a
+// point release that matched its sibling through the old `-` suffix rule (claude-opus-5-5 read as a snapshot
+// of claude-opus-5) no longer can.
+const PAGE_IDS = [
+  ...['claude-fable-5-1', 'claude-mythos-5-1', 'claude-fable-5', 'claude-mythos-5', 'claude-opus-5-5', 'claude-opus-5',
+    'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-5-5', 'claude-sonnet-5', 'claude-sonnet-4-6',
+    'anthropic.claude-opus-5-5', 'anthropic.claude-sonnet-5-5', 'claude-opus-5-5[1m]'].map((id) => [id, 1000000]),
+  ...['claude-haiku-4-5', 'claude-haiku-4-5-20251001', 'claude-haiku-4-5@20251001', 'anthropic.claude-haiku-4-5',
+    'claude-opus-4-5', 'claude-opus-4-5-20251101', 'anthropic.claude-opus-4-5-20251101-v1:0', 'claude-opus-4-5@20251101',
+    'claude-sonnet-4-5', 'claude-sonnet-4-5-20250929', 'anthropic.claude-sonnet-4-5-20250929-v1:0', 'claude-sonnet-4-5@20250929',
+    'us.anthropic.claude-sonnet-4-5-20250929-v1:0'].map((id) => [id, 200000]),
+];
+test('every model id on the models pages takes its own window, not a sibling\'s or the fallback (2.1.5 M6)', () => {
+  const route = Object.keys(HOOK_ROUTES)[0];
+  for (const [id, window] of PAGE_IDS) {
+    const at = triggerFor(window);
+    const extra = { ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: '1000000' };
+    assert.equal(offered(route, session(id, carry(at)), extra), false, `${id} (${window}): ${at} is AT its trigger`);
+    assert.equal(offered(route, session(id, carry(at + 1)), extra), true, `${id} (${window}): ${at + 1} is past it`);
+  }
+  for (const key of ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-opus-4-5', 'claude-sonnet-4-5'])
+    assert.ok(Object.hasOwn(TABLE, key), `${key} has its own row`);
+});
 
 for (const route of Object.keys(HOOK_ROUTES)) {
   test(`${route}: every model-windows.json row maps to its window's trigger, exact at the boundary`, () => {

@@ -176,7 +176,7 @@ test('inventory: a registered server with no catalog row gets its first call in 
     const { out } = run([], { cwd: root, bin: stubCli(path.join(TMP, 'addback-cli')) });
     const row = out.split('\n').find((l) => /- `angular-cli` - routing: see project docs/.test(l));
     assert.ok(row, `no fallback row for angular-cli in:\n${out}`);
-    assert.match(row, /first call: `ToolSearch select:` plus the `mcp__angular-cli__\*` names/);
+    assert.match(row, /first call: `ToolSearch select:` plus the `mcp__angular-cli__\*` names/); // mcp-fixture - a retired server's add-back registration spelling
     assert.doesNotMatch(row, /mcp__plugin_/);
 });
 
@@ -580,3 +580,12 @@ test('report: the composed body is written under <docs root>/flow/, and the skil
 });
 
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
+
+// 2.1.5 audit M74: 'never to answer a question' told a user asking 'what is our C# convention for X'
+// that the convention skill was not for them - the convention rules call it the source of truth.
+test('policy: a skill is not loaded only for a question the code or the conversation already answers (M74)', () =>
+{
+    const skill = fs.readFileSync(SKILL_MD, 'utf8').replace(/\s+/g, ' ');
+    assert.ok(skill.includes('never to answer a question the code or the conversation already answers'), 'the policy line');
+    assert.ok(!/never to answer a question\.\s/.test(skill), 'the unqualified form is gone');
+});

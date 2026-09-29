@@ -4,6 +4,8 @@
 // `git add -N` guard. Each case pins a real measured defect - both directions, since a false
 // positive here is as costly as the miss it replaces.
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -387,8 +389,13 @@ test('guard-ungated-commit: a joiner or mark a script needs is text, and the res
   write('README.md', 'Built by a \u{1F468}\u200D\u{1F4BB}.\n');
   write('fa.json', '{ "want": "می\u200Cخواهم" }\n');
   write('he.md', 'שלום\u200F.\n');
+  write('ar.md', 'مرحبا\u061C.\n');
   git('add', '-A');
-  assert.doesNotMatch(gateFull(dir, 'git commit -m x').stderr, SCAN_BLOCK, 'an emoji ZWJ, a Persian ZWNJ and an RLM pass');
+  assert.doesNotMatch(gateFull(dir, 'git commit -m x').stderr, SCAN_BLOCK, 'an emoji ZWJ, a Persian ZWNJ, an RLM and an Arabic letter mark pass');
+  // U+061C, the Arabic letter mark, is a bidi mark like the RLM: text beside a letter, hidden elsewhere (2.1.5 M16).
+  write('d.js', 'const ok = "a\u061Cb";\n'); git('add', 'd.js');
+  assert.match(gateFull(dir, 'git commit -m x').stderr, /d\.js:1 - a hidden character U\+61C/, 'an Arabic letter mark between ASCII letters blocks');
+  git('rm', '-q', '--cached', 'd.js'); fs.rmSync(path.join(dir, 'd.js'));
   for (const [name, text, hex] of [['a.js', 'const ab = "a\u200Db";\n', '200D'], ['b.md', 'text \u202E here\n', '202E'], ['c.md', 'zero\u200Bwidth\n', '200B']]) {
     write(name, text); git('add', name);
     assert.match(gateFull(dir, 'git commit -m x').stderr, new RegExp(`${name.replace('.', '\\.')}:1 - a hidden character U\\+${hex}`), `${name}: still blocks`);

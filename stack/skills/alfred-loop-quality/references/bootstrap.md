@@ -8,8 +8,9 @@ runs them one stage at a time.
 
 ## The starter set
 
-This skill ships a starter set in its own `references/` folder - a standing fix-discipline preamble
-plus five stage prompts, all audits:
+This skill ships a starter set in its own `assets/loops-starter/` folder - a standing fix-discipline
+preamble plus five stage prompts, all audits. They are copy sources - `cp` them from this skill's
+folder, never read them into the run:
 
 - `fix-discipline.md` - standing guidance, not a stage: the FIX-step rules every stage holds.
 - `structure.md` - moves files and folders only.
@@ -24,7 +25,7 @@ plus five stage prompts, all audits:
 ## Seed it
 
 1. Make the folder: `mkdir -p "<LOOP_DIR>"`.
-2. Copy the six `references/` prompts into it, prefixing each with its order number -
+2. Copy the six `assets/loops-starter/` prompts into it, prefixing each with its order number -
    `0.fix-discipline.md`, `1.structure.md`, `2.code-quality.md`, `3.naming.md`, `4.logging.md`,
    `5.comments.md` - and edit to taste.
 3. The numbers are blast-radius order, so later stages do not undo earlier ones: structure (widest -

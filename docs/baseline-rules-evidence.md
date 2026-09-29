@@ -102,3 +102,9 @@ kept its imperative and a one-line reason in the rule; the longer story moved he
 - alfred-capture-agent-capabilities usage policy - **A slash-only skill ... is the USER's to type** - do not rely on the harness to stop you: it denied the call in one CLI build and not in another
 - alfred-capture-agent-capabilities usage policy - **A deliberate orchestration skill starts in a fresh session** - the rule is MECHANIZED by the hook; the prose form of it did not hold, so it is never restated as a reminder
 - agents - every description over 300 chars kept its 'Use ...' sentence and its 'Do NOT use' clause; the full original text is the `## Scope` section at the top of the agent's body
+
+## 2026-09-29 audit (2.1.5) - lines moved out of the always-on set
+
+- baseline-navigation.md - **Never Read a screenshot mid-loop** - moved to the generated capabilities rule's `browser` row, which already carried it ('a full-page PNG Read is for the FINAL accepted state only, never the iteration loop') and exists only where a browser server does; every measured miss above was a browser session (audit M68). The Windows-only Git Bash `/tmp` line stays: a per-OS copy would differ between teammates who commit `.claude/rules`, and each update would rewrite it.
+- baseline-navigation.md - **on C# pass `depth: 2`** - moved IN from `csharp-conventions.md`, which a Serena call never attaches, so the hint arrived only after a file-tool touch (audit M64).
+- baseline-quality-gates.md - **Keep it simple: no speculative abstractions; touch only what the task requires** - cut: no measured miss behind it, and every implementer seat carries 'Build lean' - the smallest correct version, no new abstraction (audit M69). 'Inline comments explain why, not what' stays: the implementer bar in ten seats and `alfred-task-implement` cite it as 'the always-on quality-gates rule's why-never-what line'.

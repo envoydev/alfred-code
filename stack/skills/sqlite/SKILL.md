@@ -43,7 +43,7 @@ PRAGMA synchronous = NORMAL;  -- the usual durability/speed balance with WAL
 
 ## Schema changes
 
-- `ALTER TABLE` is limited to `RENAME`, `ADD COLUMN`, `DROP COLUMN` (3.35+, but blocked on a column that is a PK / unique / indexed / in an FK / CHECK / generated expression), and toggling a column's `NOT NULL` (3.53+).
+- `ALTER TABLE` is limited to `RENAME`, `ADD COLUMN`, `DROP COLUMN` (3.35+, but blocked on a column that is part of a PK, UNIQUE, indexed, named in a partial index's `WHERE`, in a table CHECK or another column's CHECK, in an FK, in a generated-column expression, or used by a trigger or view), and toggling a column's `NOT NULL` (3.53+).
 - Any other change - retype a column, reorder, add other constraints - needs the documented 12-step rebuild, in this order (skipping steps is how FK enforcement and views silently break):
   1. `PRAGMA foreign_keys=OFF` (outside the transaction).
   2. Begin a transaction.

@@ -2,6 +2,8 @@
 // Suite for stack/hooks/guard-secret-value.js. Runs with `npm test` (node --test).
 'use strict';
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -216,13 +218,23 @@ test('guard-secret-value: a variable print and a whole-environment dump are rewr
 test('guard-secret-value: a block appends one ledger row naming the hook and never the value', () => {
   const f = fixtures();
   const ledger = path.join(TMP, 'ledger-' + Date.now());
+  const rowsOf = () => fs.readFileSync(path.join(ledger, 'hook-blocks', 'suite.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.equal(bash(`cat ${f.secret}`, { ALFRED_CODE_DOCS_PATH: ledger }), REWRITE, 'a rewrite costs no retried turn - it is not a block');
-  assert.ok(!fs.existsSync(path.join(ledger, 'hook-blocks')), 'and writes no ledger row');
+  // The shell route's main verdict is the rewrite, so it is counted - as a `mode` row, which the block rate
+  // skips like the probe rows (2.1.5 M17): tool, branch and the file's basename, never the value.
+  const [rw] = rowsOf();
+  assert.deepStrictEqual([rw.mode, rw.hook, rw.tool, rw.detail && rw.detail.branch, rw.detail && rw.detail.file],
+    ['rewrite', 'guard-secret-value.js', 'Bash', 'file', 'settings.json'], 'one rewrite row');
+  assert.doesNotMatch(JSON.stringify(rw), new RegExp(FAKE_TOKEN), 'and it never carries the value');
+  assert.equal(bash('env', { ALFRED_CODE_DOCS_PATH: ledger }), REWRITE);
+  assert.equal(bash('echo $SENTRY_ACCESS_TOKEN', { ALFRED_CODE_DOCS_PATH: ledger }), REWRITE);
+  assert.deepStrictEqual(rowsOf().slice(1).map((r) => [r.mode, r.detail.branch]), [['rewrite', 'env-stage'], ['rewrite', 'variable']],
+    'the environment and the variable forms are counted the same way');
   assert.equal(bash(`curl -H "Authorization: Bearer ${FAKE_JWT}" https://example.test/api`, { ALFRED_CODE_DOCS_PATH: ledger }), 2);
-  const rows = fs.readFileSync(path.join(ledger, 'hook-blocks', 'suite.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].hook, 'guard-secret-value.js');
-  assert.doesNotMatch(JSON.stringify(rows[0]), new RegExp(FAKE_JWT));
+  const blocks = rowsOf().filter((r) => !r.mode);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].hook, 'guard-secret-value.js');
+  assert.doesNotMatch(JSON.stringify(rowsOf()), new RegExp(FAKE_JWT));
 });
 
 test('guard-secret-value: copies, in-place edits, presence-shaped pipelines and prose stay silent', () => {
@@ -744,7 +756,9 @@ test('guard-secret-value: a compound read-only command keeps its other reads - o
   assert.equal(rewritten(`cat ${f.secret}`), view, 'a one-segment command is the view alone, as before');
   // A segment this guard cannot judge is never left running: the whole command is replaced, and the
   // note NAMES what was dropped - the silence is what cost the recovery calls.
-  const two = rewritten(`cat ${f.secret}; cat ${f.dotenv}`);
+  // The dropped step is spelled relative to the project anchor: the note clips each step at 160 chars (the
+  // product's cap, kept), so an absolute path under a long TMPDIR lost its `.env` there (final review R11).
+  const two = rewritten(`cat ${f.secret}; cat ${path.relative(ROOT, f.dotenv)}`);
   assert.match(two, /^echo "# credential guard: 1 other step\(s\) of this command were dropped/, 'the note leads the rewrite');
   assert.match(two, /cat [^"]*\.env/, 'and names the dropped step');
   assert.ok(two.endsWith(view), 'the view still ends it');
@@ -752,7 +766,7 @@ test('guard-secret-value: a compound read-only command keeps its other reads - o
     'an unresolvable path in another segment is never kept running either');
   // a heredoc in the same command cannot be spliced (the judged text has its body blanked), so the
   // whole-command rewrite stands - and says which steps went with it
-  const withDoc = rewritten(`cat <<'EOF' > ${path.join(f.dir, 'notes.md')}\nplan\nEOF\ncat ${f.secret}`);
+  const withDoc = rewritten(`cat <<'EOF' > ${path.relative(ROOT, path.join(f.dir, 'notes.md'))}\nplan\nEOF\ncat ${f.secret}`);
   assert.match(withDoc, /^echo "# credential guard: \d+ other step\(s\)/, 'the unspliceable shape names its drops');
   assert.match(withDoc, /notes\.md/, 'including the heredoc write that did not run');
   assert.equal(bash(`cat ${f.secret} && npm run build`), 2, 'a CHANGING step still blocks the whole command, as before');

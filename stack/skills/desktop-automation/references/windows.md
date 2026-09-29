@@ -29,7 +29,11 @@ user allowed it in `<docs-path>/flow/DESKTOP-EXEC-ALLOW`, while `launch`, `switc
 `ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` replaces the list - `none` lifts it, a list of its own
 (`PowerShell` alone, or one that adds `App` on a non-English machine) takes its place. It is read from the shell that starts Claude Code, then the
 project's `settings.local.json`, its `settings.json` and the account settings `env`; the server reads
-it at start, so reconnect it from `/mcp` after a change. Turning a tool on is the user's decision, never
+it at start, so reconnect it from `/mcp` after a change. Windows-MCP matches the names case-sensitively and
+skips an unknown one silently, so each is checked against its tools at the pin: a name in another case is
+mended, an unknown one is named and dropped, and a list naming no real tool keeps the default. Windows-MCP's
+own `WINDOWS_MCP_TOOLS` (its `--tools`, which OVERRIDES the exclude list) never reaches it from the
+environment - the launcher drops it, and the copy route registers it empty. Turning a tool on is the user's decision, never
 a way around a blocked step.
 
 ## What the machine needs

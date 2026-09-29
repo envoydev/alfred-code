@@ -5,6 +5,9 @@
 // entries, at which scope, and what comes back out. The twin sandbox tests in mcp-verify.test.js
 // keep proving the shell route, which still ships for one release (R1).
 const test = require('node:test');
+// 2.1.5 M5: two seed cases spawn the copied engines and the rm guard - no inherited stack env, entrypoint or project
+// dir reaches them, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -1457,8 +1460,8 @@ test('seed update --installed-only: a pre-11b hooks-copy-route install - its pic
 // R94 (Task 18b fix round 1), the R56 probe end to end: a stamp with no `hooks-route:` line, ONE stack
 // hook left in the folder and wired nowhere, the off list stored, the run on the hooks copy route. No
 // stored switch and no wiring say the copy route made that file, so it is the plugin route's leftover:
-// 16 of 17 hooks end on, never 1 of 17 with the other 16 named off.
-test('seed update --installed-only: an unwired stack hook under a stamp with no hooks route is no pick - 16 of 17 stay on (R94)', POSIX_ONLY, () =>
+// every hook but the one named off ends on, never the one left in the folder with every other one named off.
+test('seed update --installed-only: an unwired stack hook under a stamp with no hooks route is no pick - every hook but the one named off stays on (R94)', POSIX_ONLY, () =>
 {
     const { loadManifest } = require('./install/manifest.js');
     const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
@@ -1481,7 +1484,7 @@ test('seed update --installed-only: an unwired stack hook under a stamp with no 
         }),
     });
     assert.deepStrictEqual(result.off, ['guard-answer-length'], 'only the hook the user switched off is named off');
-    assert.deepStrictEqual(result.onDisk, shipped.filter((h) => h !== 'guard-answer-length').map((h) => `${h}.js`).sort(), '16 of 17 hooks copied and on');
+    assert.deepStrictEqual(result.onDisk, shipped.filter((h) => h !== 'guard-answer-length').map((h) => `${h}.js`).sort(), 'every hook but the one named off copied and on');
 });
 
 // Re-review N1: the copy route's own modules (hook-prelude.js, fresh-session.js, shell-writes.js, hidden-chars.js, shell-guards.js) are no catalog hook,
@@ -1494,7 +1497,7 @@ test('seed: copy -> plugin -> copy hands the plugin route\'s hooks back, never a
     const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
     const listing = JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
     const copies = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
-    const MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'shell-guards.js'];
+    const MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'shell-guards.js', 'file-guards.js'];
     const read = (repo) => ({
         files: fs.readdirSync(path.join(repo, '.claude', 'hooks')),
         off: String(JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).env.ALFRED_CODE_HOOKS_OFF || '').split(',').filter(Boolean).sort(),
@@ -2053,7 +2056,7 @@ test('seed: a copy-route None survives a plugin-route run that dies after the ma
 {
     const s = hooksRouteSandbox('m9-', 'skill markdown-style\nhook none\n');
     const fullCopy = { ...s.env, ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
-    const stackHooks = () => s.onDisk().filter((f) => !HOOK_ENGINES.includes(f) && !['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'shell-guards.js'].includes(f));
+    const stackHooks = () => s.onDisk().filter((f) => !HOOK_ENGINES.includes(f) && !['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'shell-guards.js', 'file-guards.js'].includes(f));
     try
     {
         // Step 1: the full copy route with the user's None - the stamp says 'copy', no stack hook copied.

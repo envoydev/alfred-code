@@ -188,7 +188,7 @@ function stubUvx(name)
     const bin = path.join(TMP, `${name}-bin`);
     fs.mkdirSync(bin, { recursive: true });
     const record = path.join(TMP, `${name}-argv.json`);
-    fs.writeFileSync(path.join(bin, 'uvx'), `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), home: process.env.SERENA_HOME || null }));\n`, { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'uvx'), `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), home: process.env.SERENA_HOME || null, tools: process.env.WINDOWS_MCP_TOOLS === undefined ? null : process.env.WINDOWS_MCP_TOOLS, exclude: process.env.UV_EXCLUDE_NEWER === undefined ? null : process.env.UV_EXCLUDE_NEWER }));\n`, { mode: 0o755 });
     return { PATH: bin + path.delimiter + process.env.PATH, argv: () => JSON.parse(fs.readFileSync(record, 'utf8')) };
 }
 const POSIX = { skip: process.platform === 'win32' && 'the stub uvx is a node script with a shebang' };
@@ -390,9 +390,8 @@ function desktopRun(name, args, { env = {}, settings } = {})
 {
     const { dir, acct } = project(name, { settings });
     const uvx = stubUvx(name);
-    let res;
-    try { res = { status: 0, stderr: '', stdout: execFileSync(process.execPath, [DESKTOP, ...args], { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, CLAUDE_CONFIG_DIR: acct, ...env }, stdio: 'pipe', encoding: 'utf8' }) }; }
-    catch (err) { res = { status: err.status, stderr: String(err.stderr || ''), stdout: String(err.stdout || '') }; }
+    const run = require('node:child_process').spawnSync(process.execPath, [DESKTOP, ...args], { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, CLAUDE_CONFIG_DIR: acct, ...env }, encoding: 'utf8' });
+    const res = { status: run.status, stderr: String(run.stderr || ''), stdout: String(run.stdout || '') };
     let argv = null;
     try { argv = uvx.argv().argv; } catch { /* uvx never started */ }
     return { ...res, argv };
@@ -402,24 +401,24 @@ test('desktop-launch: windows-desktop gets the Python pin, the pinned package, s
 {
     const got = desktopRun('desktop-win', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32' } });
     assert.strictEqual(got.status, 0, got.stderr);
-    assert.deepStrictEqual(got.argv, ['--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve', '--exclude-tools', 'PowerShell,Registry,Process,FileSystem']);
+    assert.deepStrictEqual(got.argv, ['--python', '3.13', '--exclude-newer', CUTOFF, '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve', '--exclude-tools', 'PowerShell,Registry,Process,FileSystem']);
     assert.strictEqual(got.stdout, '', 'stdout is the MCP stream - the launcher writes nothing there');
 });
 
 test('desktop-launch: ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE replaces the list, and none passes no gate at all', POSIX, () =>
 {
     const one = desktopRun('desktop-win-one', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'PowerShell' } });
-    assert.deepStrictEqual(one.argv.slice(4), ['windows-mcp', 'serve', '--exclude-tools', 'PowerShell']);
+    assert.deepStrictEqual(one.argv.slice(6), ['windows-mcp', 'serve', '--exclude-tools', 'PowerShell']);
     const none = desktopRun('desktop-win-none', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } });
-    assert.deepStrictEqual(none.argv.slice(4), ['windows-mcp', 'serve'], 'none must pass no --exclude-tools, so the user\'s own Windows-MCP config applies');
+    assert.deepStrictEqual(none.argv.slice(6), ['windows-mcp', 'serve'], 'none must pass no --exclude-tools, so the user\'s own Windows-MCP config applies');
     const empty = desktopRun('desktop-win-empty', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: '' } });
-    assert.deepStrictEqual(empty.argv.slice(6), ['--exclude-tools', 'PowerShell,Registry,Process,FileSystem'], 'an empty override is no override');
+    assert.deepStrictEqual(empty.argv.slice(8), ['--exclude-tools', 'PowerShell,Registry,Process,FileSystem'], 'an empty override is no override');
 });
 
 test('desktop-launch: the override is read from the PROJECT settings a plugin server never gets as env', POSIX, () =>
 {
     const got = desktopRun('desktop-win-proj', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32' }, settings: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } });
-    assert.deepStrictEqual(got.argv.slice(4), ['windows-mcp', 'serve']);
+    assert.deepStrictEqual(got.argv.slice(6), ['windows-mcp', 'serve']);
 });
 
 test('desktop-launch: macos-desktop runs serve on the pin, and the Windows gate never reaches it', POSIX, () =>
@@ -478,6 +477,85 @@ test('desktop-launch: the server\'s exit code comes back', POSIX, () =>
     try { execFileSync(process.execPath, [DESKTOP, ...MAC_ARGS], { cwd: dir, env: { ...BARE, PATH, HOME: dir, ALFRED_CODE_PLATFORM: 'darwin' }, stdio: 'pipe' }); }
     catch (err) { status = err.status; }
     assert.strictEqual(status, 7);
+});
+
+// M24: the pin fixes the top package only, and its dependencies float - two starts a week apart could resolve
+// different trees. Every uvx launcher hands uvx the release's own `--exclude-newer` cut-off, read from the SHIPPED
+// entry (the pins file's refreshed day, its last second in UTC), right after the Python pin. A UV_EXCLUDE_NEWER the
+// user set is uv's own knob and wins (`false` for a mirror that publishes no upload time); a malformed one is dropped.
+const PINS_FILE = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'mcp-pins.json'), 'utf8'));
+const CUTOFF = `${PINS_FILE.refreshed}T23:59:59Z`;
+test('M24 uvx launchers: the shipped entry\'s --exclude-newer cut-off reaches uvx right after the Python pin', POSIX, () =>
+{
+    const cases = [['navigation', SERENA], ['memory', LAUNCH], ['windows-desktop', DESKTOP], ['macos-desktop', DESKTOP]];
+    for (const [name, launcher] of cases)
+    {
+        const { dir, acct } = project(`cutoff-${name}`, { settings: { ALFRED_CODE_MEMORY_DB: path.join(TMP, `cutoff-${name}-db`, 'memory.db') } });
+        fs.mkdirSync(path.join(dir, '.git'), { recursive: true });
+        const uvx = stubUvx(`cutoff-${name}`);
+        const platform = name === 'windows-desktop' ? 'win32' : 'darwin';
+        execFileSync(process.execPath, [launcher, ...entryArgs(name)], { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, CLAUDE_CONFIG_DIR: acct, ALFRED_CODE_PLATFORM: platform }, stdio: 'pipe' });
+        const argv = uvx.argv().argv;
+        assert.deepStrictEqual(argv.slice(0, 4), ['--python', '3.13', '--exclude-newer', CUTOFF], `${name}: ${argv.join(' ')}`);
+    }
+});
+
+test('M24 uvx launchers: a UV_EXCLUDE_NEWER the user set wins over the cut-off, and a malformed cut-off is dropped', POSIX, () =>
+{
+    const { dir } = project('cutoff-own');
+    fs.mkdirSync(path.join(dir, '.git'), { recursive: true });
+    const own = stubUvx('cutoff-own');
+    const res = require('node:child_process').spawnSync(process.execPath, [SERENA, ...entryArgs('navigation')], { cwd: dir, env: { ...BARE, PATH: own.PATH, HOME: dir, UV_EXCLUDE_NEWER: 'false' }, encoding: 'utf8' });
+    assert.ok(!own.argv().argv.includes('--exclude-newer'), own.argv().argv.join(' '));
+    assert.match(res.stderr, /UV_EXCLUDE_NEWER=false is set - it replaces the release cut-off/);
+    const bad = stubUvx('cutoff-bad');
+    const res2 = require('node:child_process').spawnSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--exclude-newer', 'yesterday', '--', 'start-mcp-server'], { cwd: dir, env: { ...BARE, PATH: bad.PATH, HOME: dir }, encoding: 'utf8' });
+    assert.deepStrictEqual(bad.argv().argv.slice(0, 3), ['--python', '3.13', '--from'], 'a malformed cut-off never reaches uv');
+    assert.match(res2.stderr, /--exclude-newer yesterday is not a date/);
+});
+
+// A plugin server never sees a PROJECT settings env key, so a UV_EXCLUDE_NEWER the user put in the project's settings
+// (the copy route honours it there too) is read by the launcher and handed to uvx in its own environment.
+test('M24 uvx launchers: a UV_EXCLUDE_NEWER only a settings file names reaches uv, in place of the cut-off', POSIX, () =>
+{
+    const db = path.join(TMP, 'cutoff-file-db', 'memory.db');
+    const cases = [['navigation', SERENA, { settings: { UV_EXCLUDE_NEWER: 'false' } }, 'false'],
+        ['memory', LAUNCH, { settings: { ALFRED_CODE_MEMORY_DB: db }, local: { UV_EXCLUDE_NEWER: '2026-01-15' } }, '2026-01-15'],
+        ['macos-desktop', DESKTOP, { account: { UV_EXCLUDE_NEWER: 'false' } }, 'false']];
+    for (const [name, launcher, files, want] of cases)
+    {
+        const { dir, acct } = project(`cutoff-file-${name}`, files);
+        fs.mkdirSync(path.join(dir, '.git'), { recursive: true });
+        const uvx = stubUvx(`cutoff-file-${name}`);
+        const res = require('node:child_process').spawnSync(process.execPath, [launcher, ...entryArgs(name)],
+            { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, CLAUDE_CONFIG_DIR: acct, ALFRED_CODE_PLATFORM: 'darwin' }, encoding: 'utf8' });
+        const seen = uvx.argv();
+        assert.ok(!seen.argv.includes('--exclude-newer'), `${name}: ${seen.argv.join(' ')}`);
+        assert.strictEqual(seen.exclude, want, `${name}: uv reads the user's value from its own environment`);
+        assert.match(res.stderr, new RegExp(`UV_EXCLUDE_NEWER=${want} is set - it replaces the release cut-off`), name);
+    }
+});
+
+// M41: Windows-MCP matches tool names case-sensitively and skips an unknown one silently, so an override of
+// `powershell` excludes nothing; and WINDOWS_MCP_TOOLS (its --tools) OVERRIDES --exclude-tools, so a stray one in
+// the environment lifts the whole gate (windows-mcp 0.8.5 __main__.py _apply_tool_filter, the --tools envvar).
+test('M41 desktop-launch: an override is checked against the pinned tool names - case mended, an unknown name said and dropped', POSIX, () =>
+{
+    const mended = desktopRun('desktop-win-case', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'powershell,Registry,NoSuchTool' } });
+    assert.strictEqual(mended.status, 0, mended.stderr);
+    assert.deepStrictEqual(mended.argv.slice(-2), ['--exclude-tools', 'PowerShell,Registry']);
+    assert.match(mended.stderr, /NoSuchTool is no Windows-MCP tool/);
+    const junk = desktopRun('desktop-win-junk', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'nothing-real' } });
+    assert.deepStrictEqual(junk.argv.slice(-2), ['--exclude-tools', 'PowerShell,Registry,Process,FileSystem'], 'an override naming no real tool keeps the safe default, never an open gate');
+});
+
+test('M41 desktop-launch: a WINDOWS_MCP_TOOLS in the environment never reaches Windows-MCP, where it would override the gate', POSIX, () =>
+{
+    const got = desktopRun('desktop-win-tools', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', WINDOWS_MCP_TOOLS: 'PowerShell,FileSystem' } });
+    assert.strictEqual(got.status, 0, got.stderr);
+    const rec = JSON.parse(fs.readFileSync(path.join(TMP, 'desktop-win-tools-argv.json'), 'utf8'));
+    assert.strictEqual(rec.tools, null, 'the child must not inherit WINDOWS_MCP_TOOLS');
+    assert.match(got.stderr, /WINDOWS_MCP_TOOLS .*dropped/);
 });
 
 test('desktop gate: each server runs on its own OS only, and an unknown platform override is ignored', () =>

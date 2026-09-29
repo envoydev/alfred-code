@@ -14,3 +14,9 @@ during a build.
   plan saying the failure was reported, no question ever asked.
 - **A post-cycle bug report is a decision point (when the plan meets reality).** Two post-cycle bug
   reports were fixed and committed with no decision point between them.
+- **A model change never leaves its task without its migration (the build bar).** In one benchmark cell
+  (data-02, run 2) an index change landed with no migration, and the whole integration suite went red
+  at boot on EF's `PendingModelChangesWarning`.
+- **The EF migration runs against the design-time factory's project (a tool the environment blocks).**
+  In one benchmark round, 0 of 20 runs that named the API as the startup project produced a migration;
+  the run pointed at the Data project, which holds the design-time factory, took 3 s.

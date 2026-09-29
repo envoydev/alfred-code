@@ -1,6 +1,8 @@
 // scripts/docs-engine.test.js - the architecture docs engine, driven through its CLI in throwaway git repos.
 'use strict';
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -2148,4 +2150,19 @@ test('lint checks a path the orientation names from its first segment only', () 
     assert.match(out, /names a path that does not exist: src\/Api\/Gone\.cs/, 'a real miss still fails');
     assert.doesNotMatch(out, /does not exist: src\/Api\/Program\.cs/);
   } finally { r.rm(); }
+});
+
+test('every git child process a hook or engine starts carries a timeout (2.1.5 M2)', () => {
+  // A stalled git in the docs engine used to hold the whole shell-guard dispatcher past its budget, and a
+  // timed-out hook lets the call through. Each call is read from `'git'` to the end of its options object.
+  const open = [];
+  for (const f of fs.readdirSync(HOOKS).filter((n) => n.endsWith('.js'))) {
+    const src = fs.readFileSync(path.join(HOOKS, f), 'utf8');
+    for (const m of src.matchAll(/(?:execFileSync|spawnSync|execSync)\(\s*'git'/g)) {
+      const end = src.indexOf('})', m.index);
+      const call = src.slice(m.index, end < 0 ? m.index + 400 : end + 2);
+      if (!/\btimeout\s*:/.test(call)) open.push(`${f}:${src.slice(0, m.index).split('\n').length}`);
+    }
+  }
+  assert.deepStrictEqual(open, [], 'git calls with no timeout');
 });

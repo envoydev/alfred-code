@@ -21,6 +21,7 @@ contract protocol - otherwise name `/alfred-task-solve-cross` as the user's next
 manual-only; a model Skill call is blocked). Never edit the contract to go green.
 
 A seat with no Agent tool (an implementer or a resolver) does NOT delegate - this routing policy is
-the orchestrator's; run your own bounded fix loop and report the red per your cap. A diagnoser
-carries the Agent tool but its one sanctioned dispatch is the evidence-gatherer: it names the
-resolver in its report, never dispatches one.
+the orchestrator's; run your own bounded fix loop and report the red per your cap. A read-only seat
+(a verifier, a designer, a reviewer, an analyzer) has no Edit to loop with: it reports the red and
+names the resolver. A diagnoser carries the Agent tool but its one sanctioned dispatch is the
+evidence-gatherer: it names the resolver in its report, never dispatches one.

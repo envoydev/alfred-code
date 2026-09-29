@@ -24,7 +24,7 @@ Guidance for selecting and implementing design patterns in modern C#/.NET. Conte
 
 When the user asks for help with patterns:
 
-1. Identify the actual design problem (ask one clarifying question only if the problem is genuinely ambiguous).
+1. Identify the actual design problem. Only when it is genuinely ambiguous, put ONE AskUserQuestion naming the two or three design pains it could be, the likeliest marked recommended; a dispatched seat returns that question in its report instead.
 2. Use the selection table below to shortlist 1-2 candidate patterns.
 3. Read the matching reference file for the chosen pattern **before writing** any code - it carries the modern .NET form, the tradeoffs, and a worked example:
     - `references/creational.md` - Factory Method, Abstract Factory, Builder, Prototype, Singleton
@@ -33,6 +33,7 @@ When the user asks for help with patterns:
 4. Implement using the modern .NET form from the reference. Include the classic form only on request.
 5. State the tradeoff and, where relevant, the simpler alternative that was rejected.
 6. On WPF/MVVM, `ICommand` and `[RelayCommand]` specifics are the WPF conventions skill's where the install has one - implement the pattern here, take the command plumbing from there, and with no such skill installed follow the pattern's reference form and say so.
+7. Prove the sample compiles before calling it compilable: in a project, run `dotnet build` and quote its summary line; with no project to build in, label the sample 'not compiled' in the answer.
 
 ## Pattern selection table
 

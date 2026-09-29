@@ -3,7 +3,7 @@ name: alfred-habits-adjust-claude-md
 description: "Use when a CLAUDE.md is to be written, filled in or updated - an unfilled seeded one, a stale one, a part needing its own. Not for skills or rules."
 ---
 
-# CLAUDE.md capture - create or improve a project's instruction file
+# Adjust CLAUDE.md - create or improve a project's instruction file
 
 A CLAUDE.md is read into every session and every custom subagent, so every line is paid for on every
 message and earns its place only when removing it would make Claude get something wrong. Three homes,
@@ -25,8 +25,8 @@ never mixed:
 ## 1. Resolve the stack's files
 
 A run that already holds the stack's snapshot (the `/alfred-code:init` run's `$TMP/repo`) uses that
-folder's path as `<stack>`. Otherwise the newest plugin-cache entry is the one this skill came from - the
-block prints its path, and every later command pastes that literal as `<stack>` (each Bash call is its
+folder's path as `<stack>`. Otherwise take the newest plugin-cache entry (normally the release these copies
+came from; after a core update it can be newer) - the block prints its path, and every later command pastes that literal as `<stack>` (each Bash call is its
 own shell, so a variable set here is gone by the next):
 
 ```bash

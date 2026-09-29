@@ -57,6 +57,22 @@ test('seed install: a wpf selection on Windows installs windows-desktop and says
     assert.ok(!/left out/.test(out), out);
 });
 
+// The prerequisite line names the tools the gate ACTUALLY keeps off: an ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE that
+// replaced the list, or `none` that lifted it, was reported as the default four (review 2.1.5 plugin, MINOR 2).
+test('seed install: the windows-desktop prerequisite line names the gate in effect - an override\'s list, or none', POSIX_ONLY, () =>
+{
+    const gateLine = (value) => seedRun('install', WPF, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: value } })
+        .out.split('\n').find((l) => /desktop: windows-desktop - /.test(l)) || '';
+    const one = gateLine('powershell');
+    assert.match(one, /windows-desktop - PowerShell stays off \(ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE's list; the default keeps PowerShell, Registry, Process and FileSystem off\)/, one);
+    const two = gateLine('PowerShell,Registry');
+    assert.match(two, /windows-desktop - PowerShell and Registry stay off \(ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE's list;/, two);
+    const none = gateLine('none');
+    assert.match(none, /windows-desktop - every tool is on \(ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE is none; the default keeps PowerShell, Registry, Process and FileSystem off\)/, none);
+    const { prereqNotes } = require('../stack/mcp/desktop-launch.js');
+    assert.match(prereqNotes('windows-desktop').join('\n'), /PowerShell, Registry, Process and FileSystem stay off \(ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: another list, or none for every tool\)/, 'no list given: the default');
+});
+
 test('seed install: the same wpf selection on macOS installs no desktop server, and one line says why', POSIX_ONLY, () =>
 {
     const { calls, out } = seedRun('install', WPF, { env: { ALFRED_CODE_PLATFORM: 'darwin' } });
@@ -73,7 +89,7 @@ test('seed update --add mcp macos-desktop on macOS installs it and prints the pe
     assert.match(out, /!! desktop: macos-desktop needs Accessibility and Screen Recording/);
     // I45: macos-mcp 0.4.6 checks its grants before it serves and exits when one is missing
     // (permissions.py validate_permissions) - the empty snapshot needs MACOS_MCP_SKIP_PERMISSION_CHECK=1 first.
-    assert.match(out, /a server that fails to connect at start while System Settings opens is missing a grant - its log names which; black screenshots mean Screen Recording is missing/);
+    assert.match(out, /a server that fails to connect at start while System Settings opens is missing a grant - its log names which; a black vision snapshot means Screen Recording is missing/);
     assert.doesNotMatch(out, /an empty snapshot means Accessibility is missing/);
 });
 
