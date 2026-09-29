@@ -46,11 +46,14 @@ test('stack paths: any depth, both spellings of the stack surfaces, and nothing 
     const hits = stackPathsIn([
         '.claude/settings.json', 'web/.claude/rules/x.md', 'CLAUDE.md', 'api/CLAUDE.md', '.mcp.json',
         '.serena/project.yml', 'AGENTS.md', '.cursor/rules/a.mdc', '.cursorrules',
-        'src/claude.ts', 'docs/CLAUDE-notes.md', 'README.md', 'api/Program.cs',
+        // Alfred Code's data root since 2.1: a capture there would make its init skip that capture.
+        '.alfred/docs/architecture/ARCHITECTURE.md', 'web/.alfred/serena/project.yml',
+        'src/claude.ts', 'docs/CLAUDE-notes.md', 'README.md', 'api/Program.cs', 'src/alfred/Program.cs',
     ]);
     assert.deepStrictEqual(hits, [
         '.claude/settings.json', 'web/.claude/rules/x.md', 'CLAUDE.md', 'api/CLAUDE.md', '.mcp.json',
         '.serena/project.yml', 'AGENTS.md', '.cursor/rules/a.mdc', '.cursorrules',
+        '.alfred/docs/architecture/ARCHITECTURE.md', 'web/.alfred/serena/project.yml',
     ]);
 });
 

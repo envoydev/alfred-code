@@ -46,6 +46,9 @@ test('the stack under test is read from its own pinned list, because this tree m
 {
     const pinned = pinnedOurNames(path.join(__dirname, 'arms', 'ours-vocabulary.txt'));
     for (const n of ['alfred-capture-architecture', 'alfred-task-solve', 'code-quality-analyzer', 'init', 'alfred-code']) assert.ok(pinned.includes(n), n);
+    // 2.1.2's own names: three renames, the run book capture, and plugin-authoring out of the catalog.
+    for (const n of ['alfred-habits-adjust-claude-md', 'alfred-habits-create-ticket', 'alfred-habits-explain-code', 'alfred-capture-project-capabilities']) assert.ok(pinned.includes(n), n);
+    for (const n of ['alfred-capture-claude-md', 'create-ticket', 'explain-code-tutor', 'plugin-authoring']) assert.ok(!pinned.includes(n), `${n} left the catalog at 2.1`);
     assert.ok(!pinned.some((n) => n.startsWith('#')));
     assert.throws(() => pinnedOurNames(path.join(os.tmpdir(), 'bench-no-ours-vocabulary.txt')), /no vocabulary for the stack under test at .*bench-no-ours-vocabulary\.txt/);
 });

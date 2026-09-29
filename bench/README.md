@@ -62,7 +62,8 @@ node bench/aggregate.js <id> [--reference <opus-run-id>] [--flow <flow-run-id>]
   against the baseline its session recorded, patched, and tested with the task's hidden files. The
   patch is the task's change alone: a session's `diff.patch` leaves out the top-level folders the
   stacks keep for themselves (`.alfred`, `.claude`, `.memory-mcp`, `.playwright`, `.serena` - docs
-  roots, hook ledgers, the LSP cache), the same for every arm, and `state.txt` beside it names what
+  roots, hook ledgers, the LSP cache; from Alfred Code 2.1 all of it sits under `.alfred`, the rest are
+  the older layouts `baseline` still writes), the same for every arm, and `state.txt` beside it names what
   changed there. What
   the harness caused - over 50 failing tests with a connection error, a grader timeout, a changed
   baseline - is infrastructure, queued in `regrade.json`, never counted as the arm's fail.
@@ -243,7 +244,7 @@ and either change re-hashes `PREREGISTRATION.md`.
 
 ### B4 - the pilot
 
-`ours` fetches its pinned candidate commit alone from this clone, one commit deep, so the commit must be
+`ours` fetches its pinned commit alone from this clone, one commit deep, so the commit must be
 reachable here (`git cat-file -e <pin>^{commit}`); until it is, its template fails at the fetch step. 3 arms x 6 tasks (one per group) x 2 reps =
 36 cells plus two onboardings. Plan estimate: about $110-150 and 5-6 hours at parallel 3.
 

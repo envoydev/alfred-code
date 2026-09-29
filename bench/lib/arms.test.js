@@ -95,10 +95,11 @@ test('no arm takes more of this repository than its pinned commit', () =>
     }
 });
 
-test('ours installs the Alfred Code 2.0.0 candidate by its README route, and onboards through its init', () =>
+test('ours installs the Alfred Code 2.1.2 release by its README route, and onboards through its init', () =>
 {
     const { arms: [ours] } = load({ dir: ARMS_DIR, names: ['ours'] });
-    assert.deepStrictEqual(ours.pin, { kind: 'commit', value: '534995b1c2d7e5a633e7275e48f697c607a6b1c8' });
+    // The commit the v2.1.2 tag names, pinned by id: a tag can move, a commit cannot.
+    assert.deepStrictEqual(ours.pin, { kind: 'commit', value: 'f57a70a20c3f900741db20cb62265d726de54853' });
     assert.deepStrictEqual(ours.setup.slice(0, 3).map((s) => s.join(' ')), PIN_FETCH, 'the pinned commit alone, never the clone\'s HEAD');
     const at = (argv) => ours.setup.findIndex((s) => s.join(' ') === argv);
     const market = at('claude plugin marketplace add {src}');
@@ -131,6 +132,20 @@ test('each shipped arm names its own flow entry per task kind', () =>
         bug: ['/ecc:tdd-workflow {prompt}'],
     });
     assert.deepStrictEqual(by.bare, { feature: ['{prompt}'], cross: ['{prompt}'], bug: ['{prompt}'] });
+});
+
+// A release that renames a skill or command leaves a slash prompt naming nothing, and the session then
+// runs without the flow it was meant to measure. The pinned list (arms/ours-vocabulary.txt) is what the
+// release under test ships, so every slash prompt ours sends is held to it.
+test('every slash prompt ours sends names a skill or command the pinned release ships', () =>
+{
+    const { pinnedOurNames } = require('../lint-prompts.js');
+    const shipped = new Set(pinnedOurNames(path.join(ARMS_DIR, 'ours-vocabulary.txt')));
+    const { arms: [ours] } = load({ dir: ARMS_DIR, names: ['ours'] });
+    const prompts = [...ours.onboarding, ...Object.values(ours.flow).flat()];
+    const named = prompts.map((p) => /^\/(?:[a-z0-9-]+:)?([a-z0-9-]+)/.exec(p)).filter(Boolean).map((m) => m[1]);
+    assert.deepStrictEqual([...new Set(named)].sort(), ['alfred-issue-diagnoser', 'alfred-task-solve', 'alfred-task-solve-cross', 'init']);
+    for (const name of named) assert.ok(shipped.has(name), `ours sends /${name}, which the pinned release does not ship`);
 });
 
 test('the flow entries stay out of the template key, and carry a key of their own', (t) =>

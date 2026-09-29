@@ -15,7 +15,8 @@ const { execFileSync } = require('node:child_process');
 const LOCK_FILE = path.join(__dirname, '..', 'fixture.lock');
 const TAG = 'bench-fixture-v1';
 // Every surface a coding agent reads by convention, at any depth.
-const STACK_PATH = /(^|\/)(\.claude\/|CLAUDE\.md$|\.mcp\.json$|\.serena\/|AGENTS\.md$|\.cursor\/|\.cursorrules$)/;
+// `.alfred/` is Alfred Code's data root from 2.1 (docs, navigation index, browser profiles, project memory).
+const STACK_PATH = /(^|\/)(\.claude\/|CLAUDE\.md$|\.mcp\.json$|\.serena\/|\.alfred\/|AGENTS\.md$|\.cursor\/|\.cursorrules$)/;
 
 const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 

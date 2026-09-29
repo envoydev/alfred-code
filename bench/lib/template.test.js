@@ -146,11 +146,11 @@ test('a settings value naming the template home by its realpath spelling is stil
     const real = fs.realpathSync(paths.home);
     if (real === paths.home) { t.skip('this filesystem gives no second spelling of the template home to test'); return; }
     fs.mkdirSync(path.join(paths.repo, '.claude'), { recursive: true });
-    fs.writeFileSync(path.join(paths.repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: path.join(real, '.memory-mcp', 'memory.db') } }));
+    fs.writeFileSync(path.join(paths.repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: path.join(real, '.alfred-memory', 'memory.db') } }));
     const cell = cellPaths({ benchDir: f.bench, run: 'r1', arm: 'solo', task: 't1', rep: 1 });
     copyInto(paths, cell);
     const written = JSON.parse(fs.readFileSync(path.join(cell.repo, '.claude', 'settings.local.json'), 'utf8'));
-    assert.strictEqual(written.env.ALFRED_CODE_MEMORY_DB, path.join(cell.home, '.memory-mcp', 'memory.db'), 'the realpath spelling maps to the cell\'s own home, not the template\'s');
+    assert.strictEqual(written.env.ALFRED_CODE_MEMORY_DB, path.join(cell.home, '.alfred-memory', 'memory.db'), 'the realpath spelling maps to the cell\'s own home, not the template\'s');
 });
 
 test('a cell whose copied local settings still name the template directory is refused, not served', (t) =>

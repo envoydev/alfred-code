@@ -251,9 +251,11 @@ test('the auth value never survives in stdout or the approvals file', async (t) 
 
 test('the SDK must be the one built for the CLI the run drives', () =>
 {
-    assert.doesNotThrow(() => flow.assertSdkMatches({ version: '0.3.283', claudeCodeVersion: '2.1.283' }, '2.1.283 (Claude Code)'));
+    assert.doesNotThrow(() => flow.assertSdkMatches({ version: '0.3.284', claudeCodeVersion: '2.1.284' }, '2.1.284 (Claude Code)'));
+    // The mismatch this guard exists for, measured 2026-09-29: the old pin against an auto-updated CLI.
     assert.throws(() => flow.assertSdkMatches({ version: '0.3.283', claudeCodeVersion: '2.1.283' }, '2.1.284 (Claude Code)'), /Agent SDK 0\.3\.283 is built for Claude Code 2\.1\.283 - this CLI is 2\.1\.284 \(Claude Code\)/);
-    assert.throws(() => flow.assertSdkMatches({ version: '0.3.283' }, '2.1.283 (Claude Code)'), /names no Claude Code version/);
+    assert.throws(() => flow.assertSdkMatches({ version: '0.3.284', claudeCodeVersion: '2.1.284' }, '2.1.283 (Claude Code)'), /built for Claude Code 2\.1\.284 - this CLI is 2\.1\.283/);
+    assert.throws(() => flow.assertSdkMatches({ version: '0.3.284' }, '2.1.284 (Claude Code)'), /names no Claude Code version/);
 });
 
 test('the CLI a flow drives is the one on the PATH the plain cells use, resolved to a file', (t) =>
@@ -272,7 +274,8 @@ test('the Agent SDK the repo pins is the one built for the pinned Claude Code', 
 {
     // The SDK is the harness's own dependency: at the repo root every CI install pulled its ~225 MB platform binary.
     const pinned = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).dependencies[flow.SDK_PACKAGE];
-    assert.strictEqual(pinned, '0.3.283', 'an exact pin: the SDK speaks one CLI\'s control protocol');
+    // 0.3.284's package.json names claudeCodeVersion 2.1.284 (npm view @anthropic-ai/claude-agent-sdk@0.3.284 claudeCodeVersion).
+    assert.strictEqual(pinned, '0.3.284', 'an exact pin: the SDK speaks one CLI\'s control protocol');
     const root = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8'));
     assert.strictEqual({ ...root.dependencies, ...root.devDependencies }[flow.SDK_PACKAGE], undefined, 'the repo root never installs the SDK');
     let sdk;
@@ -282,5 +285,5 @@ test('the Agent SDK the repo pins is the one built for the pinned Claude Code', 
         if (/not installed/.test(err.message)) { t.skip('the Agent SDK is not installed here - npm install --prefix bench'); return; }
         throw err;
     }
-    assert.deepStrictEqual([sdk.version, sdk.claudeCodeVersion, typeof sdk.query], ['0.3.283', '2.1.283', 'function']);
+    assert.deepStrictEqual([sdk.version, sdk.claudeCodeVersion, typeof sdk.query], ['0.3.284', '2.1.284', 'function']);
 });

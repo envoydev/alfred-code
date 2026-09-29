@@ -1,22 +1,25 @@
-# Alfred Code's skill, agent and command names - the stack bench/arms/ours.json installs, pinned at the 2.0.0
-# candidate - read from feat/alfred-code at commit 534995b1c2d7e5a633e7275e48f697c607a6b1c8, before v2.0.0 was tagged:
-# stack/skills, stack/agents, setup-plugin/commands and setup-plugin/skills, one name per line. Regenerate from the
-# v2.0.0 tag when it lands, and whenever that pin moves, over an export of the pinned tree:
+# Alfred Code's skill, agent and command names - the stack bench/arms/ours.json installs, pinned at the 2.1.2
+# release - read from tag v2.1.2, commit f57a70a20c3f900741db20cb62265d726de54853:
+# stack/skills, stack/agents, setup-plugin/commands and setup-plugin/skills, one name per line. Regenerate
+# whenever that pin moves, over an export of the pinned tree:
 #   node -e "console.log(require('./bench/lint-prompts.js').ourNames(process.argv[1]).join('\\n'))" <tree>
 alfred-capture-agent-capabilities
 alfred-capture-architecture
 alfred-capture-architecture-quality
-alfred-capture-claude-md
 alfred-capture-code-quality
 alfred-capture-code-style
 alfred-capture-first-look
+alfred-capture-project-capabilities
 alfred-capture-related-projects
 alfred-capture-stack-usage
 alfred-capture-test-coverage
 alfred-code
+alfred-habits-adjust-claude-md
 alfred-habits-clarify
 alfred-habits-commit-checkpoint
+alfred-habits-create-ticket
 alfred-habits-done-gate
+alfred-habits-explain-code
 alfred-habits-plan-writing
 alfred-habits-root-cause
 alfred-habits-skill-writing
@@ -58,7 +61,6 @@ configure
 console-implementer
 console-solution-designer
 console-verifier
-create-ticket
 csharp
 csharp-design-patterns
 data-implementer
@@ -104,7 +106,6 @@ dotnet-windows-service
 dotnet-winforms
 dotnet-wpf
 evidence-gatherer
-explain-code-tutor
 ilspy-decompile
 init
 integration-reviewer
@@ -118,7 +119,6 @@ markdown-style
 ng-build-error-resolver
 npm
 nx
-plugin-authoring
 postgres
 related-project-analyzer
 security-auditor
