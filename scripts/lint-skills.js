@@ -2800,12 +2800,14 @@ const LEGACY_FILES = [
     { re: /^docs\/[^/]+-evidence\.md$/, why: 'measured evidence keeps its words' },
     { re: /^meta\/migrations\.json$/, why: 'a migration names the spelling it migrates from' },
     { re: /^meta\/retired-entries\.json$/, why: 'the only record of what each 1.x per-stack entry carried' },
+    { re: /^bench\/arms\/baseline\.json$/, why: 'the benchmark arm that installs the 1.x release runs its installer and commands by the names it shipped' },
 ];
 // JSON carries no comment. Only the marketplace's plugins[] passes: check 49 holds every entry there
 // to its generator (the core, the 1.x aliases from brand.js LEGACY, the retired entries) and check 53
 // the MCP plugins. Its name, owner and metadata are hand-edited at every release, so they are checked.
 const LEGACY_SPANS = [
     { file: '.claude-plugin/marketplace.json', start: /^\s*"plugins"\s*:\s*\[/, why: 'generated entries, held to their generator by checks 49 and 53' },
+    { file: 'bench/arms/common.json', start: /^\s*"scrub"\s*:\s*\[/, why: 'the session scrubs the 1.x docs-root key the baseline arm reads' },
 ];
 // The per-stack entries 1.2.0 shipped keep their 1.x names while they are retired (plan decision
 // D2): a name listed in meta/retired-entries.json passes wherever it appears.

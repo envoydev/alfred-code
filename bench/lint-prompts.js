@@ -27,7 +27,7 @@ const GENERIC = [
     [/\bplugins?\b/i, 'names the plugin machinery'],
     [/\buse the docs\b/i, 'steers toward the docs'],
     [/\barchitecture docs?\b/i, 'steers toward the docs'],
-    [/\b(?:serena|context7|claude-stack|alfred(?:-code)?|ECC)\b/i, 'names a stack or its server'],
+    [/\b(?:serena|context7|claude-stack|alfred(?:-code)?|ECC)\b/i, 'names a stack or its server'], // legacy-name
 ];
 
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

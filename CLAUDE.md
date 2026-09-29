@@ -896,7 +896,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   wins when both exist. Lint check 57 fails on any other 1.x spelling in a tracked file: a reader's
   line carries the word `legacy-name` in a comment (`<!-- legacy-name -->` in markdown, `//` or `#`
   in code), and only history (`docs/*-evidence.md`, `meta/migrations.json`,
-  `meta/retired-entries.json`), the marketplace's generated `plugins[]` and the retired entry names
+  `meta/retired-entries.json`), the marketplace's generated `plugins[]`, the retired entry names and
+  the benchmark's 1.x arm (`bench/arms/baseline.json`, the `scrub` list in `bench/arms/common.json`)
   pass unmarked. Anything NEW is `alfred-code` / `ALFRED_CODE_` from day one.
 - **The repo root is a plugin source, so twelve names are RESERVED there.** Every marketplace entry
   shares this root as its `source` and lists the paths it ships, but a shared root is auto-discovered

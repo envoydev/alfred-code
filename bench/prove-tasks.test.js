@@ -21,7 +21,7 @@ test('the proof drops every name common.json keeps from a session, both docs-pat
 {
     const common = JSON.parse(fs.readFileSync(path.join(__dirname, 'arms', 'common.json'), 'utf8'));
     assert.deepStrictEqual([...DROP].sort(), [...common.auth, ...common.scrub].sort());
-    for (const name of ['CLAUDE_STACK_DOCS_PATH', 'ALFRED_CODE_DOCS_PATH', 'ANTHROPIC_API_KEY']) assert.ok(DROP.includes(name), name);
+    for (const name of ['CLAUDE_STACK_DOCS_PATH', 'ALFRED_CODE_DOCS_PATH', 'ANTHROPIC_API_KEY']) assert.ok(DROP.includes(name), name); // legacy-name
 });
 
 function world(t, tasks)

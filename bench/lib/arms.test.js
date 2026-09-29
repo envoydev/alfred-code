@@ -232,7 +232,7 @@ test('baseline stays on v1.0.0 and its own installer', () =>
 {
     const { arms: [baseline] } = load({ dir: ARMS_DIR, names: ['baseline'] });
     assert.deepStrictEqual(baseline.pin, { kind: 'tag', value: 'v1.0.0' });
-    assert.ok(baseline.setup.some((s) => s[1] === '{src}/scripts/install/claude-stack.js'));
+    assert.ok(baseline.setup.some((s) => s[1] === '{src}/scripts/install/claude-stack.js')); // legacy-name
 });
 
 test('ecc is pinned to a named commit, never to a release a later tag could move', () =>
@@ -252,7 +252,7 @@ test('ecc stores its hook options the way its own setup does, never through an e
 test('an arm cannot set either spelling of the stack docs-path variable', () =>
 {
     const { session } = load({ dir: ARMS_DIR, names: ['bare'] });
-    for (const name of ['CLAUDE_STACK_DOCS_PATH', 'ALFRED_CODE_DOCS_PATH']) assert.ok(session.scrub.includes(name), name);
+    for (const name of ['CLAUDE_STACK_DOCS_PATH', 'ALFRED_CODE_DOCS_PATH']) assert.ok(session.scrub.includes(name), name); // legacy-name
 });
 
 test('an arm naming a model, an effort or a permission mode is refused, by name', (t) =>

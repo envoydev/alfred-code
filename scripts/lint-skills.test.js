@@ -1043,6 +1043,25 @@ test('check 57: in the marketplace only the generated plugins[] passes - name, o
     assert.strictEqual(of(`${JSON.stringify(bumped, null, 2)}\n`).length, 2, 'a hand edit to metadata.description or owner.url is a finding');
 });
 
+test('check 57: the benchmark\'s 1.x arm keeps the names it pins, and common.json only its scrub list', () => {
+    const { lintLegacyNames } = require('./lint-skills.js');
+    const of = (file, text) => lintLegacyNames([{ file, text }], { retiredEntries: [] }).map((f) => f.split(' ')[0]);
+    assert.deepStrictEqual(of('bench/arms/baseline.json', `{\n  "setup": [["node", "{src}/scripts/install/${OLD}.js"]],\n  "onboarding": ["/${OLD}:init"]\n}\n`), [], 'the baseline arm is the 1.x release, allowed whole');
+    assert.strictEqual(of('bench/arms/ours.json', `{ "name": "${OLD}" }\n`).length, 1, 'another arm is checked');
+    const common = [
+        '{',
+        `  "note": "the ${OLD} arm",`,
+        '  "scrub": [',
+        '    "CONTEXT7_API_KEY",',
+        `    "${OLD_ENV}DOCS_PATH"`,
+        '  ],',
+        `  "restore": [["${OLD}"]]`,
+        '}',
+        '',
+    ].join('\n');
+    assert.deepStrictEqual(of('bench/arms/common.json', common), ['bench/arms/common.json:2', 'bench/arms/common.json:7'], 'the scrub list passes, the rest of the file is checked');
+});
+
 test('check 57: the walk reads tracked text files, and the live tree carries no unmarked 1.x name', () => {
     const fs = require('node:fs');
     const os = require('node:os');
