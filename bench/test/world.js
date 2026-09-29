@@ -36,7 +36,7 @@ function makeWorld(t, { arms, tasks, run = 'r-test', fixture = null })
         fs.writeFileSync(path.join(td, 'prompt.md'), spec.prompt || `Do ${id}.\n`);
         const meta = { id, group: spec.group || 'api', tags: spec.tags || [], timeLimitMin: spec.timeLimitMin || 1, startRef: 'bench-fixture-v1' };
         if (spec.setup) meta.setup = spec.setup;
-        if (spec.exclusive) meta.exclusive = true;
+        if (spec.exclusive) meta.exclusive = spec.exclusive;
         if (spec.kind) meta.kind = spec.kind;
         fs.writeFileSync(path.join(td, 'meta.json'), JSON.stringify(meta));
         for (const [rel, body] of Object.entries(spec.files || {})) fs.writeFileSync(path.join(td, rel), body);

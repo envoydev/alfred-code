@@ -70,6 +70,11 @@ function readTask(dir, id)
     if (typeof meta.startRef !== 'string' || !meta.startRef) throw new Error(`task ${id}: no startRef`);
     // The flow block's tasks name their kind, which picks the arm's own entry (arms/<arm>.json flow).
     if (meta.kind !== undefined && !armsLib.FLOW_KINDS.includes(meta.kind)) throw new Error(`task ${id}: kind '${meta.kind}' is not one of ${armsLib.FLOW_KINDS.join('|')}`);
+    // The pool's exclusivity key: true keys the task by its own id (devops-01's shared Docker tag), a name keys every
+    // task that names it (the Angular builds, lib/pool.js); absent is none.
+    const named = meta.exclusive;
+    if (![undefined, true, false].includes(named) && !(typeof named === 'string' && /^[a-z0-9][a-z0-9-]*$/.test(named))) throw new Error(`task ${id}: exclusive ${JSON.stringify(named)} is neither true nor a resource name`);
+    const exclusive = named === true ? id : (typeof named === 'string' ? named : null);
     const prompt = fs.readFileSync(path.join(dir, id, 'prompt.md'), 'utf8');
     // The start state beyond the ref (session.prepare): each step's patch is part of the task's
     // identity, so a resume refuses a changed one the way it refuses a changed prompt.
@@ -85,7 +90,7 @@ function readTask(dir, id)
     });
     return {
         id, group: meta.group || null, tags: meta.tags || [], timeLimitMin: meta.timeLimitMin, startRef: meta.startRef, setup,
-        exclusive: Boolean(meta.exclusive), kind: meta.kind || null,
+        exclusive, kind: meta.kind || null,
         prompt, promptSha256: sha256(prompt), setupSha256: setup.length ? setupHash.digest('hex') : null,
     };
 }
@@ -302,10 +307,13 @@ async function drive(opts)
         let stopped = null;
         let total = parts.todo.length;
         let finished = 0;
-        // A task's own exclusive flag (meta.json, devops-01) is the pool's only exclusivity key: two
-        // cells of that same task id never run at once, whatever arm or rep, because three arms built
-        // and removed the same Docker tag on the shared daemon within 19 s in pilot 2. Every other task
-        // keeps the run's own parallelism - the key is null for it, so the pool never serializes it.
+        // A task's exclusive key (meta.json, readTask) is the pool's only exclusivity: no two cells holding
+        // the same key run at once, whatever arm or rep. devops-01 keys by its own id, because three arms
+        // built and removed the same Docker tag on the shared daemon within 19 s in pilot 2. Every task
+        // that changes web/ shares 'angular-build', because in pilot 4 every Angular build that overlapped
+        // another cell's production build ran 2-30x slower, and the production builds that overlapped each
+        // other either hit the Bash tool's timeout (three, the run's infra cells) or took 376-383 s. Every
+        // other task keeps the run's own parallelism - its key is null, so the pool never serializes it.
         const cellTask = async (cell) =>
         {
             const task = taskBy[cell.task];
@@ -350,7 +358,7 @@ async function drive(opts)
             }
             return false;
         };
-        const workers = () => poolLib.run({ queue, parallel: o.parallel, exclusiveKey: (cell) => (taskBy[cell.task].exclusive ? cell.task : null), stop: shouldStop, task: cellTask });
+        const workers = () => poolLib.run({ queue, parallel: o.parallel, exclusiveKey: (cell) => taskBy[cell.task].exclusive, stop: shouldStop, task: cellTask });
         await workers();
         let waitedMs = 0;
         while (paused)

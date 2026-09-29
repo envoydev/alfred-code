@@ -1,1 +1,1 @@
-{ "id": "web-03-check-in-guard", "group": "web", "tags": [], "timeLimitMin": 40, "startRef": "bench-fixture-v1" }
+{ "id": "web-03-check-in-guard", "group": "web", "tags": [], "timeLimitMin": 40, "startRef": "bench-fixture-v1", "exclusive": "angular-build" }

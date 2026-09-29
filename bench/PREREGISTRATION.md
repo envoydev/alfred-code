@@ -176,6 +176,8 @@ No task, metric or rule changed.
 
 No task, metric or rule changed.
 
+**2026-09-29, after pilot 4, no result changed - the Angular builds run one at a time.** Pilot 4's three infra cells were all web-03's `npm run build` past the Bash tool's timeout. Every Angular build in the run that overlapped another cell's production build ran 2-30x slower (the test builds 2.5-58 s against 1.2-1.9 s alone), and the production builds that overlapped each other took 376-383 s; the seeded order had put five of the six web-03 cells in the first batch. The tasks that change `web/` (web-01, web-02, web-03, cross-01) now share the exclusive key `angular-build`, so no two of their cells run at once - the pool mechanism devops-01 already uses, which changes when a cell starts, never what it runs. No task, metric or rule changed.
+
 ## Metrics (pre-registered)
 
 | Metric | Source | Role |

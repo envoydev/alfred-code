@@ -1,1 +1,1 @@
-{ "id": "web-01-loan-date-rules", "group": "web", "tags": [], "timeLimitMin": 40, "startRef": "bench-fixture-v1" }
+{ "id": "web-01-loan-date-rules", "group": "web", "tags": [], "timeLimitMin": 40, "startRef": "bench-fixture-v1", "exclusive": "angular-build" }

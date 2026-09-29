@@ -11,7 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { drive, selectTasks } = require('./drive.js');
+const { drive, selectTasks, readTask } = require('./drive.js');
 
 const { makeWorld, OAUTH, FAKE_DOCKER } = require('./test/world.js');
 const { fakeSdk } = require('./test/fake-sdk.js');
@@ -476,6 +476,61 @@ test('a task marked exclusive never runs two cells at once; a plain task keeps t
     }
     const plainCells = ['a1', 'a2'].flatMap((arm) => [1, 2].map((rep) => read(arm, 't2', rep)));
     assert.ok(plainCells.some((p) => exclusiveCells.some((x) => overlaps(x, p))), 'the plain task still ran alongside the exclusive one - exclusivity did not serialize the whole run');
+});
+
+test('tasks naming one exclusive resource never run two cells at once, across task ids; a plain task keeps its parallelism', async (t) =>
+{
+    // Pilot 4: every Angular build that overlapped another cell's production build ran 2-30x slower, and the three
+    // that overlapped each other hit the Bash tool's timeout - two different web tasks would overlap the same way.
+    const w = makeWorld(t, {
+        arms: { a1: { env: { FAKE_SLEEP_MS: '80' } }, a2: { env: { FAKE_SLEEP_MS: '80' } } },
+        tasks: { 'web-a': { group: 'web', exclusive: 'angular-build' }, 'web-b': { group: 'web', exclusive: 'angular-build' }, t3: { group: 'api' } },
+    });
+    w.opts.parallel = 6;
+    const res = await drive(w.opts);
+    assert.deepStrictEqual([res.ran, res.failed], [6, 0]);
+    const read = (arm, task) => JSON.parse(fs.readFileSync(path.join(w.runDir, arm, task, 'r1', 'session.json'), 'utf8'));
+    const overlaps = (x, y) => new Date(x.startedAt) < new Date(y.endedAt) && new Date(y.startedAt) < new Date(x.endedAt);
+    const shared = ['web-a', 'web-b'].flatMap((task) => ['a1', 'a2'].map((arm) => read(arm, task)));
+    for (let i = 0; i < shared.length; i++)
+    {
+        for (let j = i + 1; j < shared.length; j++) assert.ok(!overlaps(shared[i], shared[j]), `${shared[i].task}/${shared[i].arm} and ${shared[j].task}/${shared[j].arm} overlapped`);
+    }
+    const plain = ['a1', 'a2'].map((arm) => read(arm, 't3'));
+    assert.ok(plain.some((p) => shared.some((x) => overlaps(x, p))), 'the plain task still ran alongside the shared resource - it did not serialize the whole run');
+});
+
+test('an exclusive value that is neither true nor a resource name is refused', (t) =>
+{
+    const w = world(t);
+    const meta = path.join(w.opts.tasksDir, 't1', 'meta.json');
+    const base = JSON.parse(fs.readFileSync(meta, 'utf8'));
+    for (const bad of [3, '', 'two words', { key: 'x' }])
+    {
+        fs.writeFileSync(meta, JSON.stringify({ ...base, exclusive: bad }));
+        assert.throws(() => readTask(w.opts.tasksDir, 't1'), /task t1: exclusive/, `exclusive ${JSON.stringify(bad)} was accepted`);
+    }
+    fs.writeFileSync(meta, JSON.stringify({ ...base, exclusive: true }));
+    assert.strictEqual(readTask(w.opts.tasksDir, 't1').exclusive, 't1', 'true keys the task by its own id');
+    fs.writeFileSync(meta, JSON.stringify({ ...base, exclusive: 'angular-build' }));
+    assert.strictEqual(readTask(w.opts.tasksDir, 't1').exclusive, 'angular-build');
+    fs.writeFileSync(meta, JSON.stringify(base));
+    assert.strictEqual(readTask(w.opts.tasksDir, 't1').exclusive, null);
+});
+
+test('every task whose reference changes the web app shares the angular-build key, and no other task does', () =>
+{
+    const tasksDir = path.join(__dirname, 'tasks');
+    const ids = fs.readdirSync(tasksDir).filter((id) => fs.existsSync(path.join(tasksDir, id, 'meta.json')));
+    const web = ids.filter((id) => /^\+\+\+ b\/web\//m.test(fs.readFileSync(path.join(tasksDir, id, 'reference.patch'), 'utf8')));
+    assert.ok(web.includes('web-03-check-in-guard'), `the web-app scan found ${web.join(', ') || 'nothing'} - the positive control is missing`);
+    for (const id of ids)
+    {
+        const key = readTask(tasksDir, id).exclusive;
+        if (web.includes(id)) assert.strictEqual(key, 'angular-build', `${id} changes web/ but runs beside other Angular builds`);
+        else assert.notStrictEqual(key, 'angular-build', `${id} does not change web/ yet waits on the Angular builds`);
+    }
+    assert.strictEqual(readTask(tasksDir, 'devops-01-worker-image').exclusive, 'devops-01-worker-image', 'devops-01 keeps its own key (the shared Docker tag)');
 });
 
 test('tasks select by id list, all, or group', (t) =>

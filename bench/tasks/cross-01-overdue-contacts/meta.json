@@ -1,1 +1,1 @@
-{ "id": "cross-01-overdue-contacts", "group": "cross", "tags": [], "timeLimitMin": 40, "startRef": "bench-fixture-v1" }
+{ "id": "cross-01-overdue-contacts", "group": "cross", "tags": [], "timeLimitMin": 40, "startRef": "bench-fixture-v1", "exclusive": "angular-build" }
