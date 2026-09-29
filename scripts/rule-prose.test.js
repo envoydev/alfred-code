@@ -139,3 +139,15 @@ test('M73: the devops rule attaches on every delivery surface its skill claims',
     const graph = JSON.parse(read('meta/stack-graph.json'));
     assert.ok(JSON.stringify(graph).includes('**/azure-pipelines*.yml'), 'the graph was regenerated');
 });
+
+// 2.1.6 review A1: the repair routers dispatch the resolvers from the main session, so they route a capped
+// resolver's status-less return too (the sentence is pinned as seat-statusless-return).
+test('the repair routers route a status-less resolver return as a seat death', () =>
+{
+    for (const name of ['dotnet-repair-agents', 'angular-repair-agents'])
+    {
+        const text = squash(rule(name));
+        assert.match(text, /A return with no closing status line - a seat stopped at its `maxTurns` \(Claude Code marks the output partial from 2\.1\.246\) or killed mid-task - is never DONE and never resumed as-is/, name);
+        assert.ok(homes(registry()['seat-statusless-return'] || { owner: {} }).some((h) => h.file === `stack/rules/${name}.md`), `${name}: a pinned home`);
+    }
+});

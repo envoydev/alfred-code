@@ -22,13 +22,13 @@ run-time load.
 - **The plan file** (`<docs-path>/superpowers/plans/<feature>.md`) is the durable truth: the tasks, every stamp this cycle adds (`Gated`, `Approved` +
   build mode, `Conformance` verdict or `skipped`, `Completed`), per-task status + evidence. On any
   conflict with memory or the chat, the file wins.
-- **The navigation server cycle note** (`write_memory` named `<feature>__cycle`) is the working cursor:
+- **The navigation server cycle note** (`write_memory` named `<feature>/cycle`) is the working cursor:
   current step, chosen modes, resume pointer (plan path + next task). Update it at EVERY stop and
   after every task tick. Local and disposable - everything essential is in the plan file.
 
-**On invocation, resume before starting:** `list_memories` -> `read_memory` the feature's cycle
-note (or an equivalent direct read of `<data root>/serena/memories/`, `.alfred` by default - the note's content is the contract,
-not the tool route), and read the plan file's stamps. A cycle mid-flight resumes at its cursor - never restart a
+**On invocation, resume before starting:** `list_memories` with `topic: '<feature>'` -> `read_memory` the feature's cycle
+note (or read `<data root>/serena/memories/<feature>/cycle.md` - its content is the contract; a pre-2.1.6 one is
+`<feature>__cycle.md`), and read the plan file's stamps. A cycle mid-flight resumes at its cursor - never restart a
 step whose stamp says it already passed. A NEW cycle starting after a finished one in this same
 session recommends the fresh-session hand-off in its first ask. A cycle mid-build looks like:
 
@@ -36,7 +36,7 @@ session recommends the fresh-session hand-off in its first ask. A cycle mid-buil
 plan <docs-path>/superpowers/plans/csv-export.md:
   Gated: passed | Approved: 2026-07-16 - mode session
   task 1 DONE (dotnet test green - 4 passed) | task 2 IN_PROGRESS
-cycle note 'csv-export__cycle': step 4 BUILD - resume at task 2, mode session
+cycle note 'csv-export/cycle': step 4 BUILD - resume at task 2, mode session
 ```
 
 ## The stop contract
@@ -174,7 +174,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
      repair-agent rules; tick the same plan file per task as reports land. MINT the run's contract
      version - `<the plan's Approved: date>-<plan slug>` - and put it in EVERY dispatch prompt
      verbatim, with the seat's memory-handoff line spelled out:
-     `mcp__plugin_navigation_navigation__write_memory('<feature>__<contract_version>__<seat>__<task>', ...)`. Each seat's green gate
+     `mcp__plugin_navigation_navigation__write_memory('<feature>/<contract_version>/<seat>/<task>', ...)`. Each seat's green gate
      stays fast - build + fast tests, never integration replays or another minutes-long run; the
      slow full run happens once, in this session, at the step-5 review / step-6 done-gate.
    Both modes build to the step mechanics' bar, and the plan's `## Decisions` ledger grows as they
@@ -216,9 +216,9 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    (load `alfred-habits-done-gate` - each acceptance criterion demonstrated by a run this session,
    quoted). Stamp `Completed: <date>` with the per-task evidence table, and name the `## Decisions`
    ledger by its entry count, never re-pasted. The stamp CLOSES this plan file: print one line with it
-   - `Completed - the next scope starts a NEW plan file, not this one`. Delete or archive the cycle note, and in an agents-mode run purge the
-   run's minted seat notes too - `mcp__plugin_navigation_navigation__delete_memory` each `<feature>__<contract_version>__*`
-   note - stating `memories purged: <names|none>` in the close report. *Stop* - and this stop is where the
+   - `Completed - the next scope starts a NEW plan file, not this one`. Purge the notes - `mcp__plugin_navigation_navigation__delete_memory` each
+   note under `topic: '<feature>'` (cycle and seat notes) plus a pre-2.1.6 run's flat `<feature>__*` - stating
+   `memories purged: <names|none>` in the close report, then the purge count (`references/step-mechanics.md`). *Stop* - and this stop is where the
    close-out decisions live: anything PENDING (an uncommitted diff, an unpushed commit, a deferred
    item, a cross-repo follow-up) goes into the ask's options; only a cycle with nothing pending
    ends on the report alone. An uncommitted diff is held for the user's review - a commit waits

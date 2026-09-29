@@ -50,7 +50,8 @@ change (see the invariants below).
   `meta/stack-manifest.json`, hand-edited, is the one source of the six lists the seed reads;
   `docs/alfred-code.html` is the browser inventory (lint check 60 runs `node --check` over its inline
   script: an unescaped quote in one row string left the page with no tables; check 60b holds every seat's
-  `mdl` pin badge and row 'Pinned <model>/<effort>' to its frontmatter - 2.1.5 M57).
+  `mdl` pin badge and row 'Pinned <model>/<effort>' to its frontmatter - 2.1.5 M57 - and a row's ', max <n> turns'
+  to its `maxTurns`, 2.1.6 M59).
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
   `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`. Its
   authoring outline (Setup and Key files among it) and keep-out list say WHAT a CLAUDE.md holds; the
@@ -356,7 +357,14 @@ change (see the invariants below).
   Pins: resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers
   `sonnet`/`medium`, support seats `sonnet`, and three read-only reasoners on `opus` - `alfred-issue-diagnoser-ci`
   `high`, `alfred-issue-diagnoser-runtime` and `security-auditor` `xhigh` (the reasons, and the A/B they still lack, in
-  `stack/skills/alfred-task-solve-cross/references/model-routing.md`). Captures are deliberate-only
+  `stack/skills/alfred-task-solve-cross/references/model-routing.md`). Turn caps (`maxTurns`, 2.1.6 M59 - a runaway
+  backstop at twice the most turns measured for the seat's kind over 802 local subagent transcripts, rounded up to
+  the next 50; at the cap Claude Code returns the output marked partial (2.1.246+), with no closing status line, which
+  every orchestrator routes as a seat death - one scoped re-dispatch, then BLOCKED to the user, pinned as
+  `seat-statusless-return`): implementers 250 (max seen 116), verifiers
+  350 (152), `architecture-analyzer` 100 (30), and the four resolvers the implementers' 250 (one run seen) since an
+  until-green loop is the runaway the cap is for; every other seat had too few runs, so none. Lint check 15d fails a
+  seat with a `## Loop` section and no cap. Captures are deliberate-only
   (`alfred-capture-architecture` writes `architecture/ARCHITECTURE.md` and
   `baseline-project-architecture.md`; the findings go to `alfred-capture-architecture-quality`
   (`quality/ASSESSMENT.md`), the code's to `alfred-capture-code-quality` (`quality/CODE-ASSESSMENT.md`), and the
@@ -872,8 +880,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `credentials.local.env` template the capture writes empty and gitignores in its own folder - never
   as a value. The findings (`quality/ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the
   two `*-quality` captures) are the opposite of durable - recomputed fresh every run, so
-  `quality/` carries no `watch.json` and is no docs domain. Navigation-server memory (`<feature>__<contract_version>__<seat>`,
-  never the `memory` MCP) is the EPHEMERAL inter-seat bus; anything that must survive a fresh clone
+  `quality/` carries no `watch.json` and is no docs domain. Navigation-server memory (`<feature>/<contract_version>/<seat>`, each `/` a
+  folder serena's `list_memories` `topic` filters by - 2.1.6; never the `memory` MCP) is the EPHEMERAL inter-seat bus; anything that must survive a fresh clone
   belongs in the committed docs.
 - **Never `Read` a whole file to find a symbol** (hard rule, both stacks): locate via the navigation server
   (`find_symbol` / `find_referencing_symbols`) or the LSP; `Read` is for code already located.

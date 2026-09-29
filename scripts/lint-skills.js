@@ -880,6 +880,21 @@ function lintAgentShape(label, description, body)
     return out;
 }
 
+// 15d (2.1.6 M59). A seat with a `## Loop` section runs until a gate turns green, and its prose bound ('5
+// cycles', '3 attempts') is one the model can talk itself past. `maxTurns` is the runtime's backstop: at the
+// cap Claude Code returns the output marked partial (code.claude.com/docs/en/sub-agents). A cap set anywhere
+// must be a positive integer - a quoted or zero value is either ignored or no cap at all.
+function lintAgentTurnCap(label, meta, body)
+{
+    const out = [];
+    const has = Boolean(meta) && Object.prototype.hasOwnProperty.call(meta, 'maxTurns');
+    if (has && !(Number.isInteger(meta.maxTurns) && meta.maxTurns > 0))
+        out.push(`${label} maxTurns must be a positive integer (got ${JSON.stringify(meta.maxTurns)})`);
+    if (!has && /^## Loop(?:[ \t]+\([^)\n]*\))?[ \t]*$/m.test(String(body || '')))
+        out.push(`${label} has a '## Loop' section but no maxTurns - a loop seat carries a runaway cap, twice the most turns measured for its kind`);
+    return out;
+}
+
 // 15c. A SKILL description is capped too, for the skill listing's own budget: Claude Code lists every
 // model-invocable skill's description (with `when_to_use` appended) in every turn, within 1% of the
 // context window - 8,000 chars on a 200K window - and past it drops whole descriptions, the trigger words
@@ -1832,7 +1847,7 @@ function main()
         {
             flag(`${label} description is ${meta.description.length} chars (> ${DESC_LIMIT}) - trim it; every description is always-on context in every install`);
         }
-        if (label.startsWith('agents/')) for (const finding of [...lintAgentDescription(label, meta && meta.description), ...lintAgentShape(label, meta && meta.description, source.slice(fm[0].length))]) flag(finding);
+        if (label.startsWith('agents/')) for (const finding of [...lintAgentDescription(label, meta && meta.description), ...lintAgentShape(label, meta && meta.description, source.slice(fm[0].length)), ...lintAgentTurnCap(label, meta, source.slice(fm[0].length))]) flag(finding);
         if (label.startsWith('skills/')) for (const finding of lintSkillDescription(label, meta && meta.description, meta && meta.when_to_use)) flag(finding);
     }
 
@@ -2729,7 +2744,7 @@ function lintHtmlSeatPins(html, pins)
     {
         const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.readFileSync(path.join(AGENTS_DIR, f), 'utf8'));
         const meta = fm ? yaml.load(fm[1]) || {} : {};
-        return [f.slice(0, -3), { model: meta.model, effort: meta.effort }];
+        return [f.slice(0, -3), { model: meta.model, effort: meta.effort, maxTurns: meta.maxTurns }];
     }));
     const out = [];
     const badges = [...text.matchAll(/class="agent [^"]*">([a-z0-9-]+)<span class="role">[^<]*<\/span><span class="mdl ([a-z]+)">([^<]*)<\/span>/g)];
@@ -2742,11 +2757,15 @@ function lintHtmlSeatPins(html, pins)
         if (shown !== `${pin.model} · ${pin.effort}`) out.push(`${page}: the model badge for '${seat}' reads '${shown}' but its frontmatter pins ${pin.model} · ${pin.effort}`);
         if (tier !== pin.model) out.push(`${page}: the model badge for '${seat}' carries class 'mdl ${tier}' but the seat runs ${pin.model}`);
     }
-    for (const [, seat, model, effort] of text.matchAll(/\["([a-z0-9-]+)", "subagent",[^\n]*?\bPinned (\w+)\/(\w+)/g))
+    for (const [, seat, model, effort, turns] of text.matchAll(/\["([a-z0-9-]+)", "subagent",[^\n]*?\bPinned (\w+)\/(\w+)(?:, max (\d+) turns)?/g))
     {
         const pin = pinOf.get(seat);
-        if (!pin) out.push(`${page}: an inventory row names '${seat}', which is no seat in stack/agents`);
-        else if (model !== pin.model || effort !== pin.effort) out.push(`${page}: the inventory row for '${seat}' says 'Pinned ${model}/${effort}' but its frontmatter pins ${pin.model}/${pin.effort}`);
+        if (!pin) { out.push(`${page}: an inventory row names '${seat}', which is no seat in stack/agents`); continue; }
+        if (model !== pin.model || effort !== pin.effort) out.push(`${page}: the inventory row for '${seat}' says 'Pinned ${model}/${effort}' but its frontmatter pins ${pin.model}/${pin.effort}`);
+        // 2.1.6 M59: the cap is frontmatter too, stated after the pin as ', max <n> turns'.
+        const cap = pin.maxTurns === undefined ? null : String(pin.maxTurns);
+        if (turns === undefined && cap !== null) out.push(`${page}: the inventory row for '${seat}' shows no turn cap but its frontmatter sets maxTurns: ${cap}`);
+        else if (turns !== undefined && turns !== cap) out.push(`${page}: the inventory row for '${seat}' says 'max ${turns} turns' but its frontmatter sets ${cap === null ? 'no maxTurns' : `maxTurns: ${cap}`}`);
     }
     return out;
 }
@@ -3178,6 +3197,7 @@ module.exports = {
     lintPluginCites,
     lintAgentDescription,
     lintAgentShape,
+    lintAgentTurnCap,
     lintHtmlSeatPins,
     lintSkillDescription,
     SKILL_DESC_LIMIT,

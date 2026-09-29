@@ -1288,6 +1288,36 @@ test('the inventory page shows every seat at its frontmatter pin', () =>
     assert.deepStrictEqual(lintHtmlSeatPins(), [], 'docs/alfred-code.html: every badge and row at its pin');
 });
 
+// 2.1.6 M59: a seat's turn cap is frontmatter too, so the row that states the pin states the cap, and 60b holds
+// both ways - a cap the row does not show, a row cap the frontmatter does not set, and a changed number.
+test('the inventory row states a seat\'s maxTurns cap exactly when the frontmatter sets one', () =>
+{
+    const { lintHtmlSeatPins } = require('./lint-skills.js');
+    const pins = new Map([['a-seat', { model: 'sonnet', effort: 'medium', maxTurns: 250 }], ['b-seat', { model: 'opus', effort: 'xhigh' }]]);
+    const row = (seat, pinned) => `["${seat}", "subagent", "k", "home", "url", "Does a thing. Pinned ${pinned}. More."],`;
+    assert.deepStrictEqual(lintHtmlSeatPins([row('a-seat', 'sonnet/medium, max 250 turns'), row('b-seat', 'opus/xhigh')].join('\n'), pins), []);
+    assert.match(lintHtmlSeatPins(row('a-seat', 'sonnet/medium'), pins)[0], /row for 'a-seat' shows no turn cap but its frontmatter sets maxTurns: 250/);
+    assert.match(lintHtmlSeatPins(row('a-seat', 'sonnet/medium, max 200 turns'), pins)[0], /row for 'a-seat' says 'max 200 turns' but its frontmatter sets maxTurns: 250/);
+    assert.match(lintHtmlSeatPins(row('b-seat', 'opus/xhigh, max 100 turns'), pins)[0], /row for 'b-seat' says 'max 100 turns' but its frontmatter sets no maxTurns/);
+});
+
+// 2.1.6 M59 (AG M15's check): a seat with a `## Loop` section runs until a gate turns green, so its prose bound
+// ('5 cycles', '3 attempts') gets a runaway backstop the runtime enforces - a positive integer maxTurns.
+test('a loop seat carries a positive integer maxTurns (15d)', () =>
+{
+    const { lintAgentTurnCap } = require('./lint-skills.js');
+    const loop = '## Scope\n\nx\n\n## Loop (bounded)\n1. build\n';
+    assert.deepStrictEqual(lintAgentTurnCap('agents/a.md', { maxTurns: 250 }, loop), [], 'a loop seat with its cap');
+    assert.deepStrictEqual(lintAgentTurnCap('agents/a.md', {}, '## Scope\n\nx\n## Method (bounded)\n'), [], 'no Loop section, no cap needed');
+    assert.deepStrictEqual(lintAgentTurnCap('agents/a.md', { maxTurns: 100 }, '## Scope\n'), [], 'a cap on a seat with no loop is allowed');
+    const missing = lintAgentTurnCap('agents/a.md', {}, loop);
+    assert.strictEqual(missing.length, 1);
+    assert.match(missing[0], /agents\/a\.md has a '## Loop' section but no maxTurns/);
+    for (const bad of [0, -5, 12.5, '250', null])
+        assert.match(lintAgentTurnCap('agents/a.md', { maxTurns: bad }, loop)[0], /agents\/a\.md maxTurns must be a positive integer/, String(bad));
+    assert.deepStrictEqual(lintAgentTurnCap('agents/a.md', {}, '### Loop\n## Loop notes\n'), [], 'only an exact `## Loop` H2 counts');
+});
+
 // 2.1.2 (live check F3, 2026-09-29): a 200K-window session logged 'Skill listing over budget: 39 skills,
 // 19901 chars > 8000' - the listing budget is 1% of the context window, so Claude Code dropped the
 // descriptions that carry the trigger words. A skill description (plus any `when_to_use`, which the listing

@@ -200,3 +200,25 @@ test('M58: the six support seats each return a literal status: line', () =>
 });
 
 // --- M60 lives in capture-project-capabilities.test.js (the run-book line's trigger) --------------------
+
+// --- M59: the runaway caps are measured, not guessed -------------------------------------------------
+// Turns per run from 802 subagent transcripts on the maintainer's machine (by real path - 537 more were the same
+// files reached through symlinked project folders) (2026-09-29; a turn is one assistant
+// API response): implementers n=58, max 116; verifiers n=124, max 152; architecture-analyzer n=38, max 30. Each
+// cap is twice the most seen, rounded up to the next 50. The resolvers (one run seen, 20 turns) take the
+// implementer's cap - the nearest measured shape, an edit-build-test loop - because an until-green loop is the
+// runaway the cap exists for. Every other seat had too few runs to set one, so it has none.
+test('M59: the turn caps sit where the measurement put them, and nowhere else', () =>
+{
+    const CAP = { implementer: 250, verifier: 350, resolver: 250, 'architecture-analyzer': 100 };
+    const kind = (s) => (/-implementer$/.test(s) ? 'implementer' : /-verifier$/.test(s) ? 'verifier'
+        : /-resolver$/.test(s) ? 'resolver' : s);
+    const capped = seats.filter((s) => CAP[kind(s)]);
+    assert.strictEqual(capped.length, 25, '10 implementers, 10 verifiers, 4 resolvers, architecture-analyzer');
+    for (const s of seats) assert.strictEqual(meta(s).maxTurns, CAP[kind(s)], `${s}: maxTurns`);
+    // Review B1: the transcript count is the de-duplicated one, and the cap's CLI floor is named.
+    const claude = squash(readRel('CLAUDE.md'));
+    assert.doesNotMatch(claude, /1,330/);
+    assert.match(claude, /the most turns measured for the seat's kind over 802 local subagent transcripts/);
+    assert.match(claude, /Claude Code returns the output marked partial \(2\.1\.246\+\)/);
+});

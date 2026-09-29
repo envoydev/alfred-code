@@ -2471,15 +2471,15 @@
       ]
     },
     "trio-note-naming-grammar-restated": {
-      "_note": "The navigation-server note naming grammar (<feature>__<contract_version>__<seat>__<task>) minted by the orchestrator - owned by the trio protocol's memory-hygiene bullet, restated operatively in solve-task's dispatch-prompt step.",
+      "_note": "The navigation-server note naming grammar (<feature>/<contract_version>/<seat>/<task>, each / a folder list_memories' topic filters by - 2.1.6) minted by the orchestrator - owned by the trio protocol's memory-hygiene bullet, restated operatively in solve-task's dispatch-prompt step.",
       "owner": {
         "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
-        "marker": "<feature>__<contract_version>__<seat>"
+        "marker": "<feature>/<contract_version>/<seat>"
       },
       "sites": [
         {
           "file": "stack/skills/alfred-task-solve/SKILL.md",
-          "marker": "<feature>__<contract_version>__<seat>__<task>"
+          "marker": "<feature>/<contract_version>/<seat>/<task>"
         }
       ]
     },
@@ -2521,7 +2521,7 @@
       ]
     },
     "memories-purge-count": {
-      "_note": "The purge receipt made a FACT: at close the orchestrator counts what is left of <data root>/serena/memories/<feature>__* (and a 2.0.0 .serena/memories) with one shell line, and above zero the close is not done. Lives in the trio protocol's bookkeeping, so it rides every vendored copy; pinned on its own marker because domain-trio-protocol-vendored checks only one sentence of the whole file.",
+      "_note": "The purge receipt made a FACT: at close the orchestrator counts what is left of <data root>/serena/memories/<feature>/ plus a pre-2.1.6 run's flat <feature>__* notes (and a 2.0.0 .serena/memories) with one node line (2.1.6 review B2: a find-based line read 0 wherever a foreign find came first on PATH - Windows' find.exe), and above zero the close is not done. alfred-task-solve's step mechanics carry the same line for its close, since it never loads the protocol and its body sits at the 18,000-char cap. Lives in the trio protocol's bookkeeping, so it rides every vendored copy; pinned on its own marker because domain-trio-protocol-vendored checks only one sentence of the whole file.",
       "owner": {
         "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
         "marker": "The purge is counted, not claimed"
@@ -2542,6 +2542,51 @@
         {
           "file": "stack/skills/alfred-loop-quality/references/domain-trio-protocol.md",
           "marker": "The purge is counted, not claimed"
+        },
+        {
+          "file": "stack/skills/alfred-task-solve/references/step-mechanics.md",
+          "marker": "The purge is counted, not claimed"
+        }
+      ]
+    },
+    "seat-statusless-return": {
+      "_note": "2.1.6 review A1: a seat stopped at its maxTurns cap (or killed) returns cut-off output with no closing status line, and the CLI offers to message it on - a resume hands a runaway a fresh budget, so the cap would be only a pause. Every orchestrator that routes a seat's return treats it as a seat death: one scoped re-dispatch, then BLOCKED to the user. Owned by the trio protocol's Status routing (its vendored copies ride domain-trio-protocol-vendored and are listed here too); restated where a seat's return is routed without that protocol loaded - the loop's delegated mode, solve's agents mode (its step mechanics, read at step 3) and the two repair routers that dispatch the resolvers.",
+      "owner": {
+        "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
+        "marker": "is never DONE and never resumed as-is"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-loop-architecture-quality/references/domain-trio-protocol.md",
+          "marker": "is never DONE and never resumed as-is"
+        },
+        {
+          "file": "stack/skills/alfred-loop-test-coverage/references/domain-trio-protocol.md",
+          "marker": "is never DONE and never resumed as-is"
+        },
+        {
+          "file": "stack/skills/alfred-task-build-from-scratch/references/domain-trio-protocol.md",
+          "marker": "is never DONE and never resumed as-is"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/references/domain-trio-protocol.md",
+          "marker": "is never DONE and never resumed as-is"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/references/delegated-mode.md",
+          "marker": "is never DONE and never resumed as-is"
+        },
+        {
+          "file": "stack/skills/alfred-task-solve/references/step-mechanics.md",
+          "marker": "is never DONE and never resumed as-is"
+        },
+        {
+          "file": "stack/rules/dotnet-repair-agents.md",
+          "marker": "is never DONE and never resumed as-is"
+        },
+        {
+          "file": "stack/rules/angular-repair-agents.md",
+          "marker": "is never DONE and never resumed as-is"
         }
       ]
     },
@@ -3972,159 +4017,159 @@
       ]
     },
     "seat-start-memory-read": {
-      "_note": "The trio memory bus START step - list_memories then read_memory the notes for this feature and contract_version - in every dispatched seat that hands off through navigation-server memory. Owner aspnet-implementer (the reference twin); the same sentence with 'the notes matching' (implementers, verifiers, security-auditor) or 'the note named for this feature' (designers, resolvers, diagnosers, integration-reviewer). The marker is the shared head.",
+      "_note": "The trio memory bus START step - list_memories with the run's <feature>/<contract_version> topic, then read_memory the notes it lists - in every dispatched seat that hands off through navigation-server memory. Owner aspnet-implementer (the reference twin); since 2.1.6 serena 1.7.0's topic filters by folder, so the server returns the run's notes and the seat matches no pattern. Then 'the notes it lists' (implementers, verifiers, security-auditor - every note of the run, as before) or 'the one note it lists under your own seat name' (designers, resolvers, diagnosers, integration-reviewer - their own earlier pass, as before; a run's whole folder measured p95 17,535 chars, max 42,082 over 39 local runs). The marker is the shared head.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+        "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/security-auditor.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/dotnet-build-error-resolver.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/alfred-issue-diagnoser-ci.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
         }
       ]
     },

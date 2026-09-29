@@ -346,3 +346,40 @@ test('the diagnoser and verify-code bodies carry no pilot anecdote, and each sto
         assert.match(read(`stack/skills/${name}/references/evidence.md`), story, `${name}: the story is kept`);
     }
 });
+
+// 2.1.6 review A1: a seat stopped at its maxTurns cap (or killed) returns cut-off output with no closing status
+// line, and the CLI offers to message it on - a resume hands a runaway a fresh budget, so the cap is only a pause.
+// Every orchestrator that routes a seat's return treats a status-less return as a seat death: one scoped
+// re-dispatch, then BLOCKED to the user.
+test('a status-less seat return is a seat death in every orchestrator that routes a return', () =>
+{
+    const entry = shared()['seat-statusless-return'];
+    assert.ok(entry, 'pinned in meta/shared-rules.json');
+    const homes = copiesOf(entry);
+    for (const f of ['stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md', 'stack/skills/alfred-loop-quality/references/delegated-mode.md',
+        'stack/skills/alfred-task-solve/references/step-mechanics.md', 'stack/rules/dotnet-repair-agents.md', 'stack/rules/angular-repair-agents.md'])
+    {
+        assert.ok(homes.includes(f), `${f} is a pinned home`);
+        const text = flat(read(f));
+        assert.match(text, /A return with no closing status line - a seat stopped at its `maxTurns` \(Claude Code marks the output partial from 2\.1\.246\) or killed mid-task - is never DONE and never resumed as-is/, f);
+        assert.match(text, /a second status-less return from that task goes to the user as BLOCKED/, f);
+    }
+    const routing = flat(read('stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md')).split('- **Status routing.**')[1].split('- **Seat death.**')[0];
+    assert.match(routing, /route it as a seat death/, 'the routing bullet itself carries the route');
+});
+
+// 2.1.6 review B3: a solve run lists its own feature's folder at resume, never the whole store, and its close
+// purges the whole feature - a pre-2.1.6 run's flat notes included - and counts what is left with the trio
+// protocol's own line, kept in the step mechanics (read at step 3) since the body sits at its 18,000-char cap.
+test('solve resumes by the feature topic and closes on the counted purge', () =>
+{
+    const solve = flat(skill('alfred-task-solve'));
+    assert.match(solve, /\*\*On invocation, resume before starting:\*\* `list_memories` with `topic: '<feature>'`/);
+    assert.doesNotMatch(solve, /Delete or archive the cycle note/);
+    assert.match(solve, /`mcp__plugin_navigation_navigation__delete_memory` each note under `topic: '<feature>'` \(cycle and seat notes\) plus a pre-2\.1\.6 run's flat `<feature>__\*`/);
+    assert.match(solve, /in the close report, then the purge count \(`references\/step-mechanics\.md`\)/);
+    const line = (text) => (/The purge is counted, not claimed\.\*\* At close, from the project root: `([^`]+)`/.exec(text) || [])[1];
+    const own = line(flat(read('stack/skills/alfred-task-solve/references/step-mechanics.md')));
+    assert.ok(own, 'the step mechanics carry the purge count line');
+    assert.strictEqual(own, line(flat(read('stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md'))), 'the same line as the trio protocol');
+});
