@@ -79,7 +79,7 @@ change (see the invariants below).
   record in it, its git top level or - for a git worktree - its main checkout, so a worktree of an
   installed checkout counts as set up; under a user-scope core such a repo is written nothing and only
   the rm, secret, force-push and desktop exec guards stay live, writing no row - R54, R86 - plus the dispatch guard's
-  implementer gate, M9. Known ceiling: such a repo still lists all 44 core seats, 12,531 characters of
+  implementer gate, M9. Known ceiling: such a repo still lists all 44 core seats, 12,532 characters of
   descriptions in every session's first call where 2.0.0 listed 9, since no deny is written into a repo the
   stack never touched - revisit when a plugin's agents can be scoped per project); and the 1.x ALIAS - a
   hook launched from a `.../claude-stack/<version>` root stands down while settings enable an <!-- legacy-name -->
@@ -956,9 +956,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   every skill DESCRIPTION plus `when_to_use` (a `disable-model-invocation` skill's is not in context, so
   its description is skipped), and the fixed text every generated capabilities rule carries (the usage
   policy and the locked-server row) - prints each part, and fails over 70,000 chars (lowered from 160,000
-  on 2026-09-29, about 40% over the measured total; 48,868 on 2026-09-29: pathless rules 22,946, agent
-  descriptions 12,531, skill descriptions 11,634 with 13 manual-only skipped, capabilities fixed text
-  1,757 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories
+  on 2026-09-29, about 40% over the measured total; 48,977 on 2026-09-29 (2.1.5): pathless rules 23,052, agent
+  descriptions 12,532, skill descriptions 11,589 with 13 manual-only skipped, capabilities fixed text
+  1,804 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories
   moving to `docs/baseline-rules-evidence.md`, and the 2.1.2 cap below cut the skill descriptions from
   50,719; the whole-file count it replaced read 51,473 and missed the generated rule). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's

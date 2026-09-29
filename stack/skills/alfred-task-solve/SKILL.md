@@ -119,7 +119,7 @@ REQUEST
 else echo 'path: gated - spec-check not found'; fi
 ```
 
-Its `path: gated` is final. Its `path: merged` you may raise to gated, never lower. `spec-check not found` means neither home has it: keep every gate.
+Its `path: gated` is final. Its `path: merged` you may raise to gated, never lower.
 
 On `path: merged`, steps 1 and 2 are ONE step: the design and the plan audit both in this session (neither twin asks its mode), no stop between them. A gap the audit finds that the spec settles is fixed in the plan in the same step and named in the ask; a gap only the user can settle stamps the gaps and takes step 2's stop. Step 3's read comes first (`mechanics: read` in `Result:`), then ONE approval ask in place of step 3's:
 

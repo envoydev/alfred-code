@@ -18,4 +18,4 @@ REQUEST
 else echo 'path: gated - spec-check not found'; fi
 ```
 
-`spec-check not found` means neither home has it: keep every gate.
+A script neither home has prints `path: gated`: keep every gate.
