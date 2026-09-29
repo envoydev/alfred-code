@@ -112,7 +112,7 @@ test('M87: bodies carry no dead trigger lines and no When-to-use copy of the des
         assert.doesNotMatch(body(skill(name)), /Triggers also on/, `${name}: a body loads only after the trigger`);
     const ticket = section(body(skill('alfred-habits-create-ticket')), 'When to use');
     for (const phrase of ["'create a bug/story/epic/task ticket'", "'create jira ticket'", "'file a bug'"])
-        assert.ok(!ticket.includes(phrase), `create-ticket: When to use repeats ${phrase}`);
+        assert.ok(!ticket.includes(phrase), `alfred-habits-create-ticket: When to use repeats ${phrase}`);
     const ci = section(body(skill('alfred-issue-signatures-ci')), 'When to use');
     assert.ok(ci, 'signatures-ci keeps a When to use section');
     for (const phrase of ['NU1301', 'ERESOLVE', 'exit 137', 'passes locally but fails in CI', 'Trigger on'])
