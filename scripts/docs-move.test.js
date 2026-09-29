@@ -84,11 +84,15 @@ test('plan: every explicit root is left alone - never offered', () =>
     for (const [over, what] of cases) assert.strictEqual(plan(root, over).state, 'none', what);
 });
 
-test('plan: the old default is asked about once more by the data move - a 2.0.0 keep included - unless that move was kept', () =>
+// M1: a 2.0.0 keep made the key the user's own - out of the ledger - and 2.0.0 promised no update offers again.
+// Offered once more, an unattended update took the recommended move over the user's answer.
+test('plan: the old default the user kept in 2.0.0 is never offered again - the ledger that does not record it is the record', () =>
 {
     const root = repo(OLD);
     for (const [over, what] of [[{ ledger: {} }, 'a ledger that does not record the key (the 2.0.0 keep)'], [{ ledger: ledgerOf('something else') }, 'changed since the stack wrote it']])
-        assert.strictEqual(plan(root, over).state, 'offer', what);
+        assert.strictEqual(plan(root, over).state, 'none', what);
+    assert.match(plan(root, { ledger: {} }).why, /kept at \.claude\/docs/);
+    assert.strictEqual(plan(root).state, 'offer', 'the stack\'s own seed, which the ledger records, is still offered');
     assert.strictEqual(plan(root, { ledger: {}, kept: true }).state, 'none', 'the data move was answered keep');
 });
 
@@ -263,6 +267,25 @@ test('installer: --docs-move keep pins the old root as the user\'s own, and no l
     assert.doesNotMatch(result.stamp, /ALFRED_CODE_DOCS_PATH=/, 'out of the stack\'s ledger');
 });
 
+test('M1 installer: a .claude/docs root the user kept in 2.0.0 is never moved - not even by an unattended update taking the recommended move', POSIX_ONLY, () =>
+{
+    const { outs, result } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'project'], updateArgs('--data-move', 'move')],
+        each: (r, i) =>
+        {
+            if (i !== 0) return null;
+            olderInstall(r);
+            // What 2.0.0's keep wrote: the key stays, the ledger no longer records it.
+            const stamp = path.join(r, '.claude', 'alfred-code.stamp');
+            fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/,?settings\.json:ALFRED_CODE_DOCS_PATH=[0-9a-f]{64}/, ''));
+            return null;
+        },
+        inspect: look,
+    });
+    assert.doesNotMatch(outs[1], /docs root: moved/, outs[1]);
+    assert.deepStrictEqual([result.env.ALFRED_CODE_DOCS_PATH, result.rule, result.old, result.moved], ['.claude/docs', '.claude/docs', true, false]);
+});
+
 test('installer: a conflict refuses the move and changes nothing', POSIX_ONLY, () =>
 {
     const { outs, result } = seedRun(['install', 'update'], SELECTION, {
@@ -419,7 +442,9 @@ test('installer: a move keeps what git saw - an ignored old root becomes a local
     assert.match(outs[1], /docs root: moved \.claude\/docs -> \.alfred\/docs/);
     assert.match(outs[1], /ALFRED_CODE_DOCS_VERSIONING 'git' -> 'local' \(the old root was kept out of git\)/);
     assert.strictEqual(result.env.ALFRED_CODE_DOCS_VERSIONING, 'local');
-    assert.strictEqual(result.status, '', 'git sees nothing under the new root, as it saw nothing under the old');
+    // The root's own .gitignore is the one file meant to be committed (I1: it re-includes itself so a teammate's
+    // clone inherits it); nothing the move carried shows.
+    assert.strictEqual(result.status, '?? .alfred/.gitignore\n', 'git sees nothing under the new root but its ignore file, as it saw nothing under the old');
 });
 
 test('installer: a local install moved to project scope while its session still exports the old root is offered, never orphaned', POSIX_ONLY, () =>

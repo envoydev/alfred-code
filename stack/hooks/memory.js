@@ -26,6 +26,10 @@
 //                          first under ~/.alfred-memory/backups (owner-only); the first row goes alone and a
 //                          vector that is still not unit length stops the run; a row that does not come
 //                          back is retried once, then reported with its --restore command.
+//   warm [--root <dir>] [--plugin-root <dir>] [--timeout <ms>]
+//                          fetches the service's embedding model (~166MB) ahead of a session: the server
+//                          started against a scratch database, one search, then stopped - `memory warm:
+//                          cached | ready (<n>s) | failed - <why>`, exit 1 on a failure. Bounded (4 minutes).
 //   reembed --restore <backup> [--db <file>] [--root <dir>]
 //                          stores again every backed-up row that is missing, and gives back the dates
 //                          of every one that lost them - through the service. A re-run changes nothing.
@@ -188,7 +192,13 @@ function liveDbPath(dbPath, { home, projectRoot } = {}) {
   try {
     if (!dbPath || fs.existsSync(dbPath)) return dbPath;
     const leaf = splitMemoryMcpLeaf(dbPath);
-    if (!leaf || leaf.legacy) return dbPath;
+    if (!leaf) return dbPath;
+    // A 2.0.0 home path that is gone: the launcher moved the folder and could not link it back (data-root.js
+    // liveMemoryDb) - the moved file is the one to read.
+    if (leaf.legacy) {
+      const moved = home && dirKey(leaf.root) === dirKey(home) ? path.join(home, MEMORY_FOLDER, leaf.file) : null;
+      return moved && fs.existsSync(moved) ? moved : dbPath;
+    }
     const candidates = [];
     if (home && dirKey(leaf.root) === dirKey(home)) candidates.push(path.join(home, LEGACY_MEMORY_FOLDER, leaf.file));
     else if (projectRoot && leaf.file === 'memory.db') {
@@ -1123,9 +1133,59 @@ async function cliRestore(opts, dbPath) {
   return failed ? 1 : 0;
 }
 
+// THE MODEL PRE-WARM (live check F2, 2026-09-29). The service downloads its embedding model (~166MB of ONNX
+// files, ~/.cache/mcp_memory - its own DOWNLOAD_PATH) on its FIRST start: measured 33s cold, 2s warm, against
+// Claude Code's 30s MCP connect budget - and a server that misses it is cached as failed
+// (<config>/mcp-needs-auth-cache.json), so the next session does not even start it. `warm` fetches it once,
+// outside any session: the server the project runs (or the one --plugin-root declares), started against a
+// SCRATCH database so the user's own is never opened, one search so the model loads, then shut down.
+const MODEL_MARKER = ['.cache', 'mcp_memory', 'onnx_models', 'all-MiniLM-L6-v2', 'onnx', 'model.onnx'];
+const WARM_TIMEOUT_MS = 240000;
+const modelCached = (home = os.homedir()) => fs.existsSync(path.join(home, ...MODEL_MARKER));
+
+async function warmModel({ entry, cwd, home = os.homedir(), timeoutMs = WARM_TIMEOUT_MS }) {
+  if (modelCached(home)) return { state: 'cached' };
+  if (!entry) return { state: 'failed', why: NO_SERVER };
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'alfred-memory-warm-'));
+  const started = Date.now();
+  const left = () => Math.max(1, started + timeoutMs - Date.now());
+  let child = null;
+  try {
+    child = spawn(entry.command, Array.isArray(entry.args) ? entry.args : [], {
+      cwd, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true,
+      env: { ...process.env, ...(entry.env || {}), MCP_MEMORY_SQLITE_PATH: path.join(scratch, 'warm.db') },
+    });
+    const rpc = rpcClient(child);
+    await rpc.call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'alfred-code-memory-warm', version: '1.0.0' } }, left());
+    rpc.notify('notifications/initialized');
+    // A search needs an embedding of its query: the model is downloaded and loaded before it answers.
+    await rpc.call('tools/call', { name: 'memory_search', arguments: { query: 'warm-up', limit: 1 } }, left());
+    const secs = Math.round((Date.now() - started) / 1000);
+    return modelCached(home) ? { state: 'ready', secs } : { state: 'failed', why: 'the service answered, but no model is in ~/.cache/mcp_memory' };
+  } catch (err) {
+    return { state: 'failed', why: err && err.message ? err.message : String(err) };
+  } finally {
+    if (child) await shutdownServer(child);
+    try { fs.rmSync(scratch, { recursive: true, force: true }); } catch {}
+  }
+}
+
+async function cliWarm(args) {
+  const flag = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
+  const projectRoot = path.resolve(flag('--root') || process.cwd());
+  const entry = flag('--plugin-root') ? pluginServerEntry(path.resolve(flag('--plugin-root'))) : serviceEntry(projectRoot);
+  const timeoutMs = Number(flag('--timeout')) > 0 ? Number(flag('--timeout')) : WARM_TIMEOUT_MS;
+  const got = await warmModel({ entry, cwd: projectRoot, timeoutMs });
+  if (got.state === 'cached') console.log('memory warm: cached');
+  else if (got.state === 'ready') console.log(`memory warm: ready (${got.secs}s)`);
+  else console.log(`memory warm: failed - ${got.why}`);
+  return got.state === 'failed' ? 1 : 0;
+}
+
 module.exports = {
   pathForLevel, levelOfPath, registeredDbPath, projectName, relatedProjects, selectForSession, MEMORY_FRAME,
   contentHash, exportRows, serviceEntry, storeThroughService, parseJsonl, INIT_TIMEOUT_MS, OVERALL_TIMEOUT_MS,
+  modelCached, warmModel, MODEL_MARKER, WARM_TIMEOUT_MS,
 };
 
 if (require.main === module) {
@@ -1143,6 +1203,9 @@ if (require.main === module) {
       return;
     } else if (cmd === 'duplicates') {
       process.exit(cliDuplicates(args));
+    } else if (cmd === 'warm') {
+      cliWarm(args).then((code) => process.exit(code), (err) => { console.log(`memory warm: failed - ${err && err.message ? err.message : err}`); process.exit(1); });
+      return;
     } else if (cmd === 'reembed') {
       cliReembed(args).then((code) => process.exit(code), (err) => { process.stderr.write(`memory reembed: ${err && err.message ? err.message : err}\n`); process.exit(1); });
       return;

@@ -262,14 +262,14 @@ function docsMovePlan({ projectRoot, env = {}, personal = null, ledger = null, s
     {
         root = normRoot(env[key]);
         if (root === base.to) return none(`the docs root is already ${root}`);
-        if (root !== LEGACY_DOCS_ROOT)
-        {
-            // Another root moves only when it is the stack's own: the ledger recorded it, or with no ledger
-            // (a stamp from before it) it is the catalog's default.
-            const hash = require('./stamp.js').valueHash(env[key]);
-            const stacks = ledger ? ledger[key] === hash || ledger.ALFRED_CODE_DOCS_PATH === hash : root === require('./copy.js').DOCS_ROOT_DEFAULT;
-            if (!stacks) return none(`the docs root is ${root}, set by hand`);
-        }
+        // A root moves only when it is the stack's own: the ledger recorded it, or with no ledger (a stamp from
+        // before it) it is a default the stack seeded - the old one, or the catalog's. The old default the ledger
+        // does NOT record is the user's: 2.0.0's keep answer took it out of the ledger and promised no update
+        // would offer the move again (M1) - an unattended update takes the recommended move, so asking again moved it.
+        const hash = require('./stamp.js').valueHash(env[key]);
+        const legacy = root === LEGACY_DOCS_ROOT;
+        const stacks = ledger ? ledger[key] === hash || ledger.ALFRED_CODE_DOCS_PATH === hash : legacy || root === require('./copy.js').DOCS_ROOT_DEFAULT;
+        if (!stacks) return none(legacy ? `kept at ${root} - the docs root is yours (a 2.0.0 keep, or set by hand)` : `the docs root is ${root}, set by hand`);
     }
     if (root === LEGACY_DOCS_ROOT && kept) return none('kept at the old default - the data move was answered keep');
     const plan = { ...base, from: root };
@@ -385,22 +385,10 @@ function moveDocsRoot({ projectRoot, plan })
     return { ok: true, moved: done.length, gitMoved: done.filter(([k]) => k === 'git').length };
 }
 
-// THE DATA ROOT'S OWN .gitignore (stack/mcp/data-root.js). Everything under the root is this machine's -
-// the navigation index and its ~327MB of language servers, browser profiles holding session cookies, a
-// project memory database - EXCEPT the docs, whose own `.gitignore` says how they are versioned. So the
-// root ignores everything and re-includes the docs folder: a bare `*` would hide it, `git check-ignore`
-// would then answer yes for it, and the four-home versioning seed would read every fresh project's docs as
-// kept out of git and seed `local` - the silent switch that rule exists to prevent. The header line marks
-// the file as the stack's: any other text is the project's own and is left alone.
-const DATA_IGNORE_HEAD = '# alfred-code: the data root (ALFRED_CODE_DATA_PATH) is machine-local';
-function dataIgnoreText({ root, docsPath })
-{
-    const rel = path.posix.relative(normRoot(root), normRoot(docsPath));
-    const inside = rel && !rel.startsWith('..') && !path.posix.isAbsolute(rel);
-    return inside
-        ? `${DATA_IGNORE_HEAD}; the docs under it follow ALFRED_CODE_DOCS_VERSIONING (their own .gitignore)\n/*\n!/${rel.split('/')[0]}/\n`
-        : `${DATA_IGNORE_HEAD}\n*\n`;
-}
+// THE DATA ROOT'S OWN .gitignore - its text and why live in stack/mcp/data-root.js (dataIgnoreText), the one
+// home the launchers read too. The installer keeps it CURRENT: absent or the stack's own older text is
+// written, any other text is the project's own and is left alone.
+const { DATA_IGNORE_HEAD, dataIgnoreText } = require('../../stack/mcp/data-root.js');
 
 // 'written' | 'replaced' | 'current' | 'kept' (the project's own file).
 function ensureDataIgnore({ projectRoot, root, docsPath, log = () => {} })
@@ -418,7 +406,7 @@ function ensureDataIgnore({ projectRoot, root, docsPath, log = () => {} })
     }
     fs.mkdirSync(base, { recursive: true });
     fs.writeFileSync(file, want);
-    log(`  data root: ${normRoot(root)}/.gitignore ${have === null ? 'written' : 'rewritten'} - the servers' data stays out of git${want.includes('!/') ? ', the docs under it do not' : ''}`);
+    log(`  data root: ${normRoot(root)}/.gitignore ${have === null ? 'written' : 'rewritten'} - the servers' data stays out of git${want.split('\n').some((l) => l.startsWith('!/') && l !== '!/.gitignore') ? ', the docs under it do not' : ''}`);
     return have === null ? 'written' : 'replaced';
 }
 

@@ -545,6 +545,48 @@ function respellRenamed({ projectRoot, renamed, log = () => {}, note = () => {} 
     return total;
 }
 
+// THE ROSTER'S SEAT SPELLING (M6). The generated capabilities rule names each seat as it resolves, and flows
+// dispatch a seat exactly as that roster spells it. A plugin seat answers only to `<core>:<seat>` (a bare name
+// is 'Agent type not found'), so a roster written before the seats moved onto the core - a 2.0.0 library seat,
+// listed bare - sends every flow to a seat that does not resolve. Its `## Subagent seats` list is re-spelled:
+// a bare core seat with no project copy takes the core's name; a seat whose project copy is kept (a tuned or
+// edited seat, `.claude/agents/<seat>.md`) is named bare, the copy's own name - the one a flow should run. A
+// name the core does not carry, and every line that is not a plain name list, is left as written.
+function respellRosterSeats({ projectRoot, core, seats = [], log = () => {}, note = () => {} })
+{
+    const file = path.join(projectRoot, '.claude', 'rules', 'baseline-project-agent-capabilities.md');
+    let text;
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return 0; }
+    const carried = new Set(seats);
+    const copied = (seat) => fs.existsSync(path.join(projectRoot, '.claude', 'agents', `${seat}.md`));
+    const lines = text.split('\n');
+    let inSeats = false;
+    let changed = 0;
+    for (let i = 0; i < lines.length; i += 1)
+    {
+        if (/^## /.test(lines[i])) { inSeats = /^## Subagent seats\s*$/.test(lines[i]); continue; }
+        if (!inSeats || !lines[i].trim()) continue;
+        const names = lines[i].split(',').map((t) => t.trim());
+        if (!names.every((t) => /^[A-Za-z0-9_-]+(:[A-Za-z0-9_-]+)?$/.test(t))) continue;
+        const spelled = names.map((t) =>
+        {
+            const bare = t.startsWith(`${core}:`) ? t.slice(core.length + 1) : t;
+            if (t.includes(':') && bare === t) return t;   // another plugin's seat
+            if (!carried.has(bare)) return t;
+            return copied(bare) ? bare : `${core}:${bare}`;
+        });
+        const out = [...new Set(spelled)].join(', ');
+        if (out === names.join(', ')) continue;
+        changed += spelled.filter((t, n) => t !== names[n]).length || 1;
+        lines[i] = out;
+    }
+    if (!changed) return 0;
+    try { fs.writeFileSync(file, lines.join('\n')); }
+    catch (err) { note(`.claude/rules/baseline-project-agent-capabilities.md names ${changed} seat(s) the core answers under ${core}:<seat> and could not be re-spelled (${err.message}) - re-run /alfred-capture-agent-capabilities`); return 0; }
+    log(`  roster: baseline-project-agent-capabilities.md - ${changed} seat name(s) re-spelled to how they resolve (${core}:<seat> on the core, bare for a kept project copy)`);
+    return changed;
+}
+
 // `--add`: the items the user said yes to (update's new-item ask, configure's add), on top of the
 // read-back. Duplicates are dropped; each real addition is logged.
 function addLines(lines, add = [], log = () => {})
@@ -703,6 +745,6 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 }
 
 module.exports = {
-    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, respellRenamed, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, respellRenamed, respellRosterSeats, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, FORMER_PLUGINS,
 };

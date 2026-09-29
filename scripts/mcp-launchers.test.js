@@ -581,3 +581,99 @@ test('memory-launch: a project-level database moves under the data root when the
     assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', '.alfred-memory', 'memory.db'), 'utf8'), 'PROJ');
     assert.ok(!fs.existsSync(path.join(dir, '.memory-mcp')));
 });
+
+// ------------------------------------------------------------------ I1: every writer under the data root ignores it first
+
+// A 2.0.0 project whose MCP plugins are already 2.1 (a user-scope install updated from another project, or a
+// marketplace auto-update): the docs sit at .alfred/docs with their own .gitignore, and there is no
+// .alfred/.gitignore. The first launcher start that writes under the root lays that file down first, so a browser
+// profile's cookies and serena's ~327MB home are never untracked files a `git add -A` takes in.
+function twoZeroProject(name)
+{
+    const { dir } = project(name, { settings: { ALFRED_CODE_DOCS_PATH: '.alfred/docs' } });
+    execFileSync('git', ['init', '-q', dir]);
+    put(path.join(dir, '.alfred', 'docs', '.gitignore'), '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n');
+    put(path.join(dir, '.alfred', 'docs', 'architecture', 'ARCHITECTURE.md'), '# arch\n');
+    return dir;
+}
+const ignored = (dir, rel) => { try { execFileSync('git', ['check-ignore', '-q', rel], { cwd: dir, stdio: 'ignore' }); return true; } catch { return false; } };
+
+test('I1 browser-launch: a never-used engine on a 2.0.0 project gets the data root ignored before its profile is handed out', POSIX, () =>
+{
+    const dir = twoZeroProject('i1-browser');
+    const rec = stubRecorder('i1-browser', 'npx');
+    execFileSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.82', '--browser', 'chrome'],
+        { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
+    put(path.join(dir, '.alfred', 'browser', 'chrome', 'Default', 'Cookies'), 'session');   // what Playwright writes next
+    assert.ok(fs.existsSync(path.join(dir, '.alfred', '.gitignore')), 'the launcher wrote the root\'s .gitignore');
+    assert.ok(ignored(dir, '.alfred/browser/chrome/Default/Cookies'), 'the session cookies are ignored');
+    assert.ok(!ignored(dir, '.alfred/docs/architecture/ARCHITECTURE.md'), 'the docs stay visible to git');
+    assert.ok(!ignored(dir, '.alfred/.gitignore'), 'the ignore file re-includes itself, so a teammate\'s clone inherits it');
+});
+
+test('I1 serena-launch: a fresh serena folder under a 2.0.0 project\'s root is ignored before serena writes it', POSIX, () =>
+{
+    const dir = twoZeroProject('i1-serena');
+    const rec = stubRecorder('i1-serena', 'uvx');
+    execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server', '--project-from-cwd'],
+        { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
+    assert.ok(ignored(dir, '.alfred/serena/home/serena_config.yml'), 'serena\'s home is ignored');
+    assert.ok(!ignored(dir, '.alfred/docs/architecture/ARCHITECTURE.md'), 'the docs stay visible to git');
+});
+
+test('I1 memory-launch: a project-level database under the root is ignored before the folder is created', POSIX, () =>
+{
+    const dir = twoZeroProject('i1-memory');
+    const real = fs.realpathSync(dir);
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: path.join(real, '.alfred', '.alfred-memory', 'memory.db') } }));
+    const rec = stubRecorder('i1-memory', 'uvx');
+    execFileSync(process.execPath, [LAUNCH, '--package', 'mcp-memory-service[sqlite]==11.13.0'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: path.join(dir, 'h'), USERPROFILE: path.join(dir, 'h') }, stdio: 'pipe' });
+    put(path.join(dir, '.alfred', '.alfred-memory', 'memory.db'), 'PROJ');
+    assert.ok(ignored(dir, '.alfred/.alfred-memory/memory.db'), 'the project database is ignored');
+});
+
+test('I1 launchers: a data root .gitignore the project wrote itself is left as it is', POSIX, () =>
+{
+    const dir = twoZeroProject('i1-own');
+    put(path.join(dir, '.alfred', '.gitignore'), '# mine\n/browser/\n');
+    const rec = stubRecorder('i1-own', 'npx');
+    execFileSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.82', '--browser', 'firefox'],
+        { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', '.gitignore'), 'utf8'), '# mine\n/browser/\n');
+});
+
+// ------------------------------------------------------------------ I2: a failed link never splits the memories
+
+test('I2 memory-launch: the move ran but the link failed - the launcher serves the new file and never re-creates the old folder', POSIX, () =>
+{
+    const { dir } = project('i2-nolink');
+    put(path.join(dir, '.memory-mcp', 'memory.db'), 'DB');
+    const lines = [];
+    const eperm = () => { const err = new Error('operation not permitted'); err.code = 'EPERM'; throw err; };
+    const { liveDb } = require(LAUNCH);
+    const db = liveDb(path.join(dir, '.memory-mcp', 'memory.db'), { projectDir: dir, home: dir, log: (l) => lines.push(l), symlink: eperm });
+    assert.strictEqual(db, path.join(dir, '.alfred-memory', 'memory.db'));
+    assert.ok(!fs.existsSync(path.join(dir, '.memory-mcp')), 'the old folder is not re-created');
+    assert.match(lines.join('\n'), /Cursor/, `the consequence for a reader still on the old path is named:\n${lines.join('\n')}`);
+});
+
+test('I2 memory-launch: settings still naming a gone ~/.memory-mcp start the server on ~/.alfred-memory, and create nothing at the old path', POSIX, () =>
+{
+    const { dir } = project('i2-gone', { local: { ALFRED_CODE_MEMORY_DB: path.join(TMP, 'i2-gone', '.memory-mcp', 'memory.db') } });
+    put(path.join(dir, '.alfred-memory', 'memory.db'), 'DB');
+    const rec = stubRecorder('i2-gone', 'uvx');
+    execFileSync(process.execPath, [LAUNCH, '--package', 'mcp-memory-service[sqlite]==11.13.0'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir, USERPROFILE: dir }, stdio: 'pipe' });
+    assert.strictEqual(rec.got().db, path.join(dir, '.alfred-memory', 'memory.db'));
+    assert.ok(!fs.existsSync(path.join(dir, '.memory-mcp')), 'never a second, empty database at the old path');
+});
+
+test('I2 memory-launch: ~/.memory-mcp re-created after the move (another reader on the old path) - the settings\' old spelling reads the stack\'s moved database', POSIX, () =>
+{
+    const { dir } = project('i2-recreated', { local: { ALFRED_CODE_MEMORY_DB: path.join(TMP, 'i2-recreated', '.memory-mcp', 'memory.db') } });
+    put(path.join(dir, '.alfred-memory', 'memory.db'), 'DB');
+    put(path.join(dir, '.memory-mcp', 'memory.db'), 'EMPTY');
+    const rec = stubRecorder('i2-recreated', 'uvx');
+    const out = execFileSync(process.execPath, [LAUNCH, '--package', 'mcp-memory-service[sqlite]==11.13.0'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir, USERPROFILE: dir }, stdio: 'pipe' });
+    assert.strictEqual(rec.got().db, path.join(dir, '.alfred-memory', 'memory.db'), String(out));
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.memory-mcp', 'memory.db'), 'utf8'), 'EMPTY', 'the other reader\'s file is not touched');
+});

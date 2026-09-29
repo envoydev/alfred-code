@@ -600,7 +600,9 @@ function report(projectRoot)
         // A local copy WINS a name clash: it is what the harness would load first.
         const seen = new Set(skills.map((s) => s.name));
         skills = [...skills, ...plug.skills.filter((s) => !seen.has(s.name))].sort((a, b) => a.name.localeCompare(b.name));
-        seats = [...new Set([...seats, ...plug.seats])].sort((a, b) => a.localeCompare(b));
+        // A seat copied under .claude/agents wins its name too: the project keeps it as its own (a tuned or
+        // edited seat), and a flow dispatches the roster's spelling - the core's twin would run the stack's pins.
+        seats = [...new Set([...seats, ...plug.seats.filter((s) => !seats.includes(bareSeat(s)))])].sort((a, b) => a.localeCompare(b));
         say('SOURCE', `PLUGIN-COVERED - ${plug.from.length} enabled plugin(s) carry ${plug.skills.length} skill(s) and ${plug.seats.length} seat(s), beside ${localCount.skills} skill(s) and ${localCount.seats} seat(s) copied under .claude/: ${plug.from.join(', ')}`);
     }
     else if (localCount.skills === 0 || localCount.seats === 0)

@@ -92,6 +92,18 @@ test('registeredDbPath: a database not moved yet is read at its old place, and a
   } finally { rmDir(home); }
 });
 
+test('I2 registeredDbPath: settings naming a ~/.memory-mcp that moved with no link read the moved file', () => {
+  const home = tmpDir('memory-nolink-');
+  try {
+    const project = path.join(home, 'app');
+    fs.mkdirSync(path.join(project, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(project, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: path.join(home, '.memory-mcp', 'memory.db') } }));
+    fs.mkdirSync(path.join(home, '.alfred-memory'));
+    fs.writeFileSync(path.join(home, '.alfred-memory', 'memory.db'), 'DB');
+    assert.strictEqual(m.registeredDbPath(project, { home, configDir: path.join(home, 'acct') }), path.join(home, '.alfred-memory', 'memory.db'));
+  } finally { rmDir(home); }
+});
+
 test('an unknown level throws, a foreign path has no level', () => {
   const home = '/home/u';
   const projectRoot = '/work/app';

@@ -195,6 +195,32 @@ test('live memory db: the configured path, else its old twin while it has not mo
     assert.strictEqual(dr.liveMemoryDb(want, { home, projectRoot }), want);
 });
 
+// I2: the rename commits before the link is tried, so a link that cannot be made (no junction, or another
+// server re-created ~/.memory-mcp in between - EEXIST) leaves the data at the NEW place only. Every reader then
+// resolves the old spelling to it, and nothing re-creates the old folder as a second, empty database.
+test('I2 home memory: a link that cannot be made leaves the data at the new place, and the old spelling resolves to it', () =>
+{
+    const home = fresh('home-nolink');
+    put(path.join(home, '.memory-mcp', 'memory.db'), 'DB');
+    const eperm = () => { const err = new Error('operation not permitted'); err.code = 'EPERM'; throw err; };
+    const got = dr.moveHomeMemory({ home, symlink: eperm });
+    assert.strictEqual(got.state, 'moved');
+    assert.strictEqual(got.linked, false);
+    assert.strictEqual(fs.readFileSync(path.join(home, '.alfred-memory', 'memory.db'), 'utf8'), 'DB');
+    assert.ok(!fs.existsSync(path.join(home, '.memory-mcp')), 'no link and no folder at the old path');
+    const old = path.join(home, '.memory-mcp', 'memory.db');
+    assert.strictEqual(dr.liveMemoryDb(old, { home }), path.join(home, '.alfred-memory', 'memory.db'), 'the old spelling reads the moved file');
+});
+
+test('I2 live memory db: an old home path that is gone names the new spelling even before anything is there', () =>
+{
+    const home = fresh('home-gone');
+    assert.strictEqual(dr.liveMemoryDb(path.join(home, '.memory-mcp', 'memory_work.db'), { home }), path.join(home, '.alfred-memory', 'memory_work.db'),
+        'never the 2.0.0 folder a launcher would then create empty');
+    put(path.join(home, '.memory-mcp', 'memory.db'), 'OLD');
+    assert.strictEqual(dr.liveMemoryDb(path.join(home, '.memory-mcp', 'memory.db'), { home }), path.join(home, '.memory-mcp', 'memory.db'), 'an unmoved old database is still served where it is');
+});
+
 // ------------------------------------------------------------------ the move plan
 
 test('move plan: a tree holding every kind of data - the old layout and a prior root - names each move once', () =>

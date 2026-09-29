@@ -31,9 +31,15 @@ claude mcp list
 
 Every row should read connected. A timeout on `navigation` (Serena) usually means its first run is still
 fetching the language server (re-run once it settles, or pre-warm with `uvx --from serena-agent
-serena --help`); a timeout on any other stdio server means its runtime is not installed on this
-machine - fix it, or drop that server via `/alfred-code:configure` rather than carrying a dead
-registration whose tool schemas are injected into every session.
+serena --help`). A timeout on `memory` is its FIRST start downloading the embedding model (~166MB into
+`~/.cache/mcp_memory`: measured 33s cold, 2s warm, against the 30s budget), not a missing runtime: the
+install fetches it ahead where uvx is present (`memory: the embedding model is cached now`) and init's plan
+lists it otherwise; fetch it with `node .claude/hooks/memory.js warm`. Claude Code then remembers the
+failed server in `<config dir>/mcp-needs-auth-cache.json` and the next session does not even start it -
+remove its `plugin:memory:memory` entry from that file, then restart (measured: it connected in 1.8s). A timeout on any
+other stdio server means its runtime is not installed on this machine - fix it, or drop that server via
+`/alfred-code:configure` rather than carrying a dead registration whose tool schemas are injected into
+every session.
 
 **And check the plugins are ENABLED, not merely installed.** Installing a plugin does not enable it
 at that scope, and a disabled one is silent in both directions - it does nothing and says nothing.

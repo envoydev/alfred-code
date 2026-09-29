@@ -84,15 +84,31 @@ function resolveDb(projectDir)
 // The configured database as it lives this start: a pending move runs first (the home folder when the
 // path is in either home folder, a project folder the installer recorded), then an unmoved one is served
 // at its old place.
-function liveDb(db, { projectDir, home = os.homedir(), log = () => {} } = {})
+function liveDb(db, { projectDir, home = os.homedir(), log = () => {}, symlink } = {})
 {
     const inHome = [dataRoot.MEMORY_FOLDER, dataRoot.LEGACY_MEMORY_FOLDER].some((f) => path.dirname(path.normalize(db)) === path.join(home, f));
     if (inHome)
     {
-        const moved = dataRoot.moveHomeMemory({ home });
-        if (moved.state === 'moved') log(`memory-launch: moved ${moved.from} -> ${moved.to}${moved.linked ? ', the old path linked to it' : ` - the old path could not be linked (${moved.why})`}`);
+        const moved = dataRoot.moveHomeMemory({ home, ...(symlink ? { symlink } : {}) });
+        const file = path.join(home, dataRoot.MEMORY_FOLDER, path.basename(db));
+        // I2: the data is at the new place and nothing links the old one to it - serve the new file, never the
+        // old path a server would re-create as a second, empty database.
+        const cursorLine = `Cursor, and any install still naming ${moved.from}, does not see these memories until it is pointed at ${moved.to}`;
+        if (moved.state === 'moved' && moved.linked) log(`memory-launch: moved ${moved.from} -> ${moved.to}, the old path linked to it`);
+        if (moved.state === 'moved' && !moved.linked)
+        {
+            log(`memory-launch: moved ${moved.from} -> ${moved.to} - the old path could not be linked (${moved.why}); serving the new one. ${cursorLine}`);
+            return file;
+        }
         if (moved.state === 'busy') log(`memory-launch: ${moved.from} not moved - ${moved.busy.join(', ')} open in another server; served where it is`);
-        if (moved.state === 'exists') log(`memory-launch: both ${moved.from} and ${moved.to} hold data - neither is touched`);
+        // Both hold data: the old folder was re-created after the stack's move (another reader still on the old
+        // path). The stack's own database is the new one; the configured old spelling is read there.
+        if (moved.state === 'exists')
+        {
+            const legacyNamed = dataRoot.homeTwinOf(db, { home });
+            log(`memory-launch: both ${moved.from} and ${moved.to} hold data - neither is touched${legacyNamed && fs.existsSync(file) ? `; serving ${moved.to}. ${cursorLine}` : ''}`);
+            if (legacyNamed && fs.existsSync(file)) return file;
+        }
         return dataRoot.liveMemoryDb(db, { home, projectRoot: projectDir });
     }
     if (dataRoot.memoryLevelOf(db, { home, projectRoot: projectDir }) === 'project' && path.basename(path.dirname(db)) === dataRoot.MEMORY_FOLDER)
@@ -101,6 +117,11 @@ function liveDb(db, { projectDir, home = os.homedir(), log = () => {} } = {})
         const root = rel.endsWith(`/${dataRoot.MEMORY_FOLDER}`) ? rel.slice(0, -(`/${dataRoot.MEMORY_FOLDER}`.length)) : '';
         if (!dataRoot.checkDataPath(root).ok) return dataRoot.liveMemoryDb(db, { home, projectRoot: projectDir });
         const live = dataRoot.liveDir({ projectDir, cls: 'memory', root, pending: dataRoot.pendingOf(projectDir), busy: dataRoot.busyDbs });
+        if (live.dir === dataRoot.targetOf('memory', root))
+        {
+            try { dataRoot.ensureRootIgnore({ projectDir, root }); }
+            catch (err) { log(`memory-launch: ${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore`); }
+        }
         if (live.state === 'moved') log(`memory-launch: moved ${live.from} -> ${live.dir}`);
         if (live.state === 'busy' || live.state === 'failed') log(`memory-launch: ${live.dir} not moved (${live.why}) - served where it is`);
         const found = path.join(projectDir, ...live.dir.split('/'), 'memory.db');

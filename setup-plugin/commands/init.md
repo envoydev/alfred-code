@@ -101,8 +101,9 @@ Run the picked commands in plan order, uv first - the `after uv` ones need it. A
 directory the running shell may not have on PATH yet: its installer prints where. When `uv` is not
 found afterwards, EVERY later command of this run carries that directory first -
 `PATH="<dir>:$PATH" <command>` - step 3's `after uv` commands and step 4's `memory.js init` alike,
-since the import it runs needs `uvx`. The navigation-server index and a browser download take minutes:
-start them in the background and go on to step 4, collecting each result before step 5's
+since the import it runs needs `uvx`. The navigation-server index, a browser download and the memory
+model (the service's ~166MB embedding model, fetched so its first start fits Claude Code's 30s connect
+budget) take minutes: start them in the background and go on to step 4, collecting each result before step 5's
 architecture capture (it navigates by symbol) and the close. Report each as installed, failed (its
 error line quoted) or skipped by the answer. A server this session started before its runtime existed
 connects only after a restart - the close names it.

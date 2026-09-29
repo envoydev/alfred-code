@@ -104,13 +104,12 @@ with the LIBRARY copies on disk (`.claude/skills/<name>/`: every skill, copied p
 
 | skill | origin |
 |---|---|
-| dotnet-testing | plugin |
-| angular-signals | library |
+| dotnet-testing | library |
 | my-team-notes | user-authored |
 
 | agent | origin | model | effort |
 |---|---|---|---|
-| web-angular-solution-designer | library | opus | xhigh |
+| web-angular-solution-designer | plugin | opus | xhigh |
 
 `origin`: `plugin` for a carried row, `library` for a copy the stamp's `library-skills` /
 `library-agents` names, `user-authored` for a copy it does not name. A carried seat named in

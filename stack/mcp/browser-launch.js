@@ -27,6 +27,12 @@ function browserArgs({ spec, engine, projectDir, env = process.env, extra = [], 
     const live = dataRoot.liveDir({ projectDir, cls: `browser-${engine}`, root, pending: dataRoot.pendingOf(projectDir), busy: dataRoot.profileLocks });
     if (live.state === 'moved') log(`browser-launch: moved ${live.from} -> ${live.dir}`);
     if (live.state === 'busy' || live.state === 'failed') log(`browser-launch: ${live.dir} not moved (${live.why}) - serving it where it is this start`);
+    // A profile under the root holds session cookies: the root's .gitignore lands before Playwright writes one.
+    if (live.dir !== dataRoot.legacyOf(`browser-${engine}`))
+    {
+        try { dataRoot.ensureRootIgnore({ projectDir, root, env }); }
+        catch (err) { log(`browser-launch: ${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore`); }
+    }
     const profile = path.join(projectDir, ...live.dir.split('/'));
     return ['-y', spec, '--browser', engine, '--user-data-dir', profile, '--output-dir', path.join(profile, 'output'), ...extra];
 }

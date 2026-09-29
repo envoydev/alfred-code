@@ -1009,6 +1009,22 @@ test('source: a fresh account registers the stack and takes the key the add prod
     assert.deepStrictEqual(run.calls, ['plugin marketplace add envoydev/alfred-code', 'plugin marketplace update envoydev']);
 });
 
+// Live check F1: a local or fork marketplace registered under the stack's key. The GitHub add over it is refused
+// ('its network source differs from the one declared for it in settings') and the run ended on a failure line -
+// the refusal is what kept the local tree, so the add is simply not made over a registration of that name.
+test('source: a marketplace already registered under the stack\'s key - a local directory - is never re-added from GitHub', () =>
+{
+    const run = cli();
+    const key = P.refreshStackSource({
+        listing: [{ name: 'alfred-code', marketplace: 'envoydev', version: '2.1.0', scope: 'project', enabled: true }],
+        marketplaces: [{ name: 'envoydev', source: 'directory', path: '/work/alfred-code' }],
+        cli: run,
+    });
+    assert.strictEqual(key, 'envoydev');
+    assert.ok(!run.calls.some((c) => c.startsWith('plugin marketplace add')), run.calls.join(' | '));
+    assert.ok(run.calls.includes('plugin marketplace update envoydev'), run.calls.join(' | '));
+});
+
 test('source: both keys registered - the one carrying the installed core is used, the other left alone', () =>
 {
     const run = cli();

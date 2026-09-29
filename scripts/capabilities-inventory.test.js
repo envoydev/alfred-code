@@ -284,6 +284,25 @@ test('inventory: a seat permissions.deny names is left out of the SEATS line - a
     finally { fs.rmSync(path.join(TMP, '.claude'), { recursive: true, force: true }); }
 });
 
+// I4: a seat the project keeps as its own copy (tuned or edited) is the one a flow should run - by its bare name.
+// Listed beside the core's twin, the roster would offer both and a flow could dispatch the core's pins.
+test('inventory: a project seat copy wins its name over the core\'s twin, as a copied skill does', { skip: posixOnly }, () =>
+{
+    const root = project('kept-seat', { rule: false });
+    fs.rmSync(path.join(root, '.claude', 'agents'), { recursive: true, force: true });
+    write(path.join(root, '.claude', 'agents', 'aspnet-implementer.md'), '---\nname: aspnet-implementer\nmodel: opus\n---\n');
+    const cache = path.join(TMP, 'kept-core-cache');
+    for (const seat of ['aspnet-implementer', 'aspnet-verifier'])
+        write(path.join(cache, 'stack', 'agents', `${seat}.md`), `---\nname: ${seat}\n---\n`);
+    write(path.join(cache, '.claude-plugin', 'marketplace.json'), JSON.stringify({ name: 'envoydev', plugins: [
+        { name: 'alfred-code', source: './', skills: [], agents: ['./stack/agents/aspnet-implementer.md', './stack/agents/aspnet-verifier.md'] },
+    ] }));
+    const bin = stubCli(path.join(TMP, 'kept-cli'), { plugins: JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true, installPath: cache }]) });
+    const { out } = run([], { cwd: root, bin });
+    assert.match(out, /^\s+alfred-code:aspnet-verifier, aspnet-implementer$/m, out);
+    assert.doesNotMatch(out, /alfred-code:aspnet-implementer/, out);
+});
+
 test('inventory: no local dirs and no plugin carrying them is a STOP, not an empty rule', { skip: posixOnly }, () =>
 {
     const root = project('nothing-at-all', { rule: false });

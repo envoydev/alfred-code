@@ -1081,15 +1081,17 @@ test('every layer ask in walk.md offers 2-4 options with the recommended one fir
 
 // The data-root question (2.1.0) rides the same template shape as the walk's layer asks, so lint 61 holds
 // its recommended option - '.alfred (Recommended)' - first in both homes that ask it.
-test('the data-root question is one ask template in setup and configure, .alfred recommended first', () =>
+// M12: setup has no data yet, so .alfred is its recommendation; configure reads a live install, and the walk's rule
+// is that the current state is the recommended answer - a custom root the user chose is never moved back.
+test('the data-root question is one ask template in setup and configure - .alfred recommended on setup, the current root on configure', () =>
 {
-    for (const rel of ['commands/setup.md', 'commands/configure.md'])
+    for (const [rel, first] of [['commands/setup.md', /^- '\.alfred \(Recommended\)'/], ['commands/configure.md', /^- 'Keep <current> \(Recommended\)'/]])
     {
         const text = fs.readFileSync(path.join(PLUGIN_DIR, rel), 'utf8');
         const data = askBlocks(text).filter((b) => /keep this project's data/i.test(b[0]));
         assert.strictEqual(data.length, 1, `${rel} carries the data question as one ask template`);
         const opts = data[0].filter((l) => /^- '/.test(l));
-        assert.match(opts[0], /^- '\.alfred \(Recommended\)'/, `${rel}: .alfred is the recommended first option`);
+        assert.match(opts[0], first, `${rel}: the recommended first option`);
     }
 });
 

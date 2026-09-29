@@ -48,6 +48,9 @@ function serenaData({ projectDir, env = process.env, platform = process.platform
     // The 2.0.0 folder keeps its own home and serena's own default folder key: nothing is written there.
     if (!legacy)
     {
+        // serena's home holds ~327MB of language servers and its index: the root's .gitignore lands first.
+        try { dataRoot.ensureRootIgnore({ projectDir, root, env }); }
+        catch (err) { log(`serena-launch: ${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore`); }
         try
         {
             const said = dataRoot.ensureSerenaConfig(path.join(projectDir, ...`${live.dir}/home`.split('/')), live.dir);

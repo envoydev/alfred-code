@@ -272,3 +272,63 @@ test('a docs root the user set is never moved - the rest of the data still is', 
     assert.ok(r.has('.alfred/serena/project.yml'), 'the servers\' data moved all the same');
     assert.doesNotMatch(r.ignore, /!\/docs\//, 'no docs live under the root, so all of it stays out of git');
 });
+
+// I1: the root's .gitignore re-includes itself - with `/*` alone it ignored its own file, so it never reached a
+// teammate's clone, where the launchers then wrote cookies and serena's home with nothing ignoring them.
+test('I1 fresh install: the data root\'s .gitignore is itself tracked, and still keeps the machine state out', POSIX_ONLY, () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const ignored = (repo, rel) => { try { execFileSync('git', ['check-ignore', '-q', rel], { cwd: repo, stdio: 'ignore' }); return true; } catch { return false; } };
+    const { result: r, out } = seedRun('install', SELECTION, {
+        prepare: prep, args: ['--scope', 'project', '--browsers', 'chrome'],
+        inspect: (repo) => ({ self: ignored(repo, '.alfred/.gitignore'), cookies: ignored(repo, '.alfred/browser/chrome/Default/Cookies'), docs: ignored(repo, '.alfred/docs/architecture/ARCHITECTURE.md'), text: read(path.join(repo, '.alfred', '.gitignore')) }),
+    });
+    assert.strictEqual(r.self, false, `the ignore file ignores itself:\n${r.text}\n${out}`);
+    assert.strictEqual(r.cookies, true);
+    assert.strictEqual(r.docs, false);
+});
+
+// I3: the launcher moved the data, then another reader still on the 2.0.0 place (a second session's serena, or
+// Cursor's while its mirror is paused) wrote there again. The pending line must clear once its target holds the
+// data - else every later update logs 'waiting for a server's next start' and the preflight asks for a restart
+// forever - the leftover is named with both places, and a re-created .serena stays out of git.
+test('I3 update: a pending move whose target already holds the data clears - no restart loop, the leftover named, .serena ignored', POSIX_ONLY, () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const ignored = (repo, rel) => { try { execFileSync('git', ['check-ignore', '-q', rel], { cwd: repo, stdio: 'ignore' }); return true; } catch { return false; } };
+    const restart = (text) =>
+    {
+        const file = path.join(require('node:os').tmpdir(), `i3-log-${process.pid}-${Math.random().toString(36).slice(2)}.log`);
+        fs.writeFileSync(file, text.replace(/mcps=\d+/g, 'mcps=0'));   // the plugin refresh's own restart is not the data move's
+        try { return execFileSync(process.execPath, [path.join(__dirname, 'update-preflight.js'), '--log', file], { encoding: 'utf8' }); }
+        finally { fs.rmSync(file, { force: true }); }
+    };
+    const { result: r, outs } = seedRun(['install', 'update', 'update', 'update'], SELECTION, {
+        prepare: prep, args: [['--scope', 'project', '--browsers', 'chrome'], [...UPDATE, '--data-move', 'move'], UPDATE, UPDATE],
+        each: (repo, i) =>
+        {
+            if (i === 0) return twoZeroLayout(repo, { memoryDb: false });
+            if (i === 1)   // the launchers at the next start, then a reader still on .serena writes there again
+            {
+                fs.rmSync(path.join(repo, '.alfred', 'serena'), { recursive: true, force: true });
+                fs.renameSync(path.join(repo, '.serena'), path.join(repo, '.alfred', 'serena'));
+                fs.mkdirSync(path.join(repo, '.alfred', 'browser'), { recursive: true });
+                fs.renameSync(path.join(repo, '.playwright', 'chrome'), path.join(repo, '.alfred', 'browser', 'chrome'));
+                put(path.join(repo, '.serena', 'home', 'logs', 'x.log'), 'log');
+            }
+            return null;
+        },
+        inspect: (repo) => ({ ...look(repo), serenaIgnored: ignored(repo, '.serena/home/logs/x.log') }),
+    });
+    assert.deepStrictEqual(pendingOf(r.stamp), [], outs[2]);
+    for (const i of [2, 3])
+    {
+        assert.doesNotMatch(outs[i], /waiting for a server's next start/, outs[i]);
+        assert.match(restart(outs[i]), /^restart: no$/m, `update ${i} asks for a restart:\n${outs[i]}`);
+    }
+    assert.match(outs[2], /!! .*\.serena still holds data after the move to \.alfred\/serena - remove or merge it/, outs[2]);
+    assert.strictEqual((outs[2].match(/\.serena still holds data/g) || []).length, 1, `named once:\n${outs[2]}`);
+    assert.match(outs[3], /data root: \.serena still holds data beside \.alfred\/serena - remove or merge it; nothing moved/, outs[3]);
+    assert.doesNotMatch(outs[3], /!! .*\.serena/, 'a later run names the clash, never as a warning again');
+    assert.strictEqual(r.serenaIgnored, true, 'the re-created .serena is untracked noise a git add -A would take in');
+});

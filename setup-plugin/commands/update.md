@@ -297,8 +297,9 @@ the keep answer `--data-move keep` - on the installer call of whichever path run
 keeps it that way (the docs' own `.gitignore` of `*`, `ALFRED_CODE_DOCS_VERSIONING` becomes `local`) - say
 so in the move option. When the new-items ask fires too, both go in the SAME AskUserQuestion call, one
 question each. A `conflicts=<n>` field means data already sits at the new place: do not ask - name the
-count, run without the flag (the old places stay in effect), and the next update offers again once
-they are cleared. After a move the log carries `docs root: moved ...` and `data root: ...` lines (what
+count, run without the flag (the old places stay in effect, except one a server already moved - there the
+new place serves, and the log's `still holds data` line names the leftover to remove or merge), and the
+next update offers again once they are cleared. After a move the log carries `docs root: moved ...` and `data root: ...` lines (what
 moved now, what waits for a server's next start), the `--log` call prints `restart: yes`, and until that
 restart this session writes the docs under the NEW root - its loaded rule text still names the old one.
 Unattended, both asks take their Recommended option - the move overwrites nothing (a conflict already
@@ -389,7 +390,7 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|were moved from|docs (migration|domain|root|move)|data root:|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|scope: this project is a 1\.x global install|context7-local removed|core moved to alfred-code|has no status line yet|plugin moved \[' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|roster:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|were moved from|docs (migration|domain|root|move)|data root:|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|scope: this project is a 1\.x global install|context7-local removed|core moved to alfred-code|has no status line yet|plugin moved \[' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired
@@ -485,9 +486,13 @@ selection from a disk inventory on the Node seed: on the plugin routes `.claude/
 library copies, and a selection built from it switches off every seat an enabled entry carries (the Phase 8
 read-back exists for exactly that). The first update past 2.1.0 is the one that moves an install
 across: its stamp has no `seats-route:` line, so the read-back goes by what the 2.0.x core carried -
-the always skills become copies, a library seat copy is pruned (an edited one is kept and named), and
+the always skills become copies, a library seat copy is pruned (an edited one is kept and named, and so
+is a tuned one - a `model` / `effort` other than the stack's, which no setting can give the core's seat), and
 every seat the install never ran is denied; the installer says it in one `installed-only: the stamp
-predates 2.1.0` line (and one `agent kept:` line per edited seat copy it leaves). A `required:` line (a dependency the new release introduced) is auto-kept and
+predates 2.1.0` line (and one `agent kept:` line per kept seat copy, naming its pins and that it is
+dispatched by its bare name - the capabilities rule's seats line is re-spelled to match, every other seat
+as `alfred-code:<seat>`). Quote each `agent kept:` line in the report: the core's twin still lists beside the
+copy, and deleting the copy is how the user takes the stack's seat back. A `required:` line (a dependency the new release introduced) is auto-kept and
 reported. An `unknown:` line is NEVER prune evidence: a skill, agent, rule or hook the user wrote,
 and an MCP server added by hand, print exactly that way, and the installer leaves every one of
 them in place (it only replaces the names it ships; a hand-added `.mcp.json` server is never

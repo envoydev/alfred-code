@@ -686,6 +686,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             data: { root: dataInfo.root, pending: dataPlan.pending, kept: dataPlan.kept },
         });
 
+        warmMemoryModel(ctx);
         summarise(ctx, failures);
         return failures ? 0 : 0;   // fail-soft by design: a step that failed is REPORTED, never fatal
     }
@@ -722,6 +723,8 @@ function runLayers(ctx)
     catch (err) { ctx.note(`${docsPath}/.gitignore could not be written (${err.message}) - add the docs root's machine state to the repo's own .gitignore`); }
     if (args.action === 'install') ctx.seededClaudeMd = seeds.seedClaudeMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
     selection.respellRenamed({ projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, log: ctx.log, note: ctx.note });
+    if (plugins.corePluginOn(ctx.routes))
+        selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, seats: placement().plugins[CORE].agents, log: ctx.log, note: ctx.note });
     dataRootLayer(ctx, docsPath);
     seeds.playwrightDownloads({
         browsers: pwEngines(ctx),
@@ -756,12 +759,15 @@ function dataRootLayer(ctx, docsPath)
         }
         catch (err) { note(`${serenaDir}/home/serena_config.yml could not be written (${err.message}) - serena falls back to .serena`); }
     }
-    if (serenaDir === dataRoot.LEGACY.serena)
+    // A 2.0.0 place in use, or one holding data again after its move (a reader still on the old place wrote
+    // there, and its own .gitignore left with the folder): kept out of git either way.
+    const holdsAt = (rel) => { try { return fs.readdirSync(path.join(projectRoot, ...rel.split('/'))).some((n) => n !== '.gitignore'); } catch { return false; } };
+    if (serenaDir === dataRoot.LEGACY.serena || holdsAt(dataRoot.LEGACY.serena))
     {
-        try { serena.ensureSerenaIgnore({ projectRoot, selected: navigation, log }); }
+        try { serena.ensureSerenaIgnore({ projectRoot, selected: navigation || holdsAt(dataRoot.LEGACY.serena), log }); }
         catch (err) { note(`.serena/.gitignore could not be written (${err.message}) - add .serena/ to the repo's own .gitignore`); }
     }
-    const legacyEngines = pwEngines(ctx).filter((e) => ctx.liveOf(`browser-${e}`) === dataRoot.legacyOf(`browser-${e}`));
+    const legacyEngines = pwEngines(ctx).filter((e) => ctx.liveOf(`browser-${e}`) === dataRoot.legacyOf(`browser-${e}`) || holdsAt(dataRoot.legacyOf(`browser-${e}`)));
     try { mcp.ensurePlaywrightIgnore({ projectRoot, engines: legacyEngines, log }); }
     catch (err) { note(`.playwright/.gitignore could not be written (${err.message}) - add .playwright/ to the repo's own .gitignore`); }
     for (const old of new Set([ctx.dataInfo.prior, ...ctx.dataPlan.left].filter((r) => r && r !== root)))
@@ -838,6 +844,16 @@ function planDataMove({ projectRoot, info, engines, memoryProject, launched, ans
     // A root a recorded move has now emptied (its launcher ran) is pruned by the data-root layer.
     const left = info.recorded.pending.filter((p) => !holds(p.from)).map((p) => dataRoot.rootOfPlace(p.cls, p.from)).filter(Boolean);
     let pending = info.recorded.pending.filter((p) => holds(p.from) && p.to === dataRoot.targetOf(p.cls, info.root));
+    // A target that already holds the data was filled by its launcher's move; what sits at `from` now was
+    // written after it, by a reader still on the old place (a second session's server, or Cursor's). The line
+    // clears - kept, every later run would wait for a move that already ran and ask for a restart forever -
+    // and the leftover is named once here; later runs see it as a plain clash (below).
+    pending = pending.filter((p) =>
+    {
+        if (!holds(p.to)) return true;
+        log(`  !! data root: ${p.from} still holds data after the move to ${p.to} - remove or merge it`);   // a warning, not a failed step
+        return false;
+    });
     let kept = info.recorded.kept && answer !== 'move';
     if (answer === 'keep') { kept = true; pending = []; }
     pending = pending.filter((p) =>
@@ -866,7 +882,13 @@ function planDataMove({ projectRoot, info, engines, memoryProject, launched, ans
         }
     }
     else if (open.length && !kept)
-        log(`data root: ${open.map((r) => r.from).join(', ')} sit outside ${info.root} - /alfred-code:update offers the move to ${info.root} (--data-move move|keep); nothing moved`);
+    {
+        // A clash is no offer: a move would overwrite nothing, so it never runs until one side is cleared.
+        for (const row of open.filter((r) => r.conflict))
+            if (!info.recorded.pending.some((p) => same(p, row))) log(`data root: ${row.from} still holds data beside ${row.to} - remove or merge it; nothing moved`);
+        const offered = open.filter((r) => !r.conflict);
+        if (offered.length) log(`data root: ${offered.map((r) => r.from).join(', ')} sit outside ${info.root} - /alfred-code:update offers the move to ${info.root} (--data-move move|keep); nothing moved`);
+    }
     return { pending, kept, moved, rows, left: [...new Set(left.filter((r) => r && r !== info.root))] };
 }
 
@@ -1044,9 +1066,26 @@ function installSkillsAndAgents(ctx)
             const now = was && library.hashItem(path.join(agentsDir, `${n}.md`));
             return Boolean(now && now !== was);
         };
-        const keptSeats = agents.filter((n) => core.agents.includes(n) && edited(n));
+        // I4: a copy whose model / effort differ from the stack's is the user's tuning, whatever its hash says -
+        // 2.0.0's --keep-pins re-hashed a copy after restoring its pins, so a tuned copy reads as unedited. No
+        // setting overrides a plugin seat's own frontmatter (code.claude.com/docs/en/sub-agents, 'Choose a
+        // model': the dispatch's model, then the definition's, then CLAUDE_CODE_SUBAGENT_MODEL for all), so the
+        // tuning survives only as the project copy, dispatched by its bare name.
+        const tuning = (n) =>
+        {
+            const pairs = (file) => pinsLayer.KEYS.map((k) => [k, pinsLayer.readPin(file, k)]).filter(([, v]) => v);
+            const mine = pairs(path.join(agentsDir, `${n}.md`));
+            const stack = Object.fromEntries(pairs(path.join(ctx.source.dir, 'stack', 'agents', `${n}.md`)));
+            if (!mine.length || mine.every(([k, v]) => stack[k] === v)) return null;
+            const say = (list) => list.map(([k, v]) => `${k}=${v}`).join(', ');
+            return `its model/effort (${say(mine)}) differ from the stack's (${say(pinsLayer.KEYS.map((k) => [k, stack[k]]).filter(([, v]) => v))})`;
+        };
+        const keptSeats = agents.filter((n) => core.agents.includes(n) && (edited(n) || tuning(n)));
         for (const n of keptSeats)
-            ctx.log(`  agent kept: ${n}.md - edited in the project since the stack copied it, so it is yours; it lists beside ${CORE}:${n} - delete it to use the plugin's seat`);
+        {
+            const why = [edited(n) ? 'edited in the project since the stack copied it' : '', tuning(n) || ''].filter(Boolean).join(' - ');
+            ctx.log(`  agent kept: ${n}.md - ${why}, so it is yours; dispatched as '${n}' (the project copy) - the capabilities rule names it that way, so a flow runs it and never ${CORE}:${n}, which still lists beside it; delete the copy to use the plugin's seat`);
+        }
         pruneCopies(ctx, ctx.skillsDir, skills.filter((n) => core.skills.includes(n)), 'skill', 'now carried by a plugin');
         pruneCopies(ctx, ctx.skillsDir, skills.filter((n) => !core.skills.includes(n)), 'skill', 'library item not picked');
         pruneCopies(ctx, agentsDir, agents.filter((n) => core.agents.includes(n) && !keptSeats.includes(n)).map((n) => `${n}.md`), 'agent', 'now carried by a plugin');
@@ -1928,15 +1967,48 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, env, has
         mcpAt: ledger.mcpAt || {}, cli, log, note,
         readAt: (scope) => mcp.registrationsAt({ scope, accountFile, projectRoot }),
     });
+    // M4: read before the settings pass removes ALFRED_CODE_DATA_PATH - the stamp's record first.
+    const keptRoot = stampLayer.readDataLines(file).root || dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root;
     settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, log });
     const memoryOff = ['settings.json', 'settings.local.json'].some((n) => readJson(path.join(claudeDir, n)).autoMemoryEnabled === false);
-    log(`  kept, yours or your data: a CLAUDE.md you filled in, the data root (the docs, the navigation index, the browser profiles - ${dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root}/, or a 2.0.0 .serena/ / .playwright/), the memory database${memoryOff ? '; autoMemoryEnabled: false stays - Claude\'s own memory is off until you remove that key' : ''}`);
+    log(`  kept, yours or your data: a CLAUDE.md you filled in, the data root (the docs, the navigation index, the browser profiles - ${keptRoot}/, or a 2.0.0 .serena/ / .playwright/), the memory database${memoryOff ? '; autoMemoryEnabled: false stays - Claude\'s own memory is off until you remove that key' : ''}`);
     if (failures()) { log(`  stamp kept - ${path.basename(file)} still lists what is left; run uninstall again to finish`); return 0; }
     fs.rmSync(file, { force: true });
     log(`  stamp removed: ${path.basename(file)} - every item the ledger listed is gone, or named above as kept`);
     try { if (!fs.readdirSync(claudeDir).length) fs.rmdirSync(claudeDir); } catch { /* the project's own .claude stays */ }
     return 0;
+}
+
+// THE MEMORY MODEL, FETCHED AHEAD (live check F2). The memory service downloads its embedding model (~166MB)
+// on its first start - 33s cold against Claude Code's 30s MCP connect budget, and a server that misses it is
+// cached as failed, so the next session does not start it either. This run is outside any session, so on a
+// machine with uvx it fetches the model once through the snapshot's own launcher (stack/hooks/memory.js warm,
+// a scratch database, bounded); without uvx init installs it and its plan lists the same command.
+// ALFRED_CODE_MEMORY_WARM=0 in the run's environment switches it off.
+function warmMemoryModel(ctx)
+{
+    if (!['install', 'update'].includes(ctx.args.action)) return;
+    if (!ctx.lists.mcps.some((e) => e.split('|')[0] === 'memory')) return;
+    if (String((ctx.env || {}).ALFRED_CODE_MEMORY_WARM || '') === '0') return;
+    const engine = path.join(ctx.source.dir, 'stack', 'hooks', 'memory.js');
+    let cached = false;
+    try { cached = require(engine).modelCached(ctx.home || require('node:os').homedir()); } catch { cached = false; }
+    if (cached) return;
+    if (!ctx.rt.which('uvx'))
+    {
+        ctx.log('memory: the embedding model (~166MB) is fetched at the memory server\'s first start - uvx is not here yet; /alfred-code:init installs it and fetches the model');
+        return;
+    }
+    const WARM_MS = 240000;
+    const r = ctx.rt.runNode(engine, ['warm', '--root', ctx.projectRoot, '--plugin-root', ctx.source.dir, '--timeout', String(WARM_MS)],
+        { cwd: ctx.projectRoot, env: ctx.env, timeout: WARM_MS + 20000 });
+    const said = (/^memory warm: (.*)$/m.exec(r.stdout) || [])[1] || (r.stderr.trim().split('\n').pop() || 'no answer');
+    const ready = /^ready \((\d+)s\)$/.exec(said);
+    if (r.ok && (ready || said === 'cached'))
+        ctx.log(`memory: the embedding model is cached now${ready ? ` (${ready[1]}s)` : ''} - the memory server's first start fits Claude Code's 30s connect budget`);
+    else
+        ctx.log(`  !! memory: the embedding model (~166MB) could not be fetched ahead (${said.replace(/^failed - /, '')}) - the memory server's first start fetches it and can miss Claude Code's 30s connect budget; run node .claude/hooks/memory.js warm before the next session`);
 }
 
 function summarise(ctx, failures)

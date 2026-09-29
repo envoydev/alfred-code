@@ -97,6 +97,43 @@ function legacyOf(cls)
     return m ? `${LEGACY.browser}/${m[1]}` : null;
 }
 
+// ------------------------------------------------------------------ the root's own .gitignore
+
+// Everything under the root is this machine's - the navigation index and its ~327MB of language servers,
+// browser profiles holding session cookies, a project memory database - EXCEPT the docs, whose own
+// `.gitignore` says how they are versioned. So the root ignores everything and re-includes the docs folder:
+// a bare `*` would hide it, `git check-ignore` would then answer yes for it, and the versioning seed would
+// read every fresh project's docs as kept out of git and seed `local`. It re-includes ITSELF too, so it is
+// committed and a teammate's clone has it before any server writes there. The header line marks the file
+// as the stack's: any other text is the project's own and is left alone. One home, read by the installer
+// (docs.ensureDataIgnore) and by every launcher that writes under the root (ensureRootIgnore).
+const DATA_IGNORE_HEAD = '# alfred-code: the data root (ALFRED_CODE_DATA_PATH) is machine-local';
+const relOf = (v) => String(v || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+function dataIgnoreText({ root, docsPath })
+{
+    const rel = path.posix.relative(relOf(root), relOf(docsPath));
+    const docsInside = rel && !rel.startsWith('..') && !path.posix.isAbsolute(rel);
+    return docsInside
+        ? `${DATA_IGNORE_HEAD}; the docs under it follow ALFRED_CODE_DOCS_VERSIONING (their own .gitignore)\n/*\n!/.gitignore\n!/${rel.split('/')[0]}/\n`
+        : `${DATA_IGNORE_HEAD}\n*\n!/.gitignore\n`;
+}
+
+// A launcher's half, before it hands out a path under the root: the file is written only when absent (the
+// installer keeps it current), with the docs root the settings name - else `<root>/docs`, what every install
+// writes. A project on 2.0.0 whose servers are already 2.1 has none yet. 'written' | 'present'.
+function ensureRootIgnore({ projectDir, root, env = process.env })
+{
+    const base = path.join(projectDir, ...String(root).split('/'));
+    const file = path.join(base, '.gitignore');
+    if (fs.existsSync(file)) return 'present';
+    const docsPath = settingFrom({ env, projectDir, suffix: 'DOCS_PATH' }) || `${root}/docs`;
+    fs.mkdirSync(base, { recursive: true });
+    // `wx`: another server starting at the same moment may have written it - its file stands.
+    try { fs.writeFileSync(file, dataIgnoreText({ root, docsPath }), { flag: 'wx' }); }
+    catch (err) { if (err.code === 'EEXIST') return 'present'; throw err; }
+    return 'written';
+}
+
 // ------------------------------------------------------------------ the memory database
 
 function memoryDbFor(level, { home, space, projectRoot, root = DATA_ROOT_DEFAULT } = {})
@@ -163,12 +200,25 @@ function legacyTwinOf(p, { home, projectRoot } = {})
 
 const exists = (p) => { try { fs.statSync(p); return true; } catch { return false; } };
 
+// The new spelling of a 2.0.0 HOME memory path (~/.memory-mcp/<file> -> ~/.alfred-memory/<file>); null for
+// any other path. The project database has no fixed new place - it follows the data root.
+function homeTwinOf(p, { home } = {})
+{
+    if (!p || !home) return null;
+    const norm = realish(path.normalize(String(p)));
+    return path.dirname(norm) === path.join(realish(home), LEGACY_MEMORY_FOLDER) ? path.join(home, MEMORY_FOLDER, path.basename(norm)) : null;
+}
+
 // The database a reader should open for a configured path: the path itself once it exists, else its old
 // twin while that one has not moved yet - so a server and the session-start hook read the same memories
-// in the window between an update and the move.
+// in the window between an update and the move. An old HOME path that is gone names its new spelling
+// (I2): the folder moved, and a link back could not be made - never the old folder, which a server would
+// then re-create as a second, empty database.
 function liveMemoryDb(p, { home, projectRoot } = {})
 {
     if (!p || exists(p)) return p;
+    const moved = homeTwinOf(p, { home });
+    if (moved) return moved;
     const twin = legacyTwinOf(p, { home, projectRoot });
     return twin && exists(twin) ? twin : p;
 }
@@ -223,7 +273,7 @@ function moveEntry(from, to)
 
 // ~/.memory-mcp -> ~/.alfred-memory, when no database in it is open, with the old path left as a link.
 // { state: 'moved' | 'linked' (done before) | 'absent' | 'busy' | 'exists' (both hold data) | 'failed' }.
-function moveHomeMemory({ home, platform = process.platform } = {})
+function moveHomeMemory({ home, platform = process.platform, symlink = fs.symlinkSync } = {})
 {
     if (!home) return { state: 'absent' };
     const from = path.join(home, LEGACY_MEMORY_FOLDER);
@@ -241,8 +291,8 @@ function moveHomeMemory({ home, platform = process.platform } = {})
     // working if the home folder itself is ever moved.
     try
     {
-        if (platform === 'win32') fs.symlinkSync(to, from, 'junction');
-        else fs.symlinkSync(MEMORY_FOLDER, from, 'dir');
+        if (platform === 'win32') symlink(to, from, 'junction');
+        else symlink(MEMORY_FOLDER, from, 'dir');
         return { state: 'moved', from, to, linked: true };
     }
     catch (err) { return { state: 'moved', from, to, linked: false, why: err.code || err.message }; }
@@ -362,7 +412,8 @@ function ensureSerenaConfig(homeAbs, folder = `${DATA_ROOT_DEFAULT}/serena`)
 module.exports = {
     DATA_ROOT_DEFAULT, MEMORY_FOLDER, LEGACY_MEMORY_FOLDER, ENGINES, LEGACY,
     checkDataPath, dataRootOf, layout, targetOf, rootOfPlace, legacyOf,
-    memoryDbFor, memoryLevelOf, legacyTwinOf, liveMemoryDb,
+    DATA_IGNORE_HEAD, dataIgnoreText, ensureRootIgnore,
+    memoryDbFor, memoryLevelOf, legacyTwinOf, homeTwinOf, liveMemoryDb,
     busyDbs, profileLocks, moveEntry, moveHomeMemory,
     dataMovePlan, renderPending, readPending, pendingOf, liveDir, ensureSerenaConfig,
 };

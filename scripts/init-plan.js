@@ -9,7 +9,7 @@
 //   machine: <what> - present | missing: <command> | missing after uv: <command> | refresh: <command> | blocked: <why> | skip: <why>
 //     What the kept MCPs need before they can start, probed on this machine, in install order: uv,
 //     the pinned Python fetched through it, csharp-ls when csharp-lsp is kept, the picked playwright
-//     browsers, and the serena index. Setup's install already downloaded a picked firefox / webkit, so
+//     browsers, the serena index and the memory service's embedding model. Setup's install already downloaded a picked firefox / webkit, so
 //     one is here only when that download failed; chrome and msedge run the machine's own browser,
 //     probed like stack-select's msedge check, and one that is not there is `blocked` with its fix.
 //     Last, the account's claude-hud status line + compact layout (hud-statusline.js, the account dir
@@ -136,6 +136,13 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
     const index = `uvx --python ${request} --from serena-agent${pinOf('navigation')} serena project index`;
     add('serena index', nonEmptyDir(path.join(root, ...serenaDir.split('/'), 'cache')) ? 'present' : afterUv,
         win ? `$env:SERENA_HOME='${serenaHome}'; ${index}` : `SERENA_HOME=${serenaHome} ${index}`);
+
+    // The memory service's embedding model (~166MB), fetched ahead: its first start downloads it, 33s cold
+    // against Claude Code's 30s connect budget, and a server that misses it is cached as failed (live check F2).
+    // Setup's install fetches it where uvx already was; here it follows the uv this init installs.
+    const marker = path.join(home, '.cache', 'mcp_memory', 'onnx_models', 'all-MiniLM-L6-v2', 'onnx', 'model.onnx');
+    add('memory model', (probe.file || fs.existsSync)(marker) ? 'present' : afterUv,
+        `node "${path.join(REPO, 'stack', 'hooks', 'memory.js')}" warm --root "${root}" --plugin-root "${REPO}"`);
 
     // claude-hud arrives configured: its account statusLine plus the plugin-settings row, one command.
     // The runtime is planHud's default - the node the command itself finds on this PATH.

@@ -252,13 +252,14 @@ it MOVES that data, and it goes through the installer, never the merge below. It
 plugin data storage as a whole, the current value shown with what it holds:
 
 ```ask
-Where should Alfred Code keep this project's data - its docs, the navigation index and handoff notes, browser profiles and a project memory database? Recommended: .alfred at the project root - one folder outside .claude/, where Claude Code prompts for every write; its own .gitignore keeps everything but the docs out of git.
-- '.alfred (Recommended)' - everything under one folder; data elsewhere now (a 2.0.0 .serena, .playwright, .memory-mcp or docs at .claude/docs) is moved there
-- 'Keep <current>' - nothing moves; offered only when the current value is not .alfred
+Where should Alfred Code keep this project's data - its docs, the navigation index and handoff notes, browser profiles and a project memory database? Recommended: keep <current> - the folder it uses now, so nothing moves; its own .gitignore keeps everything but the docs out of git.
+- 'Keep <current> (Recommended)' - nothing moves; data still at a 2.0.0 place keeps serving from there
+- 'Move everything into .alfred' - one folder at the project root, outside .claude/; when <current> is already .alfred it moves only the data still at a 2.0.0 place (.serena, .playwright, .memory-mcp, docs at .claude/docs) - leave this option out when there is none
 ```
 
 A typed folder (Other) is a custom root - relative, inside the project, never under `.claude/`, no space.
-Keeping `.alfred` when it is already the value is no change. A change - to `.alfred` from a 2.0.0
+The current state is always the recommended answer (the walk's own rule): a custom root the user chose is
+kept, never moved back to `.alfred`. Keeping it is no change. A change - to `.alfred` from a 2.0.0
 layout, or to another folder - runs `node $TMP/repo/scripts/install/alfred-code.js update --source
 $TMP/repo --scope <scope> --installed-only --data-path <folder> --data-move move 2>&1 | tee
 "$TMP/install.log"` (step 12's installer call carries both flags when it runs anyway); report its

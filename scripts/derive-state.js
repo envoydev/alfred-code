@@ -377,7 +377,8 @@ function writable(state, { routes = {}, answered = { hooks: true, agents: true }
 {
     const hooks = Boolean(state && state.hooks.answered && answered.hooks !== false);
     // Whenever the CORE loads - it carries every seat (2.1.0), so on the skills copy route with the
-    // core on the seats it lists beside the copies are switched off the same way.
+    // core on its UNPICKED seats are switched off the same way; a picked seat lists twice there, its
+    // copy and <core>:<seat> (install-placement.test.js pins it - the 0.2.x fallback's cost, M8).
     const agents = Boolean(state && answered.agents && corePluginOn(routes));
     // The hooks copy route with the core on: the core carries every hook, and a hook the project does
     // not wire has no twin to stand down for, so this name is its only off-switch. The list is the
