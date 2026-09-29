@@ -810,7 +810,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   a ZWJ between two emoji parts or two non-ASCII letters, a ZWNJ between two non-ASCII letters, an
   LRM / RLM beside one.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (51,473 on 2026-09-29: pathless rules 25,090, agent descriptions 12,619, skill descriptions 13,764 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories moving to `docs/baseline-rules-evidence.md`, and the 2.1.2 cap below cut the skill descriptions from 50,719). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 70,000 chars (lowered from 160,000 on 2026-09-29, about 35% over the measured total; 51,473 on 2026-09-29: pathless rules 25,090, agent descriptions 12,619, skill descriptions 13,764 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories moving to `docs/baseline-rules-evidence.md`, and the 2.1.2 cap below cut the skill descriptions from 50,719). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor. An AGENT description is capped at 300 chars (check 15b): the 'Use when...' sentence and its
   'Do NOT use' clause, the rest in the agent's `## Scope` body section - the dispatcher's listing carries

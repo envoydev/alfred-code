@@ -2368,7 +2368,7 @@ function main()
         alwaysOnChars = ruleChars + agentChars + skillChars;
         // The ceiling is the measured surface plus ~10% headroom: it is a budget to DEFEND, not a
         // target to grow into. Raising it is a deliberate edit with a reason, which is the point.
-        const ALWAYS_ON_MAX = 160000;
+        const ALWAYS_ON_MAX = 70000;
         if (alwaysOnChars > ALWAYS_ON_MAX)
         {
             flag(`always-on surface ${alwaysOnChars} chars (~${Math.round(alwaysOnChars / 4000)}k tokens) is over the ${ALWAYS_ON_MAX} budget`
