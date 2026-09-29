@@ -99,9 +99,10 @@ Total time: <sum across all groups>.
 - Self-check before output: write the drafted task lines of each day to a file inside the session's own scratch directory (never the project tree, never outside it), then run them through this skill's bundled `total-time.js` - resolved from the skill's own folder, never from the session's working directory, where a bare `scripts/` path misses it or runs the project's own file (Node.js built-ins only, nothing to install; run from the project root):
 
   ```bash
+  LINES='<the scratch file holding the drafted task lines>'
   T="${CLAUDE_SKILL_DIR}/scripts/total-time.js"
   [ -f "$T" ] || T=.claude/skills/dev-log-convert/scripts/total-time.js
-  node "$T" < "$LINES"   # LINES = the scratch file holding the drafted task lines
+  node "$T" < "$LINES"
   ```
 
   Confirm its total equals the printed `Total time`; it reads only the bracketed time after the ticket id (a duration in the summary never counts), normalizes the h/m, Ukrainian and decimal-hour spellings, and counts a `(time not specified)` line as zero. On a mismatch, take the script's total - never print an unverified sum. Where neither path holds the script, re-add the times by hand and say the check was manual.
