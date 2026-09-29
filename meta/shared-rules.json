@@ -5985,11 +5985,23 @@
           "marker": "exactly as the roster spells it"
         },
         {
+          "file": "stack/skills/alfred-issue-signatures-ci/references/gatherer-fan-out.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-issue-signatures-runtime/references/gatherer-fan-out.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
           "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
           "file": "stack/skills/alfred-loop-architecture-quality/references/domain-trio-protocol.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
@@ -6038,6 +6050,10 @@
         },
         {
           "file": "stack/skills/alfred-task-verify-plan/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/alfred-task-version-upgrade/SKILL.md",
           "marker": "exactly as the roster spells it"
         }
       ]

@@ -1095,6 +1095,20 @@ test('the data-root question is one ask template in setup and configure - .alfre
     }
 });
 
+// M13: each enabled browser puts about 25 tools into every session, so keeping the browser server is
+// recommended only where the walk seeded it (a web stack) or the evidence proved it; with neither, the
+// ask leads with dropping it. Two templates, one per case, each with its recommended option first.
+test('M13 the browser ask recommends keeping the server only when a stack seeded it or the evidence proved it', () =>
+{
+    const walk = walkBody();
+    const browser = askBlocks(walk).filter((b) => /Keep the browser server \(Playwright\)\?/.test(b[0]));
+    assert.strictEqual(browser.length, 2, 'one template for a seeded or evidence-proven row, one for the rest');
+    const firsts = browser.map((b) => b.filter((l) => /^- '/.test(l))[0]);
+    assert.match(firsts[0], /^- 'Keep the browser server \(Recommended\)' - [^\n]*(seeded|evidence)/, firsts[0]);
+    assert.match(firsts[1], /^- 'Drop the browser server \(Recommended\)'/, firsts[1]);
+    assert.match(flat(walk), /browser row reads `stack:<name>`, `recommended` or `evidence`[^.]*first template[^.]*otherwise[^.]*second/i);
+});
+
 test('setup and configure name option asks, not typed numbers, for stacks and the add/drop rounds', () =>
 {
     const setup = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'setup.md'), 'utf8');

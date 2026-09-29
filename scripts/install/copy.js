@@ -222,7 +222,8 @@ function stampDocsRoot(projectRoot, { scope, value: given, log = () => {}, note 
 // routes an extra - or the next --installed-only read-back finds the file and puts it straight back.
 // Only a name the stack ships; the engines are no hook line, so a drop never reaches them.
 const DROP_PATH = { skill: (n) => n, agent: (n) => `${n}.md`, rule: (n) => `${n}.md`, hook: (n) => `${n}.js` };
-function removeDropped({ drop = [], dirs, shipped, log = () => {} })
+// `keep(category, name)` (M3) names a same-named folder that is the project's own, never the stack's copy.
+function removeDropped({ drop = [], dirs, shipped, keep = () => false, log = () => {} })
 {
     for (const line of drop)
     {
@@ -230,6 +231,7 @@ function removeDropped({ drop = [], dirs, shipped, log = () => {} })
         if (!DROP_PATH[category] || !(shipped[category] || []).includes(name)) continue;
         const target = path.join(dirs[category], DROP_PATH[category](name));
         if (!fs.existsSync(target)) continue;
+        if (keep(category, name)) { log(`  ${category} kept (dropped, but the project's own - the stamp does not record it): ${name}`); continue; }
         fs.rmSync(target, { recursive: true, force: true });
         log(`  ${category} removed (dropped): ${name}`);
     }

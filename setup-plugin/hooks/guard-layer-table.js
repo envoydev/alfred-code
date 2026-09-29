@@ -19,7 +19,8 @@
 // The transcript is written asynchronously: at PreToolUse time the ask's OWN message (the pasted text
 // rows sharing message.id with the AskUserQuestion tool_use) may not be on disk yet. The hook waits for
 // the row carrying the payload's tool_use_id, and allows when it never lands - it cannot judge a
-// message it cannot see. ALFRED_CODE_LAYER_GATE_WAIT_MS overrides the 2000ms budget (tests).
+// message it cannot see. ALFRED_CODE_LAYER_GATE_WAIT_MS overrides the 2000ms budget (tests). With no
+// table call since the typed prompt it never waits: there is nothing to judge (M15).
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unreadable.
 const fs = require('fs');
 
@@ -59,21 +60,6 @@ const waitMs = (() => {
   return process.env.ALFRED_CODE_LAYER_GATE_WAIT_MS !== undefined && Number.isFinite(v) && v >= 0 ? v : 2000;
 })();
 
-let rows;
-try {
-  rows = readRows();
-  if (ownId && !hasOwnRow(rows)) {
-    const until = Date.now() + waitMs;
-    while (Date.now() < until && !hasOwnRow(rows)) {
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
-      rows = readRows();
-    }
-    if (!hasOwnRow(rows)) process.exit(0);
-  }
-} catch {
-  process.exit(0);
-}
-
 // A trailing-backslash continuation keeps the command on one logical line.
 const TABLE_RE = /stack-select\.js\b(?:[^\n]|\\\r?\n)*?--table\s+["']?([a-z]+)/;
 // validate's own audit battery (no --table footer to prove against - the calls redirect to a file);
@@ -86,6 +72,36 @@ const LAST_LINE_REPORTS = [
   { re: /plugin-settings\.js\b/, skip: /--apply\b/, empty: /nothing to offer/, name: 'plugin-settings report' },
   { re: /audit-install\.js\b/, skip: /--json\b/, empty: /nothing to report/, name: 'install audit' },
 ];
+// M15: the own-row wait only buys a view of the ask's own message, which matters only when a table call
+// since the typed prompt could need proving - with none, there is nothing to judge and the ask passes now.
+const tableCall = (cmd) => TABLE_RE.test(cmd) || AUDIT_RE.test(cmd) || LAST_LINE_REPORTS.some((r) => r.re.test(cmd) && !r.skip.test(cmd));
+const tailHasTable = (rs) => {
+  for (let i = rs.length - 1; i >= 0; i--) {
+    let o;
+    try { o = JSON.parse(rs[i]); } catch { continue; }
+    const content = o && o.message && o.message.content;
+    if (o && o.type === 'user' && typeof content === 'string') return false;
+    if (Array.isArray(content) && content.some((b) => b && b.type === 'tool_use' && tableCall(String((b.input && b.input.command) || '')))) return true;
+  }
+  return false;
+};
+
+let rows;
+try {
+  rows = readRows();
+  if (!tailHasTable(rows)) process.exit(0);
+  if (ownId && !hasOwnRow(rows)) {
+    const until = Date.now() + waitMs;
+    while (Date.now() < until && !hasOwnRow(rows)) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+      rows = readRows();
+    }
+    if (!hasOwnRow(rows)) process.exit(0);
+  }
+} catch {
+  process.exit(0);
+}
+
 const resultText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (x && x.text) || '').join('\n') : '');
 
 // Walk backwards: collect assistant text, tool results and our own earlier denials until the latest

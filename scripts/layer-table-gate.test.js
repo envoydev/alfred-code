@@ -178,6 +178,23 @@ test('the ask own row never landing within the wait fails open', () => {
   assert.ok(r.ms < 1500, `took ${r.ms}ms`);
 });
 
+// M15: the wait buys a view of the ask's own message, which matters only when a table call could need
+// proving. An ask with no table call since the typed prompt returns at once - otherwise a CLI that wrote
+// its row late would cost every ask in every session the whole budget.
+test('M15 an ask with no table call in the tail never waits for its own row', () => {
+  const r = runWith([typed('which branch?'), say('Looking.'), call('b1', 'Bash', { command: 'git branch' }), result('b1', 'main')], { ALFRED_CODE_LAYER_GATE_WAIT_MS: '3000' });
+  assert.strictEqual(r.status, 0);
+  assert.ok(r.ms < 1500, `took ${r.ms}ms - it waited for a row it had nothing to judge against`);
+  // A table call answered by an earlier ask before the typed prompt is no table for this one either.
+  const old = runWith([...base(), typed('next question'), say('Sure.')], { ALFRED_CODE_LAYER_GATE_WAIT_MS: '3000' });
+  assert.strictEqual(old.status, 0);
+  assert.ok(old.ms < 1500, `took ${old.ms}ms`);
+  // Positive control: with a table call in the tail it still waits the budget for its own row.
+  const waited = runWith(base(), { ALFRED_CODE_LAYER_GATE_WAIT_MS: '1600' });
+  assert.strictEqual(waited.status, 0);
+  assert.ok(waited.ms >= 1500, `took ${waited.ms}ms - the table case must still wait`);
+});
+
 test('own row on disk and no paste anywhere still denies, without waiting', () => {
   const r = runWith([...base(), ...own('Here is the roster.')], { ALFRED_CODE_LAYER_GATE_WAIT_MS: '5000' });
   assert.strictEqual(r.status, 2);

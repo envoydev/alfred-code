@@ -61,7 +61,8 @@ test('every wired hook carries the gate block, and the engines do not', () => {
     {
         const text = fs.readFileSync(path.join(HOOKS_DIR, hook + '.js'), 'utf8');
         assert.ok(text.includes('STACK HOOK GATES'), `${hook} must carry the gate block`);
-        assert.ok(text.includes(`standDown('${hook}')`), `${hook} must name ITSELF in standDown`);
+        // Options may follow the name (the dispatch guard's `{ setUp: false }`, M9); the name is what is held.
+        assert.ok(text.includes(`standDown('${hook}')`) || text.includes(`standDown('${hook}',`), `${hook} must name ITSELF in standDown`);
         assert.ok(text.includes('require.main === module'), `${hook}'s gate must not fire when required by a test`);
     }
     for (const engine of ['docs', 'memory'])

@@ -323,6 +323,57 @@ test('live dir: a project memory folder whose database is open is served where i
     assert.deepStrictEqual({ dir: got.dir, state: got.state }, { dir: '.memory-mcp', state: 'busy' });
 });
 
+// M5: the project memory folder's 2.0.0 place is linked back after its move, like the home folder - Cursor still
+// reads <project>/.memory-mcp. Only that place: a server's other data, and a move between two roots of the stack's
+// own, leave no link (a link would keep the old root from being pruned). A linked place is no data anywhere.
+test('M5 live dir: a project memory move from .memory-mcp leaves a link; no other move does', { skip: process.platform === 'win32' && 'the junction case is Windows-only' }, () =>
+{
+    const p = fresh('live-mem-link');
+    put(path.join(p, '.memory-mcp', 'memory.db'), 'PROJ');
+    const pending = [{ cls: 'memory', from: '.memory-mcp', to: '.alfred/.alfred-memory' }];
+    const got = dr.liveDir({ projectDir: p, cls: 'memory', root: '.alfred', pending, busy: dr.busyDbs });
+    assert.deepStrictEqual({ dir: got.dir, state: got.state, linked: got.linked }, { dir: '.alfred/.alfred-memory', state: 'moved', linked: true });
+    assert.ok(fs.lstatSync(path.join(p, '.memory-mcp')).isSymbolicLink());
+    assert.strictEqual(fs.readFileSync(path.join(p, '.memory-mcp', 'memory.db'), 'utf8'), 'PROJ', 'the old path reads the moved file');
+    assert.deepStrictEqual(dr.dataMovePlan({ projectRoot: p, root: '.alfred', memory: true }), [], 'a link is no data: nothing to offer, no clash');
+
+    const q = fresh('live-serena-nolink');
+    put(path.join(q, '.serena', 'project.yml'), 'P');
+    dr.liveDir({ projectDir: q, cls: 'serena', root: '.alfred', pending: [{ cls: 'serena', from: '.serena', to: '.alfred/serena' }] });
+    assert.ok(!fs.existsSync(path.join(q, '.serena')), 'serena leaves no link');
+
+    const r = fresh('live-mem-root-change');
+    put(path.join(r, '.alfred', '.alfred-memory', 'memory.db'), 'M');
+    const moved = dr.liveDir({ projectDir: r, cls: 'memory', root: '.data', pending: [{ cls: 'memory', from: '.alfred/.alfred-memory', to: '.data/.alfred-memory' }] });
+    assert.strictEqual(moved.state, 'moved');
+    assert.ok(!fs.existsSync(path.join(r, '.alfred', '.alfred-memory')), 'a move between two roots leaves no link');
+});
+
+// M2: serena names each start's log after its own pid (`<home>/logs/<date>/mcp_<stamp>_<pid>.txt`, measured on
+// serena 1.7.0), so a log whose pid is alive is a serena holding that folder - the running session's own on the
+// copy route, or a second session's. No move while one does; a log of a process that has exited holds nothing.
+test('M2 serena busy: a log named for a live pid holds the folder; an exited one, or none, does not', () =>
+{
+    const { spawnSync, spawn } = require('node:child_process');
+    const p = fresh('serena-busy');
+    put(path.join(p, '.serena', 'project.yml'), 'P');
+    assert.deepStrictEqual(dr.serenaBusy(path.join(p, '.serena')), [], 'no logs: idle');
+    const gone = spawnSync(process.execPath, ['-e', '0']).pid;
+    put(path.join(p, '.serena', 'home', 'logs', '2026-09-28', `mcp_20260928-101010_${gone}.txt`), 'old');
+    assert.deepStrictEqual(dr.serenaBusy(path.join(p, '.serena')), [], 'an exited serena holds nothing');
+    const live = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
+    try
+    {
+        put(path.join(p, '.serena', 'home', 'logs', '2026-09-29', `mcp_20260929-111111_${live.pid}.txt`), 'live');
+        assert.deepStrictEqual(dr.serenaBusy(path.join(p, '.serena')), [`serena pid ${live.pid}`]);
+        const pending = [{ cls: 'serena', from: '.serena', to: '.alfred/serena' }];
+        const got = dr.liveDir({ projectDir: p, cls: 'serena', root: '.alfred', pending, busy: dr.serenaBusy });
+        assert.deepStrictEqual({ dir: got.dir, state: got.state }, { dir: '.serena', state: 'busy' });
+        assert.ok(fs.existsSync(path.join(p, '.serena', 'project.yml')) && !fs.existsSync(path.join(p, '.alfred')), 'nothing moved under a running serena');
+    }
+    finally { live.kill(); }
+});
+
 // ------------------------------------------------------------------ the navigation server's own config
 
 test('serena config: the per-project folder key points under the data root; a user\'s own central path is kept', () =>

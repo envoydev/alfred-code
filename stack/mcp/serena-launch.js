@@ -17,7 +17,9 @@
 // project.yml - lives at <data root>/serena, and its home (SERENA_HOME: the config, the logs, ~327MB of
 // language servers) at <data root>/serena/home. serena has no flag for the folder, so the home's own
 // serena_config.yml carries `project_serena_folder_location`. A move the installer recorded runs here,
-// at start, before serena holds anything; with none, a 2.0.0 `.serena` keeps serving where it is.
+// at start, before this serena holds anything - and only while no other serena does (a second session's, whose
+// log names a live pid: data-root.js serenaBusy, the installer's inline check too); with none, a 2.0.0 `.serena`
+// keeps serving where it is.
 // `--project-from-cwd` finds the project by `.serena/project.yml` or `.git` walking UP from the cwd, so a
 // project with no `.git` of its own whose folder has moved gets `--project <cwd>` instead - the literal
 // directory, never the `${CLAUDE_PROJECT_DIR}` expansion that failed in a registration.
@@ -41,7 +43,7 @@ function serenaData({ projectDir, env = process.env, platform = process.platform
 {
     const { root, source, why } = dataRoot.dataRootOf({ env, projectDir });
     if (source === 'invalid') log(`serena-launch: ALFRED_CODE_DATA_PATH refused (${why}) - using ${root}`);
-    const live = dataRoot.liveDir({ projectDir, cls: 'serena', root, pending: dataRoot.pendingOf(projectDir) });
+    const live = dataRoot.liveDir({ projectDir, cls: 'serena', root, pending: dataRoot.pendingOf(projectDir), busy: dataRoot.serenaBusy });
     if (live.state === 'moved') log(`serena-launch: moved ${live.from} -> ${live.dir}`);
     if (live.state === 'busy' || live.state === 'failed') log(`serena-launch: ${live.dir} not moved (${live.why}) - serving it where it is this start`);
     const legacy = live.dir === dataRoot.LEGACY.serena;

@@ -42,10 +42,14 @@ test('no shipped body spells a stack seat bare as a subagent_type', () => {
 });
 
 test('every body that dispatches a named seat carries the roster-spelling clause', () => {
-    // The dispatch verb, then a seat (a real name or the `<stack>-` pattern) inside the same clause.
-    const instr = new RegExp(`\\b(?:[Dd]ispatch(?:es|ing)?|[Ff]ans? (?:out|the)|[Hh]and (?:each|it)[^.]{0,40}to)\\b[^.;]{0,90}?(?:<stack>-(?:implementer|verifier|solution-designer)|(?<![\\w:-])(?:${SEAT})(?![\\w-]))`);
-    const missing = bodies().filter((b) => instr.test(b.body) && !squash(b.body).includes(MARKER))
-        .map((b) => `${b.rel}: '${b.body.match(instr)[0].slice(0, 80)}'`);
+    // The dispatch verb, then a seat (a real name or the `<stack>-` pattern) inside the same clause. M7: a
+    // seat named in the plural ('dispatch read-only evidence-gatherers') is the same dispatch, and so is a
+    // bold seat heading a delegated step's line ('**architecture-analyzer (sonnet/medium)** per area').
+    const seatName = `(?:<stack>-(?:implementer|verifier|solution-designer)s?|(?<![\\w:-])(?:${SEAT})s?(?![\\w-]))`;
+    const instr = new RegExp(`\\b(?:[Dd]ispatch(?:es|ing)?|[Ff]ans? (?:out|the)|[Hh]and (?:each|it)[^.]{0,40}to)\\b[^.;]{0,90}?${seatName}`);
+    const bold = new RegExp(`\\*\\*(?:${SEAT})s?(?![\\w-])`);
+    const missing = bodies().filter((b) => (instr.test(b.body) || bold.test(b.body)) && !squash(b.body).includes(MARKER))
+        .map((b) => `${b.rel}: '${(b.body.match(instr) || b.body.match(bold))[0].slice(0, 80)}'`);
     assert.deepStrictEqual(missing, [], `each needs '${MARKER}' - a bare seat name fails on the plugin route`);
 });
 

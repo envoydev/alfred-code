@@ -376,14 +376,16 @@ function cursorStandDown(input, file, argv)
     catch { return false; }
 }
 
-// The one call every hook makes: true means do nothing at all, exit 0, print nothing.
-function standDown(hook, env, argv)
+// The one call every hook makes: true means do nothing at all, exit 0, print nothing. `setUp: false` skips
+// GATE 4 alone - for a hook that keeps one check live in a repo never set up and reads neverSetUp() itself
+// (the dispatch guard's implementer gate, M9).
+function standDown(hook, env, argv, { setUp = true } = {})
 {
     try
     {
         if (isCliInvocation(argv)) return false;
         return hookDisabled(hook, env) || profileOff(hook, env) || yieldToCopiedTwin(hook, env) || aliasYieldsToCore(env)
-            || (neverSetUp(env) && !PROTECTIVE.has(baseName(hook)));
+            || (setUp && neverSetUp(env) && !PROTECTIVE.has(baseName(hook)));
     }
     catch { return false; }
 }

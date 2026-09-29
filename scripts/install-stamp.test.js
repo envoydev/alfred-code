@@ -870,6 +870,29 @@ test('installState: an unstamped legacy copy-route install reads legacy-unstampe
     assert.strictEqual(state(path.join(repo, 'src')), 'legacy-unstamped');
 });
 
+// M3: the skill, seat and rule names count only when a project could not plausibly have them of its own - the
+// stack's `alfred-` / `project-` prefixes and a renamed item's old name. A catalog name like `typescript`, `npm`
+// or `javascript` is a project's own as often as the stack's, so a tree left after an uninstall (a changed stack
+// env key kept) beside the project's own such skills is no install for update to take over.
+test('M3 installState: generic catalog names are no signature - one stack env key beside the project\'s own typescript, javascript and npm reads not-installed', () => {
+    const stamp = require('./install/stamp.js');
+    const env = { CLAUDE_CONFIG_DIR: path.join(TMP, 'no-account') };
+    const state = (root) => stamp.installState(root, env);
+    const leftover = { ALFRED_CODE_DOCS_PATH: 'docs' };
+    const own = legacyTree({ own: ['typescript', 'javascript', 'npm', 'markdown-style', 'devops'], agents: ['security-auditor.md'], rules: ['markdown-docs.md'], env: leftover });
+    for (const n of ['typescript', 'javascript', 'npm']) fs.writeFileSync(path.join(own, '.claude', 'skills', n, 'SKILL.md'), `---\nname: ${n}\ndescription: our team's ${n} notes\n---\nOurs.\n`);
+    assert.strictEqual(state(own), 'not-installed');
+    assert.strictEqual(stamp.legacySignature(own), false);
+    // Positive control: names only the stack uses - its prefixes, a renamed item's old name - still count.
+    const { renamed } = require('./install/manifest.js').loadManifest(path.join(__dirname, '..'));
+    const olds = Object.keys(renamed.skills);
+    const prefixed = olds.find((n) => /^project-/.test(n));
+    const bareOld = olds.find((n) => !/^(alfred|project)-/.test(n));
+    assert.ok(prefixed && bareOld, 'the manifest renames a prefixed and an unprefixed skill');
+    assert.strictEqual(state(legacyTree({ names: ['alfred-habits-test-first', prefixed, bareOld], env: leftover })), 'legacy-unstamped');
+    assert.strictEqual(state(legacyTree({ names: ['alfred-habits-test-first', 'typescript', 'npm'], env: leftover })), 'not-installed', 'one stack name and two generic ones are under three');
+});
+
 // N2 (Task 18a re-review, R90): a git worktree carries no `.claude/` record of its own (ignored), so the
 // hooks read the main checkout's record and count the worktree set up.
 // R95 (Task 18b fix round 1): the COMMANDS must not - every reader after their gate reads the worktree's

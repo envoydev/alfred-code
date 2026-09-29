@@ -1126,7 +1126,7 @@ const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
 // The setup / configure walk's layer asks are templates too (2026-09-29: a walk with whole-layer verdicts only left every
 // per-row change to typing). Pinned per file like the flow skills, so a layer ask dropped back to prose goes red.
 const SETUP_ASK_TEMPLATES = {
-    'setup-plugin/references/walk.md': 9,
+    'setup-plugin/references/walk.md': 10,
     'setup-plugin/commands/setup.md': 2,
     'setup-plugin/commands/configure.md': 1,
 };
@@ -3002,7 +3002,8 @@ function lintHooksEntry(liveIn)
             if (!text.includes(`yieldToCopiedTwin('${dispatcher.SELF}')`))
                 out.push(`stack/hooks/${file} does not step aside for its copied twin - yieldToCopiedTwin('${dispatcher.SELF}').`);
         }
-        else if (!text.includes(`standDown('${file.replace(/\.js$/, '')}')`))
+        // Options may follow the name (the dispatch guard's `{ setUp: false }`, M9); the name is what is held.
+        else if (!new RegExp(`standDown\\('${file.replace(/\.js$/, '').replace(/[-]/g, '\\-')}'[,)]`).test(text))
             out.push(`stack/hooks/${file} names another hook in standDown() - the gate must name itself.`);
     }
     return out;

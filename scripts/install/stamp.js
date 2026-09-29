@@ -560,12 +560,21 @@ function worktreeMain(projectRoot)
 // seat or rule names the stack ever shipped - the catalog, a renamed item's old name, a retired one. TWO
 // hits claim the tree; one never does - skills alone are the project's own as often as the stack's. The
 // hooks' record list is NOT extended, so they stay down until the update writes the stamp. `manifest`
-// defaults to this tree's own; an unreadable one claims nothing.
+// defaults to this tree's own; an unreadable one claims nothing. M3: a name counts only when a project could
+// not plausibly have it of its own (manifest.js stackOwnName) - `typescript`, `npm`, `markdown-docs` are a
+// project's as often as the stack's, and a tree an uninstall left (a changed env key kept) beside them is no
+// install to take over.
 const STACK_ENV_KEY = /^(ALFRED_CODE_|CLAUDE_STACK_)/; // legacy-name
 function legacySignature(root, { manifest } = {})
 {
     let names;
-    try { names = require('./manifest.js').stackNames(manifest || require('./manifest.js').loadManifest(path.join(__dirname, '..', '..'))); }
+    let own;
+    try
+    {
+        const layer = require('./manifest.js');
+        names = layer.stackNames(manifest || layer.loadManifest(path.join(__dirname, '..', '..')));
+        own = (kind) => (n) => layer.stackOwnName(names, kind, n);
+    }
     catch { return false; }
     const claudeDir = path.join(root, '.claude');
     const list = (dir, test) => { try { return fs.readdirSync(path.join(claudeDir, dir), { withFileTypes: true }).filter(test).map((d) => d.name); } catch { return []; } };
@@ -579,9 +588,9 @@ function legacySignature(root, { manifest } = {})
         }
         catch { return false; }
     });
-    const items = list('skills', (d) => d.isDirectory()).filter((n) => names.skills.has(n)).length
-        + list('agents', (d) => d.isFile() && d.name.endsWith('.md')).filter((f) => names.agents.has(f.replace(/\.md$/, ''))).length
-        + list('rules', (d) => d.isFile() && d.name.endsWith('.md')).filter((f) => names.rules.has(f.replace(/\.md$/, ''))).length;
+    const items = list('skills', (d) => d.isDirectory()).filter(own('skills')).length
+        + list('agents', (d) => d.isFile() && d.name.endsWith('.md')).map((f) => f.replace(/\.md$/, '')).filter(own('agents')).length
+        + list('rules', (d) => d.isFile() && d.name.endsWith('.md')).map((f) => f.replace(/\.md$/, '')).filter(own('rules')).length;
     return [hooks, envKeys, items >= 3].filter(Boolean).length >= 2;
 }
 

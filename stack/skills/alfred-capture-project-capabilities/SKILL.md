@@ -121,11 +121,11 @@ at an environment variable instead. Outside git there is nothing to commit it to
 Then two checks, both before the report:
 
 ```bash
-grep -nE '(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY)[A-Z0-9_]*=[^[:space:]]' "<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md" "<docs-path>/project-capabilities/credentials.local.env" | cut -d= -f1
+grep -nE '(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z0-9_]*[:=][[:space:]]*[^[:space:]<]' "<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md" "<docs-path>/project-capabilities/credentials.local.env" | sed -E 's/((PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z0-9_]*)[:=].*/\1/'
 node .claude/hooks/docs.js lint
 ```
 
-Name the template only when this run just wrote it - one the user already filled holds the values by design and is never read. The grep prints nothing - a hit (file, line and key, the `cut` keeps the value off the screen) is a value in the doc or the template: replace it with where it lives,
+Name the template only when this run just wrote it - one the user already filled holds the values by design and is never read. The grep prints nothing - a hit (file, line and key, the `sed` cuts the value off the screen; an env line, a YAML `KEY: value` copied from a compose file and a lower-case `password:` key all count, a `<placeholder>` does not) is a value in the doc or the template: replace it with where it lives,
 and treat it as a pasted value (above). A `PROBLEM` line from the lint is fixed before the report.
 
 ### 4. RULE - write .claude/rules/baseline-project-run-book.md

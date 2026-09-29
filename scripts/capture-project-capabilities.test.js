@@ -26,8 +26,9 @@ const skeleton = () =>
     return m[1];
 };
 // The value check the skill runs over the doc and the credentials template before it reports: an
-// env-style credential key followed by anything but an empty value is a value in the doc.
-const VALUE_RE = /(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY)[A-Z0-9_]*=[^\s]/;
+// credential key (env or YAML shape, or a lower-case password key) followed by anything but an empty
+// value or a <placeholder> is a value in the doc.
+const VALUE_RE = /(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z0-9_]*[:=][ \t]*[^\s<]/;
 
 test('deliberate-only: the user types it, and the fresh-session guard lists it as an orchestration run', () =>
 {
@@ -62,7 +63,7 @@ test('credentials: never asked for in chat, never in the doc - the doc names whe
     // A pasted value is stopped, redacted and never written - the security baseline's rotation ask follows.
     assert.match(skill, /A value the user pastes anyway is never written anywhere: redact it as `<redacted>`/);
     // The deterministic check before the report, over the doc AND the template file.
-    assert.ok(skill.includes("grep -nE '(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY)[A-Z0-9_]*=[^[:space:]]'"), 'the value check is a command, not a reminder');
+    assert.ok(skill.includes("grep -nE '(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z0-9_]*[:=][[:space:]]*[^[:space:]<]'"), 'the value check is a command, not a reminder');
 
     const doc = skeleton();
     const login = doc.slice(doc.indexOf('## Reach and log in'), doc.indexOf('## Flows to verify'));
@@ -77,6 +78,44 @@ test('credentials: never asked for in chat, never in the doc - the doc names whe
     assert.match(tpl[1], /^[A-Z_]*PASSWORD=$/m, 'a password key, empty, so the secret guard judges the filled file');
     assert.match(shape, /`credentials\.local\.env` in its own `\.gitignore`/);
     assert.match(skill, /git check-ignore -q/, 'the ignore is proven, not assumed');
+});
+
+// M14: the value check is the skill's own command, run as written over a doc holding every shape a
+// credential arrives in - an env line, a YAML key copied from a compose file, a lower-case config key -
+// beside the shapes that are no value (an empty template key, a placeholder, a prose mention). A hit
+// names the file, the line and the key; no value ever reaches the screen.
+test('M14 the value check catches env, YAML and lower-case password keys, and never prints a value', () =>
+{
+    const os = require('node:os');
+    const { spawnSync } = require('node:child_process');
+    const block = body().match(/```bash\n(grep -nE [^\n]*)\n/);
+    assert.ok(block, 'SKILL.md carries the value check as a bash grep line');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'runbook-values-'));
+    try
+    {
+        const cap = path.join(dir, 'project-capabilities');
+        fs.mkdirSync(cap);
+        const values = ['envpass1', 'yamlpass2', 'lowerpass3', 'tokval4', 'apikey5'];
+        fs.writeFileSync(path.join(cap, 'PROJECT-CAPABILITIES.md'), [
+            'Captured: main@abc1234, 2026-09-29',
+            `DB_PASSWORD=${values[0]}`,
+            `    POSTGRES_PASSWORD: ${values[1]}`,
+            `  password: ${values[2]}`,
+            `GITHUB_TOKEN=${values[3]}`,
+            `STRIPE_API_KEY: ${values[4]}`,
+            'ADMIN_PASSWORD=',
+            'SMTP_PASSWORD: <in the vault>',
+            '- Credentials live in: `credentials.local.env`, key `ADMIN_PASSWORD` - checked for presence',
+        ].join('\n') + '\n');
+        fs.writeFileSync(path.join(cap, 'credentials.local.env'), 'ADMIN_EMAIL=\nADMIN_PASSWORD=\n');
+        const cmd = block[1].split('<docs-path>').join(dir);
+        const r = spawnSync('bash', ['-c', cmd], { encoding: 'utf8' });
+        const hits = r.stdout.split('\n').filter(Boolean);
+        for (const v of values) assert.ok(!r.stdout.includes(v), `the value '${v}' reached the screen:\n${r.stdout}`);
+        const keys = hits.map((h) => h.replace(/^.*PROJECT-CAPABILITIES\.md:(\d+):\s*/, '$1 '));
+        assert.deepStrictEqual(keys, ['2 DB_PASSWORD', '3 POSTGRES_PASSWORD', '4 password', '5 GITHUB_TOKEN', '6 STRIPE_API_KEY'], r.stdout + r.stderr);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('the asks: every template marks one recommended option first, and each gap can stay unknown', () =>
