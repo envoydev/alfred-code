@@ -75,13 +75,29 @@ test('the start state includes the task setup, and a reference that no longer ap
     assert.match(by.stale.problems[0], /^reference\.patch does not apply/);
 });
 
+test('a task carrying a trap.patch is proven only when its hidden tests also fail on the trap', (t) =>
+{
+    const w = world(t, {
+        caught: { reference: addFile('made.txt', 'done'), files: { 'trap.patch': addFile('other.txt', 'naive') } },
+        missed: { reference: addFile('made.txt', 'done'), files: { 'trap.patch': addFile('made.txt', 'naive') } },
+        stale: { reference: addFile('made.txt', 'done'), files: { 'trap.patch': 'diff --git a/app.txt b/app.txt\n--- a/app.txt\n+++ b/app.txt\n@@ -1 +1 @@\n-never\n+x\n' } },
+        plain: { reference: addFile('made.txt', 'done') },
+    });
+    const by = Object.fromEntries(w.prove().tasks.map((r) => [r.id, r]));
+    assert.deepStrictEqual([by.caught.ok, by.caught.trapFails, by.caught.problems], [true, true, []]);
+    assert.deepStrictEqual([by.missed.ok, by.missed.trapFails, by.missed.problems], [false, false, ['the hidden tests pass on trap.patch - the trap is not caught']]);
+    assert.strictEqual(by.stale.ok, false);
+    assert.match(by.stale.problems[0], /^trap\.patch does not apply/);
+    assert.deepStrictEqual([by.plain.ok, by.plain.trapFails], [true, null], 'a task with no trap.patch is proven as before');
+});
+
 test('the proof writes its table under results and leaves no work dir behind', (t) =>
 {
     const w = world(t, { good: { reference: addFile('made.txt', 'done') } });
     const out = w.prove();
     assert.ok(out.dir.startsWith(path.join(w.bench, 'results', 'prove-')));
     const table = fs.readFileSync(path.join(out.dir, 'prove.md'), 'utf8');
-    assert.match(table, /\| good \| yes \| yes \| yes \| yes \|/);
+    assert.match(table, /\| good \| yes \| yes \| yes \| yes \| - \|/);
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(out.dir, 'prove.json'), 'utf8')).tasks.map((r) => r.id), ['good']);
     assert.ok(!fs.existsSync(path.join(w.bench, 'work', 'prove')));
 });

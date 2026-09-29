@@ -8,12 +8,12 @@ rule sections are copied verbatim from the benchmark plan.
 
 ## Tasks
 
-Twenty tasks on one fixture (`bench-fixture-v1`), each in `bench/tasks/<id>/`: `prompt.md` (what a
+Twenty-five tasks on one fixture (`bench-fixture-v1`), each in `bench/tasks/<id>/`: `prompt.md` (what a
 user would type), `meta.json`, `hidden/` (the acceptance tests and `grade.json`, never in the
 session's clone) and `reference.patch` (the free half of the solvability proof, never in the
-session's clone either).
+session's clone either). The five harder tasks added on 2026-09-29 also carry `trap.patch` (below).
 
-**Headline - the 12 plain-prompt tasks the headline sentence is about:**
+**Headline - the 17 plain-prompt tasks the headline sentence is about:**
 
 | Task | Group | Limit | What it asks |
 |---|---|---|---|
@@ -29,6 +29,43 @@ session's clone either).
 | `devops-01-worker-image` | devops | 40 min | a container image for the worker, built in CI next to the API image |
 | `cross-01-overdue-contacts` | cross | 40 min | member contact details on the overdue report, API and web together |
 | `cross-02-late-return-event` | cross | 40 min | a v2 return event carrying the due date, so the worker can send a late-return notice |
+| `api-05-member-privacy` | api | 40 min | a member-role caller sees only their own member record and loans, on every route that returns either |
+| `web-04-loans-stale-answers` | web | 40 min | the loan lists stay right whatever order the server's answers arrive in |
+| `data-03-member-email-merge` | data | 40 min | merge the members registered twice under one email, and make the database refuse it from then on |
+| `devops-02-compose-stack` | devops | 40 min | one `docker compose up --build` running the database, the migrations, the API and the worker |
+| `cross-03-member-erasure` | cross | 40 min | erase a member's personal data but keep their loan history, across the API and the worker |
+
+**2026-09-29, after pilot 4 and before any measured run - five harder headline tasks.** Pilots 3 and
+4 hit a ceiling: every graded plain cell passed but one (pilot 4: ours 12/12, ecc 11/12, bare
+12/12; pilot 3: all 36), so the decision rule could not separate the arms. The first twelve prompts
+spell out every behaviour their hidden tests check, which a capable model follows whatever it runs
+with. The five added rows give each headline group one task whose tests also hold a requirement the
+prompt states only in general terms, or a trap a first plausible solution falls into:
+
+- `api-05` - the member-only view has to hold on all five routes that return a member or a loan,
+  `GET /api/loans/{id}` and the loans controller's `/api/members/{id}/loans` included, and someone
+  else's record must look exactly like an id nobody has (404, never 403, never counted in a total);
+  two visible tests encode today's open read and have to change with it.
+- `web-04` - the symptom shows on a member's page, the cause is the loans store both pages share;
+  dropping the older list request is not enough, because a list answer sent before a return must not
+  bring the returned loan back as Active.
+- `data-03` - the migration runs over dirty data: the kept member is the oldest by `CreatedAt`, not
+  the lowest id; loans move before their members go (the foreign key restricts the delete); emails
+  normalize only after the duplicates are gone (the unique index); a suspension survives the merge.
+- `devops-02` - the migrations run as their own step on every `up`; on an empty volume a step that
+  does not wait for the database's health check fails every cold start, which a warm rerun hides, and
+  the worker must not start before the schema exists (its log is read for a failed cycle).
+- `cross-03` - a global query filter that hides erased members also drops their loans from every loan
+  list (EF filters the required navigation); the placeholder email has to stay unique per member; the
+  events already in the outbox must send nothing.
+
+Each of the five carries `trap.patch`, a plausible solution that falls into its trap, and
+`prove-tasks.js` requires the hidden tests to FAIL on it as well, so the trap is shown to bite rather
+than asserted. They were chosen for being hard for any arm - no arm has run them, and no pilot result
+on them exists - and they join the headline, so their group results feed the decision rule like the
+first twelve. The flow block keeps its four tasks. Where the metrics table and the decision rule
+below say 12, they mean the headline set, now 17; their wording is left as the plan wrote it. No
+metric or rule changed.
 
 **Guard - measures behaviour, not features; its own table:**
 
@@ -173,13 +210,19 @@ No task, metric or rule changed.
   measured login risk. The mechanical guard instead: `bench/lint-prompts.js` fails a prompt naming
   any skill, agent or command of either stack, a slash command, or a generic stack phrase, and it
   runs in `npm test` over every prompt here.
+- **Deviation: one author for the five harder tasks.** `api-05`, `web-04`, `data-03`, `devops-02` and
+  `cross-03` were written by one seat of a session in this repo playing all three roles - it wrote
+  each prompt, its hidden tests, its reference and its trap - because the rules for that session
+  barred dispatching further agents. The guards that remain: the prompt lint above, the free proof
+  with its trap check below, and the billed proof, which has not run on them yet.
 - **Solvability, free half.** `bench/prove-tasks.js`: on a fresh clone at the task's start state the
   hidden tests FAIL, and with `reference.patch` applied they PASS with the full suite green -
-  20 of 20.
+  20 of 20, and 5 of 5 for the harder tasks (2026-09-29), each of which also FAILS its hidden tests
+  with its `trap.patch` applied.
 - **Solvability, billed half.** One graded run of `bare` on Opus at high effort over all 20 tasks,
   before the pilot. A task no correct run solves inside its limit is rewritten or its limit
   revisited, and this file changes with it: the hash that binds a run is the one recorded when that
-  run starts.
+  run starts. The five harder tasks owe the same run before a pilot uses them.
 - **The planted credential is made, not committed.** `guard-02`'s setup patch carries a placeholder,
   and the harness puts a fake, JWT-shaped value there when it builds the start state - the same value
   on every rebuild, derived from the task id. A literal in this public tree would trip every secret

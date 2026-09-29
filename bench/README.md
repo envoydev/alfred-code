@@ -16,10 +16,10 @@ changed since the run started.
 | `arms/harness.settings.json` | the sandbox layer every session runs inside |
 | `arms/ecc-vocabulary.txt` | ECC's skill, agent and command names at the commit `arms/ecc.json` pins, for the prompt lint |
 | `arms/ours-vocabulary.txt` | our names at the release `arms/ours.json` pins, for the prompt lint - this tree may carry an older release |
-| `tasks/<id>/` | `prompt.md`, `meta.json`, `hidden/` (the acceptance tests and `grade.json`, never in a session's clone), `reference.patch` (a correct solution, for the proof only) and any setup patches `meta.setup` names |
+| `tasks/<id>/` | `prompt.md`, `meta.json`, `hidden/` (the acceptance tests and `grade.json`, never in a session's clone), `reference.patch` (a correct solution, for the proof only), `trap.patch` on a harder task (a plausible solution that falls into its trap, for the proof only) and any setup patches `meta.setup` names |
 | `drive.js`, `grade.js`, `aggregate.js` | run, grade, report |
 | `lint-prompts.js` | refuses a prompt naming either stack's machinery; part of `npm test` |
-| `prove-tasks.js` | the free solvability proof: hidden tests fail at the start, pass on the reference, suite green |
+| `prove-tasks.js` | the free solvability proof: hidden tests fail at the start, pass on the reference, suite green, and fail on the trap where a task carries one |
 | `lib/` | the pieces, each with its own `*.test.js` |
 | `test/` | the fake `claude`, the fake Agent SDK and the throwaway world the tests run on |
 
@@ -219,11 +219,15 @@ Every billed phase needs, in the shell that runs `drive.js`:
   end `ok` and read each `error` cell's last result: a limit it missed is moved into `limited/` by
   hand, its shape added to `lib/limit.test.js` and the pattern fixed before the resume.
 
-The task ids: headline 12 - `api-01-loan-renewal`, `api-02-last-copy-race`, `api-03-member-notices`,
-`api-04-member-self-lending`, `web-01-loan-date-rules`, `web-02-members-store`,
-`web-03-check-in-guard`, `data-01-item-retired-at`, `data-02-loans-cursor-feed`,
-`devops-01-worker-image`, `cross-01-overdue-contacts`, `cross-02-late-return-event`; `guard` 3 -
-`group:guard`; `home-advantage` 5 - the `home-*` ids.
+The task ids: headline 17 - `api-01-loan-renewal`, `api-02-last-copy-race`, `api-03-member-notices`,
+`api-04-member-self-lending`, `api-05-member-privacy`, `web-01-loan-date-rules`,
+`web-02-members-store`, `web-03-check-in-guard`, `web-04-loans-stale-answers`,
+`data-01-item-retired-at`, `data-02-loans-cursor-feed`, `data-03-member-email-merge`,
+`devops-01-worker-image`, `devops-02-compose-stack`, `cross-01-overdue-contacts`,
+`cross-02-late-return-event`, `cross-03-member-erasure`; `guard` 3 - `group:guard`;
+`home-advantage` 5 - the `home-*` ids. The five harder ones (`api-05`, `web-04`, `data-03`,
+`devops-02`, `cross-03`, added after pilot 4) each carry a `trap.patch`; `devops-02` is `exclusive`
+like `devops-01`, since it builds and runs the whole compose stack.
 
 ### B3 task 11 - the billed solvability proof
 
@@ -241,6 +245,14 @@ node bench/grade.js b3-proof
 
 A task no correct Opus run solves inside its limit is rewritten, or its limit revisited, before B4 -
 and either change re-hashes `PREREGISTRATION.md`.
+
+The five harder tasks added after pilot 4 have not had this run yet - five cells, before a pilot
+uses them:
+
+```
+node bench/drive.js --run b3-proof-hard --model claude-opus-5-5 --effort high --arms bare --tasks api-05-member-privacy,web-04-loans-stale-answers,data-03-member-email-merge,devops-02-compose-stack,cross-03-member-erasure --reps 1 --parallel 3
+node bench/grade.js b3-proof-hard
+```
 
 ### B4 - the pilot
 

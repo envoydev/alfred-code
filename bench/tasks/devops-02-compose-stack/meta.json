@@ -1,0 +1,1 @@
+{ "id": "devops-02-compose-stack", "group": "devops", "tags": [], "timeLimitMin": 40, "startRef": "bench-fixture-v1", "exclusive": true }

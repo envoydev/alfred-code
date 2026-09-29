@@ -1,0 +1,152 @@
+diff --git a/README.md b/README.md
+index ed00374..0db1b12 100644
+--- a/README.md
++++ b/README.md
+@@ -17,11 +17,19 @@ worker sends due and overdue notices.
+ ## Run it
+ 
+ ```bash
+-docker compose up -d                      # PostgreSQL on localhost:5432 (LENDING_DB_PORT overrides)
++docker compose up -d db                   # PostgreSQL alone on localhost:5432 (LENDING_DB_PORT overrides)
+ dotnet run --project src/LendingDesk.Api  # applies migrations on start in Development
+ cd web && npm ci && npm start             # http://localhost:4200, proxies /api to the API
+ ```
+ 
++Or run all of it in containers - the database, the migrations, the API on `localhost:8080`
++(`LENDING_API_PORT` overrides) and the worker:
++
++```bash
++docker compose up --build                 # the migrations run first, on every start
++docker compose down -v                    # stops everything and deletes the database volume
++```
++
+ ## Test it
+ 
+ ```bash
+@@ -47,3 +55,12 @@ The image does not run migrations outside Development; apply them first:
+ dotnet tool restore
+ dotnet ef database update --project src/LendingDesk.Data --connection '<the same connection string>'
+ ```
++
++In `docker compose up` the migrations run as their own step before the API and the worker start, from the
++migration bundle `src/LendingDesk.Data/Dockerfile` builds; the worker image is `src/LendingDesk.Worker/Dockerfile`:
++
++```bash
++docker build -f src/LendingDesk.Worker/Dockerfile -t lendingdesk-worker .
++docker build -f src/LendingDesk.Data/Dockerfile -t lendingdesk-migrations .
++docker run lendingdesk-migrations --connection '<the same connection string>'
++```
+diff --git a/compose.yaml b/compose.yaml
+index 4214d46..61c5417 100644
+--- a/compose.yaml
++++ b/compose.yaml
+@@ -1,4 +1,8 @@
+-# Local database for running the API and the worker. Tests start their own container.
++# The whole app for local runs and demos: `docker compose up --build`. `docker compose up -d db` starts only
++# the database, for running the API and the worker from the IDE. Tests start their own database container.
++x-database: &database
++  ConnectionStrings__Lending: Host=db;Port=5432;Database=lending;Username=lending;Password=lending
++
+ services:
+   db:
+     image: postgres:17-alpine
+@@ -9,12 +13,45 @@ services:
+     ports:
+       - "${LENDING_DB_PORT:-5432}:5432"
+     healthcheck:
+-      test: ["CMD-SHELL", "pg_isready -U lending -d lending"]
++      # Over TCP: on a fresh volume the image's init server answers on the socket only, then restarts.
++      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U lending -d lending"]
+       interval: 2s
+       timeout: 3s
+       retries: 30
+     volumes:
+       - db-data:/var/lib/postgresql/data
+ 
++  # Brings the schema up to date on every `up`; the API and the worker wait for it to finish.
++  migrations:
++    build:
++      context: .
++      dockerfile: src/LendingDesk.Data/Dockerfile
++    command: ["--connection", "Host=db;Port=5432;Database=lending;Username=lending;Password=lending"]
++    depends_on:
++      - db
++
++  api:
++    build:
++      context: .
++      dockerfile: src/LendingDesk.Api/Dockerfile
++    environment:
++      <<: *database
++    ports:
++      - "${LENDING_API_PORT:-8080}:8080"
++    depends_on:
++      migrations:
++        condition: service_completed_successfully
++
++  worker:
++    build:
++      context: .
++      dockerfile: src/LendingDesk.Worker/Dockerfile
++    environment:
++      <<: *database
++      Worker__PollSeconds: "2"
++    depends_on:
++      migrations:
++        condition: service_completed_successfully
++
+ volumes:
+   db-data:
+diff --git a/src/LendingDesk.Data/Dockerfile b/src/LendingDesk.Data/Dockerfile
+new file mode 100644
+index 0000000..7def4e0
+--- /dev/null
++++ b/src/LendingDesk.Data/Dockerfile
+@@ -0,0 +1,19 @@
++# The migrations as one executable, run before the API and the worker start.
++# Build from the repository root: docker build -f src/LendingDesk.Data/Dockerfile -t lendingdesk-migrations .
++FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
++WORKDIR /src
++COPY global.json Directory.Build.props .editorconfig dotnet-tools.json ./
++RUN dotnet tool restore
++COPY src/LendingDesk.Domain/LendingDesk.Domain.csproj src/LendingDesk.Domain/
++COPY src/LendingDesk.Data/LendingDesk.Data.csproj src/LendingDesk.Data/
++RUN dotnet restore src/LendingDesk.Data/LendingDesk.Data.csproj
++COPY src/LendingDesk.Domain/ src/LendingDesk.Domain/
++COPY src/LendingDesk.Data/ src/LendingDesk.Data/
++RUN dotnet ef migrations bundle --project src/LendingDesk.Data --configuration Release --output /out/efbundle
++
++FROM mcr.microsoft.com/dotnet/runtime:10.0
++WORKDIR /app
++COPY --from=build /out/efbundle .
++USER $APP_UID
++# Pass the database as --connection '<connection string>'; applying an up-to-date schema changes nothing.
++ENTRYPOINT ["./efbundle"]
+diff --git a/src/LendingDesk.Worker/Dockerfile b/src/LendingDesk.Worker/Dockerfile
+new file mode 100644
+index 0000000..4655ef6
+--- /dev/null
++++ b/src/LendingDesk.Worker/Dockerfile
+@@ -0,0 +1,22 @@
++# Build from the repository root: docker build -f src/LendingDesk.Worker/Dockerfile -t lendingdesk-worker .
++FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
++WORKDIR /src
++COPY global.json Directory.Build.props .editorconfig ./
++COPY src/LendingDesk.Domain/LendingDesk.Domain.csproj src/LendingDesk.Domain/
++COPY src/LendingDesk.Data/LendingDesk.Data.csproj src/LendingDesk.Data/
++COPY src/LendingDesk.Worker/LendingDesk.Worker.csproj src/LendingDesk.Worker/
++RUN dotnet restore src/LendingDesk.Worker/LendingDesk.Worker.csproj
++COPY src/LendingDesk.Domain/ src/LendingDesk.Domain/
++COPY src/LendingDesk.Data/ src/LendingDesk.Data/
++COPY src/LendingDesk.Worker/ src/LendingDesk.Worker/
++RUN dotnet publish src/LendingDesk.Worker/LendingDesk.Worker.csproj -c Release --no-restore -o /app
++
++# The worker serves no HTTP, so it runs on the plain runtime image and exposes no port.
++FROM mcr.microsoft.com/dotnet/runtime:10.0
++WORKDIR /app
++COPY --from=build /app .
++# The base image ships a non-root user it does not switch to by itself.
++USER $APP_UID
++# Supply the database as ConnectionStrings__Lending and the poll interval as Worker__PollSeconds.
++# The worker never runs migrations; apply them before pointing it at a database.
++ENTRYPOINT ["dotnet", "LendingDesk.Worker.dll"]

@@ -4,8 +4,10 @@
 // fixture at the task's start state (its ref and setup), where the hidden tests must FAIL; then a
 // second clone with the task's reference.patch applied, where the hidden tests must PASS and the
 // full suite stay green - the order the grader uses, so a reference that only passes because the
-// hidden files landed first is caught. A task that fails either check is rewritten before any session
-// runs on it. No model call; results land in results/prove-<stamp>/ (gitignored).
+// hidden files landed first is caught. A task carrying a trap.patch - a plausible solution that falls
+// into the task's trap - gets a third clone with it applied, where the hidden tests must FAIL, so a
+// hard task's trap is shown to bite, not asserted. A task that fails any check is rewritten before any
+// session runs on it. No model call; results land in results/prove-<stamp>/ (gitignored).
 //
 //   node bench/prove-tasks.js [--tasks all|<id,id>|group:<g>]
 const fs = require('node:fs');
@@ -55,7 +57,7 @@ function runAll(list, { cwd, env, timeoutMs, log, record = [] })
 function proveTask({ task, tasksDir, workDir, fixtureSource, lock, env, log })
 {
     const taskDir = path.join(tasksDir, task.id);
-    const out = { id: task.id, group: task.group, ok: false, startFails: null, referencePasses: null, suiteGreen: null, infra: null, problems: [], commands: [] };
+    const out = { id: task.id, group: task.group, ok: false, startFails: null, referencePasses: null, suiteGreen: null, trapFails: null, infra: null, problems: [], commands: [] };
     const spec = JSON.parse(fs.readFileSync(path.join(taskDir, 'hidden', 'grade.json'), 'utf8'));
     const timeoutMs = (spec.timeoutMin || 30) * 60 * 1000;
     const reference = path.join(taskDir, 'reference.patch');
@@ -84,6 +86,23 @@ function proveTask({ task, tasksDir, workDir, fixtureSource, lock, env, log })
     out.referencePasses = hidden.pass;
     out.suiteGreen = suite.pass;
     out.infra = untouched.infra || hidden.infra || suite.infra || null;
+
+    const trap = path.join(taskDir, 'trap.patch');
+    if (fs.existsSync(trap))
+    {
+        const trapped = cloneAt({ dest: path.join(workDir, task.id, 'trap'), task, taskDir, fixtureSource, lock });
+        try { applySetupPatch(trapped, trap, task.id); }
+        catch (e)
+        {
+            out.problems.push(`trap.patch does not apply: ${String(e.stderr || e.message).trim()}`);
+            return out;
+        }
+        copyHidden(path.join(taskDir, 'hidden'), trapped.repo);
+        const caught = runAll(spec.hidden, { cwd: trapped.repo, env, timeoutMs, log, record: out.commands });
+        out.trapFails = !caught.pass;
+        out.infra = out.infra || caught.infra || null;
+        if (caught.pass) out.problems.push('the hidden tests pass on trap.patch - the trap is not caught');
+    }
 
     if (out.infra) out.problems.push(`infrastructure: ${out.infra} - rerun before judging`);
     if (!out.startFails) out.problems.push('the hidden tests pass on the untouched start');
@@ -118,8 +137,8 @@ function proveTasks({ tasksDir = path.join(BENCH_DIR, 'tasks'), tasks = 'all', b
     finally { removeTree(workDir); }
 
     const yn = (v) => (v === null ? '-' : v ? 'yes' : 'no');
-    const md = ['| task | fails at start | reference passes | suite green | proven | problems |', '|---|---|---|---|---|---|',
-        ...rows.map((r) => `| ${r.id} | ${yn(r.startFails)} | ${yn(r.referencePasses)} | ${yn(r.suiteGreen)} | ${yn(r.ok)} | ${r.problems.join('; ')} |`)];
+    const md = ['| task | fails at start | reference passes | suite green | proven | trap caught | problems |', '|---|---|---|---|---|---|---|',
+        ...rows.map((r) => `| ${r.id} | ${yn(r.startFails)} | ${yn(r.referencePasses)} | ${yn(r.suiteGreen)} | ${yn(r.ok)} | ${yn(r.trapFails)} | ${r.problems.join('; ')} |`)];
     fs.writeFileSync(path.join(dir, 'prove.md'), `${md.join('\n')}\n`);
     fs.writeFileSync(path.join(dir, 'prove.json'), `${JSON.stringify({ lock: theLock, tasks: rows }, null, 2)}\n`);
     return { dir, tasks: rows };

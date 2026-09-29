@@ -1,0 +1,30 @@
+diff --git a/web/src/app/loans/loans-store.ts b/web/src/app/loans/loans-store.ts
+index 84a8530..b94a89e 100644
+--- a/web/src/app/loans/loans-store.ts
++++ b/web/src/app/loans/loans-store.ts
+@@ -1,5 +1,5 @@
+ import { Injectable, computed, inject, signal } from '@angular/core';
+-import { Observable, tap } from 'rxjs';
++import { Observable, Subscription, tap } from 'rxjs';
+ 
+ import { pageCount } from '../core/api';
+ import { Loan, LoanInput } from '../core/models';
+@@ -11,6 +11,8 @@ export const DEFAULT_LOAN_FILTER: LoanQuery = { page: 1, pageSize: 10 };
+ @Injectable({ providedIn: 'root' })
+ export class LoansStore {
+   private readonly api = inject(LoansApi);
++  /** The list request in flight; a newer load drops it, so an older answer never lands. */
++  private listRequest: Subscription | null = null;
+ 
+   private readonly _loans = signal<Loan[]>([]);
+   private readonly _totalCount = signal(0);
+@@ -39,7 +41,8 @@ export class LoansStore {
+     this._filter.set(filter);
+     this._loading.set(true);
+     this._error.set(null);
+-    this.api.list(filter).subscribe({
++    this.listRequest?.unsubscribe();
++    this.listRequest = this.api.list(filter).subscribe({
+       next: (result) => {
+         this._loans.set(result.items);
+         this._totalCount.set(result.totalCount);

@@ -1,0 +1,56 @@
+diff --git a/web/src/app/loans/loans-store.ts b/web/src/app/loans/loans-store.ts
+index 84a8530..d752c16 100644
+--- a/web/src/app/loans/loans-store.ts
++++ b/web/src/app/loans/loans-store.ts
+@@ -1,5 +1,5 @@
+ import { Injectable, computed, inject, signal } from '@angular/core';
+-import { Observable, tap } from 'rxjs';
++import { Observable, Subscription, tap } from 'rxjs';
+ 
+ import { pageCount } from '../core/api';
+ import { Loan, LoanInput } from '../core/models';
+@@ -11,6 +11,10 @@ export const DEFAULT_LOAN_FILTER: LoanQuery = { page: 1, pageSize: 10 };
+ @Injectable({ providedIn: 'root' })
+ export class LoansStore {
+   private readonly api = inject(LoansApi);
++  /** The list request in flight; a newer load drops it, so an older answer never lands. */
++  private listRequest: Subscription | null = null;
++  /** Loans returned while this store lives: an answer fetched before the return must not undo it. */
++  private readonly returned = new Map<number, Loan>();
+ 
+   private readonly _loans = signal<Loan[]>([]);
+   private readonly _totalCount = signal(0);
+@@ -39,9 +43,10 @@ export class LoansStore {
+     this._filter.set(filter);
+     this._loading.set(true);
+     this._error.set(null);
+-    this.api.list(filter).subscribe({
++    this.listRequest?.unsubscribe();
++    this.listRequest = this.api.list(filter).subscribe({
+       next: (result) => {
+-        this._loans.set(result.items);
++        this._loans.set(result.items.map((loan) => this.withReturns(loan)));
+         this._totalCount.set(result.totalCount);
+         this._loading.set(false);
+       },
+@@ -68,12 +73,18 @@ export class LoansStore {
+   returnLoan(id: number): void {
+     this._error.set(null);
+     this.api.returnLoan(id).subscribe({
+-      next: (returned) =>
+-        this._loans.update((loans) => loans.map((loan) => (loan.id === id ? returned : loan))),
++      next: (returned) => {
++        this.returned.set(id, returned);
++        this._loans.update((loans) => loans.map((loan) => (loan.id === id ? returned : loan)));
++      },
+       error: (error: unknown) => this._error.set(problemMessage(error)),
+     });
+   }
+ 
++  private withReturns(loan: Loan): Loan {
++    return loan.status === 'Returned' ? loan : (this.returned.get(loan.id) ?? loan);
++  }
++
+   private countByStatus(status: Loan['status']): number {
+     return this._loans().filter((loan) => loan.status === status).length;
+   }

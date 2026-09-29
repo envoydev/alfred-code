@@ -1,0 +1,152 @@
+diff --git a/src/LendingDesk.Api/Auth/Visibility.cs b/src/LendingDesk.Api/Auth/Visibility.cs
+new file mode 100644
+index 0000000..8f9f75f
+--- /dev/null
++++ b/src/LendingDesk.Api/Auth/Visibility.cs
+@@ -0,0 +1,33 @@
++using System.Security.Claims;
++using LendingDesk.Data;
++using Microsoft.EntityFrameworkCore;
++
++namespace LendingDesk.Api.Auth;
++
++/// <summary>
++/// Which member records and loans a caller may see: staff and admins see everything, a member-role caller only
++/// their own. Anything else is answered as if it did not exist, so a member cannot learn which ids are in use.
++/// </summary>
++internal sealed record Visibility(bool Everything, int? MemberId)
++{
++    public bool Allows(int memberId) => Everything || MemberId == memberId;
++}
++
++internal static class VisibilityExtensions
++{
++    /// <summary>A member-role caller is the member whose email matches their user name, ignoring case - the API stores emails lower-cased.</summary>
++    public static async Task<Visibility> VisibilityAsync(this LendingDbContext db, ClaimsPrincipal user, CancellationToken cancellationToken)
++    {
++        if (!user.IsInRole(Roles.Member))
++        {
++            return new Visibility(true, null);
++        }
++
++        var email = (user.Identity?.Name ?? string.Empty).Trim().ToLowerInvariant();
++        var memberId = await db.Members
++            .Where(m => m.Email == email)
++            .Select(m => (int?)m.Id)
++            .FirstOrDefaultAsync(cancellationToken);
++        return new Visibility(false, memberId);
++    }
++}
+diff --git a/src/LendingDesk.Api/Controllers/LoansController.cs b/src/LendingDesk.Api/Controllers/LoansController.cs
+index 94dc322..036c995 100644
+--- a/src/LendingDesk.Api/Controllers/LoansController.cs
++++ b/src/LendingDesk.Api/Controllers/LoansController.cs
+@@ -16,10 +16,10 @@ namespace LendingDesk.Api.Controllers;
+ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : ControllerBase
+ {
+     [HttpGet]
+-    public Task<PagedResult<LoanDto>> List([FromQuery] LoanQuery query, CancellationToken cancellationToken)
++    public async Task<PagedResult<LoanDto>> List([FromQuery] LoanQuery query, CancellationToken cancellationToken)
+     {
+         var today = clock.Today();
+-        var loans = db.Loans.AsNoTracking();
++        var loans = await VisibleLoansAsync(cancellationToken);
+         if (query.MemberId is { } memberId)
+         {
+             loans = loans.Where(l => l.MemberId == memberId);
+@@ -33,7 +33,7 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
+             _ => loans,
+         };
+ 
+-        return Project(loans.OrderBy(l => l.DueDate).ThenBy(l => l.Id), today).ToPageAsync(query, cancellationToken);
++        return await Project(loans.OrderBy(l => l.DueDate).ThenBy(l => l.Id), today).ToPageAsync(query, cancellationToken);
+     }
+ 
+     [HttpGet("{id:int}")]
+@@ -100,6 +100,14 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
+         return await Get(id, cancellationToken);
+     }
+ 
++    /// <summary>Every loan for staff and admins; only their own for a member-role caller.</summary>
++    private async Task<IQueryable<Loan>> VisibleLoansAsync(CancellationToken cancellationToken)
++    {
++        var visibility = await db.VisibilityAsync(User, cancellationToken);
++        var loans = db.Loans.AsNoTracking();
++        return visibility.Everything ? loans : loans.Where(l => l.MemberId == visibility.MemberId);
++    }
++
+     private static IQueryable<LoanDto> Project(IQueryable<Loan> loans, DateOnly today) =>
+         loans.Select(l => new LoanDto(
+             l.Id,
+diff --git a/src/LendingDesk.Api/Controllers/MembersController.cs b/src/LendingDesk.Api/Controllers/MembersController.cs
+index 128fcae..c33733e 100644
+--- a/src/LendingDesk.Api/Controllers/MembersController.cs
++++ b/src/LendingDesk.Api/Controllers/MembersController.cs
+@@ -14,15 +14,21 @@ namespace LendingDesk.Api.Controllers;
+ public sealed class MembersController(LendingDbContext db, TimeProvider clock) : ControllerBase
+ {
+     [HttpGet]
+-    public Task<PagedResult<MemberDto>> List([FromQuery] MemberQuery query, CancellationToken cancellationToken)
++    public async Task<PagedResult<MemberDto>> List([FromQuery] MemberQuery query, CancellationToken cancellationToken)
+     {
++        var visibility = await db.VisibilityAsync(User, cancellationToken);
+         var members = db.Members.AsNoTracking();
++        if (!visibility.Everything)
++        {
++            members = members.Where(m => m.Id == visibility.MemberId);
++        }
++
+         if (query.Status is { } status)
+         {
+             members = members.Where(m => m.Status == status);
+         }
+ 
+-        return members
++        return await members
+             .OrderBy(m => m.Name)
+             .ThenBy(m => m.Id)
+             .Select(m => new MemberDto(m.Id, m.Name, m.Email, m.Status, m.CreatedAt))
+@@ -30,8 +36,15 @@ public sealed class MembersController(LendingDbContext db, TimeProvider clock) :
+     }
+ 
+     [HttpGet("{id:int}")]
+-    public async Task<MemberDto> Get(int id, CancellationToken cancellationToken) =>
+-        MemberDto.From(await Find(id, cancellationToken));
++    public async Task<MemberDto> Get(int id, CancellationToken cancellationToken)
++    {
++        if (!(await db.VisibilityAsync(User, cancellationToken)).Allows(id))
++        {
++            throw new NotFoundException("Member", id);
++        }
++
++        return MemberDto.From(await Find(id, cancellationToken));
++    }
+ 
+     [HttpPost]
+     [Authorize(Policy = Policies.Staff)]
+diff --git a/tests/LendingDesk.IntegrationTests/LoansApiTests.cs b/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
+index 1052f9f..b5c23d4 100644
+--- a/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
++++ b/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
+@@ -145,7 +145,7 @@ public sealed class LoansApiTests(PostgresFixture postgres) : IAsyncLifetime
+         var first = await (await LendAsync(memberId, itemId, startInDays: 0)).ReadAsync<LoanDto>();
+         var second = await (await LendAsync(memberId, itemId, startInDays: 2)).ReadAsync<LoanDto>();
+ 
+-        var loans = await (await _api.ClientAs("member").GetAsync($"/api/members/{memberId}/loans")).ReadAsync<List<LoanDto>>();
++        var loans = await (await _staff.GetAsync($"/api/members/{memberId}/loans")).ReadAsync<List<LoanDto>>();
+ 
+         Assert.Equal([second.Id, first.Id], loans.Select(l => l.Id));
+         Assert.Equal(HttpStatusCode.NotFound, (await _staff.GetAsync("/api/members/999999/loans")).StatusCode);
+diff --git a/tests/LendingDesk.IntegrationTests/MembersApiTests.cs b/tests/LendingDesk.IntegrationTests/MembersApiTests.cs
+index 8d451f2..7438e03 100644
+--- a/tests/LendingDesk.IntegrationTests/MembersApiTests.cs
++++ b/tests/LendingDesk.IntegrationTests/MembersApiTests.cs
+@@ -29,7 +29,7 @@ public sealed class MembersApiTests(PostgresFixture postgres) : IAsyncLifetime
+         Assert.Equal("Ada Lovelace", created.Name);
+         Assert.Equal("ada@example.com", created.Email);
+         Assert.Equal(MemberStatus.Active, created.Status);
+-        var fetched = await (await _api.ClientAs("member").GetAsync($"/api/members/{created.Id}")).ReadAsync<MemberDto>();
++        var fetched = await (await _api.ClientAs("member", created.Email).GetAsync($"/api/members/{created.Id}")).ReadAsync<MemberDto>();
+         Assert.Equal(created, fetched);
+     }
+ 
