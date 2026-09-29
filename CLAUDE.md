@@ -289,6 +289,10 @@ change (see the invariants below).
     DevOps, browser extension);
   - six read-only support seats: `evidence-gatherer`, `test-coverage-analyzer`,
     `architecture-analyzer`, `code-quality-analyzer`, `code-style-analyzer`, `related-project-analyzer`.
+  Every seat that judges or writes code holds `mcp__plugin_documentation_documentation__*` (baseline-quality-gates
+  sends its outside-world claims there); the five read-only gatherers do not. A seat reports through
+  SubagentHandback when its tools include it, else its last message (`verifier-memory-before-report`);
+  `scripts/audit-214-agents.test.js` holds the grants.
   Pins: resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers
   `sonnet`/`medium`, support seats `sonnet`. Captures are deliberate-only
   (`alfred-capture-architecture` writes `architecture/ARCHITECTURE.md` and
@@ -520,7 +524,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     registered (the stamp keeps it installed, its browser is still downloaded) and a later enable
     registers it (R124). `enabledMcpjsonServers` names only the `.mcp.json` servers the run registered
     and lets load - never a plugin-carried locked server or an engine left off. A legacy 1.x `playwright` server
-    migrates. The browser agents grant all four. The data root's own `.gitignore` keeps the profiles out of
+    migrates. The browser agents grant all four, each minus `browser_run_code_unsafe` (RCE-equivalent) through their
+    `disallowedTools`, which Claude Code applies before `tools` resolves (code.claude.com/docs/en/sub-agents). The data root's own `.gitignore` keeps the profiles out of
     git (they hold session cookies); a 2.0.0 `.playwright/<engine>` still in use gets `.playwright/.gitignore` (`*`).
   - `windows-desktop` (Windows-MCP) and `macos-desktop` (MacOS-MCP) - each drives the machine's OWN
     desktop apps, so each installs on its own OS only and neither on Linux (`stack/mcp/desktop-launch.js`
@@ -541,7 +546,11 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     stands in for the OS where a run must be judged as another's - the tests and the temp-project matrix.
     Both start their upstream with `ANONYMIZED_TELEMETRY=false` (the entries' `env`, the copy route's
     registration): both wheels read it, defaulting to `true`, and send PostHog usage events otherwise.
-    Each server brings the `desktop-automation` skill through the graph (below).
+    Each server brings the `desktop-automation` skill through the graph (below). `wpf-verifier`, `winforms-verifier`
+    and `evidence-gatherer` hold only its read-only observe tools (Windows `Snapshot` / `Screenshot` / `WaitFor`,
+    macOS `Snapshot` / `Wait` - the pinned wheels' readOnlyHint tools that look at the desktop), named in `tools:`
+    and described in the body, so no graph edge pulls the opt-in server into an install; a stack that seeds a
+    server no seat of it holds is listed main-thread-only in `scripts/audit-214-agents.test.js` (browser-extension's browser).
   - plus `navigation` (Serena), `documentation` (Context7, the hosted remote only - its `CONTEXT7_API_KEY` header expands from
     the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,
     `chrome-devtools`, `appium-mcp`, `sentry` and `context7-local` (manifest `retired.mcps`,

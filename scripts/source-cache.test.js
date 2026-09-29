@@ -293,20 +293,20 @@ test("the protocol's PowerShell snippet resolves the same entry", { skip: skipNo
     finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
 
-// Two more bodies find a file of their own in the plugin cache: the capabilities inventory script
-// and the cross-task protocol the integration reviewer gates against. `find | head -1` took whichever
-// cached version the filesystem listed first, and the reviewer looked only where the COPY route puts
-// skills, so on the plugin route it always ran its reduced fallback. Both now take the newest entry
-// the way the protocol does - sort -V, not listing order and not lexical order - so each body's own
+// One more body finds a file of its own in the plugin cache: the capabilities inventory script.
+// `find | head -1` took whichever cached version the filesystem listed first; it now takes the newest
+// entry the way the protocol does - sort -V, not listing order and not lexical order - so the body's own
 // snippet runs here against two planted caches: one where listing order is wrong (0.2.84 before
-// 1.0.0), one where lexical order is wrong (0.9.0 after 0.10.0).
+// 1.0.0), one where lexical order is wrong (0.9.0 after 0.10.0). The integration reviewer's cache lookup
+// is gone (2.1.4 audit I15): every stack skill is a library copy in the project since 2.1.0, so the
+// reviewer reads .claude/skills alone.
 function bodySnippet(file, re) {
     const m = fs.readFileSync(path.join(ROOT, file), 'utf8').match(re);
     assert.ok(m, `${file}: its plugin-cache lookup snippet is missing`);
     return m[1];
 }
 
-test('the capabilities script and the reviewer protocol resolve to the NEWEST cached entry', () => {
+test('the capabilities script resolves to the NEWEST cached entry', () => {
     for (const versions of [['0.2.84', '1.0.0'], ['0.9.0', '0.10.0']])
     {
         const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cache lookup '));
@@ -326,9 +326,6 @@ test('the capabilities script and the reviewer protocol resolve to the NEWEST ca
             const caps = bodySnippet('stack/skills/alfred-capture-agent-capabilities/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS"\n```/);
             assert.match(execFileSync('bash', ['-c', `${caps}printf %s "$CAPS"`], { cwd: home, env, encoding: 'utf8' }),
                 new RegExp(`/${newest}/stack/skills/alfred-capture-agent-capabilities/scripts/capabilities-inventory\\.js$`), `capabilities: not the newest of ${versions}`);
-            const rev = bodySnippet('stack/agents/integration-reviewer.md', /`(for d in [^`]*?cut -f2)`/);
-            assert.match(execFileSync('bash', ['-c', rev], { cwd: home, env, encoding: 'utf8' }).trim(),
-                new RegExp(`/${newest}$`), `reviewer: not the newest of ${versions}`);
         }
         finally { fs.rmSync(home, { recursive: true, force: true }); }
     }
@@ -505,12 +502,11 @@ test("the protocol's PowerShell snippet updates each 1.x row by its own id, read
     finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
 
-test('the four body snippets read the 1.x cache dir too, and never an orphaned one', () => {
+test('the three body snippets read the 1.x cache dir too, and never an orphaned one', () => {
     const snippets = {
         capabilities: [bodySnippet('stack/skills/alfred-capture-agent-capabilities/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS"\n```/) + 'printf %s "$CAPS"', '/stack/skills/alfred-capture-agent-capabilities/scripts/capabilities-inventory.js'],
         firstLook: [bodySnippet('stack/skills/alfred-capture-first-look/SKILL.md', /```bash\n(SCAN=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SCAN"', '/scripts/scan-evidence.js'],
         usage: [bodySnippet('stack/skills/alfred-capture-stack-usage/SKILL.md', /```bash\n(TMP=\$\(mktemp -d\)\nCFG=[\s\S]*?cut -f2\))\n/) + '\nrm -rf "$TMP"; printf %s "$SRC"', ''],
-        reviewer: [bodySnippet('stack/agents/integration-reviewer.md', /`(for d in [^`]*?cut -f2)`/), ''],
     };
     for (const [plant, want] of [
         [(cfg) => plantBare(cfg, LEGACY_DIR, LEGACY_DIR, '1.3.0'), `/${LEGACY_DIR}/1.3.0`],

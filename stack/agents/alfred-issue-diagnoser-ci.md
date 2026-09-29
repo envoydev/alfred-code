@@ -1,7 +1,7 @@
 ---
 name: alfred-issue-diagnoser-ci
 description: "Use when a CI pipeline or PR check is red: a read-only first pass that pulls the failing logs via gh, tries one local repro, classifies each failure and returns a verdict plus route. Do NOT use for a bug that reproduces locally with no CI run, or to fix."
-tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_navigation_navigation__write_memory, mcp__plugin_navigation_navigation__read_memory, mcp__plugin_navigation_navigation__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Skill, Agent, Bash, Grep, Glob
+tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_navigation_navigation__write_memory, mcp__plugin_navigation_navigation__read_memory, mcp__plugin_navigation_navigation__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Skill, Agent, Bash, Grep, Glob, mcp__plugin_documentation_documentation__*
 model: opus
 effort: high
 color: orange

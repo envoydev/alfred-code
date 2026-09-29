@@ -1,7 +1,7 @@
 ---
 name: alfred-issue-diagnoser-runtime
 description: "Use when something breaks at runtime locally - a crash, exception, stack trace or broken UI: a read-only pass that reproduces it, isolates the root cause to a file and symbol, and returns fix tasks. Do NOT use for red CI (alfred-issue-diagnoser-ci) or to write the fix."
-tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_navigation_navigation__write_memory, mcp__plugin_navigation_navigation__read_memory, mcp__plugin_navigation_navigation__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Skill, Agent, Bash, Grep, Glob
+tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_navigation_navigation__write_memory, mcp__plugin_navigation_navigation__read_memory, mcp__plugin_navigation_navigation__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Skill, Agent, Bash, Grep, Glob, mcp__plugin_documentation_documentation__*
 model: opus
 effort: xhigh
 color: orange

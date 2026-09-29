@@ -3118,7 +3118,7 @@
       ]
     },
     "optional-mcp-absence": {
-      "_note": "An optional MCP (the browser server - the one droppable server since 2.0.0 cut chrome-devtools and appium-mcp) is simply absent from a seat tools list when the project never registered it, and a live check that runs through the project's OWN E2E suite (the native device smoke, the loaded-extension run) is absent when the project ships none: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat with such a check restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. The seat names the server only by what it does (the described-cite shape), never by name with a guard beside it.",
+      "_note": "An optional MCP (the browser server, and the two desktop servers whose read-only observe tools the WPF and WinForms verifiers and the evidence gatherer hold - opt-in and one OS each) is simply absent from a seat tools list when the project never registered it, and a live check that runs through the project's OWN E2E suite (the native device smoke, the loaded-extension run) is absent when the project ships none: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat with such a check restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. The seat names the server only by what it does (the described-cite shape), never by name with a guard beside it - a backticked server name is also a graph edge that would pull the server into every install picking the seat.",
       "owner": {
         "file": "stack/agents/integration-reviewer.md",
         "marker": "else record the E2E path as UNVERIFIED with the reason"
@@ -3133,6 +3133,10 @@
           "marker": "say plainly that the browser evidence was not obtainable here"
         },
         {
+          "file": "stack/agents/evidence-gatherer.md",
+          "marker": "say plainly that the desktop evidence was not obtainable here"
+        },
+        {
           "file": "stack/agents/ionic-angular-verifier.md",
           "marker": "a gate that cannot drive the native path says so, it never greens it"
         },
@@ -3143,6 +3147,14 @@
         {
           "file": "stack/agents/web-angular-verifier.md",
           "marker": "else report the interaction and a11y paths as UNVERIFIED with the reason"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "report the form checks as UNVERIFIED with the reason"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "report the view checks as UNVERIFIED with the reason"
         }
       ]
     },
@@ -5300,52 +5312,64 @@
       ]
     },
     "verifier-memory-before-report": {
-      "_note": "A verifier writes its navigation-server hand-off note BEFORE it composes the report, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then write_memory, then a pointer close forced a resend). 10 copies, one per trio verifier.",
+      "_note": "A seat writes any memory BEFORE it composes the report, then delivers the report as its final hand-off - through SubagentHandback when its tools include it (Claude Code gives that tool to every locally run, non-fork subagent in auto mode and delivers only what goes through it - tools-reference, v2.1.271+; the 2026-09-29 agents audit counted 188 of 205 local seat runs reporting through it), else as its last message; nothing after it, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then write_memory, then a pointer close forced a resend). 13 copies: the ten trio verifiers and the three support seats whose structured return IS the deliverable.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
-        "marker": "Memory writes come BEFORE the report"
+        "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/code-style-analyzer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/related-project-analyzer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/test-coverage-analyzer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         }
       ]
     },
     "verifier-left-running-line": {
-      "_note": "A seat that starts a dev server, an emulator or a container must SAY so in its report, on a literal line the orchestrator can read without parsing prose - the quality-gates rule's tear-down ask can only cover what it is told is up. Carried by the four verifiers whose gates start something, plus the integration reviewer.",
+      "_note": "A seat that starts a dev server, an emulator, a container or a desktop app must SAY so in its report, on a literal line the orchestrator can read without parsing prose - the quality-gates rule's tear-down ask can only cover what it is told is up. Carried by the five verifiers whose gates start something, plus the integration reviewer.",
       "owner": {
         "file": "stack/agents/web-angular-verifier.md",
         "marker": "a literal `left_running:` line"
@@ -5361,6 +5385,10 @@
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
+          "marker": "a literal `left_running:` line"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
           "marker": "a literal `left_running:` line"
         },
         {
