@@ -1,9 +1,15 @@
 ---
 name: dev-log-convert
-description: "Converts a day's raw work notes (Ukrainian, English, or mixed) into a structured, past-tense English work log - ticket IDs normalized, time totalled, tasks grouped by project or prefix across one or more days. Fires only on the exact keyword 'dev-log' - do not use it for general note-taking, meeting minutes, commit messages, or status updates, which are not this format."
+description: "Use when the user says 'dev-log' - converts a day's raw work notes into a past-tense English work log. Not for meeting minutes or commit messages."
 ---
 
 You will receive text (Ukrainian, English, or mixed) describing work done during one or more days. Convert it into a concise English work log written in past tense.
+
+## When to use
+
+Converts a day's raw work notes (Ukrainian, English, or mixed) into a structured, past-tense English work log - ticket IDs normalized, time totalled, tasks grouped by project or prefix across one or more days. Fires only on the exact keyword 'dev-log'.
+
+Do not use it for general note-taking, meeting minutes, commit messages, or status updates, which are not this format.
 
 ## Ticket IDs
 

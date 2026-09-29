@@ -1,6 +1,6 @@
 ---
 name: alfred-task-solve-cross
-description: "Use when work spans backend and frontend, or when you want the agent seats routed for a task - the entry-point router for multi-agent engineering work. It scopes the task IN-SESSION (the generated awareness rules + a bounded navigation-server pass), asks session-or-agents up front, and routes to the smallest safe execution mode: single-chat, one implementer, a single-stack design-build-verify trio, or a producer-first cross-domain run where the producer's interface IS the contract and the integration-reviewer gates the assembly. Also triggers on plan the agents for this, how should I route this work, or investigate-and-fix a bug across the stack; name the stack ('frontend only', 'just the API') to pin routing to it. It scopes and routes - never designs or writes code - and runs in the MAIN session only. NOT for greenfield (alfred-task-build-from-scratch) or a deliberate architecture re-capture (alfred-capture-architecture)."
+description: "Use when work spans backend and frontend, or to route agent seats - 'plan the agents for this', 'how should I route this'. Not for greenfield builds."
 disable-model-invocation: true
 ---
 
@@ -14,6 +14,20 @@ The two things that must never be violated:
 Producer before consumer across domains. Sequential inside one domain.
 Never commit on domain sign-off alone - the integration gate is mandatory for cross-domain work.
 ```
+
+## When to use
+
+- Work spans backend and frontend, or you want the agent seats routed for a task - the entry-point router for
+  multi-agent engineering work.
+- Also triggers on 'plan the agents for this', 'how should I route this work', or 'investigate-and-fix a bug across
+  the stack'; name the stack ('frontend only', 'just the API') to pin routing to it.
+- It scopes the task IN-SESSION (the generated awareness rules + a bounded navigation-server pass), asks
+  session-or-agents up front, and routes to the smallest safe execution mode: single-chat, one implementer, a
+  single-stack design-build-verify trio, or a producer-first cross-domain run where the producer's interface IS the
+  contract and the integration-reviewer gates the assembly.
+- It scopes and routes - never designs or writes code - and runs in the MAIN session only.
+- NOT for greenfield (alfred-task-build-from-scratch) or a deliberate architecture re-capture
+  (alfred-capture-architecture).
 
 ## Two routing families
 

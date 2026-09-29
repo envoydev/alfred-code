@@ -1,11 +1,19 @@
 ---
 name: alfred-issue-signatures-runtime
-description: Use when something breaks at runtime on your own machine and you have the evidence - a stack trace, an exception, a hang, or a broken screen - and want to know where the real cause lives. A lookup of the common local-runtime failure signatures, each mapped to where to isolate it - usually not the line that threw. The single-chat form of the diagnoser seat's failure catalogue; pairs with the root-cause method. NOT for a CI or build/test-gate failure (the resolvers and alfred-issue-diagnoser-ci own those) or a production incident - local-runtime evidence only; and when the evidence spans more than one source, that is the gated four-step investigation flow, not a lookup. Keywords NullReferenceException, Cannot read properties of undefined, Unable to resolve service, NG0201 No provider, ObjectDisposedException, deadlock, hang, 401/403, config drift.
+description: "Use when a local runtime failure needs a cause - stack trace, exception, hang, broken screen, NullReferenceException, NG0201. Not for red CI or production."
 ---
 
 # Failure Signatures - what the crash means and where the cause actually lives
 
 Every runtime failure has a signature, and the signature names where to look - which is almost never the line in the top frame. This is the single-chat form of the diagnoser seat's failure catalogue: match the evidence to a signature, then isolate at the place the signature points, not the place it threw. It pairs with `alfred-habits-root-cause` - the disciplined hypothesis-and-test loop; this one tells you which hypothesis the signature warrants. Read the evidence first and quote the exact frame, then match.
+
+## When to use
+
+Use when something breaks at runtime on your own machine and you have the evidence - a stack trace, an exception, a hang, or a broken screen - and want to know where the real cause lives. A lookup of the common local-runtime failure signatures, each mapped to where to isolate it - usually not the line that threw. The single-chat form of the diagnoser seat's failure catalogue; pairs with the root-cause method.
+
+Keywords: NullReferenceException, Cannot read properties of undefined, Unable to resolve service, NG0201 No provider, ObjectDisposedException, deadlock, hang, 401/403, config drift.
+
+Not for a CI or build/test-gate failure (the resolvers and the CI diagnoser own those) or a production incident - local-runtime evidence only. When the evidence spans more than one source, that is the gated four-step investigation flow, not a lookup.
 
 ## The signatures - and where each isolates
 

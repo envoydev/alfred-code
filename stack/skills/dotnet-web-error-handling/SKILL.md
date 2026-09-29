@@ -1,6 +1,6 @@
 ---
 name: dotnet-web-error-handling
-description: "Use when deciding how an ASP.NET Core API reports failures: ProblemDetails, IExceptionHandler, UseExceptionHandler, Result types, error envelopes, FluentValidation endpoint filters. Keeps expected failures (Result) apart from unexpected ones (exceptions caught once). Not for non-HTTP code - the C# baseline's exception and Result rules cover that."
+description: "Use when deciding how an ASP.NET Core API reports failures - ProblemDetails, IExceptionHandler, Result types, error envelopes. Not for non-HTTP code."
 ---
 
 # ASP.NET Core error handling
@@ -11,6 +11,12 @@ An API has exactly two ways to report that something went wrong, and they must n
 - **Unexpected failures** - a dependency is down, an invariant is violated, a bug throws. These are exceptions, and they are caught in exactly one place: a global handler.
 
 The language-level call - when to throw versus when to return - is `csharp`. This skill is only about how a failure reaches the wire. Floor is .NET 8 / C# 12.
+
+## When to use
+
+- Also fires on: UseExceptionHandler, FluentValidation endpoint filters.
+- Keeps expected failures (Result) apart from unexpected ones (exceptions caught once).
+- Not for non-HTTP code - the C# baseline's exception and Result rules cover that.
 
 ## Model expected failures as return values
 - An application or domain operation that can fail in a foreseeable way returns its outcome instead of throwing. Two shapes both work - `csharp` owns the shape call (it prefers a domain-specific result when the failure modes are known); pick one per codebase and stay with it:

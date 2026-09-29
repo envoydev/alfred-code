@@ -13,3 +13,6 @@ load happen.
 
 Where the markdown rule attached on the same touch, its skill loads in that SAME first action, on
 top of this one - one first action, not two competing ones. Skip one-line tweaks.
+
+A skill description stays at most 160 characters, trigger first, the rest in the body's
+`## When to use` section (the habit says why; in the Alfred Code repo lint check 15c fails a longer one).

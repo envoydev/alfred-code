@@ -1,11 +1,17 @@
 ---
 name: dotnet-source-generators
-description: "Use when writing or reviewing a Roslyn source generator, weighing compile-time codegen against reflection, or when the user says source generator, IIncrementalGenerator, ISourceGenerator, GeneratedRegex, LoggerMessage, or ForAttributeWithMetadataName. Covers both sides of the line - reaching first for the framework generators that exist (GeneratedRegex, LoggerMessage, the System.Text.Json context) and authoring your own only when none fits. Floors at .NET 8 / C# 12. Do NOT use for ordinary code that ships no generator."
+description: "Use when writing a Roslyn source generator - IIncrementalGenerator, GeneratedRegex, LoggerMessage - or weighing codegen against reflection. Not for plain code."
 ---
 
 # .NET source generators
 
 A source generator is a compiler plugin: it runs during the build, reads the code being compiled, and adds *new* C# to that same compilation. It cannot mutate what you wrote - it only appends partial members, new types, or attributes. The payoff is moving work that would otherwise happen with runtime reflection (or by hand) to compile time, where it is faster, AOT-safe, and visible to the IDE. Baseline is .NET 8 / C# 12; the generator's own language conventions follow the C# language baseline.
+
+## When to use
+
+- Also fires on: source generator, ISourceGenerator, ForAttributeWithMetadataName.
+- Covers both sides of the line - reaching first for the framework generators that exist (GeneratedRegex, LoggerMessage, the System.Text.Json context) and authoring your own only when none fits.
+- Do NOT use for ordinary code that ships no generator.
 
 ## First question: does a framework generator already do this?
 

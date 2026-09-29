@@ -1,6 +1,6 @@
 ---
 name: dotnet-data-access
-description: "Use when configuring a DbContext or ISession, writing or reviewing an EF Core, NHibernate or Dapper query, picking a loading strategy, chasing an N+1, or designing a read/write store in .NET (.NET 8 floor). Do NOT use for the engine side - raw SQL, indexes, the query planner (the database skills) - nor for the migration playbook, which is dotnet-migrate."
+description: "Use when configuring a DbContext or ISession, writing EF Core, NHibernate or Dapper queries, or chasing an N+1 in .NET. Not for raw SQL or migrations."
 ---
 
 # dotnet-data-access (ORM hub)
@@ -12,6 +12,11 @@ Owns the .NET side of talking to a database, the part that is the same whichever
 - .NET Framework 4.8 (EF Core 3.1 vs EF6, DbContext-per-request) -> `references/net-framework-48.md`
 
 Out of scope, by design: raw SQL / index / planner tuning -> the engine skill (Postgres or SQLite); the migration safety playbook (expand-contract, backfill, rollback, never edit an applied migration) -> `dotnet-migrate`; async / `CancellationToken` / hand-mapping -> `csharp`; real-DB integration tests -> `dotnet-testing`. Where an install lacks one of those, the access rules below still hold - do not absorb the missing area into this layer.
+
+## When to use
+
+- Also fires on: reviewing a query, designing a read/write store (.NET 8 floor).
+- Do NOT use for the engine side - raw SQL, indexes, the query planner (the database skills) - nor for the migration playbook, which is dotnet-migrate.
 
 ## Session lifetime and thread-safety
 

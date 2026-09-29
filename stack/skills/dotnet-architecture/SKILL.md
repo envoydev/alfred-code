@@ -1,6 +1,6 @@
 ---
 name: dotnet-architecture
-description: "Use when choosing or holding a .NET application architecture - where code belongs, layering or slicing, service and module boundaries, drift review - or when the user says clean architecture, vertical slice, DDD, modular monolith, microservices or bounded context. Not for architecture tests (the architecture fitness-test skill) or SQL tuning (the database skills)."
+description: "Use when choosing or holding a .NET architecture - layering, slicing, module boundaries, drift - clean architecture, vertical slice, DDD, microservices."
 ---
 
 # dotnet-architecture (decision hub)
@@ -12,6 +12,11 @@ Decide the shape, then load the one style you chose. **Per-style depth lives in 
 - Rich domain (aggregates, invariants) -> `references/ddd.md` (additive - layers onto clean or vsa, does not replace it)
 - Distinct bounded contexts in one deployable -> `references/modular-monolith.md`
 - Independently deployed/scaled boundaries -> `references/microservices.md`
+
+## When to use
+
+- Also fires on: where code belongs, service boundaries, modular monolith, bounded context.
+- Not for architecture tests (the architecture fitness-test skill) or SQL tuning (the database skills).
 
 ## Pick one, then commit
 

@@ -1,6 +1,6 @@
 ---
 name: dotnet-cryptography
-description: "Use when encrypting, decrypting, hashing, signing, verifying, or deriving a key in .NET - System.Security.Cryptography, AES-GCM, RSA / ECDSA, PBKDF2 / Argon2id password hashing, constant-time compare, post-quantum ML-KEM / ML-DSA. Floors at .NET 8 / C# 12. Do NOT use for TLS/HTTPS pipeline config, for building a sign-in flow, for where secrets are stored, or for the OWASP category checklist - those are the authentication and security-hardening skills."
+description: "Use when encrypting, hashing, signing or deriving keys in .NET - System.Security.Cryptography, AES-GCM, RSA, Argon2id. Not for TLS, sign-in or secret storage."
 ---
 
 # .NET cryptography
@@ -8,6 +8,11 @@ description: "Use when encrypting, decrypting, hashing, signing, verifying, or d
 Cryptography in .NET is a library of correct primitives that are easy to assemble incorrectly. The job is almost never to invent a scheme - it is to pick the primitive the situation calls for and use it the single way it is meant to be used. Everything here lives in `System.Security.Cryptography`. Floor is .NET 8 / C# 12, which covers every classical primitive below; post-quantum is a .NET 10+ addition flagged at the end.
 
 Two boundaries this skill does not cross. Where keys and secrets *live* - a vault, a managed key service, environment config - is your secrets layer, never a literal in source and never a checked-in file. Signing a user in belongs to the skill covering .NET authentication. This skill is only the math and the API around it. On .NET Framework 4.8 two defaults are footguns - PBKDF2's SHA-1 default and the `RandomNumberGenerator` API name - covered in `references/net-framework-48.md`.
+
+## When to use
+
+- Also fires on: decrypting, verifying, ECDSA, constant-time compare, post-quantum ML-KEM / ML-DSA.
+- Do NOT use for TLS/HTTPS pipeline config, for building a sign-in flow, for where secrets are stored, or for the OWASP category checklist - those are the authentication and security-hardening skills.
 
 ## First principle: use the static one-shots
 

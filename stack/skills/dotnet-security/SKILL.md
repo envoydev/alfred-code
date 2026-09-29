@@ -1,6 +1,6 @@
 ---
 name: dotnet-security
-description: "Use when hardening, threat-modeling or reviewing a .NET service for vulnerabilities: the OWASP Top 10 mapped to ASP.NET Core mitigations (IDOR, injection, XSS, CORS, crypto, deserialization, SSRF), reported as a findings table. Not for building sign-in or picking crypto primitives."
+description: "Use when hardening, threat-modeling or reviewing a .NET service for vulnerabilities - OWASP Top 10 for ASP.NET Core. Not for sign-in or crypto choices."
 ---
 
 # .NET application security - the OWASP Top 10, applied
@@ -10,6 +10,11 @@ This is the hardening reference: how the 2021 OWASP Top 10 categories show up in
 On a .NET Framework 4.8 codebase the TLS defaults, `BinaryFormatter` (still shipping there), classic-ASP.NET security headers, and the dependency-audit prerequisites differ - those deltas are in `references/net-framework-48.md`.
 
 The principle under all of it: treat every byte that crossed a trust boundary as hostile until you have validated it, and make the secure path the default one - a control you have to remember to add is a control you will eventually forget.
+
+## When to use
+
+- Maps the OWASP Top 10 to ASP.NET Core mitigations (IDOR, injection, XSS, CORS, crypto, deserialization, SSRF), reported as a findings table.
+- Not for building sign-in or picking crypto primitives.
 
 ## A01 - Broken access control
 

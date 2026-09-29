@@ -1,6 +1,6 @@
 ---
 name: nx
-description: Use when working in an Nx monorepo - an `nx.json` / `project.json` workspace, or `nx` commands - for the token-efficient way to navigate the project graph and scope work. Orient through the CLI's derived graph (`nx show projects`, `nx graph`, `nx show project`) rather than reading config, scope every build/test/lint to `nx affected` instead of the whole tree, scaffold with `nx generate`, and enforce module boundaries with tags. Nx answers project-graph and affected questions, the navigation server answers symbol-level ones, and a framework's own conventions skill answers its code style - this is the workspace layer above them. Not for a monorepo without Nx (pnpm or npm workspaces, Turborepo).
+description: "Use when working in an Nx monorepo - nx.json, project.json, nx commands - to navigate the project graph and scope work with nx affected. Not for non-Nx repos."
 ---
 
 # Nx Monorepo
@@ -8,6 +8,14 @@ description: Use when working in an Nx monorepo - an `nx.json` / `project.json` 
 Nx is the project-graph and task layer over an Angular (or mixed) monorepo. Use it the token-cheap
 way: orient through the CLI's derived graph, and scope every task to the projects a change actually
 touches - never dump the whole workspace or run every target.
+
+## When to use
+
+Use when working in an Nx monorepo - an `nx.json` / `project.json` workspace, or `nx` commands - for the token-efficient way to navigate the project graph and scope work.
+
+Orient through the CLI's derived graph (`nx show projects`, `nx graph`, `nx show project`) rather than reading config, scope every build/test/lint to `nx affected` instead of the whole tree, scaffold with `nx generate`, and enforce module boundaries with tags. Nx answers project-graph and affected questions, the navigation server answers symbol-level ones, and a framework's own conventions skill answers its code style - this is the workspace layer above them.
+
+Not for a monorepo without Nx (pnpm or npm workspaces, Turborepo).
 
 ## Navigate the project graph, do not read it
 - Map the workspace through the CLI, not by opening config files: `nx show projects` lists every

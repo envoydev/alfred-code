@@ -1,11 +1,19 @@
 ---
 name: ionic-security
-description: "Ionic / Capacitor mobile security hardening - the native attack surface a WebView app adds beyond its web risks. Load when hardening or reviewing an Ionic/Capacitor feature - 'is it safe to store the token like this', 'lock the app behind Face ID', 'review our deep links' - or when a security audit sweeps the mobile stack. Covers Keychain / Keystore secret storage (never localStorage or Preferences), deep links as untrusted input, least-privilege native permissions, release-build WebView settings, navigation allowlisting, screen-capture and backgrounding, plugin trust, pinning and biometric gating. Targets Capacitor 6+. Do NOT load for non-security work."
+description: "Load when hardening or reviewing the security of an Ionic or Capacitor feature - 'is it safe to store the token like this', 'lock the app behind Face ID'."
 ---
 
 # Ionic / Capacitor mobile security
 
 An Ionic app is an Angular app running in a native WebView with a bridge to native code. It inherits **every** web risk (see the skill covering Angular web hardening - XSS, CSP, token storage, CSRF) **plus** a native attack surface the browser does not have: on-device storage an attacker with the device can read, deep links other apps can fire, native permissions, and the WebView container itself. This is the native map. Assume the device may be lost, rooted, or shared, and that another app on it is hostile.
+
+## When to use
+
+Load when hardening or reviewing an Ionic/Capacitor feature - 'is it safe to store the token like this', 'lock the app behind Face ID', 'review our deep links' - or when a security audit sweeps the mobile stack. Targets Capacitor 6+.
+
+Covers Keychain / Keystore secret storage (never localStorage or Preferences), deep links as untrusted input, least-privilege native permissions, release-build WebView settings, navigation allowlisting, screen-capture and backgrounding, plugin trust, pinning and biometric gating.
+
+Do NOT load for non-security work.
 
 ## Secret and token storage
 

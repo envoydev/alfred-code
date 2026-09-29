@@ -1,6 +1,6 @@
 ---
 name: dotnet-realtime
-description: "Use for chat, notifications, live dashboards, or any real-time server push in .NET - or when the user names SignalR, hub, server-side WebSocket push, or live updates. ASP.NET Core SignalR conventions: server-to-client push over a persistent connection, connection-scoped and not durable, covering the strongly-typed hub (Hub of TClient), sending via IHubContext, group/user targeting, reconnection, JWT-over-query-string auth, additive client contracts, MessagePack, and scale-out (Redis backplane / Azure SignalR Service). Floors at .NET 8 / C# 12. Do NOT use for broker-backed durable messaging (that is the broker-messaging skill), plain request/response HTTP, in-process reactive streams (Rx / System.Reactive), or an outbound ClientWebSocket."
+description: "Use for chat, notifications, live dashboards or server push in .NET - SignalR, hub, live updates. Not for durable broker messaging or plain HTTP."
 ---
 
 # .NET real-time - ASP.NET Core SignalR
@@ -8,6 +8,12 @@ description: "Use for chat, notifications, live dashboards, or any real-time ser
 SignalR is server-push over a persistent connection: the server can call methods on connected clients (and they on it) without the client polling. The transport negotiates down a ladder - WebSockets first, then Server-Sent Events, then long-polling. Reach for it for chat, notifications, live dashboards, presence, and collaborative editing - anything where the server has something to say *now* and a client is connected to hear it. Baseline is .NET 8 / C# 12.
 
 The defining trait, and the thing that sets every rule below: a SignalR message is **connection-scoped and best-effort**. The server holds no durable copy; a client that is offline, mid-reconnect, or on another server simply misses it. That is the opposite of broker-backed messaging, where the broker persists the message and redelivers until acknowledged. If a notification *must* arrive, the durable guarantee lives in the broker, and SignalR is only the last hop - see the seam below. This skill does not cover broker-backed messaging, request/response HTTP, or in-process reactive streams (Rx / System.Reactive) - each has its own skill where the project installed one.
+
+## When to use
+
+- ASP.NET Core SignalR conventions: server-to-client push over a persistent connection, connection-scoped and not durable. Also fires on: server-side WebSocket push.
+- Covers the strongly-typed hub (Hub of TClient), sending via IHubContext, group/user targeting, reconnection, JWT-over-query-string auth, additive client contracts, MessagePack, and scale-out (Redis backplane / Azure SignalR Service).
+- Not for broker-backed durable messaging (that is the broker-messaging skill), in-process reactive streams (Rx / System.Reactive), or an outbound ClientWebSocket.
 
 ## The seam with messaging: broker delivers, SignalR pushes
 

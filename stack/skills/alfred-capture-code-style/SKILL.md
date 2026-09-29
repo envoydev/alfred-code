@@ -1,6 +1,6 @@
 ---
 name: alfred-capture-code-style
-description: "The deliberate project code-style capture. Use when the user asks to capture the project code style or to set up the code-style doc and rule; manual, /-only, and re-run to refresh in place. It fans out code-style-analyzer agents (one per detected language), merges their reports into code-style/CODE-STYLE.md under the docs root, and generates the path-scoped project-code-style rule that auto-attaches the style core whenever a matching file is touched - in the main session AND in dispatched subagents. NOT for architecture (alfred-capture-architecture), one language's style question (@agent-code-style-analyzer alone), or enforcing style (the per-language configs stay the enforced source)."
+description: "Use when asked to capture the project code style or set up the code-style doc and rule. Manual, /-only. Not for architecture or enforcing style."
 disable-model-invocation: true
 ---
 
@@ -12,6 +12,12 @@ You drive the deliberate capture of a project's ACTUAL code style and make it se
 2. `.claude/rules/project-code-style.md` - a generated path-scoped rule carrying the condensed style core, its `paths:` globs built from the exact extensions the analysis observed. The rules channel delivers it mechanically wherever a matching file is touched - main session and dispatched subagents alike (a PreToolUse hook's injected context never reaches subagent tool calls, which is why this is a rule and not a hook). The full doc stays the deep reference; the rule is the always-delivered essence.
 
 The per-language configs (`.editorconfig`, eslint/prettier, `tsconfig`, the SQL linter rules) stay the enforced source of truth; the doc records what they encode and what they cannot. Code style is NOT architecture - structure, boundaries, and patterns live in `<docs-path>/architecture/`, owned by the alfred-capture-architecture skill. Never fold one into the other.
+
+## When to use
+
+- The deliberate project code-style capture; re-run to refresh in place.
+- It fans out code-style-analyzer agents (one per detected language), merges their reports into `code-style/CODE-STYLE.md` under the docs root, and generates the path-scoped project-code-style rule that auto-attaches the style core whenever a matching file is touched - in the main session AND in dispatched subagents.
+- Not for architecture (alfred-capture-architecture), one language's style question (@agent-code-style-analyzer alone), or enforcing style (the per-language configs stay the enforced source).
 
 ## Execution modes
 DELEGATED vs INLINE keys on dispatch capability, not file presence - agent files on disk with no Agent tool to dispatch them is still INLINE. When dispatch is available, ask ONE question before a first capture's fan-out, via AskUserQuestion - characterize via code-style-analyzer seats (recommend it: the seats absorb the reads), or in-session? - unless a calling flow already picked the run's mode, which is inherited, never re-asked. Pick once, hold for the run:

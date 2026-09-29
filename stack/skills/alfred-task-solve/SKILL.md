@@ -1,6 +1,6 @@
 ---
 name: alfred-task-solve
-description: "Use to run a task, feature, or bug through the whole single-chat vertical with a hard user gate between every step: design -> plan audit -> user approval + build-mode choice -> build -> build review (skippable) -> done-gate. Every stop is a real pause - switch model or effort, add context, or edit the plan before saying go - and the plan file plus a navigation server cycle note make every step resumable after compaction or in a fresh session. Trigger on run the task cycle, build this with approvals, gated implementation, step-by-step with my sign-off. Not the dispatched multi-agent flow (alfred-task-solve-cross), not greenfield, and not a one-line edit."
+description: "Use to run a task through the gated single-chat vertical - 'run the task cycle', 'build this with approvals', 'with my sign-off'. Not a one-line edit."
 disable-model-invocation: true
 ---
 
@@ -11,6 +11,13 @@ skills do the work; this skill owns the chain, the stops, the mode choices, and 
 survives a compaction or a fresh session. It never designs, builds, or reviews anything itself.
 The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a
 run-time load.
+
+## When to use
+
+- The whole single-chat vertical with a hard user gate between every step: design -> plan audit -> user approval + build-mode choice -> build -> build review (skippable) -> done-gate.
+- Every stop is a real pause - switch model or effort, add context, or edit the plan before saying go - and the plan file plus a navigation server cycle note make every step resumable after compaction or in a fresh session.
+- Triggers also on 'gated implementation'.
+- Not the dispatched multi-agent flow (alfred-task-solve-cross), not greenfield, and not a one-line edit.
 
 ## State - two layers, split by durability
 

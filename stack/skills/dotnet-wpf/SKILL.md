@@ -1,6 +1,6 @@
 ---
 name: dotnet-wpf
-description: "WPF conventions - strict MVVM on the data-binding engine. Load before editing any XAML, code-behind, or ViewModel. Covers the one-way View-knows-ViewModel dependency, CommunityToolkit.Mvvm source generators over hand-rolled INotifyPropertyChanged, async commands carrying a CancellationToken, explicit binding modes, generic-host composition, off-UI-thread work via IProgress, list virtualization, styling/theming with the .NET 9 Fluent ThemeMode, and resx localization. Floors at .NET 8 / C# 12. Do NOT load for WinForms, UWP, WinUI 3, MAUI, Avalonia, or Uno - different frameworks."
+description: "Load before editing any WPF XAML, code-behind or ViewModel - strict MVVM on the binding engine. Not for WinForms, UWP, WinUI 3, MAUI, Avalonia or Uno."
 ---
 
 # WPF conventions
@@ -16,6 +16,11 @@ on the other, so the state side stays a plain testable C# object. Floor is .NET 
 On .NET Framework 4.8 these conventions hold, but the CommunityToolkit.Mvvm source generators, Generic
 Host composition, and app-level exception wiring carry net48-specific constraints - see
 `references/net-framework-48.md`.
+
+## When to use
+
+- Covers the one-way View-knows-ViewModel dependency, CommunityToolkit.Mvvm source generators over hand-rolled INotifyPropertyChanged, async commands carrying a CancellationToken, explicit binding modes, generic-host composition, off-UI-thread work via IProgress, list virtualization, styling/theming with the .NET 9 Fluent ThemeMode, and resx localization.
+- Do NOT load for WinForms, UWP, WinUI 3, MAUI, Avalonia, or Uno - different frameworks.
 
 ## MVVM is the architecture, not a suggestion
 

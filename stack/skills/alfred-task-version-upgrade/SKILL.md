@@ -1,6 +1,6 @@
 ---
 name: alfred-task-version-upgrade
-description: "The deliberate version-upgrade flow for any BREAKING version event - a framework or runtime major, an EOL, a load-bearing package's breaking major: plan in-session (the published breaking-change surface crossed against located usage - applicable changes only), present the staged plan at an approval gate, then drive the execution stage by stage with a green gate after every stage. Auto mode - skipping the approval gate - runs ONLY when the user explicitly asked for it. Routine non-breaking bumps need no skill: just bump. Triggers on 'upgrade to .NET 10', 'ng update to v20', 'this package's new major breaks us', 'plan the framework upgrade'. NOT for a feature that merely needs a newer package (the feature's own flow), or a red CI pipeline (alfred-issue-diagnoser-ci, or its single-chat CI-triage twin)."
+description: "Use when planning a breaking upgrade - 'upgrade to .NET 10', 'ng update to v20', 'this package's new major breaks us'. Manual, /-only. Not for routine bumps."
 disable-model-invocation: true
 ---
 
@@ -11,6 +11,13 @@ You drive a breaking version event - framework, runtime, or load-bearing package
 The event kind - framework vs package - is not the user's call to make up front: DETECT reads the manifests and classifies it. The workflow is identical either way; only the breaking-change surface differs. A routine minor/patch bump with no breaking changes needs none of this - say so and exit.
 
 Read `references/upgrade-playbooks.md` before PLAN - the stack-keyed sequencing rules and the runtime-break catalog are this skill's contract, not suggestions.
+
+## When to use
+
+- The deliberate version-upgrade flow for any BREAKING version event - a framework or runtime major, an EOL, a load-bearing package's breaking major: plan in-session (the published breaking-change surface crossed against located usage - applicable changes only), present the staged plan at an approval gate, then drive the execution stage by stage with a green gate after every stage.
+- Triggers also on 'plan the framework upgrade'. Routine non-breaking bumps need no skill: just bump.
+- Auto mode - skipping the approval gate - runs ONLY when the user explicitly asked for it.
+- Not for a feature that merely needs a newer package (the feature's own flow), or a red CI pipeline (alfred-issue-diagnoser-ci, or its single-chat CI-triage twin).
 
 ## Approval gate - and the explicit auto mode
 

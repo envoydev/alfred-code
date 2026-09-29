@@ -1,6 +1,6 @@
 ---
 name: alfred-task-verify-code
-description: "Use to review an assembled build in this chat without dispatching agents: reruns build + tests, checks the code against its plan, runs the app on failing inputs, traces changed contracts, returns a ranked punch-list. Triggers on review the build, check the code, review before done. Not the plan audit (alfred-task-verify-plan)."
+description: "Use to review an assembled build in this chat without dispatching agents - 'review the build', 'check the code', 'review before done'. Not the plan audit."
 ---
 
 # Verify Code - review the assembled code in one chat, no dispatch
@@ -16,8 +16,9 @@ The flow's two house reviewers, pick by whether you want dispatch:
 
 Both are the house review protocol; this skill just keeps it in your chat. `/code-review` (the CLI's broad parallel-angle sweep) is no longer a flow default - it always fans out and the stack can't tune it - but it stays available if you invoke it yourself for extra breadth.
 
-## When not
+## When to use / not
 
+- Reruns build + tests, checks the code against its plan, runs the app on failing inputs, traces changed contracts, returns a ranked punch-list.
 - Not the plan audit - that is `alfred-task-verify-plan`, on the page before any code. This is after the build.
 - Not for fixing what it finds - it flags and hands back (to `alfred-task-implement` or your own edit); a verifier authors nothing.
 - Not the parallel-angle sweep - if you want breadth or an isolated subagent, use `/code-review` or dispatch the `<stack>-verifier`. This one stays inline by design.

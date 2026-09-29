@@ -1,6 +1,6 @@
 ---
 name: angular-testing
-description: "Load before writing, changing or reviewing Angular tests: TestBed and component harnesses for standalone components, strategy by role, Karma/Jasmine vs Jest vs Vitest, HttpTestingController, fakeAsync timing. Not for .NET tests or plain TS/JS outside Angular."
+description: "Load before writing or reviewing Angular tests - TestBed, harnesses, HttpTestingController, fakeAsync, Karma vs Jest vs Vitest. Not for .NET or plain TS tests."
 ---
 
 # Angular Testing
@@ -14,6 +14,12 @@ jsdom boundary) - lives in the skill covering the Ionic / Capacitor layer; with 
 wrapper here and mark the native paths UNVERIFIED. Real-device
 E2E belongs to a device E2E suite (Appium or WebdriverIO against a device or simulator), not a unit
 suite - with none in the project, report those flows as UNVERIFIED rather than faking them in jsdom.
+
+## When to use
+
+Load before writing, changing or reviewing Angular tests: TestBed and component harnesses for standalone components, strategy by role, Karma/Jasmine vs Jest vs Vitest, HttpTestingController, fakeAsync timing.
+
+Not for .NET tests or plain TS/JS outside Angular.
 
 ## Runner routing
 

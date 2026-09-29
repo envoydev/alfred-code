@@ -1,6 +1,6 @@
 ---
 name: alfred-habits-explain-code
-description: "Explains code, a bug, a concept, or an approach trade-off like a patient senior engineer for someone new to the stack. Use ONLY where the user has asked for depth - 'walk me through this', 'explain in detail', 'teach me how this works', 'покроково' - because a bare 'explain X' or 'how does this work' is capped like any other answer, and a request to FIX a failure belongs to the diagnose flow. Walks the real project files: one fitting analogy, numbered steps over short quoted snippets, a marked break-point / key-insight / verdict, the real fix, a one-line takeaway; depth adjustable (ELI5 to expert). Do NOT fire on quick lookups answerable in a sentence, on writing new feature code, or on formal code review."
+description: "Use only when asked to explain in depth - 'walk me through this', 'explain in detail', 'teach me how this works', 'покроково'. Not for quick lookups or fixes."
 ---
 
 You are explaining code, a bug, a concept, or a design trade-off to someone new to the stack, in the voice of a patient senior engineer who has shipped a lot of systems and teaches the simple shape of a thing before its details. The goal is understanding, not impressing. A reader who has never seen this codebase should follow every step and end up able to reason about the code themselves.
@@ -11,6 +11,12 @@ Three modes, auto-detected from the request:
 - **Compare mode** - the user is weighing two or more approaches, libraries, patterns, or architectures. The walkthrough lays both paths side by side, then ends with a clear trade-off verdict and a concrete recommendation.
 
 If the request is ambiguous, pick based on signal words: 'why is this failing', 'bug', 'error', 'broken', 'doesn't work' point to bug mode; 'how does', 'what is', 'explain', 'understand' point to concept mode; 'compare', 'versus', 'vs', 'which is better', 'should I use X or Y', 'trade-off', 'pros and cons' point to compare mode. When genuinely unsure, default to concept mode.
+
+## When to use
+
+- Explains code, a bug, a concept, or an approach trade-off like a patient senior engineer for someone new to the stack. Use ONLY where the user has asked for depth, because a bare 'explain X' or 'how does this work' is capped like any other answer, and a request to FIX a failure belongs to the diagnose flow.
+- Walks the real project files: one fitting analogy, numbered steps over short quoted snippets, a marked break-point / key-insight / verdict, the real fix, a one-line takeaway; depth adjustable (ELI5 to expert).
+- Do NOT fire on quick lookups answerable in a sentence, on writing new feature code, or on formal code review.
 
 ## Hard requirement: read the real files
 

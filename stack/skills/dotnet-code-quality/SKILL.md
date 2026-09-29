@@ -1,11 +1,17 @@
 ---
 name: dotnet-code-quality
-description: "Use when setting up or fixing formatting, analyzers, .editorconfig, warnings-as-errors, or a CI quality gate in .NET - or when the user names CSharpier, dotnet format, Roslynator, editorconfig, analyzer, AnalysisLevel, or NoWarn. .NET conventions for mechanically enforcing code quality: making the house style a build gate, not a review opinion. Floors at .NET 8 / C# 12. Do NOT use for authoring Roslyn analyzers or source generators (the source-generator skill) or for test-suite quality (dotnet-testing)."
+description: "Use when setting up formatting, analyzers, .editorconfig, warnings-as-errors or a CI quality gate in .NET - CSharpier, dotnet format. Not for writing analyzers."
 ---
 
 # .NET code quality - enforcement, not opinion
 
 The `csharp` skill says *what* good C# looks like; this skill makes a build *prove* it. The goal is that style and correctness rules are a gate the compiler and CI enforce, so they never depend on a reviewer noticing. Baseline is .NET 8 / C# 12. This is about configuring the tools - authoring your own Roslyn analyzers belongs to the skill covering source-generator and analyzer authoring, and judging whether the *tests* are any good to the .NET testing hub.
+
+## When to use
+
+- Also fires on: fixing formatting or analyzer warnings, Roslynator, AnalysisLevel, NoWarn.
+- .NET conventions for mechanically enforcing code quality: making the house style a build gate, not a review opinion.
+- Do NOT use for authoring Roslyn analyzers or source generators (the source-generator skill) or for test-suite quality (dotnet-testing).
 
 ## Two owners, one boundary: formatting vs rules
 

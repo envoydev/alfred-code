@@ -1,6 +1,6 @@
 ---
 name: alfred-habits-clarify
-description: "Use before designing, planning or dispatching work on a feature, change or greenfield ask that can be read more than one way - an unclear scope, user, success criterion or constraint, 'make it better', 'add support for X', a vague bug report, or a brief a seat returned as NEEDS_CONTEXT. The requirements check that settles, through AskUserQuestion, which reading the user means before any design. Not for how to build it: an implementation choice (library, structure, naming, placement) is decided, stated inline and recorded in the plan, which is the plan-writing habit's job."
+description: "Use before designing a feature or change that can be read more than one way - 'make it better', 'add support for X'. Not for build choices, which the plan owns."
 ---
 
 # Clarify - one reading of the ask before any design
@@ -8,6 +8,12 @@ description: "Use before designing, planning or dispatching work on a feature, c
 A design built on a guessed requirement is rebuilt when the guess is found out, usually after the
 build. Clarifying is cheap at the start and expensive at every step after it. Gate on AMBIGUITY, not
 on size or domain count: a one-file change with two readings is clarified, a large crisp one is not.
+
+## When to use
+
+- Fires before designing, planning or dispatching work on a feature, change or greenfield ask that can be read more than one way: an unclear scope, user, success criterion or constraint, 'make it better', 'add support for X', a vague bug report, or a brief a seat returned as NEEDS_CONTEXT.
+- The requirements check that settles, through AskUserQuestion, which reading the user means before any design.
+- Not for how to build it: an implementation choice (library, structure, naming, placement) is decided, stated inline and recorded in the plan, which is the plan-writing habit's job.
 
 ## The loop
 

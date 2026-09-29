@@ -1,11 +1,19 @@
 ---
 name: ionic
-description: "Ionic / Capacitor mobile + hybrid app conventions. Load before building or editing an Ionic/Capacitor app - anywhere ionic.config.json or capacitor.config.* lives. Covers Ionic Angular UI (standalone + signals, IonRouterOutlet, page-caching view lifecycle, CSS-variable theming), the Capacitor lifecycle and platform guards, the Angular zone boundary around plugin listeners, runtime permissions, and plugin sourcing (official -> Capawesome -> capacitor-community) + typed-service wrapping. Targets the current Ionic and Capacitor majors - resolve the installed major before the first import rather than assuming one. The Angular framework conventions and the TypeScript baseline apply underneath. Do NOT load for plain web Angular with no native shell."
+description: "Load before building or editing an Ionic or Capacitor app - ionic.config.json, capacitor.config.*, IonRouterOutlet. Not for web Angular with no native shell."
 ---
 
 # Ionic / Capacitor Conventions
 
 An Ionic app is an Angular app in a native (Capacitor) shell: the framework rules live in `angular-conventions` and the language baseline in `typescript` - load both. This skill is the Ionic/Capacitor-specific layer of house policy. In-app navigation and the page lifecycle are owned here in `references/navigation-and-lifecycle.md`; broader Ionic UI mechanics (component APIs, theming) are fetched live via the documentation server or the Ionic docs, not vendored. Per-plugin install/config is fetched live (the documentation server or the plugin's README); the durable plugin-sourcing and typed-service-wrapping guidance is here in this skill. Cutting a release - the build, signing, store submission, OTA, and release CI - is `capacitor-release`. Security-hardening the native surface - Keychain/Keystore secret storage, permission least-privilege, cleartext and WebView lockdown, deep-link input trust - is `ionic-security`. Version floors, the per-major deltas that bite, and the Ionic + Capacitor upgrade paths live in `references/versions.md`.
+
+## When to use
+
+Load before building or editing an Ionic/Capacitor mobile or hybrid app - anywhere `ionic.config.json` or `capacitor.config.*` lives.
+
+Covers Ionic Angular UI (standalone + signals, IonRouterOutlet, page-caching view lifecycle, CSS-variable theming), the Capacitor lifecycle and platform guards, the Angular zone boundary around plugin listeners, runtime permissions, and plugin sourcing (official -> Capawesome -> capacitor-community) + typed-service wrapping. Targets the current Ionic and Capacitor majors - resolve the installed major before the first import rather than assuming one.
+
+Do NOT load for plain web Angular with no native shell.
 
 ## Components and structure
 - Standalone components + signals, OnPush, new control flow - same as `angular-conventions`. Ionic components (`IonContent`, `IonList`, ...) are standalone imports, not a shared module.

@@ -1,6 +1,6 @@
 ---
 name: alfred-loop-quality
-description: "Use when the user asks to run the quality loop, the code-quality loop or the loops pipeline - the deliberate analyze-triage-fix loop over the code, manual and /-only: each round recomputes the code-quality assessment against the project's own rules (the numbered prompts under the loops folder, the convention rules, the recorded code style) and works its fixable findings by tier. `staged` keeps the numbered-prompt pipeline, one stage at a time. Not for architecture restructuring (alfred-loop-architecture-quality), measuring or raising test coverage (the coverage capture and loop), an assessment with no fixes (alfred-capture-code-quality alone), or a single diff (alfred-task-verify-code or /security-review)."
+description: "Use when asked to run the quality loop or the code-quality loop - analyze, triage, fix. Manual, /-only. Has a staged mode. Not for architecture."
 disable-model-invocation: true
 ---
 
@@ -9,6 +9,11 @@ disable-model-invocation: true
 You drive a deliberate loop that improves a project's code against its own rules: each round the code-quality capture judges the code and recomputes `<docs-path>/quality/CODE-ASSESSMENT.md`, you work its fixable findings by tier, and you loop until they are resolved or the loop plateaus. The assessment is never yours to write or prune - the capture recomputes it fresh every round. It runs only when a user invokes it (`/alfred-loop-quality`), never automatically; the architecture counterpart is `alfred-loop-architecture-quality`. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
 Best run in Claude Code, where you can dispatch the analysis and build seats and edit files across rounds. On a large codebase, scope it - point TARGET at one module or subtree per run. This skill carries NO `model` pin (the judgment runs in-session, in the capture): set the session to Opus with `/model` for the run and switch back at the final report. The run-start mode ask carries the check: when the session is not on Opus, the ask says so - the switch happens before any judgment is spent.
+
+## When to use
+
+- The deliberate analyze-triage-fix loop over the code: each round recomputes the code-quality assessment against the project's own rules (the numbered prompts under the loops folder, the convention rules, the recorded code style) and works its fixable findings by tier. `staged` keeps the numbered-prompt pipeline, one stage at a time.
+- Not for architecture restructuring (alfred-loop-architecture-quality), measuring or raising test coverage (the coverage capture and loop), an assessment with no fixes (alfred-capture-code-quality alone), or a single diff (alfred-task-verify-code or /security-review).
 
 ## Execution modes
 DELEGATED vs INLINE keys on dispatch capability, not file presence - a project can carry the agent files on disk with no Agent tool to dispatch them, which is still INLINE. When dispatch is available, ask ONE question before ANALYZE, via AskUserQuestion - run the loop in the current session, or dispatch the stack seats? - then hold the answer for the run; the capture inherits it and never re-asks. No dispatch capability is INLINE without asking. Every AskUserQuestion below falls back to plain-text options where the harness lacks the tool.

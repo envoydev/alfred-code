@@ -1,6 +1,6 @@
 ---
 name: alfred-task-design
-description: "Use to settle how a feature or change fits the existing code before writing any, in this chat: orient, judge the fit, split into an ordered minimal plan. Triggers on how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for one-line edits, or auditing a plan that already exists (alfred-task-verify-plan)."
+description: "Use to settle how a feature fits the existing code before writing any - 'design this feature', 'where does this belong'. Not for one-line edits."
 ---
 
 # Solution Design - how a change fits, then decomposed, in one chat
@@ -11,8 +11,10 @@ The design carries the quality: a build handles the traps its plan named and shi
 
 Design inline in this chat, the method below, so you inspect each step. On an agents request, dispatch the `<stack>-solution-designer` seat instead, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it) - on its frontmatter model unless you name one - and take its returned plan; the seat runs this same method, isolated. Only one designer runs, there is no fan-out here. Dispatch nothing you were not asked to. When the invocation names no mode and no calling flow has already recorded one, ask ONE question before designing, via AskUserQuestion - this chat, or the designer seat? - and hold the answer; a mode the run already picked is inherited, never re-asked. Loaded INSIDE a dispatched designer seat, the dispatch IS that answer: run the method below there, no ask and no further dispatch (the seat has neither tool).
 
-## When not
+## When to use / not
 
+- Use to settle how a feature or change fits the existing code before writing any, in this chat: orient, judge the fit, split into an ordered minimal plan.
+- Triggers also on 'how does this fit', 'break this into tasks', 'plan this change'.
 - Not for a change with an obvious single home - just make it.
 - Not plan *audit* (`alfred-task-verify-plan`) or built-code review (`alfred-task-verify-code`) - those come after.
 

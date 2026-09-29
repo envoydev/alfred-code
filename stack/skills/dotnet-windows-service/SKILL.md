@@ -1,6 +1,6 @@
 ---
 name: dotnet-windows-service
-description: "Windows Service conventions - the Service Control Manager layer over the .NET generic host. Load when building, installing, hardening, or migrating a Windows Service - AddWindowsService / UseWindowsService, sc.exe, ServiceBase, installutil, service accounts, SCM errors like 1053. Covers the dual-mode binary, SCM start/stop budgets, non-zero exit codes so recovery actions actually fire, the System32 working-directory trap, scripted sc.exe install with recovery actions, gMSA / least-privilege service accounts, unquoted-path and ACL hardening, event-log source registration, and the maintained .NET Framework ServiceBase shape + migration path. Do NOT load for the generic worker/host model itself with no SCM target - that is the hosted-worker skill - nor for Linux daemons/systemd or containerized workers."
+description: "Load when building, installing, hardening or migrating a Windows Service - AddWindowsService, sc.exe, ServiceBase, error 1053. Not for a plain worker host."
 ---
 
 # Windows Services - the SCM layer
@@ -8,6 +8,12 @@ description: "Windows Service conventions - the Service Control Manager layer ov
 A Windows Service is the same generic-host worker the house skill covering .NET hosted services teaches (`BackgroundService`, the Generic Host, scope-per-work, the stopping token, shutdown discipline) - **load that skill first, matched from your skill list by what it covers**; when nothing matches, the host-shape rules below still apply, only their deep dive is missing. The host shape, `BackgroundService`, scope-per-work, stopping-token, and shutdown discipline all live there and apply unchanged. This skill owns what the Service Control Manager adds on top. The SCM does not care which runtime you use, so the operational surface below - install, accounts, recovery, paths, ACLs, budgets - is identical for modern .NET and .NET Framework; only the in-process shape differs.
 
 **Platform verdict.** New services: current LTS .NET, Worker template, `AddWindowsService()` - there is no scenario where a greenfield service starts on .NET Framework. Existing Framework services are not a burning platform (4.8/4.8.1 is an OS component with no standalone end date) - the real migration driver is NuGet packages dropping `net48`, so audit the package graph, and migrate when you touch the service anyway; the maintained Framework shape and the migration path are `references/framework-services.md`. Topshelf is archived (July 2022) - never for new work; `AddWindowsService()` plus a scripted `sc.exe` install covers it.
+
+## When to use
+
+- Windows Service conventions - the Service Control Manager layer over the .NET generic host. Triggers also: UseWindowsService, installutil, service accounts.
+- Covers the dual-mode binary, SCM start/stop budgets, non-zero exit codes so recovery actions actually fire, the System32 working-directory trap, scripted sc.exe install with recovery actions, gMSA / least-privilege service accounts, unquoted-path and ACL hardening, event-log source registration, and the maintained .NET Framework ServiceBase shape + migration path.
+- Not for the generic worker/host model itself with no SCM target - that is the hosted-worker skill - nor for Linux daemons/systemd or containerized workers.
 
 ## AddWindowsService - what it actually does
 

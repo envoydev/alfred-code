@@ -1,6 +1,6 @@
 ---
 name: ts-js-testing
-description: "Load before writing, changing or reviewing plain TypeScript/JavaScript tests or configuring coverage: libraries, Node CLIs, framework-free web code, extension unit tests; runner detection (Vitest default), fake timers, mutation testing. Not for Angular/Ionic specs or .NET tests."
+description: "Load before writing or reviewing plain TS/JS tests or configuring coverage - libraries, Node CLIs, Vitest, fake timers. Not for Angular or .NET tests."
 ---
 
 # TypeScript Testing
@@ -17,6 +17,12 @@ suites belong to the Angular testing skill, .NET to the .NET testing skill. Brow
 share everything here for their chrome-free logic; the extension-specific seams - the mocked
 `chrome.*` API and Playwright persistent-context E2E - belong to the browser-extension skill, the
 one covering MV3 manifests and that seam.
+
+## When to use
+
+Load before writing, changing or reviewing plain TypeScript/JavaScript tests or configuring coverage: libraries, Node CLIs, framework-free web code, extension unit tests; runner detection (Vitest default), fake timers, mutation testing.
+
+Not for Angular/Ionic specs or .NET tests.
 
 ## Runner routing
 

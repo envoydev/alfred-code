@@ -1,11 +1,17 @@
 ---
 name: dotnet-grpc
-description: "Use when defining, implementing, or calling a gRPC service in .NET, or weighing gRPC against REST. Conventions where the .proto is the contract and Grpc.Tools generates from it at build, host with Grpc.AspNetCore (AddGrpc + MapGrpcService), consume through typed clients (AddGrpcClient over IHttpClientFactory) with a reused multiplexing channel, the four call shapes with a deadline and CancellationToken on every one, JWT-bearer or mTLS auth, interceptors for cross-cutting work, the gRPC health protocol, and gRPC-Web for browsers. Floors at .NET 8 / C# 12. Do NOT use for plain REST or minimal APIs - that is the minimal-API endpoint skill."
+description: "Use when defining, implementing or calling a gRPC service in .NET, or weighing gRPC against REST. Not for plain REST or minimal APIs."
 ---
 
 # .NET gRPC
 
 gRPC is a contract-first RPC system: you declare services and messages in a `.proto`, code is generated from it on both ends, and calls travel as Protobuf over HTTP/2. Reach for it when the producer and consumer are both yours and you want a typed contract, low overhead, and streaming - internal service-to-service traffic above all. Stay on REST when the surface is a public or browser-facing API where ubiquity and human-readable bodies matter more; those endpoints belong to whichever skill covers your HTTP endpoint surface. This skill covers gRPC and nothing else. Baseline is .NET 8 / C# 12.
+
+## When to use
+
+- Conventions where the .proto is the contract and Grpc.Tools generates from it at build, host with Grpc.AspNetCore (AddGrpc + MapGrpcService), consume through typed clients (AddGrpcClient over IHttpClientFactory) with a reused multiplexing channel.
+- Also covers the four call shapes with a deadline and CancellationToken on every one, JWT-bearer or mTLS auth, interceptors for cross-cutting work, the gRPC health protocol, and gRPC-Web for browsers.
+- Do NOT use for plain REST or minimal APIs - that is the minimal-API endpoint skill.
 
 ## The .proto is the single source of truth
 The contract lives in the `.proto`, not in C#. Define every service and message there and let codegen produce the C# types; treat the generated `*.cs` as build output you never open or edit.

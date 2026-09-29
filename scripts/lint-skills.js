@@ -47,7 +47,7 @@
 // rendering and strict parsers - the skills already get this via check 1),
 // that every copy of a deliberate multi-home rule still matches its marker in
 // meta/shared-rules.json (edit one copy without syncing the others = red),
-// and warns (soft) on over-long SKILL.md descriptions.
+// and fails an over-long description (check 15: 1,000 chars; 15b: an agent's 300; 15c: a skill's 160).
 // Needs js-yaml (run `npm install` once). Run: node scripts/lint-skills.js
 //   -> exit 0 clean (warnings allowed), 1 with findings.
 'use strict';
@@ -865,6 +865,24 @@ function lintAgentDescription(label, description)
 {
     if (typeof description !== 'string' || description.length <= AGENT_DESC_LIMIT) return [];
     return [`${label} description is ${description.length} chars (> ${AGENT_DESC_LIMIT}) - keep the 'Use when...' sentence and its 'Do NOT use' clause, and move the rest into the agent body`];
+}
+
+// 15c. A SKILL description is capped too, for the skill listing's own budget: Claude Code lists every
+// model-invocable skill's description (with `when_to_use` appended) in every turn, within 1% of the
+// context window - 8,000 chars on a 200K window - and past it drops whole descriptions, the trigger words
+// with them (live check F3, 2026-09-29: '39 skills, 19901 chars > 8000'). The description is the trigger
+// line - 'Use when' plus the strongest trigger phrases and one 'Not for' boundary; examples, version floors
+// and 'Covers ...' lists live in the body's '## When to use' section. Manual skills are capped as well: the
+// cap is one shape for every skill, and a flipped `disable-model-invocation` must not blow the budget.
+const SKILL_DESC_LIMIT = 160;
+function lintSkillDescription(label, description, whenToUse)
+{
+    if (typeof description !== 'string') return [];
+    const extra = typeof whenToUse === 'string' ? whenToUse.length : 0;
+    const total = description.length + extra;
+    if (total <= SKILL_DESC_LIMIT) return [];
+    const what = extra ? 'description + when_to_use' : 'description';
+    return [`${label} ${what} is ${total} chars (> ${SKILL_DESC_LIMIT}) - keep 'Use when' / 'Load when' plus the strongest trigger phrases and one 'Not for' boundary, and move the rest into the body's '## When to use' section`];
 }
 
 // 37. A plugin-qualified name (`superpowers:verification-before-completion`) is a cite of a skill
@@ -1762,12 +1780,12 @@ function main()
         }
     }
 
-    // 15. A description over 1,000 chars FAILS the build - skills and agents alike. The house
-    //     style deliberately packs routing into descriptions (Companions + version floor + negative
-    //     scope), so the rich .NET/router skills legitimately run 800-1,000; but every description
-    //     is loaded into every session before a single message (check 33 sums them), so past that
-    //     bar the routing prose is paid for on every turn of every install. This was a warning at
-    //     1,100: nine descriptions sat between 1,004 and 1,146 and it fired on none of them.
+    // 15. A description over 1,000 chars FAILS the build - skills and agents alike. Every
+    //     description is loaded into every session before a single message (check 33 sums them),
+    //     so past that bar the routing prose is paid for on every turn of every install. This was a
+    //     warning at 1,100: nine descriptions sat between 1,004 and 1,146 and it fired on none of
+    //     them. It is the backstop now: 15b caps an agent at 300 and 15c a skill at 160 (2.1.2 moved
+    //     the Companions, version floors and negative scope into each skill's '## When to use').
     const DESC_LIMIT = 1000;
     const descriptionFiles = [
         ...dirs.map(dir => [`skills/${dir}/SKILL.md`, path.join(SKILLS_DIR, dir, 'SKILL.md')]),
@@ -1801,6 +1819,7 @@ function main()
             flag(`${label} description is ${meta.description.length} chars (> ${DESC_LIMIT}) - trim it; every description is always-on context in every install`);
         }
         if (label.startsWith('agents/')) for (const finding of lintAgentDescription(label, meta && meta.description)) flag(finding);
+        if (label.startsWith('skills/')) for (const finding of lintSkillDescription(label, meta && meta.description, meta && meta.when_to_use)) flag(finding);
     }
 
     // 16. An agent told to invoke the Skill tool must carry 'Skill' in its tools:
@@ -3208,6 +3227,8 @@ module.exports = {
     lintOptionalCites,
     lintPluginCites,
     lintAgentDescription,
+    lintSkillDescription,
+    SKILL_DESC_LIMIT,
     lintAgentTools,
     lintAgentMemoryTools,
     MEMORY_TOOLS,

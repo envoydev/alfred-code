@@ -1,6 +1,6 @@
 ---
 name: angular-styling
-description: "Load when writing or editing CSS or SCSS in an Angular workspace. Angular CSS and styling conventions for any Angular app, Material or not - component-scoped styles and the ViewEncapsulation choice, :host and :host-context, ::ng-deep discouraged and the sanctioned ways out, design tokens as CSS custom properties, mobile-first responsive with container queries and fluid type, where global vs component styles belong, utility-first vs scoped SCSS, and accessibility-affecting styling (focus-visible, prefers-reduced-motion, contrast). Also styling ion-* shadow-DOM components in an Ionic app. Targets Angular 17+. Do NOT load for React, Vue, Svelte or plain non-Angular CSS, or for Material component theme-token work (the Angular Material skill)."
+description: "Load when writing or editing CSS or SCSS in an Angular workspace - :host, ViewEncapsulation, ::ng-deep, design tokens. Not for non-Angular CSS."
 ---
 
 # Angular styling
@@ -8,6 +8,14 @@ description: "Load when writing or editing CSS or SCSS in an Angular workspace. 
 This is the general CSS layer for an Angular app - the rules for how stylesheets are scoped, where they live, and which modern CSS to reach for. It holds whether or not the app uses Material. The framework itself (signals, change detection, templates, `NgOptimizedImage`, the `@angular/animations` stance) is `angular-conventions`; load it alongside. Anything Material-specific - the `mat.theme` API, the `--mat-sys-*` system tokens, density, and styling Material components - belongs to the skill covering the Angular Material component library and is not restated here; with none installed, treat Material internals as third-party and use the global-rule fallback in the `::ng-deep` section below. This file is opinion, not reference: it states the choices the team has settled on. For any CSS feature's exact browser support, check MDN or web.dev rather than memory. **Above these general conventions, a project's own config (its stylelint/Prettier setup, `.editorconfig`) and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority: where a project diverges, follow the project.**
 
 Floor is Angular 17+. Reach forward to newer idioms but adopt only what the installed version ships, and flag a forward API with a version tag.
+
+## When to use
+
+Load when writing or editing CSS or SCSS in an Angular workspace. Angular CSS and styling conventions for any Angular app, Material or not.
+
+Covers component-scoped styles and the ViewEncapsulation choice, :host and :host-context, ::ng-deep discouraged and the sanctioned ways out, design tokens as CSS custom properties, mobile-first responsive with container queries and fluid type, where global vs component styles belong, utility-first vs scoped SCSS, and accessibility-affecting styling (focus-visible, prefers-reduced-motion, contrast). Also styling ion-* shadow-DOM components in an Ionic app. Targets Angular 17+.
+
+Do NOT load for React, Vue, Svelte or plain non-Angular CSS, or for Material component theme-token work (the Angular Material skill).
 
 ## Component styles are scoped by default - keep them that way
 

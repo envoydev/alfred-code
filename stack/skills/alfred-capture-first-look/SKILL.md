@@ -1,6 +1,6 @@
 ---
 name: alfred-capture-first-look
-description: "Writes a provisional ORIENTATION.md - stack, modules, build / test / run commands, entry points - from one deterministic scan of the project's manifests, so a project with no architecture capture yet starts its sessions with a map. Use when the user asks for a first look, a quick orientation or a starting map of a project that has no architecture docs. Never over an existing capture, and not the architecture capture itself, which replaces this file."
+description: "Use when asked for a first look, quick orientation or starting map of a project with no architecture docs. Never over an existing capture."
 ---
 
 # Project First Look - a provisional orientation from the manifests
@@ -14,6 +14,11 @@ The file is provisional by construction. Its heading carries the marker 'provisi
 architecture capture', the docs hook pushes it into every session and subagent with a stale warning
 beside it, `docs.js status` and `docs.js stale` report it as stale by definition, and the architecture
 capture overwrites it.
+
+## When to use
+
+- Writes a provisional ORIENTATION.md - stack, modules, build / test / run commands, entry points - from one deterministic scan of the project's manifests, so a project with no architecture capture yet starts its sessions with a map.
+- Never over an existing capture, and not the architecture capture itself, which replaces this file.
 
 ## 1. Resolve the scan
 

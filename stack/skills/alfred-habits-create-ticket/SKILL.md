@@ -1,11 +1,17 @@
 ---
 name: alfred-habits-create-ticket
-description: "Writes a ticket in English from a raw description for any tracker (Jira, Azure DevOps, GitHub, GitLab, YouTrack): bug, user story, epic, or technical task - detects the type, routes to its template. Use whenever the user wants a ticket written or a not-yet-filed draft reworked (shorter, different focus), even casually or in Ukrainian - 'create a bug/story/epic/task ticket', 'create user story', 'create jira ticket', 'file a bug'. Do NOT fire to write code or fix the bug instead of filing it, to touch a ticket already in the tracker (query / update / comment / close), or for a commit / PR message."
+description: "Use when the user wants a ticket written or reworked - 'create a bug/story/epic/task ticket', 'create jira ticket', 'file a bug'. Not for code fixes."
 ---
 
 # Create Ticket
 
 Transforms a raw description into a clean, professional ticket written in English. Output is tracker-agnostic Markdown that pastes cleanly into Jira, Azure DevOps, GitHub, GitLab, or YouTrack.
+
+## When to use
+
+Use whenever the user wants a ticket written from a raw description for any tracker (Jira, Azure DevOps, GitHub, GitLab, YouTrack) - bug, user story, epic, or technical task - or a not-yet-filed draft reworked (shorter, different focus), even casually or in Ukrainian: 'create a bug/story/epic/task ticket', 'create user story', 'create jira ticket', 'file a bug'.
+
+Do NOT fire to write code or fix the bug instead of filing it, to touch a ticket already in the tracker (query / update / comment / close), or for a commit / PR message.
 
 ## Procedure
 

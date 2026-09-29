@@ -1,6 +1,6 @@
 ---
 name: dotnet-migrate
-description: "Use when running an EF Core migration, raising a target framework or SDK, or updating NuGet packages - migrate, upgrade, update packages. Safe playbook: preview the SQL, confirm the first apply, keep a rollback, one change per step. A breaking framework major goes to the version-upgrade flow. Not for adding a new package or laying out a solution - that is the .NET solution and package setup skill."
+description: "Use when running an EF Core migration, raising a target framework or SDK, or updating NuGet packages. Not for adding a package or laying out a solution."
 ---
 
 # Safe migration workflow (.NET)
@@ -13,6 +13,12 @@ Migrations are where a working codebase quietly acquires risk: a column drop tha
 - **One logical change per step.** A migration, an upgrade, a bump - keep them atomic so a break bisects cleanly.
 
 Assess blast radius with the navigation server (`find_symbol`, `find_referencing_symbols`) or the LSP. Do not `Read` whole files hunting for who touches a type - that is exactly the work the symbol tools do faster.
+
+## When to use
+
+- Also fires on: migrate, upgrade, update packages.
+- Safe playbook: preview the SQL, confirm the first apply, keep a rollback, one change per step. A breaking framework major goes to the version-upgrade flow.
+- Not for adding a new package or laying out a solution - that is the .NET solution and package setup skill.
 
 ## Flow A - EF Core schema migration
 

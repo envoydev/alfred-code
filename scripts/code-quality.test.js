@@ -176,9 +176,11 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     const judge = squash(raw.slice(raw.indexOf('### 3. JUDGE'), raw.indexOf('### 4. RE-GATHER')));
     assert.match(judge, /Cross-check every Must-fix remediation against the other rules/);
     assert.match(judge, /Cross-check[^]*precedence[^]*tiered structural/);
-    // The description names its neighbours with their destinations.
+    // The neighbours with their destinations live in the body's When to use (the 160-char description cannot hold them).
+    const whenToUse = raw.slice(raw.indexOf('## When to use'), raw.indexOf('## Execution modes'));
+    assert.ok(whenToUse.length > 0, 'the body has a When to use section before Execution modes');
     for (const dest of ['/alfred-loop-quality', 'alfred-capture-architecture-quality', 'alfred-capture-code-style', '/security-review', 'alfred-task-verify-code'])
-        assert.ok(fm.description.includes(dest), `Not for ... (${dest})`);
+        assert.ok(whenToUse.includes(dest), `Not for ... (${dest})`);
     assert.ok(read('stack/skills/alfred-capture-architecture-quality/SKILL.md').split('\n')[2].includes('(alfred-capture-code-quality)'),
         'the architecture-quality capture sends code quality to its new neighbour');
 });

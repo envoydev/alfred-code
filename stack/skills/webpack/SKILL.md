@@ -1,11 +1,19 @@
 ---
 name: webpack
-description: "Use when working on a webpack config, bundling a library, or debugging a tree-shaking, ESM-output or 'failed to resolve as fully specified' failure - also loader/plugin choices and slow webpack builds. Webpack 5 build engineering with a library-in-monorepo focus (TS + JS): the transpile/type-check split, externals computed from package.json, the tree-shaking preconditions, ESM library output, the resolution traps, filesystem-cache pitfalls, the shared config-factory pattern, and how a library build is verified. NOT for Vite/Rollup projects, Angular CLI builds (the Angular framework-conventions skill), or package publishing mechanics (the npm packaging skill)."
+description: "Use when working on a webpack config, a library bundle, or a tree-shaking, ESM-output or 'failed to resolve as fully specified' failure. Not for Vite or Rollup."
 ---
 
 # Webpack 5 - library builds that stay fast and correct
 
 Webpack earns its keep where its loader/plugin ecosystem, Module Federation, or an existing monorepo standard demands it - for a pure library with no such constraint, a Rollup-class tool gives cleaner ESM+types output; say so rather than defaulting here. Once webpack is the tool, these are the rules. Pin `webpack@~5.108` (tilde, not caret) whenever any `experiments.*` flag is on - experimental flags carry relaxed semver - with webpack-cli 7 (Node >= 20.9, native TS configs, `--config-node-env`).
+
+## When to use
+
+Use when working on a webpack config, bundling a library, or debugging a tree-shaking, ESM-output or 'failed to resolve as fully specified' failure - also loader/plugin choices and slow webpack builds.
+
+Webpack 5 build engineering with a library-in-monorepo focus (TS + JS): the transpile/type-check split, externals computed from package.json, the tree-shaking preconditions, ESM library output, the resolution traps, filesystem-cache pitfalls, the shared config-factory pattern, and how a library build is verified.
+
+Not for Vite/Rollup projects, Angular CLI builds (the Angular framework-conventions skill), or package publishing mechanics (the npm packaging skill).
 
 ## The three correctness rules
 

@@ -1,6 +1,6 @@
 ---
 name: alfred-capture-test-coverage
-description: "Use when the user asks to measure test coverage, capture a coverage baseline, or how covered this project is: detects each stack's coverage tooling, runs the instrumented suite once per surface, judges it against the user's % bar and writes the coverage doc. Deliberate only, never mid-build. Not for writing the missing tests - that is the coverage loop (/alfred-loop-test-coverage)."
+description: "Use when asked to measure test coverage, capture a baseline or how covered the project is. Deliberate only. Not for writing tests (/alfred-loop-test-coverage)."
 ---
 
 # Project Test Coverage Analyzer - Capture the Coverage (Deliberate)
@@ -8,6 +8,12 @@ description: "Use when the user asks to measure test coverage, capture a coverag
 You are the coverage seat for this run: you measure what the tests actually cover, judge it against the project's requirement, and record it as two artifacts - `<docs-path>/test-coverage/COVERAGE.md` (the reasoned picture: per-stack and per-module numbers, the verdict, the tiered weak points) and the raw results under `<docs-path>/test-coverage/raw/` (the machine-readable files the numbers came from). Coverage lives OUTSIDE the build flows: no seat gate runs it and no dispatch brief may carry it - measured, a seat babysitting an instrumented run burns about half its cost idling on the wait - so this capture is the one place the instrumented suite runs, on the user's cadence, exactly like the architecture capture.
 
 This is capture only: it measures, judges, and documents - it fixes nothing, writes no test, and never picks or installs a runner. Working the weak points is `alfred-loop-test-coverage`, which runs this capture as its ANALYZE step and routes fixes by tier.
+
+## When to use
+
+- Detects each stack's coverage tooling, runs the instrumented suite once per surface, judges it against the user's % bar and writes the coverage doc.
+- Deliberate only, never mid-build.
+- Not for writing the missing tests - that is the coverage loop (/alfred-loop-test-coverage).
 
 ## Execution modes
 Two halves, split differently:
