@@ -5,7 +5,7 @@ description: "Use when working in an Nx monorepo - nx.json, project.json, nx com
 
 # Nx Monorepo
 
-Nx is the project-graph and task layer over an Angular (or mixed) monorepo. Use it the token-cheap
+Nx is the project-graph and task layer over a JavaScript / TypeScript monorepo, whatever its framework. Use it the token-cheap
 way: orient through the CLI's derived graph, and scope every task to the projects a change actually
 touches - never dump the whole workspace or run every target.
 
@@ -63,9 +63,10 @@ or you pay for the wrong tool:
   sees; the navigation server knows symbol callers Nx has no concept of.
 
 ## Scaffold and enforce boundaries
-- Generate with `nx generate` (`nx g @nx/angular:library`, `@nx/angular:component`, `@nx/js:lib`)
-  rather than hand-authoring boilerplate - the generator wires `project.json`, the path mapping, and
-  tags correctly and is far cheaper than emitting the files by hand.
+- Generate with `nx generate`, using the plugin for the project's own framework (`nx list` shows the
+  installed ones: `nx g @nx/js:lib`, or `nx g @nx/angular:library` in an Angular workspace) rather than
+  hand-authoring boilerplate - the generator wires `project.json`, the path mapping, and tags correctly
+  and is far cheaper than emitting the files by hand.
 - Enforce module boundaries with tags: set `tags` on each project and turn on the
   `@nx/enforce-module-boundaries` ESLint rule so a forbidden cross-project import fails lint - the
   boundary is a build-failing rule, not a convention.

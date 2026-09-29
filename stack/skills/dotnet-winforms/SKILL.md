@@ -13,7 +13,7 @@ C# 12 while treating **.NET Framework 4.8 as a supported-but-frozen maintenance 
 serviced, but no new WinForms features land there. The conventions below are the same whichever
 runtime you are on; the version-specific mechanics live in the references.
 
-**Read `references/winforms-style.md` before naming a control or handler, hand-editing a `*.Designer.cs`, or touching a user-facing string** - it owns control/event-handler naming, the designer-file round-trip rules, and the resx localization discipline. This SKILL.md owns the architecture (MVP passive view, DI-resolvable forms, disposal, high-DPI, virtual-mode grids); the C# naming baseline is the `csharp` skill. Above these general conventions, a project's own `.editorconfig` and its `<docs-path>/code-style/CODE-STYLE.md` win where they diverge.
+**Read `references/winforms-style.md` before naming a control or handler, hand-editing a `*.Designer.cs`, or touching a user-facing string** - it owns control/event-handler naming, the designer-file round-trip rules, and the resx localization discipline. This SKILL.md owns the architecture (MVP passive view, DI-resolvable forms, disposal, high-DPI, virtual-mode grids); the C# naming baseline is the `csharp` skill. Above these general conventions, a project's own `.editorconfig` and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority - follow the project where it diverges.
 
 **Load the version reference for the concrete mechanics:**
 

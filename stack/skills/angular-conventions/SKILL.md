@@ -5,7 +5,16 @@ description: "Load when creating or editing an Angular component, service, direc
 
 # Angular conventions
 
-House rules for Angular, floored at v17 and reaching forward to whatever the workspace is actually on (v20, v21, v22): version-gated idioms name their floor inline, the rest applies from v17 up, and a newer idiom is adopted only when the installed version ships it. The language underneath (strict TypeScript, type modeling, modules, async, error handling, lint and format) is the house TypeScript skill's - load it beside this one; everything here is purely Angular. Material components and the CDK, the broader web index, and the Ionic/Capacitor layer are each their own skill - match them from your skill list by what they cover, and skip any this project did not install. This file is opinion, not reference: it states the choices the team has settled on and the divergences kept on purpose. For any API surface not pinned down here, reach for the `documentation` MCP rather than memory - and never by grepping `node_modules` bundles. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load. Version specifics live in per-version delta files - load only the one your workspace is on (`references/v22.md`, `v21.md`, `v20.md`, `v19.md`: stable versus experimental, API spellings and deprecations, the Node.js/TypeScript floor, fact-checked against angular.dev); on v17/v18 there is no delta and this file alone governs.
+House rules for Angular, floored at v17 and reaching forward to whatever the workspace is actually on (v20, v21, v22): version-gated idioms name their floor inline, the rest applies from v17 up, and a newer idiom is adopted only when the installed version ships it. This file is opinion, not reference - the choices the team settled on and the divergences kept on purpose.
+
+Load with it:
+
+- The house TypeScript skill, beside this one - the language underneath (strict types, modules, async, error handling, lint and format); everything here is purely Angular.
+- Material and the CDK, and the Ionic/Capacitor layer, are each their own skill - match them from your skill list by what they cover, and skip any this project did not install.
+- Only your workspace's version delta (`references/v22.md`, `v21.md`, `v20.md`, `v19.md`: stable versus experimental, spellings and deprecations, the Node.js/TypeScript floor); on v17/v18 there is none and this file alone governs.
+- For any API surface not pinned down here, reach for the `documentation` MCP rather than memory - and never by grepping `node_modules` bundles.
+
+The measurements behind these rules are `references/evidence.md` - an audit appendix, not a run-time load.
 
 **The enforceable config lives in `references/angular-style.md`** - the angular-eslint + Prettier flat config, the naming table, modern-vs-legacy examples. A project's own config (`eslint.config.js`, `angular.json`, `.prettierrc`, `.editorconfig`) and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority - follow the project where it diverges.
 
@@ -29,10 +38,10 @@ Not for React, Vue, Svelte, Solid, plain DOM, or non-Angular TypeScript.
 - `linkedSignal` (v19+) is writable state derived from a source that should reset when the source moves; `resource` and `rxResource` (v19+) lift async work into signals - read `value()`, `hasValue()`, and `status()` instead of hand-managing loading and error booleans (object forms, the `abortSignal` rule and what each `status()` value means: same reference). DOM measured or written after render goes in `afterRenderEffect`, split by phase - the phase rules are in the same reference.
 
 ## State management: which tier, and when a store is warranted
-The default is the smallest thing that holds the state: local signal -> signal service -> SignalStore -> full NgRx, climbing a tier only when the one below cannot express the need - never to look enterprise. Stores (NgRx, NGXS, a signal-based store) are a last resort for state that truly spans many unrelated features; most state is local and stays in component signals. What each tier is for is `references/state-tiers.md`; load it when shared state outgrows a local signal. After refactoring shared state at any tier, run `references/click-path-audit.md` before calling it done.
+The default is the smallest thing that holds the state: local signal -> signal service -> SignalStore -> full NgRx, climbing a tier only when the one below cannot express the need. Stores (NgRx, NGXS, a signal-based store) are a last resort for state that truly spans many unrelated features. What each tier is for is `references/state-tiers.md`; load it when shared state outgrows a local signal. After refactoring shared state at any tier, run `references/click-path-audit.md` before calling it done.
 
 ## Server state is not client state
-Data that lives on the server (a fetched list, a record by id) is a cache of something you do not own - never copy it into a signal service or a store and babysit it, or two sources of truth drift. Keep it in a dedicated async read primitive that owns loading, error, and freshness - `httpResource` / `resource` / `rxResource` for a screen reading its own data, TanStack Query's Angular adapter once a server cache is shared across views and mutated - and treat reads as cached with a staleness window: a mutation invalidates then refetches, never an optimistic write of the server's shape into a client store. Details in `references/state-tiers.md` - load it before wiring any server read.
+Server data (a fetched list, a record by id) is never copied into a signal service or a store - it stays in an async read primitive that owns loading, error and freshness, and a mutation invalidates then refetches. Which primitive (`httpResource` / `resource` / `rxResource` for one screen, TanStack Query's Angular adapter once a server cache is shared and mutated) is `references/state-tiers.md` - load it before wiring any server read.
 
 ## RxJS only where a stream earns it
 - Observables are for genuine streams: HTTP responses, debounced input, event buses across components. Never wrap a plain synchronous value in an observable.
@@ -64,13 +73,7 @@ Web targets only - a Capacitor WebView has no server render, so skip this in an 
 - Depend on an interface or an injection token, not a concrete class, so a feature can be tested and re-provided without editing its consumers.
 
 ## HTTP, routing, and forms
-- Keep endpoint URLs in one config service or environment file, never scattered as string literals.
-- Cross-cutting HTTP concerns - auth headers, retry, error normalization - live in functional interceptors registered with `withInterceptors`, not in each call site.
-- Typed reactive forms (`FormGroup<T>`) are the default; on v22+ prefer Signal Forms for new forms (`form()` from `@angular/forms/signals`, stable there - experimental on v21, so version-tag any use). Template-driven forms are only for trivial throwaway inputs, and no field is ever typed or defaulted as `null`.
-- Lazy-load feature routes with `loadComponent` for standalone targets, falling back to `loadChildren` only where legacy modules remain.
-- Bind route params and `data` straight into component `input()`s with `withComponentInputBinding()` instead of injecting `ActivatedRoute` and reading snapshots.
-- Resolve a route's critical data ahead of activation with a thin `resolve` guard that delegates to a service, so the component renders without a request waterfall. Not in an Ionic app: cached pages never re-activate on revisit, so a resolver never re-runs and ships stale data - refresh on `ionViewWillEnter` there - ground the skill covering the Ionic/Capacitor layer owns, and with none installed this rule is the whole guidance.
-- Validation is a layer, not a pile of one-off checks: rules declared on the model, reusable pure `ValidatorFn`s, cross-field rules on the group, async validators that debounce and cancel, ONE shared error surface - never a per-template error wall. The full strategy (Signal Forms, its API pitfalls and Standard Schema included) is `references/forms-validation.md`; load it before building any non-trivial form.
+Read `references/http-routing-forms.md` before adding an HTTP call or interceptor, a route or resolver, or a form, or reviewing a change that does: endpoint config, functional interceptors, typed reactive forms versus Signal Forms, lazy routes, route-param input binding, resolvers (never in an Ionic app), and the validation layer.
 
 ## Accessibility
 - Every interactive element is reachable by keyboard and shows a visible focus indicator.
@@ -78,16 +81,13 @@ Web targets only - a Capacitor WebView has no server render, so skip this in an 
 - For custom widgets (accordion, listbox, combobox, menu, tabs, and more), build on the headless `@angular/aria` directives (developer preview in v21, stable from v22): they own the keyboard, focus, and ARIA state machine; you supply the markup and styles, hung off the aria-expanded / aria-selected / aria-current attributes they manage. Check `angular.dev/guide/aria` for the current roster and never reimplement that logic.
 - Text contrast meets WCAG AA - exact ratios are `angular-styling`'s to state.
 
-On greenfield or visual work, load `references/design-quality.md` before the first screen goes in - the type scale, spacing rhythm, color system, motion and per-state rules that keep a UI from reading as a framework default. Skip it when you are reproducing a fixed design or Figma handoff faithfully. It owns the *taste*; the mechanism lives in the styling skill (CSS, tokens, responsive) and, where the project uses Material, the theming skill.
+On greenfield or visual work, load `references/design-quality.md` before the first screen goes in (type scale, spacing rhythm, color, motion, per-state rules), unless you are reproducing a fixed design or Figma handoff faithfully. It owns the *taste*; the mechanism is the styling skill's (CSS, tokens, responsive) and, where the project uses Material, the theming skill's.
 ## Feature boundaries
 - Features may depend on `shared/` and `core/` but never on one another. No import from `features/billing` reaches into `features/orders`. (How barrels and deep imports are policed is `typescript`.)
 - Anything two features must share crosses through a service in `core/` or a state store, never a direct component reference.
 
 ## Performance budgets
-These are gates for the web/PWA target - a Capacitor binary loads its bundle from disk and has no SEO, so in an Ionic app apply them only to the web build.
-- Hold the initial bundle under 500 KB gzipped; lazy-load whatever would push past it.
-- Encode the ceiling as `budgets` in `angular.json` so a regression fails the build rather than slipping through review.
-- Clear Lighthouse 90+ on Performance, Accessibility, Best Practices, and SEO before any production release.
+Web/PWA target only: read `references/performance-budgets.md` before a production release, a change to the `angular.json` budgets, or a change that grows the initial bundle, or reviewing one.
 
 ## Testing
 - Test practice is `angular-testing`'s - load it before writing, changing, or reviewing tests; this skill keeps only the convention below.

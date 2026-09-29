@@ -11,7 +11,7 @@ This skill captures the **approach**, not a single library. The principles below
 
 ## When to use
 
-- Do not rely on recall. The .NET testing hub: the architecture-neutral approach for unit / integration / E2E tests, not a single library.
+- The .NET testing hub: the architecture-neutral approach for unit / integration / E2E tests, not a single library.
 - Defaults are xUnit, NSubstitute and FluentAssertions 7.x; coverage mechanics, library routing, Testcontainers, Aspire integration and snapshot testing are in `references/`.
 - Do NOT load for Angular or Ionic tests, or for plain TS/JS outside a framework harness - the Angular and the TypeScript/JavaScript testing skills own those.
 

@@ -58,7 +58,16 @@ After `dotnet sln migrate`, check then ask - never delete first:
 
 1. Confirm the new file exists and lists every project the old one did (`dotnet sln MySolution.slnx list` against `dotnet sln MySolution.sln list` - the two lists must match exactly).
 2. Confirm the build still resolves against it: `dotnet build MySolution.slnx`.
-3. Only with both green, put the removal to the user through ONE AskUserQuestion: delete the old `.sln` now (recommended - two solution files make auto-detection ambiguous), keep both for one commit and delete it after CI is green, or keep the `.sln`. Never delete on your own judgement, and never before steps 1 and 2 have passed.
+3. Only with both green, put the removal to the user through ONE AskUserQuestion:
+
+   ```ask
+   The .slnx lists every project and builds. Delete the old .sln now: two solution files make auto-detection ambiguous.
+   - 'Delete the old .sln now (Recommended)' - one solution file from here on
+   - 'Keep both for one commit' - delete the .sln once CI is green
+   - 'Keep the .sln' - the .slnx stays beside it
+   ```
+
+   Never delete on your own judgement, and never before steps 1 and 2 have passed.
 
 ```xml
 <Solution>

@@ -28,9 +28,9 @@ Do NOT load for application or schema code, or for editing the Aspire AppHost it
 - Build multi-arch images with `buildx --platform linux/amd64,linux/arm64` when developers are on Apple Silicon but production runs x64 - a locally-built image is otherwise the wrong architecture for the server.
 - Run as a non-root USER, mount the root filesystem read-only where the app allows, and keep a .dockerignore that excludes bin, obj, node_modules, .git, and every secret-bearing file.
 - Harden past non-root at runtime - drop all Linux capabilities, set no-new-privileges, cap memory / CPU / PID count, and keep the default seccomp profile plus an AppArmor or SELinux profile instead of reaching for `--privileged`, so a compromised or leaking process cannot escalate, exhaust PIDs, or starve the host. The full checklist with the compose keys: `references/docker-hardening.md`.
-- Give the container a HEALTHCHECK and proper PID-1 signal handling (an init shim) so the orchestrator can tell ready from dead and a SIGTERM drains rather than kills.
+- Give the container a health check and proper PID-1 signal handling (an init shim) so the orchestrator can tell ready from dead and a SIGTERM drains rather than kills. A chiseled or distroless image has no shell and no `curl`, so `HEALTHCHECK CMD curl ...` cannot run there: under Kubernetes use the orchestrator's HTTP probe against the app's health endpoint; where Docker or Compose judges health itself, publish a small probe executable (GET the URL, exit 0 on a 2xx, 1 otherwise) in the build stage and call it in exec form, as below.
 
-The shape in one Dockerfile - multi-stage, cache-ordered, digest-pinned, non-root:
+The shape in one Dockerfile - multi-stage, cache-ordered, digest-pinned, non-root, health-checked:
 
 ```dockerfile
 # syntax=docker/dockerfile:1
@@ -40,11 +40,14 @@ COPY ["App/App.csproj", "App/"]
 RUN --mount=type=cache,target=/root/.nuget/packages dotnet restore App/App.csproj
 COPY . .
 RUN --mount=type=cache,target=/root/.nuget/packages dotnet publish App/App.csproj -c Release -o /app
+RUN --mount=type=cache,target=/root/.nuget/packages dotnet publish HealthProbe/HealthProbe.csproj -c Release -o /probe
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble-chiseled@sha256:<digest>
 WORKDIR /app
 COPY --from=build /app .
+COPY --from=build /probe /probe
 USER $APP_UID
+HEALTHCHECK --interval=30s --timeout=3s CMD ["dotnet", "/probe/HealthProbe.dll", "http://localhost:8080/healthz"]
 ENTRYPOINT ["dotnet", "App.dll"]
 ```
 

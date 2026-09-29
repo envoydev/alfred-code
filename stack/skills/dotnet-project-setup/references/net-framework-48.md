@@ -34,5 +34,5 @@ migration prerequisites.
 - Tiered compilation is a .NET Core / .NET 5+ feature and does not exist on 4.8 - do not look for a
   `TieredCompilation` knob; the startup lever here is NGen, not tiered JIT.
 
-Migrating off 4.8 entirely (SDK-style conversion, multi-target, the blocker map) is `dotnet-migrate`'s
-`references/net-framework-48.md`.
+Migrating off 4.8 entirely (SDK-style conversion, multi-target, the blocker map) is the skill covering
+target-framework and SDK upgrades, in its .NET Framework 4.8 notes, where the install has it.

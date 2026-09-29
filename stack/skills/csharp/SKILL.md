@@ -9,11 +9,11 @@ For any BCL or NuGet API surface not pinned down here, resolve signatures with t
 
 C# style, structure, and runtime conventions in one place: how code is shaped (naming, layout, syntax) and how it behaves (async, I/O, exceptions, logging, DI). Style is enforced by `.editorconfig` (Allman braces through the formatting rule IDE0055, file-scoped namespaces through IDE0161) and `EnforceCodeStyleInBuild=true`.
 
-**Formatting, naming, and language-feature style is authoritative in `references/csharp-style.md`** (with the full canonical `.editorconfig`); the .NET Framework 4.8 delta - the C# 7.3 ceiling, the polyfill packages, the SynchronizationContext async caveat - is `references/net-framework-48.md`. This file keeps the house rules those style docs do not cover - structure limits, member and constructor ordering, forbidden patterns, XML doc, and the runtime behavior below - and where it overlaps them, the style docs win. **Above all of these, a project's own `.editorconfig` and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority: where a project diverges from these general conventions, follow the project.**
+**Formatting, naming, and language-feature style is authoritative in `references/csharp-style.md`** (with the full canonical `.editorconfig`); the .NET Framework 4.8 delta (the C# 7.3 ceiling, polyfills, the SynchronizationContext async caveat) is `references/net-framework-48.md`. This file keeps the house rules those do not cover, and where it overlaps them, the style docs win. **Above all of these, a project's own `.editorconfig` and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority: where a project diverges from these general conventions, follow the project.**
 
 **Floor: .NET 8 / C# 12.** Every rule below assumes at least this target - `TimeProvider`, `UnsafeAccessorAttribute`, the static argument throw-helpers, and the C# 12 collection expressions / primary constructors are all in. Where a convention names a newer feature (C# 13 `System.Threading.Lock`, the C# 14 `field` keyword), it flags the version inline; treat those as opt-in once the project's target moves up.
 
-Specialized concerns route through the .NET router skill - the one whose description maps each work area (concurrency, performance / memory layout, design patterns, serialization, DI registration, config binding, DDD, architecture, packaging) to its focused skill - where the install has it: load the skill it names, and with no router match work from the skills already loaded. This file stays the style and runtime baseline only.
+Specialized concerns (concurrency, performance / memory layout, design patterns, serialization, DI registration, config binding, DDD, architecture, packaging) route through the .NET router skill where the install has it: load the focused skill it names, and with no router match work from the skills already loaded.
 
 ## When to use
 
@@ -50,15 +50,7 @@ No SDK analyzer or `.editorconfig` rule enforces this order - it is a review rul
 
 ## Constructor parameter ordering
 
-Private readonly fields, constructor parameters, and constructor body assignments must follow the same order. Primary constructor parameter lists follow the same group order.
-
-**Group order:**
-1. `ILogger` / `ILogger<T>` - always first.
-2. Other interfaces.
-3. Classes (including sealed records, delegates such as `Func<>`, concrete service types).
-4. Structs (value types).
-
-Within each group, order by scope, broadest first. Required before optional - all defaulted params trail required ones.
+Private readonly fields, constructor parameters (primary constructors included) and body assignments follow one order, the same in all three: `ILogger` / `ILogger<T>` first, then other interfaces, then classes (sealed records, delegates such as `Func<>`, concrete service types), then structs. Within a group, broadest scope first; required before optional.
 
 ## Blank lines
 
@@ -69,35 +61,10 @@ Consecutive blank lines are the formatter's, or IDE2000 (experimental: `dotnet_s
 - Max 3 parameters. Use a parameter object (record or class) for more.
 - Methods do one thing. If 'and' appears in a method name, split it.
 - No `out` or `ref` parameters - they hide data flow at the call site and do not compose with async or LINQ; return a tuple or result object instead.
-- Every `switch` case body wrapped in its own `{ }` block - even when one statement, even when no variable is declared. Brace any half-braced switch you edit. Example:
-
-```csharp
-switch (x)
-{
-    case A:
-    {
-        DoA();
-
-        break;
-    }
-    case B:
-    {
-        var y = Compute();
-        Use(y);
-
-        return;
-    }
-    default:
-    {
-        return;
-    }
-}
-```
-
-Per-case braces give each case its own scope (no accidental variable leak); blank line before `break` / `return` when preceded by another statement; no blank line when the transfer is the only statement after `{` (the `default` above).
+- Every `switch` case body wrapped in its own `{ }` block - even when one statement, even when no variable is declared, so no variable leaks between cases. Brace any half-braced switch you edit; the worked example, blank lines included, is in `references/csharp-style.md` (section 2, 'Switch case blocks').
 
 ## Types and variables
-- `var`, nullable reference types, records vs classes, and expression-bodied members: `references/csharp-style.md` is authoritative. The bullets below are the house additions it does not cover.
+- `var`, nullable reference types, records vs classes and expression-bodied members are `references/csharp-style.md`'s; the bullets below are house additions.
 - Value objects: model as small immutable types - typically `readonly record struct` - validate in the constructor (trust everywhere after), and expose explicit conversions / factory methods only, never an `implicit operator` (it silently defeats the type safety it exists to provide). Add a `TypeConverter` when the value object must bind from configuration.
 - Member signatures expose the narrowest useful shape: accept `IEnumerable<T>` / `IReadOnlyCollection<T>` / `IReadOnlyList<T>` (or `ReadOnlySpan<T>` on hot paths), and return a read-only collection type (`IReadOnlyList<T>`, `IReadOnlyDictionary<,>`); return a `List<T>` / array only when the caller is meant to mutate it.
 - No magic numbers or magic strings - use named constants or enums.
@@ -113,13 +80,13 @@ Per-case braces give each case its own scope (no accidental variable leak); blan
 - Static fields only for true constants or thread-safe caches. Mutable static state is forbidden.
 
 ## Design patterns (GoF awareness)
-Reach for the framework-native construct before hand-rolling a pattern - most GoF patterns are already in the platform. Which construct replaces which pattern, the selection table, and the anti-pattern checks belong to the skill covering GoF design patterns in C# - load it to choose, implement, compare, or refactor toward any pattern; without it, prefer the framework-native construct and stop there.
+Reach for the framework-native construct before hand-rolling a GoF pattern - most are already in the platform. Choosing, implementing or refactoring toward a pattern loads the skill covering GoF design patterns in C#; without it, the framework-native construct is the answer.
 
 ## Modern C# syntax preferences
 
-The modern-feature style - primary constructors, collection expressions, raw strings, `required` members, the `field` keyword, pattern matching, switch expressions - is authoritative in `references/csharp-style.md` (language feature usage). Two house preferences that document does not name: prefer `params ReadOnlySpan<T>` (C# 13) for new internal zero-alloc APIs over `params T[]`, and `System.Threading.Lock` (C# 13) for new lock objects (do not retrofit existing `lock(object)` sites).
+The modern-feature style (primary constructors, collection expressions, raw strings, `required`, the `field` keyword, pattern matching) is section 4 of `references/csharp-style.md`. Two house preferences it does not name: prefer `params ReadOnlySpan<T>` (C# 13) for new internal zero-alloc APIs over `params T[]`, and `System.Threading.Lock` (C# 13) for new lock objects (do not retrofit existing `lock(object)` sites).
 
-Performance concerns (sealing, readonly structs, `Span<T>` / `Memory<T>` / `ArrayPool<T>`, collection choice) belong to the skill covering .NET performance and memory layout, when your skill list has one; without it, prefer the framework default and measure before optimizing.
+Performance concerns (readonly structs, `Span<T>` / `ArrayPool<T>`, collection choice) belong to the skill covering .NET performance and memory layout, when your skill list has one; without it, prefer the framework default and measure before optimizing.
 
 ## Forbidden patterns
 - No `#region` blocks - a file that needs regions to navigate is too big; split it instead.
@@ -134,13 +101,11 @@ Routing note: when a convention here drives a package change - adding, removing,
 
 ## Documentation
 - Every public API surface has XML doc comments covering parameters, return values, thrown exceptions, and remarks for non-obvious behavior.
-- Write them in the expanded multi-line form - each tag opened and closed on its own line, full descriptive sentences, `<returns>` and every `<param>` given the same treatment as `<summary>`, never a fragment collapsed onto one `///` line. The worked good-versus-avoid pair is section 5 of `references/csharp-style.md`; open it before documenting a new public surface.
+- Write them in the expanded multi-line form - each tag on its own lines, full sentences, `<returns>` and every `<param>` treated like `<summary>`, never a fragment on one `///` line. Open section 5 of `references/csharp-style.md` (the worked pair) before documenting a new public surface.
 
 ---
 
 # Runtime and Behavior
-
-Behavior, I/O, and composition rules.
 
 ## DateTime and timezones
 - Store and pass `DateTimeOffset`, not `DateTime`, for any value crossing process or DB boundaries.
@@ -158,7 +123,7 @@ Read `references/runtime-behavior.md` before writing async or cancellation code,
 - Do not use exceptions for control flow.
 - Re-throw with `throw;` not `throw ex;` (preserves stack trace).
 - Validate arguments at the top of public methods. Prefer the static throw-helpers over hand-written guards: `ArgumentNullException.ThrowIfNull(x)`, `ArgumentException.ThrowIfNullOrWhiteSpace(s)`, `ArgumentOutOfRangeException.ThrowIfNegative` / `ThrowIfGreaterThan(...)` (.NET 8).
-- Mapping a Result to an HTTP response and the `ProblemDetails` contract are the web surface - route via the .NET router to the ASP.NET Core error-handling skill (ProblemDetails, `IExceptionHandler`); don't shape HTTP errors in business code.
+- Mapping a Result to HTTP (`ProblemDetails`, `IExceptionHandler`) is the ASP.NET Core error-handling skill's, via the .NET router; never shape HTTP errors in business code.
 
 ## Logging
 - Structured logging via `ILogger<T>`. Use templates with named placeholders: `_logger.LogInformation("Order {OrderId} placed for {UserId}", orderId, userId)`. Never use string interpolation in log calls.
@@ -168,11 +133,9 @@ Read `references/runtime-behavior.md` before writing async or cancellation code,
 - One log statement per logical event. Avoid log spam in tight loops.
 
 ## Secrets and configuration sources
-- Where secrets live (dev vs prod placement) is owned by the skill covering .NET application-security hardening (OWASP-mapped mitigations, secret placement) - reach for it rather than restating the rule here; without it, keep every secret out of source, config files and logs, and stop there.
+- Where secrets live (dev vs prod placement) is the skill covering .NET application-security hardening (OWASP-mapped mitigations, secret placement); without it, keep every secret out of source, config files and logs. Hashing / encryption primitives route via the .NET router to the cryptography-primitives skill, where installed.
 - Configuration layering: `appsettings.json` (defaults) -> `appsettings.{Environment}.json` -> environment variables -> command-line args. Later layers override earlier.
-- Hashing / encryption primitives route via the .NET router to the cryptography-primitives skill, where installed; the secret-leak / OWASP hardening boundary is the .NET application-security skill.
-
-Typed options binding (`IOptions<T>` / `IOptionsSnapshot<T>` / `IOptionsMonitor<T>`) and startup validation (`ValidateOnStart`, `IValidateOptions<T>`, data-annotation validation) belong to the web hub skill - the ASP.NET Core cross-cutting baseline (typed options, resilience, observability) - consult it where the install has it, do not restate here. The DI-side binding shape (`AddOptions<T>().BindConfiguration(...).ValidateOnStart()`) is `references/dependency-injection.md`; without the web hub, that is the whole rule.
+- Typed options and startup validation (`IOptions<T>` family, `ValidateOnStart`, `IValidateOptions<T>`) belong to the web hub skill - the ASP.NET Core cross-cutting baseline - where the install has it; the DI-side binding shape is `references/dependency-injection.md`, and without the web hub that is the whole rule.
 
 ## LINQ
 Method-vs-query syntax choice, chain wrapping, multiple-enumeration, and terminal-operator intent are authoritative in `references/csharp-style.md`. House additions:

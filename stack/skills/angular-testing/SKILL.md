@@ -45,9 +45,10 @@ Karma, `jest.fn()` under Jest, `vi.fn()` under Vitest - and do not mix them.
   the signal/computed values; never reach into private writable signals from a test.
 - **Pipes / directives / guards** - pure pipes as plain functions; directives and guards through
   a minimal host component or `TestBed.runInInjectionContext`.
-- **Signals** - read them directly and flush effects with `TestBed.tick()`; wire inputs and
-  outputs through `inputBinding()` / `outputBinding()` / `twoWayBinding()` on `createComponent`
-  rather than reaching into the instance. Under zoneless, an error thrown in an event listener
+- **Signals** - read them directly and flush effects with `TestBed.tick()` (v20+;
+  `TestBed.flushEffects()` on v17-19); wire inputs and outputs through `inputBinding()` /
+  `outputBinding()` / `twoWayBinding()` on `createComponent` (v20+; on v17-19 set inputs with
+  `setInput` below and subscribe to the output) rather than reaching into the instance. Under zoneless, an error thrown in an event listener
   surfaces to the error handler instead of being swallowed - expect some previously-silent
   specs to start failing honestly. An input set AFTER creation goes through
   `fixture.componentRef.setInput('name', value)`, then `fixture.detectChanges()` - a signal

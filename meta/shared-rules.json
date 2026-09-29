@@ -1371,6 +1371,19 @@
         }
       ]
     },
+    "windows-service-floors": {
+      "_note": "The Windows Service floors a hosted worker needs when the SCM skill is absent - call AddWindowsService, anchor paths on AppContext.BaseDirectory, keep HostOptions.ShutdownTimeout under the SCM's ~30s stop budget, exit non-zero on a fatal error so recovery fires. The Windows Service skill owns them across its SCM sections; the hosted-services skill restates them in one sentence, and both are preloaded into the three windows-service seats, so a change to one floor changes both.",
+      "owner": {
+        "file": "stack/skills/dotnet-windows-service/SKILL.md",
+        "marker": "set `HostOptions.ShutdownTimeout` UNDER the window (e.g. 25s)"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-hosted-services/SKILL.md",
+          "marker": "keep `HostOptions.ShutdownTimeout` under the SCM's ~30s stop budget, and exit non-zero on a fatal error"
+        }
+      ]
+    },
     "dotnet10-executeasync-thread": {
       "_note": "The .NET 10 ExecuteAsync-on-background-thread fact - hosted-services owns the full note, windows-service carries the surface-specific one-liner.",
       "owner": {
@@ -5604,7 +5617,7 @@
       ]
     },
     "project-config-outranks-conventions": {
-      "_note": "A house convention skill is the default, never the authority: the project's own config and its captured `<docs-path>/code-style/CODE-STYLE.md` win where they diverge, and the skill says so in its own opening so a seat that loaded only that skill still knows. Four language skills carry the clause; the surrounding sentence names each stack's own config files, which is why only the priority clause is pinned. Six sites: the Angular and SQL copies said the same thing in their own words and were normalized onto this clause so the lint can see them.",
+      "_note": "A house convention skill is the default, never the authority: the project's own config and its captured `<docs-path>/code-style/CODE-STYLE.md` win where they diverge, and the skill says so in its own opening so a seat that loaded only that skill still knows. The language and desktop skills carry the clause; the surrounding sentence names each stack's own config files, which is why only the priority clause is pinned. Eight copies: the Angular and SQL copies said the same thing in their own words and were normalized onto this clause so the lint can see them, and the WinForms and WPF copies were normalized the same way in 2.1.5.",
       "owner": {
         "file": "stack/skills/csharp/SKILL.md",
         "marker": "CODE-STYLE.md` are higher priority"
@@ -5628,6 +5641,14 @@
         },
         {
           "file": "stack/skills/typescript/SKILL.md",
+          "marker": "CODE-STYLE.md` are higher priority"
+        },
+        {
+          "file": "stack/skills/dotnet-winforms/SKILL.md",
+          "marker": "CODE-STYLE.md` are higher priority"
+        },
+        {
+          "file": "stack/skills/dotnet-wpf/SKILL.md",
           "marker": "CODE-STYLE.md` are higher priority"
         }
       ]

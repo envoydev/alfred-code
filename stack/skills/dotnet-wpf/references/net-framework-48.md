@@ -13,10 +13,11 @@ The toolkit's runtime types (`ObservableObject`, `RelayCommand`, `WeakReferenceM
 must all hold or a generated member silently never appears:
 
 - **PackageReference, not packages.config** - under packages.config the generators do not load at all
-  (8.2.1+ at least warns). Converting is `dotnet-project-setup`'s `references/net-framework-48.md`.
+  (8.2.1+ at least warns). Converting is the .NET solution-setup skill's (the one covering projects, packages and
+  `Directory.Build.props`), in its .NET Framework 4.8 notes, where the install has it.
 - **C# 8.0+** - set `<LangVersion>8.0</LangVersion>` or higher; the net48 default of C# 7.3 fails with
-  error `MVVMTK0008`. The language-ceiling details and polyfills are `csharp`'s
-  `references/net-framework-48.md`.
+  error `MVVMTK0008`. The language-ceiling details and polyfills are in the `csharp` skill's
+  .NET Framework 4.8 notes.
 - **Build with the .NET 6 SDK or later** (VS 2022 or a modern Rider).
 
 The robust fallback, which also eases migration: put the view models in a separate **.NET Standard 2.0
@@ -36,8 +37,8 @@ unconditionally, and that library ports to .NET 8/9 unchanged.
 
 - The sync-over-async deadlock is live: WPF's `DispatcherSynchronizationContext` runs continuations only
   on the UI thread, so blocking it (`.Result` / `.Wait()`) while awaiting deadlocks. The mechanism and
-  the library `ConfigureAwait(false)` rule are `csharp`'s `references/net-framework-48.md` and its
-  `references/concurrency.md`; a plain `await` in view-model code correctly resumes on the UI thread. Use `DispatcherTimer` only for UI-thread ticks and a background timer (then
+  the library `ConfigureAwait(false)` rule are in the `csharp` skill's .NET Framework 4.8 and
+  concurrency notes; a plain `await` in view-model code correctly resumes on the UI thread. Use `DispatcherTimer` only for UI-thread ticks and a background timer (then
   marshal via `Dispatcher.InvokeAsync`) for polling.
 - Wire the app-level handlers in `App`: `Application.DispatcherUnhandledException` (UI thread; set
   `Handled` to keep running), `AppDomain.CurrentDomain.UnhandledException` (any thread, log-only, the
@@ -52,7 +53,8 @@ unconditionally, and that library ports to .NET 8/9 unchanged.
   theme.
 - `BinaryFormatter` still ships on net48 (unlike .NET 9, where clipboard / drag-drop of a custom type
   throws), so old payload code keeps working - but it is an RCE vector, so keep SKILL.md's
-  JSON-payload rule. The deserialization threat model is `dotnet-security`'s `references/net-framework-48.md`.
+  JSON-payload rule. The deserialization threat model is the .NET application-security skill's (OWASP hardening for .NET
+  services), in its .NET Framework 4.8 notes, where the install has it.
 
 ## Route out
 
