@@ -34,7 +34,7 @@ from the roots below. It is this repo's own maintenance tool, not part of the sh
 ## Parameters
 
 - `RULES_ROOT`: folder containing rule files (default: `./stack/rules`). All `.md` files are discovered recursively, including subdirectories and symlinks.
-- `CLAUDE_MD_PATHS`: the CLAUDE.md files in scope (default: `./stack/CLAUDE.template.md`, the template the installer deploys into target projects). The repository's root `./CLAUDE.md` is the stack repo's own working file: it may be read for context but is out of scope for scoring and editing.
+- `CLAUDE_MD_PATHS`: the CLAUDE.md files in scope (default: `./stack/AGENTS.template.md`, the template the installer deploys into target projects). The repository's root `./CLAUDE.md` is the stack repo's own working file: it may be read for context but is out of scope for scoring and editing.
 - `SKILLS_ROOT`: folder containing skills (default: `./stack/skills`). Required, because the main remediation for a bloated rule set is moving content into skills, and you may only point at skills that exist.
 - `AGENTS_ROOT`: folder containing subagents (default: `./stack/agents`). Used to detect rules that restate what an agent already owns.
 - `TARGET`: minimum acceptable grade (default: `A` / `9`).

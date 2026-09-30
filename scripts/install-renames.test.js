@@ -58,7 +58,7 @@ test('the renamed map: every old name is retired, every new name ships, and no n
     const m = loadManifest(ROOT);
     const skills = new Set(m.catalogs.skills.map((e) => e.split('|').pop()));
     const agents = new Set(m.agents.map((f) => f.replace(/\.md$/, '')));
-    assert.strictEqual(Object.keys(RENAMED.skills).length, 26, 'the 23 project-* skills plus the three 2.1.0 renames');
+    assert.strictEqual(Object.keys(RENAMED.skills).length, 27, 'the 23 project-* skills, the three 2.1.0 renames and the 2.1.6 AGENTS.md one');
     assert.strictEqual(Object.keys(RENAMED.agents).length, 2, 'the two failure diagnosers');
     for (const [from, to] of Object.entries(RENAMED.skills))
     {
@@ -77,7 +77,7 @@ test('the renamed map: every old name is retired, every new name ships, and no n
 
 // 2.1.0: three more skills take alfred-habits-* names, and plugin-authoring leaves the shipped catalog
 // (it is retired, not renamed - this repo keeps its own copy in .claude/skills).
-const V21 = { 'alfred-capture-claude-md': 'alfred-habits-adjust-claude-md', 'create-ticket': 'alfred-habits-create-ticket', 'explain-code-tutor': 'alfred-habits-explain-code' };
+const V21 = { 'alfred-capture-claude-md': 'alfred-habits-adjust-agents-md', 'create-ticket': 'alfred-habits-create-ticket', 'explain-code-tutor': 'alfred-habits-explain-code' };
 
 test('2.1.0 renames: each old skill maps to its new name, is retired, and plugin-authoring is retired and no longer ships', () =>
 {
@@ -93,7 +93,20 @@ test('2.1.0 renames: each old skill maps to its new name, is retired, and plugin
     assert.ok(m.retired.skills.includes('plugin-authoring') && !skills.has('plugin-authoring'), 'plugin-authoring is retired and not in the catalog');
     assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'skills', 'plugin-authoring')), 'plugin-authoring is not under stack/skills');
     assert.deepStrictEqual(selection.renamePicked({ skills: ['create-ticket@alfred-code', 'explain-code-tutor', 'alfred-capture-claude-md@alfred-code'], agents: [] }, { renamed: RENAMED, log: () => {}, said: new Set() }),
-        { skills: ['alfred-habits-create-ticket@alfred-code', 'alfred-habits-explain-code', 'alfred-habits-adjust-claude-md@alfred-code'], agents: [] }, 'a pick keeps its home and takes the new name');
+        { skills: ['alfred-habits-create-ticket@alfred-code', 'alfred-habits-explain-code', 'alfred-habits-adjust-agents-md@alfred-code'], agents: [] }, 'a pick keeps its home and takes the new name');
+});
+
+// The instruction file is AGENTS.md now: the 2.1.6 skill name maps to it, is retired and is gone from disk, and the
+// pick, a deny and an override written under the old name are carried over.
+test('AGENTS.md rename: alfred-habits-adjust-claude-md maps to alfred-habits-adjust-agents-md, retired, and a pick carries over', () =>
+{
+    const m = loadManifest(ROOT);
+    assert.strictEqual(RENAMED.skills['alfred-habits-adjust-claude-md'], 'alfred-habits-adjust-agents-md');
+    assert.ok(m.retired.skills.includes('alfred-habits-adjust-claude-md'));
+    assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'skills', 'alfred-habits-adjust-claude-md')));
+    assert.ok(fs.existsSync(path.join(ROOT, 'stack', 'skills', 'alfred-habits-adjust-agents-md', 'SKILL.md')));
+    assert.deepStrictEqual(selection.renamePicked({ skills: ['alfred-habits-adjust-claude-md@alfred-code'], agents: [] }, { renamed: RENAMED, log: () => {}, said: new Set() }),
+        { skills: ['alfred-habits-adjust-agents-md@alfred-code'], agents: [] });
 });
 
 // ---------- the read-side helpers ----------
@@ -539,6 +552,37 @@ test('seed update --installed-only (I2): the 1.3.0-seeded CLAUDE.md and a genera
     ], outs[0]);
     assert.deepStrictEqual(steps[1], steps[0], 'the re-run changes neither file');
     assert.deepStrictEqual(lines(outs[1]), [], 'and prints no line');
+});
+
+// The instruction file's own move, end to end through update: the unedited seed an earlier release wrote as
+// .claude/CLAUDE.md becomes .claude/AGENTS.md, a root AGENTS.md keeps it where it is (moving would split the
+// instructions), and a re-run says nothing and changes nothing.
+test('seed update --installed-only: an unedited .claude/CLAUDE.md seed moves to .claude/AGENTS.md; with a root AGENTS.md it stays; a re-run is quiet', POSIX_ONLY, () =>
+{
+    const { agentsMdBody } = require('./install/seeds.js');
+    const seed = (repo) => agentsMdBody({ projectRoot: repo, sourceDir: ROOT });
+    const state = (repo) => ({
+        claude: fs.existsSync(path.join(repo, '.claude', 'CLAUDE.md')) ? fs.readFileSync(path.join(repo, '.claude', 'CLAUDE.md'), 'utf8') : null,
+        agents: fs.existsSync(path.join(repo, '.claude', 'AGENTS.md')) ? fs.readFileSync(path.join(repo, '.claude', 'AGENTS.md'), 'utf8') : null,
+        root: fs.existsSync(path.join(repo, 'AGENTS.md')) ? fs.readFileSync(path.join(repo, 'AGENTS.md'), 'utf8') : null,
+    });
+    const moved = seedRun(['update', 'update'], 'skill markdown-style\n', {
+        plugins: V13_LISTING, args: ['--installed-only'], each: state,
+        prepare: (repo) => { v13Plugin(repo); write(repo, '.claude/CLAUDE.md', seed(repo)); },
+    });
+    assert.strictEqual(moved.steps[0].claude, null, moved.outs[0]);
+    assert.ok(moved.steps[0].agents && moved.steps[0].agents.startsWith('# '), 'the seed sits under its new name');
+    assert.match(moved.outs[0], /\.claude\/CLAUDE\.md -> \.claude\/AGENTS\.md: the unedited seed moved/);
+    assert.deepStrictEqual(moved.steps[1], moved.steps[0], 'the re-run changes nothing');
+    assert.doesNotMatch(moved.outs[1], /CLAUDE\.md -> \.claude\/AGENTS\.md/, 'and says nothing');
+
+    const kept = seedRun(['update'], 'skill markdown-style\n', {
+        plugins: V13_LISTING, args: ['--installed-only'], each: state,
+        prepare: (repo) => { v13Plugin(repo); write(repo, '.claude/CLAUDE.md', seed(repo)); write(repo, 'AGENTS.md', '# the project\'s own\n'); },
+    });
+    assert.ok(kept.steps[0].claude && kept.steps[0].agents === null, kept.outs[0]);
+    assert.strictEqual(kept.steps[0].root, '# the project\'s own\n');
+    assert.match(kept.outs[0], /root AGENTS\.md holds its instructions/);
 });
 
 // M1: at local scope the shared settings.json is a file the run never writes - an old seat name only

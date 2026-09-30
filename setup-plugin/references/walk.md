@@ -210,7 +210,7 @@ Step 2: multi-select questions of 4 trios each ('Add trios 1/2', 'Add trios 2/2'
 ## Skills
 
 The full release catalog in one table - the generator `alfred-capture-*` / `alfred-loop-*` skills and every other house
-skill included, so THIS is the only place skills are ever chosen; later steps (CLAUDE.md included)
+skill included, so THIS is the only place skills are ever chosen; later steps (AGENTS.md included)
 never offer skill additions. Locked = every skill the kept rules and agents REQUIRE (rule
 attachments and `skills:` frontmatter preloads), each with the reason naming its dependent. A skill
 an agent's body merely names as a conditional load ('load X when...') is NOT an edge and never
@@ -376,7 +376,7 @@ and is never offered as a pick (a `claude-hud` the user disabled stays off: upda
 back on). The other two (`csharp-lsp`, `typescript-lsp`) are OPTIONAL: pre-selected only as
 `evidence` (the scan matched a `*.csproj` / `*.sln`, a `tsconfig.json` or `typescript` dependency -
 the reason names the manifest) or as a confirmed stack's LSP seed, and otherwise `-`, freely
-addable. 2.0.0 retired `claude-md-management` and `security-guidance` (the core's CLAUDE.md skill and
+addable. 2.0.0 retired `claude-md-management` and `security-guidance` (the core's AGENTS.md skill and
 `/security-review` cover them): neither is a row, and `/alfred-code:update` removes each from this
 project's scope with the line that adds it back.
 

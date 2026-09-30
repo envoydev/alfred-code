@@ -35,8 +35,8 @@ test('M20 the memory launcher no longer says the service leaves numpy undeclared
 test('M23 the claude-md-management retirement row calls the skill always-on, not the core\'s', () =>
 {
     const text = read('meta/retired-plugins.json');
-    assert.doesNotMatch(text, /the core's alfred-habits-adjust-claude-md skill/);
-    assert.match(text, /the always-on alfred-habits-adjust-claude-md skill/);
+    assert.doesNotMatch(text, /the core's alfred-habits-adjust-agents-md skill/);
+    assert.match(text, /the always-on alfred-habits-adjust-agents-md skill/);
 });
 
 // M29: each kept MCP server's launcher downloads and runs its pinned package at every session start, and serena

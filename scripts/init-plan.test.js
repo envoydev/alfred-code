@@ -308,7 +308,7 @@ for (const [name, args] of [
 
 // Both homes that print the post-install capture order to a reader must follow the order this script runs
 // (the shared-rules pin covers only the 'agent-capabilities LAST' clause, which is how the template drifted).
-for (const rel of ['stack/CLAUDE.template.md', 'setup-plugin/references/post-install.md'])
+for (const rel of ['stack/AGENTS.template.md', 'setup-plugin/references/post-install.md'])
 {
     test(`capture order: ${rel} names the captures in CAPTURES order`, () =>
     {
@@ -348,14 +348,14 @@ test('unattended: each of init\'s own asks gets one line - additive installs tak
         'unattended: machine installs -> skip claude-hud status line + compact layout (a refresh replaces the account\'s existing status line - destructive)',
         'unattended: memory level -> global (Recommended)',
         'unattended: related projects -> none - skip it (naming the siblings needs a person)',
-        'unattended: CLAUDE.md -> fill it in (Recommended)',
+        'unattended: AGENTS.md -> fill it in (Recommended)',
     ]);
 });
 
 test('unattended: nothing to install and no related-projects capture - no line for an ask that never fires', () =>
 {
     const lines = unattended({ machine: [{ what: 'uv', state: 'present', detail: '' }], captures: [{ skill: 'alfred-capture-related-projects', state: 'done', detail: 'x exists' }] });
-    assert.deepStrictEqual(lines, ['unattended: memory level -> global (Recommended)', 'unattended: CLAUDE.md -> fill it in (Recommended)']);
+    assert.deepStrictEqual(lines, ['unattended: memory level -> global (Recommended)', 'unattended: AGENTS.md -> fill it in (Recommended)']);
 });
 
 test('unattended: the CLI prints the mode on --mode, and the decisions after the plan only when the switch is on', { skip: process.platform === 'win32' && 'shell stubs' }, () =>

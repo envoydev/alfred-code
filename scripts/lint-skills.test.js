@@ -954,7 +954,7 @@ test('lintRetiredNames flags a retired plugin name left in shipped stack text, a
     const cut = lintRetiredNames([{ file: 'stack/skills/a/SKILL.md', text: 'pairs with the runtime security-guidance plugin\nkeep it current with claude-md-management\n' }]);
     assert.deepStrictEqual(cut.map((f) => f.replace(/ names .*/, '')), ['stack/skills/a/SKILL.md:1', 'stack/skills/a/SKILL.md:2'], cut.join('\n'));
     assert.match(cut[0], /security-guidance.*\/security-review/, 'the finding names what took its place');
-    assert.match(cut[1], /claude-md-management.*CLAUDE\.md skill/, 'the finding names what took its place');
+    assert.match(cut[1], /claude-md-management.*AGENTS\.md skill/, 'the finding names what took its place');
     assert.ok(stackTextFiles().length > 100, 'the walk reaches the shipped tree');
     assert.deepStrictEqual(lintRetiredNames(stackTextFiles()), [], 'no retired plugin name is left under stack/');
 });

@@ -923,7 +923,15 @@ function runLayers(ctx)
         docs.ensureDocsIgnore({ projectRoot: ctx.projectRoot, docsPath, mode, log: ctx.log });
     }
     catch (err) { ctx.note(`${docsPath}/.gitignore could not be written (${err.message}) - add the docs root's machine state to the repo's own .gitignore`); }
-    if (args.action === 'install') ctx.seededClaudeMd = seeds.seedClaudeMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
+    if (args.action === 'install') ctx.stackAgentsMd = seeds.seedAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
+    // An update moves the seed an earlier release wrote as .claude/CLAUDE.md - only while it is still unedited.
+    else if (args.action === 'update')
+        ctx.stackAgentsMd = seeds.moveSeededClaudeMd({
+            projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, ledgerHash: (ctx.ledger && ctx.ledger.files && ctx.ledger.files['CLAUDE.md']) || '',
+            hash: library.hashItem, tracked: (at) => gitTracks(ctx, at),
+            gitMv: (from, to) => ctx.rt.execCommand('git', ['mv', '--', from, to], { cwd: path.dirname(from), stdio: 'ignore' }),
+            log: ctx.log, note: ctx.note,
+        }) === 'moved';
     selection.respellRenamed({ projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, engines: pwEngines(ctx), log: ctx.log, note: ctx.note });
     if (plugins.corePluginOn(ctx.routes))
         selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, seats: placement().plugins[CORE].agents, log: ctx.log, note: ctx.note });
@@ -2265,12 +2273,12 @@ function managedFiles(ctx)
     }
     // I12: the serena context the full copy route's navigation registration names.
     if (ctx.navContextCopied) put(NAV_CONTEXT, path.join(ctx.claudeDir, NAV_CONTEXT));
-    // A CLAUDE.md this run seeded is the template's until init fills it in - from then on it is the project's.
-    if (ctx.seededClaudeMd) put('CLAUDE.md', path.join(ctx.claudeDir, 'CLAUDE.md'));
-    // No ledger to read (an older stamp): a CLAUDE.md still byte for byte the seed is the stack's.
-    const claudeMd = path.join(ctx.claudeDir, 'CLAUDE.md');
-    if (!(ctx.ledger && ctx.ledger.files) && !out['CLAUDE.md'] && fs.existsSync(claudeMd)
-        && fs.readFileSync(claudeMd, 'utf8') === seeds.claudeMdBody({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir })) put('CLAUDE.md', claudeMd);
+    // An AGENTS.md this run seeded (or moved from its 2.1.6 CLAUDE.md name) is the template's until init fills it in - from then on it is the project's.
+    if (ctx.stackAgentsMd) put('AGENTS.md', path.join(ctx.claudeDir, 'AGENTS.md'));
+    // No ledger to read (an older stamp): an AGENTS.md still byte for byte the seed is the stack's.
+    const agentsMd = path.join(ctx.claudeDir, 'AGENTS.md');
+    if (!(ctx.ledger && ctx.ledger.files) && !out['AGENTS.md'] && fs.existsSync(agentsMd)
+        && fs.readFileSync(agentsMd, 'utf8') === seeds.agentsMdBody({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir })) put('AGENTS.md', agentsMd);
     for (const [rel, h] of Object.entries((ctx.ledger && ctx.ledger.files) || {}))
         if (!out[rel] && library.hashItem(ledgerPath(ctx, rel)) === h) out[rel] = h;
     return out;
@@ -2288,13 +2296,15 @@ function pruneDroppedCopies(ctx)
     const shipped = new Set([
         ...[...new Set(ctx.manifest.catalogs.hooks.map((e) => e.split('::')[0]))].concat(HOOK_ENGINES, HOOK_MODULES).map((f) => `hooks/${f}`),
         ...ctx.manifest.catalogs.skills.map((e) => `skills/${e.split('|').pop()}`),
-        ...ctx.manifest.agents.map((a) => `agents/${a}`), 'CLAUDE.md',
+        ...ctx.manifest.agents.map((a) => `agents/${a}`), 'AGENTS.md',
         // I12: the serena context stays while this run's navigation registration names it.
         ...(ctx.navContextCopied ? [NAV_CONTEXT] : []),
     ]);
     for (const [rel, h] of Object.entries(files))
     {
         if (shipped.has(rel)) continue;
+        // The 2.1.6 seed's name: the move step already said where it went, or why it stayed - it is never pruned.
+        if (rel === 'CLAUDE.md') continue;
         const at = ledgerPath(ctx, rel);
         const now = library.hashItem(at);
         if (!now) continue;
@@ -2373,7 +2383,7 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, log });
     const memoryOff = ['settings.json', 'settings.local.json'].some((n) => readJson(path.join(claudeDir, n)).autoMemoryEnabled === false);
-    log(`  kept, yours or your data: a CLAUDE.md you filled in, the data root (the docs, the navigation index, the browser profiles - ${keptRoot}/, or a 2.0.0 .serena/ / .playwright/), the memory database${memoryOff ? '; autoMemoryEnabled: false stays - Claude\'s own memory is off until you remove that key' : ''}`);
+    log(`  kept, yours or your data: an AGENTS.md you filled in, the data root (the docs, the navigation index, the browser profiles - ${keptRoot}/, or a 2.0.0 .serena/ / .playwright/), the memory database${memoryOff ? '; autoMemoryEnabled: false stays - Claude\'s own memory is off until you remove that key' : ''}`);
     if (failures()) { log(`  stamp kept - ${path.basename(file)} still lists what is left; run uninstall again to finish`); return 0; }
     fs.rmSync(file, { force: true });
     log(`  stamp removed: ${path.basename(file)} - every item the ledger listed is gone, or named above as kept`);

@@ -92,7 +92,7 @@ Performance concerns (readonly structs, `Span<T>` / `ArrayPool<T>`, collection c
 - No `#region` blocks - a file that needs regions to navigate is too big; split it instead.
 - No `using static` for non-utility classes.
 - No commented-out code - delete it.
-- No `TODO` without an associated ticket reference.
+- No `TODO` the user did not ask for.
 - No reflection in business or hot-path code; use source generators or compile-time alternatives. No object-mapping libraries (AutoMapper / Mapster / ExpressMapper) - write explicit mapping methods (compile-time checked, debuggable, refactor-safe). Reflection is acceptable only in serialization, the DI container, ORM / EF, test infrastructure, or one-time bootstrap - never for DTO / domain mapping. When you must reach a private member (serializer, test helper), use `UnsafeAccessorAttribute` (.NET 8), not `System.Reflection`.
 - No `dynamic` - use `object` + pattern matching or a typed interface.
 - No top-level statements outside `Program.cs`.
@@ -100,8 +100,7 @@ Performance concerns (readonly structs, `Span<T>` / `ArrayPool<T>`, collection c
 Routing note: when a convention here drives a package change - adding, removing, or swapping one (e.g. dropping a banned mapper, replacing Newtonsoft with System.Text.Json) - the install itself belongs to the skill covering .NET solution and package setup, where the install has it; either way use the `dotnet` CLI, never hand-edit `Directory.Packages.props`.
 
 ## Documentation
-- Every public API surface has XML doc comments covering parameters, return values, thrown exceptions, and remarks for non-obvious behavior.
-- Write them in the expanded multi-line form - each tag on its own lines, full sentences, `<returns>` and every `<param>` treated like `<summary>`, never a fragment on one `///` line. Open section 5 of `references/csharp-style.md` (the worked pair) before documenting a new public surface.
+- Public and protected members carry XML docs: `<summary>`, `<param>` and `<typeparam>` for each, `<returns>` for non-void, `<exception>` for contract exceptions, `<inheritdoc/>` on overrides. Whether and how they are written (one line per tag, the shortest accurate phrase, no ticket ids) is the house code-comments skill's, and the project's own convention wins.
 
 ---
 

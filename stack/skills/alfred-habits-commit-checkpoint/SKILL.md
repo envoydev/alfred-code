@@ -22,7 +22,7 @@ On any non-trivial diff, before committing or presenting, in order:
    the commit. One unformatted commit is a red CI run and a fixup commit.
 2. **Review.** Run the house review `alfred-task-verify-code` - model-invocable, so the gate holds
    in autonomous flows too (`/code-review` is a user-run parallel sweep, not this gate; `/simplify`
-   applies its quality findings in place) - plus any diff gates named in the project's `CLAUDE.md`.
+   applies its quality findings in place) - plus any diff gates named in the project's `AGENTS.md`.
    The review half may also run as a DISPATCHED domain-verifier pass over exactly this diff - the
    right call when the session's carried context is already heavy, since the seat reviews from a
    clean context - and its sign-off satisfies the checkpoint the same way. Either way the review is

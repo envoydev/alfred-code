@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 'use strict';
-// A project's CLAUDE.md files against the tree they describe. Read-only and deterministic - no model
-// call, no network. The CLAUDE.md skill runs it as its last step; /alfred-code:validate runs it for drift.
+// A project's AGENTS.md files (and the CLAUDE.md a project already keeps) against the tree they describe.
+// Read-only and deterministic - no model call, no network. The AGENTS.md skill runs it as its last step;
+// /alfred-code:validate runs it for drift.
 //
-//   node scripts/claude-md-check.js [--root <dir>] [--file <path> ...] [--template <file>]
-//   node scripts/claude-md-check.js --list [--root <dir>]   - the files it would check, each with its size,
+//   node scripts/agents-md-check.js [--root <dir>] [--file <path> ...] [--template <file>]
+//   node scripts/agents-md-check.js --list [--root <dir>]   - the files it would check, each with its size,
 //                                                             the untouched seed marked; nothing checked
 //
 //   path        - a path the file names does not exist (a code span, an @import, a relative link); a
@@ -17,18 +18,20 @@
 //   template    - a live line still carries the template's own authoring text
 //
 // Only the LIVE text is read: HTML comments are stripped from what Claude loads, so they are stripped
-// here too, line numbers kept. With no --file it checks the root CLAUDE.md, .claude/CLAUDE.md and every
-// part's own CLAUDE.md git does not ignore (outside git, the vendored and build folders are skipped by
-// name). Exit 1 on any finding, 0 when clean or when the project has no CLAUDE.md, 2 on a usage error.
+// here too, line numbers kept. With no --file it checks the root and .claude/ AGENTS.md and CLAUDE.md and
+// every part's own git does not ignore (outside git, the vendored and build folders are skipped by
+// name). Exit 1 on any finding, 0 when clean or when the project has neither file, 2 on a usage error.
 const fs = require('node:fs');
 const path = require('node:path');
 const rt = require('./install/runtime.js');
 const { parseJson } = require('./install/json-file.js');
 
-const TEMPLATE_DEFAULT = path.join(__dirname, '..', 'stack', 'CLAUDE.template.md');
-const USAGE = 'usage: node claude-md-check.js [--root <dir>] [--file <path> ...] [--template <file>] | --list [--root <dir>]';
+const TEMPLATE_DEFAULT = path.join(__dirname, '..', 'stack', 'AGENTS.template.md');
+// The seeded file is AGENTS.md; a project that already keeps a CLAUDE.md keeps it checked all the same.
+const INSTRUCTION_FILES = ['AGENTS.md', 'CLAUDE.md'];
+const USAGE = 'usage: node agents-md-check.js [--root <dir>] [--file <path> ...] [--template <file>] | --list [--root <dir>]';
 
-// Folders that hold someone else's files or a build's output - never a CLAUDE.md of the project's own. The
+// Folders that hold someone else's files or a build's output - never an AGENTS.md or CLAUDE.md of the project's own. The
 // data root's default (`.alfred`: the stack's docs and its servers' data) and the 2.0.0 server folders too.
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'bin', 'obj', 'dist', 'build', 'out', 'target', 'vendor', '.venv', 'venv', '__pycache__', '.serena', '.playwright', '.memory-mcp', '.alfred', '.alfred-memory']);
 
@@ -110,8 +113,8 @@ function stripComments(text)
     return { live, comments };
 }
 
-// The folder a file's relative paths are read from: its own, except `.claude/CLAUDE.md`, which is the
-// project's own file and names paths from the project root.
+// The folder a file's relative paths are read from: its own, except `.claude/AGENTS.md` and
+// `.claude/CLAUDE.md`, which are the project's own file and names paths from the project root.
 function baseOf(root, file)
 {
     const dir = path.dirname(path.join(root, file));
@@ -119,7 +122,7 @@ function baseOf(root, file)
 }
 
 // Every file and folder on disk under the root (ignored ones included - `.claude/settings.local.json` is
-// real), the vendored and build folders and nested repositories left out. A path a CLAUDE.md names without
+// real), the vendored and build folders and nested repositories left out. A path an instruction file names without
 // an anchor - `appsettings.json`, `install/docs.js` - is a name, not a location: it exists when some
 // file or folder here ends with it.
 function projectIndex(root)
@@ -147,7 +150,7 @@ function projectIndex(root)
     return { files, dirs };
 }
 const endsWithPath = (list, p) => list.some((x) => x === p || x.endsWith(`/${p}`));
-// A .NET part folder carries the solution's prefix - `src/Acme.Bot/` - and a CLAUDE.md names it by the part
+// A .NET part folder carries the solution's prefix - `src/Acme.Bot/` - and an instruction file names it by the part
 // alone (`Bot/Program.cs`). Only a path with a folder in it: a bare `Settings.json` is never `Acme.Settings.json`.
 const endsWithPart = (list, p) => p.includes('/') && list.some((x) =>
 {
@@ -219,7 +222,7 @@ function listFiles(root)
             if (e.isDirectory())
             {
                 if (SKIP_DIRS.has(e.name) || exists(path.join(dir, e.name, '.git'))) continue;
-                if (e.name === '.claude') { if (exists(path.join(dir, e.name, 'CLAUDE.md'))) out.push(`${r2}/CLAUDE.md`); continue; }
+                if (e.name === '.claude') { for (const f of INSTRUCTION_FILES) if (exists(path.join(dir, e.name, f))) out.push(`${r2}/${f}`); continue; }
                 walk(path.join(dir, e.name), r2);
             }
             else out.push(r2);
@@ -229,13 +232,13 @@ function listFiles(root)
     return out;
 }
 
-// The CLAUDE.md files to check: the root one and .claude/CLAUDE.md even where git ignores them (they
-// load all the same), plus every part's own.
+// The instruction files to check: the root ones and .claude/'s even where git ignores them (they load all
+// the same), plus every part's own.
 function findFiles(root)
 {
-    const found = new Set(listFiles(root).filter((rel) => rel.split('/').pop() === 'CLAUDE.md'));
-    for (const own of ['CLAUDE.md', '.claude/CLAUDE.md']) if (exists(path.join(root, own))) found.add(own);
-    return [...found].filter((rel) => !rel.startsWith('.claude/') || rel === '.claude/CLAUDE.md').sort();
+    const found = new Set(listFiles(root).filter((rel) => INSTRUCTION_FILES.includes(rel.split('/').pop())));
+    for (const dir of ['', '.claude/']) for (const f of INSTRUCTION_FILES) if (exists(path.join(root, dir + f))) found.add(dir + f);
+    return [...found].filter((rel) => !rel.startsWith('.claude/') || INSTRUCTION_FILES.some((f) => rel === `.claude/${f}`)).sort();
 }
 
 function docsRootOf(root)
@@ -470,9 +473,9 @@ function main(argv, { out = (s) => process.stdout.write(s), err = (s) => process
     }
     if (list) return listMain(root, files.length ? files : findFiles(root), { out, err, template: readFileOrNull(templateFile) });
     const template = readFileOrNull(templateFile);
-    if (template === null) err(`claude-md-check: template ${templateFile} unreadable - the template-text check did not run\n`);
+    if (template === null) err(`agents-md-check: template ${templateFile} unreadable - the template-text check did not run\n`);
     const targets = files.length ? files : findFiles(root);
-    if (!targets.length) { out('claude-md-check: no CLAUDE.md in this project\n'); return 0; }
+    if (!targets.length) { out('agents-md-check: no AGENTS.md or CLAUDE.md in this project\n'); return 0; }
     const docsRoot = docsRootOf(root);
     const index = projectIndex(root);
     const findings = [];
@@ -480,24 +483,24 @@ function main(argv, { out = (s) => process.stdout.write(s), err = (s) => process
     {
         let text;
         try { text = fs.readFileSync(path.join(root, file), 'utf8'); }
-        catch (e) { err(`claude-md-check: ${file} unreadable (${e.code || e.message})\n`); return 2; }
+        catch (e) { err(`agents-md-check: ${file} unreadable (${e.code || e.message})\n`); return 2; }
         findings.push(...checkText({ root, file, text, template, docsRoot, index }));
     }
     for (const f of findings) out(`${f.file}:${f.line} ${f.kind}: ${f.what} - ${f.why}\n`);
-    if (!findings.length) { out(`claude-md-check: clean (${targets.length} file(s))\n`); return 0; }
-    out(`claude-md-check: ${findings.length} finding(s) in ${new Set(findings.map((f) => f.file)).size} file(s)\n`);
+    if (!findings.length) { out(`agents-md-check: clean (${targets.length} file(s))\n`); return 0; }
+    out(`agents-md-check: ${findings.length} finding(s) in ${new Set(findings.map((f) => f.file)).size} file(s)\n`);
     return 1;
 }
 
 // A seeded file still carrying the template's H1 placeholder in its live text has never been filled.
 function listMain(root, targets, { out, err, template = null })
 {
-    if (!targets.length) { out('claude-md-check: no CLAUDE.md in this project\n'); return 0; }
+    if (!targets.length) { out('agents-md-check: no AGENTS.md or CLAUDE.md in this project\n'); return 0; }
     for (const file of targets)
     {
         let text;
         try { text = normalize(fs.readFileSync(path.join(root, file), 'utf8')); }
-        catch (e) { err(`claude-md-check: ${file} unreadable (${e.code || e.message})\n`); return 2; }
+        catch (e) { err(`agents-md-check: ${file} unreadable (${e.code || e.message})\n`); return 2; }
         const lines = text.replace(/\n$/, '').split('\n').length;
         const seeded = unfilledSeed(text, template);
         out(`${file}: ${lines} lines${seeded ? ', the seeded template (unfilled)' : ''}\n`);

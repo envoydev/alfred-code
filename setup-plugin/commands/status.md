@@ -134,9 +134,9 @@ capture-written rules (`alfred-project-*.md`, `project-code-style.md`), `stack` 
 Then ONE extra line under that table - the always-on FLOOR this install pays, because nothing
 else in the stack reports it and a baseline rule is the one artifact whose cost is multiplied by
 every message of every session: total the bytes of the pathless rules plus the project
-instructions in one call (`wc -c <rules dir>/alfred-*.md CLAUDE.md .claude/CLAUDE.md
+instructions in one call (`wc -c <rules dir>/alfred-*.md AGENTS.md .claude/AGENTS.md CLAUDE.md .claude/CLAUDE.md
 2>/dev/null | tail -1`) and render `always-on floor: <N> chars (~<N/4000>k tokens) across <n>
-pathless rules + CLAUDE.md - re-sent on every message and prepended to every subagent dispatch`.
+pathless rules + project instructions - re-sent on every message and prepended to every subagent dispatch`.
 Report the number, judge nothing: there is no threshold here and no advice line (measured: the
 standing floor was 63.5% of one 164-session collection's entire token bill, and nine independent
 installs floored between 87k and 134k tokens per message - of which the stack's own always-on

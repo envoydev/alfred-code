@@ -9,7 +9,7 @@ description: "Load when starting or navigating any .NET / C# backend or desktop 
 
 The single source-of-truth index mapping a concrete .NET work area - a construct, command, file, or task - to the one focused skill to load. It routes, it does not restate: load the named skill for the actual guidance. Pick by what you are about to do; if several rows match, load several.
 
-**The trigger is the artifact**, not 'am I doing .NET'. In a specific repo, that repo's `CLAUDE.md` binds these rows to its own file names and folders.
+**The trigger is the artifact**, not 'am I doing .NET'. In a specific repo, that repo's `AGENTS.md` binds these rows to its own file names and folders.
 
 ## When to use
 

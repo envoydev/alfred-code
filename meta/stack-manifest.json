@@ -43,8 +43,8 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-habits-adjust-claude-md",
-      "note": "create or improve a project's CLAUDE.md - the template's outline (Setup and Key files among it), a part's own <part>/CLAUDE.md, changes shown before an improve writes, and scripts/claude-md-check.js last; the one home of the CLAUDE.md fill /alfred-code:init runs"
+      "name": "alfred-habits-adjust-agents-md",
+      "note": "create or improve a project's AGENTS.md - the template's outline (Setup and Key files among it), the project's own root AGENTS.md improved in place and never overwritten, a part's own <part>/AGENTS.md, changes shown before an improve writes, and scripts/agents-md-check.js last; the one home of the AGENTS.md fill /alfred-code:init runs (renamed: the seeded file is .claude/AGENTS.md now, not CLAUDE.md)"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -145,6 +145,16 @@
       "repo": "envoydev/alfred-code",
       "name": "alfred-habits-test-first",
       "note": "test-first (R106): write the test, watch it fail for the expected reason, minimal code, green, refactor; pointed at by alfred-interaction, preloaded by every implementer but devops-implementer (2.1.5 M53: its loop validates config and writes no test), loaded by alfred-task-implement"
+    },
+    {
+      "repo": "envoydev/alfred-code",
+      "name": "alfred-habits-execution-strategy",
+      "note": "execution strategy (2026-09-30, from the user's Execution Strategy Module, adapted): a short inline plan, one agent by default, batched calls, subagents only for independent sizeable contract-backed tracks, three check tiers (per batch, once after the change, CI parity before a push); pointed at by alfred-interaction, defers to a stamped solve flow, never preloaded by a seat (the dispatcher decides the split)"
+    },
+    {
+      "repo": "envoydev/alfred-code",
+      "name": "alfred-habits-code-comments",
+      "note": "code comments (2026-09-30, from the user's Code Comments guidance, adapted): default none, a why only when the code cannot say it, no ticket ids (two exceptions), no change narration, commented-out code or unasked TODO; doc-comment when and structure per language (XML docs, TSDoc, JSDoc), one line per tag; project conventions and language win; pointed at by alfred-quality-gates, never preloaded by a seat (the implementers' write-time bar and the verifier's step 6 already cite the rule's comments line)"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -1050,6 +1060,7 @@
       "project-test-coverage-loop",
       "project-commit-checkpoint",
       "alfred-capture-claude-md",
+      "alfred-habits-adjust-claude-md",
       "create-ticket",
       "explain-code-tutor",
       "plugin-authoring"
@@ -1131,7 +1142,8 @@
       "project-architecture-quality-loop": "alfred-loop-architecture-quality",
       "project-test-coverage-loop": "alfred-loop-test-coverage",
       "project-commit-checkpoint": "alfred-habits-commit-checkpoint",
-      "alfred-capture-claude-md": "alfred-habits-adjust-claude-md",
+      "alfred-capture-claude-md": "alfred-habits-adjust-agents-md",
+      "alfred-habits-adjust-claude-md": "alfred-habits-adjust-agents-md",
       "create-ticket": "alfred-habits-create-ticket",
       "explain-code-tutor": "alfred-habits-explain-code"
     },

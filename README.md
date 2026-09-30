@@ -49,7 +49,7 @@ Then, in Claude Code: `/alfred-code:setup`, restart, `/alfred-code:init`. Per-pr
 | Command | What it does |
 | ------- | ------------ |
 | `/alfred-code:setup` | fresh install: reads the project, shows what it needs and why, walks the selection layer by layer, ends on a restart |
-| `/alfred-code:init` | one-time bootstrap in the new session: services the MCP servers need, memory level and note import, captures, CLAUDE.md fill |
+| `/alfred-code:init` | one-time bootstrap in the new session: services the MCP servers need, memory level and note import, captures, AGENTS.md fill |
 | `/alfred-code:update` | refresh an install to the newest release and prune what upstream removed |
 | `/alfred-code:configure` | add or drop items, at any scope |
 | `/alfred-code:validate` | reconcile an install to this project: drop what its stacks do not use, add what they lack |
@@ -60,7 +60,7 @@ Then, in Claude Code: `/alfred-code:setup`, restart, `/alfred-code:init`. Per-pr
 
 | Surface | Count | What it is |
 | ------- | ----- | ---------- |
-| **Skills** | 89 | house conventions + workflow skills: every pick, the always-on ones included, is a copy in `.claude/skills/` - switchable per project |
+| **Skills** | 91 | house conventions + workflow skills: every pick, the always-on ones included, is a copy in `.claude/skills/` - switchable per project |
 | **Agents** | 44 | model/effort-pinned subagents: all ride the core plugin, and every seat the project did not pick is denied in `permissions.deny` |
 | **Rules** | 20 | always-on baselines + path-scoped conventions, `.claude/rules/` |
 | **Hooks** | 18 | deterministic guards (a weakened check config among them), a log-only session monitor, a turn-end build check (off by default), the architecture docs hook, the shared-memory session hook, a machine-local session history, and an env-gated usage instrument (off by default), shipped inside the core `alfred-code` plugin; only the three engines and the model-window table land in `.claude/hooks/` |

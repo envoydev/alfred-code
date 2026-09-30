@@ -19,7 +19,7 @@
 //      numbers can no longer lie);
 //   6. a backticked skill name that resolves to nothing - scanned in skill files,
 //      agents/*.md subagents, AND the base template + claude rules
-//      (CLAUDE.template.md / rules/*.md), where a renamed skill would
+//      (AGENTS.template.md / rules/*.md), where a renamed skill would
 //      otherwise rot silently; tokens there resolve against
 //      skills + plugins + MCPs + agent names + NON_SKILL_TOKENS;
 //   7. a false 'Vendored from' label on a house dotnet-* skill (they are
@@ -80,7 +80,7 @@ const README = path.join(ROOT, 'README.md');
 const CLAUDE_README = README;   // merged into the root README at the repo flatten
 const STACK_HTML = path.join(ROOT, 'docs', 'alfred-code.html');
 const AGENTS_DIR = path.join(ROOT, 'stack', 'agents');
-const CLAUDE_TEMPLATE = path.join(ROOT, 'stack', 'CLAUDE.template.md');
+const AGENTS_TEMPLATE = path.join(ROOT, 'stack', 'AGENTS.template.md');
 const CLAUDE_RULES_DIR = path.join(ROOT, 'stack', 'rules');
 const PLUGIN_MARKETPLACE_URLS = new Set([
     'https://github.com/anthropics/claude-plugins-official',
@@ -93,7 +93,7 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 // Every entry here MUST appear as a backtick in some skill file (check 11 fails
 // any dead entry), so this stays an exact, self-pruning allowlist.
 const NON_SKILL_TOKENS = new Set([
-    // the CLAUDE.template.md rules table's slash-only-capture notation - a marker, not a skill.
+    // the AGENTS.template.md rules table's slash-only-capture notation - a marker, not a skill.
     'user-run',
     // the commit-gate hook, referenced by name from alfred-git.md and alfred-task-verify-code - a hook, not a skill.
     'guard-ungated-commit',
@@ -1552,7 +1552,7 @@ function main()
     }
 
     const resolvableLower = new Map([...resolvable].map(k => [k.toLowerCase(), k]));
-    const templateFiles = [CLAUDE_TEMPLATE];
+    const templateFiles = [AGENTS_TEMPLATE];
     if (fs.existsSync(CLAUDE_RULES_DIR))
     {
         templateFiles.push(...fs.readdirSync(CLAUDE_RULES_DIR).filter(f => f.endsWith('.md')).map(f => path.join(CLAUDE_RULES_DIR, f)));
@@ -2304,7 +2304,7 @@ function main()
             }
         }
 
-        scanned.push(['CLAUDE.template.md', CLAUDE_TEMPLATE, null, null]);
+        scanned.push(['AGENTS.template.md', AGENTS_TEMPLATE, null, null]);
 
         for (const [label, file, kind, owner] of scanned)
         {
@@ -2790,7 +2790,7 @@ const RETIRED_TERMS = [
     { name: 'ponytail', re: /\bponytail/i, use: "the house terms are 'build lean' / 'question the need' / 'over-build review'" },
     // 2.0.0 (the plugins audit, 2026-09-26): two third-party picks no install used.
     { name: 'security-guidance', re: /\bsecurity-guidance\b/i, use: 'what took its place is `/security-review`, the security-auditor seat and the commit checkpoint\'s security half' },
-    { name: 'claude-md-management', re: /\bclaude-md-management\b/i, use: 'what took its place is the CLAUDE.md skill in the core (alfred-habits-adjust-claude-md)' },
+    { name: 'claude-md-management', re: /\bclaude-md-management\b/i, use: 'what took its place is the AGENTS.md skill in the core (alfred-habits-adjust-agents-md)' },
 ];
 function lintRetiredNames(files)
 {

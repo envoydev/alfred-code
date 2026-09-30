@@ -28,8 +28,8 @@ test('every skill is a library copy, every habit included; no seat is', () => {
     assert.deepStrictEqual(p.library.skills, Object.keys(graph.skills).sort());
     assert.deepStrictEqual(p.library.agents, []);
     for (const s of ['alfred-habits-root-cause', 'alfred-habits-done-gate', 'alfred-habits-test-first', 'alfred-habits-plan-writing',
-        'alfred-habits-clarify', 'alfred-habits-skill-writing', 'alfred-habits-commit-checkpoint',
-        'alfred-habits-adjust-claude-md', 'alfred-habits-create-ticket', 'alfred-habits-explain-code'])
+        'alfred-habits-clarify', 'alfred-habits-skill-writing', 'alfred-habits-execution-strategy', 'alfred-habits-code-comments', 'alfred-habits-commit-checkpoint',
+        'alfred-habits-adjust-agents-md', 'alfred-habits-create-ticket', 'alfred-habits-explain-code'])
         assert.ok(p.library.skills.includes(s), `${s} is a project copy`);
 });
 
@@ -60,7 +60,7 @@ test('formerCore is the always closure: the skills and seats the core carried be
     const former = formerCore();
     assert.deepStrictEqual(former.skills, [...want.skills].sort());
     assert.deepStrictEqual(former.agents, [...want.agents].sort());
-    for (const s of ['alfred-habits-done-gate', 'alfred-capture-agent-capabilities', 'alfred-task-solve-cross', 'alfred-habits-adjust-claude-md'])
+    for (const s of ['alfred-habits-done-gate', 'alfred-capture-agent-capabilities', 'alfred-task-solve-cross', 'alfred-habits-adjust-agents-md'])
         assert.ok(former.skills.includes(s), `${s} is always-closure, so the former core carried it`);
     assert.ok(former.agents.includes('security-auditor') && former.agents.includes('integration-reviewer'));
     assert.ok(!former.agents.includes('aspnet-implementer'), 'a stack seat was library then');

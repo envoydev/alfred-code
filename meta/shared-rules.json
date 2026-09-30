@@ -3768,6 +3768,10 @@
         },
         {
           "file": "stack/rules/alfred-interaction.md",
+          "marker": "the FIRST action is the `alfred-habits-execution-strategy` Skill call, before the first edit"
+        },
+        {
+          "file": "stack/rules/alfred-interaction.md",
           "marker": "the FIRST action is the `alfred-habits-root-cause` Skill call, before the next fix lands"
         },
         {
@@ -3777,6 +3781,10 @@
         {
           "file": "stack/rules/alfred-git.md",
           "marker": "the FIRST action is the `alfred-habits-commit-checkpoint` Skill call, before the command runs"
+        },
+        {
+          "file": "stack/rules/alfred-quality-gates.md",
+          "marker": "the FIRST action is the `alfred-habits-code-comments` Skill call, before it is written"
         }
       ]
     },
@@ -4995,7 +5003,7 @@
       },
       "sites": [
         {
-          "file": "stack/CLAUDE.template.md",
+          "file": "stack/AGENTS.template.md",
           "marker": "/alfred-capture-agent-capabilities LAST, so its generated inventory reflects the final install"
         }
       ]
@@ -5733,16 +5741,16 @@
         }
       ]
     },
-    "claude-md-gitignore-pair": {
-      "_note": "Committing `.claude/CLAUDE.md` while ignoring the rest of `.claude/` needs the PAIR, because git cannot re-include a file whose parent directory is wholesale-ignored: `.claude/` alone silently drops the project's own instruction file from the repo. Stated in the post-install checklist, where the user sets the ignore, and in the template's fill-in block, where they are looking at the file it protects.",
+    "agents-md-gitignore-pair": {
+      "_note": "Committing `.claude/AGENTS.md` while ignoring the rest of `.claude/` needs the PAIR, because git cannot re-include a file whose parent directory is wholesale-ignored: `.claude/` alone silently drops the project's own instruction file from the repo. Stated in the post-install checklist, where the user sets the ignore, and in the template's fill-in block, where they are looking at the file it protects.",
       "owner": {
         "file": "setup-plugin/references/post-install.md",
-        "marker": "`.claude/*` + `!.claude/CLAUDE.md` - a bare directory ignore blocks the re-include"
+        "marker": "`.claude/*` + `!.claude/AGENTS.md` - a bare directory ignore blocks the re-include"
       },
       "sites": [
         {
-          "file": "stack/CLAUDE.template.md",
-          "marker": "`.claude/*` + `!.claude/CLAUDE.md` - a bare directory ignore blocks the re-include"
+          "file": "stack/AGENTS.template.md",
+          "marker": "`.claude/*` + `!.claude/AGENTS.md` - a bare directory ignore blocks the re-include"
         }
       ]
     },

@@ -1,5 +1,5 @@
 'use strict';
-// claude-md-check.js: a project's CLAUDE.md files against the tree they describe - every path they name
+// agents-md-check.js: a project's AGENTS.md (and CLAUDE.md) files against the tree they describe - every path they name
 // exists, every command's program resolves, no placeholder or TODO is left, and no line still carries
 // the template's own authoring text. Deterministic: no model call, no network.
 const test = require('node:test');
@@ -9,15 +9,15 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync, execFileSync } = require('node:child_process');
 
-const SCRIPT = path.join(__dirname, 'claude-md-check.js');
-const { checkText, findFiles } = require('./claude-md-check.js');
+const SCRIPT = path.join(__dirname, 'agents-md-check.js');
+const { checkText, findFiles } = require('./agents-md-check.js');
 const roots = [];
 test.after(() => { for (const r of roots) fs.rmSync(r, { recursive: true, force: true }); });
 
 // A project tree: `files` maps a relative path to its content (a trailing '/' makes a directory).
 function tree(files = {}, { git = false } = {})
 {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claudemd-'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agentsmd-'));
     roots.push(root);
     for (const [rel, body] of Object.entries(files))
     {
@@ -292,6 +292,18 @@ test('line numbers survive a multi-line comment', () =>
     assert.deepStrictEqual(kinds(run(root, text)), ['5 path src/Gone.cs']);
 });
 
+test('findFiles reads AGENTS.md as well as CLAUDE.md: the root, .claude/ and a part\'s own, sorted', () =>
+{
+    const root = tree({ 'AGENTS.md': '# a', '.claude/AGENTS.md': '# b', 'web/AGENTS.md': '# c', 'api/CLAUDE.md': '# d', 'node_modules/x/AGENTS.md': '# e', '.claude/rules/AGENTS.md': '# f' }, { git: true });
+    assert.deepStrictEqual(findFiles(root), ['.claude/AGENTS.md', 'AGENTS.md', 'api/CLAUDE.md', 'web/AGENTS.md']);
+});
+
+test('a path named from .claude/AGENTS.md is read from the project root, and the file itself exists as a path', () =>
+{
+    const root = tree({ 'src/Api/Program.cs': '', '.claude/AGENTS.md': '# x' });
+    assert.deepStrictEqual(run(root, 'Entry `src/Api/Program.cs`; see `.claude/AGENTS.md`.', { file: '.claude/AGENTS.md' }), []);
+});
+
 test('findFiles: the root file, .claude/CLAUDE.md and a part\'s own file - never an ignored or vendored copy', () =>
 {
     const root = tree({
@@ -319,15 +331,15 @@ test('cli: findings print file:line kind and exit 1; a clean project exits 0; no
         'CLAUDE.md:1 placeholder: __PROJECT_NAME__ - the template\'s placeholder was never filled',
         'CLAUDE.md:7 command: nosuchprogram-xyz - not on PATH',
         'CLAUDE.md:10 path: src/gone.ts - does not exist',
-        'claude-md-check: 3 finding(s) in 1 file(s)',
+        'agents-md-check: 3 finding(s) in 1 file(s)',
     ]);
     const good = tree({ 'CLAUDE.md': '# Orders\n\n```bash\nnpm test\n```\n' }, { git: true });
     const ok = cli(good, [], { PATH });
     assert.strictEqual(ok.status, 0, ok.stdout + ok.stderr);
-    assert.strictEqual(ok.stdout.trim(), 'claude-md-check: clean (1 file(s))');
+    assert.strictEqual(ok.stdout.trim(), 'agents-md-check: clean (1 file(s))');
     const none = cli(tree({}), [], { PATH });
     assert.strictEqual(none.status, 0);
-    assert.strictEqual(none.stdout.trim(), 'claude-md-check: no CLAUDE.md in this project');
+    assert.strictEqual(none.stdout.trim(), 'agents-md-check: no AGENTS.md or CLAUDE.md in this project');
 });
 
 test('cli: --file checks one file; an unreadable template skips only the template check, and says so', () =>
@@ -335,14 +347,14 @@ test('cli: --file checks one file; an unreadable template skips only the templat
     const root = tree({ 'CLAUDE.md': '# Orders\n', 'web/CLAUDE.md': 'See `gone.ts`.\n' }, { git: true });
     const one = cli(root, ['--file', 'CLAUDE.md']);
     assert.strictEqual(one.status, 0, one.stdout);
-    assert.strictEqual(one.stdout.trim(), 'claude-md-check: clean (1 file(s))');
+    assert.strictEqual(one.stdout.trim(), 'agents-md-check: clean (1 file(s))');
     const r = cli(root, ['--template', path.join(root, 'no-such-template.md')]);
     assert.strictEqual(r.status, 1);
     assert.match(r.stderr, /template .*unreadable - the template-text check did not run/);
     assert.match(r.stdout, /^web\/CLAUDE\.md:1 path: gone\.ts - does not exist$/m);
     const bad = cli(root, ['--bogus']);
     assert.strictEqual(bad.status, 2);
-    assert.match(bad.stderr, /usage: node claude-md-check\.js/);
+    assert.match(bad.stderr, /usage: node agents-md-check\.js/);
 });
 
 // A HAND copy of the template (the fill-in block's route when the seed step was skipped) keeps its
@@ -350,32 +362,32 @@ test('cli: --file checks one file; an unreadable template skips only the templat
 // alone; a GENERATED row whose capture never ran names files that are not there.
 test('cli: a hand copy of the shipped template is flagged unfilled and by its placeholder alone - and a skipped capture\'s row by its files', () =>
 {
-    const template = fs.readFileSync(path.join(__dirname, '..', 'stack', 'CLAUDE.template.md'), 'utf8');
+    const template = fs.readFileSync(path.join(__dirname, '..', 'stack', 'AGENTS.template.md'), 'utf8');
     const rules = ['alfred-interaction', 'alfred-quality-gates', 'alfred-security', 'alfred-git', 'alfred-navigation', 'alfred-docs-root', 'alfred-memory',
         'alfred-project-agent-capabilities', 'alfred-project-architecture', 'alfred-project-related-context', 'alfred-project-run-book', 'project-code-style'];
-    const files = { '.claude/CLAUDE.md': template, '.alfred/docs/code-style/CODE-STYLE.md': '', '.alfred/docs/project-capabilities/PROJECT-CAPABILITIES.md': '' };
+    const files = { '.claude/AGENTS.md': template, '.alfred/docs/code-style/CODE-STYLE.md': '', '.alfred/docs/project-capabilities/PROJECT-CAPABILITIES.md': '' };
     for (const r of rules) files[`.claude/rules/${r}.md`] = '';
     const root = tree(files, { git: true });
     const r = cli(root);
     assert.strictEqual(r.status, 1, r.stdout + r.stderr);
-    assert.deepStrictEqual(r.stdout.trim().split('\n').map((l) => l.replace(/ - .*/, '')), ['.claude/CLAUDE.md:1 template: the template', '.claude/CLAUDE.md:1 placeholder: __PROJECT_NAME__', 'claude-md-check: 2 finding(s) in 1 file(s)']);
+    assert.deepStrictEqual(r.stdout.trim().split('\n').map((l) => l.replace(/ - .*/, '')), ['.claude/AGENTS.md:1 template: the template', '.claude/AGENTS.md:1 placeholder: __PROJECT_NAME__', 'agents-md-check: 2 finding(s) in 1 file(s)']);
     fs.rmSync(path.join(root, '.claude/rules/project-code-style.md'));
     fs.rmSync(path.join(root, '.alfred/docs/code-style'), { recursive: true });
     const skipped = cli(root).stdout.trim().split('\n').map((l) => l.replace(/:\d+ /, ' ').replace(/ - .*/, ''));
-    assert.deepStrictEqual(skipped.slice(2, -1), ['.claude/CLAUDE.md path: project-code-style.md', '.claude/CLAUDE.md path: .claude/rules/project-code-style.md',
-        '.claude/CLAUDE.md path: .alfred/docs/code-style/CODE-STYLE.md'], 'the intro line and the row both name the capture that never ran');
+    assert.deepStrictEqual(skipped.slice(2, -1), ['.claude/AGENTS.md path: project-code-style.md', '.claude/AGENTS.md path: .claude/rules/project-code-style.md',
+        '.claude/AGENTS.md path: .alfred/docs/code-style/CODE-STYLE.md'], 'the intro line and the row both name the capture that never ran');
 });
 
 // The skill's first read: which CLAUDE.md files exist and whether one is still the untouched seed - the
 // fact its create-or-improve choice turns on, stated by the script instead of inferred.
 test('cli --list: every CLAUDE.md with its size, the untouched seed marked, and nothing checked', () =>
 {
-    const root = tree({ '.claude/CLAUDE.md': '# __PROJECT_NAME__\n\n## Rules\n', 'web/CLAUDE.md': '# web\n\nSee `gone.ts`.\n' }, { git: true });
+    const root = tree({ '.claude/AGENTS.md': '# __PROJECT_NAME__\n\n## Rules\n', 'web/CLAUDE.md': '# web\n\nSee `gone.ts`.\n' }, { git: true });
     const r = cli(root, ['--list']);
     assert.strictEqual(r.status, 0, r.stderr);
-    assert.deepStrictEqual(r.stdout.trim().split('\n'), ['.claude/CLAUDE.md: 3 lines, the seeded template (unfilled)', 'web/CLAUDE.md: 3 lines']);
+    assert.deepStrictEqual(r.stdout.trim().split('\n'), ['.claude/AGENTS.md: 3 lines, the seeded template (unfilled)', 'web/CLAUDE.md: 3 lines']);
     const none = cli(tree({}), ['--list']);
-    assert.strictEqual(none.stdout.trim(), 'claude-md-check: no CLAUDE.md in this project');
+    assert.strictEqual(none.stdout.trim(), 'agents-md-check: no AGENTS.md or CLAUDE.md in this project');
 });
 
 // Measured by the skill's walkthrough (2026-09-26): the installer stamps the H1 with the folder name, so
@@ -383,18 +395,18 @@ test('cli --list: every CLAUDE.md with its size, the untouched seed marked, and 
 // leaves: the template's fill-in block still there, and no live section but the H1 and `## Rules`.
 test('the seed the installer writes reads as the unfilled template - listed as such, and a finding - until a section of the project\'s own lands', () =>
 {
-    const { claudeMdBody } = require('./install/seeds.js');
+    const { agentsMdBody } = require('./install/seeds.js');
     const root = tree({}, { git: true });
-    const seed = claudeMdBody({ projectRoot: root, sourceDir: path.join(__dirname, '..') });
+    const seed = agentsMdBody({ projectRoot: root, sourceDir: path.join(__dirname, '..') });
     assert.ok(!seed.includes('__PROJECT_NAME__'), 'the installer stamps the H1');
     fs.mkdirSync(path.join(root, '.claude/rules'), { recursive: true });
-    fs.writeFileSync(path.join(root, '.claude/CLAUDE.md'), seed);
-    assert.deepStrictEqual(cli(root, ['--list']).stdout.trim().split('\n'), [`.claude/CLAUDE.md: ${seed.replace(/\n$/, '').split('\n').length} lines, the seeded template (unfilled)`]);
+    fs.writeFileSync(path.join(root, '.claude/AGENTS.md'), seed);
+    assert.deepStrictEqual(cli(root, ['--list']).stdout.trim().split('\n'), [`.claude/AGENTS.md: ${seed.replace(/\n$/, '').split('\n').length} lines, the seeded template (unfilled)`]);
     const r = cli(root);
     assert.strictEqual(r.status, 1, r.stdout);
-    assert.match(r.stdout, /^\.claude\/CLAUDE\.md:1 template: the template - never filled: only its H1 and ## Rules are live$/m);
+    assert.match(r.stdout, /^\.claude\/AGENTS\.md:1 template: the template - never filled: only its H1 and ## Rules are live$/m);
     const filled = seed.replace('\n## Rules\n', '\n## Commands\n\n- `git status`\n\n## Rules\n');
-    fs.writeFileSync(path.join(root, '.claude/CLAUDE.md'), filled);
+    fs.writeFileSync(path.join(root, '.claude/AGENTS.md'), filled);
     assert.doesNotMatch(cli(root, ['--list']).stdout, /unfilled/, 'a section of the project\'s own makes it the project\'s file');
     assert.doesNotMatch(cli(root).stdout, /never filled/);
 });
@@ -405,10 +417,10 @@ test('the seed the installer writes reads as the unfilled template - listed as s
 // project's own; the template's own live lines, or the installer's AGENTS import, are not.
 test('I3: the seed holding the user\'s own lines under a renamed H1 is the project\'s file; the template\'s own lines or the AGENTS import keep it unfilled', () =>
 {
-    const { claudeMdBody } = require('./install/seeds.js');
+    const { agentsMdBody } = require('./install/seeds.js');
     const root = tree({ '.claude/rules/': '' }, { git: true });
-    const seed = claudeMdBody({ projectRoot: root, sourceDir: path.join(__dirname, '..') });
-    const write = (body) => fs.writeFileSync(path.join(root, '.claude/CLAUDE.md'), body);
+    const seed = agentsMdBody({ projectRoot: root, sourceDir: path.join(__dirname, '..') });
+    const write = (body) => fs.writeFileSync(path.join(root, '.claude/AGENTS.md'), body);
     const listed = () => cli(root, ['--list']).stdout;
     const own = seed.replace(/^# [^\n]*\n/, '# Orders service\n\nAlways run the migrations before the tests.\nNever commit the generated client.\n');
     write(own);
@@ -420,6 +432,6 @@ test('I3: the seed holding the user\'s own lines under a renamed H1 is the proje
     write(seed.replace(/^# [^\n]*\n/, `# Orders service\n\n${rulesLine}\n`));
     assert.match(listed(), /unfilled/, 'a line the template itself carries is not the project\'s text');
     const withAgents = tree({ 'AGENTS.md': '# agents\n', '.claude/rules/': '' }, { git: true });
-    fs.writeFileSync(path.join(withAgents, '.claude/CLAUDE.md'), claudeMdBody({ projectRoot: withAgents, sourceDir: path.join(__dirname, '..') }));
+    fs.writeFileSync(path.join(withAgents, '.claude/AGENTS.md'), agentsMdBody({ projectRoot: withAgents, sourceDir: path.join(__dirname, '..') }));
     assert.match(cli(withAgents, ['--list']).stdout, /unfilled/, 'the import the installer writes under the H1 is the installer\'s');
 });

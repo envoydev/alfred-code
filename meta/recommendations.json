@@ -50,7 +50,9 @@
   ],
   "skills": [
    "alfred-habits-clarify",
+   "alfred-habits-code-comments",
    "alfred-habits-done-gate",
+   "alfred-habits-execution-strategy",
    "alfred-habits-plan-writing",
    "alfred-habits-root-cause",
    "alfred-habits-skill-writing",
@@ -65,7 +67,7 @@
    "alfred-habits-commit-checkpoint",
    "alfred-issue-diagnoser",
    "alfred-capture-first-look",
-   "alfred-habits-adjust-claude-md",
+   "alfred-habits-adjust-agents-md",
    "alfred-task-implement",
    "alfred-loop-quality",
    "alfred-task-design",

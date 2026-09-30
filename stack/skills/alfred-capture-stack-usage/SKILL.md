@@ -32,7 +32,7 @@ Hold the answer for the run. **The batch is BOUNDED at 12 bundles per run and th
 
 ### SKILLS - the skill names to hunt in the transcripts
 
-Default: DETECT - sweep the transcripts for the stack skills that actually RAN (a `<command-name>` slash block or a Skill-tool call against the installed roster; a name appearing only in injected CLAUDE.md/rules text is a mention, not a run) and audit those, stating the detected list in the report. The user can name specific skills instead to narrow the audit.
+Default: DETECT - sweep the transcripts for the stack skills that actually RAN (a `<command-name>` slash block or a Skill-tool call against the installed roster; a name appearing only in injected AGENTS.md/CLAUDE.md/rules text is a mention, not a run) and audit those, stating the detected list in the report. The user can name specific skills instead to narrow the audit.
 
 Two run modes, opposite expectations:
 

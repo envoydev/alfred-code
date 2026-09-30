@@ -382,7 +382,7 @@ turn polling for it. Five inputs, five gates:
    propose JUDGMENT-DROP with the trail as the citation: the greps run, their zero results, the
    matching exclusion.
 2. **The rest vs the project's stated conventions - version pins included.** Review the remaining
-   scope against the project's OWN docs - the project CLAUDE.md, `<docs-path>/architecture/ARCHITECTURE.md` /
+   scope against the project's OWN docs - the project's AGENTS.md or CLAUDE.md, `<docs-path>/architecture/ARCHITECTURE.md` /
    `quality/ASSESSMENT.md`, `code-style/CODE-STYLE.md`, where they exist - and propose a drop on a cited
    conflict: quote the conflicting rule verbatim and name its source. Version pins count as
    conventions, and the scan PRECOMPUTES the known cases: the `judgment.versionConflicts` rows in
@@ -444,7 +444,7 @@ the usual per-item consent round:
  # | artifact                   | verdict                  | citation
 ---+----------------------------+--------------------------+--------------------------------------------------
  1 | mcp browser             | JUDGMENT-DROP · MATERIAL | uncalled: 0 calls across 17 sessions of tools-usage ledgers; headless .NET backend with no UI to drive; 24 tool schemas in every session; keep only if a browser check is planned here
- 2 | skill dotnet-architecture  | JUDGMENT-DROP · MATERIAL | CLAUDE.md: 'keep the layered factory pattern; it is NOT Clean Architecture / DDD / VSA'
+ 2 | skill dotnet-architecture  | JUDGMENT-DROP · MATERIAL | AGENTS.md: 'keep the layered factory pattern; it is NOT Clean Architecture / DDD / VSA'
  3 | skill dotnet-realtime      | JUDGMENT-DROP · MINOR    | advisory, corroborated: 0 hits for SignalR/hub/web-host across src/ (3 greps); outbound ClientWebSocket is the skill's own do-not-load case
  4 | skill dotnet-cryptography  | JUDGMENT-ADD             | corroborated: AesGcm in src/Vault/Sealer.cs, Rfc2898DeriveBytes in src/Auth/Hasher.cs (2 greps, hits quoted); no crypto package = no scanner signal; no exclusion match
 ```
@@ -564,7 +564,7 @@ and left as-is (disputed detections, deliberate extras, declined suggestions, de
 judgment proposals), plus one ENVIRONMENT line naming every key seeded, renamed or corrected (or
 saying the block already matched), and step 7's MEMORY line (level + database, and the
 `autoMemoryEnabled` reading). Remind that a restart picks up MCP registration changes, and surface
-the installer's gitignore reminder. If a CLAUDE.md rules table names a rule you added or removed,
+the installer's gitignore reminder. If an AGENTS.md rules table names a rule you added or removed,
 offer to reconcile that row (additive, shown before writing) - never rewrite the user's prose.
 
 Then audit the config the install left, on every path that reaches this step (a clean bill
@@ -576,7 +576,7 @@ node "$TMP/repo/scripts/audit-install.js" .
 
 It reads this project's own agent config - an unpinned package launch in `.mcp.json`, an
 unrestricted shell grant, a hook with no timeout or one splicing tool input into a shell string, a
-credential-shaped literal in `CLAUDE.md` or a settings file - and fixes nothing. Paste its output
+credential-shaped literal in `AGENTS.md`, `CLAUDE.md` or a settings file - and fixes nothing. Paste its output
 byte-for-byte in a fenced block (`install audit: nothing to report` is the whole paste on a clean
 project). A `high` row gets ONE AskUserQuestion: 'Fix the stack-owned rows' (recommended - an
 update re-run pins a stack server) or 'Leave them'. A row on a server, hook or grant the user added
@@ -605,21 +605,21 @@ only: an `off` in the account settings is not seen, so no `blocked:` row is no p
 `library: no library stamp` is the whole paste on an install older
 than the library route.
 
-Then hold the project's CLAUDE.md files to the tree they describe - the drift a release never
+Then hold the project's instruction files (AGENTS.md, and a CLAUDE.md the project keeps) to the tree they describe - the drift a release never
 touches, since those files are the project's own:
 
 ```bash
-node "$TMP/repo/scripts/claude-md-check.js" --root .
+node "$TMP/repo/scripts/agents-md-check.js" --root .
 ```
 
-Paste the output byte-for-byte in the same fenced block (`claude-md-check: clean (...)` or `no
-CLAUDE.md in this project` is the whole paste). Each row is `<file>:<line> <kind>: ...` - a named path
+Paste the output byte-for-byte in the same fenced block (`agents-md-check: clean (...)` or `no
+AGENTS.md or CLAUDE.md in this project` is the whole paste). Each row is `<file>:<line> <kind>: ...` - a named path
 that is gone, a command whose program is not on PATH, a placeholder or TODO left, or a line still
 carrying the template's authoring text. Rows get ONE AskUserQuestion with NO option marked
 recommended - the check is heuristic, and a row can be correct text it could not resolve (a folder
 under a prefixed name, a program a script installs), so each row is the user's read: 'Review them with
-`/alfred-habits-adjust-claude-md`' (its improve mode shows every change before writing) or 'Leave them'.
-Never edit a CLAUDE.md from this command; a `command` row on a program only another OS runs is the
+`/alfred-habits-adjust-agents-md`' (its improve mode shows every change before writing) or 'Leave them'.
+Never edit an instruction file from this command; a `command` row on a program only another OS runs is the
 user's call, not a fix.
 
 Then the Stop build check advisory, from this project's session transcripts and its done-gate probe

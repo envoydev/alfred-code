@@ -490,7 +490,7 @@ function renameDeny(settings, opts = {})
     return { ...settings, permissions: { ...settings.permissions, deny: mapped } };
 }
 
-// R128 (Task 22 fix round 1): the names the stack itself wrote into a project - its seeded CLAUDE.md
+// R128 (Task 22 fix round 1): the names the stack itself wrote into a project - its seeded AGENTS.md
 // and the generated rules (`alfred-project-*.md`, `project-code-style.md`) - follow a rename, so no
 // session reads a command that no longer exists. Every run, on disk: each old skill or seat name is
 // re-spelled as a whole token, longest first, never inside a longer name - so a file name that embeds
@@ -583,7 +583,7 @@ function respellDocsRoot({ projectRoot, from, to, log = () => {}, note = () => {
 
 function respellRenamed({ projectRoot, renamed, engines = [], log = () => {}, note = () => {} })
 {
-    // A rule is named in a seeded CLAUDE.md by its path (`.claude/rules/baseline-git.md`), so its pairs are the
+    // A rule is named in a seeded AGENTS.md by its path (`.claude/rules/baseline-git.md`), so its pairs are the
     // file names without the extension; the four generated pointers moved by moveGeneratedRules follow the same way.
     const rules = Object.fromEntries(Object.entries((renamed && renamed.rules) || {}).map(([o, n]) => [o.replace(/\.md$/, ''), n.replace(/\.md$/, '')]));
     const generated = Object.fromEntries(GENERATED_RULE_NAMES.map((g) => [`baseline-project-${g}`, `alfred-project-${g}`]));
@@ -596,7 +596,7 @@ function respellRenamed({ projectRoot, renamed, engines = [], log = () => {}, no
     const re = olds.length ? new RegExp(`(?<![A-Za-z0-9_-])(${olds.map(escape).join('|')})(?![A-Za-z0-9_-])`, 'g') : null;
     const mcpRe = mcpOlds.length ? new RegExp(mcpOlds.map(escape).join('|'), 'g') : null;
     let total = 0;
-    for (const file of [path.join(projectRoot, 'CLAUDE.md'), path.join(projectRoot, '.claude', 'CLAUDE.md'), ...generatedRules(projectRoot)])
+    for (const file of [path.join(projectRoot, 'AGENTS.md'), path.join(projectRoot, '.claude', 'AGENTS.md'), path.join(projectRoot, 'CLAUDE.md'), path.join(projectRoot, '.claude', 'CLAUDE.md'), ...generatedRules(projectRoot)])
     {
         let text;
         try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }

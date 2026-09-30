@@ -131,7 +131,7 @@ function changedClasses(compareLines)
         // (measured: skills=108 reported against 78 shipped).
         const item = /^stack\/(skills|agents|rules|hooks)\/([^/]+)/.exec(p);
         if (item) seen[item[1]].add(item[2]);
-        else if (/^stack\/CLAUDE\.template\.md$/.test(p)) n.template = true;
+        else if (/^stack\/(?:AGENTS|CLAUDE)\.template\.md$/.test(p)) n.template = true;
     }
     for (const k of Object.keys(seen)) n[k] = seen[k].size;
     return n;

@@ -28,7 +28,7 @@ close all run on this one gate.
    runs to the verdict. A RED run is the opposite case - its stack traces and parse errors are the
    diagnosis, earned cost, never trimmed to the verdict line.
 3. **Scoped while iterating, the full suite once.** While iterating on a failure, run the ONE
-   failing test, file or project - the SCOPED test command this project's CLAUDE.md records beside
+   failing test, file or project - the SCOPED test command this project's AGENTS.md records beside
    the full-suite one (a single project, a test filter, a spec path). The whole suite runs once, at
    the gate, and its output is the summary line - the analyzer's test-run row counts scoped against
    whole-suite runs per session.

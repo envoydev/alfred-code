@@ -71,7 +71,7 @@
 // and the copy route's local- and user-scope registrations as `<scope>:<name>=<sha256 of the entry the
 // account file holds>` (`mcpAt` - uninstall removes the local ones and prints the user-scope ones);
 // `managed-files` every copy outside the library (the engines, the copy route's hooks, skills and seats,
-// and a seeded `.claude/CLAUDE.md` until it is filled in), `<kind>/<name>=<sha256>`; `managed-settings`
+// and a seeded `.claude/AGENTS.md` until it is filled in), `<kind>/<name>=<sha256>`; `managed-settings`
 // the other settings keys it seeded, `<file>:attribution.<key>=<sha256 of the JSON value>`. A value whose
 // hash no longer matches was changed by hand since: it is the user's from then on, kept and logged. A
 // stamp with none of the lines (an older release) is the one case the old heuristics still answer; a
@@ -155,8 +155,9 @@ const LEDGER_FILES = ['settings.json', 'settings.local.json'];
 const HEX = /^[0-9a-f]{64}$/;
 const ENV_KEY = /^[A-Z][A-Z0-9_]*$/;
 const FILE_KINDS = ['hooks', 'skills', 'agents'];
-// The copies that sit directly in .claude: the seeded CLAUDE.md, and the full copy route's serena context (I12).
-const ROOT_FILES = ['CLAUDE.md', 'navigation-context.yml'];
+// The copies that sit directly in .claude: the seeded AGENTS.md (a 2.1.6 ledger still names it CLAUDE.md - read, never written),
+// and the full copy route's serena context (I12).
+const ROOT_FILES = ['AGENTS.md', 'CLAUDE.md', 'navigation-context.yml'];
 const SETTINGS_PATH = /^(?:attribution\.(?:commit|pr|sessionUrl)|worktree\.baseRef)$/;
 const MCP_SCOPES = ['local', 'user'];
 const emptyLedger = () => ({ env: {}, deny: [], hooks: [], mcp: {}, mcpAt: {}, files: {}, settings: {} });

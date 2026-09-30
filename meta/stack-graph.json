@@ -43,11 +43,15 @@
       "mcps": [],
       "plugins": []
     },
-    "alfred-habits-adjust-claude-md": {
+    "alfred-habits-adjust-agents-md": {
       "mcps": [],
       "plugins": []
     },
     "alfred-habits-clarify": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-habits-code-comments": {
       "mcps": [],
       "plugins": []
     },
@@ -60,6 +64,10 @@
       "plugins": []
     },
     "alfred-habits-done-gate": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-habits-execution-strategy": {
       "mcps": [],
       "plugins": []
     },
@@ -891,6 +899,7 @@
     "alfred-interaction": {
       "skills": [
         "alfred-habits-clarify",
+        "alfred-habits-execution-strategy",
         "alfred-habits-plan-writing",
         "alfred-habits-root-cause",
         "alfred-habits-test-first"
@@ -920,6 +929,7 @@
     },
     "alfred-quality-gates": {
       "skills": [
+        "alfred-habits-code-comments",
         "alfred-habits-done-gate"
       ],
       "agents": [],

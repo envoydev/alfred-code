@@ -1,5 +1,5 @@
 ---
-description: "ADJUST an existing Alfred Code install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas with setup's own walk in DELTA mode (one shared walk text), in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then one call of ADD and DROP option questions (a Pick option opens grouped multi-select choices); an environment area adjusts the stack's own env values (the environment.json catalog) on the same consent. Every scope - project, user or local - and a move between them. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) CLAUDE.md reconcile close the run. NOT for a first install - that is the sibling setup command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
+description: "ADJUST an existing Alfred Code install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas with setup's own walk in DELTA mode (one shared walk text), in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then one call of ADD and DROP option questions (a Pick option opens grouped multi-select choices); an environment area adjusts the stack's own env values (the environment.json catalog) on the same consent. Every scope - project, user or local - and a move between them. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) AGENTS.md reconcile close the run. NOT for a first install - that is the sibling setup command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
 disable-model-invocation: true
 ---
 
@@ -66,12 +66,12 @@ banner line so the user always knows where they are, what is being decided, and 
 [step 3/13 - rules] adjust the installed rules · next: agents
 ```
 
-1 install status · 2 areas · 3 rules · 4 agents · 5 skills · 6 hooks · 7 MCPs · 8 plugins · 9 environment · 10 permission mode · 11 prerequisite check · 12 update · 13 CLAUDE.md (optional)
+1 install status · 2 areas · 3 rules · 4 agents · 5 skills · 6 hooks · 7 MCPs · 8 plugins · 9 environment · 10 permission mode · 11 prerequisite check · 12 update · 13 AGENTS.md (optional)
 
 **The skeleton is INVARIANT - the stability contract.** Every run prints all 13 banners, in this
 order, exactly once each. A step that does not apply THIS run still prints its banner followed by
 ONE line naming why it is a no-op (`[step 7/13 - MCPs] skipped - area not selected`,
-`[step 13/13 - CLAUDE.md] skipped - the user declined`), then moves on - a step never silently
+`[step 13/13 - AGENTS.md] skipped - the user declined`), then moves on - a step never silently
 vanishes, and steps are never merged, reordered, renumbered, or invented. Two runs must be
 comparable banner by banner; the content varies, the skeleton never does.
 
@@ -325,7 +325,7 @@ adds marked with their reasons, the final drop list (incl. accepted orphans) nam
 blocker with its fix, each warning listed. Never run past a blocker
 (fix now, or reopen the owning layer and drop the affected items). Warnings are listed and
 passed. **Convention-conflict warnings:** when the project carries stated
-conventions (a root or `.claude/` CLAUDE.md, `<docs-path>/architecture/` docs), check THIS RUN'S
+conventions (a root or `.claude/` AGENTS.md or CLAUDE.md, `<docs-path>/architecture/` docs), check THIS RUN'S
 typed adds (never locked rows or kept installed items) against them - a conflicting add gets one
 warning line quoting the rule verbatim plus a keep-or-drop consent. No citable conflict, no
 warning; no project docs, skip silently; a conflict warning never blocks the run. Also ask here,
@@ -424,12 +424,12 @@ one is printed (the account `settings.json` was copied to `settings.json.bak.<ti
 run's first write to it). A run that dropped the plugin asked
 nothing at step 8 and applies nothing here.
 
-## 13. CLAUDE.md - the user's call
+## 13. AGENTS.md - the user's call
 
 Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (reconcile -
-recommended / skip); a 'no' ends the run cleanly. The location: the project's own CLAUDE.md - `.claude/CLAUDE.md` where the installer
-seeded it, or the root `CLAUDE.md` where the project already had one; name which one you found.
-On a yes, read `$TMP/repo/stack/skills/alfred-habits-adjust-claude-md/SKILL.md` and follow it inline
+recommended / skip); a 'no' ends the run cleanly. The location: the project's own AGENTS.md - `.claude/AGENTS.md` where the installer
+seeded it, or the root `AGENTS.md` where the project already had one; name which one you found.
+On a yes, read `$TMP/repo/stack/skills/alfred-habits-adjust-agents-md/SKILL.md` and follow it inline
 with `<stack>` = the `$TMP/repo` path, pasted as a literal - the one home of the fill: its improve mode adds the sections the template
 gained, offers a fix for what its check reports (applied only when the user picks it) and shows every
 change before writing, never overwriting the
@@ -440,7 +440,7 @@ the walk owned the selection.
 ## Post-check
 
 Report what changed per category (refreshed / added / dropped, orphans removed vs kept), the
-CLAUDE.md decision and reconcile result, anything deferred, and remind that a restart picks up
+AGENTS.md decision and reconcile result, anything deferred, and remind that a restart picks up
 MCP registration changes. When step 7 touched `memory`, add one line naming the level (unchanged
 or the old -> new file) and, when `project` was chosen while sibling repos are named, that those
 projects' memories are not visible from this one. The run rewrites `alfred-code.stamp` to the
@@ -453,7 +453,7 @@ run made stale, the navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
 matters ('`/alfred-capture-agent-capabilities` - the selection changed, so the generated rule still
 names what this project dropped'). No AskUserQuestion over them: the walk's asks end with the
-installer (a write still gets its consent ask where it happens - step 13's CLAUDE.md reconcile),
+installer (a write still gets its consent ask where it happens - step 13's AGENTS.md reconcile),
 and the closing ask over follow-ups was dropped as friction - the user's call, made knowing a
 prose next step was ignored 3 of 3 in one audited session, which is why the reason rides beside
 every step. Close with this line, verbatim:

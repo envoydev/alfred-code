@@ -15,7 +15,7 @@ Claude Code installs the core plugin by taking this repo into its own cache at
 `<config>/plugins/cache/<marketplace>/alfred-code/<version>/`, and because every marketplace entry
 shares the REPO ROOT as its `source`, that entry is the WHOLE repo - not just the `setup-plugin/`
 subdir it serves as the plugin. Measured on a real install: `stack/rules`,
-`stack/CLAUDE.template.md`, the two hook engines, `stack/hooks/model-windows.json`,
+`stack/AGENTS.template.md`, the two hook engines, `stack/hooks/model-windows.json`,
 `meta/recommendations.json`, `scripts/selection-plugins.js` and `RELEASE-SOURCE` are all there. So a
 project with the stack enabled already holds the snapshot on disk, fetched once per release by the
 CLI itself. Take it: no probe, no archive, no marketplace clone - and it is by construction the exact
@@ -318,7 +318,7 @@ Final rule set: the 10 recommended (customize round confirmed no changes). Foldi
   expire an earlier tool result - it is in the same window and is re-sent on every later call
   either way, so re-printing it buys nothing and costs a whole round trip (measured: ~119k of
   re-sent context for output the session already held).
-- A long file you need to CONSULT rather than quote - the CLAUDE template, a catalog - is read
+- A long file you need to CONSULT rather than quote - the AGENTS template, a catalog - is read
   into `$TMP` and narrated as a summary line, never `cat`-ed into the chat (measured: 8,045 raw
   chars of template where one line was needed).
 
@@ -333,7 +333,7 @@ Everything comes out of `$TMP/repo`:
 - `scripts/stack-select.js` and `meta/stack-graph.json` (selection closure + prerequisite check)
 - the `meta/` catalogs - `recommendations.json`, `evidence.json`, `judgment.json` (seeds, the
   evidence-scan signals, the judgment gates)
-- `stack/CLAUDE.template.md` (the CLAUDE.md fill-in / reconcile step)
+- `stack/AGENTS.template.md` (the AGENTS.md fill-in / reconcile step)
 - `RELEASE-SOURCE` - the snapshot's commit (the `configure` and `update` commands compare the stamp against it
   via the GitHub compare API; an archive has no git history to diff locally)
 

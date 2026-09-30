@@ -17,12 +17,20 @@ const agents = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).map((f) => f.r
 test('each baseline keeps one pointer per method, in the pinned imperative form, and none of the method', () => {
     const gates = squash(read('stack/rules/alfred-quality-gates.md'));
     assert.ok(gates.includes('the FIRST action is the `alfred-habits-done-gate` Skill call, before the claim lands'));
+    assert.ok(gates.includes('the FIRST action is the `alfred-habits-code-comments` Skill call, before it is written'), 'code-comments pointer');
+    // the defaults ride the pointer line: a resumed session never re-reads the skill
+    for (const held of ['none by default', 'the code cannot say it', 'Never a ticket id', 'unasked `TODO`', 'conventions and language win', 'updated or deleted'])
+        assert.ok(gates.includes(held), `alfred-quality-gates lost the code-comments default: '${held}'`);
+    assert.ok(!gates.includes('without a ticket ref'), 'a TODO with a ticket ref contradicts the no-ticket-id comment rule');
     for (const moved of ['tail long runs to the verdict', 'SCOPED test command', 'never suppress a warning, weaken a test'])
         assert.ok(!gates.includes(moved), `alfred-quality-gates still carries the done gate's method: '${moved}'`);
 
     const interaction = squash(read('stack/rules/alfred-interaction.md'));
-    for (const skill of ['alfred-habits-plan-writing', 'alfred-habits-test-first', 'alfred-habits-root-cause', 'alfred-habits-clarify'])
+    for (const skill of ['alfred-habits-plan-writing', 'alfred-habits-test-first', 'alfred-habits-root-cause', 'alfred-habits-clarify', 'alfred-habits-execution-strategy'])
         assert.match(interaction, new RegExp(`the FIRST action is the \`${skill}\` Skill call, before `), `${skill} pointer`);
+    // the defaults ride the pointer line: a session resumed mid-task never re-fires the 'start of a task' trigger
+    for (const held of ['one agent;', 'independent tool calls batched', 'the heavy suite once at the end', 'a CI-parity run before a push'])
+        assert.ok(interaction.includes(held), `alfred-interaction lost the execution-strategy default: '${held}'`);
     for (const moved of ['bite-sized', 'watch it fail', 'read the full error and quote'])
         assert.ok(!interaction.includes(moved), `alfred-interaction still carries method text: '${moved}'`);
 });
@@ -211,6 +219,8 @@ test('the habit descriptions are triggers only - when, and what they are not for
         'alfred-habits-clarify': ['one question at a time', '2-3', 'until one reading', 'find its readings'],
         'alfred-habits-test-first': ['watch it fail', 'minimal code', 'refactor', 'see it green'],
         'alfred-habits-done-gate': ['output quoted', 'scoped runs', 'full suite', 'red trace'],
+        'alfred-habits-code-comments': ['ticket id', 'change narration', 'one short line', 'CS1573'],
+        'alfred-habits-execution-strategy': ['single agent', 'parallel tool calls', 'three tiers', 'contracts first'],
     };
     for (const skill of [...Object.keys(retold), 'alfred-habits-skill-writing'])
     {

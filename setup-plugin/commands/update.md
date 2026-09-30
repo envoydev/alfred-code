@@ -91,7 +91,8 @@ prompts as its rules; `/alfred-loop-quality staged` is the stage-by-stage run a 
 | `/project-architecture-quality-loop` | `/alfred-loop-architecture-quality` |
 | `/project-test-coverage-loop` | `/alfred-loop-test-coverage` |
 | `/project-commit-checkpoint` | `/alfred-habits-commit-checkpoint` |
-| `/alfred-capture-claude-md` | `/alfred-habits-adjust-claude-md` |
+| `/alfred-capture-claude-md` | `/alfred-habits-adjust-agents-md` |
+| `/alfred-habits-adjust-claude-md` | `/alfred-habits-adjust-agents-md` |
 | `/create-ticket` | `/alfred-habits-create-ticket` |
 | `/explain-code-tutor` | `/alfred-habits-explain-code` |
 | seat `ci-failure-diagnoser` | seat `alfred-issue-diagnoser-ci` |
@@ -446,7 +447,7 @@ On Windows: `$t = Read-Host 'value' -AsSecureString`, then write the same key wi
 it for what they asked and END THE TURN on the rotation ask - it is in the transcript on disk now,
 and that is their decision to make, not one to leave unsaid. Then:
 
-- Reconcile the project's CLAUDE.md (step 6 - the step states when and why it runs).
+- Reconcile the project's AGENTS.md (step 6 - the step states when and why it runs).
 - Report per step 7 - version delta, refreshed counts from the installer's log tail, the
   `required:` additions it named, and the step-2 `new:` lines: one line naming what `arrives`,
   one naming what stays `off` (the user's own switch - say where it lives), the offers taken and
@@ -516,19 +517,23 @@ parse-edit-rewrite,
 never regex, never touching other wiring). A migration's `then` line goes in the step-7 report
 as a next step - run nothing on the user's behalf.
 
-## 6. Reconcile the project's CLAUDE.md
-Read `$TMP/repo/stack/skills/alfred-habits-adjust-claude-md/SKILL.md` and follow it inline with
+## 6. Reconcile the project's AGENTS.md
+Read `$TMP/repo/stack/skills/alfred-habits-adjust-agents-md/SKILL.md` and follow it inline with
 `<stack>` = the `$TMP/repo` path, pasted as a literal, exactly as the sibling `configure` command's step 13: its improve mode adds the
 sections the template gained and OFFERS a fix for what its check reports (never in the recommended
 option - a check row is heuristic, applied only when the user picks it), this run's own part is the rules
 table for what it pruned, the project's own prose is never overwritten, and every change is shown
 before writing.
 The installer has already re-spelled every renamed skill or seat name the stack wrote into
-`CLAUDE.md`, `.claude/CLAUDE.md` and the generated rules (one `renamed: <file> - <n> ...` line per
+`AGENTS.md`, `.claude/AGENTS.md` and the generated rules (one `renamed: <file> - <n> ...` line per
 file) - report those lines, and leave the names to it.
+The installer has also dealt with the seeded file's name: an unedited `.claude/CLAUDE.md` it seeded is
+moved to `.claude/AGENTS.md` (`git mv` where git tracks it), an edited one, or any when a root AGENTS.md
+holds the project's instructions, is left in place and named in one line with its `mv` command - report
+those lines and never rename a file for the user.
 
 **Run the compare whatever the delta says** - the template being unchanged
-UPSTREAM says nothing about whether THIS project's CLAUDE.md still matches it, and the
+UPSTREAM says nothing about whether THIS project's AGENTS.md still matches it, and the
 template-unchanged skip left that question with no command that answers it: not update, which
 skipped, and not validate, which touches only the rules table. Measured: a user asked it twice,
 verbatim, five and a half minutes apart. The compare is a 75-line file against a 116-line one, so

@@ -73,8 +73,8 @@ touches no committed file). The lines, minus anything the project already covers
 .mcp.json
 ```
 
-- `.claude/` - the install and the stamp are machine-local. To COMMIT `.claude/CLAUDE.md` while
-  ignoring the rest, the pair is `.claude/*` + `!.claude/CLAUDE.md` - a bare directory ignore blocks
+- `.claude/` - the install and the stamp are machine-local. To COMMIT `.claude/AGENTS.md` while
+  ignoring the rest, the pair is `.claude/*` + `!.claude/AGENTS.md` - a bare directory ignore blocks
   the re-include.
 - `.alfred/` - the data root (`ALFRED_CODE_DATA_PATH`), outside `.claude/` because Claude Code prompts
   for every write there: the docs (`.alfred/docs/`), the navigation server's index, handoff notes and

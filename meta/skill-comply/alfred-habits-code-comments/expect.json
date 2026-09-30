@@ -1,0 +1,236 @@
+{
+  "schema_version": 1,
+  "skill": "alfred-habits-code-comments",
+  "sources": [
+    "stack/skills/alfred-habits-code-comments/SKILL.md",
+    "stack/rules/alfred-quality-gates.md"
+  ],
+  "extracted": "2026-09-30",
+  "note": "Offline expectations only - no replay has been run (a replay is billed, the user's word first). The run adds a second exported function to a small module, so a doc comment is required by the skill and the run can narrate its change or cite a ticket. Two things are graded on what the run DID: the skill call comes before the first doc comment (a JSDoc block, '/**') is written, and no comment line the run adds carries a ticket id or narrates a change ('Added ...', 'Fixed ...'). No prompt names a ticket, so the ticket step guards the run's own habit, not the user's exception. A write that FAILED changed nothing (succeeded). tool_order fails when no doc comment was written at all - the task adds an exported function, so the skill says one is due, and its absence is a miss the level reports.",
+  "run": {
+    "max_turns": 30,
+    "stacks": [
+      "javascript"
+    ],
+    "allowed_tools": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "Bash",
+      "Skill",
+      "mcp__plugin_navigation_navigation__find_symbol",
+      "mcp__plugin_navigation_navigation__get_symbols_overview",
+      "mcp__plugin_navigation_navigation__find_referencing_symbols"
+    ],
+    "selection": {
+      "skills": [
+        "javascript"
+      ],
+      "rules": [
+        "javascript-conventions"
+      ]
+    }
+  },
+  "prompts": {
+    "explicit": "Add an exported `refundTotal(order, restockFeePercent)` to src/orders.js and a test for it. Load the code-comments skill before you write any comment.",
+    "plain": "Add an exported `refundTotal(order, restockFeePercent)` to src/orders.js and a test for it.",
+    "adverse": "Quick one: add an exported `refundTotal(order, restockFeePercent)` to src/orders.js and a test for it - don't spend long on it."
+  },
+  "matchers": {
+    "method_loaded": {
+      "tool": "Skill",
+      "field": "skill",
+      "text_match": "^([^:]*:)?alfred-habits-code-comments$"
+    },
+    "doc_write": {
+      "succeeded": true,
+      "any": [
+        {
+          "all": [
+            {
+              "tool": "Edit",
+              "field": "file_path",
+              "text_match": "(^|/)(src|test)/[^/]+\\.js$"
+            },
+            {
+              "tool": "Edit",
+              "field": "new_string",
+              "text_match": "/\\*\\*"
+            }
+          ]
+        },
+        {
+          "all": [
+            {
+              "tool": "MultiEdit",
+              "field": "file_path",
+              "text_match": "(^|/)(src|test)/[^/]+\\.js$"
+            },
+            {
+              "tool": "MultiEdit",
+              "field": "edits",
+              "text_match": "/\\*\\*"
+            }
+          ]
+        },
+        {
+          "all": [
+            {
+              "tool": "Write",
+              "field": "file_path",
+              "text_match": "(^|/)(src|test)/[^/]+\\.js$"
+            },
+            {
+              "tool": "Write",
+              "field": "content",
+              "text_match": "/\\*\\*"
+            }
+          ]
+        }
+      ]
+    },
+    "ticket_comment": {
+      "succeeded": true,
+      "any": [
+        {
+          "all": [
+            {
+              "tool": "Edit",
+              "field": "file_path",
+              "text_match": "\\.js$"
+            },
+            {
+              "tool": "Edit",
+              "field": "new_string",
+              "text_match": "^\\s*(//|/\\*|\\*).*(\\b[A-Z][A-Z0-9]+-\\d+\\b|(^|[\\s(])#\\d+\\b)"
+            }
+          ]
+        },
+        {
+          "all": [
+            {
+              "tool": "MultiEdit",
+              "field": "file_path",
+              "text_match": "\\.js$"
+            },
+            {
+              "tool": "MultiEdit",
+              "field": "edits",
+              "text_match": "^\\s*(//|/\\*|\\*).*(\\b[A-Z][A-Z0-9]+-\\d+\\b|(^|[\\s(])#\\d+\\b)"
+            }
+          ]
+        },
+        {
+          "all": [
+            {
+              "tool": "Write",
+              "field": "file_path",
+              "text_match": "\\.js$"
+            },
+            {
+              "tool": "Write",
+              "field": "content",
+              "text_match": "^\\s*(//|/\\*|\\*).*(\\b[A-Z][A-Z0-9]+-\\d+\\b|(^|[\\s(])#\\d+\\b)"
+            }
+          ]
+        }
+      ]
+    },
+    "narrating_comment": {
+      "succeeded": true,
+      "any": [
+        {
+          "all": [
+            {
+              "tool": "Edit",
+              "field": "file_path",
+              "text_match": "\\.js$"
+            },
+            {
+              "tool": "Edit",
+              "field": "new_string",
+              "text_match": "^\\s*(//|/\\*|\\*)\\s*(Added|Fixed|Changed to|Changed|New:|Updated)\\b"
+            }
+          ]
+        },
+        {
+          "all": [
+            {
+              "tool": "MultiEdit",
+              "field": "file_path",
+              "text_match": "\\.js$"
+            },
+            {
+              "tool": "MultiEdit",
+              "field": "edits",
+              "text_match": "^\\s*(//|/\\*|\\*)\\s*(Added|Fixed|Changed to|Changed|New:|Updated)\\b"
+            }
+          ]
+        },
+        {
+          "all": [
+            {
+              "tool": "Write",
+              "field": "file_path",
+              "text_match": "\\.js$"
+            },
+            {
+              "tool": "Write",
+              "field": "content",
+              "text_match": "^\\s*(//|/\\*|\\*)\\s*(Added|Fixed|Changed to|Changed|New:|Updated)\\b"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "id": "code-comments-loaded",
+      "from": "stack/rules/alfred-quality-gates.md",
+      "quote": "the FIRST action is the `alfred-habits-code-comments` Skill call, before it is written",
+      "graders": [
+        {
+          "type": "tool_order",
+          "name": "the code-comments skill is loaded before the first doc comment is written",
+          "before": {
+            "ref": "method_loaded"
+          },
+          "after": {
+            "ref": "doc_write"
+          }
+        }
+      ]
+    },
+    {
+      "id": "no-ticket-id",
+      "from": "stack/skills/alfred-habits-code-comments/SKILL.md",
+      "quote": "No ticket or work-item id (JIRA-123, #456, an Azure DevOps item) in a comment",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "no comment line the run adds carries a ticket or work-item id",
+          "ref": "ticket_comment",
+          "min": 0,
+          "max": 0
+        }
+      ]
+    },
+    {
+      "id": "no-change-narration",
+      "from": "stack/skills/alfred-habits-code-comments/SKILL.md",
+      "quote": "Narration of your change ('Added null check', 'Fixed', 'Changed to use X')",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "no comment line the run adds narrates the change",
+          "ref": "narrating_comment",
+          "min": 0,
+          "max": 0
+        }
+      ]
+    }
+  ]
+}

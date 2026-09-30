@@ -49,6 +49,6 @@ useful - a point the card did not ask for is a flag, like any other scope beyond
 A comment carries the WHY a reader cannot get from the code: the plan's `## Decisions` entry that
 shaped the line, a workaround, an external constraint, the trap the code steers around. It never
 narrates what the line plainly does. An existing comment the edit made stale is fixed in the same
-edit, and the public surface is documented where the codebase documents its own. A deliberate
+edit, and the public surface is documented as the comments rule and the codebase's own convention say. A deliberate
 simplification's ceiling and upgrade path stay in the closing report, never in a code comment -
 the why that stops a reader from 'fixing' the line is what goes at the line.

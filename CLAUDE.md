@@ -52,12 +52,15 @@ change (see the invariants below).
   script: an unescaped quote in one row string left the page with no tables; check 60b holds every seat's
   `mdl` pin badge and row 'Pinned <model>/<effort>' to its frontmatter - 2.1.5 M57 - and a row's ', max <n> turns'
   to its `maxTurns`, 2.1.6 M59).
-- `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
-  `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/*-conventions.md`. Its
-  authoring outline (Setup and Key files among it) and keep-out list say WHAT a CLAUDE.md holds; the
-  always-on `alfred-habits-adjust-claude-md` skill is HOW, the one home of the fill (create, or improve with
-  every change shown first, a separate part getting its own `<part>/CLAUDE.md`) - `/alfred-code:init`,
-  `update` and `configure` follow it inline; and `scripts/claude-md-check.js` is the verdict it closes
+- `stack/AGENTS.template.md` - the stack-neutral per-project skeleton a consuming project's
+  `AGENTS.md` is filled in from (seeded to `.claude/AGENTS.md`, only when the project has no AGENTS.md or CLAUDE.md; a root
+  AGENTS.md the project owns is checked and improved in place, never overwritten; an unedited `.claude/CLAUDE.md` an
+  earlier release seeded is moved by `update`, an edited one named with its `mv` command; Claude Code reads AGENTS.md
+  natively from 2.1.277, and only while no CLAUDE.md or CLAUDE.local.md sits beside or above it). Conventions ship separately in `stack/rules/*-conventions.md`. Its
+  authoring outline (Setup and Key files among it) and keep-out list say WHAT an AGENTS.md holds; the
+  always-on `alfred-habits-adjust-agents-md` skill is HOW, the one home of the fill (create, or improve with
+  every change shown first, a separate part getting its own `<part>/AGENTS.md`) - `/alfred-code:init`,
+  `update` and `configure` follow it inline; and `scripts/agents-md-check.js` (AGENTS.md and any CLAUDE.md the project keeps) is the verdict it closes
   on: every named path exists, every command's program resolves on PATH or in the project, no
   placeholder, `TODO` or template text is left, and an installer seed still unfilled is named
   (`--list` marks it). Validate runs the check for drift. Its rows are heuristic (measured 2026-09-26
@@ -557,8 +560,8 @@ change (see the invariants below).
     block first) and ends on 'restart, then /alfred-code:init'; `/alfred-code:init` is the one-time
     bootstrap in the new session (`init-plan.js`: the machine installs behind one ask, the memory level
     - `scripts/install/memory.js init` imports Claude's old notes, switches its own memory off and
-    writes the stamp's `initialised:` line - the captures, the CLAUDE.md fill through
-    `alfred-habits-adjust-claude-md`). `ALFRED_CODE_UNATTENDED=1` in the launch environment (never seeded - a
+    writes the stamp's `initialised:` line - the captures, the AGENTS.md fill through
+    `alfred-habits-adjust-agents-md`). `ALFRED_CODE_UNATTENDED=1` in the launch environment (never seeded - a
     settings value would apply over a launcher's) runs init with nobody answering: each ask takes its
     Recommended option unless it is destructive (loses or replaces what the project or account owns - a
     claude-hud `refresh` line) or needs a person (typed text, a restart), then the option that changes
@@ -576,7 +579,7 @@ change (see the invariants below).
     `--evidence-gaps`, plus the settings.json `env` layer against `environment.json`, and a read-only
     install audit at its post-check - `scripts/audit-install.js` rows on unpinned launches, wide shell
     grants, hook wirings and credential literals, pasted before one ask, never auto-fixed, and the
-    CLAUDE.md check - `claude-md-check.js` rows offered to the skill's improve mode, no option recommended), `/alfred-code:uninstall`
+    AGENTS.md check - `agents-md-check.js` rows offered to the skill's improve mode, no option recommended), `/alfred-code:uninstall`
     (the seed's `uninstall` over the stamp's ledger, below; user-scope plugin rows and MCP registrations printed, never run). In a git
     worktree of an installed checkout every command stops and names the main checkout. A legacy copy-route install that never
     wrote a stamp reads `legacy-unstamped` (`stamp.js legacySignature`: no install record, and TWO of the stack's hook files, a
@@ -682,7 +685,7 @@ change (see the invariants below).
   `--check-report <file>` re-reads a finished report, printing every judgment number that cites no
   machine row of that same report. Its rollup skips the live session (`CLAUDE_CODE_SESSION_ID`,
   `--exclude-session <id>`) and counts a plugin only where a registry record reaches or it was used.
-  `scripts/claude-md-check.js` - a project's CLAUDE.md files against the tree they describe, read-only
+  `scripts/agents-md-check.js` - a project's AGENTS.md (and CLAUDE.md) files against the tree they describe, read-only
   and no model call. `scripts/scan-evidence.js` - deterministic manifest-only
   evidence scan; `--orientation` prints the provisional `ORIENTATION.md` the `alfred-capture-first-look` skill writes. `scripts/skill-comply.js` - grades whether a skill's steps were followed in a transcript (`check` / `grade`, offline, over the expectation files in `meta/skill-comply/`); `replay` runs the fixtures through `claude -p` only on `--live`, which is billed; `compare` applies the A/B ship rule over two replay outputs (a step failing on both arms is INCONCLUSIVE, never not-worse; one graded by nothing offline is NOT GRADED). `README.md` stays compact (headline counts lint-checked; inventories live in the HTML).
 
@@ -702,7 +705,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 | Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `installed:` and `installed-ms:` (the write to the millisecond, which the account-file loss check compares a CLI backup with), `picked-skills` / `picked-agents` (only the PICKS, as `name@home` - a skill plain since 2.1.0, a seat `@alfred-code`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `seats-route` (`plugin` or `copy` - how the run delivered the seats; a stamp WITHOUT it is from before 2.1.0, and its first update reads the core as the always closure it then carried: the always skills become copies, a library seat copy is pruned - one edited since, or TUNED (a `model` / `effort` other than the stack's, which no setting can give the core's seat), is kept, its hash carried, and dispatched by its bare name: the capabilities rule's seats line is re-spelled to match (`selection.respellRosterSeats` - `alfred-code:<seat>`, bare for a kept copy) and its inventory lets a project copy win its name - and every seat the install never ran is denied), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), `stood-down` (what the full copy route switched off here, `<scope>:<spec>` - the one thing a switch back enables), `mcp-held` (the copy route's MCP picks a local-, project- or user-scope registration of the user's own held back, `<scope>:<name>` - read back as picks, so the update after the name frees registers the stack's; re-verify 4 T7), the LEDGER `managed-env` / `-deny` / `-hooks` / `-mcp` / `-files` (what the run wrote, each at its hash and in the FILE it was recorded for - a move off `local` carries a deny row into settings.json only where that file did not hold it before, and with no ledger a secret-file deny is never claimed; `-mcp` records the copy route's local- and user-scope registrations with their scope; a settings or account file the run could not read keeps its rows as recorded. The CLI replaces an account `.claude.json` it cannot parse (a 0-byte one too; an array it rewrites in place) at its first plugin or mcp call - which every command's source step makes before the installer - keeping the old one as `backups/.claude.json.corrupted.<ms>` (measured on 2.1.284), so the ledger's rows at the copy route's registration scope stand, and are read back as picks, when the file is unreadable at the run's start, a corrupted backup is newer than the stamp (to the millisecond its `installed-ms:` line records; an older stamp's whole second otherwise), or the file holds none of them and is a rewritten one - no entry for this project, or a fresh file with no `firstStartTime` from before the stamp - so the user's own removal of every registration stands (`mcp.accountLoss`, matrix 2.1.5 F1, review 2.1.6 B1 and re-verify), said in one line before the first registration. An unreadable one is met at the start by a recovery call nothing reads (the call that meets it answers with the CLI's notice and none of its own output), trusted only when it leaves a new backup. A registration the ledger does not record is taken back only as an earlier release's loss, every sign together (review 2.1.6 re-verify 2 R1): a stamp from a release that could lose rows (no `installed-ms:` - so a configure drop made since is never undone), a corrupted backup newer than the project's set-up - its `initialised:` time, or for a stamp init never dated the stamp file's own birth, since the stamp is rewritten in place (the lossy run wrote its own `installed:` just after the backup it made), the release template's exact shape (`mcp.exactStack` - its words and env keys, free only in a pin, the cut-off date, the python and a path; re-verify 3 S1) carrying the stack's marks (`mcp.stackAuthored` - the release's cut-off with a pinned package, a desktop server's telemetry off, an engine's profile with `--no-webmcp` where `browser-engines:` lists it), and a server whose skill or engine the stamp records. The CLI keeps every corrupted copy it makes (none pruned, and none made for content it already backed up - measured on 2.1.284); with any sign missing nothing is adopted, and a registration of the stack's own package and marks is named with `/alfred-code:configure` as the way back. Update removes what the release stopped writing, a value changed since is the user's and kept; uninstall removes only these - a local-scope registration through the CLI, a user-scope one printed; over an account file unreadable at its start, or replaced since the stamp, it refuses before any change while the file holds none of the recorded registrations, naming the backup that holds them and `/alfred-code:update` as the other way out - a copy put back ends the refusal (review 2.1.6 m3, re-verify N1); at user scope the seat denies and `ALFRED_CODE_HOOKS_OFF` stay, the core still loading - and refuses a stamp with none, or a plugin listing it cannot read, before any change), `data-root:` / `data-pending:` / `data-move: kept` (the data root in effect, the server-data moves owed to a launcher, a kept layout - below), and `initialised:` - `pending` until init dates it (or the next run, on an older stamp with memory already off); configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). A 1.x account-dir stamp is read by update (which moves it into the project), `--print-plan` (configure and validate's read-back), `update-preflight.js`, `library-check`, `stamp.js state`, `stamp.js scope` (`installScope` falls back to it, A-I1), and the `library-stamp.js` SessionStart hook (B-I1) |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` |
 | Security review | `/security-review` + the `security-auditor` agent + the pre-commit checkpoint's security half (`alfred-habits-commit-checkpoint`) |
-| Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |
+| Project instructions | `AGENTS.md` (seeded to `.claude/AGENTS.md`) |
 | LSP | `csharp-lsp` / `typescript-lsp` plugins |
 
 ## The model these templates encode
@@ -1173,8 +1176,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   every skill DESCRIPTION plus `when_to_use` (a `disable-model-invocation` skill's is not in context, so
   its description is skipped), and the fixed text every generated capabilities rule carries (the usage
   policy and the locked-server row) - prints each part, and fails over 70,000 chars (lowered from 160,000
-  on 2026-09-29, about 40% over the measured total; 48,969 on 2026-09-30 (2.1.6): pathless rules 23,050, agent
-  descriptions 12,532, skill descriptions 11,589 with 13 manual-only skipped, capabilities fixed text
+  on 2026-09-29, about 40% over the measured total; 50,045 on 2026-09-30 (2.1.6): pathless rules 23,829, agent
+  descriptions 12,532, skill descriptions 11,886 with 13 manual-only skipped, capabilities fixed text
   1,798 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories
   moving to `docs/baseline-rules-evidence.md`, and the 2.1.2 cap below cut the skill descriptions from
   50,719; the whole-file count it replaced read 51,473 and missed the generated rule). A rule moved into the
@@ -1229,7 +1232,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   nothing there, so an own row under a picked name is only named (`mayPrune`'s line). Every JSON file the installer parses
   that a person may edit (`.mcp.json`, `settings*.json`, the account's `.claude.json`) goes through ONE reader,
   `install/json-file.js` (`parseJson` / `readJson`; the scripts that read the same files - `stack-select.js`, `plugin-settings.js`,
-  `analyze-usage.js`, `library-check.js`, `audit-install.js`, `hud-statusline.js`, `claude-md-check.js` - use it too, and all run from
+  `analyze-usage.js`, `library-check.js`, `audit-install.js`, `hud-statusline.js`, `agents-md-check.js` - use it too, and all run from
   the whole tree, so it ships beside them): a leading BOM is stripped, and anything else wrong - a BOM plus
   garbage included - still throws, so it is still unreadable. A BOM'd `.mcp.json` read as empty before (a bare
   `JSON.parse`), and once `keepMcpOrder` kept the BOM every update dropped a pick and its `enabledMcpjsonServers` entry

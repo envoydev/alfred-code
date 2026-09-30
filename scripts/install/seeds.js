@@ -1,9 +1,10 @@
 'use strict';
 // THE SMALL SEEDS - the per-project files and account values a run lays down once.
 //
-//   - `CLAUDE.md`, from the stack-neutral template, ONLY when the project has neither
-//     `./CLAUDE.md` nor `./.claude/CLAUDE.md`. Claude Code auto-loads either, so seeding beside an
-//     existing one would leave two copies of the project's instructions.
+//   - `.claude/AGENTS.md`, from the stack-neutral template, ONLY when the project has no `AGENTS.md`,
+//     `.claude/AGENTS.md`, `CLAUDE.md` or `.claude/CLAUDE.md`. Claude Code loads any of them, so seeding
+//     beside an existing one would leave two copies of the project's instructions. A root AGENTS.md is
+//     the project's own file: checked and improved in place, never overwritten.
 //   - The ACCOUNT settings.json `env` keys. At project scope too, deliberately: the account file is
 //     the one whose env reaches `.mcp.json` URL and header expansion (measured on 2.1.266 - a
 //     project `.claude/settings.json` leaves the 'Missing environment variables' warning in place).
@@ -73,38 +74,102 @@ function accountKeyState(configDir, key)
 // INSTALL only, once. The H1 placeholder is stamped with the repo folder name - the same __TOKEN__
 // convention as the docs-root rule, and because the seed runs once a hand-written title is never
 // clobbered.
-// The body the seed writes into .claude/CLAUDE.md for this project, or null with no template - also the
-// ledger fallback's test that a CLAUDE.md is still the unfilled seed (R10).
-function claudeMdBody({ projectRoot, sourceDir })
+// The body the seed writes into .claude/AGENTS.md for this project, or null with no template - also the
+// ledger fallback's test that an AGENTS.md is still the unfilled seed (R10).
+function agentsMdBody({ projectRoot, sourceDir })
 {
     let body;
-    try { body = fs.readFileSync(path.join(sourceDir, 'stack', 'CLAUDE.template.md'), 'utf8'); } catch { return null; }
-    body = body.split(PROJECT_NAME_TOKEN).join(path.basename(projectRoot));
-    // Claude reads a root AGENTS.md on its own only while no CLAUDE.md exists, so the seed would switch it
-    // off: a live import under the H1 keeps it loading (resolved against this file, hence the '../').
-    return fs.existsSync(path.join(projectRoot, 'AGENTS.md')) ? body.replace(/^(#[^\n]*\n)/, '$1\n@../AGENTS.md\n') : body;
+    try { body = fs.readFileSync(path.join(sourceDir, 'stack', 'AGENTS.template.md'), 'utf8'); } catch { return null; }
+    return body.split(PROJECT_NAME_TOKEN).join(path.basename(projectRoot));
 }
 
-function seedClaudeMd({ projectRoot, sourceDir, log = () => {}, note = () => {} })
+// Claude Code 2.1.277 is the first release that reads AGENTS.md itself (code.claude.com/docs/en/memory,
+// the changelog entry of that version), and only while no CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md sits
+// in the working directory or above it - so an older one, or a session on a third-party provider, sees none of it.
+const AGENTS_MD_FLOOR = '2.1.277';
+const AGENTS_MD_NOTE = `Claude Code ${AGENTS_MD_FLOOR} or later reads AGENTS.md itself, and only while no CLAUDE.md or CLAUDE.local.md sits beside or above it`;
+
+// Where an AGENTS.md can already be: the root (loaded beside .claude/AGENTS.md, so it is the project's own
+// file) or .claude/. Either one, or any CLAUDE.md, means the project has its instruction file already.
+function existingInstructionFile(projectRoot)
 {
-    if (fs.existsSync(path.join(projectRoot, 'CLAUDE.md')) || fs.existsSync(path.join(projectRoot, '.claude', 'CLAUDE.md')))
+    for (const rel of ['AGENTS.md', '.claude/AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md'])
+        if (fs.existsSync(path.join(projectRoot, ...rel.split('/')))) return rel;
+    return null;
+}
+
+function seedAgentsMd({ projectRoot, sourceDir, log = () => {}, note = () => {} })
+{
+    const have = existingInstructionFile(projectRoot);
+    if (have)
     {
-        log('  CLAUDE.md: already present - left as-is (finish its authoring outline if not done)');
+        log(`  AGENTS.md: ${have} is the project's own instruction file - nothing seeded, left as-is (finish its authoring outline if not done)`);
         return false;
     }
-    const body = claudeMdBody({ projectRoot, sourceDir });
-    if (body === null) { note('CLAUDE.template.md not found in the stack source'); return false; }
-    const dest = path.join(projectRoot, '.claude', 'CLAUDE.md');
-    const agents = fs.existsSync(path.join(projectRoot, 'AGENTS.md'));
+    const body = agentsMdBody({ projectRoot, sourceDir });
+    if (body === null) { note('AGENTS.template.md not found in the stack source'); return false; }
+    const dest = path.join(projectRoot, '.claude', 'AGENTS.md');
     try
     {
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.writeFileSync(dest, body);
     }
-    catch (err) { note(`CLAUDE.md could not be seeded (${err.message})`); return false; }
-    if (agents) log('  AGENTS.md: imported from the seeded .claude/CLAUDE.md (@../AGENTS.md), so it keeps loading');
-    log("  CLAUDE.md: seeded to .claude/CLAUDE.md - write the project top from its authoring-outline comment, and keep the '.claude/*' + '!.claude/CLAUDE.md' gitignore lines so it stays committed");
+    catch (err) { note(`AGENTS.md could not be seeded (${err.message})`); return false; }
+    log("  AGENTS.md: seeded to .claude/AGENTS.md - write the project top from its authoring-outline comment, and keep the '.claude/*' + '!.claude/AGENTS.md' gitignore lines so it stays committed");
+    log(`  ${AGENTS_MD_NOTE}${fs.existsSync(path.join(projectRoot, 'CLAUDE.local.md')) ? ' - the CLAUDE.local.md here already switches it off (Project instructions: claude-md-and-agents-md in /config reads both)' : ''}`);
     return true;
+}
+
+// UPDATE: a `.claude/CLAUDE.md` the stack seeded and nobody edited is the stack's own file, so it moves to
+// the AGENTS.md name (`git mv` where git tracks it, so history follows). An edited one is the user's: left
+// untouched, named with its move command, never renamed for them. A root AGENTS.md means the project's
+// instructions already live there - moving would split them, so it is named and left. Returns
+// 'moved' | 'kept-edited' | 'kept-root' | 'kept-both' | 'none' (a re-run finds nothing to do).
+//   ledgerHash - the hash the last run recorded for `CLAUDE.md`; hash(path) - the installer's file hash
+//   tracked(path) / gitMv(from, to) - injected so the module stays free of a git call of its own
+function moveSeededClaudeMd({ projectRoot, sourceDir, ledgerHash = '', hash, tracked = () => false, gitMv = null, log = () => {}, note = () => {} })
+{
+    const from = path.join(projectRoot, '.claude', 'CLAUDE.md');
+    const to = path.join(projectRoot, '.claude', 'AGENTS.md');
+    if (!fs.existsSync(from)) return 'none';
+    const cmd = (git) => `${git ? 'git mv' : 'mv'} .claude/CLAUDE.md .claude/AGENTS.md`;
+    if (fs.existsSync(path.join(projectRoot, 'AGENTS.md')))
+    {
+        log(`  .claude/CLAUDE.md: left in place - the project's own root AGENTS.md holds its instructions, and moving this one would split them (${AGENTS_MD_NOTE})`);
+        return 'kept-root';
+    }
+    if (fs.existsSync(to))
+    {
+        log('  .claude/CLAUDE.md: left in place - .claude/AGENTS.md exists beside it, and Claude Code ignores AGENTS.md while a CLAUDE.md is there; merge them and delete one');
+        return 'kept-both';
+    }
+    let unedited = false;
+    try
+    {
+        if (ledgerHash) unedited = hash(from) === ledgerHash;
+        else { const seed = agentsMdBody({ projectRoot, sourceDir }); unedited = seed !== null && fs.readFileSync(from, 'utf8') === seed; }
+    }
+    catch { unedited = false; }
+    const git = tracked(from);
+    if (!unedited)
+    {
+        log(`  .claude/CLAUDE.md: yours, edited since the stack seeded it - left as-is; the stack's file is AGENTS.md now (${AGENTS_MD_NOTE}), to rename it: ${cmd(git)}`);
+        return 'kept-edited';
+    }
+    try
+    {
+        if (git && gitMv) gitMv(from, to);
+        else fs.renameSync(from, to);
+    }
+    catch (err) { note(`.claude/CLAUDE.md could not be moved to .claude/AGENTS.md (${String(err.message).trim()}) - to do it by hand: ${cmd(git)}`); return 'kept-edited'; }
+    log(`  .claude/CLAUDE.md -> .claude/AGENTS.md: the unedited seed moved${git ? ' (git mv, staged as a rename)' : ''}; ${AGENTS_MD_NOTE}`);
+    try
+    {
+        if (/^\s*!\.claude\/CLAUDE\.md\s*$/m.test(fs.readFileSync(path.join(projectRoot, '.gitignore'), 'utf8')))
+            log("  .gitignore: change the re-include line to '!.claude/AGENTS.md', or the moved file is ignored");
+    }
+    catch { /* no .gitignore to read */ }
+    return 'moved';
 }
 
 // Only the engines whose build Playwright ships itself; chrome and msedge use the installed browser.
@@ -121,4 +186,4 @@ function playwrightDownloads({ browsers = [], pin = '', run, log = () => {} })
     return done;
 }
 
-module.exports = { seedAccountEnv, seedAccountKeys, accountKeyState, seedClaudeMd, claudeMdBody, playwrightDownloads, SECRET_KEY, PROJECT_NAME_TOKEN };
+module.exports = { seedAccountEnv, seedAccountKeys, accountKeyState, seedAgentsMd, agentsMdBody, moveSeededClaudeMd, existingInstructionFile, AGENTS_MD_FLOOR, playwrightDownloads, SECRET_KEY, PROJECT_NAME_TOKEN };

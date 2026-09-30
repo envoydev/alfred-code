@@ -310,22 +310,9 @@ using var stream = File.OpenRead(path);
 
 ## 5. XML documentation
 
-- Every public API surface carries XML doc comments covering parameters, return values, thrown exceptions, and remarks for non-obvious behavior.
-- Write them in the expanded multi-line form: open and close each tag on its own line with the text on separate `///` lines, in full descriptive sentences - what the member does plus the context a caller needs - never a terse fragment collapsed onto a single `/// <summary>...</summary>` line. Give `<returns>` and every `<param>` the same expanded treatment, not only `<summary>`.
-
-```csharp
-// Good - expanded block, full descriptive sentences, <returns> documented:
-/// <summary>
-/// Retrieves the feature flags that govern checkout from the current database session.
-/// These flags decide which payment providers are enabled for the request.
-/// </summary>
-/// <returns>
-/// A read-only list of FeatureFlag entries keyed by name for the checkout module.
-/// </returns>
-
-// Avoid - collapsed onto one line, terse, no <returns>:
-/// <summary>Loads the checkout feature flags.</summary>
-```
+- Public and protected members carry XML docs; internal and private ones only when the name and signature leave the contract unclear.
+- The tag set, when a doc comment is written: `<summary>`, `<param>` for every parameter, `<typeparam>` for every type parameter, `<returns>` for non-void, `<exception>` for exceptions thrown by contract (argument validation, domain rules), `<inheritdoc/>` on overrides and interface implementations. A partial set trips CS1573.
+- Form and content - one line per tag, the shortest accurate phrase, a summary in domain terms, no ticket ids - are the house code-comments skill's, and the project's own doc-comment convention wins over both.
 
 ---
 

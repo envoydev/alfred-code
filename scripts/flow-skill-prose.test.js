@@ -57,7 +57,7 @@ test('M79: a generated rule survives update because no ledger records it, not be
 
 // ---- M80: the plugin cache can be newer than the library copy -------------------------------------------------
 test('M80: the newest cache entry is not claimed to be the release these copies came from', () => {
-    for (const name of ['alfred-capture-first-look', 'alfred-habits-adjust-claude-md', 'alfred-capture-agent-capabilities']) {
+    for (const name of ['alfred-capture-first-look', 'alfred-habits-adjust-agents-md', 'alfred-capture-agent-capabilities']) {
         const text = flat(skill(name));
         assert.doesNotMatch(text, /(NEWEST|newest plugin-cache entry) is the one this skill came from/i, `${name}: the skew window makes it false`);
         assert.match(text, /after a core update it can be newer/, `${name}: says when it differs`);
@@ -171,10 +171,10 @@ test('M90: the checkpoint publish step asks through a template, and names its ex
 });
 
 // ---- M91: headings ----------------------------------------------------------------------------------------------
-test('M91: adjust-claude-md is titled as the habit it is, and explain-code opens with an H1', () => {
-    const adjust = body(skill('alfred-habits-adjust-claude-md')).trimStart();
+test('M91: adjust-agents-md is titled as the habit it is, and explain-code opens with an H1', () => {
+    const adjust = body(skill('alfred-habits-adjust-agents-md')).trimStart();
     assert.doesNotMatch(adjust, /^# CLAUDE\.md capture/);
-    assert.match(adjust, /^# Adjust CLAUDE\.md - /);
+    assert.match(adjust, /^# Adjust AGENTS\.md - /);
     assert.match(body(skill('alfred-habits-explain-code')).trimStart(), /^# Explain code - /);
 });
 

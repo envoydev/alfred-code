@@ -102,7 +102,7 @@ test('M69: the quality gates drop the generic simplicity line and name Monitor a
 {
     const gates = injected('alfred-quality-gates');
     assert.ok(!gates.includes('Keep it simple') && !gates.includes('speculative'), 'a generic line with no measured miss');
-    assert.ok(gates.includes('Inline comments explain *why*, not *what*'), 'the implementer bar cites this line by name');
+    assert.ok(gates.includes('Comments: none by default; a why only when the code cannot say it'), 'the implementer bar cites this comments line by name');
     assert.ok(!gates.includes('the wait tool is deferred'), 'the tool is named');
     assert.ok(gates.includes('`ToolSearch select:Monitor`'), 'the load line names Monitor');
 });

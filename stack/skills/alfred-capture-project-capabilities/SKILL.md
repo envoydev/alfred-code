@@ -75,7 +75,7 @@ keeps the file it came from: that list becomes the sections' `covers:` lines and
 3. **Before you run.** An `.env.example` / `.env.sample` / `.env.template` - key NAMES only
    (`cut -d= -f1`), never a real `.env`; the services the app depends on; the migration or seed command
    the scripts name.
-4. **The prose.** `README.md`, `CLAUDE.md` and `.claude/CLAUDE.md` headings about setup, running, login,
+4. **The prose.** `README.md`, `AGENTS.md`, `.claude/AGENTS.md`, `CLAUDE.md` and `.claude/CLAUDE.md` headings about setup, running, login,
    debugging and testing (`grep -niE '^#+ .*(setup|install|run|start|login|sign in|debug|test)'`), then a
    ranged read of each hit section.
 5. **Flows.** End-to-end spec titles (Playwright or Cypress `describe` / `test` names) - a flow a test

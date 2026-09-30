@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 // THE INSTALL AUDIT - a read-only pass over an install's OWN agent config: what the stack or the user
-// wired into this project (.mcp.json, the project settings files, CLAUDE.md), never the project's
+// wired into this project (.mcp.json, the project settings files, AGENTS.md / CLAUDE.md), never the project's
 // code. Advisory: it prints rows, fixes nothing and always exits 0 - /alfred-code:validate pastes
 // the table and asks at most once.
 //
@@ -112,7 +112,7 @@ function audit(root)
             }
         }
     }
-    for (const rel of ['CLAUDE.md', '.claude/CLAUDE.md', '.mcp.json', '.claude/settings.json'])
+    for (const rel of ['AGENTS.md', '.claude/AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md', '.mcp.json', '.claude/settings.json'])
     {
         const p = path.join(root, rel);
         if (!fs.existsSync(p)) continue;

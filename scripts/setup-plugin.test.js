@@ -102,7 +102,7 @@ test('setup: no memory level, the init prerequisites deferred, and a close that 
     const close = setup.slice(setup.indexOf('## Post-check'));
     assert.match(flat(close), /\*\*Restart, then `\/alfred-code:init`\*\*/);
     assert.match(flat(close), /Nothing is pending on this run - these are yours to run when you choose\./);
-    assert.ok(!/## \d+\. CLAUDE\.md/.test(setup) && /## 6\. CLAUDE\.md/.test(cmdBody('init')), 'the CLAUDE.md fill moved to init');
+    assert.ok(!/## \d+\. AGENTS\.md/.test(setup) && /## 6\. AGENTS\.md/.test(cmdBody('init')), 'the AGENTS.md fill moved to init');
 });
 
 // R77: the ENABLE question pre-selects the LIVE state (plan-out) over an install - never the
@@ -123,13 +123,13 @@ test('the walk: the playwright ENABLE pre-selection reads plan-out\'s live state
     assert.match(cmdBody('configure'), /--installed-only --print-plan --plan-out "\$TMP\/installed\.json"/, 'the DELTA walk reads the plan configure wrote');
 });
 
-test('init: the bootstrap order - read, plan, one machine ask, memory, captures inline, CLAUDE.md; no sentry', () => {
+test('init: the bootstrap order - read, plan, one machine ask, memory, captures inline, AGENTS.md; no sentry', () => {
     const init = cmdBody('init');
     // M6: a fresh uv lands off the shell's PATH - step 4's import needs uvx, so it gets the prefix too.
     assert.match(flat(init), /EVERY later command of this run carries that directory first - `PATH="<dir>:\$PATH" <command>` - step 3's `after uv` commands and step 4's `memory\.js init` alike/);
     // The hook count, stated once per table: the manifest ships eighteen.
     assert.match(flat(walkBody()), /Recommended \(FRESH\) = all eighteen:.*\*\*None\*\* names all eighteen/);
-    const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Memory', '## 5. Captures', '## 6. CLAUDE.md'].map((h) => init.indexOf(h));
+    const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Memory', '## 5. Captures', '## 6. AGENTS.md'].map((h) => init.indexOf(h));
     assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), `the six steps in order: ${order}`);
     assert.match(init, /install\/alfred-code\.js" update --source "\$TMP\/repo" --installed-only --print-plan --plan-out "\$TMP\/installed\.json"/);
     assert.match(init, /scripts\/init-plan\.js" --installed "\$TMP\/installed\.json" --root \./);

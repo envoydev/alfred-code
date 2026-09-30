@@ -203,7 +203,7 @@ function unattended({ machine, captures })
     // Its only real answer is a sibling list someone types - an unattended run would be inventing one.
     if (captures.some((c) => c.skill === 'alfred-capture-related-projects' && c.state === 'run'))
         lines.push('unattended: related projects -> none - skip it (naming the siblings needs a person)');
-    lines.push('unattended: CLAUDE.md -> fill it in (Recommended)');
+    lines.push('unattended: AGENTS.md -> fill it in (Recommended)');
     return lines;
 }
 

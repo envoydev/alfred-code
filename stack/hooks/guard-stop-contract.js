@@ -1190,7 +1190,7 @@ function testsDeclared(root) {
   return 'none-found';
 }
 // Does an instruction file forbid running tests: the project's CLAUDE.md, CLAUDE.local.md, AGENTS.md,
-// .claude/CLAUDE.md and .claude/rules/*.md, then the account CLAUDE.md. The first matching line, named
+// .claude/AGENTS.md, .claude/CLAUDE.md and .claude/rules/*.md, then the account CLAUDE.md. The first matching line, named
 // with its file. A line about HOW or WHEN to run them - which tests, how often, in which mode - is no
 // rule against running them ('never run the full suite while iterating'), and the account file is read
 // for every project, so one such line there would excuse every claim everywhere.
@@ -1198,7 +1198,7 @@ const NO_TEST_RULE_RE = /\b(?:do not|don['\u2019]?t|never|must not|should not|av
 const TEST_RULE_QUALIFIER_RE = /\b(?:full|whole|entire|all the|every|each|watch|while|until|before|after|only|again|twice|more than|in parallel)\b/i;
 function noTestRule(root) {
   const path = require('path');
-  const files = ['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', path.join('.claude', 'CLAUDE.md')].map((f) => path.join(root, f));
+  const files = ['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', path.join('.claude', 'AGENTS.md'), path.join('.claude', 'CLAUDE.md')].map((f) => path.join(root, f));
   try {
     for (const f of fs.readdirSync(path.join(root, '.claude', 'rules')).sort()) if (f.endsWith('.md')) files.push(path.join(root, '.claude', 'rules', f));
   } catch { /* no rules folder */ }
