@@ -2392,7 +2392,7 @@ function main()
     try
     {
         alwaysOn = alwaysOnSurface({ rulesDir: CLAUDE_RULES_DIR, agentsDir: AGENTS_DIR, skillsDir: SKILLS_DIR });
-        // The ceiling sits about 40% over the measured surface (48,977 on 2026-09-29): a budget to
+        // The ceiling sits about 40% over the measured surface (48,977 on 2026-09-30): a budget to
         // DEFEND, not a target to grow into. Raising it is a deliberate edit with a reason, which is the point.
         const ALWAYS_ON_MAX = 70000;
         if (alwaysOn.total > ALWAYS_ON_MAX)

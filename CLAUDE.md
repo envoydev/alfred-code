@@ -1140,7 +1140,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   every skill DESCRIPTION plus `when_to_use` (a `disable-model-invocation` skill's is not in context, so
   its description is skipped), and the fixed text every generated capabilities rule carries (the usage
   policy and the locked-server row) - prints each part, and fails over 70,000 chars (lowered from 160,000
-  on 2026-09-29, about 40% over the measured total; 48,977 on 2026-09-29 (2.1.5): pathless rules 23,052, agent
+  on 2026-09-29, about 40% over the measured total; 48,977 on 2026-09-30 (2.1.6): pathless rules 23,052, agent
   descriptions 12,532, skill descriptions 11,589 with 13 manual-only skipped, capabilities fixed text
   1,804 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories
   moving to `docs/baseline-rules-evidence.md`, and the 2.1.2 cap below cut the skill descriptions from
