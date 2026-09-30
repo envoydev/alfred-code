@@ -4,6 +4,7 @@
 // behaviour itself is pinned where it runs (build-marketplace, mcp-launchers, install-mcp, install-desktop).
 const test = require('node:test');
 const assert = require('node:assert');
+const { readClaudeDocs } = require('./claude-docs.js');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -142,7 +143,7 @@ test('I9: the size-first cases live with the library cases, where the eval bundl
 // ---------------------------------------------------------------- CLAUDE.md, where these changes made it false
 test('CLAUDE.md states the new gate, the browser flag and the stack serena context', () =>
 {
-    const doc = flat(read('CLAUDE.md'));
+    const doc = flat(readClaudeDocs());
     assert.match(doc, /Windows-MCP starts with `--exclude-tools PowerShell,Registry,Process,FileSystem`/);
     assert.doesNotMatch(doc, /Windows-MCP starts with `--exclude-tools PowerShell,Registry,Process`;/);
     assert.match(doc, /--no-webmcp/);

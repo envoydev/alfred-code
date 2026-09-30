@@ -120,7 +120,7 @@ test('the five method skills are the habits group, and no shipped surface names 
             if (old.test(line)) hits.push(`${path.relative(ROOT, p)}:${i + 1}`);
         });
     };
-    for (const rel of ['stack', 'setup-plugin', 'meta', 'scripts', '.claude-plugin', 'README.md', 'CLAUDE.md', 'docs/alfred-code.html'])
+    for (const rel of ['stack', 'setup-plugin', 'meta', 'scripts', '.claude-plugin', 'README.md', ...require('./claude-docs.js').claudeDocFiles(), 'docs/alfred-code.html', 'docs/install-footprint.md'])
         if (fs.existsSync(path.join(ROOT, rel))) scan(path.join(ROOT, rel));
     assert.deepStrictEqual(hits, [], 'a shipped surface still names a habit by its old spelling');
 });

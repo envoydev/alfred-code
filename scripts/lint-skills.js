@@ -2000,6 +2000,14 @@ function main()
         flag(`version drift: setup-plugin plugin.json '${pluginManifest.version}' vs .claude-plugin/marketplace.json metadata '${marketplaceVersion}' - the plugin, the marketplace, and the release must carry ONE version`);
     }
 
+    //     package.json carries the same version: it is the repo's own metadata, and a
+    //     third number would read as a release nobody cut.
+    const repoPackage = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    if (pluginManifest.version && repoPackage.version !== pluginManifest.version)
+    {
+        flag(`version drift: package.json '${repoPackage.version}' vs setup-plugin plugin.json '${pluginManifest.version}' - package.json carries the plugin's version`);
+    }
+
     // 42. What the manifest ENUMERATES must equal what is on disk - see lintPluginComponents.
     const pluginComponentDirs = {};
     for (const field of ['commands', 'agents', 'hooks'])

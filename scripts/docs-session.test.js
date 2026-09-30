@@ -1440,7 +1440,7 @@ test('a captured orientation carries no provisional warning', () => {
 test('CLAUDE.md says a navigation rename is credited to its declaring file alone (2.1.5 final review R9)', () => {
   // serena's rename_symbol carries the declaring file in `relative_path`; the reference edits in other files are not
   // in the call, so they fall to the Stop ask's unclaimed bucket and outside the turn check's root - accepted, and said.
-  const md = fs.readFileSync(require('node:path').join(__dirname, '..', 'CLAUDE.md'), 'utf8');
+  const md = require('./claude-docs.js').readClaudeDocs();
   const entry = md.slice(md.indexOf('  - `docs-session.js` ('), md.indexOf('  - `memory-session.js` ('));
   assert.match(entry, /a rename is credited to that declaring file alone/);
   assert.match(entry, /'no actor claimed' bucket and outside the turn check's root/);

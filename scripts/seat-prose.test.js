@@ -67,7 +67,7 @@ test('M49: every opus pin outside the designers is named, with its effort and re
     for (const seat of opus)
         assert.match(para, new RegExp(`\\b${seat} opus/${meta(seat).effort} \\(`), `${seat}: its pin and a parenthesised reason`);
     assert.match(para, /no A\/B against a sonnet pin/, 'the paragraph says the pins are unmeasured against the repo goal');
-    const pins = squash(readRel('CLAUDE.md')).match(/Pins: [^.]*\./);
+    const pins = squash(require('./claude-docs.js').readClaudeDocs()).match(/Pins: [^.]*\./);
     assert.ok(pins, 'the CLAUDE.md pins sentence');
     for (const seat of opus) assert.ok(pins[0].includes(seat), `CLAUDE.md's pins sentence names ${seat}`);
 });
@@ -217,7 +217,7 @@ test('M59: the turn caps sit where the measurement put them, and nowhere else', 
     assert.strictEqual(capped.length, 25, '10 implementers, 10 verifiers, 4 resolvers, architecture-analyzer');
     for (const s of seats) assert.strictEqual(meta(s).maxTurns, CAP[kind(s)], `${s}: maxTurns`);
     // Review B1: the transcript count is the de-duplicated one, and the cap's CLI floor is named.
-    const claude = squash(readRel('CLAUDE.md'));
+    const claude = squash(require('./claude-docs.js').readClaudeDocs());
     assert.doesNotMatch(claude, /1,330/);
     assert.match(claude, /the most turns measured for the seat's kind over 802 local subagent transcripts/);
     assert.match(claude, /Claude Code returns the output marked partial \(2\.1\.246\+\)/);

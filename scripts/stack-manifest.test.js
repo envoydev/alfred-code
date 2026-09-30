@@ -114,7 +114,7 @@ test('stack-manifest: scripts/os/ is gone, and no script or test names it withou
     // The repo root is never walked (only its named directories are), so a root file - CLAUDE.md's
     // own installer-layout prose named the deleted twins unmarked and the sweep missed it - is
     // checked explicitly by name instead.
-    const SCAN_FILES = ['CLAUDE.md'];
+    const SCAN_FILES = [...require('./claude-docs.js').claudeDocFiles(), 'README.md', 'docs/install-footprint.md'];
     const TWIN_PATTERN = /scripts\/os\/|claude-stack\.sh|claude-stack\.ps1/; // legacy-name
     const offenders = [];
     const check = (full) =>

@@ -5,6 +5,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
+const { readClaudeDocs } = require('./claude-docs.js');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -203,7 +204,7 @@ test('I21: the lint comment no longer claims ~10% headroom, and CLAUDE.md states
 {
     const lint = read('scripts/lint-skills.js');
     assert.ok(!lint.includes('~10% headroom'), 'the stale headroom claim is gone');
-    const md = squash(read('CLAUDE.md'));
+    const md = squash(readClaudeDocs());
     assert.ok(!md.includes('pathless rules 25,090'), 'the whole-file figure is gone');
     assert.ok(md.includes('frontmatter and HTML comments stripped'), 'CLAUDE.md says the rules are counted as injected');
     assert.ok(md.includes('a `disable-model-invocation` skill\'s is not in context'), 'CLAUDE.md says the manual-only descriptions are skipped');

@@ -3383,7 +3383,7 @@
           "marker": "`<docs-path>/flow/SECRET-READ-ALLOW` receipt"
         },
         {
-          "file": "CLAUDE.md",
+          "file": ".claude/rules/repo-hooks.md",
           "marker": "`<docs-path>/flow/SECRET-READ-ALLOW` receipt"
         }
       ]
@@ -3404,7 +3404,7 @@
           "marker": "`<docs-path>/flow/CROSS-WRITE-ALLOW` receipt"
         },
         {
-          "file": "CLAUDE.md",
+          "file": ".claude/rules/repo-hooks.md",
           "marker": "`<docs-path>/flow/CROSS-WRITE-ALLOW` receipt"
         }
       ]

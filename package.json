@@ -1,9 +1,29 @@
 {
   "name": "alfred-code",
-  "version": "1.0.0",
+  "version": "2.1.6",
   "private": true,
-  "description": "Coding-agent skills and the Claude Code stack - repo tooling (skill/manifest/template/README parity + hygiene lint). The Cursor twin stack lives in the cursor-stack repo.",
+  "description": "Alfred Code - the house coding-agent stack for Claude Code: skills, agents, rules, hooks and MCP servers, installed per project from one source. This package is the repo tooling: lint, tests, marketplace build.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/envoydev/alfred-code.git"
+  },
+  "homepage": "https://github.com/envoydev/alfred-code#readme",
+  "bugs": {
+    "url": "https://github.com/envoydev/alfred-code/issues"
+  },
+  "keywords": [
+    "alfred-code",
+    "claude-code",
+    "claude-code-plugin",
+    "skills",
+    "agents",
+    "hooks",
+    "mcp"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "lint": "node scripts/lint-skills.js",
     "graph": "node scripts/stack-graph.js --write",

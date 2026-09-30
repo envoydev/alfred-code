@@ -41,10 +41,11 @@ test('M23 the claude-md-management retirement row calls the skill always-on, not
 
 // M29: each kept MCP server's launcher downloads and runs its pinned package at every session start, and serena
 // fetches its language servers at run time - the Starts row said neither.
-test('M29 the README Starts row says what each MCP plugin runs at session start', () =>
+test('M29 the install footprint says what each MCP plugin runs at session start', () =>
 {
-    const row = read('README.md').split('\n').find((l) => l.startsWith('| **Starts** |'));
-    assert.ok(row, 'the Starts row');
+    const doc = read('docs/install-footprint.md');
+    const row = doc.slice(doc.indexOf('## What runs'), doc.indexOf('## What you install by hand'));
+    assert.ok(row.length > 20, 'the What runs section');
     assert.match(row, /downloads and runs its pinned package/);
     for (const pkg of ['serena-agent', 'mcp-memory-service', '@playwright/mcp', 'windows-mcp', 'macos-mcp']) assert.ok(row.includes(pkg), pkg);
     assert.match(row, /language servers/);
@@ -90,7 +91,7 @@ test('M39 the handoff notes are named as topic folders the server can filter', (
 {
     const shipped = [
         ...each('stack', /\.(md|js|json)$/), ...each('setup-plugin', /\.(md|js|json)$/),
-        'meta/shared-rules.json', 'docs/alfred-code.html', 'CLAUDE.md',
+        'meta/shared-rules.json', 'docs/alfred-code.html', ...require('./claude-docs.js').claudeDocFiles(),
     ];
     for (const f of shipped)
     {
@@ -288,7 +289,7 @@ test('R3 no page says MacOS-MCP cannot switch a tool off; each names the config.
         'stack/mcp/desktop-launch.js': /no exclude flag; its own config\.toml `\[tools\] exclude` removes/,
         'stack/skills/desktop-automation/references/macos.md': /no exclude flag; its own `~\/\.macos-mcp\/config\.toml` `\[tools\] exclude` removes/,
         'docs/alfred-code.html': /no exclude flag; its own config\.toml \[tools\] exclude removes/,
-        'CLAUDE.md': /MacOS-MCP 0\.4\.6 has no exclude flag; its own config\.toml `\[tools\] exclude` removes/,
+        '.claude/rules/repo-mcp.md': /MacOS-MCP 0\.4\.6 has no exclude flag; its own config\.toml `\[tools\] exclude` removes/,
     };
     for (const [file, right] of Object.entries(sites))
     {

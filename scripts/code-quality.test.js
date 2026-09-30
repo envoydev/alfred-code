@@ -9,6 +9,7 @@ const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
+const { readClaudeDocs } = require('./claude-docs.js');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -422,7 +423,7 @@ test('a code-quality capture started past the fresh-session trigger is offered a
 test('the CLAUDE.md seat counts match the agents on disk', () =>
 {
     const n = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).filter((f) => f.endsWith('.md')).length;
-    const doc = read('CLAUDE.md');
+    const doc = readClaudeDocs();
     assert.match(doc, new RegExp(`\`stack/agents/\` - ${n} subagents`));
     assert.match(doc, new RegExp(`twins of all ${n}\\b`));
     assert.match(doc, new RegExp(`all ${n} in the core plugin`));
