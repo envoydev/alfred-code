@@ -5,21 +5,14 @@
 // Reads the committed meta/stack-graph.json (Component A); emits an installer
 // selection file for the Node seed's --selection (Component B).
 'use strict';
+// Every file this module reads is JSON, which parses with either line end - so it leaves fs as it found it. It once
+// replaced the process-wide fs.readFileSync with a CRLF-to-LF one for the .ps1 twin's parity check (gone since 2.0.0),
+// and the installer, which loads this module for its closure, then read every later file through it: a CRLF .mcp.json
+// was snapshotted without its line ends (review 2.1.6 re-verify 4 T4).
 const fs = require('fs');
-// --- CRLF normalization, once, at the boundary --------------------------------------------------
-// A Windows checkout has CRLF line endings (git's autocrlf converts on the way out), and JS treats
-// `\r` as a LINE TERMINATOR: `.` does not match it. So a pattern ending `(#.*)?$` fails on every
-// commented line, and the installer parity check reported the ENTIRE MCP block missing from the
-// .ps1 twin - eight false findings, on a repo where the twins were in perfect sync. Text read here
-// is never sensitive to which bytes end a line, so normalize every utf8 read and let every regex
-// below stay written for `\n`.
-const _readFileSync = fs.readFileSync;
-fs.readFileSync = (p, o) => ((o === 'utf8' || (o && o.encoding === 'utf8'))
-    ? String(_readFileSync(p, o)).replace(/\r\n/g, '\n')
-    : _readFileSync(p, o));
-
 const path = require('path');
 const { USER_OFF_WINS } = require('./install/plugins.js');
+const { parseJson } = require('./install/json-file.js');
 const { offeredOn, platformOf, osLabel, DESKTOP_OS } = require('../stack/mcp/desktop-launch.js');
 
 // Expand raw = { skills?, agents?, rules?, mcps?, plugins?, hooks? } into the
@@ -227,7 +220,7 @@ function accountSettingsEnv(configDir)
     const dir = configDir || process.env.CLAUDE_CONFIG_DIR || p.join(os.homedir(), '.claude');
     try
     {
-        const env = JSON.parse(fs.readFileSync(p.join(dir, 'settings.json'), 'utf8')).env;
+        const env = parseJson(fs.readFileSync(p.join(dir, 'settings.json'), 'utf8')).env;
         return env && typeof env === 'object' ? env : {};
     }
     catch { return {}; }

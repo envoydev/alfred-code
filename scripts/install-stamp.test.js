@@ -30,7 +30,7 @@ function project({ rules = [], servers = {}, plugins = {}, always } = {})
     const src = path.join(base, 'src');
     fs.mkdirSync(path.join(src, 'meta'), { recursive: true });
     fs.writeFileSync(path.join(src, 'meta', 'recommendations.json'), JSON.stringify({
-        always: always || { rules: ['baseline-interaction', 'baseline-security'], mcps: ['navigation', 'documentation', 'memory'] },
+        always: always || { rules: ['alfred-interaction', 'alfred-security'], mcps: ['navigation', 'documentation', 'memory'] },
     }));
     return { base, src, mcpFile: path.join(base, '.mcp.json') };
 }
@@ -54,6 +54,7 @@ function write(p, opts = {})
         hooksRoute: opts.hooksRoute,
         playwright: opts.playwright,
         playwrightEnabled: opts.playwrightEnabled,
+        mcpHeld: opts.mcpHeld,
         version: opts.version || '1.0.0',
         now: new Date('2026-09-22T10:00:00.000Z'),
         log: (m) => logs.push(m), note: (m) => logs.push(m),
@@ -92,6 +93,37 @@ test('install-stamp: the stamp carries the revision, the action and the scope', 
     assert.match(text, /compare\/f{40}\.\.\.main/, 'the compare line is what configure tells a user to open');
 });
 
+// Review 2.1.6 (the user's ruling, no ceilings): the account-file loss check compares a CLI backup's millisecond stamp
+// with the time the stamp was written, so the stamp records that time to the millisecond; an older stamp, with only
+// its whole-second `installed:` line, reads as that second and says so.
+test('install-stamp: installed-ms records the write to the millisecond; an older stamp reads its whole second, not precise', () =>
+{
+    const p = project();
+    const { dest, text } = write(p);
+    assert.match(text, /^installed: 2026-09-22T10:00:00Z\ninstalled-ms: 1790071200000$/m);
+    const { readInstalledAt } = require('./install/stamp.js');
+    assert.deepStrictEqual(readInstalledAt(dest), { ms: Date.parse('2026-09-22T10:00:00.000Z'), precise: true });
+    fs.writeFileSync(dest, text.replace(/^installed-ms: .*\n/m, ''));
+    assert.deepStrictEqual(readInstalledAt(dest), { ms: Date.parse('2026-09-22T10:00:00Z'), precise: false });
+    assert.deepStrictEqual(readInstalledAt(path.join(p.base, 'absent.stamp')), { ms: NaN, precise: false });
+});
+
+// Re-verify 4 T7: the MCP picks the copy route held back because the user's own registration holds the name. Written only
+// when there is one, read back by scope and name, and a hand-edited entry of any other shape (an unknown scope, or a name
+// that is no item) never becomes a pick. Project scope is a scope since the matrix F-OWN fix (a user's own .mcp.json row).
+test('install-stamp: mcp-held records the held picks, and its reader drops what is not a project, local or user pick', () =>
+{
+    const p = project();
+    assert.doesNotMatch(write(p).text, /^mcp-held:/m, 'no line with none held');
+    const { dest, text } = write(p, { mcpHeld: [{ scope: 'local', name: 'macos-desktop' }, { scope: 'user', name: 'browser-chrome' }, { scope: 'project', name: 'macos-desktop' }] });
+    assert.match(text, /^mcp-held: local:macos-desktop,user:browser-chrome,project:macos-desktop$/m);
+    const { readMcpHeld } = require('./install/stamp.js');
+    assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-desktop' }, { scope: 'user', name: 'browser-chrome' }, { scope: 'project', name: 'macos-desktop' }]);
+    fs.writeFileSync(dest, text.replace(/^mcp-held: .*$/m, 'mcp-held: local:macos-desktop, project:navigation,global:x,user:../x,local:,user:memory'));
+    assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-desktop' }, { scope: 'project', name: 'navigation' }, { scope: 'user', name: 'memory' }]);
+    assert.deepStrictEqual(readMcpHeld(path.join(p.base, 'absent.stamp')), []);
+});
+
 test('install-stamp: every scope writes the stamp into the project - T16, R29', () =>
 {
     const p = project();
@@ -120,11 +152,11 @@ test('install-stamp: shipped-hooks is one entry per FILE, not per matcher', () =
 test('install-stamp: installed-always records what is CARRIED, not what shipped', () =>
 {
     const p = project({
-        rules: ['baseline-interaction'],                 // security shipped but is not on disk
+        rules: ['alfred-interaction'],                 // security shipped but is not on disk
         servers: { navigation: {} },                     // documentation and memory are not registered
     });
     const { text } = write(p);
-    assert.match(text, /^installed-always-rules: baseline-interaction$/m);
+    assert.match(text, /^installed-always-rules: alfred-interaction$/m);
     assert.match(text, /^installed-always-mcps: navigation$/m);
 });
 
@@ -133,7 +165,7 @@ test('install-stamp: a server riding its PLUGIN counts as carried - there is no 
     // This is the Phase 6 shape: on the plugin route the installer registers nothing, so a stamp
     // that only read the file would record an install with none of the locked three.
     const p = project({
-        rules: ['baseline-interaction', 'baseline-security'],
+        rules: ['alfred-interaction', 'alfred-security'],
         servers: {},
         plugins: { 'navigation@envoydev': true, 'documentation@envoydev': true, 'memory@envoydev': true },
     });
@@ -167,14 +199,14 @@ test('install-stamp: a missing or malformed input is empty, never a crash', () =
 
 test('install-stamp: installedAlways reads the two lists independently', () =>
 {
-    const p = project({ rules: ['baseline-security'], servers: { memory: {} } });
+    const p = project({ rules: ['alfred-security'], servers: { memory: {} } });
     const got = installedAlways({
         recommendations: path.join(p.src, 'meta', 'recommendations.json'),
         mcpFile: p.mcpFile,
         settingsFile: path.join(p.base, '.claude', 'settings.json'),
         rulesDir: path.join(p.base, '.claude', 'rules'),
     });
-    assert.deepStrictEqual(got.rules, ['baseline-security']);
+    assert.deepStrictEqual(got.rules, ['alfred-security']);
     assert.deepStrictEqual(got.mcps, ['memory']);
 });
 
@@ -321,8 +353,8 @@ test('install-stamp: readLibrary drops every library name the installer never wr
     const p = project();
     const file = path.join(p.base, 'hostile.stamp');
     const h = '1'.repeat(64);
-    fs.writeFileSync(file, `version: 2.0.0\nlibrary-skills: ../../src=${h},csharp=${h},..=${h},a/b=${h},Bad=${h}\nlibrary-agents: ../x=${h},seat=${h}\nlibrary-rules: ..\\..\\win=${h},baseline-git=${h}\n`);
-    assert.deepStrictEqual(readLibrary(file), { version: '2.0.0', skills: { csharp: h }, agents: { seat: h }, rules: { 'baseline-git': h }, invalid: 6 }, 'dropped, and counted for library-check\'s finding');
+    fs.writeFileSync(file, `version: 2.0.0\nlibrary-skills: ../../src=${h},csharp=${h},..=${h},a/b=${h},Bad=${h}\nlibrary-agents: ../x=${h},seat=${h}\nlibrary-rules: ..\\..\\win=${h},alfred-git=${h}\n`);
+    assert.deepStrictEqual(readLibrary(file), { version: '2.0.0', skills: { csharp: h }, agents: { seat: h }, rules: { 'alfred-git': h }, invalid: 6 }, 'dropped, and counted for library-check\'s finding');
 });
 
 test('install-stamp: a stamp without library lines, or no stamp, reads as null; recorded empty is an answer', () =>
@@ -342,9 +374,9 @@ test('install-stamp: a stamp without library lines, or no stamp, reads as null; 
 test('install-stamp: the stamp records rule hashes alongside skills and agents', () =>
 {
     const p = project();
-    const { dest, text } = write(p, { library: { skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: { 'baseline-git': 'cc' } } });
-    assert.match(text, /^library-rules: baseline-git=cc$/m);
-    assert.deepStrictEqual(readLibrary(dest), { version: '1.0.0', skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: { 'baseline-git': 'cc' }, invalid: 0 });
+    const { dest, text } = write(p, { library: { skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: { 'alfred-git': 'cc' } } });
+    assert.match(text, /^library-rules: alfred-git=cc$/m);
+    assert.deepStrictEqual(readLibrary(dest), { version: '1.0.0', skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: { 'alfred-git': 'cc' }, invalid: 0 });
 });
 
 // R29: a stamp a 1.x (pre-rules) release wrote carries library-skills/library-agents but no
@@ -835,14 +867,14 @@ test('installState: an unstamped legacy copy-route install reads legacy-unstampe
     const env = { CLAUDE_CONFIG_DIR: path.join(TMP, 'no-account') };
     const state = (root) => stamp.installState(root, env);
 
-    const full = legacyTree({ names: oldSkills, own: ['my-own-helper'], hooks: ['guard-catastrophic-rm.js', 'hook-prelude.js'], agents: [oldSeat], rules: ['baseline-security.md'], env: { ...legacyKey, MY_OWN_VAR: '1' } });
+    const full = legacyTree({ names: oldSkills, own: ['my-own-helper'], hooks: ['guard-catastrophic-rm.js', 'hook-prelude.js'], agents: [oldSeat], rules: ['alfred-security.md'], env: { ...legacyKey, MY_OWN_VAR: '1' } });
     assert.strictEqual(state(full), 'legacy-unstamped');
     assert.strictEqual(neverSetUp({ CLAUDE_PLUGIN_ROOT: '/x', CLAUDE_PROJECT_DIR: full }), true, 'no install record - the hooks stay down until the update writes one');
     const cli = spawnSync(process.execPath, [path.join(__dirname, 'install', 'stamp.js'), 'state', full], { encoding: 'utf8', env: { ...process.env, ...env } });
     assert.strictEqual(cli.stdout, 'legacy-unstamped\n', cli.stderr);
 
     // One signature is none: the stack's names alone (plus the project's own skill), its hooks alone, its env alone.
-    assert.strictEqual(state(legacyTree({ names: [...oldSkills, 'markdown-style', 'docs-as-code'], own: ['my-own-helper'], agents: [oldSeat], rules: ['baseline-security.md'] })), 'not-installed', 'skills, seats and rules are ONE signature');
+    assert.strictEqual(state(legacyTree({ names: [...oldSkills, 'markdown-style', 'docs-as-code'], own: ['my-own-helper'], agents: [oldSeat], rules: ['alfred-security.md'] })), 'not-installed', 'skills, seats and rules are ONE signature');
     assert.strictEqual(state(legacyTree({ hooks: ['guard-catastrophic-rm.js', 'guard-read-whole-file.js'] })), 'not-installed');
     assert.strictEqual(state(legacyTree({ env: legacyKey })), 'not-installed');
     // Any two are enough; the current prefix and the local file count as the old ones do.
@@ -945,6 +977,23 @@ test('installState: a worktree with no record of its own is a worktree of the in
     assert.strictEqual(stamp.worktreeMain(wt), null);
 });
 
+// Seam delta 2: an install record in a folder BETWEEN the launch folder and the git top (a package of a monorepo) is the
+// tree's own, not a worktree's main checkout - `checkoutsOf` returns those folders, so `ownCheckouts` must include them.
+test('installState: a record in a folder between the launch folder and the git top is the tree\'s own, never a worktree of an install', () => {
+    const stamp = require('./install/stamp.js');
+    const { execFileSync } = require('node:child_process');
+    const top = path.join(TMP, `between-${seq++}`);
+    const pkg = path.join(top, 'packages', 'app');
+    const launch = path.join(pkg, 'src');
+    fs.mkdirSync(launch, { recursive: true });
+    execFileSync('git', ['-C', top, 'init', '-q'], { stdio: 'ignore' });
+    fs.mkdirSync(path.join(pkg, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(pkg, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\ninitialised: 2026-09-25T10:00:00Z\n');
+    const env = { CLAUDE_CONFIG_DIR: path.join(top, 'no-account') };
+    assert.strictEqual(stamp.worktreeMain(launch), null, 'no worktree main is named');
+    assert.strictEqual(stamp.installState(launch, env), 'initialised');
+});
+
 // M5 (Task 18b fix round 1): the scope validate passes to every installer call is read by the same
 // script as the state - the new stamp name or the 1.x one, a 1.x `global` read as `user`, anything else
 // (absent, hand-edited) as `project` - never a grep of one file name.
@@ -1000,4 +1049,36 @@ test('installScope: an unmigrated 1.x global install reads its account stamp\'s 
     fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'version: 2.0.0\nscope: project\n');
     assert.strictEqual(stamp.installScope(root, env), 'project');
     assert.strictEqual(stamp.legacyGlobalStamp(root, env), null);
+});
+// Matrix FAIL F-BOM (2.1.6): ONE reader for every JSON file a person may have edited. A leading BOM is stripped; a BOM
+// plus garbage is still unreadable, and stamp.js's own read of .mcp.json (installedAlways) sees the servers under a BOM.
+test('json-file: a leading BOM is stripped before the parse, and a BOM plus garbage is still unreadable (matrix F-BOM)', () =>
+{
+    const { parseJson, readJson, stripBom } = require('./install/json-file.js');
+    const dir = fs.mkdtempSync(path.join(TMP, 'jf-'));
+    const write = (name, text) => { const f = path.join(dir, name); fs.writeFileSync(f, text); return f; };
+    assert.deepStrictEqual(parseJson('\uFEFF{"a":1}'), { a: 1 });
+    assert.deepStrictEqual(parseJson('{"a":1}'), { a: 1 });
+    assert.throws(() => parseJson('\uFEFF{"a":'), SyntaxError, 'a BOM plus garbage is not JSON');
+    assert.throws(() => parseJson('\uFEFF\uFEFF{"a":1}'), SyntaxError, 'only ONE leading BOM is the encoding mark');
+    assert.strictEqual(stripBom('x\uFEFF'), 'x\uFEFF', 'a BOM past byte 0 is content');
+    assert.deepStrictEqual(readJson(write('ok.json', '\uFEFF{"mcpServers":{"a":{}}}')), { mcpServers: { a: {} } });
+    assert.deepStrictEqual(readJson(write('bad.json', '\uFEFF{"mcpServers":')), {}, 'unreadable reads as empty, like before');
+    assert.deepStrictEqual(readJson(path.join(dir, 'absent.json')), {});
+    const p = project({ servers: { memory: {} } });
+    fs.writeFileSync(p.mcpFile, `\uFEFF${fs.readFileSync(p.mcpFile, 'utf8')}`);
+    const got = installedAlways({ recommendations: path.join(p.src, 'meta', 'recommendations.json'), mcpFile: p.mcpFile,
+        settingsFile: path.join(p.base, '.claude', 'settings.json'), rulesDir: path.join(p.base, '.claude', 'rules') });
+    assert.deepStrictEqual(got.mcps, ['memory'], 'stamp.js read a BOM\'d .mcp.json as empty');
+});
+
+// Matrix F-BOM follow-up (2.1.6, V1): the legacy signature's settings read goes through the shared reader too - a BOM'd
+// settings.json holding a stack env key is a signature hit, not an empty file.
+test('legacySignature: a stack env key in a BOM\'d settings.json counts, and a BOM plus garbage still claims nothing (V1)', () =>
+{
+    const stamp = require('./install/stamp.js');
+    const raw = `\uFEFF${JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs' } })}`;
+    assert.strictEqual(stamp.legacySignature(legacyTree({ hooks: ['guard-catastrophic-rm.js'], raw })), true, 'hooks + a BOM\'d env key are two hits');
+    assert.strictEqual(stamp.legacySignature(legacyTree({ hooks: ['guard-catastrophic-rm.js'], raw: '\uFEFF{"env": {' })), false, 'BOM plus garbage is no hit');
+    assert.strictEqual(stamp.legacySignature(legacyTree({ hooks: ['guard-catastrophic-rm.js'], raw: '' })), false, 'an empty file is no hit');
 });

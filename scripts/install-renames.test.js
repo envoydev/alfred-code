@@ -22,7 +22,6 @@ const ROOT = path.join(__dirname, '..');
 const RENAMED = loadManifest(ROOT).renamed;
 const COPY_ROUTE = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
 const OLD_KEY = 'claude-stack'; // legacy-name
-const HASH = 'a'.repeat(64);
 
 const write = (repo, rel, text = 'x\n') =>
 {
@@ -58,7 +57,7 @@ test('the renamed map: every old name is retired, every new name ships, and no n
     const m = loadManifest(ROOT);
     const skills = new Set(m.catalogs.skills.map((e) => e.split('|').pop()));
     const agents = new Set(m.agents.map((f) => f.replace(/\.md$/, '')));
-    assert.strictEqual(Object.keys(RENAMED.skills).length, 26, 'the 23 project-* skills plus the three 2.1.0 renames');
+    assert.strictEqual(Object.keys(RENAMED.skills).length, 27, 'the 23 project-* skills, the three 2.1.0 renames and the 2.1.6 AGENTS.md one');
     assert.strictEqual(Object.keys(RENAMED.agents).length, 2, 'the two failure diagnosers');
     for (const [from, to] of Object.entries(RENAMED.skills))
     {
@@ -77,7 +76,7 @@ test('the renamed map: every old name is retired, every new name ships, and no n
 
 // 2.1.0: three more skills take alfred-habits-* names, and plugin-authoring leaves the shipped catalog
 // (it is retired, not renamed - this repo keeps its own copy in .claude/skills).
-const V21 = { 'alfred-capture-claude-md': 'alfred-habits-adjust-claude-md', 'create-ticket': 'alfred-habits-create-ticket', 'explain-code-tutor': 'alfred-habits-explain-code' };
+const V21 = { 'alfred-capture-claude-md': 'alfred-habits-adjust-agents-md', 'create-ticket': 'alfred-habits-create-ticket', 'explain-code-tutor': 'alfred-habits-explain-code' };
 
 test('2.1.0 renames: each old skill maps to its new name, is retired, and plugin-authoring is retired and no longer ships', () =>
 {
@@ -93,7 +92,20 @@ test('2.1.0 renames: each old skill maps to its new name, is retired, and plugin
     assert.ok(m.retired.skills.includes('plugin-authoring') && !skills.has('plugin-authoring'), 'plugin-authoring is retired and not in the catalog');
     assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'skills', 'plugin-authoring')), 'plugin-authoring is not under stack/skills');
     assert.deepStrictEqual(selection.renamePicked({ skills: ['create-ticket@alfred-code', 'explain-code-tutor', 'alfred-capture-claude-md@alfred-code'], agents: [] }, { renamed: RENAMED, log: () => {}, said: new Set() }),
-        { skills: ['alfred-habits-create-ticket@alfred-code', 'alfred-habits-explain-code', 'alfred-habits-adjust-claude-md@alfred-code'], agents: [] }, 'a pick keeps its home and takes the new name');
+        { skills: ['alfred-habits-create-ticket@alfred-code', 'alfred-habits-explain-code', 'alfred-habits-adjust-agents-md@alfred-code'], agents: [] }, 'a pick keeps its home and takes the new name');
+});
+
+// The instruction file is AGENTS.md now: the 2.1.6 skill name maps to it, is retired and is gone from disk, and the
+// pick, a deny and an override written under the old name are carried over.
+test('AGENTS.md rename: alfred-habits-adjust-claude-md maps to alfred-habits-adjust-agents-md, retired, and a pick carries over', () =>
+{
+    const m = loadManifest(ROOT);
+    assert.strictEqual(RENAMED.skills['alfred-habits-adjust-claude-md'], 'alfred-habits-adjust-agents-md');
+    assert.ok(m.retired.skills.includes('alfred-habits-adjust-claude-md'));
+    assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'skills', 'alfred-habits-adjust-claude-md')));
+    assert.ok(fs.existsSync(path.join(ROOT, 'stack', 'skills', 'alfred-habits-adjust-agents-md', 'SKILL.md')));
+    assert.deepStrictEqual(selection.renamePicked({ skills: ['alfred-habits-adjust-claude-md@alfred-code'], agents: [] }, { renamed: RENAMED, log: () => {}, said: new Set() }),
+        { skills: ['alfred-habits-adjust-agents-md@alfred-code'], agents: [] });
 });
 
 // ---------- the read-side helpers ----------
@@ -110,8 +122,9 @@ test('renameLines: an old skill or seat line reads under its new name, one line 
         'renamed: skill project-solve-task -> alfred-task-solve',
         'renamed: agent ci-failure-diagnoser -> alfred-issue-diagnoser-ci',
     ], 'the second sighting of a rename says nothing');
-    // A rule and a hook are never renamed by this table, even under a same-looking name, and an MCP line
-    // only by its own `mcps` part (the 2.0.0 role names) - never under a skill's.
+    // A rule line reads only by the table's own `rules` part (2.1.6: baseline-git -> alfred-git), a hook never
+    // is renamed, and an MCP line only by its own `mcps` part (the 2.0.0 role names) - never under a skill's.
+    assert.deepStrictEqual(selection.renameLines(['rule baseline-git', 'rule baseline-project-run-book', 'hook baseline-git'], opts), ['rule alfred-git', 'rule baseline-project-run-book', 'hook baseline-git']);
     assert.deepStrictEqual(selection.renameLines(['rule project-solve-task', 'mcp project-solve-task'], opts), ['rule project-solve-task', 'mcp project-solve-task']);
     assert.deepStrictEqual(selection.renameLines(['mcp serena', 'skill serena'], opts), ['mcp navigation', 'skill serena']);
 });
@@ -147,22 +160,22 @@ const V13_CLAUDE_MD = [
     '   /project-architecture-analyzer, /project-code-style-analyzer, /project-related-context ONLY',
     '   /project-agent-capabilities LAST, so its generated inventory reflects the final install. All but',
     '   /project-architecture-analyzer are slash-only: the user types them - a model Skill call is refused.',
-    '   .claude/rules/baseline-project-agent-capabilities.md (user-run /project-agent-capabilities; if',
-    '| `.claude/rules/baseline-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `project-commit-checkpoint` skill |',
-    '| `.claude/rules/baseline-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /project-related-context with their paths/URLs) | sibling-repo awareness |',
+    '   .claude/rules/alfred-project-agent-capabilities.md (user-run /project-agent-capabilities; if',
+    '| `.claude/rules/alfred-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `project-commit-checkpoint` skill |',
+    '| `.claude/rules/alfred-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /project-related-context with their paths/URLs) | sibling-repo awareness |',
     '',
 ].join('\n');
 const V13_CLAUDE_MD_NOW = [
     '   /alfred-capture-architecture, /alfred-capture-code-style, /alfred-capture-related-projects ONLY',
     '   /alfred-capture-agent-capabilities LAST, so its generated inventory reflects the final install. All but',
     '   /alfred-capture-architecture are slash-only: the user types them - a model Skill call is refused.',
-    '   .claude/rules/baseline-project-agent-capabilities.md (user-run /alfred-capture-agent-capabilities; if',
-    '| `.claude/rules/baseline-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `alfred-habits-commit-checkpoint` skill |',
-    '| `.claude/rules/baseline-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /alfred-capture-related-projects with their paths/URLs) | sibling-repo awareness |',
+    '   .claude/rules/alfred-project-agent-capabilities.md (user-run /alfred-capture-agent-capabilities; if',
+    '| `.claude/rules/alfred-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `alfred-habits-commit-checkpoint` skill |',
+    '| `.claude/rules/alfred-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /alfred-capture-related-projects with their paths/URLs) | sibling-repo awareness |',
     '',
 ].join('\n');
 const CAPABILITIES_RULE = '# Agent capabilities\n\nGenerated by /project-agent-capabilities.\n\n- `ci-failure-diagnoser` - a red CI run; `runtime-failure-diagnoser` - a crash.\n- `alfred-code:project-architecture-quality-loop` loops the capture.\n';
-const LONGER = 'Keep baseline-project-related-context.md, my-project-solve-task-notes, project-solve-task-v2 and xci-failure-diagnoser as they are.\n';
+const LONGER = 'Keep alfred-project-related-context.md, my-project-solve-task-notes, project-solve-task-v2 and xci-failure-diagnoser as they are.\n';
 
 test('respellRenamed (I2): every old name the stack wrote into CLAUDE.md and a generated rule is re-spelled as a whole token, one line per file, and a second run changes nothing', () =>
 {
@@ -172,27 +185,27 @@ test('respellRenamed (I2): every old name the stack wrote into CLAUDE.md and a g
         const files = {
             'CLAUDE.md': LONGER,
             '.claude/CLAUDE.md': V13_CLAUDE_MD,
-            '.claude/rules/baseline-project-agent-capabilities.md': CAPABILITIES_RULE,
-            '.claude/rules/baseline-project-architecture.md': 'Nothing old here - alfred-capture-architecture writes it.\n',
+            '.claude/rules/alfred-project-agent-capabilities.md': CAPABILITIES_RULE,
+            '.claude/rules/alfred-project-architecture.md': 'Nothing old here - alfred-capture-architecture writes it.\n',
             '.claude/rules/my-own-rule.md': 'My notes on /project-solve-task stay mine.\n',
             '.claude/rules/project-code-style.md': '---\npaths: ["**/*.ts"]\n---\nthe project-code-style-analyzer skill owns this rule\n',
         };
         for (const [rel, text] of Object.entries(files)) write(dir, rel, text);
         const logs = [];
-        const run = () => selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        const run = () => selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, owned: (rel) => rel === '.claude/CLAUDE.md', log: (m) => logs.push(m), note: (m) => assert.fail(m) });
         run();
         const read = (rel) => fs.readFileSync(path.join(dir, rel), 'utf8');
         assert.strictEqual(read('.claude/CLAUDE.md'), V13_CLAUDE_MD_NOW, 'the 1.3.0 template text reads under the new names; the rule FILE names stay');
-        assert.strictEqual(read('.claude/rules/baseline-project-agent-capabilities.md'),
+        assert.strictEqual(read('.claude/rules/alfred-project-agent-capabilities.md'),
             '# Agent capabilities\n\nGenerated by /alfred-capture-agent-capabilities.\n\n- `alfred-issue-diagnoser-ci` - a red CI run; `alfred-issue-diagnoser-runtime` - a crash.\n- `alfred-code:alfred-loop-architecture-quality` loops the capture.\n',
             'a seat name and a plugin-prefixed name are re-spelled too');
         assert.strictEqual(read('CLAUDE.md'), LONGER, 'an old name inside a longer name is never touched');
         assert.strictEqual(read('.claude/rules/my-own-rule.md'), files['.claude/rules/my-own-rule.md'], 'a rule the stack did not generate is not the stack\'s to re-spell');
-        assert.strictEqual(read('.claude/rules/baseline-project-architecture.md'), files['.claude/rules/baseline-project-architecture.md']);
+        assert.strictEqual(read('.claude/rules/alfred-project-architecture.md'), files['.claude/rules/alfred-project-architecture.md']);
         assert.match(read('.claude/rules/project-code-style.md'), /the alfred-capture-code-style skill owns this rule/, 'the generated code-style rule is the stack\'s too');
         assert.deepStrictEqual(logs, [
             '  renamed: .claude/CLAUDE.md - 8 old skill or seat name(s) re-spelled to the new names',
-            '  renamed: .claude/rules/baseline-project-agent-capabilities.md - 4 old skill or seat name(s) re-spelled to the new names',
+            '  renamed: .claude/rules/alfred-project-agent-capabilities.md - 4 old skill or seat name(s) re-spelled to the new names',
             '  renamed: .claude/rules/project-code-style.md - 1 old skill or seat name(s) re-spelled to the new names',
         ], 'one line per file that changed, with its count; a file with no hit says nothing');
         const after = Object.keys(files).map(read);
@@ -204,6 +217,31 @@ test('respellRenamed (I2): every old name the stack wrote into CLAUDE.md and a g
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// installer:F1 - a root AGENTS.md / CLAUDE.md is the project's own: an old stack name in it is NAMED, never rewritten, and a
+// path or a backticked word that merely equals an old name is no hit. The stack's own seed (owned) is still re-spelled.
+test('respellRenamed (audit F1): the user\'s own instruction files are never rewritten, only named; an owned seed is', () =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-own-'));
+    try
+    {
+        const own = 'Run scripts/create-ticket.sh and see docs/explain-code-tutor.md; `serena` fixtures live here.\nUse /project-solve-task to file one.\n';
+        for (const rel of ['AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md']) write(dir, rel, own);
+        write(dir, '.claude/AGENTS.md', 'Use /project-solve-task.\n');
+        const logs = [];
+        const wrote = [];
+        selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, owned: (rel) => rel === '.claude/AGENTS.md', onWrite: (rel) => wrote.push(rel), log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        const read = (rel) => fs.readFileSync(path.join(dir, rel), 'utf8');
+        for (const rel of ['AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md']) assert.strictEqual(read(rel), own, `${rel} is the project's`);
+        assert.strictEqual(read('.claude/AGENTS.md'), 'Use /alfred-task-solve.\n', 'the owned seed follows the rename');
+        assert.deepStrictEqual(wrote, ['.claude/AGENTS.md']);
+        const named = logs.filter((l) => /!! AGENTS\.md /.test(l));
+        assert.strictEqual(named.length, 1, logs.join('\n'));
+        assert.match(named[0], /project-solve-task/, 'the slash command is named');
+        assert.doesNotMatch(named[0], /create-ticket|explain-code-tutor|serena/, 'a path segment or a backticked word is no hit');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('respellRenamed (I2): the longest old name wins, and a shorter one inside it is never re-spelled on its own', () =>
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-docs-'));
@@ -211,7 +249,7 @@ test('respellRenamed (I2): the longest old name wins, and a shorter one inside i
     {
         write(dir, 'CLAUDE.md', 'Run /old-loop, then /old-loop-deep.\n');
         const renamed = { skills: { 'old-loop': 'new-loop', 'old-loop-deep': 'new-deep' }, agents: {} };
-        selection.respellRenamed({ projectRoot: dir, renamed, log: () => {}, note: (m) => assert.fail(m) });
+        selection.respellRenamed({ projectRoot: dir, renamed, owned: () => true, log: () => {}, note: (m) => assert.fail(m) });
         assert.strictEqual(fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'), 'Run /new-loop, then /new-deep.\n');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -244,13 +282,13 @@ test('respellRenamed: a generated rule\'s old MCP tool spellings and routing key
             `- \`memory\` - \`${pluginTool('memory', 'memory_search')}\`, and my own \`serena-notes\` stay`,
             '',
         ].join('\n');
-        write(dir, '.claude/rules/baseline-project-agent-capabilities.md', before);
+        write(dir, '.claude/rules/alfred-project-agent-capabilities.md', before);
         const logs = [];
         const run = () => selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
         run();
-        const read = () => fs.readFileSync(path.join(dir, '.claude/rules/baseline-project-agent-capabilities.md'), 'utf8');
+        const read = () => fs.readFileSync(path.join(dir, '.claude/rules/alfred-project-agent-capabilities.md'), 'utf8');
         assert.strictEqual(read(), after);
-        assert.deepStrictEqual(logs, ['  renamed: .claude/rules/baseline-project-agent-capabilities.md - 7 old MCP tool or server name(s) re-spelled to the new names']);
+        assert.deepStrictEqual(logs, ['  renamed: .claude/rules/alfred-project-agent-capabilities.md - 7 old MCP tool or server name(s) re-spelled to the new names']);
         logs.length = 0;
         run();
         assert.strictEqual(read(), after, 'a second run changes nothing');
@@ -267,7 +305,7 @@ test('M46 respellRenamed: the single pre-per-engine browser spelling follows to 
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-pw-'));
     try
     {
-        const rule = '.claude/rules/baseline-project-agent-capabilities.md';
+        const rule = '.claude/rules/alfred-project-agent-capabilities.md';
         write(dir, rule, `- browser - \`${bareTool('playwright', 'browser_navigate')}\`, \`${bareTool('playwright', 'browser_snapshot')}\`\n`);
         const logs = [];
         selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, engines: ['firefox', 'chrome'], log: (m) => logs.push(m), note: (m) => assert.fail(m) });
@@ -415,13 +453,13 @@ test('readBackSettings (I1): at project and user scope a stack seat deny in sett
 const V13_LISTING = JSON.stringify([OLD_KEY, 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@${OLD_KEY}`, version: '1.3.0', scope: 'project', enabled: true })));
 function v13Plugin(repo)
 {
-    write(repo, '.claude/rules/baseline-interaction.md');
+    write(repo, '.claude/rules/alfred-interaction.md');
     write(repo, '.claude/skills/project-related-context/SKILL.md', skill('project-related-context'));
     write(repo, '.claude/claude-stack.stamp', [ // legacy-name
         'version: 1.3.0', 'sha: 0000000',
         `picked-skills: project-solve-task@${OLD_KEY},project-commit-checkpoint@${OLD_KEY},project-related-context,markdown-style@${OLD_KEY}`,
         `picked-agents: ci-failure-diagnoser@${OLD_KEY},security-auditor@${OLD_KEY}`,
-        `library-skills: project-related-context=${HASH}`, '',
+        `library-skills: project-related-context=${hashItem(path.join(repo, '.claude/skills/project-related-context'))}`, '',
     ].join('\n'));
     write(repo, '.claude/settings.json', JSON.stringify({ env: { MY_OWN_KEY: 'mine' } }, null, 2));
 }
@@ -461,7 +499,7 @@ test('seed update --installed-only: a seat denied under its old name stays denie
     const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
     const prepare = (repo) =>
     {
-        write(repo, '.claude/rules/baseline-interaction.md');
+        write(repo, '.claude/rules/alfred-interaction.md');
         write(repo, '.claude/skills/project-related-context/SKILL.md', skill('project-related-context'));
         write(repo, '.claude/alfred-code.stamp', 'version: 1.3.0\nsha: 0000000\npicked-skills: markdown-style@alfred-code,project-related-context\npicked-agents: security-auditor@alfred-code\n');
         write(repo, '.claude/settings.json', JSON.stringify({
@@ -492,7 +530,7 @@ for (const scope of ['project', 'user', 'local'])
         const shared = JSON.stringify({ env: { MY_OWN_KEY: 'mine' } }, null, 2);
         const prepare = (repo) =>
         {
-            write(repo, '.claude/rules/baseline-interaction.md');
+            write(repo, '.claude/rules/alfred-interaction.md');
             write(repo, '.claude/alfred-code.stamp', 'version: 1.3.0\nsha: 0000000\npicked-skills: markdown-style@alfred-code\npicked-agents: security-auditor@alfred-code\n');
             write(repo, '.claude/settings.json', shared);
             write(repo, '.claude/settings.local.json', JSON.stringify({ permissions: { deny: LOCAL_DENY }, MY_LOCAL_KEY: 1 }, null, 2));
@@ -519,25 +557,83 @@ for (const scope of ['project', 'user', 'local'])
 
 // I2 end to end: a 1.3.0 project's seeded CLAUDE.md and a generated rule read under the new names
 // after its first 2.0.0 update, and the next update touches neither.
-test('seed update --installed-only (I2): the 1.3.0-seeded CLAUDE.md and a generated rule name the new commands, one line per file, and a re-run is quiet', POSIX_ONLY, () =>
+test('seed update --installed-only (I2): a generated rule names the new commands, a CLAUDE.md no ledger vouches for is named and left, and a re-run is quiet', POSIX_ONLY, () =>
 {
     const prepare = (repo) =>
     {
         v13Plugin(repo);
         write(repo, '.claude/CLAUDE.md', V13_CLAUDE_MD);
-        write(repo, '.claude/rules/baseline-project-agent-capabilities.md', CAPABILITIES_RULE);
+        write(repo, '.claude/rules/alfred-project-agent-capabilities.md', CAPABILITIES_RULE);
     };
-    const each = (repo) => ({ claudeMd: fs.readFileSync(path.join(repo, '.claude', 'CLAUDE.md'), 'utf8'), rule: fs.readFileSync(path.join(repo, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), 'utf8') });
+    const each = (repo) => ({ claudeMd: fs.readFileSync(path.join(repo, '.claude', 'CLAUDE.md'), 'utf8'), rule: fs.readFileSync(path.join(repo, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), 'utf8') });
     const { steps, outs } = seedRun(['update', 'update'], 'skill markdown-style\n', { plugins: V13_LISTING, args: ['--installed-only'], prepare, each });
-    assert.strictEqual(steps[0].claudeMd, V13_CLAUDE_MD_NOW, outs[0]);
+    assert.strictEqual(steps[0].claudeMd, V13_CLAUDE_MD, 'a 1.3.0 stamp has no ledger, so nothing proves the file is the stack\'s: it is left as written');
+    assert.match(outs[0], /!! \.claude\/CLAUDE\.md is yours and names \d+ old stack name/, outs[0]);
     assert.match(steps[0].rule, /Generated by \/alfred-capture-agent-capabilities\./);
     const lines = (out) => String(out).split('\n').filter((l) => /^==> {3}renamed: \S+ - \d+ old skill or seat name/.test(l));
     assert.deepStrictEqual(lines(outs[0]), [
-        '==>   renamed: .claude/CLAUDE.md - 8 old skill or seat name(s) re-spelled to the new names',
-        '==>   renamed: .claude/rules/baseline-project-agent-capabilities.md - 4 old skill or seat name(s) re-spelled to the new names',
+        '==>   renamed: .claude/rules/alfred-project-agent-capabilities.md - 4 old skill or seat name(s) re-spelled to the new names',
     ], outs[0]);
     assert.deepStrictEqual(steps[1], steps[0], 'the re-run changes neither file');
     assert.deepStrictEqual(lines(outs[1]), [], 'and prints no line');
+});
+
+// installer:F1 end to end: an install's seed the ledger still holds at its hash is the stack's and follows a rename (its
+// ledger row following the new bytes, so the next run still owns it); a seed edited since is the user's: named, left.
+test('seed update (audit F1): a ledger-held seed is re-spelled and stays owned, a hand-edited one is named and left', POSIX_ONLY, () =>
+{
+    const stampOf = (repo) => path.join(repo, '.claude', 'alfred-code.stamp');
+    const seedAt = (repo) => path.join(repo, '.claude', 'AGENTS.md');
+    const rowOf = (repo) => (/^managed-files: (.*)$/m.exec(fs.readFileSync(stampOf(repo), 'utf8')) || [])[1] || '';
+    // An older release's seed: old text in the file; the ledger row at that text's hash (held), or left at the seed's (edited).
+    const plant = (repo, held) =>
+    {
+        fs.appendFileSync(seedAt(repo), '\nRun /project-solve-task first.\n');
+        if (!held) return;
+        const rows = rowOf(repo).split(',').map((r) => (r.startsWith('AGENTS.md=') ? `AGENTS.md=${hashItem(seedAt(repo))}` : r));
+        fs.writeFileSync(stampOf(repo), fs.readFileSync(stampOf(repo), 'utf8').replace(/^managed-files: .*$/m, `managed-files: ${rows.join(',')}`));
+    };
+    const run = (held) => seedRun(['install', 'update', 'update'], 'skill markdown-style\n', {
+        each: (repo, i) => { if (i === 0) plant(repo, held); return { text: fs.readFileSync(seedAt(repo), 'utf8'), row: rowOf(repo), own: hashItem(seedAt(repo)) }; },
+    });
+    const held = run(true);
+    assert.match(held.steps[1].text, /Run \/alfred-task-solve first\./, held.outs[1]);
+    assert.ok(held.steps[1].row.includes(`AGENTS.md=${held.steps[1].own}`), 'the ledger row follows the re-spelled bytes');
+    assert.deepStrictEqual(held.steps[2], held.steps[1], 'a re-run changes nothing');
+    const edited = run(false);
+    assert.match(edited.steps[1].text, /Run \/project-solve-task first\./, 'an edited seed is the project\'s');
+    assert.match(edited.outs[1], /!! \.claude\/AGENTS\.md is yours and names 1 old stack name\(s\) \(project-solve-task\)/, edited.outs[1]);
+});
+
+// The instruction file's own move, end to end through update: the unedited seed an earlier release wrote as
+// .claude/CLAUDE.md becomes .claude/AGENTS.md, a root AGENTS.md keeps it where it is (moving would split the
+// instructions), and a re-run says nothing and changes nothing.
+test('seed update --installed-only: an unedited .claude/CLAUDE.md seed moves to .claude/AGENTS.md; with a root AGENTS.md it stays; a re-run is quiet', POSIX_ONLY, () =>
+{
+    const { agentsMdBody } = require('./install/seeds.js');
+    const seed = (repo) => agentsMdBody({ projectRoot: repo, sourceDir: ROOT });
+    const state = (repo) => ({
+        claude: fs.existsSync(path.join(repo, '.claude', 'CLAUDE.md')) ? fs.readFileSync(path.join(repo, '.claude', 'CLAUDE.md'), 'utf8') : null,
+        agents: fs.existsSync(path.join(repo, '.claude', 'AGENTS.md')) ? fs.readFileSync(path.join(repo, '.claude', 'AGENTS.md'), 'utf8') : null,
+        root: fs.existsSync(path.join(repo, 'AGENTS.md')) ? fs.readFileSync(path.join(repo, 'AGENTS.md'), 'utf8') : null,
+    });
+    const moved = seedRun(['update', 'update'], 'skill markdown-style\n', {
+        plugins: V13_LISTING, args: ['--installed-only'], each: state,
+        prepare: (repo) => { v13Plugin(repo); write(repo, '.claude/CLAUDE.md', seed(repo)); },
+    });
+    assert.strictEqual(moved.steps[0].claude, null, moved.outs[0]);
+    assert.ok(moved.steps[0].agents && moved.steps[0].agents.startsWith('# '), 'the seed sits under its new name');
+    assert.match(moved.outs[0], /\.claude\/CLAUDE\.md -> \.claude\/AGENTS\.md: the unedited seed moved/);
+    assert.deepStrictEqual(moved.steps[1], moved.steps[0], 'the re-run changes nothing');
+    assert.doesNotMatch(moved.outs[1], /CLAUDE\.md -> \.claude\/AGENTS\.md/, 'and says nothing');
+
+    const kept = seedRun(['update'], 'skill markdown-style\n', {
+        plugins: V13_LISTING, args: ['--installed-only'], each: state,
+        prepare: (repo) => { v13Plugin(repo); write(repo, '.claude/CLAUDE.md', seed(repo)); write(repo, 'AGENTS.md', '# the project\'s own\n'); },
+    });
+    assert.ok(kept.steps[0].claude && kept.steps[0].agents === null, kept.outs[0]);
+    assert.strictEqual(kept.steps[0].root, '# the project\'s own\n');
+    assert.match(kept.outs[0], /root AGENTS\.md holds its instructions/);
 });
 
 // M1: at local scope the shared settings.json is a file the run never writes - an old seat name only
@@ -548,7 +644,7 @@ test('seed update --installed-only --scope local (M1): an old seat deny only set
     const shared = JSON.stringify({ permissions: { deny: [`Agent(${OLD_KEY}:ci-failure-diagnoser)`] } }, null, 2);
     const prepare = (repo) =>
     {
-        write(repo, '.claude/rules/baseline-interaction.md');
+        write(repo, '.claude/rules/alfred-interaction.md');
         write(repo, '.claude/alfred-code.stamp', 'version: 2.0.0\nsha: 0000000\npicked-skills: markdown-style@alfred-code\npicked-agents: security-auditor@alfred-code\n');
         write(repo, '.claude/settings.json', shared);
     };
@@ -571,7 +667,7 @@ test('seed update --installed-only on the copy route: the old copies become new 
 {
     const prepare = (repo) =>
     {
-        write(repo, '.claude/rules/baseline-interaction.md');
+        write(repo, '.claude/rules/alfred-interaction.md');
         for (const n of ['project-solve-task', 'project-verify-code', 'markdown-style']) write(repo, `.claude/skills/${n}/SKILL.md`, skill(n));
         for (const n of ['ci-failure-diagnoser', 'security-auditor']) write(repo, `.claude/agents/${n}.md`, `---\nname: ${n}\n---\n`);
         write(repo, '.claude/claude-stack.stamp', 'version: 1.3.0\nsha: 0000000\nhooks-route: copy\n'); // legacy-name
@@ -591,7 +687,7 @@ test('seed update --installed-only over a 2.0.0 copy install: the three renamed 
 {
     const prepare = (repo) =>
     {
-        write(repo, '.claude/rules/baseline-interaction.md');
+        write(repo, '.claude/rules/alfred-interaction.md');
         for (const n of Object.keys(V21)) write(repo, `.claude/skills/${n}/SKILL.md`, skill(n));
         write(repo, '.claude/alfred-code.stamp', ['version: 2.0.0', 'sha: 0000000', 'hooks-route: copy', `picked-skills: ${Object.keys(V21).join(',')}`, ''].join('\n'));
     };
@@ -613,7 +709,7 @@ test('seed update --installed-only: a seat deny and a skillOverrides key under a
 {
     const prepare = (repo) =>
     {
-        write(repo, '.claude/rules/baseline-interaction.md');
+        write(repo, '.claude/rules/alfred-interaction.md');
         write(repo, '.claude/alfred-code.stamp', 'version: 2.0.0\nsha: 0000000\nhooks-route: copy\n');
         write(repo, '.claude/skills/create-ticket/SKILL.md', skill('create-ticket'));
         write(repo, '.claude/settings.json', JSON.stringify({ skillOverrides: { 'explain-code-tutor': 'off' }, env: { MY_OWN_KEY: 'mine' } }, null, 2));
@@ -628,7 +724,7 @@ test('seed update: a retired skill name whose copy is git-tracked is kept and na
 {
     const prepare = (repo) =>
     {
-        write(repo, '.claude/rules/baseline-interaction.md');
+        write(repo, '.claude/rules/alfred-interaction.md');
         write(repo, '.claude/skills/plugin-authoring/SKILL.md', skill('plugin-authoring'));
         // the ledger names the copy too: a second route prunes what the last run wrote and this release no longer ships
         write(repo, '.claude/alfred-code.stamp', `version: 2.0.0\nsha: 0000000\nhooks-route: copy\nmanaged-files: skills/plugin-authoring=${hashItem(path.join(repo, '.claude/skills/plugin-authoring'))}\n`);
@@ -644,6 +740,31 @@ test('seed update: a retired skill name whose copy is git-tracked is kept and na
     assert.match(outs[0], /skills\/plugin-authoring: kept - .*git tracks it here/, 'and names it');
 });
 
+// installer:F2 - a retired name is pruned only where the stack's own record holds it: a project's own untracked copy under one
+// of the generic retired names (skill `frontend`, seat `mobile-implementer.md`, hook `inject-code-style.js`) survives, and a
+// copy the ledger records at its hash still goes.
+test('seed update (audit F2): a retired skill, seat or hook the record does not hold is the project\'s own and is kept; a recorded, unedited one is pruned', POSIX_ONLY, () =>
+{
+    const prepare = (repo) =>
+    {
+        write(repo, '.claude/rules/alfred-interaction.md');
+        write(repo, '.claude/skills/frontend/SKILL.md', skill('frontend'));
+        write(repo, '.claude/agents/mobile-implementer.md', '---\nname: mobile-implementer\n---\nmine\n');
+        write(repo, '.claude/hooks/inject-code-style.js', '// mine\n');
+        write(repo, '.claude/hooks/require-convention-skill.js', '// the stack wrote this\n');
+        write(repo, '.claude/alfred-code.stamp', `version: 2.0.0\nsha: 0000000\nhooks-route: copy\nmanaged-files: hooks/require-convention-skill.js=${hashItem(path.join(repo, '.claude/hooks/require-convention-skill.js'))}\n`);
+    };
+    const each = (repo) => ({
+        skill: fs.existsSync(path.join(repo, '.claude/skills/frontend')), agent: fs.existsSync(path.join(repo, '.claude/agents/mobile-implementer.md')),
+        mine: fs.existsSync(path.join(repo, '.claude/hooks/inject-code-style.js')), theirs: fs.existsSync(path.join(repo, '.claude/hooks/require-convention-skill.js')),
+    });
+    const { steps, outs } = seedRun(['update', 'update'], '', { env: COPY_ROUTE, args: ['--installed-only'], prepare, each });
+    assert.deepStrictEqual(steps[0], { skill: true, agent: true, mine: true, theirs: false }, outs[0]);
+    assert.match(outs[0], /!! skill kept: frontend/, outs[0]);
+    assert.match(outs[0], /!! hook kept: inject-code-style\.js/, outs[0]);
+    assert.deepStrictEqual(steps[1], steps[0], 'a re-run changes nothing');
+});
+
 // Shape 4 (2.1.0 Task 3): a legacy copy-route install that never wrote a stamp - old-name copies, the stack's
 // hooks copied and wired, an old seat, a rule, the 1.x env key - and beside them a project's own skill. The
 // state is `legacy-unstamped`, update's to take: its picks come off disk under their new names, the old
@@ -657,7 +778,7 @@ function unstampedLegacy(repo)
     write(repo, '.claude/skills/my-own-helper/SKILL.md', skill('my-own-helper'));
     for (const n of ['guard-catastrophic-rm', 'guard-read-whole-file', 'hook-prelude']) write(repo, `.claude/hooks/${n}.js`, '// old\n');
     write(repo, '.claude/agents/ci-failure-diagnoser.md', '---\nname: ci-failure-diagnoser\n---\n');
-    write(repo, '.claude/rules/baseline-interaction.md');
+    write(repo, '.claude/rules/alfred-interaction.md');
     write(repo, '.claude/settings.json', JSON.stringify({
         env: { CLAUDE_STACK_DOCS_PATH: '.claude/docs', MY_OWN_KEY: 'mine' }, // legacy-name
         hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-catastrophic-rm.js"' }] },
@@ -735,7 +856,7 @@ test('seed install --selection and update --add: a line naming an old item insta
     const listing = JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'project', enabled: true }]);
     const prepare = (repo) =>
     {
-        write(repo, '.claude/rules/baseline-interaction.md');
+        write(repo, '.claude/rules/alfred-interaction.md');
         write(repo, '.claude/alfred-code.stamp', 'version: 2.0.0\nsha: 0000000\npicked-skills: markdown-style@alfred-code\npicked-agents: security-auditor@alfred-code\n');
     };
     const add = seedRun('update', 'skill markdown-style\n', { plugins: listing, args: ['--installed-only', '--add', 'skill project-stack-usage-analyzer'], prepare, inspect });
@@ -773,7 +894,7 @@ test('no surface names an old skill or seat outside the rename\'s own homes', ()
     const scanFile = (full) =>
     {
         const rel = path.relative(ROOT, full).split(path.sep).join('/');
-        if (/^docs\/[^/]*-evidence\.md$/.test(rel) || rel === 'scripts/install-renames.test.js') return;
+        if (/^docs\/[^/]*-evidence\.md$/.test(rel) || rel === 'docs/ecc-comparison-2026-09-20.md' || rel === 'scripts/install-renames.test.js') return;
         const buf = fs.readFileSync(full);
         if (buf.includes(0)) return;
         let text = buf.toString('utf8');

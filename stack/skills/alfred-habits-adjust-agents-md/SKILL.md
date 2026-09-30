@@ -1,24 +1,24 @@
 ---
-name: alfred-habits-adjust-claude-md
-description: "Use when a CLAUDE.md is to be written, filled in or updated - an unfilled seeded one, a stale one, a part needing its own. Not for skills or rules."
+name: alfred-habits-adjust-agents-md
+description: "Use when an AGENTS.md is to be written, filled in or updated - an unfilled seeded one, a stale one, a part needing its own. Not for skills or rules."
 ---
 
-# Adjust CLAUDE.md - create or improve a project's instruction file
+# Adjust AGENTS.md - create or improve a project's instruction file
 
-A CLAUDE.md is read into every session and every custom subagent, so every line is paid for on every
+An AGENTS.md is read into every session and every custom subagent, so every line is paid for on every
 message and earns its place only when removing it would make Claude get something wrong. Three homes,
 never mixed:
 
-- **The template** (`stack/CLAUDE.template.md`) owns WHAT goes in - its authoring outline (the numbered
+- **The template** (`stack/AGENTS.template.md`) owns WHAT goes in - its authoring outline (the numbered
   sections, Setup and Key files among them), the keep-out test and the five shapes to keep out (its
   fill-in block), and where the file lives.
 - **This skill** owns HOW - which mode, where the facts come from, what is shown before a write.
-- **The check** (`scripts/claude-md-check.js`) owns the verdict - every named path exists, every
+- **The check** (`scripts/agents-md-check.js`) owns the verdict - every named path exists, every
   command's program resolves, no placeholder, TODO or template text is left. It runs last, every time.
 
 ## When to use
 
-- A project's CLAUDE.md written, filled in or brought up to date: the seeded `.claude/CLAUDE.md` still unfilled, a CLAUDE.md gone stale against the code (a moved path, a changed build or test command, a missing setup step), an audit or improvement of the instruction file, a separate part of the repo (web/, api/, a package) that needs its own CLAUDE.md, or what the CLAUDE.md check reported.
+- A project's AGENTS.md written, filled in or brought up to date: the seeded `.claude/AGENTS.md` still unfilled, an AGENTS.md gone stale against the code (a moved path, a changed build or test command, a missing setup step), an audit or improvement of the instruction file, a separate part of the repo (web/, api/, a package) that needs its own AGENTS.md, or what the AGENTS.md check reported.
 - Covers setup, commands, key files and architecture sections, what to keep out, and the deterministic check that closes it.
 - Not for a skill, a rule or a hook - the skill-authoring method owns those - nor a README, nor a preference or lesson, which the shared memory server keeps.
 
@@ -31,29 +31,33 @@ own shell, so a variable set here is gone by the next):
 
 ```bash
 STACK=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/alfred-code/*; do
-  [ -f "$d/scripts/claude-md-check.js" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
+  [ -f "$d/scripts/agents-md-check.js" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
 echo "stack: ${STACK:-absent}"
 ```
 
 `stack: absent` (a copy-only install): the check cannot run - say so in the report, and take the
-outline from the seeded `.claude/CLAUDE.md` when it still carries its comment blocks; with neither,
+outline from the seeded `.claude/AGENTS.md` when it still carries its comment blocks; with neither,
 stop and name `/alfred-code:update`, which brings the stack's files back.
 
 ## 2. Pick the mode - the script says what is on disk
 
 ```bash
-node "<stack>/scripts/claude-md-check.js" --root . --list
+node "<stack>/scripts/agents-md-check.js" --root . --list
 ```
 
-- **Create** - it printed `no CLAUDE.md in this project`, or every file it lists is `the seeded
-  template (unfilled)`. The target is the seeded `.claude/CLAUDE.md`; with none, write that file
-  from `<stack>/stack/CLAUDE.template.md` (the spot the installer seeds, auto-loaded like a root one).
+- **Create** - it printed `no AGENTS.md or CLAUDE.md in this project`, or every file it lists is `the
+  seeded template (unfilled)`. The target is the seeded `.claude/AGENTS.md`; with none, write that file
+  from `<stack>/stack/AGENTS.template.md` (the spot the installer seeds, loaded like a root one).
 - **Improve** - any listed file holds the project's own text. Every listed file is in scope: the
-  root one, `.claude/CLAUDE.md`, and each part's own.
+  root `AGENTS.md`, `.claude/AGENTS.md`, each part's own, and a `CLAUDE.md` the project already keeps.
 
-An `AGENTS.md` holding the repo's canonical agent instructions changes both: the CLAUDE.md stays thin
-and imports it, as the template's fill-in block spells out - never the same facts written twice.
+A root `AGENTS.md` is the project's own file, whoever wrote it: the installer seeds nothing beside
+it, and it is improved in place with every change shown first, never overwritten or replaced by the
+template. A project's own `CLAUDE.md` is improved as it stands and never renamed for the user - say in
+the report that Claude Code (2.1.277 or later) reads an AGENTS.md itself only while no CLAUDE.md or
+CLAUDE.local.md sits beside or above it, so with both files the CLAUDE.md wins, and an
+`@AGENTS.md` import from it keeps both loading. Never the same facts written twice.
 
 ## 3. Gather the facts - read, never guessed
 
@@ -76,7 +80,7 @@ Every fact a section states comes from a file that states it, in this order:
 
 A separate part is a top-level folder with its own manifest whose stack or commands differ from the
 root's (a `web/package.json` beside a .NET solution, an `api/` with its own solution). It gets its own
-`<part>/CLAUDE.md` - Claude loads it when it reads a file there - carrying only that part's Setup,
+`<part>/AGENTS.md` - Claude loads it when it reads a file there, in a folder with no CLAUDE.md - carrying only that part's Setup,
 Commands and Key files, which the root file then does not repeat (it points at the part's file); what
 two parts share stays in the root file.
 
@@ -87,7 +91,7 @@ two parts share stays in the root file.
 2. Trim the `## Rules` table to the rules in `.claude/rules/`, dropping each GENERATED row whose file
    is absent.
 3. Delete the template's two comment blocks once the sections are in.
-4. Write each part's `<part>/CLAUDE.md`.
+4. Write each part's `<part>/AGENTS.md`.
 
 The write needs no second ask - the request to fill it is the ask - but the report names every file
 written with its line count.
@@ -104,7 +108,7 @@ written with its line count.
      kept - the whole line only when the path was all it said. A TODO or placeholder in the
      project's own text is the user's to fill: named in the report, never invented;
    - **an addition** - a section the template's outline numbers that the file lacks and step 3 found a
-     fact for, a missing line in an existing section, or a separate part's own `<part>/CLAUDE.md` where
+     fact for, a missing line in an existing section, or a separate part's own `<part>/AGENTS.md` where
      it has none (step 3).
 
    The project's own wording, order and sections are never reworded, reordered or deleted beyond that,
@@ -123,15 +127,15 @@ Hold every line to the template's keep-out test and its five shapes. On top of t
 this file is never the home of:
 
 - **A session's learnings, a correction or a personal preference** - the shared memory server keeps
-  them (`baseline-memory.md`), searchable and shared across accounts; a CLAUDE.md line is neither.
-- **A `CLAUDE.local.md` of personal notes** - the same server, for the same reason.
+  them (`alfred-memory.md`), searchable and shared across accounts; an AGENTS.md line is neither.
+- **A `CLAUDE.local.md` of personal notes** - the same server, for the same reason; it also makes Claude Code stop reading AGENTS.md.
 - **A score or a grade** of the file - a judgment no check can hold it to; the check's rows are the
   verdict.
 
 ## 7. Check last - the file matches the tree
 
 ```bash
-node "<stack>/scripts/claude-md-check.js" --root .
+node "<stack>/scripts/agents-md-check.js" --root .
 ```
 
 - A row on a line this run wrote is this run's bug: fix it and run the check again.

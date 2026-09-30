@@ -62,9 +62,10 @@ function placement(options = {})
     return { plugins, library, stacks };
 }
 
-// What the core carried BEFORE 2.1.0: the always closure. A 2.0.x install was written under that
-// placement - its read-back goes by it until its first 2.1 update stamps `seats-route:` - and the 1.x
-// alias keeps listing it, so a straggler still on that id keeps its habit skills until it updates.
+// The current always closure, a superset of what 2.0.x carried (harmless while the always skills stay
+// locked, so update adopts them). A 2.0.x install was written under that placement - its read-back goes
+// by it until its first 2.1 update stamps `seats-route:` - and the 1.x alias keeps listing it, so a
+// straggler still on that id keeps its habit skills until it updates.
 function formerCore(options = {})
 {
     const graph = options.graph || readJson('meta/stack-graph.json');

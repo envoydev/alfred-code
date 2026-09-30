@@ -37,8 +37,9 @@
 // SERENA_HOME is spelled in the platform's own separator, and left RELATIVE. serena 1.7.0 execs the
 // TypeScript server through npm's .bin shim, so on Windows the path reaches cmd.exe UNQUOTED: a '/' in
 // it is cut there ('.serena' is not recognized as an internal or external command), and an absolute
-// path would be cut at the first space in the project's own path the same way. The cwd of a plugin
-// server is the project (measured), so the relative home is that project's own, as on the copy route.
+// path would be cut at the first space in the project's own path the same way. So serena is started AT the checkout
+// (memory.js projectRootOf - the launch directory may be a subdirectory of it), and the relative home is that checkout's
+// own, as on the copy route.
 const fs = require('node:fs');
 const path = require('node:path');
 const { pythonRequest, runUvx } = require('./uv-python.js');
@@ -121,13 +122,16 @@ function main(argv)
         return 2;
     }
     const spec = argv[at + 1];
-    const projectDir = process.cwd();
+    // Re-verify 3 S3: the checkout the launch directory belongs to (memory.js projectRootOf), and serena starts THERE - its
+    // relative home and `--project-from-cwd` resolve against its cwd, which a session started in a subdirectory made that
+    // subdirectory.
+    const projectDir = require('../hooks/memory.js').projectRootOf(process.cwd()).checkout;
     const log = (line) => process.stderr.write(`${line}\n`);
     const data = serenaData({ projectDir, log });
     const args = contextArgs(projectArgs(rest < 0 ? [] : argv.slice(rest + 1), { projectDir, legacy: data.legacy }));
     const env = { ...process.env, SERENA_HOME: data.home };
     log(`serena-launch: ${spec}, python ${pythonRequest({ env, projectDir })}, home ${env.SERENA_HOME}`);
-    runUvx(['--from', spec, 'serena', ...args], { env, projectDir, label: 'serena-launch', excludeNewer: flagValue(argv, '--exclude-newer', rest) });
+    runUvx(['--from', spec, 'serena', ...args], { env, cwd: projectDir, projectDir, label: 'serena-launch', excludeNewer: flagValue(argv, '--exclude-newer', rest) });
     return null;   // the process lives as long as the child does
 }
 

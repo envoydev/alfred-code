@@ -143,7 +143,7 @@ test('the generated rule: a pathless pointer to the run book, stamped with the l
     }
     // The skill's RULE step bakes it and checks both facts.
     const skill = squash(body());
-    assert.ok(skill.includes('.claude/rules/baseline-project-run-book.md'));
+    assert.ok(skill.includes('.claude/rules/alfred-project-run-book.md'));
     assert.match(skill, /`__DOC_PATH__` replaced by the LITERAL docs root/);
     assert.match(skill, /`grep -c __DOC_PATH__` prints 0 and `wc -c` stays at or under 300/);
 });

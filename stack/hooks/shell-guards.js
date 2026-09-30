@@ -21,8 +21,9 @@
 // `permissionDecision: deny`. Separate hooks showed the model ONE blocking reason, picked
 // non-deterministically; here every blocking guard's reason reaches it, in GUARDS order - except after a
 // PROTECTIVE guard's exit 2 (force-push, rm, secret), which is answered at once: the guards run one after
-// another, so a later one stalling past the budget would drop it (a timed-out hook lets the call through), and
-// the protective ones therefore run first (RUN_ORDER). Context
+// another, so a later one stalling past the budget would drop it - a timed-out PreToolUse hook has its output
+// discarded, and the call is not run but answered with a timeout error, not the block reason (code.claude.com/docs/en/
+// agent-sdk/hooks, 'Hook timeout', v2.1.210 on) - and the protective ones therefore run first (RUN_ORDER). Context
 // (`additionalContext`) is joined with a newline and delivered even beside a block, as separate
 // hooks' was; `updatedInput` (the secret guard's rewrite) applies only when nothing blocks, and every
 // guard judged the ORIGINAL command, as it did beside the others in parallel. A guard that throws or
@@ -293,7 +294,8 @@ function main()
         const r = runGuard(path.join(__dirname, `${g}.js`), stdin);
         results.push(r);
         // A protective block is a correct answer alone, so it is answered now: a guard still to run that
-        // stalls past the budget would otherwise drop it, since a timed-out hook lets the call through.
+        // stalls past the budget would otherwise drop it: a timed-out hook's output is discarded (agent-sdk/hooks,
+        // 'Hook timeout').
         if (r.code === 2 && PROTECTIVE.has(g)) break;
     }
     const verdict = combine(results.sort((a, b) => GUARDS.indexOf(a.guard.replace(/\.js$/, '')) - GUARDS.indexOf(b.guard.replace(/\.js$/, ''))));

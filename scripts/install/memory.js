@@ -13,7 +13,7 @@
 //     own memory ON and says so - never retried into a false success - and the old files are never
 //     deleted either way.
 //   - THE REPLACEMENT MUST BE COMPLETE: the memory server in this run's MCP set AND
-//     `baseline-memory.md` (the rule that tells Claude to save to it) both selected AND on disk.
+//     `alfred-memory.md` (the rule that tells Claude to save to it) both selected AND on disk.
 //     Without either, the notes stay where Claude reads them.
 //   - THE SWITCH-OFF IS WRITTEN TO THIS PROJECT'S OWN settings file, never the account one (that
 //     would silence every other project's memory too) - and, per R47, to the SAME file this run's
@@ -21,6 +21,7 @@
 //     (settingsTarget in settings.js is the one place that decides which).
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseJson } = require('./json-file.js');
 
 // The folder is `.alfred-memory` wherever it sits (Task 7a): ~/.alfred-memory for the global and scoped
 // levels, <project>/<data root>/.alfred-memory for the project level. stack/mcp/data-root.js is the one
@@ -46,10 +47,13 @@ function levelOfPath(p, { home, projectRoot })
 // level - and a CUSTOM path its MCP_MEMORY_SQLITE_PATH byte-for-byte; one of the three shapes is re-spelled
 // to its current place (the `.alfred-memory` folder, the project level under the data root), which is where
 // its launcher moves the file and where every reader looks first (data-root.js liveMemoryDb falls back to
-// the old place until then). With no registration at all it is `global`. A level change never copies or
-// deletes a database: whichever file the old memories are in stays there, which is why the caller's log
-// line names both.
-function resolveLevel({ flag, registeredPath, home, space, projectRoot, root = dataRoot.DATA_ROOT_DEFAULT })
+// the old place until then). With no registration at all it is `global` - unless a record that could hold
+// it was unread (recordedPath's `unread`) on a project a stamp records: then the level is `kept`, no path, and
+// nothing re-points the server or writes the key (F2). A fresh install has no level to keep, so it takes the
+// default (review 2.1.6 M1: `kept` there registered no memory server at all on the full copy route). A level
+// change never copies or deletes a database: whichever file the old memories are in stays there, which is why
+// the caller's log line names both.
+function resolveLevel({ flag, registeredPath, unread = [], stamped = false, home, space, projectRoot, root = dataRoot.DATA_ROOT_DEFAULT })
 {
     if (flag) return { level: flag, dbPath: pathForLevel(flag, { home, space, projectRoot, root }), from: 'flag' };
     if (registeredPath)
@@ -59,7 +63,69 @@ function resolveLevel({ flag, registeredPath, home, space, projectRoot, root = d
         const scopedSpace = level === 'scoped' ? /^memory_(.+)\.db$/.exec(path.basename(registeredPath))[1] : space;
         return { level, dbPath: pathForLevel(level, { home, space: scopedSpace, projectRoot, root }), from: 'registration' };
     }
+    if (unread.length && stamped) return { level: 'kept', dbPath: '', from: 'unreadable' };
     return { level: 'global', dbPath: pathForLevel('global', { home, space, projectRoot, root }), from: 'default' };
+}
+
+// The memory database this project's install already records, where it was read, and the records that could
+// not be read. A copy-route registration in .mcp.json first (project scope, and user scope's C10), then the
+// settings key the plugin route's launcher reads (memory-launch.js, same file order: the local file first).
+// F2 (matrix 2.1.5 7c): a settings file that does not parse is no answer - read as {}, it let the level fall to
+// the global default, and the full copy route re-registered the memory server there at local scope. The next
+// readable key answers, as the launcher's does (re-verify 2 R5 - one reader, stack/hooks/memory.js settingsDbState);
+// with none, the account's local-scope registration answers - the copy route's own at local scope - read by the
+// caller before any claude call can replace an account file it cannot parse (F1). An unread file is named whatever
+// answers, so the run can say so before it registers.
+function recordedPath({ mcpFile, claudeDir, accountFile, projectRoot, configDir, home })
+{
+    const engine = require('../../stack/hooks/memory.js');
+    const read = (file) =>
+    {
+        let raw;
+        try { raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''); }
+        catch (err) { return err.code === 'ENOENT' ? {} : null; }
+        try { const data = raw.trim() ? parseJson(raw) : {}; return data && typeof data === 'object' && !Array.isArray(data) ? data : null; }
+        catch { return null; }
+    };
+    // A registration's path read the engine's way (memoryEnvPath): a relative one - the copy route's project level in the
+    // committed .mcp.json, started at its project through ROOT_BOOT (re-verify 3 S2) - is this project's own path.
+    const dbOf = (entry) => engine.memoryEnvPath(entry, home || require('node:os').homedir(), projectRoot) || '';
+    // The settings keys through the ONE reader the plugin's launcher and the session-start engine use (re-verify 2 R5):
+    // settings.local.json, settings.json, the account settings.json - an unreadable file is no answer, the next
+    // readable key answers, and every file skipped is named (`unread`).
+    const label = (file) => (claudeDir && file === path.join(claudeDir, 'settings.local.json') ? 'settings.local.json'
+        : claudeDir && file === path.join(claudeDir, 'settings.json') ? 'settings.json' : file);
+    const settings = claudeDir ? engine.settingsDbState(projectRoot, { home, configDir: configDir || (accountFile ? path.dirname(accountFile) : undefined) }) : { db: '', unread: [] };
+    const unread = settings.unread.map(label);
+    // Where it was read is returned too - the file and key, or the registration's entry - so the caller can ask the
+    // stamp's ledger whether the stack wrote that value (a moved or copied folder, review 2.1.6).
+    const entry = ((read(mcpFile) || {}).mcpServers || {}).memory;
+    const registered = dbOf(entry);
+    if (registered) return { path: registered, from: 'registration', entry, unread };
+    if (settings.db) return { path: settings.db, from: 'settings', file: label(settings.from), key: settings.key, value: settings.value, unread };
+    if (!unread.length || !accountFile) return { path: '', from: '', unread };
+    const account = require('./mcp.js').registrationsAt({ scope: 'local', accountFile, projectRoot });
+    if (account.state === 'unreadable') unread.push(path.basename(accountFile));
+    const db = dbOf(account.servers.memory);
+    return db ? { path: db, from: 'local registration', unread } : { path: '', from: '', unread };
+}
+
+// The folder a project-level database path belongs to when it is not this project's - a project moved or copied to
+// `projectRoot` carries settings and a .mcp.json naming the OLD folder's database: `<old>/<data root>/.alfred-memory/memory.db`,
+// or a 2.0.0 `<old>/.memory-mcp/memory.db`. '' for any other path, and for this project's own.
+function movedProjectRoot(p, { projectRoot, root = dataRoot.DATA_ROOT_DEFAULT } = {})
+{
+    if (!p || !path.isAbsolute(p) || path.basename(p) !== 'memory.db') return '';
+    const dir = path.dirname(path.normalize(p));
+    const candidates = [];
+    // The 2.0.0 shape is a 2.0.0 GLOBAL database under another home too (a folder copied between machines), so it counts
+    // only where this folder holds a project-level memory folder of its own - one a moved project brings along.
+    const ownFolder = [path.join(projectRoot, dataRoot.LEGACY_MEMORY_FOLDER), path.join(projectRoot, root, dataRoot.MEMORY_FOLDER)].some((d) => fs.existsSync(d));
+    if (path.basename(dir) === dataRoot.LEGACY_MEMORY_FOLDER && ownFolder) candidates.push(path.dirname(dir));
+    const suffix = path.join(root, dataRoot.MEMORY_FOLDER);
+    if (dir.endsWith(path.sep + suffix)) candidates.push(dir.slice(0, -(suffix.length + 1)));
+    const same = (a, b) => { const real = (x) => { try { return fs.realpathSync(x); } catch { return path.resolve(x); } }; return real(a) === real(b); };
+    return candidates.find((old) => old && !same(old, projectRoot) && dataRoot.memoryLevelOf(p, { projectRoot: old }) === 'project') || '';
 }
 
 // 'true' / 'false' / 'absent' / 'malformed'. A missing file is 'absent' - nothing has switched
@@ -70,7 +136,7 @@ function autoMemoryState(settingsFile)
     try { raw = fs.readFileSync(settingsFile, 'utf8'); }
     catch (err) { return err.code === 'ENOENT' ? 'absent' : 'malformed'; }
     let data;
-    try { data = raw.trim() ? JSON.parse(raw) : {}; }
+    try { data = raw.trim() ? parseJson(raw) : {}; }
     catch { return 'malformed'; }
     if (!data || typeof data !== 'object' || Array.isArray(data)) return 'malformed';
     return Object.hasOwn(data, 'autoMemoryEnabled') ? String(data.autoMemoryEnabled) : 'absent';
@@ -81,18 +147,22 @@ function autoMemoryState(settingsFile)
 function writeSwitchOff(settingsFile, { log = () => {} } = {})
 {
     let data = {};
-    try
-    {
-        const raw = fs.readFileSync(settingsFile, 'utf8');
-        if (raw.trim()) data = JSON.parse(raw);
-    }
+    let raw = '';
+    // Re-verify 3 S9: a read error is named by its code, a parse error as bad JSON.
+    try { raw = fs.readFileSync(settingsFile, 'utf8'); }
     catch (err)
     {
         if (err.code !== 'ENOENT')
         {
-            log(`  !! ${settingsFile} is not valid JSON - autoMemoryEnabled left untouched; fix it and re-run`);
+            log(`  !! ${settingsFile} could not be read (${err.code || err.message}) - autoMemoryEnabled left untouched; fix it and re-run`);
             return false;
         }
+    }
+    try { if (raw.trim()) data = parseJson(raw); }
+    catch
+    {
+        log(`  !! ${settingsFile} is not valid JSON - autoMemoryEnabled left untouched; fix it and re-run`);
+        return false;
     }
     if (!data || typeof data !== 'object' || Array.isArray(data))
     {
@@ -120,10 +190,10 @@ function importGate({ projectRoot, settingsFile, mcps = [], rules = [], tools = 
     const name = (e) => (typeof e === 'string' ? e.split(/[|:]/)[0] : e.name || e.file);
     if (!mcps.some((e) => name(e) === 'memory'))
         return { go: false, reason: "memory: the notes import was skipped - the memory MCP is not part of this install; Claude's own memory stays on" };
-    if (!rules.some((e) => name(e) === 'baseline-memory.md'))
-        return { go: false, reason: "memory: the notes import was skipped - baseline-memory.md is not part of this install; Claude's own memory stays on" };
-    if (!fs.existsSync(path.join(projectRoot, '.claude', 'rules', 'baseline-memory.md')))
-        return { go: false, reason: `  !! memory: baseline-memory.md did not land in ${path.join(projectRoot, '.claude', 'rules')} - the notes import was skipped; Claude's own memory stays on until a run delivers it` };
+    if (!rules.some((e) => name(e) === 'alfred-memory.md'))
+        return { go: false, reason: "memory: the notes import was skipped - alfred-memory.md is not part of this install; Claude's own memory stays on" };
+    if (!fs.existsSync(path.join(projectRoot, '.claude', 'rules', 'alfred-memory.md')))
+        return { go: false, reason: `  !! memory: alfred-memory.md did not land in ${path.join(projectRoot, '.claude', 'rules')} - the notes import was skipped; Claude's own memory stays on until a run delivers it` };
 
     for (const [tool, present] of Object.entries(tools))
         if (!present) return { go: false, reason: `  !! ${tool} not found - the memory notes import was skipped; Claude's own memory stays on until it succeeds` };
@@ -191,10 +261,10 @@ function readObject(file)
 {
     let raw;
     try { raw = fs.readFileSync(file, 'utf8'); }
-    catch (err) { return err.code === 'ENOENT' ? { data: null } : { error: `${file} cannot be read` }; }
+    catch (err) { return err.code === 'ENOENT' ? { data: null } : { error: `${file} could not be read (${err.code || err.message})` }; }
     try
     {
-        const data = raw.trim() ? JSON.parse(raw) : {};
+        const data = raw.trim() ? parseJson(raw) : {};
         return data && typeof data === 'object' && !Array.isArray(data) ? { data } : { error: `${file} top level is not an object` };
     }
     catch { return { error: `${file} is not valid JSON` }; }
@@ -322,7 +392,7 @@ function initMemory(argv, { which, runNode, homedir, log = console.log, err = co
     if (level === 'project') ensureProjectIgnore(projectRoot, log, dbPath);
 
     const settingsFile = target;
-    const gate = importGate({ projectRoot, settingsFile, mcps: ['memory'], rules: ['baseline-memory.md'], tools: { uvx: which('uvx') } });
+    const gate = importGate({ projectRoot, settingsFile, mcps: ['memory'], rules: ['alfred-memory.md'], tools: { uvx: which('uvx') } });
     const importer = path.join(__dirname, '..', 'memory-import.js');
     const pass = ['--config-dir', '--memory-dir'].flatMap((name) => (flag(name) ? [name, flag(name)] : []));
     const out = importNotes({
@@ -341,7 +411,7 @@ function initMemory(argv, { which, runNode, homedir, log = console.log, err = co
     return 0;
 }
 
-module.exports = { MEMORY_DIR, pathForLevel, levelOfPath, resolveLevel, autoMemoryState, writeSwitchOff, importGate, importNotes, countNotes, initMemory, ensureProjectIgnore };
+module.exports = { MEMORY_DIR, pathForLevel, levelOfPath, resolveLevel, recordedPath, movedProjectRoot, autoMemoryState, writeSwitchOff, importGate, importNotes, countNotes, initMemory, ensureProjectIgnore };
 
 if (require.main === module)
 {

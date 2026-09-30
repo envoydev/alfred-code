@@ -135,7 +135,4 @@ function runUvx(args, { env: given = process.env, cwd, projectDir, label = 'laun
     return child;
 }
 
-// `node uv-python.js [projectDir]` prints the request: the frozen installer twins resolve their
-// @UV_PYTHON@ with it.
-if (require.main === module) process.stdout.write(pythonRequest({ projectDir: process.argv[2] }));
 module.exports = { pythonRequest, runUvx, settingFrom, excludeNewerOf, excludeNewerArgs, userExcludeNewer, cutoffFor, PYTHON, WINDOWS_ARM_PYTHON };

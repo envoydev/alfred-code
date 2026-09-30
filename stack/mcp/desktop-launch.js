@@ -179,7 +179,9 @@ function main(argv, env = process.env)
         process.stderr.write(`desktop-launch: ${server} drives ${osLabel(row.os)} apps and this machine runs ${osLabel(platform)} - not started - ${offHere(server, marketOf())}\n`);
         return 1;
     }
-    const projectDir = env.CLAUDE_PROJECT_DIR || process.cwd();
+    // Re-verify 3 S3: the settings of the checkout the launch directory belongs to - never an inherited CLAUDE_PROJECT_DIR,
+    // whose folder's settings could lift the tool gate.
+    const projectDir = require('../hooks/memory.js').projectRootOf(process.cwd()).checkout;
     const rest = argv.indexOf('--');
     let args = rest < 0 ? [] : argv.slice(rest + 1);
     const log = (line) => process.stderr.write(`desktop-launch: ${line}\n`);

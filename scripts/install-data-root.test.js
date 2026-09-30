@@ -15,7 +15,7 @@ const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const { valueHash } = require('./install/stamp.js');
 
 const COPY_ENV = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
-const SELECTION = 'rule baseline-docs-root\nrule baseline-memory\nmcp navigation\nmcp memory\nmcp documentation\nmcp browser\n';
+const SELECTION = 'rule alfred-docs-root\nrule alfred-memory\nmcp navigation\nmcp memory\nmcp documentation\nmcp browser\n';
 const read = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
 const json = (file) => JSON.parse(read(file) || '{}');
 const put = (file, text = 'x') => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
@@ -43,7 +43,7 @@ const look = (repo) =>
         env: json(path.join(repo, '.claude', 'settings.json')).env || {},
         local: json(path.join(repo, '.claude', 'settings.local.json')).env || {},
         stamp: read(path.join(repo, '.claude', 'alfred-code.stamp')) || '',
-        rule: (/This install's root: `([^`]*)`/.exec(read(path.join(repo, '.claude', 'rules', 'baseline-docs-root.md')) || '') || [])[1],
+        rule: (/This install's root: `([^`]*)`/.exec(read(path.join(repo, '.claude', 'rules', 'alfred-docs-root.md')) || '') || [])[1],
         ignore: read(path.join(repo, '.alfred', '.gitignore')),
         mcp: json(path.join(repo, '.mcp.json')).mcpServers || {},
         has: (rel) => files.has(rel) || files.has(`${rel}/`),
@@ -94,7 +94,9 @@ test('fresh install: every kind of data lands under .alfred, and git keeps the m
     assert.strictEqual(r.env.ALFRED_CODE_DATA_PATH, '.alfred', out);
     assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, '.alfred/docs');
     assert.strictEqual(r.rule, '.alfred/docs');
-    assert.strictEqual(r.local.ALFRED_CODE_MEMORY_DB, path.join(r.real, '.alfred', '.alfred-memory', 'memory.db'));
+    // Re-verify 3 S1: settings.local.json is machine-local (C8), so its key stays ABSOLUTE - a relative one bought nothing there
+    // and an older release read it as no level, re-pointing the project to the global database.
+    assert.strictEqual(r.local.ALFRED_CODE_MEMORY_DB, path.join(r.real, '.alfred', '.alfred-memory', 'memory.db'), 'the machine-local key is absolute');
     assert.match(r.ignore, /^\/\*$/m);
     assert.match(r.ignore, /^!\/docs\/$/m, 'the docs stay visible to git, or the versioning seed reads them as kept out');
     assert.match(r.text('.alfred/serena/project.yml'), /ignored_paths: \["\.alfred", "\.claude", "\.serena", "\.playwright"\]/);
@@ -200,8 +202,10 @@ test('update over a 2.0.0 layout, --data-move move, full copy route: everything 
     assert.deepStrictEqual(pendingOf(r.stamp), []);
     const env = r.mcp.navigation && r.mcp.navigation.env;
     assert.strictEqual(env && env.SERENA_HOME, '.alfred/serena/home', JSON.stringify(r.mcp.navigation));
-    assert.ok(r.mcp['browser-chrome'].args.includes('${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/chrome'), JSON.stringify(r.mcp['browser-chrome']));
-    assert.strictEqual(r.mcp.memory.env.MCP_MEMORY_SQLITE_PATH, path.join(r.real, '.alfred', '.alfred-memory', 'memory.db'));
+    // Re-verify 3 S2: the rows start at their project through ROOT_BOOT, so the committed .mcp.json names each place by its
+    // project-relative path - no checkout's path (re-verify 2 R3), and no parse-time variable.
+    assert.ok(r.mcp['browser-chrome'].args.includes('.alfred/browser/chrome'), JSON.stringify(r.mcp['browser-chrome']));
+    assert.strictEqual(r.mcp.memory.env.MCP_MEMORY_SQLITE_PATH, '.alfred/.alfred-memory/memory.db', 'the committed .mcp.json names no checkout');
     assert.match(r.text('.alfred/serena/home/serena_config.yml'), /project_serena_folder_location: "\$projectDir\/\.alfred\/serena"/);
 });
 
@@ -281,7 +285,8 @@ test('M2 full copy route: serena\'s folder is not moved while a serena holds it,
     const { spawnSync } = require('node:child_process');
     // A grandchild the shell leaves behind is reparented, so once killed it is reaped - a child of this runner
     // would stay a zombie through the synchronous runs and still answer kill(pid, 0).
-    const pid = Number(spawnSync('sh', ['-c', 'sleep 120 >/dev/null 2>&1 & echo $!'], { encoding: 'utf8' }).stdout.trim());
+    // Its command line names serena, which is what makes a live pid a serena (`ps`).
+    const pid = Number(spawnSync('sh', ['-c', `${JSON.stringify(process.execPath)} -e 'setTimeout(() => {}, 120000)' serena-agent >/dev/null 2>&1 & echo $!`], { encoding: 'utf8' }).stdout.trim());
     const stop = () => { try { process.kill(pid); } catch { /* gone */ } for (let n = 0; n < 50; n += 1) { try { process.kill(pid, 0); } catch { return; } Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100); } };
     try
     {
@@ -330,11 +335,11 @@ test('M5 full copy route: the project memory folder moves inline and .memory-mcp
 
 // M11: the captures bake the LITERAL docs root into their generated pointer rules (the run book, the
 // architecture docs, the code style), since a rule cannot resolve a setting at load. A data move that
-// carries the docs elsewhere re-stamps each of them with the new root, as it re-stamps baseline-docs-root;
+// carries the docs elsewhere re-stamps each of them with the new root, as it re-stamps alfred-docs-root;
 // a rule of the project's own is never touched, and a re-run changes nothing.
 const POINTERS = {
-    'baseline-project-run-book.md': (root) => `---\ndescription: Project run book pointer - generated by /alfred-capture-project-capabilities; edit via a re-run.\n---\n\nRun book: \`${root}/project-capabilities/PROJECT-CAPABILITIES.md\` - read it before you build.\n`,
-    'baseline-project-architecture.md': (root) => `---\ndescription: Project architecture docs pointer - generated by /alfred-capture-architecture; edit via a re-run.\n---\n\nArchitecture docs: \`${root}/architecture/\` - read them before a structural change.\n`,
+    'alfred-project-run-book.md': (root) => `---\ndescription: Project run book pointer - generated by /alfred-capture-project-capabilities; edit via a re-run.\n---\n\nRun book: \`${root}/project-capabilities/PROJECT-CAPABILITIES.md\` - read it before you build.\n`,
+    'alfred-project-architecture.md': (root) => `---\ndescription: Project architecture docs pointer - generated by /alfred-capture-architecture; edit via a re-run.\n---\n\nArchitecture docs: \`${root}/architecture/\` - read them before a structural change.\n`,
     'project-code-style.md': (root) => `---\npaths:\n  - "**/*.ts"\n---\n# Project code style (generated)\n\nFull capture: \`${root}/code-style/CODE-STYLE.md\`.\n`,
 };
 const MINE = (root) => `# my rule\n\nOld notes sit in \`${root}/notes/\` - keep them there.\n`;
@@ -370,7 +375,7 @@ test('M11 a data move re-stamps every generated rule that names the docs root - 
         {
             if (i !== 0) return null;
             twoZeroLayout(repo, { memoryDb: false });
-            const rule = path.join(repo, '.claude', 'rules', 'baseline-docs-root.md');
+            const rule = path.join(repo, '.claude', 'rules', 'alfred-docs-root.md');
             fs.writeFileSync(rule, read(rule).split('.alfred/docs').join('.claude/docs'));   // as 2.0.0 stamped it
             writePointers(repo, '.claude/docs');
             return null;

@@ -73,10 +73,10 @@ There are **two schools**. The widely used prefix convention (SQL Server communi
 
 | Object | Prefix pattern | Example |
 |---|---|---|
-| Primary key | `pk_<table>` | `pk_customer` |
-| Foreign key | `fk_<table>_<referenced>` | `fk_order_customer` |
-| Unique | `uq_<table>_<col>` | `uq_user_email` |
-| Check | `ck_<table>_<col>` | `ck_product_price` |
+| Primary key | `pk_<table>` | `pk_customers` |
+| Foreign key | `fk_<table>_<referenced>` | `fk_orders_customers` |
+| Unique | `uq_<table>_<col>` | `uq_users_email` |
+| Check | `ck_<table>_<col>` | `ck_products_price` |
 | Index | `ix_<table>_<cols>` | `ix_order_customer_id` |
 | Default (SQL Server) | `df_<table>_<col>` | `df_order_created_at` |
 
@@ -193,7 +193,7 @@ sqlstyle.guide: 'Where possible do not use vendor-specific data types.' Prefer `
 | Function | PostgreSQL | SQL Server | SQLite |
 |---|---|---|---|
 | ANSI `COALESCE` (n-ary, portable) | yes | yes | yes |
-| `ISNULL` (2-ary) | no | yes (`ISNULL(x, y)`) | yes (but SQLite `IFNULL` is the common form) |
+| `ISNULL` (2-ary) | no | yes (`ISNULL(x, y)`) | no - use `IFNULL` or `COALESCE` |
 | `IFNULL` | no | no | yes |
 | `NULLIF` (returns NULL if equal) | yes | yes | yes |
 
@@ -325,6 +325,7 @@ Current timestamp: PostgreSQL `now()` / `CURRENT_TIMESTAMP`; SQL Server `GETDATE
 | Feature | PostgreSQL | SQL Server (T-SQL) | SQLite |
 |---|---|---|---|
 | Unquoted identifier case | folds to lowercase | preserves, compares case-insensitively (default) | case-insensitive (ASCII) |
+| Identifier case style | `snake_case` unquoted | `PascalCase` is the engine idiom (`dbo.CustomerOrders`); it wins on SQL Server unless the project says otherwise | `snake_case` |
 | Identifier quoting | `"x"` | `[x]` or `"x"` | `"x"`, `` `x` ``, `[x]` |
 | String concat | `\|\|`, `CONCAT()` | `+`, `CONCAT()` | `\|\|` |
 | Top N | `LIMIT n` | `TOP (n)` | `LIMIT n` |

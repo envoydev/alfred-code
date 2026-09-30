@@ -103,6 +103,18 @@ test('garbage JSON is one unreadable row, an absent file is none', () =>
     assert.deepStrictEqual(audit(project({})), []);
 });
 
+test('a config of the wrong shape is one row, never a crash (audit F8)', () =>
+{
+    const root = project({
+        '.mcp.json': { mcpServers: { a: { command: 'npx', args: '-y pkg' }, b: null } },
+        '.claude/settings.json': { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: 'nope' }, { hooks: [null, { type: 'command', command: 'x', timeout: 5 }] }] } },
+    });
+    const script = path.join(__dirname, 'audit-install.js');
+    const out = execFileSync(process.execPath, [script, root, '--json'], { encoding: 'utf8' });
+    const found = JSON.parse(out).map((r) => r.finding);
+    assert.deepStrictEqual(found, ['.mcp.json: mcp server a has an unreadable shape (args is not a list)', '.claude/settings.json: a hook group has an unreadable shape (hooks is not a list)', '.claude/settings.json: a hook entry has an unreadable shape (not an object)']);
+});
+
 test('the CLI prints a table or the all-clear, --json prints the rows, and it always exits 0', () =>
 {
     const script = path.join(__dirname, 'audit-install.js');

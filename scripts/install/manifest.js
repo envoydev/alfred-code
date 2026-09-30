@@ -53,6 +53,7 @@ function loadManifest(sourceDir)
         renamed: {
             skills: { ...((raw.renamed || {}).skills || {}) },
             agents: { ...((raw.renamed || {}).agents || {}) },
+            rules: { ...((raw.renamed || {}).rules || {}) },
             mcps: { ...((raw.renamed || {}).mcps || {}) },
         },
         rows: raw,

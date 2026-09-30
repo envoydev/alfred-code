@@ -60,6 +60,8 @@ test('the block is a valid plugin hooks object: node launcher, timeout 10 (60 an
                 assert.strictEqual(h.timeout, expected, `${event} wiring must carry timeout ${expected}: ${h.command}`);
                 assert.match(h.command, /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/[a-z-]+\.js"( \S+)*$/,
                     `${event} command must launch through node, quoted, from the plugin root: ${h.command}`);
+                // Exec form was built and reverted in 2.1.6 (M3): about 5ms per launch on macOS, and Cursor's hook
+                // schema has no args, so a copied row there ran a bare node and let every protective guard through.
                 assert.ok(!('args' in h), `${event}: an args array switches to exec form, which needs a real executable - keep args in the string`);
             }
     }

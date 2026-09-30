@@ -33,12 +33,12 @@ const { currentMcp } = require('./mcp.js');
 const { stackNames } = require('./manifest.js');
 
 // A generated, project-owned file is not a stack item: the captures rewrite those.
-const RULE_EXCLUDE = /^(baseline-project-.*|project-code-style)$/;
+const RULE_EXCLUDE = /^(alfred-project-.*|project-code-style)$/;
 // docs.js / memory.js / history.js / fresh-session.js / shell-writes.js / hidden-chars.js are ENGINES, hook-prelude.js the shared gate
 // module and shell-guards.js / file-guards.js the dispatchers that run the picked shell and file guards - none is a hook item.
 const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|history|hook-prelude|fresh-session|shell-writes|hidden-chars|shell-guards|file-guards)$/;
 const PW_ENGINE = /^browser-(chrome|msedge|firefox|webkit)$/;
-const PW_ORDER = ['chrome', 'msedge', 'firefox', 'webkit'];
+const { ENGINES: PW_ORDER } = require('../../stack/mcp/data-root.js');
 const engineOf = (name) => (PW_ENGINE.exec(String(name)) || [])[1];
 
 const nameOfSkill = (entry) => String(entry).split('|').pop();
@@ -444,7 +444,7 @@ function dropFormerPicks({ lines = [], listing = [], lastVersion = '', compare, 
 // (--selection, --add, --drop); each is read under the new name here, so a pick is carried and a
 // switch-off holds, and the old copy goes with the retired list. `said` makes it one line per rename
 // per run, whichever of those places names it first.
-const RENAMED_KIND = { skill: 'skills', agent: 'agents', mcp: 'mcps' };
+const RENAMED_KIND = { skill: 'skills', agent: 'agents', rule: 'rules', mcp: 'mcps' };
 function renamedTo({ renamed, kind, name, log = () => {}, said = new Set() })
 {
     const to = ((renamed && renamed[RENAMED_KIND[kind]]) || {})[name];
@@ -457,7 +457,7 @@ function renameLines(lines = [], opts = {})
 {
     return lines.map((l) =>
     {
-        const m = /^\s*(skill|agent|mcp)\s+(\S+)\s*$/.exec(String(l));
+        const m = /^\s*(skill|agent|rule|mcp)\s+(\S+)\s*$/.exec(String(l));
         return m ? `${m[1]} ${renamedTo({ ...opts, kind: m[1], name: m[2] })}` : l;
     });
 }
@@ -490,12 +490,13 @@ function renameDeny(settings, opts = {})
     return { ...settings, permissions: { ...settings.permissions, deny: mapped } };
 }
 
-// R128 (Task 22 fix round 1): the names the stack itself wrote into a project - its seeded CLAUDE.md
-// and the generated rules (`baseline-project-*.md`, `project-code-style.md`) - follow a rename, so no
+// R128 (Task 22 fix round 1): the names the stack itself wrote into a project - its seeded AGENTS.md
+// and the generated rules (`alfred-project-*.md`, `project-code-style.md`) - follow a rename, so no
 // session reads a command that no longer exists. Every run, on disk: each old skill or seat name is
 // re-spelled as a whole token, longest first, never inside a longer name - so a file name that embeds
-// one (`baseline-project-related-context.md`) stays. A user's own token equal to an old stack name is
-// re-spelled too; the per-file line says how many, and a second run finds nothing.
+// one (`alfred-project-related-context.md`) stays. Only the stack's own files are rewritten - the generated rules and
+// a seed the ledger still holds; the user's own AGENTS.md / CLAUDE.md is named, never touched. The per-file line
+// says how many, and a second run finds nothing.
 // The 2.0.0 MCP rename in the same files: a tool spelling (the plugin form, or the bare one a copy-route
 // registration answers) and a backticked server name, each as written by the capture that saw it.
 // M46: the browser before one server per engine was ONE registration under the renamed name itself (1.x
@@ -518,18 +519,49 @@ function mcpRespellPairs(renamedMcps = {}, engines = [])
     return out;
 }
 
-// The rules a capture GENERATED into the project (`baseline-project-*`, `project-code-style`) - never a
+// The rules a capture GENERATED into the project (`alfred-project-*`, `project-code-style`) - never a
 // catalog rule, never one of the project's own.
 function generatedRules(projectRoot)
 {
     const rules = path.join(projectRoot, '.claude', 'rules');
-    try { return fs.readdirSync(rules).filter((f) => /^(baseline-project-.+|project-code-style)\.md$/.test(f)).sort().map((f) => path.join(rules, f)); }
+    try { return fs.readdirSync(rules).filter((f) => /^(alfred-project-.+|project-code-style)\.md$/.test(f)).sort().map((f) => path.join(rules, f)); }
     catch { return []; }
+}
+
+// 2.1.6: the generated rules dropped the `baseline-` prefix. Their captures never re-run by themselves, so
+// an existing `baseline-project-<x>.md` MOVES to `alfred-project-<x>.md` with its content kept (a rename of
+// the file, never a copy or a rewrite). Only the four names the stack ever generated: a project's own
+// `baseline-project-notes.md` is no file of ours. A file already there under the new name is a newer
+// capture and wins; the old one stays and is named, since two of them would both load.
+const GENERATED_RULE_NAMES = ['agent-capabilities', 'related-context', 'architecture', 'run-book'];
+function moveGeneratedRules({ projectRoot, log = () => {}, note = () => {} })
+{
+    const rules = path.join(projectRoot, '.claude', 'rules');
+    let moved = 0;
+    for (const name of GENERATED_RULE_NAMES)
+    {
+        const from = path.join(rules, `baseline-project-${name}.md`);
+        const to = path.join(rules, `alfred-project-${name}.md`);
+        if (!fs.existsSync(from)) continue;
+        if (fs.existsSync(to))
+        {
+            // A capture already wrote the new name: the old file is what it superseded when it is byte-identical or no newer.
+            let superseded = false;
+            try { superseded = fs.readFileSync(from).equals(fs.readFileSync(to)) || fs.statSync(from).mtimeMs <= fs.statSync(to).mtimeMs; } catch { /* unreadable: keep and warn */ }
+            if (!superseded) { log(`  !! .claude/rules/baseline-project-${name}.md is newer than alfred-project-${name}.md and differs - both load; merge what you need, then remove the old one`); continue; }
+            try { fs.rmSync(from); log(`  removed: rule baseline-project-${name}.md - superseded by the alfred-project-${name}.md already there`); }
+            catch (err) { note(`.claude/rules/baseline-project-${name}.md is superseded by alfred-project-${name}.md but could not be removed (${err.message}) - remove it by hand`); }
+            continue;
+        }
+        try { fs.renameSync(from, to); moved += 1; log(`  moved: rule baseline-project-${name}.md -> alfred-project-${name}.md (content kept)`); }
+        catch (err) { note(`.claude/rules/baseline-project-${name}.md could not be moved to alfred-project-${name}.md (${err.message}) - rename it by hand`); }
+    }
+    return moved;
 }
 
 // M11: a capture bakes the LITERAL docs root into its generated pointer rule (a rule cannot resolve a
 // setting at load), so a data move that carried the docs from `from` to `to` re-stamps each of them, as the
-// installer re-stamps baseline-docs-root. Only the root as a whole path segment is replaced (`.alfred/docs`
+// installer re-stamps alfred-docs-root. Only the root as a whole path segment is replaced (`.alfred/docs`
 // never inside `.alfred/docs-old` or `x/.alfred/docs`); a rule naming it nowhere is left as it is.
 function respellDocsRoot({ projectRoot, from, to, log = () => {}, note = () => {} })
 {
@@ -550,9 +582,16 @@ function respellDocsRoot({ projectRoot, from, to, log = () => {}, note = () => {
     return done.length;
 }
 
-function respellRenamed({ projectRoot, renamed, engines = [], log = () => {}, note = () => {} })
+// `owned(rel)` says an instruction file is the stack's own seed (the ledger still holds it at its hash); every
+// other AGENTS.md / CLAUDE.md is the project's, so an old name in it is only named, never rewritten. `onWrite(rel)`
+// hears each owned instruction file this run rewrote, so the ledger keeps it.
+function respellRenamed({ projectRoot, renamed, engines = [], owned = () => false, onWrite = () => {}, log = () => {}, note = () => {} })
 {
-    const pairs = { ...((renamed && renamed.skills) || {}), ...((renamed && renamed.agents) || {}) };
+    // A rule is named in a seeded AGENTS.md by its path (`.claude/rules/baseline-git.md`), so its pairs are the
+    // file names without the extension; the four generated pointers moved by moveGeneratedRules follow the same way.
+    const rules = Object.fromEntries(Object.entries((renamed && renamed.rules) || {}).map(([o, n]) => [o.replace(/\.md$/, ''), n.replace(/\.md$/, '')]));
+    const generated = Object.fromEntries(GENERATED_RULE_NAMES.map((g) => [`baseline-project-${g}`, `alfred-project-${g}`]));
+    const pairs = { ...((renamed && renamed.skills) || {}), ...((renamed && renamed.agents) || {}), ...rules, ...generated };
     const olds = Object.keys(pairs).sort((a, b) => b.length - a.length);
     const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const mcpPairs = mcpRespellPairs((renamed && renamed.mcps) || {}, engines);
@@ -560,22 +599,35 @@ function respellRenamed({ projectRoot, renamed, engines = [], log = () => {}, no
     if (!olds.length && !mcpOlds.length) return 0;
     const re = olds.length ? new RegExp(`(?<![A-Za-z0-9_-])(${olds.map(escape).join('|')})(?![A-Za-z0-9_-])`, 'g') : null;
     const mcpRe = mcpOlds.length ? new RegExp(mcpOlds.map(escape).join('|'), 'g') : null;
+    // The project's own file: a name inside a path (`scripts/<name>.sh`) or a backticked word is no hit.
+    const nameRe = olds.length ? new RegExp(`(?<![A-Za-z0-9_.-])(?<![A-Za-z0-9_.-]/)(${olds.map(escape).join('|')})(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, 'g') : null;
+    const toolOlds = mcpOlds.filter((o) => o.startsWith('mcp__'));
+    const toolRe = toolOlds.length ? new RegExp(toolOlds.map(escape).join('|'), 'g') : null;
+    const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
+    const instructions = ['AGENTS.md', '.claude/AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md'].map((r) => path.join(projectRoot, ...r.split('/')));
     let total = 0;
-    for (const file of [path.join(projectRoot, 'CLAUDE.md'), path.join(projectRoot, '.claude', 'CLAUDE.md'), ...generatedRules(projectRoot)])
+    for (const file of [...instructions, ...generatedRules(projectRoot)])
     {
         let text;
         try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        const name = rel(file);
+        if (instructions.includes(file) && !owned(name))
+        {
+            const hits = [...new Set([...(nameRe ? text.matchAll(nameRe) : []), ...(toolRe ? text.matchAll(toolRe) : [])].map((m) => m[0]))];
+            if (hits.length) log(`  !! ${name} is yours and names ${hits.length} old stack name(s) (${hits.slice(0, 5).join(', ')}${hits.length > 5 ? ', ...' : ''}) - re-spell them by hand where they mean the stack's`);
+            continue;
+        }
         let n = 0;
         let m = 0;
         let out = re ? text.replace(re, (old) => { n += 1; return pairs[old]; }) : text;
         if (mcpRe) out = out.replace(mcpRe, (old) => { m += 1; return mcpPairs[old]; });
         if (!n && !m) continue;
-        const rel = path.relative(projectRoot, file).split(path.sep).join('/');
         try { fs.writeFileSync(file, out); }
-        catch (err) { note(`${rel} names ${n + m} old skill, seat or MCP name(s) and could not be re-spelled (${err.message})`); continue; }
+        catch (err) { note(`${name} names ${n + m} old skill, seat or MCP name(s) and could not be re-spelled (${err.message})`); continue; }
+        if (instructions.includes(file)) onWrite(name);
         total += n + m;
-        if (n) log(`  renamed: ${rel} - ${n} old skill or seat name(s) re-spelled to the new names`);
-        if (m) log(`  renamed: ${rel} - ${m} old MCP tool or server name(s) re-spelled to the new names`);
+        if (n) log(`  renamed: ${name} - ${n} old skill or seat name(s) re-spelled to the new names`);
+        if (m) log(`  renamed: ${name} - ${m} old MCP tool or server name(s) re-spelled to the new names`);
     }
     return total;
 }
@@ -589,7 +641,7 @@ function respellRenamed({ projectRoot, renamed, engines = [], log = () => {}, no
 // name the core does not carry, and every line that is not a plain name list, is left as written.
 function respellRosterSeats({ projectRoot, core, seats = [], log = () => {}, note = () => {} })
 {
-    const file = path.join(projectRoot, '.claude', 'rules', 'baseline-project-agent-capabilities.md');
+    const file = path.join(projectRoot, '.claude', 'rules', 'alfred-project-agent-capabilities.md');
     let text;
     try { text = fs.readFileSync(file, 'utf8'); } catch { return 0; }
     const carried = new Set(seats);
@@ -617,8 +669,8 @@ function respellRosterSeats({ projectRoot, core, seats = [], log = () => {}, not
     }
     if (!changed) return 0;
     try { fs.writeFileSync(file, lines.join('\n')); }
-    catch (err) { note(`.claude/rules/baseline-project-agent-capabilities.md names ${changed} seat(s) the core answers under ${core}:<seat> and could not be re-spelled (${err.message}) - re-run /alfred-capture-agent-capabilities`); return 0; }
-    log(`  roster: baseline-project-agent-capabilities.md - ${changed} seat name(s) re-spelled to how they resolve (${core}:<seat> on the core, bare for a kept project copy)`);
+    catch (err) { note(`.claude/rules/alfred-project-agent-capabilities.md names ${changed} seat(s) the core answers under ${core}:<seat> and could not be re-spelled (${err.message}) - re-run /alfred-capture-agent-capabilities`); return 0; }
+    log(`  roster: alfred-project-agent-capabilities.md - ${changed} seat name(s) re-spelled to how they resolve (${core}:<seat> on the core, bare for a kept project copy)`);
     return changed;
 }
 
@@ -780,6 +832,6 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 }
 
 module.exports = {
-    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, respellRenamed, respellRosterSeats, respellDocsRoot, generatedRules, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, respellRenamed, respellRosterSeats, respellDocsRoot, generatedRules, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, FORMER_PLUGINS,
 };

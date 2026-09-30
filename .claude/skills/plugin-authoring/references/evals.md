@@ -66,7 +66,7 @@ marked `arm: with-only` are not scored in the without-arm; `arm: both` forces it
 `WITH` is the case's score with the plugin, `W/OUT` without it, `Δ` the difference, `COST` a
 list-price estimate. The most common first finding: `Δ` near zero with the `tool_used: Skill`
 grader failing - Claude is not choosing the skill on natural phrasing; the fix follows the
-description rules in `alfred-habits-skill-writing`. A passing skill grader with a negative `Δ`
+description rules in the skills docs. A passing skill grader with a negative `Δ`
 points at the judge before the plugin. `--keep-temp` keeps each run's sandbox for inspection.
 
 ## CI

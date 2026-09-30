@@ -41,7 +41,7 @@ function tree(repo)
     })(work);
     return files;
 }
-const untimed = (stamp) => stamp.replace(/^installed: .*$/m, 'installed: <time>');
+const untimed = (stamp) => stamp.replace(/^installed: .*$/m, 'installed: <time>').replace(/^installed-ms: .*$/m, 'installed-ms: <time>');
 const json = (repo, rel) => JSON.parse(fs.readFileSync(path.join(repo, rel), 'utf8'));
 const run = (actions, route, extra = {}) => seedRun(actions, SELECTION, { env: ROUTES[route], ...extra });
 
@@ -52,7 +52,7 @@ for (const route of Object.keys(ROUTES))
         const { result, calls } = run('install', route, {
             inspect: (repo) => ({
                 rule: fs.readFileSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md'), 'utf8'),
-                claudeMd: fs.existsSync(path.join(repo, '.claude', 'CLAUDE.md')),
+                agentsMd: fs.existsSync(path.join(repo, '.claude', 'AGENTS.md')),
                 engines: ['docs.js', 'memory.js', 'model-windows.json'].filter((f) => fs.existsSync(path.join(repo, '.claude', 'hooks', f))),
                 stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
                 settings: json(repo, path.join('.claude', 'settings.json')),
@@ -61,7 +61,7 @@ for (const route of Object.keys(ROUTES))
             }),
         });
         assert.strictEqual(result.rule, fs.readFileSync(path.join(ROOT, 'stack', 'rules', 'markdown-docs.md'), 'utf8'), 'the picked rule landed byte for byte');
-        assert.ok(result.claudeMd, 'the CLAUDE.md seed landed');
+        assert.ok(result.agentsMd, 'the AGENTS.md seed landed');
         assert.deepStrictEqual(result.engines, ['docs.js', 'memory.js', 'model-windows.json'], 'both hook engines and the window table are copied on every route');
         assert.match(result.stamp, /^action: install$/m, 'the stamp names the action');
         assert.match(result.stamp, /^picked-skills: markdown-style$/m, 'the stamp records the pick - a copy, no plugin home (2.1.0)');

@@ -21,7 +21,7 @@ const path = require('node:path');
 const { envOf } = require('../../stack/hooks/hook-prelude.js');
 
 const DOCS_ROOT_DEFAULT = '.alfred/docs';
-const DOCS_ROOT_RULE = 'baseline-docs-root.md';
+const DOCS_ROOT_RULE = 'alfred-docs-root.md';
 
 function sameContent(a, b)
 {
@@ -182,12 +182,17 @@ function resolveDocsVersioning(projectRoot, scope)
 // The root the installed docs-root rule is stamped with now, or null (no rule, or still the placeholder).
 function stampedDocsRoot(projectRoot)
 {
-    try
+    // A 2.1.5 install holds the rule under its old name until this run's prune, so it answers when the new one is absent.
+    for (const name of [DOCS_ROOT_RULE, 'baseline-docs-root.md'])
     {
-        const m = /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(projectRoot, '.claude', 'rules', DOCS_ROOT_RULE), 'utf8'));
-        return m && m[1] !== '__DOCS_ROOT__' ? m[1] : null;
+        try
+        {
+            const m = /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(projectRoot, '.claude', 'rules', name), 'utf8'));
+            if (m && m[1] !== '__DOCS_ROOT__') return m[1];
+        }
+        catch { /* absent: try the next name */ }
     }
-    catch { return null; }
+    return null;
 }
 
 // Replace `__DOCS_ROOT__` in the COPIED rule with the current value. It runs on install and on

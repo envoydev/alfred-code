@@ -57,7 +57,7 @@ A `Result<T>` carries either the value or one such `Error`; the handler ends wit
 - The handler must: log the exception once with structured context (route, trace ID), default to 500 but map recognized exception types to their status, suppress `detail` and stack traces outside `Development`, and still answer in RFC 9457. It is the single `catch` for unexpected errors in the whole application.
 
 ```csharp
-public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILogger<GlobalExceptionHandler> log)
+public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> log, IProblemDetailsService problems)
     : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(HttpContext ctx, Exception ex, CancellationToken ct)

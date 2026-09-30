@@ -1,5 +1,5 @@
 ---
-description: "FAST refresh of an existing Alfred Code install - no selection questions (one ask only when the release adds an item this install would not otherwise carry): bring everything currently installed to the newest release, MCP runtimes and plugins included (MCPs re-registered at the release's own pins, then VERIFIED against the manifest shape and repaired where a registration drifted - `claude mcp add` over an existing name exits 0 without writing, so a stale entry used to survive every update; `claude plugin update` per installed stack plugin, at the scope the plugin is actually installed at) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only reads the install back and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated baseline-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. Works with no newer plugin: the snapshot's own pins move the library copies, hooks and MCPs. NOT for choosing items to add or drop beyond what the release itself added - that is the sibling configure command; not a first install - that is setup."
+description: "FAST refresh of an existing Alfred Code install - no selection questions (one ask only when the release adds an item this install would not otherwise carry): bring everything currently installed to the newest release, MCP runtimes and plugins included (MCPs re-registered at the release's own pins, then VERIFIED against the manifest shape and repaired where a registration drifted - `claude mcp add` over an existing name exits 0 without writing, so a stale entry used to survive every update; `claude plugin update` per installed stack plugin, at the scope the plugin is actually installed at) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only reads the install back and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated alfred-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. Works with no newer plugin: the snapshot's own pins move the library copies, hooks and MCPs. NOT for choosing items to add or drop beyond what the release itself added - that is the sibling configure command; not a first install - that is setup."
 disable-model-invocation: true
 ---
 
@@ -54,8 +54,13 @@ authoring skill left the shipped catalog, and a retired copy git tracks in a pro
 names. Update carries every pick, seat deny, `skillOverrides` value and selection line across and
 prunes the old copies, printing one `renamed: <kind> <old> -> <new>` line each - report them. The
 docs they write keep their paths (`<docs-path>/architecture/`, `code-style/`, `test-coverage/`,
-`related-projects/`, `quality/`, `loops/`), and so do the generated rules whose FILE names embed an
-old name (`baseline-project-related-context.md`, `baseline-project-agent-capabilities.md`).
+`related-projects/`, `quality/`, `loops/`).
+**Renamed in 2.1.6.** The seven shipped rules and the generated ones lost their `baseline-` prefix for
+`alfred-` (`baseline-git.md` -> `alfred-git.md`, `baseline-project-related-context.md` ->
+`alfred-project-related-context.md`). Update prunes each old library copy (`rule pruned (retired
+upstream)`), writes the new one, and MOVES each generated file with its content kept (`moved: rule ...`) -
+their captures do not re-run by themselves. Report both kinds of line; a `!!` line means the old and the new
+generated file both exist, and the old one is the user's to remove.
 A 1.x global install leaves its account skill copies behind: the `were moved from` line names them
 with their `rm -rf`, the renamed ones apart because they load BESIDE the new names - report it whole.
 `/alfred-loop-quality` now works a code-quality assessment by tier, with the `loops/`
@@ -86,7 +91,8 @@ prompts as its rules; `/alfred-loop-quality staged` is the stage-by-stage run a 
 | `/project-architecture-quality-loop` | `/alfred-loop-architecture-quality` |
 | `/project-test-coverage-loop` | `/alfred-loop-test-coverage` |
 | `/project-commit-checkpoint` | `/alfred-habits-commit-checkpoint` |
-| `/alfred-capture-claude-md` | `/alfred-habits-adjust-claude-md` |
+| `/alfred-capture-claude-md` | `/alfred-habits-adjust-agents-md` |
+| `/alfred-habits-adjust-claude-md` | `/alfred-habits-adjust-agents-md` |
 | `/create-ticket` | `/alfred-habits-create-ticket` |
 | `/explain-code-tutor` | `/alfred-habits-explain-code` |
 | seat `ci-failure-diagnoser` | seat `alfred-issue-diagnoser-ci` |
@@ -106,7 +112,7 @@ repeat it.
 
 **House voice in every line this run emits** - narration, tables and the asks alike: single
 dashes, never em-dashes, and single quotes in prose. A fresh or refreshed install may have no
-`.claude/rules/baseline-interaction.md` loaded at all, so this command's own text is the only place
+`.claude/rules/alfred-interaction.md` loaded at all, so this command's own text is the only place
 the voice can come from (measured: a first-run narration line opened with an em-dash, on the one
 surface where the rule forbidding it cannot yet exist).
 
@@ -335,7 +341,7 @@ every scope, `--scope user` included: the plugin launcher resolves the db path p
 itself - registers it in this project's own `.mcp.json` at every scope.
 
 An install carrying no memory registration yet needs no flag at all - the `--installed-only`
-derivation now ADOPTS `baseline-memory` and the `memory` MCP the same way it adopts a new hook,
+derivation now ADOPTS `alfred-memory` and the `memory` MCP the same way it adopts a new hook,
 whenever they are absent: the registration lands at `global` unless `--memory-level` named another
 level. The notes import waits for `/alfred-code:init` - no run imports until the stamp's
 `initialised:` line holds a date (the log says `the notes import waits for /alfred-code:init`, and the
@@ -441,7 +447,7 @@ On Windows: `$t = Read-Host 'value' -AsSecureString`, then write the same key wi
 it for what they asked and END THE TURN on the rotation ask - it is in the transcript on disk now,
 and that is their decision to make, not one to leave unsaid. Then:
 
-- Reconcile the project's CLAUDE.md (step 6 - the step states when and why it runs).
+- Reconcile the project's AGENTS.md (step 6 - the step states when and why it runs).
 - Report per step 7 - version delta, refreshed counts from the installer's log tail, the
   `required:` additions it named, and the step-2 `new:` lines: one line naming what `arrives`,
   one naming what stays `off` (the user's own switch - say where it lives), the offers taken and
@@ -511,19 +517,23 @@ parse-edit-rewrite,
 never regex, never touching other wiring). A migration's `then` line goes in the step-7 report
 as a next step - run nothing on the user's behalf.
 
-## 6. Reconcile the project's CLAUDE.md
-Read `$TMP/repo/stack/skills/alfred-habits-adjust-claude-md/SKILL.md` and follow it inline with
+## 6. Reconcile the project's AGENTS.md
+Read `$TMP/repo/stack/skills/alfred-habits-adjust-agents-md/SKILL.md` and follow it inline with
 `<stack>` = the `$TMP/repo` path, pasted as a literal, exactly as the sibling `configure` command's step 13: its improve mode adds the
 sections the template gained and OFFERS a fix for what its check reports (never in the recommended
 option - a check row is heuristic, applied only when the user picks it), this run's own part is the rules
 table for what it pruned, the project's own prose is never overwritten, and every change is shown
 before writing.
 The installer has already re-spelled every renamed skill or seat name the stack wrote into
-`CLAUDE.md`, `.claude/CLAUDE.md` and the generated rules (one `renamed: <file> - <n> ...` line per
+`AGENTS.md`, `.claude/AGENTS.md` and the generated rules (one `renamed: <file> - <n> ...` line per
 file) - report those lines, and leave the names to it.
+The installer has also dealt with the seeded file's name: an unedited `.claude/CLAUDE.md` it seeded is
+moved to `.claude/AGENTS.md` (`git mv` where git tracks it), an edited one, or any when a root AGENTS.md
+holds the project's instructions, is left in place and named in one line with its `mv` command - report
+those lines and never rename a file for the user.
 
 **Run the compare whatever the delta says** - the template being unchanged
-UPSTREAM says nothing about whether THIS project's CLAUDE.md still matches it, and the
+UPSTREAM says nothing about whether THIS project's AGENTS.md still matches it, and the
 template-unchanged skip left that question with no command that answers it: not update, which
 skipped, and not validate, which touches only the rules table. Measured: a user asked it twice,
 verbatim, five and a half minutes apart. The compare is a 75-line file against a 116-line one, so
@@ -622,7 +632,7 @@ hand - as `Suggested next steps`, the recommended one first and each with the on
 matters. **When this run re-registered an MCP or replaced a hook file, the RESTART is row one** - with
 `claude mcp list` named beside it as the one command that confirms the servers actually connected
 (a registration is not a connection: measured, two stdio servers timed out at 30s and the session
-ran without them with nothing reporting it) - -
+ran without them with nothing reporting it) -
 every other follow-up runs against the session that is still holding the OLD ones, and a card that
 ranks a capture above it tells the user to re-capture an inventory that is not loaded yet (measured:
 a run that replaced two guard hooks and re-registered all four servers listed the re-capture first,
@@ -657,7 +667,7 @@ the close-out, not silently ignored.
 
 ## Do not
 - Never delete anything the upstream diff or the migrations catalog did not name - user-authored
-  skills/agents/rules/hooks and the generated `baseline-project-*.md` / `project-code-style.md`
+  skills/agents/rules/hooks and the generated `alfred-project-*.md` / `project-code-style.md`
   rules appear in neither; if a candidate is in neither list, it stays.
 - Never install an addition the step-2 ask did not take, and never remove an MCP or plugin the
   diff did not retire - dropping by choice, and adopting anything the release did not add, is

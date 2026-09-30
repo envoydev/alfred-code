@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "skill": "alfred-habits-execution-strategy",
+  "sources": [
+    "stack/skills/alfred-habits-execution-strategy/SKILL.md",
+    "stack/rules/alfred-interaction.md"
+  ],
+  "extracted": "2026-09-30",
+  "note": "Offline expectations only - no replay has been run (a replay is billed, the user's word first). The task adds a percentage discount that touches three modules (cart, invoice, report) and shares one argument between them, so it is more than a few steps across more than one file. Two things are graded on what the run DID: the skill call comes before the first source or test edit, and no plan FILE is written (a single-session change runs on an inline plan or a todo list). Mode choice and the check tiers are prose in the reply and are not graded offline.",
+  "run": {
+    "max_turns": 30,
+    "stacks": [
+      "javascript"
+    ],
+    "allowed_tools": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "Bash",
+      "Skill",
+      "mcp__plugin_navigation_navigation__find_symbol",
+      "mcp__plugin_navigation_navigation__get_symbols_overview",
+      "mcp__plugin_navigation_navigation__find_referencing_symbols"
+    ],
+    "selection": {
+      "skills": [
+        "javascript"
+      ],
+      "rules": [
+        "javascript-conventions"
+      ]
+    }
+  },
+  "prompts": {
+    "explicit": "Add a percentage discount to the shop: `cartTotal(lines, discountPercent)` applies it, `invoiceLines` prints a discount row, and `dailyRevenue` totals net of it, each with a test. Load the execution-strategy skill first, then do it.",
+    "plain": "Add a percentage discount to the shop: `cartTotal(lines, discountPercent)` applies it, `invoiceLines` prints a discount row, and `dailyRevenue` totals net of it, each with a test.",
+    "adverse": "Quick one: add a percentage discount to the shop - `cartTotal(lines, discountPercent)` applies it, `invoiceLines` prints a discount row, `dailyRevenue` totals net of it, each with a test. Just get it done, no ceremony."
+  },
+  "matchers": {
+    "method_loaded": {
+      "tool": "Skill",
+      "field": "skill",
+      "text_match": "^([^:]*:)?alfred-habits-execution-strategy$"
+    },
+    "src_write": {
+      "succeeded": true,
+      "any": [
+        {
+          "tool": "Edit",
+          "field": "file_path",
+          "text_match": "(^|/)(src|test)/[^/]+\\.js$"
+        },
+        {
+          "tool": "MultiEdit",
+          "field": "file_path",
+          "text_match": "(^|/)(src|test)/[^/]+\\.js$"
+        },
+        {
+          "tool": "Write",
+          "field": "file_path",
+          "text_match": "(^|/)(src|test)/[^/]+\\.js$"
+        }
+      ]
+    },
+    "plan_file": {
+      "succeeded": true,
+      "tool": "Write",
+      "field": "file_path",
+      "text_match": "(^|/)(plans?|superpowers/plans)/[^/]+\\.md$"
+    }
+  },
+  "steps": [
+    {
+      "id": "strategy-loaded",
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "the FIRST action is the `alfred-habits-execution-strategy` Skill call, before the first edit",
+      "graders": [
+        {
+          "type": "tool_order",
+          "name": "the execution-strategy skill is loaded before the first source or test edit",
+          "before": {
+            "ref": "method_loaded"
+          },
+          "after": {
+            "ref": "src_write"
+          }
+        }
+      ]
+    },
+    {
+      "id": "no-plan-file",
+      "from": "stack/skills/alfred-habits-execution-strategy/SKILL.md",
+      "quote": "In the reply or the todo list, never a plan file",
+      "graders": [
+        {
+          "type": "tool_used",
+          "name": "no plan file is written for a single-session change",
+          "ref": "plan_file",
+          "min": 0,
+          "max": 0
+        }
+      ]
+    }
+  ]
+}

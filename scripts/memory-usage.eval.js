@@ -10,7 +10,7 @@
 // read-only) or, for a read scenario, the seeded fact in the answer.
 //
 // Until the installer (Task 6) lands the memory MCP + hook wiring, this harness builds each temp
-// project ITSELF (buildProjectSelf): copies stack/rules/baseline-memory.md and
+// project ITSELF (buildProjectSelf): copies stack/rules/alfred-memory.md and
 // stack/hooks/{memory,memory-session,docs}.js, writes .mcp.json (the memory server, pointed at that
 // project's OWN throwaway .memory-mcp/memory.db - never ~/.memory-mcp) and .claude/settings.json (the
 // SessionStart wiring) by hand, and copies only the agent(s) a scenario needs into .claude/agents/.
@@ -25,7 +25,7 @@
 // node_modules, no .git), a Claude-own-memory note seeded for it under a sandboxed CLAUDE_CONFIG_DIR
 // (never the real account), then updated in place by THIS working tree's HEAD (also `git archive`'d,
 // same release shape), then `memory.js init` from that snapshot - since 2.0.0 the notes import and the
-// switch-off belong to /alfred-code:init, not to update. Asserts baseline-memory.md landed, memory is registered, the seeded note
+// switch-off belong to /alfred-code:init, not to update. Asserts alfred-memory.md landed, memory is registered, the seeded note
 // became a db row, and autoMemoryEnabled is false - each a thrown Error on failure, which the
 // existing per-run try/catch already turns into a reported FAIL record rather than a crash.
 //
@@ -87,7 +87,7 @@ const { spawn, spawnSync, execFileSync } = require('child_process');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 const ROOT = path.join(__dirname, '..');
-const RULE_SRC = path.join(ROOT, 'stack', 'rules', 'baseline-memory.md');
+const RULE_SRC = path.join(ROOT, 'stack', 'rules', 'alfred-memory.md');
 const HOOK_MEMORY_SRC = path.join(ROOT, 'stack', 'hooks', 'memory.js');
 const HOOK_MEMORY_SESSION_SRC = path.join(ROOT, 'stack', 'hooks', 'memory-session.js');
 // memory-session.js does `require('./docs.js').DOCS_ROOT` for the related-projects lookup - copied
@@ -137,7 +137,7 @@ function buildProjectSelf(projectDir, { agents = [] } = {}) {
   fs.mkdirSync(path.join(claudeDir, 'hooks'), { recursive: true });
   fs.mkdirSync(path.join(claudeDir, 'agents'), { recursive: true });
 
-  fs.copyFileSync(RULE_SRC, path.join(claudeDir, 'rules', 'baseline-memory.md'));
+  fs.copyFileSync(RULE_SRC, path.join(claudeDir, 'rules', 'alfred-memory.md'));
   fs.copyFileSync(HOOK_MEMORY_SRC, path.join(claudeDir, 'hooks', 'memory.js'));
   fs.copyFileSync(HOOK_MEMORY_SESSION_SRC, path.join(claudeDir, 'hooks', 'memory-session.js'));
   fs.copyFileSync(HOOK_DOCS_SRC, path.join(claudeDir, 'hooks', 'docs.js'));
@@ -183,7 +183,7 @@ function buildProjectInstall(projectDir, { agents = [] } = {}) {
   rt.execCommand('git', ['init', '-q'], { cwd: projectDir });
 
   const selectionPath = path.join(projectDir, '.eval-selection.txt');
-  const selectionLines = ['rule baseline-memory', 'hook memory-session', 'hook docs-session', 'mcp memory', ...agents.map((a) => `agent ${a}`)];
+  const selectionLines = ['rule alfred-memory', 'hook memory-session', 'hook docs-session', 'mcp memory', ...agents.map((a) => `agent ${a}`)];
   fs.writeFileSync(selectionPath, `${selectionLines.join('\n')}\n`);
 
   execFileSync(process.execPath, [INSTALLER_SEED, 'install', '--scope', 'project', '--selection', selectionPath, '--source', ROOT, '--memory-level', 'project'], {
@@ -220,9 +220,9 @@ async function diffSetups(agents) {
     const same = (a, b) => a === b;
 
     // Rule
-    const ruleSelf = readOr(path.join(selfDir, '.claude', 'rules', 'baseline-memory.md'));
-    const ruleInstall = readOr(path.join(installDir, '.claude', 'rules', 'baseline-memory.md'));
-    lines.push(`rule baseline-memory.md: ${same(ruleSelf, ruleInstall) ? 'identical' : 'DIFFERS'}`);
+    const ruleSelf = readOr(path.join(selfDir, '.claude', 'rules', 'alfred-memory.md'));
+    const ruleInstall = readOr(path.join(installDir, '.claude', 'rules', 'alfred-memory.md'));
+    lines.push(`rule alfred-memory.md: ${same(ruleSelf, ruleInstall) ? 'identical' : 'DIFFERS'}`);
 
     // Hook engine files
     for (const f of ['memory.js', 'memory-session.js', 'docs.js']) {
@@ -410,7 +410,7 @@ function writeUpdateForensics(projectDir, { preInstallLog, updateLog, dbPath }) 
 // note above the selection lines), then seeds a Claude-own-memory note for it, then (2) `update`
 // --installed-only from THIS working tree's HEAD snapshot - the real path a user's no-questions
 // `update` takes, not an explicit --selection - which should register the memory MCP, drop
-// baseline-memory.md in, import the seeded note, and switch autoMemoryEnabled off. Both installer
+// alfred-memory.md in, import the seeded note, and switch autoMemoryEnabled off. Both installer
 // invocations run under one sandboxed CLAUDE_CONFIG_DIR (never the real account - the whole point of
 // a temp-project matrix, CLAUDE.md's own invariant) so the note-seeding step has a folder to seed
 // into that is not the real ~/.claude, and never touches it.
@@ -493,7 +493,7 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
 
   // Step 2: update, from a release-shaped snapshot of THIS working tree's HEAD (C1's exact gap - no
   // node_modules). `--installed-only` (not an explicit --selection) - the real path a user's
-  // no-questions `update` actually takes, per the re-review: baseline-memory / memory-session /
+  // no-questions `update` actually takes, per the re-review: alfred-memory / memory-session /
   // docs-session / the memory MCP are all NEW categories this pre-feature project never had, so this
   // depends on the installer treating them as locked/always-add rather than 'not currently installed,
   // so not wanted' - the fix the controller flagged as landing separately. Do not run this until told to.
@@ -510,7 +510,7 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   const dbPath = path.join(projectDir, '.memory-mcp', 'memory.db');
   const mcpConfigPath = path.join(projectDir, '.mcp.json');
 
-  // Assert per the brief: baseline-memory.md present, memory registered, the note imported (a row in
+  // Assert per the brief: alfred-memory.md present, memory registered, the note imported (a row in
   // the db), autoMemoryEnabled false. Each check names exactly what it found, not just pass/fail, so
   // a failure record is diagnosable from the JSON results file alone. Wrapped so ANY assert failure
   // (controller directive after the S4 run-2 miss, now treated as a real bug, not a transient) dumps
@@ -519,9 +519,9 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   // that ends up in the record.
   try {
     const asserts = [];
-    const ruleOk = fs.existsSync(path.join(projectDir, '.claude', 'rules', 'baseline-memory.md'));
-    asserts.push(`baseline-memory.md present: ${ruleOk}`);
-    if (!ruleOk) throw new Error(`update assertion failed - baseline-memory.md missing after update (${asserts.join('; ')})`);
+    const ruleOk = fs.existsSync(path.join(projectDir, '.claude', 'rules', 'alfred-memory.md'));
+    asserts.push(`alfred-memory.md present: ${ruleOk}`);
+    if (!ruleOk) throw new Error(`update assertion failed - alfred-memory.md missing after update (${asserts.join('; ')})`);
 
     const mcpData = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8') || '{}');
     const memEntry = mcpData.mcpServers && mcpData.mcpServers.memory;

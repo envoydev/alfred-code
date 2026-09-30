@@ -15,7 +15,7 @@ second and every session pays for a description that changes nothing.
 
 - Fires for writing, changing or reviewing a skill - its SKILL.md, description or frontmatter, or a file under its references/ folder - when a skill does not fire, fires on the wrong request or is ignored after it loads, or when deciding whether a piece of guidance belongs in a skill at all rather than a rule, a hook or a reference.
 - The skill-authoring method, from the trigger to the proof that the skill changes a run.
-- Not for a plugin's manifest or marketplace entry, which the plugin authoring guide covers, or a project's CLAUDE.md, which its instruction-file tooling owns.
+- Not for a plugin's manifest or marketplace entry, which the plugin authoring guide covers, or a project's AGENTS.md, which its instruction-file tooling owns.
 
 ## Is it a skill at all
 

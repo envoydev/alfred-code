@@ -1,5 +1,5 @@
 ---
-description: "One-time bootstrap of an Alfred Code install, run in the session AFTER setup's restart - installs what the kept MCP servers need to start (uv, the pinned Python, csharp-ls when csharp-lsp is kept, the picked browsers, the navigation-server index, claude-hud's status line in its compact layout - every machine-level install through ONE ask first), sets this project's shared-memory level and imports Claude's old notes (no reinstall), runs the captures the install carries (related projects, architecture, code style, the run book, agent capabilities) by following each SKILL.md inline, then offers the CLAUDE.md fill. Nothing installed yet routes to /alfred-code:setup."
+description: "One-time bootstrap of an Alfred Code install, run in the session AFTER setup's restart - installs what the kept MCP servers need to start (uv, the pinned Python, csharp-ls when csharp-lsp is kept, the picked browsers, the navigation-server index, claude-hud's status line in its compact layout - every machine-level install through ONE ask first), sets this project's shared-memory level and imports Claude's old notes (no reinstall), runs the captures the install carries (related projects, architecture, code style, the run book, agent capabilities) by following each SKILL.md inline, then offers the AGENTS.md fill. Nothing installed yet routes to /alfred-code:setup."
 disable-model-invocation: true
 ---
 
@@ -57,7 +57,7 @@ launcher that wants the Read tool to reach them too starts the session with
 dashes, never em-dashes, and single quotes in prose.
 
 Six steps, one banner line before each: `[step n/6 - <name>] <what> · next: <name>` - 1 read the
-install · 2 the plan · 3 machine installs · 4 memory · 5 captures · 6 CLAUDE.md.
+install · 2 the plan · 3 machine installs · 4 memory · 5 captures · 6 AGENTS.md.
 
 ## 1. Read the install
 
@@ -126,7 +126,7 @@ so Cursor and an install not yet updated reach the same file; until then the lev
 
 Then ONE AskUserQuestion with those three options, `global` marked Recommended - the whole point of
 shared memory. Picking `project` while this project's related-projects domain names sibling repos
-(`.claude/rules/baseline-project-related-context.md`) means their memories are not visible from
+(`.claude/rules/alfred-project-related-context.md`) means their memories are not visible from
 here - one caveat line in the close.
 
 Apply it with the init-only entry point - no reinstall; under `.claude/` only the settings key and the
@@ -165,13 +165,13 @@ by commas), or 'none - skip it' (recommended only when the repo names no sibling
 capture. `alfred-capture-agent-capabilities` runs LAST, so its generated rule reflects everything the
 captures above added; its own precheck decides whether the rule needs regenerating.
 
-## 6. CLAUDE.md - the user's call
+## 6. AGENTS.md - the user's call
 
 Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (fill it in -
-recommended / skip); a 'no' ends the step cleanly. The installer seeded `.claude/CLAUDE.md` from
-`stack/CLAUDE.template.md` when the project had none; a CLAUDE.md with the project's own text (root,
+recommended / skip); a 'no' ends the step cleanly. The installer seeded `.claude/AGENTS.md` from
+`stack/AGENTS.template.md` when the project had none; a AGENTS.md with the project's own text (root,
 `.claude/` or a part's own) is NEVER overwritten. On a yes, read
-`$TMP/repo/stack/skills/alfred-habits-adjust-claude-md/SKILL.md` (through Bash) and follow it inline, start to finish,
+`$TMP/repo/stack/skills/alfred-habits-adjust-agents-md/SKILL.md` (through Bash) and follow it inline, start to finish,
 with `<stack>` = the `$TMP/repo` path, pasted as a literal - it is this step's instructions, the one home of the fill: its script picks
 create (the seed is still unfilled) or improve (every change shown before it is written), and the
 check closes it. The captures just run are what it cites for structure. Never offer skill, agent or
@@ -182,7 +182,7 @@ MCP changes here - that is `/alfred-code:configure`.
 **The card restates the OUTCOME of every step** - one line each, in step order: each machine item
 (installed, failed with its reason, skipped, blocked with its fix), the memory level and database and
 whether the import and the switch-off happened, each capture (ran and what it wrote, done, skipped
-and why), CLAUDE.md (created, improved or skipped, with the check's last line). Then the user's own next steps as suggestions,
+and why), AGENTS.md (created, improved or skipped, with the check's last line). Then the user's own next steps as suggestions,
 each with its one reason: a restart when step 3 installed a runtime a server needed or step 4 chose
 a level other than `global`; `claude mcp list` after it, where every row should read connected;
 `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` as the durable copy. Close the card
@@ -212,7 +212,7 @@ is answered by the run itself, never AskUserQuestion, by one rule:
   it. A multi-select ask takes every pre-selected option that is not destructive.
 - Log each answer as one line, `unattended: <question> -> <choice>`, with `(<why>)` when the choice is
   not the Recommended option. Step 2's plan already carries the lines for init's own asks (machine
-  installs, memory level, related projects, CLAUDE.md) - apply exactly those, never re-judge them.
+  installs, memory level, related projects, AGENTS.md) - apply exactly those, never re-judge them.
 - The stack's files are read through the Bash tool, never the Read tool (above): outside the working
   directory the Read tool asks first, and here nobody answers.
 

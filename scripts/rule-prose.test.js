@@ -35,11 +35,11 @@ test('M62: both repair routers give a read-only seat its action - report the red
 
 test('M64: the C# depth hint lives in the always-on navigation rule, beside the overview call it governs', () =>
 {
-    const nav = injected('baseline-navigation');
+    const nav = injected('alfred-navigation');
     assert.match(nav, /`get_symbols_overview` takes ONE file, never a directory[^.]*on C# pass `depth: 2`/, 'the overview bullet carries the C# depth');
     assert.match(nav, /nested-type members need 3; a top-level-statements file returns `\{\}` at any depth/, 'the move kept the two edge facts the C# rule carried');
     assert.ok(!injected('csharp-conventions').includes('depth: 2'), 'the path rule no longer carries a hint only a file-tool touch delivers');
-    assert.strictEqual(registry()['serena-csharp-overview-depth'].owner.file, 'stack/rules/baseline-navigation.md');
+    assert.strictEqual(registry()['serena-csharp-overview-depth'].owner.file, 'stack/rules/alfred-navigation.md');
 });
 
 // ------------------------------------------------------------------ M65
@@ -82,14 +82,14 @@ test('M67: the shell-no-attach rationale is a maintainer comment in the path rul
         assert.ok(!/through the shell|first shell write/.test(live), `${name}.md: the injected text still explains the shell route: ${live}`);
         assert.match(squash(rule(name)), /<!--[^>]*shell[^>]*guard-read-whole-file\.js[^>]*-->/, `${name}.md keeps the rationale as a comment`);
     }
-    assert.ok(injected('baseline-navigation').includes('path-scoped rules do not attach on the shell route'), 'the always-on copy reaches the shell run and stays');
+    assert.ok(injected('alfred-navigation').includes('path-scoped rules do not attach on the shell route'), 'the always-on copy reaches the shell run and stays');
 });
 
 // ------------------------------------------------------------------ M68
 
 test('M68: the browser-only screenshot line leaves the always-on navigation rule, the browser row keeps the discipline', () =>
 {
-    const nav = injected('baseline-navigation');
+    const nav = injected('alfred-navigation');
     assert.ok(!/screenshot/i.test(nav), 'the browser row owns screenshot readback');
     const row = read('stack/skills/alfred-capture-agent-capabilities/references/generated-rule-template.md').split('\n').find((l) => l.startsWith('- `browser` - '));
     assert.ok(row && row.includes('never the iteration loop'), 'the browser row carries the mid-loop rule');
@@ -100,9 +100,9 @@ test('M68: the browser-only screenshot line leaves the always-on navigation rule
 
 test('M69: the quality gates drop the generic simplicity line and name Monitor as the wait tool', () =>
 {
-    const gates = injected('baseline-quality-gates');
+    const gates = injected('alfred-quality-gates');
     assert.ok(!gates.includes('Keep it simple') && !gates.includes('speculative'), 'a generic line with no measured miss');
-    assert.ok(gates.includes('Inline comments explain *why*, not *what*'), 'the implementer bar cites this line by name');
+    assert.ok(gates.includes('Comments: none by default; a why only when the code cannot say it'), 'the implementer bar cites this comments line by name');
     assert.ok(!gates.includes('the wait tool is deferred'), 'the tool is named');
     assert.ok(gates.includes('`ToolSearch select:Monitor`'), 'the load line names Monitor');
 });
@@ -111,7 +111,7 @@ test('M69: the quality gates drop the generic simplicity line and name Monitor a
 
 test('M71: several FIRST actions due at once load together', () =>
 {
-    const text = injected('baseline-interaction');
+    const text = injected('alfred-interaction');
     assert.match(text, /Several FIRST actions due at once[^.]*load in the same call/);
 });
 
@@ -120,7 +120,7 @@ test('M71: several FIRST actions due at once load together', () =>
 test('M72: the generated architecture rule carries only its trigger - where the docs live is the baselines\'', () =>
 {
     const shapes = read('stack/skills/alfred-capture-architecture/references/doc-shapes.md');
-    const at = shapes.indexOf('## .claude/rules/baseline-project-architecture.md');
+    const at = shapes.indexOf('## .claude/rules/alfred-project-architecture.md');
     const block = /```markdown\n([\s\S]*?)```/.exec(shapes.slice(at))[1];
     const body = squash(injectedRuleText(block)).trim();
     assert.ok(!body.includes('<docs-path>'), `the body restates the root the navigation baseline names: ${body}`);
@@ -138,4 +138,16 @@ test('M73: the devops rule attaches on every delivery surface its skill claims',
         assert.ok(paths.includes(glob), `devops-conventions.md paths: ${glob}`);
     const graph = JSON.parse(read('meta/stack-graph.json'));
     assert.ok(JSON.stringify(graph).includes('**/azure-pipelines*.yml'), 'the graph was regenerated');
+});
+
+// 2.1.6 review A1: the repair routers dispatch the resolvers from the main session, so they route a capped
+// resolver's status-less return too (the sentence is pinned as seat-statusless-return).
+test('the repair routers route a status-less resolver return as a seat death', () =>
+{
+    for (const name of ['dotnet-repair-agents', 'angular-repair-agents'])
+    {
+        const text = squash(rule(name));
+        assert.match(text, /A return with no closing status line - a seat stopped at its `maxTurns` \(Claude Code marks the output partial from 2\.1\.246\) or killed mid-task - is never DONE and never resumed as-is/, name);
+        assert.ok(homes(registry()['seat-statusless-return'] || { owner: {} }).some((h) => h.file === `stack/rules/${name}.md`), `${name}: a pinned home`);
+    }
 });

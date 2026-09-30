@@ -630,7 +630,7 @@ test('file-guards copy route: the dispatcher replaces the per-guard file rows an
 test('the docs label every shell guard with the shell route, never Bash alone (2.1.5 final review R2)', () => {
   // CLAUDE.md said `(PreToolUse \`Bash\`)` for the rm and commit guards beside siblings saying 'the shell route', and
   // the HTML matcher cells read `Bash` / `Read + Bash` for all eight (no PowerShell, no Monitor, no Grep row).
-  const md = fs.readFileSync(path.join(__dirname, '..', 'CLAUDE.md'), 'utf8');
+  const md = require('./claude-docs.js').readClaudeDocs();
   for (const g of ['guard-catastrophic-rm', 'guard-ungated-commit'])
     assert.match(md, new RegExp(`\`${g}\\.js\` \\(PreToolUse, the shell route\\)`), `CLAUDE.md: ${g}`);
   const html = fs.readFileSync(path.join(__dirname, '..', 'docs', 'alfred-code.html'), 'utf8');

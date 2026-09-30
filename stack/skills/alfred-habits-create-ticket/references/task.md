@@ -120,7 +120,7 @@ Adapt the structure based on task type. Use the relevant template below.
 
 - **Task type detection**: Infer the type from the user's description. If ambiguous, pick the closest match and note the assumption in Notes.
 - **Acceptance Criteria**: For refactor/cleanup/upgrade/migration - always include. For perf - include with metrics. For spikes - replace with Deliverable instead.
-- **Behaviour over solution**: even on a deeply technical task, most of the text is what the software does now and what it must do instead - QA reads this ticket too. When the work extends something already built, Scope names that existing behaviour as the example and the delta from it ('same rule, without the quantity check'), never a file-by-file spec of new code. Writing up your own implementation plan as if the design were settled is the most common failure here - see the two Scope rules in `SKILL.md`.
+- **Behaviour over solution**: even on a deeply technical task, most of the text is what the software does now and what it must do instead - QA reads this ticket too. When the work extends something already built, Scope names that existing behaviour as the example and the delta from it ('same rule, without the quantity check'), never a file-by-file spec of new code. Writing up your own implementation plan as if the design were settled is the most common failure here - see the 'No solution in the ticket' and 'Acceptance criteria are checkable' rules in `SKILL.md`.
 - **Specificity**: Be technical and concrete. No vague goals like 'improve performance' without numbers, conditions, or a defined target.
 
 ## Examples

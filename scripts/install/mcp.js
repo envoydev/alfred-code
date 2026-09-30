@@ -24,6 +24,7 @@
 //     written. Drift repair is for entries this stack owns.
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseJson } = require('./json-file.js');
 const { isDeepStrictEqual } = require('node:util');
 const { entryHash } = require('./stamp.js');
 const { offeredOn, skipNote } = require('../../stack/mcp/desktop-launch.js');
@@ -31,7 +32,7 @@ const { excludeNewerOf, cutoffFor } = require('../../stack/mcp/uv-python.js');
 
 // The three that can never be dropped - see R7 above.
 const LOCKED = ['navigation', 'documentation', 'memory'];
-const PW_ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
+const { ENGINES: PW_ENGINES } = require('../../stack/mcp/data-root.js');
 // Every name the browser server was registered under: the 1.x single `playwright`, the
 // `playwright-<engine>` servers 2.0.0 renamed, and one `browser-<engine>` per engine.
 const PW_SERVERS = ['playwright', ...PW_ENGINES.map((e) => `playwright-${e}`), ...PW_ENGINES.map((e) => `browser-${e}`)];
@@ -200,7 +201,7 @@ function verifyProject({ mcpFile, expects = [], log = () => {} })
         else { log(`  !! .mcp.json unreadable (${err.message}) - MCP registrations were not verified`); return { repaired: [], read: false }; }
     }
     let data;
-    try { data = raw.replace(/^\uFEFF/, '').trim() ? JSON.parse(raw.replace(/^\uFEFF/, '')) : {}; }
+    try { data = raw.replace(/^\uFEFF/, '').trim() ? parseJson(raw) : {}; }
     catch { log('  !! .mcp.json is not valid JSON - MCP registrations were not verified; fix it and re-run'); return { repaired: [], read: false }; }
     if (!data || typeof data !== 'object' || Array.isArray(data)) data = {};
     const servers = (data.mcpServers && typeof data.mcpServers === 'object' && !Array.isArray(data.mcpServers))
@@ -224,6 +225,52 @@ function verifyProject({ mcpFile, expects = [], log = () => {} })
     return { repaired: repaired.map((r) => r.name), read: true };
 }
 
+// The project's .mcp.json is a tracked file. `claude mcp add` appends the name it writes, and an update re-registers every
+// server (remove, then add), so without this the first update after an install rewrote the file in a new key order with the
+// same content (re-verify 3 follow-up). snapshotMcp keeps the file as the run found it; keepMcpOrder, once the run's writes
+// are done, puts every object's keys back in that order (a new key last) in the file's own indent, line ends and BOM, puts
+// back the top-level keys other than mcpServers that the CLI's `mcp add` / `mcp remove` drop (a team's note, say) in their
+// old place - and when the content is what it was, the exact bytes it had (re-verify 4 T4). The file is read as bytes, so no
+// read another module reshaped (a CRLF-to-LF replacement of fs.readFileSync) can reach the snapshot.
+function snapshotMcp(mcpFile)
+{
+    let raw;
+    try { raw = fs.readFileSync(mcpFile).toString('utf8'); } catch { return null; }
+    try { return { raw, data: parseJson(raw) }; } catch { return null; }
+}
+const plainObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+function inOrderOf(now, was)
+{
+    if (Array.isArray(now)) return now.map((v, i) => inOrderOf(v, Array.isArray(was) ? was[i] : undefined));
+    if (!plainObject(now)) return now;
+    const prior = plainObject(was) ? Object.keys(was).filter((k) => Object.hasOwn(now, k)) : [];
+    const keys = [...prior, ...Object.keys(now).filter((k) => !prior.includes(k))];
+    return Object.fromEntries(keys.map((k) => [k, inOrderOf(now[k], plainObject(was) ? was[k] : undefined)]));
+}
+// 'restored' | 'reordered' | 'kept' (already in order) | 'none' (no file before, or none readable now).
+function keepMcpOrder({ mcpFile, before })
+{
+    if (!before || !plainObject(before.data)) return 'none';
+    const now = snapshotMcp(mcpFile);
+    if (!now || !plainObject(now.data)) return 'none';
+    const data = { ...now.data };
+    for (const key of Object.keys(before.data)) if (key !== 'mcpServers' && !Object.hasOwn(data, key)) data[key] = before.data[key];
+    if (isDeepStrictEqual(data, before.data))
+    {
+        if (now.raw === before.raw) return 'kept';
+        fs.writeFileSync(mcpFile, before.raw);
+        return 'restored';
+    }
+    const bom = before.raw.startsWith('\uFEFF') ? '\uFEFF' : '';
+    const indent = (/^\uFEFF?\{\r?\n([ \t]+)"/.exec(before.raw) || [])[1] || 2;
+    const eol = before.raw.includes('\r\n') ? '\r\n' : '\n';
+    let text = bom + JSON.stringify(inOrderOf(data, before.data), null, indent).replace(/\n/g, eol);
+    if (/\r?\n$/.test(before.raw)) text += eol;
+    if (text === now.raw) return 'kept';
+    fs.writeFileSync(mcpFile, text);
+    return 'reordered';
+}
+
 // `claude mcp get` PRINTS a stored `${VAR:-default}` as `${VAR}`, so both sides compare with the
 // default dropped - as printed, every playwright server read as drifted on every global run.
 const shapeNorm = (s) => String(s).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*):-[^}]*\}/g, '${$1}');
@@ -244,23 +291,18 @@ function parseGetShape(text)
     return type ? `stdio|${command} ${args}` : '';
 }
 
-// The same shape from the manifest side: the env pairs and the `--` separator are not in `mcp get`'s
-// Command / Args lines, so they are dropped before the compare.
+// The same shape from the manifest side: the leading env pairs and the `--` separator are not in `mcp get`'s
+// Command / Args lines, so they are dropped before the compare - only those (wantFor's split): a `-e` or `--` inside the
+// command's own args stays, as it does in the anchored rows' `node -e <ROOT_BOOT> -- <anchor> ...` (re-verify 3 S2), which
+// otherwise read as drifted on every run.
 function wantShape(expect)
 {
     if (expect.kind === 'http') return shapeNorm(`http|${expect.url}`);
-    const words = [];
-    const src = expect.words || [];
-    for (let i = 0; i < src.length; i += 1)
-    {
-        if (src[i] === '-e') { i += 1; continue; }
-        if (src[i] === '--') continue;
-        words.push(src[i]);
-    }
-    return shapeNorm(`stdio|${words.join(' ')}`);
+    const want = wantFor(expect);
+    return shapeNorm(`stdio|${[want.command, ...want.args].join(' ')}`);
 }
 
-// USER SCOPE: the registration lives in the account config, which this seed never hand-edits. The
+// USER AND LOCAL SCOPE (S8: every line names the run's scope): the registration lives in the account config, which this seed never hand-edits. The
 // check runs through `claude mcp get`, a mismatch is retried once through the CLI, and anything
 // still wrong is REPORTED - never silently accepted. N4: the retry removes first, so a name `owned`
 // cannot vouch for (the caller's read of the account file did not show the stack's own registration
@@ -279,12 +321,12 @@ function verifyUser({ expects = [], scope, getShape, reregister, owned = () => t
             log(`  !! mcp ${expect.name}: the ${scope}-scope registration differs from the stack's shape and is not known to be the stack's own - not re-registered, so nothing of yours is removed; if it should go: claude mcp remove ${expect.name} -s ${scope}, then re-run`);
             continue;
         }
-        log(`  mcp shape drifted at user scope: ${expect.name} - re-registering`);
+        log(`  mcp shape drifted at ${scope} scope: ${expect.name} - re-registering`);
         reregister(expect.name, scope);
         have = shapeNorm(parseGetShape(getShape(expect.name)));
         if (have && have !== want)
-            note(`mcp ${expect.name} could not be brought to the current shape at user scope - remove it by hand (claude mcp remove ${expect.name} -s ${scope}) and re-run`);
-        else { repaired.push(expect.name); log(`  mcp repaired: ${expect.name} (user scope)`); }
+            note(`mcp ${expect.name} could not be brought to the current shape at ${scope} scope (claude mcp remove ${expect.name} -s ${scope}) - remove it by hand and re-run`);
+        else { repaired.push(expect.name); log(`  mcp repaired: ${expect.name} (${scope} scope)`); }
     }
     return { repaired };
 }
@@ -471,6 +513,13 @@ function respellToolNames(body, bare = [])
     return String(body).replace(TOOL_NAME_RE, (full, server) => (names.has(server) ? `mcp__${server}__` : full));
 }
 
+// The servers a copied text already names by the registered spelling - the evidence library-check reads
+// to compare the shipped source with the text the installer wrote (it never sees the run's routes).
+function bareServersIn(text)
+{
+    return [...new Set([...String(text).matchAll(/mcp__(?!plugin_)([A-Za-z0-9][A-Za-z0-9.-]*)__/g)].map((m) => m[1]))];
+}
+
 function downconvertToolNames({ roots = [], bare = [], log = () => {} })
 {
     const names = new Set(bare);
@@ -518,12 +567,26 @@ function packageName(word)
     const at = w.lastIndexOf('@');
     return at > 0 ? w.slice(0, at) : w;
 }
+// Re-verify 3 S2: the copy route's project-anchored rows start `node -e <ROOT_BOOT> -- <checkout|project> <command> ...`
+// (stack/hooks/memory.js runAtRoot) - the launcher, never the server, which is the command after the anchor. The Windows
+// `cmd /c` wrapper an older release wrote goes the same way.
+const ANCHORS = ['checkout', 'project'];
+// The server's words and, for an anchored row, the anchor code it runs (null for an unanchored one). Any code naming
+// runAtRoot is an anchor for identity; vouching reads the code itself (exactStack, re-verify 4 T5).
+function anchorOf(entry)
+{
+    let words = [String(entry.command ?? ''), ...(Array.isArray(entry.args) ? entry.args.map(String) : [])];
+    if (/^cmd(\.exe)?$/i.test(words[0]) && /^\/c$/i.test(words[1] || '')) words = words.slice(2);
+    const anchored = /^node(\.exe)?$/i.test(path.basename(words[0] || '')) && words[1] === '-e' && /^@ROOT_BOOT@$|runAtRoot/.test(words[2] || '')
+        && words[3] === '--' && ANCHORS.includes(words[4]);
+    return anchored ? { words: words.slice(5), code: words[2] } : { words, code: null };
+}
+const serverWords = (entry) => anchorOf(entry).words;
 function identityOf(entry)
 {
     if (!entry || typeof entry !== 'object') return '';
     if (entry.url || entry.type === 'http' || entry.type === 'sse') return `http:${String(entry.url || '').replace(/\/+$/, '')}`;
-    let words = [String(entry.command ?? ''), ...(Array.isArray(entry.args) ? entry.args.map(String) : [])];
-    if (/^cmd(\.exe)?$/i.test(words[0]) && /^\/c$/i.test(words[1] || '')) words = words.slice(2);
+    const words = serverWords(entry);
     const rest = words.slice(1);
     const from = rest.findIndex((w) => w === '--from' || w === '--package' || w === '-p');
     let pkg = from > -1 ? rest[from + 1] : '';
@@ -587,8 +650,11 @@ function removeManagedMcp({ mcpFile, managed = {}, log = () => {}, note = () => 
 {
     const removed = [];
     if (!Object.keys(managed).length || !fs.existsSync(mcpFile)) return { removed };
+    let raw;
+    try { raw = fs.readFileSync(mcpFile, 'utf8'); }
+    catch (err) { note(`.mcp.json could not be read (${err.code || err.message}) - left untouched, nothing of the stack's was removed from it; fix it and re-run`); return { removed }; }
     let data;
-    try { data = JSON.parse(fs.readFileSync(mcpFile, 'utf8').replace(/^\uFEFF/, '')); }
+    try { data = parseJson(raw); }
     catch { note('.mcp.json is not valid JSON - left untouched, nothing of the stack\'s was removed from it; fix it and re-run'); return { removed }; }
     const servers = data && typeof data.mcpServers === 'object' && !Array.isArray(data.mcpServers) ? data.mcpServers : null;
     if (!servers) return { removed };
@@ -613,17 +679,166 @@ function registrationsAt({ scope, mcpFile, accountFile, projectRoot })
 {
     const file = scope === 'project' ? mcpFile : accountFile;
     let data;
-    try { const raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''); data = raw.trim() ? JSON.parse(raw) : {}; }
+    try { const raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''); data = raw.trim() ? JSON.parse(raw) : scope === 'project' ? {} : null; }
     catch (err) { return err.code === 'ENOENT' ? { state: 'absent', servers: {}, file } : { state: 'unreadable', servers: {}, file }; }
+    // The account file is the CLI's own and whole only as an object: it replaces a 0-byte one as corrupt and rewrites an
+    // array or a scalar in place (measured on 2.1.284) - either way what it held is gone (review 2.1.6 B1).
+    if (scope !== 'project' && (!data || typeof data !== 'object' || Array.isArray(data))) return { state: 'unreadable', servers: {}, file };
     let servers = data && data.mcpServers;
+    // The account file also says whether it is the one the CLI wrote for this project (review 2.1.6 re-verify N3): a file
+    // the CLI recovered or rewrote holds no entry for it and no firstStartTime, while the user's own removal of every
+    // registration leaves both.
+    let entry = true;
     if (scope === 'local')
     {
         const projects = (data && data.projects) || {};
         let real = projectRoot;
         try { real = fs.realpathSync(projectRoot); } catch { /* the path as given */ }
-        servers = (projects[projectRoot] || projects[real] || {}).mcpServers;
+        const held = projects[projectRoot] || projects[real];
+        entry = Boolean(held);
+        servers = (held || {}).mcpServers;
     }
-    return { state: 'read', servers: servers && typeof servers === 'object' && !Array.isArray(servers) ? servers : {}, file };
+    const read = { state: 'read', servers: servers && typeof servers === 'object' && !Array.isArray(servers) ? servers : {}, file };
+    return scope === 'project' ? read : { ...read, entry, started: typeof data.firstStartTime === 'string' ? data.firstStartTime : '' };
+}
+
+// F1 (review 2.1.6 B1): the claude CLI keeps an account file it cannot parse (a 0-byte one too) as
+// `backups/.claude.json.corrupted.<ms>` in its config folder when it replaces it, beside its own last good copies,
+// `.claude.json.backup.<ms>` (measured on 2.1.284). Every file of the `kind` under `dirs`, oldest first.
+const ACCOUNT_BACKUP = { corrupted: /^\.claude\.json\.corrupted\.(\d+)$/, good: /^\.claude\.json\.backup\.(\d+)$/ };
+function accountBackups(dirs, kind = 'corrupted')
+{
+    const rows = [];
+    for (const dir of new Set(dirs))
+    {
+        let names = [];
+        try { names = fs.readdirSync(dir); } catch { continue; }
+        for (const name of names)
+        {
+            const m = ACCOUNT_BACKUP[kind].exec(name);
+            if (m) rows.push({ file: path.join(dir, name), ms: Number(m[1]) });
+        }
+    }
+    return rows.sort((a, b) => a.ms - b.ms);
+}
+
+// Whether the stack's registrations at one scope left the account file since the last run - decided from the stamp, never
+// from the file's parse state at one moment, since every command makes a claude call before the installer and that call
+// replaces a corrupt file (review 2.1.6 B1). The first that holds:
+//  - 'unreadable': the file cannot be read now;
+//  - 'replaced': a corrupted backup the CLI wrote after the stamp - to the millisecond where the stamp records it
+//    (`installed-ms:`, stamp.readInstalledAt), else from the second after its whole-second `installed:` (the run's own
+//    backup lands before its stamp);
+//  - 'emptied': the ledger records registrations here, the file holds none of them, and the file is a rewritten one -
+//    no entry for this project (`entry`: a recovered file, or a moved folder) or no firstStartTime or one after the
+//    stamp (`started`: a fresh file) - so the user's own removal of every registration is never overridden (N3).
+// `backup` names the newest corrupted backup from the stamp on.
+function accountLoss({ unreadable = false, backups = [], stamped = { ms: NaN, precise: false }, recorded = {}, held = {}, entry = true, started = null })
+{
+    const at = stamped.ms;
+    const floor = Number.isFinite(at) ? (stamped.precise ? at : Math.floor(at / 1000) * 1000) : NaN;
+    const later = (b) => (stamped.precise ? b.ms > at : b.ms >= floor + 1000);
+    const since = backups.filter((b) => (stamped.precise ? b.ms > at : b.ms >= floor));
+    const backup = since.length ? since[since.length - 1].file : '';
+    if (unreadable) return { lost: true, why: 'unreadable', backup };
+    if (backups.some(later)) return { lost: true, why: 'replaced', backup };
+    const names = Object.keys(recorded);
+    const fresh = started === '' || (typeof started === 'string' && Date.parse(started) > at);
+    if (names.length && !names.some((n) => Object.hasOwn(held, n)) && (!entry || fresh)) return { lost: true, why: 'emptied', backup };
+    return { lost: false, why: '', backup };
+}
+
+// Review 2.1.6 (the user's ruling): marks only the stack's own registration carries - never the package name alone
+// (identityOf), which a server the user added with the same upstream shares. A uvx server: the release's dependency
+// cut-off (`--exclude-newer <date>`) with a pinned `--from <pkg>==<ver>`, and for a desktop server its telemetry off
+// (`ANONYMIZED_TELEMETRY=false`); a browser engine: its profile under the data root (`--user-data-dir .../browser/<engine>`)
+// with `--no-webmcp`, and only an engine the stamp's `browser-engines:` lists (`engines`).
+function stackAuthored(name, entry, { engines = [] } = {})
+{
+    if (!entry || typeof entry !== 'object') return false;
+    const args = Array.isArray(entry.args) ? entry.args.map(String) : [];
+    const after = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] || '' : ''; };
+    const engine = /^browser-(\w+)$/.exec(name);
+    if (engine)
+        return engines.includes(engine[1]) && args.includes('--no-webmcp')
+            && new RegExp(`(^|[\\\\/])browser[\\\\/]${engine[1]}$`).test(after('--user-data-dir').replace(/[\\/]+$/, ''));
+    if (!/^\d{4}-\d{2}-\d{2}/.test(after('--exclude-newer')) || !/^[^=\s]+==[^=\s]+$/.test(after('--from'))) return false;
+    const env = entry.env && typeof entry.env === 'object' ? entry.env : {};
+    return !/-desktop$/.test(name) || env.ANONYMIZED_TELEMETRY === 'false';
+}
+
+// Re-verify 3 S1 / S4 / S7: a registration no ledger row vouches for is the stack's only in the release template's EXACT
+// shape - the template's words one for one and its env keys exactly, free only where a token sits (a pin, the cut-off date,
+// the python, a path). The package and marks alone are shared by a server the user registers under a stack name, which
+// usually adds a flag or an env key. A whole-word token matches one word that is no flag, unless TOKEN_WORDS gives it its
+// own shape (the cut-off pair and serena's project word may be absent); an engine's profile is its own folder. The Windows
+// wrapper is no difference (serverWords), and an older release's unanchored row matches too. Re-verify 4 T5: an anchored
+// row runs this release's ROOT_BOOT or one an earlier release registered (`boots`) - code of the user's own that merely
+// names runAtRoot is not the stack's - and an engine's profile is the project's own: relative (inside it), or absolute under
+// `projectRoot`. Another project's profile, or the user's own folder that happens to end browser/<engine>, is not.
+const TOKEN_WORDS = {
+    UV_EXCLUDE_FLAG: { optional: true, re: /^--exclude-newer$/ },
+    UV_EXCLUDE_NEWER: { optional: true, re: /^\d{4}-\d{2}-\d{2}\S*$/ },
+    SERENA_PROJECT_FLAG: { optional: false, re: /^--project(-from-cwd)?$/ },
+    SERENA_PROJECT_DIR: { optional: true, re: /^\.$/ },
+};
+const TOKEN_RE = /@[A-Z][A-Z0-9_]*@/g;
+const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function wordMatcher(word)
+{
+    const whole = /^@([A-Z][A-Z0-9_]*)@$/.exec(word);
+    if (whole) return { optional: false, re: /^(?!-)\S/, ...(TOKEN_WORDS[whole[1]] || {}) };
+    if (!word.match(TOKEN_RE)) return { optional: false, re: new RegExp(`^${escapeRe(word)}$`) };
+    return { optional: false, re: new RegExp(`^${word.split(TOKEN_RE).map(escapeRe).join('\\S*')}$`) };
+}
+function wordsMatch(template, words, i = 0, j = 0)
+{
+    if (i === template.length) return j === words.length;
+    const m = template[i];
+    if (m.optional && wordsMatch(template, words, i + 1, j)) return true;
+    return j < words.length && m.re.test(words[j]) && wordsMatch(template, words, i + 1, j + 1);
+}
+const STACK_BOOTS = (() => { const e = require('../../stack/hooks/memory.js'); return [e.ROOT_BOOT, ...(e.FORMER_ROOT_BOOTS || [])]; })();
+function ownProfile(dir, projectRoot)
+{
+    const d = String(dir).replace(/^\$\{CLAUDE_PROJECT_DIR(?::-[^}]*)?\}[\\/]/, '');
+    if (!path.win32.isAbsolute(d) && !path.posix.isAbsolute(d)) return !d.split(/[\\/]/).includes('..');
+    if (!projectRoot) return false;
+    const roots = [path.resolve(projectRoot)];
+    try { roots.push(fs.realpathSync(projectRoot)); } catch { /* not on disk */ }
+    return roots.some((root) => { const rel = path.relative(root, path.resolve(d)); return Boolean(rel) && !rel.split(/[\\/]/).includes('..') && !path.isAbsolute(rel); });
+}
+function exactStack(name, entry, { catalog = [], remotes = {}, projectRoot = '', boots = STACK_BOOTS } = {})
+{
+    if (!entry || typeof entry !== 'object') return false;
+    const engine = /^browser-(\w+)$/.exec(name);
+    const row = catalog.map(String).find((e) => e.split('|')[0] === (engine ? 'browser' : name));
+    if (!row) return false;
+    let args = row.slice(row.indexOf('|') + 1);
+    if (args === '@HTTP@')
+    {
+        const want = wantFor(expectShape({ name, args, remotes }));
+        const headers = entry.headers && typeof entry.headers === 'object' ? entry.headers : {};
+        const wantHeaders = want.headers || {};
+        return String(entry.url || '').replace(/\/+$/, '') === want.url.replace(/\/+$/, '')
+            && isDeepStrictEqual(Object.keys(headers).sort(), Object.keys(wantHeaders).sort())
+            && Object.keys(wantHeaders).every((k) => shapeNorm(headers[k]) === shapeNorm(wantHeaders[k]));
+    }
+    if (entry.url || entry.type === 'http' || entry.type === 'sse') return false;
+    if (engine) args = pwArgsFor(args, engine[1]);
+    // The template split as wantFor splits a registration: its env pairs, then the command words.
+    const want = wantFor({ kind: 'stdio', words: String(args).split(/\s+/).filter(Boolean) });
+    const env = entry.env && typeof entry.env === 'object' ? entry.env : {};
+    if (!isDeepStrictEqual(Object.keys(env).sort(), Object.keys(want.env).sort())) return false;
+    // An env value is free wherever a token sits in it (any text, empty included); the rest of it is literal.
+    const envRe = (v) => new RegExp(`^${String(v).split(TOKEN_RE).map(escapeRe).join('[^]*')}$`);
+    if (!Object.entries(want.env).every(([k, v]) => envRe(v).test(String(env[k])))) return false;
+    const { words, code } = anchorOf(entry);
+    if (code !== null && !boots.includes(code)) return false;
+    if (!wordsMatch(serverWords(want).map(wordMatcher), words)) return false;
+    if (!engine) return true;
+    const dir = words[words.indexOf('--user-data-dir') + 1] || '';
+    return ownProfile(dir, projectRoot) && new RegExp(`(^|[\\\\/])(browser|\\.playwright)[\\\\/]${engine[1]}$`).test(dir.replace(/[\\/]+$/, ''));
 }
 
 // What takes a plugin-carried server's place. Claude Code connects to a server ONCE, from the highest
@@ -631,7 +846,7 @@ function registrationsAt({ scope, mcpFile, accountFile, projectRoot })
 // ENDPOINT, not by name (code.claude.com/docs/en/mcp, scope precedence). Measured on 2.1.282 through the
 // session's init row: a user- or project-scope registration of the Context7 url, under `context7` or
 // any other name, left the documentation plugin out of the session, so every `mcp__plugin_documentation_documentation__`
-// spelling the stack ships (its tool grants, baseline-quality-gates' ToolSearch line) resolved nothing.
+// spelling the stack ships (its tool grants, alfred-quality-gates' ToolSearch line) resolved nothing.
 // A stdio server matches on command AND args, which a launcher-started plugin entry never shares, so a
 // same-NAMED stdio registration runs BESIDE the plugin's own server - a second one. One row per
 // registration, in precedence order: `{ scope, name, plugin, kind: 'replaces' | 'beside' }`.
@@ -714,8 +929,8 @@ function desktopGate({ mcps = [], platform, market })
 module.exports = {
     CONTEXT7_REMOTE, LOCKED, desktopGate, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn, withLocked, currentMcp, renamedFrom,
     retiredMcps, dueRetired, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
-    verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape,
-    playwrightDrop, downconvertToolNames, respellToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive, mcpjsonSwitch, mcpjsonTrusted,
-    registrationScope, identityOf, packageName, stackIdentities, registrationsAt, shadowingRegistrations, ensurePlaywrightIgnore,
+    verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape, snapshotMcp, keepMcpOrder,
+    playwrightDrop, downconvertToolNames, respellToolNames, bareServersIn, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive, mcpjsonSwitch, mcpjsonTrusted,
+    registrationScope, identityOf, exactStack, packageName, stackIdentities, registrationsAt, accountBackups, accountLoss, stackAuthored, shadowingRegistrations, ensurePlaywrightIgnore,
     managedMcp, removeManagedMcp,
 };

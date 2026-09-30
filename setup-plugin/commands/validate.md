@@ -69,7 +69,7 @@ the fallback only where the harness lacks the tool.
 
 **House voice in every line this run emits** - narration, tables and the asks alike: single
 dashes, never em-dashes, and single quotes in prose. A fresh or refreshed install may have no
-`.claude/rules/baseline-interaction.md` loaded at all, so this command's own text is the only place
+`.claude/rules/alfred-interaction.md` loaded at all, so this command's own text is the only place
 the voice can come from (measured: a first-run narration line opened with an em-dash, on the one
 surface where the rule forbidding it cannot yet exist).
 
@@ -282,13 +282,17 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   `installed but disabled for this project` - and its accept action is `claude plugin enable
   <name>`, never an install and never an uninstall. A DISABLED plugin the user leaves alone is a
   deliberate choice and is not re-raised in the close.
-- **`memory` joins `navigation` and `documentation`** as an always-required MCP (`baseline-memory.md` locks
-  it in the same way `baseline-navigation.md` locks the navigation server) - MISSING when the project carries no
+- **`memory` joins `navigation` and `documentation`** as an always-required MCP (`alfred-memory.md` locks
+  it in the same way `alfred-navigation.md` locks the navigation server) - MISSING when the project carries no
   registration at all, never REDUNDANT: no stack owns it, so it belongs to every install regardless
   of what is detected. Whenever `memory` IS registered - shown in this table or already installed -
   read its level with `node .claude/hooks/memory.js level` (the project's own copy; fall back to
   `node "$TMP/repo/stack/hooks/memory.js" level` when that file is absent), which prints `<level>
-  <dbPath>` or `none`. Print the answer as ONE informational line under the MCPs table - `memory
+  <dbPath>` or `none` - or `refused <file>` when a settings file cannot be read and no other names the database: the
+  memory launcher refuses to start, so print `memory level: not served - <file> could not be read, so the memory server's
+  launcher refuses to start; fix the file (ALFRED_CODE_MEMORY_DB in its env names the database) and restart the session`.
+  An `unreadable <file>` line after the level means that file was skipped and the level is the next settings file's: print
+  `memory: <file> could not be read - the level above is the next settings file's; fix the file`. Print the answer as ONE informational line under the MCPs table - `memory
   level: <level> - <dbPath>`, or `memory: registered but the level cannot be derived from
   <dbPath>` for an unrecognized path - never a consent row: this walk does not add, drop or change
   the level, only `/alfred-code:configure` does. Add a second line checking whether the
@@ -378,7 +382,7 @@ turn polling for it. Five inputs, five gates:
    propose JUDGMENT-DROP with the trail as the citation: the greps run, their zero results, the
    matching exclusion.
 2. **The rest vs the project's stated conventions - version pins included.** Review the remaining
-   scope against the project's OWN docs - the project CLAUDE.md, `<docs-path>/architecture/ARCHITECTURE.md` /
+   scope against the project's OWN docs - the project's AGENTS.md or CLAUDE.md, `<docs-path>/architecture/ARCHITECTURE.md` /
    `quality/ASSESSMENT.md`, `code-style/CODE-STYLE.md`, where they exist - and propose a drop on a cited
    conflict: quote the conflicting rule verbatim and name its source. Version pins count as
    conventions, and the scan PRECOMPUTES the known cases: the `judgment.versionConflicts` rows in
@@ -406,14 +410,15 @@ turn polling for it. Five inputs, five gates:
    every subagent. So judge each one the project did not prove:
    - **Measured first, where a measurement exists.** `ls "<docs-path>/tools-usage"/*.jsonl` - the
      instrumentation ledgers. When any exist, count per server:
-     `grep -ho '"tool":"mcp__[a-z0-9-]*' <docs-path>/tools-usage/*.jsonl | sort | uniq -c`. A server
+     `grep -h '"tool":"mcp__' <docs-path>/tools-usage/*.jsonl | grep -o '"detail":"[^"]*"' | sort | uniq -c`
+     (`detail` names the server). A server
      with rows is KEPT, no judgment needed; a server with zero rows across several sessions is a
      drop candidate with the count as its citation. State the number of sessions the ledgers cover.
    - **No ledgers?** Say so - `no usage measurement (ALFRED_CODE_INSTRUMENT is "0"; flip it to "1"
      for a run to measure)` - and fall back to the same corroboration gate 1 uses: the evidence
      scan's verdict for that server plus bounded NAMED greps for its domain markers. Never propose
      a drop on absence of a ledger alone.
-   - The two locked servers (`navigation`, `documentation`) are never proposed - an always-on rule names
+   - The three locked servers (`navigation`, `documentation`, `memory`) are never proposed - an always-on rule names
      them, so they are closure-held. Everything else is in scope.
 
 5. **Functional overlap among kept items.** The candidates are the tool's `overlap:` lines
@@ -440,7 +445,7 @@ the usual per-item consent round:
  # | artifact                   | verdict                  | citation
 ---+----------------------------+--------------------------+--------------------------------------------------
  1 | mcp browser             | JUDGMENT-DROP · MATERIAL | uncalled: 0 calls across 17 sessions of tools-usage ledgers; headless .NET backend with no UI to drive; 24 tool schemas in every session; keep only if a browser check is planned here
- 2 | skill dotnet-architecture  | JUDGMENT-DROP · MATERIAL | CLAUDE.md: 'keep the layered factory pattern; it is NOT Clean Architecture / DDD / VSA'
+ 2 | skill dotnet-architecture  | JUDGMENT-DROP · MATERIAL | AGENTS.md: 'keep the layered factory pattern; it is NOT Clean Architecture / DDD / VSA'
  3 | skill dotnet-realtime      | JUDGMENT-DROP · MINOR    | advisory, corroborated: 0 hits for SignalR/hub/web-host across src/ (3 greps); outbound ClientWebSocket is the skill's own do-not-load case
  4 | skill dotnet-cryptography  | JUDGMENT-ADD             | corroborated: AesGcm in src/Vault/Sealer.cs, Rfc2898DeriveBytes in src/Auth/Hasher.cs (2 greps, hits quoted); no crypto package = no scanner signal; no exclusion match
 ```
@@ -517,12 +522,12 @@ profile), output to `$TMP/select.out` - then:
   NAMES that scope ('enabled at USER scope - removing it removes it for every
   project'), since account-wide and project-local are different consents.
 - **Check the generated rule's stamped policy against this release, mechanically.** The usage-policy
-  block inside `.claude/rules/baseline-project-agent-capabilities.md` ships verbatim from the skill
+  block inside `.claude/rules/alfred-project-agent-capabilities.md` ships verbatim from the skill
   and is never re-fetched, so a project can carry a two-release-old policy with nothing to notice it.
   One comparison:
 
   ```bash
-  grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/baseline-project-agent-capabilities.md
+  grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/alfred-project-agent-capabilities.md
   grep -m1 -o 'policy-rev: [0-9a-f]*' "$TMP/repo/stack/skills/alfred-capture-agent-capabilities/SKILL.md"
   ```
 
@@ -560,7 +565,7 @@ and left as-is (disputed detections, deliberate extras, declined suggestions, de
 judgment proposals), plus one ENVIRONMENT line naming every key seeded, renamed or corrected (or
 saying the block already matched), and step 7's MEMORY line (level + database, and the
 `autoMemoryEnabled` reading). Remind that a restart picks up MCP registration changes, and surface
-the installer's gitignore reminder. If a CLAUDE.md rules table names a rule you added or removed,
+the installer's gitignore reminder. If an AGENTS.md rules table names a rule you added or removed,
 offer to reconcile that row (additive, shown before writing) - never rewrite the user's prose.
 
 Then audit the config the install left, on every path that reaches this step (a clean bill
@@ -572,12 +577,12 @@ node "$TMP/repo/scripts/audit-install.js" .
 
 It reads this project's own agent config - an unpinned package launch in `.mcp.json`, an
 unrestricted shell grant, a hook with no timeout or one splicing tool input into a shell string, a
-credential-shaped literal in `CLAUDE.md` or a settings file - and fixes nothing. Paste its output
+credential-shaped literal in `AGENTS.md`, `CLAUDE.md` or a settings file - and fixes nothing. Paste its output
 byte-for-byte in a fenced block (`install audit: nothing to report` is the whole paste on a clean
 project). A `high` row gets ONE AskUserQuestion: 'Fix the stack-owned rows' (recommended - an
 update re-run pins a stack server) or 'Leave them'. A row on a server, hook or grant the user added
 by hand is reported with its line and never edited; a credential row is the rotate ask
-`baseline-security.md` owns, never a fix here.
+`alfred-security.md` owns, never a fix here.
 
 Then check the LIBRARY copies - every skill (no plugin carries one since 2.1.0), a seat on its copy
 route, and every RULE (no plugin ever carries one), is a project copy, and the stamp holds the hash of
@@ -601,21 +606,21 @@ only: an `off` in the account settings is not seen, so no `blocked:` row is no p
 `library: no library stamp` is the whole paste on an install older
 than the library route.
 
-Then hold the project's CLAUDE.md files to the tree they describe - the drift a release never
+Then hold the project's instruction files (AGENTS.md, and a CLAUDE.md the project keeps) to the tree they describe - the drift a release never
 touches, since those files are the project's own:
 
 ```bash
-node "$TMP/repo/scripts/claude-md-check.js" --root .
+node "$TMP/repo/scripts/agents-md-check.js" --root .
 ```
 
-Paste the output byte-for-byte in the same fenced block (`claude-md-check: clean (...)` or `no
-CLAUDE.md in this project` is the whole paste). Each row is `<file>:<line> <kind>: ...` - a named path
+Paste the output byte-for-byte in the same fenced block (`agents-md-check: clean (...)` or `no
+AGENTS.md or CLAUDE.md in this project` is the whole paste). Each row is `<file>:<line> <kind>: ...` - a named path
 that is gone, a command whose program is not on PATH, a placeholder or TODO left, or a line still
 carrying the template's authoring text. Rows get ONE AskUserQuestion with NO option marked
 recommended - the check is heuristic, and a row can be correct text it could not resolve (a folder
 under a prefixed name, a program a script installs), so each row is the user's read: 'Review them with
-`/alfred-habits-adjust-claude-md`' (its improve mode shows every change before writing) or 'Leave them'.
-Never edit a CLAUDE.md from this command; a `command` row on a program only another OS runs is the
+`/alfred-habits-adjust-agents-md`' (its improve mode shows every change before writing) or 'Leave them'.
+Never edit an instruction file from this command; a `command` row on a program only another OS runs is the
 user's call, not a fix.
 
 Then the Stop build check advisory, from this project's session transcripts and its done-gate probe

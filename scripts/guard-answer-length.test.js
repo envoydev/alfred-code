@@ -334,7 +334,7 @@ test('ALFRED_CODE_CORRECTION_NUDGE: log writes the row only, inject adds the sav
     assert.strictEqual(inject.rows.length, 1);
     assert.strictEqual(inject.rows[0].injected, true);
     assert.match(inject.ctx, LINE);
-    // The memory tools are DEFERRED (baseline-memory.md): naming one is not having it, so the line carries its loader (2.1.5 M11).
+    // The memory tools are DEFERRED (alfred-memory.md): naming one is not having it, so the line carries its loader (2.1.5 M11).
     assert.match(inject.ctx, /ToolSearch select:mcp__plugin_memory_memory__memory_store\b/, 'the save line loads the deferred tool');
     assert.doesNotMatch(prompted('how much time is left?', { env: { ALFRED_CODE_CORRECTION_NUDGE: 'inject' } }).ctx, LINE, 'no correction, no line');
     for (const off of ['0', 'off']) {

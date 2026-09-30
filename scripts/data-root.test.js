@@ -352,7 +352,7 @@ test('M5 live dir: a project memory move from .memory-mcp leaves a link; no othe
 // M2: serena names each start's log after its own pid (`<home>/logs/<date>/mcp_<stamp>_<pid>.txt`, measured on
 // serena 1.7.0), so a log whose pid is alive is a serena holding that folder - the running session's own on the
 // copy route, or a second session's. No move while one does; a log of a process that has exited holds nothing.
-test('M2 serena busy: a log named for a live pid holds the folder; an exited one, or none, does not', () =>
+test('M2 serena busy: a log named for a live serena pid holds the folder; an exited one, a reused pid or none does not', () =>
 {
     const { spawnSync, spawn } = require('node:child_process');
     const p = fresh('serena-busy');
@@ -361,9 +361,15 @@ test('M2 serena busy: a log named for a live pid holds the folder; an exited one
     const gone = spawnSync(process.execPath, ['-e', '0']).pid;
     put(path.join(p, '.serena', 'home', 'logs', '2026-09-28', `mcp_20260928-101010_${gone}.txt`), 'old');
     assert.deepStrictEqual(dr.serenaBusy(path.join(p, '.serena')), [], 'an exited serena holds nothing');
-    const live = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
+    const unrelated = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
+    const live = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)', 'serena-agent'], { stdio: 'ignore' });
     try
     {
+        if (process.platform !== 'win32')
+        {
+            put(path.join(p, '.serena', 'home', 'logs', '2026-09-27', `mcp_20260927-090909_${unrelated.pid}.txt`), 'reused pid');
+            assert.deepStrictEqual(dr.serenaBusy(path.join(p, '.serena')), [], 'an old log whose pid now belongs to an unrelated process holds nothing');
+        }
         put(path.join(p, '.serena', 'home', 'logs', '2026-09-29', `mcp_20260929-111111_${live.pid}.txt`), 'live');
         assert.deepStrictEqual(dr.serenaBusy(path.join(p, '.serena')), [`serena pid ${live.pid}`]);
         const pending = [{ cls: 'serena', from: '.serena', to: '.alfred/serena' }];
@@ -371,7 +377,7 @@ test('M2 serena busy: a log named for a live pid holds the folder; an exited one
         assert.deepStrictEqual({ dir: got.dir, state: got.state }, { dir: '.serena', state: 'busy' });
         assert.ok(fs.existsSync(path.join(p, '.serena', 'project.yml')) && !fs.existsSync(path.join(p, '.alfred')), 'nothing moved under a running serena');
     }
-    finally { live.kill(); }
+    finally { live.kill(); unrelated.kill(); }
 });
 
 // ------------------------------------------------------------------ the navigation server's own config

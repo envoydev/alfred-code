@@ -66,7 +66,7 @@ Config typing options: `defineConfig` (plain-JS autocomplete, runtime no-op - it
 |---|---|---|
 | `'module'` (+ `experiments.outputModule`) | experimental - test the published tarball | the primary ESM build |
 | `'commonjs2'` | rock solid | the fallback, and the CJS side of a dual build |
-| `'modern-module'` | experimental | tree-shakeable ESM variant |
+| `'modern-module'` | experimental | tree-shakeable ESM variant; preferred when consumers bundle the library |
 | `'umd'` | legacy | only for `<script>`/AMD consumers; no consumer tree-shaking |
 
 Dual builds run as a multi-compiler array (two factory calls with a format override; no cache sharing between them). Whether to dual-publish at all, the exports-map conditions ordering, and the dual-package hazard belong to the npm packaging and publishing skill where the install has one - webpack only produces the files.

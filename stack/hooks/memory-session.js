@@ -68,10 +68,14 @@ async function main() {
   try { cursorOff = require('./hook-prelude.js').cursorStandDown(input, __filename); } catch { /* no prelude: run */ }
   if (cursorOff) return;
   if (input.hook_event_name !== 'SessionStart') return;
-  const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
-  process.env.CLAUDE_PROJECT_DIR = root;
   const memory = require('./memory.js');
   const home = os.homedir();
+  // Re-verify 3 S3: the project the session's directory belongs to (memory.js projectRootOf) - CLAUDE_PROJECT_DIR names the
+  // directory the session started in, a subdirectory of the project when it started there. The memory is the project's
+  // (a linked worktree's is its main checkout's); the docs root is the checkout's own. An older engine copy has no resolver.
+  const start = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const { checkout, project: root } = typeof memory.projectRootOf === 'function' ? memory.projectRootOf(start, { home }) : { checkout: start, project: start };
+  process.env.CLAUDE_PROJECT_DIR = checkout;
   const dbPath = memory.registeredDbPath(root, { home });
   if (!dbPath) return; // no memory server registered for this project - nothing to push
   const level = memory.levelOfPath(dbPath, { home, projectRoot: root }) || 'unknown';
@@ -80,7 +84,7 @@ async function main() {
   // settings.json env, default '.alfred/docs') - never re-derived here. Its absence (an older or
   // missing docs.js copy) just means no related-project group this session, not a failed push.
   let related = [];
-  try { related = memory.relatedProjects(root, require('./docs.js').DOCS_ROOT); } catch {}
+  try { related = memory.relatedProjects(checkout, require('./docs.js').DOCS_ROOT); } catch {}
   const { text } = memory.selectForSession(dbPath, { project, related, capBytes: CAP_BYTES });
   // Whenever a memory registration exists, the model needs its own project's tag to save under - even
   // (especially) inside a git worktree, where projectName() already names the MAIN checkout, never the

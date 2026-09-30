@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Stamp the deployed baseline-docs-root.md rule with the CURRENT docs root: the ALFRED_CODE_DOCS_PATH
+// Stamp the deployed alfred-docs-root.md rule with the CURRENT docs root: the ALFRED_CODE_DOCS_PATH
 // env value in <root>/.claude/settings.json, else the default. Handles both the fresh copy (the
 // __DOCS_ROOT__ placeholder) and a previously stamped value - so the guided commands can re-stamp
 // after an env change without re-running the installer (the installers stamp fresh copies with
@@ -63,7 +63,7 @@ function scopedSettings(root)
     };
 }
 
-// The installer hashes baseline-docs-root.md AFTER it substitutes the placeholder (R29) - this
+// The installer hashes alfred-docs-root.md AFTER it substitutes the placeholder (R29) - this
 // script does the SAME substitution again, later, so a re-stamp here is the same kind of rewrite
 // and must re-record the same hash, or the very next library check reads the rule as drift for a
 // change this script's own protocol asked for. Owns exactly one key: a sibling rule's recorded
@@ -83,10 +83,10 @@ function restampLibraryHash(claudeDir, ruleFile)
     let text;
     try { text = fs.readFileSync(target, 'utf8'); } catch { return; }
     const line = /^library-rules: (.*)$/m.exec(text);
-    if (!line || !/(^|,)baseline-docs-root=/.test(line[1])) return;
+    if (!line || !/(^|,)alfred-docs-root=/.test(line[1])) return;
     const hash = hashItem(ruleFile);
     if (!hash) return;
-    const updated = line[1].replace(/(^|,)baseline-docs-root=[^,]*/, `$1baseline-docs-root=${hash}`);
+    const updated = line[1].replace(/(^|,)alfred-docs-root=[^,]*/, `$1alfred-docs-root=${hash}`);
     if (updated === line[1]) return;
     fs.writeFileSync(target, text.replace(line[0], `library-rules: ${updated}`));
 }
@@ -96,7 +96,7 @@ function restampLibraryHash(claudeDir, ruleFile)
 // its scope; the account-dir mode reads that dir's settings.json alone.
 function stampDir(claudeDir, value)
 {
-    const ruleFile = path.join(claudeDir, 'rules', 'baseline-docs-root.md');
+    const ruleFile = path.join(claudeDir, 'rules', 'alfred-docs-root.md');
     if (!fs.existsSync(ruleFile))
     {
         console.log(`stamp-docs-root: no ${ruleFile} - nothing to stamp`);

@@ -9,7 +9,7 @@ const { hashItem } = require('./install/library.js');
 const { renderStamp } = require('./install/stamp.js');
 
 const SCRIPT = path.join(__dirname, 'stamp-docs-root.js');
-const SOURCE_RULE = path.join(__dirname, '..', 'stack', 'rules', 'baseline-docs-root.md');
+const SOURCE_RULE = path.join(__dirname, '..', 'stack', 'rules', 'alfred-docs-root.md');
 
 // A minimal install stamp naming ONE library rule hash, so a test can assert whether this script
 // re-records it after it rewrites the rule the stamp is naming.
@@ -27,13 +27,13 @@ function makeProject(settings)
 {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'stamp-'));
     fs.mkdirSync(path.join(root, '.claude', 'rules'), { recursive: true });
-    fs.copyFileSync(SOURCE_RULE, path.join(root, '.claude', 'rules', 'baseline-docs-root.md'));
+    fs.copyFileSync(SOURCE_RULE, path.join(root, '.claude', 'rules', 'alfred-docs-root.md'));
     if (settings !== null) fs.writeFileSync(path.join(root, '.claude', 'settings.json'), settings);
     return root;
 }
 
 const run = root => execFileSync('node', [SCRIPT, root], { encoding: 'utf8' });
-const stampLine = root => fs.readFileSync(path.join(root, '.claude', 'rules', 'baseline-docs-root.md'), 'utf8')
+const stampLine = root => fs.readFileSync(path.join(root, '.claude', 'rules', 'alfred-docs-root.md'), 'utf8')
     .split('\n').find(l => l.includes("This install's root"));
 
 test('stamps the placeholder with the settings env value', () => {
@@ -65,24 +65,24 @@ test('missing rule file is a fail-soft no-op with exit 0', () => {
     assert.match(out, /nothing to stamp/);
 });
 
-// R29: the installer hashes baseline-docs-root.md AFTER it substitutes the placeholder - this
+// R29: the installer hashes alfred-docs-root.md AFTER it substitutes the placeholder - this
 // script does the same substitution again, LATER (init's step 11, a re-stamp after the walk
 // applied a different docs root than the install ran with), so it must re-record the hash too, or
 // the very next library check reads the rule as drift for a rewrite the installer's own protocol
 // asked for.
-test('re-records the stamp\'s library-rules hash for baseline-docs-root when it re-stamps the rule', () => {
+test('re-records the stamp\'s library-rules hash for alfred-docs-root when it re-stamps the rule', () => {
     const root = makeProject('{"env":{"ALFRED_CODE_DOCS_PATH":"docs"}}');
     const claudeDir = path.join(root, '.claude');
-    const rulePath = path.join(claudeDir, 'rules', 'baseline-docs-root.md');
+    const rulePath = path.join(claudeDir, 'rules', 'alfred-docs-root.md');
     try
     {
         run(root);
-        writeStamp(claudeDir, { 'baseline-docs-root': hashItem(rulePath) });
+        writeStamp(claudeDir, { 'alfred-docs-root': hashItem(rulePath) });
         // The applied docs root differs from what the install ran with - init's own trigger.
         fs.writeFileSync(path.join(claudeDir, 'settings.json'), '{"env":{"ALFRED_CODE_DOCS_PATH":"team/docs"}}');
         run(root);
         assert.match(stampLine(root), /This install's root: `team\/docs`/, 'the rule itself was re-stamped');
-        assert.strictEqual(libraryRulesLine(claudeDir), `baseline-docs-root=${hashItem(rulePath)}`,
+        assert.strictEqual(libraryRulesLine(claudeDir), `alfred-docs-root=${hashItem(rulePath)}`,
             'the stamp must carry the hash of the rule AS RE-STAMPED, not the value recorded before this run touched it');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
@@ -94,11 +94,11 @@ test('a stamp naming no other rule, or none at all, is left alone beyond the one
     try
     {
         run(root);
-        writeStamp(claudeDir, { 'baseline-docs-root': 'deadbeef', 'baseline-git': 'cafef00d' });
+        writeStamp(claudeDir, { 'alfred-docs-root': 'deadbeef', 'alfred-git': 'cafef00d' });
         fs.writeFileSync(path.join(claudeDir, 'settings.json'), '{"env":{"ALFRED_CODE_DOCS_PATH":"team/docs"}}');
         run(root);
-        assert.match(libraryRulesLine(claudeDir), /baseline-git=cafef00d/, 'a sibling rule\'s recorded hash is untouched');
-        assert.doesNotMatch(libraryRulesLine(claudeDir), /baseline-docs-root=deadbeef/, 'the owned key was updated');
+        assert.match(libraryRulesLine(claudeDir), /alfred-git=cafef00d/, 'a sibling rule\'s recorded hash is untouched');
+        assert.doesNotMatch(libraryRulesLine(claudeDir), /alfred-docs-root=deadbeef/, 'the owned key was updated');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
@@ -199,7 +199,7 @@ test('--reprobe-versioning is a no-op where there is no key, no repo or no proje
         assert.match(reprobe(noRepo, 'git'), /not a git repository/);
         assert.strictEqual(envOf(noRepo).ALFRED_CODE_DOCS_VERSIONING, 'git', 'and the value is left alone');
         fs.mkdirSync(path.join(acct, 'rules'), { recursive: true });
-        fs.copyFileSync(SOURCE_RULE, path.join(acct, 'rules', 'baseline-docs-root.md'));
+        fs.copyFileSync(SOURCE_RULE, path.join(acct, 'rules', 'alfred-docs-root.md'));
         fs.writeFileSync(path.join(acct, 'settings.json'), '{"env":{"ALFRED_CODE_DOCS_VERSIONING":"git"}}');
         const out = execFileSync('node', [SCRIPT, '--claude-dir', acct, '--reprobe-versioning'], { encoding: 'utf8' });
         assert.match(out, /needs a project root/, 'a global install has no repo to probe');
@@ -310,7 +310,7 @@ test('--seed-versioning skips a global install (no project repo to probe)', () =
     try
     {
         fs.mkdirSync(path.join(dir, 'rules'), { recursive: true });
-        fs.copyFileSync(SOURCE_RULE, path.join(dir, 'rules', 'baseline-docs-root.md'));
+        fs.copyFileSync(SOURCE_RULE, path.join(dir, 'rules', 'alfred-docs-root.md'));
         fs.writeFileSync(path.join(dir, 'settings.json'), '{"env":{}}');
         const out = execFileSync('node', [SCRIPT, '--claude-dir', dir, '--seed-versioning'], { encoding: 'utf8' });
         assert.match(out, /--seed-versioning needs a project root - skipped for a global install/);
@@ -325,10 +325,10 @@ test('--claude-dir stamps a global install from the account dir itself', () => {
     try
     {
         fs.mkdirSync(path.join(dir, 'rules'), { recursive: true });
-        fs.copyFileSync(SOURCE_RULE, path.join(dir, 'rules', 'baseline-docs-root.md'));
+        fs.copyFileSync(SOURCE_RULE, path.join(dir, 'rules', 'alfred-docs-root.md'));
         fs.writeFileSync(path.join(dir, 'settings.json'), '{"env":{"ALFRED_CODE_DOCS_PATH":"global/docs"}}');
         execFileSync('node', [SCRIPT, '--claude-dir', dir], { encoding: 'utf8' });
-        const line = fs.readFileSync(path.join(dir, 'rules', 'baseline-docs-root.md'), 'utf8').split('\n').find(l => l.includes("This install's root"));
+        const line = fs.readFileSync(path.join(dir, 'rules', 'alfred-docs-root.md'), 'utf8').split('\n').find(l => l.includes("This install's root"));
         assert.match(line, /This install's root: `global\/docs`/);
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }

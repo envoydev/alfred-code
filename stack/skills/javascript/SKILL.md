@@ -1,6 +1,7 @@
 ---
 name: javascript
 description: "Load before writing or editing any .js, .jsx, .mjs or .cjs file in any runtime - the base layer for JS-family code. Not for C#/.NET or other languages."
+user-invocable: false
 ---
 
 # JavaScript conventions - the base language layer

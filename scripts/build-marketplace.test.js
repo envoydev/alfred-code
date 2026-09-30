@@ -464,9 +464,10 @@ test('the README trust surface counts what the core entry carries', () =>
     const word = (n) => (n < 20 ? UNITS[n] : ['twenty', 'thirty', 'forty'][Math.floor(n / 10) - 2] + (n % 10 ? `-${UNITS[n % 10]}` : ''));
     const scripted = core.skills.filter((s) => fs.existsSync(path.join(__dirname, '..', s, 'scripts'))).map((s) => path.basename(s));
     const references = fs.readdirSync(path.join(__dirname, '..', 'setup-plugin', 'references')).length;
-    const row = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8').split('\n').find((l) => l.startsWith('| **Starts** |'));
-    const m = /which is (\S+) command bodies, (\S+) skills? \((?:the `\/alfred-code` router; )?(?:only ((?:`[^`]+`(?:, | and )?)+) ships? a script|none ships a script)\), (\S+) agents, (\S+) references and (\S+) hooks - the core's own (\S+) .*?and the (\S+) stack hooks/.exec(row || '');
-    assert.ok(m, `the Starts row names what the core carries: ${row}`);
+    const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'install-footprint.md'), 'utf8');
+    const row = doc.split('\n').find((l) => l.startsWith('Nothing else executes from the package itself.'));
+    const m = /The package itself is (\S+) command bodies, (\S+) skills? \((?:the `\/alfred-code` router; )?(?:only ((?:`[^`]+`(?:, | and )?)+) ships? a script|none ships a script)\), (\S+) agents, (\S+) references and (\S+) hooks - the core's own (\S+) .*?and the (\S+) stack hooks/.exec(row || '');
+    assert.ok(m, `docs/install-footprint.md names what the core carries: ${row}`);
     m[3] = [...String(m[3] || '').matchAll(/`([^`]+)`/g)].map((x) => x[1]).join(); // the skills that ship a script, as a list
     assert.deepStrictEqual(m.slice(1), [word(core.commands.length), word(core.skills.length), scripted.join(), word(core.agents.length),
         word(references), word(files.size), word(own), word(files.size - own)]);

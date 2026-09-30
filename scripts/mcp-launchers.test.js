@@ -11,7 +11,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const LAUNCH = path.join(ROOT, 'stack/mcp/memory-launch.js');
@@ -92,11 +92,65 @@ test('memory-launch: a RELATIVE value resolves against the project, the way the 
     assert.strictEqual(resolveDb(dir, { HOME: dir }), path.join(dir, '.memory-mcp/memory.db'));
 });
 
-test('memory-launch: malformed or empty settings are not a failure - the default still answers', () =>
+test('memory-launch: an EMPTY settings file holds no key - the default still answers', () =>
 {
-    const { dir } = project('bad-db');
-    fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), '{ not json');
+    const { dir } = project('empty-db');
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), '');
     assert.strictEqual(resolveDb(dir, { HOME: dir, USERPROFILE: dir }), path.join(dir, '.alfred-memory', 'memory.db'));
+});
+
+// Review 2.1.6 re-verify N2 - F2 on the plugin route: a settings file that did not parse was read as empty, so the
+// launcher fell through to the GLOBAL database with no line, and every session wrote this project's memories into the
+// account-wide one. A file that cannot be read is no answer: a later readable file's key answers (settings.json, then
+// the account settings), said on stderr; with none the launcher refuses to start - the server shows as failed in /mcp -
+// rather than open a database this project never chose.
+const SHEBANG = { skip: process.platform === 'win32' && 'the stub uvx is a node script with a shebang' };
+const launch = (dir, env) =>
+{
+    const bin = path.join(TMP, `${path.basename(dir)}-bin`);
+    const record = path.join(TMP, `${path.basename(dir)}-db.txt`);
+    fs.mkdirSync(bin, { recursive: true });
+    fs.writeFileSync(path.join(bin, 'uvx'), `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(record)}, process.env.MCP_MEMORY_SQLITE_PATH || '');\n`, { mode: 0o755 });
+    const r = spawnSync(process.execPath, [LAUNCH, '--package', 'mcp-memory-service[sqlite]==11.13.0'],
+        { cwd: dir, env: { ...BARE, PATH: bin + path.delimiter + process.env.PATH, HOME: dir, USERPROFILE: dir, ...env }, encoding: 'utf8' });
+    return { status: r.status, stderr: r.stderr, db: fs.existsSync(record) ? fs.readFileSync(record, 'utf8') : null };
+};
+
+test('memory-launch: a malformed settings file with no other key refuses to start, naming it - never the global database', SHEBANG, () =>
+{
+    const { dir, acct } = project('bad-local');
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), '{ "env": { "A": 1, } garbage');
+    const r = launch(dir, { CLAUDE_CONFIG_DIR: acct });
+    assert.strictEqual(r.db, null, `the server started on ${r.db}`);
+    assert.notStrictEqual(r.status, 0);
+    assert.match(r.stderr, /settings\.local\.json could not be read/, r.stderr);
+    assert.strictEqual(r.stderr.trim().split('\n').length, 1, r.stderr);
+});
+
+test('memory-launch: a malformed settings.local.json hands over to the next readable key - settings.json, then the account settings - and says so', SHEBANG, () =>
+{
+    const shared = project('bad-local-shared', { settings: { ALFRED_CODE_MEMORY_DB: '/tmp/shared/memory.db' } });
+    fs.writeFileSync(path.join(shared.dir, '.claude', 'settings.local.json'), '[1,2]');
+    const a = launch(shared.dir, { CLAUDE_CONFIG_DIR: shared.acct });
+    assert.strictEqual(a.db, '/tmp/shared/memory.db', a.stderr);
+    assert.match(a.stderr, /settings\.local\.json could not be read/, a.stderr);
+    const account = project('bad-both-acct', { account: { ALFRED_CODE_MEMORY_DB: '/tmp/account/memory.db' } });
+    fs.writeFileSync(path.join(account.dir, '.claude', 'settings.local.json'), '{ garbage');
+    fs.writeFileSync(path.join(account.dir, '.claude', 'settings.json'), '{ garbage');
+    assert.strictEqual(launch(account.dir, { CLAUDE_CONFIG_DIR: account.acct }).db, '/tmp/account/memory.db');
+});
+
+// Re-verify 3 S6: where the stamp's ledger records the key in the unreadable settings.local.json, that file is the key's only
+// home - the account's key (the global database, say) never answers for it, and the refusal says why, not 'no other file'.
+test('memory-launch: an unreadable settings.local.json the ledger records the key in refuses, whatever a lower file names', SHEBANG, () =>
+{
+    const { dir, acct } = project('ledger-local', { account: { ALFRED_CODE_MEMORY_DB: '/tmp/account/memory.db' } });
+    fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), `managed-env: settings.local.json:ALFRED_CODE_MEMORY_DB=${'a'.repeat(64)}\n`);
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), '{ "env": { "ALFRED_CODE_MEMORY_DB": "/tmp/pro');
+    const r = launch(dir, { CLAUDE_CONFIG_DIR: acct });
+    assert.strictEqual(r.db, null, `the server started on ${r.db}`);
+    assert.notStrictEqual(r.status, 0);
+    assert.match(r.stderr, /settings\.local\.json could not be read, and it is the file this install keeps ALFRED_CODE_MEMORY_DB in \(the stamp's managed-env\) - not started/, r.stderr);
 });
 
 test('memory-launch: a hand-edited entry with no --package says so instead of launching something else', () =>
@@ -639,7 +693,7 @@ test('M2 serena-launch: a recorded move waits while another serena holds the fol
     const { dir } = project('serena-held');
     put(path.join(dir, '.serena', 'project.yml'), 'project_name: x\n');
     stamp(dir, ['data-pending: serena .serena -> .alfred/serena']);
-    const live = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
+    const live = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)', 'serena-agent'], { stdio: 'ignore' });
     try
     {
         put(path.join(dir, '.serena', 'home', 'logs', '2026-09-29', `mcp_20260929-111111_${live.pid}.txt`), 'live');
@@ -847,4 +901,45 @@ test('I2 memory-launch: ~/.memory-mcp re-created after the move (another reader 
     const out = execFileSync(process.execPath, [LAUNCH, '--package', 'mcp-memory-service[sqlite]==11.13.0'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir, USERPROFILE: dir }, stdio: 'pipe' });
     assert.strictEqual(rec.got().db, path.join(dir, '.alfred-memory', 'memory.db'), String(out));
     assert.strictEqual(fs.readFileSync(path.join(dir, '.memory-mcp', 'memory.db'), 'utf8'), 'EMPTY', 'the other reader\'s file is not touched');
+});
+
+// Re-verify 3 S3: every launcher took the project from CLAUDE_PROJECT_DIR or its cwd - both the directory the session was
+// started in, or an inherited folder - so a session started in a package folder opened the account-wide memory database,
+// handed Playwright a profile outside every .gitignore and started serena on a home that is not there. Each now asks
+// memory.js projectRootOf: the folder holding the install record above the launch directory.
+test('S3 launchers: started in a subdirectory, or under another folder\'s CLAUDE_PROJECT_DIR, each serves its project', POSIX, () =>
+{
+    const home = path.join(TMP, 's3-home');
+    fs.mkdirSync(home, { recursive: true });
+    const { dir, acct } = project('s3-root', { settings: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'PowerShell' } });
+    const real = fs.realpathSync(dir);
+    const projectDb = path.join(real, '.alfred', '.alfred-memory', 'memory.db');
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: projectDb } }));
+    fs.mkdirSync(path.join(dir, '.git'));
+    stamp(dir, ['scope: user']);
+    const sub = path.join(dir, 'packages', 'app');
+    fs.mkdirSync(sub, { recursive: true });
+    const elsewhere = path.join(TMP, 's3-elsewhere');
+    fs.mkdirSync(path.join(elsewhere, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(elsewhere, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: path.join(elsewhere, 'other.db') } }));
+    for (const inherited of [{}, { CLAUDE_PROJECT_DIR: sub }, { CLAUDE_PROJECT_DIR: elsewhere }])
+    {
+        const env = (rec) => ({ ...BARE, PATH: rec.PATH, HOME: home, CLAUDE_CONFIG_DIR: acct, ...inherited });
+        const said = JSON.stringify(inherited);
+        const mem = stubRecorder('s3-mem', 'uvx');
+        execFileSync(process.execPath, [LAUNCH, '--package', 'mcp-memory-service[sqlite]==11.13.0'], { cwd: sub, env: env(mem), stdio: 'pipe' });
+        assert.deepStrictEqual([mem.got().db, mem.got().cwd], [projectDb, real], `memory ${said}`);
+        const br = stubRecorder('s3-browser', 'npx');
+        execFileSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.83', '--browser', 'chrome'], { cwd: sub, env: env(br), stdio: 'pipe' });
+        const argv = br.got().argv;
+        assert.deepStrictEqual([argv[argv.indexOf('--user-data-dir') + 1], br.got().cwd], [path.join(real, '.alfred', 'browser', 'chrome'), real], `browser ${said}`);
+        const se = stubRecorder('s3-serena', 'uvx');
+        execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server', '--project-from-cwd'], { cwd: sub, env: env(se), stdio: 'pipe' });
+        // serena's home stays relative (Windows cmd.exe cuts an absolute one at a space), so serena starts AT the project.
+        assert.deepStrictEqual([se.got().home, se.got().cwd], ['.alfred/serena/home', real], `navigation ${said}`);
+        const dk = stubUvx('s3-desktop');
+        execFileSync(process.execPath, [DESKTOP, ...WIN_ARGS], { cwd: sub, env: { ...env(dk), ALFRED_CODE_PLATFORM: 'win32' }, stdio: 'pipe' });
+        assert.deepStrictEqual(dk.argv().argv.slice(-2), ['--exclude-tools', 'PowerShell'], `desktop ${said}: the project's own override`);
+    }
+    assert.strictEqual(fs.existsSync(path.join(sub, '.alfred')), false, 'nothing is created under the launch directory');
 });

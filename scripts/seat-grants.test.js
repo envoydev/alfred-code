@@ -30,7 +30,7 @@ const copiesOf = (id) => { const r = rules()[id]; return [r.owner, ...(r.sites |
 const verifiers = seats.filter((s) => s.endsWith('-verifier'));
 
 // --- I13: the gate seats reach the documentation server --------------------------------------------
-// baseline-quality-gates.md loads in every seat and sends a claim about a package, an API shape or a
+// alfred-quality-gates.md loads in every seat and sends a claim about a package, an API shape or a
 // deprecation to the documentation server. A seat that judges or writes code and cannot call it can only
 // guess or mark the claim unverified. The five gatherers extract facts from THIS project and pass no
 // outside-world verdict, so they stay without it.
@@ -39,7 +39,7 @@ const GATHERERS = new Set(['architecture-analyzer', 'code-style-analyzer', 'evid
 
 test('I13: every seat that judges or writes code holds the documentation grant the always-on rule sends it to', () =>
 {
-    const rule = fs.readFileSync(path.join(ROOT, 'stack', 'rules', 'baseline-quality-gates.md'), 'utf8');
+    const rule = fs.readFileSync(path.join(ROOT, 'stack', 'rules', 'alfred-quality-gates.md'), 'utf8');
     assert.match(squash(rule), /is checked against the `documentation` server/, 'the always-on rule still directs the lookup');
     const missing = seats.filter((s) => !GATHERERS.has(s) && !tools(s).includes(DOC_GRANT));
     assert.deepStrictEqual(missing, [], `each needs ${DOC_GRANT} in tools:`);

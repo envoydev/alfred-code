@@ -57,11 +57,11 @@ function run(src, dest, files, opts = {})
 
 test('install-copy: a file is copied, and its destination directory is made on the way', () =>
 {
-    const { src, dest } = fixture({ 'baseline-interaction.md': 'one\n' });
-    const { logs, notes } = run(src, dest, ['baseline-interaction.md']);
-    assert.strictEqual(fs.readFileSync(path.join(dest, 'baseline-interaction.md'), 'utf8'), 'one\n');
+    const { src, dest } = fixture({ 'alfred-interaction.md': 'one\n' });
+    const { logs, notes } = run(src, dest, ['alfred-interaction.md']);
+    assert.strictEqual(fs.readFileSync(path.join(dest, 'alfred-interaction.md'), 'utf8'), 'one\n');
     assert.deepStrictEqual(notes, []);
-    assert.ok(logs.some((m) => /rule installed -> baseline-interaction\.md/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /rule installed -> alfred-interaction\.md/.test(m)), logs.join(' | '));
 });
 
 test('install-copy: identical content is NOT rewritten - an update leaves the mtime alone', () =>
@@ -133,7 +133,7 @@ test('install-copy: __DOCS_ROOT__ is stamped with the value in settings.json', (
     const { base } = fixture();
     const rulesDir = path.join(base, '.claude', 'rules');
     fs.mkdirSync(rulesDir, { recursive: true });
-    const file = path.join(rulesDir, 'baseline-docs-root.md');
+    const file = path.join(rulesDir, 'alfred-docs-root.md');
     fs.writeFileSync(file, rule('Docs live under `__DOCS_ROOT__/architecture`.'));
     fs.writeFileSync(path.join(base, '.claude', 'settings.json'),
         JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/agent' } }));
@@ -149,7 +149,7 @@ test('install-copy: with no setting, the stamp writes the DEFAULT rather than le
     const { base } = fixture();
     const rulesDir = path.join(base, '.claude', 'rules');
     fs.mkdirSync(rulesDir, { recursive: true });
-    const file = path.join(rulesDir, 'baseline-docs-root.md');
+    const file = path.join(rulesDir, 'alfred-docs-root.md');
     fs.writeFileSync(file, rule('Docs live under `__DOCS_ROOT__`.'));
 
     stampDocsRoot(base, { log: () => {}, note: () => {} });
@@ -165,7 +165,7 @@ test('install-copy: COPY THEN STAMP is what makes the rule track a changed env',
     // while the source still reads '__DOCS_ROOT__', so the contents differ, the pristine rule is
     // copied back, and the stamp writes the CURRENT value over a fresh placeholder. The two halves
     // are one behaviour and this is the test that says so.
-    const { base, src } = fixture({ 'baseline-docs-root.md': rule('Docs live under `__DOCS_ROOT__/architecture`.') });
+    const { base, src } = fixture({ 'alfred-docs-root.md': rule('Docs live under `__DOCS_ROOT__/architecture`.') });
     const rulesDir = path.join(base, '.claude', 'rules');
     const settings = path.join(base, '.claude', 'settings.json');
     fs.mkdirSync(path.dirname(settings), { recursive: true });
@@ -173,9 +173,9 @@ test('install-copy: COPY THEN STAMP is what makes the rule track a changed env',
     const cycle = (value) =>
     {
         fs.writeFileSync(settings, JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: value } }));
-        run(src, rulesDir, ['baseline-docs-root.md']);
+        run(src, rulesDir, ['alfred-docs-root.md']);
         stampDocsRoot(base, { log: () => {}, note: () => {} });
-        return fs.readFileSync(path.join(rulesDir, 'baseline-docs-root.md'), 'utf8');
+        return fs.readFileSync(path.join(rulesDir, 'alfred-docs-root.md'), 'utf8');
     };
 
     assert.ok(cycle('docs/first').includes('docs/first/architecture'));
@@ -189,7 +189,7 @@ test('install-copy: the stamp alone is once-only - the placeholder is gone after
     const { base } = fixture();
     const rulesDir = path.join(base, '.claude', 'rules');
     fs.mkdirSync(rulesDir, { recursive: true });
-    const file = path.join(rulesDir, 'baseline-docs-root.md');
+    const file = path.join(rulesDir, 'alfred-docs-root.md');
     fs.writeFileSync(file, rule('Docs live under `__DOCS_ROOT__`.'));
     fs.writeFileSync(path.join(base, '.claude', 'settings.json'),
         JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/one' } }));
@@ -206,7 +206,7 @@ test('install-copy: a malformed settings.json is not a failure - the default ans
     const { base } = fixture();
     const rulesDir = path.join(base, '.claude', 'rules');
     fs.mkdirSync(rulesDir, { recursive: true });
-    const file = path.join(rulesDir, 'baseline-docs-root.md');
+    const file = path.join(rulesDir, 'alfred-docs-root.md');
     fs.writeFileSync(file, rule('Docs live under `__DOCS_ROOT__`.'));
     fs.writeFileSync(path.join(base, '.claude', 'settings.json'), '{ not json');
 
@@ -266,7 +266,7 @@ test('install-copy: a 1.x CLAUDE_STACK_DOCS_PATH is the root the stamp writes', 
     const { base } = fixture();
     const rulesDir = path.join(base, '.claude', 'rules');
     fs.mkdirSync(rulesDir, { recursive: true });
-    const file = path.join(rulesDir, 'baseline-docs-root.md');
+    const file = path.join(rulesDir, 'alfred-docs-root.md');
     fs.writeFileSync(file, rule('Docs live under `__DOCS_ROOT__/architecture`.'));
     fs.writeFileSync(path.join(base, '.claude', 'settings.json'),
         JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs/legacy' } })); // legacy-name

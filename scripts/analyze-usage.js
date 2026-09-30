@@ -54,6 +54,7 @@ const os = require('os');
 const path = require('path');
 const readline = require('readline');
 const { loadManifest } = require('./install/manifest.js');
+const { parseJson } = require('./install/json-file.js');
 
 // ---------- small helpers ----------
 
@@ -184,7 +185,7 @@ function rmVerifyTail(cmd) {
   return targets.some((t) => tail.includes(t));
 }
 
-// NAVIGATION, as baseline-navigation words it: locate with the navigation server or the LSP, then read the range. A
+// NAVIGATION, as alfred-navigation words it: locate with the navigation server or the LSP, then read the range. A
 // read of a SOURCE file is LOCATED when a locate step sits in the NAV_WINDOW tool calls before it, or
 // in the same call (`rg -n x src && sed -n '10,40p' src/a.ts`). A symbol step in the window wins
 // over a grep, so 'grep-then-read' is a read that only a name-match located. Glob and find locate a
@@ -535,7 +536,7 @@ function loadPluginLayers(claudeDir) {
   let enabled = [];
   try
   {
-    const s = JSON.parse(fs.readFileSync(path.join(claudeDir, 'settings.json'), 'utf8'));
+    const s = parseJson(fs.readFileSync(path.join(claudeDir, 'settings.json'), 'utf8'));
     enabled = Object.keys(s.enabledPlugins || {}).filter((k) => (s.enabledPlugins || {})[k] !== false);
   }
   catch { return out; }
@@ -1127,7 +1128,7 @@ const installedCell = (r) => (r.installedIn ? `${r.installedIn}/${r.ofSessions}`
 const INTERP_RE = /\b(?:python[\d.]*|node|nodejs|ruby|perl|php|deno|bun|osascript|pwsh|powershell)\b/;
 function maskHeredocs(cmd) {
   return String(cmd).replace(
-    /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^\s*\2\s*$/gm,
+    /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^[ \t]*\2[ \t\r]*$/gm,
     (m, _q, _tag, off, whole) => {
       const header = whole.slice(whole.lastIndexOf('\n', off) + 1, off);
       if (INTERP_RE.test(header)) return m;               // an inline script - real code
@@ -2488,7 +2489,7 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
   const { envOf, hookProfile, CORE_PLUGIN } = require(path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js'));
   const root = path.resolve(projectRoot);
   const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
-  const readSettings = (f) => { try { const d = JSON.parse(fs.readFileSync(f, 'utf8')); return d && typeof d === 'object' ? d : {}; } catch { return {}; } };
+  const readSettings = (f) => { try { const d = parseJson(fs.readFileSync(f, 'utf8')); return d && typeof d === 'object' ? d : {}; } catch { return {}; } };
   // The hooks see local over project over account, so the same order answers here; junk is no setting.
   const envs = [path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json'), path.join(account, 'settings.json')]
     .map((f) => { const env = readSettings(f).env; return env && typeof env === 'object' ? env : {}; });
@@ -2829,7 +2830,9 @@ function efficiencyRows(main, agg, blockLedger) {
       rows.push({ practice: 'cost at list price', measured: `price table unreadable (${c.error || pt.error}) - no cost computed`, tests: 'meta/model-prices.json, or the file --prices names' });
     } else {
       const seats = Object.entries(c.byType || {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, usd]) => `${t} ${fmtUsd(usd)}`).join(', ');
-      const unpriced = Object.entries(c.unpriced || {}).map(([m, n]) => `${m} x${n} msg${n === 1 ? '' : 's'}`).join(', ');
+      // The table holds every row the page prices, so a model with no row is one the page did not list when it was
+      // fetched - said with the date, never guessed at a sibling's price (2.1.6 K3).
+      const unpriced = Object.entries(c.unpriced || {}).map(([m, n]) => `${m} x${n} msg${n === 1 ? '' : 's'} - not on the pricing page (fetched ${pt.table.fetched})`).join(', ');
       const parts = [`~${fmtUsd(c.usd)} - main ${fmtUsd(c.main)}${c.seats ? `, subagents ${fmtUsd(c.subagents)} over ${c.seats} seat(s) (${seats})` : ''}`];
       if (main.totalCostUSD != null) parts.push(`cost-state billed ${fmtUsd(Number(main.totalCostUSD))}`);
       if (unpriced) parts.push(`unpriced: ${unpriced}`);
@@ -2885,7 +2888,7 @@ function efficiencyRows(main, agg, blockLedger) {
     const denials = blockLedger && blockLedger.given
       ? `${(blockLedger.byHook[WHOLE_FILE_HOOK] || { blocks: 0 }).blocks} whole-file denial(s) (hook-block ledger)`
       : `${agg.wholeFileBracket || 0} whole-file denial(s) (transcript bracket - pass --hook-blocks for the ledger)`;
-    rows.push({ practice: 'navigation', measured: `${n.located} of ${n.reads} source-file read(s) had a locate step in the ${NAV_WINDOW} calls before${n.reads ? ` (${Math.round((100 * n.located) / n.reads)}%)` : ''}; symbol tools ${n.symbolCalls} call(s) against ${n.grepLocated} grep-then-read sequence(s); ${denials}`, tests: 'baseline-navigation, main and seats: locate with serena or the LSP, then read the range - a read with no locate step before it reads to FIND something, a grep-then-read answers a symbol question by name-match, and every whole-file denial is a round trip lost' });
+    rows.push({ practice: 'navigation', measured: `${n.located} of ${n.reads} source-file read(s) had a locate step in the ${NAV_WINDOW} calls before${n.reads ? ` (${Math.round((100 * n.located) / n.reads)}%)` : ''}; symbol tools ${n.symbolCalls} call(s) against ${n.grepLocated} grep-then-read sequence(s); ${denials}`, tests: 'alfred-navigation, main and seats: locate with serena or the LSP, then read the range - a read with no locate step before it reads to FIND something, a grep-then-read answers a symbol question by name-match, and every whole-file denial is a round trip lost' });
   }
   {
     const servers = Object.entries(agg.mcpServers || {});
@@ -3555,7 +3558,7 @@ function sessionsDirOf(cwd, configDir) {
   return path.join(configDir, 'projects', require('./memory-import.js').slugify(cwd));
 }
 
-module.exports = { hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf };
+module.exports = { loadPluginLayers, hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf };
 
 // ---------- entry ----------
 

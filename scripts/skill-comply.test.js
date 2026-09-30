@@ -509,9 +509,48 @@ test('grade CLI: a report per step, --json, and an empty or missing transcript i
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// --- code comments and execution strategy (offline expectations, no replay) ----------------------------
+
+test('a code-comments trace grades the load order and the two never-add steps', () =>
+{
+    const exp = expectOf('alfred-habits-code-comments');
+    const doc = (text) => tool('Edit', { file_path: '/w/src/orders.js', old_string: '', new_string: text });
+    const good = jsonl([user('add refundTotal'), tool('Skill', { skill: 'alfred-code:alfred-habits-code-comments' }),
+        doc('/**\n * Refunds an order minus the restock fee.\n * @param {object} order - Order with at least one line.\n */\nfunction refundTotal(order) {}'), say('Added it.')]);
+    assert.deepStrictEqual(failing(sc.grade(exp, good, { level: 'plain' })), []);
+
+    const late = jsonl([user('add refundTotal'), doc('/** Refunds. */\nfunction refundTotal() {}'), tool('Skill', { skill: 'alfred-habits-code-comments' })]);
+    assert.deepStrictEqual(failing(sc.grade(exp, late, { level: 'plain' })), ['code-comments-loaded']);
+
+    const ticket = jsonl([user('x'), tool('Skill', { skill: 'alfred-habits-code-comments' }), doc('/** Refunds. */\n// SHOP-42 restock fee\nfunction refundTotal() {}')]);
+    assert.deepStrictEqual(failing(sc.grade(exp, ticket, { level: 'plain' })), ['no-ticket-id']);
+
+    const narrated = jsonl([user('x'), tool('Skill', { skill: 'alfred-habits-code-comments' }), doc('/** Refunds. */\n// Added the restock fee\nfunction refundTotal() {}')]);
+    assert.deepStrictEqual(failing(sc.grade(exp, narrated, { level: 'plain' })), ['no-change-narration']);
+
+    // a why comment that merely contains a word from the narration list is not narration
+    const why = jsonl([user('x'), tool('Skill', { skill: 'alfred-habits-code-comments' }), doc('/** Refunds. */\n// The fee is fixed per order, never per line.\nfunction refundTotal() {}')]);
+    assert.deepStrictEqual(failing(sc.grade(exp, why, { level: 'plain' })), []);
+});
+
+test('an execution-strategy trace grades the load before the first edit and no plan file', () =>
+{
+    const exp = expectOf('alfred-habits-execution-strategy');
+    const edit = (file) => tool('Edit', { file_path: `/w/${file}`, old_string: 'a', new_string: 'b' });
+    const good = jsonl([user('add a discount'), tool('Skill', { skill: 'alfred-habits-execution-strategy' }), say('Plan: 3 subtasks, one agent.'), edit('src/cart.js'), edit('src/invoice.js')]);
+    assert.deepStrictEqual(failing(sc.grade(exp, good, { level: 'plain' })), []);
+
+    const skipped = jsonl([user('add a discount'), edit('src/cart.js'), tool('Skill', { skill: 'alfred-habits-execution-strategy' })]);
+    assert.deepStrictEqual(failing(sc.grade(exp, skipped, { level: 'plain' })), ['strategy-loaded']);
+
+    const planned = jsonl([user('add a discount'), tool('Skill', { skill: 'alfred-habits-execution-strategy' }),
+        tool('Write', { file_path: '/w/.alfred/docs/superpowers/plans/discount.md', content: '# plan' }), edit('src/cart.js')]);
+    assert.deepStrictEqual(failing(sc.grade(exp, planned, { level: 'plain' })), ['no-plan-file']);
+});
+
 test('check: every shipped expectation is valid and its quotes are still in the skill', () =>
 {
-    assert.deepStrictEqual(sc.listSkills(), ['alfred-habits-commit-checkpoint', 'alfred-habits-root-cause', 'alfred-task-solve', 'csharp']);
+    assert.deepStrictEqual(sc.listSkills(), ['alfred-habits-code-comments', 'alfred-habits-commit-checkpoint', 'alfred-habits-execution-strategy', 'alfred-habits-root-cause', 'alfred-task-solve', 'csharp']);
     const r = cli(['check']);
     assert.strictEqual(r.code, 0, r.out + r.err);
 });
@@ -567,8 +606,8 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         assert.ok(!fs.existsSync(out), 'a dry run writes nothing');
         const lines = r.out.split('\n');
         const billed = lines.filter((l, i) => lines[i - 1] === '# billed: one nested model session');
-        assert.strictEqual(billed.length, 12);
-        assert.match(r.out, /4 skill\(s\) x 3 level\(s\) = 12 billed nested session\(s\), each capped at --max-budget-usd 1\.5/);
+        assert.strictEqual(billed.length, 18);
+        assert.match(r.out, /6 skill\(s\) x 3 level\(s\) = 18 billed nested session\(s\), each capped at --max-budget-usd 1\.5/);
         assert.match(lines.slice(3).find((l) => !l.startsWith('#') && l !== 'set -e'), /clean-export\.js/, 'the source is exported first when none is handed in');
         for (const b of billed)
         {
@@ -579,13 +618,13 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         }
         assert.ok(billed.some((b) => b.includes(BARE('navigation', 'list_memories'))), 'the copy route allows the bare spelling');
         const installs = lines.filter((l) => l.includes('alfred-code.js install'));
-        assert.strictEqual(installs.length, 12);
+        assert.strictEqual(installs.length, 18);
         for (const i of installs) assert.match(i, /env -i PATH="\$PATH" .* ALFRED_CODE_SKILLS_VIA_PLUGIN=false ALFRED_CODE_HOOKS_VIA_PLUGIN=false ALFRED_CODE_MCPS_VIA_PLUGIN=false node /);
         // The scaffold's commit leaves ~300 loose objects, past git's loose-objects threshold (100), so an
         // unconfigured project starts a DETACHED `git maintenance run --auto` that is still packing into
         // .git/objects when the run is deleted (reproduced: ENOTEMPTY, a tmp_pack left behind).
         const inits = lines.filter((l) => / init -q/.test(l));
-        assert.strictEqual(inits.length, 12);
+        assert.strictEqual(inits.length, 18);
         for (const i of inits) assert.match(i, / init -q && git -C \S+ config maintenance\.auto false$/, 'a throwaway project runs no background maintenance');
         // bash parses the whole plan without running any of it
         const script = path.join(dir, 'plan.sh');
@@ -597,7 +636,7 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         assert.doesNotMatch(one.out, /clean-export/);
         // the project gets what an init walk installs: the locked always-on set and the stack's seeds too
         const sel = JSON.parse(one.out.match(/^printf '%s\\n' '(\{.*\})' > /m)[1]);
-        for (const r of ['baseline-interaction', 'baseline-navigation', 'csharp-conventions', 'dotnet-repair-agents']) assert.ok(sel.rules.includes(r), r);
+        for (const r of ['alfred-interaction', 'alfred-navigation', 'csharp-conventions', 'dotnet-repair-agents']) assert.ok(sel.rules.includes(r), r);
         for (const m of ['navigation', 'documentation', 'memory']) assert.ok(sel.mcps.includes(m), m);
         assert.ok(sel.skills.includes('csharp') && sel.skills.includes('dotnet-testing'));
         assert.strictEqual((one.out.match(/^# billed/mg) || []).length, 1);
@@ -612,7 +651,7 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         fs.mkdirSync(path.join(other, 'scripts', 'install'), { recursive: true });
         fs.mkdirSync(path.join(other, 'meta'));
         fs.writeFileSync(path.join(other, 'scripts', 'install', 'alfred-code.js'), '');
-        fs.writeFileSync(path.join(other, 'meta', 'recommendations.json'), JSON.stringify({ always: { skills: ['from-the-source'], rules: ['baseline-interaction'] }, stacks: {} }));
+        fs.writeFileSync(path.join(other, 'meta', 'recommendations.json'), JSON.stringify({ always: { skills: ['from-the-source'], rules: ['alfred-interaction'] }, stacks: {} }));
         const arm = cli(['replay', '--dry-run', '--skill', 'alfred-habits-root-cause', '--level', 'plain', '--source', other, '--out', out]);
         assert.strictEqual(arm.code, 0, arm.err);
         const armSel = JSON.parse(arm.out.match(/^printf '%s\\n' '(\{.*\})' > /m)[1]);

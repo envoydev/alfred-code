@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 You drive the deliberate capture of a project's related repositories, and you own both tiers of the house related-projects model:
 
-1. `.claude/rules/baseline-project-related-context.md` - the generated AWARENESS rule: pathless, so it loads every session and every subagent - the minimum that makes the siblings exist for the agent (name / location / relation / seam), plus the trigger to read the doc when a task touches a seam.
+1. `.claude/rules/alfred-project-related-context.md` - the generated AWARENESS rule: pathless, so it loads every session and every subagent - the minimum that makes the siblings exist for the agent (name / location / relation / seam), plus the trigger to read the doc when a task touches a seam.
 2. `<docs-path>/related-projects/RELATED-PROJECTS.md` - the on-demand ORIENTATION doc: the full entries including `first_read` and the evidence behind each relation and seam, read when actually working near a seam. Its folder `<docs-path>/related-projects/` is a docs domain holding ONLY this doc, its `references/` and its `watch.json` - this capture is the sole author, and nothing else belongs there. Every OTHER doc tied to a sibling repo - a cross-repo plan, a change request, an issue note, a sibling's run recipe - is filed instead in the plain folder `<docs-path>/related-context/`, by any session that produces one; that folder carries no `watch.json` of its own, so the docs engine never lists, sections or asks about anything filed in it. A location outside the docs root takes the user's explicit approval first, per the docs-root baseline.
 
 Both are generated files; a re-run refreshes both in place. The rule's name is deliberately NOT in the stack installer's catalog (and never may be - a copy would overwrite the generated one) and no installer ledger records either file, so `/alfred-code:update` never touches them. Whether git carries the doc follows `node .claude/hooks/docs.js status`, never a default: `mode: git` - committed and versioned per branch, so it ships with the repo; `mode: overlay` - kept out of git, so a fresh clone re-runs the capture. The rule ships only where the project commits `.claude/rules/`.
@@ -18,7 +18,7 @@ Both are generated files; a re-run refreshes both in place. The rule's name is d
 ## When to use
 
 - Passing local paths or git URLs: it analyzes what you name, it never scans.
-- Characterizes each sibling and writes BOTH tiers: the always-on awareness rule `.claude/rules/baseline-project-related-context.md` (name / location / relation / seam per sibling) and the on-demand orientation doc `related-projects/RELATED-PROJECTS.md` under the docs root. Re-run to refresh - entries upserted, unlisted ones kept.
+- Characterizes each sibling and writes BOTH tiers: the always-on awareness rule `.claude/rules/alfred-project-related-context.md` (name / location / relation / seam per sibling) and the on-demand orientation doc `related-projects/RELATED-PROJECTS.md` under the docs root. Re-run to refresh - entries upserted, unlisted ones kept.
 - Not this repo's own architecture (alfred-capture-architecture), and not dynamic cross-repo findings (those go to the shared `memory` MCP, tagged with the sibling's name).
 
 ## Execution modes
@@ -30,7 +30,7 @@ DELEGATED vs INLINE keys on dispatch capability, not file presence. When dispatc
 ## The run
 
 ### 0. MODE - the one ask
-Resolve the Execution modes question above NOW, via AskUserQuestion, before anything else in this run - the ask is a numbered step because a preamble-only ask gets skipped straight past to the fan-out (measured: one run dispatched 4 seats with zero asks). One exception: a bare invocation with no args fires the Inputs no-args ask INSTEAD and stops - there is nothing to pick a mode for yet; when both questions are open they join the same AskUserQuestion call.
+Resolve the Execution modes question above NOW, via AskUserQuestion, before anything else in this run - the ask is a numbered step because a preamble-only ask gets skipped straight past to the fan-out (measured: one run dispatched 4 seats with zero asks). One exception: a bare invocation with no args fires the no-args ask ('Args-driven, never a scan' above) INSTEAD and stops - there is nothing to pick a mode for yet; when both questions are open they join the same AskUserQuestion call.
 
 ### 1. VALIDATE - the arg list
 For each location: a path must exist (relative resolved from the project root), a URL must look like a git remote. An invalid location is reported and skipped, never silently dropped. Note each relation hint - it travels to the agent as a prior, not a verdict.
@@ -67,7 +67,7 @@ example, and the generated rule below - plus the per-entry provenance rule that 
 branch-born seam readable, and the write mechanics for a mainline write versus a feature branch's
 overlay. Read it before writing either file.
 
-### 4. RULE - write .claude/rules/baseline-project-related-context.md
+### 4. RULE - write .claude/rules/alfred-project-related-context.md
 The awareness tier, generated from the same entries - a valid PATHLESS rule (frontmatter with a `description:` and NO `paths:`, so it is always-on). Keep it to the awareness minimum; describe edges, not roles:
 
 The body is the copy target in `references/artifact-shapes.md` - take it verbatim and fill only

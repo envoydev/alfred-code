@@ -44,7 +44,7 @@ env reads below use the STACK VIEW: `settings.json`'s `env` with every `ALFRED_C
 
 ## 2. General info - always, before the question
 
-One table, no ask - it is five rows and every other area reads against it:
+One table, no ask - it is six rows and every other area reads against it:
 
 | item | value |
 |---|---|
@@ -122,21 +122,21 @@ for a carried seat).
 
 | rule | scope | origin |
 |---|---|---|
-| baseline-git | always-on | stack |
+| alfred-git | always-on | stack |
 | typescript-conventions | paths: `**/*.ts`, `**/*.tsx` | stack |
-| baseline-project-architecture | always-on | GENERATED |
+| alfred-project-architecture | always-on | GENERATED |
 | project-code-style | paths: `**/*.js` | GENERATED |
 
 `scope` comes from the `paths:` frontmatter (absent = always-on). `origin`: `GENERATED` for the
-capture-written rules (`baseline-project-*.md`, `project-code-style.md`), `stack` otherwise,
+capture-written rules (`alfred-project-*.md`, `project-code-style.md`), `stack` otherwise,
 `user-authored` when clearly neither.
 
 Then ONE extra line under that table - the always-on FLOOR this install pays, because nothing
 else in the stack reports it and a baseline rule is the one artifact whose cost is multiplied by
 every message of every session: total the bytes of the pathless rules plus the project
-instructions in one call (`wc -c <rules dir>/baseline-*.md CLAUDE.md .claude/CLAUDE.md
+instructions in one call (`wc -c <rules dir>/alfred-*.md AGENTS.md .claude/AGENTS.md CLAUDE.md .claude/CLAUDE.md
 2>/dev/null | tail -1`) and render `always-on floor: <N> chars (~<N/4000>k tokens) across <n>
-pathless rules + CLAUDE.md - re-sent on every message and prepended to every subagent dispatch`.
+pathless rules + project instructions - re-sent on every message and prepended to every subagent dispatch`.
 Report the number, judge nothing: there is no threshold here and no advice line (measured: the
 standing floor was 63.5% of one 164-session collection's entire token bill, and nine independent
 installs floored between 87k and 134k tokens per message - of which the stack's own always-on
@@ -191,8 +191,9 @@ the plugins listing and `ALFRED_CODE_HOOKS_VIA_PLUGIN` not `false` the installed
 release's whole hook catalog (the stamp's `shipped-hooks:` line) MINUS the names in
 `ALFRED_CODE_HOOKS_OFF` read from the stack view; otherwise (the copy route, where the core's own copies stand down for the
 wired ones), `.claude/hooks/*.js` bare basenames, excluding the engines (`docs`, `memory`,
-`history`, `fresh-session`), the shared `hook-prelude`, and the generated legacy
-`inject-code-style.js`. On the plugin route the `wired` column reads `plugin` for every row and the
+`history`, `fresh-session`, `shell-writes`, `hidden-chars`), the shared `hook-prelude`, the dispatchers
+(`shell-guards`, `file-guards`) and the generated legacy `inject-code-style.js` - `HOOK_EXCLUDE` in
+`scripts/install/selection.js` is the list. On the plugin route the `wired` column reads `plugin` for every row and the
 matcher comes from the release catalog; a row named in `ALFRED_CODE_HOOKS_OFF` reads `off (env)`.
 On the copy route the set is joined against the scope file's `hooks` block:
 
@@ -232,6 +233,12 @@ present: run `node .claude/hooks/memory.js level` and render `memory level: <lev
 guess). Absent (the hook deselected in this project): do NOT attempt the read (it fails with
 `MODULE_NOT_FOUND`) - print `memory level: not checked - memory.js is not installed here`
 instead. No `memory` row at all: skip the line, nothing to read.
+The read answers through the same settings reader the plugin's memory launcher uses. `refused <file>` (a settings file
+it cannot read, and no other file names the database) means the memory launcher refuses to start, so the `memory` row
+fails to connect: print `memory level: not served - <file> could not be read, so the memory server's launcher refuses to
+start; fix the file (ALFRED_CODE_MEMORY_DB in its env names the database) and restart the session`. An `unreadable <file>`
+line after the level means that file was skipped and the level is the next one's: add `memory: <file> could not be read -
+the level above is the next settings file's; fix the file`.
 
 Whenever that line runs, add a second one checking whether the session-start push can even fire on
 THIS machine: `node -e "try{require('node:sqlite');process.exit(0)}catch{process.exit(1)}"`. Exit 0

@@ -35,7 +35,7 @@ never from recall, and never from a reference the project did not install:
 3. **The convention rules** under `.claude/rules/` - each path-scoped file attaches one file family to
    its house convention skill; the skill's rules are the rules for that family.
 
-**Precedence.** The project's own record wins a disagreement: its decision log and CLAUDE.md choices
+**Precedence.** The project's own record wins a disagreement: its decision log and AGENTS.md choices
 first, then the loops prompts, then `CODE-STYLE.md`, then a house convention skill. A lower source's rule
 that a higher one contradicts is not a finding. No `loops/` folder, or none holding a stage prompt, drops
 source 1 - the report says so, and sources 2 and 3 are judged alone. All three absent: the run stops
@@ -55,7 +55,7 @@ never tiered:
 3. **Is it actually new?** Unchanged code the last run's `CODE-ASSESSMENT.md` already records is a
    re-measurement: fold the sharper number into the existing entry, never open a new one, and never
    re-tier or re-grade it upward merely because it now has a number.
-4. **Has the project already decided this?** Read the decision log and the project CLAUDE.md's recorded
+4. **Has the project already decided this?** Read the decision log and the project AGENTS.md's recorded
    choices FIRST. A recorded decision is a Deliberate tradeoff, never a defect, and never re-raised.
 
 **Architecture and coverage stay out.** A candidate whose fix is a new boundary, an inverted layer or a
@@ -108,7 +108,7 @@ longer occur. An entry whose promotion condition you cannot state is dropped, no
   > **Tier** - small.
 - **Worth knowing** - one line per entry plus its promotion condition.
 - **Deliberate tradeoffs** - the rule not followed, the reason, and where the project recorded it. Sourced
-  from the decision log or CLAUDE.md (gate question 4) - never written from this skill's own judgment.
+  from the decision log or AGENTS.md (gate question 4) - never written from this skill's own judgment.
 - **Proposed decisions** - a repeatedly-declined Must-fix entry, or a rule the code breaks everywhere on
   purpose, shaped ready to accept: the claim, the reason, what it costs. A person accepts one by writing
   it into the decision log; the next run's gate question 4 then moves the entry out of Must fix.

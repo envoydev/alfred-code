@@ -137,7 +137,8 @@ const emit = (event, text) => {
 // session and earned a doc read through PowerShell no consult credit; a copy that runs before the module lands
 // judges the file tools alone.
 let isShellTool = () => false;
-try { ({ isShellTool } = require(path.join(__dirname, 'shell-writes.js'))); } catch { /* see above */ }
+let shellReader = null;
+try { shellReader = require(path.join(__dirname, 'shell-writes.js')); ({ isShellTool } = shellReader); } catch { /* see above */ }
 // The navigation server's two edit tools the stack keeps on (the user's ruling of 2026-09-29, I12 - the other five
 // are off at its launch): each changes a source file, named in `tool_input.relative_path` (toolPaths reads it), so
 // its first change is held like an Edit's. Both routes' spellings: the plugin's scoped server and the copy route's
@@ -554,38 +555,33 @@ function toolPaths(input, root) {
   return [...new Set(out.map((p) => toPosix(path.relative(root, path.resolve(root, p)))).filter((p) => p && !p.startsWith('..')))];
 }
 
-// The paths a shell command WRITES, not every path it mentions: redirect targets (never /dev/null or a file
-// descriptor), tee arguments, files edited in place by sed/perl, cp/mv destinations, rm/mkdir/touch arguments, and the
-// project a migration or a patch lands in. `grep -n X src/... 2>/dev/null` writes nothing, and neither does
-// `dotnet test tests/Api > run.log`. A write whose target cannot be named counts as a write under the first source root.
+// The paths a shell command WRITES, not every path it mentions: shell-writes.js's own reading (redirects, tee, in-place
+// sed/perl, cp/mv, rm/mkdir/touch, an interpreter's script), so this hook and the guards never disagree on what a write is,
+// plus the writers only a source project cares about (a migration, a scaffold, a patch, dd). `grep -n X src/... 2>/dev/null`
+// writes nothing, and neither does `dotnet test tests/Api > run.log`. A write whose target cannot be named counts as a
+// write under the first source root.
 const UNKNOWN_SOURCE_WRITE = '<unknown source write>';
-function writeTargets(command) {
-  let c = String(command);
-  // A heredoc body is content, not shell: `x => y` inside it is no redirect.
-  c = c.replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g, (m) => m.split('\n')[0]);
-  // Quoted text is an argument, not syntax - kept only as a redirect target.
-  c = c.replace(/(>>?\s*)?(["'])((?:(?!\2)[^\\]|\\.)*)\2/g, (m, redirect, q, body) => (redirect ? `${redirect}${body.replace(/\s/g, '_')}` : 'QUOTED'));
+function projectWrites(command) {
   const out = [];
-  for (const m of c.matchAll(/(?:^|[^\w&<>=-])(?:\d|&)?>>?\|?\s*([^\s;|&<>()]+)/g)) if (m[1] !== '/dev/null' && !/^&/.test(m[1])) out.push(m[1]);
-  for (const simple of c.split(/&&|\|\||[;|\n]/)) {
-    const words = simple.trim().split(/\s+/).filter(Boolean);
-    while (words.length && (/^\w+=/.test(words[0]) || /^(sudo|env|nohup|time|command|xargs)$/.test(words[0]))) words.shift();
-    const [cmd, ...rest] = words;
-    const args = rest.filter((w) => !w.startsWith('-') && !/^\d?>|^</.test(w));
-    if (!cmd) continue;
-    if (cmd === 'tee') out.push(...args);
-    else if (cmd === 'sed' && rest.some((w) => /^-[a-zA-Z]*i/.test(w) || w === '--in-place')) out.push(...args.filter((w) => w !== 'QUOTED' && !/^s\W/.test(w)));
-    else if (cmd === 'perl' && rest.some((w) => /^-[a-zA-Z]*i/.test(w))) out.push(...args.filter((w) => w !== 'QUOTED'));
-    else if (/^(cp|mv|install|ln|rsync)$/.test(cmd)) { const t = rest.indexOf('-t'); out.push(t >= 0 && rest[t + 1] ? rest[t + 1] : args[args.length - 1]); }
-    else if (/^(rm|rmdir|mkdir|touch|truncate)$/.test(cmd)) out.push(...args);
-    else if (cmd === 'chmod') out.push(...args.slice(1));
-    else if (cmd === 'dd') out.push(...rest.filter((w) => w.startsWith('of=')).map((w) => w.slice(3)));
-    else if (cmd === 'dotnet' && rest[0] === 'new') { const o = rest.findIndex((w) => w === '-o' || w === '--output'); out.push(o >= 0 && rest[o + 1] ? rest[o + 1] : UNKNOWN_SOURCE_WRITE); }
-    else if (cmd === 'dotnet' && rest[0] === 'ef' && rest[1] === 'migrations' && /^(add|remove)$/.test(rest[2] || '')) { const o = rest.findIndex((w) => w === '-p' || w === '--project'); out.push(o >= 0 && rest[o + 1] ? rest[o + 1] : UNKNOWN_SOURCE_WRITE); }
-    else if (cmd === 'git' && rest[0] === 'apply') out.push(UNKNOWN_SOURCE_WRITE);
-    else if (cmd === 'git' && (rest[0] === 'restore' || (rest[0] === 'checkout' && rest.includes('--')))) out.push(...rest.slice(rest.includes('--') ? rest.indexOf('--') + 1 : 1).filter((w) => !w.startsWith('-')));
+  const flagged = (rest, ...names) => { const o = rest.findIndex((w) => names.includes(w)); return o >= 0 && rest[o + 1] ? rest[o + 1] : UNKNOWN_SOURCE_WRITE; };
+  for (const g of shellReader.gitCalls(command)) {
+    if (g.sub === 'apply') out.push(UNKNOWN_SOURCE_WRITE);
+    else if (g.sub === 'restore' || (g.sub === 'checkout' && g.argv.includes('--'))) {
+      const at = g.argv.indexOf('--');
+      out.push(...(at >= 0 ? g.argv.slice(at + 1) : g.argv).filter((w) => !w.startsWith('-')));
+    }
   }
-  return [...new Set(out.filter((t) => t && t !== 'QUOTED'))];
+  for (const w of shellReader.commandWords(command)) {
+    if (w.name === 'dotnet' && w.argv[0] === 'new') out.push(flagged(w.argv, '-o', '--output'));
+    else if (w.name === 'dotnet' && w.argv[0] === 'ef' && w.argv[1] === 'migrations' && /^(add|remove)$/.test(w.argv[2] || '')) out.push(flagged(w.argv, '-p', '--project'));
+    else if (w.name === 'dd') out.push(...w.argv.filter((a) => a.startsWith('of=')).map((a) => a.slice(3)));
+  }
+  return out;
+}
+function writeTargets(command) {
+  if (!shellReader) return [];
+  const out = shellReader.scanShell(String(command), {}).targets.map((t) => t.raw).filter((t) => t && !t.startsWith('/dev/null'));
+  return [...new Set([...out, ...projectWrites(command)])];
 }
 const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.relative(root, path.resolve(root, p.replace(/^['"]|['"]$/g, ''))))).filter((p) => p && !p.startsWith('..')))];
 

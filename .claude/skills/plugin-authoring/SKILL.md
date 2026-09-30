@@ -20,7 +20,7 @@ re-checked the same way at the moment of use: the docs are the authority, this f
 - A plugin's behaviour is being tested (`claude plugin eval`) or its cost read (`claude plugin details`).
 
 Not for a project's own `.claude/` folder (skills, agents and hooks there load without a manifest)
-and not for a single skill's body - that is `alfred-habits-skill-writing`, the same inside or
+and not for a single skill's body - that is the skills docs (code.claude.com/docs/en/skills), the same inside or
 outside a plugin.
 
 ## The manifest - `.claude-plugin/plugin.json`
@@ -109,7 +109,7 @@ A plugin loads at session start; `/reload-plugins` re-reads skills, agents, hook
   so a multi-turn walk gains nothing from it. Commands and skills are both listed as slash entries;
   the difference that matters is DISPLAY: a plugin command lists namespaced-only, a plugin skill
   named exactly like the plugin lists bare (`/<plugin>`) - choose by what the user should see.
-- **Skills** (`skills/<name>/SKILL.md`): load `alfred-habits-skill-writing` before the first write.
+- **Skills** (`skills/<name>/SKILL.md`): read the skills docs (code.claude.com/docs/en/skills) before the first write.
 - **Agents** (`agents/<name>.md`): a `tools:` allowlist of tools that exist, a model / effort pin
   with the measurement that justifies it, and no `hooks` / `mcpServers` / `permissionMode`.
 - **Hooks** (`hooks/hooks.json`): a `command` hook without `timeout` gets Claude Code's 600s
@@ -144,13 +144,13 @@ Run these in this order; each is cheap and each catches a class the previous one
    from a default `agents/` folder). So a plugin that lists its agents pays their descriptions ON
    TOP of the number. The estimate also ignores `disable-model-invocation`
    (the skills docs say such a description is NOT in context, yet a user-only skill still shows an
-   always-on number - measured on the alfred-code router: ~210 tok reported, 0 loaded). Read the
+   always-on number - measured on a user-only router skill: ~210 tok reported, 0 loaded). Read the
    number as the cost of every description the MODEL can see. The always-on number is what every session pays before
    the first message; a description that grows by a paragraph is costed here, never assumed free.
 4. `claude plugin eval <plugin-dir>` (Claude Code 2.1.269+) - behavioural cases under `evals/`,
    each run with and without the plugin. The command shapes, the case layout and how to read the
    with / without delta: `references/evals.md`. A `tool_used: Skill` grader that fails on natural
-   phrasing sends you to the description rules in `alfred-habits-skill-writing`. A plugin with NO
+   phrasing sends you to the description rules in the skills docs. A plugin with NO
    model-invocable component is still evaluable, and 'nothing here is model-invocable' is not a
    reason to skip this step: a case's `prompt.md` is a USER turn, which is exactly how a `disable-model-invocation`
    command is invoked, so a read-only walk makes a valid case whose without-arm cannot resolve the

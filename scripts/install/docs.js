@@ -18,6 +18,7 @@
 //     overlay, so the probe is written to fail toward `git`.
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseJson } = require('./json-file.js');
 const rt = require('./runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 // A folder under the docs root is a DOMAIN when it holds a watch.json - architecture/ is
@@ -257,7 +258,7 @@ function docsMovePlan({ projectRoot, env = {}, personal = null, ledger = null, s
     {
         const file = path.join(projectRoot, '.claude', name);
         if (!fs.existsSync(file)) return false;
-        try { const v = JSON.parse(fs.readFileSync(file, 'utf8')); return !v || typeof v !== 'object' || Array.isArray(v); }
+        try { const v = parseJson(fs.readFileSync(file, 'utf8')); return !v || typeof v !== 'object' || Array.isArray(v); }
         catch { return true; }
     });
     if (broken) return none(`${broken} cannot be read`);
@@ -318,21 +319,9 @@ function docsMoveViews({ claudeDir, scope })
     const envOf = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
     if (scope === 'local') return { env: envOf(readBackSettings(claudeDir, 'local').env), personal: null };
     let personal = {};
-    try { personal = envOf((JSON.parse(fs.readFileSync(path.join(claudeDir, 'settings.local.json'), 'utf8')) || {}).env); }
+    try { personal = envOf((parseJson(fs.readFileSync(path.join(claudeDir, 'settings.local.json'), 'utf8')) || {}).env); }
     catch { personal = {}; }
     return { env: envOf(readBackSettings(claudeDir, 'project', { sharedOnly: true }).env), personal };
-}
-
-// The docs plan alone as one line: `docs-move: offer <from> -> <to>\ttracked=<n> untracked=<n>[\tignored=yes][\tconflicts=<n>]`,
-// `docs-move: repoint <from> -> <to> (nothing to move)`, or `docs-move: none (<why>)`. The preflight prints the
-// whole data move instead (dataOfferLine, below), the docs part folded in.
-function docsMoveLine(plan)
-{
-    if (plan.state === 'offer')
-        return `docs-move: offer ${plan.from} -> ${plan.to}\ttracked=${plan.tracked.length} untracked=${plan.untracked.length}`
-            + (plan.ignored ? '\tignored=yes' : '') + (plan.conflicts.length ? `\tconflicts=${plan.conflicts.length}` : '');
-    if (plan.state === 'repoint') return `docs-move: repoint ${plan.from} -> ${plan.to} (nothing to move)`;
-    return `docs-move: none (${plan.why})`;
 }
 
 // One step: tracked files through `git mv` (the index records a rename, so history follows), every other
@@ -477,7 +466,7 @@ function dataOfferLine(offer)
 }
 
 module.exports = {
-    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, ensureDocsIgnore, docsMovePlan, docsMoveViews, docsMoveLine, moveDocsRoot,
+    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, ensureDocsIgnore, docsMovePlan, docsMoveViews, moveDocsRoot,
     ensureDataIgnore, dataIgnoreText, pruneDataRoot, dataOffer, dataOfferLine,
     DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD,
 };

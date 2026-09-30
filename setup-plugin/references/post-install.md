@@ -69,13 +69,13 @@ the committed `.gitignore` (shares the policy with the team) or `.git/info/exclu
 touches no committed file). The lines, minus anything the project already covers:
 
 ```gitignore
-.claude/
-.mcp.json
+.claude/*
+!.claude/AGENTS.md
 ```
 
-- `.claude/` - the install and the stamp are machine-local. To COMMIT `.claude/CLAUDE.md` while
-  ignoring the rest, the pair is `.claude/*` + `!.claude/CLAUDE.md` - a bare directory ignore blocks
-  the re-include.
+- `.claude/` - the install and the stamp are machine-local, while `.claude/AGENTS.md` is the team's
+  seeded, init-filled instruction file and stays committed, so the pair above is what ignores the rest:
+  `.claude/*` + `!.claude/AGENTS.md` - a bare directory ignore blocks the re-include.
 - `.alfred/` - the data root (`ALFRED_CODE_DATA_PATH`), outside `.claude/` because Claude Code prompts
   for every write there: the docs (`.alfred/docs/`), the navigation server's index, handoff notes and
   language servers (`.alfred/serena/`), the browser profiles holding session cookies
@@ -84,7 +84,7 @@ touches no committed file). The lines, minus anything the project already covers
   here. The docs carry their own, written from `ALFRED_CODE_DOCS_VERSIONING`: `local` keeps them out of
   git, `git` (a fresh project's default) commits them and keeps only the hooks' machine state out. To
   keep the docs machine-local, switch it once with `/alfred-code:update --docs-versioning local`.
-- `.mcp.json` - only on the opt-out route (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`); the default run
+- `.mcp.json` - a line only on the opt-out route (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`); the default run
   carries every server on its own plugin and PRUNES the stack's names out of this file. Where it
   does exist it is regenerated on every run, so a local edit is wiped anyway. No file, nothing to ignore.
 - `.serena/`, `.playwright/`, `.memory-mcp/` - the 2.0.0 places of the same data, present only until
@@ -101,7 +101,7 @@ own memory ONLY if that import succeeded - a failed import leaves it on rather t
 note (with no notes to import, the install switched it off already). Check it once: `/alfred-code:status` shows `autoMemoryEnabled` in the Environment table;
 `false` means done, `true` or absent means the import has not completed - read init's memory line for
 why (a missing `uvx` or Python is the usual cause), fix that, and run `/alfred-code:init` again.
-`baseline-memory.md` (always-on) names what belongs in the store and when to search it before
+`alfred-memory.md` (always-on) names what belongs in the store and when to search it before
 asking or reading - nothing further to configure.
 
 A note imported by a registration made before this version stored a hash in place of a real
@@ -197,7 +197,7 @@ Which one this install uses is `ALFRED_CODE_DOCS_VERSIONING` in the settings.jso
 ## Done looks like
 
 A restarted session where the MCPs answer, every stack plugin reads enabled, the generated rules exist under `.claude/rules/`
-(`baseline-project-agent-capabilities.md` plus the captures' awareness rules), the docs root
+(`alfred-project-agent-capabilities.md` plus the captures' awareness rules), the docs root
 holds the architecture / code-style docs the seats orient from, and `autoMemoryEnabled` reads
 `false` - the shared memory carries what Claude's own notes used to. From here, work normally - the
 stack routes itself.

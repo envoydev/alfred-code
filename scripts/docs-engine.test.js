@@ -1428,6 +1428,44 @@ test('changedSince reports both sides of a staged rename', () => {
   } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
 });
 
+// The engine's git() had no maxBuffer, so past 1MB of stdout ls-files threw ENOBUFS, snapshot() recorded no folders
+// and changedSince() called every parent of every changed file a newly created module.
+test('a tree whose ls-files output passes 1MB still snapshots its folders', () => {
+  const files = {};
+  const pad = 'x'.repeat(200);
+  for (let i = 0; i < 5200; i++) files[`src/Api/${pad}${i}.cs`] = 'c\n';
+  const r = repo({ files });
+  try {
+    const engine = requireEngine(r.root);
+    const snap = engine.snapshot();
+    assert.ok(snap.dirs.includes('src/Api'), `folders recorded: ${JSON.stringify(snap.dirs)}`);
+    r.write(`src/Api/${pad}0.cs`, 'changed\n');
+    assert.deepStrictEqual(engine.changedSince(snap).dirs, [], 'an existing folder is not a new module');
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('a non-ASCII path reads as written in the snapshot, never octal-escaped', () => {
+  const r = repo({ files: { 'src/Ünï/a.cs': 'class A {}\n' } });
+  try {
+    r.write('src/Café.cs', 'class C {}\n');
+    const engine = requireEngine(r.root);
+    const snap = engine.snapshot();
+    assert.ok(snap.dirs.includes('src/Ünï'), `folders: ${JSON.stringify(snap.dirs)}`);
+    assert.ok(Object.keys(snap.dirty).includes('src/Café.cs'), `dirty: ${JSON.stringify(Object.keys(snap.dirty))}`);
+  } finally { delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
+test('a ~~~ fence and a four-backtick fence hide the headings inside them', () => {
+  const doc = '## real\n<!-- id: real -->\nBody.\n\n~~~md\n## fake-tilde\n~~~\n\n````md\n```\n## fake-inner\n```\n## fake-still-inside\n````\n\n## after\n<!-- id: after -->\nTail.\n';
+  const r = repo({ docs: { 'references/patterns.md': doc } });
+  try {
+    const toc = r.cli(['toc', 'patterns']).stdout;
+    assert.match(toc, /patterns#real/);
+    assert.match(toc, /patterns#after/);
+    assert.doesNotMatch(toc, /fake/, toc);
+  } finally { r.rm(); }
+});
+
 test('lint: a watch entry missing sections and a newModule missing globs are both reported; a complete watch.json lints clean', () => {
   const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
   try {

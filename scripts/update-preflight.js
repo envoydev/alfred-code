@@ -52,6 +52,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { parseJson } = require('./install/json-file.js');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const { isCore, rowOn, marketKey, stampFile: stampIn } = require('./install/brand.js');
 
@@ -63,7 +64,7 @@ function arg(name, fallback)
 
 function readJson(file)
 {
-    try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+    try { return parseJson(fs.readFileSync(file, 'utf8')); }
     catch { return null; }
 }
 
@@ -131,7 +132,7 @@ function changedClasses(compareLines)
         // (measured: skills=108 reported against 78 shipped).
         const item = /^stack\/(skills|agents|rules|hooks)\/([^/]+)/.exec(p);
         if (item) seen[item[1]].add(item[2]);
-        else if (/^stack\/CLAUDE\.template\.md$/.test(p)) n.template = true;
+        else if (/^stack\/(?:AGENTS|CLAUDE)\.template\.md$/.test(p)) n.template = true;
     }
     for (const k of Object.keys(seen)) n[k] = seen[k].size;
     return n;
@@ -170,7 +171,7 @@ const ITEM_PATHS = [
 const OLD_COPY = { skill: (d, n) => path.join(d, 'skills', n, 'SKILL.md'), agent: (d, n) => path.join(d, 'agents', `${n}.md`), rule: (d, n) => path.join(d, 'rules', `${n}.md`), hook: (d, n) => path.join(d, 'hooks', `${n}.js`) };
 // A name the snapshot's `renamed` map (meta/stack-manifest.json) carries is the same item continuing
 // even when the compare saw only an add - git reports a rewritten folder as added plus removed.
-const RENAMED_KIND = { skill: 'skills', agent: 'agents' };
+const RENAMED_KIND = { skill: 'skills', agent: 'agents', rule: 'rules' };
 function addedItems(compareLines, claudeDir, renamed = {})
 {
     const out = [];
@@ -292,7 +293,9 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
 // re-confirmed 3 extra times in one audited run (~275k tokens): one printed row instead.
 function policyRevLine(root, snapshot)
 {
-    const installedFile = path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md');
+    // The pre-2.1.6 name is read too, until the update this preflight precedes has moved it.
+    const installedFile = ['alfred-project-agent-capabilities.md', 'baseline-project-agent-capabilities.md']
+        .map((n) => path.join(root, '.claude', 'rules', n)).find((f) => fs.existsSync(f)) || path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md');
     const snapshotFile = path.join(snapshot, 'stack', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md');
     const readRev = f => { try { return (fs.readFileSync(f, 'utf8').match(/policy-rev: ([0-9a-f]+)/) || [])[1]; } catch { return undefined; } };
     if (!fs.existsSync(installedFile)) return 'policy-rev: none';
@@ -313,7 +316,7 @@ function runLogMode(logFile)
     for (const l of warnLines) console.log(`warn: ${l.trim()}`);
     const m = /mcps=(\d+)/.exec(text);
     const mcps = m ? Number(m[1]) : 0;
-    // A moved docs root: the session's loaded baseline-docs-root rule still names the old one. A data move
+    // A moved docs root: the session's loaded alfred-docs-root rule still names the old one. A data move
     // a server's launcher makes at its next start waits for that start.
     const docsMoved = /docs root: moved /.test(text) || /^==> data root: .* (moved now|waiting for a server's next start)/m.test(text);
     console.log(`restart: ${(mcps > 0 || hooks > 0 || docsMoved) ? 'yes' : 'no'}`);

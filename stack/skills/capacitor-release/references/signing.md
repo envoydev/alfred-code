@@ -13,6 +13,6 @@ The invariants live in `SKILL.md` (upload key vs app-signing key, secrets inject
 - Sign with `apksigner` (set `--signing-type apksigner`); `jarsigner` is the legacy default and worth overriding.
 
 ## Store submission
-- iOS goes through App Store Connect. Upload the `.ipa` (`xcrun altool` / `notarytool`, Fastlane `pilot`/`deliver`, or Transporter), then distribute the build to **TestFlight** for internal or external testers before promoting to App Store review. Internal testers get builds immediately; external testers wait on a Beta App Review.
+- iOS goes through App Store Connect. Upload the `.ipa` (`xcrun altool`, Fastlane `pilot`/`deliver`, or Transporter), then distribute the build to **TestFlight** for internal or external testers before promoting to App Store review. Internal testers get builds immediately; external testers wait on a Beta App Review.
 - Android goes through the Play Console, which has staged testing tracks - promote a build up the ladder rather than straight to users: **internal** (instant, small allowlist) -> **closed** (a named tester group) -> **open** (public opt-in beta) -> **production**. Upload the same `.aab` to a track; promote between tracks in the console without rebuilding.
 - The asymmetry is deliberate: TestFlight and the Play internal track are where a release proves itself. Do not promote to production until the build has sat in a testing track.

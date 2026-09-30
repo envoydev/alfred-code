@@ -55,7 +55,9 @@ function main(argv)
         return 2;
     }
     const rest = argv.indexOf('--');
-    const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+    // Re-verify 3 S3: the checkout the launch directory belongs to (memory.js projectRootOf), never a subdirectory or an
+    // inherited CLAUDE_PROJECT_DIR - the profile lands under that checkout's data root, which its .gitignore covers.
+    const projectDir = require('../hooks/memory.js').projectRootOf(process.cwd()).checkout;
     const log = (line) => process.stderr.write(`${line}\n`);
     const args = browserArgs({ spec, engine, projectDir, extra: rest < 0 ? [] : argv.slice(rest + 1), log });
     log(`browser-launch: ${spec} ${engine}, profile ${args[args.indexOf('--user-data-dir') + 1]}`);

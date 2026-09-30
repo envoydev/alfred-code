@@ -43,11 +43,15 @@
       "mcps": [],
       "plugins": []
     },
-    "alfred-habits-adjust-claude-md": {
+    "alfred-habits-adjust-agents-md": {
       "mcps": [],
       "plugins": []
     },
     "alfred-habits-clarify": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-habits-code-comments": {
       "mcps": [],
       "plugins": []
     },
@@ -60,6 +64,10 @@
       "plugins": []
     },
     "alfred-habits-done-gate": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-habits-execution-strategy": {
       "mcps": [],
       "plugins": []
     },
@@ -872,6 +880,74 @@
     }
   },
   "rules": {
+    "alfred-docs-root": {
+      "skills": [],
+      "agents": [],
+      "mcps": [],
+      "plugins": [],
+      "paths": []
+    },
+    "alfred-git": {
+      "skills": [
+        "alfred-habits-commit-checkpoint"
+      ],
+      "agents": [],
+      "mcps": [],
+      "plugins": [],
+      "paths": []
+    },
+    "alfred-interaction": {
+      "skills": [
+        "alfred-habits-clarify",
+        "alfred-habits-execution-strategy",
+        "alfred-habits-plan-writing",
+        "alfred-habits-root-cause",
+        "alfred-habits-test-first"
+      ],
+      "agents": [],
+      "mcps": [],
+      "plugins": [],
+      "paths": []
+    },
+    "alfred-memory": {
+      "skills": [],
+      "agents": [],
+      "mcps": [
+        "memory"
+      ],
+      "plugins": [],
+      "paths": []
+    },
+    "alfred-navigation": {
+      "skills": [],
+      "agents": [],
+      "mcps": [
+        "navigation"
+      ],
+      "plugins": [],
+      "paths": []
+    },
+    "alfred-quality-gates": {
+      "skills": [
+        "alfred-habits-code-comments",
+        "alfred-habits-done-gate"
+      ],
+      "agents": [],
+      "mcps": [
+        "documentation"
+      ],
+      "plugins": [],
+      "paths": []
+    },
+    "alfred-security": {
+      "skills": [
+        "alfred-habits-commit-checkpoint"
+      ],
+      "agents": [],
+      "mcps": [],
+      "plugins": [],
+      "paths": []
+    },
     "angular-conventions": {
       "skills": [
         "angular-conventions",
@@ -942,72 +1018,6 @@
         "**/src/lib/**/*.scss",
         "**/src/lib/**/*.css"
       ]
-    },
-    "baseline-docs-root": {
-      "skills": [],
-      "agents": [],
-      "mcps": [],
-      "plugins": [],
-      "paths": []
-    },
-    "baseline-git": {
-      "skills": [
-        "alfred-habits-commit-checkpoint"
-      ],
-      "agents": [],
-      "mcps": [],
-      "plugins": [],
-      "paths": []
-    },
-    "baseline-interaction": {
-      "skills": [
-        "alfred-habits-clarify",
-        "alfred-habits-plan-writing",
-        "alfred-habits-root-cause",
-        "alfred-habits-test-first"
-      ],
-      "agents": [],
-      "mcps": [],
-      "plugins": [],
-      "paths": []
-    },
-    "baseline-memory": {
-      "skills": [],
-      "agents": [],
-      "mcps": [
-        "memory"
-      ],
-      "plugins": [],
-      "paths": []
-    },
-    "baseline-navigation": {
-      "skills": [],
-      "agents": [],
-      "mcps": [
-        "navigation"
-      ],
-      "plugins": [],
-      "paths": []
-    },
-    "baseline-quality-gates": {
-      "skills": [
-        "alfred-habits-done-gate"
-      ],
-      "agents": [],
-      "mcps": [
-        "documentation"
-      ],
-      "plugins": [],
-      "paths": []
-    },
-    "baseline-security": {
-      "skills": [
-        "alfred-habits-commit-checkpoint"
-      ],
-      "agents": [],
-      "mcps": [],
-      "plugins": [],
-      "paths": []
     },
     "csharp-conventions": {
       "skills": [

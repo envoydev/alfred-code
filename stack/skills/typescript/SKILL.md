@@ -1,6 +1,7 @@
 ---
 name: typescript
 description: "Load before writing or editing any .ts or .tsx file, for tsconfig work, and for typing checked .js files. Not for base-language rules alone (javascript) or C#."
+user-invocable: false
 ---
 
 # TypeScript conventions - the type layer
@@ -85,7 +86,7 @@ You don't lose the type checker by writing `.js`. The same language server check
 
 - ESLint with typescript-eslint and its type-aware rules, plus Prettier. Both run pre-commit and in CI. Prettier owns formatting - don't hand-format and don't add stylistic ESLint rules that fight it; let the lint surface real problems, not whitespace. The concrete config to copy - the flat `eslint.config.mjs`, the `@tsconfig/strictest` base, the `.prettierrc` and `.editorconfig` - is in `references/typescript-style.md`.
 - Type-check in CI as its own step (`tsc --noEmit`), separate from bundling. A bundler can transpile past a type error; an explicit `tsc` pass cannot, so a green build genuinely means a type-clean build.
-- Public API surfaces carry JSDoc - `@param`, `@returns`, `@throws`. It documents intent and feeds editor tooling for both TS and JS consumers.
+- Public API surfaces carry TSDoc (JSDoc tags in a `.js` file) - `@param`, `@returns`, `@throws` for contract exceptions - which feeds editor tooling for TS and JS consumers. Whether, how long and in what language is the house code-comments skill's, and the project's own convention wins.
 - Class-member style - the `public` modifier, `#private` vs `private`, `readonly` on injected fields, `override`, parameter properties, and member ordering - is `references/typescript-style.md`'s ground; follow it there rather than from recall.
 
 ## Prove it

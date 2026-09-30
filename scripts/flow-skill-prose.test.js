@@ -57,7 +57,7 @@ test('M79: a generated rule survives update because no ledger records it, not be
 
 // ---- M80: the plugin cache can be newer than the library copy -------------------------------------------------
 test('M80: the newest cache entry is not claimed to be the release these copies came from', () => {
-    for (const name of ['alfred-capture-first-look', 'alfred-habits-adjust-claude-md', 'alfred-capture-agent-capabilities']) {
+    for (const name of ['alfred-capture-first-look', 'alfred-habits-adjust-agents-md', 'alfred-capture-agent-capabilities']) {
         const text = flat(skill(name));
         assert.doesNotMatch(text, /(NEWEST|newest plugin-cache entry) is the one this skill came from/i, `${name}: the skew window makes it false`);
         assert.match(text, /after a core update it can be newer/, `${name}: says when it differs`);
@@ -171,10 +171,10 @@ test('M90: the checkpoint publish step asks through a template, and names its ex
 });
 
 // ---- M91: headings ----------------------------------------------------------------------------------------------
-test('M91: adjust-claude-md is titled as the habit it is, and explain-code opens with an H1', () => {
-    const adjust = body(skill('alfred-habits-adjust-claude-md')).trimStart();
+test('M91: adjust-agents-md is titled as the habit it is, and explain-code opens with an H1', () => {
+    const adjust = body(skill('alfred-habits-adjust-agents-md')).trimStart();
     assert.doesNotMatch(adjust, /^# CLAUDE\.md capture/);
-    assert.match(adjust, /^# Adjust CLAUDE\.md - /);
+    assert.match(adjust, /^# Adjust AGENTS\.md - /);
     assert.match(body(skill('alfred-habits-explain-code')).trimStart(), /^# Explain code - /);
 });
 
@@ -186,7 +186,7 @@ test('M92: build-from-scratch Next run names the run book and the capabilities c
     assert.ok(at.every((i) => i > 0), `every capture named: ${line}`);
     assert.deepStrictEqual([...at].sort((a, b) => a - b), at, 'in the template\'s post-install order, agent-capabilities last');
     assert.match(line, /PROJECT-CAPABILITIES\.md/);
-    assert.match(line, /baseline-project-agent-capabilities\.md/);
+    assert.match(line, /alfred-project-agent-capabilities\.md/);
 });
 
 // ---- M93: the over-build tags are this capture's own ---------------------------------------------------------
@@ -233,8 +233,8 @@ test('M96: task-design states verify-plan\'s own grades for a missing Oriented: 
 });
 
 // ---- M97: the docs-root rule lists every capture domain folder ------------------------------------------------
-test('M97: baseline-docs-root names diagnoses/ and project-capabilities/', () => {
-    const line = read('stack/rules/baseline-docs-root.md').split('\n').find((l) => /EVERY doc the assistant creates/.test(l)) || '';
+test('M97: alfred-docs-root names diagnoses/ and project-capabilities/', () => {
+    const line = read('stack/rules/alfred-docs-root.md').split('\n').find((l) => /EVERY doc the assistant creates/.test(l)) || '';
     assert.match(line, /`diagnoses\/`/);
     assert.match(line, /`project-capabilities\/PROJECT-CAPABILITIES\.md`/);
     assert.match(flat(skill('alfred-issue-diagnoser')), /diagnoses\//, 'the folder the diagnoser writes');
@@ -345,4 +345,41 @@ test('the diagnoser and verify-code bodies carry no pilot anecdote, and each sto
         assert.match(b, /`references\/evidence\.md` - an audit appendix, not a run-time load/, `${name}: the body names the appendix`);
         assert.match(read(`stack/skills/${name}/references/evidence.md`), story, `${name}: the story is kept`);
     }
+});
+
+// 2.1.6 review A1: a seat stopped at its maxTurns cap (or killed) returns cut-off output with no closing status
+// line, and the CLI offers to message it on - a resume hands a runaway a fresh budget, so the cap is only a pause.
+// Every orchestrator that routes a seat's return treats a status-less return as a seat death: one scoped
+// re-dispatch, then BLOCKED to the user.
+test('a status-less seat return is a seat death in every orchestrator that routes a return', () =>
+{
+    const entry = shared()['seat-statusless-return'];
+    assert.ok(entry, 'pinned in meta/shared-rules.json');
+    const homes = copiesOf(entry);
+    for (const f of ['stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md', 'stack/skills/alfred-loop-quality/references/delegated-mode.md',
+        'stack/skills/alfred-task-solve/references/step-mechanics.md', 'stack/rules/dotnet-repair-agents.md', 'stack/rules/angular-repair-agents.md'])
+    {
+        assert.ok(homes.includes(f), `${f} is a pinned home`);
+        const text = flat(read(f));
+        assert.match(text, /A return with no closing status line - a seat stopped at its `maxTurns` \(Claude Code marks the output partial from 2\.1\.246\) or killed mid-task - is never DONE and never resumed as-is/, f);
+        assert.match(text, /a second status-less return from that task goes to the user as BLOCKED/, f);
+    }
+    const routing = flat(read('stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md')).split('- **Status routing.**')[1].split('- **Seat death.**')[0];
+    assert.match(routing, /route it as a seat death/, 'the routing bullet itself carries the route');
+});
+
+// 2.1.6 review B3: a solve run lists its own feature's folder at resume, never the whole store, and its close
+// purges the whole feature - a pre-2.1.6 run's flat notes included - and counts what is left with the trio
+// protocol's own line, kept in the step mechanics (read at step 3) since the body sits at its 18,000-char cap.
+test('solve resumes by the feature topic and closes on the counted purge', () =>
+{
+    const solve = flat(skill('alfred-task-solve'));
+    assert.match(solve, /\*\*On invocation, resume before starting:\*\* `list_memories` with `topic: '<feature>'`/);
+    assert.doesNotMatch(solve, /Delete or archive the cycle note/);
+    assert.match(solve, /`mcp__plugin_navigation_navigation__delete_memory` each note under `topic: '<feature>'` \(cycle and seat notes\) plus a pre-2\.1\.6 run's flat `<feature>__\*`/);
+    assert.match(solve, /in the close report, then the purge count \(`references\/step-mechanics\.md`\)/);
+    const line = (text) => (/The purge is counted, not claimed\.\*\* At close, from the project root: `([^`]+)`/.exec(text) || [])[1];
+    const own = line(flat(read('stack/skills/alfred-task-solve/references/step-mechanics.md')));
+    assert.ok(own, 'the step mechanics carry the purge count line');
+    assert.strictEqual(own, line(flat(read('stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md'))), 'the same line as the trio protocol');
 });

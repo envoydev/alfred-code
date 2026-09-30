@@ -9,6 +9,7 @@ const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
+const { readClaudeDocs } = require('./claude-docs.js');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -233,7 +234,7 @@ test('quality/CODE-ASSESSMENT.md is no docs domain - the engine never sections o
         if (saved.docs === undefined) delete process.env.ALFRED_CODE_DOCS_PATH; else process.env.ALFRED_CODE_DOCS_PATH = saved.docs;
         r.rm();
     }
-    const root = squash(read('stack/rules/baseline-docs-root.md'));
+    const root = squash(read('stack/rules/alfred-docs-root.md'));
     assert.match(root, /`quality\/ASSESSMENT\.md` and `quality\/CODE-ASSESSMENT\.md`/, 'the docs-root rule names both beside each other');
 });
 
@@ -422,7 +423,7 @@ test('a code-quality capture started past the fresh-session trigger is offered a
 test('the CLAUDE.md seat counts match the agents on disk', () =>
 {
     const n = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).filter((f) => f.endsWith('.md')).length;
-    const doc = read('CLAUDE.md');
+    const doc = readClaudeDocs();
     assert.match(doc, new RegExp(`\`stack/agents/\` - ${n} subagents`));
     assert.match(doc, new RegExp(`twins of all ${n}\\b`));
     assert.match(doc, new RegExp(`all ${n} in the core plugin`));

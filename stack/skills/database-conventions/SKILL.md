@@ -84,7 +84,7 @@ The migration *workflow* - previewing the generated SQL, carrying a rollback, re
 The naming *style* - keyword casing, table singular/plural, column suffixes, and constraint/index name prefixes - lives in `references/sql-style.md`. The schema-side essentials here:
 
 - Naming is a convention, which means its only job is to be consistent - the specific choice matters far less than not mixing two. Keep all identifiers in English.
-- Pick one case per project and hold it. `references/sql-style.md`'s universal default is `snake_case` unquoted; on SQL Server the established engine idiom is `PascalCase` and that override wins there unless the project says otherwise. Pick singular or plural table names once and never mix the two.
+- Pick one case per project and hold it. `references/sql-style.md`'s universal default is `snake_case` unquoted, with the per-engine case (SQL Server's `PascalCase`) in its cheat-sheet. Pick singular or plural table names once and never mix the two.
 - Foreign-key columns follow the related table - `<related_table>_id` or `<RelatedTable>Id` to match the project's case. Indexes self-describe (`ix_orders_customer_id_status`) so a name tells you what it serves; leave anonymous index names to the tool only when the migration generator produces them.
 
 ## Indexes

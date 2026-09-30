@@ -251,13 +251,13 @@ test('install-scope: --memory-level project rides --scope user without refusal',
     assert.match(out, /memory=project \(/, out);
 });
 
-// I1 (R47, fix round 1): a local-scope import whose GATE actually opens (memory + baseline-memory
+// I1 (R47, fix round 1): a local-scope import whose GATE actually opens (memory + alfred-memory
 // picked, so the gate's mcps/rules checks pass; the sandbox's uvx stub is enough - `which` only
 // checks presence, and the importer's own 'nothing to import' exit is success without a real
 // server) writes the switch-off to settings.local.json, never the shared settings.json.
 test('install-scope: at local scope a memory import that actually runs lands autoMemoryEnabled in settings.local.json, never settings.json', POSIX_ONLY, () =>
 {
-    const SEL = 'skill csharp\nrule markdown-docs\nrule baseline-memory\nmcp memory\n';
+    const SEL = 'skill csharp\nrule markdown-docs\nrule alfred-memory\nmcp memory\n';
     // No run imports before /alfred-code:init marks the stamp (Task 18a I1), so the install is marked
     // initialised by hand and the UPDATE after it is the run whose import opens. A project with no
     // notes is switched off by the install itself (pilot 3), so the key is taken back out after it -
@@ -393,7 +393,8 @@ test('install-scope: --memory-level project at --scope user on the FULL copy rou
         inspect: (repo) => ({ env: memoryIn(repo), real: fs.realpathSync(repo) }),
     });
     assert.match(out, /memory=project \(/, out);
-    assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, path.join(result.real, '.alfred', '.alfred-memory', 'memory.db'), out);
+    // Project-relative in the committed .mcp.json, started at the project through ROOT_BOOT (re-verify 3 S2).
+    assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, '.alfred/.alfred-memory/memory.db', out);
     assert.deepStrictEqual(calls.filter((c) => /^mcp add .*--scope user/.test(c)), []);
 });
 
@@ -437,7 +438,7 @@ test('install-scope: a 1.x global install updated with --memory-level project on
         assert.match(out, /were moved from/, `${label}: the 1.x install was not migrated\n${out}`);
         assert.strictEqual(result.skill, true, label);
         assert.match(result.stamp, /^scope: user$/m, label);
-        assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, path.join(result.real, '.alfred', '.alfred-memory', 'memory.db'), `${label}\n${out}`);
+        assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, '.alfred/.alfred-memory/memory.db', `${label}\n${out}`);
     }
 });
 
@@ -445,6 +446,9 @@ test('install-scope: a project-level memory path already in .mcp.json is kept at
 {
     // The level is kept; the path is the one the database LIVES at - a 2.0.0 file not moved yet keeps its
     // registration byte-for-byte, and with no file anywhere the current place is named (Task 7a).
+    // The row is the stack's exact shape (matrix F-OWN: with no ledger, a project-scope row of any other shape is the user's own
+    // and never re-registered), taken from a fresh run.
+    const stackMemory = seedRun('install', SELECTION, { args: ['--scope', 'user'], env: FULL_COPY, inspect: (repo) => json(repo, '.mcp.json').mcpServers.memory }).result;
     for (const [label, exists, want] of [['a database there', true, ['.memory-mcp', 'memory.db']], ['no database yet', false, ['.alfred', '.alfred-memory', 'memory.db']]])
     {
         const { out, result } = seedRun('update', SELECTION, {
@@ -456,13 +460,13 @@ test('install-scope: a project-level memory path already in .mcp.json is kept at
                 const db = path.join(fs.realpathSync(repo), '.memory-mcp', 'memory.db');
                 if (exists) { fs.mkdirSync(path.dirname(db), { recursive: true }); fs.writeFileSync(db, ''); }
                 fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({
-                    mcpServers: { memory: { type: 'stdio', command: 'uvx', args: [], env: { MCP_MEMORY_SQLITE_PATH: db } } },
+                    mcpServers: { memory: { ...stackMemory, env: { ...stackMemory.env, MCP_MEMORY_SQLITE_PATH: db } } },
                 }));
             },
             inspect: (repo) => ({ env: memoryIn(repo), real: fs.realpathSync(repo) }),
         });
         assert.match(out, /memory=project \(/, `${label}\n${out}`);
-        assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, path.join(result.real, ...want), `${label}\n${out}`);
+        assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, want.join('/'), `${label}\n${out}`);
     }
 });
 
@@ -694,11 +698,11 @@ test('install-scope: a user-scope project reads only its OWN stamp for the hooks
 
 // R83 b / R87 (Task 16b concern b): at local scope the docs root is read the way the hooks will see it -
 // settings.local.json laid over settings.json (the N6 merge) - so a docs path set only in the local file
-// reaches baseline-docs-root.md; and the seat denies a local run writes land in the local file, the
+// reaches alfred-docs-root.md; and the seat denies a local run writes land in the local file, the
 // scope rule's own target, never in the shared settings.json.
 test('install-scope: at local scope a local docs path is the root the rule stamps, and the seat denies land in settings.local.json (R83 b)', POSIX_ONLY, () =>
 {
-    const { result } = seedRun('install', 'skill csharp\nrule baseline-docs-root\n', {
+    const { result } = seedRun('install', 'skill csharp\nrule alfred-docs-root\n', {
         args: ['--scope', 'local'],
         plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'local', enabled: true }]),
         prepare: (repo) =>
@@ -708,7 +712,7 @@ test('install-scope: at local scope a local docs path is the root the rule stamp
             fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/mine' } }));
         },
         inspect: (repo) => ({
-            rule: fs.readFileSync(path.join(repo, '.claude', 'rules', 'baseline-docs-root.md'), 'utf8'),
+            rule: fs.readFileSync(path.join(repo, '.claude', 'rules', 'alfred-docs-root.md'), 'utf8'),
             shared: json(repo, path.join('.claude', 'settings.json')),
             local: json(repo, path.join('.claude', 'settings.local.json')),
         }),
@@ -901,12 +905,14 @@ for (const [label, args, refused] of [['the default level', [], true], ['--memor
             inspect: (repo) => ({
                 claude: exists(repo, '.claude'),
                 db: exists(repo, '.claude', 'settings.local.json') ? (json(repo, '.claude/settings.local.json').env || {}).ALFRED_CODE_MEMORY_DB || null : null,
+                real: fs.realpathSync(repo),
             }),
         });
         if (!refused)
         {
             assert.strictEqual(run.code, 0, run.err);
-            assert.ok(path.isAbsolute(run.result.db || ''), `the project database path is absolute: ${run.result.db}`);
+            // The machine-local key is the absolute path (re-verify 3 S1).
+            assert.strictEqual(run.result.db, path.join(run.result.real, '.alfred', '.alfred-memory', 'memory.db'), `the project database: ${run.result.db}`);
             return;
         }
         assert.notStrictEqual(run.code, 0, run.out);

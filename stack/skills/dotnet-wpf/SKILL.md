@@ -1,6 +1,7 @@
 ---
 name: dotnet-wpf
 description: "Load before editing any WPF XAML, code-behind or ViewModel - strict MVVM on the binding engine. Not for WinForms, UWP, WinUI 3, MAUI, Avalonia or Uno."
+user-invocable: false
 ---
 
 # WPF conventions
@@ -125,9 +126,8 @@ private async Task LoadOrdersAsync(CancellationToken token)
     }
 }
 ```
-- A faulting `Task` inside a command is silent by default. Catch inside the command and surface the
-  failure through an injected `IDialogService` or an error property - never let the `Task` fault
-  unobserved. The throw-vs-return baseline and the async rules (`ConfigureAwait`, no blocking) are
+- An uncaught fault in a command's `Task` rethrows on the UI thread by default - catch inside the command and surface the
+  failure through an injected `IDialogService` or an error property, never let it reach the dispatcher. The throw-vs-return baseline and the async rules (`ConfigureAwait`, no blocking) are
   the `csharp` skill's; they apply unchanged here.
 - `AsyncRelayCommand` has two fault models - pick one deliberately. The default awaits and rethrows on the UI `SynchronizationContext`, so a try/catch inside the command sees the fault; setting `FlowExceptionsToTaskScheduler` instead routes it to `TaskScheduler.UnobservedTaskException`. Prefer the default and catch locally so the failure reaches the user through your dialog or error surface; reach for the flow option only when a deliberate global handler owns it.
 

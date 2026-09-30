@@ -131,4 +131,6 @@ using var activity = ActivitySource.StartActivity(
     "ReceiveMessage", ActivityKind.Server, parent.ActivityContext);
 ```
 
+The `Client` / `Server` kinds above fit a raw request-reply hop; a broker hop uses `Producer` / `Consumer`.
+
 `Propagators` and `PropagationContext` come from `OpenTelemetry.Context.Propagation`, so this lives at the application root; pure library code uses `DistributedContextPropagator.Current` for the same `traceparent` format with no OpenTelemetry package.

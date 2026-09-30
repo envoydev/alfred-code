@@ -6,11 +6,12 @@
 // prose the model can skip. Reads the tool-call JSON on stdin; exit 2 blocks
 // (stderr fed back to the model), exit 0 allows.
 //
-// Scope is deliberately narrow - it fires ~never in normal work. The command is split
-// on ;|& into segments (like the rm guard) and `git push` must be a segment's own
-// COMMAND - not a substring of another program's argument - so `echo "git push --force"`
-// no longer false-positives. It blocks a `git push` that would irreversibly rewrite or
-// remove main / master / develop:
+// Scope is deliberately narrow - it fires ~never in normal work. The command is read by shell-writes.js's
+// `gitText`, the one reader every git guard shares (2.1.6 seam review M3): a `git push` counts only as a COMMAND WORD
+// (`echo "git push --force"` is text), past any wrapper (`timeout 60`, `env A=1`, `nohup`, `sudo`, `xargs`), a `git -C dir`
+// or `-c k=v`, inside `if` / `for` bodies, `bash -c '...'`, a heredoc or here-string into a shell, `eval`, a script FILE a
+// shell runs and an alias git expands (`alias.pf = push --force`), each from the directory a leading `cd` moved it to.
+// It blocks a `git push` that would irreversibly rewrite or remove main / master / develop:
 //   - a force: -f / --force / --force-with-lease / --force-if-includes, a
 //     '+'-prefixed refspec, --mirror (incl. --mirror=<value>), or a forced --all;
 //   - a deletion: a `:branch` (empty-source) refspec, or --delete / -d;
@@ -19,9 +20,8 @@
 //     protected branch.
 // A plain fast-forward push to main, or any force on a feature branch (prefer
 // --force-with-lease), is left alone - blocking it would be a false-positive.
-// Out of scope (matches the rm guard's honesty): indirection that hides the push
-// from a flat token scan - aliases, `eval`, subshells, or git invoked via a
-// wrapper script - is NOT caught here; this guard reads the literal command.
+// Out of model (an honest mistake never writes these): a command word or refspec a substitution computes
+// (`bash -c "$(echo ...)"`, `source <(...)`), a push over ssh or inside `docker exec`, and text past the scan budget.
 'use strict';
 const fs = require('fs');
 // The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
@@ -48,18 +48,10 @@ if (require.main === module) {
   if (off) process.exit(0);
 }
 
-// A heredoc body is DATA, not shell: a plan or checklist that merely DESCRIBES this command is
-// inert text, and matching it blocked a document write for its own prose (reproduced). Blank the
-// payload spans, keeping the character count so any index into the command still holds.
-const stripHeredocs = (c) => String(c).replace(
-  /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^\s*\2\s*$/gm,
-  (m) => m.replace(/[^\n]/g, ' '),
-);
-
-// Same segment split as the rm guard - a compound command (`a && git push --force ; b`)
-// is inspected segment by segment so `git push` must be a segment's own COMMAND, not a
-// substring of another program's argument (no false positive on `echo git push --force`).
-const SEPARATORS = /[;|&]{1,2}|\n/;
+// The reader every git guard shares. A copy that runs before it lands fails open like every gate here (the parity
+// test's copy set), rather than judging with a second, weaker reader.
+let shellWrites;
+try { shellWrites = require('./shell-writes.js'); } catch { process.exit(0); }
 
 const PROTECTED = ['main', 'master', 'develop'];
 const FORCE_FLAG = /^(?:-f|--force|--force-with-lease|--force-if-includes)(?:=\S*)?$/;
@@ -123,72 +115,18 @@ function currentBranch(cwd)
     }
 }
 
-// The tokens of a segment whose COMMAND is `git push`, sliced to those after `push`;
-// null if this segment is not a git push. Mirrors the rm guard's command-position
-// discipline: skip leading env-assignments and benign prefixes, require `git` (or a
-// `.../git` path) as the command and `push` as its subcommand. `git -C dir push` and
-// `git -c k=v push` are handled by skipping git's own pre-subcommand options.
-function pushArgs(seg)
-{
-    const tokens = seg.trim().split(/\s+/).filter(Boolean);
-    let i = 0;
-    while (i < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i])
-        || tokens[i] === 'sudo' || tokens[i] === 'command' || tokens[i] === 'nice' || tokens[i] === 'time'))
-    {
-        i++;
-    }
-
-    const cmd = tokens[i];
-    if (!cmd || !(cmd === 'git' || cmd.endsWith('/git')))
-    {
-        return null;
-    }
-
-    // Walk git's own options/values before the subcommand (`-C dir`, `-c k=v`, `--git-dir=...`).
-    let j = i + 1;
-    const dirs = [];
-    while (j < tokens.length && tokens[j].startsWith('-'))
-    {
-        const opt = tokens[j];
-        j++;
-        if ((opt === '-C' || opt === '-c') && j < tokens.length)
-        {
-            if (opt === '-C') dirs.push(unquote(tokens[j]));
-            j++; // skip the option's value token
-        }
-    }
-
-    if (tokens[j] !== 'push') return null;
-    const after = tokens.slice(j + 1);
-    after.dirs = dirs; // where git runs: each -C resolves against the one before it
-    return after;
-}
-
-// The directory a segment's `cd` moves the shell to, for the segments after it. An unexpanded
-// variable is not guessed.
-function cdTarget(seg)
-{
-    const m = seg.trim().match(/^(?:cd|pushd|chdir|set-location|sl|push-location)\s+(?:-(?:literal)?path\s+)?("[^"]+"|'[^']+'|\S+)$/i);
-    if (!m) return null;
-    const dest = unquote(m[1]);
-    return /\$/.test(dest) ? null : dest.replace(/^~(?=$|\/)/, require('os').homedir());
-}
-
 // Block a push that would force-update, delete, or mirror a protected branch.
 function isProtectedForcePush(command, cwd)
 {
-    const path = require('path');
-    let shellCwd = cwd;
-    for (const seg of command.split(SEPARATORS))
+    const read = shellWrites.gitText(command, cwd);
+    for (const call of read.calls)
     {
-        const moved = cdTarget(seg);
-        if (moved !== null) shellCwd = path.resolve(shellCwd, moved);
-        const after = pushArgs(seg);
-        if (after === null)
+        if (call.sub !== 'push')
         {
             continue;
         }
-        const gitCwd = after.dirs.reduce((at, d) => (/\$/.test(d) ? at : path.resolve(at, d)), shellCwd);
+        const after = call.argv;
+        const gitCwd = read.callDir(call);
         // HEAD and @ name the branch checked out where git runs - `git push -f origin HEAD` on main is
         // the bare force spelled out, and read literally it named no protected branch and passed.
         let head;
@@ -290,7 +228,7 @@ function main()
         };
     })();
 
-    const command = stripHeredocs(payload?.tool_input?.command ?? '');
+    const command = String(payload?.tool_input?.command ?? '');
     const cwd = payload?.cwd ?? process.cwd();
     if (!isProtectedForcePush(command, cwd))
     {

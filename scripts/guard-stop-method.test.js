@@ -388,6 +388,7 @@ test('done gate: the row records the skill load, the project\'s test markers and
         ['CLAUDE.md', '- Do not run the tests: they need the staging database.'],
         [path.join('.claude', 'rules', 'house.md'), 'Never run tests locally - CI owns them.'],
         ['AGENTS.md', 'Tests must not be run by the agent.'],
+        [path.join('.claude', 'AGENTS.md'), 'Never run the tests here - CI owns them.'],
     ])
     {
         const root = project();

@@ -476,7 +476,7 @@ test('writeTargets: the paths a shell command writes, from real runs', () => {
     ['perl -pi -e "s/a/b/" tests/X.cs', ['tests/X.cs']],
     ['cp /tmp/x.cs src/Api/Orders/Copy.cs', ['src/Api/Orders/Copy.cs']],
     ['cp src/Api/Orders/OrderRefunds.cs /tmp/backup.cs', ['/tmp/backup.cs']],
-    ['mv src/a.cs src/b.cs', ['src/b.cs']],
+    ['mv src/a.cs src/b.cs', ['src/a.cs', 'src/b.cs']], // mv removes its source too
     ['rm -f src/Api/Orders/OrderQueries.cs tests/Old.cs', ['src/Api/Orders/OrderQueries.cs', 'tests/Old.cs']],
     ['mkdir -p src/Api/Refunds', ['src/Api/Refunds']],
     ['echo x | tee src/T.cs', ['src/T.cs']],
@@ -488,6 +488,9 @@ test('writeTargets: the paths a shell command writes, from real runs', () => {
     ['git checkout -- src/Api/Orders/OrderRefunds.cs', ['src/Api/Orders/OrderRefunds.cs']],
     ['git restore src/A.cs', ['src/A.cs']],
     ['cd src && echo x > A.cs', ['A.cs']],
+    // an interpreter's own write is a write (guards:F6 - the local parser saw neither, so the seat was never credited)
+    ['node -e "require(\'fs\').writeFileSync(\'src/a.ts\', \'x\')"', ['src/a.ts']],
+    ["python3 - <<'PY'\nopen('src/a.py', 'w').write('x')\nPY", ['src/a.py']],
   ];
   for (const [command, want] of cases) assert.deepStrictEqual(writeTargets(command).sort(), [...want].sort(), command);
 });
@@ -1437,7 +1440,7 @@ test('a captured orientation carries no provisional warning', () => {
 test('CLAUDE.md says a navigation rename is credited to its declaring file alone (2.1.5 final review R9)', () => {
   // serena's rename_symbol carries the declaring file in `relative_path`; the reference edits in other files are not
   // in the call, so they fall to the Stop ask's unclaimed bucket and outside the turn check's root - accepted, and said.
-  const md = fs.readFileSync(require('node:path').join(__dirname, '..', 'CLAUDE.md'), 'utf8');
+  const md = require('./claude-docs.js').readClaudeDocs();
   const entry = md.slice(md.indexOf('  - `docs-session.js` ('), md.indexOf('  - `memory-session.js` ('));
   assert.match(entry, /a rename is credited to that declaring file alone/);
   assert.match(entry, /'no actor claimed' bucket and outside the turn check's root/);

@@ -45,6 +45,7 @@ A design, plan or decision the user proposes gets an adversarial review - valida
 - Default for coding: apply, then summarize in 1-3 sentences. 'just do it' = no summary; 'walk me through' / 'plan it' = explain or plan first, no edits.
 - A written plan file only when the user asks for a plan, the work spans sessions, or a design flow writes it as its handoff - then the FIRST action is the `alfred-habits-plan-writing` Skill call, before the plan file is written. A single-session change runs on a todo list (measured: 6 of 12 pilot cells wrote and re-ticked a plan file after their last test).
 - Non-trivial code is written test-first - the FIRST action is the `alfred-habits-test-first` Skill call, before the first production edit.
+- A task of more than a few steps across more than one file or subtask - the FIRST action is the `alfred-habits-execution-strategy` Skill call, before the first edit. Defaults, also in a resumed session: one agent; independent tool calls batched; cheap checks per batch, the heavy suite once at the end; a CI-parity run before a push where the project has one.
 - A mechanical change across 10+ files: confirm the scope list, no plan. No planning at all for typos, one-line fixes, formatting, dep bumps, a single-file rename.
 - Code fails - the FIRST action is the `alfred-habits-root-cause` Skill call, before the next fix lands.
 - Several FIRST actions due at once (two habit pointers, or one beside a convention rule's attach) load in the same call - one message of Skill calls, before the act any of them guards.

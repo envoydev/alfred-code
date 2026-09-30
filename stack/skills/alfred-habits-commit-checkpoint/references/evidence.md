@@ -12,7 +12,7 @@ Each line closed a measured way the receipt passed while recording nothing.
 - `authorized:` - the user asked for THIS commit, in their own words. The quoted words must carry a
   commit verb: `authorized: "what time is it?"` used to pass.
 - `head:` - the review ran against THIS tree.
-- `spec:` - it covered the whole diff. One receipt asserted a 17-file review in which 9 files had
+- `spec:` - it covered every file the commit takes in. One receipt asserted a 17-file review in which 9 files had
   been read.
 - `live-probe:` - it ran the thing. One asserted a passing review with no build or test output at
   all.

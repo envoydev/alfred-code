@@ -43,7 +43,7 @@ app.MapGrpcService<OrdersService>();
 ```
 
 - Keep the service class thin. It implements the generated base, translates the request message, and delegates to an application service; business logic does not live in the gRPC layer. Map the result back to a response message or throw an `RpcException` (see status mapping below).
-- gRPC needs HTTP/2 end to end. In `Development` over Kestrel that works on plain HTTP; in production terminate with a proxy that speaks HTTP/2 to the backend (and keep ALPN intact). A request that arrives as HTTP/1.1 will fail the protocol check, not fall back.
+- gRPC needs HTTP/2 end to end. In `Development` over Kestrel that works on plain HTTP only when that endpoint's `ListenOptions.Protocols` is set to `Http2` (`Http1AndHttp2` defaults to HTTP/1.1 without TLS, and gRPC calls fail); in production terminate with a proxy that speaks HTTP/2 to the backend (and keep ALPN intact). A request that arrives as HTTP/1.1 will fail the protocol check, not fall back.
 - Reflection (`Grpc.AspNetCore.Server.Reflection`) lets tools like `grpcurl` discover services - enable it in non-production only; it exposes your full schema.
 - Tune limits deliberately: `MaxReceiveMessageSize` / `MaxSendMessageSize` guard against oversized payloads (gRPC is for messages, not file transfer), and response compression (`ResponseCompressionAlgorithm = "gzip"`) pays off on larger bodies - but do not compress a response that mixes a secret with attacker-influenced data, since compressing them together is a CRIME/BREACH-style oracle that leaks the secret by size.
 

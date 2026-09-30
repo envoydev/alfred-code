@@ -29,7 +29,7 @@ Markdown form only - not prose clarity (that is Vale) or spelling (codespell / h
 
 ## How to run a review
 
-**The generated docs root is NOT governed here, and neither are the generated rules.** Skip every document under `<docs-path>` and every generated `.claude/rules/baseline-project-*.md` or `.claude/rules/project-code-style.md` - the skill that writes each one fixes its shape verbatim, down to the frontmatter, and a style pass over it pulls one file two ways.
+**The generated docs root is NOT governed here, and neither are the generated rules.** Skip every document under `<docs-path>` and every generated `.claude/rules/alfred-project-*.md` or `.claude/rules/project-code-style.md` - the skill that writes each one fixes its shape verbatim, down to the frontmatter, and a style pass over it pulls one file two ways.
 
 Two passes, syntax before style. The reviewer reads a syntax violation differently from a style violation, so do not interleave them.
 
@@ -58,7 +58,6 @@ Detailed rules with examples live in `references/`. These summaries cover the vi
 | Blockquotes         | `>` prefix; `>` on the blank line between paragraphs; nest with `>>`.           |
 | Ordered lists       | `1.` `2.` `3.` (period, not `)`). Start at 1. Numbering can be lazy.            |
 | Unordered lists     | Choose one of `-` / `*` / `+`; do not mix within a list.                        |
-| Nested list content | Indent 4 spaces (1 tab). Code inside a list item indents 8 spaces (2 tabs).     |
 | Inline code         | Single backticks. Double backticks if the code contains a backtick.             |
 | Code blocks         | Fenced with a language tag. Indented blocks are valid but discouraged.          |
 | Horizontal rule     | Three or more `---` / `***` / `___` alone on a line with blank lines around.    |
@@ -79,7 +78,7 @@ Full canon with examples and known-broken edge cases: `references/syntax-canon.m
 | Table of contents     | Any doc that would not fit on one screen, between intro and first H2: `[TOC]` only where the renderer supports it (Gitiles, GitLab); GitHub prints it as literal text, so there a `## Contents` list of anchor links, or none. |
 | Line length           | 80 chars. Exceptions: links, tables, headings, code blocks. Prose around a long link still wraps. |
 | Trailing whitespace   | None. Prefer a paragraph break to the two-space line-break trick.                             |
-| Lists                 | Lazy numbering (`1.` repeated) for long lists; full numbering for short stable ones. Prefer lists to tables for one-dimensional data. |
+| Lists                 | Lazy numbering (`1.` repeated) for long lists; full numbering for short stable ones. Prefer lists to tables for one-dimensional data. Nested content: keep the file's existing indent (2-space content-aligned is valid CommonMark); 4 spaces only in a file with none. |
 | Code fencing          | Always fenced, never indented. Always declare a language (`text` if none). Escape wrapped shell newlines with `\`. |
 | Links                 | Repo-absolute paths (`/path/to/page.md`) over `https://...` for in-repo links. Avoid `../` traversal. |
 | Link text             | Informative. Never 'here', 'link', or a raw URL.                                              |

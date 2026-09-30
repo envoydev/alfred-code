@@ -44,7 +44,7 @@ Both modes build to the bar `alfred-task-implement` and every `<stack>-implement
 quality loop's five stages met on the first pass, comments carrying the why, each judgment call
 decided against the codebase's precedent - and the plan's `## Decisions` ledger grows as they
 land: appended directly in session mode, folded in from each seat's `decisions:` report lines as
-its report lands in agents mode.
+its report lands in agents mode. A return with no closing status line - a seat stopped at its `maxTurns` (Claude Code marks the output partial from 2.1.246) or killed mid-task - is never DONE and never resumed as-is, since a resume hands a runaway a fresh budget: re-dispatch it ONCE with a scoped resume brief (its handoff note and partial diff name what landed); a second status-less return from that task goes to the user as BLOCKED.
 
 ## Reviewer fit - the step-4 stop's recommendation
 
@@ -58,6 +58,10 @@ Three options, one recommended, reason stated:
 
 For a broad parallel sweep the user can still invoke `/code-review` themselves - it is not part of
 this flow. The user can inspect the diff themselves at this stop before answering.
+
+## The step-6 memory purge
+
+**The purge is counted, not claimed.** At close, from the project root: `node -e "const fs=require('fs');const f=process.argv[1];let n=0;function walk(d,rel){let es=[];try{es=fs.readdirSync(d,{withFileTypes:true})}catch(e){return}for(const e of es){const r=rel?rel+'/'+e.name:e.name;if(e.isDirectory())walk(d+'/'+e.name,r);else if(e.name.endsWith('.md')){if(r.startsWith(f+'/'))n++;else if(r.startsWith(f+'__'))n++}}}walk((process.env.ALFRED_CODE_DATA_PATH||'.alfred')+'/serena/memories','');walk('.serena/memories','');console.log(n)" <feature>` with the feature's slug - it counts what is left of the feature's navigation-server notes (the `<feature>/` folder, the cycle note included, and a pre-2.1.6 run's flat `<feature>__*` notes), in node so no `find` first on PATH decides it. Above zero the close is not done - delete the rest, then count again.
 
 ## Doc-drift surfaces - the step-6 close line
 

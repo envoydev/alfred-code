@@ -23,7 +23,7 @@ test('I1: every shell guard reads the shell route from shell-writes.js, and no h
   assert.ok(!('shell-tool-route' in (rules.rules || rules)), 'the pin on the inline copies is retired');
 });
 
-const claude = () => read('CLAUDE.md');
+const claude = () => require('./claude-docs.js').readClaudeDocs();
 const manifestRows = () => JSON.parse(read('meta/stack-manifest.json')).hooks;
 
 test('I1: CLAUDE.md names the Monitor route and the widened dispatcher matcher', () => {
@@ -69,6 +69,7 @@ test('I10: the desktop gate is one wired hook, counted everywhere the hooks are 
   assert.match(claude(), /all eighteen, generated from the manifest's `hooks\[\]`/);
   assert.match(claude(), /`guard-desktop-exec\.js` \(PreToolUse on the desktop servers' two process launchers/);
   assert.doesNotMatch(read('README.md'), /seventeen/);
+  assert.doesNotMatch(read('docs/install-footprint.md'), /seventeen/);
   assert.doesNotMatch(read('setup-plugin/references/walk.md'), /all seventeen/);
 });
 

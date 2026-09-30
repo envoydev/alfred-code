@@ -155,7 +155,12 @@ test('guard-secret-value: the Grep TOOL is the third read route, and only its CO
   assert.equal(grep({ pattern: 'SENTRY', path: f.secret, output_mode: 'count' }), 0, 'a count prints no value');
   assert.equal(grep({ pattern: 'SENTRY', path: f.secret }), 0, 'and files_with_matches is the default - a path, not a value');
   assert.equal(grep({ pattern: 'SENTRY', path: f.clean, output_mode: 'content' }), 0, 'a file with no live credential is a free read');
-  assert.equal(grep({ pattern: 'SENTRY', path: f.dir, output_mode: 'content' }), 0, 'a directory walk is not a named read - the file routes still gate it');
+  // 2.1.6 audit (guards:F1): a tree walk is judged by what it would PRINT - a credential file whose lines match
+  assert.equal(grep({ pattern: 'SENTRY', path: f.dir, output_mode: 'content' }), 2, 'a directory walk that would print a credential line is blocked');
+  assert.equal(grep({ pattern: 'no_such_word_anywhere', path: f.dir, output_mode: 'content' }), 0, 'a walk whose matches carry no credential is free');
+  assert.equal(grep({ pattern: 'SENTRY', path: f.dir, output_mode: 'content', glob: '*.cs' }), 0, 'a glob that never reaches the credential file leaves the walk free');
+  assert.equal(grep({ pattern: 'SENTRY', path: f.dir, output_mode: 'content', glob: '*.json' }), 2, 'and one that reaches it does not');
+  assert.equal(grep({ pattern: 'SENTRY', path: f.dir, output_mode: 'count' }), 0, 'a count over the walk prints no value');
 });
 
 test('guard-secret-value: a dump is rewritten into a redacted view - the file with every credential value replaced, never a block', () => {
@@ -459,6 +464,634 @@ test('guard-secret-value: a cd moves the anchor, and a heredoc feeding a runtime
   assert.equal(bash(`cat <<'EOF' > ${path.join(f.dir, 'plan2.md')}\nStep 1: cat ${f.secret} to check the env block\nEOF`), 0, 'a document that MENTIONS a dump is still prose');
 });
 
+test('guard-secret-value: a heredoc is judged by what reads its body (2.1.6 K1)', () => {
+  // Measured: a `node - <<'EOF'` script WRITING test text that named "$CLAUDE_CONFIG_DIR/.claude.json" was blocked as a
+  // read of this machine's account file. With the tag quoted, the shell hands the body over verbatim, and node never
+  // expands `$NAME` - that string is the runtime's text, never a path it opens.
+  const acctFile = path.join(ACCOUNT, '.claude.json');
+  fs.writeFileSync(acctFile, SECRET_JSON);
+  try {
+    const writer = "node - <<'EOF'\nconst text = 'cat \"$CLAUDE_CONFIG_DIR/.claude.json\"';\nrequire('fs').writeFileSync('" + path.join(TMP, 'k1.test.js') + "', text);\nEOF";
+    assert.equal(bash(writer), 0, 'a quoted-tag runtime body writing test text reads nothing');
+    assert.equal(bash('cat > ' + path.join(TMP, 'k1.sh') + " <<'EOF'\ncat \"$CLAUDE_CONFIG_DIR/.claude.json\"\nEOF"), 0, 'a script FILE written through cat is data - .sh in its name runs nothing');
+    // ... and every real read still judges
+    assert.equal(bash('cat "$CLAUDE_CONFIG_DIR/.claude.json"'), REWRITE, 'cat');
+    assert.equal(bash('jq . < "$CLAUDE_CONFIG_DIR/.claude.json"'), REWRITE, 'jq from a redirect');
+    assert.equal(bash("node <<'EOF'\nconsole.log(require('fs').readFileSync('" + acctFile + "','utf8'))\nEOF"), REWRITE, 'a quoted-tag node heredoc reading a literal path');
+    assert.equal(bash("node <<EOF\nconsole.log(require('fs').readFileSync('$CLAUDE_CONFIG_DIR/.claude.json','utf8'))\nEOF"), REWRITE, 'an UNquoted tag: the shell expands $NAME before node runs');
+    assert.equal(bash("node <<'EOF'\nconst CLAUDE_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR;\nconsole.log(require('fs').readFileSync(`${CLAUDE_CONFIG_DIR}/.claude.json`,'utf8'))\nEOF"), REWRITE, 'a quoted tag whose code binds the name from the environment');
+    assert.equal(bash("bash <<'EOF'\ncat \"$CLAUDE_CONFIG_DIR/.claude.json\"\nEOF"), REWRITE, 'a shell body expands $NAME itself');
+    assert.equal(bash("cat <<'EOF'; cat \"$CLAUDE_CONFIG_DIR/.claude.json\"\nhello\nEOF"), REWRITE, 'a command after the heredoc on its first line runs');
+    assert.equal(bash("cat <<'EOF' | node\nconsole.log(require('fs').readFileSync('" + acctFile + "','utf8'))\nEOF"), REWRITE, 'a heredoc piped into a runtime is code');
+  } finally {
+    fs.rmSync(acctFile, { force: true });
+  }
+});
+
+test('guard-secret-value: a heredoc body is code only where its program reads the script from stdin (2.1.6)', () => {
+  // The same reading as the read guard's: a body fed to a script file, or beside -c / -e / -m, is that program's
+  // input data, not its code - `bash ./run.sh <<EOF` runs run.sh, never the body. An option's own value is no
+  // script file, so `bash -o pipefail <<EOF` and `node -r ./x.js <<EOF` still run the body.
+  const f = fixtures();
+  const RS = `require('fs').readFileSync('${f.secret}','utf8')`;
+  const code = [
+    ['bash with an option value', `bash -o pipefail <<'EOF'\ncat ${f.secret}\nEOF`],
+    ['zsh -s', `zsh -s <<'EOF'\ncat ${f.secret}\nEOF`],
+    ['node with a preload', `node -r ./x.js <<'EOF'\nconsole.log(${RS})\nEOF`],
+    ['python with a flag before the stdin dash', `python3 -u - <<'EOF'\nprint(open('${f.secret}').read())\nEOF`],
+    // `-` IS the stdin script, and what follows it is the script's argv (the replay: `python3 - <file> <<'EOF'` edits)
+    ['python3 - with an argument after the dash', `python3 - out.txt <<'EOF'\nprint(open('${f.secret}').read())\nEOF`],
+    ['node - with an argument after the dash', `node - out.txt <<'EOF'\nconsole.log(${RS})\nEOF`],
+    ['python3 - dumping the environment', `python3 - out.txt <<'EOF'\nimport os\nprint(os.environ)\nEOF`],
+    // An option that takes the NEXT word as its value leaves that word no script file (review B1 of 2.1.6: each of
+    // these passed, the value read as the script file and the body blanked as data)
+    ['bash -euo pipefail, the o bundled', `bash -euo pipefail <<'EOF'\ncat ${f.secret}\nEOF`],
+    ['bash -euo pipefail printing a variable', `bash -euo pipefail <<'EOF'\nprintenv SENTRY_ACCESS_TOKEN\nEOF`],
+    ['bash -euo pipefail echoing a variable', `bash -euo pipefail <<'EOF'\necho $SENTRY_ACCESS_TOKEN\nEOF`],
+    ['bash -eo pipefail', `bash -eo pipefail <<'EOF'\ncat ${f.secret}\nEOF`],
+    ['bash -uo pipefail', `bash -uo pipefail <<'EOF'\ncat ${f.secret}\nEOF`],
+    ['bash +o posix', `bash +o posix <<'EOF'\ncat ${f.secret}\nEOF`],
+    ['bash --rcfile', `bash --rcfile /dev/null <<'EOF'\ncat ${f.secret}\nEOF`],
+    ['bash --init-file', `bash --init-file x <<'EOF'\ncat ${f.secret}\nEOF`],
+    ['node --max-old-space-size with a space value', `node --max-old-space-size 4096 <<'EOF'\nconsole.log(${RS})\nEOF`],
+    ['node --stack-size with a space value', `node --stack-size 4096 <<'EOF'\nconsole.log(${RS})\nEOF`],
+    ['node with an unknown long option', `node --some-future-flag 1 <<'EOF'\nconsole.log(${RS})\nEOF`],
+    ['python3 -Q with a value', `python3 -Q new <<'EOF'\nprint(open('${f.secret}').read())\nEOF`],
+    ['python3 -X with a value', `python3 -X dev <<'EOF'\nprint(open('${f.secret}').read())\nEOF`],
+    ['python3 --check-hash-based-pycs with a value', `python3 --check-hash-based-pycs never <<'EOF'\nprint(open('${f.secret}').read())\nEOF`],
+    ['perl -Mstrict -we with no script word', `perl -Mstrict -we <<'EOF'\nopen F,'${f.secret}';print <F>\nEOF`],
+    ['ruby -r with a space value', `ruby -r json <<'EOF'\nputs File.read('${f.secret}')\nEOF`],
+    // php runs stdin with no file named, and its `--` hands the words after it to that script
+    ['php reading its script from stdin', `php <<'EOF'\n<?php echo file_get_contents('${f.secret}');\nEOF`],
+    ['php -- with argv for a script from stdin', `php -- a b <<'EOF'\n<?php print_r(getenv());\nEOF`],
+    ['php -d with a value', `php -d memory_limit=1G <<'EOF'\n<?php readfile('${f.secret}');\nEOF`],
+  ];
+  for (const [what, command] of code) assert.equal(bash(command), REWRITE, `code: ${what}`);
+  const data = [
+    ['a body fed to a shell script file', `bash ./run.sh <<'EOF'\ncat ${f.secret}\nEOF`],
+    ['a body fed beside bash -c', `bash -c 'wc -l' <<'EOF'\ncat ${f.secret}\nEOF`],
+    ['a body fed to node -e', `node -e 'process.stdin.resume()' <<'EOF'\nconsole.log(${RS})\nEOF`],
+    ['a body fed to a python script file', `python3 tool.py <<'EOF'\nprint(open('${f.secret}').read())\nEOF`],
+    ['a body fed to python -m', `python3 -m json.tool <<'EOF'\nprint(open('${f.secret}').read())\nEOF`],
+    // a shell's `-` / `--` only ends its options: the next word is still the script file
+    ['a body fed to a shell script file after --', `bash -- ./run.sh <<'EOF'\ncat ${f.secret}\nEOF`],
+    ['a body fed to a script file after -euo pipefail', `bash -euo pipefail ./run.sh <<'EOF'\ncat ${f.secret}\nEOF`],
+    ['a body fed to a script file after --rcfile', `bash --rcfile /dev/null ./run.sh <<'EOF'\ncat ${f.secret}\nEOF`],
+    ['a body fed to node -e after a space-valued option', `node --max-old-space-size 4096 -e 'process.stdin.resume()' <<'EOF'\nconsole.log(${RS})\nEOF`],
+    ['a body fed to a node script after a boolean option', `node --enable-source-maps tool.js <<'EOF'\nconsole.log(${RS})\nEOF`],
+    ['a body fed to a python script after -X', `python3 -X dev tool.py <<'EOF'\nprint(open('${f.secret}').read())\nEOF`],
+    ['a body fed to perl -e', `perl -Mstrict -we 'print <STDIN>' <<'EOF'\nopen F,'${f.secret}';print <F>\nEOF`],
+    ['a body fed to a php script file', `php tool.php <<'EOF'\n<?php readfile('${f.secret}');\nEOF`],
+    ['a body fed beside php -r', `php -r 'echo 1;' <<'EOF'\n<?php readfile('${f.secret}');\nEOF`],
+  ];
+  for (const [what, command] of data) assert.equal(bash(command), 0, `data: ${what}`);
+});
+
+// Replay of 52,732 corpus commands: a node script editing CLAUDE.md was blocked as 'WRITES a file and names
+// ~/.aws/credentials' - the path was documentation between Markdown backticks inside a JS string. A runtime never
+// expands `~` itself, so a `~/` string in its code is text unless the code expands it (expanduser, expand_path, a
+// glob, a replace with the home directory) or the runtime is PowerShell, whose provider paths do.
+// Review B2 of 2.1.6: the shell candidates were only tokens carrying a `/`, `.`, `~` or `$`, so after a `cd` into a
+// credentials directory the bare file name was never judged - `cd ~/.aws && cat credentials` passed while
+// `cat ~/.aws/credentials` was rewritten. A bare operand of a dump verb is a file name like any other, resolved
+// against the cd target, `env -C`'s directory and the session's own directory.
+test('guard-secret-value: a bare file name a dump verb reads is judged where the shell stands (2.1.6)', () => {
+  const home = fs.mkdtempSync(path.join(TMP, 'home-bare-'));
+  fs.mkdirSync(path.join(home, '.aws'));
+  fs.writeFileSync(path.join(home, '.aws', 'credentials'), `[default]\naws_secret_access_key = ${FAKE_TOKEN}\n`);
+  fs.mkdirSync(path.join(home, '.kube'));
+  fs.writeFileSync(path.join(home, '.kube', 'config'), `apiVersion: v1\nkind: Config\nusers:\n- name: dev\n  user:\n    token: ${FAKE_TOKEN}\n`);
+  fs.writeFileSync(path.join(home, '.aws', 'notes'), 'nothing secret here\n');
+  const b = (command, cwd) => bash(command, { HOME: home, USERPROFILE: '', ...(cwd ? { CLAUDE_PROJECT_DIR: cwd } : {}) });
+  try {
+    const reads = [
+      ['cd then cat', 'cd ~/.aws && cat credentials'],
+      ['cd then head', 'cd ~/.aws && head credentials'],
+      ['cd then cat a kubeconfig', 'cd ~/.kube && cat config'],
+      ['cd with a semicolon', 'cd ~/.aws; cat credentials'],
+      ['pushd', 'pushd ~/.aws && cat credentials'],
+      ['a subshell cd', '(cd ~/.aws && cat credentials)'],
+      ['env -C', `env -C ${path.join(home, '.aws')} cat credentials`],
+      ['env --chdir=', `env --chdir=${path.join(home, '.aws')} cat credentials`],
+      ['a grep whose pattern came by -e', 'cd ~/.aws && grep -e aws credentials'],
+      ['a head with a value flag first', 'cd ~/.aws && head -n 5 credentials'],
+    ];
+    for (const [what, command] of reads) assert.equal(b(command), REWRITE, `read: ${what}`);
+    assert.equal(b('cat credentials', path.join(home, '.aws')), REWRITE, 'a bare name in the session directory itself');
+    const pass = [
+      ['a bare name holding nothing', 'cd ~/.aws && cat notes'],
+      ['a bare name that is no file', 'cd ~/.aws && cat missing'],
+      ['a grep pattern word beside a clean file', 'cd ~/.aws && grep -n credentials notes'],
+      ['a dump verb only named as an option', 'cd ~/.aws && find . -type f -name credentials'],
+      ['a flag value beside a clean file', 'cd ~/.aws && grep -A 2 -m credentials aws notes'],
+    ];
+    for (const [what, command] of pass) assert.equal(b(command), 0, `pass: ${what}`);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('guard-secret-value: the routes that print a file without a dump verb\'s name are judged too (2.1.6)', () => {
+  // Review item 5 of 2.1.6: each of these printed ~/.aws/credentials or a dotenv whole on base and on the first 2.1.6 tree.
+  const home = fs.mkdtempSync(path.join(TMP, 'home-routes-'));
+  const aws = path.join(home, '.aws');
+  fs.mkdirSync(aws);
+  const cred = path.join(aws, 'credentials');
+  fs.writeFileSync(cred, `[default]\naws_secret_access_key = ${FAKE_TOKEN}\n`);
+  fs.writeFileSync(path.join(aws, 'notes'), 'nothing secret here\n');
+  const b = (command, cwd) => bash(command, { HOME: home, USERPROFILE: '', ...(cwd ? { CLAUDE_PROJECT_DIR: cwd } : {}) });
+  try {
+    const reads = [
+      ['dd if=', `dd if=${cred}`],
+      ['dd if= with a tilde and a status operand', 'dd if=~/.aws/credentials status=none'],
+      ['dd onto stdout', `dd if=${cred} of=/dev/stdout`],
+      ['dd if= of a bare name where the shell stands', 'cd ~/.aws && dd if=credentials'],
+      ['iconv', `iconv -f utf-8 -t utf-8 ${cred}`],
+      ['iconv -o onto stdout', `iconv -f utf-8 -t ascii -o /dev/stdout ${cred}`],
+      ['php -r building the path from HOME', 'php -r \'echo file_get_contents(getenv("HOME")."/.aws/credentials");\''],
+      ['php -r on a literal path', `php -r 'echo file_get_contents("${cred}");'`],
+      ['sqlite3 readfile()', `sqlite3 :memory: "select readfile('${cred}')"`],
+      ['sqlite3 readfile() of a bare name where the shell stands', 'cd ~/.aws && sqlite3 :memory: "select cast(readfile(\'credentials\') as text)"'],
+      ['sqlite3 .shell', 'sqlite3 :memory: \'.shell cat ~/.aws/credentials\''],
+      ['curl file://', `curl -s file://${cred}`],
+      ['curl --url file://', `curl --url file://${cred}`],
+      ['curl file:// under $PWD after a cd', 'cd ~/.aws && curl -s file://$PWD/credentials'],
+      ['vim -es +%p', `vim -es +%p +q! ${cred}`],
+      ['ex -s +%print', `ex -s '+%print' '+q!' ${cred}`],
+      ['vi -es -c %p', `vi -es -c '%p' -c 'q!' ${cred}`],
+      ['vim with no terminal paints the file', `vim ${cred}`],
+      ['cp onto stdout', `cp ${cred} /dev/stdout`],
+      ['cp onto stderr', 'cp ~/.aws/credentials /dev/stderr'],
+      ['cp a bare name onto fd 1', 'cd ~/.aws && cp credentials /dev/fd/1'],
+      ['split --filter', `split --filter=cat ${cred}`],
+      ['split onto a device prefix', `split -l 100 ${cred} /dev/stdout`],
+      ['expand', `expand ${cred}`],
+      ['unexpand', `unexpand -a ${cred}`],
+      ['fmt', `fmt -w 200 ${cred}`],
+      ['zcat -f', `zcat -f ${cred}`],
+      ['gzcat -f', `gzcat -f ${cred}`],
+      ['look with an empty prefix', `look '' ${cred}`],
+    ];
+    for (const [what, command] of reads) assert.equal(b(command), REWRITE, `read: ${what}`);
+    const pass = [
+      ['cp to a backup', `cp ${cred} ${cred}.bak`],
+      ['dd into a file', `dd if=${cred} of=${path.join(home, 'copy')}`],
+      ['iconv -o into a file', `iconv -f utf-8 -t ascii -o ${path.join(home, 'out')} ${cred}`],
+      ['curl -o into a file', `curl -s -o ${path.join(home, 'out')} file://${cred}`],
+      ['curl -O', `curl -sO file://${cred}`],
+      ['curl over https', 'curl -s https://example.com/.aws/credentials'],
+      ['a vim edit that prints nothing', `vim -es '+%s/old/new/' '+wq' ${cred}`],
+      ['sqlite3 with no file read', 'sqlite3 :memory: "select 1"'],
+      ['look with only a prefix', 'look abc'],
+      ['php -r reading nothing', "php -r 'echo 1;'"],
+      ['a clean file through the same routes', `dd if=${path.join(aws, 'notes')} && iconv -f utf-8 -t utf-8 ${path.join(aws, 'notes')}`],
+    ];
+    for (const [what, command] of pass) assert.equal(b(command), 0, `pass: ${what}`);
+    assert.equal(b(`vim -es '+%s/old/new/' '+%p' '+wq' ${cred}`), 2, 'a vim run that prints AND writes is blocked, never half-rewritten');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('guard-secret-value: a string a shell runs is judged as that shell (2.1.6)', () => {
+  // Found in the 2.1.6 review round, on base too: each of these printed ~/.aws/credentials with no rewrite, while the same
+  // string inside a runtime's execSync(...) was judged.
+  const home = fs.mkdtempSync(path.join(TMP, 'home-shellrun-'));
+  const aws = path.join(home, '.aws');
+  fs.mkdirSync(aws);
+  const cred = path.join(aws, 'credentials');
+  fs.writeFileSync(cred, `[default]\naws_secret_access_key = ${FAKE_TOKEN}\n`);
+  const b = (command) => bash(command, { HOME: home, USERPROFILE: '' });
+  try {
+    const reads = [
+      ['bash -c', "bash -c 'cat ~/.aws/credentials'"],
+      ['sh -c double-quoted', `sh -c "cat ${cred}"`],
+      ['bash -lc, the c bundled', "bash -lc 'cat ~/.aws/credentials'"],
+      ['bash -e -c, the c alone after a flag', "bash -e -c 'head ~/.aws/credentials'"],
+      ['bash -o pipefail -c, a flag taking a value', "bash -o pipefail -c 'cat ~/.aws/credentials'"],
+      ['a shell nested in a shell', `bash -c "sh -c 'cat ${cred}'"`],
+      ['eval', 'eval "cat ~/.aws/credentials"'],
+      ['watch', "watch -n 1 'cat ~/.aws/credentials'"],
+      ['su -c', "su root -c 'cat ~/.aws/credentials'"],
+      ['echo piped into sh', 'echo "cat ~/.aws/credentials" | sh'],
+      ['printf piped into bash', "printf 'cat ~/.aws/credentials\\n' | bash"],
+      // a command string a runtime BUILDS from the home directory, handed to a shell
+      ['node execSync of a built command', 'node -e \'require("child_process").execSync("cat " + require("os").homedir() + "/.aws/credentials", {stdio: "inherit"})\''],
+      ['node execSync of a name bound to a built command', 'node -e \'const c = "cat " + require("os").homedir() + "/.aws/credentials"; require("child_process").execSync(c, {stdio: "inherit"})\''],
+      ['python os.system of a built command', 'python3 -c \'import os; os.system("cat " + os.path.expanduser("~") + "/.aws/credentials")\''],
+      // Re-verify 1 of 2.1.6: a wrapper word and its own arguments before the shell hid the string
+      ['timeout', "timeout 30 bash -c 'cat ~/.aws/credentials'"],
+      ['timeout with a signal flag', "timeout -s KILL 5 sh -c 'cat ~/.aws/credentials'"],
+      ['env with an assignment', "env FOO=1 bash -c 'cat ~/.aws/credentials'"],
+      ['env -u NAME', "env -u FOO bash -c 'cat ~/.aws/credentials'"],
+      ['nice -n', "nice -n 5 bash -c 'cat ~/.aws/credentials'"],
+      ['nohup', "nohup bash -c 'cat ~/.aws/credentials'"],
+      ['sudo -u', "sudo -u root bash -c 'cat ~/.aws/credentials'"],
+      ['stdbuf -oL', "stdbuf -oL bash -c 'cat ~/.aws/credentials'"],
+      ['ionice -c', "ionice -c 3 bash -c 'cat ~/.aws/credentials'"],
+      ['time', "time bash -c 'cat ~/.aws/credentials'"],
+      ['command', "command bash -c 'cat ~/.aws/credentials'"],
+      ['exec', "exec bash -c 'cat ~/.aws/credentials'"],
+      ['wrappers stacked', "sudo -E timeout --signal=TERM 30 nice -n 5 env -i PATH=/usr/bin bash -c 'cat ~/.aws/credentials'"],
+      ['a wrapper before eval', 'timeout 5 eval "cat ~/.aws/credentials"'],
+      ['echo piped into a wrapped sh', 'echo "cat ~/.aws/credentials" | timeout 5 sh'],
+      // Re-verify 1 of 2.1.6: a printed substitution prints what its command read
+      ['echo of a substitution', 'echo "$(cat ~/.aws/credentials)"'],
+      ['printf of a substitution', "printf '%s\\n' \"$(cat ~/.aws/credentials)\""],
+      ['echo of a backtick substitution', 'echo `cat ~/.aws/credentials`'],
+    ];
+    for (const [what, command] of reads) assert.equal(b(command), REWRITE, `read: ${what}`);
+    const pass = [
+      ['bash running a script file', "bash ./run.sh 'cat ~/.aws/credentials'"],
+      ['a -c string that only counts', "bash -c 'wc -l ~/.aws/credentials'"],
+      ['echo piped into a shell running a script file', 'echo "cat ~/.aws/credentials" | bash ./run.sh'],
+      ['echo on its own', 'echo "cat ~/.aws/credentials"'],
+      ['a grep pattern naming the read', "grep -c 'cat ~/.aws/credentials' notes.md"],
+      ['a built message printed, no shell', 'node -e \'console.log("config at " + require("os").homedir() + "/.aws/credentials")\''],
+      ['timeout running a script file', "timeout 30 bash ./run.sh 'cat ~/.aws/credentials'"],
+      ['a wrapped -c string that only counts', "timeout 30 bash -c 'wc -l ~/.aws/credentials'"],
+      ['echo of a substitution that counts', 'echo "$(wc -l < ~/.aws/credentials)"'],
+      ['echo of a substitution reading nothing', 'echo "$(date)"'],
+    ];
+    for (const [what, command] of pass) assert.equal(b(command), 0, `pass: ${what}`);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('guard-secret-value: a UTF-16 file is judged by its decoded content, on every route (2.1.6)', () => {
+  // Review item 5 of 2.1.6: a UTF-16 dotenv or settings file (Windows PowerShell 5 writes UTF-16LE with a BOM) read as no
+  // credential at all, since its bytes never matched a KEY=value line.
+  const dir = fs.mkdtempSync(path.join(TMP, 'u16-'));
+  const le = (t) => Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(t, 'utf16le')]);
+  const be = (t) => { const b = Buffer.from(t, 'utf16le'); for (let i = 0; i + 1 < b.length; i += 2) { const x = b[i]; b[i] = b[i + 1]; b[i + 1] = x; } return Buffer.concat([Buffer.from([0xfe, 0xff]), b]); };
+  const envLe = path.join(dir, 'u16.env'); fs.writeFileSync(envLe, le(`DB_HOST=localhost\nAPI_KEY=${FAKE_TOKEN}\n`));
+  const envBe = path.join(dir, 'u16be.env'); fs.writeFileSync(envBe, be(`API_KEY=${FAKE_TOKEN}\n`));
+  const json = path.join(dir, 'u16.json'); fs.writeFileSync(json, le(SECRET_JSON));
+  const clean = path.join(dir, 'clean16.env'); fs.writeFileSync(clean, le('DB_HOST=localhost\n'));
+  try {
+    assert.equal(bash(`cat ${envLe}`), REWRITE, 'a UTF-16LE dotenv on the shell route');
+    assert.equal(bash(`cat ${envBe}`), REWRITE, 'a UTF-16BE dotenv on the shell route');
+    assert.equal(bash(`cat ${json}`), REWRITE, 'a UTF-16LE settings file on the shell route');
+    assert.equal(read(json), 2, 'the Read tool on a UTF-16LE settings file');
+    assert.equal(bash(`cat ${clean}`), 0, 'a UTF-16 file holding no credential passes');
+    const p = presence(envLe, 'API_KEY', 'DB_HOST').stdout;
+    assert.match(p, new RegExp(`API_KEY=set \\(${FAKE_TOKEN.length} chars\\)`), 'the presence read decodes it');
+    assert.match(p, /DB_HOST=set/, 'the presence read decodes every key');
+    const view = cli('--redacted', json).stdout;
+    assert.ok(!view.includes(FAKE_TOKEN) && !view.includes('\u0000'), 'the redacted view decodes it and masks the value');
+    assert.match(view, /SENTRY_ACCESS_TOKEN/, 'the redacted view keeps the key name');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('guard-secret-value: a ~/ path inside runtime code is text unless the code expands the tilde (2.1.6)', () => {
+  const home = fs.mkdtempSync(path.join(TMP, 'home-'));
+  fs.mkdirSync(path.join(home, '.aws'));
+  fs.writeFileSync(path.join(home, '.aws', 'credentials'), `[default]\naws_secret_access_key = ${FAKE_TOKEN}\n`);
+  const b = (command) => bash(command, { HOME: home, USERPROFILE: '' });
+  try {
+    const text = [
+      ['documentation between backticks in a node string', "node -e 'const s=\"Judged by content (INI - `~/.aws/credentials`, `~/.pypirc`)\"; require(\"fs\").writeFileSync(\"notes.md\", s)'"],
+      ['a python string naming the path', "python3 -c \"s='see ~/.aws/credentials for the key'; open('notes.md','w').write(s)\""],
+      ['a node read of a literal ~/ path, which node does not expand', "node -e 'console.log(require(\"fs\").readFileSync(\"~/.aws/credentials\",\"utf8\"))'"],
+    ];
+    for (const [what, command] of text) assert.equal(b(command), 0, `text: ${what}`);
+    const reads = [
+      ['python expanduser', "python3 -c \"import os;print(open(os.path.expanduser('~/.aws/credentials')).read())\""],
+      ['python Path.expanduser', "python3 -c \"from pathlib import Path;print(Path('~/.aws/credentials').expanduser().read_text())\""],
+      ['node replacing the tilde with the home directory', "node -e 'const p=\"~/.aws/credentials\".replace(/^~/, require(\"os\").homedir());console.log(require(\"fs\").readFileSync(p,\"utf8\"))'"],
+      ['ruby File.expand_path', "ruby -e 'puts File.read(File.expand_path(\"~/.aws/credentials\"))'"],
+      ['perl glob', "perl -e 'open(F, glob(\"~/.aws/credentials\")); print <F>'"],
+      ['pwsh Get-Content, which expands the tilde itself', "pwsh -c 'Get-Content \"~/.aws/credentials\"'"],
+      ['the shell expanding an unquoted tilde', 'cat ~/.aws/credentials'],
+    ];
+    for (const [what, command] of reads) assert.equal(b(command), REWRITE, `read: ${what}`);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// Found beside the tilde rule: a runtime that hands a shell a COMMAND STRING (`execSync("cat ~/.aws/credentials")`,
+// `os.system('env')`, Ruby backticks) printed the file or the environment unjudged - the scan saw one quoted string,
+// `cat <path>`, which is no path. That string is shell, and is judged as the shell it runs.
+test('guard-secret-value: a command string a runtime hands to a shell is judged as that shell (2.1.6)', () => {
+  const home = fs.mkdtempSync(path.join(TMP, 'home-'));
+  fs.mkdirSync(path.join(home, '.aws'));
+  fs.writeFileSync(path.join(home, '.aws', 'credentials'), `[default]\naws_secret_access_key = ${FAKE_TOKEN}\n`);
+  const b = (command) => bash(command, { HOME: home, USERPROFILE: '' });
+  try {
+    const judged = [
+      ['node execSync', "node -e 'console.log(require(\"child_process\").execSync(\"cat ~/.aws/credentials\").toString())'"],
+      ['node spawnSync sh -c', "node -e 'console.log(require(\"child_process\").spawnSync(\"sh\", [\"-c\", \"cat ~/.aws/credentials\"]).stdout.toString())'"],
+      ['python os.system', "python3 -c \"import os; os.system('cat ~/.aws/credentials')\""],
+      ['python subprocess with shell=True', "python3 -c \"import subprocess; print(subprocess.run('cat ~/.aws/credentials', shell=True, capture_output=True).stdout)\""],
+      ['python os.popen in a heredoc', "python3 - <<'EOF'\nimport os\nprint(os.popen('head -5 ~/.aws/credentials').read())\nEOF"],
+      ['ruby backticks', "ruby -e 'puts `cat ~/.aws/credentials`'"],
+      ['perl qx', "perl -e 'print qx{cat ~/.aws/credentials}'"],
+      ['node execSync of the environment', "node -e 'console.log(require(\"child_process\").execSync(\"env\").toString())'"],
+      ['python os.system of the environment', "python3 -c \"import os; os.system('printenv')\""],
+    ];
+    for (const [what, command] of judged) assert.notEqual(b(command), 0, `judged: ${what}`);
+    const allowed = [
+      ['node execSync of git', "node -e 'console.log(require(\"child_process\").execSync(\"git status --short\").toString())'"],
+      ['a mode word beside a spawn call', "node -e 'const mode = \"env\"; if (mode === \"set\") require(\"child_process\").execSync(\"git log -1\")'"],
+      ['python os.system of a build', "python3 -c \"import os; os.system('npm test')\""],
+      ['a JS template literal is no shell', "node -e 'const f = `cat ~/.aws/credentials`; require(\"fs\").writeFileSync(\"notes.md\", f)'"],
+    ];
+    for (const [what, command] of allowed) assert.equal(b(command), 0, `allowed: ${what}`);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// Replay of 52,732 corpus commands: two Python edit scripts (`python3 - <file> <<'EOF'`) were blocked as 'WRITES a file and
+// names the whole environment' - one carried JS test text (`{ ...process.env }`, `JSON.stringify(`) inside a Python
+// string, the other a JS regex `/^(sudo|env|nohup)$/`, whose `|env|` the shell splitter read as a bare `env` stage.
+test('guard-secret-value: a runtime body reads the environment only in its own language, never through a shell stage (2.1.6)', () => {
+  const edit = (inner) => `python3 - f.js <<'EOF'\nimport sys\np = sys.argv[1]\ns = open(p).read()\ns = s.replace("""${inner}""", """x""")\nopen(p, 'w').write(s)\nEOF`;
+  const data = [
+    ['JS text inside a Python string', edit('  const stdin = Buffer.from(JSON.stringify(payload));\n  const saved = { ...process.env };')],
+    ['a JS regex alternation naming env inside a Python string', edit("while (/^(sudo|env|nohup|time)$/.test(words[0])) words.shift();")],
+    ['Python text inside a node string', `node - <<'EOF'\nconst src = "import os\\nprint(os.environ)";\nrequire('fs').writeFileSync('gen.py', src);\nEOF`],
+  ];
+  for (const [what, command] of data) assert.equal(bash(command), 0, `data: ${what}`);
+  const dumps = [
+    ['python printing os.environ', `python3 - <<'EOF'\nimport os\nprint(os.environ)\nEOF`],
+    ['python with an argument printing os.environ', `python3 - out.txt <<'EOF'\nimport os\nprint(dict(os.environ))\nEOF`],
+    ['node printing process.env', `node - <<'EOF'\nconsole.log(JSON.stringify(process.env))\nEOF`],
+    ['a heredoc piped into python printing os.environ', `cat <<'EOF' | python3\nimport os; print(os.environ)\nEOF`],
+    ['a shell body keeps its env stage', `bash <<'EOF'\nenv | sort\nEOF`],
+    ['ruby printing ENV', `ruby <<'EOF'\nputs ENV.to_h\nEOF`],
+    ['an inline node script printing process.env', `node -e 'console.log(process.env)'`],
+  ];
+  for (const [what, command] of dumps) assert.equal(bash(command), REWRITE, `dump: ${what}`);
+});
+
+test('guard-secret-value: a credential path a runtime builds from the home directory is judged like a literal one (2.1.6)', () => {
+  // A script that builds the path at run time (os.homedir(), process.env.HOME, Path.home(), Dir.home) handed the scan
+  // no path at all: only a bare settings.json was ever anchored at home, so ~/.claude.json and ~/.docker/config.json read
+  // that way were never judged. A FAKE home holds the credential files; the real one is never read.
+  const home = fs.mkdtempSync(path.join(TMP, 'home-'));
+  fs.writeFileSync(path.join(home, '.claude.json'), SECRET_JSON);
+  fs.mkdirSync(path.join(home, '.docker'));
+  fs.writeFileSync(path.join(home, '.docker', 'config.json'), JSON.stringify({ auths: { 'registry.example': { auth: FAKE_TOKEN } } }));
+  fs.writeFileSync(path.join(home, '.gitconfig'), '[user]\n  name = someone\n');
+  const acctFile = path.join(ACCOUNT, '.claude.json');
+  fs.writeFileSync(acctFile, SECRET_JSON);
+  const b = (command) => bash(command, { HOME: home, USERPROFILE: '' });
+  try {
+    const built = [
+      ['node, path.join(os.homedir(), ...)', "node -e \"console.log(require('fs').readFileSync(require('path').join(require('os').homedir(), '.claude.json'), 'utf8'))\""],
+      ['node, os.homedir() + a literal', "node -e \"const os=require('os');console.log(require('fs').readFileSync(os.homedir() + '/.claude.json','utf8'))\""],
+      ['node, a template over a name bound to the home', "node -e 'const fs=require(\"fs\");const h=require(\"os\").homedir();console.log(fs.readFileSync(`${h}/.claude.json`,\"utf8\"))'"],
+      ['node, process.env.HOME and another credential file', "node -e 'console.log(require(\"fs\").readFileSync(require(\"path\").join(process.env.HOME, \".docker\", \"config.json\"), \"utf8\"))'"],
+      ['node, process.env.CLAUDE_CONFIG_DIR', "node -e 'console.log(require(\"fs\").readFileSync(require(\"path\").join(process.env.CLAUDE_CONFIG_DIR, \".claude.json\"), \"utf8\"))'"],
+      ['a node heredoc, the path bound statements before the read', "node - <<'EOF'\nconst path = require('path'), os = require('os');\nconst p = path.join(os.homedir(), '.claude.json');\nconsole.log(require('fs').readFileSync(p, 'utf8'));\nEOF"],
+      ['a python heredoc, Path.home() / ...', "python3 - <<'EOF'\nfrom pathlib import Path\nprint((Path.home() / '.claude.json').read_text())\nEOF"],
+      ['python, os.path.join(os.path.expanduser(\'~\'), ...)', "python3 -c \"import os;print(open(os.path.join(os.path.expanduser('~'), '.claude.json')).read())\""],
+      ['ruby, File.join(Dir.home, ...)', "ruby -e 'puts File.read(File.join(Dir.home, \".claude.json\"))'"],
+    ];
+    for (const [what, command] of built) assert.equal(b(command), REWRITE, what);
+    // ... and the same read spelled with the literal path takes the same verdict
+    assert.equal(b("node -e \"console.log(require('fs').readFileSync('" + path.join(home, '.claude.json') + "', 'utf8'))\""), REWRITE, 'the literal twin');
+    // controls: what must stay allowed
+    assert.equal(b("node -e \"console.log(require('fs').readFileSync(require('path').join(require('os').homedir(), '.gitconfig'), 'utf8'))\""), 0, 'a home file holding no credential');
+    assert.equal(b("node -e \"console.log(require('fs').readFileSync(require('path').join(require('os').homedir(), '.no-such-file.json'), 'utf8'))\""), 0, 'a home path that does not exist');
+    assert.equal(b("node -e \"console.log(require('os').homedir())\""), 0, 'the home directory alone');
+    assert.equal(b("node - <<'EOF'\nconst home = path.join(tmp, 'home');\nfs.writeFileSync(path.join(home, '.claude.json'), '{}');\nconst env = { HOME: home };\nEOF"), 0, 'test text building a SANDBOX home is not the real one');
+    assert.equal(b("node -e 'process.env.HOME = \"/tmp/sandbox\"; console.log(require(\"fs\").readFileSync(require(\"path\").join(require(\"os\").homedir(), \".claude.json\"), \"utf8\"))'"), 0, 'a script that moves HOME first reads that home, not this one');
+    const twin = b("node -e \"console.log('" + path.join(home, '.claude.json') + "')\"");
+    assert.equal(b("node -e \"console.log(require('path').join(require('os').homedir(), '.claude.json'))\""), twin, 'a built path printed, not read, takes the verdict of its literal twin');
+  } finally {
+    fs.rmSync(acctFile, { force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('guard-secret-value: INI, netrc, npmrc and URL-per-line credential files are judged by content, and read by presence (2.1.6)', () => {
+  // Only JSON and dotenv were ever credential files here, so `cat ~/.aws/credentials` (its first line a [section]),
+  // ~/.pypirc, ~/.netrc, ~/.npmrc and ~/.git-credentials printed their values unjudged.
+  const dir = fs.mkdtempSync(path.join(TMP, 'ini-'));
+  const w = (rel, text) => { const p = path.join(dir, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text); return p; };
+  const aws = w('.aws/credentials', `# profiles\n[default]\naws_access_key_id = someid\naws_secret_access_key = ${FAKE_TOKEN}\n\n[work]\naws_secret_access_key = ${FAKE_TOKEN}\n`);
+  const pypirc = w('.pypirc', `[distutils]\nindex-servers =\n    pypi\n\n[pypi]\nusername = __token__\npassword: ${FAKE_TOKEN}\n`);
+  const netrc = w('.netrc', `machine api.example.com\n  login someone\n  password ${FAKE_TOKEN}\n`);
+  const gitCred = w('.git-credentials', `https://someone:${FAKE_TOKEN}@git.example.com\n`);
+  const npmrc = w('.npmrc', `registry=https://registry.example.com/\n//registry.example.com/:_authToken=${FAKE_TOKEN}\n`);
+  const appIni = w('app.ini', `[db]\nhost = localhost\npassword = ${FAKE_TOKEN}\n`);
+  // what must stay allowed: INI files holding no credential, a template, a signing key NAME
+  const gitconfig = w('.gitconfig', '[user]\n  name = someone\n  email = someone@example.com\n  signingkey = 3AA5C34371567BD2\n');
+  const tox = w('tox.ini', '[tox]\nenvlist = py311\n\n[testenv]\ncommands = pytest\n');
+  const template = w('app.ini.example', '[db]\npassword = changeme\n');
+  const plainNetrc = w('other/.netrc', 'machine api.example.com\n  login someone\n');
+  for (const [what, f] of [['aws', aws], ['pypirc (a colon pair)', pypirc], ['netrc', netrc], ['git-credentials', gitCred], ['npmrc', npmrc], ['a [section] file', appIni]]) {
+    assert.equal(bash(`cat ${f}`), REWRITE, `${what}: a shell dump becomes the redacted view`);
+    assert.equal(read(f), 2, `${what}: the Read tool is blocked`);
+    const view = cli('--redacted', f).stdout;
+    assert.ok(!view.includes(FAKE_TOKEN), `${what}: the view masks the value`);
+    assert.match(view, /<set \(40 chars\)>/, `${what}: and says it was there`);
+  }
+  for (const [what, f] of [['a gitconfig with a signing key name', gitconfig], ['tox.ini', tox], ['a template', template], ['a netrc with no password', plainNetrc]]) {
+    assert.equal(bash(`cat ${f}`), 0, `${what}: stays allowed`);
+  }
+  // the redacted view keeps what is not a credential, as written
+  const awsView = cli('--redacted', aws).stdout;
+  assert.match(awsView, /\[default\]/);
+  assert.match(awsView, /aws_access_key_id = someid/);
+  assert.match(cli('--redacted', netrc).stdout, /machine api\.example\.com/);
+  assert.match(cli('--redacted', gitCred).stdout, /https:\/\/someone:<set \(40 chars\)>@git\.example\.com/);
+  // presence reads name the key the way each format spells it
+  assert.match(cli('--presence', aws, 'aws_secret_access_key').stdout, /^aws_secret_access_key=set \(40 chars\)$/m);
+  assert.match(cli('--presence', aws, 'work.aws_secret_access_key').stdout, /^work\.aws_secret_access_key=set \(40 chars\)$/m);
+  assert.match(cli('--presence', aws, 'default.aws_session_token').stdout, /=absent$/m);
+  assert.match(cli('--presence', pypirc, 'pypi.password').stdout, /=set \(40 chars\)$/m);
+  assert.match(cli('--presence', netrc, 'api.example.com.password').stdout, /=set \(40 chars\)$/m);
+  assert.match(cli('--presence', gitCred, 'git.example.com').stdout, /=set \(40 chars\)$/m);
+  assert.match(cli('--presence', npmrc, '//registry.example.com/:_authToken').stdout, /=set \(40 chars\)$/m);
+  const listing = cli('--presence', aws).stdout;
+  assert.match(listing, /^default\.aws_secret_access_key=set/m, 'the keyless listing names each section key');
+  assert.ok(!listing.includes(FAKE_TOKEN), 'and never a value');
+});
+
+test('guard-secret-value: every credential file format is judged by content - YAML, XML, HCL, properties, pgpass, a key file (2.1.6)', () => {
+  // The readers knew JSON, dotenv, INI, netrc and a URL per line, so `cat ~/.pgpass`, a kubeconfig, a gh hosts.yml, a
+  // maven settings.xml, a NuGet.Config, a web.config connection string, a .terraformrc, a gradle.properties, a raw
+  // private key and a vault token printed their values unjudged. Each format below is read by content; the formats
+  // an existing reader already covers (.my.cnf, .s3cfg, a docker config.json 'auths' entry, cargo and pip INI files)
+  // are proved here too.
+  const dir = fs.mkdtempSync(path.join(TMP, 'formats-'));
+  const w = (rel, text) => { const p = path.join(dir, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text); return p; };
+  const T = FAKE_TOKEN;
+  const B64 = 'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZWQyNTUxOQ';
+  const formats = [
+    // already read by an existing reader - proved, not changed
+    ['.my.cnf (INI)', w('.my.cnf', `[client]\nuser = root\npassword = ${T}\n`), 'client.password'],
+    ['.s3cfg (INI)', w('.s3cfg', `[default]\naccess_key = someid\nsecret_key = ${T}\n`), 'default.secret_key'],
+    ['docker config.json auths (JSON)', w('.docker/config.json', JSON.stringify({ auths: { 'registry.example': { auth: T } } })), 'auths.registry.example.auth'],
+    ['cargo credentials.toml (INI)', w('.cargo/credentials.toml', `[registry]\ntoken = "${T}"\n`), 'registry.token'],
+    ['pip.conf index url (INI, a URL password)', w('pip.conf', `[global]\nindex-url = https://someone:${T}@pypi.example.com/simple\n`), 'global.index-url'],
+    // newly read
+    ['.pgpass', w('.pgpass', `# host:port:db:user:password\nlocalhost:5432:*:postgres:${T}\n`), 'localhost:5432:*:postgres'],
+    ['a kubeconfig token', w('.kube/config', `apiVersion: v1\nkind: Config\nusers:\n- name: dev\n  user:\n    token: ${T}\n`), 'users.user.token'],
+    ['a kubeconfig client key', w('kube2/config', `apiVersion: v1\nusers:\n- name: dev\n  user:\n    client-certificate-data: ${B64}\n    client-key-data: ${T}\n`), 'users.user.client-key-data'],
+    ['gh hosts.yml', w('.config/gh/hosts.yml', `github.com:\n    user: someone\n    oauth_token: ${T}\n    git_protocol: https\n`), 'github.com.oauth_token'],
+    ['.yarnrc.yml', w('.yarnrc.yml', `npmRegistryServer: "https://registry.example.com"\nnpmAuthToken: "${T}"\n`), 'npmAuthToken'],
+    ['gem credentials', w('.gem/credentials', `---\n:rubygems_api_key: ${T}\n`), 'rubygems_api_key'],
+    ['a Kubernetes Secret manifest', w('k8s/secret.yaml', `apiVersion: v1\nkind: Secret\nmetadata:\n  name: db\nstringData:\n  password: ${T}\n`), 'stringData.password'],
+    ['a compose environment list', w('docker-compose.yml', `services:\n  db:\n    image: postgres\n    environment:\n      - POSTGRES_PASSWORD=${T}\n`), 'POSTGRES_PASSWORD'],
+    ['a YAML block holding a private key', w('tls.yaml', `tls:\n  key: |\n    -----BEGIN PRIVATE KEY-----\n    ${B64}\n    -----END PRIVATE KEY-----\n`), 'tls.key'],
+    ['maven settings.xml', w('.m2/settings.xml', `<?xml version="1.0"?>\n<settings>\n  <servers>\n    <server>\n      <id>repo</id>\n      <username>someone</username>\n      <password>${T}</password>\n    </server>\n  </servers>\n</settings>\n`), 'settings.servers.server.password'],
+    ['maven settings-security.xml', w('.m2/settings-security.xml', `<settingsSecurity>\n  <master>{${T}}</master>\n</settingsSecurity>\n`), 'settingsSecurity.master'],
+    ['NuGet.Config', w('NuGet.Config', `<configuration>\n  <packageSourceCredentials>\n    <feed>\n      <add key="Username" value="someone" />\n      <add key="ClearTextPassword" value="${T}" />\n    </feed>\n  </packageSourceCredentials>\n</configuration>\n`), 'ClearTextPassword'],
+    ['a web.config connection string', w('web.config', `<configuration>\n  <connectionStrings>\n    <add name="Db" connectionString="Server=db;Database=app;User Id=app;Password=${T};" />\n  </connectionStrings>\n</configuration>\n`), 'Db'],
+    ['.terraformrc', w('.terraformrc', `credentials "app.terraform.io" {\n  token = "${T}"\n}\n`), 'app.terraform.io.token'],
+    ['gradle.properties, a dotted first key', w('gradle.properties', `org.gradle.jvmargs=-Xmx2g\nsigning.password=${T}\n`), 'signing.password'],
+    ['application.properties, a plain first key', w('application.properties', `server_port=8080\nspring.datasource.password=${T}\n`), 'spring.datasource.password'],
+    ['rclone.conf, a pass key', w('rclone.conf', `[remote]\ntype = sftp\nuser = someone\npass = ${T}\n`), 'remote.pass'],
+    ['.yarnrc (v1)', w('.yarnrc', `registry "https://registry.example.com"\n"//registry.example.com/:_authToken" "${T}"\n`), '//registry.example.com/:_authToken'],
+    ['.htpasswd', w('.htpasswd', `someone:$apr1$abcdefgh$${T}\n`), 'someone'],
+    ['a gitconfig URL carrying a token', w('gitconfig-url/.gitconfig', `[url "https://someone:${T}@github.com/"]\n\tinsteadOf = https://github.com/\n`), 'url "https://someone:<set>@github.com/"'],
+    ['an OpenSSH private key', w('.ssh/id_ed25519', `-----BEGIN OPENSSH PRIVATE KEY-----\n${B64}\n${T}\n-----END OPENSSH PRIVATE KEY-----\n`), 'private key'],
+    ['a PuTTY key', w('key.ppk', `PuTTY-User-Key-File-3: ssh-ed25519\nEncryption: none\nComment: someone\nPublic-Lines: 1\n${B64}\nPrivate-Lines: 1\n${T}\nPrivate-MAC: ${T}\n`), 'private key'],
+    ['a vault token', w('.vault-token', `${T}\n`), 'token'],
+  ];
+  for (const [what, f, key] of formats) {
+    assert.equal(bash(`cat ${f}`), REWRITE, `${what}: a shell dump becomes the redacted view`);
+    assert.equal(read(f), 2, `${what}: the Read tool is blocked`);
+    const view = cli('--redacted', f).stdout;
+    assert.ok(!view.includes(T), `${what}: the view masks the value`);
+    assert.match(view, /<set \(\d+ chars\)>|<private key line>/, `${what}: and says it was there`);
+    const listing = cli('--presence', f).stdout;
+    assert.ok(!listing.includes(T), `${what}: the keyless presence listing prints no value`);
+    if (!/<set>/.test(key)) assert.match(cli('--presence', f, key).stdout, /=set \(\d+ (?:chars|bytes)\)$/m, `${what}: presence reads ${key}`);
+  }
+  // a binary key store is a credential by its kind: the view says so, never the bytes
+  const p12 = path.join(dir, 'cert.p12');
+  fs.writeFileSync(p12, Buffer.from([0x30, 0x82, 0x0a, 0x01, 0x02, 0x01, 0x03, 0x30, 0x82, 0x09, 0xc7]));
+  assert.equal(bash(`cat ${p12}`), REWRITE, 'a PKCS#12 key store: the dump becomes the view');
+  assert.equal(read(p12), 2, 'a PKCS#12 key store: the Read tool is blocked');
+  assert.match(cli('--redacted', p12).stdout, /<binary key store, 11 bytes>/);
+  assert.match(cli('--presence', p12).stdout, /^key store=set \(11 bytes\)$/m);
+  // the redacted view keeps what is not a credential, as written
+  assert.match(cli('--redacted', formats[6][1]).stdout, /^kind: Config$/m);
+  assert.match(cli('--redacted', formats[14][1]).stdout, /<username>someone<\/username>/);
+  assert.match(cli('--redacted', formats[25][1]).stdout, /^-----BEGIN OPENSSH PRIVATE KEY-----$/m);
+  // what must stay allowed: the same formats holding no credential, labels, variable references, a public key
+  const allowed = [
+    ['a plain YAML', w('ok/app.yml', 'name: app\nversion: 1\nauth: true\n')],
+    ['a workflow reading its token from secrets', w('ok/ci.yml', 'jobs:\n  build:\n    env:\n      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n      NPM_TOKEN: $NPM_TOKEN\n')],
+    ['a pom.xml', w('ok/pom.xml', '<?xml version="1.0"?>\n<project>\n  <artifactId>app</artifactId>\n  <version>1.0</version>\n</project>\n')],
+    ['an XML label', w('ok/strings.xml', '<resources>\n  <string name="password">Password</string>\n</resources>\n')],
+    ['a terraform file with a variable', w('ok/main.tf', 'variable "db_password" {\n  type = string\n}\nresource "x" "y" {\n  password = var.db_password\n}\n')],
+    ['a properties file with no credential', w('ok/app.properties', 'server.port=8080\nlogging.level.root=INFO\n')],
+    ['an ssh config', w('ok/.ssh/config', 'Host example\n  HostName example.com\n  IdentityFile ~/.ssh/id_ed25519\n')],
+    ['a public key', w('ok/id_ed25519.pub', `ssh-ed25519 ${B64} someone@host\n`)],
+    ['a Makefile', w('ok/Makefile', 'build: deps\n\tnpm run build\n')],
+    ['a bypass flag is no pass key', w('ok/flags.yml', 'bypass: enabled\ncompass: north\n')],
+  ];
+  for (const [what, f] of allowed) assert.equal(bash(`cat ${f}`), 0, `${what}: stays allowed`);
+});
+
+test('guard-secret-value: the credential files beyond the named formats, their views, and the diffs of them (2.1.6)', () => {
+  // A credential keyed by its HOST (composer's auth.json), a publish profile's `userPWD`, a GnuPG private key, bundler's
+  // host keys, redis's `requirepass`, a Kubernetes Secret among other documents, a PEM body spread over dotenv lines,
+  // and the binary key stores: each is judged, and each view masks what it judged.
+  const dir = fs.mkdtempSync(path.join(TMP, 'formats2-'));
+  const w = (rel, text) => { const p = path.join(dir, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text); return p; };
+  const T = FAKE_TOKEN;
+  const B64 = 'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZWQyNTUxOQ';
+  const judged = [
+    ['composer auth.json, a token keyed by its host', w('composer/auth.json', JSON.stringify({ 'github-oauth': { 'github.com': T } })), 'github-oauth.github.com'],
+    ['composer auth.json, a bearer token', w('composer2/auth.json', JSON.stringify({ bearer: { 'repo.example.org': T } })), 'bearer.repo.example.org'],
+    ['a publish profile', w('site.publishsettings', `<publishData>\n  <publishProfile profileName="site" userName="$site" userPWD="${T}" />\n</publishData>\n`), 'publishData.publishProfile.userPWD'],
+    ['a pubxml password', w('PublishProfiles/prod.pubxml', `<Project>\n  <PropertyGroup>\n    <UserName>deploy</UserName>\n    <Password>${T}</Password>\n  </PropertyGroup>\n</Project>\n`), 'Project.PropertyGroup.Password'],
+    ['a key/value pair spread over lines', w('spread/app.config', `<configuration>\n  <appSettings>\n    <add\n      key="ApiKey"\n      value="${T}" />\n  </appSettings>\n</configuration>\n`), 'ApiKey'],
+    ['a GnuPG private key', w('.gnupg/private-keys-v1.d/ABCD.key', `Created: 20260101T000000\nKey: (private-key (ecc (curve Ed25519)(flags eddsa)\n (q #40${B64}#)\n (d #${T}#)))\n`), 'private key'],
+    ['bundler credentials', w('proj/.bundle/config', `---\nBUNDLE_PATH: "vendor/bundle"\nBUNDLE_GEMS__EXAMPLE__COM: "someone:${T}"\n`), 'BUNDLE_GEMS__EXAMPLE__COM'],
+    ['redis requirepass', w('redis.conf', `port 6379\nrequirepass ${T}\n`), 'requirepass'],
+    ['a Secret after a ConfigMap', w('k8s/all.yaml', `kind: ConfigMap\ndata:\n  mode: fast\n---\nkind: Secret\ndata:\n  api: ${T}\n`), 'data.api'],
+    ['a PEM key across dotenv lines', w('pem/.env', `NAME=app\nAPP_KEY="-----BEGIN RSA PRIVATE KEY-----\n${B64}\n${T}\n-----END RSA PRIVATE KEY-----"\n`), 'APP_KEY'],
+    ['an export line in a .conf', w('svc/agent.conf', `# the agent's environment\nexport API_TOKEN=${T}\n`), 'API_TOKEN'],
+    ['a YAML list under a credential key', w('ci/tokens.yml', `tokens:\n  - ${T}\n`), 'tokens'],
+    ['a YAML flow map', w('ci/db.yml', `db: {user: app, password: ${T}}\n`), 'db.password'],
+  ];
+  for (const [what, f, key] of judged) {
+    assert.equal(bash(`cat ${f}`), REWRITE, `${what}: a shell dump becomes the redacted view`);
+    assert.equal(read(f), 2, `${what}: the Read tool is blocked`);
+    const view = cli('--redacted', f).stdout;
+    assert.ok(!view.includes(T), `${what}: the view masks the value`);
+    assert.match(view, /<set \(\d+ chars\)>|<private key line>/, `${what}: and says it was there`);
+    assert.ok(!cli('--presence', f).stdout.includes(T), `${what}: the keyless presence listing prints no value`);
+    assert.match(cli('--presence', f, key).stdout, /=set \(\d+ chars\)$/m, `${what}: presence reads ${key}`);
+  }
+  assert.match(cli('--redacted', judged[1][1]).stdout, /"repo\.example\.org": "<set \(40 chars\)>"/);
+  assert.match(cli('--redacted', judged[6][1]).stdout, /^BUNDLE_PATH: "vendor\/bundle"$/m, 'a bundler setting that is no host stays');
+  assert.match(cli('--redacted', judged[8][1]).stdout, /^ {2}mode: fast$/m, 'a ConfigMap value stays');
+  for (const store of ['vault.kdbx', 'server.jks', 'client.keystore', '.mylogin.cnf']) {
+    const f = path.join(dir, store);
+    fs.writeFileSync(f, Buffer.from([0x03, 0xd9, 0xa2, 0x9a, 0x67, 0xfb, 0x4b, 0xb5]));
+    assert.equal(bash(`cat ${f}`), REWRITE, `${store}: the dump becomes the view`);
+    assert.match(cli('--redacted', f).stdout, /<binary key store, 8 bytes>/, `${store}: the view names the kind`);
+    assert.match(cli('--presence', f).stdout, /^key store=set \(8 bytes\)$/m, `${store}: presence reads its size`);
+  }
+  // an empty key store holds nothing
+  fs.writeFileSync(path.join(dir, 'empty.p12'), '');
+  assert.equal(bash(`cat ${path.join(dir, 'empty.p12')}`), 0, 'an empty key store: allowed');
+  // what must stay allowed
+  const allowed = [
+    ['a .NET publicKeyToken', w('ok/web.config', '<configuration>\n  <runtime>\n    <dependentAssembly>\n      <assemblyIdentity name="System.Web.Mvc" publicKeyToken="31bf3856ad364e35" culture="neutral" />\n    </dependentAssembly>\n  </runtime>\n</configuration>\n')],
+    ['an OpenAPI security scheme', w('ok/openapi.yaml', 'components:\n  securitySchemes:\n    apiKey:\n      type: apiKey\n      name: X-API-Key\n      in: header\n')],
+    ['workflow and template references', w('ok/refs.yml', 'env:\n  NPM_TOKEN: ${{secrets.NPM_TOKEN}}\n  DB_PASSWORD: "{{.Values.dbPassword}}"\n  API_KEY: "#{ApiKey}"\n  SIGNING_SECRET: $(SigningSecret)\n  STORE_PASSWORD: "@store.password@"\n')],
+    ['a key file path', w('ok/.env', 'SSH_KEY=~/.ssh/id_ed25519\nTLS_KEY=/etc/ssl/private/site.key\n')],
+    ['an nginx config', w('ok/nginx.conf', 'server {\n  listen 443 ssl;\n  ssl_certificate_key /etc/nginx/ssl/site.key;\n  auth_basic "Restricted";\n}\n')],
+    ['a ConfigMap alone', w('ok/cm.yaml', 'kind: ConfigMap\ndata:\n  api: someid\n')],
+    ['a doc naming a password', w('ok/setup.md', '# Setup\n\npassword: hunter2 is what the tutorial uses\n')],
+    ['a certificate', w('ok/site.pem', `-----BEGIN CERTIFICATE-----\n${B64}\n-----END CERTIFICATE-----\n`)],
+    ['a gitconfig with no credential', w('ok/.gitconfig', '[user]\n\tname = someone\n\tsigningkey = ABCDEF0123456789\n[url "git@github.com:"]\n\tinsteadOf = https://github.com/\n')],
+    ['a Procfile', w('ok/Procfile', 'web: node server.js\nworker: node worker.js\n')],
+  ];
+  for (const [what, f] of allowed) assert.equal(bash(`cat ${f}`), 0, `${what}: stays allowed`);
+  // the stream masker a git dump is piped through reads the same formats
+  const diff = [
+    'diff --git a/.m2/settings.xml b/.m2/settings.xml', '+++ b/.m2/settings.xml', `+      <password>${T}</password>`, '+      <username>someone</username>',
+    'diff --git a/NuGet.Config b/NuGet.Config', '+++ b/NuGet.Config', `+      <add key="ClearTextPassword" value="${T}" />`,
+    'diff --git a/.pgpass b/.pgpass', '+++ b/.pgpass', `+localhost:5432:*:postgres:${T}`,
+    'diff --git a/main.tf b/main.tf', '+++ b/main.tf', `+  token = "${T}"`, '+  password = var.db_password',
+    'diff --git a/.kube/config b/.kube/config', '+++ b/.kube/config', `+    client-key-data: ${T}`,
+    'diff --git a/deploy/key.ppk b/deploy/key.ppk', '+++ b/deploy/key.ppk', '+Private-Lines: 1', `+${T}`, `+Private-MAC: ${T}`,
+    'diff --git a/.htpasswd b/.htpasswd', '+++ b/.htpasswd', `+someone:$apr1$abcdefgh$${T}`,
+    'diff --git a/compose.yml b/compose.yml', '+++ b/compose.yml', `+      - POSTGRES_PASSWORD=${T}`,
+  ].join('\n') + '\n';
+  const masked = spawnSync(process.execPath, [HOOK, '--redact-stdin'], { input: diff, encoding: 'utf8' }).stdout;
+  assert.ok(!masked.includes(T), `the stream masker masks every format: ${masked}`);
+  assert.match(masked, /^\+ {6}<username>someone<\/username>$/m, 'and keeps the rest');
+  assert.match(masked, /^\+ {2}password = var\.db_password$/m, 'an HCL expression is no value');
+});
+
+// Replay of 52,732 corpus commands: `git show v1.3.0:<the 1.x installer script> | sed -n ...` went pass -> rewrite,
+// because a headerless stream read every line as HCL and an installer's `    SENTRY_AUTH="oauth"   # ...` (a mode
+// word) took the HCL attribute shape. An HCL attribute is read in an HCL file only.
+test('guard-secret-value: an HCL attribute is read in an HCL file only - a script line in a headerless git show is not (2.1.6)', { skip: process.platform === 'win32' && 'posix git fixture' }, () => {
+  const T = 'Zq8v' + 'Lm3NpX7rT2wKcY9s';
+  const redact = (input) => spawnSync(process.execPath, [HOOK, '--redact-stdin'], { input, encoding: 'utf8' }).stdout;
+  const script = '#!/usr/bin/env bash\nif [ -z "$SENTRY_AUTH" ]; then\n    SENTRY_AUTH="oauth"   # a headerless registration stays headerless\nfi\n';
+  assert.equal(redact(script), script, 'a headerless shell script is printed as written');
+  const tf = `diff --git a/main.tf b/main.tf\n+++ b/main.tf\n+  token = "${T}"   # the registry token\n`;
+  assert.ok(!redact(tf).includes(T), 'an attribute in a file the header names as HCL is still masked');
+  const repo = fs.mkdtempSync(path.join(TMP, 'git-hcl-'));
+  const git = (...a) => spawnSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  git('config', 'user.email', 't@example.com');
+  git('config', 'user.name', 't');
+  fs.writeFileSync(path.join(repo, 'install.sh'), script);
+  git('add', '.');
+  git('commit', '-qm', 'init');
+  const at = (command) => verdict(run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd: repo }, { CLAUDE_PROJECT_DIR: repo }));
+  assert.equal(at('git show HEAD:install.sh | sed -n 1,4p'), 0, 'the probe finds nothing to mask, so nothing is rewritten');
+});
+
 test('guard-secret-value: a glob and a path held in a shell variable resolve to the same file', () => {
   const f = fixtures();
   assert.equal(bash('cat .env*'), REWRITE, 'a glob with no directory');
@@ -479,6 +1112,76 @@ test('guard-secret-value: brace expansion is bounded - a pathological pattern co
   assert.equal(bash(`cat ${ROOT}/${'{a,b}'.repeat(26)}.json`), 0, 'no such file');
   const ms = Date.now() - t0;
   assert.ok(ms < 2000, `took ${ms}ms - the brace recursion is unbounded (measured 4.8s at 24 groups before the cap)`);
+});
+
+test('guard-secret-value: a 40,000-character pathological command is judged in linear work, and one past the work budget is blocked (review M3 of 2.1.6)', () => {
+  // The review measured 8.7s at 1,400 nested parens, growing superlinearly. The budget counts the characters judging
+  // reads, never time, so the same command gets the same verdict on any machine: each shape is judged at 20,000 and
+  // 40,000 characters, and its count (`global.JUDGE_WORK`, printed by a preload at exit) must grow linearly.
+  const home = fs.mkdtempSync(path.join(TMP, 'home-budget-'));
+  fs.mkdirSync(path.join(home, '.aws'));
+  fs.writeFileSync(path.join(home, '.aws', 'credentials'), `[default]\naws_secret_access_key = ${FAKE_TOKEN}\n`);
+  const rep = (u, n) => u.repeat(Math.ceil(n / u.length));
+  const CRED = 'require("path").join(require("os").homedir(),".aws","credentials")';
+  const meter = path.join(TMP, 'judge-work.js');
+  fs.writeFileSync(meter, "if (process.env.JUDGE_WORK_MAX) global.JUDGE_WORK_MAX = Number(process.env.JUDGE_WORK_MAX);\n" +
+    "process.on('exit', () => { if (global.JUDGE_WORK) require('fs').writeSync(2, `\\nJUDGE_WORK ${global.JUDGE_WORK.used} ${global.JUDGE_WORK.max}\\n`); });\n");
+  const once = (command, max = '') => {
+    const t = process.hrtime.bigint();
+    const r = spawnSync(process.execPath, ['-r', meter, HOOK], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'budget' }), encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: '', JUDGE_WORK_MAX: String(max) } });
+    const w = /JUDGE_WORK (\d+) (\d+)/.exec(r.stderr) || [];
+    return { ms: Number(process.hrtime.bigint() - t) / 1e6, verdict: verdict(r), stderr: r.stderr, work: Number(w[1]), max: Number(w[2]) };
+  };
+  // The first two are blocked at the depth cap, before the work count could climb.
+  const shapes = [
+    ['nested parens beside a credential read (the review\'s shape)', (n) => `node -e 'const _=${'('.repeat(n / 2)}0${')'.repeat(n / 2)};console.log(require("fs").readFileSync(${CRED},"utf8"))'`, 2],
+    ['nested parens around the credential path', (n) => `node -e 'console.log(require("fs").readFileSync(${'('.repeat(n / 2)}${CRED}${')'.repeat(n / 2)},"utf8").length)'`, 2],
+    ['nested parens within the cap, repeated', (n) => `node -e 'let n=0${rep('+' + '('.repeat(60) + '1' + ')'.repeat(60), n)};console.log(require("fs").readFileSync(${CRED},"utf8"))'`, REWRITE],
+    ['spaces after a cd', (n) => `cd ~/.aws &&${rep(' ', n)}grep -n -e aws credentials | head -3`, REWRITE],
+    ['spaces inside a path join', (n) => `node -e 'const p=require("path").join(require("os").homedir(),${rep(' ', n)}".aws","credentials");console.log(require("fs").readFileSync(p,"utf8"))'`, REWRITE],
+    ['commas inside a python join', (n) => `python3 -c 'import os;p=os.path.join(os.path.expanduser("~")${rep(',"a"', n)});print(open(p).read())'`, 0],
+    ['a long environment chain', (n) => `node -e 'console.log(${rep('process.env.A+', n)}1)'`, 0],
+    ['many pipeline stages', (n) => rep('cat ~/.aws/credentials | wc -l; ', n), 0],
+  ];
+  let slowest = 0;
+  for (const [what, shape, want] of shapes) {
+    const half = once(shape(20000));
+    const full = once(shape(40000));
+    assert.equal(full.verdict, want, `verdict: ${what}`);
+    assert.ok(full.work < full.max, `${what}: inside the budget (${full.work} of ${full.max})`);
+    assert.ok(full.work <= 2.5 * half.work, `${what}: work grows linearly (${half.work} at 20,000 characters, ${full.work} at 40,000)`);
+    slowest = Math.max(slowest, full.ms);
+  }
+  // One generous sanity bound on the wall clock, 100x the ~50ms a run measures: a shape whose work stays small while its
+  // time does not is a judging step that charges nothing.
+  assert.ok(slowest < 5000, `the slowest run took ${Math.round(slowest)}ms`);
+  // At the real ceiling: ten times the largest shape above costs past JUDGE_MAX_WORK, and is blocked by it, in bounded time.
+  const huge = once(shapes[5][1](400000));
+  assert.equal(huge.verdict, 2, `a 400,000-character shape past the work budget is blocked (${huge.work} of ${huge.max})`);
+  assert.match(huge.stderr, /budget/);
+  assert.ok(huge.ms < 5000, `the blocked run took ${Math.round(huge.ms)}ms`);
+  // Past the work budget: the same count on every run, and a ceiling under it blocks the command, never lets it through.
+  const r = once('ls ~/.aws');
+  assert.equal(r.verdict, 0, 'a listing passes');
+  assert.ok(r.work > 1, `the listing is judged (${r.work})`);
+  assert.equal(once('ls ~/.aws').work, r.work, 'the same command costs the same work on every run');
+  const over = once('ls ~/.aws', r.work - 1);
+  assert.equal(over.verdict, 2, 'a command whose judging passes the work budget is blocked, never let through');
+  assert.match(over.stderr, /budget/);
+});
+
+test('guard-secret-value: a credential read past a long script, 2,000 groups, 20 substitutions or 20 shells is still judged (2.1.6)', () => {
+  // Each count used to stop the reading silently, so the read past it ran unjudged; the work budget bounds the cost now.
+  const home = fs.mkdtempSync(path.join(TMP, 'home-caps-'));
+  fs.mkdirSync(path.join(home, '.aws'));
+  fs.writeFileSync(path.join(home, '.aws', 'credentials'), `[default]\naws_secret_access_key = ${FAKE_TOKEN}\n`);
+  const env = { HOME: home, USERPROFILE: '' };
+  const CRED = 'require("path").join(require("os").homedir(),".aws","credentials")';
+  const read = `console.log(require("fs").readFileSync(${CRED},"utf8"))`;
+  assert.equal(bash(`node -e '${'let a=1;'.repeat(9000)}${read}'`, env), REWRITE, 'past 64KB of script');
+  assert.equal(bash(`node -e '${'f(1);'.repeat(2100)}${read}'`, env), REWRITE, 'past 2,000 groups');
+  assert.equal(bash(`echo ${'"$(date)" '.repeat(21)}"$(cat ~/.aws/credentials)"`, env), REWRITE, 'the 22nd substitution');
+  assert.equal(bash(`${"bash -c 'true'; ".repeat(21)}bash -c 'cat ~/.aws/credentials'`, env), REWRITE, 'the 22nd shell string');
 });
 
 test('guard-secret-value: a redirect to a terminal device is a dump, not a write into a file', () => {
@@ -766,9 +1469,13 @@ test('guard-secret-value: a compound read-only command keeps its other reads - o
     'an unresolvable path in another segment is never kept running either');
   // a heredoc in the same command cannot be spliced (the judged text has its body blanked), so the
   // whole-command rewrite stands - and says which steps went with it
-  const withDoc = rewritten(`cat <<'EOF' > ${path.relative(ROOT, path.join(f.dir, 'notes.md'))}\nplan\nEOF\ncat ${f.secret}`);
+  const withDoc = rewritten(`cat <<'EOF'\nplan\nEOF\ncat ${f.secret}`);
   assert.match(withDoc, /^echo "# credential guard: \d+ other step\(s\)/, 'the unspliceable shape names its drops');
-  assert.match(withDoc, /notes\.md/, 'including the heredoc write that did not run');
+  assert.match(withDoc, /cat <<'EOF'/, 'including the heredoc step that did not run');
+  // 2.1.6 K1: the heredoc's own first line is shell (shell-writes.js's blanker keeps it), so a heredoc WRITTEN to a
+  // file is a changing step like any redirect - blocked, where the whole-line blank let the rewrite drop the write
+  assert.equal(bash(`cat <<'EOF' > ${path.relative(ROOT, path.join(f.dir, 'notes.md'))}\nplan\nEOF\ncat ${f.secret}`), 2,
+    'a heredoc write beside the read blocks rather than silently never running');
   assert.equal(bash(`cat ${f.secret} && npm run build`), 2, 'a CHANGING step still blocks the whole command, as before');
 });
 
@@ -1027,7 +1734,7 @@ test('guard-secret-value: the redacted view names the runnable presence command'
 // ---- I2 (2.1.4 audit): the comparison verbs and git's own dumps ---------------------------------
 // Replayed at develop 23c24b9d: each shape below printed a live credential with exit 0 and no rewrite, while
 // `cat` of the same file was rewritten. `diff .env .env.example` is the ordinary 'which keys am I missing' move,
-// and baseline-security.md itself runs `git add -N . && git diff HEAD` over every security-relevant change.
+// and alfred-security.md itself runs `git add -N . && git diff HEAD` over every security-relevant change.
 const REDACTOR = `node "${HOOK}" --redact-stdin`;
 test('I2: diff, sdiff, cmp, comm and rev of a credential file are judged like cat', () => {
   const f = fixtures();
@@ -1120,7 +1827,7 @@ test('I2: a git dump with nothing to mask runs as written; one the probe cannot 
 });
 
 // Final review IM1: the probe runs at PreToolUse, BEFORE the command's earlier steps. The security-review diff
-// baseline-security.md prescribes (`git add -N . && git diff HEAD`) exists so a brand-new file shows - and the
+// alfred-security.md prescribes (`git add -N . && git diff HEAD`) exists so a brand-new file shows - and the
 // probe saw the tree before `git add -N .`, found nothing, piped nothing, and the run printed the new credential.
 test('IM1: a git dump after a step that changes the tree is piped unprobed - a new untracked credential stays masked', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
   const repo = fs.mkdtempSync(path.join(TMP, 'git-new-'));
@@ -1140,4 +1847,82 @@ test('IM1: a git dump after a step that changes the tree is piped unprobed - a n
     assert.match(out.stdout, /<set \(40 chars\)>/, `${c} shows the masked value`);
     git('reset', '-q');
   }
+});
+
+// ---- 2.1.6 audit, hooks-guards: F1 the tree walk, F2 a tokened remote URL, F3 the stdin-login idiom, F4-F6 ----------
+const at = (cwd, command) => run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd }, { CLAUDE_PROJECT_DIR: cwd });
+const REDACT_GREP = `node "${HOOK}" --redact-stdin --grep`;
+
+test('F1: a recursive search that would print a credential line is piped through the stream redactor; a clean one runs as written', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'walk-'));
+  fs.writeFileSync(path.join(dir, '.env'), 'DB_HOST=localhost\nAPI_KEY=abc123\n');
+  fs.mkdirSync(path.join(dir, 'cred'));
+  fs.writeFileSync(path.join(dir, 'cred', 'conf.yml'), 'db:\n  password: hunter2hunter2\n');
+  fs.mkdirSync(path.join(dir, 'src'));
+  fs.writeFileSync(path.join(dir, 'src', 'app.js'), 'const API_KEY_NAME = 1;\n');
+  const v = (c) => verdict(at(dir, c));
+  assert.equal(updatedCommand(at(dir, 'grep -rn API_KEY .')), `grep -rn API_KEY . | ${REDACT_GREP}`, 'the walk reaches .env, so it is piped');
+  assert.equal(v('grep -rn password cred'), REWRITE, 'a yaml credential under a named directory');
+  assert.equal(v('rg -n password cred'), REWRITE, 'ripgrep walks too');
+  assert.equal(v('grep -rn API_KEY src'), 0, 'a directory whose matches carry no credential runs as written');
+  assert.equal(v('grep -rl API_KEY .'), 0, 'a listing of names prints no value');
+  assert.equal(v('grep -rn API_KEY . | wc -l'), 0, 'a reducer after it prints no value');
+  assert.equal(v('grep -rn API_KEY $UNSET_DIR'), REWRITE, 'a word the shell would expand cannot be probed, so it is piped');
+  assert.ok(updatedCommand(at(dir, 'grep -rn API_KEY .env')).includes('--redacted'), 'a named credential file still takes the redacted view, not the pipe');
+  for (const c of ['grep -rn API_KEY .', 'grep -rn password cred']) {
+    const out = spawnSync('sh', ['-c', updatedCommand(at(dir, c))], { cwd: dir, encoding: 'utf8' });
+    assert.equal(out.status, 0, out.stderr);
+    assert.ok(!/abc123|hunter2hunter2/.test(out.stdout), `${c} printed a credential:\n${out.stdout}`);
+    assert.match(out.stdout, /<set \(\d+ chars\)>/, `${c} shows the masked value`);
+  }
+});
+
+test('F2: a git command that prints a remote URL is piped through the redactor, and a config WRITE is never probed', { skip: process.platform === 'win32' && 'posix git fixture' }, () => {
+  const repo = fs.mkdtempSync(path.join(TMP, 'git-remote-'));
+  const git = (...a) => spawnSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  git('config', 'user.email', 't@example.com');
+  git('config', 'user.name', 'before');
+  git('remote', 'add', 'origin', `https://oauth2:${FAKE_TOKEN}@gitlab.example.com/a/b.git`);
+  for (const c of ['git remote -v', 'git remote get-url origin', 'git remote show origin', 'git config --list', 'git config --get remote.origin.url', 'git config -l']) {
+    const cmd = updatedCommand(at(repo, c));
+    assert.ok(cmd && cmd.endsWith('--redact-stdin'), `${c} -> ${cmd}`);
+    if (c === 'git remote show origin') continue; // it would ask the network - only the rewrite is pinned
+    const out = spawnSync('sh', ['-c', cmd], { cwd: repo, encoding: 'utf8' });
+    assert.ok(!out.stdout.includes(FAKE_TOKEN), `${c} printed the token:\n${out.stdout}`);
+    assert.match(out.stdout, /<set \(40 chars\)>/, `${c} shows the masked password`);
+  }
+  git('remote', 'set-url', 'origin', 'https://gitlab.example.com/a/b.git');
+  assert.equal(verdict(at(repo, 'git remote -v')), 0, 'a plain URL runs as written');
+  assert.equal(verdict(at(repo, 'git config --get remote.origin.url')), 0, 'and so does its config read');
+  assert.equal(verdict(at(repo, 'git config user.name after')), 0, 'a config write is not a print');
+  assert.equal(git('config', 'user.name').stdout.trim(), 'before', 'and the probe never ran it');
+});
+
+test('F3: a credential variable piped into a stdin-reading login is a use, not a print', () => {
+  for (const c of ['echo "$GITHUB_TOKEN" | docker login ghcr.io -u me --password-stdin', 'echo $GITHUB_TOKEN | gh auth login --with-token',
+    'printf %s "$NPM_TOKEN" | docker login registry.example.com -u me --password-stdin'])
+    assert.equal(bash(c), 0, c);
+  assert.equal(bash('echo "$GITHUB_TOKEN" | docker login ghcr.io -u me'), 2, 'with no stdin flag it is still a print beside a changing step');
+  assert.equal(bash('echo $GITHUB_TOKEN'), REWRITE, 'a bare print is unchanged');
+});
+
+test('F4: ${NAME:+word} and ${NAME+word} print no value', () => {
+  assert.equal(bash('echo ${API_KEY:+set}'), 0);
+  assert.equal(bash('echo "${API_KEY+set}"'), 0);
+  assert.equal(bash('echo "${API_KEY:-fallback}"'), REWRITE, 'a default form can print the value');
+  assert.equal(bash('echo ${API_KEY}'), REWRITE);
+});
+
+test('F5: a spread of the whole environment into an object is not a dump of it', () => {
+  assert.equal(bash('node -e "const e={...process.env,X:1};console.log(Object.keys(e).length)"'), 0);
+  assert.equal(bash('node -e "console.log(JSON.stringify(process.env))"'), REWRITE, 'printing it whole still rewrites');
+});
+
+test('F6: a command whose stdout IS a token is a print, used or checked inline it is not', () => {
+  for (const c of ['gh auth token', 'echo "$(gh auth token)"', 'security find-generic-password -s svc -w', 'op read op://vault/item/field', 'az account get-access-token'])
+    assert.equal(bash(c), 2, c);
+  for (const c of ['curl -H "Authorization: Bearer $(gh auth token)" https://api.github.com/user', 'gh auth token | docker login ghcr.io -u me --password-stdin',
+    'gh auth token | wc -c', 'gh auth status', 'T=$(gh auth token); [ -n "$T" ] && echo present'])
+    assert.equal(bash(c), 0, c);
 });

@@ -46,8 +46,8 @@ Projects reference the packages with no version:
 
 ## Rules
 
-- **Never hand-edit the XML - use the CLI.** `dotnet add package <name>` writes both the central `PackageVersion` and the versionless `PackageReference`, and validates the package resolves; hand-editing invites typos and a malformed manifest.
-- Never inline a `Version` on a `PackageReference` while CPM is on - it silently overrides the central version and reintroduces the drift CPM exists to stop.
+- **Add and remove through the CLI.** `dotnet add package <name>` writes both the central `PackageVersion` and the versionless `PackageReference`, and validates the package resolves; hand-adding invites typos and a malformed manifest. A version bump or a transitive pin is a one-line edit of `Directory.Packages.props`.
+- Never inline a `Version` on a `PackageReference` while CPM is on - restore fails (NU1008); use `VersionOverride` for the rare exception, so the drift CPM exists to stop stays visible.
 - Group a related family under one version variable (the OpenTelemetry block above) so a single edit moves them together; mismatched versions inside a family are a common break.
 - CPM blocks floating versions (`1.0.*`) by default (NU1011) - restore stays deterministic; a fixed bracket range like `[8.5.2,9.0.0)` is still allowed, and `CentralPackageFloatingVersionsEnabled` lifts the block if you truly need one.
 

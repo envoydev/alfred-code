@@ -71,20 +71,26 @@ const RECORD = (tool) => `printf '${tool} %s\\n' "$*" >> "$HOME/registry.log"; e
 const REGISTRY = { npm: RECORD('npm'), curl: RECORD('curl') };
 const PW = `@playwright/mcp@${JSON.parse(read('meta/mcp-pins.json')).pins.browser.version}`;
 const servers = (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers;
-const launch = (repo) => ((servers(repo)['browser-chrome'] || {}).args || []).slice(0, 2);
+// The row starts through the project-root anchor (`node -e <ROOT_BOOT> -- checkout`, re-verify 3 S2/S3); the launch is what it runs.
+const launch = (repo) =>
+{
+    const { command, args = [] } = servers(repo)['browser-chrome'] || {};
+    const words = command === 'node' && args[0] === '-e' && args[2] === '--' ? args.slice(4) : [command, ...args];
+    return words.slice(0, 3);
+};
 const asked = (repo) => { try { return fs.readFileSync(path.join(path.dirname(repo), 'registry.log'), 'utf8').split('\n').filter(Boolean); } catch { return []; } };
 
 test('seed install on the MCP copy route writes the server at the release pin and asks no registry', POSIX_ONLY, () =>
 {
     const { result } = seedRun('install', SELECTION, { env: COPY_ROUTE, tools: REGISTRY, inspect: (repo) => ({ launch: launch(repo), asked: asked(repo) }) });
-    assert.deepStrictEqual(result.launch, ['-y', PW]);
+    assert.deepStrictEqual(result.launch, ['npx', '-y', PW]);
     assert.deepStrictEqual(result.asked, [], 'the seed asked a registry for a version');
 });
 
 test('seed install with the registry unreachable writes the same release pin, never a placeholder or @latest', POSIX_ONLY, () =>
 {
     const { result, out } = seedRun('install', SELECTION, { env: COPY_ROUTE, tools: { npm: 'exit 1', curl: 'exit 1' }, inspect: launch });
-    assert.deepStrictEqual(result, ['-y', PW]);
+    assert.deepStrictEqual(result, ['npx', '-y', PW]);
     assert.doesNotMatch(out, /could not resolve|installing unpinned/);
 });
 
@@ -94,10 +100,17 @@ test('seed update over an install still on @latest rewrites the row to the pin',
         'browser-chrome': { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@latest', '--browser', 'chrome'], env: {} },
         'my-browser': { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@latest', '--isolated'], env: {} },
     } };
-    const prepare = (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(old, null, 2) + '\n');
+    // A 2.x install has its ledger (managed-mcp), which is what says the row is the stack's: with no ledger, a project-scope
+    // row that is not the release's exact shape is the user's own (matrix F-OWN) - `my-browser` is not listed, so it stays theirs.
+    const prepare = (repo) =>
+    {
+        fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(old, null, 2) + '\n');
+        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), `sha: abc\nversion: 2.0.0\nmanaged-mcp: browser-chrome=${require('./install/stamp.js').entryHash(old.mcpServers['browser-chrome'])}\n`);
+    };
     const inspect = (repo) => ({ pw: launch(repo), mine: servers(repo)['my-browser'] });
     const { result } = seedRun('update', SELECTION, { env: COPY_ROUTE, tools: REGISTRY, prepare, inspect });
-    assert.deepStrictEqual(result.pw, ['-y', PW]);
+    assert.deepStrictEqual(result.pw, ['npx', '-y', PW]);
     assert.deepStrictEqual(result.mine, old.mcpServers['my-browser'], "the user's own server was touched");
 });
 
@@ -147,7 +160,7 @@ test('M38 every shipped serena index command names the release pin and the cut-o
 // an editing tool that context would then serve unwatched. The shipped YAML records the upstream file's sha256; the
 // refresh keeps the navigation pin where it is until the new release's claude-code.yml hashes the same - i.e. until
 // someone re-diffs the stack's file against it and records the new hash.
-async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = true, lists = {} } = {})
+async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = true, lists = {}, pinsRaw = null, committed = {} } = {})
 {
     const os = require('node:os');
     const { main } = require('./refresh-mcp-pins.js');
@@ -155,13 +168,13 @@ async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = t
     const pinsFile = path.join(dir, 'mcp-pins.json');
     const toolsFile = path.join(dir, 'mcp-tools.json');
     const contextFile = path.join(dir, 'navigation-context.yml');
-    fs.copyFileSync(path.join(ROOT, 'meta', 'mcp-pins.json'), pinsFile);
-    fs.writeFileSync(toolsFile, JSON.stringify({ servers: { memory: { version: 'old', tools: ['kept_tool'] } } }));
+    if (pinsRaw === null) fs.copyFileSync(path.join(ROOT, 'meta', 'mcp-pins.json'), pinsFile); else fs.writeFileSync(pinsFile, pinsRaw);
+    fs.writeFileSync(toolsFile, JSON.stringify({ servers: { memory: { version: 'old', tools: ['kept_tool'] }, ...committed } }));
     const upstream = 'name: claude-code\nexcluded_tools: []\n';
     const sha = require('node:crypto').createHash('sha256').update(upstream).digest('hex');
     fs.writeFileSync(contextFile, `${recorded ? `# upstream: serena-agent 1.7.0 claude-code.yml sha256 ${sha}\n` : ''}name: alfred-code\n`);
     const out = [];
-    const current = JSON.parse(fs.readFileSync(pinsFile, 'utf8')).pins;
+    const current = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'mcp-pins.json'), 'utf8')).pins;
     const rc = await main(['--write'], {
         pinsFile, toolsFile, contextFile, log: (l) => out.push(l), today: () => '2026-10-01',
         npmLatest: () => current.browser.version,
@@ -190,6 +203,17 @@ test('R7 refresh-mcp-pins: a serena bump whose claude-code context changed is re
     assert.strictEqual(same.pins.pins.navigation.version, '9.9.9', 'an unchanged upstream context lets the bump through');
     assert.strictEqual(same.rc, 0);
     assert.strictEqual(same.pins.refreshed, '2026-10-01');
+});
+
+test('R7 refresh-mcp-pins: an unreadable pins file does not skip the serena gate, and a new navigation tool is named', async () =>
+{
+    const changed = await refreshRun({ pinsRaw: '{ not json', context: 'name: claude-code\nexcluded_tools: []\nnew_tool: yes\n' });
+    assert.match(changed.text, /navigation: unpinned -> 9\.9\.9 REFUSED/, 'a bump with no recorded pin went past the gate');
+    assert.strictEqual(changed.rc, 1);
+    assert.strictEqual(changed.pins.pins.navigation.version, null, 'a refused bump with no earlier pin ships unpinned');
+    const grown = await refreshRun({ committed: { navigation: { version: '1.7.0', tools: ['find_symbol'] } }, lists: { navigation: ['find_symbol', 'shiny_editor'] } });
+    assert.match(grown.text, /!! navigation: new tool shiny_editor/);
+    assert.doesNotMatch(grown.text, /!! navigation: new tool find_symbol/);
 });
 
 // M31: the refresh records each pinned server's tool names beside the pins (meta/mcp-tools.json), which lint check 62

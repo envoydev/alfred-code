@@ -19,7 +19,7 @@
 //      numbers can no longer lie);
 //   6. a backticked skill name that resolves to nothing - scanned in skill files,
 //      agents/*.md subagents, AND the base template + claude rules
-//      (CLAUDE.template.md / rules/*.md), where a renamed skill would
+//      (AGENTS.template.md / rules/*.md), where a renamed skill would
 //      otherwise rot silently; tokens there resolve against
 //      skills + plugins + MCPs + agent names + NON_SKILL_TOKENS;
 //   7. a false 'Vendored from' label on a house dotnet-* skill (they are
@@ -80,7 +80,7 @@ const README = path.join(ROOT, 'README.md');
 const CLAUDE_README = README;   // merged into the root README at the repo flatten
 const STACK_HTML = path.join(ROOT, 'docs', 'alfred-code.html');
 const AGENTS_DIR = path.join(ROOT, 'stack', 'agents');
-const CLAUDE_TEMPLATE = path.join(ROOT, 'stack', 'CLAUDE.template.md');
+const AGENTS_TEMPLATE = path.join(ROOT, 'stack', 'AGENTS.template.md');
 const CLAUDE_RULES_DIR = path.join(ROOT, 'stack', 'rules');
 const PLUGIN_MARKETPLACE_URLS = new Set([
     'https://github.com/anthropics/claude-plugins-official',
@@ -93,9 +93,9 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 // Every entry here MUST appear as a backtick in some skill file (check 11 fails
 // any dead entry), so this stays an exact, self-pruning allowlist.
 const NON_SKILL_TOKENS = new Set([
-    // the CLAUDE.template.md rules table's slash-only-capture notation - a marker, not a skill.
+    // the AGENTS.template.md rules table's slash-only-capture notation - a marker, not a skill.
     'user-run',
-    // the commit-gate hook, referenced by name from baseline-git.md and alfred-task-verify-code - a hook, not a skill.
+    // the commit-gate hook, referenced by name from alfred-git.md and alfred-task-verify-code - a hook, not a skill.
     'guard-ungated-commit',
     // the env-gated usage instrument, named by the usage analyzer as the thing to switch on - a hook, not a skill.
     'instrument-tool-usage',
@@ -137,8 +137,8 @@ const NON_SKILL_TOKENS = new Set([
     // the two GENERATED per-project awareness rules (written by the capture skills,
     // never in the installer manifest) - rule file names, not skills; referenced by
     // alfred-task-solve-cross's in-session scoping step.
-    'baseline-project-architecture',
-    'baseline-project-related-context',
+    'alfred-project-architecture',
+    'alfred-project-related-context',
     // built-in Claude Code agent type named in the base template's navigation
     // guidance (don't delegate single-symbol lookups to it) - not a house skill.
     'general-purpose',
@@ -880,6 +880,21 @@ function lintAgentShape(label, description, body)
     return out;
 }
 
+// 15d (2.1.6 M59). A seat with a `## Loop` section runs until a gate turns green, and its prose bound ('5
+// cycles', '3 attempts') is one the model can talk itself past. `maxTurns` is the runtime's backstop: at the
+// cap Claude Code returns the output marked partial (code.claude.com/docs/en/sub-agents). A cap set anywhere
+// must be a positive integer - a quoted or zero value is either ignored or no cap at all.
+function lintAgentTurnCap(label, meta, body)
+{
+    const out = [];
+    const has = Boolean(meta) && Object.prototype.hasOwnProperty.call(meta, 'maxTurns');
+    if (has && !(Number.isInteger(meta.maxTurns) && meta.maxTurns > 0))
+        out.push(`${label} maxTurns must be a positive integer (got ${JSON.stringify(meta.maxTurns)})`);
+    if (!has && /^## Loop(?:[ \t]+\([^)\n]*\))?[ \t]*$/m.test(String(body || '')))
+        out.push(`${label} has a '## Loop' section but no maxTurns - a loop seat carries a runaway cap, twice the most turns measured for its kind`);
+    return out;
+}
+
 // 15c. A SKILL description is capped too, for the skill listing's own budget: Claude Code lists every
 // model-invocable skill's description (with `when_to_use` appended) in every turn, within 1% of the
 // context window - 8,000 chars on a 200K window - and past it drops whole descriptions, the trigger words
@@ -904,7 +919,7 @@ function lintSkillDescription(label, description, whenToUse)
 // nothing at all - the 2026-09-12 agent audits found 10 verifiers plus security-auditor resting the
 // whole done gate on a bare `superpowers:verification-before-completion`, and 4 resolvers resting
 // their whole method on a bare `superpowers:systematic-debugging`. The house form pairs the name
-// with what it CONTAINS in the same sentence, as baseline-quality-gates.md did until R72: 'satisfy
+// with what it CONTAINS in the same sentence, as alfred-quality-gates.md did until R72: 'satisfy
 // `superpowers:verification-before-completion` - build + relevant tests run, output quoted'. A
 // content clause is a dash, colon or parenthetical clause opening straight after the token, or a
 // dash clause closing straight before it. The namespaces come from the installers' own PLUGINS
@@ -938,7 +953,7 @@ function lintPluginCites(file, text, pluginNames)
             if (clauseAfter || clauseBefore) continue;
             findings.push(`${file}:${i + 1} cites \`${m[1]}:${m[2]}\` BARE - the plugin is per-install, so a seat `
                 + `without it reads a name and nothing else. Pair the name with what it contains in the same sentence `
-                + `(the shape baseline-quality-gates.md uses: the name, then ' - ' and the one clause that says what `
+                + `(the shape alfred-quality-gates.md uses: the name, then ' - ' and the one clause that says what `
                 + `the method demands), so the rule still stands where the plugin is absent`);
         }
 
@@ -1261,6 +1276,23 @@ function lintPluginComponents(manifest, listings)
     return findings;
 }
 
+// Check 19: every disable-model-invocation skill carries the "manual" row flag and every user-invocable: false
+// skill the "model-only" one (2.1.6 M128 part 3), and no row claims a state its SKILL.md does not set.
+function lintInvocationFlags(skills, html)
+{
+    const out = [];
+    const pairs = [
+        ['manual', skills.manual, html.houseManual, 'disable-model-invocation'],
+        ['model-only', skills.modelOnly, html.houseModelOnly, 'user-invocable: false'],
+    ];
+    for (const [word, set, rows, field] of pairs)
+    {
+        for (const name of set) if (!rows.has(name)) out.push(`alfred-code.html house row for '${name}' misses the "${word}" invocation flag (its SKILL.md sets ${field})`);
+        for (const name of rows) if (!set.has(name)) out.push(`alfred-code.html marks '${name}' ${word} but its SKILL.md does not set ${field}`);
+    }
+    return out;
+}
+
 function parseStackHtml()
 {
     const html = fs.readFileSync(STACK_HTML, 'utf8');
@@ -1268,6 +1300,8 @@ function parseStackHtml()
         .matchAll(/\["([a-z0-9-]+)","/g)].map(m => m[1]));
     const houseManual = new Set([...html.split('const house = {')[1].split('};')[0]
         .matchAll(/\["([a-z0-9-]+)",[^\n]*"manual"\]/g)].map(m => m[1]));
+    const houseModelOnly = new Set([...html.split('const house = {')[1].split('};')[0]
+        .matchAll(/\["([a-z0-9-]+)",[^\n]*"model-only"\]/g)].map(m => m[1]));
 
     const repoBlock = html.split('const repository = [')[1].split('\n];')[0];
     const repoSkills = new Set();
@@ -1303,7 +1337,7 @@ function parseStackHtml()
     const hooksBlock = (html.split('const hooks = [')[1] ?? '').split('\n];')[0];
     const hooks = new Set([...hooksBlock.matchAll(/\["([a-z0-9-]+)"/g)].map(m => m[1]));
 
-    return { house, houseManual, repoSkills, plugins, mcps, hooks };
+    return { house, houseManual, houseModelOnly, repoSkills, plugins, mcps, hooks };
 }
 
 // Every manifest in `manifests` ({label -> Set}) must hold the same entries as
@@ -1347,8 +1381,10 @@ function main()
 
     // 1. Every skill dir has a SKILL.md whose YAML frontmatter loads cleanly,
     //    names the skill after its directory, and carries a non-empty description.
-    //    Also collects the manual-only set (disable-model-invocation) for check 19.
+    //    Also collects the manual-only set (disable-model-invocation) and the model-only set
+    //    (user-invocable: false) for check 19.
     const manualSkills = new Set();
+    const modelOnlySkills = new Set();
     for (const dir of dirs)
     {
         const skillFile = path.join(SKILLS_DIR, dir, 'SKILL.md');
@@ -1395,6 +1431,11 @@ function main()
         if (meta['disable-model-invocation'] === true)
         {
             manualSkills.add(dir);
+        }
+
+        if (meta['user-invocable'] === false)
+        {
+            modelOnlySkills.add(dir);
         }
     }
 
@@ -1511,7 +1552,7 @@ function main()
     }
 
     const resolvableLower = new Map([...resolvable].map(k => [k.toLowerCase(), k]));
-    const templateFiles = [CLAUDE_TEMPLATE];
+    const templateFiles = [AGENTS_TEMPLATE];
     if (fs.existsSync(CLAUDE_RULES_DIR))
     {
         templateFiles.push(...fs.readdirSync(CLAUDE_RULES_DIR).filter(f => f.endsWith('.md')).map(f => path.join(CLAUDE_RULES_DIR, f)));
@@ -1832,7 +1873,7 @@ function main()
         {
             flag(`${label} description is ${meta.description.length} chars (> ${DESC_LIMIT}) - trim it; every description is always-on context in every install`);
         }
-        if (label.startsWith('agents/')) for (const finding of [...lintAgentDescription(label, meta && meta.description), ...lintAgentShape(label, meta && meta.description, source.slice(fm[0].length))]) flag(finding);
+        if (label.startsWith('agents/')) for (const finding of [...lintAgentDescription(label, meta && meta.description), ...lintAgentShape(label, meta && meta.description, source.slice(fm[0].length)), ...lintAgentTurnCap(label, meta, source.slice(fm[0].length))]) flag(finding);
         if (label.startsWith('skills/')) for (const finding of lintSkillDescription(label, meta && meta.description, meta && meta.when_to_use)) flag(finding);
     }
 
@@ -1928,23 +1969,10 @@ function main()
         }
     }
 
-    // 19. The HTML house-skills invocation column must match frontmatter:
-    //     every disable-model-invocation skill carries the "manual" row flag,
-    //     and no auto-invoked skill claims it.
-    for (const name of manualSkills)
+    // 19. The HTML house-skills invocation column must match frontmatter (lintInvocationFlags).
+    for (const msg of lintInvocationFlags({ manual: manualSkills, modelOnly: modelOnlySkills }, html))
     {
-        if (!html.houseManual.has(name))
-        {
-            flag(`alfred-code.html house row for '${name}' misses the "manual" invocation flag (its SKILL.md sets disable-model-invocation)`);
-        }
-    }
-
-    for (const name of html.houseManual)
-    {
-        if (!manualSkills.has(name))
-        {
-            flag(`alfred-code.html marks '${name}' manual but its SKILL.md does not set disable-model-invocation`);
-        }
+        flag(msg);
     }
 
     // 20. The committed dependency graph (meta/stack-graph.json) must match a
@@ -1970,6 +1998,14 @@ function main()
     else if (pluginManifest.version !== marketplaceVersion)
     {
         flag(`version drift: setup-plugin plugin.json '${pluginManifest.version}' vs .claude-plugin/marketplace.json metadata '${marketplaceVersion}' - the plugin, the marketplace, and the release must carry ONE version`);
+    }
+
+    //     package.json carries the same version: it is the repo's own metadata, and a
+    //     third number would read as a release nobody cut.
+    const repoPackage = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    if (pluginManifest.version && repoPackage.version !== pluginManifest.version)
+    {
+        flag(`version drift: package.json '${repoPackage.version}' vs setup-plugin plugin.json '${pluginManifest.version}' - package.json carries the plugin's version`);
     }
 
     // 42. What the manifest ENUMERATES must equal what is on disk - see lintPluginComponents.
@@ -2044,7 +2080,7 @@ function main()
         }
 
         // 32. House voice in the SHIPPED text: no em-dash. The guided walks and the rules are the
-        //     only voice source on a fresh install (the baseline-interaction rule is not there yet),
+        //     only voice source on a fresh install (the alfred-interaction rule is not there yet),
         //     so a dash that reaches a project teaches the wrong one - measured, a first-run
         //     narration line opened with an em-dash on exactly that surface.
         try
@@ -2147,7 +2183,7 @@ function main()
     }
 
     // 29. The capabilities usage policy carries a content stamp, and the stamp matches the block.
-    //     That block ships VERBATIM into every project's generated baseline-project-agent-capabilities.md,
+    //     That block ships VERBATIM into every project's generated alfred-project-agent-capabilities.md,
     //     and nothing could tell a project carrying a two-release-old copy from a current one - the
     //     generated rule is never re-fetched, only re-generated by a user re-run. The stamp is what
     //     `/alfred-code:validate` compares a project's copy against, so it has to be true here first.
@@ -2276,7 +2312,7 @@ function main()
             }
         }
 
-        scanned.push(['CLAUDE.template.md', CLAUDE_TEMPLATE, null, null]);
+        scanned.push(['AGENTS.template.md', AGENTS_TEMPLATE, null, null]);
 
         for (const [label, file, kind, owner] of scanned)
         {
@@ -2364,7 +2400,7 @@ function main()
     try
     {
         alwaysOn = alwaysOnSurface({ rulesDir: CLAUDE_RULES_DIR, agentsDir: AGENTS_DIR, skillsDir: SKILLS_DIR });
-        // The ceiling sits about 40% over the measured surface (48,977 on 2026-09-29): a budget to
+        // The ceiling sits about 40% over the measured surface (48,977 on 2026-09-30): a budget to
         // DEFEND, not a target to grow into. Raising it is a deliberate edit with a reason, which is the point.
         const ALWAYS_ON_MAX = 70000;
         if (alwaysOn.total > ALWAYS_ON_MAX)
@@ -2729,7 +2765,7 @@ function lintHtmlSeatPins(html, pins)
     {
         const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.readFileSync(path.join(AGENTS_DIR, f), 'utf8'));
         const meta = fm ? yaml.load(fm[1]) || {} : {};
-        return [f.slice(0, -3), { model: meta.model, effort: meta.effort }];
+        return [f.slice(0, -3), { model: meta.model, effort: meta.effort, maxTurns: meta.maxTurns }];
     }));
     const out = [];
     const badges = [...text.matchAll(/class="agent [^"]*">([a-z0-9-]+)<span class="role">[^<]*<\/span><span class="mdl ([a-z]+)">([^<]*)<\/span>/g)];
@@ -2742,11 +2778,15 @@ function lintHtmlSeatPins(html, pins)
         if (shown !== `${pin.model} · ${pin.effort}`) out.push(`${page}: the model badge for '${seat}' reads '${shown}' but its frontmatter pins ${pin.model} · ${pin.effort}`);
         if (tier !== pin.model) out.push(`${page}: the model badge for '${seat}' carries class 'mdl ${tier}' but the seat runs ${pin.model}`);
     }
-    for (const [, seat, model, effort] of text.matchAll(/\["([a-z0-9-]+)", "subagent",[^\n]*?\bPinned (\w+)\/(\w+)/g))
+    for (const [, seat, model, effort, turns] of text.matchAll(/\["([a-z0-9-]+)", "subagent",[^\n]*?\bPinned (\w+)\/(\w+)(?:, max (\d+) turns)?/g))
     {
         const pin = pinOf.get(seat);
-        if (!pin) out.push(`${page}: an inventory row names '${seat}', which is no seat in stack/agents`);
-        else if (model !== pin.model || effort !== pin.effort) out.push(`${page}: the inventory row for '${seat}' says 'Pinned ${model}/${effort}' but its frontmatter pins ${pin.model}/${pin.effort}`);
+        if (!pin) { out.push(`${page}: an inventory row names '${seat}', which is no seat in stack/agents`); continue; }
+        if (model !== pin.model || effort !== pin.effort) out.push(`${page}: the inventory row for '${seat}' says 'Pinned ${model}/${effort}' but its frontmatter pins ${pin.model}/${pin.effort}`);
+        // 2.1.6 M59: the cap is frontmatter too, stated after the pin as ', max <n> turns'.
+        const cap = pin.maxTurns === undefined ? null : String(pin.maxTurns);
+        if (turns === undefined && cap !== null) out.push(`${page}: the inventory row for '${seat}' shows no turn cap but its frontmatter sets maxTurns: ${cap}`);
+        else if (turns !== undefined && turns !== cap) out.push(`${page}: the inventory row for '${seat}' says 'max ${turns} turns' but its frontmatter sets ${cap === null ? 'no maxTurns' : `maxTurns: ${cap}`}`);
     }
     return out;
 }
@@ -2758,7 +2798,7 @@ const RETIRED_TERMS = [
     { name: 'ponytail', re: /\bponytail/i, use: "the house terms are 'build lean' / 'question the need' / 'over-build review'" },
     // 2.0.0 (the plugins audit, 2026-09-26): two third-party picks no install used.
     { name: 'security-guidance', re: /\bsecurity-guidance\b/i, use: 'what took its place is `/security-review`, the security-auditor seat and the commit checkpoint\'s security half' },
-    { name: 'claude-md-management', re: /\bclaude-md-management\b/i, use: 'what took its place is the CLAUDE.md skill in the core (alfred-habits-adjust-claude-md)' },
+    { name: 'claude-md-management', re: /\bclaude-md-management\b/i, use: 'what took its place is the AGENTS.md skill in the core (alfred-habits-adjust-agents-md)' },
 ];
 function lintRetiredNames(files)
 {
@@ -3156,6 +3196,7 @@ module.exports = {
     lintNoPluginBin,
     lintMarketplaceEntries,
     lintAgentPreloads,
+    lintInvocationFlags,
     lintRepoRootReserved,
     lintMarketplaceSchema,
     RESERVED_ROOT_NAMES,
@@ -3178,6 +3219,7 @@ module.exports = {
     lintPluginCites,
     lintAgentDescription,
     lintAgentShape,
+    lintAgentTurnCap,
     lintHtmlSeatPins,
     lintSkillDescription,
     SKILL_DESC_LIMIT,

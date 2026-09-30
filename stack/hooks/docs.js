@@ -22,7 +22,7 @@
 //   prune [branch]                  drop one branch's overlay, or overlays of branches gone for 30 days
 //   lint                            metadata and budget problems (exit 1 when any)
 //   seed-ids                        give every section a stable id (idempotent)
-//   watch <path...>                 which watch.json entries these changed paths hit
+//   watch <path...> [--dir <dir...>]  which watch.json entries these changed paths (and new folders) hit
 //   adr new '<title>' | adr index   allocate the next decision record under decisions/ and rewrite the DECISIONS.md
 //                                   index table from the records (index alone: the table only)
 // Two modes, DECLARED at install time by the docs-versioning env key (VERSIONING_KEYS below): 'git' means the docs
@@ -114,7 +114,8 @@ const norm = (t) => String(t).replace(/\r\n/g, '\n').replace(/\n+$/, '');
 
 const git = (args, { raw = false, ...opts } = {}) => {
   try {
-    const out = execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000, ...opts });
+    // quotePath off: a non-ASCII path arrives as written, not octal-escaped; maxBuffer: ls-files on a big tree passes the 1MB default
+    const out = execFileSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000, maxBuffer: 64 * 1024 * 1024, ...opts });
     return raw ? out : out.trim(); // porcelain rows start with a status column that may be a space
   } catch { return null; }
 };
@@ -582,15 +583,26 @@ function parseRef(ref) {
 const safeRead = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return ''; } };
 const isHistory = (file) => relKey(file).startsWith('history/') || HISTORY.test(safeRead(file).slice(0, 600));
 
+// CommonMark fences: a ~~~ fence and a longer-than-three backtick fence are fences too, and only a closer of the same
+// character and at least the opener's length ends one. The returned test says whether a line ends up inside a fence.
+function fencer() {
+  let open = '';
+  return (line) => {
+    const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (!open) { if (m && !(m[1][0] === '`' && m[2].includes('`'))) open = m[1]; }
+    else if (m && m[1][0] === open[0] && m[1].length >= open.length && !m[2].trim()) open = '';
+    return open !== '';
+  };
+}
+
 // Sections run from one heading (## to ####) to the next heading at the same or a higher level; a section's OWN text
 // stops at its first child heading, trailing blank lines dropped, and that is what the size budget measures.
 function parse(file, raw) {
   const lines = raw.split('\n');
   const heads = [];
-  let fenced = false;
+  const inFence = fencer();
   lines.forEach((line, i) => {
-    if (/^```/.test(line)) fenced = !fenced;
-    if (fenced) return;
+    if (inFence(line)) return;
     const m = /^(#{1,4})\s+(.+?)\s*$/.exec(line);
     if (m && m[1].length >= 2) heads.push({ level: m[1].length, heading: m[2].replace(/[`*]/g, ''), line: i });
   });
@@ -1497,12 +1509,11 @@ function seedIds() {
     const lines = fs.readFileSync(f, 'utf8').split('\n');
     const used = new Set(parse(f, lines.join('\n')).map((s) => s.declaredId).filter(Boolean));
     const out = [];
-    let fenced = false;
+    const inFence = fencer();
     let here = 0;
     for (let i = 0; i < lines.length; i++) {
       out.push(lines[i]);
-      if (/^```/.test(lines[i])) fenced = !fenced;
-      if (fenced) continue;
+      if (inFence(lines[i])) continue;
       const m = /^(#{2,4})\s+(.+?)\s*$/.exec(lines[i]);
       if (!m || ID.test(metaUnder(lines, i))) continue;
       const baseId = slug(m[2].replace(/[`*]/g, '')) || 'section';
@@ -1771,10 +1782,9 @@ function adrIndex() {
   if (!heads.length) {
     // No table yet: it goes above the first section, never inside one.
     let at = lines.length;
-    let fenced = false;
+    const inFence = fencer();
     for (let i = 0; i < lines.length; i++) {
-      if (/^```/.test(lines[i])) fenced = !fenced;
-      if (!fenced && /^##\s/.test(lines[i])) { at = i; break; }
+      if (!inFence(lines[i]) && /^##\s/.test(lines[i])) { at = i; break; }
     }
     const before = lines.slice(0, at);
     while (before.length && before[before.length - 1] === '') before.pop();
@@ -1958,6 +1968,6 @@ const commands = {
 };
 if (commands[cmd]) commands[cmd]();
 else {
-  console.log('usage: docs.js where <path...> | toc <file> | show <file>#<id>... [--conflict [branch]] | files | set <file>#<id> [textfile] [--expect <hash>] | hash <file>#<id> | status | stale | promote <branch>|--merged | prune [branch] | lint | seed-ids | watch <path...> | adr new \'<title>\' | adr index');
+  console.log('usage: docs.js where <path...> | toc <file> | show <file>#<id>... [--conflict [branch]] | files | set <file>#<id> [textfile] [--expect <hash>] | hash <file>#<id> | status | stale | promote <branch>|--merged | prune [branch] | lint | seed-ids | watch <path...> [--dir <dir...>] | adr new \'<title>\' | adr index');
   process.exit(cmd ? 1 : 0);
 }

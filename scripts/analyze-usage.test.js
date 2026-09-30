@@ -981,6 +981,19 @@ test('turn-check advice: a project that already set ALFRED_CODE_TURN_CHECK=1 get
   assert.strictEqual(junk.json.advise, true);
 });
 
+// Matrix F-BOM follow-up (2.1.6, V1): the settings reads behind the advice go through the shared BOM-stripping reader - a BOM'd
+// project settings file that already sets ALFRED_CODE_TURN_CHECK=1 read as no setting, so the row advised what was on.
+test('turn-check advice: a BOM\'d settings file that sets ALFRED_CODE_TURN_CHECK=1 gets no row, and a BOM plus garbage is no setting (V1)', () => {
+  const over = [[doneRow({}), doneRow({}), doneRow({})]];
+  const on = turnCheck(turnCheckCorpus(over, { settings: '\uFEFF' + JSON.stringify({ env: { ALFRED_CODE_TURN_CHECK: '1' } }) }));
+  assert.strictEqual(on.json.on, true);
+  assert.strictEqual(on.json.advise, false);
+  assert.strictEqual(on.text, '');
+  const junk = turnCheck(turnCheckCorpus(over, { settings: '\uFEFF{not json' }));
+  assert.strictEqual(junk.json.on, false);
+  assert.strictEqual(junk.json.advise, true);
+});
+
 // Review finding 9: under the strict hook profile the Stop build check already runs, so there is nothing to
 // advise. A hook reads the profile from its env; a command body's shell has none, so the account settings'
 // pluginConfigs (the only file Claude Code reads it from) answers too.
@@ -1900,13 +1913,23 @@ test('price table: every row is complete, sourced and dated, and the page\'s sta
   const hit = { 'claude-fable-5-1': 0.025, 'claude-mythos-5-1': 0.025, 'claude-opus-5-5': 0.05 };
   const near = (a, b) => Math.abs(a - b) < 1e-9;
   for (const m of t.models) {
-    assert.match(m.id, /^claude-[a-z]+-\d+(?:-\d+)?$/, `${m.id}: a dateless API id`);
+    // the pre-4 generation is named version first (claude-3-5-haiku-20241022, per the deprecations page)
+    assert.match(m.id, /^claude-(?:[a-z]+-\d+(?:-\d+)?|\d+-\d+-[a-z]+)$/, `${m.id}: a dateless API id`);
     for (const k of ['input', 'cache_write_5m', 'cache_write_1h', 'cache_read', 'output']) assert.ok(m[k] > 0, `${m.id}: ${k}`);
     assert.ok(near(m.cache_write_5m, 1.25 * m.input), `${m.id}: 5m write is 1.25x input`);
     assert.ok(near(m.cache_write_1h, 2 * m.input), `${m.id}: 1h write is 2x input`);
     assert.ok(near(m.cache_read, (hit[m.id] || 0.1) * m.input), `${m.id}: cache hit multiplier`);
     if (m.fast) assert.ok(m.fast.input > m.input && m.fast.output > m.output, `${m.id}: fast mode is a premium`);
   }
+  // 2.1.6 K3: every model the stack itself knows a context window for is priced - the shipped
+  // model-windows.json is the stack's other model list, and a model on it with no row here reported every
+  // one of its messages unpriced (claude-sonnet-5-5, on the page since 2026-09-28, had none).
+  const windows = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'model-windows.json'), 'utf8')).models;
+  for (const id of Object.keys(windows)) assert.ok(ids.includes(id), `${id}: in model-windows.json, so it needs a price row`);
+  // ... and the reverse: a priced model with no window row takes the 1M default, above a 200k window's real edge.
+  for (const id of ids) assert.ok(id in windows, `${id}: priced, so it needs a model-windows.json row`);
+  // The page's retired rows are kept too, so an old transcript prices and 'not on the pricing page' stays true.
+  for (const id of ['claude-opus-4', 'claude-sonnet-4', 'claude-3-5-haiku']) assert.ok(ids.includes(id), `${id}: a page row`);
 });
 
 // A synthetic table with round prices, so every dollar below is counted by hand and stays true
@@ -1963,7 +1986,7 @@ test('cost: priced once per message from the folded usage, split by cache TTL, f
   near(out.cost.subagents, 0.066, 'seats');
   near(out.cost.byType['evidence-gatherer'], 0.05, 'seat type');
   const txt = execFileSync('node', [SCRIPT, file, '--prices', prices], { encoding: 'utf8' });
-  assert.match(txt, /cost at list price\s+~\$0\.12 - main \$0\.05, subagents \$0\.07 over 2 seat\(s\) \(evidence-gatherer \$0\.05, aspnet-implementer \$0\.02\); cost-state billed \$0\.20; unpriced: claude-mystery-9 x1 msg; 1 msg\(s\) with no cache-write split, billed at the 5-minute rate; 1 fast-mode msg\(s\)/);
+  assert.match(txt, /cost at list price\s+~\$0\.12 - main \$0\.05, subagents \$0\.07 over 2 seat\(s\) \(evidence-gatherer \$0\.05, aspnet-implementer \$0\.02\); cost-state billed \$0\.20; unpriced: claude-mystery-9 x1 msg - not on the pricing page \(fetched 2026-01-01\); 1 msg\(s\) with no cache-write split, billed at the 5-minute rate; 1 fast-mode msg\(s\)/);
   assert.match(txt, /tests: list price from https:\/\/example\.test\/pricing, fetched 2026-01-01/);
   assert.match(txt, /evidence-gatherer\s+1\s+1\.0k\s+0\s+1\s+\$0\.05/, 'the seat table carries a cost column');
   const md = execFileSync('node', [SCRIPT, file, '--prices', prices, '--report-md'], { encoding: 'utf8' });

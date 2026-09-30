@@ -355,3 +355,28 @@ test('install-runtime: no script outside runtime.js starts an external command d
     assert.ok(files.length > 20, `the sweep read ${files.length} files`);
     assert.deepStrictEqual(hits, [], `a direct start outside runtime.js: ${hits.join(', ')}`);
 });
+
+// Seam review m3: a git repo AT the home directory made `git rev-parse --show-toplevel` answer the home for a project
+// below it that has no `.git` of its own, so the installer wrote the project's `.claude/` (and its stamp) into the home
+// directory while every hook read the launch directory as the project. The home directory is no project's git top.
+test('install-runtime: gitRoot never answers the home directory (seam m3)', () =>
+{
+    const os = require('node:os');
+    const { spawnSync } = require('node:child_process');
+    const { gitRoot } = require('./install/runtime.js');
+    const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gitroot-home-')));
+    try
+    {
+        const init = spawnSync('git', ['init', '-q'], { cwd: home });
+        if (init.status !== 0) return; // no git here: nothing to prove
+        const project = path.join(home, 'work', 'proj');
+        fs.mkdirSync(project, { recursive: true });
+        assert.strictEqual(fs.realpathSync(gitRoot(project)), home, 'with no home given the top is what git says');
+        assert.strictEqual(gitRoot(project, home), '', 'a top that IS the home directory is no project');
+        const inner = path.join(home, 'work', 'own');
+        fs.mkdirSync(inner, { recursive: true });
+        spawnSync('git', ['init', '-q'], { cwd: inner });
+        assert.strictEqual(fs.realpathSync(gitRoot(inner, home)), fs.realpathSync(inner), 'a repo of its own below the home is the top');
+    }
+    finally { fs.rmSync(home, { recursive: true, force: true }); }
+});

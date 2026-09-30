@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 // THE INSTALL AUDIT - a read-only pass over an install's OWN agent config: what the stack or the user
-// wired into this project (.mcp.json, the project settings files, CLAUDE.md), never the project's
+// wired into this project (.mcp.json, the project settings files, AGENTS.md / CLAUDE.md), never the project's
 // code. Advisory: it prints rows, fixes nothing and always exits 0 - /alfred-code:validate pastes
 // the table and asks at most once.
 //
@@ -11,6 +11,7 @@
 // are GENERATED into the marketplace, pinned and timed out there, and the lint holds them. What is
 // left to audit is what a person, or the copy route, put into the project.
 const fs = require('node:fs');
+const { parseJson } = require('./install/json-file.js');
 const path = require('node:path');
 const { SECRET_SHAPE, PEM_PRIVATE } = require('./credential-shapes.js');
 
@@ -29,7 +30,7 @@ function readJson(root, rel, rows)
 {
     const p = path.join(root, rel);
     if (!fs.existsSync(p)) return null;
-    try { return JSON.parse(fs.readFileSync(p, 'utf8')); }
+    try { return parseJson(fs.readFileSync(p, 'utf8')); }
     catch
     {
         rows.push({ severity: 'medium', where: rel, finding: `${rel} is unreadable`, fix: 'repair the JSON by hand' });
@@ -83,6 +84,11 @@ function audit(root)
     for (const [name, server] of Object.entries((mcp && mcp.mcpServers) || {}))
     {
         if (UNPINNED_OK.has(name)) continue;
+        if (server && server.args !== undefined && !Array.isArray(server.args))
+        {
+            rows.push({ severity: 'medium', where: '.mcp.json', finding: `.mcp.json: mcp server ${name} has an unreadable shape (args is not a list)`, fix: 'repair the entry by hand' });
+            continue;
+        }
         const pkg = launchedPackage(server || {});
         if (pkg && !isPinned(pkg))
             rows.push({ severity: 'high', where: '.mcp.json', finding: `mcp server ${name} launches an unpinned package`, fix: 'pin it to a version, or re-run the stack update' });
@@ -100,8 +106,18 @@ function audit(root)
         {
             for (const group of Array.isArray(groups) ? groups : [])
             {
+                if (group && group.hooks !== undefined && !Array.isArray(group.hooks))
+                {
+                    rows.push({ severity: 'medium', where: rel, finding: `${rel}: a hook group has an unreadable shape (hooks is not a list)`, fix: 'repair the wiring by hand' });
+                    continue;
+                }
                 for (const h of (group && group.hooks) || [])
                 {
+                    if (!h || typeof h !== 'object')
+                    {
+                        rows.push({ severity: 'medium', where: rel, finding: `${rel}: a hook entry has an unreadable shape (not an object)`, fix: 'repair the wiring by hand' });
+                        continue;
+                    }
                     if (h.type !== 'command') continue;
                     if (!h.timeout)
                         rows.push({ severity: 'medium', where: rel, finding: `a hook wiring has no timeout (600s default): ${h.command}`, fix: 'add "timeout": 10' });
@@ -111,7 +127,7 @@ function audit(root)
             }
         }
     }
-    for (const rel of ['CLAUDE.md', '.claude/CLAUDE.md', '.mcp.json', '.claude/settings.json'])
+    for (const rel of ['AGENTS.md', '.claude/AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md', '.mcp.json', '.claude/settings.json'])
     {
         const p = path.join(root, rel);
         if (!fs.existsSync(p)) continue;

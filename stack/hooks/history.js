@@ -29,7 +29,7 @@ const MAX_PASS_BYTES = 8 * 1024 * 1024;
 const scrub = (text) => String(text == null ? '' : text).replace(new RegExp(SECRET_SHAPE.source, 'g'), '[redacted]').replace(/\s+/g, ' ').trim().slice(0, TEXT_CAP);
 
 const git = (root, args) => {
-  try { return execFileSync('git', args, { cwd: root, timeout: 3000, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trimEnd(); } // trimEnd, never trim: the first porcelain row starts with a space that is part of its status column
+  try { return execFileSync('git', args, { cwd: root, timeout: 3000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trimEnd(); } // trimEnd, never trim: the first porcelain row starts with a space that is part of its status column
   catch { return ''; }
 };
 

@@ -67,11 +67,11 @@ function project(name, opts = {})
     {
         write(path.join(root, '.claude', 'agents', `${seat}.md`), `---\nname: ${seat}\n---\n\n# ${seat}\n`, -100);
     }
-    write(path.join(root, '.claude', 'rules', 'baseline-navigation.md'), '---\n---\n\n# nav\n', -100);
+    write(path.join(root, '.claude', 'rules', 'alfred-navigation.md'), '---\n---\n\n# nav\n', -100);
     write(path.join(root, '.claude', 'rules', 'markdown-docs.md'), '---\npaths: ["**/*.md"]\n---\n\n# md\n', -100);
     write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { navigation: {}, documentation: {}, memory: {}, 'browser-chrome': {} } }, null, 2), -100);
     write(path.join(root, '.claude', opts.stampName || 'alfred-code.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\n', -100);
-    if (opts.rule !== false) write(path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), opts.rule || '---\ndescription: generated\n---\n\n# This project\'s capabilities\n\nCaptured: 2026-09-01 from 0.2.79@abcdef1\n', 0);
+    if (opts.rule !== false) write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), opts.rule || '---\ndescription: generated\n---\n\n# This project\'s capabilities\n\nCaptured: 2026-09-01 from 0.2.79@abcdef1\n', 0);
     return root;
 }
 
@@ -326,8 +326,18 @@ test('compare: an identical body is `identical - DO NOT WRITE`, a changed one na
     const changed = write(path.join(TMP, 'body-changed.md'), body.replace('aspnet-implementer', 'aspnet-implementer, aspnet-verifier'));
     const differs = run(['--body', changed], { cwd: root });
     assert.equal(differs.status, 0);
-    assert.match(differs.out, /COMPARE:\s+differs - WRITE \.claude\/rules\/baseline-project-agent-capabilities\.md in ONE call/);
+    assert.match(differs.out, /COMPARE:\s+differs - WRITE \.claude\/rules\/alfred-project-agent-capabilities\.md in ONE call/);
     assert.match(differs.out, /sections changed: ## Subagent seats/);
+});
+
+test('compare: a body differing only in its Captured date is identical, so a later day does not rewrite the rule', { skip: posixOnly }, () =>
+{
+    const body = '---\ndescription: generated\n---\n\n# x\n\nCaptured: 2026-09-01 from 0.2.79@abcdef1\n\n## Subagent seats\naspnet-implementer\n';
+    const root = project('compare-captured', { rule: body });
+    const later = write(path.join(TMP, 'body-later.md'), body.replace('2026-09-01', '2026-10-05'));
+    assert.match(run(['--body', later], { cwd: root }).out, /COMPARE:\s+identical - DO NOT WRITE/);
+    const moved = write(path.join(TMP, 'body-later-changed.md'), body.replace('2026-09-01', '2026-10-05').replace('aspnet-implementer', 'aspnet-verifier'));
+    assert.match(run(['--body', moved], { cwd: root }).out, /COMPARE:\s+differs - WRITE/);
 });
 
 test('compare: no rule yet is a write, and trailing-newline drift alone is not', { skip: posixOnly }, () =>
@@ -382,7 +392,7 @@ const validRule = (docsRoot = '.alfred/docs') => [
 test('--verify: a well-formed rule passes, parsed by node and never by PyYAML', { skip: posixOnly }, () =>
 {
     const root = project('verify-ok');
-    const rule = write(path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), validRule());
+    const rule = write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), validRule());
     const { status, out } = run(['--verify', rule], { cwd: root });
     assert.match(out, /frontmatter:\s+ok - parsed by node/);
     assert.match(out, /policy-rev:\s+ok/);
@@ -395,7 +405,7 @@ test('--verify: a well-formed rule passes, parsed by node and never by PyYAML', 
 test('--verify: broken frontmatter exits non-zero and says which line broke it', { skip: posixOnly }, () =>
 {
     const root = project('verify-fm');
-    const rule = write(path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), validRule().replace('---\n\n# This project', '\n\n# This project'));
+    const rule = write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), validRule().replace('---\n\n# This project', '\n\n# This project'));
     const { status, out } = run(['--verify', rule], { cwd: root });
     assert.match(out, /frontmatter:\s+FAIL/);
     assert.match(out, /VERIFY:\s+FAIL/);
@@ -405,7 +415,7 @@ test('--verify: broken frontmatter exits non-zero and says which line broke it',
 test('--verify: a `paths:` key makes the pathless rule a scoped one, and fails', { skip: posixOnly }, () =>
 {
     const root = project('verify-paths');
-    const rule = write(path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), validRule().replace('description: Project', 'paths: ["**/*.md"]\ndescription: Project'));
+    const rule = write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), validRule().replace('description: Project', 'paths: ["**/*.md"]\ndescription: Project'));
     const { status, out } = run(['--verify', rule], { cwd: root });
     assert.match(out, /paths key:\s+FAIL - present/);
     assert.equal(status, 1, out);
@@ -414,7 +424,7 @@ test('--verify: a `paths:` key makes the pathless rule a scoped one, and fails',
 test('--verify: an MCP row with no `first call:` exits non-zero and names the server', { skip: posixOnly }, () =>
 {
     const root = project('verify-mcp');
-    const rule = write(path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md'),
+    const rule = write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'),
         validRule().replace('- `context7` - docs. first call: `ToolSearch select:mcp__plugin_documentation_documentation__query-docs`.', '- `playwright` - browser checks, only for that target.'));
     const { status, out } = run(['--verify', rule], { cwd: root });
     assert.match(out, /mcp rows:\s+FAIL - 1 of 2 carry no 'first call:' - playwright/);
@@ -427,12 +437,12 @@ test('--verify: a hand-edited policy block fails, and a resolved <docs-path> doe
     const root = project('verify-policy');
     const edited = validRule().replace('never to answer a question', 'never to answer questions');
     assert.notStrictEqual(edited, validRule(), 'the fixture edit landed on a sentence the policy block still carries');
-    const ruleA = write(path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), edited);
+    const ruleA = write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), edited);
     assert.match(run(['--verify', ruleA], { cwd: root }).out, /policy block:\s+FAIL - differs from the skill at line \d+/);
 
     // the one slot that is not a slot: `<docs-path>` resolved to this project's docs root
     write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/ai' } }), -100);
-    const ruleB = write(path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), validRule('docs/ai'));
+    const ruleB = write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), validRule('docs/ai'));
     const { status, out } = run(['--verify', ruleB], { cwd: root });
     assert.match(out, /policy block:\s+ok - \d+ lines, verbatim from the skill \(`<docs-path>` resolved to docs\/ai\)/);
     assert.equal(status, 0, out);

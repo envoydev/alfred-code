@@ -92,7 +92,7 @@ one-domain mode    -> cross_domain_light or full_cross_domain
 
 ## Per-mode model, by example
 
-The mode carries the effort; the seat is the same. Angular, three sizes:
+The mode carries the seat set; each seat's effort is its own pin. Angular, three sizes:
 
 ```yaml
 angular_small:   # one component/file, no API/auth/state change
@@ -100,7 +100,7 @@ angular_small:   # one component/file, no API/auth/state change
   model: { implementer: sonnet-medium }
 angular_medium:  # new page, local state or API service, tests, contract unchanged
   flow: [web-angular-solution-designer, web-angular-implementer, web-angular-verifier]
-  model: { designer: opus-high, implementer: sonnet-medium, verifier: sonnet-high }
+  model: { designer: opus-xhigh, implementer: sonnet-medium, verifier: sonnet-xhigh }
 angular_large:   # multiple areas, auth-sensitive UI, complex state, or a cross-domain API change
   flow: [web-angular-solution-designer, web-angular-implementer x N, web-angular-verifier]
   model: { designer: opus-xhigh, implementers: sonnet-medium, verifier: sonnet-xhigh }

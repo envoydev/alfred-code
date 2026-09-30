@@ -23,7 +23,7 @@ Independently deployable, independently scalable services split by bounded conte
 
 - **Synchronous**: REST at the edge and for simple internal calls; gRPC for high-throughput internal hops (the gRPC skill). A dual stack is the norm. Move an internal REST hop to gRPC only when profiling shows serialization or latency is the real bottleneck and you own both ends.
 - **Asynchronous**: an event-driven broker is the default for cross-service state propagation - it decouples and survives partial failure. Design every call for partial failure.
-- The messaging library is a deliberate 2026 decision - MassTransit's v9 went commercial, so pin v8 or default new work to Wolverine (MIT). The broker-messaging skill owns that choice plus the broker wiring, outbox, and sagas.
+- The messaging library is a deliberate decision, not a default - the broker-messaging skill owns that choice plus the broker wiring, outbox, and sagas.
 
 ## Consistency across services
 

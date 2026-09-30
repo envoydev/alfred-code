@@ -12,13 +12,13 @@
    "test-coverage-analyzer"
   ],
   "rules": [
-   "baseline-docs-root",
-   "baseline-git",
-   "baseline-interaction",
-   "baseline-memory",
-   "baseline-navigation",
-   "baseline-quality-gates",
-   "baseline-security",
+   "alfred-docs-root",
+   "alfred-git",
+   "alfred-interaction",
+   "alfred-memory",
+   "alfred-navigation",
+   "alfred-quality-gates",
+   "alfred-security",
    "markdown-docs",
    "skill-authoring"
   ],
@@ -50,7 +50,9 @@
   ],
   "skills": [
    "alfred-habits-clarify",
+   "alfred-habits-code-comments",
    "alfred-habits-done-gate",
+   "alfred-habits-execution-strategy",
    "alfred-habits-plan-writing",
    "alfred-habits-root-cause",
    "alfred-habits-skill-writing",
@@ -65,7 +67,7 @@
    "alfred-habits-commit-checkpoint",
    "alfred-issue-diagnoser",
    "alfred-capture-first-look",
-   "alfred-habits-adjust-claude-md",
+   "alfred-habits-adjust-agents-md",
    "alfred-task-implement",
    "alfred-loop-quality",
    "alfred-task-design",
@@ -87,7 +89,18 @@
   ],
   "agents": [
    "related-project-analyzer"
-  ]
+  ],
+  "notes": {
+   "skills": {
+    "dotnet-hosted-services": "for worker services, BackgroundService hosts and bots - adds the host-lifecycle rules; skip when the project has none",
+    "dotnet-data-access": "for EF Core, NHibernate or Dapper data code - adds query and N+1 rules; skip when the project has no ORM",
+    "alfred-capture-related-projects": "for a project that depends on sibling repos - captures how they connect; skip for a standalone repo",
+    "alfred-capture-stack-usage": "audits this project's sessions for token and tool cost - manual, run when you want the numbers"
+   },
+   "agents": {
+    "related-project-analyzer": "the read-only seat the related-projects capture dispatches per sibling repo - pick it with that skill"
+   }
+  }
  },
  "stacks": {
   "aspnet": {

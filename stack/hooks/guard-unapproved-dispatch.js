@@ -23,7 +23,7 @@
 // Symbol-search rule: a SYMBOL question - who calls this, where is it declared, what
 // type resolves here - is never delegated to a grep-shaped seat (Explore/general-purpose/
 // claude). Those answer by name-match, and the built-in Explore does not even load the
-// project's rules, so baseline-navigation's 'locate with the navigation server, inline' never reaches it
+// project's rules, so alfred-navigation's 'locate with the navigation server, inline' never reaches it
 // (measured: a consuming session handed a C# symbol hunt to Explore and got grep hits).
 // Blocked here regardless of any stamp; a broad multi-file sweep with no symbol question
 // in it still passes.
@@ -147,7 +147,7 @@ if (/^alfred-issue-diagnoser-(?:ci|runtime)$/.test(callerSeat) && houseSeat !== 
 }
 
 // A symbol question routed at a grep-shaped seat: block and send it back to the navigation server.
-// The patterns are the QUESTION shapes baseline-navigation names, not tool words - a
+// The patterns are the QUESTION shapes alfred-navigation names, not tool words - a
 // sweep brief ('map the auth module', 'which files configure logging') carries none.
 // 'reference to' / 'usages of' describe a TEXT sweep as often as a symbol hunt (the 2026-09-28 block was
 // 'every reference to plugin-authoring' over the manifest, the graph and the docs), so they count only when a
@@ -164,9 +164,7 @@ const SYMBOL_QUESTION = new RegExp(
   [
     'who calls\\b',
     'call(?:ers|[- ]sites)\\s+(?:of|for)\\b',
-    'where\\s+(?:is|are)\\s+\\S.{0,60}?\\b(?:defined|declared|implemented|instantiated|registered)\\b',
     '\\b(?:find|locate|get)\\s+(?:the\\s+)?(?:definition|declaration|implementation|signature|body)\\s+of\\b',
-    '\\bwhat\\s+type\\b',
     '\\bimplementations?\\s+of\\b',
     '\\bsubclasses\\s+of\\b',
     '\\b(?:find|locate)\\s+(?:the\\s+)?(?:class|interface|method|function|component|service|enum|record|struct)\\s+`?[A-Za-z_]',
@@ -175,9 +173,14 @@ const SYMBOL_QUESTION = new RegExp(
 );
 // Case-SENSITIVE, unlike the shapes above: under the `i` flag every word reads as CamelCase.
 const REFERENCE_QUESTION = new RegExp(`\\b(?:[Rr]eferences?\\s+[Tt]o|[Uu]sages?\\s+[Oo]f)\\s+(?:[Tt]he\\s+)?(?:${IDENT})`);
+// 'where are the env vars defined' and 'what type of database' are text questions, so these two carry the same identifier
+// test. The identifier may follow a leading capital of its own token (ISocketFactory reads as I + SocketFactory).
+const NAMED = `[\\w$.:]*?(?:${IDENT})`;
+const WHERE_QUESTION = new RegExp(`\\b[Ww]here\\s+(?:is|are|Is|Are)\\s+(?:[Tt]he\\s+)?${NAMED}.{0,60}?\\b(?:defined|declared|implemented|instantiated|registered)\\b`);
+const TYPE_QUESTION = new RegExp(`\\b[Ww]hat\\s+type\\s+(?:(?:is|does|of|are|the|returns?|has|for)\\s+){1,2}${NAMED}`);
 if (SEARCH_SEATS.has(seat)) {
   const brief = `${input.prompt || ''}\n${input.description || ''}`;
-  const asked = brief.match(SYMBOL_QUESTION) || brief.match(REFERENCE_QUESTION);
+  const asked = brief.match(SYMBOL_QUESTION) || brief.match(REFERENCE_QUESTION) || brief.match(WHERE_QUESTION) || brief.match(TYPE_QUESTION);
   if (asked) {
     process.stderr.write(
       `Blocked: dispatch of ${seat} for a SYMBOL question ('${asked[0].trim()}').\n` +
@@ -195,7 +198,7 @@ if (SEARCH_SEATS.has(seat)) {
   }
 }
 
-// The built-in Explore and Plan load none of the project's rules, so baseline-security's
+// The built-in Explore and Plan load none of the project's rules, so alfred-security's
 // untrusted-content sentence never reaches them - and Explore holds Bash and WebFetch. Their
 // dispatch is ANSWERED, never denied: the brief runs with that one sentence appended
 // (hookSpecificOutput.updatedInput; every other field carried over). No permissionDecision,

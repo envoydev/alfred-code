@@ -28,16 +28,18 @@ const path = require('node:path');
 const { readLibrary, validItemName, readSeatsRoute } = require('./install/stamp.js');
 const { stampFile, LEGACY } = require('./install/brand.js');
 const { hashItem, hashBuffer } = require('./install/library.js');
+const { parseJson } = require('./install/json-file.js');
 const { resolveDocsRoot } = require('./install/copy.js');
+const { respellToolNames, bareServersIn } = require('./install/mcp.js');
 
-// baseline-docs-root.md is never byte-identical between the pristine SOURCE (which ships the
+// alfred-docs-root.md is never byte-identical between the pristine SOURCE (which ships the
 // `__DOCS_ROOT__` placeholder) and the PROJECT copy (which the installer substitutes the resolved
 // path into, then hashes) - so a raw source-vs-stamp hash compare would read it as permanently
 // 'behind'. Restore the placeholder's CURRENT resolved value into the source content before
 // hashing, so the normalised comparison matches what an up-to-date copy actually holds.
-const DOCS_ROOT_RULE = 'baseline-docs-root';
+const DOCS_ROOT_RULE = 'alfred-docs-root';
 
-const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch { return {}; } };
+const readJson = (file) => { try { return parseJson(fs.readFileSync(file, 'utf8')) || {}; } catch { return {}; } };
 const newer = (a, b) =>
 {
     const pa = String(a).split('.').map(Number);
@@ -73,18 +75,19 @@ function check({ project, source, configDir })
     // only - no plugin ever carries a rule, so a rule is always a project copy.
     const dirs = { skills: path.join(base, 'skills'), agents: path.join(project, '.claude', 'agents'), rules: path.join(project, '.claude', 'rules') };
     const docsRoot = resolveDocsRoot(project);
-    // The pristine SOURCE hash for one item - normalised for baseline-docs-root.md, whose source
+    // The pristine SOURCE hash for one item - normalised for alfred-docs-root.md, whose source
     // content never matches an up-to-date project copy byte for byte (see the constant's comment).
+    // A single-file item is compared as the installer wrote it: the docs root substituted, and on the full copy
+    // route (no plugin serves the tool names) each server the copy names bare re-spelled in the source too.
     const upHash = (kind, name) =>
     {
         const srcFile = kind === 'skills' ? path.join(source, 'stack', 'skills', name) : path.join(source, 'stack', kind, `${name}.md`);
-        if (kind === 'rules' && name === DOCS_ROOT_RULE)
-        {
-            let body;
-            try { body = fs.readFileSync(srcFile, 'utf8'); } catch { return null; }
-            return hashBuffer(`${name}.md`, Buffer.from(body.split('__DOCS_ROOT__').join(docsRoot)));
-        }
-        return hashItem(srcFile);
+        if (kind === 'skills') return hashItem(srcFile);
+        let body;
+        let copy;
+        try { body = fs.readFileSync(srcFile, 'utf8'); copy = fs.readFileSync(path.join(dirs[kind], `${name}.md`), 'utf8'); } catch { return hashItem(srcFile); }
+        if (kind === 'rules' && name === DOCS_ROOT_RULE) body = body.split('__DOCS_ROOT__').join(docsRoot);
+        return hashBuffer(`${name}.md`, Buffer.from(respellToolNames(body, bareServersIn(copy))));
     };
     // A stamp is a project file a clone can fill with any text: a name is validated BEFORE it is joined,
     // hashed or printed (the N1 rule, stamp.js validItemName) - an invalid one is only counted, readLibrary's

@@ -339,3 +339,27 @@ test('plugins: a namespace no registry lists is scored in every session that use
   assert.deepStrictEqual(row(inv.plugins, 'obs-plug').how, ['namespaced skill/command x2']);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// Matrix F-BOM follow-up (2.1.6, V1): the enabled-plugin read of a config dir's settings goes through the shared
+// BOM-stripping reader - a BOM'd file read as no plugins, so the inventory lost every plugin's skills.
+test('plugin layers: a BOM\'d settings.json still names the enabled plugins, and a BOM plus garbage names none (V1)', () => {
+  const { loadPluginLayers } = require('./analyze-usage.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-layers-bom-'));
+  const saved = process.env.CLAUDE_CONFIG_DIR;
+  try {
+    process.env.CLAUDE_CONFIG_DIR = dir;
+    const skill = path.join(dir, 'plugins', 'cache', 'mk', 'demo', '1.0.0', 'skills', 'demo-skill', 'SKILL.md');
+    fs.mkdirSync(path.dirname(skill), { recursive: true });
+    fs.writeFileSync(skill, '---\nname: demo-skill\ndescription: a demo\n---\nBody.\n');
+    const settings = path.join(dir, 'settings.json');
+    fs.writeFileSync(settings, `\uFEFF${JSON.stringify({ enabledPlugins: { 'demo@mk': true } })}`);
+    const got = loadPluginLayers(dir);
+    assert.deepStrictEqual(got.from, ['demo@mk']);
+    assert.deepStrictEqual(got.skills.map((s) => s.name), ['demo-skill']);
+    fs.writeFileSync(settings, '\uFEFF{"enabledPlugins": ');
+    assert.deepStrictEqual(loadPluginLayers(dir).from, [], 'BOM plus garbage names none');
+  } finally {
+    if (saved === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = saved;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

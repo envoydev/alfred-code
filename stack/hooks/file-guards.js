@@ -37,7 +37,8 @@ const TOOL_ORDER = ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep'
 const MATCHER = TOOL_ORDER.join('|');
 const PROTECTIVE = new Set(['guard-secret-value']);
 // The order the guards RUN in: the protective ones first, so a guard stalling past the budget can never drop their
-// verdict (a timed-out hook lets the call through - the 2.1.5 hooks review), the rest in the manifest's order. The
+// verdict (a timed-out PreToolUse hook's output is discarded and the call answered with a timeout error -
+// code.claude.com/docs/en/agent-sdk/hooks, 'Hook timeout'), the rest in the manifest's order. The
 // answer still lists every message in the manifest's order.
 const RUN_ORDER = [...NAMES.filter((g) => PROTECTIVE.has(g)), ...NAMES.filter((g) => !PROTECTIVE.has(g))];
 const matcherFor = (names) => TOOL_ORDER.filter((t) => names.some((g) => TOOLS.get(g).includes(t))).join('|');

@@ -102,7 +102,7 @@ test('setup: no memory level, the init prerequisites deferred, and a close that 
     const close = setup.slice(setup.indexOf('## Post-check'));
     assert.match(flat(close), /\*\*Restart, then `\/alfred-code:init`\*\*/);
     assert.match(flat(close), /Nothing is pending on this run - these are yours to run when you choose\./);
-    assert.ok(!/## \d+\. CLAUDE\.md/.test(setup) && /## 6\. CLAUDE\.md/.test(cmdBody('init')), 'the CLAUDE.md fill moved to init');
+    assert.ok(!/## \d+\. AGENTS\.md/.test(setup) && /## 6\. AGENTS\.md/.test(cmdBody('init')), 'the AGENTS.md fill moved to init');
 });
 
 // R77: the ENABLE question pre-selects the LIVE state (plan-out) over an install - never the
@@ -123,13 +123,13 @@ test('the walk: the playwright ENABLE pre-selection reads plan-out\'s live state
     assert.match(cmdBody('configure'), /--installed-only --print-plan --plan-out "\$TMP\/installed\.json"/, 'the DELTA walk reads the plan configure wrote');
 });
 
-test('init: the bootstrap order - read, plan, one machine ask, memory, captures inline, CLAUDE.md; no sentry', () => {
+test('init: the bootstrap order - read, plan, one machine ask, memory, captures inline, AGENTS.md; no sentry', () => {
     const init = cmdBody('init');
     // M6: a fresh uv lands off the shell's PATH - step 4's import needs uvx, so it gets the prefix too.
     assert.match(flat(init), /EVERY later command of this run carries that directory first - `PATH="<dir>:\$PATH" <command>` - step 3's `after uv` commands and step 4's `memory\.js init` alike/);
     // The hook count, stated once per table: the manifest ships eighteen.
     assert.match(flat(walkBody()), /Recommended \(FRESH\) = all eighteen:.*\*\*None\*\* names all eighteen/);
-    const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Memory', '## 5. Captures', '## 6. CLAUDE.md'].map((h) => init.indexOf(h));
+    const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Memory', '## 5. Captures', '## 6. AGENTS.md'].map((h) => init.indexOf(h));
     assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), `the six steps in order: ${order}`);
     assert.match(init, /install\/alfred-code\.js" update --source "\$TMP\/repo" --installed-only --print-plan --plan-out "\$TMP\/installed\.json"/);
     assert.match(init, /scripts\/init-plan\.js" --installed "\$TMP\/installed\.json" --root \./);
@@ -262,7 +262,7 @@ test('the aspnet seed closes to its .NET vertical', () => {
 
 test('the always block seeds the cross-cutting agents and baseline rules', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
-    for (const r of ['baseline-interaction', 'baseline-security', 'baseline-git'])
+    for (const r of ['alfred-interaction', 'alfred-security', 'alfred-git'])
     {
         assert.ok((recs.always.rules || []).includes(r), `always seeds ${r}`);
     }
@@ -386,8 +386,8 @@ test('the always MCP baseline is stack-neutral - the browser is seeded or proven
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
     const evidence = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'evidence.json'), 'utf8'));
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-manifest.json'), 'utf8'));
-    // memory joined navigation and documentation as a locked server (baseline-memory.md names it, the same
-    // way baseline-navigation locks the navigation server in) - the shared-memory-mcp feature made it required.
+    // memory joined navigation and documentation as a locked server (alfred-memory.md names it, the same
+    // way alfred-navigation locks the navigation server in) - the shared-memory-mcp feature made it required.
     assert.deepStrictEqual([...(recs.always.mcps || [])].sort(), ['documentation', 'memory', 'navigation'], 'only the three rules lock in');
     assert.ok(!(recs.always.mcps || []).includes('browser'), 'the browser server must not install into every project');
     assert.ok(!((recs.general || {}).mcps || []).includes('memory'), 'memory left the general (addable, never seeded) list once it locked in');
@@ -648,7 +648,7 @@ test('the guided walks hold the layer order, the step banners, and the cascade m
     // The shared walk text carries the same machinery for both modes.
     const walk = flat(walkBody());
     assert.match(walk, /rules -> agents -> skills -> hooks -> MCPs -> plugins/, 'the walk holds the layer order');
-    assert.match(walk, /DELTA: `node stack-select\.js --selection raw\.json --dropped dropped\.json`/, 'the DELTA walk drives the drop cascade');
+    assert.match(walk, /DELTA: `node "\$TMP\/repo\/scripts\/stack-select\.js" --selection raw\.json --dropped dropped\.json`/, 'the DELTA walk drives the drop cascade');
     assert.match(walk, /An `orphan: <category> <name> - <why> \(dropped\); nothing kept still needs it` line/, 'the DELTA walk consumes the orphan: lines');
     assert.match(walk, /a layer turn missing the fenced table is invalid/, 'the table-before-question rule rides the walk');
 });

@@ -85,7 +85,7 @@ on appears in both installer twins; every retired name is in the matching `RETIR
 
 **2c. Negative-control receipt.** The discipline 'every new test must be shown to FAIL against the
 pre-change code' is currently session practice and **written down nowhere** (verified: no tracked
-file mentions it). Put it in `baseline-quality-gates.md` and mechanize the cheap half - a test file
+file mentions it). Put it in `alfred-quality-gates.md` and mechanize the cheap half - a test file
 touched in a commit whose gate receipt names no negative control is flagged.
 
 ## Tier 3 - drift probes (cadence, not CI)

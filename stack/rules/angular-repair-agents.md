@@ -20,6 +20,8 @@ outside its bounded scope by design; a running `alfred-task-solve-cross` flow ha
 contract protocol - otherwise name `/alfred-task-solve-cross` as the user's next step (the skill is
 manual-only; a model Skill call is blocked). Never edit the contract to go green.
 
+A return with no closing status line - a seat stopped at its `maxTurns` (Claude Code marks the output partial from 2.1.246) or killed mid-task - is never DONE and never resumed as-is, since a resume hands a runaway a fresh budget: re-dispatch it ONCE with a scoped resume brief (its handoff note and partial diff name what landed); a second status-less return from that task goes to the user as BLOCKED.
+
 A seat with no Agent tool (an implementer or a resolver) does NOT delegate - this routing policy is
 the orchestrator's; run your own bounded fix loop and report the red per your cap. A read-only seat
 (a verifier, a designer, a reviewer, an analyzer) has no Edit to loop with: it reports the red and

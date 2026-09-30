@@ -251,3 +251,20 @@ test('CLI: every flag the walks pass still parses', () => {
     assert.strictEqual(code, 0, lines.join('\n'));
     assert.deepStrictEqual(fs.readdirSync(dir), [], 'no --apply, nothing written');
 });
+
+// Matrix F-BOM follow-up (2.1.6, V1): the target-file and catalog readers go through the shared BOM-stripping reader,
+// keeping their answers for a missing, blank and garbage file.
+test('readDoc / readJson: a BOM\'d file reads like one without, and a BOM plus garbage stays bad (V1)', () => {
+    const { readDoc, readJson } = require('./plugin-settings.js');
+    const dir = fs.mkdtempSync(path.join(ROOT, 'bom-'));
+    const put = (name, text) => { const f = path.join(dir, name); fs.writeFileSync(f, text); return f; };
+    assert.deepStrictEqual(readDoc(put('ok.json', '\uFEFF{"a": 1}')), { exists: true, doc: { a: 1 } });
+    assert.deepStrictEqual(readDoc(put('plain.json', '{"a": 1}')), { exists: true, doc: { a: 1 } });
+    assert.deepStrictEqual(readDoc(put('bad.json', '\uFEFF{"a": ')), { exists: true, bad: true });
+    assert.deepStrictEqual(readDoc(put('arr.json', '\uFEFF[1]')), { exists: true, bad: true });
+    assert.deepStrictEqual(readDoc(put('blank.json', '\uFEFF  \n')), { exists: true, doc: {} });
+    assert.deepStrictEqual(readDoc(path.join(dir, 'absent.json')), { exists: false, doc: null });
+    assert.deepStrictEqual(readJson(put('cat.json', '\uFEFF{"plugins": []}')), { plugins: [] });
+    assert.strictEqual(readJson(put('cat-bad.json', '\uFEFF{"plugins": ')), null);
+    assert.strictEqual(readJson(path.join(dir, 'absent.json')), null);
+});

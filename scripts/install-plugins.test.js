@@ -825,7 +825,7 @@ test('seed update --installed-only: an older install keeps its optional plugins,
     const prepare = (repo) =>
     {
         fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
-        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
+        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'alfred-interaction.md'), 'x\n');
         fs.writeFileSync(path.join(repo, '.claude', 'claude-stack.stamp'), 'version: 1.3.0\nsha: 0000000\n'); // legacy-name
     };
     const { calls } = seedRun('update', 'skill markdown-style\n', { plugins: listing, args: ['--installed-only'], prepare });
@@ -854,7 +854,7 @@ test('seed update --installed-only: a claude-hud the user disabled stays off, wi
     const prepare = (repo) =>
     {
         fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
-        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
+        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'alfred-interaction.md'), 'x\n');
     };
     for (const args of [['--installed-only'], ['--installed-only', '--drop', 'plugin claude-hud']])
     {
@@ -890,7 +890,7 @@ const spListing = (scope) => JSON.stringify([
 const spPrepare = (version) => (repo) =>
 {
     fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
-    fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
+    fs.writeFileSync(path.join(repo, '.claude', 'rules', 'alfred-interaction.md'), 'x\n');
     fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), `version: ${version}\nsha: 0000000\n`);
 };
 
@@ -1243,7 +1243,7 @@ test('seed plan --installed-only: a stale disabled flag on the core leaves out n
     const prepare = (repo) =>
     {
         fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
-        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
+        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'alfred-interaction.md'), 'x\n');
         fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ permissions: { deny: ['Agent(alfred-code:code-style-analyzer)'] } }));
     };
     const { result } = seedRun('update', 'skill markdown-style\n', {
@@ -1379,7 +1379,7 @@ test('seed update --installed-only: a 1.x install under its old key keeps its pi
     const prepare = (repo) =>
     {
         fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
-        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
+        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'alfred-interaction.md'), 'x\n');
         fs.writeFileSync(path.join(repo, '.claude', 'claude-stack.stamp'), // legacy-name
             `version: 1.3.0\nsha: 0000000\npicked-skills: markdown-style@${OLD}\npicked-agents: security-auditor@${OLD}\n`);
         fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({
@@ -1424,7 +1424,7 @@ test('seed update --installed-only: a pre-11b hooks-copy-route install - its pic
         const claude = path.join(repo, '.claude');
         fs.mkdirSync(path.join(claude, 'rules'), { recursive: true });
         fs.mkdirSync(path.join(claude, 'hooks'), { recursive: true });
-        fs.writeFileSync(path.join(claude, 'rules', 'baseline-interaction.md'), 'x\n');
+        fs.writeFileSync(path.join(claude, 'rules', 'alfred-interaction.md'), 'x\n');
         for (const f of [...(off ? [] : ['hook-prelude']), ...kept]) fs.writeFileSync(path.join(claude, 'hooks', `${f}.js`), '// x\n');
         fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), `version: 1.3.0\nsha: 0000000\nshipped-hooks: ${shipped.join(',')}\n${route ? `hooks-route: ${route}\n` : ''}`);
         fs.writeFileSync(path.join(claude, 'settings.json'), JSON.stringify({
@@ -1473,7 +1473,7 @@ test('seed update --installed-only: an unwired stack hook under a stamp with no 
             const claude = path.join(repo, '.claude');
             fs.mkdirSync(path.join(claude, 'rules'), { recursive: true });
             fs.mkdirSync(path.join(claude, 'hooks'), { recursive: true });
-            fs.writeFileSync(path.join(claude, 'rules', 'baseline-interaction.md'), 'x\n');
+            fs.writeFileSync(path.join(claude, 'rules', 'alfred-interaction.md'), 'x\n');
             fs.writeFileSync(path.join(claude, 'hooks', 'guard-secret-value.js'), '// x\n');
             fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), `version: 1.3.0\nsha: 0000000\nshipped-hooks: ${shipped.join(',')}\n`);
             fs.writeFileSync(path.join(claude, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } }, null, 2));
@@ -1624,7 +1624,7 @@ test('seed update --installed-only: a 1.x plugin-route project with a leftover p
         const claude = path.join(repo, '.claude');
         fs.mkdirSync(path.join(claude, 'rules'), { recursive: true });
         fs.mkdirSync(path.join(claude, 'hooks'), { recursive: true });
-        fs.writeFileSync(path.join(claude, 'rules', 'baseline-interaction.md'), 'x\n');
+        fs.writeFileSync(path.join(claude, 'rules', 'alfred-interaction.md'), 'x\n');
         for (const f of ['hook-prelude.js', 'fresh-session.js', 'docs.js', 'memory.js']) fs.writeFileSync(path.join(claude, 'hooks', f), '// x\n');
         fs.writeFileSync(path.join(claude, 'claude-stack.stamp'), `version: 1.3.0\nsha: 0000000\nshipped-hooks: ${shipped.join(',')}\n`); // legacy-name
         fs.writeFileSync(path.join(claude, 'settings.json'), JSON.stringify({ env: { CLAUDE_STACK_HOOKS_OFF: off } }, null, 2)); // legacy-name

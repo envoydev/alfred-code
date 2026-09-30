@@ -1,6 +1,6 @@
 ---
 name: repo-audit-claude-md
-description: Use when auditing and fixing the shipped CLAUDE.md template (stack/CLAUDE.template.md) toward grade A - facts, hub, rule links, tokens. Not for rule files.
+description: Use when auditing and fixing the shipped CLAUDE.md template (stack/AGENTS.template.md) toward grade A - facts, hub, rule links, tokens. Not for rule files.
 disable-model-invocation: true
 ---
 
@@ -30,11 +30,11 @@ catalog.
 
 - The user types `/repo-audit-claude-md` to audit the shipped template, or a CLAUDE.md they name.
 - Not for the rule files (`/repo-audit-rules`), and not for filling or improving one project's
-  CLAUDE.md - that is the stack's CLAUDE.md skill (`stack/skills/alfred-habits-adjust-claude-md/`).
+  CLAUDE.md - that is the stack's CLAUDE.md skill (`stack/skills/alfred-habits-adjust-agents-md/`).
 
 ## Parameters
 
-- `CLAUDE_MD_PATHS`: the CLAUDE.md files in scope (default: `./stack/CLAUDE.template.md`, the template the installer deploys into target projects). The repository's root `./CLAUDE.md` is the stack repo's own working file: it may be read for context but must never be scored or edited by this audit.
+- `CLAUDE_MD_PATHS`: the CLAUDE.md files in scope (default: `./stack/AGENTS.template.md`, the template the installer deploys into target projects). The repository's root `./CLAUDE.md` is the stack repo's own working file: it may be read for context but must never be scored or edited by this audit.
 - `RULES_ROOT`: folder containing rule files (default: `./stack/rules`). Required, because the hub dimension is scored against the real rules catalog and you may only link rules that exist.
 - `SKILLS_ROOT`: folder containing skills (default: `./stack/skills`). Required, for detecting procedures that belong in skills and validating skill pointers.
 - `AGENTS_ROOT`: folder containing subagents (default: `./stack/agents`). Used to detect content an agent already owns.
@@ -44,7 +44,7 @@ catalog.
 
 Scope boundary: when this audit runs alongside `repo-audit-rules`, it still reads all rule files to build the linkage, conflict, and duplication maps, but edits only CLAUDE.md files; rule-file edits belong to that audit. When run alone, misplaced content may be moved into new rule files, and any rule file this audit creates must meet the bar of `repo-audit-rules`.
 
-Template mode: when the audited file is a template that installers copy into target projects (here `./stack/CLAUDE.template.md`, seeded as `.claude/CLAUDE.md` into a project with none by `node scripts/install/alfred-code.js`), two rubric points change meaning. Fact verification becomes placeholder verification: project-specific facts such as build commands, paths, and stack names must be clearly marked placeholders in one consistent format that the installer or the adopting team fills in, and no concrete fact that would be wrong in a target project may be baked into the template; a hardcoded project-specific command scores as a wrong fact. Rule linkage is validated against the deployed layout: links in the template use the paths that exist after installation (`.claude/rules/...`), while existence is checked against the source catalog at `./stack/rules`. Read `meta/stack-manifest.json` and the installer's own `scripts/install/` modules to confirm the source-to-deployed mapping instead of assuming it. The template's authoring outline and keep-out list say WHAT a filled CLAUDE.md holds; the fill itself - create, or improve with every change shown first - is `stack/skills/alfred-habits-adjust-claude-md/`, and `scripts/claude-md-check.js` is the verdict that fill closes on. An audit finding about how files get filled lands in that skill, not in the template.
+Template mode: when the audited file is a template that installers copy into target projects (here `./stack/AGENTS.template.md`, seeded as `.claude/CLAUDE.md` into a project with none by `node scripts/install/alfred-code.js`), two rubric points change meaning. Fact verification becomes placeholder verification: project-specific facts such as build commands, paths, and stack names must be clearly marked placeholders in one consistent format that the installer or the adopting team fills in, and no concrete fact that would be wrong in a target project may be baked into the template; a hardcoded project-specific command scores as a wrong fact. Rule linkage is validated against the deployed layout: links in the template use the paths that exist after installation (`.claude/rules/...`), while existence is checked against the source catalog at `./stack/rules`. Read `meta/stack-manifest.json` and the installer's own `scripts/install/` modules to confirm the source-to-deployed mapping instead of assuming it. The template's authoring outline and keep-out list say WHAT a filled CLAUDE.md holds; the fill itself - create, or improve with every change shown first - is `stack/skills/alfred-habits-adjust-agents-md/`, and `scripts/claude-md-check.js` is the verdict that fill closes on. An audit finding about how files get filled lands in that skill, not in the template.
 
 ## How the run goes
 

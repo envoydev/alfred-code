@@ -6,9 +6,9 @@ description: "House baseline - quality gates: code quality, the done-claim gate,
 
 ## Code quality
 
-- No dead code, commented-out blocks, or `TODO` without a ticket ref.
+- No dead code (unfinished work goes in the report).
 - Unit tests for new code; integration tests for DB / external service.
-- Inline comments explain *why*, not *what*.
+- Comments: none by default; a why only when the code cannot say it, in one short line. Never a ticket id, change narration, commented-out code or an unasked `TODO`; the project's comment conventions and language win; a comment your change made stale is updated or deleted. Writing a doc comment (XML docs, TSDoc, JSDoc, docstring) - the FIRST action is the `alfred-habits-code-comments` Skill call, before it is written.
 
 ## Definition of done
 

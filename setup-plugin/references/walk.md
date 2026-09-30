@@ -43,10 +43,10 @@ grep at 258k context to confirm this shape):
 
 1. **Recompute quietly** - one call, output redirected to `$TMP/select.out` and parsed from there,
    never pasted.
-   - FRESH: fold the previous layer's picks into `raw.json`, run `node stack-select.js --selection
+   - FRESH: fold the previous layer's picks into `raw.json`, run `node "$TMP/repo/scripts/stack-select.js" --selection
      raw.json`, and read the category-tagged `required: <category> <name> - <why>` lines. The
      current layer's lines are its **locked** set.
-   - DELTA: `node stack-select.js --selection raw.json --dropped dropped.json`. Two line kinds drive
+   - DELTA: `node "$TMP/repo/scripts/stack-select.js" --selection raw.json --dropped dropped.json`. Two line kinds drive
      the step. A `required: <category> <name> - <why>` naming a DROPPED item blocks the drop -
      something kept still depends on it: show the reason; the user keeps it, or also drops the
      dependents the reason names (their layer is reopened if already walked, and its own cascade
@@ -57,8 +57,8 @@ grep at 258k context to confirm this shape):
 2. **Show ONE numbered table of the layer's ENTIRE catalog** - every item the release ships,
    installed or not, so nothing is ever offered later or out-of-band. The TOOL renders it, never
    you, and it is **never redirected to a file** - the table comes back IN the tool result:
-   - FRESH: `node stack-select.js --selection raw.json --table <layer> --recs <recommendations.json> --stacks <confirmed,csv> --found "$TMP/found.json"`
-   - DELTA: `node stack-select.js --selection raw.json --table <layer> --installed "$TMP/installed.json" --dropped dropped.json --found "$TMP/found.json"`
+   - FRESH: `node "$TMP/repo/scripts/stack-select.js" --selection raw.json --table <layer> --recs <recommendations.json> --stacks <confirmed,csv> --found "$TMP/found.json"`
+   - DELTA: `node "$TMP/repo/scripts/stack-select.js" --selection raw.json --table <layer> --installed "$TMP/installed.json" --dropped dropped.json --found "$TMP/found.json"`
      (omit `--found` when no evidence scan ran). A not-installed row whose reason column carries a
      matched signal is the project telling you it uses what the install lacks - an informed add
      candidate, never an auto-add.
@@ -131,7 +131,7 @@ grep at 258k context to confirm this shape):
      'Pick' on either opens the same grouped multi-select call for that side. When the recompute
      printed `orphan:` lines the drop question leads with **Drop the k orphaned rows** (Recommended,
      each orphan's cascade origin in the description) instead of 'Drop nothing'. A drop naming a
-     LOCKED row is not refused: run `node stack-select.js --selection raw.json --dependents
+     LOCKED row is not refused: run `node "$TMP/repo/scripts/stack-select.js" --selection raw.json --dependents
      <category>:<name>` (output to `$TMP/select.out`) and present what holds it - 'csharp is
      required by rule csharp-conventions, rule dotnet-repair-agents + 4 agents; drop them ALL
      together, or keep it?' On consent, the item AND its dependents fold into `dropped.json` -
@@ -210,7 +210,7 @@ Step 2: multi-select questions of 4 trios each ('Add trios 1/2', 'Add trios 2/2'
 ## Skills
 
 The full release catalog in one table - the generator `alfred-capture-*` / `alfred-loop-*` skills and every other house
-skill included, so THIS is the only place skills are ever chosen; later steps (CLAUDE.md included)
+skill included, so THIS is the only place skills are ever chosen; later steps (AGENTS.md included)
 never offer skill additions. Locked = every skill the kept rules and agents REQUIRE (rule
 attachments and `skills:` frontmatter preloads), each with the reason naming its dependent. A skill
 an agent's body merely names as a conditional load ('load X when...') is NOT an edge and never
@@ -222,7 +222,7 @@ what the table already shows.
 
 FRESH: the only skills seed is `always.skills` - the house METHOD set: the cross-task orchestrator
 plus the manual `alfred-task-*` / `alfred-capture-*` / `alfred-loop-*` / `alfred-issue-*` skills (the inline execution twins, the capture/loop generators,
-the upgrade planner) and the seven `alfred-habits-*` habits, all pre-selected `recommended` - LOCKED
+the upgrade planner) and the `alfred-habits-*` habits, all pre-selected `recommended` - LOCKED
 on every route (copies since 2.1.0, adopted by every update, so a drop logs 'not applied'; a project
 that wants one quiet sets it `off` or `name-only` in `skillOverrides`, which keeps the copy); their need is
 'the stack is installed', not anything a project manifest could prove, which is why they are seeded
@@ -246,7 +246,7 @@ Skills: install the marked rows? The unmarked ones are mostly other stacks' skil
 
 Step 2: two multi-select questions of 4 stack sets each (the wpf, winforms, console and
 windows-service sets; ionic-angular, data, browser-extension, js), plus one question on the
-`general` opt-ins (dotnet-hosted-services, dotnet-data-access, alfred-capture-related-projects, plugin-authoring).
+`general` opt-ins (dotnet-hosted-services, dotnet-data-access, alfred-capture-related-projects, alfred-capture-stack-usage).
 
 
 ## Hooks
@@ -275,8 +275,8 @@ not hold.
 FRESH ask:
 
 ```ask
-Hooks: keep all 17 on? The build check and the instrumenter stay inert until switched on.
-- 'Keep all 17 on (Recommended)' - the guards, the monitor, three session engines, the build check, the instrumenter
+Hooks: keep all 18 on? The build check and the instrumenter stay inert until switched on.
+- 'Keep all 18 on (Recommended)' - the guards, the monitor, three session engines, the build check, the instrumenter
 - 'Pick hooks to switch off' - next call lists them in groups of 4
 - 'Guards only' - switch off the monitor, the session engines, the build check and the instrumenter
 - 'None - every hook off' - writes `hook none`
@@ -290,9 +290,9 @@ neighbouring one so no question has fewer than 2 options.
 
 ## MCPs
 
-Locked = the servers the kept selection pulls: `navigation` via `baseline-navigation`, `documentation` via
-`baseline-quality-gates`, `memory` via `baseline-memory` - required in every install, the same way
-The navigation server and the documentation server are. `browser` is droppable: seeded on the web Angular, Ionic
+Locked = the servers the kept selection pulls: `navigation` via `alfred-navigation`, `documentation` via
+`alfred-quality-gates`, `memory` via `alfred-memory` - required in every install, the same way
+the navigation server and the documentation server are. `browser` is droppable: seeded on the web Angular, Ionic
 and browser-extension stacks, pre-selected elsewhere only when the evidence scan matched it, and in
 DELTA preserved across runs like any direct pick (`raw.json` carries it). The two desktop servers drive
 the machine's own apps, so the table offers each on its own OS only and neither on Linux:
@@ -376,7 +376,7 @@ and is never offered as a pick (a `claude-hud` the user disabled stays off: upda
 back on). The other two (`csharp-lsp`, `typescript-lsp`) are OPTIONAL: pre-selected only as
 `evidence` (the scan matched a `*.csproj` / `*.sln`, a `tsconfig.json` or `typescript` dependency -
 the reason names the manifest) or as a confirmed stack's LSP seed, and otherwise `-`, freely
-addable. 2.0.0 retired `claude-md-management` and `security-guidance` (the core's CLAUDE.md skill and
+addable. 2.0.0 retired `claude-md-management` and `security-guidance` (the core's AGENTS.md skill and
 `/security-review` cover them): neither is a row, and `/alfred-code:update` removes each from this
 project's scope with the line that adds it back.
 

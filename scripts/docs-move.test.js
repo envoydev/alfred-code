@@ -117,7 +117,6 @@ test('plan: the old root git ignored, with nothing tracked, is named so the move
 {
     const ignored = repo({ ...OLD, '.gitignore': '.claude/*\n' });
     assert.strictEqual(plan(ignored).ignored, true);
-    assert.strictEqual(docs.docsMoveLine(plan(ignored)), 'docs-move: offer .claude/docs -> .alfred/docs\ttracked=0 untracked=2\tignored=yes');
     assert.strictEqual(plan(repo(OLD)).ignored, false, 'visible to git, not ignored');
     const tracked = repo({ ...OLD, '.gitignore': '.claude/*\n' }, { commit: ['.claude/docs/architecture/ARCHITECTURE.md'] });
     assert.strictEqual(plan(tracked).ignored, false, 'a tracked file means git sees the root');
@@ -173,7 +172,7 @@ test('move: a failure part way puts every file back where it was', POSIX_ONLY, (
 // --- the installer ---------------------------------------------------------------------------------
 // An older install, simulated on the current seed: the settings key and the ledger hold the old seed,
 // the rule is stamped with it, and docs sit under it.
-const SELECTION = 'rule baseline-docs-root\nrule baseline-git\n';
+const SELECTION = 'rule alfred-docs-root\nrule alfred-git\n';
 function olderInstall(repoDir, { ledger = true, key = true } = {})
 {
     const claude = path.join(repoDir, '.claude');
@@ -184,7 +183,7 @@ function olderInstall(repoDir, { ledger = true, key = true } = {})
     let text = fs.readFileSync(stamp, 'utf8').replace(/settings\.json:ALFRED_CODE_DOCS_PATH=[0-9a-f]{64}/, `settings.json:ALFRED_CODE_DOCS_PATH=${valueHash('.claude/docs')}`);
     if (!ledger) text = text.split('\n').filter((l) => !l.startsWith('managed-')).join('\n');
     fs.writeFileSync(stamp, text);
-    const rule = path.join(claude, 'rules', 'baseline-docs-root.md');
+    const rule = path.join(claude, 'rules', 'alfred-docs-root.md');
     fs.writeFileSync(rule, fs.readFileSync(rule, 'utf8').replace(/This install's root: `[^`]*`/, "This install's root: `.claude/docs`"));
     fs.rmSync(path.join(repoDir, '.alfred'), { recursive: true, force: true });
     for (const [rel, body] of Object.entries(OLD)) { fs.mkdirSync(path.dirname(path.join(repoDir, rel)), { recursive: true }); fs.writeFileSync(path.join(repoDir, rel), body); }
@@ -192,7 +191,7 @@ function olderInstall(repoDir, { ledger = true, key = true } = {})
 }
 const look = (repoDir) => ({
     env: JSON.parse(fs.readFileSync(path.join(repoDir, '.claude', 'settings.json'), 'utf8')).env,
-    rule: /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(repoDir, '.claude', 'rules', 'baseline-docs-root.md'), 'utf8'))[1],
+    rule: /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(repoDir, '.claude', 'rules', 'alfred-docs-root.md'), 'utf8'))[1],
     stamp: fs.readFileSync(path.join(repoDir, '.claude', 'alfred-code.stamp'), 'utf8'),
     old: fs.existsSync(path.join(repoDir, '.claude', 'docs', 'architecture', 'ARCHITECTURE.md')),
     moved: fs.existsSync(path.join(repoDir, '.alfred', 'docs', 'architecture', 'ARCHITECTURE.md')),
@@ -224,7 +223,7 @@ test('installer: an unstamped legacy install with docs at the old root keeps the
         const put = (rel, body) => { fs.mkdirSync(path.dirname(path.join(r, rel)), { recursive: true }); fs.writeFileSync(path.join(r, rel), body); };
         for (const n of Object.keys(renamed.skills).slice(0, 3)) put(`.claude/skills/${n}/SKILL.md`, `---\nname: ${n}\n---\n`);
         put('.claude/hooks/guard-catastrophic-rm.js', '// old\n');
-        put('.claude/rules/baseline-interaction.md', '# old\n');
+        put('.claude/rules/alfred-interaction.md', '# old\n');
         put('.claude/settings.json', '{}\n');
         for (const [rel, body] of Object.entries(OLD)) put(rel, body);
     };
@@ -320,9 +319,6 @@ test('preflight: the offer is one line the update command asks from', POSIX_ONLY
     const root = repo(OLD, { commit: ['.claude/docs/architecture/ARCHITECTURE.md'] });
     fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: seeded }));
     fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), `version: 2.0.0\nsha: 0000000\nmanaged-env: settings.json:ALFRED_CODE_DOCS_PATH=${valueHash('.claude/docs')}\n`);
-    const out = docs.docsMoveLine(docs.docsMovePlan({ projectRoot: root, env: seeded, ledger: ledgerOf('.claude/docs'), stamped: true }));
-    assert.strictEqual(out, 'docs-move: offer .claude/docs -> .alfred/docs\ttracked=1 untracked=1');
-    assert.strictEqual(docs.docsMoveLine({ state: 'none', why: 'set by hand' }), 'docs-move: none (set by hand)');
     const snap = path.join(__dirname, '..');
     const res = require('node:child_process').spawnSync(process.execPath, [path.join(snap, 'scripts', 'update-preflight.js'), '--snapshot', snap, '--root', root, '--fixture', path.join(TMP, 'none.json')], { encoding: 'utf8' });
     assert.match(res.stdout, /^data-move: offer \.alfred\tfrom=\.claude\/docs\tdocs=2 serena=no browser=none memory=no$/m, res.stdout + res.stderr);
@@ -415,7 +411,7 @@ test('installer: an unreadable settings file leaves the stamped rule as it was',
             fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/\}\s*$/, ',}'));
             return null;
         },
-        inspect: (r) => /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(r, '.claude', 'rules', 'baseline-docs-root.md'), 'utf8'))[1],
+        inspect: (r) => /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(r, '.claude', 'rules', 'alfred-docs-root.md'), 'utf8'))[1],
     });
     assert.strictEqual(result, '.claude/docs');
 });

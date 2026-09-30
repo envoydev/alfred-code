@@ -22,6 +22,7 @@
 //   - VERSIONS ARE READ BACK. `claude plugin update` reports success whether or not anything moved.
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseJson } = require('./json-file.js');
 const { BRAND, LEGACY, alwaysOn, marketOf, marketKey } = require('./brand.js');
 const { envOf } = require('../../stack/hooks/hook-prelude.js');
 
@@ -89,7 +90,7 @@ function committedRoutesAt({ env = {}, claudeDir, scope = 'project', log = () =>
 {
     const envIn = (name) =>
     {
-        try { const e = JSON.parse(fs.readFileSync(path.join(claudeDir, name), 'utf8')).env; return e && typeof e === 'object' && !Array.isArray(e) ? e : {}; }
+        try { const e = parseJson(fs.readFileSync(path.join(claudeDir, name), 'utf8')).env; return e && typeof e === 'object' && !Array.isArray(e) ? e : {}; }
         catch { return {}; }
     };
     return committedRoutes({ env, shared: envIn('settings.json'), personal: envIn('settings.local.json'), scope, log });

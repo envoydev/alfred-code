@@ -9,6 +9,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 
 const mcp = require('./install/mcp.js');
 
@@ -179,6 +180,40 @@ test('verify-user: a drifted registration is re-registered through the CLI and c
         reregister: () => { fixed = true; },
     });
     assert.deepStrictEqual(out.repaired, ['navigation']);
+});
+
+// Re-verify 3 S2: an anchored row carries its own `-e` and `--` after the command (`node -e <ROOT_BOOT> -- checkout ...`);
+// only the leading env pairs and separator are missing from `mcp get`'s lines, so the rest compares as it is.
+test('verify-user: a project-anchored registration as `mcp get` prints it is NOT drift', () =>
+{
+    const boot = require('../stack/hooks/memory.js').ROOT_BOOT;
+    const expect = mcp.expectShape({ name: 'navigation', args: '-e SERENA_HOME=.alfred/serena/home -- node -e @ROOT_BOOT@ -- checkout uvx --from serena-agent==1.7.0 serena', tokens: { ROOT_BOOT: boot } });
+    const out = mcp.verifyUser({
+        expects: [expect], scope: 'local',
+        getShape: () => `navigation:\n  Type: stdio\n  Command: node\n  Args: -e ${boot} -- checkout uvx --from serena-agent==1.7.0 serena\n`,
+        reregister: () => assert.fail('an anchored registration read as drifted'),
+    });
+    assert.deepStrictEqual(out.repaired, []);
+});
+
+// Re-verify 3 S8: the pass runs at local scope too, and every line names the run's scope.
+test('verify-user: a local-scope repair is labelled local scope', () =>
+{
+    const lines = [];
+    let fixed = false;
+    const out = mcp.verifyUser({
+        expects: [mcp.expectShape({ name: 'navigation', args: '-- uvx --from serena@1.0 serena' })], scope: 'local',
+        getShape: () => (fixed ? 'Type: stdio\n Command: uvx\n Args: --from serena@1.0 serena\n' : 'Type: stdio\n Command: uvx\n Args: --from serena@0.0.1 serena\n'),
+        reregister: () => { fixed = true; }, log: (l) => lines.push(l),
+    });
+    assert.deepStrictEqual(out.repaired, ['navigation']);
+    assert.deepStrictEqual(lines, ['  mcp shape drifted at local scope: navigation - re-registering', '  mcp repaired: navigation (local scope)']);
+    const notes = [];
+    mcp.verifyUser({
+        expects: [mcp.expectShape({ name: 'navigation', args: '-- uvx --from serena@1.0 serena' })], scope: 'local',
+        getShape: () => 'Type: stdio\n Command: uvx\n Args: --from serena@0.0.1 serena\n', reregister: () => {}, note: (m) => notes.push(m),
+    });
+    assert.match(notes.join('\n'), /current shape at local scope \(claude mcp remove navigation -s local\)/);
 });
 
 test('verify-user: a registration the retry cannot fix is REPORTED, never silently accepted', () =>
@@ -528,6 +563,10 @@ const accountMcp = (work, servers, projects = {}) =>
 };
 const STACK_SERENA = { type: 'stdio', command: 'uvx', args: ['--python', '3.13', '--from', 'serena-agent@1.6.0', 'serena', 'start-mcp-server', '--project-from-cwd'], env: {} };
 const STACK_PW = (e) => ({ type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@0.0.80', '--browser', e], env: {} });
+// Re-verify 3 S4 / S7: with no ledger row at a scope, a local- or user-scope registration is the stack's only in the release
+// template's exact shape - here a v2.1.5 one, an older pin and no anchor.
+const STACK_PW_EXACT = (e) => ({ type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@0.0.80', '--browser', e,
+    '--user-data-dir', `\${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/${e}`, '--output-dir', `\${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/${e}/output`, '--no-webmcp'], env: {} });
 
 for (const [route, env] of [['plugin', {}], ['copy', COPY_ENV]])
 {
@@ -1158,9 +1197,10 @@ for (const scope of ['user', 'local'])
         const settingsFile = scope === 'local' ? 'settings.local.json' : 'settings.json';
         const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nmcp browser\n', {
             env: MCP_COPY_ENV,
-            // A-M2: a user-scope removal takes only a registration of the stack's own shape, so the
-            // earlier webkit registration is laid out in the account file.
-            prepare: (repo, work) => { if (scope === 'user') accountMcp(work, { 'browser-webkit': STACK_PW('webkit') }); },
+            // A-M2 / re-verify 3 S4: a local- or user-scope removal takes only a registration the stack vouches for - with no
+            // ledger, the release template's exact shape - so the earlier webkit registration is laid out in the account file.
+            prepare: (repo, work) => (scope === 'user' ? accountMcp(work, { 'browser-webkit': STACK_PW_EXACT('webkit') })
+                : accountMcp(work, {}, { [fs.realpathSync(repo)]: { mcpServers: { 'browser-webkit': STACK_PW_EXACT('webkit') } } })),
             args: [['--scope', scope, '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'], ['--scope', scope, '--installed-only']],
             each: (repo) => ({ ...pwState(repo, settingsFile), calls: stepCalls(repo) }),
         });
@@ -1185,8 +1225,10 @@ test('seed update (MCP copy route, user scope): a later enable answer registers 
 {
     const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp browser\n', {
         env: MCP_COPY_ENV,
-        // A-M2: the registrations the account holds, of the stack's own shape - the stub writes none.
-        prepare: (repo, work) => accountMcp(work, { 'browser-chrome': STACK_PW('chrome'), 'browser-webkit': STACK_PW('webkit') }),
+        // A-M2 / re-verify 3 S4: the registrations the account holds, in the stack's exact shape; the stand-in CLI keeps the
+        // account file as the real one does, so the ledger each run writes is the one the next reads.
+        account: true,
+        prepare: (repo, work) => accountMcp(work, { 'browser-chrome': STACK_PW_EXACT('chrome'), 'browser-webkit': STACK_PW_EXACT('webkit') }),
         args: [['--scope', 'user', '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'],
             ['--scope', 'user', '--installed-only', '--playwright-enabled', 'all'], ['--scope', 'user', '--installed-only', '--playwright-enabled', 'chrome']],
         each: (repo) => ({ ...pwState(repo), calls: stepCalls(repo) }),
@@ -1198,6 +1240,109 @@ test('seed update (MCP copy route, user scope): a later enable answer registers 
     assert.ok(off.calls.includes('mcp remove browser-webkit -s user'), off.calls.join('\n'));
     assert.deepStrictEqual(off.stamp, ['browser-engines: chrome,webkit', 'browser-enabled: chrome']);
 });
+
+// Re-verify 4 T1 (aMcpUser, bMcpUser): the MCP copy route with the core on registers each browser engine at USER scope, so
+// its row starts in every project on the account. ROOT_BOOT required the first .claude/hooks/memory.js above the launch
+// directory - a file planted above another repo was executed from it - and in a repo never set up the row refused where
+// base started it. The row is started as Claude Code would, from each place, with a recording npx.
+test('seed install (MCP copy route, user scope): the browser row runs no engine planted above a repo or a folder with no git, and starts in a repo never set up at its top level', POSIX_ONLY, () =>
+{
+    const { result } = seedRun('install', 'skill markdown-style\nmcp browser\n', {
+        env: MCP_COPY_ENV, account: true,
+        args: ['--scope', 'user', '--playwright-browsers', 'chrome', '--playwright-enabled', 'chrome'],
+        inspect: (repo) =>
+        {
+            const work = path.dirname(repo);
+            const row = JSON.parse(fs.readFileSync(path.join(work, 'acct', '.claude.json'), 'utf8')).mcpServers['browser-chrome'];
+            const mark = path.join(work, 'planted-ran');
+            const plant = (dir) =>
+            {
+                fs.mkdirSync(path.join(dir, '.claude', 'hooks'), { recursive: true });
+                fs.writeFileSync(path.join(dir, '.claude', 'hooks', 'memory.js'), `require('fs').writeFileSync(${JSON.stringify(mark)}, __filename); module.exports = { runAtRoot() {} };\n`);
+            };
+            const bin = path.join(work, 'anchor-bin');
+            const record = path.join(work, 'anchor.json');
+            fs.mkdirSync(bin, { recursive: true });
+            fs.writeFileSync(path.join(bin, 'npx'), `#!/usr/bin/env node\nconst a=process.argv.slice(2);require('fs').writeFileSync(${JSON.stringify(record)}, JSON.stringify({ cwd: process.cwd(), profile: require('path').resolve(a[a.indexOf('--user-data-dir')+1]) }));\n`, { mode: 0o755 });
+            const shared = path.join(work, 'shared');
+            plant(shared);
+            const clone = path.join(shared, 'clone');
+            fs.mkdirSync(path.join(clone, '.git'), { recursive: true });
+            fs.mkdirSync(path.join(clone, 'sub'));
+            const plain = path.join(work, 'shared2', 'plain', 'sub');
+            plant(path.join(work, 'shared2'));
+            fs.mkdirSync(plain, { recursive: true });
+            const fresh = path.join(work, 'fresh');
+            fs.mkdirSync(path.join(fresh, '.git'), { recursive: true });
+            fs.mkdirSync(path.join(fresh, 'pkg'));
+            // Another machine's home, outside every folder above: the walk stops at a home, which must not be what saves it.
+            const home = path.join(work, 'elsewhere-home');
+            fs.mkdirSync(home);
+            const started = [path.join(clone, 'sub'), plain, path.join(fresh, 'pkg')].map((cwd) =>
+            {
+                fs.rmSync(record, { force: true });
+                execFileSync(row.command, row.args, { cwd, env: { PATH: bin + path.delimiter + process.env.PATH, HOME: home, ...(row.env || {}) }, stdio: 'pipe' });
+                return JSON.parse(fs.readFileSync(record, 'utf8'));
+            });
+            return { row, started, ran: fs.existsSync(mark), roots: [clone, plain, fresh].map((d) => fs.realpathSync(d)) };
+        },
+    });
+    assert.strictEqual(result.row.args[0], '-e', `the user-scope row is not anchored: ${JSON.stringify(result.row)}`);
+    assert.strictEqual(result.ran, false, 'a planted engine ran');
+    assert.deepStrictEqual(result.started.map((s) => s.cwd), result.roots);
+    assert.deepStrictEqual(result.started.map((s) => s.profile), result.roots.map((r) => path.join(r, '.alfred', 'browser', 'chrome')));
+});
+
+// Re-verify 4 T7 (xOwnNew, s7b): a pick whose name the user's own local- or user-scope registration holds is kept as
+// theirs and named - and it stays a pick in the install's record (the stamp's `mcp-held:` line), so the first update after
+// the user removes theirs registers the stack's own. Before, the update read the MCP picks back from the ledger alone, which
+// never listed it: the server left the install with no line naming it.
+for (const scope of ['local', 'user'])
+{
+    test(`seed install + update (MCP copy route, ${scope} scope): a pick the user's own registration holds stays in the record, and the update after it frees registers the stack's (re-verify 4 T7)`, POSIX_ONLY, () =>
+    {
+        const OWN = { type: 'stdio', command: 'uvx', args: ['macos-mcp', 'serve', '--my-flag'], env: { MY_OWN: '1' } };
+        const acct = (work) => path.join(work, 'acct', '.claude.json');
+        const holderOf = (data, repo) => (scope === 'user' ? data : ((data.projects || {})[fs.realpathSync(repo)] || {}));
+        const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+            env: { ...MCP_COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, account: true,
+            prepare: (repo, work) => (scope === 'user' ? accountMcp(work, { 'macos-desktop': OWN })
+                : accountMcp(work, {}, { [fs.realpathSync(repo)]: { mcpServers: { 'macos-desktop': OWN } } })),
+            args: [['--scope', scope], ['--scope', scope, '--installed-only'], ['--scope', scope, '--installed-only']],
+            each: (repo, i) =>
+            {
+                const work = path.dirname(repo);
+                const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
+                const data = JSON.parse(fs.readFileSync(acct(work), 'utf8'));
+                const step = {
+                    reg: (holderOf(data, repo).mcpServers || {})['macos-desktop'],
+                    held: (/^mcp-held: *(.*)$/m.exec(stamp) || [])[1] ?? null,
+                    ledgered: new RegExp(`\\b${scope}:macos-desktop=`).test((/^managed-mcp:(.*)$/m.exec(stamp) || [])[1] || ''),
+                    calls: stepCalls(repo),
+                };
+                // After the second run the user takes the remove command the line gave them.
+                if (i === 1) { delete holderOf(data, repo).mcpServers['macos-desktop']; fs.writeFileSync(acct(work), JSON.stringify(data, null, 2)); }
+                return step;
+            },
+        });
+        const [install, heldUpdate, freed] = steps;
+        for (const [i, step] of [install, heldUpdate].entries())
+        {
+            assert.deepStrictEqual(step.reg, OWN, `run ${i} touched the user's own registration:\n${step.calls.join('\n')}\n${outs[i]}`);
+            assert.ok(!step.calls.some((c) => /^mcp (add|remove) .*macos-desktop/.test(c)), `run ${i}:\n${step.calls.join('\n')}`);
+            assert.strictEqual(step.held, `${scope}:macos-desktop`, `run ${i} left the pick out of the record:\n${outs[i]}`);
+            assert.strictEqual(step.ledgered, false, `run ${i} ledgered the user's own registration`);
+            const lines = outs[i].split('\n').filter((l) => /mcp macos-desktop: the .*registration is not the one the stack wrote/.test(l));
+            assert.strictEqual(lines.length, 1, `run ${i} did not name it in one line:\n${outs[i]}`);
+            assert.match(lines[0], new RegExp(`stays a pick in this install's record: once you remove yours \\(claude mcp remove macos-desktop -s ${scope}\\), /alfred-code:update registers the stack's`), lines[0]);
+        }
+        assert.ok(freed.calls.some((c) => new RegExp(`^mcp add --scope ${scope} macos-desktop `).test(c)), `the update after the name freed did not register the stack's:\n${freed.calls.join('\n')}\n${outs[2]}`);
+        assert.notDeepStrictEqual(freed.reg, undefined, outs[2]);
+        assert.strictEqual(freed.reg.env.ANONYMIZED_TELEMETRY, 'false', JSON.stringify(freed.reg));
+        assert.strictEqual(freed.ledgered, true, outs[2]);
+        assert.strictEqual(freed.held, null, 'the held line stays once the stack registered its own');
+    });
+}
 
 // R124 (Task 8a concern m): enabledMcpjsonServers pre-approves the .mcp.json servers THIS run registered,
 // and nothing else - never the locked three on a route where they ride the plugins, never an engine it
@@ -1228,6 +1373,130 @@ test('seed install (full copy route): the locked three are registered in .mcp.js
 {
     const { result, out } = seedRun('install', 'skill markdown-style\n', { env: COPY_ENV, inspect: (repo) => trusted(repo) });
     assert.deepStrictEqual([...result].sort(), [...mcp.LOCKED].sort(), out);
+});
+
+// Matrix FAIL F-BOM (2.1.6): a `.mcp.json` with a UTF-8 BOM read as EMPTY - three bare JSON.parse calls (the read-back's
+// mcpjsonPicks, registeredEngines, stamp.js) had no BOM strip - so every update read one MCP pick short and dropped its
+// enabledMcpjsonServers entry. keepMcpOrder (T4) keeps the BOM, so the state no longer healed on the next write.
+test('seed update (full copy route): a .mcp.json with a BOM reads like one without - the pick stays, its trust entry stays, a drifted row is still repaired (matrix F-BOM)', POSIX_ONLY, () =>
+{
+    const BOM = '\uFEFF';
+    const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+        env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, args: [[], ['--installed-only'], ['--installed-only'], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            const file = path.join(repo, '.mcp.json');
+            const raw = fs.readFileSync(file, 'utf8');
+            const step = { bom: raw.startsWith(BOM), trusted: trusted(repo) };
+            if (i === 0) fs.writeFileSync(file, BOM + raw);
+            if (i === 2)
+            {
+                const data = JSON.parse(raw.replace(/^\uFEFF/, ''));
+                data.mcpServers['macos-desktop'].args = ['drifted'];
+                fs.writeFileSync(file, BOM + JSON.stringify(data, null, 2));
+            }
+            return step;
+        },
+    });
+    assert.ok(steps[0].trusted.includes('macos-desktop'), `install:\n${outs[0]}`);
+    for (const i of [1, 2, 3])
+    {
+        assert.strictEqual(steps[i].bom, true, `run ${i}: the BOM is kept`);
+        assert.ok(steps[i].trusted.includes('macos-desktop'), `run ${i} dropped the trust entry:\n${outs[i]}`);
+        assert.doesNotMatch(outs[i], /dropped enabledMcpjsonServers entry/, `run ${i}:\n${outs[i]}`);
+        assert.strictEqual(/mcps=(\d+)/.exec(outs[i])[1], /mcps=(\d+)/.exec(outs[0])[1], `run ${i} read a different MCP list:\n${outs[i]}`);
+    }
+    assert.match(outs[3], /mcp repaired: macos-desktop/, `the drifted row under a BOM was not repaired:\n${outs[3]}`);
+});
+
+// Matrix FAIL F-OWN (2.1.6): the held rule (a pick whose name the user's own registration holds is kept, named with its
+// remove line and recorded in `mcp-held:`) covered local and user scope only; at project scope a fresh install overwrote the
+// user's own `.mcp.json` row ('mcp repaired: ... was stdio node my-desktop.js'), also on 2.1.5. The row is the user's when the
+// ledger does not list the name (no ledger: when it is not the stack's exact shape); a row the ledger lists is the stack's,
+// so an edit to it is still repaired (the documented drift repair).
+for (const [pick, extra] of [['macos-desktop', []], ['browser-chrome', ['--browsers', 'chrome']]])
+{
+    test(`seed install + update (full copy route, project scope): the user's own .mcp.json ${pick} row is kept, named and held, and the update after it frees registers the stack's (matrix F-OWN)`, POSIX_ONLY, () =>
+    {
+        const OWN = { command: 'node', args: ['my-desktop.js'] };
+        const MINE = { type: 'stdio', command: 'node', args: ['mine.js'] };
+        const rowsOf = (repo) => jsonAt(repo, '.mcp.json').mcpServers || {};
+        const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], `skill markdown-style\nmcp ${pick.startsWith('browser') ? 'browser' : pick}\n`, {
+            env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, args: [extra, ['--installed-only', ...extra], ['--installed-only', ...extra], ['--installed-only', ...extra]],
+            prepare: (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { [pick]: OWN, mine: MINE } }, null, 2)),
+            each: (repo, i) =>
+            {
+                const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
+                const step = {
+                    row: rowsOf(repo)[pick], mine: rowsOf(repo).mine, trusted: trusted(repo) || [],
+                    held: (/^mcp-held: *(.*)$/m.exec(stamp) || [])[1] ?? null,
+                    ledgered: new RegExp(`(^|,)${pick}=`).test((/^managed-mcp:(.*)$/m.exec(stamp) || [])[1] || ''),
+                };
+                // After the second run the user takes the remove command the line gave them.
+                if (i === 1) { const data = jsonAt(repo, '.mcp.json'); delete data.mcpServers[pick]; fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(data, null, 2)); }
+                return step;
+            },
+        });
+        const [install, heldUpdate, freed, again] = steps;
+        for (const [i, step] of [install, heldUpdate].entries())
+        {
+            assert.deepStrictEqual(step.row, OWN, `run ${i} touched the user's own row:\n${outs[i]}`);
+            assert.deepStrictEqual(step.mine, MINE, `run ${i} touched mine`);
+            assert.doesNotMatch(outs[i], new RegExp(`mcp repaired: ${pick}`), `run ${i}:\n${outs[i]}`);
+            assert.strictEqual(step.held, `project:${pick}`, `run ${i} left the pick out of the record:\n${outs[i]}`);
+            assert.strictEqual(step.ledgered, false, `run ${i} ledgered the user's own row`);
+            assert.ok(!step.trusted.includes(pick), `run ${i} pre-approved the user's own row: ${step.trusted}`);
+            const lines = outs[i].split('\n').filter((l) => new RegExp(`mcp ${pick}: the project-scope registration is not the one the stack wrote`).test(l));
+            assert.strictEqual(lines.length, 1, `run ${i} did not name it in one line:\n${outs[i]}`);
+            assert.match(lines[0], new RegExp(`stays a pick in this install's record: once you remove yours \\(claude mcp remove ${pick} -s project\\), /alfred-code:update registers the stack's`), lines[0]);
+        }
+        assert.ok(freed.row && freed.row.args[0] !== 'my-desktop.js', `the update after the name freed did not register the stack's:\n${outs[2]}`);
+        assert.strictEqual(freed.ledgered, true, outs[2]);
+        assert.strictEqual(freed.held, null, 'the held line stays once the stack registered its own');
+        assert.ok(freed.trusted.includes(pick), `the stack's own row is pre-approved: ${freed.trusted}`);
+        // The stack's own row is a ledgered one now: a run over it repairs a drift (nothing held, nothing named).
+        assert.deepStrictEqual(again.row, freed.row);
+        assert.strictEqual(again.held, null);
+    });
+}
+
+// The plugin route registers nothing in .mcp.json, so the user's own row under a pick's name is left as it is and named once;
+// the pick is carried by its plugin row, so no `mcp-held:` line is needed there.
+for (const [pick, extra] of [['macos-desktop', []], ['browser-chrome', ['--browsers', 'chrome']]])
+{
+    test(`seed install + update (plugin route, project scope): the user's own .mcp.json ${pick} row is kept and named once, never rewritten (matrix F-OWN)`, POSIX_ONLY, () =>
+    {
+        const OWN = { command: 'node', args: ['my-desktop.js'] };
+        const { steps, outs } = seedRun(['install', 'update'], `skill markdown-style\nmcp ${pick.startsWith('browser') ? 'browser' : pick}\n`, {
+            env: { ALFRED_CODE_PLATFORM: 'darwin' }, args: [extra, ['--installed-only', ...extra]],
+            prepare: (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { [pick]: OWN } }, null, 2)),
+            each: (repo) => ({ row: jsonAt(repo, '.mcp.json').mcpServers[pick], held: /^mcp-held:/m.test(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) }),
+        });
+        for (const [i, step] of steps.entries())
+        {
+            assert.deepStrictEqual(step.row, OWN, `run ${i}:\n${outs[i]}`);
+            assert.strictEqual(step.held, false, `run ${i}`);
+            assert.strictEqual(outs[i].split('\n').filter((l) => new RegExp(`mcp ${pick}: kept - the .mcp.json entry is not the one the stack wrote`).test(l)).length, 1, `run ${i}:\n${outs[i]}`);
+        }
+    });
+}
+
+test('seed update (full copy route, project scope): a ledgered row edited by the user is still repaired, and a row the ledger does not list is the user\'s (matrix F-OWN o3)', POSIX_ONLY, () =>
+{
+    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+        env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, args: [[], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            const file = path.join(repo, '.mcp.json');
+            const data = jsonAt(repo, '.mcp.json');
+            const step = { row: data.mcpServers['macos-desktop'], nav: data.mcpServers.navigation };
+            if (i === 0) { data.mcpServers['macos-desktop'].args = ['drifted']; fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
+            return step;
+        },
+    });
+    assert.match(outs[1], /mcp repaired: macos-desktop/, outs[1]);
+    assert.notDeepStrictEqual(steps[1].row.args, ['drifted']);
+    assert.doesNotMatch(outs[1], /macos-desktop: the project-scope registration is not the one the stack wrote/, outs[1]);
 });
 
 for (const scope of ['user', 'local'])
@@ -1265,7 +1534,8 @@ test('seed install + update --scope user (full copy route): every stack server l
         assert.deepStrictEqual(userCalls, [], `step ${i} registered at user scope:\n${userCalls.join('\n')}\n${outs[i]}`);
         for (const name of ['navigation', 'memory', 'documentation', 'browser-chrome'])
             assert.ok(step.mcp[name], `step ${i}: ${name} is not in this project's .mcp.json: ${Object.keys(step.mcp).join(',')}\n${outs[i]}`);
-        assert.strictEqual(step.mcp.memory.env.MCP_MEMORY_SQLITE_PATH, path.join(step.real, '.alfred', '.alfred-memory', 'memory.db'), 'the project-level database is this project\'s');
+        // Project-relative, the server started at its project through ROOT_BOOT: every checkout's own (re-verify 2 R3, 3 S2).
+        assert.strictEqual(step.mcp.memory.env.MCP_MEMORY_SQLITE_PATH, '.alfred/.alfred-memory/memory.db', 'the project-level database is this project\'s, whichever checkout reads it');
         for (const name of ['navigation', 'memory', 'documentation', 'browser-chrome']) assert.ok((step.trusted || []).includes(name), `step ${i}: ${name} is not pre-approved`);
         assert.match(step.stamp, /^scope: user$/m);
         assert.match(outs[i], /mcp: navigation still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run \/alfred-code:update: claude mcp remove navigation -s user/, outs[i]);
@@ -1539,6 +1809,168 @@ test('identityOf / stackIdentities: a registration is the stack\'s by the packag
 // under `documentation` or any other name, left the context7 plugin out of the session, so every
 // `mcp__plugin_documentation_documentation__` spelling the stack ships resolved nothing. A stdio server matches on
 // command AND args, which a launcher-started plugin never shares - a same-NAMED one runs beside it.
+// Review 2.1.6 B1: the account file is whole only as an object - the CLI replaces a 0-byte one as corrupt and rewrites an
+// array in place (measured on 2.1.284), so either reads as unreadable there; .mcp.json keeps its old reading.
+test('registrationsAt: a 0-byte or non-object ACCOUNT file is unreadable; an empty .mcp.json still reads as none', () =>
+{
+    for (const body of ['', '  \n', '[1,2]', '7', 'null'])
+    {
+        const file = mcpFile(body);
+        assert.strictEqual(mcp.registrationsAt({ scope: 'local', accountFile: file, projectRoot: '/p' }).state, 'unreadable', JSON.stringify(body));
+        assert.strictEqual(mcp.registrationsAt({ scope: 'user', accountFile: file, projectRoot: '/p' }).state, 'unreadable', JSON.stringify(body));
+    }
+    assert.deepStrictEqual(mcp.registrationsAt({ scope: 'project', mcpFile: mcpFile(''), projectRoot: '/p' }).state, 'read');
+    assert.strictEqual(mcp.registrationsAt({ scope: 'user', accountFile: mcpFile('{}'), projectRoot: '/p' }).state, 'read');
+});
+
+// Review 2.1.6 B1: whether the stack's registrations left the account file, decided from the stamp - each reason alone.
+// Re-verify: (b) compares in milliseconds where the stamp records them (an older stamp keeps whole seconds), and (c)
+// fires only where the file shows it was rewritten - no entry for this project (a recovered file, a moved folder) or a
+// fresh file (no firstStartTime, or one after the stamp) - never over the user's own removal of every registration.
+test('accountLoss: unreadable now, a corrupted backup after the stamp, or none of the recorded registrations held in a rewritten file', () =>
+{
+    const at = Date.parse('2026-09-29T10:00:05.700Z');
+    const precise = { ms: at, precise: true };
+    const second = { ms: Date.parse('2026-09-29T10:00:05Z'), precise: false };
+    const backup = (ms) => ({ file: `/c/backups/.claude.json.corrupted.${ms}`, ms });
+    const recorded = { navigation: 'h1', 'macos-desktop': 'h2' };
+    const held = { navigation: {} };
+    assert.deepStrictEqual(mcp.accountLoss({ unreadable: true, stamped: precise, recorded, held }), { lost: true, why: 'unreadable', backup: '' });
+    // (b) in milliseconds: 100 ms after the stamp was written is a later replacement; the run's own, 1 ms before, is not.
+    assert.deepStrictEqual(mcp.accountLoss({ backups: [backup(at + 100)], stamped: precise, recorded, held }),
+        { lost: true, why: 'replaced', backup: `/c/backups/.claude.json.corrupted.${at + 100}` });
+    assert.strictEqual(mcp.accountLoss({ backups: [backup(at - 1)], stamped: precise, recorded, held }).lost, false);
+    // An older stamp keeps whole seconds: only a backup from the next second on counts.
+    assert.strictEqual(mcp.accountLoss({ backups: [backup(at + 100)], stamped: second, recorded, held }).lost, false);
+    assert.strictEqual(mcp.accountLoss({ backups: [backup(second.ms + 1000)], stamped: second, recorded, held }).why, 'replaced');
+    // (c): none held, and the file rewritten - no entry for this project, or a fresh file.
+    assert.strictEqual(mcp.accountLoss({ stamped: precise, recorded, held: {}, entry: false }).why, 'emptied');
+    assert.strictEqual(mcp.accountLoss({ stamped: precise, recorded, held: {}, entry: true, started: '' }).why, 'emptied', 'no firstStartTime: a fresh file');
+    assert.strictEqual(mcp.accountLoss({ stamped: precise, recorded, held: {}, entry: true, started: '2026-09-29T10:00:09Z' }).why, 'emptied', 'started after the stamp');
+    // ... never the user's own removal: the project entry still there, the account as old as it was.
+    assert.strictEqual(mcp.accountLoss({ stamped: precise, recorded, held: {}, entry: true, started: '2026-01-01T00:00:00Z' }).lost, false);
+    assert.strictEqual(mcp.accountLoss({ stamped: precise, recorded: {}, held: {}, entry: false }).lost, false, 'nothing recorded is nothing lost');
+    assert.strictEqual(mcp.accountLoss({ backups: [backup(at + 9000)], recorded, held }).why, '', 'no stamp, no later backup');
+});
+
+test('registrationsAt: the account file says whether it holds this project\'s entry and when it was first started', () =>
+{
+    const root = path.join(TMP, `proj-${seq++}`);
+    fs.mkdirSync(root);
+    const file = mcpFile(JSON.stringify({ firstStartTime: '2026-01-01T00:00:00Z', projects: { [root]: { allowedTools: [] } } }));
+    assert.deepStrictEqual(mcp.registrationsAt({ scope: 'local', accountFile: file, projectRoot: root }), { state: 'read', servers: {}, file, entry: true, started: '2026-01-01T00:00:00Z' });
+    const fresh = mcpFile('{"opusProMigrationComplete": true}');
+    assert.deepStrictEqual(mcp.registrationsAt({ scope: 'local', accountFile: fresh, projectRoot: root }), { state: 'read', servers: {}, file: fresh, entry: false, started: '' });
+});
+
+// Review 2.1.6 (the user's ruling): an install an earlier release broke - a registration of the stack's still in the
+// account file, its ledger row lost - is taken back only on marks nothing but the stack's own registration carries,
+// never the package name alone, which the user's own server with the same upstream shares.
+test('stackAuthored: the release\'s cut-off with a pinned package, the desktop servers\' telemetry off, an engine\'s profile and --no-webmcp where the stamp lists it', () =>
+{
+    const uvx = (from, env = {}) => ({ type: 'stdio', command: 'uvx', args: ['--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', from, 'macos-mcp', 'serve'], env });
+    assert.strictEqual(mcp.stackAuthored('macos-desktop', uvx('macos-mcp==0.4.6', { ANONYMIZED_TELEMETRY: 'false' })), true);
+    assert.strictEqual(mcp.stackAuthored('macos-desktop', uvx('macos-mcp==0.4.6')), false, 'no telemetry mark');
+    assert.strictEqual(mcp.stackAuthored('macos-desktop', uvx('macos-mcp', { ANONYMIZED_TELEMETRY: 'false' })), false, 'no pin');
+    assert.strictEqual(mcp.stackAuthored('macos-desktop', { type: 'stdio', command: 'uvx', args: ['macos-mcp', 'serve', '--my-flag'], env: { MY_OWN: '1' } }), false, 'the user\'s own');
+    assert.strictEqual(mcp.stackAuthored('memory', { command: 'uvx', args: ['--exclude-newer', '2026-09-29T23:59:59Z', '--with', 'numpy', '--from', 'mcp-memory-service[sqlite]==11.14.0', 'memory', 'server'] }), true);
+    const pw = (dir, extra = ['--no-webmcp']) => ({ command: 'npx', args: ['-y', '@playwright/mcp@0.0.83', '--user-data-dir', dir, ...extra, '--browser', 'firefox'] });
+    assert.strictEqual(mcp.stackAuthored('browser-firefox', pw('${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox'), { engines: ['firefox'] }), true);
+    assert.strictEqual(mcp.stackAuthored('browser-firefox', pw('${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox'), { engines: ['chrome'] }), false, 'the stamp does not list it');
+    assert.strictEqual(mcp.stackAuthored('browser-firefox', pw('${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox', []), { engines: ['firefox'] }), false, 'no --no-webmcp');
+    assert.strictEqual(mcp.stackAuthored('browser-firefox', { command: 'npx', args: ['@playwright/mcp@latest', '--browser', 'firefox', '--isolated'] }, { engines: ['firefox'] }), false, 'the user\'s own');
+});
+
+// Re-verify 3 S1 / S4 / S7: a registration the ledger does not vouch for is the stack's only in the release template's EXACT
+// shape - the same words and env keys, the pin, the --exclude-newer date and the paths the only free parts. The user's own
+// server with the stack's package and marks usually adds a flag or an env key (tRmReadd: MACOS_MCP_SKIP_PERMISSION_CHECK).
+test('exactStack: the release template\'s words and env keys, free only where a token sits; the anchor and an older release\'s path prefix are no difference', () =>
+{
+    const catalog = ['navigation|-e SERENA_HOME=@SERENA_HOME@ -- node -e @ROOT_BOOT@ -- checkout uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false @SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@',
+        'browser|-- node -e @ROOT_BOOT@ -- checkout npx -y @playwright/mcp@PW_PIN@ --user-data-dir @BROWSER_DIR@ --output-dir @BROWSER_DIR@/output --no-webmcp',
+        'macos-desktop|-e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from macos-mcp@MACOS_DESKTOP_PIN@ macos-mcp serve',
+        'documentation|@HTTP@'];
+    const remotes = { documentation: mcp.CONTEXT7_REMOTE };
+    const exact = (name, entry) => mcp.exactStack(name, entry, { catalog, remotes });
+    const mac = (args, env = { ANONYMIZED_TELEMETRY: 'false' }) => ({ type: 'stdio', command: 'uvx', args, env });
+    const macArgs = ['--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'];
+    assert.strictEqual(exact('macos-desktop', mac(macArgs)), true);
+    assert.strictEqual(exact('macos-desktop', mac(['--python', '3.14', '--exclude-newer', '2026-10-30T00:00:00Z', '--from', 'macos-mcp==0.5.0', 'macos-mcp', 'serve'])), true, 'a pin, a date and the python are free');
+    assert.strictEqual(exact('macos-desktop', mac(['--python', '3.13', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'])), true, 'no cut-off (the user set UV_EXCLUDE_NEWER=false)');
+    assert.strictEqual(exact('macos-desktop', mac(macArgs, { ANONYMIZED_TELEMETRY: 'false', MACOS_MCP_SKIP_PERMISSION_CHECK: '1' })), false, 'tRmReadd: an env key of the user\'s own');
+    assert.strictEqual(exact('macos-desktop', mac(macArgs, {})), false, 'an env key of the stack\'s missing');
+    assert.strictEqual(exact('macos-desktop', mac(macArgs, { ANONYMIZED_TELEMETRY: 'true' })), false, 'a literal env value changed');
+    assert.strictEqual(exact('macos-desktop', mac([...macArgs, '--verbose'])), false, 'a flag of the user\'s own');
+    assert.strictEqual(exact('macos-desktop', mac(['--python', '3.13', '--with', 'extra', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'])), false, 'no token soaks up an added flag pair');
+    assert.strictEqual(exact('macos-desktop', mac(['--python', '3.13', '--exclude-newer', '7 days', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'])), false, 'a cut-off that is no date');
+    assert.strictEqual(exact('macos-desktop', { command: 'cmd', args: ['/c', 'uvx', ...macArgs], env: { ANONYMIZED_TELEMETRY: 'false' } }), true, 'the Windows cmd /c wrapper');
+    const boot = require('../stack/hooks/memory.js').ROOT_BOOT;
+    const pw = (engine, dir, extra = []) => ({ type: 'stdio', command: 'node', args: ['-e', boot, '--', 'checkout', 'npx', '-y', '@playwright/mcp@0.0.83', '--browser', engine, '--user-data-dir', dir, '--output-dir', `${dir}/output`, '--no-webmcp', ...extra], env: {} });
+    assert.strictEqual(exact('browser-firefox', pw('firefox', '.alfred/browser/firefox')), true, 'this release\'s anchored row');
+    const old = pw('firefox', '${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox');
+    old.command = 'npx'; old.args = old.args.slice(5);
+    assert.strictEqual(exact('browser-firefox', old), true, 'v2.1.5\'s unanchored row with its path prefix');
+    assert.strictEqual(exact('browser-firefox', pw('firefox', '.playwright/firefox')), true, 'a 2.0.0 profile not moved yet');
+    assert.strictEqual(exact('browser-firefox', pw('firefox', '/home/me/profiles/ff')), false, 'oNewPlain: a profile of the user\'s own');
+    assert.strictEqual(exact('browser-firefox', pw('firefox', '.alfred/browser/firefox', ['--isolated'])), false, 'oNewMarks: the stack\'s marks plus a flag');
+    assert.strictEqual(exact('browser-firefox', pw('chrome', '.alfred/browser/chrome')), false, 'another engine under the name');
+    assert.strictEqual(exact('browser-firefox', { type: 'stdio', command: 'npx', args: ['@playwright/mcp@latest', '--browser', 'firefox', '--isolated'] }), false);
+    const nav = (tail) => ({ type: 'stdio', command: 'node', args: ['-e', boot, '--', 'checkout', 'uvx', '--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'serena-agent==1.7.0', 'serena', 'start-mcp-server', '--context', '.claude/navigation-context.yml', '--enable-web-dashboard', 'false', ...tail], env: { SERENA_HOME: '.alfred/serena/home' } });
+    assert.strictEqual(exact('navigation', nav(['--project-from-cwd'])), true);
+    assert.strictEqual(exact('navigation', nav(['--project', '.'])), true);
+    assert.strictEqual(exact('navigation', nav([])), false, 'the project flag is no optional word');
+    assert.strictEqual(exact('documentation', { type: 'http', url: 'https://mcp.context7.com/mcp/', headers: { 'Context7-API-Key': '${CONTEXT7_API_KEY:-}' } }), true);
+    assert.strictEqual(exact('documentation', { type: 'http', url: 'https://mcp.context7.com/mcp', headers: { 'Context7-API-Key': 'abc', 'X-Own': '1' } }), false);
+    assert.strictEqual(exact('documentation', { type: 'http', url: 'https://example.com/mcp' }), false);
+    assert.strictEqual(exact('unknown', mac(macArgs)), false, 'a name no catalog row serves');
+    const win = ['windows-desktop|-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_DESKTOP_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ --from windows-mcp@WINDOWS_DESKTOP_PIN@ windows-mcp serve'];
+    const winEntry = (env) => ({ command: 'uvx', args: ['--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve'], env: { WINDOWS_MCP_TOOLS: '', ANONYMIZED_TELEMETRY: 'false', ...env } });
+    assert.strictEqual(mcp.exactStack('windows-desktop', winEntry({ WINDOWS_MCP_EXCLUDE_TOOLS: '' }), { catalog: win }), true, 'a token env value resolved to nothing (none)');
+    assert.strictEqual(mcp.exactStack('windows-desktop', winEntry({ WINDOWS_MCP_EXCLUDE_TOOLS: 'PowerShell,Registry,Process' }), { catalog: win }), true);
+    assert.strictEqual(mcp.exactStack('windows-desktop', { ...winEntry({ WINDOWS_MCP_EXCLUDE_TOOLS: '' }), env: { WINDOWS_MCP_TOOLS: 'Click', ANONYMIZED_TELEMETRY: 'false', WINDOWS_MCP_EXCLUDE_TOOLS: '' } }, { catalog: win }), false, 'a literal empty env value set');
+    assert.strictEqual(exact('macos-desktop', null), false);
+    // The anchor is the launcher, never the server: identityOf reads the command after it.
+    assert.strictEqual(mcp.identityOf(pw('firefox', '.alfred/browser/firefox')), 'stdio:@playwright/mcp');
+    assert.strictEqual(mcp.identityOf(nav([])), 'stdio:serena-agent');
+});
+
+// Re-verify 4 T5: exactStack vouched for a profile outside the project (another project's, the user's own folder that
+// happens to end browser/<engine>) and for anchor code of the user's own that merely names runAtRoot - and a vouched row
+// is removed and re-registered in the stack's shape. Vouching needs the project's own profile (relative, or absolute
+// under the project) and this release's ROOT_BOOT (or one an earlier release registered); identityOf stays loose.
+test('exactStack: an engine profile must be this project\'s own, and an anchored row must run the stack\'s own ROOT_BOOT (re-verify 4 T5)', () =>
+{
+    const catalog = ['browser|-- node -e @ROOT_BOOT@ -- checkout npx -y @playwright/mcp@PW_PIN@ --user-data-dir @BROWSER_DIR@ --output-dir @BROWSER_DIR@/output --no-webmcp',
+        'navigation|-e SERENA_HOME=@SERENA_HOME@ -- node -e @ROOT_BOOT@ -- checkout uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false @SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@'];
+    const projectRoot = path.resolve('/work/proj');
+    const boot = require('../stack/hooks/memory.js').ROOT_BOOT;
+    const pw = (dir, code = boot) => ({ type: 'stdio', command: 'node', args: ['-e', code, '--', 'checkout', 'npx', '-y', '@playwright/mcp@0.0.83', '--browser', 'firefox', '--user-data-dir', dir, '--output-dir', `${dir}/output`, '--no-webmcp'], env: {} });
+    const exact = (name, entry) => mcp.exactStack(name, entry, { catalog, projectRoot });
+    assert.strictEqual(exact('browser-firefox', pw('.alfred/browser/firefox')), true, 'relative: the project\'s own');
+    assert.strictEqual(exact('browser-firefox', pw(path.join(projectRoot, '.alfred', 'browser', 'firefox'))), true, 'absolute under the project');
+    assert.strictEqual(exact('browser-firefox', pw('${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox')), true, 'v2.1.5\'s project-dir prefix');
+    assert.strictEqual(exact('browser-firefox', pw('/Users/me/profiles/browser/firefox')), false, 'a folder of the user\'s own ending browser/firefox');
+    assert.strictEqual(exact('browser-firefox', pw(path.resolve('/work/other/.alfred/browser/firefox'))), false, 'another project\'s profile');
+    assert.strictEqual(exact('browser-firefox', pw(path.resolve('/work/proj-two/.alfred/browser/firefox'))), false, 'a sibling sharing the name\'s prefix');
+    assert.strictEqual(exact('browser-firefox', pw('../other/.alfred/browser/firefox')), false, 'a relative path leaving the project');
+    const own = "require('/home/me/mine.js').runAtRoot(process.argv.slice(1))";
+    assert.strictEqual(exact('browser-firefox', pw('.alfred/browser/firefox', own)), false, 'anchor code of the user\'s own naming runAtRoot');
+    assert.strictEqual(mcp.identityOf(pw('.alfred/browser/firefox', own)), 'stdio:@playwright/mcp', 'identity still reads the server after any anchor');
+    const nav = (code) => ({ type: 'stdio', command: 'node', args: ['-e', code, '--', 'checkout', 'uvx', '--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'serena-agent==1.7.0', 'serena', 'start-mcp-server', '--context', '.claude/navigation-context.yml', '--enable-web-dashboard', 'false', '--project-from-cwd'], env: { SERENA_HOME: '.alfred/serena/home' } });
+    assert.strictEqual(exact('navigation', nav(boot)), true);
+    assert.strictEqual(exact('navigation', nav(own)), false, 'navigation under code of the user\'s own');
+    assert.strictEqual(mcp.exactStack('navigation', nav(own), { catalog, boots: [own] }), true, 'a listed earlier release\'s code');
+});
+
+test('accountBackups: the CLI\'s corrupted copies and its last good ones, oldest first, from every folder named once', () =>
+{
+    const dir = path.join(TMP, `backups-${seq++}`);
+    fs.mkdirSync(dir);
+    for (const n of ['.claude.json.corrupted.300', '.claude.json.corrupted.100', '.claude.json.backup.200', 'notes.txt']) fs.writeFileSync(path.join(dir, n), '');
+    assert.deepStrictEqual(mcp.accountBackups([dir, dir, path.join(TMP, 'absent')]).map((b) => b.ms), [100, 300]);
+    assert.deepStrictEqual(mcp.accountBackups([dir], 'good').map((b) => path.basename(b.file)), ['.claude.json.backup.200']);
+});
+
 test('shadowingRegistrations: a registration above the plugins that replaces a plugin server, or runs beside it', () =>
 {
     const ctx7 = { type: 'http', url: `${mcp.CONTEXT7_REMOTE.url}/` };
@@ -1660,7 +2092,7 @@ const OWN_SHAPE_CLI = ['printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
 for (const [label, account, reregistered] of [
     ['an unreadable account file', '{not json', false],
     ['no account file while the CLI holds a registration', null, false],
-    ['a stack-shaped registration (the control)', JSON.stringify({ mcpServers: { 'browser-chrome': STACK_PW('chrome') } }), true],
+    ['a stack-shaped registration (the control)', JSON.stringify({ mcpServers: { 'browser-chrome': STACK_PW_EXACT('chrome') } }), true],
 ])
 {
     test(`seed update --scope user (MCP copy route): the verify pass with ${label} re-registers only the stack's own (N4)`, POSIX_ONLY, () =>
@@ -1806,15 +2238,19 @@ for (const [scope, named] of [['project', 'browser-chrome browser-webkit'], ['us
 // verify pass wrote .mcp.json ('repaired (absent)'). At project scope the run reads .mcp.json itself.
 test('seed install (full copy route, project registrations): only .mcp.json says a server is configured here - a user-scope one of the same name does not (C10)', POSIX_ONLY, () =>
 {
+    // The row is the stack's exact shape, taken from a fresh run (matrix F-OWN: with no ledger, any other shape is the user's own).
+    let stackRow = null;
     const run = (mcpJson) => seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
         env: COPY_ENV,
         prepare: (repo, work) =>
         {
             accountMcp(work, { navigation: STACK_SERENA });
-            if (mcpJson) fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { navigation: STACK_SERENA } }));
+            if (mcpJson) fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { navigation: stackRow } }));
         },
+        inspect: (repo) => jsonAt(repo, '.mcp.json').mcpServers,
     });
     const fresh = run(false);
+    stackRow = fresh.result.navigation;
     assert.ok(fresh.calls.some((c) => /^mcp add --scope project navigation /.test(c)), `${fresh.calls.filter((c) => /^mcp /.test(c)).join('\n')}\n${fresh.out}`);
     assert.doesNotMatch(fresh.out, /mcp navigation already configured/);
     assert.ok(!fresh.calls.some((c) => /^mcp get /.test(c)), 'a project-scope install asked the CLI, which answers from every scope');
@@ -1860,6 +2296,13 @@ test('mcp ledger: removeManaged takes a recorded unchanged entry, keeps an edite
     assert.deepStrictEqual(mcp.removeManagedMcp({ mcpFile: garbage, managed: { navigation: 'x' }, note: (m) => notes.push(m) }).removed, []);
     assert.strictEqual(fs.readFileSync(garbage, 'utf8'), '{nope', 'an unreadable file is left untouched');
     assert.strictEqual(notes.length, 1);
+    assert.match(notes[0], /not valid JSON/);
+    // Re-verify 3 S9: one that cannot be read at all says so by its code.
+    const folder = path.join(TMP, `folder-${Date.now()}.json`);
+    fs.mkdirSync(folder);
+    const said = [];
+    assert.deepStrictEqual(mcp.removeManagedMcp({ mcpFile: folder, managed: { navigation: 'x' }, note: (m) => said.push(m) }).removed, []);
+    assert.match(said.join('\n'), /^\.mcp\.json could not be read \(EISDIR\) - left untouched/);
 });
 
 // --- the 2.0.0 rename (navigation, documentation, browser) ----------------------------------------
@@ -2095,10 +2538,10 @@ test('seed install (full copy route): navigation starts on the stack context the
         each: (repo) => fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8'),
         inspect: navState,
     });
-    // R6: serena raises FileNotFoundError on a context path that does not resolve (context_mode.py), so the path is
-    // anchored the way the browser row anchors its profile - on ${CLAUDE_PROJECT_DIR:-.}: absolute where the variable
-    // reaches the expansion, and exactly today's relative path (the default) where it does not.
-    assert.strictEqual(result.context, '${CLAUDE_PROJECT_DIR:-.}/.claude/navigation-context.yml', out);
+    // R6: serena raises FileNotFoundError on a context path that does not resolve (context_mode.py). The row starts through
+    // ROOT_BOOT at the checkout (re-verify 3 S3), so the project-relative path resolves there - never a parse-time
+    // ${CLAUDE_PROJECT_DIR:-.}, which expanded to the launch directory (S2).
+    assert.strictEqual(result.context, '.claude/navigation-context.yml', out);
     assert.strictEqual(result.copy, navContext(), 'the copy is the shipped file, byte for byte');
     assert.match(result.stamp, /^managed-files:.*\bnavigation-context\.yml=/m, 'the ledger records the copy, so uninstall and a route switch can remove it');
     assert.strictEqual(steps[1], steps[0], 'a re-run rewrote .mcp.json');
@@ -2120,7 +2563,7 @@ test('seed update (full copy route): a registration still on the upstream claude
         },
         inspect: navState,
     });
-    assert.strictEqual(result.context, '${CLAUDE_PROJECT_DIR:-.}/.claude/navigation-context.yml', out);
+    assert.strictEqual(result.context, '.claude/navigation-context.yml', out);
     assert.strictEqual(result.copy, navContext(), 'a deleted copy comes back');
 });
 
@@ -2193,3 +2636,207 @@ test('seed uninstall after the full copy route: the stack serena context goes wi
     assert.deepStrictEqual(steps, [true, false], out);
     assert.match(out, /file removed: navigation-context\.yml/);
 });
+
+// Re-verify 3 follow-up: on the copy route at project scope an update re-registers every server - `claude mcp remove`,
+// then `add`, which appends the name - so the first update after an install rewrote the tracked .mcp.json in a new key
+// order with the same content. A run keeps the file's own order (a new entry last) and, when the content is what it
+// was, its exact bytes.
+test('keepMcpOrder: the file keeps its key order and formatting, a new entry goes last, and unchanged content keeps its bytes', () =>
+{
+    const file = path.join(TMP, 'order', '.mcp.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const before = { mcpServers: { a: { command: 'x', env: { K: '1' }, args: ['1'] }, mine: { command: 'm' }, b: { command: 'y' } }, other: true };
+    const raw = `${JSON.stringify(before, null, 4)}\n`;
+    fs.writeFileSync(file, raw);
+    const snap = mcp.snapshotMcp(file);
+    // The CLI's remove + add moved every name to the end, in its own formatting, and one entry is new.
+    fs.writeFileSync(file, `${JSON.stringify({ other: true, mcpServers: { mine: { command: 'm' }, b: { command: 'y' }, a: { command: 'x', args: ['2'], env: { K: '1' } }, c: { command: 'z' } } }, null, 2)}\n`);
+    assert.strictEqual(mcp.keepMcpOrder({ mcpFile: file, before: snap }), 'reordered');
+    const got = fs.readFileSync(file, 'utf8');
+    assert.deepStrictEqual(Object.keys(JSON.parse(got)), ['mcpServers', 'other']);
+    assert.deepStrictEqual(Object.keys(JSON.parse(got).mcpServers), ['a', 'mine', 'b', 'c'], 'a new entry goes last');
+    assert.deepStrictEqual(Object.keys(JSON.parse(got).mcpServers.a), ['command', 'env', 'args'], 'an entry keeps its own key order');
+    assert.deepStrictEqual(JSON.parse(got).mcpServers.a.args, ['2'], 'the new content is kept');
+    assert.match(got, /^\{\n {4}"mcpServers"/, 'the file keeps its own indent');
+    // The same content as before, reordered and reformatted: the original bytes come back.
+    fs.writeFileSync(file, raw);
+    const again = mcp.snapshotMcp(file);
+    fs.writeFileSync(file, JSON.stringify({ other: true, mcpServers: { b: { command: 'y' }, mine: { command: 'm' }, a: { args: ['1'], env: { K: '1' }, command: 'x' } } }));
+    assert.strictEqual(mcp.keepMcpOrder({ mcpFile: file, before: again }), 'restored');
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), raw);
+    // Nothing to keep: no file before, or one that is not JSON now.
+    assert.strictEqual(mcp.keepMcpOrder({ mcpFile: file, before: null }), 'none');
+    fs.writeFileSync(file, '{ nope');
+    assert.strictEqual(mcp.keepMcpOrder({ mcpFile: file, before: again }), 'none');
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), '{ nope');
+});
+
+// Re-verify 4 T4 (crlfNew, bomYes, bomNo, crlfCli): the installer loads stack-select.js for its closure, and that module
+// replaced the process-wide fs.readFileSync with one turning CRLF into LF - so the snapshot of a CRLF file had no CR, and a
+// CRLF .mcp.json came back LF. The indent pattern missed a file starting with a BOM, and the CLI's `mcp add` / `remove`
+// drop every top-level key but mcpServers, which the order pass never put back. 24 variants - line ends, a BOM, the indent,
+// unchanged or changed content - each holding two top-level keys of the user's own around mcpServers, with stack-select.js
+// loaded first, as in the installer.
+test('keepMcpOrder: a CRLF or BOM file keeps its line ends, BOM and indent, and the top-level keys the CLI dropped come back in place - with stack-select.js loaded first (re-verify 4 T4)', () =>
+{
+    require('./stack-select.js');
+    const dir = path.join(TMP, 'order-t4');
+    fs.mkdirSync(dir, { recursive: true });
+    let n = 0;
+    for (const eol of ['\n', '\r\n'])
+        for (const bom of ['', '\uFEFF'])
+            for (const indent of [2, 4, '\t'])
+                for (const changed of [false, true])
+                {
+                    n += 1;
+                    const file = path.join(dir, `${n}.mcp.json`);
+                    const before = { '//': 'the team\'s note', mcpServers: { a: { command: 'x', args: ['1'] }, mine: { command: 'm' } }, '//2': { keep: true } };
+                    const raw = `${bom}${JSON.stringify(before, null, indent).replace(/\n/g, eol)}${eol}`;
+                    fs.writeFileSync(file, raw);
+                    const snap = mcp.snapshotMcp(file);
+                    // What the claude CLI writes back: mcpServers alone, LF, two spaces, no BOM, the names it touched moved last.
+                    const servers = changed ? { mine: { command: 'm' }, a: { command: 'x', args: ['2'] } } : { mine: { command: 'm' }, a: { command: 'x', args: ['1'] } };
+                    fs.writeFileSync(file, `${JSON.stringify({ mcpServers: servers }, null, 2)}\n`);
+                    const said = `${JSON.stringify(eol)} bom=${Boolean(bom)} indent=${JSON.stringify(indent)} changed=${changed}`;
+                    assert.strictEqual(mcp.keepMcpOrder({ mcpFile: file, before: snap }), changed ? 'reordered' : 'restored', said);
+                    const got = fs.readFileSync(file).toString('utf8');
+                    if (!changed) { assert.strictEqual(got, raw, `${said}: the bytes it had`); continue; }
+                    const want = { ...before, mcpServers: { a: { command: 'x', args: ['2'] }, mine: { command: 'm' } } };
+                    assert.strictEqual(got, `${bom}${JSON.stringify(want, null, indent).replace(/\n/g, eol)}${eol}`, said);
+                }
+    assert.strictEqual(n, 24);
+});
+
+test('seed update (full copy route, project scope): .mcp.json keeps its bytes when nothing changed, and the user\'s own entry keeps its place', POSIX_ONLY, () =>
+{
+    const bytes = (repo) => fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8');
+    const { steps, outs } = seedRun(['install', 'update', 'update'], 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\nmcp browser\n', {
+        env: COPY_ENV, account: true,
+        args: [['--scope', 'project', '--memory-level', 'project', '--browsers', 'chrome'], ['--installed-only', '--scope', 'project'], ['--installed-only', '--scope', 'project']],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return bytes(repo);
+            // The user puts their own server second, by hand.
+            const data = JSON.parse(bytes(repo));
+            const [first, ...rest] = Object.entries(data.mcpServers);
+            data.mcpServers = Object.fromEntries([first, ['mine', { type: 'stdio', command: 'my-server', args: [], env: {} }], ...rest]);
+            fs.writeFileSync(path.join(repo, '.mcp.json'), `${JSON.stringify(data, null, 2)}\n`);
+            return bytes(repo);
+        },
+    });
+    assert.strictEqual(Object.keys(JSON.parse(steps[0]).mcpServers)[1], 'mine', 'the fixture');
+    assert.strictEqual(steps[1], steps[0], `update 1 rewrote .mcp.json:\n${outs[1]}`);
+    assert.strictEqual(steps[2], steps[1], 'update 2 rewrote .mcp.json');
+});
+
+// Delta matrix on 616f8696 - F-LOCAL: at LOCAL scope the stack registers in the account file, so a user's own project-scope
+// .mcp.json row under a picked name was neither held nor recorded ('already configured - skipping', a `-s local` hint for a
+// project row); the first update then registered the stack's row over it and dropped the other pick. Local scope holds it
+// like project and user scope: kept, recorded as `project:<name>`, named with `claude mcp remove <name> -s project`.
+for (const [scope, route, routeEnv] of [['local', 'full copy route', COPY_ENV], ['user', 'MCP copy route', MCP_COPY_ENV]])
+{
+test(`seed install + update (${route}, ${scope} scope): the user's own project-scope rows under picked names are kept, held and named with -s project, and no update registers over them (delta F-LOCAL)`, POSIX_ONLY, () =>
+{
+    const OWN = { command: 'node', args: ['my-desktop.js'] };
+    const OWN_CHROME = { command: 'node', args: ['my-chrome.js'] };
+    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp browser\nmcp macos-desktop\n', {
+        env: { ...routeEnv, ALFRED_CODE_PLATFORM: 'darwin' }, account: true,
+        args: [['--scope', scope, '--browsers', 'chrome'], ['--scope', scope, '--installed-only', '--browsers', 'chrome'], ['--scope', scope, '--installed-only', '--browsers', 'chrome']],
+        prepare: (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { 'macos-desktop': OWN, 'browser-chrome': OWN_CHROME } }, null, 2)),
+        each: (repo) => ({
+            rows: jsonAt(repo, '.mcp.json').mcpServers,
+            held: (/^mcp-held: *(.*)$/m.exec(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) || [])[1] ?? null,
+            calls: stepCalls(repo),
+        }),
+    });
+    for (const [i, step] of steps.entries())
+    {
+        assert.deepStrictEqual(step.rows, { 'macos-desktop': OWN, 'browser-chrome': OWN_CHROME }, `run ${i} touched the user's rows:\n${outs[i]}`);
+        assert.deepStrictEqual(step.held.split(',').sort(), ['project:browser-chrome', 'project:macos-desktop'], `run ${i} did not record the holds:\n${outs[i]}`);
+        assert.ok(!step.calls.some((c) => /^mcp add .*(macos-desktop|browser-chrome)/.test(c)), `run ${i} registered over the user's row:\n${step.calls.join('\n')}`);
+        for (const name of ['macos-desktop', 'browser-chrome'])
+            assert.match(outs[i], new RegExp(`mcp ${name}: the project-scope registration is not the one the stack wrote.*claude mcp remove ${name} -s project`), `run ${i}:\n${outs[i]}`);
+        assert.doesNotMatch(outs[i], /claude mcp remove (macos-desktop|browser-chrome) -s (local|user)/, `run ${i} named the wrong scope`);
+    }
+    assert.strictEqual(/mcps=(\d+)/.exec(outs[2])[1], /mcps=(\d+)/.exec(outs[1])[1], `the second update changed the MCP list (a pick was dropped):\n${outs[2]}`);
+});
+}
+
+// Delta matrix on 616f8696 - F-LEDGER: a row held as the user's own was ledgered by the no-ledger fallback (`adopt`, the package
+// identity) and the NEXT update, seeing it ledgered, overwrote it - against the commit's own Critical line. A held row is never
+// ledgered and stays held on every later update.
+for (const scope of ['project', 'user'])
+{
+    test(`seed update x3 (full copy route, ${scope} scope, a stamp with no ledger): a stack row with an added flag is held, never ledgered, and stays the user's on every update (delta F-LEDGER)`, POSIX_ONLY, () =>
+    {
+        const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+            env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' },
+            args: [['--scope', scope], ['--scope', scope, '--installed-only'], ['--scope', scope, '--installed-only'], ['--scope', scope, '--installed-only']],
+            each: (repo, i) =>
+            {
+                const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
+                const file = path.join(repo, '.mcp.json');
+                const step = {
+                    args: jsonAt(repo, '.mcp.json').mcpServers['macos-desktop'].args,
+                    held: (/^mcp-held: *(.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] ?? null,
+                    ledgered: new RegExp(`(^|[ ,])macos-desktop=`).test((/^managed-mcp:(.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] || ''),
+                };
+                if (i === 0)
+                {
+                    // A 1.x-style stamp: no ledger. The user's row is the stack's with one flag appended.
+                    fs.writeFileSync(stampFile, fs.readFileSync(stampFile, 'utf8').replace(/^managed-mcp:.*\n/m, ''));
+                    const data = jsonAt(repo, '.mcp.json');
+                    data.mcpServers['macos-desktop'].args.push('--my-own-flag');
+                    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+                }
+                return step;
+            },
+        });
+        for (const i of [1, 2, 3])
+        {
+            assert.strictEqual(steps[i].args[steps[i].args.length - 1], '--my-own-flag', `update ${i} overwrote the user's flag:\n${outs[i]}`);
+            assert.strictEqual(steps[i].held, `project:macos-desktop`, `update ${i}:\n${outs[i]}`);
+            assert.strictEqual(steps[i].ledgered, false, `update ${i} ledgered a held row`);
+        }
+    });
+}
+
+// Delta matrix on 616f8696 - F-UNREAD: an unreadable .mcp.json (garbage, or EACCES) at update time read as no picks, so the pick and
+// its enabledMcpjsonServers approval were dropped and restoring the file never brought them back. An unreadable file keeps what the
+// stamp recorded and the run says so in one line; a MISSING file is still empty.
+for (const kind of ['garbage', 'bom+garbage', 'eacces'])
+{
+    test(`seed update (full copy route): an unreadable .mcp.json (${kind}) keeps the recorded pick, its approval and its ledger row, and restoring the file changes nothing (delta F-UNREAD)`, POSIX_ONLY, () =>
+    {
+        let good = '';
+        const trustedNow = (repo) => jsonAt(repo, '.claude/settings.json').enabledMcpjsonServers || [];
+        const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+            env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, args: [[], ['--installed-only'], ['--installed-only'], ['--installed-only']],
+            each: (repo, i) =>
+            {
+                const file = path.join(repo, '.mcp.json');
+                const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
+                const step = { trusted: trustedNow(repo), ledgered: /(^|[ ,])macos-desktop=/.test((/^managed-mcp:(.*)$/m.exec(stamp) || [])[1] || ''), file: (() => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } })() };
+                if (i === 0)
+                {
+                    good = fs.readFileSync(file, 'utf8');
+                    if (kind === 'eacces') fs.chmodSync(file, 0);
+                    else fs.writeFileSync(file, `${kind === 'garbage' ? '' : '\uFEFF'}{"a": [1,2, garbage`);
+                }
+                if (i === 2) { fs.chmodSync(file, 0o644); fs.writeFileSync(file, good); }
+                return step;
+            },
+        });
+        const broken = kind === 'eacces' ? null : `${kind === 'garbage' ? '' : '\uFEFF'}{"a": [1,2, garbage`;
+        for (const i of [1, 2])
+        {
+            assert.ok(steps[i].trusted.includes('macos-desktop'), `update ${i} dropped the approval:\n${outs[i]}`);
+            assert.strictEqual(steps[i].ledgered, true, `update ${i} dropped the ledger row`);
+            assert.strictEqual(outs[i].split('\n').filter((l) => /\.mcp\.json could not be read.*stay as the stamp recorded/.test(l)).length, 1, `update ${i} did not say so in one line:\n${outs[i]}`);
+            if (broken !== null) assert.strictEqual(steps[i].file, broken, `update ${i} rewrote the unreadable file`);
+        }
+        assert.strictEqual(/mcps=(\d+)/.exec(outs[1])[1], /mcps=(\d+)/.exec(outs[0])[1], `update 1 read fewer picks:\n${outs[1]}`);
+        assert.ok(steps[3].trusted.includes('macos-desktop'), `the restored file did not bring the approval back:\n${outs[3]}`);
+        assert.strictEqual(/mcps=(\d+)/.exec(outs[3])[1], /mcps=(\d+)/.exec(outs[0])[1], `the update after the restore:\n${outs[3]}`);
+    });
+}

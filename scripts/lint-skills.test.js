@@ -29,7 +29,7 @@ test('lint-skills.js: the environment-catalog check and the suggests-edge check 
 // legacyGlobalStamp, A-I1, stamp.js:409/431-434) and the library-stamp.js SessionStart hook (B-I1,
 // setup-plugin/hooks/library-stamp.js:39-41).
 test('N3: CLAUDE.md names stamp.js scope and library-stamp.js among the 1.x account-dir stamp readers', () => {
-    const claudeMd = fs.readFileSync(path.join(__dirname, '..', 'CLAUDE.md'), 'utf8');
+    const claudeMd = require('./claude-docs.js').readClaudeDocs();
     const readerLine = /A 1\.x account-dir stamp is read by[^|]*\|/.exec(claudeMd);
     assert.ok(readerLine, 'the Install stamp row must still name its stamp readers');
     assert.match(readerLine[0], /stamp\.js scope/, 'stamp.js scope must be named - it falls back to the legacy account stamp');
@@ -40,14 +40,15 @@ test('N3: CLAUDE.md names stamp.js scope and library-stamp.js among the 1.x acco
 // `claude plugin install` makes (the plugin cache + installed_plugins.json, at every scope - measured
 // repeatedly in docs/rebrand-evidence.md) and the MCP copy route's ~/.claude.json write at user/local
 // scope (mcp.js:505-506, alfred-code.js:522), or the 'nothing else is written' sentence below it lies.
-test('N8: README.md names installed_plugins.json/the plugin cache and .claude.json among the account-dir writes', () => {
-    const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
-    const acctRow = /\| \*\*Writes, in the account dir\*\* \|[^\n]*\|/.exec(readme);
-    assert.ok(acctRow, 'the account-dir writes row must still exist');
+test('N8: the install footprint names installed_plugins.json/the plugin cache and .claude.json among the account-dir writes', () => {
+    const readme = fs.readFileSync(path.join(__dirname, '..', 'docs', 'install-footprint.md'), 'utf8');
+    const acctRow = /## In your account\n[^]*?\n## /.exec(readme);
+    assert.ok(acctRow, 'the account-dir writes section must still exist');
     assert.match(acctRow[0], /installed_plugins\.json/, 'the plugin-install bookkeeping file must be named');
     assert.match(acctRow[0], /plugins\/cache/, 'the plugin cache directory must be named');
     assert.match(acctRow[0], /~\/\.claude\.json/, 'the MCP copy route\'s user/local-scope account file must be named');
-    assert.match(readme, /Nothing is written outside the project and the account-dir writes named above/, 'the closing claim must still point at this row');
+    assert.match(acctRow[0], /Nothing is written outside the project and the account-dir writes named above/, 'the closing claim must still close this section');
+    assert.match(fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8'), /\(docs\/install-footprint\.md\)/, 'the README links the footprint');
 });
 
 // F4 re-review M-F4-1: the instrument hook is a plain node launch that exits at its switch check (its
@@ -66,7 +67,7 @@ test('M-F4-1: meta/environment.json describes ALFRED_CODE_INSTRUMENT=0 as a node
 // file for a global install), and that only a local-scope install writes the local file.
 test('M-F4-2: stack/hooks/memory.js describes the memory path as settings.local.json\'s at every scope', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'memory.js'), 'utf8');
-    const block = src.slice(src.indexOf('function memoryEnvPath'), src.indexOf('for (const file of files)', src.indexOf('function settingsEnvDbPath')));
+    const block = src.slice(src.indexOf('function memoryEnvPath'), src.indexOf('for (const file of files)', src.indexOf('function settingsDbState')));
     assert.doesNotMatch(block, /in the project's\s*\/\/\s*settings\.json|the only file a local-scope/, 'a pre-C8 layout is still described');
     assert.match(block, /settings\.local\.json at every(\s*\/\/)?\s+scope/, 'the header names the file every scope writes');
 });
@@ -75,7 +76,7 @@ test('M-F4-2: stack/hooks/memory.js describes the memory path as settings.local.
 // 2.1.0 a seat's preloads are bare in the source, so CLAUDE.md says the full copy route's re-spell has
 // nothing left to do.
 test('M-F4-3: CLAUDE.md keeps the preload clause out of the MCP copy-route sentence', () => {
-    const claudeMd = fs.readFileSync(path.join(__dirname, '..', 'CLAUDE.md'), 'utf8');
+    const claudeMd = require('./claude-docs.js').readClaudeDocs();
     const sentence = /`ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0\.2\.x registration route[^]*?half-fixed\)\./.exec(claudeMd);
     assert.ok(sentence, 'the MCP copy-route sentence must still exist');
     assert.doesNotMatch(sentence[0], /preload/, 'the preload clause still rides the MCP-route sentence');
@@ -113,7 +114,7 @@ test('lintEvidenceCatalog passes a clean catalog and flags unknown names, unlabe
     assert.deepStrictEqual(lintEvidenceCatalog(clean, rosters), []);
 
     const bad = {
-        rules: { 'baseline-git': {} },   // the scan reads only skills/mcps/plugins
+        rules: { 'alfred-git': {} },   // the scan reads only skills/mcps/plugins
         skills: {
             'dotnet-perf': { packages: ['BenchmarkDotNet'] },   // typo'd name - would silently never match
             'dotnet-performance': { csprojContent: [{ regex: '<X>' }], content: [{ glob: 'a', regex: 'b', label: '  ' }] },
@@ -470,9 +471,9 @@ test('check 37: a plugin-qualified cite carries a content clause, or it is bare'
     const { lintPluginCites } = require('./lint-skills.js');
     const plugins = new Set(['superpowers', 'claude-hud']);
 
-    // the golden form (baseline-quality-gates.md's until R72 folded the gate in) - the name, then the clause
+    // the golden form (alfred-quality-gates.md's until R72 folded the gate in) - the name, then the clause
     const golden = 'satisfy `superpowers:verification-before-completion` - build + relevant tests run, output quoted - before any done word.\n';
-    assert.deepStrictEqual(lintPluginCites('rules/baseline-quality-gates.md', golden, plugins), []);
+    assert.deepStrictEqual(lintPluginCites('rules/alfred-quality-gates.md', golden, plugins), []);
     assert.deepStrictEqual(lintPluginCites('f.md', 'Use `superpowers:writing-plans`: the plan format the house writes to.\n', plugins), []);
     assert.deepStrictEqual(lintPluginCites('f.md', 'Localize with `superpowers:systematic-debugging` (one hypothesis at a time, re-run before the next).\n', plugins), []);
     assert.deepStrictEqual(lintPluginCites('f.md', 'The loop is one hypothesis at a time - root cause before symptom, and the method is `superpowers:systematic-debugging`.\n', plugins), []);
@@ -954,7 +955,7 @@ test('lintRetiredNames flags a retired plugin name left in shipped stack text, a
     const cut = lintRetiredNames([{ file: 'stack/skills/a/SKILL.md', text: 'pairs with the runtime security-guidance plugin\nkeep it current with claude-md-management\n' }]);
     assert.deepStrictEqual(cut.map((f) => f.replace(/ names .*/, '')), ['stack/skills/a/SKILL.md:1', 'stack/skills/a/SKILL.md:2'], cut.join('\n'));
     assert.match(cut[0], /security-guidance.*\/security-review/, 'the finding names what took its place');
-    assert.match(cut[1], /claude-md-management.*CLAUDE\.md skill/, 'the finding names what took its place');
+    assert.match(cut[1], /claude-md-management.*AGENTS\.md skill/, 'the finding names what took its place');
     assert.ok(stackTextFiles().length > 100, 'the walk reaches the shipped tree');
     assert.deepStrictEqual(lintRetiredNames(stackTextFiles()), [], 'no retired plugin name is left under stack/');
 });
@@ -1288,6 +1289,36 @@ test('the inventory page shows every seat at its frontmatter pin', () =>
     assert.deepStrictEqual(lintHtmlSeatPins(), [], 'docs/alfred-code.html: every badge and row at its pin');
 });
 
+// 2.1.6 M59: a seat's turn cap is frontmatter too, so the row that states the pin states the cap, and 60b holds
+// both ways - a cap the row does not show, a row cap the frontmatter does not set, and a changed number.
+test('the inventory row states a seat\'s maxTurns cap exactly when the frontmatter sets one', () =>
+{
+    const { lintHtmlSeatPins } = require('./lint-skills.js');
+    const pins = new Map([['a-seat', { model: 'sonnet', effort: 'medium', maxTurns: 250 }], ['b-seat', { model: 'opus', effort: 'xhigh' }]]);
+    const row = (seat, pinned) => `["${seat}", "subagent", "k", "home", "url", "Does a thing. Pinned ${pinned}. More."],`;
+    assert.deepStrictEqual(lintHtmlSeatPins([row('a-seat', 'sonnet/medium, max 250 turns'), row('b-seat', 'opus/xhigh')].join('\n'), pins), []);
+    assert.match(lintHtmlSeatPins(row('a-seat', 'sonnet/medium'), pins)[0], /row for 'a-seat' shows no turn cap but its frontmatter sets maxTurns: 250/);
+    assert.match(lintHtmlSeatPins(row('a-seat', 'sonnet/medium, max 200 turns'), pins)[0], /row for 'a-seat' says 'max 200 turns' but its frontmatter sets maxTurns: 250/);
+    assert.match(lintHtmlSeatPins(row('b-seat', 'opus/xhigh, max 100 turns'), pins)[0], /row for 'b-seat' says 'max 100 turns' but its frontmatter sets no maxTurns/);
+});
+
+// 2.1.6 M59 (AG M15's check): a seat with a `## Loop` section runs until a gate turns green, so its prose bound
+// ('5 cycles', '3 attempts') gets a runaway backstop the runtime enforces - a positive integer maxTurns.
+test('a loop seat carries a positive integer maxTurns (15d)', () =>
+{
+    const { lintAgentTurnCap } = require('./lint-skills.js');
+    const loop = '## Scope\n\nx\n\n## Loop (bounded)\n1. build\n';
+    assert.deepStrictEqual(lintAgentTurnCap('agents/a.md', { maxTurns: 250 }, loop), [], 'a loop seat with its cap');
+    assert.deepStrictEqual(lintAgentTurnCap('agents/a.md', {}, '## Scope\n\nx\n## Method (bounded)\n'), [], 'no Loop section, no cap needed');
+    assert.deepStrictEqual(lintAgentTurnCap('agents/a.md', { maxTurns: 100 }, '## Scope\n'), [], 'a cap on a seat with no loop is allowed');
+    const missing = lintAgentTurnCap('agents/a.md', {}, loop);
+    assert.strictEqual(missing.length, 1);
+    assert.match(missing[0], /agents\/a\.md has a '## Loop' section but no maxTurns/);
+    for (const bad of [0, -5, 12.5, '250', null])
+        assert.match(lintAgentTurnCap('agents/a.md', { maxTurns: bad }, loop)[0], /agents\/a\.md maxTurns must be a positive integer/, String(bad));
+    assert.deepStrictEqual(lintAgentTurnCap('agents/a.md', {}, '### Loop\n## Loop notes\n'), [], 'only an exact `## Loop` H2 counts');
+});
+
 // 2.1.2 (live check F3, 2026-09-29): a 200K-window session logged 'Skill listing over budget: 39 skills,
 // 19901 chars > 8000' - the listing budget is 1% of the context window, so Claude Code dropped the
 // descriptions that carry the trigger words. A skill description (plus any `when_to_use`, which the listing
@@ -1325,4 +1356,28 @@ test('a capped agent description still names the seat to use instead', () =>
         assert.ok(d.slice(d.indexOf('Do NOT use')).includes(alternative), `${seat}: its Do NOT use clause names ${alternative}`);
         assert.ok(d.length <= 300, `${seat}: ${d.length} chars`);
     }
+});
+
+// Check 19 holds BOTH non-default invocation states of the HTML house rows to their frontmatter: "manual" =
+// disable-model-invocation, "model-only" = user-invocable false (2.1.6 M128 part 3 - review-216-ab MINOR 3: the
+// legend had no word for a skill with no / entry).
+test('check 19: the house rows\' "manual" and "model-only" flags match the frontmatter, both ways', () => {
+    const { lintInvocationFlags } = require('./lint-skills.js');
+    const skills = { manual: new Set(['alfred-task-solve']), modelOnly: new Set(['typescript']) };
+    assert.deepStrictEqual(lintInvocationFlags(skills, { houseManual: new Set(['alfred-task-solve']), houseModelOnly: new Set(['typescript']) }), []);
+    const missing = lintInvocationFlags(skills, { houseManual: new Set(['alfred-task-solve']), houseModelOnly: new Set() });
+    assert.strictEqual(missing.length, 1);
+    assert.match(missing[0], /'typescript' misses the "model-only" invocation flag \(its SKILL\.md sets user-invocable: false\)/);
+    const stale = lintInvocationFlags(skills, { houseManual: new Set(['alfred-task-solve']), houseModelOnly: new Set(['typescript', 'npm']) });
+    assert.strictEqual(stale.length, 1);
+    assert.match(stale[0], /marks 'npm' model-only but its SKILL\.md does not set user-invocable: false/);
+    assert.strictEqual(lintInvocationFlags(skills, { houseManual: new Set(), houseModelOnly: new Set(['typescript']) }).length, 1, 'the manual half still holds');
+});
+
+test('check 19: the live HTML legend names the model-only state and the four flagged rows carry it', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'docs', 'alfred-code.html'), 'utf8');
+    assert.match(html, /model-only = fires on its description, no \/-command \(user-invocable: false\)/);
+    const house = html.split('const house = {')[1].split('};')[0];
+    const flagged = [...house.matchAll(/\["([a-z0-9-]+)",[^\n]*"model-only"\]/g)].map((m) => m[1]).sort();
+    assert.deepStrictEqual(flagged, ['dotnet-winforms', 'dotnet-wpf', 'javascript', 'typescript']);
 });

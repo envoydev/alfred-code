@@ -26,7 +26,7 @@ const ENUMS = {
 };
 
 // ONE canonical order, so a server list never depends on how the flag was typed.
-const PW_ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
+const { ENGINES: PW_ENGINES } = require('../../stack/mcp/data-root.js');
 
 const VALUED = new Map([
     ['--space', 'space'], ['--scope', 'scope'],

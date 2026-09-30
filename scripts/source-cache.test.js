@@ -159,6 +159,36 @@ test("the protocol's bash snippet updates the core FIRST, takes the entry that l
     }
 });
 
+// zsh aborts a whole `for` when ANY of its globs matches nothing, so a snippet naming the 1.x glob
+// beside the 2.x one resolved to nothing on a clean 2.x machine (macOS's default shell) and curled the
+// archive. A curl that fails and records itself makes that fallback loud.
+const hasZsh = spawnSync('zsh', ['-c', 'exit 0'], { encoding: 'utf8' }).status === 0;
+test("the protocol's bash snippet finds the plugin cache under zsh too, on a machine with no 1.x cache dir", { skip: POSIX_STUB.skip || (!hasZsh && 'zsh not installed') }, () => {
+    const home = work();
+    const script = path.join(home, 'resolve.sh');
+    let tmp = '';
+    try
+    {
+        plantThree(home);
+        const bin = stubClaude(home, STACK_ROWS(home), '0.12.0');
+        const curlLog = path.join(home, 'curl-calls.log');
+        fs.writeFileSync(path.join(home, 'bin', 'curl'), `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(curlLog)}\nexit 22\n`, { mode: 0o755 });
+        fs.writeFileSync(script, protocolSnippet('bash', 0));
+        const r = spawnSync('zsh', [script], { cwd: home, encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH: bin } });
+        const m = (r.stdout || '').match(/RESOLVED TMP=(\S+) (\S+) /);
+        assert.ok(m, `the snippet printed no RESOLVED line under zsh:\n${r.stdout}\n${r.stderr}`);
+        tmp = m[1];
+        assert.ok(!fs.existsSync(curlLog), `zsh skipped the plugin cache and downloaded: ${fs.existsSync(curlLog) && fs.readFileSync(curlLog, 'utf8')}`);
+        assert.strictEqual(m[2], '0.12.0', 'zsh did not resolve the newest cache entry');
+    }
+    finally
+    {
+        const mark = markOf(home);
+        for (const p of [tmp, mark]) if (p) fs.rmSync(p, { recursive: true, force: true });
+        fs.rmSync(home, { recursive: true, force: true });
+    }
+});
+
 test("the protocol's PowerShell snippet updates the core FIRST and takes the entry that lands", { skip: skipNoPwsh || POSIX_STUB.skip }, () => {
     const home = work();
     const script = path.join(home, 'resolve.ps1');
@@ -520,8 +550,11 @@ test('the three body snippets read the 1.x cache dir too, and never an orphaned 
             const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, 'acct') };
             for (const [name, [script, tail]] of Object.entries(snippets))
             {
-                const got = execFileSync('bash', ['-c', script], { cwd: home, env, encoding: 'utf8' }).trim();
-                assert.ok(got.endsWith(`${want}${tail}`), `${name}: took '${got}', want ...${want}${tail}`);
+                for (const sh of hasZsh ? ['bash', 'zsh'] : ['bash'])
+                {
+                    const got = execFileSync(sh, ['-c', script], { cwd: home, env, encoding: 'utf8' }).trim();
+                    assert.ok(got.endsWith(`${want}${tail}`), `${sh} ${name}: took '${got}', want ...${want}${tail}`);
+                }
             }
         }
         finally { fs.rmSync(home, { recursive: true, force: true }); }

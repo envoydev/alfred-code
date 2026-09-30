@@ -52,7 +52,7 @@ const MACHINE_BROWSERS = {
     msedge: { need: 'Microsoft Edge', bins: ['msedge', 'microsoft-edge'] },
 };
 const CAPTURES = [
-    { skill: 'alfred-capture-related-projects', seat: 'related-project-analyzer', output: () => '.claude/rules/baseline-project-related-context.md' },
+    { skill: 'alfred-capture-related-projects', seat: 'related-project-analyzer', output: () => '.claude/rules/alfred-project-related-context.md' },
     { skill: 'alfred-capture-architecture', seat: 'architecture-analyzer', output: (docs) => `${docs}/architecture/ARCHITECTURE.md` },
     { skill: 'alfred-capture-code-style', seat: 'code-style-analyzer', output: (docs) => `${docs}/code-style/CODE-STYLE.md` },
     // The run book: no seat - it reads the repo and asks for the gaps in the main session.
@@ -203,7 +203,7 @@ function unattended({ machine, captures })
     // Its only real answer is a sibling list someone types - an unattended run would be inventing one.
     if (captures.some((c) => c.skill === 'alfred-capture-related-projects' && c.state === 'run'))
         lines.push('unattended: related projects -> none - skip it (naming the siblings needs a person)');
-    lines.push('unattended: CLAUDE.md -> fill it in (Recommended)');
+    lines.push('unattended: AGENTS.md -> fill it in (Recommended)');
     return lines;
 }
 
