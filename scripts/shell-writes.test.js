@@ -131,7 +131,7 @@ test('R3-m5: alias lookups are one table per place git runs, and a fan-out past 
 
 test('the scan budget lives in hook-prelude.js: characters scanned and depth, never time, and past either the rest is unread', () => {
   assert.strictEqual(typeof prelude.scanBudget, 'function');
-  assert.deepStrictEqual(Object.keys(prelude.SCAN_LIMITS).sort(), ['bytes', 'depth'], 'no time limit - a verdict never depends on the load');
+  assert.deepStrictEqual(Object.keys(prelude.SCAN_LIMITS).sort(), ['bytes', 'depth', 'gitJudged'], 'no time limit - a verdict never depends on the load');
   const b = prelude.scanBudget({ bytes: 10, depth: 3 });
   assert.strictEqual(b.take(10), true, 'at the byte limit');
   assert.strictEqual(b.take(1), false, 'one byte past it');
@@ -241,4 +241,29 @@ test('R4-m2: a self-extracting installer is read up to its first NUL byte and ch
   assert.deepStrictEqual(r.unread, [], 'the payload is no script text and costs no budget');
   assert.ok(run.budget.bytes < 64 * 1024, `${run.budget.bytes} bytes charged for a ${head.length}-byte head`);
   assert.ok(r.targets.some((t) => /elsewhere\.txt$/.test(t.raw)), 'the head is read: its write is seen');
+});
+
+// Seam delta 1: a subshell or group's parens are cuts, a substitution's, an array's, an escape's and a quote's are text.
+test('groupsAsCuts reads a group\'s parens as cuts and leaves a substitution, an array, an escape and a quote alone', () => {
+  const g = shell.groupsAsCuts;
+  assert.strictEqual(g('(cd d && rm -rf x)'), ';cd d && rm -rf x;');
+  assert.strictEqual(g('((a))'), ';;a;;');
+  assert.strictEqual(g('echo $(pwd) && (ls)'), 'echo $(pwd) && ;ls;');
+  assert.strictEqual(g('a=(1 2); diff <(ls) >(cat)'), 'a=(1 2); diff <(ls) >(cat)');
+  assert.strictEqual(g('find . \\( -name a \\)'), 'find . \\( -name a \\)');
+  assert.strictEqual(g('echo "(x)" \'(y)\''), 'echo "(x)" \'(y)\'');
+  assert.strictEqual(g('case a in a) echo hi;; esac'), 'case a in a; echo hi;; esac');
+  assert.strictEqual(g('ls'), 'ls', 'no paren, the same string');
+  for (const n of [10, 1000]) assert.strictEqual(g('('.repeat(n) + 'x' + ')'.repeat(n)).length, 2 * n + 1, 'width kept');
+});
+test('commandIndex walks past a body keyword, a group opener, ! and setsid', () => {
+  const at = (line) => { const w = line.split(' '); return w[shell.commandIndex(w)]; };
+  assert.strictEqual(at('! rm -rf x'), 'rm');
+  assert.strictEqual(at('{ rm -rf x'), 'rm');
+  assert.strictEqual(at('( rm -rf x'), 'rm');
+  assert.strictEqual(at('if rm -rf x'), 'rm');
+  assert.strictEqual(at('time rm -rf x'), 'rm');
+  assert.strictEqual(at('setsid -f rm -rf x'), 'rm');
+  assert.strictEqual(at('setsid bash -c x'), 'bash');
+  assert.strictEqual(at('echo rm'), 'echo');
 });

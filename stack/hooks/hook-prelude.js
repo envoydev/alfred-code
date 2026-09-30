@@ -237,6 +237,7 @@ const INSTALL_RECORDS = [['alfred-code.stamp'], ['claude-stack.stamp'], ['hooks'
 function checkoutsOf(dir)
 {
     const roots = [dir];
+    const between = []; // the folders from `dir` up to the top: a package of a monorepo may hold its own install (seam m3)
     for (let at = dir, up; ; at = up)
     {
         const dotGit = path.join(at, '.git');
@@ -244,7 +245,7 @@ function checkoutsOf(dir)
         try { stat = fs.statSync(dotGit); } catch { /* not this level */ }
         if (stat)
         {
-            if (at !== dir && at !== os.homedir()) roots.push(at);
+            if (at !== dir && at !== os.homedir()) roots.push(...between, at);
             if (!stat.isFile()) return roots;
             const line = /^gitdir:\s*(.+?)\s*$/m.exec(fs.readFileSync(dotGit, 'utf8'));
             if (!line) return roots;
@@ -255,8 +256,9 @@ function checkoutsOf(dir)
             if (common && path.basename(common) === '.git') roots.push(path.dirname(common));
             return roots;
         }
+        if (at !== dir) between.push(at);
         up = path.dirname(at);
-        if (up === at) return roots;
+        if (up === at || up === os.homedir()) return roots; // the home directory is never a project's top (its `.claude/` is the account dir)
     }
 }
 
@@ -398,14 +400,17 @@ function standDown(hook, env, argv, { setUp = true } = {})
 // - bytes: the characters scanned - each text is charged before it is parsed (`take`): the command, every script read
 //   from disk, every alias pass. The parsers are linear, so the count bounds the time on every machine;
 // - depth: scripts nested in scripts (`deep`).
+// - gitJudged: the destructive git calls the rm guard asks git about, one to three spawns each (`judge`); the rest of a
+//   command that holds more is read as one whole-tree discard, never let through (2.1.6 seam review m4).
 // Past either, `why` names the limit and the caller judges what is left CONSERVATIVELY - asked or gated like an alias
 // that cannot be read, never let through: the verdict must not flip to allowed on size alone (a 1.1MB script writing
 // outside was allowed where the same text at 0.99MB was denied, re-verify 3).
-const SCAN_LIMITS = Object.freeze({ bytes: 8 * 1024 * 1024, depth: 3 });
+const SCAN_LIMITS = Object.freeze({ bytes: 8 * 1024 * 1024, depth: 3, gitJudged: 48 });
 function scanBudget(limits = {})
 {
     const lim = { ...SCAN_LIMITS, ...limits };
     let bytes = 0;
+    let judged = 0;
     let why = '';
     return {
         limits: lim,
@@ -417,6 +422,7 @@ function scanBudget(limits = {})
         },
         over: () => !!why,
         deep: (depth) => depth >= lim.depth,
+        judge: () => ++judged <= lim.gitJudged,
         get why() { return why; },
         get bytes() { return bytes; },
     };

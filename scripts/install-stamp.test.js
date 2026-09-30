@@ -977,6 +977,23 @@ test('installState: a worktree with no record of its own is a worktree of the in
     assert.strictEqual(stamp.worktreeMain(wt), null);
 });
 
+// Seam delta 2: an install record in a folder BETWEEN the launch folder and the git top (a package of a monorepo) is the
+// tree's own, not a worktree's main checkout - `checkoutsOf` returns those folders, so `ownCheckouts` must include them.
+test('installState: a record in a folder between the launch folder and the git top is the tree\'s own, never a worktree of an install', () => {
+    const stamp = require('./install/stamp.js');
+    const { execFileSync } = require('node:child_process');
+    const top = path.join(TMP, `between-${seq++}`);
+    const pkg = path.join(top, 'packages', 'app');
+    const launch = path.join(pkg, 'src');
+    fs.mkdirSync(launch, { recursive: true });
+    execFileSync('git', ['-C', top, 'init', '-q'], { stdio: 'ignore' });
+    fs.mkdirSync(path.join(pkg, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(pkg, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\ninitialised: 2026-09-25T10:00:00Z\n');
+    const env = { CLAUDE_CONFIG_DIR: path.join(top, 'no-account') };
+    assert.strictEqual(stamp.worktreeMain(launch), null, 'no worktree main is named');
+    assert.strictEqual(stamp.installState(launch, env), 'initialised');
+});
+
 // M5 (Task 18b fix round 1): the scope validate passes to every installer call is read by the same
 // script as the state - the new stamp name or the 1.x one, a 1.x `global` read as `user`, anything else
 // (absent, hand-edited) as `project` - never a grep of one file name.

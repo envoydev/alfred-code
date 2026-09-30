@@ -108,47 +108,14 @@ const sw = require(path.join(__dirname, 'shell-writes.js'));
 // A git ALIAS runs another git command - or, with `!`, a shell command - and git resolves it before it runs: `git ci -m
 // x` with `alias.ci = commit` committed ungated on every tree (2.1.6 review T20). A script handed to a shell - `sh -c
 // '...'` (an alias's included), a literal piped to `sh`, a heredoc into it, `eval '...'`, a script FILE a shell runs -
-// runs as shell too (review re-verify N2 / N4, re-verify 2 R2-M5 / R2-m2). shell-writes.js is the one home of both
-// (`expandGitAliases`, `carriedScripts`): every alias is expanded in place, and every carried script, its own aliases
-// expanded, joins the command after a newline, where every check below reads it. One scan budget (hook-prelude.js)
-// bounds the whole read, and what it leaves unread gates as a commit, never passes (re-verify 3 R3-m4): a call whose
-// alias could not be read, and any text - the command, a script, a script FILE - the budget or the depth stopped in,
-// when what is left names git at all (text that never names git commits nothing). A script `curl` prints does not
-// exist when this runs, so the call is judged on what it names.
-const NAMES_GIT = /g[\\'"]*i[\\'"]*t/i;
-const namesGit = (file) => {
-  try { return fs.statSync(file).size > 64 * 1024 * 1024 || NAMES_GIT.test(fs.readFileSync(file, 'latin1')); } catch { return true; }
-};
+// runs as shell too (review re-verify N2 / N4, re-verify 2 R2-M5 / R2-m2). shell-writes.js is the one home of that reader
+// (`gitText`, shared with the force-push and rm guards, seam M3): aliases expanded, every carried script joined after a
+// newline, one scan budget (hook-prelude.js) bounding the whole read. What it leaves unread gates as a commit, never
+// passes (re-verify 3 R3-m4): `unreadAt` names a call whose alias could not be read, and any text the budget or the
+// depth stopped in when what is left names git at all.
 const gitCwd = payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
-const scanRun = sw.newRun();
-const aliased = sw.expandGitAliases(String((payload.tool_input || {}).command || ''), { cwd: gitCwd, run: scanRun });
-const markUnread = (at) => { if (aliased.unreadAt < 0 || at < aliased.unreadAt) aliased.unreadAt = at; };
-// Where each piece of the final text runs from: the command from the shell's cwd, each carried script from the
-// directory it runs in - a cd inside one moves what follows it there. `base` is where `text` starts in the final text.
-const regions = [];
-function withCarried(text, cwd, base, depth) {
-  regions.push({ from: base, to: base + text.length, cwd });
-  const u0 = scanRun.unread.length;
-  const scripts = sw.carriedScripts(text, { cwd, files: true, run: scanRun });
-  for (const u of scanRun.unread.slice(u0)) if (u.path ? namesGit(u.path) : NAMES_GIT.test(text.slice(u.at))) markUnread(base + u.at);
-  let out = text;
-  for (const sc of scripts) {
-    if (scanRun.budget.deep(depth) || scanRun.budget.over()) { if (NAMES_GIT.test(sc.text)) markUnread(base + sc.at); continue; }
-    const dir = sc.cwd || cwd;
-    const inner = sw.expandGitAliases(sc.text, { cwd: dir, run: scanRun });
-    const at = base + out.length + 1;
-    if (inner.unreadAt >= 0) markUnread(at + inner.unreadAt);
-    out += `\n${withCarried(inner.text, dir, at, depth + 1)}`;
-  }
-  return out;
-}
-// Every byte is charged once, where it comes from: the command here, a script file as it is read (shell-writes.js
-// `readScript`). Past the budget the text is not parsed, and unread (above).
-scanRun.budget.take(aliased.text.length);
-const command = withCarried(aliased.text, gitCwd, 0, 0);
-const parsed = !scanRun.budget.over() ? sw.parseShell(sw.joinContinuations(sw.blankComments(sw.blankHeredocs(command)))) : null;
-if ((!parsed || parsed.tooDeep) && NAMES_GIT.test(command)) markUnread(0);
-const calls = parsed ? sw.gitCalls(null, parsed) : [];
+const gitRead = sw.gitText(String((payload.tool_input || {}).command || ''), gitCwd);
+const { command, parsed, calls } = gitRead;
 // The text of the simple command a call stands in, one line - what a denial names.
 const actText = (c) => command.slice(c.at, c.stop).trim().replace(/\s+/g, ' ');
 // `git commit`'s own argv: the options whose value is the next word (short letters, long names -
@@ -194,7 +161,7 @@ const commitCall = calls.find((c) => c.sub === 'commit' && !commitArgs(c.argv).f
 const opaqueCall = commitCall ? null : calls.find((c) => c.opaque);
 const commitMatch = commitCall ? { index: commitCall.at, call: commitCall, opaque: false }
   : opaqueCall ? { index: opaqueCall.at, call: opaqueCall, opaque: true }
-    : aliased.unreadAt >= 0 ? { index: aliased.unreadAt, call: null, opaque: true } : null;
+    : gitRead.unreadAt >= 0 ? { index: gitRead.unreadAt, call: null, opaque: true } : null;
 // The publish half is on by default and switched off per install for a repo whose remote already
 // gates the branch (protection rules, a required review). Any value but "0" leaves it on.
 const PUSH_GATE_ON = envOf(process.env, 'PUSH_GATE') !== '0';
@@ -255,18 +222,7 @@ const projectDir = process.env.CLAUDE_PROJECT_DIR || '';
 // The directory a git call runs in: its piece's cwd moved by every cd before it there (PowerShell's Set-Location and
 // Push-Location too), then the call's own `-C` chain - read the same way for the add sweep, the commit's set and the
 // scan (2.1.6 review B1). A cd the guard cannot follow (`cd $DIR`) leaves the piece's own cwd.
-const regionCds = new Map();
-const cdTarget = (t) => nativePath(sw.unquote(t));
-function callDir(call) {
-  let k = regions.length - 1;
-  while (k > 0 && regions[k].from > call.at) k--;
-  const r = regions[k];
-  if (!regionCds.has(k)) regionCds.set(k, (parsed ? parsed.cds : []).filter((c) => c.index >= r.from && c.index < r.to));
-  let cwd = sw.anchorAt(regionCds.get(k), call.at, r.cwd, cdTarget) || r.cwd;
-  for (const d of call.dirs) if (!sw.isVar(d)) cwd = path.resolve(cwd, nativePath(d));
-  try { cwd = fs.realpathSync.native(cwd); } catch { /* git reports the missing directory itself */ }
-  return cwd;
-}
+const callDir = gitRead.callDir;
 // the FIRST of the acts anchors the repo - everything before it moved the cwd
 const firstAct = [commitMatch && (commitMatch.call || { at: commitMatch.index, dirs: [] }),
   publishMatch && (publishMatch.call || { at: publishMatch.index, dirs: [] }), addCalls[0]].filter(Boolean).sort((a, b) => a.at - b.at)[0];

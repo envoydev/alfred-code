@@ -77,7 +77,9 @@ change (see the invariants below).
   the core's `hook_profile` userConfig (`/config`, account-level; `minimal` keeps only the rm, secret,
   force-push and desktop exec guards, `strict` reads `ALFRED_CODE_TURN_CHECK` as on, the csv still wins);
   the plugin copy standing down beside a still-wired copied twin; a repo never set up (no install
-  record in it, its git top level or - for a git worktree - its main checkout, so a worktree of an
+  record in it, any folder between it and its git top level (a monorepo package with its own install), the top itself -
+  never a repo kept at the home directory, for the installer's `gitRoot` as much as the hooks, seam m3 - or - for a git
+  worktree - its main checkout, so a worktree of an
   installed checkout counts as set up; under a user-scope core such a repo is written nothing and only
   the rm, secret, force-push and desktop exec guards stay live, writing no row - R54, R86 - plus the dispatch guard's
   implementer gate, M9. Known ceiling: such a repo still lists all 44 core seats, 12,532 characters of
@@ -111,11 +113,12 @@ change (see the invariants below).
   <name>` before the `-c`), `eval`, a heredoc, a here-string, `< file`, an `echo` / `printf` (its format cycled over its
   arguments) / `cat <file>` stage piped in past any `tee`, and a script FILE a shell runs (`bash x.sh`, `. x.sh`,
   `source`, `./x.sh` with a shell shebang or none), read from disk against the caller's cwd - or from the text the same
-  command wrote into it first - inside the scan budget (`hook-prelude.js` `SCAN_LIMITS`: 8MB of text scanned and 3 levels
-  of carried scripts, work counts and never time, so a verdict never depends on machine load; each byte is charged
+  command wrote into it first - inside the scan budget (`hook-prelude.js` `SCAN_LIMITS`: 8MB of text scanned, 3 levels
+  of carried scripts and 48 destructive git calls judged by the rm guard, work counts and never time, so a verdict never depends on machine load; each byte is charged
   once, where it comes from - the command, and a script file as it is read up to its first NUL byte, so a
   self-extracting installer costs its shell head; past it the rest is unread and judged conservatively); `-n` and `-o
-  noexec` run nothing, and what `curl` prints does not exist when the hook fires. It is also the one home of git ALIAS
+  noexec` run nothing, and what `curl` prints does not exist when the hook fires. `gitText` is the ONE reader of a command for every guard that judges a git call (commit, push, force-push, the rm guard's git half):
+  aliases expanded, every carried script joined, one scan budget, one parse, and `callDir(call)` for where each call runs. It is also the one home of git ALIAS
   expansion (`expandGitAliases`, T20, R2-m1): every spelling of the call (`/usr/bin/git`, `\git`, `-P`, `--git-dir .git`,
   `--work-tree .`), looked up with its `-c`, `--config-env`, `GIT_CONFIG*` / `HOME` / `XDG_CONFIG_HOME` / `GIT_DIR`
   assignments and an alias the same command defines; a `!` alias runs at the repo's top level; an xargs-fed subcommand
@@ -140,11 +143,21 @@ change (see the invariants below).
   (`analyze-usage.js --hook-blocks` tallies it) - the block RATE is what says a gate earns its keep.
   A denial that needs the user's decision ends in ONE AskUserQuestion, and an 'allow' answer is
   honoured through a `<docs-path>/flow/*-ALLOW` receipt (this session's own, under 8h).
-  - `guard-protected-force-push.js` - blocks force-push to protected branches.
+  - `guard-protected-force-push.js` - blocks force-push to protected branches. It reads the command through
+    `shell-writes.js`'s `gitText` (below), so a push counts past a wrapper (`timeout 60`, `env A=1`, `nohup`), in an
+    `if` / `for` body, `bash -c '...'`, a heredoc or here-string into a shell, `eval`, a script file and a git alias
+    (`alias.pf = push --force`), each from the directory a leading `cd` moved it to; a computed name (`bash -c "$(...)"`,
+    `source <(...)`, a loop variable) is out of model (2.1.6 seam review M3). It loads `shell-writes.js` inside a try and
+    passes the call when the file is absent (the parity test's copy set), as the rm and commit guards do.
   - `guard-catastrophic-rm.js` (PreToolUse, the shell route) - a recursive `rm` of an unrecoverable target (and a
     literal `find <target> -delete` / `-exec rm` with no filter test before the action in its `-o` branch, or a piped `Get-ChildItem <target> | Remove-Item`
-    with `-Recurse` on either side - 2.1.5 M1; `xargs` and wrappers stay the stated ceiling), and
-    EVERY git call in the command, read from its argv (flags anywhere, a tree-ish before the paths): a
+    with `-Recurse` on either side - 2.1.5 M1; read past any wrapper of shell-writes.js's list, an `if` / `do` body, a subshell
+    or group (`(cd d && rm -rf x)`, `{ ...; }`, `! rm`, whose parens `groupsAsCuts` reads as cuts), `bash -c`,
+    a heredoc into a shell and `eval`; `xargs rm` fed a listing and `find -exec sh -c` stay out of model), and
+    EVERY git call in the command, read from its argv by `gitText` (the same wrappers, bodies, scripts and aliases as the
+    force-push guard; only the nine verbs that can lose work spawn git, and past `SCAN_LIMITS.gitJudged` the rest of a command reads
+    as one whole-tree discard, so N `git add` calls cost no git and the count never lets a discard through - seam M3, m4;
+    PowerShell's paths reach the reader with backslash and backtick swapped): a
     path `checkout` / `restore` of the working tree / `reset --hard` / a forced `checkout` or `switch` only
     when the PATHSPEC it names is dirty (judged where git runs: cwd, a leading `cd`, `-C`; `status -z`, so
     a non-ASCII name reads as written; an untracked file counts only when the target tracks it, `-` being
@@ -181,6 +194,11 @@ change (see the invariants below).
     into `sh`), and pairing stops trusting quotes after a comment's apostrophe; `echo "$(cat f)"` prints what its
     substitution read, an assignment of one does not. Only a gated file over the threshold
     is a content source; a print reached through an alias is followed, one passed along or called by bracket is a dump.
+    Heredoc spans come from `heredocsOf` in this guard and the secret guard alike, so every opener spelling it accepts
+    (`<<\EOT`, `<<-'EOT'`, `<< 'EOT'`) is judged the same (seam M1; a table test runs each spelling through both), a runtime
+    or shell here-string is read as its inline flag, `deno` / `bun` / `pwsh` bodies are judged, and an unquoted heredoc's `$(...)`
+    is a command (m2, m5). TWO budgets, both counts of work and never time: this guard's own judging budget below, and the scan
+    budget of `hook-prelude.js` `SCAN_LIMITS` (8MB of text, 3 script levels, 48 judged git calls) that the shared reader spends.
     Judging scales linearly with the command inside one budget of WORK, never time, so a command gets the same verdict
     on any machine: each judging step charges the characters it reads, the two thresholds at the top of each guard
     (`JUDGE_MAX_WORK`, 20x the costliest of 54,503 recorded commands; `JUDGE_MAX_DEPTH`). A test holds each
@@ -243,7 +261,11 @@ change (see the invariants below).
     what a print stage pipes into a shell and a printed `$(...)` or backtick substitution (`echo "$(cat <file>)"`) - each
     read past any wrapper word and that wrapper's own flags and operands (`timeout 30`, `env -u X A=1`, `nice -n 5`,
     `sudo -u root`, `stdbuf -oL`, `ionice -c 3`, `nohup`, `time`, `command`, `exec`; env's `-S` string is the command
-    itself), one `WRAPPERS` table (2.1.6 review round and its Re-verify 1). A credential path a runtime BUILDS from `os.homedir()`,
+    itself, and a wrapper the module lists - `doas`, `caffeinate`, `chronic`, `unbuffer`, `setsid`, `npx`, `uv run`, `xargs`, `find -exec`,
+    a here-string into a shell), ONE walker, `shell-writes.js` `commandIndex` (it also passes a body keyword, `!`, `{`, `(`), that the
+    read and rm guards walk too (2.1.6 seam review M2; a table test runs every wrapper of the module's own list through both guards).
+    The read and rm guards cut a command at a subshell's or group's parens too (`groupsAsCuts`, seam delta 1), and the read guard
+    judges a here-string into a runtime (`python3 - <<<`, `deno run - <<<`) as a heredoc body, `pwsh -Command "Get-Content f"` included (delta 3). A credential path a runtime BUILDS from `os.homedir()`,
     `process.env.HOME` / `CLAUDE_CONFIG_DIR`, `Path.home()` or `Dir.home` is judged like the literal path, unless the
     script assigns HOME itself first. A connection-string / URL password and a PEM
     private key count as credentials whatever the key. `--presence <file> [KEY ...]` is the sanctioned

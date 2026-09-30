@@ -1393,9 +1393,14 @@ function routeFiles(verb, args) {
 // and blanking the whole match hid it (2.1.6 K1). The EXCEPTION is a heredoc that feeds a runtime or a shell
 // (`python3 - <<'EOF'`, `bash <<'EOF'`, `cat <<'EOF' | node`), where the body is the command and blanking it hid the
 // dump completely (review finding). Those bodies come back in `code` to be judged as code.
-const HEREDOC_RE = /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^[ \t]*\2[ \t\r]*$/gm;
-let blankHeredocs = (c) => c.replace(HEREDOC_RE, (m) => m.replace(/[^\n]/g, ' ')); // a copy that runs before shell-writes.js lands
-try { ({ blankHeredocs } = require(pathMod.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
+// A copy that runs before shell-writes.js lands judges every body as code and every wrapper as a command word.
+let blankHeredocs = (c) => c;
+let heredocsOf = () => [];
+let heredocBody = () => '';
+let heredocVerbatim = () => false;
+let heredocSubstitutions = () => [];
+let commandIndex = () => 0;
+try { ({ blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex } = require(pathMod.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
 // What reads a heredoc's body is the COMMAND of the stage holding the `<<`, or of a stage piped from it on the same
 // line - a whole word, never a substring: `\bsh\b` matched the `.sh` of `cat > run.sh <<'EOF'`, so a script being
 // WRITTEN was judged as one being run, and the write became a redacted dump (2.1.6 K1). A redirect target is the file
@@ -1406,7 +1411,8 @@ function heredocReader(line, at) {
   const own = line.slice(0, at).split(/&&|\|\||;|\|/).pop();
   const piped = line.slice(at).split(/&&|\|\||;/)[0].split('|').slice(1);
   for (const stage of [own, ...piped]) {
-    const words = shellTokens(stage);
+    // a subshell, a substitution or a `NAME=` prefix opens the stage's first word: `x=$(python3 - <<'EOF'` (seam m1)
+    const words = shellTokens(stage).map((w) => w.replace(/^(?:[A-Za-z_]\w*=)?(?:\$\(|[(`"'])+/, ''));
     for (let k = 0; k < words.length; k++) {
       if (/^\d*[<>]+&?$/.test(words[k])) { k++; continue; } // `> file`: the next word is the target
       if (/^\d*[<>]/.test(words[k])) continue; // `>file`, `2>&1`, `<<'EOF'`
@@ -1502,17 +1508,34 @@ function stdinIsScript(word, rest) {
   }
   return true;
 }
-// A QUOTED tag (`<<'EOF'`, `<<"EOF"`) hands the body over verbatim: the shell expands nothing in it (`verbatim`).
+// A QUOTED or backslashed tag (`<<'EOF'`, `<<"EOF"`, `<<\EOF`) hands the body over verbatim: the shell expands nothing in it. The
+// spans are `heredocsOf`'s - the reader every guard shares - so an opener spelling it accepts is one here too (seam M1).
 function stripHeredocsOf(c, code) {
-  if (code) {
-    for (const h of c.matchAll(HEREDOC_RE)) {
-      const from = c.lastIndexOf('\n', h.index) + 1;
-      const nl = c.indexOf('\n', h.index);
-      const reader = heredocReader(c.slice(from, nl < 0 ? c.length : nl), h.index - from);
-      if (reader) code.push({ body: h[0].replace(/^[^\n]*\n?/, '').replace(/\n[^\n]*$/, ''), runtime: reader !== 'shell', lang: reader.split(':')[1] || '', verbatim: h[1] !== '' });
+  if (!code) return blankHeredocs(c);
+  const docs = heredocsOf(c);
+  const blank = blankHeredocs(c, docs);
+  const written = new Map(); // a file this command writes from a heredoc body -> that body, for a later run of it (seam m5)
+  for (const h of docs) {
+    const line = c.slice(h.lineStart, h.lineEnd);
+    const reader = heredocReader(line, h.index - h.lineStart);
+    if (reader) { code.push({ body: heredocBody(c, h), runtime: reader !== 'shell', lang: reader.split(':')[1] || '', verbatim: heredocVerbatim(c, h) }); continue; }
+    const body = heredocBody(c, h);
+    if (!heredocVerbatim(c, h)) { // a body the shell expands: each `$( ... )` in it is a command
+      for (const { from, to } of heredocSubstitutions(body)) code.push({ body: body.slice(from, to), runtime: false, lang: '', verbatim: false });
+    }
+    const target = /(?:^|[\s\d])>>?[ \t]*["']?([^\s;&|<>"'&]+)/.exec(line);
+    if (target && written.size < 8) written.set(target[1].replace(/^\.\//, ''), { body, h });
+  }
+  for (const [file, { body, h }] of written) {
+    let seen = 0;
+    for (let at = blank.indexOf(file, h.end); at >= 0 && seen < 8; at = blank.indexOf(file, at + file.length), seen++) {
+      const words = shellTokens(blank.slice(Math.max(0, at - 200), at).split(/[;&|\n(]/).pop().trim()).map((w) => w.replace(/^["']|["']$/g, ''));
+      const k = commandIndex(words);
+      const word = (words[k] || '').replace(/^.*[\\/]/, '');
+      if (RUNTIME_WORD.test(word) || SHELL_WORD.test(word)) code.push({ body, runtime: !SHELL_WORD.test(word), lang: runtimeLang(word), verbatim: heredocVerbatim(c, h) });
     }
   }
-  return blankHeredocs(c);
+  return blank;
 }
 // `#` starts a comment only at the start of a word outside quotes - `${#VAR}` is a length. Judging
 // the comment text let `cat <secret> # wc` borrow an exemption from a word the shell never runs.
@@ -1833,55 +1856,8 @@ const inlineScripts = (stage) => shellTokens(stage).filter((t) => /^(['"])[\s\S]
 // after `-c`, and a shell reading its script from stdin runs what the print stage before it prints.
 const wordOf = (t) => (/^"[\s\S]*"$/.test(t) ? t.slice(1, -1).replace(/\\(["\\$`])/g, '$1') : /^'[\s\S]*'$/.test(t) ? t.slice(1, -1) : t);
 const SHELL_VERB = /^(?:bash|sh|zsh|dash|ksh|fish)$/;
-// The words that run the command after them (Re-verify 1 of 2.1.6: `timeout 30 bash -c '...'` hid its string): the
-// one-letter flags that take a value, the long ones, the operands read before the command (timeout's duration),
-// whether `NAME=value` words may follow, and env's split-string flag, whose value is the command itself. The ONE table
-// here; the follow-up merges it with shell-writes.js's CMD_WRAPPER.
-const WRAPPERS = {
-  timeout: { value: 'sk', long: /^--(?:signal|kill-after)$/, operands: 1 },
-  env: { value: 'uCS', long: /^--(?:unset|chdir|split-string)$/, assigns: true, split: 'S' },
-  nice: { value: 'n', long: /^--adjustment$/ },
-  nohup: { value: '' },
-  sudo: { value: 'ugCDhprtTU', long: /^--(?:user|group|close-from|chdir|host|prompt|role|type|command-timeout|other-user)$/, assigns: true },
-  stdbuf: { value: 'ioe', long: /^--(?:input|output|error)$/ },
-  ionice: { value: 'cnp', long: /^--(?:class|classdata|pid)$/ },
-  time: { value: 'fo', long: /^--(?:format|output)$/ },
-  command: { value: '' },
-  exec: { value: 'a' },
-};
-// The index of the command word in `words` (spliced in place for env's split string), past `NAME=value` prefixes and
-// every wrapper with its own flags, their values and its operands. At most 16 wrappers; each word is read once.
-function commandAt(words) {
-  let k = 0;
-  for (let n = 0; n < 16 && k < words.length; n++) {
-    const w = wordOf(words[k]);
-    if (/^[A-Za-z_]\w*=/.test(w)) { k++; n--; continue; }
-    const row = WRAPPERS[w.replace(/^.*[\\/]/, '')];
-    if (!row) break;
-    for (k++; k < words.length; k++) {
-      const a = wordOf(words[k]);
-      if (a === '--') { k++; break; }
-      if (row.assigns && /^[A-Za-z_]\w*=/.test(a)) continue;
-      if (!/^-./.test(a)) break;
-      let val = null;
-      if (a.startsWith('--')) {
-        const eq = a.indexOf('=');
-        const name = eq < 0 ? a : a.slice(0, eq);
-        if (eq >= 0) val = a.slice(eq + 1); else if (row.long && row.long.test(name)) val = wordOf(words[++k] || '');
-        if (row.split && name === '--split-string' && val !== null) words.splice(k + 1, 0, ...shellTokens(val));
-        continue;
-      }
-      for (let i = 1; i < a.length; i++) {
-        if (!row.value.includes(a[i])) continue;
-        val = i + 1 < a.length ? a.slice(i + 1) : wordOf(words[++k] || '');
-        if (row.split === a[i]) words.splice(k + 1, 0, ...shellTokens(val));
-        break;
-      }
-    }
-    k += row.operands || 0;
-  }
-  return k;
-}
+// The command word of a stage is found past shell-writes.js's wrapper list (`commandIndex`, the one home of it).
+const commandAt = (words) => commandIndex(words, shellTokens);
 // The `$(...)` and backtick substitutions in a stage's text, outside single quotes (`$((` is arithmetic).
 function substitutions(text) {
   const out = [];
@@ -1905,26 +1881,48 @@ function substitutions(text) {
   }
   return out;
 }
+// The script a shell word list runs: its `-c` string, or the here-string a shell with no `-c` reads (`bash <<< 'cat f'`).
+function shellScriptOf(words, stage) {
+  const f = STDIN_FLAGS.shell;
+  let c = false;
+  for (let k = 1; k < words.length; k++) {
+    const w = wordOf(words[k]);
+    if (w === '-' || w === '--') return c && k + 1 < words.length ? [wordOf(words[k + 1])] : [];
+    if (w.startsWith('--')) { if (!w.includes('=') && f.longValue.test(w)) k++; continue; }
+    if (w.length > 1 && (w[0] === '-' || w[0] === '+')) {
+      let take = 0;
+      for (let i = 1; i < w.length; i++) { if (w[i] === 'c') c = true; else if (f.next.includes(w[i])) take++; }
+      k += take;
+      continue;
+    }
+    return c ? [w] : hereString(stage);
+  }
+  return c ? [] : hereString(stage);
+}
+// The word a `<<<` hands a shell as its script, in the stage that carries it.
+function hereString(stage) {
+  const raw = stage ? shellTokens(stage.trim()) : [];
+  const at = raw.findIndex((t) => t.startsWith('<<<'));
+  const w = at < 0 ? null : raw[at].length > 3 ? raw[at].slice(3) : raw[at + 1];
+  return w == null ? [] : [wordOf(w)];
+}
 function shellRunStrings(stages, sj) {
   const wordsOf = (s) => { const w = shellTokens(s.trim()).filter((t) => !/^\d*[<>]/.test(t)); return w.slice(commandAt(w)); };
   const words = wordsOf(stages[sj]);
   const verb = wordOf(words[0] || '').replace(/^.*[\\/]/, '');
-  const f = STDIN_FLAGS.shell;
-  if (SHELL_VERB.test(verb)) {
-    let c = false;
+  if (SHELL_VERB.test(verb)) return shellScriptOf(words, stages[sj]);
+  if (verb === 'find' || verb === 'gfind') { // `find ... -exec sh -c '<script>' \;` runs its script once per match
+    const out = [];
     for (let k = 1; k < words.length; k++) {
-      const w = wordOf(words[k]);
-      if (w === '-' || w === '--') return c && k + 1 < words.length ? [wordOf(words[k + 1])] : [];
-      if (w.startsWith('--')) { if (!w.includes('=') && f.longValue.test(w)) k++; continue; }
-      if (w.length > 1 && (w[0] === '-' || w[0] === '+')) {
-        let take = 0;
-        for (let i = 1; i < w.length; i++) { if (w[i] === 'c') c = true; else if (f.next.includes(w[i])) take++; }
-        k += take;
-        continue;
-      }
-      return c ? [w] : [];
+      if (!/^-(?:exec|execdir|ok|okdir)$/.test(wordOf(words[k]))) continue;
+      let e = k + 1;
+      while (e < words.length && !/^\\?;$|^\+$/.test(wordOf(words[e]))) e++;
+      const seg = words.slice(k + 1, e);
+      const run = seg.slice(commandAt(seg));
+      if (SHELL_VERB.test(wordOf(run[0] || '').replace(/^.*[\\/]/, ''))) out.push(...shellScriptOf(run, ''));
+      k = e;
     }
-    return [];
+    return out;
   }
   if (verb === 'eval') return words.length > 1 ? [words.slice(1).map(wordOf).join(' ')] : [];
   if (verb === 'watch') {
@@ -2386,7 +2384,7 @@ function redactGitStages(text) {
   return changed ? out.map((seg, i) => seg + (seps[i] || '')).join('') : text;
 }
 // True for a git stage whose output carries file CONTENT: `diff` and `show` unless a summary or no-patch form
-// asks for less, `log` / `whatchanged` / `stash show` only with a patch flag. Git's own options before the
+// asks for less, `log` / `whatchanged` / `stash show` only with a patch flag, `cat-file` with `-p` / a type. Git's own options before the
 // subcommand (`-C <dir>`, `-c <k=v>`, `--no-pager`) are skipped.
 function gitPrintsContent(stage) {
   const w = shellTokens(stage.replace(PREFIX_WORDS, '').trim()).map((t) => t.replace(/^(['"])([\s\S]*)\1$/, '$2'));
@@ -2401,6 +2399,7 @@ function gitPrintsContent(stage) {
   if (sub === 'diff' || sub === 'show') return patch || !summary;
   if (sub === 'log' || sub === 'whatchanged') return patch;
   if (sub === 'stash') return args[0] === 'show' && patch;
+  if (sub === 'cat-file') return args.some((a) => /^(?:-p|blob|--textconv|--filters)$/.test(a)); // prints a blob whole (seam m5)
   return false;
 }
 // Would this git stage print something lineRedactor masks? It is run here the way the stack's other guards read
@@ -2419,7 +2418,8 @@ function gitOutputLeaks(stage) {
   }
   const at = w[i] === 'stash' ? i + 2 : i + 1;
   if (w.slice(at).some((a) => /^--output(?:=|$)/.test(a))) return true;
-  const argv = ['-c', 'core.fsmonitor=false', ...w.slice(1, at), '--no-ext-diff', '--no-textconv', '--no-color', ...w.slice(at)];
+  if (w[i] === 'cat-file' && w.some((a) => /^--(?:textconv|filters)$/.test(a))) return true; // runs a repository's own driver
+  const argv = ['-c', 'core.fsmonitor=false', ...w.slice(1, at), ...(w[i] === 'cat-file' ? [] : ['--no-ext-diff', '--no-textconv', '--no-color']), ...w.slice(at)];
   const r = require('child_process').spawnSync('git', argv, {
     cwd: (payload && payload.cwd) || process.env.CLAUDE_PROJECT_DIR || process.cwd(), timeout: 3000, maxBuffer: 8 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_PAGER: 'cat', PAGER: 'cat' },

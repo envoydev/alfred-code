@@ -34,16 +34,19 @@
 // narrow. Ceiling: a filter under `!` (`! -name x`) is still read as narrowing, though it deletes all but x.
 // A PowerShell `Get-ChildItem <target> | Remove-Item` with `-Recurse` on either side is judged by the same target
 // set (the lister's path is the target, a `-Filter` / `-Include` / `-Exclude` narrows it).
-// Out of scope (same honesty as the force-push guard): indirection that deletes
-// without a literal command naming one of these targets - `xargs rm`, `eval`, a subshell,
-// `find -exec sh -c ...`, or rm via a wrapper script - is NOT caught here; this guard
-// reads the literal command's flat tokens.
+// The command is read by shell-writes.js's `gitText`, the one reader every git guard shares (2.1.6 seam review M3): a
+// verb counts only as a COMMAND WORD, past a wrapper (`timeout 5`, `sudo`, `nohup`, `env A=1`), inside `if` / `for` bodies,
+// `bash -c '...'`, a heredoc or here-string into a shell, `eval`, a script FILE a shell runs and a git alias, each from the
+// directory a leading `cd` moved it to. Out of model (an honest mistake never writes these): a target a substitution
+// computes (`bash -c "$(echo ...)"`, `source <(...)`), a delete over ssh or inside `docker exec`, `xargs rm` fed a listing,
+// `find -exec sh -c ...` and text past the scan budget.
 // The git half (main() below) reads EVERY git call in the command from its argv - flags anywhere, a
 // tree-ish before the paths - and judges each by what it would destroy: the dirty paths a discard
 // names, what `clean -n` of the same flags lists (ignored files included), a stash entry, the reflog
 // entries or unreachable objects a dry run would prune. One block names every loss. Ceilings: under a
-// dated `gc --prune` a PACKED unreachable object is counted whatever its age (its age sits in the
-// pack, not read here), and a git probe past its 5s timeout fails open like every hook here.
+// dated `gc --prune` a PACKED unreachable object is counted whatever its age (its age sits in the pack, not read
+// here), a git probe past its 5s timeout fails open like every hook here, and a command with more destructive git
+// calls than the scan budget's `gitJudged` reads the rest as one whole-tree discard.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -70,14 +73,10 @@ if (require.main === module) {
 // project whose settings.json has not been migrated yet keeps resolving.
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 
-// A heredoc body is DATA, not shell: a plan or checklist that merely DESCRIBES this command is
-// inert text, and matching it blocked a document write for its own prose (reproduced). Blank the
-// payload spans, keeping the character count so any index into the command still holds.
-const stripHeredocs = (c) => String(c).replace(
-  /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^[ \t]*\2[ \t\r]*$/gm,
-  (m) => m.replace(/[^\n]/g, ' '),
-);
-
+// The reader every git guard shares (heredoc bodies are data there, carried scripts are shell). A copy that runs before
+// it lands fails open like every gate here (the parity test's copy set), rather than judging with a second, weaker reader.
+let shellWrites;
+try { shellWrites = require('./shell-writes.js'); } catch { process.exit(0); }
 
 // A recursive flag: --recursive, a short cluster of rm's own letters containing r/R (-r, -R, -rf,
 // -fr, -Rf, -rfv), or PowerShell's -Recurse and its prefixes. --force alone never recurses - and
@@ -178,12 +177,8 @@ const wipes = (paths) => paths.some(isCatastrophic) || paths.filter(isTopLevelDi
 function commandOf(seg)
 {
     const tokens = seg.trim().split(/\s+/).filter(Boolean);
-    let i = 0;
-    while (i < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i])
-        || tokens[i] === 'sudo' || tokens[i] === 'command' || tokens[i] === 'nice' || tokens[i] === 'time'))
-    {
-        i++;
-    }
+    // past a body's keyword, a group's opener, assignments and shell-writes.js's one wrapper list (it tidies `tokens` in place)
+    const i = shellWrites.commandIndex(tokens);
     return { cmd: tokens[i] || '', args: tokens.slice(i + 1) };
 }
 
@@ -299,7 +294,7 @@ function isCatastrophicRm(command)
     // Split a compound command (`a && rm -rf / ; b`) into segments so each delete is inspected on its own;
     // the separators are kept (odd indexes) so a pipe can hand its listing to the remove after it.
     // Best-effort: subshell/expansion forms fall through to allow.
-    const parts = command.split(/([;|&]{1,2}|\n)/);
+    const parts = shellWrites.groupsAsCuts(command).split(/([;|&]{1,2}|\n)/); // a subshell or group's parens are cuts
     for (let k = 0; k < parts.length; k += 2)
     {
         const { cmd, args } = commandOf(parts[k]);
@@ -337,86 +332,10 @@ function isCatastrophicRm(command)
 }
 
 // ---- git, read as git reads its argv -----------------------------------------------------------
-// The words of one shell command, quote-aware: '...' is literal and adjacent pieces join ("my file".js
-// is one word). In bash "..." keeps \" \\ \$ \` as escapes and a backslash outside quotes escapes the
-// next character; in PowerShell a backslash is a path separator and the escape is the backtick - read
-// as a bash escape, `src\a.txt` named no file and its discard passed. A redirection and its target are
-// no argument (`git clean -fdx > /dev/null` names no path).
-function shellWords(text, powershell = false)
-{
-    const esc = powershell ? '`' : '\\';
-    const words = [];
-    let word = null;
-    let redirect = false;
-    const flush = () =>
-    {
-        if (word !== null) words.push({ text: word, redirect });
-        word = null;
-        redirect = false;
-    };
-    for (let i = 0; i < text.length; i++)
-    {
-        const ch = text[i];
-        if (/\s/.test(ch)) { flush(); continue; }
-        if (word === null)
-        {
-            word = '';
-            redirect = /^\d*[<>]/.test(text.slice(i));
-        }
-        if (ch === "'")
-        {
-            const end = text.indexOf("'", i + 1);
-            const stop = end < 0 ? text.length : end;
-            word += text.slice(i + 1, stop);
-            i = stop;
-        }
-        else if (ch === '"')
-        {
-            let j = i + 1;
-            for (; j < text.length && text[j] !== '"'; j++)
-            {
-                if (text[j] === esc && j + 1 < text.length && (powershell || /["\\$`]/.test(text[j + 1]))) j++;
-                word += text[j];
-            }
-            i = j;
-        }
-        else if (ch === esc)
-        {
-            word += text[i + 1] ?? '';
-            i++;
-        }
-        else word += ch;
-    }
-    flush();
-    const out = [];
-    for (let k = 0; k < words.length; k++)
-    {
-        if (!words[k].redirect) out.push(words[k].text);
-        else if (/^\d*(?:>>?|<|>&|<&|>\|)$/.test(words[k].text)) k++;   // the operator alone: its target is the next word
-    }
-    return out;
-}
+// (shell-writes.js `gitText` reads the words, the `-C` / `-c` options and the alias; a call's verb and argv come from it.)
 
-// The options git reads BEFORE the verb: `-C <dir>` (each one on from the last), `-c <key=value>`, and
-// the few that take their value as the next word; every other one is a single word.
-const GIT_GLOBAL_VALUE = /^--(?:git-dir|work-tree|namespace|attr-source|config-env|super-prefix)$/;
-function splitGitCall(words)
-{
-    const dirs = [];
-    const config = [];
-    let i = 0;
-    while (i < words.length && words[i].startsWith('-') && words[i] !== '-')
-    {
-        const w = words[i];
-        if (w === '-C' || w === '-c')
-        {
-            (w === '-C' ? dirs : config).push(words[i + 1] ?? '');
-            i += 2;
-        }
-        else i += GIT_GLOBAL_VALUE.test(w) ? 2 : 1;
-    }
-    return { dirs, config, verb: words[i] || '', args: words.slice(i + 1) };
-}
+// The verbs `gitPlan` can find a loss in - any other git call has nothing to lose and spawns nothing.
+const LOSS_VERBS = new Set(['checkout', 'restore', 'reset', 'switch', 'clean', 'stash', 'reflog', 'prune', 'gc']);
 
 // Per verb: the short letters and long names that take a VALUE, and the long names this guard reads. A
 // long option may be cut to any unique prefix, as git's own parser allows (`git reset --har` is --hard).
@@ -717,7 +636,7 @@ function main()
         };
     })();
 
-    const command = stripHeredocs(payload?.tool_input?.command ?? '');
+    const rawCommand = String(payload?.tool_input?.command ?? '');
 
     // COUNT FIRST, never deny: a SQL `DROP` and `dotnet ef database drop` are the database's rm -rf,
     // but whether a gate would earn its keep is a rate nobody has measured - so each call writes one
@@ -769,53 +688,47 @@ function main()
     // the paths): judging only the first let `git reset --hard && git clean -fd` delete an untracked
     // file the reset keeps, and the positional regex this replaced let a dozen discard spellings by.
     //
-    // A QUOTED span is data, exactly as it is in the commit guard: an echo, a plan sentence or a
-    // grep pattern that merely CONTAINS `git reset --hard` invokes nothing, and denying it teaches
-    // the obfuscation that then defeats this gate on a real one. The fill is a NON-space so the
-    // span stays one opaque argument token and the offsets survive.
-    const gitScan = command
-        .replace(/'[^'\n]*'/g, (m) => m.replace(/[^\n]/g, 'x'))
-        .replace(/"[^"\n]*"/g, (m) => m.replace(/[^\n]/g, 'x'));
+    // The command is read once by the shared reader (`gitText`): a quoted span, a heredoc body and an `echo`'d
+    // sentence are data, a script a shell runs is shell. PowerShell's backslash is a literal path separator and its escape
+    // is the backtick, while the reader takes a backslash for an escape and a backtick for a substitution (`src\a.txt`
+    // named no file and its discard passed): the text goes in with the two swapped, a translation and no second parser.
+    const powershell = /powershell/i.test(String(payload.tool_name || ''));
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const read = shellWrites.gitText(powershell ? rawCommand.replace(/\\/g, '\\\\').replace(/`([\s\S])/g, '\\$1') : rawCommand, path.resolve(payload.cwd || root));
     const losses = [];
     const { execFileSync } = require('child_process');
-    // A backtick is bash's command substitution and PowerShell's escape, so only bash ends a call on it.
-    const powershell = /powershell/i.test(String(payload.tool_name || ''));
-    const callStart = powershell ? /(?:^|[;&|(\n]|\s)git(?=\s)/g : /(?:^|[;&|(`\n]|\s)git(?=\s)/g;
-    const callEnd = powershell ? /[\n;&|)]|$/ : /[\n;&|)`]|$/;
-    for (const found of gitScan.matchAll(callStart))
+    const budget = shellWrites.newRun().budget;
+    let overCap = null; // the first destructive call past the cap: read as one whole-tree discard below
+    const gitIn = (gitCwd) => (argv) => execFileSync('git', argv, { cwd: gitCwd, timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, LC_ALL: 'C' } }).toString();
+    for (const call of read.calls)
     {
-        const start = found.index + found[0].length;
-        const end = start + gitScan.slice(start).search(callEnd);
-        const { dirs, config, verb, args } = splitGitCall(shellWords(command.slice(start, end), powershell));
-        // WHERE git runs decides what a pathspec names: the call's own cwd, then a `cd` before it in the
-        // same command, then its `-C`. Judged from the project root, a dirty file one folder down read
-        // as absent and its discard passed. An unexpanded variable is not guessed - the anchor stays.
-        let gitCwd = path.resolve(payload.cwd || root);
-        for (const c of gitScan.slice(0, found.index).matchAll(/(?:^|&&|\|\||;|\n|\(|\|)\s*(?:cd|pushd|chdir|set-location|sl|push-location)\s+(?:-(?:literal)?path\s+)?(\S+)/gi))
-        {
-            const dest = command.substr(c.index + c[0].length - c[1].length, c[1].length).replace(/^["']|["']$/g, '');
-            if (/\$/.test(dest)) continue;
-            gitCwd = path.resolve(gitCwd, dest.replace(/^~(?=$|[\\/])/, require('os').homedir()));
-        }
-        for (const d of dirs) if (d && !/\$/.test(d)) gitCwd = path.resolve(gitCwd, d);
+        const verb = call.sub;
+        if (!verb || !LOSS_VERBS.has(verb)) continue; // `git add`, `git status`, `git log`: nothing to lose, no git spawned
+        if (!budget.judge()) { overCap = overCap || call; continue; }
+        const gitCwd = read.callDir(call);
         // argv, never a shell string: the pathspec used to be single-quoted into an execSync line, and on
         // win32 that line runs through cmd.exe, where a single quote is a literal character - git was
         // asked about a file named 'seed.txt' with the quotes, found it clean, and `git restore <dirty
         // file>` passed on every Windows install (measured: the release CI's windows job). stdio: git's
         // own stderr is CAPTURED - inherited, a non-repo path printed `fatal: not a git repository` to the
         // user on a call this gate then PASSED. LC_ALL=C: the dry runs are read by their English words.
-        const run = (argv) => execFileSync('git', argv, { cwd: gitCwd, timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, LC_ALL: 'C' } }).toString();
+        const run = gitIn(gitCwd);
         const isRev = (w) =>
         {
             if (!w || w.startsWith('-')) return false;
             try { run(['rev-parse', '--verify', '--quiet', `${w}^{tree}`]); return true; }
             catch { return false; }
         };
-        const plan = gitPlan(verb, args, config, isRev);
+        const plan = gitPlan(verb, call.argv, call.config, isRev);
         if (!plan) continue;
         // A git that cannot answer (not a repo, git absent) is no loss - never block on our own failure.
         try { losses.push(...readLoss(plan, run, gitCwd)); }
+        catch { /* nothing read, nothing claimed */ }
+    }
+    if (overCap)
+    {
+        const gitCwd = read.callDir(overCap);
+        try { losses.push(...readLoss({ kind: 'tree', paths: [], target: undefined }, gitIn(gitCwd), gitCwd)); }
         catch { /* nothing read, nothing claimed */ }
     }
 
@@ -900,7 +813,8 @@ function main()
         }
     }
 
-    if (!isCatastrophicRm(command))
+    // PowerShell carries no `sh -c` script, and its Windows roots (`C:\`) must reach the target test as written.
+    if (!isCatastrophicRm(shellWrites.blankHeredocs(powershell ? rawCommand : read.command)))
     {
         process.exit(0);
     }

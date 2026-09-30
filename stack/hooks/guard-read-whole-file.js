@@ -191,32 +191,69 @@ const input = payload.tool_input || {};
 // is inert text, and matching it blocks a document write for its own prose (reproduced). Blank the
 // payload spans, keeping the character count so any index into the command still holds - with
 // shell-writes.js's blanker, which keeps each heredoc's FIRST line: `cat <<'EOF'; cat big.ts` runs its
-// dump on that line, and blanking the whole match hid it (2.1.6 K1). A copy without the module blanks as before.
-let blankHeredocs = (c) => c.replace(/<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^[ \t]*\2[ \t\r]*$/gm, (m) => m.replace(/[^\n]/g, ' '));
-try { ({ blankHeredocs } = require(pathMod.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
+// dump on that line, and blanking the whole match hid it (2.1.6 K1).
+let blankHeredocs = (c) => c; // a copy that runs before shell-writes.js lands blanks nothing and judges every body as code
+let heredocsOf = () => [];
+let heredocBody = () => '';
+let heredocVerbatim = () => false;
+let heredocSubstitutions = () => [];
+let commandIndex = () => 0;
+let groupsAsCuts = (t) => t;
+try { ({ blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts } = require(pathMod.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
 // A heredoc FED TO A SHELL is commands, the same as `sh -c '<script>'` (2.1.6): measured, `bash <<'EOF'` around a `cat`
 // of a 1,000-line file passed, its body blanked as data. That body comes back in place, its own heredocs blanked in turn
 // (and read back when a shell reads them), unless the shell's output is bounded by a filter or sent into a file. Each
 // restored body is kept in `shellBodies`, where the runtime-heredoc pass below finds a runtime heredoc nested inside.
-const HEREDOC_SPAN = /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^[ \t]*\2[ \t\r]*$/gm;
+// The spans are `heredocsOf`'s, the reader every guard shares, so every opener spelling it accepts is one here too
+// (`<<\EOT` was never judged, seam M1).
 let shellBodies = [];
 function stripHeredocsOf(c, depth = 0) {
   if (!depth) shellBodies = [];
-  let out = blankHeredocs(c);
+  const docs = heredocsOf(c);
+  let out = hereStringsAsInline(blankHeredocs(c, docs));
   if (depth > 3) return out;
-  for (const h of c.matchAll(HEREDOC_SPAN)) {
-    const from = c.lastIndexOf('\n', h.index) + 1;
-    const nl = c.indexOf('\n', h.index);
-    if (nl < 0) continue;
-    const line = c.slice(from, nl);
-    const word = heredocRunner(line, h.index - from);
-    if (!word || !SHELL_RUNNER.test(word) || heredocBounded(line, h.index - from)) continue;
-    const bodyFrom = h.index + h[0].indexOf('\n') + 1;
-    const bodyTo = h.index + h[0].lastIndexOf('\n');
-    if (bodyTo <= bodyFrom) continue;
-    const body = c.slice(bodyFrom, bodyTo);
+  for (const h of docs) {
+    const line = c.slice(h.lineStart, h.lineEnd);
+    const word = heredocRunner(line, h.index - h.lineStart);
+    if (heredocBounded(line, h.index - h.lineStart)) continue;
+    const body = heredocBody(c, h);
+    if (!body) continue;
+    if (!word && !heredocVerbatim(c, h)) { // data the shell expands: each `$( ... )` in it runs, its text put back in place (seam m5)
+      for (const { from, to } of heredocSubstitutions(body)) out = out.slice(0, h.bodyStart + from) + body.slice(from, to) + out.slice(h.bodyStart + to);
+      continue;
+    }
+    if (!word || !SHELL_RUNNER.test(word)) continue;
     shellBodies.push(body);
-    out = out.slice(0, bodyFrom) + stripHeredocsOf(body, depth + 1) + out.slice(bodyTo);
+    out = out.slice(0, h.bodyStart) + stripHeredocsOf(body, depth + 1) + out.slice(h.bodyStart + body.length);
+  }
+  return out;
+}
+// A here-string is a one-line heredoc: `bash <<< 'cat f'` runs its word as commands, `python3 - <<< "print(open(f).read())"`
+// as a script. A SHELL's here-string is read in the judged view as its `-c` (three characters, as wide, a lone `-` before it
+// blanked), so the inline passes below judge it as they judge `-c` (seam m2); a runtime's is judged as a heredoc body below
+// (`hereStringsOf`), whatever its `-` or flags (seam delta 3).
+function hereStringsAsInline(text) {
+  if (!text.includes('<<<')) return text;
+  let out = text;
+  for (let i = text.indexOf('<<<'); i >= 0; i = text.indexOf('<<<', i + 3)) {
+    const from = text.lastIndexOf('\n', i) + 1;
+    const nl = text.indexOf('\n', i);
+    const word = heredocRunner(text.slice(from, nl < 0 ? text.length : nl), i - from);
+    if (!word || !SHELL_RUNNER.test(word)) continue;
+    const dash = /(?<=\s)-\s+$/.exec(text.slice(from, i));
+    if (dash) out = out.slice(0, from + dash.index) + ' '.repeat(dash[0].length) + out.slice(from + dash.index + dash[0].length);
+    out = out.slice(0, i) + '-c ' + out.slice(i + 3);
+  }
+  return out;
+}
+// The here-strings of `text` as heredoc-shaped records - the line, where `<<<` starts in it, the word it hands over.
+function hereStringsOf(text) {
+  const out = [];
+  for (let i = text.indexOf('<<<'); i >= 0; i = text.indexOf('<<<', i + 3)) {
+    const lineStart = text.lastIndexOf('\n', i) + 1;
+    const nl = text.indexOf('\n', i);
+    const word = /^\s*("(?:[^"\\]|\\.)*"|'[^']*'|\S+)/.exec(text.slice(i + 3, nl < 0 ? text.length : nl));
+    if (word) out.push({ line: text.slice(lineStart, nl < 0 ? text.length : nl), at: i - lineStart, body: word[1].replace(/^(['"])([\s\S]*)\1$/, '$2') });
   }
   return out;
 }
@@ -1428,24 +1465,27 @@ const judgeLang = (lang) => (lang === 'php' ? 'perl' : lang);
 // What reads a heredoc's body is the COMMAND of the stage holding the `<<`, or of a stage piped from it on the same
 // line - a whole word, never a substring (`cat > run-node.txt <<'EOF'` feeds no runtime); a redirect target is the file
 // written. The runtime or shell word, or null. guard-secret-value.js's heredocReader is the same reading (shared-rules).
-const SHELL_RUNNER = /^(?:bash|sh|zsh|dash|ksh)$/i;
+const POSIX_SHELL = /^(?:bash|sh|zsh|dash|ksh)$/i;
+const SHELL_RUNNER = /^(?:bash|sh|zsh|dash|ksh|pwsh|powershell)$/i; // a body they read is commands
+const RUNTIME_RUNNER = /^(?:node|nodejs|python(?:\d+(?:\.\d+)?)?|ruby|perl|php|deno|bun)$/i; // a body they read is a script
 function heredocRunner(line, at) {
   const own = line.slice(0, at).split(/&&|\|\||;|\|/).pop();
   const piped = line.slice(at).split(/&&|\|\||;/)[0].split('|').slice(1);
   for (const stage of [own, ...piped]) {
-    const words = stage.trim().split(/\s+/).filter(Boolean);
+    // a subshell, a substitution or a `NAME=` prefix opens the stage's first word: `x=$(python3 - <<'EOF'` (seam m1)
+    const words = stage.trim().split(/\s+/).filter(Boolean).map((w) => w.replace(/^(?:[A-Za-z_]\w*=)?(?:\$\(|[(`"'])+/, ''));
     for (let k = 0; k < words.length; k++) {
       if (/^\d*[<>]+&?$/.test(words[k])) { k++; continue; }
       if (/^\d*[<>]/.test(words[k])) continue;
       const word = words[k].replace(/^["']|["']$/g, '').replace(/^.*[\\/]/, '').replace(/\.exe$/i, '');
-      if (/^(?:node|nodejs|python(?:\d+(?:\.\d+)?)?|ruby|perl|php)$/i.test(word) || SHELL_RUNNER.test(word)) return stdinIsScript(word, words.slice(k + 1)) ? word : null;
+      if (RUNTIME_RUNNER.test(word) || SHELL_RUNNER.test(word)) return stdinIsScript(word, words.slice(k + 1)) ? word : null;
     }
   }
   return null;
 }
 // Which STDIN_FLAGS row reads a heredoc runner's options (heredocRunner hands only these six).
 function stdinKind(word) {
-  return SHELL_RUNNER.test(word) ? 'shell' : /^node/i.test(word) ? 'node' : /^python/i.test(word) ? 'python' : /^ruby/i.test(word) ? 'ruby' : /^perl/i.test(word) ? 'perl' : /^php/i.test(word) ? 'php' : null;
+  return POSIX_SHELL.test(word) ? 'shell' : /^node/i.test(word) ? 'node' : /^python/i.test(word) ? 'python' : /^ruby/i.test(word) ? 'ruby' : /^perl/i.test(word) ? 'perl' : /^php/i.test(word) ? 'php' : null;
 }
 // The body is the program only when the program takes its SCRIPT from stdin: a script file named, or a script handed
 // as -c / -e / -p / -m, makes the body that program's input data (`bash ./run.sh <<EOF`, `node -e '...' <<EOF`).
@@ -1703,7 +1743,9 @@ function phpAsReads(src) {
   return String(src).replace(/<\?=/g, ' print ').replace(/<\?(?:php\b)?|\?>/g, ' ').replace(/\bfile_get_contents\s*\(|\bfile\s*\(/g, 'readFileSync(').replace(/\b(?:readfile|fpassthru)\s*\(/g, 'print readFileSync(')
     .replace(/\b(?:echo|print_r|var_dump|var_export)\b/g, 'print');
 }
-function asReads(script, lang) { return lang === 'perl' ? perlAsReads(script) : lang === 'php' ? phpAsReads(script) : script; }
+// deno's read calls are the read the analysis knows too (`Deno.readTextFileSync('<path>')`)
+const denoAsReads = (src) => String(src).replace(/\bDeno\s*\.\s*readTextFile(?:Sync)?\s*\(/g, 'readFileSync(');
+function asReads(script, lang) { return lang === 'perl' ? perlAsReads(script) : lang === 'php' ? phpAsReads(script) : lang === 'js' ? denoAsReads(script) : script; }
 // `while read l; do echo "$l"; done < file`: a read loop whose body echoes every line unconditionally is cat. One pass
 // over the command's loop words, its answer kept for the command's every `done` stage.
 let loopMemo = { command: null, echoes: false };
@@ -1800,8 +1842,7 @@ function wholeFiles(seg, command, hseg = seg) {
   stages.push(seg.slice(from));
   for (const stage of stages) {
     const words = stage.match(/"[^"]*"|'[^']*'|\S+/g) || [];
-    let k = 0;
-    while (k < words.length && (/^(?:sudo|command|nice|time|exec|builtin|nohup|env|then|do|else|\{|\()$/.test(words[k]) || /^[A-Za-z_]\w*=/.test(words[k]))) k++;
+    const k = commandIndex(words); // past a body's keyword, a group's opener, assignments and shell-writes.js's one wrapper list (seam M2, delta 1); tidies `words` in place
     const verb = unq(words[k] || '').replace(/^.*[\\/]/, '').replace(/\.exe$/i, '').toLowerCase();
     const stdin = []; const args = [];
     for (let i = k + 1; i < words.length; i++) {
@@ -1939,7 +1980,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
   // Get-Content / gc / type are the PowerShell route's cat - wired on that tool, and unjudged until now.
   // ... and on the RAW command too: a script fed to a runtime through a heredoc reads inside the blanked body.
   // ... and the verbs that print a whole file under another name (wholeFiles), perl's handle reads and php's (2.1.6).
-  const DUMP_VERBS = /\bcat\b|\bsed\b|\bhead\b|\btail\b|\bless\b|\bmore\b|\bawk\b|\bopen\(|\breadFileSync\b|File\.read|\bget-content\b|\bgc\b|\btype\b|\b(?:nl|tac|rev|fmt|expand|unexpand|fold|pr|od|xxd|hexdump|base64|strings|paste|column|sort|uniq|bat|batcat|cut|iconv|zcat|gzcat|zmore|zless|dd|cp|curl|vim?|nvim|gvim|ex|view|look|tee|done|split|diff|comm|sqlite3|[ef]?grep|rg|perl|ruby|php|open|readline|read_file|slurp|file_get_contents|readfile)\b/i;
+  const DUMP_VERBS = /\bcat\b|\bsed\b|\bhead\b|\btail\b|\bless\b|\bmore\b|\bawk\b|\bopen\(|\breadFileSync\b|\breadTextFile(?:Sync)?\b|File\.read|\bget-content\b|\bgc\b|\btype\b|\b(?:nl|tac|rev|fmt|expand|unexpand|fold|pr|od|xxd|hexdump|base64|strings|paste|column|sort|uniq|bat|batcat|cut|iconv|zcat|gzcat|zmore|zless|dd|cp|curl|vim?|nvim|gvim|ex|view|look|tee|done|split|diff|comm|sqlite3|[ef]?grep|rg|perl|ruby|php|open|readline|read_file|slurp|file_get_contents|readfile)\b/i;
   if (!DUMP_VERBS.test(command) && !DUMP_VERBS.test(String(input.command || ''))) process.exit(0);
   // EVERY test below is PER SEGMENT, and the extension is tested against the PATH the verb names -
   // never against the whole command. Testing `GATED_EXT_ANY` against the whole compound command
@@ -2059,14 +2100,12 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
   // A runtime heredoc nested in a shell heredoc's body is read the same way (`shellBodies`, filled by stripHeredocsOf).
   const rawCommand = String(input.command || '');
   for (const text of [rawCommand, ...shellBodies]) {
-    for (const h of text.matchAll(HEREDOC_SPAN)) {
-      const from = text.lastIndexOf('\n', h.index) + 1;
-      const nl = text.indexOf('\n', h.index);
-      const line = text.slice(from, nl < 0 ? text.length : nl);
-      const word = heredocRunner(line, h.index - from);
+    const docs = [...heredocsOf(text).map((h) => ({ line: text.slice(h.lineStart, h.lineEnd), at: h.index - h.lineStart, body: heredocBody(text, h) })), ...hereStringsOf(text)];
+    for (const { line, at, body: raw } of docs) {
+      const word = heredocRunner(line, at);
       if (!word || SHELL_RUNNER.test(word)) continue;
-      const body = asReads(h[0].replace(/^[^\n]*\n?/, '').replace(/\n[^\n]*$/, ''), langOf(word));
-      if (!readsHeavy(body) || heredocBounded(line, h.index - from)) continue;
+      const body = asReads(raw, langOf(word));
+      if (!readsHeavy(body) || heredocBounded(line, at)) continue;
       runtimeVerdict(scriptPrintsContent(body, false, judgeLang(langOf(word)), heavyRead));
     }
   }
@@ -2074,7 +2113,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
   // verb is text. A segment piped into a shell runs its strings, so it is read as written.
   const filled = quoteFilled(command);
   const cuts = [0];
-  for (const s of filled.matchAll(/&&|\|\||;|\n/g)) cuts.push(s.index, s.index + s[0].length);
+  for (const s of groupsAsCuts(filled).matchAll(/&&|\|\||;|\n/g)) cuts.push(s.index, s.index + s[0].length); // a subshell or group's parens are cuts
   cuts.push(command.length);
   for (let c = 0; c < cuts.length; c += 2) {
     const at = cuts[c];
@@ -2121,9 +2160,9 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     if (subM) files.push(subM[1].replace(/^["']|["']$/g, ''));
     // PowerShell's reader: bounded by -TotalCount / -Head / -First / -Tail / -Last; its path is the
     // positional argument or -Path / -LiteralPath, and the values of its other parameters are not paths.
-    // The verb must be the segment's COMMAND (its start, or after a pipe or a paren) - `grep type a.ts`
+    // The verb must be the segment's COMMAND (its start, or after a pipe, a paren, a brace or the quote of a script a shell runs, `pwsh -Command "..."`) - `grep type a.ts`
     // and `git gc` name the word as an argument.
-    const gcM = unquotedMatch(seg, hseg, /(?:^\s*|[|(]\s*)(?:get-content|gc|type)\s+((?:(?:-\w+|"[^"]+"|'[^']+'|[^\s;&|<>]+)\s*)+)/i);
+    const gcM = unquotedMatch(seg, hseg, /(?:^\s*|[|(&{"']\s*)(?:get-content|gc|type)\s+((?:(?:-\w+|"[^"]+"|'[^']+'|[^\s;&|<>]+)\s*)+)/i);
     if (gcM) {
       const words = gcM[1].trim().match(/"[^"]+"|'[^']+'|\S+/g) || [];
       if (!words.some((w) => /^-(?:totalcount|head|first|tail|last)$/i.test(w))) {

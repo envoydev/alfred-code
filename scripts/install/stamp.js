@@ -557,17 +557,20 @@ function recordCheckout(projectRoot)
     return { roots, at: roots.find(holds) || null };
 }
 
-// The dir and its git top level - the trees a run started here reads and writes. A worktree's main
-// checkout is not among them: every installer layer, the preflight and library-check read the tree
+// The dir, the folders up to its git top level (a monorepo package may hold its own install record - the same folders
+// `checkoutsOf` gives the hooks, seam delta 2) and the top, last - the trees a run started here reads and writes. A
+// worktree's main checkout is not among them: every installer layer, the preflight and library-check read the tree
 // the run is in.
 function ownCheckouts(projectRoot)
 {
     const dir = path.resolve(projectRoot);
+    const between = [];
     for (let at = dir; ; )
     {
-        if (fs.existsSync(path.join(at, '.git'))) return at === dir ? [dir] : [dir, at];
+        if (fs.existsSync(path.join(at, '.git'))) return at === dir ? [dir] : [dir, ...between, at];
         const up = path.dirname(at);
         if (up === at) return [dir];
+        if (at !== dir) between.push(at);
         at = up;
     }
 }

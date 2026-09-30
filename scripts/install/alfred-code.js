@@ -122,7 +122,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     const cliEnv = args.space && !env.CLAUDE_CONFIG_DIR ? { ...env, CLAUDE_CONFIG_DIR: configDir } : env;
     // The account file the CLI keeps its user- and local-scope MCP registrations in (mcp.registrationsAt).
     const accountFile = path.join(cliEnv.CLAUDE_CONFIG_DIR || home, '.claude.json');
-    const projectRoot = rt.gitRoot(cwd) || cwd;
+    const projectRoot = rt.gitRoot(cwd, home) || cwd; // a repo at the home directory is no project's top (seam m3)
     // T16, R29: args.js already normalised 'global' to 'user', so the flag (once resolved, below) IS
     // the CLI scope - project|user|local pass straight through to every `claude plugin` / `claude
     // mcp` call. Only the plugins (and claude-hud, pinned to user regardless) follow the scope now:

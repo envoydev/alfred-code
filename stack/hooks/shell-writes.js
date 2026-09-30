@@ -100,6 +100,34 @@ function heredocsOf(text) {
   return out;
 }
 const bodyOf = (text, h) => text.slice(h.bodyStart, h.bodyEnd);
+// A heredoc's body as the shell hands it over (no trailing newline), and whether the shell expands nothing in it: a quoted
+// or backslashed tag (`<<'EOT'`, `<<"EOT"`, `<<\EOT`). The two guards that judge a body as code read it through these,
+// so every opener spelling `heredocsOf` accepts is one spelling to them too (2.1.6 seam review M1).
+const heredocBody = (text, h) => text.slice(h.bodyStart, Math.max(h.bodyStart, h.bodyEnd - 1));
+const heredocVerbatim = (text, h) => /[\\'"]/.test(text.slice(h.index + 2, h.openEnd).replace(/^-/, ''));
+// The `$( ... )` and backtick substitutions an UNQUOTED heredoc body has the shell expand, as { from, to } spans of each one's
+// inner text (a heredoc body holds no quotes, so none is read; `$((` is arithmetic). The guards judge each as a command
+// where the body is data: `cat <<EOF > f` / `key: $(cat .env)` / `EOF` reads the file (seam m5).
+function heredocSubstitutions(body) {
+  const out = [];
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (c === '\\') { i++; continue; }
+    if (c === '$' && body[i + 1] === '(' && body[i + 2] !== '(') {
+      let depth = 1;
+      let j = i + 2;
+      for (; j < body.length && depth; j++) { if (body[j] === '(') depth++; else if (body[j] === ')') depth--; }
+      out.push({ from: i + 2, to: depth ? j : j - 1 });
+      i = j - 1;
+    } else if (c === '`') {
+      const j = body.indexOf('`', i + 1);
+      if (j < 0) break;
+      out.push({ from: i + 1, to: j });
+      i = j;
+    }
+  }
+  return out;
+}
 // Blank every heredoc body (and its terminator line), keep the length. The opener's own line stays: `cat <<'EOF' >
 // ../other/f.txt` carries its redirect THERE, and blanking the whole match let that classic shell write through.
 function blankHeredocs(rawCommand, known) {
@@ -323,7 +351,7 @@ const joinContinuations = (command) => command.replace(/(^|[^\\])((?:\\\\)*)\\(\
 // quoted (`'git'`), split (`gi""t`), with `.exe`, or through a variable assigned a literal earlier in the same command
 // (`GIT=git; $GIT commit`); on macOS and Windows, whose file systems fold case, `Git` runs git (re-verify 3 R3-m6).
 const WRAPPERS = new Set(['sudo', 'doas', 'env', 'xargs', 'time', 'nohup', 'nice', 'ionice', 'stdbuf', 'timeout', 'gtimeout', 'caffeinate',
-  'command', 'exec', 'builtin', 'eval', 'coproc', 'npx', 'bunx', 'chronic', 'unbuffer']);
+  'command', 'exec', 'builtin', 'eval', 'coproc', 'npx', 'bunx', 'chronic', 'unbuffer', 'setsid']);
 const RUN_TOOLS = new Set(['uv', 'poetry', 'pipenv', 'pdm', 'hatch', 'rye']);
 // Heads whose later words are data or files, never a command they run: `echo git push`, `grep git log`, `man git x`.
 const DATA_HEADS = new Set(['echo', 'printf', 'cat', 'grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'ls', 'll', 'man', 'which', 'whereis', 'type',
@@ -641,6 +669,97 @@ function commandWordsOf(cmd, assigns, events) {
     j = e;
   }
   return out;
+}
+
+// The index of the command word in an already-split word list (`words`, tokens as written): past `NAME=value` prefixes and
+// every WRAPPERS word (and `uv run` / `poetry run` ...) with its own flags, their values and its operands - the ONE list
+// the secret and read guards walk as well (2.1.6 seam review M2: the secret guard's own ten-row table missed doas, caffeinate,
+// npx, `uv run`, xargs). `flagValues` names the one-letter flags of a wrapper that take a value; a wrapper with no row takes
+// none, and a bare number is an operand (`caffeinate -t 5`). `eval` and `coproc` run their words as text, not as a command
+// word, so a caller that reads them by name keeps them. `tokenize` splits an `env -S` string, spliced in place. At most 16
+// wrappers, each word read once.
+const WRAPPER_FLAGS = {
+  timeout: { value: 'sk', long: /^--(?:signal|kill-after)$/, operands: 1 },
+  gtimeout: { value: 'sk', long: /^--(?:signal|kill-after)$/, operands: 1 },
+  env: { value: 'uCS', long: /^--(?:unset|chdir|split-string)$/, assigns: true, split: 'S' },
+  nice: { value: 'n', long: /^--adjustment$/ },
+  sudo: { value: 'ugCDhprtTU', long: /^--(?:user|group|close-from|chdir|host|prompt|role|type|command-timeout|other-user)$/, assigns: true },
+  doas: { value: 'uC' },
+  stdbuf: { value: 'ioe', long: /^--(?:input|output|error)$/ },
+  ionice: { value: 'cnp', long: /^--(?:class|classdata|pid)$/ },
+  time: { value: 'fo', long: /^--(?:format|output)$/ },
+  exec: { value: 'a' },
+  caffeinate: { value: 'tw' },
+  xargs: { value: 'adEIiLnPsJ', long: /^--(?:arg-file|delimiter|eof|replace|max-lines|max-args|max-procs|max-chars)$/ },
+  npx: { value: 'p', long: /^--(?:package|call)$/ },
+};
+const NOT_A_PREFIX = new Set(['eval', 'coproc']);
+// The words that open a body or a group and run the command after them: a compound command's keywords, `!`, `{`, `(`.
+const OPENERS = /^(?:if|then|elif|else|do|while|until|!|[({]+)$/;
+// The index of the command word in `words`: past assignments, a body's keyword or a group's opener (seam delta 1: a
+// subshell hid its commands from every guard - `groupsAsCuts` reads its parens as cuts for the guards that segment first),
+// and every wrapper.
+function commandIndex(words, tokenize = shellWords) {
+  const wordOf = (t) => dequote(String(t == null ? '' : t));
+  let k = 0;
+  for (let n = 0; n < 16 && k < words.length; n++) {
+    const w = wordOf(words[k]);
+    if (OPENERS.test(w) || ASSIGN.test(w)) { k++; n--; continue; }
+    const name = w.replace(/^.*[\\/]/, '');
+    const run = RUN_TOOLS.has(name) && wordOf(words[k + 1]) === 'run';
+    if (!run && (!WRAPPERS.has(name) || NOT_A_PREFIX.has(name))) break;
+    const row = WRAPPER_FLAGS[name] || { value: '' };
+    if (run) k++;
+    for (k++; k < words.length; k++) {
+      const a = wordOf(words[k]);
+      if (a === '--') { k++; break; }
+      if (row.assigns && ASSIGN.test(a)) continue;
+      if (!/^-./.test(a)) break;
+      let val = null;
+      if (a.startsWith('--')) {
+        const eq = a.indexOf('=');
+        const flag = eq < 0 ? a : a.slice(0, eq);
+        if (eq >= 0) val = a.slice(eq + 1); else if (row.long && row.long.test(flag)) val = wordOf(words[++k]);
+        if (row.split && flag === '--split-string' && val !== null) words.splice(k + 1, 0, ...tokenize(val));
+        continue;
+      }
+      for (let i = 1; i < a.length; i++) {
+        if (!row.value.includes(a[i])) continue;
+        val = i + 1 < a.length ? a.slice(i + 1) : wordOf(words[++k]);
+        if (row.split === a[i]) words.splice(k + 1, 0, ...tokenize(val));
+        break;
+      }
+    }
+    k += row.operands || 0;
+    while (k < words.length && /^\d[\w.]*$/.test(wordOf(words[k]))) k++; // a duration or count the wrapper reads
+  }
+  return k;
+}
+// A subshell or a group's own parens read as `;`, the same width: `(cd d && rm -rf x)` is `;cd d && rm -rf x;`, so a
+// guard that cuts a command at its separators sees each command as a segment of its own, with no `(` glued to the
+// first word and no `)` glued to the last (seam delta 1: a subshell hid its commands from every guard). A paren that
+// belongs to a substitution (`$(`, `<(`, `>(`), an array assignment (`a=(`), an escape (`\(` of find) or a quoted span is
+// text and stays, and so is the `)` that closes one. One pass, linear; a `)` with no `(` (a case pattern) reads as a cut.
+function groupsAsCuts(text) {
+  if (!/[()]/.test(text)) return text;
+  const quoted = new Uint8Array(text.length);
+  for (const [a, b] of quotedSpans(text)) quoted.fill(1, a, Math.min(b, text.length));
+  const stack = [];
+  let out = null;
+  const cut = (i) => { if (out === null) out = text.split(''); out[i] = ';'; };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\\') { i++; continue; }
+    if (quoted[i]) continue;
+    if (c === '(') {
+      const kept = i > 0 && '$<>='.includes(text[i - 1]);
+      stack.push(kept);
+      if (!kept) cut(i);
+    } else if (c === ')') {
+      if (!stack.pop()) cut(i);
+    }
+  }
+  return out === null ? text : out.join('');
 }
 
 // ---- cd, pushd, popd: where each later write lands ---------------------------------------------------------------
@@ -1842,6 +1961,65 @@ function expandGitAliases(command, opts = {}) {
   return { text, unreadAt: mark };
 }
 
+// ---- the git text the git guards judge (2.1.6 seam review M3) -----------------------------------------------------
+// ONE reader of a command for every guard that judges a git call (commit, push, force-push, the rm guard's git half):
+// git aliases expanded in place, every script the command hands a shell (`sh -c`, `eval`, a heredoc, a here-string, a script
+// FILE, an `if` / `for` body already parsed as ordinary commands) appended after a newline with its aliases expanded, all
+// inside ONE scan budget, then parsed once. `calls` are its git calls; `callDir(call)` is the directory a call runs in (its
+// piece's cwd moved by every cd before it there, then its own `-C` chain; a cd it cannot follow leaves the piece's cwd);
+// `unreadAt` is the first place the read stopped short (an alias git could not answer, text past the budget or the depth
+// that still names git) or -1, which each caller judges its own conservative way. A script `curl` prints does not exist
+// when a guard runs, so the call is judged on what it names.
+const NAMES_GIT = /g[\\'"]*i[\\'"]*t/i;
+const namesGit = (file) => {
+  try { return fs.statSync(file).size > 64 * 1024 * 1024 || NAMES_GIT.test(fs.readFileSync(file, 'latin1')); } catch { return true; }
+};
+function gitText(raw, cwd) {
+  const run = newRun();
+  const aliased = expandGitAliases(String(raw || ''), { cwd, run });
+  let unreadAt = aliased.unreadAt;
+  const markUnread = (at) => { if (unreadAt < 0 || at < unreadAt) unreadAt = at; };
+  // Where each piece of the final text runs from: the command from the shell's cwd, each carried script from the
+  // directory it runs in - a cd inside one moves what follows it there. `base` is where `text` starts in the final text.
+  const regions = [];
+  function withCarried(text, dir0, base, depth) {
+    regions.push({ from: base, to: base + text.length, cwd: dir0 });
+    const u0 = run.unread.length;
+    const scripts = carriedScripts(text, { cwd: dir0, files: true, run });
+    for (const u of run.unread.slice(u0)) if (u.path ? namesGit(u.path) : NAMES_GIT.test(text.slice(u.at))) markUnread(base + u.at);
+    let out = text;
+    for (const sc of scripts) {
+      if (run.budget.deep(depth) || run.budget.over()) { if (NAMES_GIT.test(sc.text)) markUnread(base + sc.at); continue; }
+      const dir = sc.cwd || dir0;
+      const inner = expandGitAliases(sc.text, { cwd: dir, run });
+      const at = base + out.length + 1;
+      if (inner.unreadAt >= 0) markUnread(at + inner.unreadAt);
+      out += `\n${withCarried(inner.text, dir, at, depth + 1)}`;
+    }
+    return out;
+  }
+  // Every byte is charged once, where it comes from: the command here, a script file as it is read (`readScript`).
+  // Past the budget the text is not parsed, and unread.
+  run.budget.take(aliased.text.length);
+  const command = withCarried(aliased.text, cwd, 0, 0);
+  const parsed = !run.budget.over() ? parseShell(joinContinuations(blankComments(blankHeredocs(command)))) : null;
+  if ((!parsed || parsed.tooDeep) && NAMES_GIT.test(command)) markUnread(0);
+  const calls = parsed ? gitCalls(null, parsed) : [];
+  const regionCds = new Map();
+  const cdTarget = (t) => nativePath(unquote(t));
+  function callDir(call) {
+    let k = regions.length - 1;
+    while (k > 0 && regions[k].from > call.at) k--;
+    const r = regions[k];
+    if (!regionCds.has(k)) regionCds.set(k, (parsed ? parsed.cds : []).filter((c) => c.index >= r.from && c.index < r.to));
+    let dir = anchorAt(regionCds.get(k), call.at, r.cwd, cdTarget) || r.cwd;
+    for (const d of call.dirs) if (!isVar(d)) dir = path.resolve(dir, nativePath(d));
+    try { dir = fs.realpathSync.native(dir); } catch { /* git reports the missing directory itself */ }
+    return dir;
+  }
+  return { command, parsed, calls, regions, unreadAt, callDir };
+}
+
 // Read a command's writes. `opts` (all optional): `cwd` resolves a script file a shell runs (without one only an
 // absolute path is read, and only when `files` is true); `files` false reads no file at all; `aliases` expands git
 // aliases first (their lookups run git), `aliasUnreadAt` naming a call whose alias could not be read; `run` shares a
@@ -1928,5 +2106,5 @@ function enclosingEnd(P, at, closesOf) {
   return undefined;
 }
 
-module.exports = { scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf,
+module.exports = { scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
   blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath };

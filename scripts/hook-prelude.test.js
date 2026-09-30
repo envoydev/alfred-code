@@ -8,7 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const PRELUDE = path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js');
-const { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, standDown, neverSetUp, cursorHost, cursorStandDown, PROTECTIVE: PROTECTIVE_SET } = require(PRELUDE);
+const { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, standDown, neverSetUp, checkoutsOf, cursorHost, cursorStandDown, PROTECTIVE: PROTECTIVE_SET } = require(PRELUDE);
 const { spawnSync, execFileSync } = require('node:child_process');
 const { coreEntry } = require('./build-marketplace.js');
 
@@ -769,4 +769,39 @@ test('every hook suite takes the containment helper, and no suite hands a hook t
     assert.deepStrictEqual(Object.keys(env.scrubbed({ ALFRED_CODE_DOCS_PATH: 'x', CLAUDE_CODE_ENTRYPOINT: 'sdk-cli', CLAUDE_PROJECT_DIR: '/p', PATH: '/bin' })), ['PATH'],
         'a runner\'s stack key, entrypoint and project dir never reach a hook');
     assert.ok(!('ALFRED_CODE_DOCS_PATH' in process.env) && !('CLAUDE_CODE_ENTRYPOINT' in process.env), 'and this suite runs without them');
+});
+
+// Seam review m3: memory.js's projectRootOf finds an install record in ANY folder between the launch directory and the
+// git top, so a monorepo package with its own install is set up - and checkoutsOf, which fed only the launch directory
+// and the top, called it never set up. A git repo AT the home directory is no project top for either reader.
+test('a record in a folder between the launch directory and the git top counts as set up (seam m3)', () => {
+    const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-mid-')));
+    try
+    {
+        fs.mkdirSync(path.join(base, '.git'));
+        const pkg = path.join(base, 'packages', 'app');
+        const deep = path.join(pkg, 'src', 'deep');
+        fs.mkdirSync(deep, { recursive: true });
+        assert.strictEqual(neverSetUp(unsetEnv(deep)), true, 'no record anywhere');
+        fs.mkdirSync(path.join(pkg, '.claude'));
+        fs.writeFileSync(path.join(pkg, '.claude', 'alfred-code.stamp'), 'version: 2.1.6\n');
+        assert.strictEqual(neverSetUp(unsetEnv(deep)), false, 'the package between the launch dir and the top holds the record');
+        assert.ok(checkoutsOf(deep).includes(pkg), 'checkoutsOf names it');
+    }
+    finally { fs.rmSync(base, { recursive: true, force: true }); }
+});
+
+test('a git repo at the home directory is no top for checkoutsOf (seam m3)', () => {
+    const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-home-')));
+    const saved = process.env.HOME;
+    try
+    {
+        process.env.HOME = home;
+        fs.mkdirSync(path.join(home, '.git'));
+        const project = path.join(home, 'work', 'proj');
+        fs.mkdirSync(project, { recursive: true });
+        assert.ok(!checkoutsOf(project).includes(home), 'the home directory is never a checkout');
+        assert.deepStrictEqual(checkoutsOf(project), [project], 'a project below a home repo stands on its own');
+    }
+    finally { process.env.HOME = saved; fs.rmSync(home, { recursive: true, force: true }); }
 });
