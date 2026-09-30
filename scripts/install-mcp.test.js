@@ -2728,3 +2728,115 @@ test('seed update (full copy route, project scope): .mcp.json keeps its bytes wh
     assert.strictEqual(steps[1], steps[0], `update 1 rewrote .mcp.json:\n${outs[1]}`);
     assert.strictEqual(steps[2], steps[1], 'update 2 rewrote .mcp.json');
 });
+
+// Delta matrix on 616f8696 - F-LOCAL: at LOCAL scope the stack registers in the account file, so a user's own project-scope
+// .mcp.json row under a picked name was neither held nor recorded ('already configured - skipping', a `-s local` hint for a
+// project row); the first update then registered the stack's row over it and dropped the other pick. Local scope holds it
+// like project and user scope: kept, recorded as `project:<name>`, named with `claude mcp remove <name> -s project`.
+for (const [scope, route, routeEnv] of [['local', 'full copy route', COPY_ENV], ['user', 'MCP copy route', MCP_COPY_ENV]])
+{
+test(`seed install + update (${route}, ${scope} scope): the user's own project-scope rows under picked names are kept, held and named with -s project, and no update registers over them (delta F-LOCAL)`, POSIX_ONLY, () =>
+{
+    const OWN = { command: 'node', args: ['my-desktop.js'] };
+    const OWN_CHROME = { command: 'node', args: ['my-chrome.js'] };
+    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp browser\nmcp macos-desktop\n', {
+        env: { ...routeEnv, ALFRED_CODE_PLATFORM: 'darwin' }, account: true,
+        args: [['--scope', scope, '--browsers', 'chrome'], ['--scope', scope, '--installed-only', '--browsers', 'chrome'], ['--scope', scope, '--installed-only', '--browsers', 'chrome']],
+        prepare: (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { 'macos-desktop': OWN, 'browser-chrome': OWN_CHROME } }, null, 2)),
+        each: (repo) => ({
+            rows: jsonAt(repo, '.mcp.json').mcpServers,
+            held: (/^mcp-held: *(.*)$/m.exec(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) || [])[1] ?? null,
+            calls: stepCalls(repo),
+        }),
+    });
+    for (const [i, step] of steps.entries())
+    {
+        assert.deepStrictEqual(step.rows, { 'macos-desktop': OWN, 'browser-chrome': OWN_CHROME }, `run ${i} touched the user's rows:\n${outs[i]}`);
+        assert.deepStrictEqual(step.held.split(',').sort(), ['project:browser-chrome', 'project:macos-desktop'], `run ${i} did not record the holds:\n${outs[i]}`);
+        assert.ok(!step.calls.some((c) => /^mcp add .*(macos-desktop|browser-chrome)/.test(c)), `run ${i} registered over the user's row:\n${step.calls.join('\n')}`);
+        for (const name of ['macos-desktop', 'browser-chrome'])
+            assert.match(outs[i], new RegExp(`mcp ${name}: the project-scope registration is not the one the stack wrote.*claude mcp remove ${name} -s project`), `run ${i}:\n${outs[i]}`);
+        assert.doesNotMatch(outs[i], /claude mcp remove (macos-desktop|browser-chrome) -s (local|user)/, `run ${i} named the wrong scope`);
+    }
+    assert.strictEqual(/mcps=(\d+)/.exec(outs[2])[1], /mcps=(\d+)/.exec(outs[1])[1], `the second update changed the MCP list (a pick was dropped):\n${outs[2]}`);
+});
+}
+
+// Delta matrix on 616f8696 - F-LEDGER: a row held as the user's own was ledgered by the no-ledger fallback (`adopt`, the package
+// identity) and the NEXT update, seeing it ledgered, overwrote it - against the commit's own Critical line. A held row is never
+// ledgered and stays held on every later update.
+for (const scope of ['project', 'user'])
+{
+    test(`seed update x3 (full copy route, ${scope} scope, a stamp with no ledger): a stack row with an added flag is held, never ledgered, and stays the user's on every update (delta F-LEDGER)`, POSIX_ONLY, () =>
+    {
+        const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+            env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' },
+            args: [['--scope', scope], ['--scope', scope, '--installed-only'], ['--scope', scope, '--installed-only'], ['--scope', scope, '--installed-only']],
+            each: (repo, i) =>
+            {
+                const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
+                const file = path.join(repo, '.mcp.json');
+                const step = {
+                    args: jsonAt(repo, '.mcp.json').mcpServers['macos-desktop'].args,
+                    held: (/^mcp-held: *(.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] ?? null,
+                    ledgered: new RegExp(`(^|[ ,])macos-desktop=`).test((/^managed-mcp:(.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] || ''),
+                };
+                if (i === 0)
+                {
+                    // A 1.x-style stamp: no ledger. The user's row is the stack's with one flag appended.
+                    fs.writeFileSync(stampFile, fs.readFileSync(stampFile, 'utf8').replace(/^managed-mcp:.*\n/m, ''));
+                    const data = jsonAt(repo, '.mcp.json');
+                    data.mcpServers['macos-desktop'].args.push('--my-own-flag');
+                    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+                }
+                return step;
+            },
+        });
+        for (const i of [1, 2, 3])
+        {
+            assert.strictEqual(steps[i].args[steps[i].args.length - 1], '--my-own-flag', `update ${i} overwrote the user's flag:\n${outs[i]}`);
+            assert.strictEqual(steps[i].held, `project:macos-desktop`, `update ${i}:\n${outs[i]}`);
+            assert.strictEqual(steps[i].ledgered, false, `update ${i} ledgered a held row`);
+        }
+    });
+}
+
+// Delta matrix on 616f8696 - F-UNREAD: an unreadable .mcp.json (garbage, or EACCES) at update time read as no picks, so the pick and
+// its enabledMcpjsonServers approval were dropped and restoring the file never brought them back. An unreadable file keeps what the
+// stamp recorded and the run says so in one line; a MISSING file is still empty.
+for (const kind of ['garbage', 'bom+garbage', 'eacces'])
+{
+    test(`seed update (full copy route): an unreadable .mcp.json (${kind}) keeps the recorded pick, its approval and its ledger row, and restoring the file changes nothing (delta F-UNREAD)`, POSIX_ONLY, () =>
+    {
+        let good = '';
+        const trustedNow = (repo) => jsonAt(repo, '.claude/settings.json').enabledMcpjsonServers || [];
+        const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+            env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, args: [[], ['--installed-only'], ['--installed-only'], ['--installed-only']],
+            each: (repo, i) =>
+            {
+                const file = path.join(repo, '.mcp.json');
+                const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
+                const step = { trusted: trustedNow(repo), ledgered: /(^|[ ,])macos-desktop=/.test((/^managed-mcp:(.*)$/m.exec(stamp) || [])[1] || ''), file: (() => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } })() };
+                if (i === 0)
+                {
+                    good = fs.readFileSync(file, 'utf8');
+                    if (kind === 'eacces') fs.chmodSync(file, 0);
+                    else fs.writeFileSync(file, `${kind === 'garbage' ? '' : '\uFEFF'}{"a": [1,2, garbage`);
+                }
+                if (i === 2) { fs.chmodSync(file, 0o644); fs.writeFileSync(file, good); }
+                return step;
+            },
+        });
+        const broken = kind === 'eacces' ? null : `${kind === 'garbage' ? '' : '\uFEFF'}{"a": [1,2, garbage`;
+        for (const i of [1, 2])
+        {
+            assert.ok(steps[i].trusted.includes('macos-desktop'), `update ${i} dropped the approval:\n${outs[i]}`);
+            assert.strictEqual(steps[i].ledgered, true, `update ${i} dropped the ledger row`);
+            assert.strictEqual(outs[i].split('\n').filter((l) => /\.mcp\.json could not be read.*stay as the stamp recorded/.test(l)).length, 1, `update ${i} did not say so in one line:\n${outs[i]}`);
+            if (broken !== null) assert.strictEqual(steps[i].file, broken, `update ${i} rewrote the unreadable file`);
+        }
+        assert.strictEqual(/mcps=(\d+)/.exec(outs[1])[1], /mcps=(\d+)/.exec(outs[0])[1], `update 1 read fewer picks:\n${outs[1]}`);
+        assert.ok(steps[3].trusted.includes('macos-desktop'), `the restored file did not bring the approval back:\n${outs[3]}`);
+        assert.strictEqual(/mcps=(\d+)/.exec(outs[3])[1], /mcps=(\d+)/.exec(outs[0])[1], `the update after the restore:\n${outs[3]}`);
+    });
+}

@@ -557,8 +557,16 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // install), or no stamp, keeps every name, as before.
             const mcpjsonPicks = () =>
             {
-                const names = Object.keys(readJson(mcpFile).mcpServers || {});
+                const file = mcp.registrationsAt({ scope: 'project', mcpFile, projectRoot });
                 const ours = stampFile && priorLedger && priorLedger.mcp;
+                // Delta F-UNREAD: a file that cannot be read (garbage, EACCES) is no empty selection - the picks and approvals the
+                // stamp recorded stay as recorded, so restoring the file restores the install. A MISSING file is still empty.
+                if (file.state === 'unreadable')
+                {
+                    log(`  mcp: ${mcpFile} could not be read - its picks and approvals stay as the stamp recorded them; fix the file and re-run`);
+                    return Object.keys(ours || {});
+                }
+                const names = Object.keys(file.servers);
                 return ours ? names.filter((name) => Object.hasOwn(ours, name)) : names;
             };
             const back = selection.readBack({
@@ -866,7 +874,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             hooksCatalog: manifest.catalogs.hooks, hooksRoute: ctx.routes.hooks ? 'plugin' : 'copy', seatsRoute: ctx.routes.skills ? 'plugin' : 'copy',
             version: releaseVersion(resolved.dir), log, note,
             picked: withoutForeign(stampPickLists(lists, stampPicks, carriedPicks), ctx.foreignSkills), playwright: pwEngines(ctx), playwrightEnabled: ctx.pw.enabled,
-            stoodDown: stoodDownRecord(ctx), mcpHeld: ctx.mcpHeld,
+            stoodDown: stoodDownRecord(ctx),
+            // Delta F-UNREAD: a .mcp.json this run could not read was judged for no hold, so the holds the stamp recorded stay.
+            mcpHeld: registrationsAt(ctx, 'project').state === 'unreadable'
+                ? [...ctx.mcpHeld, ...stampLayer.readMcpHeld(stampFile).filter((e) => e.scope === 'project' && !ctx.mcpHeld.some((h) => h.scope === 'project' && h.name === e.name))]
+                : ctx.mcpHeld,
             library: ctx.library || { skills: {}, agents: {}, rules: {} },
             ledger: ledgerOf(ctx),
             data: { root: dataInfo.root, pending: dataPlan.pending, kept: dataPlan.kept },
@@ -1833,8 +1845,11 @@ function installMcps(ctx)
     // fresh install used to re-register it): not re-registered, not verified (the verify's re-register would remove it). The
     // pick stays in the record (the stamp's mcp-held: line, re-verify 4 T7), so the update after the user removes theirs
     // registers the stack's own.
-    const held = (name) => vouchedAt(ctx, name, scope, true, { pick: true }) === 'foreign'
-        && Boolean(ctx.mcpHeld.push({ scope, name }));
+    // Delta F-LOCAL: at local (and user, on the MCP copy route) scope the stack registers in the account file, but a project
+    // .mcp.json row of the user's own under the name outranks it - it is held as the project row it is, so no registration lands
+    // over it and the pick stays in the record.
+    const held = (name) => (vouchedAt(ctx, name, scope, true, { pick: true }) === 'foreign' && Boolean(ctx.mcpHeld.push({ scope, name })))
+        || (scope !== 'project' && vouchedAt(ctx, name, 'project', true, { pick: true }) === 'foreign' && Boolean(ctx.mcpHeld.push({ scope: 'project', name })));
     const live = ctx.lists.mcps.filter((e) => !(mcp.isLocked(e.split('|')[0]) && mcp.corePluginOn(ctx.routes)))
         .filter((e) => !unregistered.includes(e.split('|')[0]))
         .filter((e) => !held(e.split('|')[0]))
@@ -2211,7 +2226,8 @@ function ledgerOf(ctx)
     }
     return {
         env, deny: part.deny, hooks: part.hooks,
-        mcp: mcp.managedMcp({ servers, prior: prior.mcp || null, written: ctx.mcpWritten || [], adopt: (name, entry) => stackShaped(ctx, name, entry) }),
+        // Delta F-UNREAD: a .mcp.json that cannot be read holds no evidence, so its ledger rows stand as the last run recorded them.
+        mcp: registrationsAt(ctx, 'project').state === 'unreadable' && prior.mcp ? { ...prior.mcp } : mcp.managedMcp({ servers, prior: prior.mcp || null, written: ctx.mcpWritten || [], adopt: (name, entry) => !ctx.mcpHeld.some((h) => h.scope === 'project' && h.name === name) && stackShaped(ctx, name, entry) }),
         mcpAt,
         files: managedFiles(ctx),
         settings: settingsKeys,

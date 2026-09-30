@@ -1209,7 +1209,12 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   the documented drift repair), and one it does not list, or with no ledger one that is not the release template's exact
   shape, is the user's own - kept, named with `claude mcp remove <name> -s project`, recorded as `project:<name>` in
   `mcp-held:`, never ledgered and never named in `enabledMcpjsonServers` (matrix F-OWN, 2.1.6; a `.mcp.json` row of the
-  older shape with no ledger - a 1.x install - is held the same way until its owner removes it). The plugin route writes
+  older shape with no ledger - a 1.x install - is held the same way until its owner removes it). At local scope (and user scope on the MCP copy route), where the stack registers in the account file, a project `.mcp.json` row of the
+  user's own under a picked name is held the same way (`project:<name>`, the `-s project` hint) - it outranks the account row, so nothing is
+  registered over it. A held row is never ledgered (`ledgerOf`'s no-ledger adoption skips it) and stays held on every later update until it is
+  exactly the stack shape or the user removes it (delta F-LOCAL, F-LEDGER). A `.mcp.json` that cannot be read (garbage, EACCES) is no empty
+  selection: the read-back keeps the picks the ledger recorded, the ledger and the `mcp-held:` line stand as recorded, one line says so, and
+  restoring the file restores the install; a MISSING file is still empty (delta F-UNREAD). The plugin route writes
   nothing there, so an own row under a picked name is only named (`mayPrune`'s line). Every JSON file the installer parses
   that a person may edit (`.mcp.json`, `settings*.json`, the account's `.claude.json`) goes through ONE reader,
   `install/json-file.js` (`parseJson` / `readJson`; the scripts that read the same files - `stack-select.js`, `plugin-settings.js`,
