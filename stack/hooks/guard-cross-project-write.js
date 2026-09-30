@@ -196,6 +196,7 @@ const effectiveAllow = allowRoots.filter((d) => !inside(ROOT, d));
 const RECEIPT = path.resolve(ROOT, docsRootEnv(), 'flow', 'CROSS-WRITE-ALLOW');
 const MAX_RECEIPT_AGE_MS = 8 * 60 * 60 * 1000;
 let receiptStale = false;
+let receiptLines = [];
 const receiptRoots = (() => {
   try {
     const st = fs.statSync(RECEIPT);
@@ -208,8 +209,8 @@ const receiptRoots = (() => {
       receiptStale = true;
       return [];
     }
-    return fs.readFileSync(RECEIPT, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
-      .map(expandTilde).map(realish).filter((d) => !inside(ROOT, d));
+    receiptLines = fs.readFileSync(RECEIPT, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+    return receiptLines.map(expandTilde).map(realish).filter((d) => !inside(ROOT, d));
   } catch { return []; } // absent or unreadable - no allowance recorded
 })();
 // ~/.claude-<space> account dirs are siblings of ~/.claude, matched by prefix. The prefix is
@@ -398,13 +399,17 @@ let shell;
 try { shell = require(path.join(__dirname, 'shell-writes.js')); } catch { process.exit(0); }
 if (!shell.isShellTool(tool)) process.exit(0);
 const rawCommand = String(input.command || '');
-const scan = shell.scanShell(rawCommand);
+// A script FILE a shell runs is read from disk against the project root, and a git alias is expanded to what it runs
+// (2.1.6 re-verify 2 R2-M5, R2-m1); an alias that cannot be read is not judged, like an unexpanded variable.
+const scan = shell.scanShell(rawCommand, { cwd: ROOT, aliases: true });
 const command = scan.command;
 if (!command.trim()) process.exit(0);
 if (PROBE_SHELL.test(command)) forkProbe('a shell mutation', command.slice(0, 160));
 
 const { isVar } = shell;
-const anchorAt = (index) => shell.anchorAt(scan.cds, index, ROOT, (t) => nativePath(expandTilde(shell.unquote(t))));
+// One normaliser per run: shell.anchorAt caches its compiled anchor by this function, so a fresh closure per write recompiled it each time.
+const anchorNorm = (t) => nativePath(expandTilde(shell.unquote(t)));
+const anchorAt = (index) => shell.anchorAt(scan.cds, index, ROOT, anchorNorm);
 // Judge one path token found at `index` in the command: only a token that can land out of tree
 // is resolved at all - an explicitly out-of-tree spelling (absolute, ~-rooted, reaching up with
 // `..`), or any relative path once a `cd` has moved the anchor. A bare relative path with the
@@ -442,5 +447,28 @@ for (const t of scan.targets) judge(t.raw, t.index, t.what);
 for (const index of scan.gitWrites) {
   const base = anchorAt(index);
   if (base && base !== ROOT && !allowed(base)) block('a git write in another checkout', base);
+}
+
+// What the reader left UNREAD - a script past the scan budget (hook-prelude.js), a script nested past its depth, a git
+// alias it could not read - may write anywhere, so it is asked through the same receipt, never allowed: the verdict
+// flipped to allowed on size alone (a 1.1MB script writing outside passed, the same text at 0.99MB was denied - 2.1.6
+// re-verify 3 R3-m4). The 'allow' line is the script's own path, or `unread` for a command with no file.
+const unread = scan.unread.slice();
+if (scan.aliasUnreadAt >= 0) unread.push({ at: scan.aliasUnreadAt, why: 'a git alias it could not read', path: null });
+for (const u of unread) {
+  if (u.path ? receiptRoots.some((d) => inside(realish(u.path), d)) : receiptLines.includes('unread')) continue;
+  const shown = u.path || 'this command';
+  const receiptRel = path.join(docsRoot.replace(/^\//, ''), 'flow', 'CROSS-WRITE-ALLOW');
+  global.BLOCK_DETAIL = { branch: 'unread', why: u.why };
+  process.stderr.write(
+    `Blocked: this guard could not read ${shown} (${u.why}), so it cannot say where it writes -\n` +
+    `and a script it cannot read is never let through, since the same text a little shorter is judged.\n` +
+    `Do not decide for the user: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
+    `  'Allow ${shown} for this session (Recommended)' - when it is this project's own and writes only here:\n` +
+    `  write ${receiptRel} with the line ${u.path || 'unread'} and retry the SAME command.\n` +
+    `  'Drop it' - run a smaller piece the guard can read instead.\n` +
+    `The receipt is honoured for this session only, under 8h.`,
+  );
+  process.exit(2);
 }
 process.exit(0);

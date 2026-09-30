@@ -99,7 +99,28 @@ change (see the invariants below).
   own directory; a hook that runs before it lands keeps every offer off. `shell-writes.js` parses a
   shell command's writes for the cross-project guard and the done gate, after blanking heredoc bodies
   and comments (an apostrophe in a comment flipped every quoted span after it, and the source-protocol
-  snippet read as a redirect to `/@`). It is also the one home of the SHELL ROUTE, `SHELL_TOOLS` / `isShellTool`
+  snippet read as a redirect to `/@`); a write verb counts only at a command position and within its own line (2.1.6 H1:
+  `install` ending a folder name, and a `\s` crossing the newline, read a sed script's `/g` as a copy destination) -
+  past a wrapper and its values (`timeout 5`, `sudo -u root`), spelled by path or escaped (`/bin/rm`, `\cp`) or after a
+  `case` arm; a `\`-newline continuation is joined first, a `sh -c` script is read as shell, a copy target may sit before
+  a redirection or name itself with `-t`, a subshell's `cd` ends with it and `popd` returns, and a runtime's script
+  (`node -e`, `python3 - <<`) is read only when the runtime is the command it is fed to - `cat > run-node.txt <<` is
+  text - and read whole, quote-aware (the review's corpus plus the runtime and carried-script shapes,
+  `scripts/fixtures/cross-write-corpus.json`, replayed in guard-hooks.test.js). It is the ONE home of shell text
+  carried into a shell (`carriedScripts`, re-verify N4, re-verify 2 R2-M5 / R2-m2): `sh -c` (long options and `-o
+  <name>` before the `-c`), `eval`, a heredoc, a here-string, `< file`, an `echo` / `printf` (its format cycled over its
+  arguments) / `cat <file>` stage piped in past any `tee`, and a script FILE a shell runs (`bash x.sh`, `. x.sh`,
+  `source`, `./x.sh` with a shell shebang or none), read from disk against the caller's cwd - or from the text the same
+  command wrote into it first - inside the scan budget (`hook-prelude.js` `SCAN_LIMITS`: 8MB of text scanned and 3 levels
+  of carried scripts, work counts and never time, so a verdict never depends on machine load; each byte is charged
+  once, where it comes from - the command, and a script file as it is read up to its first NUL byte, so a
+  self-extracting installer costs its shell head; past it the rest is unread and judged conservatively); `-n` and `-o
+  noexec` run nothing, and what `curl` prints does not exist when the hook fires. It is also the one home of git ALIAS
+  expansion (`expandGitAliases`, T20, R2-m1): every spelling of the call (`/usr/bin/git`, `\git`, `-P`, `--git-dir .git`,
+  `--work-tree .`), looked up with its `-c`, `--config-env`, `GIT_CONFIG*` / `HOME` / `XDG_CONFIG_HOME` / `GIT_DIR`
+  assignments and an alias the same command defines; a `!` alias runs at the repo's top level; an xargs-fed subcommand
+  or an unanswered lookup is `unreadAt`. The cross-project guard scans with both (an unread alias or script asks once,
+  opened by a `CROSS-WRITE-ALLOW` line naming its path or `unread`); the done gate reads neither. It is also the one home of the SHELL ROUTE, `SHELL_TOOLS` / `isShellTool`
   (Bash, PowerShell and Monitor - Monitor runs its `command` under Bash's permission rules, and a `ws` watch carries
   none), which every shell guard requires and the dispatcher's `MATCHER` spells (2.1.4 audit I1: no guard saw a
   Monitor command). The eight guards with a
@@ -107,7 +128,9 @@ change (see the invariants below).
   `wiringRows`): each guard runs in-process with its own gates and ledger row (its `global.BLOCK_DETAIL` cleared before and after it), every block reason
   reaches the model, a throwing guard fails open alone - except that a PROTECTIVE guard's exit 2 (force-push, rm,
   secret) is answered at once, since the guards run one after another and a later one stalling past the budget would
-  drop it (a timed-out hook lets the call through; 2.1.5 M2 - every git call in the docs engine carries a 5s timeout),
+  drop it (a timed-out PreToolUse hook's output is discarded and the call is not run, answered with a timeout error
+  instead of the block reason - code.claude.com/docs/en/agent-sdk/hooks, 'Hook timeout', v2.1.210 on; 2.1.5 M2 - every
+  git call in the docs engine carries a 5s timeout),
   and the protective ones run first (`RUN_ORDER`; the messages keep the manifest's order).
   The five guards with a file-tool row ride ONE hook the same way, `file-guards.js` (2.1.5 M3: a Read or a Write paid
   three node processes): the read guard, the secret guard, the config and cross-project guards and docs-session, each
@@ -260,13 +283,56 @@ change (see the invariants below).
     leaves the receipt's `spec:` count and the trivial bar, and a `git add` whose own dry run would stage one of
     those paths without naming it (`-A`, `.`, `:/`, a directory, a glob) blocks until `<docs-path>/flow/UNTRACKED-ALLOW`
     lists it (a path, a directory ending in `/`, or `*`) - pilot 3's ~150 harness files drove 19 denials and one sweep.
+    The receipt's `spec:` count is measured on what the commit takes in - the scan's set, each add and commit path placed
+    where its own git call runs (the cwd, a cd, its `-C`) as a `:(top)` pathspec (2.1.6 H2: on the whole tree, narrowing a
+    commit never helped) - and on the whole tree when the command does not spell that set out (a path word the shell
+    expands, an add fed by `xargs` or `--pathspec-from-file`, an interactive add or commit, `git $C`, a chained `git rm` /
+    `git stash pop`) or its named paths resolve to nothing while the tree is dirty. The trivial bar is cumulative per
+    SESSION (review M2): this commit's set plus the session's earlier commits the guard itself let through as trivial -
+    its ledger `<docs-path>/flow/trivial-<session>`, one row per trivial pass (the HEAD it was made on, its files and
+    churn), counted while any of its files still differs between the session start and HEAD - so an amend or a rebase
+    keeps it and a branch switch drops it; rows repeating one head and file set count once (a retried chain), an
+    `--amend` is judged as the whole commit it leaves (its parent's diff plus this delta, the replaced row skipped), and a
+    commit a valid receipt covers writes no row; commits a pull, a merge or a rebase brought in add nothing (re-verify
+    N1, re-verify 2 R2-M4). So one small commit stays exempt and a split change gates at the
+    slice that crosses it. The session is gated by the start sha history-session.js pins in
+    `<docs-path>/history/<session>.json` at the first SessionStart (kept across a resume or compaction): a new session
+    begins a new change, and with no record the bar is the whole tree; a start the session rewrote (amended, rebased) is
+    read from where it meets HEAD. The git calls are read by shell-writes.js's walker (`gitCalls`), as are the
+    git aliases and carried scripts (`expandGitAliases`, `carriedScripts`, above): each alias is expanded in place and each carried script, its own aliases expanded, joins
+    the command after a newline; an alias still standing after 5 steps, a lookup git cannot answer, an xargs-fed
+    subcommand, or text past the scan budget that names git gates the call as a commit, unread. Every check reads
+    git however it is spelled (`/usr/bin/git`, `\git`, `--git-dir <d>`, `--work-tree <d>`), and behind a runner no
+    list names (`xcrun`, `arch -arm64`, `bundle exec`, `op run --`, `flock`): a bare `git` word after a head that does
+    more than print, read or edit data is the call (`DATA_HEADS` in shell-writes.js, so `echo` / `grep` / `ls` stay text;
+    re-verify 4 R4-M2). Consent is read per clause
+    and per gate (re-verify 2 R2-M3): a commit verb consents to the COMMIT-GATE and a publish verb (push, merge, release,
+    open the PR) to the PUSH-GATE; a negation before or after the verb ('don't push', 'no need to commit', 'commit is
+    not needed'), a stop ('hold off on the push'), a deferral (a wait on CI defers a push, a release or a ship, never a
+    merge: 'merge it once CI is green' consents), the user keeping the act ('I'll push it myself') or a
+    statement about the verb refuses it, and only its own gate. Opening a pull request ('open the PR', 'відкрий PR') is
+    consent; a question, a negation or the PR's description / template / page is not (H3).
   - `guard-stop-contract.js` (`Stop` + `SubagentStop`; PreToolUse `AskUserQuestion` - its notes INJECTED, and a
     PreToolUse note lands beside the tool result, which for an ask is the user's ANSWER, so each is worded for that
     moment ('the ask just answered ... verify, re-ask if it moved'); the one DENY is the ask's own house voice (an
     em- or en-dash, a double quote) outside a backticked span or fenced block, which it neither judges nor rewrites
     (R5: a string's delimiters in code stay double), once per ask text, carrying the corrected strings (I3);
     LOG-ONLY: `PostToolUse` + `PostToolUseFailure` on the shell tools) - blocks a turn ending on a decision-shaped question in prose (the quality
-    loop's mode and stage-close asks worded as statements included), or a 'done, next step pending' close; holds ONCE a subagent that stops on a wait nobody will end ('I'll wait for...' or its own
+    loop's mode and stage-close asks worded as statements included), or a 'done, next step pending' close - unless every pending item the close states is a WAIT ('still running',
+    'waiting on', 'awaiting') on work this session launched that is still out and ENDS (an async Agent, one a SendMessage
+    resumed, a Monitor, a background shell whose command names finite work - a test, build, lint, install, migrate, deploy
+    run - and no watcher: re-verify 2 R2-B1 turned a list of servers into a list of work that finishes; read from the
+    transcript's newest 8MB, 2.1.6 H4; when
+    that cannot be read, an agent / review / implementer still running or a waiter that wakes the session); a wait counts only when
+    it names the running work (a report, a verdict, an agent - an approval, a go-ahead, a decision or a sign-off is a
+    hand-back), a dev server, `dotnet run`, `docker compose up` or another server or watcher is no work that ends, and a
+    wait on the user, a next step, 'tell me' or 'nothing reports' keeps it a stall, in English, Ukrainian and Russian
+    (review B2, re-verify N-B2, N4) - except that 'tell me', 'let me know', 'ping me' and the Ukrainian and Russian
+    forms are an OFFER when an offer word follows (if, in case, how, what, whether, about - not before an infinitive:
+    'tell me whether to push' asks for the decision), and a when / once / after condition still hands back (re-verify 4 R4-M3). A HAND-BACK anywhere in the close (an approval, a go-ahead, 'let me know', a
+    question to the user) wins over every wait and every text exemption (R2-M1), the first-person past done forms read
+    in Ukrainian and Russian ('Зробив', 'Сделал', 'Закоммитил' - R2-M2), and a wait on the stack's own seats (a designer,
+    a diagnoser, an analyzer) is a wait on work (R2-m3); holds ONCE a subagent that stops on a wait nobody will end ('I'll wait for...' or its own
     ScheduleWakeup) with no background work of its own; a close saying the RUN has nothing pending (the pinned line in shared-rules.json) is
     finished. Credential branch: asks for rotation ONCE per exposure (`ALFRED_CODE_ROTATE_ASK=0` off; any ask
     answered or declined after its block is the answer, a free-text 'Other' included), judged

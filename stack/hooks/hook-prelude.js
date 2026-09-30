@@ -391,4 +391,35 @@ function standDown(hook, env, argv, { setUp = true } = {})
     catch { return false; }
 }
 
-module.exports = { hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, aliasYieldsToCore, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, ALIAS_PLUGIN, envOf };
+// THE SCAN BUDGET - how much a guard reads before it stops and judges the rest UNREAD, the one home every guard reads
+// (2.1.6 re-verify 3 R3-M3, R3-m4). A shell command a guard judges can carry scripts it reads from disk, git aliases it
+// expands, and scripts nested in scripts. Two limits bound it, both counts of WORK, never elapsed time - a verdict must
+// not depend on how loaded the machine is (a wall-clock budget failed its own tests at a load average of 58):
+// - bytes: the characters scanned - each text is charged before it is parsed (`take`): the command, every script read
+//   from disk, every alias pass. The parsers are linear, so the count bounds the time on every machine;
+// - depth: scripts nested in scripts (`deep`).
+// Past either, `why` names the limit and the caller judges what is left CONSERVATIVELY - asked or gated like an alias
+// that cannot be read, never let through: the verdict must not flip to allowed on size alone (a 1.1MB script writing
+// outside was allowed where the same text at 0.99MB was denied, re-verify 3).
+const SCAN_LIMITS = Object.freeze({ bytes: 8 * 1024 * 1024, depth: 3 });
+function scanBudget(limits = {})
+{
+    const lim = { ...SCAN_LIMITS, ...limits };
+    let bytes = 0;
+    let why = '';
+    return {
+        limits: lim,
+        take(n)
+        {
+            bytes += Math.max(0, Number(n) || 0);
+            if (!why && bytes > lim.bytes) why = `the ${lim.bytes}-byte scan budget`;
+            return !why;
+        },
+        over: () => !!why,
+        deep: (depth) => depth >= lim.depth,
+        get why() { return why; },
+        get bytes() { return bytes; },
+    };
+}
+
+module.exports = { hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, aliasYieldsToCore, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, ALIAS_PLUGIN, envOf, scanBudget, SCAN_LIMITS };

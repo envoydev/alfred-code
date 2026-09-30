@@ -95,60 +95,123 @@ if (cursorOff) process.exit(0);
     exit(code);
   };
 })();
-const command = String((payload.tool_input || {}).command || '');
+// shell-writes.js is the one home of reading a shell command (2.1.6 re-verify 3 R3-M3, R3-M4): its walker finds each git
+// call as a COMMAND WORD - past assignments, keywords and wrappers - and walks the call's options word by word. The regex
+// family this guard kept here matched the options instead, and a run of them backtracked: `git` + 36 x ' -c' +
+// '; git push' took 67s. A `git` in another command's arguments (`echo git push`) is no call (R3-m7), and a heredoc
+// body or a quoted span is data, never a call. The guard ships beside the module; a copy that runs before it lands
+// judges nothing.
+let nativePath = null;
+try { ({ nativePath } = require(path.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
+if (!nativePath) process.exit(0);
+const sw = require(path.join(__dirname, 'shell-writes.js'));
+// A git ALIAS runs another git command - or, with `!`, a shell command - and git resolves it before it runs: `git ci -m
+// x` with `alias.ci = commit` committed ungated on every tree (2.1.6 review T20). A script handed to a shell - `sh -c
+// '...'` (an alias's included), a literal piped to `sh`, a heredoc into it, `eval '...'`, a script FILE a shell runs -
+// runs as shell too (review re-verify N2 / N4, re-verify 2 R2-M5 / R2-m2). shell-writes.js is the one home of both
+// (`expandGitAliases`, `carriedScripts`): every alias is expanded in place, and every carried script, its own aliases
+// expanded, joins the command after a newline, where every check below reads it. One scan budget (hook-prelude.js)
+// bounds the whole read, and what it leaves unread gates as a commit, never passes (re-verify 3 R3-m4): a call whose
+// alias could not be read, and any text - the command, a script, a script FILE - the budget or the depth stopped in,
+// when what is left names git at all (text that never names git commits nothing). A script `curl` prints does not
+// exist when this runs, so the call is judged on what it names.
+const NAMES_GIT = /g[\\'"]*i[\\'"]*t/i;
+const namesGit = (file) => {
+  try { return fs.statSync(file).size > 64 * 1024 * 1024 || NAMES_GIT.test(fs.readFileSync(file, 'latin1')); } catch { return true; }
+};
+const gitCwd = payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
+const scanRun = sw.newRun();
+const aliased = sw.expandGitAliases(String((payload.tool_input || {}).command || ''), { cwd: gitCwd, run: scanRun });
+const markUnread = (at) => { if (aliased.unreadAt < 0 || at < aliased.unreadAt) aliased.unreadAt = at; };
+// Where each piece of the final text runs from: the command from the shell's cwd, each carried script from the
+// directory it runs in - a cd inside one moves what follows it there. `base` is where `text` starts in the final text.
+const regions = [];
+function withCarried(text, cwd, base, depth) {
+  regions.push({ from: base, to: base + text.length, cwd });
+  const u0 = scanRun.unread.length;
+  const scripts = sw.carriedScripts(text, { cwd, files: true, run: scanRun });
+  for (const u of scanRun.unread.slice(u0)) if (u.path ? namesGit(u.path) : NAMES_GIT.test(text.slice(u.at))) markUnread(base + u.at);
+  let out = text;
+  for (const sc of scripts) {
+    if (scanRun.budget.deep(depth) || scanRun.budget.over()) { if (NAMES_GIT.test(sc.text)) markUnread(base + sc.at); continue; }
+    const dir = sc.cwd || cwd;
+    const inner = sw.expandGitAliases(sc.text, { cwd: dir, run: scanRun });
+    const at = base + out.length + 1;
+    if (inner.unreadAt >= 0) markUnread(at + inner.unreadAt);
+    out += `\n${withCarried(inner.text, dir, at, depth + 1)}`;
+  }
+  return out;
+}
+// Every byte is charged once, where it comes from: the command here, a script file as it is read (shell-writes.js
+// `readScript`). Past the budget the text is not parsed, and unread (above).
+scanRun.budget.take(aliased.text.length);
+const command = withCarried(aliased.text, gitCwd, 0, 0);
+const parsed = !scanRun.budget.over() ? sw.parseShell(sw.joinContinuations(sw.blankComments(sw.blankHeredocs(command)))) : null;
+if ((!parsed || parsed.tooDeep) && NAMES_GIT.test(command)) markUnread(0);
+const calls = parsed ? sw.gitCalls(null, parsed) : [];
+// The text of the simple command a call stands in, one line - what a denial names.
+const actText = (c) => command.slice(c.at, c.stop).trim().replace(/\s+/g, ' ');
+// `git commit`'s own argv: the options whose value is the next word (short letters, long names -
+// a long one may be cut to a unique prefix, as git's parser allows), the flags this scan reads, and
+// the paths it names, with or without `--`. `-u` and `-S` take an attached value only.
+const COMMIT_VALUE_SHORT = 'mFCct';
+const COMMIT_VALUE_LONG = ['message', 'file', 'author', 'date', 'cleanup', 'fixup', 'squash', 'template', 'reuse-message', 'reedit-message', 'trailer', 'pathspec-from-file'];
+const COMMIT_FLAGS = ['all', 'only', 'include', 'dry-run', 'interactive', 'amend'];
+function commitArgs(args) {
+  const known = [...COMMIT_VALUE_LONG, ...COMMIT_FLAGS];
+  const flags = new Set();
+  const paths = [];
+  let rest = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (rest) { paths.push(a); continue; }
+    if (a === '--') { rest = true; continue; }
+    if (a.startsWith('--')) {
+      const eq = a.indexOf('=');
+      const typed = eq < 0 ? a.slice(2) : a.slice(2, eq);
+      const hits = known.filter((n) => n.startsWith(typed));
+      const name = known.includes(typed) ? typed : (typed && hits.length === 1 ? hits[0] : typed);
+      flags.add(`--${name}`);
+      if (eq < 0 && COMMIT_VALUE_LONG.includes(name)) i++;
+      continue;
+    }
+    if (a.length > 1 && a.startsWith('-')) {
+      for (let k = 1; k < a.length; k++) {
+        flags.add(`-${a[k]}`);
+        if (COMMIT_VALUE_SHORT.includes(a[k])) { if (k === a.length - 1) i++; break; }
+        if ('uS'.includes(a[k])) break;
+      }
+      continue;
+    }
+    paths.push(a);
+  }
+  return { flags, paths };
+}
+// A commit dry run commits nothing (R3-m7). A git call whose SUBCOMMAND is not a plain literal - `git $C`,
+// `git $(echo commit)` - cannot be judged at all, and reading it as 'not a commit' is what an obfuscation leans on, so it
+// gates like a commit; so does a call the reader left unread (above).
+const commitCall = calls.find((c) => c.sub === 'commit' && !commitArgs(c.argv).flags.has('--dry-run'));
+const opaqueCall = commitCall ? null : calls.find((c) => c.opaque);
+const commitMatch = commitCall ? { index: commitCall.at, call: commitCall, opaque: false }
+  : opaqueCall ? { index: opaqueCall.at, call: opaqueCall, opaque: true }
+    : aliased.unreadAt >= 0 ? { index: aliased.unreadAt, call: null, opaque: true } : null;
 // The publish half is on by default and switched off per install for a repo whose remote already
 // gates the branch (protection rules, a required review). Any value but "0" leaves it on.
 const PUSH_GATE_ON = envOf(process.env, 'PUSH_GATE') !== '0';
-// A heredoc body is DATA, not shell: a plan document, a commit-message draft or a receipt that
-// merely describes `git commit` is inert text. Matching it blocked a 47KB plan write and cost a
-// full re-author of the same document (~19.8k output + 24.4k cache-write, ~3 minutes), and a
-// second session lost a plan-doc write the same way. Blank the payload spans before matching,
-// keeping the character count so commitMatch.index still points into the real command.
-const scanned = command.replace(
-  /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^\s*\2\s*$/gm,
-  (m) => m.replace(/[^\n]/g, ' '),
-);
-// A QUOTED span is data for exactly the same reason a heredoc body is: a grep pattern, an echo
-// label or a search term that merely CONTAINS `git commit` invokes nothing. Blanking it matters
-// twice over. It blocked the stack's OWN mandated sweep (alfred-capture-stack-usage greps every
-// `git commit` event in a transcript) - and the session then completed that sweep by obfuscating
-// the token, which is the dangerous half: the evasion the false positive TAUGHT defeats this gate
-// on a genuine commit. Replayed on the pre-fix hook: `grep -o 'git commit' f` exit 2,
-// `echo 'run git commit later'` exit 2, but `C=commit; git $C -m x` exit 0 and
-// `git "com""mit" -m x` exit 0. Length is preserved so commitMatch.index still points into
-// the real command, and the fill is a NON-space so the span stays one opaque argument token:
-// blanking `git -C "<sibling>" commit` to spaces dissolved the -C argument and the whole match
-// with it, which un-gated a commit in another checkout (caught by this hook's own tests).
-const scannedQuoted = scanned
-  .replace(/'[^'\n]*'/g, (m) => m.replace(/[^\n]/g, 'x'))
-  .replace(/"[^"\n]*"/g, (m) => m.replace(/[^\n]/g, 'x'));
-// A real `git commit` subcommand (allowing -C/-c/global flags between), not e.g. `git log --grep commit`.
-let commitMatch = scannedQuoted.match(/\bgit(\s+-[cC]?\s*\S+|\s+--\S+)*\s+commit\b/);
-if (!commitMatch) {
-  // ...and a `git` whose SUBCOMMAND is not a plain literal cannot be judged at all: `git $C`,
-  // `git ${VERB}`, `git $(echo commit)`, `git "com""mit"`. Reading those as 'not a commit' is
-  // precisely what makes the obfuscation above work, so they are UNJUDGEABLE and gate like a
-  // commit rather than passing. A quoted literal that normalizes to `commit` is a commit.
-  const re = /(?:^|[;&|(]\s*|\s)git\s+((?:(?:-[cC]\s*\S+|--\S+)\s+)*)(\S+)/g;
-  let m;
-  while ((m = re.exec(command))) {
-    const sub = m[2];
-    const spliced = sub.replace(/["']/g, '');
-    if (/[$`]/.test(sub) || (spliced === 'commit' && /["']/.test(sub))) {
-      commitMatch = { 0: m[0].trim(), index: m.index, opaque: true };
-      break;
-    }
+// The PUBLISH verbs, found as command words the way the commit verb is, so a `git push` inside a report's prose or a
+// commit message is text, not an act - the false-positive pair this gate MUST not reproduce cost 430,740 tokens when a
+// report write was denied for quoting a merge command. `--dry-run` / `-n` publishes nothing, and neither does a push
+// with nothing ahead of its upstream.
+let publishMatch = null;
+if (PUSH_GATE_ON) {
+  const push = calls.find((c) => c.sub === 'push');
+  const merge = push || !parsed ? null : sw.commandWords(null, parsed).find((w) => w.name === 'gh' && w.argv[0] === 'pr' && w.argv[1] === 'merge');
+  if (push) publishMatch = { index: push.at, call: push, git: true, act: actText(push) };
+  else if (merge) {
+    const ws = merge.cmd.words;
+    publishMatch = { index: merge.at, call: null, git: false, act: command.slice(merge.at, ws[ws.length - 1].e).trim().replace(/\s+/g, ' ') };
   }
 }
-// The PUBLISH verbs. Matched on the same quote-masked copy the commit verb is, so a `git push`
-// inside a report's prose or a commit message is text, not an act - the false-positive pair this
-// gate MUST not reproduce cost 430,740 tokens when a report write was denied for quoting a merge
-// command. `--dry-run` / `-n` publishes nothing, and neither does a push with nothing ahead of
-// its upstream.
-const publishMatch = PUSH_GATE_ON
-  ? (scannedQuoted.match(/(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+push\b/)
-    || scannedQuoted.match(/(?:^|[;&|(]\s*|\s)gh\s+pr\s+merge\b/))
-  : null;
 
 // --- add -N without a chained reset -------------------------------------------------------
 // baseline-git.md:9 mandates the scope survey as ONE Bash call with the reset chained on the
@@ -158,11 +221,11 @@ const publishMatch = PUSH_GATE_ON
 // staged file to fully staged. Independent of commit/push - it fires on its own. Scoped to the
 // WHOLE-TREE shape (`-N .`, or -N with no pathspec): `git add -N <new file>` before a `git add -p`
 // is a deliberate staging move with one file's entry to clear, not the survey this rule is about.
-const addNMatch = scannedQuoted.match(/(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+add\s+(?:-N|--intent-to-add)(?:\s+\.)?\s*(?=$|[;&|)])/)
-  || scannedQuoted.match(/(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+add\s+\.\s+(?:-N|--intent-to-add)\s*(?=$|[;&|)])/);
-if (addNMatch && !/(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+reset\b/.test(scannedQuoted)) {
+const addN = calls.find((c) => c.sub === 'add' && c.argv.some((a) => a === '-N' || a === '--intent-to-add')
+  && c.argv.every((a) => a.startsWith('-') || a === '.'));
+if (addN && !calls.some((c) => c.sub === 'reset')) {
   process.stderr.write(
-    `Blocked: ${addNMatch[0].trim()} with no git reset in the same call - intent-to-add entries stay\n` +
+    `Blocked: ${actText(addN)} with no git reset in the same call - intent-to-add entries stay\n` +
     `open across every Bash call after this one until something clears them (measured: 6 calls open,\n` +
     `an 8-call fsck/dangling-blob chase, and an unrequested re-stage that flipped a partially staged\n` +
     `file to fully staged). Chain the reset onto the SAME call, the shape baseline-git.md:9 gives:\n` +
@@ -172,9 +235,9 @@ if (addNMatch && !/(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+reset\b/
   process.exit(2);
 }
 
-// Every `git add` in the command, by the offset of its `git` - judged below against what was untracked before the
-// session started, so a bare `git add -A` in its own call is read too.
-const addCalls = [...scannedQuoted.matchAll(/(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+add\b/g)].map((m) => m.index + m[0].search(/git/));
+// Every `git add` in the command - judged below against what was untracked before the session started, so a bare
+// `git add -A` in its own call is read too.
+const addCalls = calls.filter((c) => c.sub === 'add');
 if (!commitMatch && !publishMatch && !addCalls.length) process.exit(0);
 
 // Resolve the repo the act actually runs in: a `cd <sibling> && git commit` or a
@@ -189,31 +252,25 @@ if (!commitMatch && !publishMatch && !addCalls.length) process.exit(0);
 // CLAUDE_PROJECT_DIR on the main checkout, so anchoring there judged the main tree's diff and let a
 // worktree commit through ungated whenever main was clean (measured on 2.1.283).
 const projectDir = process.env.CLAUDE_PROJECT_DIR || '';
-let root = payload.cwd || projectDir || process.cwd();
-// The translation is shell-writes.js's one home (2.1.5 M8); without the module a path is taken as written.
-let nativePath = (p) => String(p);
-try { ({ nativePath } = require(path.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
-const unq = (s) => s.replace(/^["']|["']$/g, '');
-// the FIRST of the two acts anchors the cd scan - everything before it moved the cwd
-const actIndex = Math.min(
-  commitMatch ? commitMatch.index : Number.MAX_SAFE_INTEGER,
-  publishMatch ? publishMatch.index : Number.MAX_SAFE_INTEGER,
-  addCalls.length ? addCalls[0] : Number.MAX_SAFE_INTEGER,
-);
-// PowerShell moves the cwd with Set-Location (sl, chdir) or Push-Location (pushd), a -Path or
-// -LiteralPath name optional - the matcher claims that tool, so its spelling anchors the same way.
-// The directory the LAST cd before `index` moved to, resolved from `base` (unchanged when there is none).
-const cdBefore = (base, index) => {
-  const cds = [...command.slice(0, index).matchAll(/(?:^|&&|;|\n|\|)\s*(?:cd|chdir|pushd|set-location|sl|push-location)\s+(?:-(?:literal)?path\s+)?("[^"]+"|'[^']+'|[^\s;&|]+)/gi)];
-  return cds.length ? path.resolve(base, nativePath(unq(cds[cds.length - 1][1]))) : base;
-};
-root = cdBefore(root, actIndex);
-// the match came off the quote-masked copy, so read the -C ARGUMENT back out of the real
-// command - the mask keeps the offsets, not the path (a masked `-C "<sibling>"` resolved to a
-// directory of x's, judged this repo instead, and let the sibling commit through ungated).
-const rawOf = (m) => (m && !m.opaque ? command.substr(m.index, m[0].length) : (m ? m[0] : ''));
-const dashC = rawOf(publishMatch || commitMatch).match(/\s-C\s*("[^"]+"|'[^']+'|\S+)/);
-if (dashC) root = path.resolve(root, nativePath(unq(dashC[1])));
+// The directory a git call runs in: its piece's cwd moved by every cd before it there (PowerShell's Set-Location and
+// Push-Location too), then the call's own `-C` chain - read the same way for the add sweep, the commit's set and the
+// scan (2.1.6 review B1). A cd the guard cannot follow (`cd $DIR`) leaves the piece's own cwd.
+const regionCds = new Map();
+const cdTarget = (t) => nativePath(sw.unquote(t));
+function callDir(call) {
+  let k = regions.length - 1;
+  while (k > 0 && regions[k].from > call.at) k--;
+  const r = regions[k];
+  if (!regionCds.has(k)) regionCds.set(k, (parsed ? parsed.cds : []).filter((c) => c.index >= r.from && c.index < r.to));
+  let cwd = sw.anchorAt(regionCds.get(k), call.at, r.cwd, cdTarget) || r.cwd;
+  for (const d of call.dirs) if (!sw.isVar(d)) cwd = path.resolve(cwd, nativePath(d));
+  try { cwd = fs.realpathSync.native(cwd); } catch { /* git reports the missing directory itself */ }
+  return cwd;
+}
+// the FIRST of the acts anchors the repo - everything before it moved the cwd
+const firstAct = [commitMatch && (commitMatch.call || { at: commitMatch.index, dirs: [] }),
+  publishMatch && (publishMatch.call || { at: publishMatch.index, dirs: [] }), addCalls[0]].filter(Boolean).sort((a, b) => a.at - b.at)[0];
+let root = callDir(firstAct);
 // The diff and the receipt belong to the repo git runs in. When that is the project's own repo, the
 // project dir stays the anchor: a subfolder cwd, or a project that is a subfolder of its repo, reads
 // the receipt where the session writes it.
@@ -273,14 +330,6 @@ function preExisting() {
   try { preExistingCache = new Set(file ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean) : []); } catch { preExistingCache = new Set(); }
   return preExistingCache;
 }
-function changedFiles() {
-  const pre = docsPrefix();
-  const before = preExisting();
-  const keep = (f) => f && !(pre && f.replace(/\\/g, '/').startsWith(pre));
-  const tracked = git('diff HEAD --name-only').split('\n').filter(keep);
-  const untracked = git('-c core.quotePath=false ls-files --others --exclude-standard').split('\n').filter((f) => keep(f) && !before.has(f));
-  return { tracked, untracked, count: tracked.length + untracked.length };
-}
 // The project a changed file belongs to, for the push-scope check: the name under a common
 // monorepo container (apps/libs/packages/projects/services/modules - the shape `nx test auth`
 // names), else the top-level directory. A root-level file names no project - it is workspace-wide
@@ -303,7 +352,7 @@ function projectOf(f) {
 }
 // The projects a PUBLISH is taking out: the commits ahead of upstream, not the working tree (a
 // push's spec already draws that distinction). Docs-root files are excluded the same way
-// changedFiles() excludes them - the receipt lives there and names no project of its own.
+// commitSet() excludes them - the receipt lives there and names no project of its own.
 function pushTouchedProjects() {
   let files = [];
   try { files = git('diff @{u}..HEAD --name-only').split('\n').filter(Boolean); } catch { files = []; }
@@ -349,8 +398,106 @@ const MAX_RECEIPT_AGE_MS = 2 * 60 * 60 * 1000; // 2h - the gate runs right befor
 // A PENDING draft placeholder matches the bare prefix, so the prefix alone is never the test
 // (measured: a PENDING draft sat gate-passing for ~2 minutes).
 const CONSENT_VERB = /\b(commit|commits|committing|push|pushes|pushing|land|lands|landing|ship|ships|shipping|merge|merges|merging|publish|publishes|publishing|release|releases|releasing|go ahead|do it|approve[ds]?|yes)\b/i;
-const CONSENT_VERB_CYR = /(коміт|комміт|закоміт|запуш|пуш|залив|злий|мерж|злит|відправ|отправ|випуст|выпуст|дава[йй]|погоджу|согласен|схвал|так, |да, )/i;
-const QUOTED = /["'“‘”’]([^"'“‘”’]*)["'“‘”’]/;
+const CONSENT_VERB_CYR = /(закоммит|коммит|коміт|комміт|закоміт|запуш|пуш|залив|злий|мерж|мердж|мёрдж|вле[йв]|зали[йв]|зале[йв]|викот|выкат|злит|відправ|отправ|випуст|выпуст|дава[йй]|погоджу|согласен|схвал|так, |да, )/i;
+// Opening a pull request asks for the publish under it (2.1.6 H3): the checkpoint skill fires on 'open the PR', and the
+// user's own words were refused as consent. The verb and the PR noun count only together - a bare 'PR' or 'look at the
+// PR' asks for nothing - and only as an ask (review m1 / m2): the verb opens, creates, raises or submits the PR ('make'
+// and 'file' edit one), 'up' may follow it and one word may sit before the noun ('open up a draft PR'), no question or
+// negation leads it ('did you', 'never'), and the noun is not followed by what is ABOUT the PR (its description,
+// template, comment, review, title, body, link or page) or by 'in the browser'. In Ukrainian and Russian the verb is a
+// whole word in its imperative or infinitive form, never after 'не' / 'ні' - an adjective or a participle
+// ('відкритому', 'созданный') and a negated imperative ('не открывай') are statements.
+const CONSENT_PR = /(?<!\b(?:did|didn't|do|does|don't|never|not|no)\s+(?:you\s+|we\s+|i\s+)?)\b(?:open|opens|opening|create|creates|creating|raise|raises|raising|submit|submits|submitting)(?:\s+up)?\s+(?:(?:a|an|the)\s+)?(?:[\w-]+\s+)?(?:PR|pull[\s-]?request)s?\b(?!\s+(?:description|template|comment|review|title|body|link|page)s?\b|\s+in\s+(?:the\s+)?browser\b)/i;
+const CONSENT_PR_CYR = /(?<!(?:^|[^\p{L}])(?:не|ні)\s+)(?<!\p{L})(?:відкр(?:ий|ийте|ити|ивай|ивайте)|створ(?:и|іть|ити|юй|юйте)|зроб(?:и|іть|ити)|пода(?:й|йте|ти|вай|вайте)|откр(?:ой|ойте|ыть|ывай|ывайте)|созд(?:ай|айте|ать|авай|авайте)|сдела(?:й|йте|ть))\s+(?:[\p{L}-]+\s+)?(?:PR|ПР|пул+[\s-]?реквест\p{L}*|pull[\s-]?request)(?!\p{L})(?!\s+(?:в|у)\s+браузер)/iu;
+// A quote is read to its OWN closing mark: an apostrophe inside double quotes ("let's open a PR", "don't push") is text,
+// not the end (review re-verify N3). Consent is then read per CLAUSE and per GATE (re-verify 2 R2-M3: a deferral
+// anywhere refused 'commit now, push later', a clause ran across ' - ' and 'but', and 'push is not needed', 'stop
+// committing', 'why did you push?' and 'hold the commit' read as consent):
+//   - a clause ends at . ! ? ; , :, a spaced dash, or 'but / then / але / но / а';
+//   - positive idioms are blanked first ('don't forget to', 'no need to', 'no problem', 'never mind', 'не забудь');
+//   - a consent verb is refused by a negation before it in its clause, 'stop / hold / wait with' right before it, a
+//     negation right after it ('is not needed', 'не треба', 'не потрібен', 'зачекай'), a deferral in its own clause
+//     ('later', 'tomorrow', 'after I', 'завтра'), a next clause that only answers no ('open a PR? not yet'), or the user
+//     keeping the act ('I will push it myself', 'сам запушу');
+//   - a verb after an article or a possessive is a noun ('the commit message') unless an act verb leads it ('do the
+//     commit'), a noun followed by a state is a statement ('commit is broken'), a why / who / 'did you' clause asks
+//     nothing, and 'давай' consents only alone or before a consent verb;
+//   - a bare answer word closing the verb's clause refuses it ('commit yes, push no', 'коміт ні' - re-verify 3 R3-M1);
+//   - a publish conditioned on CI ('push after CI', 'when CI is green') consents to nothing now: CI runs on the push;
+//   - a refused verb of the gate's OWN class refuses that gate ('commit it, don't push' opens the commit, not the
+//     push);
+//   - each gate consents on its OWN act (re-verify 3 R3-M1: 'commit it' in a PUSH-GATE receipt published): the
+//     COMMIT-GATE on any act verb left standing (a push takes the commit with it), the PUSH-GATE on a publish verb or
+//     a PR opened, and a generic yes ('go ahead', 'yes', 'давай') counts for a gate only when the quote names no act
+//     of the other class ('go ahead and commit' consents to no push);
+//   - a quote past 1,000 characters is no answer (R3-m10), and each clause is found by a binary search over the
+//     sorted clause bounds, so the reader stays linear in the quote.
+const QUOTED = /"([^"\n]*)"|“([^”\n]*)”|'([^'\n]*)'|‘([^’\n]*)’/;
+const CLAUSE_END = /[.!?;,:]|\s[-\u2013\u2014]\s|\s(?:but|then|але|но|а)\s/giu;
+const POSITIVE_IDIOM = /\b(?:don'?t forget(?: to)?|no (?:need|problem|issues?|worries|rush)(?: to \w+)?|never mind|not sure [^,.;]*? but|(?:i )?don'?t mind)\b|(?<!\p{L})(?:не забудь\p{L}*|без проблем|нема проблем|нет проблем)(?!\p{L})/giu;
+const NEGATION_BEFORE = /\b(?:not|no|never|don'?t|doesn'?t|didn'?t|won'?t|shouldn'?t|can'?t|cannot|without)\b|(?<!\p{L})(?:не|ні|нет|ніколи|никогда)(?!\p{L})/iu;
+const STOP_BEFORE = /(?:\b(?:stop|quit|hold off(?: on)?|hold|wait with|wait on)|(?<!\p{L})(?:стоп|зупини\p{L}*|останови\p{L}*))\s+(?:(?:the|with the)\s+)?$/iu;
+const BARE_NO_AFTER = /^[^\p{L}\p{N}]*(?:no|nope|ні|нет|не)[^\p{L}\p{N}]*$/iu;
+const NEGATION_AFTER = /^[^\p{L}\p{N}]*(?:[\p{L}'-]+\s+){0,2}?(?:is(?:n'?t| not)|are(?:n'?t| not)|was(?:n'?t| not)|not (?:needed|necessary|required|now|yet|today)|would be a mistake|не\s+(?:треба|надо|нужно|нужен|нужна|нужны|потрібно|потрібен|потрібна|потрібні|варто|стоит|робимо|делаем|зараз|сейчас)|зачекай|почекай|подожди|погоди)(?!\p{L})/iu;
+const STATEMENT_AFTER = /^\s+(?:is|was|are|were|has been|looks|seems)\s+(?!(?:fine|ok|okay|good|allowed|approved|welcome|alright|all right|safe)\b)/i;
+const DEFERRAL_CLAUSE = /\b(?:not yet|not now|later|hold off|tomorrow|after (?:i|you|we)\b|once (?:i|you)\b|when i\b)|(?<!\p{L})(?:пізніше|позже|почекай|подожди|завтра|потім|потом)(?!\p{L})/iu;
+// A wait on CI defers a push, a publish, a release or a ship, but not a MERGE: 'merge it once CI is green' is the ordinary
+// way to ask for the merge CI gates (2.1.6 re-verify 4 R4-m1).
+const CI_DEFERRAL = /\b(?:after|once|when|until|till|as soon as) (?:the )?(?:ci|checks?|pipeline)\b|(?<!\p{L})(?:після|после|коли|когда) (?:CI|ci|сі|пайплайн\p{L}*)(?!\p{L})/iu;
+const MERGE_VERB = /^(?:merge|мерж|мердж|мёрдж)/iu;
+const USER_KEEPS = /\bmyself\b|(?<!\p{L})(?:сам|сама|самі|сами|самостійно|самостоятельно)(?!\p{L})/iu;
+const NOUN_BEFORE = /\b(?:the|a|an|this|that|my|your|its|our|last|first|previous|next)\s+$/i;
+const ACT_BEFORE = /\b(?:do|make|create|go ahead with|proceed with|run|finish|approve)\s+(?:the|a|an|this|that|your)\s+$/i;
+const WHY_CLAUSE = /^\s*(?:why|who|did you|have you|what)\b|(?<!\p{L})(?:зачем|навіщо|чому|почему|хто|кто)(?!\p{L})/iu;
+const ANSWERED_NO = /^[^\p{L}\p{N}]*(?:no|nope|not yet|not now|later|не|ні|нет|пізніше|позже|потом|потім)[^\p{L}\p{N}]*$/iu;
+const CLASS_COMMIT = /^(?:commit|land|коміт|комміт|закоміт|коммит|закоммит)/iu;
+const CLASS_PUSH = /^(?:push|publish|release|ship|merge|land|пуш|запуш|випуст|выпуст|відправ|отправ|залив|мерж|мердж|мёрдж|вле[йв]|зали[йв]|зале[йв]|викот|выкат|злий|злит)|\bPR\b|pull|ПР|реквест|^(?:open|create|raise|submit|відкр|откр|створ|созд|пода|зроб|сдела)/iu;
+const GENERIC_CONSENT = /^(?:go ahead|do it|approve[ds]?|yes|дава|погоджу|согласен|схвал|так,|да,)/iu;
+const CONSENT_QUOTE_CAP = 1000;
+// The first bound past `i` in the sorted bounds, by binary search.
+function boundAfter(bounds, i) {
+  let lo = 0;
+  let hi = bounds.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (bounds[mid] <= i) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+function consentIn(text, gate) {
+  if (text.length > CONSENT_QUOTE_CAP) return false;
+  const clean = text.replace(POSITIVE_IDIOM, (m) => ' '.repeat(m.length));
+  const bounds = [0];
+  for (const b of clean.matchAll(CLAUSE_END)) bounds.push(b.index + b[0].length);
+  bounds.push(clean.length + 1);
+  const clauseOf = (i) => {
+    const k = boundAfter(bounds, i);
+    return [bounds[k - 1] || 0, Math.min(k < bounds.length ? bounds[k] : clean.length, clean.length)];
+  };
+  const own = gate === 'PUSH-GATE' ? CLASS_PUSH : CLASS_COMMIT;
+  let ownHit = false;
+  let otherHit = false;
+  let genericHit = false;
+  for (const re of [CONSENT_VERB, CONSENT_VERB_CYR, CONSENT_PR, CONSENT_PR_CYR]) {
+    for (const m of clean.matchAll(new RegExp(re.source, `${re.flags.replace('g', '')}g`))) {
+      const [a, z] = clauseOf(m.index);
+      const clause = clean.slice(a, z);
+      const before = clean.slice(a, m.index);
+      const after = clean.slice(m.index + m[0].length, z);
+      if ((NOUN_BEFORE.test(before) && !ACT_BEFORE.test(before)) || WHY_CLAUSE.test(clause)) continue;
+      if (/^дава/i.test(m[0]) && !(/^[\s,!]*$/.test(after) || CONSENT_VERB_CYR.test(after.replace(/^\p{L}*/u, '')))) continue;
+      const nk = boundAfter(bounds, z);
+      const nextEnd = nk < bounds.length ? bounds[nk] : undefined;
+      const answeredNo = nextEnd !== undefined && ANSWERED_NO.test(clean.slice(z, nextEnd));
+      const negated = answeredNo || NEGATION_BEFORE.test(before) || STOP_BEFORE.test(before) || NEGATION_AFTER.test(after)
+        || BARE_NO_AFTER.test(after) || DEFERRAL_CLAUSE.test(clause) || (CI_DEFERRAL.test(clause) && !MERGE_VERB.test(m[0].trim())) || USER_KEEPS.test(clause);
+      const word = m[0].trim();
+      if (negated && own.test(word)) return false;
+      if (negated || STATEMENT_AFTER.test(after)) continue;
+      if (GENERIC_CONSENT.test(word)) genericHit = true;
+      else if (gate !== 'PUSH-GATE' || CLASS_PUSH.test(word)) ownHit = true;
+      else otherHit = true;
+    }
+  }
+  return ownHit || (genericHit && !otherHit);
+}
 
 // The transcript tail, read once and shared by the two checks that need it. 256KB is the same
 // window every other guard reads; a receipt is minted within a turn or two of its evidence.
@@ -415,9 +562,9 @@ function judgeReceipt(body, opts) {
     if (line == null) return null;
     if (/\bPENDING\b/i.test(line)) return null;
     const m = QUOTED.exec(line);
-    return m ? m[1].trim() : null;
+    return m ? (m[1] ?? m[2] ?? m[3] ?? m[4]).trim() : null;
   };
-  const consents = (t) => CONSENT_VERB.test(t) || CONSENT_VERB_CYR.test(t);
+  const consents = (t) => consentIn(t, opts && opts.gate);
 
   if (waived) {
     const w = quotedOf(first);
@@ -430,7 +577,12 @@ function judgeReceipt(body, opts) {
   const answered = field('answered') || field('answer');
   if (authorized) {
     if (!consents(authorized)) {
-      r.problem = `the authorized: quote (${JSON.stringify(authorized).slice(0, 60)}) carries no commit / push / land / ship verb - it records the user saying something, not the user asking for THIS act`;
+      const verbs = opts && opts.gate === 'PUSH-GATE'
+        ? "publish verb left standing (push, merge, release, ship) and opens no pull request - a commit-only answer ('commit it') consents to no push, and a generic yes counts only when no commit-only act is named"
+        : 'commit verb left standing (commit, land, or a publish that takes the commit with it)';
+      r.problem = authorized.length > CONSENT_QUOTE_CAP
+        ? `the authorized: quote runs past ${CONSENT_QUOTE_CAP} characters - a consent is the user's own answer, quoted; this is no answer`
+        : `the authorized: quote (${JSON.stringify(authorized).slice(0, 60)}) carries no ${verbs} - a negation, a stop, a deferral or 'myself' in its clause refuses the verb; it records the user saying something, not the user asking for THIS act`;
       return r;
     }
     if (isOwnOptionLabel(authorized)) {
@@ -465,14 +617,15 @@ function judgeReceipt(body, opts) {
     r.problem = 'no spec: line naming the file set reviewed (measured: a receipt asserted a review of a 17-file diff in which 9 files had been read)';
     return r;
   }
-  // The count is compared against the working tree only for a COMMIT: a publish's spec names the
-  // commit set leaving the machine, which has nothing to do with what is uncommitted here.
+  // The count is compared for a COMMIT only, against what THIS commit takes in (commitSet, 2.1.6 H2):
+  // a publish's spec names the commit set leaving the machine, which has nothing to do with what is
+  // uncommitted here.
   const claimed = (opts && opts.countAgainstTree) ? /(\d+)\s*files?\b/i.exec(spec) : null;
   if (claimed) {
     let actual = 0;
-    try { actual = changedFiles().count; } catch { actual = 0; }
+    try { actual = commitSet().count; } catch { actual = 0; }
     if (actual && Number(claimed[1]) < actual) {
-      r.problem = `spec: claims ${claimed[1]} file(s) but the tree has ${actual} uncommitted - review the rest, or narrow what this act commits`;
+      r.problem = `spec: claims ${claimed[1]} file(s) but this commit takes in ${actual} (the index, plus what -a, a chained git add or the paths it names add) - review the rest, or narrow what this act commits`;
       return r;
     }
   }
@@ -526,6 +679,7 @@ function judgeReceipt(body, opts) {
 // touchedProjects is computed only for PUSH-GATE - it drives the diff-vs-upstream git call the
 // scope check needs, and a COMMIT-GATE receipt is never judged against it.
 const receiptOpts = (name) => ({
+  gate: name,
   countAgainstTree: name === 'COMMIT-GATE',
   touchedProjects: name === 'PUSH-GATE' ? pushTouchedProjects() : null,
 });
@@ -569,10 +723,10 @@ function carriesOwnReceipt(name, upto) {
 // passed every guard. In one session the FIRST state-changing act published unpushed commits 18
 // minutes before any receipt existed, and 40 files reached a shared `develop` ungated.
 if (publishMatch) {
-  const act = rawOf(publishMatch).trim().replace(/\s+/g, ' ');
-  const isGitPush = /\bgit\b/.test(act);
-  // a dry run publishes nothing, and neither does a push with nothing ahead of its upstream
-  const dryRun = /\s--dry-run\b/.test(command) || (isGitPush && /\bpush\b[^;|&]*\s-n\b/.test(command));
+  const { act } = publishMatch;
+  const isGitPush = publishMatch.git;
+  // a dry run publishes nothing (the push's own argv), and neither does a push with nothing ahead of its upstream
+  const dryRun = isGitPush && publishMatch.call.argv.some((a) => a === '--dry-run' || /^-[A-Za-z]*n[A-Za-z]*$/.test(a));
   let ahead = true;
   if (isGitPush) {
     try { ahead = git('log @{u}..HEAD --oneline').length > 0; } catch { ahead = true; } // no upstream = a new branch, which publishes
@@ -635,9 +789,6 @@ const TEST_FILE = /(^|\/)(__tests__|e2e|cypress)\/|\.(spec|test|cy|e2e)\.[cm]?[j
 // Any file may open with a byte-order mark (Visual Studio writes one on a new .cs); past byte 0 it is hidden text.
 let hiddenChars = null;
 try { hiddenChars = require(path.join(__dirname, 'hidden-chars.js')); } catch { /* a copy that runs before it lands scans without the class */ }
-// Shell words, quote-aware (`git add "cfg file.js"` is one path) - shell-writes.js beside this hook.
-let shellWords = (text) => text.trim().split(/\s+/).filter(Boolean).map(unq);
-try { ({ shellWords } = require(path.join(__dirname, 'shell-writes.js'))); } catch { /* a copy that runs before it lands splits on whitespace */ }
 function lineFinding(file, text, lineNo) {
   if (/^(<{7}|>{7}) /.test(text)) return 'a conflict marker';
   if (SECRET_SHAPE.test(text) || PEM_PRIVATE.test(text)) return 'a credential-shaped literal';
@@ -649,19 +800,6 @@ function lineFinding(file, text, lineNo) {
   if (TEST_FILE.test(file) && /\b(fdescribe|fit)\s*\(|\b(describe|it|test)\.only\s*\(/.test(text)) return 'a focused test';
   return '';
 }
-// The words of the git call starting at `index`: the segment ends on the QUOTE-MASKED copy (a `;` in a
-// commit message is text), then the real text is split quote-aware. `afterVerb` drops `git`, its
-// global options and the verb itself.
-const callWords = (index) => {
-  const rest = scannedQuoted.slice(index);
-  const end = rest.search(/[;&|\n]/);
-  return shellWords(command.slice(index, index + (end < 0 ? rest.length : end)));
-};
-const afterVerb = (words) => {
-  let i = 1;
-  while (i < words.length && words[i].startsWith('-')) i += words[i] === '-C' || words[i] === '-c' ? 2 : 1;
-  return words.slice(i + 1);
-};
 // A `<docs-path>/flow/<name>` ALLOW receipt's lines - the USER's answer to a block, this session's own, under 8h.
 function allowLines(name) {
   const file = path.resolve(root, docsRootEnv(), 'flow', name);
@@ -693,14 +831,9 @@ function sweptPaths() {
   let realRoot = root;
   try { realRoot = fs.realpathSync.native(root); } catch { /* keep the spelling */ }
   const swept = new Set();
-  for (const at of addCalls) {
-    const words = callWords(at);
-    let cwd = cdBefore(payload.cwd || projectDir || process.cwd(), at);
-    for (let i = 1; i < words.length && words[i].startsWith('-'); i += words[i] === '-C' || words[i] === '-c' ? 2 : 1) {
-      if (words[i] === '-C' && words[i + 1]) cwd = path.resolve(cwd, nativePath(words[i + 1]));
-    }
-    try { cwd = fs.realpathSync.native(cwd); } catch { /* git reports the missing directory itself */ }
-    const args = afterVerb(words);
+  for (const call of addCalls) {
+    const cwd = callDir(call);
+    const args = call.argv;
     const flags = args.slice(0, args.includes('--') ? args.indexOf('--') : args.length).filter((a) => a.startsWith('-'));
     const quiet = flags.some((a) => /^--(intent-to-add|dry-run|patch|interactive|edit|update|refresh)$/.test(a) || (/^-[^-]/.test(a) && /[nNpieu]/.test(a.slice(1))));
     if (quiet) continue;
@@ -743,64 +876,251 @@ if (addCalls.length) {
   }
 }
 if (!commitMatch) process.exit(0);
-// `git commit`'s own argv: the options whose value is the next word (short letters, long names -
-// a long one may be cut to a unique prefix, as git's parser allows), the flags this scan reads, and
-// the paths it names, with or without `--`. `-u` and `-S` take an attached value only.
-const COMMIT_VALUE_SHORT = 'mFCct';
-const COMMIT_VALUE_LONG = ['message', 'file', 'author', 'date', 'cleanup', 'fixup', 'squash', 'template', 'reuse-message', 'reedit-message', 'trailer', 'pathspec-from-file'];
-const COMMIT_FLAGS = ['all', 'only', 'include', 'dry-run', 'interactive', 'amend'];
-function commitArgs(args) {
-  const known = [...COMMIT_VALUE_LONG, ...COMMIT_FLAGS];
-  const flags = new Set();
-  const paths = [];
-  let rest = false;
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (rest) { paths.push(a); continue; }
-    if (a === '--') { rest = true; continue; }
-    if (a.startsWith('--')) {
-      const eq = a.indexOf('=');
-      const typed = eq < 0 ? a.slice(2) : a.slice(2, eq);
-      const hits = known.filter((n) => n.startsWith(typed));
-      const name = known.includes(typed) ? typed : (typed && hits.length === 1 ? hits[0] : typed);
-      flags.add(`--${name}`);
-      if (eq < 0 && COMMIT_VALUE_LONG.includes(name)) i++;
-      continue;
-    }
-    if (a.length > 1 && a.startsWith('-')) {
-      for (let k = 1; k < a.length; k++) {
-        flags.add(`-${a[k]}`);
-        if (COMMIT_VALUE_SHORT.includes(a[k])) { if (k === a.length - 1) i++; break; }
-        if ('uS'.includes(a[k])) break;
-      }
-      continue;
-    }
-    paths.push(a);
-  }
-  return { flags, paths };
-}
+// What the commit takes in, read from the command: the commit's own flags and paths, and every `git add` before it.
+// Each path is placed where ITS git call runs and handed to git as a top-relative `:(top)` pathspec - read from the
+// repo top instead, a path named from a subfolder matched nothing, and 11 commit shapes counted as empty (2.1.6
+// review B1). `unknown` marks a set the command does not spell out: a path word the shell expands (`$F`, `$(...)`,
+// a backtick), a path outside this repo, an add fed by `xargs` or `--pathspec-from-file`, an interactive add or
+// commit.
+let scopeCache;
 function commitScope() {
-  const scope = { dryRun: false, tracked: false, untracked: false, paths: [], commitPaths: [], mode: '' };
+  if (scopeCache) return scopeCache;
+  const scope = { dryRun: false, amend: false, tracked: false, untracked: false, paths: [], commitPaths: [], mode: '', unknown: !!commitMatch.opaque };
+  const place = (dir, word) => {
+    if (!gitTop || /[$`]/.test(word)) return null;
+    if (word.startsWith(':')) return word === ':/' ? ':/' : null;
+    const rel = path.relative(gitTop, path.resolve(dir, nativePath(word))).split(path.sep).join('/');
+    if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) return null;
+    return rel ? `:(top)${rel}` : ':/';
+  };
+  const placeAll = (dir, words, into) => {
+    for (const w of words) {
+      const p = place(dir, w);
+      if (p === null) scope.unknown = true;
+      into.push(p === null ? w : p);
+    }
+  };
   if (!commitMatch.opaque) {
-    const { flags, paths } = commitArgs(afterVerb(callWords(commitMatch.index)));
+    const { flags, paths } = commitArgs(commitMatch.call.argv);
     scope.dryRun = flags.has('--dry-run');
+    scope.amend = flags.has('--amend');
     scope.tracked = flags.has('-a') || flags.has('--all') || flags.has('--pathspec-from-file');
+    if (flags.has('-p') || flags.has('--patch') || flags.has('--interactive')) scope.unknown = true;
     if (paths.length) {
-      scope.commitPaths = paths;
+      placeAll(callDir(commitMatch.call), paths, scope.commitPaths);
       scope.mode = flags.has('-i') || flags.has('--include') ? 'include' : 'only';
     }
   }
-  const before = scannedQuoted.slice(0, commitMatch.index);
-  const addRe = /(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+add\b/g;
-  let m;
-  while ((m = addRe.exec(before))) {
-    const args = afterVerb(callWords(m.index + m[0].search(/git/)));
-    if (args.some((a) => /^(-N|--intent-to-add)$/.test(a))) continue; // a scope survey stages nothing
-    if (args.some((a) => /^(-u|--update)$/.test(a))) scope.tracked = true;
-    if (args.some((a) => /^(-A|--all)$/.test(a) || a === '.' || a === ':/')) { scope.tracked = true; scope.untracked = true; continue; }
-    scope.paths.push(...args.filter((a) => !a.startsWith('-')));
+  for (const call of addCalls) {
+    if (call.at >= commitMatch.index) break;
+    const args = call.argv;
+    const flags = args.filter((a) => a.startsWith('-'));
+    if (flags.some((a) => /^(-N|--intent-to-add|-n|--dry-run)$/.test(a))) continue; // a survey or a dry run stages nothing
+    if (call.xargs || flags.some((a) => /^(--patch|--interactive|--edit|--pathspec-from-file(=.*)?)$/.test(a) || (/^-[^-]/.test(a) && /[pie]/.test(a.slice(1))))) {
+      scope.unknown = true;
+      continue;
+    }
+    if (flags.some((a) => /^(-u|--update)$/.test(a))) scope.tracked = true;
+    if (flags.some((a) => /^(-A|--all)$/.test(a)) || args.includes(':/')) { scope.tracked = true; scope.untracked = true; continue; }
+    placeAll(callDir(call), args.filter((a) => !a.startsWith('-')), scope.paths);
   }
+  scopeCache = scope;
   return scope;
+}
+// The files a set of pathspecs covers, each with its churn against HEAD, named from the repo top: with no scope the
+// whole tree, else the index plus what `-a`, a chained `git add` or the named paths (`--only` / `--include`) take in.
+// Left out: the docs root (the receipt lives there) and what was untracked when the change began.
+function measure(scope) {
+  const top = gitTop || root;
+  const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
+  const realRoot = real(root);
+  const inTop = (r) => r && r !== '..' && !r.startsWith('../') && !path.isAbsolute(r);
+  const rootRel = path.relative(top, realRoot).split(path.sep).join('/');
+  const before = new Set([...preExisting()].map((f) => (inTop(rootRel) ? `${rootRel}/${f}` : f)));
+  const docsRel = path.relative(top, real(path.resolve(realRoot, docsRootEnv()))).split(path.sep).join('/');
+  const pre = inTop(docsRel) ? `${docsRel}/` : null;
+  const keep = (f) => f && !(pre && f.startsWith(pre));
+  const run = (args) => execFileSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: top, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).toString('utf8');
+  const tracked = new Map();
+  const numstat = (base, paths) => {
+    const f = run([...base, '--numstat', '-z', ...(paths.length ? ['--', ...paths] : [])]).split('\0');
+    for (let i = 0; i < f.length; i++) {
+      const m = /^(-|\d+)\t(-|\d+)\t([\s\S]*)$/.exec(f[i]);
+      if (!m) continue;
+      const p = m[3] || f[i += 2]; // a rename: its old path, then the new one
+      if (keep(p)) tracked.set(p, (parseInt(m[1], 10) || 0) + (parseInt(m[2], 10) || 0));
+    }
+  };
+  const untracked = new Set();
+  const others = (paths) => {
+    for (const f of run(['ls-files', '-z', '--full-name', '--others', '--exclude-standard', ...(paths.length ? ['--', ...paths] : [])]).split('\0')) {
+      if (keep(f) && !before.has(f)) untracked.add(f);
+    }
+  };
+  if (!scope) {
+    numstat(['diff', 'HEAD'], []);
+    others([]);
+  } else if (scope.mode === 'only') {
+    numstat(['diff', 'HEAD'], scope.commitPaths);
+    if (scope.untracked || scope.paths.length) others(scope.commitPaths);
+  } else {
+    numstat(['diff', '--cached'], []);
+    if (scope.mode === 'include') numstat(['diff', 'HEAD'], scope.commitPaths);
+    if (scope.tracked) numstat(['diff', 'HEAD'], []);
+    else if (scope.paths.length) numstat(['diff', 'HEAD'], scope.paths);
+    if (scope.untracked) others([]);
+    else if (scope.paths.length) others(scope.paths);
+  }
+  return { top, tracked, untracked: [...untracked], count: tracked.size + untracked.size };
+}
+// The receipt's spec: is measured on what THIS commit takes in (2.1.6 H2): on the whole tree, narrowing a commit
+// never helped - the A/B runs hit 'the tree has M uncommitted' in 12 of 12 PR runs, and 3 stopped there. The whole
+// tree stands in when the command does not spell the set out (`unknown` above, `git $C`, a chained git call that
+// moves the index some other way - `git rm`, `git mv`, `git stash pop`, ...), and when named paths resolve to
+// nothing while the tree is dirty - a set the guard could not place, never an empty commit. An unborn HEAD throws,
+// as `git diff HEAD` always did, and every caller fails open on it.
+const INDEX_MOVER = new Set(['rm', 'mv', 'apply', 'am', 'stash', 'checkout', 'restore', 'reset', 'read-tree', 'update-index', 'merge', 'pull',
+  'rebase', 'cherry-pick', 'revert']);
+let commitSetCache;
+function commitSet() {
+  if (commitSetCache) return commitSetCache;
+  git('rev-parse --verify -q HEAD');
+  const moved = calls.some((c) => c.at < commitMatch.index && INDEX_MOVER.has(c.sub));
+  const scope = commitMatch.opaque || moved ? null : commitScope();
+  let set = measure(scope && !scope.unknown ? scope : null);
+  if (scope && !scope.unknown && !set.count && (scope.paths.length || scope.commitPaths.length)) {
+    const tree = measure(null);
+    if (tree.count) set = tree;
+  }
+  commitSetCache = set;
+  return set;
+}
+// The trivial bar is cumulative per SESSION (2.1.6 review M2, its recommended fix): this commit's own set plus what the
+// session's earlier TRIVIAL commits took in, so one small commit stays exempt and a change split into small commits
+// crosses the bar at the slice that takes the session past it - measured per commit, all six slices of a 60-line
+// feature walked under it; measured on the whole tree, a staged one-liner beside unrelated dirty work gated (T18).
+// What counts is the guard's own ledger, <docs-path>/flow/trivial-<session>: one row per commit it let through under the
+// bar (the HEAD it was made on, its files and their churn; an amend's row sits on the amended commit's parent and names
+// the commit it replaces). A commit a receipt covered writes no row, and commits a pull, a merge or a rebase brought in
+// have none (review re-verify N1: summing every commit since the start made a typo after a reviewed feature, or a
+// one-liner after a pull, need a receipt). Rows are read (re-verify 2 R2-M4):
+//   - once per attempt: a retry of the same commit (same HEAD, files and amended commit) is one row, the last one;
+//   - while any of the row's files still differs between the session's start and HEAD, so a rebase or an amend that
+//     rewrote the commit keeps its row, and a branch switch drops what it took away (keyed by ancestry instead, an
+//     amend loop built a 43-line commit 14 lines at a time and a rebase dropped every row after the first);
+//   - never when made on today's HEAD, or as this same amend retried: that commit has not landed.
+// An amend adds its own lines to the rows of the commit it replaces, so each amend is one more slice of that commit.
+// The session's start is the sha history-session.js pins at its first SessionStart (<docs-path>/history/<session>.json,
+// kept across a resume or compaction of the same session); a new session has a ledger of its own, so it begins a new
+// change. A start the branch rewrote (an amend of it, a rebase) is read from where it meets HEAD (`git merge-base`).
+// With no record (the history hook off) the ledger pins its own start - HEAD at the session's first judged commit, a
+// `{"start"}` row - so a staged one-liner beside unrelated work is still this commit alone (re-verify 3 R3-m9). With no
+// session in the payload, or a start that shares no history with HEAD, the bar is the whole tree, as it always was.
+const SHA_RE = /^[0-9a-f]{7,64}$/;
+function sessionStart() {
+  const sid = String(payload.session_id || '').replace(/[^\w.-]/g, '_');
+  if (!sid) return null;
+  let sha = '';
+  try { sha = String(JSON.parse(fs.readFileSync(path.resolve(projectDir || root, docsRoot, 'history', `${sid}.json`), 'utf8')).startSha || ''); } catch { sha = pinnedStart(); }
+  if (!SHA_RE.test(sha)) return null;
+  try { git(`merge-base --is-ancestor ${sha} HEAD`); return sha; } catch { /* rewritten, or elsewhere */ }
+  try { const base = git(`merge-base ${sha} HEAD`); return SHA_RE.test(base) ? base : null; } catch { return null; }
+}
+const sessionId = () => String(payload.session_id || '').replace(/[^\w.-]/g, '_');
+const trivialLedger = () => path.resolve(projectDir || root, docsRoot, 'flow', `trivial-${sessionId()}`);
+// The start the ledger pinned for itself, pinned now when it has none.
+function pinnedStart() {
+  let text = '';
+  try { text = fs.readFileSync(trivialLedger(), 'utf8'); } catch { /* no ledger yet */ }
+  for (const line of text.split('\n')) {
+    try { const row = JSON.parse(line); if (row && SHA_RE.test(String(row.start))) return row.start; } catch { /* a torn row */ }
+  }
+  try {
+    const head = git('rev-parse HEAD');
+    fs.mkdirSync(path.dirname(trivialLedger()), { recursive: true });
+    fs.appendFileSync(trivialLedger(), `${JSON.stringify({ start: head })}\n`);
+    return head;
+  } catch { return ''; }
+}
+function ledgerRows(head, since) {
+  let text = '';
+  try { text = fs.readFileSync(trivialLedger(), 'utf8'); } catch { return []; }
+  const byKey = new Map();
+  for (const line of text.split('\n')) {
+    let row = null;
+    try { row = JSON.parse(line); } catch { continue; }
+    if (!row || !SHA_RE.test(String(row.head)) || !row.files || typeof row.files !== 'object' || Array.isArray(row.files)) continue;
+    const amendOf = SHA_RE.test(String(row.amendOf || '')) ? row.amendOf : '';
+    if (row.head === head || amendOf === head) continue;
+    byKey.set(JSON.stringify([row.head, amendOf, Object.keys(row.files).sort()]), row);
+  }
+  if (!byKey.size) return [];
+  let still;
+  try {
+    still = new Set(execFileSync('git', ['-c', 'core.quotePath=false', 'diff', '--name-only', '-z', since, 'HEAD'], {
+      cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString('utf8').split('\0').filter(Boolean));
+  } catch { return []; }
+  return [...byKey.values()].filter((row) => Object.keys(row.files).some((f) => still.has(f)));
+}
+// A trivial pass writes its row: this commit's own files, each with its churn (an untracked file's line count) - unless
+// a receipt covers the commit, which then adds nothing to the bar.
+function recordTrivial(set) {
+  if (!set.own || !sessionId() || (!commitMatch.opaque && commitScope().dryRun)) return;
+  try {
+    const c = readReceipt('COMMIT-GATE');
+    if ((c.waived || c.verified) && !c.problem) return;
+  } catch { /* an unreadable receipt covers nothing */ }
+  const files = {};
+  for (const [p, churn] of set.own.tracked) files[p] = churn;
+  for (const u of set.own.untracked) {
+    try { files[u] = fs.readFileSync(path.join(set.top, u), 'utf8').split('\n').filter(Boolean).length; } catch { files[u] = 0; }
+  }
+  const row = { head: set.base, files, at: new Date().toISOString() };
+  if (set.amendOf) row.amendOf = set.amendOf;
+  try {
+    fs.mkdirSync(path.dirname(trivialLedger()), { recursive: true });
+    fs.appendFileSync(trivialLedger(), `${JSON.stringify(row)}\n`);
+  } catch { /* an unwritable ledger only loosens the next commit's bar to this one */ }
+}
+let barSetCache;
+function barSet() {
+  if (barSetCache) return barSetCache;
+  git('rev-parse --verify -q HEAD');
+  const since = sessionStart();
+  if (!since) {
+    barSetCache = { ...measure(null), own: null };
+    return barSetCache;
+  }
+  const own = commitSet();
+  const head = git('rev-parse HEAD');
+  let base = head;
+  let amendOf = null;
+  if (!commitMatch.opaque && commitScope().amend) {
+    try { base = git('rev-parse --verify -q HEAD~1'); amendOf = head; } catch { /* a root commit has no parent to record on */ }
+  }
+  // Each file's earlier rows count at most its net change since the start (re-verify 3 R3-m8): a squash done in two calls
+  // - `git reset --soft <start>`, then one commit of the same lines - left both small commits' rows beside its own.
+  const prior = new Map();
+  for (const row of ledgerRows(head, since)) {
+    for (const [p, churn] of Object.entries(row.files)) prior.set(p, (prior.get(p) || 0) + (Number(churn) || 0));
+  }
+  const net = new Map();
+  if (prior.size) {
+    try {
+      const f = execFileSync('git', ['-c', 'core.quotePath=false', 'diff', '--numstat', '-z', '--no-renames', since, 'HEAD'], {
+        cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
+      }).toString('utf8').split('\0');
+      for (const rec of f) {
+        const m = /^(-|\d+)\t(-|\d+)\t([\s\S]+)$/.exec(rec);
+        if (m) net.set(m[3], (parseInt(m[1], 10) || 0) + (parseInt(m[2], 10) || 0));
+      }
+    } catch { /* unreadable: the rows stand as written */ }
+  }
+  const tracked = new Map(own.tracked);
+  for (const [p, churn] of prior) tracked.set(p, (tracked.get(p) || 0) + (net.has(p) || net.size ? Math.min(churn, net.get(p) || 0) : churn));
+  barSetCache = { top: own.top, tracked, untracked: own.untracked, own, head, base, amendOf };
+  return barSetCache;
 }
 // A name from a `+++ ` header: git ends a name holding a space with a TAB, and C-quotes one holding a
 // quote, a backslash or a control character (core.quotePath=false keeps every other byte as written).
@@ -951,29 +1271,26 @@ function stagedFindings() {
   }
 }
 if (carriesOwnReceipt('COMMIT-GATE', commitMatch.index)) process.exit(0);
-// Trivial-diff exemption: total churn across the uncommitted tree (staged + unstaged -
-// a chained `git add && git commit` stages mid-command, so staged-only would undercount).
+// Trivial-diff exemption: total churn across this session's change - this commit plus what the session's
+// earlier trivial commits took in (barSet, above; the whole uncommitted tree when no session start can be read).
+// A chained `git add && git commit` stages mid-command, so the commit's set reads the add's own paths.
 // <= 2 files and <= 15 changed lines is the typo/one-line class; anything bigger gates.
-// Untracked files count too: `git diff HEAD` never lists them, so a feature landing in NEW
+// Untracked files the commit takes in count too: `git diff HEAD` never lists them, so a feature landing in NEW
 // files only (`git add -A && git commit`) read as 'nothing to commit' and passed ungated
 // (reproduced: three 40-line new files, exit 0). An untracked file is one row and its line
 // count is its churn - the same arithmetic a staged add gets.
 try {
-  const pre = docsPrefix();
-  const rows = git('diff HEAD --numstat').split('\n')
-    .filter((r) => r && !(pre && (r.split('\t')[2] || '').replace(/\\/g, '/').startsWith(pre)));
-  let files = rows.length;
-  let lines = rows.reduce((n, r) => {
-    const [a, d] = r.split('\t');
-    return n + (parseInt(a, 10) || 0) + (parseInt(d, 10) || 0);
-  }, 0);
-  for (const f of changedFiles().untracked) {
+  const set = barSet();
+  if (set.own && !set.own.count) process.exit(0); // this commit takes nothing in - let git say so
+  let files = set.tracked.size;
+  let lines = [...set.tracked.values()].reduce((n, c) => n + c, 0);
+  for (const f of set.untracked) {
     files += 1;
     if (files > 2) break; // already past the bar - no need to size the rest
-    try { lines += fs.readFileSync(path.join(root, f), 'utf8').split('\n').filter(Boolean).length; } catch { /* unreadable - the row alone counts */ }
+    try { lines += fs.readFileSync(path.join(set.top, f), 'utf8').split('\n').filter(Boolean).length; } catch { /* unreadable - the row alone counts */ }
   }
   if (files === 0) process.exit(0); // nothing to commit - let git say so
-  if (files <= 2 && lines <= 15) process.exit(0);
+  if (files <= 2 && lines <= 15) { recordTrivial(set); process.exit(0); }
 } catch {
   process.exit(0); // not a git repo / git unavailable - never block on our own failure
 }

@@ -515,7 +515,7 @@ test('guard-ungated-commit: the receipt states', () => {
   receipt(full({ head: head.slice(0, 8) })); assert.equal(gateIn(dir, 'git commit -am x'), 0, 'a short sha is the same sha');
   receipt(full({ head: null })); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'no head: line');
   receipt(full({ spec: null })); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'no spec: line');
-  receipt(full({ spec: 'spec: 1 file' })); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'a spec covering fewer files than the tree has');
+  receipt(full({ spec: 'spec: 1 file' })); assert.equal(gateIn(dir, 'git add -A && git commit -m x'), 2, 'a spec covering fewer files than the commit takes in');
   receipt(full({ probe: null })); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'no live-probe line');
   receipt(full({ probe: 'live probe = NOT RUN - no test target' })); assert.equal(gateIn(dir, 'git commit -am x'), 0, "'live probe' spelled with a space, NOT RUN with a reason");
   // the denial itself lists `live_probe` among the accepted spellings - a model that followed it
@@ -1571,6 +1571,164 @@ test('guard-cross-project-write: the session cleaning its own scratch is not a c
   // and the real writes still block, including one the variable resolution now makes judgeable
   assert.equal(xpBash(`sed -i 's/a/b/' ${XP_OTHER}/f.ts x`), 2, 'an in-place edit in another project');
   assert.equal(xpBash(`D=${XP_OTHER}; rm -rf "$D"/x`), 2, 'a variable assigned a LITERAL out-of-tree path is judgeable');
+});
+
+test('guard-cross-project-write: a write verb counts only at a command position, on its own line (2.1.6 H1)', () => {
+  // Measured (2.1.6 review m1): `\binstall` fired on the folder a variable ended in, `\s+` crossed the newline into
+  // the next command, and the target `/g` came out of that command's quoted sed script - 'a copy/move destination
+  // targets /g', exit 2, on a harmless two-line command.
+  const S = path.join(XP_ROOT, '216', 'install');
+  assert.equal(xpBash(`S=${S}\nsed 's/ new / base /g; s/a/b/' $S/a.sh > $S/b.sh`), 0, 'a folder named install is no copy verb');
+  assert.equal(xpBash('npm install\nls -la /usr/local/bin | head'), 0, '`npm install` is not install(1), and the next line is its own command');
+  // the same two flaws in the file's other write patterns
+  assert.equal(xpBash('grep -rn tee /usr/local/etc'), 0, 'tee as a search word');
+  assert.equal(xpBash('grep -rn chmod /usr/local/etc'), 0, 'chmod as a search word');
+  assert.equal(xpBash(`D=${XP_ROOT}/bin/rm\nls /usr/local`), 0, 'rm ending a folder, a read on the next line');
+  assert.equal(xpBash(`D=${XP_ROOT}/tools/sed\ngrep -i x /usr/local/etc/hosts`), 0, 'sed ending a folder, a -i flag on the next line');
+  assert.equal(xpBash(`D=${XP_ROOT}/bin/mv\n/usr/local/bin/tool --version`), 0, 'mv ending a folder');
+  assert.equal(xpBash('echo git -C /usr/local commit'), 0, 'git -C as echoed words');
+  assert.equal(xpBash(`cd ${XP_OTHER} && grep -c git merge.log`), 0, 'a grep for git in the other project reads, never merges');
+  assert.equal(xpBash(`cp src/a.ts 'see /usr/local/z; x' dest/`), 0, 'a target inside a quoted argument is text');
+  // ...and every real write still blocks, at each command position a verb can stand in
+  assert.equal(xpBash(`cp a ${XP_OTHER}/x`), 2, 'cp');
+  assert.equal(xpBash(`install -m 644 a ${XP_OTHER}/x`), 2, 'install(1)');
+  assert.equal(xpBash(`cd /tmp && cp a ${XP_OTHER}/x`), 2, 'after &&');
+  assert.equal(xpBash(`cd ${XP_OTHER} && cp a b`), 2, 'a cd, then a relative copy');
+  assert.equal(xpBash(`ls\ncp a ${XP_OTHER}/x\nls`), 2, 'a verb opening its own line, with a line after it');
+  assert.equal(xpBash(`ls\r\ncp a ${XP_OTHER}/x\r\nls`), 2, 'and the same with CRLF line ends');
+  assert.equal(xpBash(`sudo cp a ${XP_OTHER}/x`), 2, 'behind sudo');
+  assert.equal(xpBash(`FOO=1 rm -rf ${XP_OTHER}/dist`), 2, 'behind an assignment');
+  assert.equal(xpBash(`find . -name x | xargs cp -t ${XP_OTHER}`), 2, 'behind xargs');
+  assert.equal(xpBash(`echo x | sudo tee ${XP_OTHER}/f`), 2, 'tee behind a pipe and sudo');
+  assert.equal(xpBash(`if true; then rm -f ${XP_OTHER}/f; fi`), 2, 'inside an if body');
+  assert.equal(xpBash(`(cd src && mv a.ts ${XP_OTHER}/a.ts)`), 2, 'inside a subshell');
+  assert.equal(xpBash(`x=$(cp a ${XP_OTHER}/x)`), 2, 'inside a command substitution');
+  assert.equal(xpBash(`find . -name '*.ts' -exec sed -i 's/a/b/' ${XP_OTHER}/f {} +`), 2, "as find's -exec action");
+  assert.equal(xpBash(`true && git -C ${XP_OTHER} commit -m x`), 2, 'git -C after &&');
+  assert.equal(xpBash(`cd ${XP_OTHER} && git commit -m x`), 2, 'a bare git write after a cd');
+});
+
+test('guard-cross-project-write: the review corpus - every outside write denies, every non-write passes (2.1.6 review M1, M3, m4)', () => {
+  // review-216-hooks.md replayed 152 shapes that write outside the project and 40 that do not: the anchored verbs
+  // lost 31 the base denied (a `timeout` / `sudo -u` / path-spelled / escaped verb, a quoted assignment, a `case`
+  // arm, `eval`, `coproc`), 12 were missed by both trees (a copy target before a redirection, `cp -t`, `find -exec
+  // ... \;`, a line continuation, `>|`, `sh -c`, `npx rimraf`), and 2 non-writes still denied (a subshell `cd`, `popd`).
+  const { shapes } = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'cross-write-corpus.json'), 'utf8'));
+  const place = (s) => s.replace(/(?<![\w.-])O(?=[/\s"';)\]]|$)/g, XP_OTHER).replace(/(?<![\w.-])R(?=[/\s"';)\]]|$)/g, XP_ROOT);
+  const wrong = shapes.filter(([, shape, expect]) => xpBash(place(shape)) !== (expect === 'deny' ? 2 : 0)).map(([id, shape, expect]) => `${id} (${expect}): ${JSON.stringify(shape)}`);
+  assert.deepStrictEqual(wrong, [], `${wrong.length} of ${shapes.length} shapes judged wrong`);
+});
+
+// 2.1.6 re-verify 2 R2-M5: a script FILE a shell runs is on disk when the hook fires, as readable as a heredoc - and
+// writing a helper script and running it is the route a denial teaches. R2-m1: a git alias runs what it names, a `!`
+// alias a shell command, so `git nuke` with `alias.nuke = !touch <outside>/f` writes outside.
+test('guard-cross-project-write: a script file a shell runs is read as its commands (2.1.6 re-verify 2 R2-M5)', () => {
+  const dir = fs.mkdtempSync(path.join(XP_ROOT, 'scripts-'));
+  const rel = path.relative(XP_ROOT, dir);
+  fs.writeFileSync(path.join(dir, 'fix.sh'), `#!/bin/sh\ntouch ${XP_OTHER}/f\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(dir, 'bare'), `touch ${XP_OTHER}/f\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(dir, 'cd.sh'), `cd ${XP_OTHER}\ntouch f\n`);
+  fs.writeFileSync(path.join(dir, 'nested.sh'), `bash ${rel}/fix.sh\n`);
+  fs.writeFileSync(path.join(dir, 'ok.sh'), '#!/bin/sh\ntouch notes.txt\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(dir, 'tool.py'), `#!/usr/bin/env python3\nprint("touch ${XP_OTHER}/f")\n`, { mode: 0o755 });
+  const wrong = [];
+  for (const command of [`bash ${rel}/fix.sh`, `sh ./${rel}/fix.sh`, `zsh -e ${rel}/fix.sh arg`, `bash -o pipefail ${rel}/fix.sh`,
+    `. ${rel}/fix.sh`, `source ${rel}/fix.sh`, `cat ${rel}/fix.sh | sh`, `sh < ${rel}/fix.sh`, `./${rel}/fix.sh`, `${rel}/bare`,
+    `cd ${rel} && bash fix.sh`, `bash ${dir}/fix.sh`, `sh ${rel}/cd.sh`, `bash ${rel}/nested.sh`,
+    `cat > ${rel}/new.sh <<'EOF'\ntouch ${XP_OTHER}/g\nEOF\nbash ${rel}/new.sh`, `printf 'touch ${XP_OTHER}/g\\n' > ${rel}/p.sh && sh ${rel}/p.sh`]) {
+    if (xpBash(command) !== 2) wrong.push(`passed: ${command}`);
+  }
+  for (const command of [`bash ${rel}/ok.sh`, `./${rel}/ok.sh`, `bash -n ${rel}/fix.sh`, `bash ${rel}/missing.sh`, `cat ${rel}/fix.sh`,
+    `./${rel}/tool.py`]) {
+    if (xpBash(command) !== 0) wrong.push(`denied: ${command}`);
+  }
+  assert.deepStrictEqual(wrong, []);
+});
+// 2.1.6 re-verify 3 R3-m4: the verdict flipped on size alone - a 1.1MB script writing outside was allowed, the same text
+// at 0.99MB denied - and so did every other place the reader stopped (a glob, `make` / `npm run`, a fish shebang, a
+// file the same command wrote with `tee` or `cp`, a fourth level of nesting). A script is read under the scan budget
+// (hook-prelude.js), and one the reader cannot read is asked through the CROSS-WRITE-ALLOW ask, never allowed.
+const xpFull = (command, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+  input: JSON.stringify({ tool_name: 'Bash', tool_input: { command } }),
+  encoding: 'utf8',
+  env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ...env },
+});
+test('guard-cross-project-write: a script is judged at any size - read under the scan budget, asked past it, never allowed (2.1.6 re-verify 3 R3-m4)', () => {
+  const dir = fs.mkdtempSync(path.join(XP_ROOT, 'cap-'));
+  const rel = path.relative(XP_ROOT, dir);
+  const sized = (name, size, last = `touch ${XP_OTHER}/f\n`) => {
+    const pad = 'echo pad\n';
+    const body = pad.repeat(Math.floor((size - last.length) / pad.length));
+    const fill = size - last.length - body.length;
+    fs.writeFileSync(path.join(dir, name), (fill ? `${'#'.repeat(fill - 1)}\n` : '') + body + last);
+    return fs.statSync(path.join(dir, name)).size;
+  };
+  const { SCAN_LIMITS } = require(path.join(HOOKS, 'hook-prelude.js'));
+  assert.strictEqual(sized('at.sh', 1024 * 1024), 1024 * 1024);
+  assert.strictEqual(xpBash(`bash ${rel}/at.sh`), 2, 'a 1MB script is read');
+  assert.strictEqual(sized('over.sh', 1024 * 1024 + 1), 1024 * 1024 + 1);
+  assert.strictEqual(xpBash(`bash ${rel}/over.sh`), 2, 'one byte more is read too - no flip at 1MB');
+  sized('huge.sh', SCAN_LIMITS.bytes + 1024, 'echo done\n');
+  const huge = xpFull(`bash ${rel}/huge.sh`);
+  assert.strictEqual(huge.status, 2, 'past the scan budget the script is unread, and asked');
+  assert.match(huge.stderr, /huge\.sh/, 'the ask names the script it could not read');
+  assert.match(huge.stderr, /CROSS-WRITE-ALLOW/, 'through the same receipt as any outside write');
+  const flow = path.join(XP_ROOT, '.alfred', 'docs', 'flow');
+  fs.mkdirSync(flow, { recursive: true });
+  fs.writeFileSync(path.join(flow, 'CROSS-WRITE-ALLOW'), `${path.join(dir, 'huge.sh')}\n`);
+  try {
+    assert.strictEqual(xpFull(`bash ${rel}/huge.sh`).status, 0, "the user's 'allow' for that script is honoured");
+  } finally { fs.rmSync(path.join(flow, 'CROSS-WRITE-ALLOW'), { force: true }); }
+});
+test('guard-cross-project-write: the reader follows a glob, make, npm run, tee, cp, a fish shebang and a fourth level of nesting (2.1.6 re-verify 3 R3-m4)', () => {
+  const dir = fs.mkdtempSync(path.join(XP_ROOT, 'r3m4-'));
+  const rel = path.relative(XP_ROOT, dir);
+  const out = `touch ${XP_OTHER}/f`;
+  fs.writeFileSync(path.join(dir, 'fix.sh'), `${out}\n`);
+  fs.writeFileSync(path.join(dir, 'fish.sh'), `#!/usr/bin/env fish\n${out}\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(dir, 'Makefile'), `fix: prep\n\t@echo fixing\nprep:\n\t${out}\nok:\n\ttouch notes.txt\n`);
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { fix: out, ok: 'touch notes.txt', prelint: out, lint: 'echo lint' } }));
+  for (let d = 1; d <= 4; d++) fs.writeFileSync(path.join(dir, `d${d}.sh`), d < 4 ? `bash ${rel}/d${d + 1}.sh\n` : `${out}\n`);
+  const wrong = [];
+  for (const command of [`bash ${rel}/fi*.sh`, `cd ${rel} && make fix`, `make -C ${rel} fix`, `cd ${rel} && npm run fix`, `npm --prefix ${rel} run fix`,
+    `cd ${rel} && npm run lint`, `cd ${rel} && yarn fix`, `./${rel}/fish.sh`, `echo '${out}' | tee ${rel}/t.sh >/dev/null && bash ${rel}/t.sh`,
+    `cp ${rel}/fix.sh ${rel}/copy.sh && bash ${rel}/copy.sh`, `bash ${rel}/d1.sh`]) {
+    if (xpBash(command) !== 2) wrong.push(`allowed: ${command}`);
+  }
+  for (const command of [`cd ${rel} && make ok`, `cd ${rel} && npm run ok`, `cd ${rel} && make missing`, `cd ${rel} && npm run missing`,
+    `bash ${rel}/zz*.sh`, `make -n -C ${rel} fix`]) {
+    if (xpBash(command) !== 0) wrong.push(`denied: ${command}`);
+  }
+  assert.deepStrictEqual(wrong, []);
+});
+// 2.1.6 re-verify 4 R4-M1: the guard built its cd-anchor normaliser anew for every write, so the compiled-anchor cache
+// (keyed by that function) never hit and a long `cd a && cp ...; cd b && cp ...` chain was quadratic again - 245KB took
+// about 30s. The verdict stays 0 (every write is inside); the bound is CPU time in the hook's own process, ten times the
+// 0.3s a linear run takes, so a machine under load does not move it.
+test('guard-cross-project-write: a 245KB chain of cd steps and writes is judged in linear time (2.1.6 re-verify 4 R4-M1)', () => {
+  const size = 245 * 1024;
+  const parts = [];
+  for (let i = 0, n = 0; n < size; i++) { const l = `cd pkg${i} && cp a b${i}; cd ..\n`; parts.push(l); n += l.length; }
+  const r = spawnSync(process.execPath, ['-e',
+    "process.on('exit', () => { const c = process.cpuUsage(); require('fs').writeSync(3, String((c.user + c.system) / 1000)); }); require(process.argv[1]);",
+    path.join(HOOKS, 'guard-cross-project-write.js')], {
+    input: JSON.stringify({ tool_name: 'Bash', cwd: XP_ROOT, tool_input: { command: parts.join('') } }),
+    encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
+    env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
+  });
+  assert.strictEqual(r.status, 0, `every write is inside the project: ${r.stderr}`);
+  const cpuMs = Number(r.output[3]);
+  assert.ok(cpuMs < 3000, `${cpuMs.toFixed(0)}ms of CPU for 245KB - the anchor cache is missing`);
+});
+test('guard-cross-project-write: a git alias is judged as the command it runs (2.1.6 re-verify 2 R2-m1)', () => {
+  spawnSync('git', ['init', '-q', XP_ROOT], { encoding: 'utf8' });
+  const set = (name, value) => spawnSync('git', ['-C', XP_ROOT, 'config', `alias.${name}`, value], { encoding: 'utf8' });
+  set('nuke', `!touch ${XP_OTHER}/f`); set('tidy', '!touch notes.txt'); set('st', 'status');
+  const run = (command) => xp({ tool_name: 'Bash', cwd: XP_ROOT, tool_input: { command } });
+  assert.equal(run('git nuke'), 2, 'a ! alias writing outside');
+  assert.equal(run(`git -c alias.zz='!touch ${XP_OTHER}/f' zz`), 2, 'an alias set on the call');
+  assert.equal(run('git tidy'), 0, 'a ! alias writing inside');
+  assert.equal(run('git st'), 0, 'an alias for a read');
 });
 
 test('guard-cross-project-write: prose describing a command is not a command', () => {

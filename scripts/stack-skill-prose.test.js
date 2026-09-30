@@ -322,3 +322,20 @@ test('M128: the rule-forced convention layers are model-only, and no other skill
         assert.doesNotMatch(skill(name), /^disable-model-invocation:/m, `${name} stays model-invocable`);
     }
 });
+
+// 2.1.6 H2: the commit guard measures a receipt's spec: on what the commit TAKES IN (the index, plus what -a, a chained
+// git add or the named paths add), never the whole tree - the checkpoint skill said the spec 'covered the whole diff', the
+// claim the guard enforced on every uncommitted file (12 of 12 A/B PR runs denied, 3 stopped). The trivial bar is
+// cumulative per session (review M2): one small commit stays exempt, and a change split into small commits never walks
+// under it.
+test('H2: the commit checkpoint states spec: over what the commit takes in, and the trivial bar over the session\'s change', () =>
+{
+    const body = squash(skill('alfred-habits-commit-checkpoint'));
+    const evidence = squash(skill('alfred-habits-commit-checkpoint', 'references/evidence.md'));
+    for (const text of [body, evidence]) assert.doesNotMatch(text, /covered the whole diff/, 'the whole-diff claim is gone');
+    assert.match(body, /`spec:` proves it covered every file the commit takes in/);
+    assert.match(evidence, /`spec:` - it covered every file the commit takes in/);
+    assert.match(body, /at most 2 files and 15 changed lines across the session's change - this commit plus the session's earlier commits that passed without a receipt/, 'the bar is cumulative per session (review M2), over the trivial commits only (re-verify N1)');
+    assert.match(body, /never split a real change into small commits to slip under it/, 'and splitting still never walks under it');
+    assert.doesNotMatch(body, /15 changed lines (?:in what the commit takes in|across the uncommitted tree -)/, 'neither the per-commit nor the tree bar');
+});

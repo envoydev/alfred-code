@@ -345,6 +345,10 @@ const DONE_RE = /\b(done|complete[d]?|finished|committed|landed|green|all tests 
 // prose branch knows as 'just say so' - measured on 'everything is staged and ready to commit when
 // you say so', which stalled 2h20m and then re-cached 146.8k.
 const PENDING_RE = /\b(not pushed|nothing pushed|awaiting|waiting (on|for)|still running|pending your|next steps?|remains?|left to do|yet to|whenever you|when you'?re ready|(when|whenever|once) you say so|un-?pushed)\b/i;
+// The same two halves in Ukrainian and Russian (review re-verify N4: an all-Cyrillic stall passed on every tree). The
+// first-person past ('Зробив', 'Сделал', 'Закоммитил') is how a close in either language reports done (re-verify 2 R2-M2).
+const DONE_RE_CYR = /(?<!\p{L})(?:готов[оаі]?|зроблено|виконан[оаі]?|завершен[оаіы]?|закінчен[оаі]?|выполнен[оаы]?|сделан[оаы]?|закончен[оаы]?|закомічено|закоммичено|запушено|злито|слито|(?:з|за|ви|до|пере)?(?:робив|робила|робили|виконав|виконала|виконали|завершив|завершила|завершили|закінчив|закінчила|закінчили|комітив|комітила|комітили|пушив|пушила|пушили)|(?:с|за|вы|до|пере)?(?:делал|делала|делали|выполнил|выполнила|выполнили|завершил|завершила|завершили|закончил|закончила|закончили|коммитил|коммитила|коммитили|пушил|пушила|пушили))(?!\p{L})/iu;
+const PENDING_RE_CYR = /(?<!\p{L})(?:чекаю|очікую|жду|ожидаю|(?:ще|досі|все ще|ещё|еще|всё ещё|все еще)\s+(?:працю|викону|триває|работа|выполня|ид[её]т)\p{L}*|наступн\p{L}*\s+крок\p{L}*|следующ\p{L}*\s+шаг\p{L}*|залишил\p{L}*|лишилось|осталось|ще не|ещё не|еще не|коли будеш готов\p{L}*|когда будешь готов\p{L}*|(?:коли|як|когда|как) скаж\p{L}*)(?!\p{L})/iu;
 // DONE_RE and PENDING_RE judge PROSE, and three measured false positives came from reading
 // something else. A block costs the whole turn, so the two halves are tested against a SCRUBBED
 // copy of the close:
@@ -384,6 +388,195 @@ function closeProse(text) {
 const BACKGROUND_RE = /\b((still |currently )?(running|executing|in progress|in flight|queued|processing)|backgrounded|in the background)\b/i;
 const WAITER_RE = /\b(will notify|notify (on|when)|i'?ll (report back|update you|come back|merge|check)|report back|monitor is armed|watching (it|the run|for)|in the background|backgrounded|on completion|when it (finishes|completes|goes green|lands))\b/i;
 const NOTHING_PENDING_RE = /\bnothing(?: (?:else|more))?(?: is)? pending (?:on|from) (?:me|my side|my end|this run|the run|this turn)\b/i;
+
+// --- 2.1.6 H4: the main session's OWN background work ------------------------------------------------
+// A close that reports a step done while work THIS session launched is still out - an async Agent, a
+// run_in_background shell, a Monitor still watching - is a status line: that work's completion notice is what
+// re-invokes the session, so nothing waits on the user. Two such closes were blocked in one orchestrating
+// session (2026-09-29), each naming the agents still running and that their reports would wake it. The
+// SubagentStop branch above asks the same question of a subagent (`reportsBack`); here it is asked of the
+// transcript's newest 8MB. A launch is a tool_use whose result says it went to the background (an Agent's
+// `async_launched`, a shell's background task id, a Monitor's task id); it ends when a <task-notification>
+// naming its tool-use id or task id carries a <status> - a Monitor also on its expiry - or a TaskStop names it.
+// A SendMessage to an agent this window has seen (launched, or named by a notice) relaunches it (review m3). A
+// `run_in_background` dev server, preview or watcher (`dev`, `serve`, `start`, `watch`, `preview`, `--watch`,
+// `tail -f`) never completes, so it is no work that reports back (review B2).
+// true: live work; false: none; null: unknown - no transcript, a window short of the file's start that holds
+// none (a launch may sit before it), or a notice for work this transcript never launched: a hand-off session
+// inherits its predecessor's agents (measured: the orchestrator whose closes were blocked was one).
+// A background shell that serves or watches never completes, so it is no work whose notice will wake the session (review
+// B2; re-verify N-B2 added `dotnet run`, `docker compose up` without `-d`, `uvicorn --reload`, `hugo server`).
+const NEVER_ENDS_RE = /\b(?:dev|serve|server|start|watch|preview)\b|--(?:watch|reload)\b|\btail\s+-[fF]\b|\bdotnet\s+(?:run|watch)\b|\bdocker(?:-compose|\s+compose)\s+up\b(?![^;&|]*\s(?:-d|--detach)\b)|\b(?:uvicorn|gunicorn|hypercorn|nodemon|live-server|http-server)\b|\bflask\s+run\b|\brails\s+s(?:erver)?\b|\bhttp\.server\b/;
+// ...and the list of servers is never complete (re-verify 2 R2-B1: `runserver`, `port-forward`, `ngrok`, `node app.js`,
+// `docker run -p` each held the exemption open), so a background shell counts as live work only when it names work that
+// FINISHES - a test, build, lint, install, migration, deploy - and no server or watch shape. An unknown command is no live
+// work: the close blocks and the model arms a Monitor or asks, the safe side.
+const FINITE_RE = /\b(?:tests?|build|lint|typecheck|tsc|check|checks|install|restore|ci|migrate|deploy|publish|pack|compile|e2e|coverage|bench|seed|sync|clone|fetch|pull|download|upload|sleep|wait|make|cargo|mvn|gradle|pytest|jest|vitest|mocha|playwright)\b/;
+const NEVER_ENDS_EXTRA_RE = /\s-w\b|--watch\w*|\bng\s+test\b(?![^;&|]*--watch=false)|\blogs?\s+-f\b|port-forward|\bngrok\b|runserver/;
+const MONITOR_END_RE = /\bMonitor (?:expired|stopped|ended|exited)\b|\bexpired after\b/i;
+function liveBackgroundWork() {
+  const p = payload.transcript_path;
+  if (!p) return null;
+  let text;
+  let truncated;
+  try {
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - 8 * 1024 * 1024);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    text = buf.toString('utf8');
+    truncated = start > 0;
+  } catch { return null; }
+  const launched = new Map(); // tool_use id -> { name, input }
+  const live = [];            // { ids: Set, monitor }
+  const seen = new Set();     // every launch's ids, live or ended
+  const noticed = new Set();  // every id a notice named
+  let inherited = false;
+  const resultText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((b) => (b && typeof b.text === 'string' ? b.text : '')).join('\n') : '');
+  for (const line of text.split('\n')) {
+    if (!line) continue;
+    let o;
+    try { o = JSON.parse(line); } catch { continue; } // the partial first line of the window
+    const content = o.message && o.message.content;
+    if (o.type === 'assistant') {
+      if (!Array.isArray(content)) continue;
+      for (const b of content) {
+        if (!b || b.type !== 'tool_use') continue;
+        if (/^(?:Agent|Task|Bash|PowerShell|Monitor|SendMessage)$/.test(b.name)) launched.set(b.id, { name: b.name, input: b.input || {} });
+        if (/^(?:TaskStop|KillShell|KillBash)$/.test(b.name)) {
+          const named = JSON.stringify(b.input || {});
+          for (let i = live.length - 1; i >= 0; i--) if ([...live[i].ids].some((id) => named.includes(id))) live.splice(i, 1);
+        }
+      }
+      continue;
+    }
+    if (o.type === 'user' && Array.isArray(content)) {
+      for (const b of content) {
+        if (!b || b.type !== 'tool_result' || !launched.has(b.tool_use_id) || b.is_error) continue;
+        const { name, input } = launched.get(b.tool_use_id);
+        const r = resultText(b.content);
+        const meta = o.toolUseResult && typeof o.toolUseResult === 'object' ? o.toolUseResult : {};
+        let taskId = null;
+        if (/^(?:Agent|Task)$/.test(name)) {
+          if (!(meta.status === 'async_launched' || meta.isAsync === true || input.run_in_background === true || /\bAsync agent launched\b/i.test(r))) continue;
+          taskId = meta.agentId || (/\bagentId:\s*([\w-]+)/.exec(r) || [])[1];
+        } else if (name === 'SendMessage') {
+          taskId = meta.resumedAgentId || input.to;
+          if (meta.success === false || !taskId || !(seen.has(taskId) || noticed.has(taskId))) continue;
+        } else if (name === 'Monitor') {
+          taskId = meta.taskId || (/\bMonitor started \(task ([\w-]+)/.exec(r) || [])[1];
+          if (!taskId) continue;
+        } else {
+          if (input.run_in_background !== true) continue;
+          const command = String(input.command || '');
+          if (NEVER_ENDS_RE.test(command) || NEVER_ENDS_EXTRA_RE.test(command) || !FINITE_RE.test(command)) continue;
+          taskId = meta.backgroundTaskId || (/running in background with ID:\s*([\w-]+)/i.exec(r) || [])[1];
+        }
+        live.push({ ids: new Set([b.tool_use_id, taskId].filter(Boolean)), monitor: name === 'Monitor' });
+        for (const id of live[live.length - 1].ids) seen.add(id);
+      }
+    }
+    if (!line.includes('<task-notification>')) continue;
+    // A notice is read only where the harness delivers one - a user row's own text, a queued_command attachment
+    // (absorbed mid-turn), a queue operation - never a tool result or a prompt snapshot quoting one.
+    const att = o.type === 'attachment' && o.attachment && o.attachment.type === 'queued_command' ? o.attachment.prompt : '';
+    const note = o.type === 'user' ? (typeof content === 'string' ? content : Array.isArray(content) ? content.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : '')
+      : o.type === 'queue-operation' ? o.content : att;
+    if (typeof note !== 'string') continue;
+    for (const n of note.matchAll(/<task-notification>([\s\S]*?)<\/task-notification>/g)) {
+      const ids = [/<task-id>([^<]+)<\/task-id>/.exec(n[1]), /<tool-use-id>([^<]+)<\/tool-use-id>/.exec(n[1])].filter(Boolean).map((m) => m[1].trim());
+      const ended = /<status>[^<]+<\/status>/.test(n[1]);
+      if (ended && ids.length && !ids.some((id) => seen.has(id))) inherited = true;
+      for (const id of ids) noticed.add(id);
+      const expired = MONITOR_END_RE.test((/<event>([\s\S]*?)<\/event>/.exec(n[1]) || [])[1] || '');
+      for (let i = live.length - 1; i >= 0; i--) {
+        if ((ended || (expired && live[i].monitor)) && ids.some((id) => live[i].ids.has(id))) live.splice(i, 1);
+      }
+    }
+  }
+  if (live.length) return true;
+  return truncated || inherited ? null : false;
+}
+// The words a close uses for such work when the transcript cannot be read: an agent, a review or an
+// implementer as the running noun, or a waiter that wakes the session. Read ONLY when liveBackgroundWork()
+// answers null - a readable transcript with nothing out keeps the measured stall ('done, and the X is still
+// running') blocking whatever it is called.
+const RUNNING_NOUN_RE = /\b(?:agents?|reviews?|reviewers?|implementers?)\b[^.\n]{0,40}\b(?:(?:still |now |currently )?(?:running|executing|in progress|queued)|in the background|backgrounded)\b/i;
+const WAKE_RE = /\b(?:wakes? me|(?:when|once|as soon as) (?:it|they|either|both|each) (?:reports?|lands?|finish(?:es)?|completes?))\b/i;
+const RUNNING_NOUN_CYR = /(?<!\p{L})(?:агент|рев'?ю|ревью|імплементер|рецензент)\p{L}*[^.\n]{0,40}(?<!\p{L})(?:ще|досі|все ще|ещё|еще|всё ещё|все еще)\s+(?:працю|викону|работа|выполня)\p{L}*/iu;
+// The close is a status line over that work only when every pending item it states is a WAIT on running work -
+// 'still running', 'waiting on / for', 'awaiting' - and none is a step (a next step, what remains, what is left, a
+// hand-back). A wait whose object is the user ('awaiting your go-ahead', 'waiting on you') is a hand-back whatever
+// else is running, and 'nothing reports' names no waiter (review B2: under any live work 21 of 27 true stalls passed,
+// among them 'The refactor is done and the dev server is running. Next step: ...' and 'The review agent is queued;
+// next step is task 5.', whose pending item is a step, not the running work).
+// A WAIT is on the running work only when it names that work (review re-verify N-B2): of the first 6 words after
+// 'awaiting' / 'waiting on / for' (`чекаю` / `очікую` / `жду` / `ожидаю`), an approval-shaped noun makes it a hand-back
+// ('awaiting approval to commit', 'waiting for the go-ahead', 'чекаю на підтвердження'), and only a work noun makes it
+// a wait ('waiting on its report', 'awaiting its verdict') - a wait the lists do not know blocks, the safe side.
+// 'still running' (`ще працює`, `ещё работает`) stays a wait. A hand-back also says so outright: 'tell me', 'let me
+// know', 'your call', 'up to you', or a wait on 'you' / 'your' in any of the three languages.
+// Re-verify 3 R3-m2 adds the hand-backs no list named ('over to you', 'the push is yours', 'your move', 'за тобою',
+// 'дай знать', 'скажи - і я запушу', 'напиши, коли'), and R3-m3 narrows 'tell me' / 'let me know' to the imperative -
+// opening a clause or after 'please' / 'just' / 'and' - since 'the verifier will tell me if anything is off' reports.
+const HANDBACK_RE = /\b(?:awaiting|waiting (?:on|for)) (?:you|your|the user'?s?)\b|\bnothing reports\b|(?:^|[.!;:,(]\s*|\n\s*|\s[-\u2013]\s+|\b(?:please|just|and|so|then)\s+)(?:tell me|let me know)\b(?!,?\s+(?:if|in case|how|what|whether|about)\b(?!\s+to\b))|\b(?:your call|up to you|over to you|on you|(?:is|are|'s) yours|yours to|your (?:move|court|signal|nod|turn)|ping me\b(?!,?\s+(?:if|in case|how|what|whether|about)\b(?!\s+to\b)))\b|(?<!\p{L})(?:чекаю|очікую|жду|ожидаю)\s+(?:на\s+)?(?:твоє|ваше|твого|вашого|твоего|вашего|твоё|твой|ваш|твою|вашу|твоя|ваша)(?!\p{L})|(?<!\p{L})(?:за (?:тобою|тобой|вами)|дай(?:те)? знат\p{L}*|скажи(?:те|ть)?|напиши(?:те|ть)?)(?!\p{L})(?!,?\s+(?:якщо|если|як|как|що|что)(?!\p{L}))/iu;
+const APPROVAL_WORDS = /\b(?:approval|go-?ahead|sign-?off|confirmation|decision|answer|input|reply|ok|okay|green light|call|choice|pick|permission|feedback|instructions?)\b|(?<!\p{L})(?:рішенн|решени|підтвердженн|подтверждени|згод|согласи|дозвол|разрешени|схвал|одобрени|відповід|ответ|вказівк|указани)\p{L}*/iu;
+const WORK_WORDS = /\b(?:designers?|diagnosers?|analy[sz]ers?|resolvers?|gatherers?|plans?|findings|digests?|agents?|reviews?|reviewers?|implementers?|verifiers?|auditors?|seats?|jobs?|runs?|builds?|tests?|suites?|ci|pipelines?|workflows?|deploys?|reports?|verdicts?|results?|notices?|watchers?|monitors?|packages?|it|them)\b|(?<!\p{L})(?:агент|рев'?ю|ревью|рецензент|звіт|отч[её]т|збірк|сборк|тест|пайплайн|результат|вердикт|перевірк|проверк)\p{L}*/iu;
+const RUNNING_ITEM_RE = /^(?:still running|(?:ще|досі|все ще|ещё|еще|всё ещё|все еще)\s+(?:працю|викону|триває|работа|выполня|ид[её]т)\p{L}*)$/iu;
+// A hand-back needs no pending word (re-verify 2 R2-B1): 'Push when you approve', 'I need your go-ahead', 'awaiting a
+// review from you', 'waiting for it to be approved', 'Confirm and I push' each hand the next act to a person. The
+// real closes' own disclaimer ('Nothing needs your decision') is scrubbed first, and so is a negated one ('not your call').
+const NO_HANDBACK_RE = /\b(?:nothing|no (?:[\w-]+ )?(?:decision|input|action|answer)s?)(?: (?:else|more))? (?:needs?|requires?|is (?:needed|required) (?:from|of)|waits? (?:on|for)) (?:you|your)\b[^.\n;]*|\b(?:not|never) (?:your|the user'?s) (?:call|decision|choice)\b/gi;
+// A possessive is a hand-back only before an APPROVAL noun that heads its phrase (re-verify 3 R3-m3): 'your test
+// suite', 'your input handling' and 'your review checklist' name the project's things, 'your approval to push' asks.
+// 'by the user' asks only after an approval passive ('approved by the user', never 'requested by the user'), and a
+// sentence-initial 'Confirm' / 'Pick' only as a word ('Pick-up of task 4' reports).
+const PERSON_ASK_RE = /\b(?:your|the user'?s)\s+(?:[\w-]+\s+){0,2}?(?:approval|go-?ahead|sign-?off|confirmation|decision|answer|input|reply|ok|okay|green light|choice|pick|permission|feedback|instructions?|say-?so|word|call|signal|nod|look|move|turn|court)\b(?!\s+(?!(?:to|before|on|for|and|or|so|then|is|was|are|were|first|here|now|please|in|at|from|with|by|if|when|once|after|of|i)\b)[a-z])|\byour (?:own|manual)\s+[\w-]+|\b(?:for|after|pending|until) your (?:review|look|check|test(?:ing)?)\b|\bfrom (?:you|the user)\b|\b(?:approved|confirmed|signed off|reviewed|decided|authori[sz]ed|accepted|ok'?e?d) by (?:you|the user)\b|\b(?:when(?:ever)?|once|if|after|until|as soon as) you(?:'ve| have)? (?:approve|confirm|decide|say|choose|pick|review|sign|give|agree|check|test|ok|look|read|see)\w*|\bwhen(?:ever)? you(?:'re| are) ready\b|\bsay the word\b|(?:^|[.!;:]\s+|\n\s*)(?:please\s+)?(?:confirm|approve|decide|choose|pick)(?![-\w])|\byou (?:need to|have to|should|can|may|must) (?:approve|confirm|decide|review|sign|check|test|run|merge|push)\b|\bto be (?:approved|reviewed|confirmed|signed off)\b|\b(?:them|it) to (?:approve|sign|confirm|review)\b|\bI need (?:your|you|a|an|the) (?:[\w-]+ )?(?:approval|go-?ahead|sign-?off|confirmation|decision|answer|ok|okay|input)\b/i;
+const PERSON_ASK_CYR = /(?<!\p{L})(?:тво|твій|твої|ваш)\p{L}*\s+(?:\p{L}+\s+){0,2}?(?:(?:схвал|рішенн|решени|підтвердж|подтвержд|згод|согласи|дозвол|разрешени|одобр|відповід|ответ|команд|апрув|усмотрени|розсуд|сигнал)\p{L}*|ок|окей|хід|ход)(?!\p{L})|(?<!\p{L})(?:на|для|після|после|до)\s+(?:тво|ваш)\p{L}*\s+(?:рев'?ю|ревью|перевірк|проверк)\p{L}*|(?<!\p{L})(?:від|от) (?:тебе|тебя|вас)(?!\p{L})|(?<!\p{L})(?:коли|когда|як тільки|как только)\s+(?:ти |ты |ви |вы )?(?:скаж|підтверд|подтверд|схвал|одобр|виріш|реш|перевір|провер|глян|подив|посмотр)\p{L}*/iu;
+// A pending act handed over in the imperative or the infinitive (re-verify 3 R3-m2): a clause that OPENS on the act
+// verb, followed by what the act takes ('Push once you have looked it over', 'Merge when ready', 'Пушить - на твоё
+// усмотрение'), is the user's to do - the model's own future is 'I push' / 'запушу'. A compound noun ('Merge
+// conflicts resolved', 'Release notes updated') opens on no act.
+const OPEN_ACT_RE = /(?:^|[.!;:,]\s+|\n\s*|\s[-–]\s+)(?:please\s+|just\s+)?(?:push|merge|commit|deploy|release|ship|publish)\s+(?:it|this|that|them|the|to|when|whenever|once|after|if|on|now|as soon)\b|(?:^|[.!;:,]\s+|\n\s*|\s[-–]\s+)(?:за|з)?(?:пуш|мерж|мердж|депло|коміт|коммит)\p{L}*(?:ти|ть|іть|ите)(?!\p{L})/iu;
+// A past report is no hand-back ('Pushed after your approval.', 'Запушив після твого схвалення.'): a clause opening on
+// the act or a done verb in the past is blanked before the future-frame read (re-verify 3 R3-M2).
+const PAST_REPORT_CLAUSE = /(?:^|(?<=[.!?;:,\n]\s*)|(?<=\s[-–]\s))\s*(?:(?:I|we|it)\s+)?(?:(?:have|has|had|was|were)\s+)?(?:pushed|merged|committed|deployed|released|shipped|published|landed|opened|created|applied|finished|completed)\b[^.!?;\n]*|(?:^|(?<=[.!?;:,\n]\s*))\s*(?:(?:я|мы|ми)\s+)?(?:(?:за|з|с|ви|вы|до|пере)?(?:пуш|мерж|мердж|коміт|комміт|коммит|депло[їи]|роб|дел|викон|выполн|заверш|закінч|законч)\p{L}*?(?:ив|ила|или|ил|ів|ав|ала|али|ал|нув|нул)|зли(?:в|ла|ли|л)|сли(?:л|ла|ли))(?!\p{L})[^.!?;\n]*/giu;
+function handsBack(closeTail) {
+  const t = closeTail.replace(NO_HANDBACK_RE, ' ').replace(NOTHING_PENDING_RE, ' ');
+  return HANDBACK_RE.test(t) || PERSON_ASK_RE.test(t) || PERSON_ASK_CYR.test(t) || OPEN_ACT_RE.test(t);
+}
+// The pending half of a done close also takes a FUTURE-frame hand-back with no pending word ('Push when you approve',
+// 'The push is yours', 'Запушу, коли підтвердиш'), never a past report (re-verify 3 R3-M2).
+function handsBackAhead(closeTail) {
+  // a parenthetical aside records a call already made ('not run (your call, environment-sensitive)')
+  return handsBack(closeTail.replace(/\([^()\n]*\)/g, (m) => ' '.repeat(m.length)).replace(PAST_REPORT_CLAUSE, (m) => ' '.repeat(m.length)));
+}
+function pendingItems(closeTail) {
+  return [...closeTail.matchAll(new RegExp(PENDING_RE.source, 'gi')), ...closeTail.matchAll(new RegExp(PENDING_RE_CYR.source, 'giu'))];
+}
+function pendingIsAWait(closeTail) {
+  const items = pendingItems(closeTail);
+  return items.length > 0 && items.every((m) => {
+    if (RUNNING_ITEM_RE.test(m[0])) return true;
+    if (!/^(?:awaiting|waiting (?:on|for)|чекаю|очікую|жду|ожидаю)$/iu.test(m[0])) return false; // a step, not a wait
+    const object = closeTail.slice(m.index + m[0].length).split(/\s+/).filter(Boolean).slice(0, 6).join(' ');
+    // a bare 'awaiting review' names no running seat, and the FIRST noun decides: work before approval is a wait on the
+    // work ('awaiting the verifier's answer'), approval first is a hand-back (re-verify 2 R2-B1, R2-m3)
+    if (/^reviews?\b/i.test(object)) return false;
+    const a = object.search(APPROVAL_WORDS);
+    const w = object.search(WORK_WORDS);
+    return w >= 0 && (a < 0 || w < a);
+  });
+}
+function ownWorkRunning(closeTail, tail) {
+  if (handsBack(closeTail) || !pendingIsAWait(closeTail)) return false;
+  const live = liveBackgroundWork();
+  if (live === true) return true;
+  if (live === null) return RUNNING_NOUN_RE.test(tail) || RUNNING_NOUN_CYR.test(tail) || (BACKGROUND_RE.test(tail) && WAKE_RE.test(tail));
+  return false;
+}
 
 // --- read the transcript tail (last ~512KB) and pull the last assistant message ---
 // A last row bigger than the window (a huge Write input) leaves only a partial line, so an empty
@@ -1047,6 +1240,9 @@ if (payload.hook_event_name === 'Stop') {
   // fences for the length cap all along - this is the same rule for the contract check.
   const prose = text.replace(/```[\s\S]*?```/g, ' ');
   const tail = prose.slice(-1500); // the offer lives at the end of the turn
+  // The DONE half is read over the whole close, bounded at 16KB (re-verify 3 R3-m11: a done claim 1,600 characters up
+  // hid a 'push when you say so' stall); the pending half, the question and the exemptions stay on the tail.
+  const closeWhole = closeProse(prose.slice(-16 * 1024));
   // ... and the done/pending halves read it with code spans, paths and negations removed (see
   // closeProse): each of those cost a measured false block on a close that asked nothing.
   const closeTail = closeProse(tail);
@@ -1058,7 +1254,8 @@ if (payload.hook_event_name === 'Stop') {
     || /\b(which|what|who|where|when|how|should|do you|would you|prefer)\b[^?]{0,120}\?\s*$/i.test(tail.trim());
   // ...but a question ABOUT something already settled, or a rhetorical aside mid-report, is not a
   // stop: require the question to be the turn's last word, which the tests above already encode.
-  const doneClose = DONE_RE.test(closeTail) && PENDING_RE.test(closeTail) && !/\?/.test(tail)
+  const doneClose = (DONE_RE.test(closeWhole) || DONE_RE_CYR.test(closeWhole))
+    && (PENDING_RE.test(closeTail) || PENDING_RE_CYR.test(closeTail) || handsBackAhead(closeTail)) && !/\?/.test(tail)
     // A background job the user has no say over is a status line, not a pending decision -
     // blocking it forced an AskUserQuestion over 'tests are still running in CI' (reproduced).
     // ...and the harness's own idiom for a backgrounded job is part of that shape. Without these
@@ -1071,11 +1268,16 @@ if (payload.hook_event_name === 'Stop') {
     // reworded a minute later - 'still running' is in PENDING_RE and 'still executing' is not
     // (measured, 121,858 cache-read on the retried turn). A gate a synonym defeats teaches the
     // model to reword rather than to close properly, so the verb and the waiter are SYNONYM SETS.
-    && !/\b(ci|pipeline|workflow|build|suite|tests?|job|deploy(ment)?)\b[^.\n]{0,40}\b((still )?(running|in progress|queued|pending)|in the background|backgrounded)\b/i.test(tail)
-    && !/\b(in the background|backgrounded|i'?ll report back|watching (it|the run|for))\b/i.test(tail)
-    && !(BACKGROUND_RE.test(tail) && WAITER_RE.test(tail))
+    // Each of the three gives way to a hand-back in the same close (re-verify 2 R2-M1: 'The build is still running;
+    // awaiting your approval to push' passed in every state, on base too).
+    && (handsBack(closeTail) || !/\b(ci|pipeline|workflow|build|suite|tests?|job|deploy(ment)?)\b[^.\n]{0,40}\b((still )?(running|in progress|queued|pending)|in the background|backgrounded)\b/i.test(tail))
+    && (handsBack(closeTail) || !/\b(in the background|backgrounded|i'?ll report back|watching (it|the run|for))\b/i.test(tail))
+    && (handsBack(closeTail) || !(BACKGROUND_RE.test(tail) && WAITER_RE.test(tail)))
     // ...and a close that says the run itself has nothing pending is finished, not stalled.
-    && !NOTHING_PENDING_RE.test(tail);
+    && !NOTHING_PENDING_RE.test(tail)
+    // ...and a close over work this session launched that is still out, named as running or waited on, is a
+    // status line (2.1.6 H4) - read last, since it is the one test that opens the transcript.
+    && !ownWorkRunning(closeTail, tail);
   // The done-gate PROBE, log-only since 2026-09-25 (the user's ruling: rely on the skill's description
   // and the flows that load it, and count the misses). A claim over a turn with a source edit writes
   // one row per turn - `unrun` when the last edit came after the last run (or none ran), `ran` when a
@@ -1220,7 +1422,7 @@ if (payload.hook_event_name === 'Stop') {
     process.exit(0);
   }
   if (doneClose && !proseAsk(tail)) {
-    blockDetail('done-close', `${(closeTail.match(DONE_RE) || [])[0]} + ${(closeTail.match(PENDING_RE) || [])[0]}`);
+    blockDetail('done-close', `${(closeTail.match(DONE_RE) || closeTail.match(DONE_RE_CYR) || [])[0]} + ${(closeTail.match(PENDING_RE) || closeTail.match(PENDING_RE_CYR) || [])[0]}`);
     process.stderr.write(
       'This turn reports the step done and leaves the next action pending, stated as a fact\n' +
       'rather than asked. Measured across four projects: that close draws a literal "are you\n' +

@@ -86,11 +86,14 @@ live-probe: <what was actually run, or NOT RUN - <reason>>
 `WAIVED - "<the user's words, verbatim>"` alone on their explicit waiver - 'commit it' is an
 instruction to commit, never a waiver of the review. Each line answers a way the receipt once
 passed while recording nothing: the VERIFIED line proves the review ran, `authorized:`
-proves the user asked, `head:` proves it reviewed THIS tree, `spec:` proves it covered the whole
-diff and `live-probe:` proves it ran the thing. The quoted words must carry a commit verb and must
-not be an option label this run wrote: consent given by picking an option is spelled `answered: <the
-chosen label>` instead, which is a different claim and reads as one. A review carried from an
-earlier cycle says so: `carried: <cycle id>, reviewed <date>`.
+proves the user asked, `head:` proves it reviewed THIS tree, `spec:` proves it covered every file
+the commit takes in (the index, plus what `-a`, a chained `git add` or the paths it names add - the
+guard counts that set, never the rest of the tree) and `live-probe:` proves it ran the thing. The
+quoted words must carry a commit verb left standing in its clause ('push it, don't commit' consents to
+no commit; the PUSH-GATE below reads its publish verb the same way) and must not be an option label
+this run wrote: consent given by picking an option is spelled `answered: <the chosen label>` instead,
+which is a different claim and reads as one. A review carried from an earlier cycle says so:
+`carried: <cycle id>, reviewed <date>`.
 
 On a security-relevant diff the receipt adds an extra line: `security:` naming each category
 checked and its verdict (`security: auth ok, secrets ok, injection ok, data-access n/a`). A
@@ -107,11 +110,14 @@ mechanically - which is exactly why the rule is the binding one. Own-call receip
 the commit, then clear it.
 
 The `guard-ungated-commit` hook blocks a non-trivial `git commit` without a fresh receipt. It
-judges 'trivial' mechanically - at most 2 files and 15 changed lines - so a prose-exempt diff
-above that bar (a formatting-only sweep) still writes `VERIFIED` naming the exemption; never
-split a real change into small commits to slip under it. Clear the file once the commit lands -
-after the LAST commit when one receipt covers a reviewed batch - a leftover receipt is the
-stale-stamp failure the hook's 2h age cap exists for.
+judges 'trivial' mechanically - at most 2 files and 15 changed lines across the session's change - this
+commit plus the session's earlier commits that passed without a receipt (a reviewed commit, or one a pull
+brought in, adds nothing; the whole uncommitted tree when the session's start cannot be read) - so one
+small commit stays exempt, and a prose-exempt diff above that bar (a formatting-only sweep) still writes
+`VERIFIED` naming the exemption; never split a real change into small commits to slip under it - the
+earlier small ones count. Clear the file once the commit lands - after the
+LAST commit when one receipt covers a reviewed batch - a leftover receipt is the stale-stamp failure
+the hook's 2h age cap exists for.
 
 A commit in a second tree this session may write (the cross-project guard's own allowance, for a
 tree the project owns) gets its own receipt in THAT tree's docs root, written and cleared the same
@@ -138,8 +144,8 @@ people and CI get it, and a shared branch cannot be un-pushed quietly - so they 
 receipt, `<docs-path>/flow/PUSH-GATE`, in the SAME five-line shape - `VERIFIED <what is being
 published, one phrase>`, `authorized: "<the user's words asking for THIS publish, verbatim>"`,
 `head:`, `spec: <the commit set going out>` and `live-probe:` - or `WAIVED - "<their words>"`. Only
-the spec differs in kind: a publish's spec names what LEAVES the machine, not what is uncommitted
-here, so it is required and never counted against the working tree.
+the spec differs in kind: a publish's spec names what LEAVES the machine, not what a commit takes
+in here, so it is required and never counted against the working tree.
 
 1. Name what is going out and to which branch, then confirm it through ONE AskUserQuestion - a picked
    option is the receipt's `answered: <the chosen label>` line, words the user typed its `authorized:`:
