@@ -251,13 +251,13 @@ test('install-scope: --memory-level project rides --scope user without refusal',
     assert.match(out, /memory=project \(/, out);
 });
 
-// I1 (R47, fix round 1): a local-scope import whose GATE actually opens (memory + baseline-memory
+// I1 (R47, fix round 1): a local-scope import whose GATE actually opens (memory + alfred-memory
 // picked, so the gate's mcps/rules checks pass; the sandbox's uvx stub is enough - `which` only
 // checks presence, and the importer's own 'nothing to import' exit is success without a real
 // server) writes the switch-off to settings.local.json, never the shared settings.json.
 test('install-scope: at local scope a memory import that actually runs lands autoMemoryEnabled in settings.local.json, never settings.json', POSIX_ONLY, () =>
 {
-    const SEL = 'skill csharp\nrule markdown-docs\nrule baseline-memory\nmcp memory\n';
+    const SEL = 'skill csharp\nrule markdown-docs\nrule alfred-memory\nmcp memory\n';
     // No run imports before /alfred-code:init marks the stamp (Task 18a I1), so the install is marked
     // initialised by hand and the UPDATE after it is the run whose import opens. A project with no
     // notes is switched off by the install itself (pilot 3), so the key is taken back out after it -
@@ -698,11 +698,11 @@ test('install-scope: a user-scope project reads only its OWN stamp for the hooks
 
 // R83 b / R87 (Task 16b concern b): at local scope the docs root is read the way the hooks will see it -
 // settings.local.json laid over settings.json (the N6 merge) - so a docs path set only in the local file
-// reaches baseline-docs-root.md; and the seat denies a local run writes land in the local file, the
+// reaches alfred-docs-root.md; and the seat denies a local run writes land in the local file, the
 // scope rule's own target, never in the shared settings.json.
 test('install-scope: at local scope a local docs path is the root the rule stamps, and the seat denies land in settings.local.json (R83 b)', POSIX_ONLY, () =>
 {
-    const { result } = seedRun('install', 'skill csharp\nrule baseline-docs-root\n', {
+    const { result } = seedRun('install', 'skill csharp\nrule alfred-docs-root\n', {
         args: ['--scope', 'local'],
         plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'local', enabled: true }]),
         prepare: (repo) =>
@@ -712,7 +712,7 @@ test('install-scope: at local scope a local docs path is the root the rule stamp
             fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/mine' } }));
         },
         inspect: (repo) => ({
-            rule: fs.readFileSync(path.join(repo, '.claude', 'rules', 'baseline-docs-root.md'), 'utf8'),
+            rule: fs.readFileSync(path.join(repo, '.claude', 'rules', 'alfred-docs-root.md'), 'utf8'),
             shared: json(repo, path.join('.claude', 'settings.json')),
             local: json(repo, path.join('.claude', 'settings.local.json')),
         }),

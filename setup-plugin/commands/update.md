@@ -1,5 +1,5 @@
 ---
-description: "FAST refresh of an existing Alfred Code install - no selection questions (one ask only when the release adds an item this install would not otherwise carry): bring everything currently installed to the newest release, MCP runtimes and plugins included (MCPs re-registered at the release's own pins, then VERIFIED against the manifest shape and repaired where a registration drifted - `claude mcp add` over an existing name exits 0 without writing, so a stale entry used to survive every update; `claude plugin update` per installed stack plugin, at the scope the plugin is actually installed at) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only reads the install back and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated baseline-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. Works with no newer plugin: the snapshot's own pins move the library copies, hooks and MCPs. NOT for choosing items to add or drop beyond what the release itself added - that is the sibling configure command; not a first install - that is setup."
+description: "FAST refresh of an existing Alfred Code install - no selection questions (one ask only when the release adds an item this install would not otherwise carry): bring everything currently installed to the newest release, MCP runtimes and plugins included (MCPs re-registered at the release's own pins, then VERIFIED against the manifest shape and repaired where a registration drifted - `claude mcp add` over an existing name exits 0 without writing, so a stale entry used to survive every update; `claude plugin update` per installed stack plugin, at the scope the plugin is actually installed at) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only reads the install back and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated alfred-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. Works with no newer plugin: the snapshot's own pins move the library copies, hooks and MCPs. NOT for choosing items to add or drop beyond what the release itself added - that is the sibling configure command; not a first install - that is setup."
 disable-model-invocation: true
 ---
 
@@ -54,8 +54,13 @@ authoring skill left the shipped catalog, and a retired copy git tracks in a pro
 names. Update carries every pick, seat deny, `skillOverrides` value and selection line across and
 prunes the old copies, printing one `renamed: <kind> <old> -> <new>` line each - report them. The
 docs they write keep their paths (`<docs-path>/architecture/`, `code-style/`, `test-coverage/`,
-`related-projects/`, `quality/`, `loops/`), and so do the generated rules whose FILE names embed an
-old name (`baseline-project-related-context.md`, `baseline-project-agent-capabilities.md`).
+`related-projects/`, `quality/`, `loops/`).
+**Renamed in 2.1.6.** The seven shipped rules and the generated ones lost their `baseline-` prefix for
+`alfred-` (`baseline-git.md` -> `alfred-git.md`, `baseline-project-related-context.md` ->
+`alfred-project-related-context.md`). Update prunes each old library copy (`rule pruned (retired
+upstream)`), writes the new one, and MOVES each generated file with its content kept (`moved: rule ...`) -
+their captures do not re-run by themselves. Report both kinds of line; a `!!` line means the old and the new
+generated file both exist, and the old one is the user's to remove.
 A 1.x global install leaves its account skill copies behind: the `were moved from` line names them
 with their `rm -rf`, the renamed ones apart because they load BESIDE the new names - report it whole.
 `/alfred-loop-quality` now works a code-quality assessment by tier, with the `loops/`
@@ -106,7 +111,7 @@ repeat it.
 
 **House voice in every line this run emits** - narration, tables and the asks alike: single
 dashes, never em-dashes, and single quotes in prose. A fresh or refreshed install may have no
-`.claude/rules/baseline-interaction.md` loaded at all, so this command's own text is the only place
+`.claude/rules/alfred-interaction.md` loaded at all, so this command's own text is the only place
 the voice can come from (measured: a first-run narration line opened with an em-dash, on the one
 surface where the rule forbidding it cannot yet exist).
 
@@ -335,7 +340,7 @@ every scope, `--scope user` included: the plugin launcher resolves the db path p
 itself - registers it in this project's own `.mcp.json` at every scope.
 
 An install carrying no memory registration yet needs no flag at all - the `--installed-only`
-derivation now ADOPTS `baseline-memory` and the `memory` MCP the same way it adopts a new hook,
+derivation now ADOPTS `alfred-memory` and the `memory` MCP the same way it adopts a new hook,
 whenever they are absent: the registration lands at `global` unless `--memory-level` named another
 level. The notes import waits for `/alfred-code:init` - no run imports until the stamp's
 `initialised:` line holds a date (the log says `the notes import waits for /alfred-code:init`, and the
@@ -657,7 +662,7 @@ the close-out, not silently ignored.
 
 ## Do not
 - Never delete anything the upstream diff or the migrations catalog did not name - user-authored
-  skills/agents/rules/hooks and the generated `baseline-project-*.md` / `project-code-style.md`
+  skills/agents/rules/hooks and the generated `alfred-project-*.md` / `project-code-style.md`
   rules appear in neither; if a candidate is in neither list, it stays.
 - Never install an addition the step-2 ask did not take, and never remove an MCP or plugin the
   diff did not retire - dropping by choice, and adopting anything the release did not add, is

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
-// Four wirings, one contract: the blocking-ask mandate (baseline-interaction.md) and the
+// Four wirings, one contract: the blocking-ask mandate (alfred-interaction.md) and the
 // fresh-session construction check (the flow skills' stop contracts) both failed as prose in
 // every audited strengthening - measured across 123 sessions: ~25 sessions ended turns on
 // 'say the word' / 'want me to X?' prose (stalls of 13min-37h, one plaintext-credential
@@ -1429,7 +1429,7 @@ if (payload.hook_event_name === 'Stop') {
       'finished?" from the user 2-22 minutes later. Put the pending decision (continue or stop,\n' +
       'which deliverable next) through ONE AskUserQuestion call with the options you already\n' +
       'have in mind, recommended one marked. An uncommitted diff is held for the user\'s review:\n' +
-      'a commit waits for their own word (baseline-git.md), so it is never the recommended\n' +
+      'a commit waits for their own word (alfred-git.md), so it is never the recommended\n' +
       'next move. If nothing is actually pending, say so in one line with no open next action\n' +
       'and stop.',
     );
@@ -1456,7 +1456,7 @@ if (payload.hook_event_name === 'Stop') {
       : `This window's fresh-session trigger is ${Math.round(_trigger / 1000)}k per message and this turn's own\n`
         + 'carry could not be read - past the trigger, the resume option belongs in the same ask.\n');
   process.stderr.write(
-    'This turn ends on a decision-shaped question in prose. Per baseline-interaction.md a\n' +
+    'This turn ends on a decision-shaped question in prose. Per alfred-interaction.md a\n' +
     'blocking ask goes through the AskUserQuestion tool - a prose-only question gets skipped\n' +
     'in live runs (measured stalls: 13 minutes to 37 hours; one security decision died at\n' +
     '/exit). Re-emit the pending decision as ONE AskUserQuestion call with concrete options\n' +
@@ -1506,7 +1506,7 @@ function blockStateFile() {
 // four of them have no other route:
 //   1. STALE SCOPE - an ask built on a fifty-minute-old `git status`; the sibling was committed and
 //      pushed by another agent while the ask was on screen, and the user's answer was discarded
-//      whole (third measured instance; baseline-git.md has mandated the fresh read twice, as prose).
+//      whole (third measured instance; alfred-git.md has mandated the fresh read twice, as prose).
 //   2. CONTRADICTED REQUEST - two prompts arrived in one turn, the run answered the second and put
 //      an ask whose Recommended option asserted the opposite of the first; the user took the
 //      recommendation, then re-typed their first prompt verbatim 2m54s later.
@@ -1544,7 +1544,7 @@ if (payload.tool_name === 'AskUserQuestion') {
     // it' arrived after it was sent. Once per ask text and session: the same ask re-sent unchanged passes with
     // the note, so a model that keeps the slip is never looped.
     // Code is not prose (R5, 2.1.5 final review): a string's delimiters in code or JSON stay double
-    // (baseline-interaction.md), so a backticked span or a fenced block is blanked before the check and handed
+    // (alfred-interaction.md), so a backticked span or a fenced block is blanked before the check and handed
     // back unchanged by the fix - rewriting it corrupted the snippet the corrected ask carried.
     const CODE_SPAN = /```[\s\S]*?```|`[^`\n]*`/g;
     const proseText = askText.replace(CODE_SPAN, (m) => ' '.repeat(m.length));
@@ -1567,13 +1567,13 @@ if (payload.tool_name === 'AskUserQuestion') {
       if (first) {
         global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]) };
         process.stderr.write(`Blocked: this AskUserQuestion's own text carries ${voice.join(' and ')}. The house voice `
-          + `(baseline-interaction.md) covers an ask's question, header, labels and descriptions, and the user reads them `
+          + `(alfred-interaction.md) covers an ask's question, header, labels and descriptions, and the user reads them `
           + `as written. Re-send the SAME ask with these questions - only the dashes and quotes changed:\n`
           + `${JSON.stringify(fixed, null, 1)}\n`);
         process.exit(2);
       }
       notes.push(`The ask just sent carried ${voice.join(' and ')} after its first denial. Keep the house voice `
-        + `(baseline-interaction.md) in every later ask: single dashes, single quotes.`);
+        + `(alfred-interaction.md) in every later ask: single dashes, single quotes.`);
     }
 
     // 1. STALE SCOPE: an option that names repository, remote or job state is a MEASUREMENT, and a
@@ -1633,7 +1633,7 @@ if (payload.tool_name === 'AskUserQuestion') {
     const turnText = turnProseBeforeAsk();
     if (/[\u2014\u2015]/.test(turnText)) {
       notes.push(`The prose this turn wrote before the ask just answered carries an em-dash. The house voice is `
-        + `single dashes (baseline-interaction.md), and the turn's final text is the only surface `
+        + `single dashes (alfred-interaction.md), and the turn's final text is the only surface `
         + `the answer-length hook reads - anything written before a tool call is checked here or `
         + `nowhere. Use single dashes for the rest of this turn.`);
     }

@@ -126,7 +126,7 @@ so Cursor and an install not yet updated reach the same file; until then the lev
 
 Then ONE AskUserQuestion with those three options, `global` marked Recommended - the whole point of
 shared memory. Picking `project` while this project's related-projects domain names sibling repos
-(`.claude/rules/baseline-project-related-context.md`) means their memories are not visible from
+(`.claude/rules/alfred-project-related-context.md`) means their memories are not visible from
 here - one caveat line in the close.
 
 Apply it with the init-only entry point - no reinstall; under `.claude/` only the settings key and the

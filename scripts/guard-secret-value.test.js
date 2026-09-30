@@ -1729,7 +1729,7 @@ test('guard-secret-value: the redacted view names the runnable presence command'
 // ---- I2 (2.1.4 audit): the comparison verbs and git's own dumps ---------------------------------
 // Replayed at develop 23c24b9d: each shape below printed a live credential with exit 0 and no rewrite, while
 // `cat` of the same file was rewritten. `diff .env .env.example` is the ordinary 'which keys am I missing' move,
-// and baseline-security.md itself runs `git add -N . && git diff HEAD` over every security-relevant change.
+// and alfred-security.md itself runs `git add -N . && git diff HEAD` over every security-relevant change.
 const REDACTOR = `node "${HOOK}" --redact-stdin`;
 test('I2: diff, sdiff, cmp, comm and rev of a credential file are judged like cat', () => {
   const f = fixtures();
@@ -1822,7 +1822,7 @@ test('I2: a git dump with nothing to mask runs as written; one the probe cannot 
 });
 
 // Final review IM1: the probe runs at PreToolUse, BEFORE the command's earlier steps. The security-review diff
-// baseline-security.md prescribes (`git add -N . && git diff HEAD`) exists so a brand-new file shows - and the
+// alfred-security.md prescribes (`git add -N . && git diff HEAD`) exists so a brand-new file shows - and the
 // probe saw the tree before `git add -N .`, found nothing, piped nothing, and the run printed the new credential.
 test('IM1: a git dump after a step that changes the tree is piped unprobed - a new untracked credential stays masked', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
   const repo = fs.mkdtempSync(path.join(TMP, 'git-new-'));

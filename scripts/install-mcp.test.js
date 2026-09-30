@@ -2710,7 +2710,7 @@ test('keepMcpOrder: a CRLF or BOM file keeps its line ends, BOM and indent, and 
 test('seed update (full copy route, project scope): .mcp.json keeps its bytes when nothing changed, and the user\'s own entry keeps its place', POSIX_ONLY, () =>
 {
     const bytes = (repo) => fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8');
-    const { steps, outs } = seedRun(['install', 'update', 'update'], 'rule baseline-memory\nmcp navigation\nmcp documentation\nmcp memory\nmcp browser\n', {
+    const { steps, outs } = seedRun(['install', 'update', 'update'], 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\nmcp browser\n', {
         env: COPY_ENV, account: true,
         args: [['--scope', 'project', '--memory-level', 'project', '--browsers', 'chrome'], ['--installed-only', '--scope', 'project'], ['--installed-only', '--scope', 'project']],
         each: (repo, i) =>

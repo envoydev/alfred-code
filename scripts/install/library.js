@@ -55,7 +55,7 @@ function hashBuffer(name, buf)
 // route for a rule), so every rule is always a library copy, on every route.
 // `render` maps `<kind>/<name>` of a single-file item to a function of its source text: the copy is
 // compared with, and written as, the rendered text - so a copy the installer itself substitutes into
-// (baseline-docs-root's `__DOCS_ROOT__`) is rewritten only when the substitution changes it.
+// (alfred-docs-root's `__DOCS_ROOT__`) is rewritten only when the substitution changes it.
 // `claims(kind, name)` (M3) says whether the stack may treat a same-named copy it holds no hash for as its own
 // - the caller knows the stamp's picks and which names only the stack uses. One it cannot claim is the
 // project's: kept byte for byte, named once with the `!!` marker every update body surfaces, never recorded

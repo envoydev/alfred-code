@@ -149,11 +149,11 @@ test('I26: the stale prompt label is gone and every stamp site carries the one c
 // ---- I22: the plan-file rule names the design flow's handoff ---------------------------------------------------
 test('I22: the interaction baseline carves out the design flow\'s plan file, and both homes are pinned', () =>
 {
-    assert.match(flat(read('stack/rules/baseline-interaction.md')), /A written plan file only when the user asks for a plan, the work spans sessions, or a design flow writes it as its handoff/);
+    assert.match(flat(read('stack/rules/alfred-interaction.md')), /A written plan file only when the user asks for a plan, the work spans sessions, or a design flow writes it as its handoff/);
     assert.match(flat(read('stack/skills/alfred-task-design/SKILL.md')), /a design flow writes it as its handoff/);
     const entry = shared()['plan-file-design-handoff'];
     assert.ok(entry, 'pinned in shared-rules.json');
-    assert.deepStrictEqual(copiesOf(entry).sort(), ['stack/rules/baseline-interaction.md', 'stack/skills/alfred-task-design/SKILL.md']);
+    assert.deepStrictEqual(copiesOf(entry).sort(), ['stack/rules/alfred-interaction.md', 'stack/skills/alfred-task-design/SKILL.md']);
 });
 
 // ---- I27: a shell variable never crosses a Bash call ------------------------------------------------------------

@@ -156,5 +156,5 @@ test('a backticked `browser` is no MCP edge - the word is too common to prove a 
         for (const [name, node] of Object.entries(graph[kind]))
             assert.ok(!(node.mcps || []).includes('browser'), `${kind} ${name} pulls the browser server by a mention`);
     assert.ok(graph.catalog.mcps.includes('browser'), 'the browser server stays in the catalog');
-    assert.ok(graph.rules['baseline-navigation'].mcps.includes('navigation'), 'a role name that is no common word still makes its edge');
+    assert.ok(graph.rules['alfred-navigation'].mcps.includes('navigation'), 'a role name that is no common word still makes its edge');
 });

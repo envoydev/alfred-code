@@ -76,13 +76,13 @@ const rowsOf = (out) => out.split('\n').filter((l) => /^\s+- `/.test(l)).map((l)
 
 // ------------------------------------------------------------------ I19
 
-test('I19: baseline-security says a Read deny covers the shell file commands Claude Code recognizes', () =>
+test('I19: alfred-security says a Read deny covers the shell file commands Claude Code recognizes', () =>
 {
-    const rule = squash(read('stack/rules/baseline-security.md'));
+    const rule = squash(read('stack/rules/alfred-security.md'));
     assert.ok(!rule.includes('blocks only the Read TOOL'), 'the drifted claim is gone');
     assert.ok(!rule.includes('never a shell `cat`'), 'a shell `cat` of a denied file is covered now');
     for (const phrase of ['shell file commands Claude Code recognizes', '`grep -r`', 'a subprocess', '`guard-secret-value.js` covers those by content'])
-        assert.ok(rule.includes(phrase), `baseline-security.md: '${phrase}'`);
+        assert.ok(rule.includes(phrase), `alfred-security.md: '${phrase}'`);
 });
 
 // ------------------------------------------------------------------ I20
@@ -227,8 +227,8 @@ test('I24: the stamped policy drops the docs-placement and memory lines and stat
     const policy = squash(policyBlock());
     assert.ok(!/\d{3},000/.test(policy), `a fresh-session number is left: ${policy}`);
     assert.ok(policy.includes('past the window trigger'), 'the trigger is named, never numbered');
-    assert.ok(!policy.includes('Memory recall is historical'), 'baseline-memory owns what a recalled memory is worth');
-    assert.ok(!policy.includes('<docs-path>'), 'baseline-docs-root owns where a doc lands');
+    assert.ok(!policy.includes('Memory recall is historical'), 'alfred-memory owns what a recalled memory is worth');
+    assert.ok(!policy.includes('<docs-path>'), 'alfred-docs-root owns where a doc lands');
 });
 
 test('I24: the locked servers share ONE routing row that points at their baselines', () =>
@@ -246,7 +246,7 @@ test('I24: the generated rule holds no sentence a baseline owns, except the pinn
     const registry = JSON.parse(read('meta/shared-rules.json')).rules;
     const generated = squash(`${policyBlock()}\n${routingMapText()}`);
     const restated = Object.entries(registry)
-        .filter(([, r]) => r.owner && /^stack\/rules\/baseline-/.test(r.owner.file))
+        .filter(([, r]) => r.owner && /^stack\/rules\/alfred-/.test(r.owner.file))
         .filter(([, r]) => generated.includes(squash(r.owner.marker)))
         .map(([id]) => id);
     assert.deepStrictEqual(restated, ['navigation-edit-tools']);
@@ -282,11 +282,11 @@ test('I24: the report prints one locked-server row, and --verify passes a rule b
 
 test('I12: the navigation rule and the locked row keep rename and safe delete, every other edit on Edit / Write', () =>
 {
-    const nav = squash(read('stack/rules/baseline-navigation.md'));
+    const nav = squash(read('stack/rules/alfred-navigation.md'));
     assert.ok(!nav.includes('symbol edits and the memory handoff stay on the navigation server'), 'the old edit routing is gone');
     const line = 'keeps symbol lookup, `rename_symbol`, `safe_delete_symbol` and the seat memory handoff';
-    assert.ok(nav.includes(line), 'baseline-navigation.md');
-    assert.ok(nav.includes('every other edit goes through Edit / Write'), 'baseline-navigation.md');
+    assert.ok(nav.includes(line), 'alfred-navigation.md');
+    assert.ok(nav.includes('every other edit goes through Edit / Write'), 'alfred-navigation.md');
     const map = squash(routingMapText());
     assert.ok(map.includes(line) && map.includes('every other edit goes through Edit / Write'), 'the template row');
     assert.ok(!map.includes('symbol-level editor'), 'the row no longer sells the server as an editor');

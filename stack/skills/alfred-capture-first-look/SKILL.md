@@ -41,7 +41,7 @@ replace.
 
 ## 2. Run it into the docs root
 
-`<docs-path>` is this install's docs root (`baseline-docs-root.md` names it):
+`<docs-path>` is this install's docs root (`alfred-docs-root.md` names it):
 
 ```bash
 node "<scan>" --orientation --root . --out "<docs-path>/architecture/ORIENTATION.md"

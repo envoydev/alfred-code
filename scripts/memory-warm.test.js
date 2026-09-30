@@ -105,17 +105,17 @@ test('installer: the memory model is fetched ahead on a machine with uvx; switch
 {
     const service = fakeService('installer');
     const uvx = `exec "${process.execPath}" "${service.file}"`;
-    const on = seedRun('install', 'rule baseline-memory\nmcp memory\n', { args: ['--scope', 'project'], tools: { uvx }, env: { ALFRED_CODE_MEMORY_WARM: undefined } });
+    const on = seedRun('install', 'rule alfred-memory\nmcp memory\n', { args: ['--scope', 'project'], tools: { uvx }, env: { ALFRED_CODE_MEMORY_WARM: undefined } });
     assert.match(on.out, /memory: the embedding model is cached now \(\d+s\) - the memory server's first start fits Claude Code's 30s connect budget/, on.out);
     assert.ok(service.got() && /alfred-memory-warm-/.test(service.got().db), 'the launcher was handed the scratch database');
-    const off = seedRun('install', 'rule baseline-memory\nmcp memory\n', { args: ['--scope', 'project'], tools: { uvx } });
+    const off = seedRun('install', 'rule alfred-memory\nmcp memory\n', { args: ['--scope', 'project'], tools: { uvx } });
     assert.doesNotMatch(off.out, /embedding model/, 'the sandbox default keeps it off');
     // No uvx yet (init installs it): one line says so, nothing starts, and no failure is reported.
-    const bare = seedRun('install', 'rule baseline-memory\nmcp memory\n', { args: ['--scope', 'project'], tools: { uvx: null }, env: { ALFRED_CODE_MEMORY_WARM: undefined } });
+    const bare = seedRun('install', 'rule alfred-memory\nmcp memory\n', { args: ['--scope', 'project'], tools: { uvx: null }, env: { ALFRED_CODE_MEMORY_WARM: undefined } });
     assert.match(bare.out, /memory: the embedding model \(~166MB\) is fetched at the memory server's first start - uvx is not here yet/, bare.out);
     assert.doesNotMatch(bare.out, /!! memory: the embedding model/, bare.out);
     // A service that cannot start (the sandbox's uvx exits 1): one warning with the command, never a failed step.
-    const broken = seedRun('install', 'rule baseline-memory\nmcp memory\n', { args: ['--scope', 'project'], env: { ALFRED_CODE_MEMORY_WARM: undefined } });
+    const broken = seedRun('install', 'rule alfred-memory\nmcp memory\n', { args: ['--scope', 'project'], env: { ALFRED_CODE_MEMORY_WARM: undefined } });
     assert.match(broken.out, /!! memory: the embedding model \(~166MB\) could not be fetched ahead \(.+\) - .* run node \.claude\/hooks\/memory\.js warm/, broken.out);
     assert.doesNotMatch(broken.out, /step\(s\) reported a failure/, broken.out);
 });

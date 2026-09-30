@@ -30,7 +30,7 @@ function project({ rules = [], servers = {}, plugins = {}, always } = {})
     const src = path.join(base, 'src');
     fs.mkdirSync(path.join(src, 'meta'), { recursive: true });
     fs.writeFileSync(path.join(src, 'meta', 'recommendations.json'), JSON.stringify({
-        always: always || { rules: ['baseline-interaction', 'baseline-security'], mcps: ['navigation', 'documentation', 'memory'] },
+        always: always || { rules: ['alfred-interaction', 'alfred-security'], mcps: ['navigation', 'documentation', 'memory'] },
     }));
     return { base, src, mcpFile: path.join(base, '.mcp.json') };
 }
@@ -152,11 +152,11 @@ test('install-stamp: shipped-hooks is one entry per FILE, not per matcher', () =
 test('install-stamp: installed-always records what is CARRIED, not what shipped', () =>
 {
     const p = project({
-        rules: ['baseline-interaction'],                 // security shipped but is not on disk
+        rules: ['alfred-interaction'],                 // security shipped but is not on disk
         servers: { navigation: {} },                     // documentation and memory are not registered
     });
     const { text } = write(p);
-    assert.match(text, /^installed-always-rules: baseline-interaction$/m);
+    assert.match(text, /^installed-always-rules: alfred-interaction$/m);
     assert.match(text, /^installed-always-mcps: navigation$/m);
 });
 
@@ -165,7 +165,7 @@ test('install-stamp: a server riding its PLUGIN counts as carried - there is no 
     // This is the Phase 6 shape: on the plugin route the installer registers nothing, so a stamp
     // that only read the file would record an install with none of the locked three.
     const p = project({
-        rules: ['baseline-interaction', 'baseline-security'],
+        rules: ['alfred-interaction', 'alfred-security'],
         servers: {},
         plugins: { 'navigation@envoydev': true, 'documentation@envoydev': true, 'memory@envoydev': true },
     });
@@ -199,14 +199,14 @@ test('install-stamp: a missing or malformed input is empty, never a crash', () =
 
 test('install-stamp: installedAlways reads the two lists independently', () =>
 {
-    const p = project({ rules: ['baseline-security'], servers: { memory: {} } });
+    const p = project({ rules: ['alfred-security'], servers: { memory: {} } });
     const got = installedAlways({
         recommendations: path.join(p.src, 'meta', 'recommendations.json'),
         mcpFile: p.mcpFile,
         settingsFile: path.join(p.base, '.claude', 'settings.json'),
         rulesDir: path.join(p.base, '.claude', 'rules'),
     });
-    assert.deepStrictEqual(got.rules, ['baseline-security']);
+    assert.deepStrictEqual(got.rules, ['alfred-security']);
     assert.deepStrictEqual(got.mcps, ['memory']);
 });
 
@@ -353,8 +353,8 @@ test('install-stamp: readLibrary drops every library name the installer never wr
     const p = project();
     const file = path.join(p.base, 'hostile.stamp');
     const h = '1'.repeat(64);
-    fs.writeFileSync(file, `version: 2.0.0\nlibrary-skills: ../../src=${h},csharp=${h},..=${h},a/b=${h},Bad=${h}\nlibrary-agents: ../x=${h},seat=${h}\nlibrary-rules: ..\\..\\win=${h},baseline-git=${h}\n`);
-    assert.deepStrictEqual(readLibrary(file), { version: '2.0.0', skills: { csharp: h }, agents: { seat: h }, rules: { 'baseline-git': h }, invalid: 6 }, 'dropped, and counted for library-check\'s finding');
+    fs.writeFileSync(file, `version: 2.0.0\nlibrary-skills: ../../src=${h},csharp=${h},..=${h},a/b=${h},Bad=${h}\nlibrary-agents: ../x=${h},seat=${h}\nlibrary-rules: ..\\..\\win=${h},alfred-git=${h}\n`);
+    assert.deepStrictEqual(readLibrary(file), { version: '2.0.0', skills: { csharp: h }, agents: { seat: h }, rules: { 'alfred-git': h }, invalid: 6 }, 'dropped, and counted for library-check\'s finding');
 });
 
 test('install-stamp: a stamp without library lines, or no stamp, reads as null; recorded empty is an answer', () =>
@@ -374,9 +374,9 @@ test('install-stamp: a stamp without library lines, or no stamp, reads as null; 
 test('install-stamp: the stamp records rule hashes alongside skills and agents', () =>
 {
     const p = project();
-    const { dest, text } = write(p, { library: { skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: { 'baseline-git': 'cc' } } });
-    assert.match(text, /^library-rules: baseline-git=cc$/m);
-    assert.deepStrictEqual(readLibrary(dest), { version: '1.0.0', skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: { 'baseline-git': 'cc' }, invalid: 0 });
+    const { dest, text } = write(p, { library: { skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: { 'alfred-git': 'cc' } } });
+    assert.match(text, /^library-rules: alfred-git=cc$/m);
+    assert.deepStrictEqual(readLibrary(dest), { version: '1.0.0', skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: { 'alfred-git': 'cc' }, invalid: 0 });
 });
 
 // R29: a stamp a 1.x (pre-rules) release wrote carries library-skills/library-agents but no
@@ -867,14 +867,14 @@ test('installState: an unstamped legacy copy-route install reads legacy-unstampe
     const env = { CLAUDE_CONFIG_DIR: path.join(TMP, 'no-account') };
     const state = (root) => stamp.installState(root, env);
 
-    const full = legacyTree({ names: oldSkills, own: ['my-own-helper'], hooks: ['guard-catastrophic-rm.js', 'hook-prelude.js'], agents: [oldSeat], rules: ['baseline-security.md'], env: { ...legacyKey, MY_OWN_VAR: '1' } });
+    const full = legacyTree({ names: oldSkills, own: ['my-own-helper'], hooks: ['guard-catastrophic-rm.js', 'hook-prelude.js'], agents: [oldSeat], rules: ['alfred-security.md'], env: { ...legacyKey, MY_OWN_VAR: '1' } });
     assert.strictEqual(state(full), 'legacy-unstamped');
     assert.strictEqual(neverSetUp({ CLAUDE_PLUGIN_ROOT: '/x', CLAUDE_PROJECT_DIR: full }), true, 'no install record - the hooks stay down until the update writes one');
     const cli = spawnSync(process.execPath, [path.join(__dirname, 'install', 'stamp.js'), 'state', full], { encoding: 'utf8', env: { ...process.env, ...env } });
     assert.strictEqual(cli.stdout, 'legacy-unstamped\n', cli.stderr);
 
     // One signature is none: the stack's names alone (plus the project's own skill), its hooks alone, its env alone.
-    assert.strictEqual(state(legacyTree({ names: [...oldSkills, 'markdown-style', 'docs-as-code'], own: ['my-own-helper'], agents: [oldSeat], rules: ['baseline-security.md'] })), 'not-installed', 'skills, seats and rules are ONE signature');
+    assert.strictEqual(state(legacyTree({ names: [...oldSkills, 'markdown-style', 'docs-as-code'], own: ['my-own-helper'], agents: [oldSeat], rules: ['alfred-security.md'] })), 'not-installed', 'skills, seats and rules are ONE signature');
     assert.strictEqual(state(legacyTree({ hooks: ['guard-catastrophic-rm.js', 'guard-read-whole-file.js'] })), 'not-installed');
     assert.strictEqual(state(legacyTree({ env: legacyKey })), 'not-installed');
     // Any two are enough; the current prefix and the local file count as the old ones do.

@@ -222,7 +222,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    close-out decisions live: anything PENDING (an uncommitted diff, an unpushed commit, a deferred
    item, a cross-repo follow-up) goes into the ask's options; only a cycle with nothing pending
    ends on the report alone. An uncommitted diff is held for the user's review - a commit waits
-   for their word (`baseline-git.md`):
+   for their word (`alfred-git.md`):
 
    ```ask
    The feature is done and verified; the diff is uncommitted. Hold it for your review first.

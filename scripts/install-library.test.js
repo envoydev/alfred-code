@@ -20,7 +20,7 @@ function fixture()
     fs.mkdirSync(path.join(src, 'stack/agents'), { recursive: true });
     fs.writeFileSync(path.join(src, 'stack/agents/seat.md'), '---\nname: seat\ndescription: s\n---\nbody\n');
     fs.mkdirSync(path.join(src, 'stack/rules'), { recursive: true });
-    fs.writeFileSync(path.join(src, 'stack/rules/baseline-git.md'), '# git\n');
+    fs.writeFileSync(path.join(src, 'stack/rules/alfred-git.md'), '# git\n');
     const proj = path.join(root, 'proj/.claude');
     return {
         root, src, skillsDir: path.join(proj, 'skills'), agentsDir: path.join(proj, 'agents'),
@@ -119,25 +119,25 @@ test('rules copy alongside skills and agents, as a third kind', () =>
     const logs = [];
     const got = copyLibrary({
         sourceDir: f.src, skillsDir: f.skillsDir, agentsDir: f.agentsDir, rulesDir: f.rulesDir,
-        skills: ['demo'], agents: ['seat'], rules: ['baseline-git'], stamped: null,
+        skills: ['demo'], agents: ['seat'], rules: ['alfred-git'], stamped: null,
         log: (l) => logs.push(l), note: () => {},
     });
-    assert.equal(got.rules['baseline-git'], hashItem(path.join(f.src, 'stack/rules/baseline-git.md')));
-    assert.ok(fs.existsSync(path.join(f.rulesDir, 'baseline-git.md')));
-    assert.ok(logs.some((l) => l === 'rule [library]: baseline-git'));
+    assert.equal(got.rules['alfred-git'], hashItem(path.join(f.src, 'stack/rules/alfred-git.md')));
+    assert.ok(fs.existsSync(path.join(f.rulesDir, 'alfred-git.md')));
+    assert.ok(logs.some((l) => l === 'rule [library]: alfred-git'));
     fs.rmSync(f.root, { recursive: true, force: true });
 });
 
 test('a hand-edited rule copy is overwritten, and the log says so', () =>
 {
     const f = fixture();
-    const opts = { sourceDir: f.src, rulesDir: f.rulesDir, rules: ['baseline-git'], log: () => {}, note: () => {} };
+    const opts = { sourceDir: f.src, rulesDir: f.rulesDir, rules: ['alfred-git'], log: () => {}, note: () => {} };
     const first = copyLibrary({ ...opts, stamped: null });
-    fs.appendFileSync(path.join(f.rulesDir, 'baseline-git.md'), 'local edit\n');
+    fs.appendFileSync(path.join(f.rulesDir, 'alfred-git.md'), 'local edit\n');
     const logs = [];
     copyLibrary({ ...opts, stamped: first, log: (l) => logs.push(l) });
-    assert.ok(logs.some((l) => l.includes('overwriting a hand-edited copy: rule baseline-git')));
-    assert.equal(fs.readFileSync(path.join(f.rulesDir, 'baseline-git.md'), 'utf8'), fs.readFileSync(path.join(f.src, 'stack/rules/baseline-git.md'), 'utf8'));
+    assert.ok(logs.some((l) => l.includes('overwriting a hand-edited copy: rule alfred-git')));
+    assert.equal(fs.readFileSync(path.join(f.rulesDir, 'alfred-git.md'), 'utf8'), fs.readFileSync(path.join(f.src, 'stack/rules/alfred-git.md'), 'utf8'));
     fs.rmSync(f.root, { recursive: true, force: true });
 });
 
@@ -147,9 +147,9 @@ test('a hand-edited rule copy is overwritten, and the log says so', () =>
 test('hashBuffer matches hashItem for the same name and bytes', () =>
 {
     const f = fixture();
-    const file = path.join(f.src, 'stack/rules/baseline-git.md');
+    const file = path.join(f.src, 'stack/rules/alfred-git.md');
     const buf = fs.readFileSync(file);
-    assert.equal(hashBuffer('baseline-git.md', buf), hashItem(file));
+    assert.equal(hashBuffer('alfred-git.md', buf), hashItem(file));
     assert.notEqual(hashBuffer('other.md', buf), hashItem(file), 'the name is part of the hash, like a real path');
     fs.rmSync(f.root, { recursive: true, force: true });
 });
@@ -208,25 +208,25 @@ test('--keep-pins: the stamp records the hash AFTER the restore, never the stale
     finally { fs.rmSync(srcWork, { recursive: true, force: true }); }
 });
 
-// baseline-docs-root.md is rewritten TWICE on a fresh install: copyLibrary copies the pristine
+// alfred-docs-root.md is rewritten TWICE on a fresh install: copyLibrary copies the pristine
 // source (still holding __DOCS_ROOT__), then copy.stampDocsRoot substitutes the resolved path IN
 // PLACE. The hash recorded in the stamp must be of the file as it ends up on disk, or every check
 // from the very first install reads this rule as drift.
-test('a fresh install records baseline-docs-root\'s hash AFTER the placeholder substitution', POSIX_ONLY, () =>
+test('a fresh install records alfred-docs-root\'s hash AFTER the placeholder substitution', POSIX_ONLY, () =>
 {
     // A bare --selection file is taken literally (applySelection keeps only the names it lists - the
     // locked-rule union only happens on the --installed-only path), so the rule under test is named
     // explicitly, exactly as the walk that writes a real selection file always does.
-    const { result } = seedRun('install', 'skill markdown-style\nrule baseline-docs-root\nmcp serena\nmcp context7\nmcp memory\n', {
+    const { result } = seedRun('install', 'skill markdown-style\nrule alfred-docs-root\nmcp serena\nmcp context7\nmcp memory\n', {
         inspect: (repo) =>
         {
-            const rulePath = path.join(repo, '.claude', 'rules', 'baseline-docs-root.md');
+            const rulePath = path.join(repo, '.claude', 'rules', 'alfred-docs-root.md');
             const content = fs.readFileSync(rulePath, 'utf8');
             const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
-            const row = check({ project: repo, source: ROOT }).rows.find((r) => r.name === 'baseline-docs-root');
+            const row = check({ project: repo, source: ROOT }).rows.find((r) => r.name === 'alfred-docs-root');
             return {
                 hasPlaceholder: content.includes('__DOCS_ROOT__'),
-                recorded: (/^library-rules:.*\bbaseline-docs-root=([0-9a-f]+)/m.exec(stamp) || [])[1],
+                recorded: (/^library-rules:.*\balfred-docs-root=([0-9a-f]+)/m.exec(stamp) || [])[1],
                 computed: hashItem(rulePath),
                 state: row && row.state,
             };
@@ -234,27 +234,27 @@ test('a fresh install records baseline-docs-root\'s hash AFTER the placeholder s
     });
     assert.ok(!result.hasPlaceholder, 'the placeholder was substituted');
     assert.strictEqual(result.recorded, result.computed, 'the recorded hash must match the SUBSTITUTED file, not the pristine placeholder copyLibrary first wrote');
-    assert.strictEqual(result.state, 'ok', `baseline-docs-root read as ${result.state} right after the install that wrote it`);
+    assert.strictEqual(result.state, 'ok', `alfred-docs-root read as ${result.state} right after the install that wrote it`);
 });
 
 // On the FULL copy route (no plugin runs), a registered server answers its BARE tool name, so
 // downconvertToolNames re-spells every `mcp__plugin_<n>_<n>__` occurrence in a copied rule's body -
-// baseline-memory.md's own ToolSearch line is real, shipped content that does exactly this. The
+// alfred-memory.md's own ToolSearch line is real, shipped content that does exactly this. The
 // rewrite lands AFTER copyLibrary already hashed the rule, so the stamp must be re-hashed too.
 test('the copy-route MCP tool-name re-spelling is hashed too - a rewritten rule never reads as drift', POSIX_ONLY, () =>
 {
     // The FULL copy route: no plugin runs, so a registered server answers its bare tool name and
     // downconvertToolNames has real work to do.
-    const { result } = seedRun('install', 'skill markdown-style\nrule baseline-memory\nmcp memory\n', {
+    const { result } = seedRun('install', 'skill markdown-style\nrule alfred-memory\nmcp memory\n', {
         env: { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
         inspect: (repo) =>
         {
-            const rulePath = path.join(repo, '.claude', 'rules', 'baseline-memory.md');
+            const rulePath = path.join(repo, '.claude', 'rules', 'alfred-memory.md');
             const content = fs.readFileSync(rulePath, 'utf8');
             const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
             return {
                 content,
-                recorded: (/^library-rules:.*\bbaseline-memory=([0-9a-f]+)/m.exec(stamp) || [])[1],
+                recorded: (/^library-rules:.*\balfred-memory=([0-9a-f]+)/m.exec(stamp) || [])[1],
                 computed: hashItem(rulePath),
             };
         },
@@ -267,11 +267,11 @@ test('the copy-route MCP tool-name re-spelling is hashed too - a rewritten rule 
     assert.strictEqual(result.recorded, result.computed, 'the recorded hash must match the RE-SPELLED file, not what copyLibrary wrote before the downconvert pass');
 });
 
-// Task 8a concern 7: every update logged baseline-docs-root as rewritten - copyLibrary compared the
+// Task 8a concern 7: every update logged alfred-docs-root as rewritten - copyLibrary compared the
 // stamped copy with the placeholder source, copied the source back, and the docs-root stamp put the
 // same value in again. The rule is rendered before the comparison now, so only a real change (a new
 // docs root) is a write, and a log line.
-test('baseline-docs-root is logged as rewritten only when its content changed', POSIX_ONLY, () =>
+test('alfred-docs-root is logged as rewritten only when its content changed', POSIX_ONLY, () =>
 {
     const setDocsPath = (repo) =>
     {
@@ -280,11 +280,11 @@ test('baseline-docs-root is logged as rewritten only when its content changed', 
         data.env.ALFRED_CODE_DOCS_PATH = 'docs-moved';
         fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
     };
-    const rulePath = (repo) => path.join(repo, '.claude', 'rules', 'baseline-docs-root.md');
-    const { outs, steps } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nrule baseline-docs-root\nmcp serena\nmcp context7\nmcp memory\n', {
+    const rulePath = (repo) => path.join(repo, '.claude', 'rules', 'alfred-docs-root.md');
+    const { outs, steps } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nrule alfred-docs-root\nmcp serena\nmcp context7\nmcp memory\n', {
         each: (repo, i) => { const text = fs.readFileSync(rulePath(repo), 'utf8'); if (i === 1) setDocsPath(repo); return text; },
     });
-    const said = (out) => /rule \[library\]: baseline-docs-root|rule stamped: baseline-docs-root/.test(out);
+    const said = (out) => /rule \[library\]: alfred-docs-root|rule stamped: alfred-docs-root/.test(out);
     assert.ok(said(outs[0]), `the first install writes it:\n${outs[0]}`);
     assert.strictEqual(steps[1], steps[0], 'an update with the same docs root leaves the rule as it was');
     assert.ok(!said(outs[1]), `an unchanged rule was logged as rewritten:\n${outs[1].split('\n').filter((l) => /docs-root/.test(l)).join('\n')}`);
@@ -300,8 +300,8 @@ test('baseline-docs-root is logged as rewritten only when its content changed', 
 test('copy route: a rule is logged as rewritten only when its content changed - the tool-name re-spelling alone is none (R111)', POSIX_ONLY, () =>
 {
     const env = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
-    const rule = (repo) => path.join(repo, '.claude', 'rules', 'baseline-navigation.md');
-    const { outs, steps } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nrule baseline-navigation\nrule baseline-quality-gates\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n', {
+    const rule = (repo) => path.join(repo, '.claude', 'rules', 'alfred-navigation.md');
+    const { outs, steps } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nrule alfred-navigation\nrule alfred-quality-gates\nrule alfred-memory\nmcp serena\nmcp context7\nmcp memory\n', {
         env,
         each: (repo, i) => { const text = fs.readFileSync(rule(repo), 'utf8'); if (i === 1) fs.appendFileSync(rule(repo), '\na hand edit\n'); return text; },
     });
@@ -312,8 +312,8 @@ test('copy route: a rule is logged as rewritten only when its content changed - 
     assert.doesNotMatch(steps[0], /mcp__plugin_navigation_navigation__/);
     assert.deepStrictEqual(logged(outs[1]), [], 'an update that changes no rule logs none as rewritten');
     assert.strictEqual(steps[1], steps[0], 'and leaves the re-spelled rule as it was');
-    assert.deepStrictEqual(logged(outs[2]), ['baseline-navigation'], 'a hand-edited rule is rewritten, and says so - alone');
-    assert.match(outs[2], /overwriting a hand-edited copy: rule baseline-navigation/);
+    assert.deepStrictEqual(logged(outs[2]), ['alfred-navigation'], 'a hand-edited rule is rewritten, and says so - alone');
+    assert.match(outs[2], /overwriting a hand-edited copy: rule alfred-navigation/);
     assert.strictEqual(steps[2], steps[0], 'restored to the re-spelled text');
 });
 
@@ -326,7 +326,7 @@ for (const [label, env] of [['plugin route', {}], ['skills copy route', { ALFRED
 {
     test(`M3 install + update (${label}): a same-named project skill is never overwritten, pruned or recorded`, POSIX_ONLY, () =>
     {
-        const { steps, outs } = seedRun(['install', 'update'], 'skill typescript\nskill javascript\nrule baseline-docs-root\nmcp navigation\nmcp documentation\nmcp memory\n', {
+        const { steps, outs } = seedRun(['install', 'update'], 'skill typescript\nskill javascript\nrule alfred-docs-root\nmcp navigation\nmcp documentation\nmcp memory\n', {
             env, args: [[], ['--installed-only']],
             prepare: (repo) =>
             {
@@ -364,3 +364,35 @@ for (const [label, env] of [['plugin route', {}], ['skills copy route', { ALFRED
         assert.doesNotMatch(outs[1], /!! skill kept: typescript/, outs[1]);
     });
 }
+
+// F-LIBCHECK (matrix 2.1.6): on the FULL copy route the installed rules hold their MCP tool names
+// re-spelled to the registered bare form, so a check hashing the raw source read every one as 'behind'.
+// The check compares like with like now: the source is re-spelled the way the copy is before it is hashed.
+test('library-check on the full copy route: a fresh install is clean, an edited copy is drift, a newer source is behind', POSIX_ONLY, () =>
+{
+    const sel = 'skill markdown-style\nrule alfred-navigation\nrule alfred-quality-gates\nrule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n';
+    const env = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
+    const { result } = seedRun('install', sel, {
+        env,
+        inspect: (repo) =>
+        {
+            const states = (source) => Object.fromEntries(check({ project: repo, source }).rows.map((r) => [`${r.kind} ${r.name}`, r.state]));
+            const out = { fresh: states(ROOT) };
+            // A really newer source: the same tree with one rule's text moved on.
+            const newer = path.join(repo, '..', 'newer-src');
+            fs.mkdirSync(path.join(newer, 'stack', 'rules'), { recursive: true });
+            fs.cpSync(path.join(ROOT, 'stack', 'rules'), path.join(newer, 'stack', 'rules'), { recursive: true });
+            fs.cpSync(path.join(ROOT, 'stack', 'skills'), path.join(newer, 'stack', 'skills'), { recursive: true });
+            fs.appendFileSync(path.join(newer, 'stack', 'rules', 'alfred-memory.md'), '\n- a line a newer release added.\n');
+            out.newer = states(newer);
+            // A really edited copy.
+            fs.appendFileSync(path.join(repo, '.claude', 'rules', 'alfred-navigation.md'), '\nedited here\n');
+            out.edited = states(ROOT);
+            return out;
+        },
+    });
+    const bad = (m) => Object.entries(m).filter(([, s]) => s !== 'ok');
+    assert.deepStrictEqual(bad(result.fresh), [], 'a fresh full-route install must read clean');
+    assert.deepStrictEqual(bad(result.newer), [['rule alfred-memory', 'behind']]);
+    assert.deepStrictEqual(bad(result.edited), [['rule alfred-navigation', 'drift']]);
+});

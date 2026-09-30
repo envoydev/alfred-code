@@ -15,7 +15,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-memory-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
 let seq = 0;
-function project({ settings, rules = ['baseline-memory.md'] } = {})
+function project({ settings, rules = ['alfred-memory.md'] } = {})
 {
     const root = path.join(TMP, `p-${seq++}`);
     fs.mkdirSync(path.join(root, '.claude', 'rules'), { recursive: true });
@@ -26,7 +26,7 @@ function project({ settings, rules = ['baseline-memory.md'] } = {})
 const settingsOf = (root) => path.join(root, '.claude', 'settings.json');
 const GATE = (root, over = {}) => ({
     projectRoot: root, settingsFile: settingsOf(root),
-    mcps: ['serena|x', 'memory|y'], rules: ['baseline-memory.md::x'], ...over,
+    mcps: ['serena|x', 'memory|y'], rules: ['alfred-memory.md::x'], ...over,
 });
 
 // --- the level -> path rule ----------------------------------------------
@@ -129,7 +129,7 @@ test('gate: no project root, no memory server, no rule selected, no rule on disk
     const root = project();
     assert.match(memory.importGate(GATE(root, { projectRoot: '' })).reason, /no identifiable project/);
     assert.match(memory.importGate(GATE(root, { mcps: ['serena|x'] })).reason, /memory MCP is not part of this install/);
-    assert.match(memory.importGate(GATE(root, { rules: ['baseline-security.md::x'] })).reason, /baseline-memory\.md is not part of this install/);
+    assert.match(memory.importGate(GATE(root, { rules: ['alfred-security.md::x'] })).reason, /alfred-memory\.md is not part of this install/);
     const bare = project({ rules: [] });
     assert.match(memory.importGate(GATE(bare)).reason, /did not land in/);
     // Every one of them ends the same way: Claude's own memory stays on.
@@ -356,7 +356,7 @@ function initSandbox({ settings = { env: { ALFRED_CODE_MEMORY_DB: '/elsewhere/me
     const root = path.join(work, 'proj');
     fs.mkdirSync(path.join(root, '.claude', 'rules'), { recursive: true });
     execFileSync('git', ['init', '-q', root]);
-    fs.writeFileSync(path.join(root, '.claude', 'rules', 'baseline-memory.md'), '# rule\n');
+    fs.writeFileSync(path.join(root, '.claude', 'rules', 'alfred-memory.md'), '# rule\n');
     fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\ninitialised: pending\n');   // setup's install
     if (settings !== null) fs.writeFileSync(path.join(root, '.claude', 'settings.json'), typeof settings === 'string' ? settings : JSON.stringify(settings, null, 2));
     const acct = path.join(work, 'acct');
@@ -510,7 +510,7 @@ test('init: refuses a registration it cannot re-point, a malformed settings file
 const stampText = (repo) => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
 test('seed: with no notes, install switches Claude\'s own memory off, imports nothing and leaves the router on init', POSIX_ONLY, () =>
 {
-    const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
+    const SEL = 'skill markdown-style\nrule alfred-memory\nmcp serena\nmcp context7\nmcp memory\n';
     const { installState } = require('./install/stamp.js');
     const { outs, steps } = seedRun(['install', 'update', 'update'], SEL, {
         tools: { uvx: 'exit 0' },   // the import would run: uvx answers, and no notes is a clean 'nothing to import'
@@ -534,7 +534,7 @@ test('seed: with no notes, install switches Claude\'s own memory off, imports no
 // switch-off checks it like the other two switch-off paths do. No uvx on PATH: Claude's own memory stays on.
 test('seed: with no notes but no uvx on PATH, install leaves Claude\'s own memory on and says why', POSIX_ONLY, () =>
 {
-    const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
+    const SEL = 'skill markdown-style\nrule alfred-memory\nmcp serena\nmcp context7\nmcp memory\n';
     const { out, result } = seedRun('install', SEL, {
         tools: { uvx: null },
         inspect: (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')),
@@ -548,7 +548,7 @@ test('seed: with no notes but no uvx on PATH, install leaves Claude\'s own memor
 // switch-off waits for init's import.
 test('seed: with notes, install and update leave Claude\'s own memory on until init imports them', POSIX_ONLY, () =>
 {
-    const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
+    const SEL = 'skill markdown-style\nrule alfred-memory\nmcp serena\nmcp context7\nmcp memory\n';
     const { defaultMemoryDir } = require('./memory-import.js');
     const { outs, steps } = seedRun(['install', 'update'], SEL, {
         tools: { uvx: 'exit 0' },
@@ -596,7 +596,7 @@ test('countNotes: none, some, and an unreadable folder are three answers', () =>
 // After init the line is carried, and a later run imports as it always did (a no-op once memory is off).
 test('seed: once init marked the stamp, an update carries the line and the import gate opens again (I1)', POSIX_ONLY, () =>
 {
-    const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
+    const SEL = 'skill markdown-style\nrule alfred-memory\nmcp serena\nmcp context7\nmcp memory\n';
     const { markInitialised, installState } = require('./install/stamp.js');
     const { out, result } = seedRun(['install', 'update'], SEL, {
         tools: { uvx: 'exit 0' },
@@ -614,7 +614,7 @@ test('seed: once init marked the stamp, an update carries the line and the impor
 // installer already wrote it' holds whichever command set the level.
 test('seed: a project-level run writes the database folder\'s .gitignore, and a machine level writes no memory folder in the project (M5)', POSIX_ONLY, () =>
 {
-    const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
+    const SEL = 'skill markdown-style\nrule alfred-memory\nmcp serena\nmcp context7\nmcp memory\n';
     const ignore = (repo) => path.join(repo, '.alfred', '.alfred-memory', '.gitignore');
     const { steps } = seedRun(['install', 'update'], SEL, {
         args: [['--memory-level', 'global'], ['--memory-level', 'project']],
@@ -634,7 +634,7 @@ test('seed: a project-level run writes the database folder\'s .gitignore, and a 
 // An update that ignored it reset a project level init had set to the global default.
 test('seed: an update with no --memory-level keeps the level the settings key records', POSIX_ONLY, () =>
 {
-    const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
+    const SEL = 'skill markdown-style\nrule alfred-memory\nmcp serena\nmcp context7\nmcp memory\n';
     // `home`: where the key sits - settings.local.json, where init writes it now (C8), or settings.json
     // alone, an older install's shape, which the update moves into settings.local.json.
     for (const home of ['settings.local.json', 'settings.json'])
@@ -664,7 +664,7 @@ test('seed: an update with no --memory-level keeps the level the settings key re
 // and the run says so before its first registration.
 test('seed update (full copy route): an unreadable settings.local.json re-points no memory registration, and says so first', POSIX_ONLY, () =>
 {
-    const SEL = 'rule baseline-memory\nmcp navigation\nmcp documentation\nmcp memory\n';
+    const SEL = 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n';
     const COPY = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
     // Local scope with the local registration, local scope with none, and project scope, whose .mcp.json answers.
     for (const [scope, registered] of [['local', true], ['local', false], ['project', true]])
@@ -720,7 +720,7 @@ test('seed update (full copy route): an unreadable settings.local.json re-points
 // (base did the same) and says the unread file first - never a project left with no memory server.
 test('seed install (full copy route): a fresh install over an unreadable settings file registers memory at the default level, said first', POSIX_ONLY, () =>
 {
-    const SEL = 'rule baseline-memory\nmcp navigation\nmcp documentation\nmcp memory\n';
+    const SEL = 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n';
     const COPY = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
     for (const [scope, file] of [['local', 'settings.json'], ['local', 'settings.local.json'], ['project', 'settings.json']])
     {
@@ -751,7 +751,7 @@ test('seed install (full copy route): a fresh install over an unreadable setting
 // place - on the copy route a kept level registers none, so it stays on.
 test('seed update (full copy route, local scope): a kept memory level registers no server, so Claude\'s own memory is not switched off', POSIX_ONLY, () =>
 {
-    const SEL = 'rule baseline-memory\nmcp navigation\nmcp documentation\nmcp memory\n';
+    const SEL = 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n';
     const COPY = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
     const { calls, outs, steps } = seedRun(['install', 'update'], SEL, {
         env: COPY, args: [['--scope', 'local'], ['--installed-only', '--scope', 'local']],
@@ -782,7 +782,7 @@ test('seed update (full copy route, local scope): a kept memory level registers 
 test('seed update: an unmigrated 1.x account-dir stamp is a prior install - an unreadable settings.local.json keeps the level', POSIX_ONLY, () =>
 {
     const { LEGACY } = require('./install/brand.js');
-    const { out } = seedRun('update', 'rule baseline-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
+    const { out } = seedRun('update', 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
         prepare: (repo, work) =>
         {
             fs.mkdirSync(path.join(work, 'acct'), { recursive: true });
@@ -804,7 +804,7 @@ test('seed update (full copy route): an unstamped legacy install with no memory 
 {
     const COPY = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
     const claude = ['printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"', 'if [ "$1" = "mcp" ] && [ "$2" = "get" ]; then exit 1; fi', 'exit 0'].join('\n');
-    const { calls, outs, steps } = seedRun(['install', 'update'], 'rule baseline-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
+    const { calls, outs, steps } = seedRun(['install', 'update'], 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
         env: COPY, tools: { claude }, args: [['--scope', 'project', '--memory-level', 'project'], ['--scope', 'project']],
         each: (repo, i) =>
         {
@@ -833,7 +833,7 @@ test('seed update (plugin route): a kept memory level switches Claude\'s own mem
 {
     for (const [served, ledgered] of [[false, true], [true, false], [true, true]])
     {
-        const { steps, outs } = seedRun(['install', 'update'], 'rule baseline-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
+        const { steps, outs } = seedRun(['install', 'update'], 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
             args: [['--scope', 'project'], ['--installed-only', '--scope', 'project']],
             each: (repo, i) =>
             {
@@ -868,7 +868,7 @@ test('seed install (plugin route): a fresh install over an unreadable settings.l
 {
     for (const scope of ['project', 'user'])
     {
-        const { result, out } = seedRun('install', 'rule baseline-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
+        const { result, out } = seedRun('install', 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
             args: ['--scope', scope],
             prepare: (repo) => { fs.mkdirSync(path.join(repo, '.claude'), { recursive: true }); fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), '{ "env": { "A": 1, } garbage'); },
             inspect: (repo) => { try { return JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).autoMemoryEnabled; } catch { return 'unreadable'; } },
@@ -891,7 +891,7 @@ test('seed install and update (full copy route, project scope): the anchored reg
     // The machine-local key is this checkout's absolute path (re-verify 3 S1), so its ledger hash is the one stamp change a
     // second checkout makes; the tracked .mcp.json is what must stay put.
     const untimed = (stamp) => stamp.replace(/^(installed|installed-ms|action): .*\n/mg, '').replace(/(settings\.local\.json:ALFRED_CODE_MEMORY_DB=)[0-9a-f]{64}/, '$1<hash>');
-    const { steps } = seedRun(['install', 'update'], 'rule baseline-memory\nmcp navigation\nmcp documentation\nmcp memory\nmcp browser\n', {
+    const { steps } = seedRun(['install', 'update'], 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\nmcp browser\n', {
         env: COPY, args: [['--scope', 'project', '--memory-level', 'project', '--browsers', 'chrome'], ['--installed-only', '--scope', 'project']],
         each: (repo, i) =>
         {
@@ -971,7 +971,7 @@ test('seed install (full copy route, project scope): the global and scoped level
     const COPY = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
     for (const [level, file] of [['global', 'memory.db'], ['scoped', 'memory_default.db']])
     {
-        const { result, out } = seedRun('install', 'rule baseline-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
+        const { result, out } = seedRun('install', 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
             env: COPY, args: ['--scope', 'project', '--memory-level', level],
             inspect: (repo) =>
             {
@@ -1009,7 +1009,7 @@ test('seed install (full copy and plugin routes, project and user scope): a link
     for (const [route, env] of [['copy', COPY], ['plugin', {}]])
         for (const scope of ['project', 'user'])
         {
-            const { result } = seedRun('install', 'rule baseline-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
+            const { result } = seedRun('install', 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
                 env, args: ['--scope', scope, '--memory-level', 'project'],
                 inspect: (repo) =>
                 {
@@ -1053,7 +1053,7 @@ test('seed install (full copy and plugin routes, project and user scope): a link
 test('seed install and update (full copy route, project scope): an account-level database is committed as ~/.alfred-memory/<file> whatever the author\'s folder, and each machine opens its own live file', POSIX_ONLY, () =>
 {
     const COPY = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
-    const { steps, outs } = seedRun(['install', 'update'], 'rule baseline-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
+    const { steps, outs } = seedRun(['install', 'update'], 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
         env: COPY, args: [['--scope', 'project', '--memory-level', 'global'], ['--installed-only', '--scope', 'project']],
         // The author's machine still holds its 2.0.0 database, unmoved: the copy route never moves it.
         prepare: (repo, work) => { fs.mkdirSync(path.join(work, '.memory-mcp'), { recursive: true }); fs.writeFileSync(path.join(work, '.memory-mcp', 'memory.db'), 'AUTHOR'); },
@@ -1087,7 +1087,7 @@ test('seed install and update (full copy route, project scope): an account-level
 // cannot be read, and that is said before the first registration too.
 test('seed update (full copy route, local scope): --memory-level over an unreadable settings.local.json re-points the server and says first that the key is not written', POSIX_ONLY, () =>
 {
-    const { outs } = seedRun(['install', 'update'], 'rule baseline-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
+    const { outs } = seedRun(['install', 'update'], 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
         env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
         args: [['--scope', 'local', '--memory-level', 'project'], ['--installed-only', '--scope', 'local', '--memory-level', 'global']],
         each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), '{ "env": { "A": 1, } garbage'); return null; },

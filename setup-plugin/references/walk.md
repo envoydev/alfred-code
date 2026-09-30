@@ -290,8 +290,8 @@ neighbouring one so no question has fewer than 2 options.
 
 ## MCPs
 
-Locked = the servers the kept selection pulls: `navigation` via `baseline-navigation`, `documentation` via
-`baseline-quality-gates`, `memory` via `baseline-memory` - required in every install, the same way
+Locked = the servers the kept selection pulls: `navigation` via `alfred-navigation`, `documentation` via
+`alfred-quality-gates`, `memory` via `alfred-memory` - required in every install, the same way
 The navigation server and the documentation server are. `browser` is droppable: seeded on the web Angular, Ionic
 and browser-extension stacks, pre-selected elsewhere only when the evidence scan matched it, and in
 DELTA preserved across runs like any direct pick (`raw.json` carries it). The two desktop servers drive

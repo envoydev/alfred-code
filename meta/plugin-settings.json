@@ -11,7 +11,7 @@
       "lineLayout": "claude-hud's own Compact preset: one line under the prompt instead of the multi-line default, so the HUD costs the least terminal height in every session",
       "showSeparators": "the same preset: Compact, not Compact + Separators",
       "display": "the stack's own working surface, on screen: skills / MCP / agents / tools are what an alfred-code session actually runs (the same four analyze-usage.js reconstructs from the transcript afterwards), config counts say whether this project's rules and hooks really loaded, cost is the number the flow-vs-single benchmarks turn on, the effort level is pinned per seat and otherwise invisible after a runtime /effort, and the prompt-cache expiry decides whether a pause costs a full re-read",
-      "gitStatus": "baseline-git's anti-split discipline: unpushed commits and the working-tree file counts are the two things the pre-commit checkpoint asks about"
+      "gitStatus": "alfred-git's anti-split discipline: unpushed commits and the working-tree file counts are the two things the pre-commit checkpoint asks about"
      },
      "chosen_by": {
       "lineLayout": "layout",

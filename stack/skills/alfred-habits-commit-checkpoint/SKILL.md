@@ -5,7 +5,7 @@ description: "Use before a non-trivial git commit, git push or gh pr merge - 'co
 
 # Commit checkpoint - the gate before a commit or a publish
 
-The protocol `baseline-git.md` points at: what runs before a non-trivial commit, the exemptions, the receipt the `guard-ungated-commit` hook reads at commit time, and the same ceremony for `git push` / `gh pr merge`. The commit-message shape and the branch discipline stay in the rule. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
+The protocol `alfred-git.md` points at: what runs before a non-trivial commit, the exemptions, the receipt the `guard-ungated-commit` hook reads at commit time, and the same ceremony for `git push` / `gh pr merge`. The commit-message shape and the branch discipline stay in the rule. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
 ## When to use
 
@@ -29,7 +29,7 @@ On any non-trivial diff, before committing or presenting, in order:
    a real invocation THIS session: a receipt claiming 'alfred-task-verify-code inline' with no Skill
    call in the transcript is a replay from memory, not the gate.
 3. **Security review** when the diff touches auth, crypto, secrets, payment or data-access paths
-   (`baseline-security.md` owns the trigger) - the security half below.
+   (`alfred-security.md` owns the trigger) - the security half below.
 4. **Done gate.** Satisfy the Definition-of-done gate.
 5. **Receipt.** Write the receipt below, then commit, then clear it.
 
@@ -53,7 +53,7 @@ the stages in the commit body rather than splitting an unverifiable diff.
 
 ## The security half
 
-`baseline-security.md` owns the trigger (crypto / secret / auth / payment / data-access work), the
+`alfred-security.md` owns the trigger (crypto / secret / auth / payment / data-access work), the
 honesty rules and the `VERIFIED` bar; this is how the review runs. **Do the scoped review yourself,
 first:** compute `git diff HEAD` (or the staged diff, or `git diff <base>..HEAD` for a range) and
 apply the vulnerability checklist to exactly that - a read-only general-purpose seat where dispatch
@@ -98,7 +98,7 @@ which is a different claim and reads as one. A review carried from an earlier cy
 On a security-relevant diff the receipt adds an extra line: `security:` naming each category
 checked and its verdict (`security: auth ok, secrets ok, injection ok, data-access n/a`). A
 VERIFIED line that claims a security review with no `security:` line, or one that just repeats
-'no findings' with no categories named, is the one-line nod `baseline-security.md` rejects - the
+'no findings' with no categories named, is the one-line nod `alfred-security.md` rejects - the
 guard reads it as no review at all. A review carried from an earlier cycle names its categories in
 THAT session's receipt, not this one - the `carried:` line above is enough.
 

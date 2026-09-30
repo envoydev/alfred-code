@@ -89,7 +89,7 @@ const NAV_CONTEXT = 'navigation-context.yml';
 const HOOK_MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'shell-guards.js', 'file-guards.js'];
 // The one rule copy.stampDocsRoot rewrites in place, after copyLibrary already hashed it - its
 // bare name, matching a copyLibrary/stamp key (no .md).
-const DOCS_ROOT_RULE = 'baseline-docs-root';
+const DOCS_ROOT_RULE = 'alfred-docs-root';
 
 function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s), err: (s) => process.stderr.write(s) })
 {
@@ -908,6 +908,8 @@ function runLayers(ctx)
     installMcps(ctx);
     desktopNotes(ctx);
     seeds.seedAccountKeys({ configDir: ctx.configDir, env: ctx.env, log: ctx.log, note: ctx.note });
+    // The generated rules moved off the `baseline-` prefix in 2.1.6: before anything re-stamps or reads them.
+    selection.moveGeneratedRules({ projectRoot: ctx.projectRoot, log: ctx.log, note: ctx.note });
     docsRootStep(ctx);
     installHooksAndRules(ctx);
     importMemory(ctx);
@@ -1939,7 +1941,6 @@ function installHooksAndRules(ctx)
     // release retired goes on either route, file and wiring together.
     pruneCopies(ctx, path.join(ctx.claudeDir, 'hooks'), ctx.manifest.retired.hooks, 'hook', 'retired upstream');
     if (ctx.routes.hooks) pruneCopies(ctx, path.join(ctx.claudeDir, 'hooks'), catalogHooks.concat(HOOK_MODULES), 'hook', 'now carried by a plugin');
-    pruneCopies(ctx, path.join(ctx.claudeDir, 'rules'), ctx.manifest.retired.rules, 'rule', 'retired upstream');
 
     // Only the three ENGINES and the window table are copied; the hooks themselves ride their plugin.
     const hookFiles = ctx.routes.hooks
@@ -1976,6 +1977,8 @@ function installHooksAndRules(ctx)
         stamped: stampLayer.readLibrary(ctx.stampFile), log: ctx.log, note: ctx.note,
     });
     ctx.library.rules = rulesLibrary.rules;
+    // After the new copies landed: a throw before this point leaves the old rules loading, never none.
+    pruneCopies(ctx, path.join(ctx.claudeDir, 'rules'), ctx.manifest.retired.rules, 'rule', 'retired upstream');
     // A copy this run did not write may still hold the placeholder: stampDocsRoot substitutes it IN
     // PLACE, after copyLibrary already hashed it - re-hash the one file it touches, or `drift` fires
     // on every check from here on.
@@ -2057,7 +2060,7 @@ function installHooksAndRules(ctx)
         sharedKeys: !ctx.routes.hooks && ctx.args.scope !== 'local' ? ['ALFRED_CODE_HOOKS_OFF'] : [],
         // C3: at local scope an old skillOverrides key in settings.json is set under its new name here.
         inheritedOverrides: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).skillOverrides : null,
-        // baseline-git's no-attribution rule, enforced by the setting; at local scope settings.json's own value stays.
+        // alfred-git's no-attribution rule, enforced by the setting; at local scope settings.json's own value stays.
         attribution: { inherited: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).attribution : null },
         // R6: isolated seats branch from this HEAD; at local scope settings.json's own value stays.
         worktreeBase: { inherited: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).worktree : null },

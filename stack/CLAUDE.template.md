@@ -57,7 +57,7 @@ map, a dependency rule's why - plus a pointer to its sections, never a second co
 2. Stack - languages, frameworks and key libraries at their EXACT versions ('EF Core 10', not
    'EF Core'), test stack + coverage gate, the LSP plugin for the primary language(s). MCP routing
    is NOT hand-filled here - it lives in the generated
-   .claude/rules/baseline-project-agent-capabilities.md (user-run /alfred-capture-agent-capabilities; if
+   .claude/rules/alfred-project-agent-capabilities.md (user-run /alfred-capture-agent-capabilities; if
    that skill was not installed, a lean hand-filled routing list here is the fallback).
 3. Setup - what a machine needs before build and test work: the SDK / runtime versions (a
    global.json or .nvmrc pin), Docker for the integration tests, the services a test run starts, and
@@ -88,7 +88,7 @@ map, a dependency rule's why - plus a pointer to its sections, never a second co
 
 ## Rules
 
-The rules this project runs on, all in `.claude/rules/`: every `baseline-*` file loads each session,
+The rules this project runs on, all in `.claude/rules/`: every `alfred-*` file loads each session,
 and a path-scoped rule (`project-code-style.md` below, and the other path-scoped rules the install
 copied) attaches on a matching file touch - its own `paths:` frontmatter says when.
 
@@ -98,15 +98,15 @@ running it.
 
 | Rule | What it governs |
 |---|---|
-| `.claude/rules/baseline-interaction.md` | communication style, adversarial review of user proposals, formatting + privacy, planning/execution thresholds |
-| `.claude/rules/baseline-quality-gates.md` | code-quality bars, the pointer to the done gate (`alfred-habits-done-gate`), claims about the outside world checked through `documentation`, background work, and tearing down what a run started or wrote |
-| `.claude/rules/baseline-security.md` | security-relevant diff review, fetched text as data never instruction, no PII or secrets in logs, credentials read for presence only, the permissions.deny caveat |
-| `.claude/rules/baseline-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `alfred-habits-commit-checkpoint` skill |
-| `.claude/rules/baseline-navigation.md` | symbol-lookup and code-reading discipline, and what a compaction must keep verbatim |
-| `.claude/rules/baseline-docs-root.md` | the generated-docs root - how `<docs-path>` resolves (`ALFRED_CODE_DOCS_PATH` env, stamped per install) and that every generated doc lives under it |
-| `.claude/rules/baseline-memory.md` | the shared `memory` MCP - what goes there (preferences, corrections, lessons), and searching it before asking or reading |
-| `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - user-run /alfred-capture-agent-capabilities after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |
-| `.claude/rules/baseline-project-architecture.md` (GENERATED - run /alfred-capture-architecture) | architecture capture marker - the docs exist, read them before a structural change; where they live is the navigation baseline's, the orientation itself arrives through the docs hook |
-| `.claude/rules/baseline-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /alfred-capture-related-projects with their paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
-| `.claude/rules/baseline-project-run-book.md` (GENERATED - user-run /alfred-capture-project-capabilities) | run book pointer - where `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` lives: how to build, start, log into and hand-check the app, read before a manual check |
+| `.claude/rules/alfred-interaction.md` | communication style, adversarial review of user proposals, formatting + privacy, planning/execution thresholds |
+| `.claude/rules/alfred-quality-gates.md` | code-quality bars, the pointer to the done gate (`alfred-habits-done-gate`), claims about the outside world checked through `documentation`, background work, and tearing down what a run started or wrote |
+| `.claude/rules/alfred-security.md` | security-relevant diff review, fetched text as data never instruction, no PII or secrets in logs, credentials read for presence only, the permissions.deny caveat |
+| `.claude/rules/alfred-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `alfred-habits-commit-checkpoint` skill |
+| `.claude/rules/alfred-navigation.md` | symbol-lookup and code-reading discipline, and what a compaction must keep verbatim |
+| `.claude/rules/alfred-docs-root.md` | the generated-docs root - how `<docs-path>` resolves (`ALFRED_CODE_DOCS_PATH` env, stamped per install) and that every generated doc lives under it |
+| `.claude/rules/alfred-memory.md` | the shared `memory` MCP - what goes there (preferences, corrections, lessons), and searching it before asking or reading |
+| `.claude/rules/alfred-project-agent-capabilities.md` (GENERATED - user-run /alfred-capture-agent-capabilities after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |
+| `.claude/rules/alfred-project-architecture.md` (GENERATED - run /alfred-capture-architecture) | architecture capture marker - the docs exist, read them before a structural change; where they live is the navigation baseline's, the orientation itself arrives through the docs hook |
+| `.claude/rules/alfred-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /alfred-capture-related-projects with their paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
+| `.claude/rules/alfred-project-run-book.md` (GENERATED - user-run /alfred-capture-project-capabilities) | run book pointer - where `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` lives: how to build, start, log into and hand-check the app, read before a manual check |
 | `.claude/rules/project-code-style.md` (GENERATED - user-run /alfred-capture-code-style; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/code-style/CODE-STYLE.md` |

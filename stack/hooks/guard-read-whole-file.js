@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
-// PreToolUse gate (matchers: Read + Bash): enforce baseline-navigation.md's hard rule - "Read
+// PreToolUse gate (matchers: Read + Bash): enforce alfred-navigation.md's hard rule - "Read
 // is for code you've ALREADY located, never to find a symbol." Blocks a whole-file Read of a
 // large source file so navigation goes through the navigation server (get_symbols_overview -> find_symbol)
 // first; on Bash it blocks the same dump routed around the Read tool (a bare `cat file.ts` -
@@ -2046,7 +2046,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
       process.stderr.write(
         `Blocked: whole-file sweep of source files via ${sweep}.\n` +
         `Every file in the sweep is dumped unchecked - the per-file size gate cannot see a loop\n` +
-        `variable or a find placeholder. Per baseline-navigation.md, locate what you need first\n` +
+        `variable or a find placeholder. Per alfred-navigation.md, locate what you need first\n` +
         `(the navigation server's find_symbol / get_symbols_overview, or grep -n for a pattern), then read only the\n` +
         `ranges that matter. If you genuinely need one whole small file, cat it by name. The navigation\n` +
         `tools are DEFERRED - load them first:\n` + LOAD_SERENA,
@@ -2072,7 +2072,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     if (!printsContent) return;
     process.stderr.write(
       'Blocked: whole-file read of a source file through a language runtime.\n' +
-      'Per baseline-navigation.md this is the same whole-file read the Read gate blocks, spelled\n' +
+      'Per alfred-navigation.md this is the same whole-file read the Read gate blocks, spelled\n' +
       'differently. Locate the symbol first (the navigation server\'s find_symbol / get_symbols_overview), then read\n' +
       'only the range you need. A script that PRINTS only a count, a length or a test of the content\n' +
       '(`.length`, `.match(re).length`, `len(...)`, `.includes(...)`) is not a dump and is not blocked.\n' +
@@ -2141,7 +2141,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     if (unb && gatedIn(unb[1])) {
       process.stderr.write(
         'Blocked: unbounded whole-file dump (head -n <huge> / tail -n +1 / less / awk \'1\').\n' +
-        'Per baseline-navigation.md, read the located range - the navigation server\'s find_symbol, or a bounded\n' +
+        'Per alfred-navigation.md, read the located range - the navigation server\'s find_symbol, or a bounded\n' +
         'sed -n \'<start>,<end>p\' once you know where to look. The navigation tools are DEFERRED - load them first:\n' + LOAD_SERENA,
       );
       process.exit(2);
@@ -2197,7 +2197,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     if (lc > THRESHOLD) {
       process.stderr.write(
         `Blocked: whole-file dump of ${f} (${lc} lines) via ${payload.tool_name}.\n` +
-        `Per baseline-navigation.md, a bare cat/sed of a large source file is the same\n` +
+        `Per alfred-navigation.md, a bare cat/sed of a large source file is the same\n` +
         `whole-file read the Read gate blocks - routed through the shell.\n` + serenaHint(f),
       );
       process.exit(2);
@@ -2272,7 +2272,7 @@ const wholeShape = (input.offset ?? 0) <= 1 && (input.limit == null || input.lim
 if (wholeShape) {
   process.stderr.write(
     `Blocked: whole-file Read of ${path} (${lineCount} lines).\n` +
-      `Per baseline-navigation.md, Read is for code you've ALREADY located - never to find a symbol.\n` +
+      `Per alfred-navigation.md, Read is for code you've ALREADY located - never to find a symbol.\n` +
       `A limit that covers the whole file is still a whole-file Read - and so is\n` +
       `offset 1 with limit = the file's line count (measured: that exact retry got\n` +
       `blocked twice in a row). Read HALF the file or less per range.\n` + serenaHint(path),

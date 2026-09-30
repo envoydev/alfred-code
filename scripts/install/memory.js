@@ -13,7 +13,7 @@
 //     own memory ON and says so - never retried into a false success - and the old files are never
 //     deleted either way.
 //   - THE REPLACEMENT MUST BE COMPLETE: the memory server in this run's MCP set AND
-//     `baseline-memory.md` (the rule that tells Claude to save to it) both selected AND on disk.
+//     `alfred-memory.md` (the rule that tells Claude to save to it) both selected AND on disk.
 //     Without either, the notes stay where Claude reads them.
 //   - THE SWITCH-OFF IS WRITTEN TO THIS PROJECT'S OWN settings file, never the account one (that
 //     would silence every other project's memory too) - and, per R47, to the SAME file this run's
@@ -190,10 +190,10 @@ function importGate({ projectRoot, settingsFile, mcps = [], rules = [], tools = 
     const name = (e) => (typeof e === 'string' ? e.split(/[|:]/)[0] : e.name || e.file);
     if (!mcps.some((e) => name(e) === 'memory'))
         return { go: false, reason: "memory: the notes import was skipped - the memory MCP is not part of this install; Claude's own memory stays on" };
-    if (!rules.some((e) => name(e) === 'baseline-memory.md'))
-        return { go: false, reason: "memory: the notes import was skipped - baseline-memory.md is not part of this install; Claude's own memory stays on" };
-    if (!fs.existsSync(path.join(projectRoot, '.claude', 'rules', 'baseline-memory.md')))
-        return { go: false, reason: `  !! memory: baseline-memory.md did not land in ${path.join(projectRoot, '.claude', 'rules')} - the notes import was skipped; Claude's own memory stays on until a run delivers it` };
+    if (!rules.some((e) => name(e) === 'alfred-memory.md'))
+        return { go: false, reason: "memory: the notes import was skipped - alfred-memory.md is not part of this install; Claude's own memory stays on" };
+    if (!fs.existsSync(path.join(projectRoot, '.claude', 'rules', 'alfred-memory.md')))
+        return { go: false, reason: `  !! memory: alfred-memory.md did not land in ${path.join(projectRoot, '.claude', 'rules')} - the notes import was skipped; Claude's own memory stays on until a run delivers it` };
 
     for (const [tool, present] of Object.entries(tools))
         if (!present) return { go: false, reason: `  !! ${tool} not found - the memory notes import was skipped; Claude's own memory stays on until it succeeds` };
@@ -392,7 +392,7 @@ function initMemory(argv, { which, runNode, homedir, log = console.log, err = co
     if (level === 'project') ensureProjectIgnore(projectRoot, log, dbPath);
 
     const settingsFile = target;
-    const gate = importGate({ projectRoot, settingsFile, mcps: ['memory'], rules: ['baseline-memory.md'], tools: { uvx: which('uvx') } });
+    const gate = importGate({ projectRoot, settingsFile, mcps: ['memory'], rules: ['alfred-memory.md'], tools: { uvx: which('uvx') } });
     const importer = path.join(__dirname, '..', 'memory-import.js');
     const pass = ['--config-dir', '--memory-dir'].flatMap((name) => (flag(name) ? [name, flag(name)] : []));
     const out = importNotes({

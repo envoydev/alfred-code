@@ -167,18 +167,18 @@ test('derive-state: rules and MCP servers pass through as picked - they are copi
     // sorted order are three different sequences - a two-name fixture read the same forwards and
     // backwards and let an unsorted list pass.
     const file = selectionFile([
-        'skill csharp', 'agent security-auditor', 'rule csharp-conventions', 'rule baseline-security',
+        'skill csharp', 'agent security-auditor', 'rule csharp-conventions', 'rule alfred-security',
         'mcp documentation', 'mcp navigation', 'mcp browser-chrome', 'hook guard-secret-value',
     ]);
     const got = derive(file);
-    assert.deepStrictEqual(got.rules.copy, ['baseline-security', 'csharp-conventions']);
+    assert.deepStrictEqual(got.rules.copy, ['alfred-security', 'csharp-conventions']);
     assert.deepStrictEqual(got.mcps, ['browser-chrome', 'documentation', 'navigation']);
     assert.deepStrictEqual(got.hooks.on, ['guard-secret-value']);
 });
 
 test('derive-state: an empty selection installs the core and denies every seat it carries', () =>
 {
-    const got = derive(selectionFile(['rule baseline-security']));
+    const got = derive(selectionFile(['rule alfred-security']));
     assert.deepStrictEqual(got.plugins, ['alfred-code@envoydev'], 'the core is always enabled');
     const core = itemsOf(['alfred-code']);
     assert.deepStrictEqual(got.agents.off, core.agents, 'the core seats ride in either way, so each is denied');
@@ -430,14 +430,14 @@ test('floor: the CLI reads the entries and the project settings file', () =>
 // installer decides - route switches and the no-hook-lines rule included - or the report lies.
 test('derive-state: a selection with NO hook lines switches no hook off - every hook runs, as on disk', () =>
 {
-    const got = derive(selectionFile(['rule baseline-security', 'skill markdown-style']));
+    const got = derive(selectionFile(['rule alfred-security', 'skill markdown-style']));
     assert.deepStrictEqual(got.hooks.off, []);
     assert.strictEqual(got.env.ALFRED_CODE_HOOKS_OFF, '');
 });
 
 test('derive-state: `hook none` - the walk\'s None at the hooks layer - switches every shipped hook off', () =>
 {
-    const got = derive(selectionFile(['rule baseline-security', 'hook none']));
+    const got = derive(selectionFile(['rule alfred-security', 'hook none']));
     assert.strictEqual(got.hooks.answered, true);
     assert.deepStrictEqual(got.hooks.on, []);
     const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
@@ -568,7 +568,7 @@ test('classifyNew: an always-closure item arrives, a stack item is offered, the 
     const added = [
         { category: 'skill', name: 'markdown-style' }, { category: 'skill', name: 'dotnet-web-backend' },
         { category: 'agent', name: 'evidence-gatherer' }, { category: 'agent', name: 'code-style-analyzer' },
-        { category: 'rule', name: 'baseline-memory' }, { category: 'rule', name: 'sql-conventions' },
+        { category: 'rule', name: 'alfred-memory' }, { category: 'rule', name: 'sql-conventions' },
         { category: 'hook', name: 'docs-session' }, { category: 'hook', name: 'guard-answer-length' },
         { category: 'skill', name: 'angular-material' }, { category: 'rule', name: 'markdown-docs' },
     ];
@@ -581,7 +581,7 @@ test('classifyNew: an always-closure item arrives, a stack item is offered, the 
     assert.deepStrictEqual([by['skill dotnet-web-backend'].verdict, by['skill dotnet-web-backend'].entry, by['skill dotnet-web-backend'].recommend], ['offer', null, 'leave'], 'library - copied only on a yes');
     assert.strictEqual(by['agent evidence-gatherer'].verdict, 'arrives');
     assert.strictEqual(by['agent code-style-analyzer'].verdict, 'off');
-    assert.strictEqual(by['rule baseline-memory'].verdict, 'arrives', 'the locked baseline is adopted');
+    assert.strictEqual(by['rule alfred-memory'].verdict, 'arrives', 'the locked baseline is adopted');
     assert.deepStrictEqual([by['rule sql-conventions'].verdict, by['rule sql-conventions'].recommend], ['offer', 'leave'], 'its closure copies library items - no free take');
     assert.ok(by['rule sql-conventions'].copies.length > 0, 'and it names them');
     assert.deepStrictEqual(by['rule sql-conventions'].enables, [], 'the core is enabled, so a yes switches no entry on');
@@ -652,8 +652,8 @@ const { delta } = require('./derive-state.js');
 
 test('delta: what the walk added and dropped against the inventory, one line each', () =>
 {
-    const installed = { skills: ['csharp', 'dotnet'], agents: ['evidence-gatherer'], rules: ['baseline-security'], hooks: ['docs-session', 'guard-read-whole-file'], mcps: ['navigation'], plugins: [{ name: 'claude-hud', scope: 'user' }] };
-    const selectionText = ['skill csharp', 'skill markdown-style', 'agent evidence-gatherer', 'rule baseline-security', 'rule sql-conventions', 'hook docs-session', 'mcp navigation', 'plugin claude-hud'].join('\n');
+    const installed = { skills: ['csharp', 'dotnet'], agents: ['evidence-gatherer'], rules: ['alfred-security'], hooks: ['docs-session', 'guard-read-whole-file'], mcps: ['navigation'], plugins: [{ name: 'claude-hud', scope: 'user' }] };
+    const selectionText = ['skill csharp', 'skill markdown-style', 'agent evidence-gatherer', 'rule alfred-security', 'rule sql-conventions', 'hook docs-session', 'mcp navigation', 'plugin claude-hud'].join('\n');
     assert.deepStrictEqual(delta({ installed, selectionText }), {
         add: ['skill markdown-style', 'rule sql-conventions'],
         drop: ['skill dotnet', 'hook guard-read-whole-file'],
@@ -663,7 +663,7 @@ test('delta: what the walk added and dropped against the inventory, one line eac
 
 test('delta: a selection naming no hook at all drops every installed hook - the walk answered None', () =>
 {
-    const got = delta({ installed: { hooks: ['docs-session'], rules: ['baseline-security'] }, selectionText: 'rule baseline-security\nhook none\n' });
+    const got = delta({ installed: { hooks: ['docs-session'], rules: ['alfred-security'] }, selectionText: 'rule alfred-security\nhook none\n' });
     assert.deepStrictEqual(got.drop, ['hook docs-session']);
     assert.deepStrictEqual(got.add, [], '`hook none` is no item to add');
 });

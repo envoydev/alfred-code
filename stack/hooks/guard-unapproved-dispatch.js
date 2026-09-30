@@ -23,7 +23,7 @@
 // Symbol-search rule: a SYMBOL question - who calls this, where is it declared, what
 // type resolves here - is never delegated to a grep-shaped seat (Explore/general-purpose/
 // claude). Those answer by name-match, and the built-in Explore does not even load the
-// project's rules, so baseline-navigation's 'locate with the navigation server, inline' never reaches it
+// project's rules, so alfred-navigation's 'locate with the navigation server, inline' never reaches it
 // (measured: a consuming session handed a C# symbol hunt to Explore and got grep hits).
 // Blocked here regardless of any stamp; a broad multi-file sweep with no symbol question
 // in it still passes.
@@ -147,7 +147,7 @@ if (/^alfred-issue-diagnoser-(?:ci|runtime)$/.test(callerSeat) && houseSeat !== 
 }
 
 // A symbol question routed at a grep-shaped seat: block and send it back to the navigation server.
-// The patterns are the QUESTION shapes baseline-navigation names, not tool words - a
+// The patterns are the QUESTION shapes alfred-navigation names, not tool words - a
 // sweep brief ('map the auth module', 'which files configure logging') carries none.
 // 'reference to' / 'usages of' describe a TEXT sweep as often as a symbol hunt (the 2026-09-28 block was
 // 'every reference to plugin-authoring' over the manifest, the graph and the docs), so they count only when a
@@ -195,7 +195,7 @@ if (SEARCH_SEATS.has(seat)) {
   }
 }
 
-// The built-in Explore and Plan load none of the project's rules, so baseline-security's
+// The built-in Explore and Plan load none of the project's rules, so alfred-security's
 // untrusted-content sentence never reaches them - and Explore holds Bash and WebFetch. Their
 // dispatch is ANSWERED, never denied: the brief runs with that one sentence appended
 // (hookSpecificOutput.updatedInput; every other field carried over). No permissionDecision,

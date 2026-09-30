@@ -233,7 +233,7 @@ test('quality/CODE-ASSESSMENT.md is no docs domain - the engine never sections o
         if (saved.docs === undefined) delete process.env.ALFRED_CODE_DOCS_PATH; else process.env.ALFRED_CODE_DOCS_PATH = saved.docs;
         r.rm();
     }
-    const root = squash(read('stack/rules/baseline-docs-root.md'));
+    const root = squash(read('stack/rules/alfred-docs-root.md'));
     assert.match(root, /`quality\/ASSESSMENT\.md` and `quality\/CODE-ASSESSMENT\.md`/, 'the docs-root rule names both beside each other');
 });
 

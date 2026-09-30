@@ -53,7 +53,7 @@ the fallback only where the harness lacks the tool.
 
 **House voice in every line this run emits** - narration, tables and the asks alike: single
 dashes, never em-dashes, and single quotes in prose. A fresh or refreshed install may have no
-`.claude/rules/baseline-interaction.md` loaded at all, so this command's own text is the only place
+`.claude/rules/alfred-interaction.md` loaded at all, so this command's own text is the only place
 the voice can come from (measured: a first-run narration line opened with an em-dash, on the one
 surface where the rule forbidding it cannot yet exist).
 
@@ -197,7 +197,7 @@ walk.md's MCPs layer, the two browser asks pre-selected from step 1's plan (step
 changed answer).
 
 Whenever `memory` is PRESENT after this round - kept from before, or newly pulled in by adding
-`baseline-memory` at step 3 - ask the shared memory level. Read what is registered today first:
+`alfred-memory` at step 3 - ask the shared memory level. Read what is registered today first:
 `node "$TMP/repo/stack/hooks/memory.js" level` prints `<level> <dbPath>` or `none` (no prior
 registration - a fresh add, default to `global`). Paste the level table init uses - `global` /
 `scoped` / `project`, who shares each and where its database lives - all three offered at every
@@ -207,7 +207,7 @@ account-wide registration, so `project` is safe there too.
 Pre-select the level just read back, and ask ONE AskUserQuestion: keep it, or change to the
 other one(s) shown. Picking or keeping `project` while this project's related-projects domain
 already names sibling repos (`<docs-path>/related-projects/RELATED-PROJECTS.md`, or the generated
-`baseline-project-related-context.md`) means those projects' memories are not visible from this
+`alfred-project-related-context.md`) means those projects' memories are not visible from this
 one - name that in the post-check, not here. Changing level never copies or deletes a database -
 it re-points the registration, and the installer prints
 `memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`; read that line verbatim
@@ -282,7 +282,7 @@ sitting at that value is reported as off, with turning it back on as the change.
 docs-root change, say plainly: existing generated docs do NOT move - they stay under the old root until
 moved by hand or re-captured. Then re-stamp the deployed rule - run
 `node $TMP/repo/scripts/stamp-docs-root.js <project root>`: it rewrites the 'This install's root:'
-line in `.claude/rules/baseline-docs-root.md` from the value just written - read at the stamp's
+line in `.claude/rules/alfred-docs-root.md` from the value just written - read at the stamp's
 scope, `settings.local.json` over `settings.json` at local scope, as the installer reads it - so the
 always-on awareness matches the env (every install/update run re-stamps it too). Add
 `--reprobe-versioning <value>` to that same command when this run's own install SEEDED the docs-versioning key,

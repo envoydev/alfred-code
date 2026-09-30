@@ -831,12 +831,18 @@ test('relatedProjects reads RELATED-PROJECTS.md headings, else the generated rul
     // The doc wins even when the rule also exists.
     const rulesDir = path.join(root, '.claude', 'rules');
     fs.mkdirSync(rulesDir, { recursive: true });
-    fs.writeFileSync(path.join(rulesDir, 'baseline-project-related-context.md'), '---\ndescription: x\n---\n- name: rule-only-sibling\n  location: ../x\n');
+    fs.writeFileSync(path.join(rulesDir, 'alfred-project-related-context.md'), '---\ndescription: x\n---\n- name: rule-only-sibling\n  location: ../x\n');
     assert.deepStrictEqual(m.relatedProjects(root, docsRoot), ['acme-billing-api', 'acme-frontend']);
 
     // The doc gone, the rule present - falls back to its 'name:' fields.
     fs.rmSync(docDir, { recursive: true, force: true });
     assert.deepStrictEqual(m.relatedProjects(root, docsRoot), ['rule-only-sibling']);
+
+    // An install the 2.1.6 update has not moved yet still holds the rule under its old name; the new one wins when both exist.
+    fs.renameSync(path.join(rulesDir, 'alfred-project-related-context.md'), path.join(rulesDir, 'baseline-project-related-context.md'));
+    assert.deepStrictEqual(m.relatedProjects(root, docsRoot), ['rule-only-sibling']);
+    fs.writeFileSync(path.join(rulesDir, 'alfred-project-related-context.md'), '---\ndescription: x\n---\n- name: newer-sibling\n');
+    assert.deepStrictEqual(m.relatedProjects(root, docsRoot), ['newer-sibling']);
   } finally { rmDir(root); }
 });
 

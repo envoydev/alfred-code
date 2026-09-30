@@ -122,19 +122,19 @@ for a carried seat).
 
 | rule | scope | origin |
 |---|---|---|
-| baseline-git | always-on | stack |
+| alfred-git | always-on | stack |
 | typescript-conventions | paths: `**/*.ts`, `**/*.tsx` | stack |
-| baseline-project-architecture | always-on | GENERATED |
+| alfred-project-architecture | always-on | GENERATED |
 | project-code-style | paths: `**/*.js` | GENERATED |
 
 `scope` comes from the `paths:` frontmatter (absent = always-on). `origin`: `GENERATED` for the
-capture-written rules (`baseline-project-*.md`, `project-code-style.md`), `stack` otherwise,
+capture-written rules (`alfred-project-*.md`, `project-code-style.md`), `stack` otherwise,
 `user-authored` when clearly neither.
 
 Then ONE extra line under that table - the always-on FLOOR this install pays, because nothing
 else in the stack reports it and a baseline rule is the one artifact whose cost is multiplied by
 every message of every session: total the bytes of the pathless rules plus the project
-instructions in one call (`wc -c <rules dir>/baseline-*.md CLAUDE.md .claude/CLAUDE.md
+instructions in one call (`wc -c <rules dir>/alfred-*.md CLAUDE.md .claude/CLAUDE.md
 2>/dev/null | tail -1`) and render `always-on floor: <N> chars (~<N/4000>k tokens) across <n>
 pathless rules + CLAUDE.md - re-sent on every message and prepended to every subagent dispatch`.
 Report the number, judge nothing: there is no threshold here and no advice line (measured: the

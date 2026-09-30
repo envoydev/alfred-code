@@ -28,11 +28,11 @@ function fx({
     fs.mkdirSync(path.join(src, 'stack/agents'), { recursive: true });
     fs.writeFileSync(path.join(src, 'stack/agents/seat.md'), '---\nname: seat\ndescription: s\n---\nbody\n');
     fs.mkdirSync(path.join(src, 'stack/rules'), { recursive: true });
-    fs.writeFileSync(path.join(src, 'stack/rules/baseline-git.md'), gitRule);
-    // A pristine copy of the placeholder rule, exactly as `stack/rules/baseline-docs-root.md` ships
+    fs.writeFileSync(path.join(src, 'stack/rules/alfred-git.md'), gitRule);
+    // A pristine copy of the placeholder rule, exactly as `stack/rules/alfred-docs-root.md` ships
     // it - the one rule whose PROJECT copy never matches its source byte for byte (the source holds
     // `__DOCS_ROOT__`, the project a substituted path), so `behind` needs the normalised comparison.
-    fs.writeFileSync(path.join(src, 'stack/rules/baseline-docs-root.md'), "This install's root: `__DOCS_ROOT__`\n");
+    fs.writeFileSync(path.join(src, 'stack/rules/alfred-docs-root.md'), "This install's root: `__DOCS_ROOT__`\n");
     fs.mkdirSync(path.join(src, 'setup-plugin/.claude-plugin'), { recursive: true });
     fs.writeFileSync(path.join(src, 'setup-plugin/.claude-plugin/plugin.json'), JSON.stringify({ name: 'alfred-code', version: sourceVersion }));
 
@@ -52,13 +52,13 @@ function fx({
     if (docsRoot) fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: docsRoot } }));
     const library = copyLibrary({
         sourceDir: src, skillsDir: skills, agentsDir: agents, rulesDir: rules,
-        skills: ['demo'], agents: ['seat'], rules: ['baseline-git', 'baseline-docs-root'], stamped: null,
+        skills: ['demo'], agents: ['seat'], rules: ['alfred-git', 'alfred-docs-root'], stamped: null,
     });
     // Simulate the installer's own docs-root stamp: substitute the placeholder, then hash AFTER the
     // rewrite - exactly what alfred-code.js must do for the recorded hash to mean anything.
-    const docsRootFile = path.join(rules, 'baseline-docs-root.md');
+    const docsRootFile = path.join(rules, 'alfred-docs-root.md');
     fs.writeFileSync(docsRootFile, fs.readFileSync(docsRootFile, 'utf8').replace('__DOCS_ROOT__', docsRoot || '.alfred/docs'));
-    library.rules['baseline-docs-root'] = require('./install/library.js').hashItem(docsRootFile);
+    library.rules['alfred-docs-root'] = require('./install/library.js').hashItem(docsRootFile);
     if (!noStamp)
     {
         fs.writeFileSync(path.join(base, legacy ? OLD_STAMP : 'alfred-code.stamp'), renderStamp({
@@ -68,7 +68,7 @@ function fx({
     }
     if (local) fs.writeFileSync(path.join(claudeDir, 'settings.local.json'), JSON.stringify(local));
     if (sourceEdit) fs.appendFileSync(path.join(src, 'stack/skills/demo/SKILL.md'), 'newer\n');
-    if (ruleEdit) fs.appendFileSync(path.join(src, 'stack/rules/baseline-git.md'), 'newer\n');
+    if (ruleEdit) fs.appendFileSync(path.join(src, 'stack/rules/alfred-git.md'), 'newer\n');
     return { root, src, project, config, skills, agents, rules };
 }
 
@@ -128,43 +128,43 @@ test('a stamp from before 2.1.0 under a 2.1 source names the move in the stale l
 test('a hand-edited rule is drift', () =>
 {
     const f = fx();
-    fs.appendFileSync(path.join(f.rules, 'baseline-git.md'), 'x');
+    fs.appendFileSync(path.join(f.rules, 'alfred-git.md'), 'x');
     const r = run(f);
     assert.equal(r.code, 1);
-    assert.match(r.out, /drift: rule baseline-git/);
+    assert.match(r.out, /drift: rule alfred-git/);
 });
 
 test('a deleted rule copy is missing', () =>
 {
     const f = fx();
-    fs.rmSync(path.join(f.rules, 'baseline-git.md'));
+    fs.rmSync(path.join(f.rules, 'alfred-git.md'));
     const r = run(f);
     assert.equal(r.code, 1);
-    assert.match(r.out, /missing: rule baseline-git/);
+    assert.match(r.out, /missing: rule alfred-git/);
 });
 
 test('a newer source rule is behind', () =>
 {
     const out = run(fx({ sourceVersion: '9.9.9', ruleEdit: true })).out;
-    assert.match(out, /behind: rule baseline-git/);
+    assert.match(out, /behind: rule alfred-git/);
 });
 
-// baseline-docs-root.md is never byte-identical between the pristine source (which holds the
+// alfred-docs-root.md is never byte-identical between the pristine source (which holds the
 // __DOCS_ROOT__ placeholder) and the project copy (which the installer substitutes) - a raw
 // hashItem-vs-hashItem compare would read it as permanently 'behind'. The normalised comparison
 // restores the placeholder's resolved value into the SOURCE content before hashing, so an
 // up-to-date copy reads clean, and only a REAL upstream change to the rule (beyond the
 // placeholder line) reads as behind.
-test('baseline-docs-root is compared normalised - the placeholder never reads as behind by itself', () =>
+test('alfred-docs-root is compared normalised - the placeholder never reads as behind by itself', () =>
 {
     const clean = run(fx({ docsRoot: 'team/docs' }));
     assert.equal(clean.code, 0, clean.out);
-    assert.doesNotMatch(clean.out, /behind: rule baseline-docs-root/, 'an up-to-date, substituted copy is not behind just because the source still holds the placeholder');
+    assert.doesNotMatch(clean.out, /behind: rule alfred-docs-root/, 'an up-to-date, substituted copy is not behind just because the source still holds the placeholder');
 
     const f = fx({ sourceVersion: '9.9.9' });
-    fs.appendFileSync(path.join(f.src, 'stack/rules/baseline-docs-root.md'), 'a real upstream change\n');
+    fs.appendFileSync(path.join(f.src, 'stack/rules/alfred-docs-root.md'), 'a real upstream change\n');
     const out = run(f).out;
-    assert.match(out, /behind: rule baseline-docs-root/, 'a genuine content change past the placeholder still reads as behind');
+    assert.match(out, /behind: rule alfred-docs-root/, 'a genuine content change past the placeholder still reads as behind');
 });
 
 // R29: a stamp written before rules joined the library (skills/agents present, no library-rules
@@ -343,9 +343,9 @@ test('a skill a shipped rule sends the model to, switched off in skillOverrides,
 {
     const off = run(fx({ gitRule: POINTER, settings: { skillOverrides: { demo: 'off' } } }));
     assert.equal(off.code, 1, off.out);
-    assert.match(off.out, /blocked: skill demo is 'off' in skillOverrides, but baseline-git\.md sends the model to it/);
+    assert.match(off.out, /blocked: skill demo is 'off' in skillOverrides, but alfred-git\.md sends the model to it/);
     const json = JSON.parse(run(fx({ gitRule: POINTER, local: { skillOverrides: { demo: 'user-invocable-only' } } }), ['--json']).out);
-    assert.deepStrictEqual(json.blocked, [{ skill: 'demo', mode: 'user-invocable-only', rules: ['baseline-git'] }], 'user-invocable-only refuses a model call too');
+    assert.deepStrictEqual(json.blocked, [{ skill: 'demo', mode: 'user-invocable-only', rules: ['alfred-git'] }], 'user-invocable-only refuses a model call too');
 });
 
 test('name-only, a local on over a shared off, an unnamed skill and a malformed settings file raise no blocked row (M75)', () =>

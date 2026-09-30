@@ -852,7 +852,7 @@ test('settings-writer: an allowed seat leaves settings.local.json\'s deny list t
     assert.strictEqual(fs.readFileSync(q.localFile, 'utf8'), before);
 });
 
-// baseline-git forbids AI attribution in commits and PRs; the `attribution` setting enforces it (code.claude.com
+// alfred-git forbids AI attribution in commits and PRs; the `attribution` setting enforces it (code.claude.com
 // settings reference: `commit` / `pr` strings, empty hides; `sessionUrl` false omits the session link).
 test('settings-writer: attribution is seeded off, key by key, never over a value the project set', () =>
 {

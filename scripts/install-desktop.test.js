@@ -16,7 +16,7 @@ const INSTALLED = (...more) => JSON.stringify([...['alfred-code', 'navigation', 
 const prepare = (repo) =>
 {
     fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
-    fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
+    fs.writeFileSync(path.join(repo, '.claude', 'rules', 'alfred-interaction.md'), 'x\n');
 };
 const installs = (calls, name) => calls.filter((c) => c.startsWith(`plugin install ${name}@`));
 const WPF = 'skill markdown-style\nrule wpf-conventions\nmcp windows-desktop\n';

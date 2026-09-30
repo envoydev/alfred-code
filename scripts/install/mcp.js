@@ -513,6 +513,13 @@ function respellToolNames(body, bare = [])
     return String(body).replace(TOOL_NAME_RE, (full, server) => (names.has(server) ? `mcp__${server}__` : full));
 }
 
+// The servers a copied text already names by the registered spelling - the evidence library-check reads
+// to compare the shipped source with the text the installer wrote (it never sees the run's routes).
+function bareServersIn(text)
+{
+    return [...new Set([...String(text).matchAll(/mcp__(?!plugin_)([A-Za-z0-9][A-Za-z0-9.-]*)__/g)].map((m) => m[1]))];
+}
+
 function downconvertToolNames({ roots = [], bare = [], log = () => {} })
 {
     const names = new Set(bare);
@@ -839,7 +846,7 @@ function exactStack(name, entry, { catalog = [], remotes = {}, projectRoot = '',
 // ENDPOINT, not by name (code.claude.com/docs/en/mcp, scope precedence). Measured on 2.1.282 through the
 // session's init row: a user- or project-scope registration of the Context7 url, under `context7` or
 // any other name, left the documentation plugin out of the session, so every `mcp__plugin_documentation_documentation__`
-// spelling the stack ships (its tool grants, baseline-quality-gates' ToolSearch line) resolved nothing.
+// spelling the stack ships (its tool grants, alfred-quality-gates' ToolSearch line) resolved nothing.
 // A stdio server matches on command AND args, which a launcher-started plugin entry never shares, so a
 // same-NAMED stdio registration runs BESIDE the plugin's own server - a second one. One row per
 // registration, in precedence order: `{ scope, name, plugin, kind: 'replaces' | 'beside' }`.
@@ -923,7 +930,7 @@ module.exports = {
     CONTEXT7_REMOTE, LOCKED, desktopGate, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn, withLocked, currentMcp, renamedFrom,
     retiredMcps, dueRetired, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape, snapshotMcp, keepMcpOrder,
-    playwrightDrop, downconvertToolNames, respellToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive, mcpjsonSwitch, mcpjsonTrusted,
+    playwrightDrop, downconvertToolNames, respellToolNames, bareServersIn, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive, mcpjsonSwitch, mcpjsonTrusted,
     registrationScope, identityOf, exactStack, packageName, stackIdentities, registrationsAt, accountBackups, accountLoss, stackAuthored, shadowingRegistrations, ensurePlaywrightIgnore,
     managedMcp, removeManagedMcp,
 };

@@ -76,11 +76,11 @@ test('M49: every opus pin outside the designers is named, with its effort and re
 test('M50: integration-reviewer attributes the security-half pass to the commit checkpoint, not the security rule', () =>
 {
     const text = squash(body('integration-reviewer'));
-    assert.doesNotMatch(text, /baseline-security\.md` treats this gate's pass/, 'the security rule makes no such claim');
+    assert.doesNotMatch(text, /alfred-security\.md` treats this gate's pass/, 'the security rule makes no such claim');
     assert.ok(text.includes("the commit checkpoint's security half counts this gate's pass as its review"), 'described by what it covers');
     const skill = squash(readRel('stack/skills/alfred-habits-commit-checkpoint/SKILL.md'));
     assert.ok(skill.includes('the integration-reviewer gate does'), 'the claim\'s home still makes it');
-    const rule = squash(readRel('stack/rules/baseline-security.md'));
+    const rule = squash(readRel('stack/rules/alfred-security.md'));
     assert.doesNotMatch(rule, /integration-reviewer/, 'and the rule still does not');
 });
 

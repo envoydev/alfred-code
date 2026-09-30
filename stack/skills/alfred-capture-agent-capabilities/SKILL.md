@@ -13,7 +13,7 @@ The measurements behind these rules live in `references/evidence.md` - an audit 
 ## When to use
 
 - The deliberate capabilities capture. Use after an install, a stack update or a manifest trim as well.
-- It inventories what THIS project actually has - the slash-only orchestration skills, the subagent seats, the MCP servers, the plugins - and regenerates wholesale the always-on awareness rule `.claude/rules/baseline-project-agent-capabilities.md`: the fixed house usage policy plus the real inventory, never an assumed stack.
+- It inventories what THIS project actually has - the slash-only orchestration skills, the subagent seats, the MCP servers, the plugins - and regenerates wholesale the always-on awareness rule `.claude/rules/alfred-project-agent-capabilities.md`: the fixed house usage policy plus the real inventory, never an assumed stack.
 - Not for capturing architecture (alfred-capture-architecture), code style (alfred-capture-code-style), the run book on building, starting and logging into the app (alfred-capture-project-capabilities), or a sibling repo's context - that is the sibling-context capture, where the project installed one.
 
 ## The run - one script, one compose, one write
@@ -44,7 +44,7 @@ node "$CAPS"
 printed is a defect, not diligence - every count and every row of the report comes off one of its
 lines, and a claim with no printed line behind it does not go in the report. It probes the `claude`
 CLI without laundering a failure into an empty result (`<cmd> || echo none`, banned in
-`baseline-navigation.md`) and without `| head -N`, so `CLI absent` and `0 plugins` stay
+`alfred-navigation.md`) and without `| head -N`, so `CLI absent` and `0 plugins` stay
 different report fields.
 
 ### 1. PRECHECK - the script's first lines
@@ -128,14 +128,14 @@ addressable only as `<plugin>:<seat>`, and a bare name returns 'Agent type not f
 <the script's PLUGINS name line; omit the section when it printed `CLI absent`>
 ```
 
-The usage-policy section is the house skill/agent policy's ONE home - it ships verbatim from this skill (a policy wording change lands here and reaches projects on their next re-run). Copy the `<!-- policy-rev: ... -->` line with it, unchanged: it is a content stamp over the block, recomputed by the stack's own lint whenever the policy text moves, and it is the ONLY way to tell a project carrying a current copy from one carrying a two-release-old one. `/alfred-code:validate` compares a project's stamp against the snapshot's. Like every generated `baseline-project-*.md` rule it stays out of the installer's catalog, so `/alfred-code:update` cannot overwrite it.
+The usage-policy section is the house skill/agent policy's ONE home - it ships verbatim from this skill (a policy wording change lands here and reaches projects on their next re-run). Copy the `<!-- policy-rev: ... -->` line with it, unchanged: it is a content stamp over the block, recomputed by the stack's own lint whenever the policy text moves, and it is the ONLY way to tell a project carrying a current copy from one carrying a two-release-old one. `/alfred-code:validate` compares a project's stamp against the snapshot's. Like every generated `alfred-project-*.md` rule it stays out of the installer's catalog, so `/alfred-code:update` cannot overwrite it.
 
-The 1.x project-capabilities skill (this one's old name, not the run-book capture) wrote `.claude/rules/baseline-project-capabilities.md`: when that legacy rule exists, delete it in the same run - this rule supersedes it, and nothing else ever prunes generated rules.
+The 1.x project-capabilities skill (this one's old name, not the run-book capture) wrote `.claude/rules/baseline-project-capabilities.md`, and before 2.1.6 this rule was `.claude/rules/baseline-project-agent-capabilities.md` (the update moves it; a run that finds it beside the new file means both exist): when either legacy rule exists, delete it in the same run - this rule supersedes it, and nothing else ever prunes generated rules.
 
 ### 3. VERIFY - after the write, before the report
 
 ```bash
-node "<caps>" --verify .claude/rules/baseline-project-agent-capabilities.md
+node "<caps>" --verify .claude/rules/alfred-project-agent-capabilities.md
 ```
 
 It parses the frontmatter with node - never PyYAML, which is missing on machines where a run died

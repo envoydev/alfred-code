@@ -262,7 +262,7 @@ test('the aspnet seed closes to its .NET vertical', () => {
 
 test('the always block seeds the cross-cutting agents and baseline rules', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
-    for (const r of ['baseline-interaction', 'baseline-security', 'baseline-git'])
+    for (const r of ['alfred-interaction', 'alfred-security', 'alfred-git'])
     {
         assert.ok((recs.always.rules || []).includes(r), `always seeds ${r}`);
     }
@@ -386,8 +386,8 @@ test('the always MCP baseline is stack-neutral - the browser is seeded or proven
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
     const evidence = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'evidence.json'), 'utf8'));
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-manifest.json'), 'utf8'));
-    // memory joined navigation and documentation as a locked server (baseline-memory.md names it, the same
-    // way baseline-navigation locks the navigation server in) - the shared-memory-mcp feature made it required.
+    // memory joined navigation and documentation as a locked server (alfred-memory.md names it, the same
+    // way alfred-navigation locks the navigation server in) - the shared-memory-mcp feature made it required.
     assert.deepStrictEqual([...(recs.always.mcps || [])].sort(), ['documentation', 'memory', 'navigation'], 'only the three rules lock in');
     assert.ok(!(recs.always.mcps || []).includes('browser'), 'the browser server must not install into every project');
     assert.ok(!((recs.general || {}).mcps || []).includes('memory'), 'memory left the general (addable, never seeded) list once it locked in');

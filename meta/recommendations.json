@@ -12,13 +12,13 @@
    "test-coverage-analyzer"
   ],
   "rules": [
-   "baseline-docs-root",
-   "baseline-git",
-   "baseline-interaction",
-   "baseline-memory",
-   "baseline-navigation",
-   "baseline-quality-gates",
-   "baseline-security",
+   "alfred-docs-root",
+   "alfred-git",
+   "alfred-interaction",
+   "alfred-memory",
+   "alfred-navigation",
+   "alfred-quality-gates",
+   "alfred-security",
    "markdown-docs",
    "skill-authoring"
   ],

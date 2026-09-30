@@ -15,16 +15,16 @@ const graph = JSON.parse(read('meta/stack-graph.json'));
 const agents = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).map((f) => f.replace(/\.md$/, ''));
 
 test('each baseline keeps one pointer per method, in the pinned imperative form, and none of the method', () => {
-    const gates = squash(read('stack/rules/baseline-quality-gates.md'));
+    const gates = squash(read('stack/rules/alfred-quality-gates.md'));
     assert.ok(gates.includes('the FIRST action is the `alfred-habits-done-gate` Skill call, before the claim lands'));
     for (const moved of ['tail long runs to the verdict', 'SCOPED test command', 'never suppress a warning, weaken a test'])
-        assert.ok(!gates.includes(moved), `baseline-quality-gates still carries the done gate's method: '${moved}'`);
+        assert.ok(!gates.includes(moved), `alfred-quality-gates still carries the done gate's method: '${moved}'`);
 
-    const interaction = squash(read('stack/rules/baseline-interaction.md'));
+    const interaction = squash(read('stack/rules/alfred-interaction.md'));
     for (const skill of ['alfred-habits-plan-writing', 'alfred-habits-test-first', 'alfred-habits-root-cause', 'alfred-habits-clarify'])
         assert.match(interaction, new RegExp(`the FIRST action is the \`${skill}\` Skill call, before `), `${skill} pointer`);
     for (const moved of ['bite-sized', 'watch it fail', 'read the full error and quote'])
-        assert.ok(!interaction.includes(moved), `baseline-interaction still carries method text: '${moved}'`);
+        assert.ok(!interaction.includes(moved), `alfred-interaction still carries method text: '${moved}'`);
 });
 
 test('every verifier, implementer and resolver preloads the done gate, every implementer but devops test-first, the resolvers root-cause', () => {

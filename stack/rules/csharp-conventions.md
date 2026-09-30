@@ -28,5 +28,5 @@ with no testing skill loaded).
 This is the C# baseline for every `.cs` file, backend or desktop - a WPF view-model is still C#, so it
 loads here too, while WPF's .xaml view layer is governed separately. Skip one-line tweaks.
 
-<!-- Maintainer note: the Serena `depth: 2` hint for C# lives in baseline-navigation.md - a Serena call
+<!-- Maintainer note: the Serena `depth: 2` hint for C# lives in alfred-navigation.md - a Serena call
      never attaches a path rule, so the hint here arrived only after a file-tool touch (audit M64). -->

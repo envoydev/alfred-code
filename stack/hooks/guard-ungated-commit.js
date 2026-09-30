@@ -6,7 +6,7 @@
 // `git commit` runs only after the house review gate (alfred-task-verify-code, plus
 // /security-review on auth/crypto/data-access paths) or the user's explicit waiver -
 // recorded as a receipt file the gate step writes. Prose measured unreliable: 8 ungated
-// commit events across 6 audited sessions, including one where baseline-git.md was
+// commit events across 6 audited sessions, including one where alfred-git.md was
 // provably read into context the same session and skipped anyway, and one commit with
 // no user authorization at all. Trivial diffs pass untouched (the rule's own
 // typo/one-line exemption, judged from the working-tree diff). exit 2 = block
@@ -181,7 +181,7 @@ if (PUSH_GATE_ON) {
 }
 
 // --- add -N without a chained reset -------------------------------------------------------
-// baseline-git.md:9 mandates the scope survey as ONE Bash call with the reset chained on the
+// alfred-git.md:9 mandates the scope survey as ONE Bash call with the reset chained on the
 // end: `git add -N . && git diff HEAD --stat; git reset -q`. A bare `git add -N .` left its
 // intent-to-add entries open across 6 more Bash calls in one measured session, ending in an
 // 8-call fsck/dangling-blob forensic chase and an unrequested re-stage that flipped a partially
@@ -195,7 +195,7 @@ if (addN && !calls.some((c) => c.sub === 'reset')) {
     `Blocked: ${actText(addN)} with no git reset in the same call - intent-to-add entries stay\n` +
     `open across every Bash call after this one until something clears them (measured: 6 calls open,\n` +
     `an 8-call fsck/dangling-blob chase, and an unrequested re-stage that flipped a partially staged\n` +
-    `file to fully staged). Chain the reset onto the SAME call, the shape baseline-git.md:9 gives:\n` +
+    `file to fully staged). Chain the reset onto the SAME call, the shape alfred-git.md:9 gives:\n` +
     `  git add -N . && git diff HEAD --stat; git reset -q\n` +
     `Retry with the reset included.`,
   );
@@ -347,7 +347,7 @@ const MAX_RECEIPT_AGE_MS = 2 * 60 * 60 * 1000; // 2h - the gate runs right befor
 //            single-project push names nothing extra.
 //   security- a VERIFIED line that claims a security review must carry a `security:` line naming
 //            the categories checked (auth, secrets, injection, data-access, ...) - the honesty rule
-//            baseline-security.md sets. Twice measured: a receipt read 'inline security review (0
+//            alfred-security.md sets. Twice measured: a receipt read 'inline security review (0
 //            findings)' with zero category text anywhere in the turn.
 //   carried- a stamp minted from a carried resume block says so, or the freshness check is
 //            silently satisfied by a re-mint of a 9h30m-old answer.
@@ -611,7 +611,7 @@ function judgeReceipt(body, opts) {
       }
     }
   }
-  // A security-flavored VERIFIED line must name what it checked - baseline-security.md's honesty
+  // A security-flavored VERIFIED line must name what it checked - alfred-security.md's honesty
   // rule calls a one-line 'no findings' nod not a review. Skipped when the review is `carried:`
   // from an earlier session - the categories were named THEN, not now.
   if (/\bsecurity\b/i.test(first) && !field('carried')) {
@@ -1260,7 +1260,7 @@ process.stderr.write(
       : `Blocked: git commit on a non-trivial diff without the pre-commit gate receipt.\n`) +
     `The checkpoint (the alfred-habits-commit-checkpoint skill - load it) runs BEFORE a non-trivial commit: the formatter, then\n` +
     `the house review alfred-task-verify-code - plus /security-review when the diff touches\n` +
-    `auth/crypto/secrets/payment/data-access paths (baseline-security.md). When those pass, write\n` +
+    `auth/crypto/secrets/payment/data-access paths (alfred-security.md). When those pass, write\n` +
     `${c.gate}\n` +
     `with these lines:\n` +
     `  VERIFIED <what was reviewed, one phrase>\n` +

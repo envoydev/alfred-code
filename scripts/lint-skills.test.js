@@ -113,7 +113,7 @@ test('lintEvidenceCatalog passes a clean catalog and flags unknown names, unlabe
     assert.deepStrictEqual(lintEvidenceCatalog(clean, rosters), []);
 
     const bad = {
-        rules: { 'baseline-git': {} },   // the scan reads only skills/mcps/plugins
+        rules: { 'alfred-git': {} },   // the scan reads only skills/mcps/plugins
         skills: {
             'dotnet-perf': { packages: ['BenchmarkDotNet'] },   // typo'd name - would silently never match
             'dotnet-performance': { csprojContent: [{ regex: '<X>' }], content: [{ glob: 'a', regex: 'b', label: '  ' }] },
@@ -470,9 +470,9 @@ test('check 37: a plugin-qualified cite carries a content clause, or it is bare'
     const { lintPluginCites } = require('./lint-skills.js');
     const plugins = new Set(['superpowers', 'claude-hud']);
 
-    // the golden form (baseline-quality-gates.md's until R72 folded the gate in) - the name, then the clause
+    // the golden form (alfred-quality-gates.md's until R72 folded the gate in) - the name, then the clause
     const golden = 'satisfy `superpowers:verification-before-completion` - build + relevant tests run, output quoted - before any done word.\n';
-    assert.deepStrictEqual(lintPluginCites('rules/baseline-quality-gates.md', golden, plugins), []);
+    assert.deepStrictEqual(lintPluginCites('rules/alfred-quality-gates.md', golden, plugins), []);
     assert.deepStrictEqual(lintPluginCites('f.md', 'Use `superpowers:writing-plans`: the plan format the house writes to.\n', plugins), []);
     assert.deepStrictEqual(lintPluginCites('f.md', 'Localize with `superpowers:systematic-debugging` (one hypothesis at a time, re-run before the next).\n', plugins), []);
     assert.deepStrictEqual(lintPluginCites('f.md', 'The loop is one hypothesis at a time - root cause before symptom, and the method is `superpowers:systematic-debugging`.\n', plugins), []);

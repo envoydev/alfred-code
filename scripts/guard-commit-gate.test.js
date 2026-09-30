@@ -211,7 +211,7 @@ test('guard-ungated-commit: a bare `git add -N` with no chained reset is blocked
   const dir = scratchRepo();
   const blocked = gateFull(dir, 'git add -N .');
   assert.equal(blocked.status, 2, 'add -N alone leaves intent-to-add entries open');
-  assert.match(blocked.stderr, /git reset -q/, 'names the remedy shape baseline-git.md:9 gives');
+  assert.match(blocked.stderr, /git reset -q/, 'names the remedy shape alfred-git.md:9 gives');
 
   assert.equal(gateIn(dir, 'git add -N . && git diff HEAD --stat; git reset -q'), 0,
     'the reset chained in the SAME call is the conformant scope-survey shape');

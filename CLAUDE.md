@@ -53,7 +53,7 @@ change (see the invariants below).
   `mdl` pin badge and row 'Pinned <model>/<effort>' to its frontmatter - 2.1.5 M57 - and a row's ', max <n> turns'
   to its `maxTurns`, 2.1.6 M59).
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
-  `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`. Its
+  `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/*-conventions.md`. Its
   authoring outline (Setup and Key files among it) and keep-out list say WHAT a CLAUDE.md holds; the
   always-on `alfred-habits-adjust-claude-md` skill is HOW, the one home of the fill (create, or improve with
   every change shown first, a separate part getting its own `<part>/CLAUDE.md`) - `/alfred-code:init`,
@@ -452,7 +452,7 @@ change (see the invariants below).
     `correction` carrying no project tag, capped at 4KB like the docs start block; a
     related-projects domain adds those projects' memories too, inside the same cap. The rows sit
     under two fixed frame lines (context, never instructions; a named file, flag or symbol is
-    verified first - `baseline-memory.md`'s sentence, pinned as `memory-frame`), each carries its age
+    verified first - `alfred-memory.md`'s sentence, pinned as `memory-frame`), each carries its age
     in days, and ageing is ORDER only: preferences and corrections under 90 days first, then the
     project's other memories, then the older preferences and corrections, then related projects,
     newest first within each - nothing is deleted. `node
@@ -494,7 +494,7 @@ change (see the invariants below).
     DevOps, browser extension);
   - six read-only support seats: `evidence-gatherer`, `test-coverage-analyzer`,
     `architecture-analyzer`, `code-quality-analyzer`, `code-style-analyzer`, `related-project-analyzer`.
-  Every seat that judges or writes code holds `mcp__plugin_documentation_documentation__*` (baseline-quality-gates
+  Every seat that judges or writes code holds `mcp__plugin_documentation_documentation__*` (alfred-quality-gates
   sends its outside-world claims there); the five read-only gatherers do not. A seat reports through
   SubagentHandback when its tools include it, else its last message (`verifier-memory-before-report`);
   `scripts/seat-grants.test.js` holds the grants. For the 2.x line the nine seats the retired 1.x core alias
@@ -514,10 +514,10 @@ change (see the invariants below).
   until-green loop is the runaway the cap is for; every other seat had too few runs, so none. Lint check 15d fails a
   seat with a `## Loop` section and no cap. Captures are deliberate-only
   (`alfred-capture-architecture` writes `architecture/ARCHITECTURE.md` and
-  `baseline-project-architecture.md`; the findings go to `alfred-capture-architecture-quality`
+  `alfred-project-architecture.md`; the findings go to `alfred-capture-architecture-quality`
   (`quality/ASSESSMENT.md`), the code's to `alfred-capture-code-quality` (`quality/CODE-ASSESSMENT.md`), and the
   run book to `alfred-capture-project-capabilities` (`project-capabilities/PROJECT-CAPABILITIES.md` and
-  `baseline-project-run-book.md` - how to build, start, reach, log into and hand-check the app, which the
+  `alfred-project-run-book.md` - how to build, start, reach, log into and hand-check the app, which the
   ten verifiers, `alfred-issue-diagnoser-runtime`, `evidence-gatherer` and `integration-reviewer` read
   before they run it, pinned as `run-book-read-first`); never in a build flow).
   `alfred-task-solve-cross` is the single entry-point orchestrator (single-stack vertical per
@@ -528,19 +528,30 @@ change (see the invariants below).
   the same rename while its mirror is paused - a protocol change here usually needs the same edit
   there once it resumes (divergences only: `model: inherit`, no `tools:` allowlist, no auto-delegation
   hard-disable).
-- `stack/rules/` - twenty single-job rules, each a library copy in `.claude/rules/`. Seven always-on `baseline-*.md`
+- `stack/rules/` - twenty single-job rules, each a library copy in `.claude/rules/`. Seven always-on `alfred-*.md`
   (no `paths:`): interaction, quality-gates, security, git (the commit checkpoint itself is the
   `alfred-habits-commit-checkpoint` skill), navigation, docs-root (`ALFRED_CODE_DOCS_PATH` is the ONLY lever the
   hooks read, default `.alfred/docs`, written by the installer as `<data root>/docs`; it stamps its value over
   `__DOCS_ROOT__` on every run),
   memory (what belongs in the shared `memory` MCP, when to save it, and to search before asking or
-  reading - locks the server in the way `baseline-navigation` locks the navigation server).
-  Skill/agent usage policy + MCP routing live in the GENERATED `baseline-project-agent-capabilities.md`.
+  reading - locks the server in the way `alfred-navigation` locks the navigation server).
+  Skill/agent usage policy + MCP routing live in the GENERATED `alfred-project-agent-capabilities.md`.
   Thirteen path-scoped: `markdown-docs.md`, `skill-authoring.md`, the repair routers
   (`dotnet-repair-agents.md`, `angular-repair-agents.md`) and nine convention rules, each
   glob-attaching ONE file family to its house-style skill. Every convention rule uses the imperative form pinned as
   `convention-rule-first-action` in shared-rules.json, and the load receipt pinned as `convention-rule-load-receipt`
   in the same eleven files (`scripts/rule-prose.test.js` fails a mismatch) - a new one copies both, never paraphrases them.
+  The `baseline-` prefix is retired (2.1.6, the user's ruling): the seven shipped rules and the generated
+  `project-*` ones are `alfred-*` (`alfred-git`, `alfred-project-run-book`, ...), and `baseline-*` names live only in
+  `retired.rules`, `renamed.rules`, the migration code and its tests, and the `docs/*-evidence.md` history. An update over
+  an older install prunes the seven old library copies by the `retired` list (the existing policy: by name, hand-edited
+  or not, one `rule pruned (retired upstream)` line each) and writes the new ones; the disk read-back maps a leftover old
+  name to the new one through `renamed.rules` (`selection.renameLines`), so no `not found in the stack source` note. The four generated files
+  (`agent-capabilities`, `related-context`, `architecture`, `run-book`) are MOVED with their content kept
+  (`selection.moveGeneratedRules`, before the docs-root re-stamp) because their captures never re-run by themselves - a
+  file already there under the new name wins and the old one is named; `meta/migrations.json` is not the route, its file
+  entries are remove-only and applied by the update command. Readers that outlive the update carry both names for
+  the 2.x line (`memory.js` related-projects, the preflight's policy-rev row). A new rule is named `alfred-<job>.md`.
 - `setup-plugin/` - the Alfred Code plugin: seven COMMANDS and one router SKILL.
   - `/alfred-code:setup` is the selection walk and the install (reports `derive-state.js`'s `written`
     block first) and ends on 'restart, then /alfred-code:init'; `/alfred-code:init` is the one-time
@@ -587,7 +598,7 @@ change (see the invariants below).
   - The seed prunes only the names in `meta/stack-manifest.json`'s `retired` block (skills, agents,
     rules, hooks, mcps, plugins) - add a name there when any of the six is renamed or removed (a
     stamp compare only names what left after the stamped commit). A renamed skill or seat also gets
-    a `renamed` row (old -> new): update maps picks, denies, `skillOverrides` and selections by it.
+    a `renamed` row (old -> new; a rule too since 2.1.6): update maps picks, denies, `skillOverrides` and selections by it.
     A retired PLUGIN also gets a
     `meta/retired-plugins.json` row (`retiredIn`, `addBack`): update uninstalls it only as
     `name@<row's marketplace>`, else `name@<stack key>` (`retiredSpec`), keeps a row at another scope
@@ -737,8 +748,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   A user-scope run that registers anywhere else (the plugin route, or the MCP copy route with the
   core on) prunes the stack's own registrations from that `.mcp.json`; the user's own server under a
   stack name is kept and named with its remove command.
-  `navigation` (baseline-navigation), `documentation`
-  (baseline-quality-gates) and `memory` (baseline-memory) are LOCKED into every install and may be
+  `navigation` (alfred-navigation), `documentation`
+  (alfred-quality-gates) and `memory` (alfred-memory) are LOCKED into every install and may be
   named in artifacts; every other server is droppable, so a body describes it. Only those three are
   seeded everywhere; the rest arrive by proof - a stack whose surface always has them, an evidence
   signal, or the user's pick. The names are ROLES; prose names the role and gives the upstream once
@@ -885,7 +896,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   once, through the service (idempotent), and only after that import succeeds switches Claude's own
   memory off (`autoMemoryEnabled: false`) and writes the stamp's `initialised:` line. With NO notes to
   import, setup's install switches it off itself, behind the same gate (the memory server and
-  `baseline-memory.md` selected and on disk; an unreadable notes folder counts as notes), and init only
+  `alfred-memory.md` selected and on disk; an unreadable notes folder counts as notes), and init only
   reports it - init runs inside the session, where the pilot-2 sandbox refused its settings write. The switch-off
   lands in THIS project's own `.claude/settings.json` at project and user scope, and in
   `settings.local.json` at local scope, where a value the user set stays local (R96) - never the
@@ -1002,7 +1013,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `memory/*.md`) is SWITCHED OFF (`autoMemoryEnabled: false`) by the install when the project has no
   notes, else by `/alfred-code:init` after a one-time import of its existing notes into the `memory` MCP - it has no search and is not shared
   with Cursor, which is why the MCP replaces it rather than sitting beside it. Which repos are
-  related lives in the generated `.claude/rules/baseline-project-related-context.md` (the
+  related lives in the generated `.claude/rules/alfred-project-related-context.md` (the
   `/alfred-capture-related-projects` skill), not memory. The session HISTORY (`<docs-path>/history/`,
   `history-session.js`) is the fourth, machine-local and never shared: what each session did and what
   the user ruled, script-written, read back at the next start on the same branch - a record, not memory.
@@ -1024,7 +1035,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   move below: `update-preflight.js` names it in its `data-move: offer` line, update asks move (recommended)
   or keep, and the answer is `--data-move move|keep`. Move: one step, `git mv` for tracked files (history kept, staged as
   renames), a rename for the rest, every file put back on any failure, the key re-pointed and the rule
-  re-stamped - with every generated pointer rule (`baseline-project-*`, `project-code-style`) that names the
+  re-stamped - with every generated pointer rule (`alfred-project-*`, `project-code-style`) that names the
   old root, which a capture baked in literally (`selection.respellDocsRoot`, M11) - a restart named. Keep: the key becomes the user's own value, out of the ledger, and no
   update offers again. No answer: nothing moves, and an absent key is written back as the old root so
   the hooks keep reading where the docs are. A value the user set is never offered: one the ledger does
@@ -1129,7 +1140,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   never offers it alone.
 - **One home per piece, no duplication.** A deterministic gate -> a hook. A per-file-type convention -> a
   path-scoped rule attaching its skill. A keyword capability -> the skill's description. Cross-cutting
-  guidance -> the always-on `baseline-*.md` set (each with an `.mdc` twin in cursor-stack to mirror). The
+  guidance -> the always-on `alfred-*.md` set (each with an `.mdc` twin in cursor-stack to mirror). The
   base template carries only per-project structure + platform routing. Never state one trigger twice.
 - **Prove a behavioral change, don't assert it.** A model / effort pin, routing rule or plugin-set change
   ships only with evidence: run the build + tests yourself and read the code, measure the token delta when
@@ -1158,13 +1169,13 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   a ZWJ between two emoji parts or two non-ASCII letters, a ZWNJ between two non-ASCII letters, an
   LRM / RLM / Arabic letter mark (U+061C) beside one.
 - **The always-on surface has a BUDGET.** Lint check 33 (`scripts/always-on-surface.js`) sums what the model is sent - the pathless
-  `baseline-*.md` rules as injected (frontmatter and HTML comments stripped), every agent DESCRIPTION,
+  `alfred-*.md` rules as injected (frontmatter and HTML comments stripped), every agent DESCRIPTION,
   every skill DESCRIPTION plus `when_to_use` (a `disable-model-invocation` skill's is not in context, so
   its description is skipped), and the fixed text every generated capabilities rule carries (the usage
   policy and the locked-server row) - prints each part, and fails over 70,000 chars (lowered from 160,000
-  on 2026-09-29, about 40% over the measured total; 48,977 on 2026-09-30 (2.1.6): pathless rules 23,052, agent
+  on 2026-09-29, about 40% over the measured total; 48,969 on 2026-09-30 (2.1.6): pathless rules 23,050, agent
   descriptions 12,532, skill descriptions 11,589 with 13 manual-only skipped, capabilities fixed text
-  1,804 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories
+  1,798 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories
   moving to `docs/baseline-rules-evidence.md`, and the 2.1.2 cap below cut the skill descriptions from
   50,719; the whole-file count it replaced read 51,473 and missed the generated rule). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's

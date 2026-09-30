@@ -597,7 +597,7 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         assert.doesNotMatch(one.out, /clean-export/);
         // the project gets what an init walk installs: the locked always-on set and the stack's seeds too
         const sel = JSON.parse(one.out.match(/^printf '%s\\n' '(\{.*\})' > /m)[1]);
-        for (const r of ['baseline-interaction', 'baseline-navigation', 'csharp-conventions', 'dotnet-repair-agents']) assert.ok(sel.rules.includes(r), r);
+        for (const r of ['alfred-interaction', 'alfred-navigation', 'csharp-conventions', 'dotnet-repair-agents']) assert.ok(sel.rules.includes(r), r);
         for (const m of ['navigation', 'documentation', 'memory']) assert.ok(sel.mcps.includes(m), m);
         assert.ok(sel.skills.includes('csharp') && sel.skills.includes('dotnet-testing'));
         assert.strictEqual((one.out.match(/^# billed/mg) || []).length, 1);
@@ -612,7 +612,7 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         fs.mkdirSync(path.join(other, 'scripts', 'install'), { recursive: true });
         fs.mkdirSync(path.join(other, 'meta'));
         fs.writeFileSync(path.join(other, 'scripts', 'install', 'alfred-code.js'), '');
-        fs.writeFileSync(path.join(other, 'meta', 'recommendations.json'), JSON.stringify({ always: { skills: ['from-the-source'], rules: ['baseline-interaction'] }, stacks: {} }));
+        fs.writeFileSync(path.join(other, 'meta', 'recommendations.json'), JSON.stringify({ always: { skills: ['from-the-source'], rules: ['alfred-interaction'] }, stacks: {} }));
         const arm = cli(['replay', '--dry-run', '--skill', 'alfred-habits-root-cause', '--level', 'plain', '--source', other, '--out', out]);
         assert.strictEqual(arm.code, 0, arm.err);
         const armSel = JSON.parse(arm.out.match(/^printf '%s\\n' '(\{.*\})' > /m)[1]);

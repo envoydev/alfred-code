@@ -189,15 +189,24 @@ test('policy-rev: current when the stamped rev matches the shipped skill; stale 
     const { snap, install, fixtureFile } = scaffold();
     fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
     fs.mkdirSync(path.join(snap, 'stack', 'skills', 'alfred-capture-agent-capabilities'), { recursive: true });
-    fs.writeFileSync(path.join(install, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), 'policy-rev: abc123\nsome text');
+    fs.writeFileSync(path.join(install, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), 'policy-rev: abc123\nsome text');
     fs.writeFileSync(path.join(snap, 'stack', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md'), 'policy-rev: abc123\nsome text');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: current$/m);
 
     fs.writeFileSync(path.join(snap, 'stack', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md'), 'policy-rev: def456\nsome text');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: stale installed=abc123 snapshot=def456$/m);
 
-    fs.writeFileSync(path.join(install, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), 'no rev stamped here');
+    fs.writeFileSync(path.join(install, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), 'no rev stamped here');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: stale installed=none snapshot=def456$/m, 'a rule with no rev at all IS the mismatch, nothing further to check');
+});
+
+test('policy-rev: an install still holding the pre-2.1.6 file name is read, not reported as none', () => {
+    const { snap, install, fixtureFile } = scaffold();
+    fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
+    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'alfred-capture-agent-capabilities'), { recursive: true });
+    fs.writeFileSync(path.join(install, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), 'policy-rev: abc123\nsome text');
+    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md'), 'policy-rev: abc123\nsome text');
+    assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: current$/m);
 });
 
 test('--log mode: restart yes on mcps=<n> above 0 in the installer log, and names each !! line', () => {
@@ -465,18 +474,18 @@ test('new items: an arriving rename still names its old copy for the prune; None
         stamp: 'sha: aaa111\nversion: 0.2.60\nshipped-hooks: guard-read-whole-file\n',
         settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-read-whole-file' } },
         fixture: { files: [
-            { status: 'renamed', filename: 'stack/rules/baseline-memory.md', previous_filename: 'stack/rules/old-memory.md' },
+            { status: 'renamed', filename: 'stack/rules/alfred-memory.md', previous_filename: 'stack/rules/old-memory.md' },
             { status: 'added', filename: 'stack/hooks/docs-session.js' },
         ] },
     });
     fs.mkdirSync(path.join(snap, 'meta'), { recursive: true });
-    fs.writeFileSync(path.join(snap, 'meta', 'recommendations.json'), JSON.stringify({ always: { rules: ['baseline-memory'] } }));
+    fs.writeFileSync(path.join(snap, 'meta', 'recommendations.json'), JSON.stringify({ always: { rules: ['alfred-memory'] } }));
     fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'rules', 'old-memory.md'), '# old\n');
     const listing = path.join(install, 'listing.json');
     fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
     const on = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
-    assert.match(on, /^new: rule baseline-memory\tarrives\t-\tfrom=old-memory\told-on-disk$/m, on);
+    assert.match(on, /^new: rule alfred-memory\tarrives\t-\tfrom=old-memory\told-on-disk$/m, on);
     assert.match(on, /^new: hook docs-session\toff\talfred-code$/m, 'None held');
     // The core carrying the hooks is locked on: its listing flag can read false while it runs (S22),
     // and the installer's read-back holds the None the same way.

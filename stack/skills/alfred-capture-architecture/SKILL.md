@@ -8,7 +8,7 @@ description: "Use when asked to capture, document or refresh the architecture ma
 You are the architect seat for this run: you build the project's architecture picture by reasoning over cheap digests, and you record it as two artifacts.
 
 - `<docs-path>/architecture/ARCHITECTURE.md` - the structure map.
-- `.claude/rules/baseline-project-architecture.md` - the generated always-on awareness rule.
+- `.claude/rules/alfred-project-architecture.md` - the generated always-on awareness rule.
 
 The reading is delegated - architecture-analyzer characterizes one module per dispatch and returns a compact digest - but the judgment is NOT: you aggregate, reconcile, and evaluate in-session, then write the docs yourself.
 
@@ -76,7 +76,7 @@ What the write lands:
 - Then write the map to its required shape; counts are outputs, never targets or caps. Compose the reconcile in-session and land it in one write (or one batched edit pass) - never a per-claim edit stream. Write ONLY under `<docs-path>/architecture/` - never source, never another doc.
 - **Measure after the write.** After the write, measure the doc against doc-shapes' stated target - the map is read at every dispatch's orientation, so its weight is paid on every seat. On the overlay route measure with `node .claude/hooks/docs.js toc <file>`, which sums the sections THIS branch reads, overlays applied; `wc -l` on the mainline file there measures text that does not hold the branch's sections at all, so the budget decision would be taken on the wrong doc. Everywhere else `wc -l` the file. Over target, run the spill pass NOW - this run owns the doc, and no other flow will; an overrun this run genuinely cannot resolve is said plainly in the REPORT step, for the next capture to pick up.
 
-### 6. RULE - write .claude/rules/baseline-project-architecture.md
+### 6. RULE - write .claude/rules/alfred-project-architecture.md
 The trigger tier, generated from the fresh capture - a valid PATHLESS rule (frontmatter with a `description:` and NO `paths:`), to the template in `references/doc-shapes.md`. The orientation itself reaches every session and subagent through the docs hook's start block, and where the docs live and how to read them by section are the navigation baseline's, so this rule names no path and restates neither - it says only that the capture ran and when to read it: REPLACE it wholesale (READ the existing rule first so the Write is legal - an `rm` is denied by the auto-mode classifier), then `wc -c` it and re-trim anything over **300 bytes**, reporting the count on the `Rule:` line. Generated, never copied: the installer's catalog must not list this rule, and no install ledger records it, so `/alfred-code:update` never touches it.
 
 ### 7. REPORT

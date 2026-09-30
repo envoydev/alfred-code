@@ -123,7 +123,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    bounded commands inline. Correlate multiple sources on a shared key - a correlation/trace id,
    a timestamp window, a release version - and say which sources agreed and which did not. At
    tier 4, with no source to pull, this step is code-first instead: locate the named behaviour
-   with the navigation server per `.claude/rules/baseline-navigation.md`, read the paths that could produce the
+   with the navigation server per `.claude/rules/alfred-navigation.md`, read the paths that could produce the
    symptom, and attempt a repro. Never slurp a large log into this context - grep to the signal
    and quote a bounded window. If it cannot be reproduced, say so with what you tried, and work
    from the evidence and the code. Append the digests' key lines to the findings file, stamp

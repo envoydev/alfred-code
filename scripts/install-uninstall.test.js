@@ -25,19 +25,19 @@ test('removeManagedFiles: a copy whose hash still matches goes, an edited one an
     const claudeDir = path.join(TMP, `f-${seq++}`, '.claude');
     put(path.join(claudeDir, 'skills', 'csharp', 'SKILL.md'), 'stack');
     put(path.join(claudeDir, 'skills', 'mine', 'SKILL.md'), 'mine');
-    put(path.join(claudeDir, 'rules', 'baseline-git.md'), 'stack rule');
+    put(path.join(claudeDir, 'rules', 'alfred-git.md'), 'stack rule');
     put(path.join(claudeDir, 'rules', 'edited.md'), 'stack rule');
     put(path.join(claudeDir, 'hooks', 'docs.js'), 'engine');
     put(path.join(claudeDir, 'agents', 'seat.md'), 'seat');
     const library = { skills: { csharp: hashItem(path.join(claudeDir, 'skills', 'csharp')) }, agents: {},
-        rules: { 'baseline-git': hashItem(path.join(claudeDir, 'rules', 'baseline-git.md')), edited: hashItem(path.join(claudeDir, 'rules', 'edited.md')) } };
+        rules: { 'alfred-git': hashItem(path.join(claudeDir, 'rules', 'alfred-git.md')), edited: hashItem(path.join(claudeDir, 'rules', 'edited.md')) } };
     const files = { 'hooks/docs.js': hashItem(path.join(claudeDir, 'hooks', 'docs.js')), 'agents/seat.md': hashItem(path.join(claudeDir, 'agents', 'seat.md')) };
     fs.writeFileSync(path.join(claudeDir, 'rules', 'edited.md'), 'edited by hand');
     const logs = [];
     uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library, files, log: (m) => logs.push(m) });
     assert.ok(!fs.existsSync(path.join(claudeDir, 'skills', 'csharp')));
     assert.ok(fs.existsSync(path.join(claudeDir, 'skills', 'mine', 'SKILL.md')), 'the user\'s own skill stays');
-    assert.ok(!fs.existsSync(path.join(claudeDir, 'rules', 'baseline-git.md')));
+    assert.ok(!fs.existsSync(path.join(claudeDir, 'rules', 'alfred-git.md')));
     assert.strictEqual(fs.readFileSync(path.join(claudeDir, 'rules', 'edited.md'), 'utf8'), 'edited by hand');
     assert.ok(!fs.existsSync(path.join(claudeDir, 'hooks')), 'an emptied folder goes');
     assert.ok(!fs.existsSync(path.join(claudeDir, 'agents')));
@@ -706,7 +706,7 @@ test('uninstall over a corrupt account file refuses before any change and names 
 // unreadable settings file hides the level, so no memory server runs here: the summary says so, never 'kept'.
 test('seed update --installed-only (full copy route, local scope): a replaced account file with an unreadable settings.local.json says the memory registration is gone', POSIX_ONLY, () =>
 {
-    const { outs } = seedRun(['install', 'update'], 'rule baseline-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
+    const { outs } = seedRun(['install', 'update'], 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
         tools: { claude: REPLACING_CLAUDE }, env: COPY_ROUTE,
         args: [['--scope', 'local', '--memory-level', 'project'], ['--installed-only', '--scope', 'local']],
         each: (repo, i) =>

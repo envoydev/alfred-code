@@ -186,7 +186,7 @@ test('M92: build-from-scratch Next run names the run book and the capabilities c
     assert.ok(at.every((i) => i > 0), `every capture named: ${line}`);
     assert.deepStrictEqual([...at].sort((a, b) => a - b), at, 'in the template\'s post-install order, agent-capabilities last');
     assert.match(line, /PROJECT-CAPABILITIES\.md/);
-    assert.match(line, /baseline-project-agent-capabilities\.md/);
+    assert.match(line, /alfred-project-agent-capabilities\.md/);
 });
 
 // ---- M93: the over-build tags are this capture's own ---------------------------------------------------------
@@ -233,8 +233,8 @@ test('M96: task-design states verify-plan\'s own grades for a missing Oriented: 
 });
 
 // ---- M97: the docs-root rule lists every capture domain folder ------------------------------------------------
-test('M97: baseline-docs-root names diagnoses/ and project-capabilities/', () => {
-    const line = read('stack/rules/baseline-docs-root.md').split('\n').find((l) => /EVERY doc the assistant creates/.test(l)) || '';
+test('M97: alfred-docs-root names diagnoses/ and project-capabilities/', () => {
+    const line = read('stack/rules/alfred-docs-root.md').split('\n').find((l) => /EVERY doc the assistant creates/.test(l)) || '';
     assert.match(line, /`diagnoses\/`/);
     assert.match(line, /`project-capabilities\/PROJECT-CAPABILITIES\.md`/);
     assert.match(flat(skill('alfred-issue-diagnoser')), /diagnoses\//, 'the folder the diagnoser writes');

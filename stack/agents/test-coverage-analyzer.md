@@ -30,7 +30,7 @@ return raw structured data, not prose for a human.
   never by a remembered name; every project installs a different set - to judge the suite
   against house practice and to apply the exclusion catalog's semantics. With none matching,
   characterize coverage from the instrumented output alone and say so.
-- Locate uncovered code with the navigation server per `.claude/rules/baseline-navigation.md`; `Read` located
+- Locate uncovered code with the navigation server per `.claude/rules/alfred-navigation.md`; `Read` located
   ranges. **Hard cap: 2 locating passes per hot spot** - still unclear after 2, record it
   uncertain rather than reading on.
 - `Bash` is here for READING only - the architecture docs engine (`node .claude/hooks/docs.js where <path>`

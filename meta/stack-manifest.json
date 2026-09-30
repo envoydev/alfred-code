@@ -1,5 +1,5 @@
 {
-  "note": "The six lists, the `retired` block and the `renamed` map the seed reads (scripts/install/manifest.js). `renamed` is the ONE home of a shipped skill, seat or MCP server name that changed (old -> new, agents without `.md`; an MCP name is its plugin and its server alike, a browser engine renamed by its prefix): update carries a pick, a seat deny and a selection line across it, each old skill or seat name is also retired so its copy is pruned, and an old MCP plugin is swapped for the new one where it is installed. Hand-edited since R33 deleted the shell twins and the script that generated it; the lint holds it to disk, the HTML and the skill count. The file-write matchers all name `MultiEdit` and the dispatch matcher names `Task` beside `Agent` (2.1.5 M7): the tools reference lists neither tool, but a matcher token no tool carries never matches, and the 2.1.284 CLI still spells both - MultiEdit among its edit-tool names, Task as the agent tool's old name - so a build that sends either is still gated.",
+  "note": "The six lists, the `retired` block and the `renamed` map the seed reads (scripts/install/manifest.js). `renamed` is the ONE home of a shipped skill, seat, rule or MCP server name that changed (old -> new, agents and rules without `.md`; an MCP name is its plugin and its server alike, a browser engine renamed by its prefix): update carries a pick, a seat deny and a selection line across it, each old skill or seat name is also retired so its copy is pruned, and an old MCP plugin is swapped for the new one where it is installed. Hand-edited since R33 deleted the shell twins and the script that generated it; the lint holds it to disk, the HTML and the skill count. The file-write matchers all name `MultiEdit` and the dispatch matcher names `Task` beside `Agent` (2.1.5 M7): the tools reference lists neither tool, but a matcher token no tool carries never matches, and the 2.1.284 CLI still spells both - MultiEdit among its edit-tool names, Task as the agent tool's old name - so a build that sends either is still gated.",
   "skills": [
     {
       "repo": "envoydev/alfred-code",
@@ -34,7 +34,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "alfred-capture-architecture",
-      "note": "deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule baseline-project-architecture.md; manual /-only"
+      "note": "deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule alfred-project-architecture.md; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -74,17 +74,17 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "alfred-capture-agent-capabilities",
-      "note": "deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule baseline-project-agent-capabilities.md; manual /-only"
+      "note": "deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule alfred-project-agent-capabilities.md; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
       "name": "alfred-capture-project-capabilities",
-      "note": "deliberate run-book capture - reads the repo first (the first-look scan, launch configs, compose, README), asks only for the gaps (start and reach, login and where the credentials live, flows and edge cases, before-you-run and debugging), writes docs/project-capabilities/PROJECT-CAPABILITIES.md (its own docs domain) + the generated pointer rule baseline-project-run-book.md; credentials by location, never by value; manual /-only"
+      "note": "deliberate run-book capture - reads the repo first (the first-look scan, launch configs, compose, README), asks only for the gaps (start and reach, login and where the credentials live, flows and edge cases, before-you-run and debugging), writes docs/project-capabilities/PROJECT-CAPABILITIES.md (its own docs domain) + the generated pointer rule alfred-project-run-book.md; credentials by location, never by value; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
       "name": "alfred-capture-related-projects",
-      "note": "deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule baseline-project-related-context.md + docs/related-projects/RELATED-PROJECTS.md (its own docs domain; docs/related-context/ stays the plain drop box for every other sibling-repo paper); manual /-only"
+      "note": "deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule alfred-project-related-context.md + docs/related-projects/RELATED-PROJECTS.md (its own docs domain; docs/related-context/ stays the plain drop box for every other sibling-repo paper); manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -134,17 +134,17 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "alfred-habits-root-cause",
-      "note": "the house root-cause loop (R72, written fresh): read, reproduce, localize, compare, one hypothesis per change, fix at the root test-first, question the design after three; preloaded by both diagnosers and the four resolvers, pointed at by baseline-interaction, loaded first in the investigation's root-cause step; the stop contract's failing-run branch logs a probe row per streak, nothing injected"
+      "note": "the house root-cause loop (R72, written fresh): read, reproduce, localize, compare, one hypothesis per change, fix at the root test-first, question the design after three; preloaded by both diagnosers and the four resolvers, pointed at by alfred-interaction, loaded first in the investigation's root-cause step; the stop contract's failing-run branch logs a probe row per streak, nothing injected"
     },
     {
       "repo": "envoydev/alfred-code",
       "name": "alfred-habits-done-gate",
-      "note": "the done gate (R106, moved out of baseline-quality-gates): build + relevant tests after the last edit, output quoted, green summary vs red trace, scoped runs then the full suite once, never a gamed pass; pointed at by baseline-quality-gates, preloaded by every verifier and implementer, loaded by the solve and implement closes; the stop contract's done-claim branch logs a probe row, never a hold"
+      "note": "the done gate (R106, moved out of alfred-quality-gates): build + relevant tests after the last edit, output quoted, green summary vs red trace, scoped runs then the full suite once, never a gamed pass; pointed at by alfred-quality-gates, preloaded by every verifier and implementer, loaded by the solve and implement closes; the stop contract's done-claim branch logs a probe row, never a hold"
     },
     {
       "repo": "envoydev/alfred-code",
       "name": "alfred-habits-test-first",
-      "note": "test-first (R106): write the test, watch it fail for the expected reason, minimal code, green, refactor; pointed at by baseline-interaction, preloaded by every implementer but devops-implementer (2.1.5 M53: its loop validates config and writes no test), loaded by alfred-task-implement"
+      "note": "test-first (R106): write the test, watch it fail for the expected reason, minimal code, green, refactor; pointed at by alfred-interaction, preloaded by every implementer but devops-implementer (2.1.5 M53: its loop validates config and writes no test), loaded by alfred-task-implement"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -627,29 +627,29 @@
   ],
   "rules": [
     {
-      "file": "baseline-interaction.md",
+      "file": "alfred-interaction.md",
       "note": "communication + evaluating-proposals + planning (merged by exclusion affinity)"
     },
     {
-      "file": "baseline-quality-gates.md",
+      "file": "alfred-quality-gates.md",
       "note": "code-quality + definition-of-done (merged by exclusion affinity)"
     },
     {
-      "file": "baseline-security.md"
+      "file": "alfred-security.md"
     },
     {
-      "file": "baseline-git.md"
+      "file": "alfred-git.md"
     },
     {
-      "file": "baseline-navigation.md"
+      "file": "alfred-navigation.md"
     },
     {
-      "file": "baseline-docs-root.md",
+      "file": "alfred-docs-root.md",
       "note": "generated-docs root resolution (ALFRED_CODE_DOCS_PATH)"
     },
     {
-      "file": "baseline-memory.md",
-      "note": "what goes to the memory MCP - locks it in, like baseline-navigation locks the navigation server"
+      "file": "alfred-memory.md",
+      "note": "what goes to the memory MCP - locks it in, like alfred-navigation locks the navigation server"
     },
     {
       "file": "markdown-docs.md",
@@ -988,7 +988,7 @@
     {
       "name": "memory",
       "args": "-e MCP_MEMORY_STORAGE_BACKEND=@MEMORY_BACKEND@ -e MCP_MEMORY_SQLITE_PATH=@MEMORY_DB_PATH@ -e MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000 -- node -e @ROOT_BOOT@ -- project uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --with numpy --from mcp-memory-service[sqlite]@MEMORY_PIN@ memory server",
-      "note": "memory: required, like navigation and documentation (baseline-memory.md locks it in) - shared recall across sessions/projects; --memory-level picks where its db lives"
+      "note": "memory: required, like navigation and documentation (alfred-memory.md locks it in) - shared recall across sessions/projects; --memory-level picks where its db lives"
     },
     {
       "name": "documentation",
@@ -1080,7 +1080,14 @@
       "baseline-related-projects.md",
       "house-baseline.md",
       "web-conventions.md",
-      "aspnet-conventions.md"
+      "aspnet-conventions.md",
+      "baseline-docs-root.md",
+      "baseline-git.md",
+      "baseline-interaction.md",
+      "baseline-memory.md",
+      "baseline-navigation.md",
+      "baseline-quality-gates.md",
+      "baseline-security.md"
     ],
     "hooks": [
       "require-convention-skill.js",
@@ -1131,6 +1138,15 @@
     "agents": {
       "ci-failure-diagnoser": "alfred-issue-diagnoser-ci",
       "runtime-failure-diagnoser": "alfred-issue-diagnoser-runtime"
+    },
+    "rules": {
+      "baseline-docs-root": "alfred-docs-root",
+      "baseline-git": "alfred-git",
+      "baseline-interaction": "alfred-interaction",
+      "baseline-memory": "alfred-memory",
+      "baseline-navigation": "alfred-navigation",
+      "baseline-quality-gates": "alfred-quality-gates",
+      "baseline-security": "alfred-security"
     },
     "mcps": {
       "serena": "navigation",

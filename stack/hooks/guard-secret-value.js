@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
-// PreToolUse gate (matchers: Read + Bash), plus a CLI mode: baseline-security.md's rule that a
+// PreToolUse gate (matchers: Read + Bash), plus a CLI mode: alfred-security.md's rule that a
 // credential is read for its PRESENCE, never its value - mechanized. Measured: the rule held only
 // as prose, and a session checking whether SENTRY_ACCESS_TOKEN was set printed the whole env block
 // with `console.log(JSON.stringify(s.env))` on its first attempt (the value landed in the tool
@@ -1111,7 +1111,7 @@ function lineRedactor() {
 
 // `<git dump> | node guard-secret-value.js --redact-stdin` - what a git command that PRINTS file content is
 // rewritten into (`git diff`, `git show`, `git log -p`, `git stash show -p`; I2, 2.1.4 audit): replayed at
-// 23c24b9d, each printed a tracked appsettings.json's ClientSecret raw, and baseline-security.md runs
+// 23c24b9d, each printed a tracked appsettings.json's ClientSecret raw, and alfred-security.md runs
 // `git add -N . && git diff HEAD` over every security-relevant change. A stream filter: the output is masked
 // line by line as it passes (lineRedactor above), synchronously - fd reads, so no code below this block runs -
 // and with no size cap. The note goes to STDERR, only when something was masked.
@@ -1234,7 +1234,7 @@ const rewrite = (command, detail) => {
   process.exit(0);
 };
 const presenceHint = (file) =>
-  `Per baseline-security.md a credential is read for PRESENCE only:\n` +
+  `Per alfred-security.md a credential is read for PRESENCE only:\n` +
   `  node "${__filename}" --presence "${file}" [KEY ...]   ->  KEY=set (N chars) | KEY=absent\n` +
   `A shell dump of it - cat "${file}" - is rewritten into the redacted view for free:\n` +
   `  node "${__filename}" --redacted "${file}"   ->  the file, every credential value shown as <set (N chars)>\n` +
@@ -2275,7 +2275,7 @@ if (isShellTool(payload.tool_name)) {
   // the shape only - the value is never repeated.
   if (!receiptLive && SECRET_SHAPE.test(raw)) {
     block('Blocked: the command carries a credential-shaped literal (a token / key / JWT).\n' +
-      'Per baseline-security.md a secret never passes through a tool call or the chat: the user puts it\n' +
+      'Per alfred-security.md a secret never passes through a tool call or the chat: the user puts it\n' +
       'in the file by hand, or runs a copy-ready command in their own terminal (getpass, not an argument).\n');
   }
   try {
@@ -2700,7 +2700,7 @@ if (payload.tool_name === 'Grep') {
   // whatever the search returns - judged here by the same shape test, in every output mode.
   if (!receiptLive && SECRET_SHAPE.test(String(input.pattern || ''))) {
     block('Blocked: the Grep pattern carries a credential-shaped literal (a token / key / JWT).\n'
-      + 'Per baseline-security.md a secret never passes through a tool call or the chat, and a search\n'
+      + 'Per alfred-security.md a secret never passes through a tool call or the chat, and a search\n'
       + 'pattern is a tool input like any other - it is in the transcript before the first match is.\n'
       + 'Search for the KEY NAME instead, or ask presence:\n'
       + `  node "${__filename}" --presence <file> [KEY ...]\n`);

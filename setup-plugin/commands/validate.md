@@ -69,7 +69,7 @@ the fallback only where the harness lacks the tool.
 
 **House voice in every line this run emits** - narration, tables and the asks alike: single
 dashes, never em-dashes, and single quotes in prose. A fresh or refreshed install may have no
-`.claude/rules/baseline-interaction.md` loaded at all, so this command's own text is the only place
+`.claude/rules/alfred-interaction.md` loaded at all, so this command's own text is the only place
 the voice can come from (measured: a first-run narration line opened with an em-dash, on the one
 surface where the rule forbidding it cannot yet exist).
 
@@ -282,8 +282,8 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   `installed but disabled for this project` - and its accept action is `claude plugin enable
   <name>`, never an install and never an uninstall. A DISABLED plugin the user leaves alone is a
   deliberate choice and is not re-raised in the close.
-- **`memory` joins `navigation` and `documentation`** as an always-required MCP (`baseline-memory.md` locks
-  it in the same way `baseline-navigation.md` locks the navigation server) - MISSING when the project carries no
+- **`memory` joins `navigation` and `documentation`** as an always-required MCP (`alfred-memory.md` locks
+  it in the same way `alfred-navigation.md` locks the navigation server) - MISSING when the project carries no
   registration at all, never REDUNDANT: no stack owns it, so it belongs to every install regardless
   of what is detected. Whenever `memory` IS registered - shown in this table or already installed -
   read its level with `node .claude/hooks/memory.js level` (the project's own copy; fall back to
@@ -521,12 +521,12 @@ profile), output to `$TMP/select.out` - then:
   NAMES that scope ('enabled at USER scope - removing it removes it for every
   project'), since account-wide and project-local are different consents.
 - **Check the generated rule's stamped policy against this release, mechanically.** The usage-policy
-  block inside `.claude/rules/baseline-project-agent-capabilities.md` ships verbatim from the skill
+  block inside `.claude/rules/alfred-project-agent-capabilities.md` ships verbatim from the skill
   and is never re-fetched, so a project can carry a two-release-old policy with nothing to notice it.
   One comparison:
 
   ```bash
-  grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/baseline-project-agent-capabilities.md
+  grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/alfred-project-agent-capabilities.md
   grep -m1 -o 'policy-rev: [0-9a-f]*' "$TMP/repo/stack/skills/alfred-capture-agent-capabilities/SKILL.md"
   ```
 
@@ -581,7 +581,7 @@ byte-for-byte in a fenced block (`install audit: nothing to report` is the whole
 project). A `high` row gets ONE AskUserQuestion: 'Fix the stack-owned rows' (recommended - an
 update re-run pins a stack server) or 'Leave them'. A row on a server, hook or grant the user added
 by hand is reported with its line and never edited; a credential row is the rotate ask
-`baseline-security.md` owns, never a fix here.
+`alfred-security.md` owns, never a fix here.
 
 Then check the LIBRARY copies - every skill (no plugin carries one since 2.1.0), a seat on its copy
 route, and every RULE (no plugin ever carries one), is a project copy, and the stamp holds the hash of

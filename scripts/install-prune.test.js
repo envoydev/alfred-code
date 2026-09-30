@@ -130,7 +130,7 @@ test('seed update: a blind listing read keeps the stamp picks, so the next updat
     const prepare = (repo) =>
     {
         fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
-        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
+        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'alfred-interaction.md'), 'x\n');
         // A 1.2.0 project: the stamp carries the name that release wrote.
         fs.writeFileSync(path.join(repo, '.claude', 'claude-stack.stamp'), // legacy-name
             'version: 1.2.0\nsha: 0000000\npicked-skills: angular-conventions@claude-stack-angular,angular-testing@claude-stack-angular\npicked-agents: \n');

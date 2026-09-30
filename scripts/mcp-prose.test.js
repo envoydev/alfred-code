@@ -254,9 +254,9 @@ test('M42 the status example row shows the plugin route launcher at the release 
 
 // M43: mcp-memory-service reads tags only from `metadata` (server/handlers/memory.py, 11.14.0 line 193); a top-level
 // `tags` argument is dropped, and an untagged row is invisible to the session-start project filter.
-test('M43 baseline-memory names metadata.tags for the project tag', () =>
+test('M43 alfred-memory names metadata.tags for the project tag', () =>
 {
-    const text = read('stack/rules/baseline-memory.md');
+    const text = read('stack/rules/alfred-memory.md');
     assert.match(text, /`metadata\.tags` `project:<name>`/);
 });
 
@@ -266,7 +266,7 @@ test('M44 the memory ToolSearch line is pinned across its homes', () =>
     const pin = JSON.parse(read('meta/shared-rules.json')).rules['memory-toolsearch-line'];
     assert.ok(pin, 'a memory-toolsearch-line pin');
     const line = 'ToolSearch select:mcp__plugin_memory_memory__memory_store,mcp__plugin_memory_memory__memory_search,mcp__plugin_memory_memory__memory_list';
-    assert.strictEqual(pin.owner.file, 'stack/rules/baseline-memory.md');
+    assert.strictEqual(pin.owner.file, 'stack/rules/alfred-memory.md');
     assert.strictEqual(pin.owner.marker, line);
     assert.deepStrictEqual(pin.sites.map((s) => [s.file, s.marker]), [['stack/hooks/memory-session.js', line]]);
 });

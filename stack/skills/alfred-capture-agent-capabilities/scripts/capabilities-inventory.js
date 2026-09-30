@@ -21,7 +21,7 @@ const { spawnSync } = require('node:child_process');
 
 const SKILL_DIR = path.resolve(__dirname, '..');
 const TEMPLATE_REL = 'references/generated-rule-template.md';
-const RULE_REL = '.claude/rules/baseline-project-agent-capabilities.md';
+const RULE_REL = '.claude/rules/alfred-project-agent-capabilities.md';
 // The orchestration skills that carry NO `disable-model-invocation` by design, so the architecture and
 // code-quality loops can invoke them - they belong with the slash-only set in the rule, marked as the exception.
 const MODEL_INVOCABLE_BY_DESIGN = new Set(['alfred-capture-architecture', 'alfred-capture-architecture-quality', 'alfred-capture-code-quality']);
@@ -543,7 +543,7 @@ function precheck(projectRoot, rulePath)
 {
     const ruleStat = statOf(rulePath);
     if (!ruleStat) return { first: true, hits: [] };
-    const skipName = (n) => n.startsWith('baseline-project-') || n === 'project-code-style.md';
+    const skipName = (n) => /^(alfred|baseline)-project-/.test(n) || n === 'project-code-style.md';
     const hits = [];
     const visit = (p, depth) =>
     {

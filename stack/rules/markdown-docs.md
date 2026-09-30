@@ -20,7 +20,7 @@ tweaks.
      matches nothing), so an exclusion cannot live in the glob. -->
 
 **The generated docs root is NOT governed here, and neither are the generated rules.** Every document
-under `<docs-path>`, every generated `.claude/rules/baseline-project-*.md` and
+under `<docs-path>`, every generated `.claude/rules/alfred-project-*.md` and
 `.claude/rules/project-code-style.md` belongs to the skill that writes it, which fixes its shape
 verbatim, down to the frontmatter - two owners pulling one file in opposite directions is worse than
 either alone.

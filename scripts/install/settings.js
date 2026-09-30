@@ -645,7 +645,7 @@ function writeSettings(opts)
         }
     }
 
-    // baseline-git forbids AI attribution; the `attribution` setting enforces it. Key by key and add-only:
+    // alfred-git forbids AI attribution; the `attribution` setting enforces it. Key by key and add-only:
     // a value the project set stays, and at local scope a settings.json value is never hidden by a seed.
     const attrBefore = plain(data.attribution) ? Object.keys(data.attribution) : [];
     if (attribution && (data.attribution === undefined || (data.attribution && typeof data.attribution === 'object' && !Array.isArray(data.attribution))))

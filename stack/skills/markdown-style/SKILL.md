@@ -29,7 +29,7 @@ Markdown form only - not prose clarity (that is Vale) or spelling (codespell / h
 
 ## How to run a review
 
-**The generated docs root is NOT governed here, and neither are the generated rules.** Skip every document under `<docs-path>` and every generated `.claude/rules/baseline-project-*.md` or `.claude/rules/project-code-style.md` - the skill that writes each one fixes its shape verbatim, down to the frontmatter, and a style pass over it pulls one file two ways.
+**The generated docs root is NOT governed here, and neither are the generated rules.** Skip every document under `<docs-path>` and every generated `.claude/rules/alfred-project-*.md` or `.claude/rules/project-code-style.md` - the skill that writes each one fixes its shape verbatim, down to the frontmatter, and a style pass over it pulls one file two ways.
 
 Two passes, syntax before style. The reviewer reads a syntax violation differently from a style violation, so do not interleave them.
 

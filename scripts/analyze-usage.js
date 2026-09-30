@@ -185,7 +185,7 @@ function rmVerifyTail(cmd) {
   return targets.some((t) => tail.includes(t));
 }
 
-// NAVIGATION, as baseline-navigation words it: locate with the navigation server or the LSP, then read the range. A
+// NAVIGATION, as alfred-navigation words it: locate with the navigation server or the LSP, then read the range. A
 // read of a SOURCE file is LOCATED when a locate step sits in the NAV_WINDOW tool calls before it, or
 // in the same call (`rg -n x src && sed -n '10,40p' src/a.ts`). A symbol step in the window wins
 // over a grep, so 'grep-then-read' is a read that only a name-match located. Glob and find locate a
@@ -2888,7 +2888,7 @@ function efficiencyRows(main, agg, blockLedger) {
     const denials = blockLedger && blockLedger.given
       ? `${(blockLedger.byHook[WHOLE_FILE_HOOK] || { blocks: 0 }).blocks} whole-file denial(s) (hook-block ledger)`
       : `${agg.wholeFileBracket || 0} whole-file denial(s) (transcript bracket - pass --hook-blocks for the ledger)`;
-    rows.push({ practice: 'navigation', measured: `${n.located} of ${n.reads} source-file read(s) had a locate step in the ${NAV_WINDOW} calls before${n.reads ? ` (${Math.round((100 * n.located) / n.reads)}%)` : ''}; symbol tools ${n.symbolCalls} call(s) against ${n.grepLocated} grep-then-read sequence(s); ${denials}`, tests: 'baseline-navigation, main and seats: locate with serena or the LSP, then read the range - a read with no locate step before it reads to FIND something, a grep-then-read answers a symbol question by name-match, and every whole-file denial is a round trip lost' });
+    rows.push({ practice: 'navigation', measured: `${n.located} of ${n.reads} source-file read(s) had a locate step in the ${NAV_WINDOW} calls before${n.reads ? ` (${Math.round((100 * n.located) / n.reads)}%)` : ''}; symbol tools ${n.symbolCalls} call(s) against ${n.grepLocated} grep-then-read sequence(s); ${denials}`, tests: 'alfred-navigation, main and seats: locate with serena or the LSP, then read the range - a read with no locate step before it reads to FIND something, a grep-then-read answers a symbol question by name-match, and every whole-file denial is a round trip lost' });
   }
   {
     const servers = Object.entries(agg.mcpServers || {});

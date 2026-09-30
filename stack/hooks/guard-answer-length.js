@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
-// The short-answer contract (baseline-interaction.md: 'at most 3 sentences plus points', 'if the
+// The short-answer contract (alfred-interaction.md: 'at most 3 sentences plus points', 'if the
 // user wants deeper detail they will ask') failed as prose the same way every other house mandate
 // did: the user re-asked for it as a BRAND NEW rule while both rule copies carried it verbatim,
 // and the memory record holds four separate 'you write too much text' / 'shorter and simpler'
@@ -185,7 +185,7 @@ function proseOf(text) {
 
 // The budget text, one copy for both routes that inject it.
 const BUDGET_TEXT =
-        `Answer budget (baseline-interaction.md, house rule): at most 3 sentences plus bullet ` +
+        `Answer budget (alfred-interaction.md, house rule): at most 3 sentences plus bullet ` +
         `points, ~${BUDGET} characters of prose. Lead with the result and stop - no preamble, no ` +
         `restating the request, no listing what you considered, no caveat paragraph. Code, ` +
         `tables and command output are exempt and do not count. Write more ONLY if THIS message ` +
@@ -353,7 +353,7 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
   const streak = correctionStreak(payload.prompt);
   const extra = streak >= STREAK_TURNS
     ? ' FORMAT ASK: ' + streak + ' consecutive short turns, each after a long answer. If these are ' +
-      'corrections of the SAME deliverable, the house rule (baseline-interaction) says the next act is ONE ' +
+      'corrections of the SAME deliverable, the house rule (alfred-interaction) says the next act is ONE ' +
       'AskUserQuestion on the format - shape, length, language, what to keep - not another redraft ' +
       '(measured: nine corrections and nine redrafts of one report with no ask, 1.64M cache-read).'
     : '';
@@ -489,7 +489,7 @@ if (payload.hook_event_name === 'Stop') {
     // offer - so this one yields and asks for the fix INSIDE that turn.
     process.stderr.write(
       `This answer uses ${dashes} em-dash(es). The house voice is single dashes - the rule is in\n` +
-      `baseline-interaction.md and this hook injects it into every turn, including the one you just\n` +
+      `alfred-interaction.md and this hook injects it into every turn, including the one you just\n` +
       `answered (measured: 32 em-dashes in 21,434 characters of prose in one audited session, with\n` +
       `the rule loaded three times in the same transcript).\n` +
       (stopContractBlockedThisTurn(userTs)
@@ -509,7 +509,7 @@ if (payload.hook_event_name === 'Stop') {
     `This answer is ${body.length} characters of prose - the house budget is ~${BUDGET} (about 3\n` +
     `sentences plus points) and the hard cap is ${HARD_CAP}. Code, tables and command output were\n` +
     `already excluded from that count, and nothing in the user's message asked for depth, so this\n` +
-    `is the wall-of-text failure baseline-interaction.md exists to prevent (measured: repeated\n` +
+    `is the wall-of-text failure alfred-interaction.md exists to prevent (measured: repeated\n` +
     `'you write too much text' / 'shorter and simpler' corrections with the rule loaded verbatim).\n` +
     `Re-answer now at budget: the result first, then only what the user must act on. Cut preamble,\n` +
     `the recap of what they asked, the options you rejected, the caveats they did not ask for, and\n` +

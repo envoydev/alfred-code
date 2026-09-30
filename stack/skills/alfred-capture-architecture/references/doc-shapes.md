@@ -4,7 +4,7 @@
 
 - **`<docs-path>/architecture/ARCHITECTURE.md`** - the structure map's required shape
 - **Write protocol** (how step 5 lands the doc) - the stamp, section format, ORIENTATION.md, watch.json, branches, diagrams and format, the folder, the budget check and the spill
-- **`.claude/rules/baseline-project-architecture.md`** - the awareness rule's template and byte budget
+- **`.claude/rules/alfred-project-architecture.md`** - the awareness rule's template and byte budget
 
 The pros/cons judgment over this map is not this capture's: nothing here writes `<docs-path>/quality/ASSESSMENT.md`, and no finding goes into the map.
 
@@ -92,7 +92,7 @@ sections to `references/` files NOW - the spill is the sanctioned second pass on
 per-claim edit stream the one-write rule forbids); this run owns the doc, and no other flow will. An overrun this
 run genuinely cannot resolve is said plainly in the REPORT step, for the next capture to pick up.
 
-## .claude/rules/baseline-project-architecture.md - the awareness rule
+## .claude/rules/alfred-project-architecture.md - the awareness rule
 
 Step 6 writes this from the fresh capture, wholesale, to the template below. The body is fixed and names no
 path: where the docs live and how to read them by section are the always-on navigation baseline's (the docs-root

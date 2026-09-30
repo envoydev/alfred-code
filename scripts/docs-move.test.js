@@ -173,7 +173,7 @@ test('move: a failure part way puts every file back where it was', POSIX_ONLY, (
 // --- the installer ---------------------------------------------------------------------------------
 // An older install, simulated on the current seed: the settings key and the ledger hold the old seed,
 // the rule is stamped with it, and docs sit under it.
-const SELECTION = 'rule baseline-docs-root\nrule baseline-git\n';
+const SELECTION = 'rule alfred-docs-root\nrule alfred-git\n';
 function olderInstall(repoDir, { ledger = true, key = true } = {})
 {
     const claude = path.join(repoDir, '.claude');
@@ -184,7 +184,7 @@ function olderInstall(repoDir, { ledger = true, key = true } = {})
     let text = fs.readFileSync(stamp, 'utf8').replace(/settings\.json:ALFRED_CODE_DOCS_PATH=[0-9a-f]{64}/, `settings.json:ALFRED_CODE_DOCS_PATH=${valueHash('.claude/docs')}`);
     if (!ledger) text = text.split('\n').filter((l) => !l.startsWith('managed-')).join('\n');
     fs.writeFileSync(stamp, text);
-    const rule = path.join(claude, 'rules', 'baseline-docs-root.md');
+    const rule = path.join(claude, 'rules', 'alfred-docs-root.md');
     fs.writeFileSync(rule, fs.readFileSync(rule, 'utf8').replace(/This install's root: `[^`]*`/, "This install's root: `.claude/docs`"));
     fs.rmSync(path.join(repoDir, '.alfred'), { recursive: true, force: true });
     for (const [rel, body] of Object.entries(OLD)) { fs.mkdirSync(path.dirname(path.join(repoDir, rel)), { recursive: true }); fs.writeFileSync(path.join(repoDir, rel), body); }
@@ -192,7 +192,7 @@ function olderInstall(repoDir, { ledger = true, key = true } = {})
 }
 const look = (repoDir) => ({
     env: JSON.parse(fs.readFileSync(path.join(repoDir, '.claude', 'settings.json'), 'utf8')).env,
-    rule: /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(repoDir, '.claude', 'rules', 'baseline-docs-root.md'), 'utf8'))[1],
+    rule: /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(repoDir, '.claude', 'rules', 'alfred-docs-root.md'), 'utf8'))[1],
     stamp: fs.readFileSync(path.join(repoDir, '.claude', 'alfred-code.stamp'), 'utf8'),
     old: fs.existsSync(path.join(repoDir, '.claude', 'docs', 'architecture', 'ARCHITECTURE.md')),
     moved: fs.existsSync(path.join(repoDir, '.alfred', 'docs', 'architecture', 'ARCHITECTURE.md')),
@@ -224,7 +224,7 @@ test('installer: an unstamped legacy install with docs at the old root keeps the
         const put = (rel, body) => { fs.mkdirSync(path.dirname(path.join(r, rel)), { recursive: true }); fs.writeFileSync(path.join(r, rel), body); };
         for (const n of Object.keys(renamed.skills).slice(0, 3)) put(`.claude/skills/${n}/SKILL.md`, `---\nname: ${n}\n---\n`);
         put('.claude/hooks/guard-catastrophic-rm.js', '// old\n');
-        put('.claude/rules/baseline-interaction.md', '# old\n');
+        put('.claude/rules/alfred-interaction.md', '# old\n');
         put('.claude/settings.json', '{}\n');
         for (const [rel, body] of Object.entries(OLD)) put(rel, body);
     };
@@ -415,7 +415,7 @@ test('installer: an unreadable settings file leaves the stamped rule as it was',
             fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/\}\s*$/, ',}'));
             return null;
         },
-        inspect: (r) => /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(r, '.claude', 'rules', 'baseline-docs-root.md'), 'utf8'))[1],
+        inspect: (r) => /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(r, '.claude', 'rules', 'alfred-docs-root.md'), 'utf8'))[1],
     });
     assert.strictEqual(result, '.claude/docs');
 });

@@ -101,7 +101,7 @@ own memory ONLY if that import succeeded - a failed import leaves it on rather t
 note (with no notes to import, the install switched it off already). Check it once: `/alfred-code:status` shows `autoMemoryEnabled` in the Environment table;
 `false` means done, `true` or absent means the import has not completed - read init's memory line for
 why (a missing `uvx` or Python is the usual cause), fix that, and run `/alfred-code:init` again.
-`baseline-memory.md` (always-on) names what belongs in the store and when to search it before
+`alfred-memory.md` (always-on) names what belongs in the store and when to search it before
 asking or reading - nothing further to configure.
 
 A note imported by a registration made before this version stored a hash in place of a real
@@ -197,7 +197,7 @@ Which one this install uses is `ALFRED_CODE_DOCS_VERSIONING` in the settings.jso
 ## Done looks like
 
 A restarted session where the MCPs answer, every stack plugin reads enabled, the generated rules exist under `.claude/rules/`
-(`baseline-project-agent-capabilities.md` plus the captures' awareness rules), the docs root
+(`alfred-project-agent-capabilities.md` plus the captures' awareness rules), the docs root
 holds the architecture / code-style docs the seats orient from, and `autoMemoryEnabled` reads
 `false` - the shared memory carries what Claude's own notes used to. From here, work normally - the
 stack routes itself.

@@ -351,8 +351,8 @@ test('cli: --file checks one file; an unreadable template skips only the templat
 test('cli: a hand copy of the shipped template is flagged unfilled and by its placeholder alone - and a skipped capture\'s row by its files', () =>
 {
     const template = fs.readFileSync(path.join(__dirname, '..', 'stack', 'CLAUDE.template.md'), 'utf8');
-    const rules = ['baseline-interaction', 'baseline-quality-gates', 'baseline-security', 'baseline-git', 'baseline-navigation', 'baseline-docs-root', 'baseline-memory',
-        'baseline-project-agent-capabilities', 'baseline-project-architecture', 'baseline-project-related-context', 'baseline-project-run-book', 'project-code-style'];
+    const rules = ['alfred-interaction', 'alfred-quality-gates', 'alfred-security', 'alfred-git', 'alfred-navigation', 'alfred-docs-root', 'alfred-memory',
+        'alfred-project-agent-capabilities', 'alfred-project-architecture', 'alfred-project-related-context', 'alfred-project-run-book', 'project-code-style'];
     const files = { '.claude/CLAUDE.md': template, '.alfred/docs/code-style/CODE-STYLE.md': '', '.alfred/docs/project-capabilities/PROJECT-CAPABILITIES.md': '' };
     for (const r of rules) files[`.claude/rules/${r}.md`] = '';
     const root = tree(files, { git: true });

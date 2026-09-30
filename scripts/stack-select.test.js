@@ -60,23 +60,23 @@ test('a rule pulls its skills', () => {
 });
 
 test('a kept rule makes its mcp required; the capabilities skill locks none', () => {
-    const c = computeClosure(graph, { rules: ['baseline-navigation'] });
-    assert.ok(c.mcps.includes('navigation'), 'baseline-navigation genuinely depends on serena');
+    const c = computeClosure(graph, { rules: ['alfred-navigation'] });
+    assert.ok(c.mcps.includes('navigation'), 'alfred-navigation genuinely depends on serena');
     // The routing-map mentions in alfred-capture-agent-capabilities are subject matter, not needs -
     // picking it must never lock the whole MCP baseline into an install.
     const cap = computeClosure(graph, { skills: ['alfred-capture-agent-capabilities'] });
     assert.deepStrictEqual(cap.mcps, [], 'the capabilities skill pulls no MCPs');
 });
 
-// memory is locked the SAME way serena is: baseline-memory.md names the server in backticks, the
+// memory is locked the SAME way serena is: alfred-memory.md names the server in backticks, the
 // graph picks up the body mention as a rule -> mcp edge, and recommendations.json's `always` set
 // keeps the rule (so the closure of every install requires the mcp) while `general` drops it - a
 // server cannot be both offered-not-seeded and locked at once.
-test('memory is locked like serena - baseline-memory pulls it in, general no longer offers it', () => {
-    const c = computeClosure(graph, { rules: ['baseline-memory'] });
-    assert.ok(c.mcps.includes('memory'), 'baseline-memory genuinely depends on the memory mcp');
+test('memory is locked like serena - alfred-memory pulls it in, general no longer offers it', () => {
+    const c = computeClosure(graph, { rules: ['alfred-memory'] });
+    assert.ok(c.mcps.includes('memory'), 'alfred-memory genuinely depends on the memory mcp');
     const recommendations = require('../meta/recommendations.json');
-    assert.ok((recommendations.always.rules || []).includes('baseline-memory'), 'baseline-memory is an always-on rule');
+    assert.ok((recommendations.always.rules || []).includes('alfred-memory'), 'alfred-memory is an always-on rule');
     assert.ok((recommendations.always.mcps || []).includes('memory'), 'memory is locked into every install');
     assert.ok(!((recommendations.general || {}).mcps || []).includes('memory'), 'memory left the general (addable) list');
 });
@@ -537,7 +537,7 @@ const { findStackRedundant, findStackMissing } = require('./stack-select.js');
 
 test('findStackRedundant flags whole-stack-absent installs, keeps shared/extra/baseline', () => {
     const installed = {
-        rules: ['baseline-navigation', 'csharp-conventions', 'wpf-conventions'],
+        rules: ['alfred-navigation', 'csharp-conventions', 'wpf-conventions'],
         agents: ['architecture-analyzer', 'aspnet-implementer', 'dotnet-build-error-resolver', 'wpf-implementer', 'wpf-solution-designer'],
         skills: ['csharp', 'dotnet-web-backend', 'dotnet-wpf'],
         mcps: ['navigation', 'my-own-server'],
@@ -556,7 +556,7 @@ test('findStackRedundant flags whole-stack-absent installs, keeps shared/extra/b
     assert.ok(!names.has('dotnet-build-error-resolver'), 'a shared aspnet+wpf item survives - aspnet is present');
     assert.ok(!names.has('csharp-conventions'), 'a rule owned by aspnet too survives');
     assert.ok(!names.has('my-own-server'), 'a non-stack-owned deliberate extra is never redundant');
-    assert.ok(!names.has('baseline-navigation'), 'an always-baseline item is never redundant');
+    assert.ok(!names.has('alfred-navigation'), 'an always-baseline item is never redundant');
     assert.strictEqual(redundant.find(r => r.name === 'wpf-conventions').ownedBy, 'wpf', 'the reason names the owning stack');
 });
 
@@ -604,12 +604,12 @@ test('findStackMissing flags the detected stacks + baseline closure that is not 
     assert.ok(names.has('plugin csharp-lsp'), 'the aspnet LSP plugin is missing');
     assert.ok(names.has('agent aspnet-verifier'), 'the aspnet vertical is incomplete');
     assert.ok(names.has('skill dotnet-web-backend'), 'the aspnet web hub is missing');
-    assert.ok([...names].some(n => n.startsWith('rule baseline-')), 'missing always-baseline rules surface');
+    assert.ok([...names].some(n => n.startsWith('rule alfred-')), 'missing always-baseline rules surface');
     assert.ok(!names.has('agent aspnet-implementer'), 'an installed item is never missing');
     assert.ok(!names.has('skill csharp'), 'an installed skill is never missing');
     assert.ok(![...names].some(n => n.includes('wpf')), 'undetected-stack items are NOT proposed as missing');
     assert.strictEqual(missing.find(m => m.name === 'csharp-lsp').neededBy, 'aspnet', 'the reason names who needs it');
-    assert.strictEqual(missing.find(m => m.name === 'baseline-security').neededBy, 'baseline', 'baseline items are attributed to baseline');
+    assert.strictEqual(missing.find(m => m.name === 'alfred-security').neededBy, 'baseline', 'baseline items are attributed to baseline');
 });
 
 test('CLI --missing prints per-category missing lines from an installed inventory', () => {
@@ -901,7 +901,7 @@ test('a plugin the core carries beside it gets its own row status, in both table
     const graphPath = path.join(dir, 'graph.json');
     const companion = graph.catalog.plugins.find((p) => p !== 'superpowers');
     fs.writeFileSync(graphPath, JSON.stringify({ ...graph, catalog: { ...graph.catalog, dependencyPlugins: [companion] } }));
-    fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: ['baseline-navigation'], agents: [], mcps: [], plugins: [], hooks: [] }));
+    fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: ['alfred-navigation'], agents: [], mcps: [], plugins: [], hooks: [] }));
     fs.writeFileSync(inv, JSON.stringify({ plugins: [companion], skills: [], agents: [], rules: [], mcps: [], hooks: [] }));
     const script = path.join(__dirname, 'stack-select.js');
     const rowOf = (out) => out.split('\n').find((l) => l.split('|')[1] && l.split('|')[1].trim() === companion);
@@ -1041,7 +1041,7 @@ test('CLI --missing and --evidence-gaps run in a fresh-install mode when --insta
         const inv = path.join(dir, 'installed.json');
         fs.writeFileSync(inv, JSON.stringify({ skills: [], agents: [], rules: [], mcps: [], plugins: [] }));
         const over = cli(['--missing', '--installed', inv, '--recs', recsPath, '--stacks', 'aspnet']);
-        assert.match(over.stdout, /^missing: rule baseline-security - needed by baseline, not installed$/m);
+        assert.match(over.stdout, /^missing: rule alfred-security - needed by baseline, not installed$/m);
         assert.ok(!/^baseline: /m.test(over.stdout));
         assert.match(missing.stdout, /^missing: plugin csharp-lsp - needed by aspnet, not installed$/m, 'a detected stack seed is suggested, with its reason');
 
