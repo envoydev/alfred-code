@@ -122,7 +122,7 @@ per-message context is `input + cache_read + cache_creation` off the last assist
 transcript. Ask ONLY when that figure is past the same trigger `guard-fresh-session-start.js` uses
 - the tier's own absolute trigger, `ALFRED_CODE_FRESH_SESSION_200K` (default 150,000) or
 `ALFRED_CODE_FRESH_SESSION_1M` (default 400,000), or `ALFRED_CODE_FRESH_SESSION_DEFAULT`
-(default 180,000) when the window is neither of those two sizes or cannot be read at all - which
+(default 300,000) when the window is neither of those two sizes or cannot be read at all - which
 one applies comes from the session model's row in `.claude/hooks/model-windows.json`, else
 `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW` - or when that hook has already injected
 the ask into this turn. Below the trigger, or when the figure cannot be read at all, SKIP the ask

@@ -24,7 +24,7 @@ function use(p) {
 // it controlled. Three numbers, no arithmetic: say when you want to be asked.
 //   ALFRED_CODE_FRESH_SESSION_200K    - the trigger on a 200k window (default 150,000, measured)
 //   ALFRED_CODE_FRESH_SESSION_1M      - the trigger on a 1M window (default 400,000)
-//   ALFRED_CODE_FRESH_SESSION_DEFAULT - the trigger on anything else (default 180,000)
+//   ALFRED_CODE_FRESH_SESSION_DEFAULT - the trigger on anything else (default 300,000)
 // `0` on any of them turns that case's offer off. NOTE the 1M default sits ABOVE the harness's own
 // auto-compaction (measured preTokens 387,619 / 391,290 / 393,516 / 393,969 / 395,112 / 396,651 /
 // 396,954 / 397,171 across three projects), so on that tier the Stop offer is usually unreachable
@@ -39,14 +39,12 @@ function freshAt(key, dflt) {
 const FRESH_AT_200K = freshAt('ALFRED_CODE_FRESH_SESSION_200K', 150000);
 const FRESH_AT_1M = freshAt('ALFRED_CODE_FRESH_SESSION_1M', 400000);
 // The DEFAULT covers every case that is not one of the two named windows: a window that cannot be
-// read at all, and one that is neither 200k nor 1M (a `[500k]` model id, say). It must be REACHABLE
-// on the smallest window it could be applied to, which is why it sits under 200,000. At 250,000 it
-// sat ABOVE a 200k window entirely, so a session on that tier could never trip it and the gate
-// silently did not exist - measured on a session that peaked at 187.2k (93.6% of its window) with
-// both Stop hooks running and neither holding. An unproven window is assumed SMALL on purpose: an
-// offer made a little early is one dismissible ask, re-armed only after 1.5x growth, while an offer
-// that can never fire is no gate at all.
-const FRESH_AT_DEFAULT = freshAt('ALFRED_CODE_FRESH_SESSION_DEFAULT', 180000);
+// read at all, and one that is neither 200k nor 1M (a `[500k]` model id, say). Seeded at 300,000 to
+// match ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: on that window ctxThreshold clamps it to 90% (270,000).
+// It is NOT reachable on a window below it - a 200k window that cannot be read, say - so a session
+// there can run past its window without an offer; lower the variable for such models (it sat at
+// 180,000 until 2.1.6 for exactly that reason).
+const FRESH_AT_DEFAULT = freshAt('ALFRED_CODE_FRESH_SESSION_DEFAULT', 300000);
 // `0` on ALL THREE is the whole off switch. The retired CLAUDE_STACK_FRESH_SESSION_PCT is not read // legacy-name
 // at all any more - a percentage of a window is not what this gate fires on.
 const FRESH_OFF = FRESH_AT_200K === 0 && FRESH_AT_1M === 0 && FRESH_AT_DEFAULT === 0;
@@ -54,7 +52,7 @@ const FRESH_OFF = FRESH_AT_200K === 0 && FRESH_AT_1M === 0 && FRESH_AT_DEFAULT =
 // --- which context WINDOW is this session running in? -------------------------------------
 // ONE rule: the session's model id is looked up in `model-windows.json`, shipped beside this hook
 // and replaced on every update, so a new model arrives with the release that lists it. A model the
-// table does not list takes ALFRED_CODE_DEFAULT_CONTEXT_WINDOW (seeded 1000000); with that unset or
+// table does not list takes ALFRED_CODE_DEFAULT_CONTEXT_WINDOW (seeded 300000); with that unset or
 // garbage, no window is known and the DEFAULT trigger applies. Nothing else decides - not a
 // `[1m]`/`[200k]` id suffix, not the carry, not a compaction. Those inferences each fixed one case
 // and broke another (Sonnet 5 runs 1M on a bare id, so the suffix read offered a resume at ~252k),

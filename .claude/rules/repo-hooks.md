@@ -326,9 +326,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     failure ('pre-existing', 'unrelated to my change', 'flaky', 'skipping tests for now') in a turn with a red
     run, a skipped test or an added skip marker writes one `rationalization` row per turn.
     Fresh-session offer on a clean close past the window's ABSOLUTE trigger:
-    `ALFRED_CODE_FRESH_SESSION_200K` (default 150000), `_1M` (400000), `_DEFAULT` (180000, any other or
+    `ALFRED_CODE_FRESH_SESSION_200K` (default 150000), `_1M` (400000), `_DEFAULT` (300000, any other or
     unreadable window); `0` switches that case off; seeded absent-only. The window comes from ONE table (the session
-    model's row in the shipped `model-windows.json`, else `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW`, seeded 1000000; no id
+    model's row in the shipped `model-windows.json`, else `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW`, seeded 300000; no id
     suffix, carry or compaction is read), never declared. A key matches its id, a dated snapshot, a Bedrock version, the `[1m]` suffix and a provider prefix, never a point release: `claude-opus-5-5` took `claude-opus-5`'s row until every model got its own (2.1.5 M6, which added Opus 4.5 and Sonnet 4.5 at 200K). A trigger at or above its window is clamped
     inside it, and `_DEFAULT` must stay below the smallest window it can land on. The offer fires only
     when a resume recovers something (carry minus the session's first-message floor >= 40% of carry),

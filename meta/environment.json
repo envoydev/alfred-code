@@ -184,10 +184,10 @@
     },
     {
       "key": "ALFRED_CODE_FRESH_SESSION_DEFAULT",
-      "default": "180000",
+      "default": "300000",
       "ask": true,
       "asked_with": "ALFRED_CODE_FRESH_SESSION_1M",
-      "what": "the same trigger in TOKENS for every OTHER case - a window the gate cannot read (the model is not in the `model-windows.json` shipped beside the hooks (the plugin's own on the plugin route) and ALFRED_CODE_DEFAULT_CONTEXT_WINDOW is unset) and a window that is neither of those two sizes. 180,000 is REACHABLE on the smallest window it could be applied to: at 250,000 it sat ABOVE a 200k window entirely, so a session on that tier could never trip the gate and it silently did not exist. An unproven window is assumed SMALL on purpose - an offer made a little early is one dismissible ask, while one that can never fire is no gate at all. `0` turns the offer off wherever the window is not one of the two named sizes.",
+      "what": "the same trigger in TOKENS for every OTHER case - a window the gate cannot read (the model is not in the `model-windows.json` shipped beside the hooks (the plugin's own on the plugin route) and ALFRED_CODE_DEFAULT_CONTEXT_WINDOW is unset) and a window that is neither of those two sizes. 300,000 matches the seeded ALFRED_CODE_DEFAULT_CONTEXT_WINDOW, and a trigger at or above its window is clamped to 90% of it (270,000 there). On a window that cannot be read at all, or one below 300,000 (a 200k model the table lacks), it can sit above the window and never fire - lower it if you run such models. `0` turns the offer off wherever the window is not one of the two named sizes.",
       "validate": {
         "type": "tokens",
         "min": 0,
@@ -196,7 +196,7 @@
     },
     {
       "key": "ALFRED_CODE_DEFAULT_CONTEXT_WINDOW",
-      "default": "1000000",
+      "default": "300000",
       "ask": false,
       "what": "the context WINDOW, in tokens, the fresh-session gate uses for a model the `model-windows.json` shipped beside the hooks (the plugin's own on the plugin route) does not list. That table (replaced on every update from the Claude models docs) is the ONLY other source - no id suffix, carry or compaction is read. Remove the key and an unlisted model takes ALFRED_CODE_FRESH_SESSION_DEFAULT.",
       "validate": {

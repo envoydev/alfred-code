@@ -66,7 +66,7 @@ function offered(route, tp, extra = {}, logDir) {
   return status === 2;
 }
 // The trigger a window takes with the seeded defaults.
-const triggerFor = (window) => (window === 1000000 ? 400000 : window === 200000 ? 150000 : 180000);
+const triggerFor = (window) => (window === 1000000 ? 400000 : window === 200000 ? 150000 : 300000);
 
 // Every id the models pages list (platform.claude.com models overview and each legacy model's page, fetched
 // 2026-09-29), spelled as each platform spells it, against the page's context window. The fallback is the
@@ -116,9 +116,9 @@ for (const route of Object.keys(HOOK_ROUTES)) {
     const cases = [
       ['1000000', 400000, 'the 1M fallback takes the 1M trigger'],
       ['200000', 150000, 'a 200k fallback takes the 200k trigger'],
-      ['500000', 180000, 'a window that is neither named size takes the DEFAULT trigger'],
-      [undefined, 180000, 'no fallback set: the DEFAULT trigger'],
-      ['lots', 180000, 'a garbage fallback is no fallback'],
+      ['500000', 300000, 'a window that is neither named size takes the DEFAULT trigger'],
+      [undefined, 300000, 'no fallback set: the DEFAULT trigger'],
+      ['lots', 300000, 'a garbage fallback is no fallback'],
     ];
     for (const [fallback, at, why] of cases) {
       const extra = fallback === undefined ? {} : { ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: fallback };

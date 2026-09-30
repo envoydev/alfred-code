@@ -73,7 +73,7 @@ or edit the plan file, then answer.
 **The fresh-session resume.** A stop is the cheap point to run the next step in a fresh session
 (`/clear`): resume needs only the plan file + cycle note, and restarts at 21.5-59.4% of the carried context with zero
 re-work - state those two absolute numbers to the user, never a ratio. Once the cycle has crossed the install's
-fresh-session trigger for its context window (150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on
+fresh-session trigger for its context window (150,000 tokens on a 200k window, 400,000 on a 1M one, 300,000 on
 any other window), spans hours, or resumes after an idle gap, the fresh-session resume IS one of the next ask's
 options - every ask until it is taken or the cycle closes. On those conditions the stop-contract hook injects the
 two measured numbers (this session's carry per message, a fresh one's cold floor): quote them, or say they are unmeasured.

@@ -80,7 +80,7 @@ resume on a long run - the recommendation marked per that stop's own rule, free 
 available via the built-in Other. Where the harness has no such tool, list the same options in
 plain text and END THE TURN. The selected answer is the go; silence is not, and a stop that
 only narrates is not a stop. Once the run has crossed the install's fresh-session trigger for its
-context window (150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on any other
+context window (150,000 tokens on a 200k window, 400,000 on a 1M one, 300,000 on any other
 window) or spans hours, the fresh-session resume IS one of the next ask's options - a CONSTRUCTION check before
 emitting each stop, not a memory: resume needs only the findings file plus the note.
 
