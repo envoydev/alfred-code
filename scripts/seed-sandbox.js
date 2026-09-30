@@ -24,6 +24,67 @@ function scrubLegacyEnv(env)
     return env;
 }
 
+// `account: true` swaps the recording claude stub for one that keeps the account file as the real CLI does: `mcp add`
+// writes the registration (its `-e` pairs as env) and says 'already exists' over a held name, `mcp remove` deletes it (a
+// miss exits 1), `mcp get` prints a held one and exits 1 on a miss - so the ledger each run writes is the one the next reads.
+const ACCOUNT_STUB = `'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const file = path.join(process.env.CLAUDE_CONFIG_DIR, '.claude.json');
+let data = {};
+try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* none yet */ }
+const [verb, ...rest] = process.argv.slice(3);
+// Project scope is the project's .mcp.json, written as the CLI writes it (an add appends the name).
+const mcpJson = path.join(process.cwd(), '.mcp.json');
+let project = {};
+try { project = JSON.parse(fs.readFileSync(mcpJson, 'utf8')); } catch { /* none yet */ }
+const holder = (scope) => (scope === 'project' ? project : scope === 'user' ? data : ((data.projects ||= {})[process.cwd()] ||= {}));
+const write = (scope) =>
+{
+    if (scope === 'project') { fs.writeFileSync(mcpJson, JSON.stringify(project, null, 2) + '\\n'); return; }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+};
+if (verb === 'add')
+{
+    let scope = 'local';
+    let transport = 'stdio';
+    const words = [...rest];
+    const at = words.indexOf('--scope');
+    if (at >= 0) { scope = words[at + 1]; words.splice(at, 2); }
+    if (words[0] === '--transport') { transport = words[1]; words.splice(0, 2); }
+    const name = words.shift();
+    const env = {};
+    while (words[0] === '-e') { const kv = words[1]; env[kv.slice(0, kv.indexOf('='))] = kv.slice(kv.indexOf('=') + 1); words.splice(0, 2); }
+    if (words[0] === '--') words.shift();
+    const servers = (holder(scope).mcpServers ||= {});
+    if (servers[name]) { process.stderr.write('MCP server ' + name + ' already exists\\n'); process.exit(0); }
+    if (transport === 'http')
+    {
+        servers[name] = { type: 'http', url: words[0] };
+        const h = words.indexOf('--header');
+        if (h >= 0) { const kv = words[h + 1]; servers[name].headers = { [kv.slice(0, kv.indexOf(':')).trim()]: kv.slice(kv.indexOf(':') + 1).trim() }; }
+    }
+    else servers[name] = { type: 'stdio', command: words[0], args: words.slice(1), env };
+    write(scope);
+}
+else if (verb === 'remove')
+{
+    const scope = rest[rest.indexOf('-s') + 1];
+    const servers = holder(scope).mcpServers || {};
+    if (!servers[rest[0]]) { process.stderr.write('No MCP server named ' + rest[0] + '\\n'); process.exit(1); }
+    delete servers[rest[0]];
+    write(scope);
+}
+else if (verb === 'get')
+{
+    const e = ((holder('local').mcpServers || {})[rest[0]]) || ((data.mcpServers || {})[rest[0]]);
+    if (!e) process.exit(1);
+    process.stdout.write(rest[0] + ':\\n  Type: stdio\\n  Command: ' + e.command + '\\n  Args: ' + (e.args || []).join(' ') + '\\n');
+}
+else process.exit(1);
+`;
+
 // `prepare(repo)` lays the project out before the run; `inspect(repo)` reads it after, before the
 // sandbox is removed. `env` adds to (or, with undefined, removes from) the run's environment -
 // one object for every step, or an array with one PER STEP (a route flip between two runs).
@@ -41,7 +102,7 @@ function scrubLegacyEnv(env)
 // function of (repo, work), called just before its step runs - for flags built from an earlier step.
 // `failOk` keeps a run that exits non-zero (a refusal) from throwing: the tree still reaches `inspect`,
 // and the last run's exit status and stderr come back as `code` and `err`.
-function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, args = [], prepare = () => {}, inspect = () => null, each = () => null, failOk = false } = {})
+function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, args = [], prepare = () => {}, inspect = () => null, each = () => null, failOk = false, account = false } = {})
 {
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-sandbox-'));
     const repo = path.join(work, 'repo');
@@ -51,8 +112,10 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
     fs.mkdirSync(bin);
     const log = path.join(work, 'claude-calls.log');
     fs.writeFileSync(path.join(work, 'plugins.json'), plugins);
+    if (account) fs.writeFileSync(path.join(bin, 'account-stub.js'), ACCOUNT_STUB);
     fs.writeFileSync(path.join(bin, 'claude'), ['#!/bin/sh', 'printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
-        'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi', 'exit 0', ''].join('\n'), { mode: 0o755 });
+        'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; exit 0; fi',
+        ...(account ? [`if [ "$1" = "mcp" ]; then exec "${process.execPath}" "${path.join(bin, 'account-stub.js')}" "$@"; fi`] : []), 'exit 0', ''].join('\n'), { mode: 0o755 });
     for (const tool of ['uvx', 'npx', 'npm', 'curl']) fs.writeFileSync(path.join(bin, tool), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
     for (const [tool, body] of Object.entries(tools))
     {

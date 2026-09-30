@@ -1206,3 +1206,14 @@ test('the generated graph: each desktop server brings desktop-automation, and th
     assert.deepStrictEqual(c.mcps, [], 'naming both servers in the skill must never install both');
     assert.ok(computeClosure(graph, { rules: ['wpf-conventions'], mcps: ['windows-desktop'] }).skills.includes('desktop-automation'));
 });
+
+// Re-verify 4 T4: the installer loads this module for its closure, and it replaced the process-wide fs.readFileSync with
+// one that turned every utf8 read's CRLF into LF - so the installer's snapshot of a CRLF .mcp.json lost its line ends. The
+// module reads only JSON, which parses either way; loading it changes nothing another module reads.
+test('loading stack-select.js leaves the process-wide fs.readFileSync as it was', () =>
+{
+    const { spawnSync } = require('node:child_process');
+    const code = `const fs = require('fs'); const read = fs.readFileSync; require(${JSON.stringify(path.join(__dirname, 'stack-select.js'))}); process.exit(fs.readFileSync === read ? 0 : 3);`;
+    const r = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, `fs.readFileSync was replaced (exit ${r.status}) ${r.stderr}`);
+});

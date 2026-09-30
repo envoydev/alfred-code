@@ -54,6 +54,7 @@ function write(p, opts = {})
         hooksRoute: opts.hooksRoute,
         playwright: opts.playwright,
         playwrightEnabled: opts.playwrightEnabled,
+        mcpHeld: opts.mcpHeld,
         version: opts.version || '1.0.0',
         now: new Date('2026-09-22T10:00:00.000Z'),
         log: (m) => logs.push(m), note: (m) => logs.push(m),
@@ -90,6 +91,37 @@ test('install-stamp: the stamp carries the revision, the action and the scope', 
     assert.match(text, /^version: 1\.0\.0$/m);
     assert.match(text, /^installed: 2026-09-22T10:00:00Z$/m);
     assert.match(text, /compare\/f{40}\.\.\.main/, 'the compare line is what configure tells a user to open');
+});
+
+// Review 2.1.6 (the user's ruling, no ceilings): the account-file loss check compares a CLI backup's millisecond stamp
+// with the time the stamp was written, so the stamp records that time to the millisecond; an older stamp, with only
+// its whole-second `installed:` line, reads as that second and says so.
+test('install-stamp: installed-ms records the write to the millisecond; an older stamp reads its whole second, not precise', () =>
+{
+    const p = project();
+    const { dest, text } = write(p);
+    assert.match(text, /^installed: 2026-09-22T10:00:00Z\ninstalled-ms: 1790071200000$/m);
+    const { readInstalledAt } = require('./install/stamp.js');
+    assert.deepStrictEqual(readInstalledAt(dest), { ms: Date.parse('2026-09-22T10:00:00.000Z'), precise: true });
+    fs.writeFileSync(dest, text.replace(/^installed-ms: .*\n/m, ''));
+    assert.deepStrictEqual(readInstalledAt(dest), { ms: Date.parse('2026-09-22T10:00:00Z'), precise: false });
+    assert.deepStrictEqual(readInstalledAt(path.join(p.base, 'absent.stamp')), { ms: NaN, precise: false });
+});
+
+// Re-verify 4 T7: the MCP picks the copy route held back because the user's own registration holds the name. Written only
+// when there is one, read back by scope and name, and a hand-edited entry of any other shape (a project scope, which the
+// ledger's .mcp.json owns, or a name that is no item) never becomes a pick.
+test('install-stamp: mcp-held records the held picks, and its reader drops what is not a local or user pick', () =>
+{
+    const p = project();
+    assert.doesNotMatch(write(p).text, /^mcp-held:/m, 'no line with none held');
+    const { dest, text } = write(p, { mcpHeld: [{ scope: 'local', name: 'macos-desktop' }, { scope: 'user', name: 'browser-chrome' }] });
+    assert.match(text, /^mcp-held: local:macos-desktop,user:browser-chrome$/m);
+    const { readMcpHeld } = require('./install/stamp.js');
+    assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-desktop' }, { scope: 'user', name: 'browser-chrome' }]);
+    fs.writeFileSync(dest, text.replace(/^mcp-held: .*$/m, 'mcp-held: local:macos-desktop, project:navigation,user:../x,local:,user:memory'));
+    assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-desktop' }, { scope: 'user', name: 'memory' }]);
+    assert.deepStrictEqual(readMcpHeld(path.join(p.base, 'absent.stamp')), []);
 });
 
 test('install-stamp: every scope writes the stamp into the project - T16, R29', () =>

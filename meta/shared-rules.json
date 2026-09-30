@@ -5849,7 +5849,7 @@
       ]
     },
     "env-legacy-fallback": {
-      "_note": "2.0.0 renamed every setting from its 1.x prefix to ALFRED_CODE_*. hook-prelude.js's envOf(env, suffix) is the ONE implementation every ordinary hook requires; the three engines (docs.js, memory.js, history.js) and the two MCP launchers (memory-launch.js, uv-python.js) ship without the prelude beside them on at least one route, so each carries its own byte-identical inline copy instead of a require. A change to the fallback rule (the DOCS_PATH third spelling included) is five edits, not one.",
+      "_note": "2.0.0 renamed every setting from its 1.x prefix to ALFRED_CODE_*. hook-prelude.js's envOf(env, suffix) is the ONE implementation every ordinary hook requires; the three engines (docs.js, memory.js, history.js) and the uv-python.js launcher ship without the prelude beside them on at least one route, so each carries its own byte-identical inline copy instead of a require (the memory launcher reads its key through memory.js settingsDbState, the one reader it shares with the installer - review 2.1.6 R5). A change to the fallback rule (the DOCS_PATH third spelling included) is four edits, not one.",
       "owner": {
         "file": "stack/hooks/hook-prelude.js",
         "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
@@ -5868,12 +5868,21 @@
           "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
         },
         {
-          "file": "stack/mcp/memory-launch.js",
-          "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
-        },
-        {
           "file": "stack/mcp/uv-python.js",
           "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+        }
+      ]
+    },
+    "install-records": {
+      "_note": "What marks a folder as set up (review 2.1.6 re-verify 3 S3): hook-prelude's 'set up' gate and memory.js projectRootOf - the one project-root resolver the launchers, memory-session.js and the engine's CLI verbs read - look for the same install records, inside the same bound (re-verify 4 T1): the folder up to its git top level and a linked worktree's main checkout, never an ancestor above that top level. The engine is copied into .claude/hooks on every route without the prelude beside it, so it carries its own copy of the list; a record added to one is added to both.",
+      "owner": {
+        "file": "stack/hooks/hook-prelude.js",
+        "marker": "const INSTALL_RECORDS = [['alfred-code.stamp'], ['claude-stack.stamp'], ['hooks', 'docs.js']]; // legacy-name"
+      },
+      "sites": [
+        {
+          "file": "stack/hooks/memory.js",
+          "marker": "const INSTALL_RECORDS = [['alfred-code.stamp'], ['claude-stack.stamp'], ['hooks', 'docs.js']]; // legacy-name"
         }
       ]
     },

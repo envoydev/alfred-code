@@ -36,7 +36,7 @@ function read(repo)
     const list = (dir) => { try { return fs.readdirSync(path.join(claude, dir)).sort(); } catch { return []; } };
     const settings = JSON.parse(fs.readFileSync(path.join(claude, 'settings.json'), 'utf8'));
     return {
-        stamp: stamp.replace(/^installed: .*$/m, 'installed: <time>'),
+        stamp: stamp.replace(/^installed: .*$/m, 'installed: <time>').replace(/^installed-ms: .*$/m, 'installed-ms: <time>'),
         seatsRoute: (/^seats-route: (.*)$/m.exec(stamp) || [])[1] || null,
         pickedSkills: line('picked-skills'), pickedAgents: line('picked-agents'), libraryAgents: line('library-agents'),
         skills: list('skills'), agents: list('agents'), settings,

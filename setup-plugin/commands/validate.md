@@ -288,7 +288,11 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   of what is detected. Whenever `memory` IS registered - shown in this table or already installed -
   read its level with `node .claude/hooks/memory.js level` (the project's own copy; fall back to
   `node "$TMP/repo/stack/hooks/memory.js" level` when that file is absent), which prints `<level>
-  <dbPath>` or `none`. Print the answer as ONE informational line under the MCPs table - `memory
+  <dbPath>` or `none` - or `refused <file>` when a settings file cannot be read and no other names the database: the
+  memory launcher refuses to start, so print `memory level: not served - <file> could not be read, so the memory server's
+  launcher refuses to start; fix the file (ALFRED_CODE_MEMORY_DB in its env names the database) and restart the session`.
+  An `unreadable <file>` line after the level means that file was skipped and the level is the next settings file's: print
+  `memory: <file> could not be read - the level above is the next settings file's; fix the file`. Print the answer as ONE informational line under the MCPs table - `memory
   level: <level> - <dbPath>`, or `memory: registered but the level cannot be derived from
   <dbPath>` for an unrecognized path - never a consent row: this walk does not add, drop or change
   the level, only `/alfred-code:configure` does. Add a second line checking whether the

@@ -94,7 +94,9 @@ test('fresh install: every kind of data lands under .alfred, and git keeps the m
     assert.strictEqual(r.env.ALFRED_CODE_DATA_PATH, '.alfred', out);
     assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, '.alfred/docs');
     assert.strictEqual(r.rule, '.alfred/docs');
-    assert.strictEqual(r.local.ALFRED_CODE_MEMORY_DB, path.join(r.real, '.alfred', '.alfred-memory', 'memory.db'));
+    // Re-verify 3 S1: settings.local.json is machine-local (C8), so its key stays ABSOLUTE - a relative one bought nothing there
+    // and an older release read it as no level, re-pointing the project to the global database.
+    assert.strictEqual(r.local.ALFRED_CODE_MEMORY_DB, path.join(r.real, '.alfred', '.alfred-memory', 'memory.db'), 'the machine-local key is absolute');
     assert.match(r.ignore, /^\/\*$/m);
     assert.match(r.ignore, /^!\/docs\/$/m, 'the docs stay visible to git, or the versioning seed reads them as kept out');
     assert.match(r.text('.alfred/serena/project.yml'), /ignored_paths: \["\.alfred", "\.claude", "\.serena", "\.playwright"\]/);
@@ -200,8 +202,10 @@ test('update over a 2.0.0 layout, --data-move move, full copy route: everything 
     assert.deepStrictEqual(pendingOf(r.stamp), []);
     const env = r.mcp.navigation && r.mcp.navigation.env;
     assert.strictEqual(env && env.SERENA_HOME, '.alfred/serena/home', JSON.stringify(r.mcp.navigation));
-    assert.ok(r.mcp['browser-chrome'].args.includes('${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/chrome'), JSON.stringify(r.mcp['browser-chrome']));
-    assert.strictEqual(r.mcp.memory.env.MCP_MEMORY_SQLITE_PATH, path.join(r.real, '.alfred', '.alfred-memory', 'memory.db'));
+    // Re-verify 3 S2: the rows start at their project through ROOT_BOOT, so the committed .mcp.json names each place by its
+    // project-relative path - no checkout's path (re-verify 2 R3), and no parse-time variable.
+    assert.ok(r.mcp['browser-chrome'].args.includes('.alfred/browser/chrome'), JSON.stringify(r.mcp['browser-chrome']));
+    assert.strictEqual(r.mcp.memory.env.MCP_MEMORY_SQLITE_PATH, '.alfred/.alfred-memory/memory.db', 'the committed .mcp.json names no checkout');
     assert.match(r.text('.alfred/serena/home/serena_config.yml'), /project_serena_folder_location: "\$projectDir\/\.alfred\/serena"/);
 });
 

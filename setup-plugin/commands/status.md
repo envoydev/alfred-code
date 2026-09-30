@@ -232,6 +232,12 @@ present: run `node .claude/hooks/memory.js level` and render `memory level: <lev
 guess). Absent (the hook deselected in this project): do NOT attempt the read (it fails with
 `MODULE_NOT_FOUND`) - print `memory level: not checked - memory.js is not installed here`
 instead. No `memory` row at all: skip the line, nothing to read.
+The read answers through the same settings reader the plugin's memory launcher uses. `refused <file>` (a settings file
+it cannot read, and no other file names the database) means the memory launcher refuses to start, so the `memory` row
+fails to connect: print `memory level: not served - <file> could not be read, so the memory server's launcher refuses to
+start; fix the file (ALFRED_CODE_MEMORY_DB in its env names the database) and restart the session`. An `unreadable <file>`
+line after the level means that file was skipped and the level is the next one's: add `memory: <file> could not be read -
+the level above is the next settings file's; fix the file`.
 
 Whenever that line runs, add a second one checking whether the session-start push can even fire on
 THIS machine: `node -e "try{require('node:sqlite');process.exit(0)}catch{process.exit(1)}"`. Exit 0

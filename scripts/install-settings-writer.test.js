@@ -67,6 +67,19 @@ test('settings-writer: a file that does not parse is LEFT UNTOUCHED', () =>
     assert.match(notes[0], /not valid JSON/);
 });
 
+// Re-verify 3 S9: a file that cannot be READ is said so with its error code - never 'not valid JSON', which sends the user
+// looking for a syntax error in a file that may be fine.
+test('settings-writer: a file that cannot be read is LEFT UNTOUCHED and named by its read error, not as bad JSON', () =>
+{
+    const file = settingsFile();
+    fs.mkdirSync(file);
+    const { result, notes } = write(file, { hookSpecs: [HOOK('guard-a.js', 'Bash')] });
+    assert.strictEqual(result.refused, true);
+    assert.ok(fs.statSync(file).isDirectory());
+    assert.match(notes[0], /^settings\.json could not be read \(EISDIR\) - left untouched/, notes[0]);
+    assert.doesNotMatch(notes[0], /not valid JSON/);
+});
+
 test('settings-writer: a top level that is not an object is refused the same way', () =>
 {
     const file = settingsFile('[1, 2]');

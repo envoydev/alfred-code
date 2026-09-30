@@ -393,7 +393,8 @@ test('install-scope: --memory-level project at --scope user on the FULL copy rou
         inspect: (repo) => ({ env: memoryIn(repo), real: fs.realpathSync(repo) }),
     });
     assert.match(out, /memory=project \(/, out);
-    assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, path.join(result.real, '.alfred', '.alfred-memory', 'memory.db'), out);
+    // Project-relative in the committed .mcp.json, started at the project through ROOT_BOOT (re-verify 3 S2).
+    assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, '.alfred/.alfred-memory/memory.db', out);
     assert.deepStrictEqual(calls.filter((c) => /^mcp add .*--scope user/.test(c)), []);
 });
 
@@ -437,7 +438,7 @@ test('install-scope: a 1.x global install updated with --memory-level project on
         assert.match(out, /were moved from/, `${label}: the 1.x install was not migrated\n${out}`);
         assert.strictEqual(result.skill, true, label);
         assert.match(result.stamp, /^scope: user$/m, label);
-        assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, path.join(result.real, '.alfred', '.alfred-memory', 'memory.db'), `${label}\n${out}`);
+        assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, '.alfred/.alfred-memory/memory.db', `${label}\n${out}`);
     }
 });
 
@@ -462,7 +463,7 @@ test('install-scope: a project-level memory path already in .mcp.json is kept at
             inspect: (repo) => ({ env: memoryIn(repo), real: fs.realpathSync(repo) }),
         });
         assert.match(out, /memory=project \(/, `${label}\n${out}`);
-        assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, path.join(result.real, ...want), `${label}\n${out}`);
+        assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, want.join('/'), `${label}\n${out}`);
     }
 });
 
@@ -901,12 +902,14 @@ for (const [label, args, refused] of [['the default level', [], true], ['--memor
             inspect: (repo) => ({
                 claude: exists(repo, '.claude'),
                 db: exists(repo, '.claude', 'settings.local.json') ? (json(repo, '.claude/settings.local.json').env || {}).ALFRED_CODE_MEMORY_DB || null : null,
+                real: fs.realpathSync(repo),
             }),
         });
         if (!refused)
         {
             assert.strictEqual(run.code, 0, run.err);
-            assert.ok(path.isAbsolute(run.result.db || ''), `the project database path is absolute: ${run.result.db}`);
+            // The machine-local key is the absolute path (re-verify 3 S1).
+            assert.strictEqual(run.result.db, path.join(run.result.real, '.alfred', '.alfred-memory', 'memory.db'), `the project database: ${run.result.db}`);
             return;
         }
         assert.notStrictEqual(run.code, 0, run.out);

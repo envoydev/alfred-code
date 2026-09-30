@@ -56,8 +56,12 @@ const HOOKS_DIR_MARK = '/.claude/hooks/';
 function readSettings(file)
 {
     if (!fs.existsSync(file)) return { data: {}, existed: false };
+    // Re-verify 3 S9: a file that cannot be read is named by its read error, never as bad JSON.
+    let raw;
+    try { raw = fs.readFileSync(file, 'utf8'); }
+    catch (err) { const e = new Error(`${path.basename(file)} could not be read (${err.code || err.message}) - left untouched; fix it and re-run`); e.leaveAlone = true; throw e; }
     let parsed;
-    try { parsed = JSON.parse(fs.readFileSync(file, 'utf8')); }
+    try { parsed = JSON.parse(raw); }
     catch (err) { const e = new Error(`${path.basename(file)} is not valid JSON (${err.message}) - left untouched; fix it and re-run`); e.leaveAlone = true; throw e; }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
     { const e = new Error(`${path.basename(file)} top level is not an object - left untouched`); e.leaveAlone = true; throw e; }

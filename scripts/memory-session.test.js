@@ -172,6 +172,41 @@ test('inside a real git worktree, the pushed tag and own-project rows both use t
   } finally { rmDir(outer); rmDir(config); }
 });
 
+// Re-verify 3 S3: the hook took the project from CLAUDE_PROJECT_DIR - the directory the session was started in - so a
+// session started in a package folder injected nothing while its memory server wrote to the project database (or, with
+// the launcher's old reading, the account-wide one). It reads the project the launch directory belongs to (memory.js
+// projectRootOf): the folder holding the install record, and for a linked worktree with none, its main checkout.
+test('a session started in a subdirectory, or in a worktree of an installed checkout, reads the project\'s own memory', { skip: skipNoSqlite }, () => {
+  const outer = fs.realpathSync(tmpDir('memory-session-sub-'));
+  const config = tmpDir('memory-session-sub-config-');
+  try {
+    const repo = path.join(outer, 'my-repo');
+    fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+    const git = (...a) => spawnSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+    git('init', '-q', '-b', 'main'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test');
+    git('commit', '-q', '--allow-empty', '-m', 'init');
+    fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'commit: x\n');
+    const dbPath = path.join(repo, '.alfred', '.alfred-memory', 'memory.db');
+    buildDb(dbPath, [{ content: 'the project note', tags: 'project:my-repo', memory_type: 'reference' }]);
+    fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: dbPath } }));
+    const sub = path.join(repo, 'packages', 'app');
+    fs.mkdirSync(sub, { recursive: true });
+    const worktree = path.join(outer, 'feature-wt');
+    assert.strictEqual(git('worktree', 'add', '-q', '-b', 'feat', worktree).status, 0);
+    for (const cwd of [sub, worktree]) {
+      const r = spawnSync(process.execPath, [HOOK], {
+        cwd, input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 's-sub', cwd }), encoding: 'utf8',
+        env: { ...process.env, CLAUDE_PROJECT_DIR: cwd, CLAUDE_CONFIG_DIR: config, HOME: config },
+      });
+      assert.strictEqual(r.status, 0, r.stderr);
+      assert.ok(r.stdout, `${cwd}: nothing injected`);
+      const text = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+      assert.match(text, /Memory \(memory MCP, project\):/, text);
+      assert.match(text, /the project note/, text);
+    }
+  } finally { rmDir(outer); rmDir(config); }
+});
+
 test('no memory server registered for the project is silent', () => {
   const p = fixtureProject({ registered: false });
   try {

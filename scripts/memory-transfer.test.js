@@ -254,6 +254,13 @@ test('serviceEntry: a registration wins; else the installed plugin, its root sub
     const viaRegistration = memory.serviceEntry(sb.root, { home: sb.work, configDir: sb.acct });
     assert.strictEqual(viaRegistration.command, 'uvx');
     assert.strictEqual(viaRegistration.env.MCP_MEMORY_SQLITE_PATH, '/elsewhere.db');
+    // Re-verify 3 S2: the committed .mcp.json names a project level relative to the project and an account level from the
+    // home; the service this engine starts gets the absolute path each names.
+    for (const [value, want] of [['.alfred/.alfred-memory/memory.db', path.join(sb.root, '.alfred', '.alfred-memory', 'memory.db')], ['~/.alfred-memory/memory.db', path.join(sb.work, '.alfred-memory', 'memory.db')]])
+    {
+        fs.writeFileSync(path.join(sb.root, '.mcp.json'), JSON.stringify({ mcpServers: { memory: { command: 'uvx', args: ['a'], env: { MCP_MEMORY_SQLITE_PATH: value } } } }));
+        assert.strictEqual(memory.serviceEntry(sb.root, { home: sb.work, configDir: sb.acct }).env.MCP_MEMORY_SQLITE_PATH, want, value);
+    }
     sb.done();
 });
 

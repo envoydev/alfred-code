@@ -43,6 +43,11 @@
 // The settings file cannot tell that off from the user's own /plugin disable, so this line is the only
 // reason a switch back enables the core: it lists what is still owed and is gone once it is enabled.
 //
+// `mcp-held` is each MCP pick the copy route did not register because the user's own local- or user-scope
+// registration holds its name (`<scope>:<name>`, re-verify 4 T7). The ledger lists only what the stack wrote, so
+// without this line the next update would read the pick back as gone; with it the pick stays, and the first update
+// after the user removes theirs registers the stack's own. A run writes it afresh from what it held.
+//
 // `data-root` is the project's data root this run left in effect (ALFRED_CODE_DATA_PATH, stack/mcp/data-root.js):
 // the next run's baseline for a root change, even one made by hand in settings. `data-pending` is each move of
 // a server's own data the run recorded for that server's launcher to make at its next start
@@ -229,7 +234,7 @@ function readLedger(file)
 
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, stoodDown = [], library = {}, ledger = null, data = null } = fields;
+    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, stoodDown = [], mcpHeld = [], library = {}, ledger = null, data = null } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
@@ -242,6 +247,7 @@ function renderStamp(fields)
         `sha: ${sha}`,
         `version: ${version}`,
         `installed: ${installed}`,
+        ...(Number.isFinite(installedMs) ? [`installed-ms: ${installedMs}`] : []),
         `action: ${action}`,
         `scope: ${scope}`,
         ...(initialised ? [`initialised: ${initialised}`] : []),
@@ -255,6 +261,7 @@ function renderStamp(fields)
         `browser-engines: ${(playwright || []).join(',')}`,
         ...(Array.isArray(playwrightEnabled) ? [`browser-enabled: ${playwrightEnabled.join(',')}`] : []),
         ...(stoodDown.length ? [`stood-down: ${stoodDown.map((e) => `${e.scope}:${e.spec}`).join(',')}`] : []),
+        ...(mcpHeld.length ? [`mcp-held: ${mcpHeld.map((e) => `${e.scope}:${e.name}`).join(',')}`] : []),
         ...(data && data.root ? [`data-root: ${data.root}`] : []),
         ...(data ? require('../../stack/mcp/data-root.js').renderPending(data.pending || []) : []),
         ...(data && data.kept ? ['data-move: kept'] : []),
@@ -284,7 +291,7 @@ function stampFiles(at)
 function writeStamp(opts)
 {
     const {
-        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, seatsRoute, picked, playwright, playwrightEnabled, stoodDown, library, ledger, data,
+        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, seatsRoute, picked, playwright, playwrightEnabled, stoodDown, mcpHeld, library, ledger, data,
         version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
     const initialised = opts.initialised || initialisedValue({ claudeDir: stampDir({ projectRoot }), now });
@@ -310,10 +317,10 @@ function writeStamp(opts)
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(dest, renderStamp({
             repoUrl: source.repoUrl, ref: source.ref, sha: source.sha, version,
-            installed: now.toISOString().replace(/\.\d{3}Z$/, 'Z'),
+            installed: now.toISOString().replace(/\.\d{3}Z$/, 'Z'), installedMs: now.getTime(),
             action, scope, initialised,
             hooks: shippedHooks(hooksCatalog), hooksRoute, seatsRoute,
-            alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, playwrightEnabled, stoodDown, library, ledger, data,
+            alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, playwrightEnabled, stoodDown, mcpHeld, library, ledger, data,
         }));
     }
     catch (err) { note(`stamp could not be written to ${dest} (${err.message})`); return null; }
@@ -369,6 +376,18 @@ function readLibrary(file)
         version: ((/^version: (.*)$/m.exec(text) || [])[1] || '').trim(),
         skills: map('library-skills'), agents: map('library-agents'), rules: map('library-rules'), invalid,
     };
+}
+
+// When the last run wrote the stamp, in ms: its `installed-ms:` line (precise), else - a stamp from before 2.1.6 -
+// its whole-second `installed:` line, not precise; NaN when there is neither. The account-file loss check compares a
+// CLI backup's own millisecond stamp with it (mcp.accountLoss).
+function readInstalledAt(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return { ms: NaN, precise: false }; }
+    const exact = Number(((/^installed-ms: (\d+)$/m.exec(text) || [])[1]) || NaN);
+    if (Number.isFinite(exact)) return { ms: exact, precise: true };
+    return { ms: Date.parse(((/^installed: (.*)$/m.exec(text) || [])[1] || '').trim()), precise: false };
 }
 
 // The release the last install recorded (`version:`), or '' - no stamp, or none on it. Read from any
@@ -437,6 +456,15 @@ function readStoodDown(file)
     const m = /^stood-down:(.*)$/m.exec(text);
     if (!m) return [];
     return m[1].split(',').map((s) => STOOD_DOWN.exec(s.trim())).filter(Boolean).map(([, scope, spec]) => ({ scope, spec }));
+}
+// The `mcp-held` record (re-verify 4 T7) - [] with no stamp or no line; an entry of any other shape is dropped.
+function readMcpHeld(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return []; }
+    const m = /^mcp-held:(.*)$/m.exec(text);
+    if (!m) return [];
+    return m[1].split(',').map((s) => /^(local|user):(.+)$/.exec(s.trim())).filter((e) => e && validItemName(e[2])).map(([, scope, name]) => ({ scope, name }));
 }
 // The data lines - { root: '' when none, pending: [], kept } with no stamp or none of them.
 function readDataLines(file)
@@ -745,7 +773,7 @@ function migrateLegacyGlobal({ configDir, projectRoot, renamed = null, log = () 
 
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
-    readPicked, readLibrary, readLedger, emptyLedger, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, readStoodDown, readVersion, migrateLegacyGlobal, validItemName,
+    readPicked, readLibrary, readLedger, emptyLedger, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, readStoodDown, readMcpHeld, readVersion, readInstalledAt, migrateLegacyGlobal, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacyAccountStamp, legacyGlobalStamp, legacySignature, legacyUnstamped, worktreeMain, installScope, readDataLines,
     accountDir,
 };

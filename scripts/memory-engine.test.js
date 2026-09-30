@@ -167,6 +167,469 @@ test('the level CLI, run from inside a real worktree, prints "project <main-chec
   } finally { rmDir(outer); }
 });
 
+// Re-verify 2 R4 and R5: the launcher's refusal reached only the CLI's MCP log. The level CLI - what /alfred-code:status and
+// validate read - answers through the same settings reader as the launcher: a settings file it cannot read is named, and
+// with no other key and no registration it says the memory server is refused.
+test('the level CLI names an unreadable settings file, and says "refused" where nothing else names the database', () => {
+  const root = tmpDir('memory-level-refused-');
+  const config = tmpDir('memory-level-refused-acct-');
+  try {
+    fs.mkdirSync(path.join(root, '.claude'));
+    const local = path.join(root, '.claude', 'settings.local.json');
+    fs.writeFileSync(local, '{ "env": { "A": 1, } garbage');
+    const run = () => spawnSync(process.execPath, [ENGINE, 'level', root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: config, HOME: root } });
+    assert.strictEqual(run().stdout.trim(), `refused ${local}`);
+    const db = path.join(root, '.alfred', '.alfred-memory', 'memory.db');
+    fs.mkdirSync(path.dirname(db), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: db } }));
+    assert.deepStrictEqual(run().stdout.trim().split('\n'), [`project ${db}`, `unreadable ${local}`]);
+  } finally { rmDir(root); rmDir(config); }
+});
+
+// Re-verify 3 S6: a torn settings.local.json handed the project to a lower key's database - the account settings'
+// global one - though the stamp's ledger says this project's key lives in the torn file. That file's key is the only
+// answer: the launcher and the level CLI refuse, as when no file answers; a lower key answers only where the ledger
+// records none in the unreadable file.
+test('settingsDbState: an unreadable file the ledger records the memory key in refuses - a lower key never answers for it', () => {
+  const root = fs.realpathSync(tmpDir('memory-ledger-refuse-'));
+  const config = tmpDir('memory-ledger-refuse-acct-');
+  try {
+    fs.mkdirSync(path.join(root, '.claude'));
+    const local = path.join(root, '.claude', 'settings.local.json');
+    fs.writeFileSync(local, '{ "env": { "ALFRED_CODE_MEMORY_DB": "/some/wh');
+    const globalDb = path.join(config, 'home', '.alfred-memory', 'memory.db');
+    fs.writeFileSync(path.join(config, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: globalDb } }));
+    const stamp = path.join(root, '.claude', 'alfred-code.stamp');
+    const ledger = (file) => fs.writeFileSync(stamp, `commit: x\nmanaged-env: settings.json:ALFRED_CODE_DOCS_PATH=${'a'.repeat(64)},${file}:ALFRED_CODE_MEMORY_DB=${'b'.repeat(64)}\n`);
+    ledger('settings.local.json');
+    const state = m.settingsDbState(root, { home: config, configDir: config });
+    assert.strictEqual(state.db, '', `the lower key answered: ${state.db}`);
+    assert.deepStrictEqual(state.unread, [local]);
+    const run = () => spawnSync(process.execPath, [ENGINE, 'level', root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: config, HOME: config } });
+    assert.strictEqual(run().stdout.trim(), `refused ${local}`);
+    assert.strictEqual(m.registeredDbPath(root, { home: config, configDir: config }), null);
+    // The ledger records the key in the shared file (an older install): the torn local file is not its home, and the
+    // account key answers, said as before.
+    ledger('settings.json');
+    assert.strictEqual(m.settingsDbState(root, { home: config, configDir: config }).db, globalDb);
+    fs.rmSync(stamp);
+    assert.strictEqual(m.settingsDbState(root, { home: config, configDir: config }).db, globalDb, 'no ledger: R5 stands');
+  } finally { rmDir(root); rmDir(config); }
+});
+
+// Re-verify 3 S5: the copy-route server reads only its .mcp.json registration, while the engine asked the settings key
+// first - a pulled clone whose machine-local settings.local.json still named the global database had status, validate
+// and the session-start injection name the global database while the server opened the project's. The registration
+// answers first, as the installer's recordedPath reads it; a relative path is the project's.
+test('registeredDbPath: a .mcp.json memory registration answers before the settings key, a relative path resolved at the project', () => {
+  const root = fs.realpathSync(tmpDir('memory-reg-first-'));
+  const home = tmpDir('memory-reg-first-home-');
+  try {
+    fs.mkdirSync(path.join(root, '.claude'));
+    fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: path.join(home, '.alfred-memory', 'memory.db') } }));
+    fs.writeFileSync(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { memory: { type: 'stdio', command: 'node', args: [], env: { MCP_MEMORY_SQLITE_PATH: '.alfred/.alfred-memory/memory.db' } } } }));
+    assert.strictEqual(m.registeredDbPath(root, { home, configDir: home }), path.join(root, '.alfred', '.alfred-memory', 'memory.db'));
+  } finally { rmDir(root); rmDir(home); }
+});
+
+// Re-verify 3 S2 / S3: every project-anchored server - the memory database, the browser profiles, the navigation
+// server's home and context - resolved the project from its launch directory, and the copy route's `${CLAUDE_PROJECT_DIR:-.}`
+// expands to '.' in Claude Code's own environment. A session started in a subdirectory got a second database and
+// profiles outside every .gitignore; an inherited CLAUDE_PROJECT_DIR opened another folder's. ONE resolver walks up from
+// the launch directory to the folder holding the install record (the same records hook-prelude's set-up gate reads),
+// never past the checkout's git top level, else that top level; with no git, the launch directory alone (re-verify 4
+// T1); a linked worktree works on its own checkout, and its memory is the main checkout's.
+test('projectRootOf: the launch directory resolves to the folder holding the install record, else its git top level', () => {
+  const outer = fs.realpathSync(tmpDir('memory-root-'));
+  const home = path.join(outer, 'home');
+  try {
+    fs.mkdirSync(home);
+    const stamped = (dir) => { fs.mkdirSync(path.join(dir, '.claude'), { recursive: true }); fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'commit: x\n'); };
+    const plain = path.join(outer, 'plain');
+    stamped(plain);
+    fs.mkdirSync(path.join(plain, '.git'));
+    fs.mkdirSync(path.join(plain, 'sub', 'deeper'), { recursive: true });
+    for (const at of [plain, path.join(plain, 'sub'), path.join(plain, 'sub', 'deeper')])
+      assert.deepStrictEqual(m.projectRootOf(at, { home }), { checkout: plain, project: plain }, at);
+    // With no git, the launch directory alone - a record above it is never read (re-verify 4 T1).
+    const nogit = path.join(outer, 'nogit');
+    stamped(nogit);
+    fs.mkdirSync(path.join(nogit, 'sub'));
+    assert.deepStrictEqual(m.projectRootOf(nogit, { home }), { checkout: nogit, project: nogit });
+    assert.deepStrictEqual(m.projectRootOf(path.join(nogit, 'sub'), { home }), { checkout: path.join(nogit, 'sub'), project: path.join(nogit, 'sub') });
+    // A git repo with no record: its top level, never the launch directory.
+    const repo = path.join(outer, 'repo');
+    fs.mkdirSync(path.join(repo, '.git', 'x'), { recursive: true });
+    fs.mkdirSync(path.join(repo, 'pkg', 'src'), { recursive: true });
+    assert.deepStrictEqual(m.projectRootOf(path.join(repo, 'pkg', 'src'), { home }), { checkout: repo, project: repo });
+    // A record below the top (a package installed on its own) is the nearest one.
+    stamped(path.join(repo, 'pkg'));
+    assert.deepStrictEqual(m.projectRootOf(path.join(repo, 'pkg', 'src'), { home }), { checkout: path.join(repo, 'pkg'), project: path.join(repo, 'pkg') });
+    // Nothing at all: the launch directory. A home directory is never a project: its .claude/ is the account dir.
+    const bare = path.join(outer, 'bare', 'x');
+    fs.mkdirSync(bare, { recursive: true });
+    assert.deepStrictEqual(m.projectRootOf(bare, { home }), { checkout: bare, project: bare });
+    stamped(home);
+    fs.mkdirSync(path.join(home, '.git'));
+    fs.mkdirSync(path.join(home, 'scratch'));
+    assert.deepStrictEqual(m.projectRootOf(path.join(home, 'scratch'), { home }), { checkout: path.join(home, 'scratch'), project: path.join(home, 'scratch') });
+  } finally { rmDir(outer); }
+});
+
+test('projectRootOf: a linked worktree works on its own checkout, and its memory is the main checkout\'s', () => {
+  const outer = fs.realpathSync(tmpDir('memory-root-wt-'));
+  try {
+    const repo = path.join(outer, 'repo');
+    fs.mkdirSync(repo);
+    const git = (...a) => spawnSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+    git('init', '-q', '-b', 'main'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test');
+    git('commit', '-q', '--allow-empty', '-m', 'init');
+    fs.mkdirSync(path.join(repo, '.claude'));
+    fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'commit: x\n');
+    for (const worktree of [path.join(outer, 'feature'), path.join(repo, '.claude', 'worktrees', 'nested')]) {
+      const add = git('worktree', 'add', '-q', '-b', path.basename(worktree), worktree);
+      assert.strictEqual(add.status, 0, add.stderr);
+      fs.mkdirSync(path.join(worktree, 'src'), { recursive: true });
+      assert.deepStrictEqual(m.projectRootOf(path.join(worktree, 'src'), { home: path.join(outer, 'home') }), { checkout: worktree, project: repo }, worktree);
+    }
+  } finally { rmDir(outer); }
+});
+
+// Re-verify 4 T2: the stamp and the engine are often committed, so a linked worktree holds a record of its own - and it
+// opened a second, empty database (and on the plugin route read no settings key at all: main's settings.local.json is
+// untracked). A worktree's project is its main checkout whenever that one holds a record, whatever the worktree carries.
+test('projectRootOf: a linked worktree that carries its own record still shares the main checkout\'s project (re-verify 4 T2)', () => {
+  const outer = fs.realpathSync(tmpDir('memory-root-wt-own-'));
+  try {
+    const repo = path.join(outer, 'repo');
+    fs.mkdirSync(repo);
+    const git = (...a) => spawnSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+    git('init', '-q', '-b', 'main'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test');
+    fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'commit: x\n');
+    fs.writeFileSync(path.join(repo, '.claude', 'hooks', 'docs.js'), '// engine\n');
+    git('add', '-A'); git('commit', '-q', '-m', 'init');
+    for (const worktree of [path.join(outer, 'feature'), path.join(repo, '.claude', 'worktrees', 'nested')]) {
+      const add = git('worktree', 'add', '-q', '-b', path.basename(worktree), worktree);
+      assert.strictEqual(add.status, 0, add.stderr);
+      assert.ok(fs.existsSync(path.join(worktree, '.claude', 'alfred-code.stamp')), 'the worktree carries the committed record');
+      fs.mkdirSync(path.join(worktree, 'src'), { recursive: true });
+      for (const at of [worktree, path.join(worktree, 'src')])
+        assert.deepStrictEqual(m.projectRootOf(at, { home: path.join(outer, 'home') }), { checkout: worktree, project: repo }, at);
+    }
+  } finally { rmDir(outer); }
+});
+
+// Re-verify 4 T1: the walk went past the git top level (ROOT_BOOT) and, with no git, to '/' (projectRootOf), so a record
+// planted in a shared ancestor - /private/tmp, /Users/Shared, an extracted archive - redirected the database, serena's
+// project, the browser profile and the memory tag. The walk stops at the checkout's git top level; with no git it is the
+// launch directory alone; a home is never passed; and a `.git` another user owns is no repository (git's own rule).
+test('projectRootOf: a record above the git top level, or above a folder with no git, never names the project (re-verify 4 T1)', () => {
+  const outer = fs.realpathSync(tmpDir('memory-root-planted-'));
+  try {
+    const plant = (dir) => {
+      fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'commit: planted\n');
+      fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: path.join(dir, 'planted.db') } }));
+    };
+    const home = path.join(outer, 'home');
+    fs.mkdirSync(home);
+    // Above a repo: the repo's own top level.
+    const shared = path.join(outer, 'shared');
+    plant(shared);
+    const clone = path.join(shared, 'clone');
+    fs.mkdirSync(path.join(clone, '.git'), { recursive: true });
+    fs.mkdirSync(path.join(clone, 'sub'), { recursive: true });
+    for (const at of [clone, path.join(clone, 'sub')])
+      assert.deepStrictEqual(m.projectRootOf(at, { home }), { checkout: clone, project: clone }, at);
+    // Above a folder with no git: the launch directory alone, never an ancestor.
+    const shared2 = path.join(outer, 'shared2');
+    plant(shared2);
+    const plain = path.join(shared2, 'plain');
+    fs.mkdirSync(path.join(plain, 'sub'), { recursive: true });
+    for (const at of [plain, path.join(plain, 'sub')])
+      assert.deepStrictEqual(m.projectRootOf(at, { home }), { checkout: at, project: at }, at);
+    assert.strictEqual(m.registeredDbPath(m.projectRootOf(path.join(plain, 'sub'), { home }).project, { home, configDir: home }), null, 'the planted settings name no database here');
+  } finally { rmDir(outer); }
+});
+
+const OTHER_OWNER = process.platform === 'win32' || !process.getuid || process.getuid() === 0 ? 'needs a posix non-root user' : false;
+test('projectRootOf: a .git another user owns is no repository - the launch directory alone (re-verify 4 T1)', { skip: OTHER_OWNER }, () => {
+  const outer = fs.realpathSync(tmpDir('memory-root-foreign-'));
+  try {
+    // A `.git` owned by root, standing in for one another account planted in a shared folder.
+    const foreign = path.join(outer, 'foreign');
+    fs.mkdirSync(path.join(foreign, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(foreign, '.claude', 'alfred-code.stamp'), 'commit: planted\n');
+    fs.symlinkSync('/', path.join(foreign, '.git'));
+    assert.notStrictEqual(fs.statSync(path.join(foreign, '.git')).uid, process.getuid());
+    const sub = path.join(foreign, 'work');
+    fs.mkdirSync(sub);
+    assert.deepStrictEqual(m.projectRootOf(sub, { home: path.join(outer, 'home') }), { checkout: sub, project: sub });
+  } finally { rmDir(outer); }
+});
+
+// The copy route registers no launcher of its own, so its three project-anchored rows start through ROOT_BOOT: a
+// constant `node -e` that finds the project's copied engine walking up from the launch directory (or through the main
+// checkout of a linked worktree) and runs the server at the project it resolves. The seed asserts what the reviewer
+// asked of the fix: from a subdirectory, and under an exported CLAUDE_PROJECT_DIR naming another folder, the server's
+// MCP_MEMORY_SQLITE_PATH resolves to the engine's own database.
+test('ROOT_BOOT: a copy-route server started in a subdirectory, or under another folder\'s CLAUDE_PROJECT_DIR, runs at its project', { skip: process.platform === 'win32' && 'posix stub' }, () => {
+  const outer = fs.realpathSync(tmpDir('memory-boot-'));
+  try {
+    const proj = path.join(outer, 'proj');
+    fs.mkdirSync(path.join(proj, '.claude', 'hooks'), { recursive: true });
+    fs.mkdirSync(path.join(proj, '.git'));
+    fs.writeFileSync(path.join(proj, '.claude', 'alfred-code.stamp'), 'commit: x\n');
+    fs.copyFileSync(ENGINE, path.join(proj, '.claude', 'hooks', 'memory.js'));
+    const rel = '.alfred/.alfred-memory/memory.db';
+    fs.writeFileSync(path.join(proj, '.mcp.json'), JSON.stringify({ mcpServers: { memory: { type: 'stdio', command: 'node', args: [], env: { MCP_MEMORY_SQLITE_PATH: rel } } } }));
+    const elsewhere = path.join(outer, 'elsewhere');
+    fs.mkdirSync(elsewhere);
+    const deeper = path.join(proj, 'sub', 'deeper');
+    fs.mkdirSync(deeper, { recursive: true });
+    const record = path.join(outer, 'started.json');
+    const stub = path.join(outer, 'stub.js');
+    fs.writeFileSync(stub, `require('fs').writeFileSync(${JSON.stringify(record)}, JSON.stringify({ cwd: process.cwd(), db: require('path').resolve(process.env.MCP_MEMORY_SQLITE_PATH), argv: process.argv.slice(2) }));`);
+    const boot = (cwd, env) => spawnSync(process.execPath, ['-e', m.ROOT_BOOT, '--', 'project', process.execPath, stub, '--flag', 'value'],
+      { cwd, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: outer, MCP_MEMORY_SQLITE_PATH: rel, ...env } });
+    const engineDb = m.registeredDbPath(proj, { home: outer, configDir: outer });
+    for (const [cwd, env] of [[path.join(proj, 'sub'), {}], [deeper, {}], [deeper, { CLAUDE_PROJECT_DIR: elsewhere }], [proj, { CLAUDE_PROJECT_DIR: elsewhere }]]) {
+      fs.rmSync(record, { force: true });
+      const r = boot(cwd, env);
+      assert.strictEqual(r.status, 0, r.stderr);
+      assert.strictEqual(r.stdout, '', 'stdout is the MCP stream - the anchor writes nothing to it');
+      const got = JSON.parse(fs.readFileSync(record, 'utf8'));
+      assert.deepStrictEqual(got, { cwd: proj, db: engineDb, argv: ['--flag', 'value'] }, `${cwd} ${JSON.stringify(env)}`);
+    }
+    // No engine above the launch directory: nothing starts, one line says why.
+    fs.rmSync(record, { force: true });
+    const lost = boot(elsewhere, {});
+    assert.notStrictEqual(lost.status, 0);
+    assert.strictEqual(fs.existsSync(record), false);
+    assert.match(lost.stderr, /alfred-code: .*\.claude\/hooks\/memory\.js/);
+    assert.strictEqual(lost.stderr.trim().split('\n').length, 1, lost.stderr);
+  } finally { rmDir(outer); }
+});
+
+// Re-verify 3, the Windows half of the anchor: a copy-route row is `node -e <ROOT_BOOT> -- ...`, which Claude Code starts from
+// its command and args, and which a local-scope install passes through `claude mcp add` - on Windows a .cmd shim, so
+// cmd.exe. ROOT_BOOT therefore holds no character cmd.exe reads (the double quote, %, ^, &, |, <, >, !, a line break),
+// and no space or tab, which would split it into several arguments on a line cmd.exe joins unquoted.
+const CMD_SPECIAL = /["%^&|<>!\r\n \t]/;
+test('ROOT_BOOT: holds no character cmd.exe reads, and no space', () => {
+  const found = [...new Set(m.ROOT_BOOT.match(new RegExp(CMD_SPECIAL.source, 'g')) || [])];
+  assert.deepStrictEqual(found, [], `ROOT_BOOT holds ${JSON.stringify(found)}`);
+});
+
+// Starts ROOT_BOOT as a copy-route row does - `node -e <ROOT_BOOT> -- <anchor> <node> <recorder>` - with a recorder that
+// writes where it ran and the database path it was handed.
+const POSIX_BOOT = { skip: process.platform === 'win32' && 'posix stub' };
+function bootIn(outer) {
+  const record = path.join(outer, 'started.json');
+  const recorder = path.join(outer, 'recorder.js');
+  fs.writeFileSync(recorder, `require('fs').writeFileSync(${JSON.stringify(record)}, JSON.stringify({ cwd: process.cwd(), db: process.env.MCP_MEMORY_SQLITE_PATH || null }));`);
+  return (cwd, anchor, env = {}) => {
+    fs.rmSync(record, { force: true });
+    const r = spawnSync(process.execPath, ['-e', m.ROOT_BOOT, '--', anchor, process.execPath, recorder], { cwd, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: path.join(outer, 'home'), ...env } });
+    return { ...r, started: fs.existsSync(record) ? JSON.parse(fs.readFileSync(record, 'utf8')) : null };
+  };
+}
+// An engine another account planted: requiring it runs its code.
+const plantEngine = (dir, mark) => {
+  fs.mkdirSync(path.join(dir, '.claude', 'hooks'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.claude', 'hooks', 'memory.js'), `require('fs').writeFileSync(${JSON.stringify(mark)}, __filename); module.exports = { runAtRoot() {} };\n`);
+};
+
+// Re-verify 4 T1: ROOT_BOOT required the first .claude/hooks/memory.js in ANY ancestor of the launch directory - past the git
+// top level and the home, up to '/' - and a user-scope row runs in every project on the account: a file planted above
+// another repo was executed from it. The engine is looked for only between the launch directory and the checkout's git top
+// level (the launch directory alone with no git, never a home, never under a .git another user owns); a checkout row loads
+// no engine at all.
+test('ROOT_BOOT: an engine above the git top level, above a folder with no git, or under a .git another user owns is never loaded (re-verify 4 T1)', POSIX_BOOT, () => {
+  const outer = fs.realpathSync(tmpDir('memory-boot-planted-'));
+  try {
+    fs.mkdirSync(path.join(outer, 'home'));
+    const mark = path.join(outer, 'planted-ran');
+    const boot = bootIn(outer);
+    const shared = path.join(outer, 'shared');
+    plantEngine(shared, mark);
+    const clone = path.join(shared, 'clone');
+    fs.mkdirSync(path.join(clone, '.git'), { recursive: true });
+    fs.mkdirSync(path.join(clone, 'sub'), { recursive: true });
+    const shared2 = path.join(outer, 'shared2');
+    plantEngine(shared2, mark);
+    const plain = path.join(shared2, 'plain', 'sub');
+    fs.mkdirSync(plain, { recursive: true });
+    const cases = [[path.join(clone, 'sub'), clone], [plain, plain]];
+    if (!OTHER_OWNER) {
+      const foreign = path.join(outer, 'foreign');
+      plantEngine(foreign, mark);
+      fs.symlinkSync('/', path.join(foreign, '.git'));
+      fs.mkdirSync(path.join(foreign, 'work'));
+      cases.push([path.join(foreign, 'work'), path.join(foreign, 'work')]);
+    }
+    for (const [at, root] of cases) {
+      const project = boot(at, 'project');
+      assert.notStrictEqual(project.status, 0, `${at}: a project row started with no engine of its own`);
+      assert.strictEqual(project.started, null, at);
+      assert.match(project.stderr, /alfred-code: .*\.claude\/hooks\/memory\.js/, at);
+      assert.strictEqual(project.stderr.trim().split('\n').length, 1, project.stderr);
+      const checkout = boot(at, 'checkout');
+      assert.strictEqual(checkout.status, 0, checkout.stderr);
+      assert.strictEqual(checkout.started && checkout.started.cwd, root, at);
+      assert.strictEqual(fs.existsSync(mark), false, `${at}: the planted engine ran (${fs.existsSync(mark) && fs.readFileSync(mark, 'utf8')})`);
+    }
+  } finally { rmDir(outer); }
+});
+
+// Re-verify 4 T1: the MCP copy route with the core on registers each browser engine at user scope, so its row starts in
+// every project on the account - a repo the stack never set up refused with the anchor message, where base started it at
+// its own folder. A checkout row starts its command itself: at the nearest install between the launch directory and the
+// git top level, else that top level - and it requires none of the project's code, so a user-scope row runs nothing a
+// repo ships.
+test('ROOT_BOOT: a checkout row starts its command at the checkout and runs no project code - a repo never set up starts at its top level (re-verify 4 T1)', POSIX_BOOT, () => {
+  const outer = fs.realpathSync(tmpDir('memory-boot-checkout-'));
+  try {
+    fs.mkdirSync(path.join(outer, 'home'));
+    const mark = path.join(outer, 'engine-ran');
+    const boot = bootIn(outer);
+    const repo = path.join(outer, 'repo');
+    const src = path.join(repo, 'pkg', 'src');
+    fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
+    fs.mkdirSync(src, { recursive: true });
+    const never = boot(src, 'checkout');
+    assert.strictEqual(never.status, 0, never.stderr);
+    assert.strictEqual(never.started.cwd, repo, 'a repo never set up starts at its top level');
+    plantEngine(repo, mark);
+    assert.strictEqual(boot(src, 'checkout').started.cwd, repo);
+    plantEngine(path.join(repo, 'pkg'), mark);
+    assert.strictEqual(boot(src, 'checkout').started.cwd, path.join(repo, 'pkg'), 'a package installed on its own is its own checkout');
+    assert.strictEqual(fs.existsSync(mark), false, 'a checkout row loaded the project\'s engine');
+    // The project row does run the engine inside the checkout - the nearest one.
+    boot(src, 'project');
+    assert.strictEqual(fs.readFileSync(mark, 'utf8'), path.join(repo, 'pkg', '.claude', 'hooks', 'memory.js'));
+  } finally { rmDir(outer); }
+});
+
+// The Windows half of a checkout row, on any POSIX runner: with process.platform read as win32 the command goes through
+// %ComSpec% as `/d /s /c "<command> <args>"` - the one quoted line runAtRoot builds - at the checkout.
+test('ROOT_BOOT: on Windows a checkout row starts its command through cmd.exe as one quoted line, at the checkout', POSIX_BOOT, () => {
+  const outer = fs.realpathSync(tmpDir('memory-boot-win-'));
+  try {
+    fs.mkdirSync(path.join(outer, 'home'));
+    const record = path.join(outer, 'comspec.json');
+    const comspec = path.join(outer, 'comspec');
+    fs.writeFileSync(comspec, `#!${process.execPath}\nrequire('fs').writeFileSync(${JSON.stringify(record)}, JSON.stringify({ cwd: process.cwd(), argv: process.argv.slice(2) }));\n`, { mode: 0o755 });
+    const preload = path.join(outer, 'as-win32.js');
+    fs.writeFileSync(preload, "Object.defineProperty(process, 'platform', { value: 'win32' });\n");
+    const repo = path.join(outer, 'repo');
+    fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
+    fs.mkdirSync(path.join(repo, 'sub'));
+    const r = spawnSync(process.execPath, ['--require', preload, '-e', m.ROOT_BOOT, '--', 'checkout', 'npx', '-y', '@playwright/mcp@0.0.82', '--user-data-dir', '.alfred/browser/chrome'],
+      { cwd: path.join(repo, 'sub'), encoding: 'utf8', env: { PATH: process.env.PATH, HOME: path.join(outer, 'home'), ComSpec: comspec } });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(record, 'utf8')), { cwd: repo, argv: ['/d', '/s', '/c', '"npx -y @playwright/mcp@0.0.82 --user-data-dir .alfred/browser/chrome"'] });
+  } finally { rmDir(outer); }
+});
+
+// Re-verify 4 T2: the copy route's committed .mcp.json and engine reach every linked worktree, and the project row opened a
+// second, empty database relative to the worktree - base opened the main checkout's. The engine runs the row at the main
+// checkout whenever that one holds a record; the checkout rows stay on the worktree.
+test('ROOT_BOOT: a project row started in a linked worktree runs at the main checkout, whose database it shares (re-verify 4 T2)', POSIX_BOOT, () => {
+  const outer = fs.realpathSync(tmpDir('memory-boot-wt-'));
+  try {
+    fs.mkdirSync(path.join(outer, 'home'));
+    const boot = bootIn(outer);
+    const repo = path.join(outer, 'repo');
+    fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true });
+    const git = (...a) => spawnSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+    git('init', '-q', '-b', 'main'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test');
+    fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'commit: x\n');
+    fs.copyFileSync(ENGINE, path.join(repo, '.claude', 'hooks', 'memory.js'));
+    git('add', '-A'); git('commit', '-q', '-m', 'init');
+    const rel = '.alfred/.alfred-memory/memory.db';
+    for (const worktree of [path.join(outer, 'feature'), path.join(repo, '.claude', 'worktrees', 'nested')]) {
+      const add = git('worktree', 'add', '-q', '-b', path.basename(worktree), worktree);
+      assert.strictEqual(add.status, 0, add.stderr);
+      fs.mkdirSync(path.join(worktree, 'src'), { recursive: true });
+      for (const at of [worktree, path.join(worktree, 'src')]) {
+        const r = boot(at, 'project', { MCP_MEMORY_SQLITE_PATH: rel });
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.deepStrictEqual([r.started.cwd, path.resolve(r.started.cwd, r.started.db)], [repo, path.join(repo, rel)], at);
+        assert.strictEqual(boot(at, 'checkout').started.cwd, worktree, at);
+      }
+    }
+  } finally { rmDir(outer); }
+});
+
+// Re-verify 4 T6: the committed value followed the author machine's unmoved ~/.memory-mcp, so a teammate holding only
+// ~/.alfred-memory got a second, empty database (and the mirror case the other way). The value is always
+// ~/.alfred-memory/<file>, and the machine that starts the server opens the live file there: the new place, else an
+// unmoved 2.0.0 one.
+test('ROOT_BOOT: a database named from the home opens the live file of the machine that starts it - the new place, else an unmoved 2.0.0 one (re-verify 4 T6)', POSIX_BOOT, () => {
+  const outer = fs.realpathSync(tmpDir('memory-boot-home-'));
+  try {
+    const home = path.join(outer, 'home');
+    const boot = bootIn(outer);
+    const proj = path.join(outer, 'proj');
+    fs.mkdirSync(path.join(proj, '.claude', 'hooks'), { recursive: true });
+    fs.writeFileSync(path.join(proj, '.claude', 'alfred-code.stamp'), 'commit: x\n');
+    fs.copyFileSync(ENGINE, path.join(proj, '.claude', 'hooks', 'memory.js'));
+    for (const file of ['memory.db', 'memory_default.db']) {
+      const fresh = path.join(home, '.alfred-memory', file);
+      const old = path.join(home, '.memory-mcp', file);
+      const start = () => boot(proj, 'project', { MCP_MEMORY_SQLITE_PATH: `~/.alfred-memory/${file}` }).started.db;
+      rmDir(home);
+      assert.strictEqual(start(), fresh, `${file}: neither place holds it`);
+      fs.mkdirSync(path.dirname(old), { recursive: true });
+      fs.writeFileSync(old, '');
+      assert.strictEqual(start(), old, `${file}: only the unmoved 2.0.0 file`);
+      fs.mkdirSync(path.dirname(fresh), { recursive: true });
+      fs.writeFileSync(fresh, '');
+      assert.strictEqual(start(), fresh, `${file}: both places`);
+    }
+  } finally { rmDir(outer); }
+});
+
+// Re-verify 4 T3: `level` resolved its folder with path.resolve, so from a subdirectory it said `none` while the servers
+// started there used the project database; `export` and `import` took the same folder. Every verb resolves its project the
+// way the servers do - a subdirectory's install, and a linked worktree's main checkout.
+test('the level and export verbs resolve their project the way the servers do - from a subdirectory and from a linked worktree (re-verify 4 T3)', () => {
+  const outer = fs.realpathSync(tmpDir('memory-cli-anchor-'));
+  try {
+    const home = path.join(outer, 'home');
+    fs.mkdirSync(home);
+    const root = path.join(outer, 'proj');
+    const deeper = path.join(root, 'sub', 'deeper');
+    fs.mkdirSync(deeper, { recursive: true });
+    const git = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' });
+    git('init', '-q', '-b', 'main'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test');
+    fs.mkdirSync(path.join(root, '.claude'));
+    fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'commit: x\n');
+    fs.writeFileSync(path.join(root, '.gitignore'), '.claude/settings.local.json\n.alfred/\n');
+    git('add', '-A'); git('commit', '-q', '-m', 'init');
+    const db = path.join(root, '.alfred', '.alfred-memory', 'memory.db');
+    fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: db } }));
+    const env = { PATH: process.env.PATH, HOME: home, CLAUDE_CONFIG_DIR: home };
+    const cli = (cwd, ...args) => spawnSync(process.execPath, [ENGINE, ...args], { cwd, encoding: 'utf8', env });
+    assert.strictEqual(cli(deeper, 'level').stdout.trim(), `project ${db}`, 'from a subdirectory');
+    assert.strictEqual(cli(outer, 'level', deeper).stdout.trim(), `project ${db}`, 'naming a subdirectory');
+    const worktree = path.join(outer, 'feature');
+    assert.strictEqual(git('worktree', 'add', '-q', '-b', 'feature', worktree).status, 0);
+    assert.strictEqual(cli(worktree, 'level').stdout.trim(), `project ${db}`, 'from a linked worktree - its main checkout\'s key');
+    if (DatabaseSync) {
+      fs.mkdirSync(path.dirname(db), { recursive: true });
+      buildDb(path.dirname(db), [{ content: 'a project fact', tags: 'project:proj' }]);
+      for (const at of [deeper, worktree]) {
+        const r = cli(at, 'export');
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.strictEqual(r.stdout.trim().split('\n').length, 1, `${at}: ${r.stderr}`);
+      }
+    }
+  } finally { rmDir(outer); }
+});
+
 // --- Windows path spellings, on any platform ---------------------------------------------------------
 // The engine loaded with path.win32 and a Windows-shaped fs / git, so the spelling rules a Windows run
 // depends on are pinned on every CI platform, not only on the one that can see them. `dirs` maps every

@@ -11,6 +11,19 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const each = (dir, re) => fs.readdirSync(path.join(ROOT, dir), { recursive: true }).filter((f) => re.test(f)).map((f) => path.join(dir, f).split(path.sep).join('/'));
 
 // M20: mcp-memory-service 11.13.0 and later list numpy>=1.24.0 among their core requires_dist (PyPI JSON).
+// Re-verify 2 R4: a memory launcher that refuses to start (a settings file it cannot read, no other key) showed only in the CLI's
+// MCP log. status and validate render the level CLI's 'refused' and 'unreadable' answers, naming the file and the fix.
+test('R4 status and validate name an unreadable settings file and the memory server\'s refusal', () =>
+{
+    for (const file of ['setup-plugin/commands/status.md', 'setup-plugin/commands/validate.md'])
+    {
+        const body = read(file);
+        assert.match(body, /`refused <file>`/, `${file}: renders the refusal`);
+        assert.match(body, /launcher refuses to start/, file);
+        assert.match(body, /`unreadable <file>`/, `${file}: renders a skipped settings file`);
+    }
+});
+
 test('M20 the memory launcher no longer says the service leaves numpy undeclared', () =>
 {
     const text = read('stack/mcp/memory-launch.js');

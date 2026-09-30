@@ -41,7 +41,7 @@ function tree(repo)
     })(work);
     return files;
 }
-const untimed = (stamp) => stamp.replace(/^installed: .*$/m, 'installed: <time>');
+const untimed = (stamp) => stamp.replace(/^installed: .*$/m, 'installed: <time>').replace(/^installed-ms: .*$/m, 'installed-ms: <time>');
 const json = (repo, rel) => JSON.parse(fs.readFileSync(path.join(repo, rel), 'utf8'));
 const run = (actions, route, extra = {}) => seedRun(actions, SELECTION, { env: ROUTES[route], ...extra });
 

@@ -71,20 +71,26 @@ const RECORD = (tool) => `printf '${tool} %s\\n' "$*" >> "$HOME/registry.log"; e
 const REGISTRY = { npm: RECORD('npm'), curl: RECORD('curl') };
 const PW = `@playwright/mcp@${JSON.parse(read('meta/mcp-pins.json')).pins.browser.version}`;
 const servers = (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers;
-const launch = (repo) => ((servers(repo)['browser-chrome'] || {}).args || []).slice(0, 2);
+// The row starts through the project-root anchor (`node -e <ROOT_BOOT> -- checkout`, re-verify 3 S2/S3); the launch is what it runs.
+const launch = (repo) =>
+{
+    const { command, args = [] } = servers(repo)['browser-chrome'] || {};
+    const words = command === 'node' && args[0] === '-e' && args[2] === '--' ? args.slice(4) : [command, ...args];
+    return words.slice(0, 3);
+};
 const asked = (repo) => { try { return fs.readFileSync(path.join(path.dirname(repo), 'registry.log'), 'utf8').split('\n').filter(Boolean); } catch { return []; } };
 
 test('seed install on the MCP copy route writes the server at the release pin and asks no registry', POSIX_ONLY, () =>
 {
     const { result } = seedRun('install', SELECTION, { env: COPY_ROUTE, tools: REGISTRY, inspect: (repo) => ({ launch: launch(repo), asked: asked(repo) }) });
-    assert.deepStrictEqual(result.launch, ['-y', PW]);
+    assert.deepStrictEqual(result.launch, ['npx', '-y', PW]);
     assert.deepStrictEqual(result.asked, [], 'the seed asked a registry for a version');
 });
 
 test('seed install with the registry unreachable writes the same release pin, never a placeholder or @latest', POSIX_ONLY, () =>
 {
     const { result, out } = seedRun('install', SELECTION, { env: COPY_ROUTE, tools: { npm: 'exit 1', curl: 'exit 1' }, inspect: launch });
-    assert.deepStrictEqual(result, ['-y', PW]);
+    assert.deepStrictEqual(result, ['npx', '-y', PW]);
     assert.doesNotMatch(out, /could not resolve|installing unpinned/);
 });
 
@@ -97,7 +103,7 @@ test('seed update over an install still on @latest rewrites the row to the pin',
     const prepare = (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(old, null, 2) + '\n');
     const inspect = (repo) => ({ pw: launch(repo), mine: servers(repo)['my-browser'] });
     const { result } = seedRun('update', SELECTION, { env: COPY_ROUTE, tools: REGISTRY, prepare, inspect });
-    assert.deepStrictEqual(result.pw, ['-y', PW]);
+    assert.deepStrictEqual(result.pw, ['npx', '-y', PW]);
     assert.deepStrictEqual(result.mine, old.mcpServers['my-browser'], "the user's own server was touched");
 });
 
