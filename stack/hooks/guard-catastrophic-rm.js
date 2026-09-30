@@ -74,7 +74,7 @@ const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 // inert text, and matching it blocked a document write for its own prose (reproduced). Blank the
 // payload spans, keeping the character count so any index into the command still holds.
 const stripHeredocs = (c) => String(c).replace(
-  /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^\s*\2\s*$/gm,
+  /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^[ \t]*\2[ \t\r]*$/gm,
   (m) => m.replace(/[^\n]/g, ' '),
 );
 

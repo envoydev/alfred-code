@@ -518,7 +518,9 @@ test('CLI closure -> emitted file -> installer --print-plan agrees', () => {
 
         const seed = path.join(__dirname, 'install', 'alfred-code.js');
         const root = path.join(__dirname, '..');
-        const plan = execFileSync('node', [seed, 'install', '--scope', 'project', '--selection', selFile, '--source', root, '--print-plan'], { encoding: 'utf8' });
+        // 2.1.6 K4: run from the throwaway dir, never the suite's own cwd - a git worktree of an installed checkout
+        // (every .claude/worktrees/<x> this repo uses) is refused by the installer before any plan is printed.
+        const plan = execFileSync('node', [seed, 'install', '--scope', 'project', '--selection', selFile, '--source', root, '--print-plan'], { encoding: 'utf8', cwd: dir });
         const planSkills = (plan.match(/^plan skills:(.*)$/m) || [,''])[1].trim().split(/\s+/);
         assert.ok(planSkills.includes('dotnet-web-backend'), 'installer plan reflects the closed selection');
     }

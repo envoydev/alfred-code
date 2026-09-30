@@ -1127,7 +1127,7 @@ const installedCell = (r) => (r.installedIn ? `${r.installedIn}/${r.ofSessions}`
 const INTERP_RE = /\b(?:python[\d.]*|node|nodejs|ruby|perl|php|deno|bun|osascript|pwsh|powershell)\b/;
 function maskHeredocs(cmd) {
   return String(cmd).replace(
-    /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^\s*\2\s*$/gm,
+    /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1[\s\S]*?^[ \t]*\2[ \t\r]*$/gm,
     (m, _q, _tag, off, whole) => {
       const header = whole.slice(whole.lastIndexOf('\n', off) + 1, off);
       if (INTERP_RE.test(header)) return m;               // an inline script - real code
@@ -2829,7 +2829,9 @@ function efficiencyRows(main, agg, blockLedger) {
       rows.push({ practice: 'cost at list price', measured: `price table unreadable (${c.error || pt.error}) - no cost computed`, tests: 'meta/model-prices.json, or the file --prices names' });
     } else {
       const seats = Object.entries(c.byType || {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, usd]) => `${t} ${fmtUsd(usd)}`).join(', ');
-      const unpriced = Object.entries(c.unpriced || {}).map(([m, n]) => `${m} x${n} msg${n === 1 ? '' : 's'}`).join(', ');
+      // The table holds every row the page prices, so a model with no row is one the page did not list when it was
+      // fetched - said with the date, never guessed at a sibling's price (2.1.6 K3).
+      const unpriced = Object.entries(c.unpriced || {}).map(([m, n]) => `${m} x${n} msg${n === 1 ? '' : 's'} - not on the pricing page (fetched ${pt.table.fetched})`).join(', ');
       const parts = [`~${fmtUsd(c.usd)} - main ${fmtUsd(c.main)}${c.seats ? `, subagents ${fmtUsd(c.subagents)} over ${c.seats} seat(s) (${seats})` : ''}`];
       if (main.totalCostUSD != null) parts.push(`cost-state billed ${fmtUsd(Number(main.totalCostUSD))}`);
       if (unpriced) parts.push(`unpriced: ${unpriced}`);

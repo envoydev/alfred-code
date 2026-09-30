@@ -134,13 +134,56 @@ change (see the invariants below).
     shell, any oversized file, a sweep over `.md` files). A shell loop is a sweep only when a `cat` in its body
     reads the loop VARIABLE and a gated extension names what it walks, judged with quoted spans blanked (I4: a
     `cat` inside an `echo "..."` payload was denied). An unexpanded `$VAR` target is not judged; a
-    leading `cd` moves the anchor; a counting expression is not a dump. Every denial carries the
+    leading `cd` moves the anchor; a runtime script - inline (`-e` / `-c`) or fed through a heredoc - is read whole and
+    judged by what it PRINTS: a count, a length, a test, a map of those, one element, a helper's result or a slice with
+    literal bounds within the Read half's own cap (THRESHOLD lines, BIG_BYTES characters) is not a dump, nor a window
+    whose two bounds share one base the script never reassigns (`lines[i-5:i+5]`, `sed -n "$((n-5)),$((n+5))p"`) and a
+    print guarded by a match test on the element it prints (a `grep -C` or `grep -o` loop - a match call that spans lines,
+    `re.S`, is the content); the content, a match-all rebuild of it (`s.match(/.*/g).join('\n')`), a slice with an open,
+    oversized or unbounded end, every element in a loop or a collection it was put into is (2.1.6 K2 and its concerns
+    round). A heredoc body is its program's script only when that program takes its script from stdin
+    (`stdinIsScript`, one walker in both guards, `heredoc-stdin-script` in shared-rules.json): each option word is read
+    the way that interpreter's own parser reads it (a `STDIN_FLAGS` row for the shells, node, python, ruby, perl and
+    php), so a script file named, or a script handed as `-c` / `-e` / `-m` / php's `-r`, makes the body input data;
+    an option's value, bundled or the next word, is never a script file (`bash -euo pipefail`, `--rcfile x`, `node
+    --max-old-space-size 4096`, `python3 -Q new`, `perl -Mstrict -we`); an option the table does not know takes the
+    next word as its value, and a script option with no script word after it leaves the body the script; a runtime's
+    `-` (and php's `--`) is stdin with the script's argv after it, while a shell's `-` or `--` only ends its options; a
+    program with no row (deno, bun, pwsh) always runs its body. A shell body is then judged as commands, like `-c`, and
+    a runtime body as its script. A verb that prints a whole file under another name is size-gated like `cat` (nl, tac,
+    sort, base64, xxd, `dd if=`, a copy onto `/dev/stdout`, curl `file://`, vim's print, `look ''`, an identity sed /
+    awk / `perl -p`, grep with an empty pattern, a read loop echoing every line, perl's handle read, php's
+    `file_get_contents` / `readfile`); a bounded run, or one into a file, is not. A verb, `;` or `|` inside a quoted string is
+    text (`grep -c 'cat -n' f` runs no cat), unless a shell runs the string (a shell's `-c`, `eval`, `watch`, a stage piped
+    into `sh`), and pairing stops trusting quotes after a comment's apostrophe; `echo "$(cat f)"` prints what its
+    substitution read, an assignment of one does not. Only a gated file over the threshold
+    is a content source; a print reached through an alias is followed, one passed along or called by bracket is a dump.
+    Judging scales linearly with the command inside one budget of WORK, never time, so a command gets the same verdict
+    on any machine: each judging step charges the characters it reads, the two thresholds at the top of each guard
+    (`JUDGE_MAX_WORK`, 20x the costliest of 54,503 recorded commands; `JUDGE_MAX_DEPTH`). A test holds each
+    40,000-character pathological shape to linear work in both guards, and a command past the work budget is blocked
+    while code nested past the depth cap is read as printing what it read (the secret guard blocks it) - never let
+    through; nothing stops reading silently at a count. Every denial carries the
     `ToolSearch select:` line that loads the navigation server's tools. Its convention-rule announcement
     names only a rule in the project's own `.claude/rules` - a plugin-launched hook's sibling `rules/` is
     the whole catalog (it named `winforms-conventions.md` to a project without it, the 2026-09-26 pilot).
   - `guard-secret-value.js` (PreToolUse `Read` + `Grep` + the shell route) - credentials are read for PRESENCE, never
-    value. Judged by file CONTENT (a JSON/dotenv file holding a `secret_key_pattern` key with a live
-    value). On the shell route the dump / `echo $SECRET` / bare `env` are REWRITTEN via
+    value. Judged by file CONTENT (a JSON, dotenv, INI - `~/.aws/credentials`, `~/.pypirc`, a `[section]` file,
+    `~/.npmrc` - netrc or URL-per-line (`~/.git-credentials`) file holding a `secret_key_pattern` key with a live
+    value; a key that names a key, `signingkey` or `publicKeyToken`, holds none, and neither does a file path, a switch
+    or a template reference). The 2.1.6 concerns round read every other format a credential ships in, the same way:
+    YAML by indentation (a kubeconfig, gh's `hosts.yml`, a Kubernetes Secret's data, a compose environment list,
+    bundler's host keys), XML (maven's `settings.xml`, a NuGet.Config's key/value pair, a web.config connection
+    string, a publish profile), HCL (only a quoted value - `var.x` is an expression), properties and the `.cnf` /
+    `.conf` / `.toml` spellings (a `.conf`'s `key value`), `.pgpass` and `.htpasswd` by position, yarn v1's
+    space pairs, a JSON credential keyed by its host (composer's `auth.json`), a private key file (PEM, OpenSSH,
+    PuTTY, GnuPG), a token file and a binary key store (`.p12`, `.jks`, `.kdbx`), judged by its kind; a file's key
+    also reads `pass`, `client-key-data` and a camelCase `userPass` / `userPWD`, which a variable name does not.
+    The redacted view and the git stream masker mask what the reader judged, where it stands; a stream with no header
+    naming the file (`git show <rev>:<path>`) reads the generic pairs only, never an HCL attribute. A UTF-16 file
+    (either byte order) is judged by its decoded content, and a file printed under another verb's name is a dump too
+    (`dd if=`, `iconv`, curl `file://`, vim's print, a copy onto `/dev/stdout`, sqlite3's `readfile()`, php's
+    `file_get_contents` / `getenv`), a bare name after a `cd` resolved against the `cd` target. On the shell route the dump / `echo $SECRET` / bare `env` are REWRITTEN via
     `hookSpecificOutput.updatedInput` to redacted forms (`--redacted <file>`, `--redacted-env`); the
     Read tool and a credential literal stay blocked. The comparison verbs (`diff`, `sdiff`, `cmp`, `comm`, `rev`)
     are judged like `cat` (I2). A git command that prints file content (`git diff`, `git show`, `git log -p`,
@@ -163,7 +206,23 @@ change (see the invariants below).
     read (`grep`, `jq .path`, `head`) keeps its filter over the view. An environment dump is replaced
     stage by stage where it stands (`--redacted-env --note-to-stderr | <filter>`), so nothing is dropped
     and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked). A
-    lone `&` is a step boundary like `;` (`true & env` was never judged), never the `&` of `2>&1` / `&>`. A connection-string / URL password and a PEM
+    lone `&` is a step boundary like `;` (`true & env` was never judged), never the `&` of `2>&1` / `&>`. A heredoc
+    body is data (`shell-writes.js`'s blanker, its first line kept as shell) unless the command word of its stage, or
+    of one piped from it, is a runtime or a shell - a `.sh` in the name of the file it writes is neither; a runtime
+    body under a quoted tag reaches the runtime verbatim, so `$NAME` in it is text, never a path, unless the code
+    reads NAME from the environment (2.1.6 K1). A runtime body reads the environment only in its own spelling
+    (`os.environ` in Python, `process.env` in node), never through a shell stage, and a runtime's `-` is stdin with its
+    argv after it (`python3 - <file> <<'EOF'`). A `~/` string in runtime code is text - no runtime expands the tilde -
+    unless the code expands it (`expanduser`, `expand_path`, a glob, a replace) or the runtime is PowerShell. A command
+    string a runtime hands to a shell (`execSync("cat <file>")`, `os.system('env')`, Ruby or Perl backticks, `sh -c`) is
+    judged as that shell, and so is one it BUILDS from the home directory (`execSync("cat " + os.homedir() + "/...")`), a
+    shell's own `-c` string (its options read with the shell row of `STDIN_FLAGS`), `eval`, `watch`, `su -c` / `script -c`,
+    what a print stage pipes into a shell and a printed `$(...)` or backtick substitution (`echo "$(cat <file>)"`) - each
+    read past any wrapper word and that wrapper's own flags and operands (`timeout 30`, `env -u X A=1`, `nice -n 5`,
+    `sudo -u root`, `stdbuf -oL`, `ionice -c 3`, `nohup`, `time`, `command`, `exec`; env's `-S` string is the command
+    itself), one `WRAPPERS` table (2.1.6 review round and its Re-verify 1). A credential path a runtime BUILDS from `os.homedir()`,
+    `process.env.HOME` / `CLAUDE_CONFIG_DIR`, `Path.home()` or `Dir.home` is judged like the literal path, unless the
+    script assigns HOME itself first. A connection-string / URL password and a PEM
     private key count as credentials whatever the key. `--presence <file> [KEY ...]` is the sanctioned
     one-key read (a KEY spelled `A.B.C`, `A:B:C` or `A__B__C` reads a nested JSON key; with no KEY it lists at
     most 200 string leaves plus a count, a credential-shaped key name masked); the guard ships only
@@ -510,7 +569,9 @@ change (see the invariants below).
     cut-off), and each pinned server's tool names at its pin (lint check 62), both written only by
     `node scripts/refresh-mcp-pins.js --write`.
   - `model-prices.json` - the list prices `analyze-usage.js` bills its cost row from, with the source page and
-    fetch date inside; refreshed from that page, never from memory (a unit test pins the page's multipliers).
+    fetch date inside; refreshed from that page, never from memory (a unit test pins the page's multipliers). It
+    keeps every row the page prices, retired ones included, and every model in `model-windows.json`, so a model with
+    no row is reported 'not on the pricing page (fetched <date>)', never guessed (2.1.6 K3).
   - `judgment.json`, `migrations.json` - existence-detected retirements of GENERATED artifacts plus the
     `env` RENAMES the env pass applies every run (order pinned as `env-pass-order`). A renamed key is read
     under its old spelling as fallback until every install has it (e.g. `ALFRED_CODE_DOCS_PATH`,

@@ -1,10 +1,10 @@
 {
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
-  "fetched": "2026-09-23",
+  "fetched": "2026-09-29",
   "currency": "USD",
   "unit": "per million tokens",
   "use": "List prices for the cost row of scripts/analyze-usage.js. Refresh by re-fetching the source page and moving 'fetched' - never from memory. A transcript model id with no row here is reported unpriced, never guessed.",
-  "match": "A transcript model id matches a row's id after a trailing [..] window suffix and a trailing -YYYYMMDD snapshot date are dropped (the dated IDs of models before the 4.6 generation, per the model IDs page).",
+  "match": "A transcript model id matches a row's id after a trailing [..] window suffix and a trailing -YYYYMMDD snapshot date are dropped (the dated IDs of models before the 4.6 generation, per the model IDs page). The generation before Claude 4 is named version first (claude-3-5-haiku-20241022 keys claude-3-5-haiku).",
   "cache_writes": "usage.cache_creation splits every write into ephemeral_5m_input_tokens and ephemeral_1h_input_tokens; each part is billed at its own column. A write with no split is billed at the 5-minute rate and counted apart.",
   "long_context": "Claude 4.6 and later bill the full 1M window at standard pricing (source page), so no long-context premium is modeled.",
   "fast": "A message whose usage.speed is 'fast' bills the row's fast input and output; the cache columns scale by the same factor, because the page applies the caching multipliers on top of fast pricing. A model with no fast row bills a fast message at standard rates.",
@@ -21,9 +21,13 @@
     { "id": "claude-opus-4-6", "name": "Claude Opus 4.6", "input": 5, "cache_write_5m": 6.25, "cache_write_1h": 10, "cache_read": 0.5, "output": 25 },
     { "id": "claude-opus-4-5", "name": "Claude Opus 4.5", "input": 5, "cache_write_5m": 6.25, "cache_write_1h": 10, "cache_read": 0.5, "output": 25 },
     { "id": "claude-opus-4-1", "name": "Claude Opus 4.1", "input": 15, "cache_write_5m": 18.75, "cache_write_1h": 30, "cache_read": 1.5, "output": 75 },
+    { "id": "claude-opus-4", "name": "Claude Opus 4", "input": 15, "cache_write_5m": 18.75, "cache_write_1h": 30, "cache_read": 1.5, "output": 75 },
+    { "id": "claude-sonnet-5-5", "name": "Claude Sonnet 5.5", "input": 2, "cache_write_5m": 2.5, "cache_write_1h": 4, "cache_read": 0.2, "output": 10 },
     { "id": "claude-sonnet-5", "name": "Claude Sonnet 5", "input": 2, "cache_write_5m": 2.5, "cache_write_1h": 4, "cache_read": 0.2, "output": 10 },
     { "id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6", "input": 3, "cache_write_5m": 3.75, "cache_write_1h": 6, "cache_read": 0.3, "output": 15 },
     { "id": "claude-sonnet-4-5", "name": "Claude Sonnet 4.5", "input": 3, "cache_write_5m": 3.75, "cache_write_1h": 6, "cache_read": 0.3, "output": 15 },
-    { "id": "claude-haiku-4-5", "name": "Claude Haiku 4.5", "input": 1, "cache_write_5m": 1.25, "cache_write_1h": 2, "cache_read": 0.1, "output": 5 }
+    { "id": "claude-sonnet-4", "name": "Claude Sonnet 4", "input": 3, "cache_write_5m": 3.75, "cache_write_1h": 6, "cache_read": 0.3, "output": 15 },
+    { "id": "claude-haiku-4-5", "name": "Claude Haiku 4.5", "input": 1, "cache_write_5m": 1.25, "cache_write_1h": 2, "cache_read": 0.1, "output": 5 },
+    { "id": "claude-3-5-haiku", "name": "Claude Haiku 3.5", "input": 0.8, "cache_write_5m": 1, "cache_write_1h": 1.6, "cache_read": 0.08, "output": 4 }
   ]
 }

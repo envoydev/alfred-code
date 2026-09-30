@@ -3604,6 +3604,32 @@
         }
       ]
     },
+    "heredoc-reader": {
+      "_note": "Which command reads a heredoc body: the command word of the stage holding the <<, or of a stage piped from it on the same line - a whole word, never a substring, and never a redirect target. The secret guard reads a runtime or shell body as code (heredocReader); the read guard judges a runtime body like -e / -c (heredocRunner). One reading, two guards: a `.sh` in the name of a file being written once made the secret guard rewrite a data heredoc into a redacted dump (2.1.6 K1).",
+      "owner": {
+        "file": "stack/hooks/guard-secret-value.js",
+        "marker": "is the COMMAND of the stage holding the `<<`, or of a stage piped from it on the same"
+      },
+      "sites": [
+        {
+          "file": "stack/hooks/guard-read-whole-file.js",
+          "marker": "is the COMMAND of the stage holding the `<<`, or of a stage piped from it on the same"
+        }
+      ]
+    },
+    "heredoc-stdin-script": {
+      "_note": "When a heredoc's reader runs its body: only when the program takes its SCRIPT from stdin (stdinIsScript and its STDIN_FLAGS table, the same in both guards). A script file named, or a script handed as -c / -e / -p / -m, makes the body that program's input data (`bash ./run.sh <<EOF`, `node -e '...' <<EOF`); each option word is read the way that interpreter's own parser reads it (one STDIN_FLAGS row each for the shells, node, python, ruby, perl and php), so an option's own value, bundled or the next word, is no script file (`bash -euo pipefail`, `bash --rcfile x`, `node -r ./x.js`, `node --max-old-space-size 4096`, `python3 -Q new`, `perl -Mstrict -we`); an option the table does not know takes the next word as its value, and a script option with no script word leaves the body the script; a runtime's `-` (and php's `--`) is stdin itself and the words after it are the script's argv (`python3 - <file> <<EOF`), while a shell's `-` or `--` only ends its options; a program with no row (deno, bun, pwsh) always runs its body. The read guard judges a shell body as commands since 2.1.6 round 4; the secret guard judged every runtime or shell body as code.",
+      "owner": {
+        "file": "stack/hooks/guard-secret-value.js",
+        "marker": "The body is the program only when the program takes its SCRIPT from stdin"
+      },
+      "sites": [
+        {
+          "file": "stack/hooks/guard-read-whole-file.js",
+          "marker": "The body is the program only when the program takes its SCRIPT from stdin"
+        }
+      ]
+    },
     "capabilities-policy-rev-check": {
       "_note": "The generated capabilities rule carries the usage policy VERBATIM from the skill and is never re-fetched - only a user re-run regenerates it - so a project can carry a two-release-old policy with nothing to notice it (measured: one project's rule still described the fresh-session gate as '40% of the context window, 150k floor', retired at 0.2.70). The `<!-- policy-rev: ... -->` content stamp is what makes that detectable, and the comparison lives in the two commands that can see both sides: validate runs the two greps and reports a finding, update reads the `policy-rev:` row update-preflight.js prints (the hand-run pair was re-confirmed 3 extra times in one audited run, ~275k tokens) and makes it a second trigger for the re-run row. The skill owns the stamp itself; lint check 29 recomputes it when the block moves.",
       "owner": {
