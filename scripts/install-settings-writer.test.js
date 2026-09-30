@@ -528,7 +528,7 @@ test('settings-writer: at project scope a write to a stack key settings.local.js
     for (const key of ['ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_DOCS_VERSIONING'])
         assert.ok(!(key in shared.env), `the decision on ${key} reached settings.json, where the local value shadows it`);
     // C6 (R101 N7): a SEED is absent-only against settings.json itself - what every teammate reads.
-    assert.strictEqual(shared.env.ALFRED_CODE_FRESH_SESSION_DEFAULT, '180000');
+    assert.strictEqual(shared.env.ALFRED_CODE_FRESH_SESSION_DEFAULT, '300000');
     assert.strictEqual(shared.env.ALFRED_CODE_MONITOR, 'log');
     assert.strictEqual(shared.env.ALFRED_CODE_PUSH_GATE, '1', 'a key the local file lacks is seeded in settings.json as before');
     assert.strictEqual(shared.env.TEAM, 'y');
@@ -768,7 +768,7 @@ test('settings-writer: at project scope a key settings.local.json holds is still
     const logs = [];
     writeSettings({ file: p.sharedFile, localFile: p.localFile, catalog: CATALOG, migrations: MIGRATIONS, docsVersioning: { seed: 'git' }, log: (m) => logs.push(m) });
     const shared = p.shared().env;
-    assert.strictEqual(shared.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW, '1000000', 'the committed file lacks the seed because the runner holds a personal value');
+    assert.strictEqual(shared.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW, '300000', 'the committed file lacks the seed because the runner holds a personal value');
     assert.strictEqual(shared.ALFRED_CODE_MONITOR, 'log');
     assert.strictEqual(shared.ALFRED_CODE_HOOKS_OFF, '', 'the unanswered HOOKS_OFF seed');
     assert.strictEqual(shared.ALFRED_CODE_DOCS_VERSIONING, 'git', 'the docs-versioning seed');

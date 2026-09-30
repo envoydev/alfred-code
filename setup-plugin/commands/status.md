@@ -275,8 +275,8 @@ It is the only place a plugin that cannot load says so: a row the catalog no lon
 | ALFRED_CODE_ROTATE_ASK | 1 (default - on) - the stop contract's once-per-exposure rotate ask |
 | ALFRED_CODE_FRESH_SESSION_1M | 400000 (default) - the fresh-session gate's trigger on a window above 200k; 0 = off for that tier |
 | ALFRED_CODE_FRESH_SESSION_200K | 150000 (default) - the same trigger on a 200k window; 0 = off for that tier |
-| ALFRED_CODE_FRESH_SESSION_DEFAULT | 180000 (default) - the same trigger for every other case: a window that is neither of those sizes, or one the gate cannot read. Which one applies comes from the session model's row in `.claude/hooks/model-windows.json` |
-| ALFRED_CODE_DEFAULT_CONTEXT_WINDOW | 1000000 (default) - the window for a model `.claude/hooks/model-windows.json` does not list |
+| ALFRED_CODE_FRESH_SESSION_DEFAULT | 300000 (default) - the same trigger for every other case: a window that is neither of those sizes, or one the gate cannot read. Which one applies comes from the session model's row in `.claude/hooks/model-windows.json` |
+| ALFRED_CODE_DEFAULT_CONTEXT_WINDOW | 300000 (default) - the window for a model `.claude/hooks/model-windows.json` does not list |
 | CONTEXT7_API_KEY (account env) | set (N chars) / absent - absent = the keyless free tier |
 
 Mark `(default)` when the key is absent and a house default applies. `autoMemoryEnabled` is a

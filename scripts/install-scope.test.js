@@ -853,7 +853,7 @@ test('install-scope: a move off local removes an older shipped seed and the docs
     const local = result.local.env || {};
     assert.ok(!('ALFRED_CODE_FRESH_SESSION_DEFAULT' in local), `an older shipped seed survived the move: ${local.ALFRED_CODE_FRESH_SESSION_DEFAULT}`);
     assert.ok(!('ALFRED_CODE_DOCS_VERSIONING' in local), 'the rule\'s own seed survived the move as a user value');
-    assert.strictEqual(result.shared.env.ALFRED_CODE_FRESH_SESSION_DEFAULT, '180000');
+    assert.strictEqual(result.shared.env.ALFRED_CODE_FRESH_SESSION_DEFAULT, '300000');
     assert.strictEqual(result.shared.env.ALFRED_CODE_DOCS_VERSIONING, 'local');
     assert.match(outs[1], /stack env keys removed - each held the stack's own seed[^\n]*ALFRED_CODE_FRESH_SESSION_DEFAULT/, outs[1]);
     assert.match(outs[1], /stack env keys removed - each held the stack's own seed[^\n]*ALFRED_CODE_DOCS_VERSIONING/, outs[1]);

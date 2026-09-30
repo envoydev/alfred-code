@@ -12,7 +12,7 @@ is actually loaded.** Measure before you ask: this session's own per-message con
 cache_read + cache_creation` off the last assistant message in the transcript. Ask ONLY when that
 figure is past the same trigger `guard-fresh-session-start.js` uses - the tier's own absolute
 trigger, `ALFRED_CODE_FRESH_SESSION_200K` (default 150,000) or `ALFRED_CODE_FRESH_SESSION_1M`
-(default 400,000), or `ALFRED_CODE_FRESH_SESSION_DEFAULT` (default 180,000) when the window is
+(default 400,000), or `ALFRED_CODE_FRESH_SESSION_DEFAULT` (default 300,000) when the window is
 neither of those two sizes or cannot be read at all - which one applies comes from the session
 model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW` (a FIRST setup has neither yet: take
 the window this session's own model line states - '1M context' is 1,000,000 - and the DEFAULT trigger only when it states none) - or when that hook has already

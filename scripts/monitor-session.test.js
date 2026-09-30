@@ -121,7 +121,7 @@ test('monitor: past 20 distinct files written in one turn, one scope note', () =
 });
 
 // The trigger comes from fresh-session.js: no model and no seeded window take the DEFAULT tier,
-// 180,000 - so 80% of it is 144,000.
+// 300,000 - so 80% of it is 240,000.
 function transcriptAt(s, ctx)
 {
     const p = path.join(s.root, 'transcript.jsonl');
@@ -136,17 +136,17 @@ function transcriptAt(s, ctx)
 test('monitor: the context note fires at 80% of the fresh-session trigger, once per session', () =>
 {
     const under = session();
-    under.call('Read', { file_path: 'a' }, { transcript_path: transcriptAt(under, 143999) });
+    under.call('Read', { file_path: 'a' }, { transcript_path: transcriptAt(under, 239999) });
     assert.strictEqual(under.rows().length, 0, 'one token under 80% was noted');
 
     const at = session();
-    const tp = transcriptAt(at, 144000);
+    const tp = transcriptAt(at, 240000);
     at.call('Read', { file_path: 'a' }, { transcript_path: tp });
     const rows = at.rows();
     assert.strictEqual(rows.length, 1);
     assert.strictEqual(rows[0].kind, 'context');
-    assert.strictEqual(rows[0].detail.context, 144000);
-    assert.strictEqual(rows[0].detail.trigger, 180000);
+    assert.strictEqual(rows[0].detail.context, 240000);
+    assert.strictEqual(rows[0].detail.trigger, 300000);
     at.prompt();
     at.call('Read', { file_path: 'b' }, { transcript_path: tp });
     assert.strictEqual(at.rows().length, 1, 'the context note fired twice in one session');
@@ -155,10 +155,10 @@ test('monitor: the context note fires at 80% of the fresh-session trigger, once 
 test('monitor: a subagent never takes the context note, and a switched-off trigger gives none', () =>
 {
     const sub = session();
-    sub.call('Read', { file_path: 'a' }, { agent_id: 'agent-a', transcript_path: transcriptAt(sub, 170000) });
+    sub.call('Read', { file_path: 'a' }, { agent_id: 'agent-a', transcript_path: transcriptAt(sub, 250000) });
     assert.strictEqual(sub.rows().length, 0);
     const off = session({ ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' });
-    off.call('Read', { file_path: 'a' }, { transcript_path: transcriptAt(off, 170000) });
+    off.call('Read', { file_path: 'a' }, { transcript_path: transcriptAt(off, 250000) });
     assert.strictEqual(off.rows().length, 0);
 });
 

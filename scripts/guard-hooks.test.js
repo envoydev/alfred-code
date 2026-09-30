@@ -331,16 +331,16 @@ test('guard-fresh-session-start: the trigger is the tier\'s own variable', () =>
   assert.equal(call(at('w-200k-160', 160000), w200()), 2, '160k is past it');
   assert.equal(call(at('w-200k-110', 110000), w200({ ALFRED_CODE_FRESH_SESSION_200K: '100000' })), 2, 'the tier variable moves it');
   // A window that cannot be read is not guessed at: it takes ALFRED_CODE_FRESH_SESSION_DEFAULT,
-  // 180,000 - a figure REACHABLE on the smallest window it could be applied to. At 250,000 it sat
-  // above a 200k window entirely, so an unreadable window on that tier could never trip the gate.
-  assert.equal(call(at('w-undeclared', 170000)), 0, '170k with nothing declared is under the 180k default');
-  assert.equal(call(at('w-undeclared-190k', 190000)), 2, '190k is past it - on a 200k window that is 95% full, and the gate must still reach it');
-  assert.equal(call(at('w-undeclared-260k', 260000)), 2, 'no model and no fallback: 260k is past the DEFAULT trigger - usage proves nothing any more');
+  // 300,000 (2.1.6, the user's ruling) - above a 200k window, so an unreadable window on that tier
+  // can run past its end with no offer; the seeded fallback window is 300k, where it is clamped to 270k.
+  assert.equal(call(at('w-undeclared', 170000)), 0, '170k with nothing declared is under the 300k default');
+  assert.equal(call(at('w-undeclared-310k', 310000)), 2, '310k is past the 300k default');
+  assert.equal(call(at('w-undeclared-260k', 260000)), 0, 'no model and no fallback: 260k is under the 300k DEFAULT trigger');
   assert.equal(call(at('w-bare-sonnet-260k', 260000), { CLAUDE_CONFIG_DIR: accountDir('tier-bare', 'claude-sonnet-5') }), 0, 'Sonnet 5 on a bare id is 1M by its table row - 260k is under 400k');
   assert.equal(call(at('w-200k-row-260k', 260000), w200()), 2, 'a 200k row is the answer even at a carry that window could not hold');
   assert.equal(call(at('w-undeclared-160k', 160000), { ALFRED_CODE_FRESH_SESSION_DEFAULT: '150000' }), 2, 'the default variable moves it');
   assert.equal(call(at('w-undeclared-190k-off', 190000), { ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' }), 0, '0 switches the unreadable-window offer off');
-  assert.equal(call(at('w-suffix-190k', 190000), { CLAUDE_CONFIG_DIR: accountDir('tier-suffix', 'opus[1m]') }), 2,
+  assert.equal(call(at('w-suffix-310k', 310000), { CLAUDE_CONFIG_DIR: accountDir('tier-suffix', 'opus[1m]') }), 2,
     'a [1m] suffix on an alias is not read - opus is no table row, so the DEFAULT trigger');
   // 1M tier: ALFRED_CODE_FRESH_SESSION_1M, default 400,000 - deliberately above the harness's own
   // auto-compaction band (387,619-397,171 measured), so the Stop offer there is usually unreachable
@@ -365,6 +365,12 @@ const SMALL = path.join(HOOKS, 'instrument-tool-usage.js'); // 74 lines - the sm
 // deliberately not one of the guards: they grow, and a fixture that drifts past 200 lines turns
 // two unrelated read-guard assertions red (measured: the fresh-session hook crossed it).
 const REPO = path.join(__dirname, '..');
+// A project carrying the stack's rules as library copies (.claude/rules), which the read guard names by
+// reading that folder. This repo's own .claude/rules holds only its own rules, so the tests that name the
+// shipped convention rules run in this one.
+const RULES_PROJECT = path.join(TMP, 'rules-project');
+fs.mkdirSync(path.join(RULES_PROJECT, '.claude'), { recursive: true });
+fs.cpSync(path.join(__dirname, '..', 'stack', 'rules'), path.join(RULES_PROJECT, '.claude', 'rules'), { recursive: true });
 // A long markdown file well under the 60KB whole-read cap: the repo's own CLAUDE.md was this fixture
 // until it grew past that cap and turned the non-source assertion red.
 const NOTES = path.join(TMP, 'notes.md');
@@ -1496,7 +1502,7 @@ test('guard-stop-contract: the fresh-session offer lands at turn end, once per c
   const stop = (tp) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp },
     { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir } }).status;
 
-  assert.equal(stop(at('fs-cold', 170000)), 0, '170k with no readable window is under the 180k default - nothing to offer');
+  assert.equal(stop(at('fs-cold', 170000)), 0, '170k with no readable window is under the 300k default - nothing to offer');
   const s1 = at('fs-hot', 500000);
   assert.equal(stop(s1), 2, 'a CLEAN close past the trigger: held once so the user is asked');
   assert.equal(stop(s1), 0, 'the same session again - already asked at this cost step');
@@ -2058,7 +2064,7 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
     const start = (source, env) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'SessionStart', source }, { env: winEnv(env) });
     const injected = (r) => (r.stdout && r.stdout.includes('additionalContext') ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '');
-    const hot = ctxAt('ups-hot', 450000);   // no model id here, so 450k is past the 180k DEFAULT trigger
+    const hot = ctxAt('ups-hot', 450000);   // no model id here, so 450k is past the 300k DEFAULT trigger
 
     // It injects, never blocks: a blocked expansion shows its reason to the user only - the run would be
     // lost and the model would never learn why.
@@ -2107,7 +2113,7 @@ test('fresh-session window: the account settings model id names the tier before 
     // The FIRST readable source that keeps the window suffix (the transcript's own assistant rows
     // record `claude-opus-5` with the [1m] stripped; `cost-state` keeps it, and is the second
     // source - covered in its own case below). 170k is past the 150k floor on the 200k tier and
-    // under the 180k default an unresolved window takes, so each layer shows its own trigger here.
+    // under the 300k default an unresolved window takes, so each layer shows its own trigger here.
     const hot = ctxAt('win-model-170k', 170000);
     assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-1m', 'claude-opus-5') })), 0, 'a 1M model id lifts the trigger to that tier\'s 400k');
     assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-200k', 'claude-haiku-4-5') })), 2, 'a 200k suffix resolves the window - 170k is past its 150k floor');
@@ -2173,8 +2179,8 @@ test('fresh-session window: model-windows.json is the single source, ALFRED_CODE
     // not in the table: the fallback variable
     assert.equal(askLoop(onModel('fb-unknown-190k', 190000, 'claude-nova-9'), fb()), 0, 'an unlisted model takes the 1M fallback - 190k is under 400k');
     assert.equal(askLoop(onModel('fb-unknown-160k-200k', 160000, 'claude-nova-9'), winEnv({ ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: '200000' })), 2, '... or a 200k one - 160k is past 150k');
-    assert.equal(askLoop(onModel('fb-unset-190k', 190000, 'claude-nova-9'), winEnv()), 2, 'fallback unset: the 180k DEFAULT trigger');
-    assert.equal(askLoop(onModel('fb-junk-190k', 190000, 'claude-nova-9'), fb({ ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: 'lots' })), 2, 'garbage is no fallback');
+    assert.equal(askLoop(onModel('fb-unset-310k', 310000, 'claude-nova-9'), winEnv()), 2, 'fallback unset: the 300k DEFAULT trigger');
+    assert.equal(askLoop(onModel('fb-junk-310k', 310000, 'claude-nova-9'), fb({ ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: 'lots' })), 2, 'garbage is no fallback');
     assert.equal(askLoop(ctxAt('fb-nomodel-190k', 190000), fb()), 0, 'no model id at all takes the fallback too');
 });
 
@@ -2198,11 +2204,11 @@ test('stop contract: the fresh-session offer reads the window exactly as its twi
     const hot = at('stopwin-190k', 190000);
 
     assert.equal(stop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('stop-acct-200k', 'claude-haiku-4-5') })), 2, '190k on a declared 200k tier: past its 150k floor');
-    assert.equal(stop(hot, winEnv()), 2, '190k with no readable window: PAST the 180k default - the twin agrees with the gate. This is the blocker: at the old 250,000 an unreadable window on a 200k tier could never trip either hook, and a session measured at 187.2k (93.6% of its window) ran both Stop hooks with neither holding');
+    assert.equal(stop(at('stopwin-310k', 310000), winEnv()), 2, '310k with no readable window: PAST the 300k default - the twin agrees with the gate.');
     assert.equal(stop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('stop-acct-1m', 'claude-opus-5') })), 0, 'a 1M model id lifts it past 190k');
     assert.equal(stop(at('stopwin-450k', 450000), winEnv()), 2, 'and 450k is past the default trigger');
     assert.equal(stop(at('stopwin-450k-1m', 450000), winEnv({ CLAUDE_CONFIG_DIR: accountDir('stop-acct-1m2', 'claude-opus-5') })), 2, '... as it is past the 1M one');
-    assert.equal(stop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000' })), 2, 'the retired override moves nothing here either - it resolves no window, so the default trigger applies and 190k is past it'); // legacy-name
+    assert.equal(stop(at('stopwin-310k-retired', 310000), winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000' })), 2, 'the retired override moves nothing here either - it resolves no window, so the default trigger applies and 310k is past it'); // legacy-name
 });
 
 test('guard-answer-length: the cap holds, and never deletes a report field or a self-correction', () => {
@@ -2231,7 +2237,7 @@ test('guard-read-whole-file: a shell touch names the convention rule the file to
   // Measured with a control: 19 Bash calls naming .cs files -> 0 attachments, while the session's
   // single Read-tool call on a .cs file attached BOTH .cs-scoped rules 0.94 s later. Under a
   // Bash-first mode the nine path-scoped rules are simply OFF.
-  const call = (command, session_id) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command }, session_id }, {});
+  const call = (command, session_id) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command }, session_id }, { cwd: RULES_PROJECT });
   const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
   const s1 = `m5-${Math.random().toString(36).slice(2)}`;
   // A pure READ announces nothing. The announcement is once per rule per session, so spending it on
@@ -2290,7 +2296,7 @@ test('guard-read-whole-file: the ungoverned docs root is RESOLVED, not assumed t
   // docs/architecture/ARCHITECTURE.md still drew an announcement the rule says does not apply.
   const call = (command, session_id, docsRoot) => runIn('guard-read-whole-file.js',
     { tool_name: 'Bash', tool_input: { command }, session_id },
-    { env: { ...process.env, ALFRED_CODE_DOCS_PATH: docsRoot } });
+    { cwd: RULES_PROJECT, env: { ...process.env, ALFRED_CODE_DOCS_PATH: docsRoot } });
   const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
   const sid = () => `md6-${Math.random().toString(36).slice(2)}`;
   assert.equal(ctxOf(call('tee docs/architecture/ARCHITECTURE.md < in', sid(), 'docs')), '', 'a custom docs root is ungoverned');
