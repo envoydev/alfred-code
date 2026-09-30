@@ -193,18 +193,18 @@ test('the skill-authoring rule attaches on skill files and its first action is t
 });
 
 // plugin-authoring left the shipped catalog in 2.1.0; this repo's own copy in .claude/skills is tracked through a .gitignore negation.
-test('plugin-authoring points at the habit for a skill body, and the repo notes name it instead of the plugin method', () => {
+test('plugin-authoring is self-contained (it names no stack skill), and the repo notes name the habit instead of the plugin method', () => {
     const raw = read('.claude/skills/plugin-authoring/SKILL.md');
     const pa = squash(raw);
     const bullet = raw.split('\n').filter((l, i, all) => l.startsWith('- **Skills**') || (i && all[i - 1].startsWith('- **Skills**') && /^  \S/.test(l)));
     assert.strictEqual(bullet.length, 1, 'the Skills bullet is one line');
-    assert.ok(bullet[0].includes('load `alfred-habits-skill-writing`'), 'plugin-authoring loads the habit where it covers skills');
+    assert.ok(!pa.includes('alfred-habits-skill-writing'), 'plugin-authoring names no stack skill: it is this repo\'s own and stands alone');
     for (const moved of ['Body under 500 lines', 'references one level deep', 'third person, what it covers', '1,536', 'skillListingBudgetFraction',
         'user-invocable', 'description, not the body'])
         assert.ok(!pa.includes(moved), `plugin-authoring still carries the habit's text: '${moved}'`);
     const evals = squash(read('.claude/skills/plugin-authoring/references/evals.md'));
     assert.ok(!/DESCRIPTION is wrong, not the body/.test(evals), 'the eval reference no longer restates the trigger rule');
-    assert.ok(evals.includes('`alfred-habits-skill-writing`'), 'it points at the habit instead');
+    assert.ok(!evals.includes('alfred-habits-skill-writing'), 'the eval reference names no stack skill either');
     const md = squash(read('CLAUDE.md'));
     assert.ok(md.includes('Authoring a skill in `stack/skills/`: the method is `alfred-habits-skill-writing`'), 'CLAUDE.md points at the habit');
     assert.ok(!md.includes('writing-skills is a reference'), 'and no longer at the optional plugin');
