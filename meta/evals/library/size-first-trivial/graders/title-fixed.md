@@ -2,7 +2,7 @@
 type: regex
 weight: 2
 target: files
-pattern: "^# Claude Stack$"
+pattern: "^# Alfred Code$"
 flags: m
 ---
 
