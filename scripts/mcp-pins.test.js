@@ -100,7 +100,14 @@ test('seed update over an install still on @latest rewrites the row to the pin',
         'browser-chrome': { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@latest', '--browser', 'chrome'], env: {} },
         'my-browser': { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@latest', '--isolated'], env: {} },
     } };
-    const prepare = (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(old, null, 2) + '\n');
+    // A 2.x install has its ledger (managed-mcp), which is what says the row is the stack's: with no ledger, a project-scope
+    // row that is not the release's exact shape is the user's own (matrix F-OWN) - `my-browser` is not listed, so it stays theirs.
+    const prepare = (repo) =>
+    {
+        fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(old, null, 2) + '\n');
+        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), `sha: abc\nversion: 2.0.0\nmanaged-mcp: browser-chrome=${require('./install/stamp.js').entryHash(old.mcpServers['browser-chrome'])}\n`);
+    };
     const inspect = (repo) => ({ pw: launch(repo), mine: servers(repo)['my-browser'] });
     const { result } = seedRun('update', SELECTION, { env: COPY_ROUTE, tools: REGISTRY, prepare, inspect });
     assert.deepStrictEqual(result.pw, ['npx', '-y', PW]);

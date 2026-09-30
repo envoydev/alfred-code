@@ -981,6 +981,19 @@ test('turn-check advice: a project that already set ALFRED_CODE_TURN_CHECK=1 get
   assert.strictEqual(junk.json.advise, true);
 });
 
+// Matrix F-BOM follow-up (2.1.6, V1): the settings reads behind the advice go through the shared BOM-stripping reader - a BOM'd
+// project settings file that already sets ALFRED_CODE_TURN_CHECK=1 read as no setting, so the row advised what was on.
+test('turn-check advice: a BOM\'d settings file that sets ALFRED_CODE_TURN_CHECK=1 gets no row, and a BOM plus garbage is no setting (V1)', () => {
+  const over = [[doneRow({}), doneRow({}), doneRow({})]];
+  const on = turnCheck(turnCheckCorpus(over, { settings: '\uFEFF' + JSON.stringify({ env: { ALFRED_CODE_TURN_CHECK: '1' } }) }));
+  assert.strictEqual(on.json.on, true);
+  assert.strictEqual(on.json.advise, false);
+  assert.strictEqual(on.text, '');
+  const junk = turnCheck(turnCheckCorpus(over, { settings: '\uFEFF{not json' }));
+  assert.strictEqual(junk.json.on, false);
+  assert.strictEqual(junk.json.advise, true);
+});
+
 // Review finding 9: under the strict hook profile the Stop build check already runs, so there is nothing to
 // advise. A hook reads the profile from its env; a command body's shell has none, so the account settings'
 // pluginConfigs (the only file Claude Code reads it from) answers too.

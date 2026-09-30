@@ -21,6 +21,7 @@
 //     (settingsTarget in settings.js is the one place that decides which).
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseJson } = require('./json-file.js');
 
 // The folder is `.alfred-memory` wherever it sits (Task 7a): ~/.alfred-memory for the global and scoped
 // levels, <project>/<data root>/.alfred-memory for the project level. stack/mcp/data-root.js is the one
@@ -83,7 +84,7 @@ function recordedPath({ mcpFile, claudeDir, accountFile, projectRoot, configDir,
         let raw;
         try { raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''); }
         catch (err) { return err.code === 'ENOENT' ? {} : null; }
-        try { const data = raw.trim() ? JSON.parse(raw) : {}; return data && typeof data === 'object' && !Array.isArray(data) ? data : null; }
+        try { const data = raw.trim() ? parseJson(raw) : {}; return data && typeof data === 'object' && !Array.isArray(data) ? data : null; }
         catch { return null; }
     };
     // A registration's path read the engine's way (memoryEnvPath): a relative one - the copy route's project level in the
@@ -135,7 +136,7 @@ function autoMemoryState(settingsFile)
     try { raw = fs.readFileSync(settingsFile, 'utf8'); }
     catch (err) { return err.code === 'ENOENT' ? 'absent' : 'malformed'; }
     let data;
-    try { data = raw.trim() ? JSON.parse(raw) : {}; }
+    try { data = raw.trim() ? parseJson(raw) : {}; }
     catch { return 'malformed'; }
     if (!data || typeof data !== 'object' || Array.isArray(data)) return 'malformed';
     return Object.hasOwn(data, 'autoMemoryEnabled') ? String(data.autoMemoryEnabled) : 'absent';
@@ -157,7 +158,7 @@ function writeSwitchOff(settingsFile, { log = () => {} } = {})
             return false;
         }
     }
-    try { if (raw.trim()) data = JSON.parse(raw); }
+    try { if (raw.trim()) data = parseJson(raw); }
     catch
     {
         log(`  !! ${settingsFile} is not valid JSON - autoMemoryEnabled left untouched; fix it and re-run`);
@@ -263,7 +264,7 @@ function readObject(file)
     catch (err) { return err.code === 'ENOENT' ? { data: null } : { error: `${file} could not be read (${err.code || err.message})` }; }
     try
     {
-        const data = raw.trim() ? JSON.parse(raw) : {};
+        const data = raw.trim() ? parseJson(raw) : {};
         return data && typeof data === 'object' && !Array.isArray(data) ? { data } : { error: `${file} top level is not an object` };
     }
     catch { return { error: `${file} is not valid JSON` }; }

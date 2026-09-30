@@ -1375,6 +1375,130 @@ test('seed install (full copy route): the locked three are registered in .mcp.js
     assert.deepStrictEqual([...result].sort(), [...mcp.LOCKED].sort(), out);
 });
 
+// Matrix FAIL F-BOM (2.1.6): a `.mcp.json` with a UTF-8 BOM read as EMPTY - three bare JSON.parse calls (the read-back's
+// mcpjsonPicks, registeredEngines, stamp.js) had no BOM strip - so every update read one MCP pick short and dropped its
+// enabledMcpjsonServers entry. keepMcpOrder (T4) keeps the BOM, so the state no longer healed on the next write.
+test('seed update (full copy route): a .mcp.json with a BOM reads like one without - the pick stays, its trust entry stays, a drifted row is still repaired (matrix F-BOM)', POSIX_ONLY, () =>
+{
+    const BOM = '\uFEFF';
+    const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+        env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, args: [[], ['--installed-only'], ['--installed-only'], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            const file = path.join(repo, '.mcp.json');
+            const raw = fs.readFileSync(file, 'utf8');
+            const step = { bom: raw.startsWith(BOM), trusted: trusted(repo) };
+            if (i === 0) fs.writeFileSync(file, BOM + raw);
+            if (i === 2)
+            {
+                const data = JSON.parse(raw.replace(/^\uFEFF/, ''));
+                data.mcpServers['macos-desktop'].args = ['drifted'];
+                fs.writeFileSync(file, BOM + JSON.stringify(data, null, 2));
+            }
+            return step;
+        },
+    });
+    assert.ok(steps[0].trusted.includes('macos-desktop'), `install:\n${outs[0]}`);
+    for (const i of [1, 2, 3])
+    {
+        assert.strictEqual(steps[i].bom, true, `run ${i}: the BOM is kept`);
+        assert.ok(steps[i].trusted.includes('macos-desktop'), `run ${i} dropped the trust entry:\n${outs[i]}`);
+        assert.doesNotMatch(outs[i], /dropped enabledMcpjsonServers entry/, `run ${i}:\n${outs[i]}`);
+        assert.strictEqual(/mcps=(\d+)/.exec(outs[i])[1], /mcps=(\d+)/.exec(outs[0])[1], `run ${i} read a different MCP list:\n${outs[i]}`);
+    }
+    assert.match(outs[3], /mcp repaired: macos-desktop/, `the drifted row under a BOM was not repaired:\n${outs[3]}`);
+});
+
+// Matrix FAIL F-OWN (2.1.6): the held rule (a pick whose name the user's own registration holds is kept, named with its
+// remove line and recorded in `mcp-held:`) covered local and user scope only; at project scope a fresh install overwrote the
+// user's own `.mcp.json` row ('mcp repaired: ... was stdio node my-desktop.js'), also on 2.1.5. The row is the user's when the
+// ledger does not list the name (no ledger: when it is not the stack's exact shape); a row the ledger lists is the stack's,
+// so an edit to it is still repaired (the documented drift repair).
+for (const [pick, extra] of [['macos-desktop', []], ['browser-chrome', ['--browsers', 'chrome']]])
+{
+    test(`seed install + update (full copy route, project scope): the user's own .mcp.json ${pick} row is kept, named and held, and the update after it frees registers the stack's (matrix F-OWN)`, POSIX_ONLY, () =>
+    {
+        const OWN = { command: 'node', args: ['my-desktop.js'] };
+        const MINE = { type: 'stdio', command: 'node', args: ['mine.js'] };
+        const rowsOf = (repo) => jsonAt(repo, '.mcp.json').mcpServers || {};
+        const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], `skill markdown-style\nmcp ${pick.startsWith('browser') ? 'browser' : pick}\n`, {
+            env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, args: [extra, ['--installed-only', ...extra], ['--installed-only', ...extra], ['--installed-only', ...extra]],
+            prepare: (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { [pick]: OWN, mine: MINE } }, null, 2)),
+            each: (repo, i) =>
+            {
+                const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
+                const step = {
+                    row: rowsOf(repo)[pick], mine: rowsOf(repo).mine, trusted: trusted(repo) || [],
+                    held: (/^mcp-held: *(.*)$/m.exec(stamp) || [])[1] ?? null,
+                    ledgered: new RegExp(`(^|,)${pick}=`).test((/^managed-mcp:(.*)$/m.exec(stamp) || [])[1] || ''),
+                };
+                // After the second run the user takes the remove command the line gave them.
+                if (i === 1) { const data = jsonAt(repo, '.mcp.json'); delete data.mcpServers[pick]; fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(data, null, 2)); }
+                return step;
+            },
+        });
+        const [install, heldUpdate, freed, again] = steps;
+        for (const [i, step] of [install, heldUpdate].entries())
+        {
+            assert.deepStrictEqual(step.row, OWN, `run ${i} touched the user's own row:\n${outs[i]}`);
+            assert.deepStrictEqual(step.mine, MINE, `run ${i} touched mine`);
+            assert.doesNotMatch(outs[i], new RegExp(`mcp repaired: ${pick}`), `run ${i}:\n${outs[i]}`);
+            assert.strictEqual(step.held, `project:${pick}`, `run ${i} left the pick out of the record:\n${outs[i]}`);
+            assert.strictEqual(step.ledgered, false, `run ${i} ledgered the user's own row`);
+            assert.ok(!step.trusted.includes(pick), `run ${i} pre-approved the user's own row: ${step.trusted}`);
+            const lines = outs[i].split('\n').filter((l) => new RegExp(`mcp ${pick}: the project-scope registration is not the one the stack wrote`).test(l));
+            assert.strictEqual(lines.length, 1, `run ${i} did not name it in one line:\n${outs[i]}`);
+            assert.match(lines[0], new RegExp(`stays a pick in this install's record: once you remove yours \\(claude mcp remove ${pick} -s project\\), /alfred-code:update registers the stack's`), lines[0]);
+        }
+        assert.ok(freed.row && freed.row.args[0] !== 'my-desktop.js', `the update after the name freed did not register the stack's:\n${outs[2]}`);
+        assert.strictEqual(freed.ledgered, true, outs[2]);
+        assert.strictEqual(freed.held, null, 'the held line stays once the stack registered its own');
+        assert.ok(freed.trusted.includes(pick), `the stack's own row is pre-approved: ${freed.trusted}`);
+        // The stack's own row is a ledgered one now: a run over it repairs a drift (nothing held, nothing named).
+        assert.deepStrictEqual(again.row, freed.row);
+        assert.strictEqual(again.held, null);
+    });
+}
+
+// The plugin route registers nothing in .mcp.json, so the user's own row under a pick's name is left as it is and named once;
+// the pick is carried by its plugin row, so no `mcp-held:` line is needed there.
+for (const [pick, extra] of [['macos-desktop', []], ['browser-chrome', ['--browsers', 'chrome']]])
+{
+    test(`seed install + update (plugin route, project scope): the user's own .mcp.json ${pick} row is kept and named once, never rewritten (matrix F-OWN)`, POSIX_ONLY, () =>
+    {
+        const OWN = { command: 'node', args: ['my-desktop.js'] };
+        const { steps, outs } = seedRun(['install', 'update'], `skill markdown-style\nmcp ${pick.startsWith('browser') ? 'browser' : pick}\n`, {
+            env: { ALFRED_CODE_PLATFORM: 'darwin' }, args: [extra, ['--installed-only', ...extra]],
+            prepare: (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { [pick]: OWN } }, null, 2)),
+            each: (repo) => ({ row: jsonAt(repo, '.mcp.json').mcpServers[pick], held: /^mcp-held:/m.test(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) }),
+        });
+        for (const [i, step] of steps.entries())
+        {
+            assert.deepStrictEqual(step.row, OWN, `run ${i}:\n${outs[i]}`);
+            assert.strictEqual(step.held, false, `run ${i}`);
+            assert.strictEqual(outs[i].split('\n').filter((l) => new RegExp(`mcp ${pick}: kept - the .mcp.json entry is not the one the stack wrote`).test(l)).length, 1, `run ${i}:\n${outs[i]}`);
+        }
+    });
+}
+
+test('seed update (full copy route, project scope): a ledgered row edited by the user is still repaired, and a row the ledger does not list is the user\'s (matrix F-OWN o3)', POSIX_ONLY, () =>
+{
+    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+        env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, args: [[], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            const file = path.join(repo, '.mcp.json');
+            const data = jsonAt(repo, '.mcp.json');
+            const step = { row: data.mcpServers['macos-desktop'], nav: data.mcpServers.navigation };
+            if (i === 0) { data.mcpServers['macos-desktop'].args = ['drifted']; fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
+            return step;
+        },
+    });
+    assert.match(outs[1], /mcp repaired: macos-desktop/, outs[1]);
+    assert.notDeepStrictEqual(steps[1].row.args, ['drifted']);
+    assert.doesNotMatch(outs[1], /macos-desktop: the project-scope registration is not the one the stack wrote/, outs[1]);
+});
+
 for (const scope of ['user', 'local'])
 {
     test(`seed install (MCP copy route, ${scope} scope): nothing lands in .mcp.json, so enabledMcpjsonServers gains no stack name and loses the ones it held (R124 m)`, POSIX_ONLY, () =>
@@ -2114,15 +2238,19 @@ for (const [scope, named] of [['project', 'browser-chrome browser-webkit'], ['us
 // verify pass wrote .mcp.json ('repaired (absent)'). At project scope the run reads .mcp.json itself.
 test('seed install (full copy route, project registrations): only .mcp.json says a server is configured here - a user-scope one of the same name does not (C10)', POSIX_ONLY, () =>
 {
+    // The row is the stack's exact shape, taken from a fresh run (matrix F-OWN: with no ledger, any other shape is the user's own).
+    let stackRow = null;
     const run = (mcpJson) => seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
         env: COPY_ENV,
         prepare: (repo, work) =>
         {
             accountMcp(work, { navigation: STACK_SERENA });
-            if (mcpJson) fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { navigation: STACK_SERENA } }));
+            if (mcpJson) fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { navigation: stackRow } }));
         },
+        inspect: (repo) => jsonAt(repo, '.mcp.json').mcpServers,
     });
     const fresh = run(false);
+    stackRow = fresh.result.navigation;
     assert.ok(fresh.calls.some((c) => /^mcp add --scope project navigation /.test(c)), `${fresh.calls.filter((c) => /^mcp /.test(c)).join('\n')}\n${fresh.out}`);
     assert.doesNotMatch(fresh.out, /mcp navigation already configured/);
     assert.ok(!fresh.calls.some((c) => /^mcp get /.test(c)), 'a project-scope install asked the CLI, which answers from every scope');

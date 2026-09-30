@@ -25,6 +25,7 @@
 // because the user is looking at the question as it is asked.
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseJson } = require('./json-file.js');
 const { stackSeat } = require('../derive-state.js');
 const { BRAND, LEGACY } = require('./brand.js');
 const { valueHash } = require('./stamp.js');
@@ -61,7 +62,7 @@ function readSettings(file)
     try { raw = fs.readFileSync(file, 'utf8'); }
     catch (err) { const e = new Error(`${path.basename(file)} could not be read (${err.code || err.message}) - left untouched; fix it and re-run`); e.leaveAlone = true; throw e; }
     let parsed;
-    try { parsed = JSON.parse(raw); }
+    try { parsed = parseJson(raw); }
     catch (err) { const e = new Error(`${path.basename(file)} is not valid JSON (${err.message}) - left untouched; fix it and re-run`); e.leaveAlone = true; throw e; }
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
     { const e = new Error(`${path.basename(file)} top level is not an object - left untouched`); e.leaveAlone = true; throw e; }
@@ -848,7 +849,7 @@ const settingsTarget = (claudeDir, scope) => path.join(claudeDir, scope === 'loc
 function readBackSettings(claudeDir, scope, { sharedOnly = false } = {})
 {
     const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
-    const read = (name) => { try { return obj(JSON.parse(fs.readFileSync(path.join(claudeDir, name), 'utf8'))); } catch { return {}; } };
+    const read = (name) => { try { return obj(parseJson(fs.readFileSync(path.join(claudeDir, name), 'utf8'))); } catch { return {}; } };
     if (scope !== 'local')
     {
         const own = read('settings.json');
@@ -876,7 +877,7 @@ function readBackSettings(claudeDir, scope, { sharedOnly = false } = {})
 // sees that this run never writes.
 function sharedOnlyDeny(claudeDir)
 {
-    const deny = (name) => { try { const d = JSON.parse(fs.readFileSync(path.join(claudeDir, name), 'utf8')); return Array.isArray(d.permissions.deny) ? d.permissions.deny : []; } catch { return []; } };
+    const deny = (name) => { try { const d = parseJson(fs.readFileSync(path.join(claudeDir, name), 'utf8')); return Array.isArray(d.permissions.deny) ? d.permissions.deny : []; } catch { return []; } };
     const personal = new Set(deny('settings.local.json'));
     return deny('settings.json').filter((d) => !personal.has(d));
 }

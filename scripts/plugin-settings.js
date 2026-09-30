@@ -28,6 +28,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { parseJson } = require('./install/json-file.js');
 
 // Strict, like hud-statusline.js: an argument this script does not know, a value flag with no value
 // or a flag given twice throws - never read as absent, which would apply to ~/.claude or to every
@@ -53,7 +54,7 @@ function parseArgs(argv)
 
 function readJson(file)
 {
-    try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+    try { return parseJson(fs.readFileSync(file, 'utf8')); }
     catch { return null; }
 }
 
@@ -67,7 +68,7 @@ function readDoc(file)
     if (!text.trim()) return { exists: true, doc: {} };
     try
     {
-        const doc = JSON.parse(text);
+        const doc = parseJson(text);
         return doc && typeof doc === 'object' && !Array.isArray(doc) ? { exists: true, doc } : { exists: true, bad: true };
     }
     catch { return { exists: true, bad: true }; }
@@ -293,6 +294,6 @@ function main(argv)
     return 0;
 }
 
-module.exports = { planFor, applyTargets, backupOnce, report, leaves, atPath, setLeaf, readDoc, main };
+module.exports = { planFor, applyTargets, backupOnce, report, leaves, atPath, setLeaf, readDoc, readJson, main };
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));

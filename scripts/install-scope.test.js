@@ -446,6 +446,9 @@ test('install-scope: a project-level memory path already in .mcp.json is kept at
 {
     // The level is kept; the path is the one the database LIVES at - a 2.0.0 file not moved yet keeps its
     // registration byte-for-byte, and with no file anywhere the current place is named (Task 7a).
+    // The row is the stack's exact shape (matrix F-OWN: with no ledger, a project-scope row of any other shape is the user's own
+    // and never re-registered), taken from a fresh run.
+    const stackMemory = seedRun('install', SELECTION, { args: ['--scope', 'user'], env: FULL_COPY, inspect: (repo) => json(repo, '.mcp.json').mcpServers.memory }).result;
     for (const [label, exists, want] of [['a database there', true, ['.memory-mcp', 'memory.db']], ['no database yet', false, ['.alfred', '.alfred-memory', 'memory.db']]])
     {
         const { out, result } = seedRun('update', SELECTION, {
@@ -457,7 +460,7 @@ test('install-scope: a project-level memory path already in .mcp.json is kept at
                 const db = path.join(fs.realpathSync(repo), '.memory-mcp', 'memory.db');
                 if (exists) { fs.mkdirSync(path.dirname(db), { recursive: true }); fs.writeFileSync(db, ''); }
                 fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({
-                    mcpServers: { memory: { type: 'stdio', command: 'uvx', args: [], env: { MCP_MEMORY_SQLITE_PATH: db } } },
+                    mcpServers: { memory: { ...stackMemory, env: { ...stackMemory.env, MCP_MEMORY_SQLITE_PATH: db } } },
                 }));
             },
             inspect: (repo) => ({ env: memoryIn(repo), real: fs.realpathSync(repo) }),

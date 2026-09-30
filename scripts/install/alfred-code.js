@@ -41,6 +41,7 @@ const stampLayer = require('./stamp.js');
 const library = require('./library.js');
 const uninstallLayer = require('./uninstall.js');
 const runtime = require('./runtime.js');
+const { readJson } = require('./json-file.js');
 const { envMigrations } = require('./env-migrations.js');
 const { BRAND, LEGACY, marketOf } = require('./brand.js');
 const { envOf } = require('../../stack/hooks/hook-prelude.js');
@@ -1669,10 +1670,13 @@ function vouchedAt(ctx, name, scope, live, { pick = false } = {})
     if (regs.state === 'unreadable') return registrationOf(ctx, name, scope, live);
     const entry = regs.servers[name];
     if (!entry) return 'absent';
-    const recorded = ctx.ledger && ctx.ledger.mcpAt && ctx.ledger.mcpAt[scope];
+    // Matrix F-OWN: at project scope (.mcp.json) the ledger is `ledger.mcp`, and a name it lists is the stack's whatever the
+    // row holds now - an edit to a ledgered row is the documented drift repair (verifyProject), never the user's own.
+    const project = scope === 'project';
+    const recorded = ctx.ledger && (project ? ctx.ledger.mcp : ctx.ledger.mcpAt && ctx.ledger.mcpAt[scope]);
     const ledgered = Boolean(recorded) && Object.keys(recorded).length > 0;
     if (ctx.mcpTakenBack && ctx.mcpTakenBack.has(name)) return 'stack';
-    if (ledgered ? recorded[name] === stampLayer.entryHash(entry) : mcp.exactStack(name, entry, { catalog: ctx.manifest.catalogs.mcps, remotes: ctx.remotes, projectRoot: ctx.projectRoot }))
+    if (ledgered ? (project ? Object.hasOwn(recorded, name) : recorded[name] === stampLayer.entryHash(entry)) : mcp.exactStack(name, entry, { catalog: ctx.manifest.catalogs.mcps, remotes: ctx.remotes, projectRoot: ctx.projectRoot }))
         return 'stack';
     const why = !ledgered ? 'not the stack\'s exact shape' : Object.hasOwn(recorded, name) ? 'changed since the stack registered it' : 'the ledger does not list it';
     if (!ctx.mcpSaid.has(`${scope}:${name}`))
@@ -1829,7 +1833,7 @@ function installMcps(ctx)
     // fresh install used to re-register it): not re-registered, not verified (the verify's re-register would remove it). The
     // pick stays in the record (the stamp's mcp-held: line, re-verify 4 T7), so the update after the user removes theirs
     // registers the stack's own.
-    const held = (name) => scope !== 'project' && vouchedAt(ctx, name, scope, true, { pick: true }) === 'foreign'
+    const held = (name) => vouchedAt(ctx, name, scope, true, { pick: true }) === 'foreign'
         && Boolean(ctx.mcpHeld.push({ scope, name }));
     const live = ctx.lists.mcps.filter((e) => !(mcp.isLocked(e.split('|')[0]) && mcp.corePluginOn(ctx.routes)))
         .filter((e) => !unregistered.includes(e.split('|')[0]))
@@ -1975,7 +1979,8 @@ function installHooksAndRules(ctx)
     // the core on, ALFRED_CODE_HOOKS_OFF is the complement of what the run wires and is written EVERY
     // run - a bare install wires every hook, so it writes an empty list over whatever was stored.
     const state = ctx.picked ? deriveState({ selectionText: [...ctx.picked].join('\n'), sourceDir: ctx.source.dir }) : null;
-    const trusted = mcp.mcpjsonTrusted({ routes: ctx.routes, scope: mcp.registrationScope(ctx.routes, ctx.cliScope), mcps: ctx.lists.mcps, off: ctx.pw.mcpjson.off });
+    // Matrix F-OWN: a row the user's own holds under a picked name is theirs - this run registered nothing there, so it claims no approval.
+    const trusted = mcp.mcpjsonTrusted({ routes: ctx.routes, scope: mcp.registrationScope(ctx.routes, ctx.cliScope), mcps: ctx.lists.mcps, off: ctx.pw.mcpjson.off }).filter((n) => !ctx.mcpHeld.some((h) => h.scope === 'project' && h.name === n));
     const hookName = (e) => e.split('::')[0].replace(/\.js$/, '');
     const { hooksOff, hooksAnswered, agentDeny, agentAllow } = writable(state, {
         routes: ctx.routes, answered: ctx.answered,
@@ -2404,8 +2409,6 @@ function summarise(ctx, failures)
 }
 
 // --- small readers ---------------------------------------------------------
-
-function readJson(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; } }
 
 // The stamp's picked lines, `name@home` - the home is what tells a later read-back that an item
 // MOVED rather than left with an entry the user removed. An extra has no home and stays plain.

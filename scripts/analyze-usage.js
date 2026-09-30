@@ -54,6 +54,7 @@ const os = require('os');
 const path = require('path');
 const readline = require('readline');
 const { loadManifest } = require('./install/manifest.js');
+const { parseJson } = require('./install/json-file.js');
 
 // ---------- small helpers ----------
 
@@ -535,7 +536,7 @@ function loadPluginLayers(claudeDir) {
   let enabled = [];
   try
   {
-    const s = JSON.parse(fs.readFileSync(path.join(claudeDir, 'settings.json'), 'utf8'));
+    const s = parseJson(fs.readFileSync(path.join(claudeDir, 'settings.json'), 'utf8'));
     enabled = Object.keys(s.enabledPlugins || {}).filter((k) => (s.enabledPlugins || {})[k] !== false);
   }
   catch { return out; }
@@ -2488,7 +2489,7 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
   const { envOf, hookProfile, CORE_PLUGIN } = require(path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js'));
   const root = path.resolve(projectRoot);
   const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
-  const readSettings = (f) => { try { const d = JSON.parse(fs.readFileSync(f, 'utf8')); return d && typeof d === 'object' ? d : {}; } catch { return {}; } };
+  const readSettings = (f) => { try { const d = parseJson(fs.readFileSync(f, 'utf8')); return d && typeof d === 'object' ? d : {}; } catch { return {}; } };
   // The hooks see local over project over account, so the same order answers here; junk is no setting.
   const envs = [path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json'), path.join(account, 'settings.json')]
     .map((f) => { const env = readSettings(f).env; return env && typeof env === 'object' ? env : {}; });
@@ -3557,7 +3558,7 @@ function sessionsDirOf(cwd, configDir) {
   return path.join(configDir, 'projects', require('./memory-import.js').slugify(cwd));
 }
 
-module.exports = { hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf };
+module.exports = { loadPluginLayers, hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf };
 
 // ---------- entry ----------
 

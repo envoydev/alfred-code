@@ -1219,3 +1219,24 @@ test('loading stack-select.js leaves the process-wide fs.readFileSync as it was'
     const r = spawnSync(process.execPath, ['-e', code], { encoding: 'utf8' });
     assert.strictEqual(r.status, 0, `fs.readFileSync was replaced (exit ${r.status}) ${r.stderr}`);
 });
+
+// Matrix F-BOM follow-up (2.1.6, V1): the account settings' env read goes through the shared BOM-stripping reader.
+test('detectEnvironment: a BOM\'d account settings.json still answers for a variable in its env; a BOM plus garbage or a missing file answers none (V1)', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { detectEnvironment } = require('./stack-select.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stack-select-bom-'));
+    const saved = process.env.CONTEXT7_API_KEY;
+    delete process.env.CONTEXT7_API_KEY;
+    try {
+        const at = (text) => { const d = fs.mkdtempSync(path.join(dir, 'a-')); if (text !== null) fs.writeFileSync(path.join(d, 'settings.json'), text); return d; };
+        assert.strictEqual(detectEnvironment({ configDir: at('\uFEFF{"env": {"CONTEXT7_API_KEY": "placeholder"}}') }).envs.CONTEXT7_API_KEY, true);
+        assert.strictEqual(detectEnvironment({ configDir: at('{"env": {"CONTEXT7_API_KEY": "placeholder"}}') }).envs.CONTEXT7_API_KEY, true, 'no BOM, as before');
+        assert.strictEqual(detectEnvironment({ configDir: at('\uFEFF{"env": {"CONTEXT7_API_KEY": ') }).envs.CONTEXT7_API_KEY, false);
+        assert.strictEqual(detectEnvironment({ configDir: at('') }).envs.CONTEXT7_API_KEY, false);
+        assert.strictEqual(detectEnvironment({ configDir: at(null) }).envs.CONTEXT7_API_KEY, false);
+    } finally {
+        if (saved !== undefined) process.env.CONTEXT7_API_KEY = saved;
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});

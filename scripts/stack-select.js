@@ -12,6 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const { USER_OFF_WINS } = require('./install/plugins.js');
+const { parseJson } = require('./install/json-file.js');
 const { offeredOn, platformOf, osLabel, DESKTOP_OS } = require('../stack/mcp/desktop-launch.js');
 
 // Expand raw = { skills?, agents?, rules?, mcps?, plugins?, hooks? } into the
@@ -219,7 +220,7 @@ function accountSettingsEnv(configDir)
     const dir = configDir || process.env.CLAUDE_CONFIG_DIR || p.join(os.homedir(), '.claude');
     try
     {
-        const env = JSON.parse(fs.readFileSync(p.join(dir, 'settings.json'), 'utf8')).env;
+        const env = parseJson(fs.readFileSync(p.join(dir, 'settings.json'), 'utf8')).env;
         return env && typeof env === 'object' ? env : {};
     }
     catch { return {}; }

@@ -109,18 +109,18 @@ test('install-stamp: installed-ms records the write to the millisecond; an older
 });
 
 // Re-verify 4 T7: the MCP picks the copy route held back because the user's own registration holds the name. Written only
-// when there is one, read back by scope and name, and a hand-edited entry of any other shape (a project scope, which the
-// ledger's .mcp.json owns, or a name that is no item) never becomes a pick.
-test('install-stamp: mcp-held records the held picks, and its reader drops what is not a local or user pick', () =>
+// when there is one, read back by scope and name, and a hand-edited entry of any other shape (an unknown scope, or a name
+// that is no item) never becomes a pick. Project scope is a scope since the matrix F-OWN fix (a user's own .mcp.json row).
+test('install-stamp: mcp-held records the held picks, and its reader drops what is not a project, local or user pick', () =>
 {
     const p = project();
     assert.doesNotMatch(write(p).text, /^mcp-held:/m, 'no line with none held');
-    const { dest, text } = write(p, { mcpHeld: [{ scope: 'local', name: 'macos-desktop' }, { scope: 'user', name: 'browser-chrome' }] });
-    assert.match(text, /^mcp-held: local:macos-desktop,user:browser-chrome$/m);
+    const { dest, text } = write(p, { mcpHeld: [{ scope: 'local', name: 'macos-desktop' }, { scope: 'user', name: 'browser-chrome' }, { scope: 'project', name: 'macos-desktop' }] });
+    assert.match(text, /^mcp-held: local:macos-desktop,user:browser-chrome,project:macos-desktop$/m);
     const { readMcpHeld } = require('./install/stamp.js');
-    assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-desktop' }, { scope: 'user', name: 'browser-chrome' }]);
-    fs.writeFileSync(dest, text.replace(/^mcp-held: .*$/m, 'mcp-held: local:macos-desktop, project:navigation,user:../x,local:,user:memory'));
-    assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-desktop' }, { scope: 'user', name: 'memory' }]);
+    assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-desktop' }, { scope: 'user', name: 'browser-chrome' }, { scope: 'project', name: 'macos-desktop' }]);
+    fs.writeFileSync(dest, text.replace(/^mcp-held: .*$/m, 'mcp-held: local:macos-desktop, project:navigation,global:x,user:../x,local:,user:memory'));
+    assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-desktop' }, { scope: 'project', name: 'navigation' }, { scope: 'user', name: 'memory' }]);
     assert.deepStrictEqual(readMcpHeld(path.join(p.base, 'absent.stamp')), []);
 });
 
@@ -1049,4 +1049,36 @@ test('installScope: an unmigrated 1.x global install reads its account stamp\'s 
     fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'version: 2.0.0\nscope: project\n');
     assert.strictEqual(stamp.installScope(root, env), 'project');
     assert.strictEqual(stamp.legacyGlobalStamp(root, env), null);
+});
+// Matrix FAIL F-BOM (2.1.6): ONE reader for every JSON file a person may have edited. A leading BOM is stripped; a BOM
+// plus garbage is still unreadable, and stamp.js's own read of .mcp.json (installedAlways) sees the servers under a BOM.
+test('json-file: a leading BOM is stripped before the parse, and a BOM plus garbage is still unreadable (matrix F-BOM)', () =>
+{
+    const { parseJson, readJson, stripBom } = require('./install/json-file.js');
+    const dir = fs.mkdtempSync(path.join(TMP, 'jf-'));
+    const write = (name, text) => { const f = path.join(dir, name); fs.writeFileSync(f, text); return f; };
+    assert.deepStrictEqual(parseJson('\uFEFF{"a":1}'), { a: 1 });
+    assert.deepStrictEqual(parseJson('{"a":1}'), { a: 1 });
+    assert.throws(() => parseJson('\uFEFF{"a":'), SyntaxError, 'a BOM plus garbage is not JSON');
+    assert.throws(() => parseJson('\uFEFF\uFEFF{"a":1}'), SyntaxError, 'only ONE leading BOM is the encoding mark');
+    assert.strictEqual(stripBom('x\uFEFF'), 'x\uFEFF', 'a BOM past byte 0 is content');
+    assert.deepStrictEqual(readJson(write('ok.json', '\uFEFF{"mcpServers":{"a":{}}}')), { mcpServers: { a: {} } });
+    assert.deepStrictEqual(readJson(write('bad.json', '\uFEFF{"mcpServers":')), {}, 'unreadable reads as empty, like before');
+    assert.deepStrictEqual(readJson(path.join(dir, 'absent.json')), {});
+    const p = project({ servers: { memory: {} } });
+    fs.writeFileSync(p.mcpFile, `\uFEFF${fs.readFileSync(p.mcpFile, 'utf8')}`);
+    const got = installedAlways({ recommendations: path.join(p.src, 'meta', 'recommendations.json'), mcpFile: p.mcpFile,
+        settingsFile: path.join(p.base, '.claude', 'settings.json'), rulesDir: path.join(p.base, '.claude', 'rules') });
+    assert.deepStrictEqual(got.mcps, ['memory'], 'stamp.js read a BOM\'d .mcp.json as empty');
+});
+
+// Matrix F-BOM follow-up (2.1.6, V1): the legacy signature's settings read goes through the shared reader too - a BOM'd
+// settings.json holding a stack env key is a signature hit, not an empty file.
+test('legacySignature: a stack env key in a BOM\'d settings.json counts, and a BOM plus garbage still claims nothing (V1)', () =>
+{
+    const stamp = require('./install/stamp.js');
+    const raw = `\uFEFF${JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs' } })}`;
+    assert.strictEqual(stamp.legacySignature(legacyTree({ hooks: ['guard-catastrophic-rm.js'], raw })), true, 'hooks + a BOM\'d env key are two hits');
+    assert.strictEqual(stamp.legacySignature(legacyTree({ hooks: ['guard-catastrophic-rm.js'], raw: '\uFEFF{"env": {' })), false, 'BOM plus garbage is no hit');
+    assert.strictEqual(stamp.legacySignature(legacyTree({ hooks: ['guard-catastrophic-rm.js'], raw: '' })), false, 'an empty file is no hit');
 });

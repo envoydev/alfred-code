@@ -43,8 +43,9 @@
 // The settings file cannot tell that off from the user's own /plugin disable, so this line is the only
 // reason a switch back enables the core: it lists what is still owed and is gone once it is enabled.
 //
-// `mcp-held` is each MCP pick the copy route did not register because the user's own local- or user-scope
-// registration holds its name (`<scope>:<name>`, re-verify 4 T7). The ledger lists only what the stack wrote, so
+// `mcp-held` is each MCP pick the copy route did not register because the user's own local-, project- or user-scope
+// registration holds its name (`<scope>:<name>`, re-verify 4 T7; project scope - a row of the user's own in .mcp.json - since
+// the matrix F-OWN fix). The ledger lists only what the stack wrote, so
 // without this line the next update would read the pick back as gone; with it the pick stays, and the first update
 // after the user removes theirs registers the stack's own. A run writes it afresh from what it held.
 //
@@ -96,7 +97,7 @@ const splitPick = (entry) => { const [name, home = ''] = String(entry).split('@'
 // install carrying `browser-firefox` is carrying it.
 const family = (name) => String(name).replace(/^browser-.*/, 'browser');
 
-const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; } };
+const { readJson, parseJson } = require('./json-file.js');
 
 // N1 (R58 fix round 2, security): a stamp is a project file a clone can fill with ANY text, so a
 // name it records - a skill, a seat or a rule - is validated before it ever reaches a path join, a
@@ -464,7 +465,7 @@ function readMcpHeld(file)
     try { text = fs.readFileSync(file, 'utf8'); } catch { return []; }
     const m = /^mcp-held:(.*)$/m.exec(text);
     if (!m) return [];
-    return m[1].split(',').map((s) => /^(local|user):(.+)$/.exec(s.trim())).filter((e) => e && validItemName(e[2])).map(([, scope, name]) => ({ scope, name }));
+    return m[1].split(',').map((s) => /^(project|local|user):(.+)$/.exec(s.trim())).filter((e) => e && validItemName(e[2])).map(([, scope, name]) => ({ scope, name }));
 }
 // The data lines - { root: '' when none, pending: [], kept } with no stamp or none of them.
 function readDataLines(file)
@@ -616,7 +617,7 @@ function legacySignature(root, { manifest } = {})
     {
         try
         {
-            const env = (JSON.parse(fs.readFileSync(path.join(claudeDir, file), 'utf8')) || {}).env;
+            const env = (parseJson(fs.readFileSync(path.join(claudeDir, file), 'utf8')) || {}).env;
             return Boolean(env) && typeof env === 'object' && !Array.isArray(env) && Object.keys(env).some((k) => STACK_ENV_KEY.test(k));
         }
         catch { return false; }

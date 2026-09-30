@@ -28,6 +28,7 @@ const path = require('node:path');
 const { readLibrary, validItemName, readSeatsRoute } = require('./install/stamp.js');
 const { stampFile, LEGACY } = require('./install/brand.js');
 const { hashItem, hashBuffer } = require('./install/library.js');
+const { parseJson } = require('./install/json-file.js');
 const { resolveDocsRoot } = require('./install/copy.js');
 
 // baseline-docs-root.md is never byte-identical between the pristine SOURCE (which ships the
@@ -37,7 +38,7 @@ const { resolveDocsRoot } = require('./install/copy.js');
 // hashing, so the normalised comparison matches what an up-to-date copy actually holds.
 const DOCS_ROOT_RULE = 'baseline-docs-root';
 
-const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch { return {}; } };
+const readJson = (file) => { try { return parseJson(fs.readFileSync(file, 'utf8')) || {}; } catch { return {}; } };
 const newer = (a, b) =>
 {
     const pa = String(a).split('.').map(Number);

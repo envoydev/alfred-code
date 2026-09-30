@@ -24,6 +24,7 @@
 //     written. Drift repair is for entries this stack owns.
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseJson } = require('./json-file.js');
 const { isDeepStrictEqual } = require('node:util');
 const { entryHash } = require('./stamp.js');
 const { offeredOn, skipNote } = require('../../stack/mcp/desktop-launch.js');
@@ -200,7 +201,7 @@ function verifyProject({ mcpFile, expects = [], log = () => {} })
         else { log(`  !! .mcp.json unreadable (${err.message}) - MCP registrations were not verified`); return { repaired: [], read: false }; }
     }
     let data;
-    try { data = raw.replace(/^\uFEFF/, '').trim() ? JSON.parse(raw.replace(/^\uFEFF/, '')) : {}; }
+    try { data = raw.replace(/^\uFEFF/, '').trim() ? parseJson(raw) : {}; }
     catch { log('  !! .mcp.json is not valid JSON - MCP registrations were not verified; fix it and re-run'); return { repaired: [], read: false }; }
     if (!data || typeof data !== 'object' || Array.isArray(data)) data = {};
     const servers = (data.mcpServers && typeof data.mcpServers === 'object' && !Array.isArray(data.mcpServers))
@@ -235,7 +236,7 @@ function snapshotMcp(mcpFile)
 {
     let raw;
     try { raw = fs.readFileSync(mcpFile).toString('utf8'); } catch { return null; }
-    try { return { raw, data: JSON.parse(raw.replace(/^\uFEFF/, '')) }; } catch { return null; }
+    try { return { raw, data: parseJson(raw) }; } catch { return null; }
 }
 const plainObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 function inOrderOf(now, was)
@@ -646,7 +647,7 @@ function removeManagedMcp({ mcpFile, managed = {}, log = () => {}, note = () => 
     try { raw = fs.readFileSync(mcpFile, 'utf8'); }
     catch (err) { note(`.mcp.json could not be read (${err.code || err.message}) - left untouched, nothing of the stack's was removed from it; fix it and re-run`); return { removed }; }
     let data;
-    try { data = JSON.parse(raw.replace(/^\uFEFF/, '')); }
+    try { data = parseJson(raw); }
     catch { note('.mcp.json is not valid JSON - left untouched, nothing of the stack\'s was removed from it; fix it and re-run'); return { removed }; }
     const servers = data && typeof data.mcpServers === 'object' && !Array.isArray(data.mcpServers) ? data.mcpServers : null;
     if (!servers) return { removed };

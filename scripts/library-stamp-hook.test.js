@@ -21,6 +21,9 @@ const stampOf = (version) => `sha: ${'a'.repeat(40)}\nversion: ${version}\npicke
 // the hook reads it, at project and at account level, and the new name wins when both exist.
 const OLD_STAMP = 'claude-stack.stamp'; // legacy-name
 
+// The installer files the hook loads from a plugin root: stamp.js and brand.js, and what stamp.js requires at load. The pinned test
+// below fails when either grows a new eager local require, so a missing file is never the six silent no-ops it was once.
+const HOOK_INSTALL_FILES = ['stamp.js', 'brand.js', 'json-file.js'];
 // A plugin root holding the files the hook reads - the stamp reader (with the prelude its install-state
 // read walks) and the release version - and a project with (or without) a stamp. `record` leaves the
 // copied engine a 1.x GLOBAL install put in the project, with its stamp in the account dir.
@@ -30,7 +33,7 @@ function fx({ stampVersion = '1.3.0', stackVersion = '1.3.0', noStamp = false, s
     roots.push(root);
     const plugin = path.join(root, 'plugin');
     fs.mkdirSync(path.join(plugin, 'scripts', 'install'), { recursive: true });
-    for (const f of ['stamp.js', 'brand.js']) fs.copyFileSync(path.join(REPO, 'scripts', 'install', f), path.join(plugin, 'scripts', 'install', f));
+    for (const f of HOOK_INSTALL_FILES) fs.copyFileSync(path.join(REPO, 'scripts', 'install', f), path.join(plugin, 'scripts', 'install', f));
     fs.mkdirSync(path.join(plugin, 'stack', 'hooks'), { recursive: true });
     fs.copyFileSync(path.join(REPO, 'stack', 'hooks', 'hook-prelude.js'), path.join(plugin, 'stack', 'hooks', 'hook-prelude.js'));
     fs.mkdirSync(path.join(plugin, 'setup-plugin', '.claude-plugin'), { recursive: true });
@@ -203,4 +206,14 @@ test('a stamp from before 2.1.0 under a 2.1 core names the skew window and the u
     const stale = JSON.parse(runHook(fx({ stampText: `${stampOf('2.1.0')}seats-route: plugin\n`, stackVersion: '2.2.0' })));
     assert.doesNotMatch(stale.systemMessage, /moved every skill/);
     assert.match(stale.systemMessage, /library copies are from 2\.1\.0, the stack is 2\.2\.0/);
+});
+
+test('the installer files the hook loads standalone are copied whole: every eager local require of stamp.js and brand.js is in the fixture', () =>
+{
+    const eager = new Set();
+    for (const f of ['stamp.js', 'brand.js'])
+        for (const m of fs.readFileSync(path.join(REPO, 'scripts', 'install', f), 'utf8').matchAll(/^const [^\n]*= require\('\.\/([\w.-]+\.js)'\)/gm)) eager.add(m[1]);
+    assert.deepStrictEqual([...eager].filter((f) => !HOOK_INSTALL_FILES.includes(f)), [], 'a file stamp.js or brand.js now requires at load is not in the plugin fixture (and the hook would fail open, silently)');
+    // The one place a BOM strip must not diverge: json-file.js is what every installer reader uses.
+    assert.ok(fs.existsSync(path.join(REPO, 'scripts', 'install', 'json-file.js')));
 });

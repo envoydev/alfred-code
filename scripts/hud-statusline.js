@@ -28,6 +28,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { accountDir } = require('./install/stamp.js');
+const { parseJson } = require('./install/json-file.js');
 const { planFor, applyTargets, backupOnce, report, readDoc } = require('./plugin-settings.js');
 
 const HUD = 'claude-hud';
@@ -243,7 +244,7 @@ function classify(statusLine, { platform, want, exists })
     return { state: 'stale' };
 }
 
-const readJsonFile = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
+const readJsonFile = (file) => { try { return parseJson(fs.readFileSync(file, 'utf8')); } catch { return null; } };
 
 // Installed = registered in the account's installed_plugins.json AND a runnable version in its cache
 // (the version dirs the launcher accepts, setup.md:250 and :277). The user's OFF wins.

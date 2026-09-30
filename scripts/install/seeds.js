@@ -14,6 +14,7 @@
 //     playwright and matches the version the server launches. Fail-soft.
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseJson } = require('./json-file.js');
 
 // The same pattern meta/environment.json calls secret_key_pattern.
 const SECRET_KEY = /(TOKEN|SECRET|KEY|PASSWORD|PASSWD|DSN|CREDENTIAL|AUTH)$/;
@@ -25,7 +26,7 @@ function seedAccountEnv({ configDir, key, value, log = () => {}, note = () => {}
 {
     const file = path.join(configDir, 'settings.json');
     let data = {};
-    try { data = JSON.parse(fs.readFileSync(file, 'utf8')); }
+    try { data = parseJson(fs.readFileSync(file, 'utf8')); }
     catch (err)
     {
         if (err.code !== 'ENOENT') { note(`could not write ${key} into ${file} (${err.message})`); return false; }
@@ -64,7 +65,7 @@ function seedAccountKeys({ configDir, env = {}, log, note })
 function accountKeyState(configDir, key)
 {
     let value = '';
-    try { value = String(JSON.parse(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8')).env?.[key] ?? ''); }
+    try { value = String(parseJson(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8')).env?.[key] ?? ''); }
     catch { value = ''; }
     return value.trim() ? `${key}=set (${value.length} chars)` : `${key}=absent`;
 }

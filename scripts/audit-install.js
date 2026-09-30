@@ -11,6 +11,7 @@
 // are GENERATED into the marketplace, pinned and timed out there, and the lint holds them. What is
 // left to audit is what a person, or the copy route, put into the project.
 const fs = require('node:fs');
+const { parseJson } = require('./install/json-file.js');
 const path = require('node:path');
 const { SECRET_SHAPE, PEM_PRIVATE } = require('./credential-shapes.js');
 
@@ -29,7 +30,7 @@ function readJson(root, rel, rows)
 {
     const p = path.join(root, rel);
     if (!fs.existsSync(p)) return null;
-    try { return JSON.parse(fs.readFileSync(p, 'utf8')); }
+    try { return parseJson(fs.readFileSync(p, 'utf8')); }
     catch
     {
         rows.push({ severity: 'medium', where: rel, finding: `${rel} is unreadable`, fix: 'repair the JSON by hand' });

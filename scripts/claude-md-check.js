@@ -23,6 +23,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const rt = require('./install/runtime.js');
+const { parseJson } = require('./install/json-file.js');
 
 const TEMPLATE_DEFAULT = path.join(__dirname, '..', 'stack', 'CLAUDE.template.md');
 const USAGE = 'usage: node claude-md-check.js [--root <dir>] [--file <path> ...] [--template <file>] | --list [--root <dir>]';
@@ -161,7 +162,7 @@ function localPrograms(root, tree)
 {
     const found = new Set();
     const addDir = (dir) => { try { for (const n of fs.readdirSync(dir)) found.add(n.replace(/\.(cmd|ps1)$/i, '')); } catch { /* none installed */ } };
-    const json = (rel) => { try { return JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8')); } catch { return null; } };
+    const json = (rel) => { try { return parseJson(fs.readFileSync(path.join(root, rel), 'utf8')); } catch { return null; } };
     const bare = (name) => String(name).split('/').pop();
     addDir(path.join(root, 'node_modules', '.bin'));
     for (const rel of tree.files)
