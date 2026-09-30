@@ -164,7 +164,7 @@ test('the skill-writing habit is the sixth habit, in the core, and says what a s
         assert.ok(!flat.includes(pinned), `the habit reads the budget at use, never pins '${pinned}'`);
     const recs = JSON.parse(read('meta/recommendations.json'));
     assert.ok(recs.always.skills.includes('alfred-habits-skill-writing'), 'seeded in the always set, like the other five');
-    assert.match(read('setup-plugin/references/walk.md'), /the seven `alfred-habits-\*` habits/, 'the walk counts seven habits - the commit checkpoint joined them in the rename');
+    assert.match(read('setup-plugin/references/walk.md'), /the `alfred-habits-\*` habits/, 'the walk names the habits without a count - the count drifted from the always list');
 });
 
 test('the skill-authoring rule attaches on skill files and its first action is the habit', () => {

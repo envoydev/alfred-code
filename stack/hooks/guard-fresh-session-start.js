@@ -270,6 +270,11 @@ function skillHeads(root, skill) {
   // <cache>/<marketplace>/<plugin>/<version>/stack/skills/<bare>/SKILL.md - the plugin is known
   // when the call carries a scoped name, and is a short scan otherwise.
   const want = skill.includes(':') ? skill.slice(0, skill.indexOf(':')) : null;
+  // The running plugin's own root is the copy that is loaded, so it is read before any cached one.
+  const running = process.env.CLAUDE_PLUGIN_ROOT;
+  if (running && (!want || nodePath.basename(nodePath.dirname(running)) === want)) {
+    out.push(nodePath.join(running, 'stack', 'skills', bare, 'SKILL.md'), nodePath.join(running, 'skills', bare, 'SKILL.md'));
+  }
   let markets = [];
   try { markets = fs.readdirSync(cache); } catch { return out; }
   for (const market of markets) {
@@ -279,7 +284,7 @@ function skillHeads(root, skill) {
       if (want && plugin !== want) continue;
       let versions = [];
       try { versions = fs.readdirSync(nodePath.join(cache, market, plugin)); } catch { continue; }
-      for (const version of versions) {
+      for (const version of versions.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))) {
         out.push(nodePath.join(cache, market, plugin, version, 'stack', 'skills', bare, 'SKILL.md'));
         out.push(nodePath.join(cache, market, plugin, version, 'skills', bare, 'SKILL.md'));
       }

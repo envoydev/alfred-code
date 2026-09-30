@@ -158,7 +158,8 @@ function isCatastrophic(tok)
         || t === '~' || t === '~/*'
         || t === '$HOME' || t === '${HOME}' || t === '$HOME/*' || t === '${HOME}/*'
         || t === '$PWD' || t === '${PWD}' || t === '$PWD/*' || t === '${PWD}/*'
-        || t === '*' || t === './*' || t === '.' || t === '..' || t === '../*';
+        || t === '*' || t === './*' || t === '.' || t === '..' || t === '../*'
+        || t === '.git' || (t.endsWith('/.git') && !t.includes('$'));                 // the commits, stashes and reflog; a variable path is not judged
 }
 
 // A single-segment absolute path ('/usr', '/etc', '/var') - non-catastrophic alone, but
@@ -821,11 +822,12 @@ function main()
 
     process.stderr.write(
         'Blocked: a recursive rm of a catastrophic, unrecoverable target (/, ~, $HOME, the cwd or its ' +
-        'parent, a bare *, or several top-level system dirs at once) - or an unfiltered find -delete / -exec rm, ' +
+        'parent, a bare *, a .git directory, or several top-level system dirs at once) - or an unfiltered find -delete / -exec rm, ' +
         'or a piped Remove-Item, over one - the filesystem has no reflog. A house ' +
         'rule enforced here, no prose copy to consult. ' +
         'Delete a specific subdirectory by name, or filter the find (-name, -path) BEFORE its -delete / -exec, ' +
-        'in the same -o branch, instead.\n');
+        'in the same -o branch, instead. A .git directory holds the unpushed commits, stashes and reflog: if the user ' +
+        'wants it gone, they run that themselves.\n');
     process.exit(2);
 }
 

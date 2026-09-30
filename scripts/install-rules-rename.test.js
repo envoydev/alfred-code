@@ -100,19 +100,36 @@ test('a second update over the migrated install changes nothing', POSIX_ONLY, ()
     assert.ok(!/rule pruned|moved: rule/.test(outs[2]), `the re-run still acted: ${outs[2]}`);
 });
 
-test('a hand-edited old copy is pruned under the existing retired-copy policy and named, never silently', POSIX_ONLY, () =>
+test('a hand-edited old copy is kept and named, never pruned with its edits (audit F2/F3)', POSIX_ONLY, () =>
 {
-    const { result: r, out } = seedRun(['install', 'update'], SEL, {
-        args: [[], UPDATE()], each: (repo, i) => (i === 0 ? makeOld(repo, { edit: ['git'] }) : null), inspect: snap,
+    const { result: r, out, outs } = seedRun(['install', 'update', 'update'], SEL, {
+        args: [[], UPDATE(), UPDATE()], each: (repo, i) => (i === 0 ? makeOld(repo, { edit: ['git'] }) : null), inspect: snap,
     });
-    assert.ok(!('baseline-git.md' in r.files) && 'alfred-git.md' in r.files);
-    assert.ok(/baseline-git\.md/.test(out), 'the edited copy went without a line');
-    assert.ok(!/a hand edit/.test(r.files['alfred-git.md']), 'the shipped rule carries the edit');
+    assert.ok('baseline-git.md' in r.files, 'the edited copy was deleted');
+    assert.match(r.files['baseline-git.md'], /a hand edit/, 'its edit is intact');
+    assert.ok('alfred-git.md' in r.files, 'the shipped rule is written beside it');
+    assert.match(outs[1], /!! rule kept: baseline-git\.md.*edited/, `no kept line: ${outs[1]}`);
+    assert.ok(!('baseline-interaction.md' in r.files), 'an unedited old copy is still pruned');
+    assert.ok(/baseline-git\.md/.test(out), 'and a re-run keeps naming it');
 });
 
-test('a garbled library-rules stamp line still prunes the old copies and lands the new names', POSIX_ONLY, () =>
+test('a retired rule name the stamp does not record is the project\'s own: kept and named (audit F2/F3)', POSIX_ONLY, () =>
 {
-    const { result: r } = seedRun(['install', 'update'], SEL, {
+    const { result: r, outs } = seedRun(['install', 'update'], SEL, {
+        args: [[], UPDATE()], inspect: snap,
+        each: (repo, i) =>
+        {
+            if (i !== 0) return;
+            for (const n of ['web-conventions', 'aspnet-conventions', 'house-baseline']) fs.writeFileSync(path.join(rulesOf(repo), `${n}.md`), `my own ${n}\n`);
+        },
+    });
+    for (const n of ['web-conventions', 'aspnet-conventions', 'house-baseline']) assert.strictEqual(r.files[`${n}.md`], `my own ${n}\n`, `${n}.md was deleted`);
+    assert.match(outs[1], /!! rule kept: web-conventions\.md.*yours/, outs[1]);
+});
+
+test('a garbled library-rules stamp line records nothing: the new names land, the old copies stay and are named', POSIX_ONLY, () =>
+{
+    const { result: r, outs } = seedRun(['install', 'update'], SEL, {
         args: [[], UPDATE()], inspect: snap,
         each: (repo, i) =>
         {
@@ -124,9 +141,31 @@ test('a garbled library-rules stamp line still prunes the old copies and lands t
     for (const n of SHIPPED)
     {
         assert.ok(`alfred-${n}.md` in r.files, `alfred-${n}.md missing`);
-        assert.ok(!(`baseline-${n}.md` in r.files), `baseline-${n}.md survived`);
+        assert.ok(`baseline-${n}.md` in r.files, `baseline-${n}.md was deleted with no record to say it is the stack's`);
     }
+    assert.match(outs[1], /!! rule kept: baseline-git\.md/, 'each kept copy is named');
     assert.strictEqual(r.files['alfred-project-run-book.md'], body('run-book'));
+});
+
+// installer:F4 - a rule copy goes through the same claim test a skill does: a same-named file the stamp does not record is the
+// project's own unless its opening line is the shipped rule's (an older copy of the stack's).
+test('a project\'s own rule under a shipped name is kept and named, never overwritten; an older stack copy still updates (audit F4)', POSIX_ONLY, () =>
+{
+    const shipped = fs.readFileSync(path.join(__dirname, '..', 'stack', 'rules', 'sql-conventions.md'), 'utf8');
+    const { result: r, out } = seedRun('install', `${SEL}rule csharp-conventions\nrule sql-conventions\n`, {
+        inspect: snap,
+        prepare: (repo) =>
+        {
+            fs.mkdirSync(rulesOf(repo), { recursive: true });
+            fs.writeFileSync(path.join(rulesOf(repo), 'csharp-conventions.md'), 'MY OWN C# RULES\n');
+            fs.writeFileSync(path.join(rulesOf(repo), 'sql-conventions.md'), `${shipped}\nan older tail\n`);
+        },
+    });
+    assert.strictEqual(r.files['csharp-conventions.md'], 'MY OWN C# RULES\n', 'the project\'s rule was overwritten');
+    assert.match(out, /!! rule kept: csharp-conventions/, out);
+    assert.ok(!('csharp-conventions' in r.stamp), 'a kept rule is never recorded');
+    assert.strictEqual(r.files['sql-conventions.md'], shipped, 'a copy that opens with the shipped rule is the stack\'s and is refreshed');
+    assert.ok('sql-conventions' in r.stamp);
 });
 
 test('an empty rules folder holding only an old generated file: the file moves, nothing else is invented', POSIX_ONLY, () =>
@@ -149,23 +188,31 @@ test('an empty rules folder holding only an old generated file: the file moves, 
 const OLD_TABLE = ['git', 'interaction', 'docs-root'].map((n) => `| \`.claude/rules/baseline-${n}.md\` | the ${n} rule |`)
     .concat(GENERATED.map((g) => `| \`.claude/rules/baseline-project-${g}.md\` (GENERATED) | the ${g} pointer |`), '| `.claude/rules/baseline-mine.md` | my own |').join('\n');
 
-test('the seeded CLAUDE.md rows naming the old rule files are re-spelled, the user\'s own rule row is not, and a re-run is quiet', POSIX_ONLY, () =>
+test('the seeded AGENTS.md rows naming the old rule files are re-spelled, the user\'s own rule row is not, and a re-run is quiet', POSIX_ONLY, () =>
 {
-    const claudeMd = (repo) => fs.readFileSync(path.join(repo, '.claude', 'CLAUDE.md'), 'utf8');
+    const seedAt = (repo) => path.join(repo, '.claude', 'AGENTS.md');
+    const agentsMd = (repo) => fs.readFileSync(seedAt(repo), 'utf8');
+    // The 2.1.5 seed the ledger still holds: the old table appended, its ledger row moved to the new bytes.
+    const plant = (repo) =>
+    {
+        fs.appendFileSync(seedAt(repo), `\n${OLD_TABLE}\n`);
+        const stamp = stampOf(repo);
+        fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/AGENTS\.md=[0-9a-f]+/, `AGENTS.md=${hashItem(seedAt(repo))}`));
+    };
     const { steps, outs } = seedRun(['install', 'update', 'update'], SEL, {
         args: [[], UPDATE(), UPDATE()],
         each: (repo, i) =>
         {
-            if (i === 0) { makeOld(repo); fs.appendFileSync(path.join(repo, '.claude', 'CLAUDE.md'), `\n${OLD_TABLE}\n`); }
-            return claudeMd(repo);
+            if (i === 0) { makeOld(repo); plant(repo); }
+            return agentsMd(repo);
         },
     });
-    for (const n of ['git', 'interaction', 'docs-root']) assert.ok(steps[1].includes(`.claude/rules/alfred-${n}.md`), `alfred-${n}.md not written into CLAUDE.md`);
-    for (const g of GENERATED) assert.ok(steps[1].includes(`.claude/rules/alfred-project-${g}.md`), `alfred-project-${g}.md not written into CLAUDE.md`);
-    assert.ok(!/baseline-(git|interaction|docs-root|project-)/.test(steps[1]), 'an old stack rule path survived in CLAUDE.md');
+    for (const n of ['git', 'interaction', 'docs-root']) assert.ok(steps[1].includes(`.claude/rules/alfred-${n}.md`), `alfred-${n}.md not written into AGENTS.md`);
+    for (const g of GENERATED) assert.ok(steps[1].includes(`.claude/rules/alfred-project-${g}.md`), `alfred-project-${g}.md not written into AGENTS.md`);
+    assert.ok(!/baseline-(git|interaction|docs-root|project-)/.test(steps[1]), 'an old stack rule path survived in AGENTS.md');
     assert.ok(steps[1].includes('.claude/rules/baseline-mine.md'), "the user's own rule row was re-spelled");
     assert.strictEqual(steps[2], steps[1]);
-    assert.ok(!/renamed: \.claude\/CLAUDE\.md/.test(outs[2]), 'the re-run re-spelled again');
+    assert.ok(!/renamed: \.claude\/AGENTS\.md/.test(outs[2]), 'the re-run re-spelled again');
 });
 
 test('an unreadable settings file on the migrating run keeps the root the OLD docs-root rule was stamped with', POSIX_ONLY, () =>

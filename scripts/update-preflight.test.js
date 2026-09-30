@@ -122,6 +122,14 @@ test('settings_env_prefix fires on ANY key under that prefix, and reports the pr
     assert.match(out, /^ {2}env-rename-prefix: CLAUDE_STACK_\* -> ALFRED_CODE_\*$/m); // legacy-name
 });
 
+test('a BOM-prefixed settings.json is read like any other (audit F5)', () => {
+    const migrations = [{ id: 'alfred-code-settings-prefix', detect: { settings_env_prefix: 'CLAUDE_STACK_' } }]; // legacy-name
+    const bom = scaffold({ migrations });
+    fs.writeFileSync(path.join(bom.install, '.claude', 'settings.json'), `\uFEFF${JSON.stringify({ env: { CLAUDE_STACK_MONITOR: 'log' } })}`); // legacy-name
+    const out = run(['--snapshot', bom.snap, '--root', bom.install, '--fixture', bom.fixtureFile]).out;
+    assert.match(out, /^migration: alfred-code-settings-prefix\tsettings_env_prefix$/m, out);
+});
+
 test('settings_hook_wired reads the wiring, not a file; the matcher scopes it', () => {
     const migrations = [{ id: 'unwire-one-matcher', detect: { settings_hook_wired: 'guard-stop-contract.js::AskUserQuestion' } }];
     const wired = { hooks: { AskUserQuestion: [{ hooks: [{ command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-stop-contract.js"' }] }] } };

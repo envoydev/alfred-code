@@ -81,6 +81,14 @@ test('guard-read-whole-file: shell sweeps and runtime reads are dumps', () => {
   assert.equal(bash('guard-read-whole-file.js', `python3 -c "print(open('${BIG}').read())"`), 2, 'runtime read');
 });
 
+// 2.1.6 audit (guards:F10): a glob operand is a sweep of many files, not a path that failed to resolve.
+test('guard-read-whole-file: cat of a source glob is denied as a sweep, not as an unsizable path', () => {
+  const r = runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command: 'cat sub/*.cs' } });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /glob/i);
+  assert.doesNotMatch(r.stderr, /cannot size/);
+});
+
 test('guard-read-whole-file: targeted reads and doc prose stay silent', () => {
   assert.equal(bash('guard-read-whole-file.js', `head -40 ${BIG}`), 0, 'bounded head');
   assert.equal(bash('guard-read-whole-file.js', `sed -n '50,60p' ${BIG}`), 0, 'ranged sed');
@@ -466,6 +474,13 @@ test('guard-catastrophic-rm: the catastrophic-target matrix', () => {
     'echo rm -rf /', 'rm -rf ./build 2>&1', 'rm -rf /usr/', 'find . -name "*.o" -delete']) {
     assert.equal(rm(c), 0, `must allow: ${c}`);
   }
+});
+
+// 2.1.6 audit (guards:S3): a repository's .git holds the unpushed commits, the stashes and the reflog - nothing recovers them.
+test('guard-catastrophic-rm: a recursive rm of a .git directory is blocked, its lookalikes and its insides are not', () => {
+  const rm = (c) => bash('guard-catastrophic-rm.js', c);
+  for (const c of ['rm -rf .git', 'rm -rf ./.git', 'rm -rf sub/.git', 'rm -rf a .git']) assert.equal(rm(c), 2, `must block: ${c}`);
+  for (const c of ['rm -rf .github', 'rm -rf .gitignore', 'rm -f .git/index.lock', 'rm -rf .git/index.lock', 'rm -rf my.git', 'rm -f .git', 'rm -rf "$TMP/repo/.git"']) assert.equal(rm(c), 0, `must allow: ${c}`);
 });
 
 test('guard-ungated-commit: untracked-only new files are churn, not an empty tree', () => {
@@ -1355,6 +1370,44 @@ test('guard-unapproved-dispatch: a reference sweep over config and docs is no sy
   assert.equal(disp('Explore', 'find references to load_manifest( in the installer'), 2, 'snake_case call');
   assert.equal(disp('general-purpose', 'every reference to Program.Main'), 2, 'member form');
   assert.equal(disp('Explore', 'usages of Orders::Service please'), 2, 'scope form');
+});
+
+// 2.1.6 audit (guards:F7): 'what type' and 'where is/are ... defined' are symbol questions only when a code identifier is in them.
+// 2.1.6 audit (guards:S1): the flag is read from the NEWEST cached version, and from the running plugin first.
+test('guard-fresh-session-start: a manual-only flag is read from the running plugin and the newest cached version', () => {
+  const cfg = fs.mkdtempSync(path.join(TMP, 'skillcfg-'));
+  const skill = (dir, flagged) => {
+    const d = path.join(dir, 'stack', 'skills', 'foo');
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, 'SKILL.md'), `---\nname: foo\ndescription: x\n${flagged ? 'disable-model-invocation: true\n' : ''}---\n`);
+  };
+  const cache = path.join(cfg, 'plugins', 'cache', 'mk', 'alfred-code');
+  skill(path.join(cache, '2.0.0'), true);
+  skill(path.join(cache, '2.1.0'), false);
+  const call = (env) => runIn('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'alfred-code:foo' } },
+    { env: { ...process.env, CLAUDE_CONFIG_DIR: cfg, ...env } }).status;
+  assert.equal(call({}), 0, 'the stale 2.0.0 copy no longer decides over 2.1.0');
+  skill(path.join(cache, '2.1.0'), true);
+  skill(path.join(cache, '2.0.0'), false);
+  assert.equal(call({}), 2, 'the newest version says manual-only');
+  // the running plugin's own root wins over any cached copy
+  const running = path.join(cfg, 'running', 'mk2', 'alfred-code', '9.9.9');
+  skill(running, false);
+  assert.equal(call({ CLAUDE_PLUGIN_ROOT: running }), 0, 'the running plugin is read first');
+});
+
+test('guard-unapproved-dispatch: what-type and where-defined sweeps over plain words are no symbol question', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  const disp = (seat, prompt) => runIn('guard-unapproved-dispatch.js',
+    { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root } }).status;
+  assert.equal(disp('Explore', 'Find out what type of database this app uses and which files configure it'), 0, 'what type of database');
+  assert.equal(disp('Explore', 'Where are the environment variables defined?'), 0, 'where are the env vars defined');
+  assert.equal(disp('Explore', 'Where is the retry policy configured and where is it defined for the workers?'), 0, 'plain words');
+  assert.equal(disp('Explore', 'What type is SocketConnection.Send returning?'), 2, 'what type of a member');
+  assert.equal(disp('Explore', 'what type does `OrderService` expose'), 2, 'what type of a backticked identifier');
+  assert.equal(disp('Explore', 'Where is ISocketFactory declared?'), 2, 'where is a CamelCase name declared');
+  assert.equal(disp('Explore', 'where are `AddSocketServices` and its friends registered'), 2, 'where are a backticked name registered');
 });
 
 // The built-in Explore and Plan load none of the project's rules, so alfred-security's untrusted-content
@@ -3561,6 +3614,18 @@ test('guard-ungated-commit: the staged scan blocks conflict markers, debugger, f
   assert.equal(commitIn({ 'notes.md': 'never commit a `debugger;` line\n' }), 0, 'prose about the pattern passes');
   assert.equal(commitIn({ 'model.py': 'model.fit(x, y)\n' }), 0, 'fit( outside a test file is not a focused test');
   assert.equal(commitIn({ 'a.ts': 'const a = 1;\n' }), 0, 'a clean one-line diff stays trivial and passes');
+});
+
+// 2.1.6 audit (guards:F9): the shapes name a STATEMENT, so a method call, a string or a comment that spells one is no finding.
+test('guard-ungated-commit: the staged scan ignores calls, strings and comments that only spell the pattern', () => {
+  assert.equal(commitIn({ 'src/a.test.ts': 'const a = 1;\nfitAddon.fit();\n' }), 0, 'a .fit() call in a test file');
+  assert.equal(commitIn({ 'src/a.test.ts': 'expect(map.fit(bounds)).toBe(1);\n' }), 0, 'fit( nested in a call');
+  assert.equal(commitIn({ 'src/a.test.ts': "const msg = \"describe.only( is banned\";\n" }), 0, 'a string holding it.only(');
+  assert.equal(commitIn({ 'a.ts': 'const a = 1;\n// step through with the debugger\n' }), 0, 'a comment ending in the word');
+  assert.equal(commitIn({ 'a.cs': 'var a = 1;\n// call Debugger.Break() here\n' }), 0, 'a C# comment');
+  assert.equal(commitIn({ 'a.ts': 'const a = 1;\nif (x) debugger;\n' }), 2, 'a debugger as the body of an if');
+  assert.equal(commitIn({ 'src/a.test.ts': "  fit('x', () => {});\n" }), 2, 'an indented fit statement');
+  assert.equal(commitIn({ 'src/a.test.ts': "describe('a', () => {});\ndescribe.only('x', () => {});\n" }), 2, 'describe.only at a statement start');
 });
 
 test('guard-ungated-commit: the staged scan reads what THIS act commits', () => {

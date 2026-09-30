@@ -95,7 +95,7 @@ A trailing `\` at line end works in CommonMark but is not universally supported.
 
 ### `syntax/emphasis/bold-italic`
 
-`***both***` (or `***both***`, `**_both_**`, `*__both__*`) becomes bold and italic.
+`***both***` (or `___both___`, `**_both_**`, `*__both__*`) becomes bold and italic.
 
 ### `syntax/emphasis/mid-word-asterisks`
 
@@ -159,13 +159,13 @@ Use `-`, `*`, or `+`. Pick one per list. Mixing markers within a single list is 
 
 ### `syntax/lists/nested-indent-4`
 
-To attach a paragraph, blockquote, image, or nested list to an item, indent the continuation 4 spaces (one tab):
+To attach a paragraph, blockquote, image, or nested list to an item, indent the continuation to the item's content column. Four spaces (one tab) reads the same in every processor, including older ones; two spaces under a `-` bullet is valid CommonMark and what markdownlint's default (MD007) expects. This is a should-fix, not a must-fix: a file that already nests consistently keeps its width (see `style/lists/indent-4`).
 
 ```markdown
 - Item
-  - This nested item is two spaces; some processors accept it but it is not portable.
+  - Two spaces: valid CommonMark, fine where the file already does it.
 - Item
-    - This nested item is 4 spaces; portable.
+    - Four spaces: portable to every processor.
 ```
 
 ### `syntax/lists/nested-code-indent-8`

@@ -99,4 +99,4 @@ The recurring ways a change fakes a green build instead of earning it - reject e
 
 The shortcut-by-shortcut table is `references/reward-hacking.md` - read it before claiming a change is done.
 
-The build gate above catches the warning-suppression rows automatically; the rest are a review discipline. A check that only notices them after merge has already paid for the slop.
+The config-protection guard blocks the `<NoWarn>` and severity-downgrade rows where it is installed; `#pragma warning disable` and the rest are review discipline. A check that only notices them after merge has already paid for the slop.

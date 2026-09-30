@@ -10,9 +10,9 @@ the `git stash create` sha on a dirty tree.
    alone.
 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted.
    Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives.
-3. `git ls-files --others --exclude-standard` - the files untracked at `<BASE>`. A plain diff is blind
+3. `git ls-files --others --exclude-standard`, minus the paths in `<docs-path>/flow/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind
    to brand-new files, so a gamed bar added in one would never surface.
-4. Read each untracked file listed by 3 in full - it has no diff to page.
+4. Read each file left by 3 in full - it has no diff to page.
 
 Report the result as the Final report's anti-gaming line: clean, or what was reverted and which
 stage gamed it.

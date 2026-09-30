@@ -4,7 +4,7 @@ The async-correctness mechanics that sit on top of this skill's style rules: how
 
 ## async/await correctness
 
-The rules themselves are the skill body's async section: async all the way up - no sync-over-async blocking with `.Result` / `.Wait()` / `.GetAwaiter().GetResult()` - no `async void` outside event handlers, `ConfigureAwait(false)` in library code.
+The rules themselves are in `references/runtime-behavior.md`: async all the way up - no sync-over-async blocking with `.Result` / `.Wait()` / `.GetAwaiter().GetResult()` - no `async void` outside event handlers, `ConfigureAwait(false)` in library code.
 
 ## On .NET Framework 4.8
 

@@ -51,7 +51,7 @@ Materialize a query once, at the end. Each `ToList` walks the sequence and alloc
 _orders.Where(o => o.IsActive).OrderBy(o => o.CreatedAt).ToList();
 ```
 
-Return `IEnumerable<T>` when the caller may not need every item; return a materialized `IReadOnlyList<T>` when you already walked it. For async, never `Select(async ...)` (that allocates a `Task` per item) - stream with `IAsyncEnumerable<T>` (plus `[EnumeratorCancellation]`), or fan out deliberately with `Task.WhenAll`.
+Return `IEnumerable<T>` when the caller may not need every item; return a materialized `IReadOnlyList<T>` when you already walked it. For async, never a bare `Select(async ...)` left unawaited (that allocates a `Task` per item) - stream with `IAsyncEnumerable<T>` (plus `[EnumeratorCancellation]`), or fan out deliberately with `Task.WhenAll`.
 
 ## ValueTask for synchronous hot paths
 

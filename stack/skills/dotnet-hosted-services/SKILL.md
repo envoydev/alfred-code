@@ -92,7 +92,7 @@ A `BackgroundService` is a singleton. Inject a scoped service (an EF Core `DbCon
 Inject `IServiceScopeFactory` instead and open a fresh scope per unit of work - one per loop iteration, so each cycle gets a clean `DbContext` that is disposed at the end of the cycle:
 
 ```csharp
-public sealed class IngestWorker(IServiceScopeFactory scopeFactory, ILogger<IngestWorker> logger)
+public sealed class IngestWorker(ILogger<IngestWorker> logger, IServiceScopeFactory scopeFactory)
     : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

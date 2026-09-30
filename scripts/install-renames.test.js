@@ -22,7 +22,6 @@ const ROOT = path.join(__dirname, '..');
 const RENAMED = loadManifest(ROOT).renamed;
 const COPY_ROUTE = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
 const OLD_KEY = 'claude-stack'; // legacy-name
-const HASH = 'a'.repeat(64);
 
 const write = (repo, rel, text = 'x\n') =>
 {
@@ -193,7 +192,7 @@ test('respellRenamed (I2): every old name the stack wrote into CLAUDE.md and a g
         };
         for (const [rel, text] of Object.entries(files)) write(dir, rel, text);
         const logs = [];
-        const run = () => selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        const run = () => selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, owned: (rel) => rel === '.claude/CLAUDE.md', log: (m) => logs.push(m), note: (m) => assert.fail(m) });
         run();
         const read = (rel) => fs.readFileSync(path.join(dir, rel), 'utf8');
         assert.strictEqual(read('.claude/CLAUDE.md'), V13_CLAUDE_MD_NOW, 'the 1.3.0 template text reads under the new names; the rule FILE names stay');
@@ -218,6 +217,31 @@ test('respellRenamed (I2): every old name the stack wrote into CLAUDE.md and a g
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// installer:F1 - a root AGENTS.md / CLAUDE.md is the project's own: an old stack name in it is NAMED, never rewritten, and a
+// path or a backticked word that merely equals an old name is no hit. The stack's own seed (owned) is still re-spelled.
+test('respellRenamed (audit F1): the user\'s own instruction files are never rewritten, only named; an owned seed is', () =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-own-'));
+    try
+    {
+        const own = 'Run scripts/create-ticket.sh and see docs/explain-code-tutor.md; `serena` fixtures live here.\nUse /project-solve-task to file one.\n';
+        for (const rel of ['AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md']) write(dir, rel, own);
+        write(dir, '.claude/AGENTS.md', 'Use /project-solve-task.\n');
+        const logs = [];
+        const wrote = [];
+        selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, owned: (rel) => rel === '.claude/AGENTS.md', onWrite: (rel) => wrote.push(rel), log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        const read = (rel) => fs.readFileSync(path.join(dir, rel), 'utf8');
+        for (const rel of ['AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md']) assert.strictEqual(read(rel), own, `${rel} is the project's`);
+        assert.strictEqual(read('.claude/AGENTS.md'), 'Use /alfred-task-solve.\n', 'the owned seed follows the rename');
+        assert.deepStrictEqual(wrote, ['.claude/AGENTS.md']);
+        const named = logs.filter((l) => /!! AGENTS\.md /.test(l));
+        assert.strictEqual(named.length, 1, logs.join('\n'));
+        assert.match(named[0], /project-solve-task/, 'the slash command is named');
+        assert.doesNotMatch(named[0], /create-ticket|explain-code-tutor|serena/, 'a path segment or a backticked word is no hit');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('respellRenamed (I2): the longest old name wins, and a shorter one inside it is never re-spelled on its own', () =>
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-docs-'));
@@ -225,7 +249,7 @@ test('respellRenamed (I2): the longest old name wins, and a shorter one inside i
     {
         write(dir, 'CLAUDE.md', 'Run /old-loop, then /old-loop-deep.\n');
         const renamed = { skills: { 'old-loop': 'new-loop', 'old-loop-deep': 'new-deep' }, agents: {} };
-        selection.respellRenamed({ projectRoot: dir, renamed, log: () => {}, note: (m) => assert.fail(m) });
+        selection.respellRenamed({ projectRoot: dir, renamed, owned: () => true, log: () => {}, note: (m) => assert.fail(m) });
         assert.strictEqual(fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'), 'Run /new-loop, then /new-deep.\n');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -435,7 +459,7 @@ function v13Plugin(repo)
         'version: 1.3.0', 'sha: 0000000',
         `picked-skills: project-solve-task@${OLD_KEY},project-commit-checkpoint@${OLD_KEY},project-related-context,markdown-style@${OLD_KEY}`,
         `picked-agents: ci-failure-diagnoser@${OLD_KEY},security-auditor@${OLD_KEY}`,
-        `library-skills: project-related-context=${HASH}`, '',
+        `library-skills: project-related-context=${hashItem(path.join(repo, '.claude/skills/project-related-context'))}`, '',
     ].join('\n'));
     write(repo, '.claude/settings.json', JSON.stringify({ env: { MY_OWN_KEY: 'mine' } }, null, 2));
 }
@@ -533,7 +557,7 @@ for (const scope of ['project', 'user', 'local'])
 
 // I2 end to end: a 1.3.0 project's seeded CLAUDE.md and a generated rule read under the new names
 // after its first 2.0.0 update, and the next update touches neither.
-test('seed update --installed-only (I2): the 1.3.0-seeded CLAUDE.md and a generated rule name the new commands, one line per file, and a re-run is quiet', POSIX_ONLY, () =>
+test('seed update --installed-only (I2): a generated rule names the new commands, a CLAUDE.md no ledger vouches for is named and left, and a re-run is quiet', POSIX_ONLY, () =>
 {
     const prepare = (repo) =>
     {
@@ -543,15 +567,42 @@ test('seed update --installed-only (I2): the 1.3.0-seeded CLAUDE.md and a genera
     };
     const each = (repo) => ({ claudeMd: fs.readFileSync(path.join(repo, '.claude', 'CLAUDE.md'), 'utf8'), rule: fs.readFileSync(path.join(repo, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), 'utf8') });
     const { steps, outs } = seedRun(['update', 'update'], 'skill markdown-style\n', { plugins: V13_LISTING, args: ['--installed-only'], prepare, each });
-    assert.strictEqual(steps[0].claudeMd, V13_CLAUDE_MD_NOW, outs[0]);
+    assert.strictEqual(steps[0].claudeMd, V13_CLAUDE_MD, 'a 1.3.0 stamp has no ledger, so nothing proves the file is the stack\'s: it is left as written');
+    assert.match(outs[0], /!! \.claude\/CLAUDE\.md is yours and names \d+ old stack name/, outs[0]);
     assert.match(steps[0].rule, /Generated by \/alfred-capture-agent-capabilities\./);
     const lines = (out) => String(out).split('\n').filter((l) => /^==> {3}renamed: \S+ - \d+ old skill or seat name/.test(l));
     assert.deepStrictEqual(lines(outs[0]), [
-        '==>   renamed: .claude/CLAUDE.md - 8 old skill or seat name(s) re-spelled to the new names',
         '==>   renamed: .claude/rules/alfred-project-agent-capabilities.md - 4 old skill or seat name(s) re-spelled to the new names',
     ], outs[0]);
     assert.deepStrictEqual(steps[1], steps[0], 'the re-run changes neither file');
     assert.deepStrictEqual(lines(outs[1]), [], 'and prints no line');
+});
+
+// installer:F1 end to end: an install's seed the ledger still holds at its hash is the stack's and follows a rename (its
+// ledger row following the new bytes, so the next run still owns it); a seed edited since is the user's: named, left.
+test('seed update (audit F1): a ledger-held seed is re-spelled and stays owned, a hand-edited one is named and left', POSIX_ONLY, () =>
+{
+    const stampOf = (repo) => path.join(repo, '.claude', 'alfred-code.stamp');
+    const seedAt = (repo) => path.join(repo, '.claude', 'AGENTS.md');
+    const rowOf = (repo) => (/^managed-files: (.*)$/m.exec(fs.readFileSync(stampOf(repo), 'utf8')) || [])[1] || '';
+    // An older release's seed: old text in the file; the ledger row at that text's hash (held), or left at the seed's (edited).
+    const plant = (repo, held) =>
+    {
+        fs.appendFileSync(seedAt(repo), '\nRun /project-solve-task first.\n');
+        if (!held) return;
+        const rows = rowOf(repo).split(',').map((r) => (r.startsWith('AGENTS.md=') ? `AGENTS.md=${hashItem(seedAt(repo))}` : r));
+        fs.writeFileSync(stampOf(repo), fs.readFileSync(stampOf(repo), 'utf8').replace(/^managed-files: .*$/m, `managed-files: ${rows.join(',')}`));
+    };
+    const run = (held) => seedRun(['install', 'update', 'update'], 'skill markdown-style\n', {
+        each: (repo, i) => { if (i === 0) plant(repo, held); return { text: fs.readFileSync(seedAt(repo), 'utf8'), row: rowOf(repo), own: hashItem(seedAt(repo)) }; },
+    });
+    const held = run(true);
+    assert.match(held.steps[1].text, /Run \/alfred-task-solve first\./, held.outs[1]);
+    assert.ok(held.steps[1].row.includes(`AGENTS.md=${held.steps[1].own}`), 'the ledger row follows the re-spelled bytes');
+    assert.deepStrictEqual(held.steps[2], held.steps[1], 'a re-run changes nothing');
+    const edited = run(false);
+    assert.match(edited.steps[1].text, /Run \/project-solve-task first\./, 'an edited seed is the project\'s');
+    assert.match(edited.outs[1], /!! \.claude\/AGENTS\.md is yours and names 1 old stack name\(s\) \(project-solve-task\)/, edited.outs[1]);
 });
 
 // The instruction file's own move, end to end through update: the unedited seed an earlier release wrote as
@@ -689,6 +740,31 @@ test('seed update: a retired skill name whose copy is git-tracked is kept and na
     assert.match(outs[0], /skills\/plugin-authoring: kept - .*git tracks it here/, 'and names it');
 });
 
+// installer:F2 - a retired name is pruned only where the stack's own record holds it: a project's own untracked copy under one
+// of the generic retired names (skill `frontend`, seat `mobile-implementer.md`, hook `inject-code-style.js`) survives, and a
+// copy the ledger records at its hash still goes.
+test('seed update (audit F2): a retired skill, seat or hook the record does not hold is the project\'s own and is kept; a recorded, unedited one is pruned', POSIX_ONLY, () =>
+{
+    const prepare = (repo) =>
+    {
+        write(repo, '.claude/rules/alfred-interaction.md');
+        write(repo, '.claude/skills/frontend/SKILL.md', skill('frontend'));
+        write(repo, '.claude/agents/mobile-implementer.md', '---\nname: mobile-implementer\n---\nmine\n');
+        write(repo, '.claude/hooks/inject-code-style.js', '// mine\n');
+        write(repo, '.claude/hooks/require-convention-skill.js', '// the stack wrote this\n');
+        write(repo, '.claude/alfred-code.stamp', `version: 2.0.0\nsha: 0000000\nhooks-route: copy\nmanaged-files: hooks/require-convention-skill.js=${hashItem(path.join(repo, '.claude/hooks/require-convention-skill.js'))}\n`);
+    };
+    const each = (repo) => ({
+        skill: fs.existsSync(path.join(repo, '.claude/skills/frontend')), agent: fs.existsSync(path.join(repo, '.claude/agents/mobile-implementer.md')),
+        mine: fs.existsSync(path.join(repo, '.claude/hooks/inject-code-style.js')), theirs: fs.existsSync(path.join(repo, '.claude/hooks/require-convention-skill.js')),
+    });
+    const { steps, outs } = seedRun(['update', 'update'], '', { env: COPY_ROUTE, args: ['--installed-only'], prepare, each });
+    assert.deepStrictEqual(steps[0], { skill: true, agent: true, mine: true, theirs: false }, outs[0]);
+    assert.match(outs[0], /!! skill kept: frontend/, outs[0]);
+    assert.match(outs[0], /!! hook kept: inject-code-style\.js/, outs[0]);
+    assert.deepStrictEqual(steps[1], steps[0], 'a re-run changes nothing');
+});
+
 // Shape 4 (2.1.0 Task 3): a legacy copy-route install that never wrote a stamp - old-name copies, the stack's
 // hooks copied and wired, an old seat, a rule, the 1.x env key - and beside them a project's own skill. The
 // state is `legacy-unstamped`, update's to take: its picks come off disk under their new names, the old
@@ -818,7 +894,7 @@ test('no surface names an old skill or seat outside the rename\'s own homes', ()
     const scanFile = (full) =>
     {
         const rel = path.relative(ROOT, full).split(path.sep).join('/');
-        if (/^docs\/[^/]*-evidence\.md$/.test(rel) || rel === 'scripts/install-renames.test.js') return;
+        if (/^docs\/[^/]*-evidence\.md$/.test(rel) || rel === 'docs/ecc-comparison-2026-09-20.md' || rel === 'scripts/install-renames.test.js') return;
         const buf = fs.readFileSync(full);
         if (buf.includes(0)) return;
         let text = buf.toString('utf8');

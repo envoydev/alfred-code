@@ -117,7 +117,6 @@ test('plan: the old root git ignored, with nothing tracked, is named so the move
 {
     const ignored = repo({ ...OLD, '.gitignore': '.claude/*\n' });
     assert.strictEqual(plan(ignored).ignored, true);
-    assert.strictEqual(docs.docsMoveLine(plan(ignored)), 'docs-move: offer .claude/docs -> .alfred/docs\ttracked=0 untracked=2\tignored=yes');
     assert.strictEqual(plan(repo(OLD)).ignored, false, 'visible to git, not ignored');
     const tracked = repo({ ...OLD, '.gitignore': '.claude/*\n' }, { commit: ['.claude/docs/architecture/ARCHITECTURE.md'] });
     assert.strictEqual(plan(tracked).ignored, false, 'a tracked file means git sees the root');
@@ -320,9 +319,6 @@ test('preflight: the offer is one line the update command asks from', POSIX_ONLY
     const root = repo(OLD, { commit: ['.claude/docs/architecture/ARCHITECTURE.md'] });
     fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: seeded }));
     fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), `version: 2.0.0\nsha: 0000000\nmanaged-env: settings.json:ALFRED_CODE_DOCS_PATH=${valueHash('.claude/docs')}\n`);
-    const out = docs.docsMoveLine(docs.docsMovePlan({ projectRoot: root, env: seeded, ledger: ledgerOf('.claude/docs'), stamped: true }));
-    assert.strictEqual(out, 'docs-move: offer .claude/docs -> .alfred/docs\ttracked=1 untracked=1');
-    assert.strictEqual(docs.docsMoveLine({ state: 'none', why: 'set by hand' }), 'docs-move: none (set by hand)');
     const snap = path.join(__dirname, '..');
     const res = require('node:child_process').spawnSync(process.execPath, [path.join(snap, 'scripts', 'update-preflight.js'), '--snapshot', snap, '--root', root, '--fixture', path.join(TMP, 'none.json')], { encoding: 'utf8' });
     assert.match(res.stdout, /^data-move: offer \.alfred\tfrom=\.claude\/docs\tdocs=2 serena=no browser=none memory=no$/m, res.stdout + res.stderr);

@@ -73,14 +73,6 @@ test('account keys: an unchanged value does not rewrite the file', () =>
     assert.ok(logs.some((m) => /CONTEXT7_API_KEY already set \(9 chars\)/.test(m)), logs.join(' | '));
 });
 
-test('account keys: state reports presence and length, never the value', () =>
-{
-    const configDir = dir({ 'settings.json': JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: 'sntryu_secret' } }) });
-    assert.strictEqual(seeds.accountKeyState(configDir, 'SENTRY_ACCESS_TOKEN'), 'SENTRY_ACCESS_TOKEN=set (13 chars)');
-    assert.strictEqual(seeds.accountKeyState(configDir, 'CONTEXT7_API_KEY'), 'CONTEXT7_API_KEY=absent');
-    assert.strictEqual(seeds.accountKeyState(dir(), 'SENTRY_SLUG'), 'SENTRY_SLUG=absent');
-});
-
 test('account keys: a malformed account file is REFUSED, not overwritten', () =>
 {
     const configDir = dir({ 'settings.json': '{ not json' });
@@ -215,7 +207,9 @@ test('move: an edited seed is left untouched and named with its move command - n
 test('move: with no ledger row, the current template body is the only proof of an unedited seed', () =>
 {
     const a = dir({ '.claude/CLAUDE.md': `# ${'x'}\n` });
-    assert.strictEqual(move(a, { ledgerHash: '' }).r, 'kept-edited');
+    const kept = move(a, { ledgerHash: '' });
+    assert.strictEqual(kept.r, 'kept-edited');
+    assert.ok(kept.logs.some((l) => /with no ledger row it cannot be told from an older seed/.test(l)) && !kept.logs.some((l) => /edited since the stack seeded it/.test(l)), kept.logs.join(' | '));
     const b = dir();
     fs.mkdirSync(path.join(b, '.claude'));
     fs.writeFileSync(path.join(b, '.claude', 'CLAUDE.md'), `# ${path.basename(b)}\n\nOutline.\n`);

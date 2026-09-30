@@ -751,9 +751,11 @@ function lineFinding(file, text, lineNo) {
   const hidden = hiddenChars ? hiddenChars.hiddenInLine(text, lineNo, file, () => true) : [];
   if (hidden.length) return `a hidden character U+${hidden[0]} - write it as an escape`;
   if (/\.(md|mdx|txt|rst)$/i.test(file)) return '';
-  if (/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(file) && /(^|[^\w.'"`])debugger\s*;?\s*$/.test(text)) return 'a debugger statement';
+  // A comment-only line spells a pattern without running it; each shape below is a STATEMENT, not a call or a string.
+  if (/^\s*(\/\/|\/\*|\*|#)/.test(text)) return '';
+  if (/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(file) && /(?:^|[;{}]|\)|\belse\b)\s*debugger\s*;?\s*\}?\s*$/.test(text)) return 'a debugger statement';
   if (/\.cs$/.test(file) && /\bDebugger\.(Break|Launch)\s*\(/.test(text)) return 'Debugger.Break / Launch';
-  if (TEST_FILE.test(file) && /\b(fdescribe|fit)\s*\(|\b(describe|it|test)\.only\s*\(/.test(text)) return 'a focused test';
+  if (TEST_FILE.test(file) && /(?:^|[;{])\s*(?:(?:fdescribe|fit)\s*\(|(?:test\.)?(?:describe|it|test)\.only\s*\()/.test(text)) return 'a focused test';
   return '';
 }
 // A `<docs-path>/flow/<name>` ALLOW receipt's lines - the USER's answer to a block, this session's own, under 8h.

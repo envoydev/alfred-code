@@ -277,8 +277,7 @@ function namedDbPath(projectRoot, { home = os.homedir(), configDir } = {}) {
     if (account) {
       const userScope = memoryEnvPath(account.mcpServers && account.mcpServers.memory, home, projectRoot);
       if (userScope) return userScope;
-      // Keyed by the path as the CLI spelled it, which on Windows is '/'-separated - the ps1 twin of this
-      // lookup reads both spellings, and so does this one.
+      // Keyed by the path as the CLI spelled it, which on Windows is '/'-separated - both spellings are read.
       const projects = account.projects || {};
       const proj = projects[projectRoot] || projects[projectRoot.split(path.sep).join('/')];
       const projScope = memoryEnvPath(proj && proj.mcpServers && proj.mcpServers.memory, home, projectRoot);

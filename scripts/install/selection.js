@@ -38,7 +38,7 @@ const RULE_EXCLUDE = /^(alfred-project-.*|project-code-style)$/;
 // module and shell-guards.js / file-guards.js the dispatchers that run the picked shell and file guards - none is a hook item.
 const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|history|hook-prelude|fresh-session|shell-writes|hidden-chars|shell-guards|file-guards)$/;
 const PW_ENGINE = /^browser-(chrome|msedge|firefox|webkit)$/;
-const PW_ORDER = ['chrome', 'msedge', 'firefox', 'webkit'];
+const { ENGINES: PW_ORDER } = require('../../stack/mcp/data-root.js');
 const engineOf = (name) => (PW_ENGINE.exec(String(name)) || [])[1];
 
 const nameOfSkill = (entry) => String(entry).split('|').pop();
@@ -494,8 +494,9 @@ function renameDeny(settings, opts = {})
 // and the generated rules (`alfred-project-*.md`, `project-code-style.md`) - follow a rename, so no
 // session reads a command that no longer exists. Every run, on disk: each old skill or seat name is
 // re-spelled as a whole token, longest first, never inside a longer name - so a file name that embeds
-// one (`alfred-project-related-context.md`) stays. A user's own token equal to an old stack name is
-// re-spelled too; the per-file line says how many, and a second run finds nothing.
+// one (`alfred-project-related-context.md`) stays. Only the stack's own files are rewritten - the generated rules and
+// a seed the ledger still holds; the user's own AGENTS.md / CLAUDE.md is named, never touched. The per-file line
+// says how many, and a second run finds nothing.
 // The 2.0.0 MCP rename in the same files: a tool spelling (the plugin form, or the bare one a copy-route
 // registration answers) and a backticked server name, each as written by the capture that saw it.
 // M46: the browser before one server per engine was ONE registration under the renamed name itself (1.x
@@ -581,7 +582,10 @@ function respellDocsRoot({ projectRoot, from, to, log = () => {}, note = () => {
     return done.length;
 }
 
-function respellRenamed({ projectRoot, renamed, engines = [], log = () => {}, note = () => {} })
+// `owned(rel)` says an instruction file is the stack's own seed (the ledger still holds it at its hash); every
+// other AGENTS.md / CLAUDE.md is the project's, so an old name in it is only named, never rewritten. `onWrite(rel)`
+// hears each owned instruction file this run rewrote, so the ledger keeps it.
+function respellRenamed({ projectRoot, renamed, engines = [], owned = () => false, onWrite = () => {}, log = () => {}, note = () => {} })
 {
     // A rule is named in a seeded AGENTS.md by its path (`.claude/rules/baseline-git.md`), so its pairs are the
     // file names without the extension; the four generated pointers moved by moveGeneratedRules follow the same way.
@@ -595,22 +599,35 @@ function respellRenamed({ projectRoot, renamed, engines = [], log = () => {}, no
     if (!olds.length && !mcpOlds.length) return 0;
     const re = olds.length ? new RegExp(`(?<![A-Za-z0-9_-])(${olds.map(escape).join('|')})(?![A-Za-z0-9_-])`, 'g') : null;
     const mcpRe = mcpOlds.length ? new RegExp(mcpOlds.map(escape).join('|'), 'g') : null;
+    // The project's own file: a name inside a path (`scripts/<name>.sh`) or a backticked word is no hit.
+    const nameRe = olds.length ? new RegExp(`(?<![A-Za-z0-9_.-])(?<![A-Za-z0-9_.-]/)(${olds.map(escape).join('|')})(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, 'g') : null;
+    const toolOlds = mcpOlds.filter((o) => o.startsWith('mcp__'));
+    const toolRe = toolOlds.length ? new RegExp(toolOlds.map(escape).join('|'), 'g') : null;
+    const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
+    const instructions = ['AGENTS.md', '.claude/AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md'].map((r) => path.join(projectRoot, ...r.split('/')));
     let total = 0;
-    for (const file of [path.join(projectRoot, 'AGENTS.md'), path.join(projectRoot, '.claude', 'AGENTS.md'), path.join(projectRoot, 'CLAUDE.md'), path.join(projectRoot, '.claude', 'CLAUDE.md'), ...generatedRules(projectRoot)])
+    for (const file of [...instructions, ...generatedRules(projectRoot)])
     {
         let text;
         try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        const name = rel(file);
+        if (instructions.includes(file) && !owned(name))
+        {
+            const hits = [...new Set([...(nameRe ? text.matchAll(nameRe) : []), ...(toolRe ? text.matchAll(toolRe) : [])].map((m) => m[0]))];
+            if (hits.length) log(`  !! ${name} is yours and names ${hits.length} old stack name(s) (${hits.slice(0, 5).join(', ')}${hits.length > 5 ? ', ...' : ''}) - re-spell them by hand where they mean the stack's`);
+            continue;
+        }
         let n = 0;
         let m = 0;
         let out = re ? text.replace(re, (old) => { n += 1; return pairs[old]; }) : text;
         if (mcpRe) out = out.replace(mcpRe, (old) => { m += 1; return mcpPairs[old]; });
         if (!n && !m) continue;
-        const rel = path.relative(projectRoot, file).split(path.sep).join('/');
         try { fs.writeFileSync(file, out); }
-        catch (err) { note(`${rel} names ${n + m} old skill, seat or MCP name(s) and could not be re-spelled (${err.message})`); continue; }
+        catch (err) { note(`${name} names ${n + m} old skill, seat or MCP name(s) and could not be re-spelled (${err.message})`); continue; }
+        if (instructions.includes(file)) onWrite(name);
         total += n + m;
-        if (n) log(`  renamed: ${rel} - ${n} old skill or seat name(s) re-spelled to the new names`);
-        if (m) log(`  renamed: ${rel} - ${m} old MCP tool or server name(s) re-spelled to the new names`);
+        if (n) log(`  renamed: ${name} - ${n} old skill or seat name(s) re-spelled to the new names`);
+        if (m) log(`  renamed: ${name} - ${m} old MCP tool or server name(s) re-spelled to the new names`);
     }
     return total;
 }

@@ -52,6 +52,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { parseJson } = require('./install/json-file.js');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const { isCore, rowOn, marketKey, stampFile: stampIn } = require('./install/brand.js');
 
@@ -63,7 +64,7 @@ function arg(name, fallback)
 
 function readJson(file)
 {
-    try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+    try { return parseJson(fs.readFileSync(file, 'utf8')); }
     catch { return null; }
 }
 

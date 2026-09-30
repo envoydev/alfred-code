@@ -7,7 +7,7 @@
 // keys THIS stack has a reason to change, each with a why. This tool reports the delta against
 // what is on disk (`--check`) and applies it (`--apply`) - never more than the catalog names.
 //
-// Two rules the flow depends on:
+// Four rules the flow depends on:
 //   1. ADD-ONLY by default. A key the user already set to something else is reported as a
 //      difference and kept; `--replace` is the explicit opt-in that overwrites it. Same
 //      discipline as the env step: a pinned choice is never silently overridden.

@@ -4,7 +4,7 @@ Reuse is a cost lever, not a tax on the budget. A seat that guesses an API signa
 
 The test for every capability on every seat: does it remove a guess, a re-derivation, or a pass? If yes, wire it in. If not, leave it off - an eager-loaded unused MCP description or plugin is the same waste as an unused skill.
 
-Only the navigation server is locked into every install. The rest of the baseline's servers - the library-docs one (the documentation server), the browser driver (the browser server), the cross-project memory store - and the stack ones are wired where the project kept them (the baseline comments out what a project does not need), so a brief names the capability, not a server the seat may not see; a seat that cannot reach one works from what is loaded and reports the check it would have run as UNVERIFIED, never a guess dressed as a result.
+Three servers are locked into every install: the navigation server, the documentation server and the memory server. Every other one (the browser driver, the stack's own) is wired only where the project kept it, so a brief names the capability, not a server the seat may not see; a seat that cannot reach one works from what is loaded and reports the check it would have run as UNVERIFIED, never a guess dressed as a result.
 
 ## Per-role wiring
 
@@ -16,7 +16,7 @@ Only the navigation server is locked into every install. The rest of the baselin
 | Verifiers + integration reviewer | orient from the architecture docs, the implementer's memory note and the diff, then INDEPENDENTLY run the gates and navigate the specific concerns with the navigation server; the security review `alfred-security.md` defines, on a seat gating auth / data / migration; the browser-driving MCP only where a live browser is the only real proof (absent it, that check is reported NOT RUN) | a redundant full re-read (see Redundant reads below) |
 | Diagnosers | the architecture docs to orient in the system, the navigation server to locate the implicated symbol, a memory recall of a matching error signature and its proven fix, a read-only evidence-gatherer for the log and repro volume (kept off the opus seat) | a re-slurped log, a root cause a prior run already found |
 | Repair resolvers | the stack LSP plugin, the navigation server, a memory recall of the same error signature's prior fix | a re-derivation of a recurring fix |
-| Evidence gatherer | the navigation server and read-only Bash only - no memory, no documentation server (single-run, hands its digest straight back) | its own context cost - it stays the cheapest seat |
+| Evidence gatherer | the navigation server, read-only Bash and the memory tools (it may save one lesson worth keeping) - no documentation server (single-run, hands its digest straight back) | its own context cost - it stays the cheapest seat |
 
 ## Cross-cutting disciplines
 

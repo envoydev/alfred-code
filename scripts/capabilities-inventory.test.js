@@ -330,6 +330,16 @@ test('compare: an identical body is `identical - DO NOT WRITE`, a changed one na
     assert.match(differs.out, /sections changed: ## Subagent seats/);
 });
 
+test('compare: a body differing only in its Captured date is identical, so a later day does not rewrite the rule', { skip: posixOnly }, () =>
+{
+    const body = '---\ndescription: generated\n---\n\n# x\n\nCaptured: 2026-09-01 from 0.2.79@abcdef1\n\n## Subagent seats\naspnet-implementer\n';
+    const root = project('compare-captured', { rule: body });
+    const later = write(path.join(TMP, 'body-later.md'), body.replace('2026-09-01', '2026-10-05'));
+    assert.match(run(['--body', later], { cwd: root }).out, /COMPARE:\s+identical - DO NOT WRITE/);
+    const moved = write(path.join(TMP, 'body-later-changed.md'), body.replace('2026-09-01', '2026-10-05').replace('aspnet-implementer', 'aspnet-verifier'));
+    assert.match(run(['--body', moved], { cwd: root }).out, /COMPARE:\s+differs - WRITE/);
+});
+
 test('compare: no rule yet is a write, and trailing-newline drift alone is not', { skip: posixOnly }, () =>
 {
     const body = '---\ndescription: generated\n---\n\n# x\n';

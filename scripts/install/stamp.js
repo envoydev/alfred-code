@@ -425,7 +425,7 @@ function readSeatsRoute(file)
 // one canonical order - [] when it recorded none, null when the stamp has no such line (no stamp, or
 // one from before the line): nothing recorded. A stamp written before the 2.0.0 rename spells the lines
 // `playwright-browsers` / `playwright-enabled`: read as the fallback, the new line winning where both are.
-const PW_ORDER = ['chrome', 'msedge', 'firefox', 'webkit'];
+const { ENGINES: PW_ORDER } = require('../../stack/mcp/data-root.js');
 const BROWSER_LINES = { engines: ['browser-engines', 'playwright-browsers'], enabled: ['browser-enabled', 'playwright-enabled'] };
 function readEngineLine(text, line)
 {

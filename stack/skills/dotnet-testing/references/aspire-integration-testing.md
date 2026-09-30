@@ -15,13 +15,15 @@ Container-backed, end-to-end tests that boot the real Aspire AppHost in-process 
 ## Packages
 
 ```xml
-<PackageReference Include="Aspire.Hosting.Testing" Version="$(AspireVersion)" />
-<PackageReference Include="xunit" Version="*" />
-<PackageReference Include="xunit.runner.visualstudio" Version="*" />
-<PackageReference Include="Microsoft.NET.Test.Sdk" Version="*" />
-<PackageReference Include="Npgsql" Version="*" />      <!-- the Respawn reset below opens a real connection -->
-<PackageReference Include="Respawn" Version="*" />
+<PackageReference Include="Aspire.Hosting.Testing" />
+<PackageReference Include="xunit" />
+<PackageReference Include="xunit.runner.visualstudio" />
+<PackageReference Include="Microsoft.NET.Test.Sdk" />
+<PackageReference Include="Npgsql" />      <!-- the Respawn reset below opens a real connection -->
+<PackageReference Include="Respawn" />
 ```
+
+Versions live in `Directory.Packages.props` (central package management), never on the reference.
 
 ## Disable config file-watching before any test runs
 

@@ -30,7 +30,7 @@ DELEGATED vs INLINE keys on dispatch capability, not file presence. When dispatc
 ## The run
 
 ### 0. MODE - the one ask
-Resolve the Execution modes question above NOW, via AskUserQuestion, before anything else in this run - the ask is a numbered step because a preamble-only ask gets skipped straight past to the fan-out (measured: one run dispatched 4 seats with zero asks). One exception: a bare invocation with no args fires the Inputs no-args ask INSTEAD and stops - there is nothing to pick a mode for yet; when both questions are open they join the same AskUserQuestion call.
+Resolve the Execution modes question above NOW, via AskUserQuestion, before anything else in this run - the ask is a numbered step because a preamble-only ask gets skipped straight past to the fan-out (measured: one run dispatched 4 seats with zero asks). One exception: a bare invocation with no args fires the no-args ask ('Args-driven, never a scan' above) INSTEAD and stops - there is nothing to pick a mode for yet; when both questions are open they join the same AskUserQuestion call.
 
 ### 1. VALIDATE - the arg list
 For each location: a path must exist (relative resolved from the project root), a URL must look like a git remote. An invalid location is reported and skipped, never silently dropped. Note each relation hint - it travels to the agent as a prior, not a verdict.

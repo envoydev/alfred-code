@@ -52,7 +52,8 @@ It ships in the stack's source repo, not in this project. LOOK BEFORE DOWNLOADIN
 ```bash
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/alfred-code.XXXXXX")   # the template names the dir: macOS mktemp -d alone ignores $TMPDIR
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-SRC=$(for d in "$CFG"/plugins/cache/*/alfred-code/* "$CFG"/plugins/cache/*/claude-stack/*; do   # legacy-name: a 1.x dir until orphaned
+SRC=$(for d in "$CFG"/plugins/cache/*/*/*; do   # one glob: zsh aborts the loop when any named glob matches nothing
+  PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || [ "$PN" = claude-stack ] || continue   # legacy-name: a 1.x dir until orphaned
   [ -d "$d/stack/skills" ] && [ -d "$d/stack/agents" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
 echo "tmp: $TMP"

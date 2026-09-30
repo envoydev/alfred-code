@@ -146,11 +146,17 @@ var (name, count) = GetSummary();
 switch (shape)
 {
     case Circle c when c.Radius > 0:
+    {
         return Area(c);
+    }
     case Rectangle r:
+    {
         return r.Width * r.Height;
+    }
     default:
+    {
         return 0;
+    }
 }
 ```
 
@@ -228,11 +234,15 @@ string label;
 switch (order.Status)
 {
     case OrderStatus.Paid:
+    {
         label = "paid";
         break;
+    }
     default:
+    {
         label = "other";
         break;
+    }
 }
 ```
 

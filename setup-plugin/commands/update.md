@@ -632,7 +632,7 @@ hand - as `Suggested next steps`, the recommended one first and each with the on
 matters. **When this run re-registered an MCP or replaced a hook file, the RESTART is row one** - with
 `claude mcp list` named beside it as the one command that confirms the servers actually connected
 (a registration is not a connection: measured, two stdio servers timed out at 30s and the session
-ran without them with nothing reporting it) - -
+ran without them with nothing reporting it) -
 every other follow-up runs against the session that is still holding the OLD ones, and a card that
 ranks a capture above it tells the user to re-capture an inventory that is not loaded yet (measured:
 a run that replaced two guard hooks and re-registered all four servers listed the re-capture first,

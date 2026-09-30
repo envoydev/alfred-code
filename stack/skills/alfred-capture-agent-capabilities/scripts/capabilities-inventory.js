@@ -582,6 +582,9 @@ const sectionsOf = (text) =>
 
 const normalize = (t) => (t || '').replace(/\r\n/g, '\n').replace(/[ \t]+$/gm, '').replace(/\n+$/, '\n');
 
+// The Captured line is the run's date, so it never counts as a change: an identical rewrite stays skipped on a later day.
+const withoutCaptured = (t) => t.replace(/^Captured:.*\n/m, '');
+
 // The policy block ships VERBATIM from the skill - it is the ONE home of the house usage policy and
 // its `policy-rev` stamp is what tells a current copy from a two-release-old one. The skill's copy
 // carries the `<docs-path>` placeholder the generated rule must resolve, so the comparison puts it
@@ -752,13 +755,13 @@ function compare(projectRoot, bodyArg)
         console.log(`COMPARE:   differs - no rule yet, WRITE ${RULE_REL} (composed ${Buffer.byteLength(composed)} bytes)`);
         return 0;
     }
-    if (normalize(live) === composed)
+    if (withoutCaptured(normalize(live)) === withoutCaptured(composed))
     {
         console.log(`COMPARE:   identical - DO NOT WRITE (${Buffer.byteLength(live)} bytes). Report \`rule unchanged - ${Buffer.byteLength(live)} bytes, not rewritten\`.`);
         return 0;
     }
-    const a = sectionsOf(normalize(live));
-    const b = sectionsOf(composed);
+    const a = sectionsOf(withoutCaptured(normalize(live)));
+    const b = sectionsOf(withoutCaptured(composed));
     const changed = [...new Set([...a.keys(), ...b.keys()])].filter((k) => a.get(k) !== b.get(k));
     console.log(`COMPARE:   differs - WRITE ${RULE_REL} in ONE call, whole file (live ${Buffer.byteLength(live)} bytes, composed ${Buffer.byteLength(composed)} bytes)`);
     console.log(`  sections changed: ${changed.join(' | ') || '(whitespace only)'}`);

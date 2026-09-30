@@ -163,7 +163,7 @@ Serialization-based cloning (`System.Text.Json` round-trip) is acceptable for DT
 **The rule for modern .NET**: do not hand-roll it. Register with the container:
 
 ```csharp
-services.AddSingleton<IClock, SystemClock>();
+services.AddSingleton<IPricingRules, DefaultPricingRules>();
 ```
 
 This gives single-instance semantics plus testability (swap in tests) plus visible dependencies (constructor injection). The container guarantees thread-safe lazy creation.

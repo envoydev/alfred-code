@@ -152,7 +152,7 @@ change (see the invariants below).
     (`alias.pf = push --force`), each from the directory a leading `cd` moved it to; a computed name (`bash -c "$(...)"`,
     `source <(...)`, a loop variable) is out of model (2.1.6 seam review M3). It loads `shell-writes.js` inside a try and
     passes the call when the file is absent (the parity test's copy set), as the rm and commit guards do.
-  - `guard-catastrophic-rm.js` (PreToolUse, the shell route) - a recursive `rm` of an unrecoverable target (and a
+  - `guard-catastrophic-rm.js` (PreToolUse, the shell route) - a recursive `rm` of an unrecoverable target (a bare `.git` included, a `$VAR/.git` path not; and a
     literal `find <target> -delete` / `-exec rm` with no filter test before the action in its `-o` branch, or a piped `Get-ChildItem <target> | Remove-Item`
     with `-Recurse` on either side - 2.1.5 M1; read past any wrapper of shell-writes.js's list, an `if` / `do` body, a subshell
     or group (`(cd d && rm -rf x)`, `{ ...; }`, `! rm`, whose parens `groupsAsCuts` reads as cuts), `bash -c`,
@@ -172,7 +172,8 @@ change (see the invariants below).
   - `guard-read-whole-file.js` (PreToolUse `Read` + the shell route) - blocks whole-file dumps (also through the
     shell, any oversized file, a sweep over `.md` files). A shell loop is a sweep only when a `cat` in its body
     reads the loop VARIABLE and a gated extension names what it walks, judged with quoted spans blanked (I4: a
-    `cat` inside an `echo "..."` payload was denied). An unexpanded `$VAR` target is not judged; a
+    `cat` inside an `echo "..."` payload was denied). An unexpanded `$VAR` target is not judged; a `cat` glob
+    operand is denied as a sweep; a
     leading `cd` moves the anchor; a runtime script - inline (`-e` / `-c`) or fed through a heredoc - is read whole and
     judged by what it PRINTS: a count, a length, a test, a map of those, one element, a helper's result or a slice with
     literal bounds within the Read half's own cap (THRESHOLD lines, BIG_BYTES characters) is not a dump, nor a window
@@ -247,7 +248,13 @@ change (see the invariants below).
     ran); the denial names the Edit tool, which changes the file without printing it. A `sed` whose FIRST
     flag is `-i` is never judged - an edit, not a dump - unless its script writes to a terminal stream
     (`w /dev/stdout`), runs a command (`e`) or sits in a `-f` file; then it is judged, and blocked. A filtering
-    read (`grep`, `jq .path`, `head`) keeps its filter over the view. An environment dump is replaced
+    read (`grep`, `jq .path`, `head`) keeps its filter over the view. A recursive search (`grep -rn`, `rg`) is probed as argv
+    like the git branch (3s / 8MB) and piped through `--redact-stdin --grep` only when its output carries a credential, a clean
+    one runs as written; the Grep TOOL cannot be piped, so a tree hit is blocked. `git remote -v` / `get-url` / `show` and
+    `git config --list` / `--get` are probed the same way (a tokened URL is masked; a config write is never probed). A print
+    piped into a login that reads stdin (`--password-stdin`, `--with-token`) is a use, `${NAME:+word}` prints no value, a
+    `{...process.env}` spread is no dump, and a command whose stdout IS a token (`gh auth token`, `op read`, a keychain `-w`)
+    is a print when it ends the pipeline. An environment dump is replaced
     stage by stage where it stands (`--redacted-env --note-to-stderr | <filter>`), so nothing is dropped
     and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked). A
     lone `&` is a step boundary like `;` (`true & env` was never judged), never the `&` of `2>&1` / `&>`. A heredoc
@@ -285,7 +292,7 @@ change (see the invariants below).
     blocks a generic `general-purpose`/`claude` dispatch while that stamp is live (stamps older than 8h
     or the session are absent), and blocks an `Explore`/generic dispatch asking a SYMBOL question ('reference to' /
     'usages of' count only before a code identifier - backticked, CamelCase, `name(`, `A.B` / `A::B` - never a
-    kebab-case or file-shaped token: I5, a text sweep for a skill name was the week's one block). An
+    kebab-case or file-shaped token, and 'where is X defined' / 'what type' need one too: I5, a text sweep for a skill name was the week's one block). An
     `Explore` / `Plan` brief gets the untrusted-content sentence appended (`updatedInput`, never a deny).
     A diagnoser CALLER (the payload's `agent_type`, bare or house-prefixed) dispatches only `evidence-gatherer` -
     a subagent's `Agent(<type>)` list is ignored, so the grant alone let it start a writing seat (2.1.5 M48).
@@ -300,7 +307,7 @@ change (see the invariants below).
     Every commit, trivial or not, first gets a scan of the lines it ADDS (the index, plus what `-a` or a
     chained `git add` takes in; a commit NAMING paths, the working tree of those paths - alone under
     `--only`, on top of the index under `--include`; at most 2MB, a binary file or one past the cap
-    skipped, and past the total the scan stops reading but keeps its hits): a conflict marker, a debugger, a focused test, a
+    skipped, and past the total the scan stops reading but keeps its hits): a conflict marker, a debugger, a focused test (a comment-only line and an ordinary call such as `fit(...)` never count), a
     credential-shaped literal or a hidden character (`hidden-chars.js`, the lint's class; a byte-0 BOM
     passes, and so does a joiner or direction mark a script needs) blocks, and no COMMIT-GATE receipt opens it - a hit meant to land goes
     through one ask and `<docs-path>/flow/STAGED-SCAN-ALLOW` (`file:line`, a file or `*`).
@@ -384,7 +391,7 @@ change (see the invariants below).
     offer under the window (`ALFRED_CODE_FRESH_SESSION_AFTER_HOURS`, default 2, unseeded, `0` off).
   - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
     `disable-model-invocation` skill (read from its frontmatter - the personal copy first, then the project's, then the
-    plugin caches, the order Claude Code resolves a name in, M10; the user's slash turn is untouched), and
+    running plugin's own root, then the plugin caches newest version first, the order Claude Code resolves a name in, M10; the user's slash turn is untouched), and
     offers a fresh session before a deliberate orchestration run (capture, loop, solve flow, review,
     guided walk) when the context is past the window trigger OR (slash route only) this session already
     TYPED a run - a Skill call is a phase of a run in flight, and harness-written user rows are no turn. Routes:
@@ -599,7 +606,9 @@ change (see the invariants below).
     (at local and user scope with no row there, in the release template's exact shape) and its row with it, the user's own server under the name kept (review 2.1.6 M2) - never the core (which carries the
     hooks) or the three locked servers.
   - The seed prunes only the names in `meta/stack-manifest.json`'s `retired` block (skills, agents,
-    rules, hooks, mcps, plugins) - add a name there when any of the six is renamed or removed (a
+    rules, hooks, mcps, plugins), and a skill, seat, rule or hook copy only where the stack's own record holds it
+    (the stamp's library hash, the ledger's row, or a name only the stack uses) and it still hashes to it - any other is the
+    project's, kept and named with `!!` (`retiredKeep`) - add a name there when any of the six is renamed or removed (a
     stamp compare only names what left after the stamped commit). A renamed skill or seat also gets
     a `renamed` row (old -> new; a rule too since 2.1.6): update maps picks, denies, `skillOverrides` and selections by it.
     A retired PLUGIN also gets a
@@ -842,7 +851,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     disable wrote (I2). An old id the run does not carry goes at this run's scope only. The full copy route stands the old ids down instead. Old copy-route registrations
     go on every route by the stack's own shape (the user's own server under an old name is kept), the
     approval lists follow, the read-back and selection lines read old names under the new ones, and
-    the generated project files are re-spelled (`selection.respellRenamed`). The old flags
+    the generated project files are re-spelled (`selection.respellRenamed`; a seeded AGENTS.md / CLAUDE.md only while the ledger
+    still holds it at its hash - the user's own is named, never rewritten). The old flags
     (`--playwright-browsers`, `--playwright-enabled`) and stamp lines (`playwright-browsers:`,
     `playwright-enabled:`) are read for one release.
 - **`memory` is required like navigation and documentation**, chosen per install by LEVEL rather than by
@@ -1065,7 +1075,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   a route where its launcher runs the installer records a stamp line `data-pending: <class> <from> -> <to>` and
   the launcher moves it at its next start, only when nothing holds it (a database with no `-wal`/`-shm`/
   `-journal`, a browser profile with no Chromium `Singleton*` or Firefox `lock`, a serena folder whose logs
-  name no live pid - `<folder>/home/logs/<date>/mcp_<stamp>_<pid>.txt`, `data-root.js serenaBusy`, M2: a second
+  name no live pid whose command line says serena (`ps`; Windows has none, so a live pid counts) - `<folder>/home/logs/<date>/mcp_<stamp>_<pid>.txt`, `data-root.js serenaBusy`, M2: a second
   session's serena, or on the copy route the running session's own); on the copy route, which runs no launcher,
   the installer moves inline with the same checks, and a refused move stays pending for the next run. A pending line whose target already holds the
   data clears: its launcher made the move, and data at the old place again was written after it by a reader
@@ -1176,7 +1186,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   every skill DESCRIPTION plus `when_to_use` (a `disable-model-invocation` skill's is not in context, so
   its description is skipped), and the fixed text every generated capabilities rule carries (the usage
   policy and the locked-server row) - prints each part, and fails over 70,000 chars (lowered from 160,000
-  on 2026-09-29, about 40% over the measured total; 50,045 on 2026-09-30 (2.1.6): pathless rules 23,829, agent
+  on 2026-09-29, about 40% over the measured total; 49,987 on 2026-09-30 (2.1.6): pathless rules 23,771, agent
   descriptions 12,532, skill descriptions 11,886 with 13 manual-only skipped, capabilities fixed text
   1,798 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories
   moving to `docs/baseline-rules-evidence.md`, and the 2.1.2 cap below cut the skill descriptions from

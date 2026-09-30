@@ -186,7 +186,7 @@ public record OrderLine(string Sku, int Quantity, decimal UnitPrice);
 - Prefer primary constructors on records and simple classes. For services with many dependencies, a primary constructor is cleaner than the classic field-and-assign pattern.
 
 ```csharp
-public sealed class OrderService(IOrderRepository repository, ILogger<OrderService> logger)
+public sealed class OrderService(ILogger<OrderService> logger, IOrderRepository repository)
 {
     public async Task<Order> GetAsync(int id)
     {
@@ -288,7 +288,7 @@ var json = """
 
 ### Modifiers and immutability
 - Mark classes `sealed` by default unless designed for inheritance. Sealed is the correct default; unseal deliberately.
-- Order modifiers: `public`/`private`/... , `static`, `readonly`, `sealed`, `override`, `virtual`, `abstract`, `async`. Enforced by `csharp_preferred_modifier_order`.
+- Order modifiers: `public`/`private`/... , `static`, `virtual`, `abstract`, `sealed`, `override`, `readonly`, `async`. Enforced by `csharp_preferred_modifier_order`.
 - Prefer `readonly` fields and `readonly struct` where the data does not mutate. Prefer `init` accessors over `set` for construct-time-only properties.
 - Make explicit access modifiers everywhere; do not rely on implicit `private`. (Rider flags missing modifiers as a style choice; be explicit.)
 

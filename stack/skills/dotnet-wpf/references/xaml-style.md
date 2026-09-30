@@ -38,7 +38,7 @@ Use attribute syntax for simple values the parser type-converts (`Background="Re
 
 ## Data-binding style
 - Set `DataContext` at the view root; bind to ViewModel properties rather than wiring in code-behind.
-- Put `x:DataType` / `DataType` on a `DataTemplate` to get compiled-binding validation and rename-safety (subject to this skill's stance on where `x:DataType` earns its keep).
+- Put `x:DataType` / `DataType` on a `DataTemplate` for design-time binding IntelliSense and rename-safety, set only where an analyzer you use reads it (subject to this skill's stance on where `x:DataType` earns its keep).
 - Prefer `StaticResource` over `DynamicResource` where the value does not change at runtime - `DynamicResource` carries real lookup overhead. (Resource-dictionary organization and the theme-switch cases are in `references/styling-theming.md`.)
 
 ## Value converters

@@ -33,7 +33,7 @@
 // history in a repo merely opened: R54). Set up means an install record in the project's `.claude/`,
 // or its git top level's, or - for a linked worktree - the main checkout's: the stamp (2.x, or the
 // 1.x name), or a copied engine (a 1.x global install kept its stamp in the account dir, never its
-// engines). A copied hook is set up by definition. Three guards stay live even there (R86), each
+// engines). A copied hook is set up by definition. Four guards stay live even there (R86, IM2), each
 // skipping its block row: what they stop cannot be undone, and a user-scope core is the only guard
 // a repo never set up has.
 //

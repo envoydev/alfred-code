@@ -43,7 +43,7 @@ builder.Services.AddOpenApi("v1", options =>
 });
 
 var app = builder.Build();
-app.MapOpenApi();                    // document at /openapi/v1.json
+app.MapOpenApi();                    // document at /openapi/v1.json - public only for a published contract; gate it otherwise
 if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();     // UI at /scalar, dev only
 ```

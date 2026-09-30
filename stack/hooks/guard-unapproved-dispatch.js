@@ -164,9 +164,7 @@ const SYMBOL_QUESTION = new RegExp(
   [
     'who calls\\b',
     'call(?:ers|[- ]sites)\\s+(?:of|for)\\b',
-    'where\\s+(?:is|are)\\s+\\S.{0,60}?\\b(?:defined|declared|implemented|instantiated|registered)\\b',
     '\\b(?:find|locate|get)\\s+(?:the\\s+)?(?:definition|declaration|implementation|signature|body)\\s+of\\b',
-    '\\bwhat\\s+type\\b',
     '\\bimplementations?\\s+of\\b',
     '\\bsubclasses\\s+of\\b',
     '\\b(?:find|locate)\\s+(?:the\\s+)?(?:class|interface|method|function|component|service|enum|record|struct)\\s+`?[A-Za-z_]',
@@ -175,9 +173,14 @@ const SYMBOL_QUESTION = new RegExp(
 );
 // Case-SENSITIVE, unlike the shapes above: under the `i` flag every word reads as CamelCase.
 const REFERENCE_QUESTION = new RegExp(`\\b(?:[Rr]eferences?\\s+[Tt]o|[Uu]sages?\\s+[Oo]f)\\s+(?:[Tt]he\\s+)?(?:${IDENT})`);
+// 'where are the env vars defined' and 'what type of database' are text questions, so these two carry the same identifier
+// test. The identifier may follow a leading capital of its own token (ISocketFactory reads as I + SocketFactory).
+const NAMED = `[\\w$.:]*?(?:${IDENT})`;
+const WHERE_QUESTION = new RegExp(`\\b[Ww]here\\s+(?:is|are|Is|Are)\\s+(?:[Tt]he\\s+)?${NAMED}.{0,60}?\\b(?:defined|declared|implemented|instantiated|registered)\\b`);
+const TYPE_QUESTION = new RegExp(`\\b[Ww]hat\\s+type\\s+(?:(?:is|does|of|are|the|returns?|has|for)\\s+){1,2}${NAMED}`);
 if (SEARCH_SEATS.has(seat)) {
   const brief = `${input.prompt || ''}\n${input.description || ''}`;
-  const asked = brief.match(SYMBOL_QUESTION) || brief.match(REFERENCE_QUESTION);
+  const asked = brief.match(SYMBOL_QUESTION) || brief.match(REFERENCE_QUESTION) || brief.match(WHERE_QUESTION) || brief.match(TYPE_QUESTION);
   if (asked) {
     process.stderr.write(
       `Blocked: dispatch of ${seat} for a SYMBOL question ('${asked[0].trim()}').\n` +

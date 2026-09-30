@@ -45,7 +45,7 @@ Rules that make the pattern pay off: take configuration as an explicit parameter
 A plain `Add*` appends unconditionally, so a library that self-registers a default can silently stack a duplicate or clobber the host's override. In library code that ships a default, register with `TryAdd*` - it no-ops when the service type is already present, letting the consumer win.
 
 ```csharp
-services.TryAddSingleton<IClock, SystemClock>();          // consumer's IClock wins if set
+services.TryAddSingleton<IPricingRules, DefaultPricingRules>();  // consumer's registration wins if set
 services.TryAddEnumerable(                                 // add to the set, dedup by impl type
     ServiceDescriptor.Singleton<IValidator, OrderValidator>());
 ```

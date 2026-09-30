@@ -2182,6 +2182,13 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     // judge nothing rather than deny on a guess. This failed CLOSED before, and half the denials
     // in one measured project were `$R/...` paths the session had every right to read.
     if (isVar(f)) continue;
+    if (/[*?[]/.test(f)) {
+      process.stderr.write(
+        `Blocked: a glob (${f}) hands every matching source file to cat - a whole-file sweep, whatever each one weighs.\n` +
+        `Name the one file and read a range, or locate the symbol first:\n` + serenaHint(f),
+      );
+      process.exit(2);
+    }
     const { lc, resolved } = resolveLineCount(f);
     if (!resolved) {
       // A dump-shaped command on a gated file whose size we cannot check fails CLOSED -

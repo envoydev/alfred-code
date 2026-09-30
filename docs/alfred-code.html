@@ -923,7 +923,7 @@ const pluginInstallByUrl = {
 };
 
 // Any repo not in pluginInstallByUrl has no automated install path (the snapshot-copy step only
-// fetches STACK_SKILLS_REPO) - falls back to "manual".
+// fetches the --repo source) - falls back to "manual".
 function installCmdFor(url) {
   if (pluginInstallByUrl[url]) return null;  // handled per-row
   return "manual";

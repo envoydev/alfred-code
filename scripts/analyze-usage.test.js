@@ -1926,6 +1926,8 @@ test('price table: every row is complete, sourced and dated, and the page\'s sta
   // one of its messages unpriced (claude-sonnet-5-5, on the page since 2026-09-28, had none).
   const windows = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'model-windows.json'), 'utf8')).models;
   for (const id of Object.keys(windows)) assert.ok(ids.includes(id), `${id}: in model-windows.json, so it needs a price row`);
+  // ... and the reverse: a priced model with no window row takes the 1M default, above a 200k window's real edge.
+  for (const id of ids) assert.ok(id in windows, `${id}: priced, so it needs a model-windows.json row`);
   // The page's retired rows are kept too, so an old transcript prices and 'not on the pricing page' stays true.
   for (const id of ['claude-opus-4', 'claude-sonnet-4', 'claude-3-5-haiku']) assert.ok(ids.includes(id), `${id}: a page row`);
 });

@@ -2,9 +2,9 @@
 
 The 'what is good' layer. Distilled from Google's developer documentation Markdown style guide (https://google.github.io/styleguide/docguide/style.html, Apache 2.0). For the 'what is valid' layer, see `syntax-canon.md`.
 
-Findings in this file are **should-fix**, not must-fix. The architect can decline any finding without justification - these rules are opinionated. Where the project has a local convention that conflicts with a rule here, defer to the project.
+Findings in this file are **should-fix**, not must-fix. The user can decline any finding without justification - these rules are opinionated. Where the project has a local convention that conflicts with a rule here, defer to the project.
 
-The skill cites style findings by short name (e.g., `style/headings/atx-only`) so the architect can locate them here.
+The skill cites style findings by short name (e.g., `style/headings/atx-only`) so the user can locate them here.
 
 ## Contents
 
@@ -152,7 +152,7 @@ For short, stable, top-level ordered lists, fully numbered (`1.`, `2.`, `3.`) is
 
 ### `style/lists/indent-4`
 
-Nested items and wrapped item text use 4-space indentation. Two spaces after the item number / three spaces after a bullet, so all content aligns at column 4. Wrapped text inside a nested item needs 8-space indent.
+Nested items and wrapped item text use 4-space indentation in a file with no nesting yet; a file that already nests at another consistent width (2 spaces under a `-` bullet is the common one) keeps it. Two spaces after the item number / three spaces after a bullet, so all content aligns at column 4. Wrapped text inside a nested item needs 8-space indent.
 
 ### `style/lists/single-space-only-for-trivial`
 
@@ -284,4 +284,4 @@ The source guide is deliberately silent on:
 - **File naming** - only that the H1 should match or nearly match the filename. No imposed kebab-case vs snake_case rule.
 - **Hard document length thresholds** - only the qualitative 'above the fold on a laptop' criterion for whether a table of contents is justified.
 
-When the architect asks 'what should I do about X' and X is on this list, the skill responds: the style guide is silent - follow the project's existing convention, or pick one and apply it consistently.
+When the user asks 'what should I do about X' and X is on this list, the skill responds: the style guide is silent - follow the project's existing convention, or pick one and apply it consistently.

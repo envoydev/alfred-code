@@ -648,7 +648,7 @@ test('the guided walks hold the layer order, the step banners, and the cascade m
     // The shared walk text carries the same machinery for both modes.
     const walk = flat(walkBody());
     assert.match(walk, /rules -> agents -> skills -> hooks -> MCPs -> plugins/, 'the walk holds the layer order');
-    assert.match(walk, /DELTA: `node stack-select\.js --selection raw\.json --dropped dropped\.json`/, 'the DELTA walk drives the drop cascade');
+    assert.match(walk, /DELTA: `node "\$TMP\/repo\/scripts\/stack-select\.js" --selection raw\.json --dropped dropped\.json`/, 'the DELTA walk drives the drop cascade');
     assert.match(walk, /An `orphan: <category> <name> - <why> \(dropped\); nothing kept still needs it` line/, 'the DELTA walk consumes the orphan: lines');
     assert.match(walk, /a layer turn missing the fenced table is invalid/, 'the table-before-question rule rides the walk');
 });

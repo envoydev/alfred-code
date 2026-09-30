@@ -19,11 +19,11 @@
 //
 // Resolution order for the database, first hit wins:
 //   1. MCP_MEMORY_SQLITE_PATH already in the environment - someone set it deliberately, obey it
-//   2. ALFRED_CODE_MEMORY_DB in <cwd>/.claude/settings.local.json `env` (a per-machine override -
+//   2. ALFRED_CODE_MEMORY_DB in <project>/.claude/settings.local.json `env` (a per-machine override -
 //      read BEFORE the shared file, the same order uv-python.js already uses: I7, R47 fix round 1.
 //      A local-scope install (T16) now writes this key ONLY here, so reading the shared file first
 //      would open the wrong project's database whenever both files register one.)
-//   3. ALFRED_CODE_MEMORY_DB in <cwd>/.claude/settings.json `env`      (the install's choice)
+//   3. ALFRED_CODE_MEMORY_DB in <project>/.claude/settings.json `env`    (the install's choice)
 //   4. ALFRED_CODE_MEMORY_DB in the ACCOUNT settings.json `env`
 //   5. ~/.alfred-memory/memory.db - the global default, which is what a fresh install picks
 // A settings file that cannot be parsed (or is no JSON object) is no answer, never an empty one (review 2.1.6 N2 - F2 on

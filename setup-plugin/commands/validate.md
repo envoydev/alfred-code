@@ -410,14 +410,15 @@ turn polling for it. Five inputs, five gates:
    every subagent. So judge each one the project did not prove:
    - **Measured first, where a measurement exists.** `ls "<docs-path>/tools-usage"/*.jsonl` - the
      instrumentation ledgers. When any exist, count per server:
-     `grep -ho '"tool":"mcp__[a-z0-9-]*' <docs-path>/tools-usage/*.jsonl | sort | uniq -c`. A server
+     `grep -h '"tool":"mcp__' <docs-path>/tools-usage/*.jsonl | grep -o '"detail":"[^"]*"' | sort | uniq -c`
+     (`detail` names the server). A server
      with rows is KEPT, no judgment needed; a server with zero rows across several sessions is a
      drop candidate with the count as its citation. State the number of sessions the ledgers cover.
    - **No ledgers?** Say so - `no usage measurement (ALFRED_CODE_INSTRUMENT is "0"; flip it to "1"
      for a run to measure)` - and fall back to the same corroboration gate 1 uses: the evidence
      scan's verdict for that server plus bounded NAMED greps for its domain markers. Never propose
      a drop on absence of a ledger alone.
-   - The two locked servers (`navigation`, `documentation`) are never proposed - an always-on rule names
+   - The three locked servers (`navigation`, `documentation`, `memory`) are never proposed - an always-on rule names
      them, so they are closure-held. Everything else is in scope.
 
 5. **Functional overlap among kept items.** The candidates are the tool's `overlap:` lines

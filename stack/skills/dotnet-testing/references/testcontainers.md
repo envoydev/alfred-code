@@ -25,13 +25,15 @@ If the test only exercises a repository or query against Postgres, do not stand 
 Use the database-specific module, not the generic `Testcontainers` builder - the module ships the image default, the wait strategy, and a typed connection string, so you write less and get the readiness check for free.
 
 ```xml
-<PackageReference Include="Testcontainers.PostgreSql" Version="*" />
-<PackageReference Include="Npgsql" Version="*" />
-<PackageReference Include="Respawn" Version="*" />
-<PackageReference Include="xunit" Version="*" />
-<PackageReference Include="xunit.runner.visualstudio" Version="*" />
-<PackageReference Include="FluentAssertions" Version="7.*" />   <!-- the hub's default assertion library - stay on 7.x -->
+<PackageReference Include="Testcontainers.PostgreSql" />
+<PackageReference Include="Npgsql" />
+<PackageReference Include="Respawn" />
+<PackageReference Include="xunit" />
+<PackageReference Include="xunit.runner.visualstudio" />
+<PackageReference Include="FluentAssertions" />   <!-- the hub's default assertion library - pin 7.x in Directory.Packages.props -->
 ```
+
+Versions live in `Directory.Packages.props` (central package management), never on the reference.
 
 ## The fixture: IAsyncLifetime + PostgreSqlBuilder
 

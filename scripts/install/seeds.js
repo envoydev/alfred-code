@@ -2,8 +2,8 @@
 // THE SMALL SEEDS - the per-project files and account values a run lays down once.
 //
 //   - `.claude/AGENTS.md`, from the stack-neutral template, ONLY when the project has no `AGENTS.md`,
-//     `.claude/AGENTS.md`, `CLAUDE.md` or `.claude/CLAUDE.md`. Claude Code loads any of them, so seeding
-//     beside an existing one would leave two copies of the project's instructions. A root AGENTS.md is
+//     `.claude/AGENTS.md`, `CLAUDE.md` or `.claude/CLAUDE.md` - beside a CLAUDE.md the seed would never load,
+//     beside another AGENTS.md it would be a second copy of the project's instructions. A root AGENTS.md is
 //     the project's own file: checked and improved in place, never overwritten.
 //   - The ACCOUNT settings.json `env` keys. At project scope too, deliberately: the account file is
 //     the one whose env reaches `.mcp.json` URL and header expansion (measured on 2.1.266 - a
@@ -62,15 +62,6 @@ function seedAccountKeys({ configDir, env = {}, log, note })
     return written;
 }
 
-// 'KEY=set (N chars)' or 'KEY=absent' - a length, never a value.
-function accountKeyState(configDir, key)
-{
-    let value = '';
-    try { value = String(parseJson(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8')).env?.[key] ?? ''); }
-    catch { value = ''; }
-    return value.trim() ? `${key}=set (${value.length} chars)` : `${key}=absent`;
-}
-
 // INSTALL only, once. The H1 placeholder is stamped with the repo folder name - the same __TOKEN__
 // convention as the docs-root rule, and because the seed runs once a hand-written title is never
 // clobbered.
@@ -87,7 +78,7 @@ function agentsMdBody({ projectRoot, sourceDir })
 // the changelog entry of that version), and only while no CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md sits
 // in the working directory or above it - so an older one, or a session on a third-party provider, sees none of it.
 const AGENTS_MD_FLOOR = '2.1.277';
-const AGENTS_MD_NOTE = `Claude Code ${AGENTS_MD_FLOOR} or later reads AGENTS.md itself, and only while no CLAUDE.md or CLAUDE.local.md sits beside or above it`;
+const AGENTS_MD_NOTE = `Claude Code ${AGENTS_MD_FLOOR} or later reads AGENTS.md itself (every session from 2.1.281; before it, Bedrock and telemetry-disabled ones read CLAUDE.md only), and only while no CLAUDE.md or CLAUDE.local.md sits beside or above it`;
 
 // Where an AGENTS.md can already be: the root (loaded beside .claude/AGENTS.md, so it is the project's own
 // file) or .claude/. Either one, or any CLAUDE.md, means the project has its instruction file already.
@@ -153,7 +144,8 @@ function moveSeededClaudeMd({ projectRoot, sourceDir, ledgerHash = '', hash, tra
     const git = tracked(from);
     if (!unedited)
     {
-        log(`  .claude/CLAUDE.md: yours, edited since the stack seeded it - left as-is; the stack's file is AGENTS.md now (${AGENTS_MD_NOTE}), to rename it: ${cmd(git)}`);
+        const who = ledgerHash ? 'yours, edited since the stack seeded it' : 'left as-is - with no ledger row it cannot be told from an older seed';
+        log(`  .claude/CLAUDE.md: ${who}; the stack's file is AGENTS.md now (${AGENTS_MD_NOTE}), to rename it: ${cmd(git)}`);
         return 'kept-edited';
     }
     try
@@ -186,4 +178,4 @@ function playwrightDownloads({ browsers = [], pin = '', run, log = () => {} })
     return done;
 }
 
-module.exports = { seedAccountEnv, seedAccountKeys, accountKeyState, seedAgentsMd, agentsMdBody, moveSeededClaudeMd, existingInstructionFile, AGENTS_MD_FLOOR, playwrightDownloads, SECRET_KEY, PROJECT_NAME_TOKEN };
+module.exports = { seedAccountEnv, seedAccountKeys, seedAgentsMd, agentsMdBody, moveSeededClaudeMd, playwrightDownloads };

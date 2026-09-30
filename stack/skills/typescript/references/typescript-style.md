@@ -81,7 +81,7 @@ For maximum safety, the community-maintained `@tsconfig/strictest` base is the r
   }
 }
 ```
-`@tsconfig/strictest` is strictness-only; it deliberately does not set `target`/`module`/`lib`. Compose it with an environment base such as `@tsconfig/node20`. Note `forceConsistentCasingInFileNames` is TypeScript's default since 5.0, so it is not listed; `noImplicitAny` is on implicitly via `strict`.
+`@tsconfig/strictest` is strictness-only; it deliberately does not set `target`/`module`/`lib`. Compose it with the `@tsconfig/node<N>` base matching the pinned Node (`node24` for new work). Note `forceConsistentCasingInFileNames` is TypeScript's default since 5.0, so it is not listed; `noImplicitAny` is on implicitly via `strict`.
 
 The two highest-friction, highest-value flags: `noUncheckedIndexedAccess` (array/record access returns `T | undefined`) and `exactOptionalPropertyTypes` (an optional `foo?: T` cannot be set to `undefined` unless the type says so). Enable both on new projects; adopt incrementally on existing ones.
 
@@ -120,7 +120,7 @@ Enforce with the `@typescript-eslint/naming-convention` rule (feature-frozen but
 - Minority position: Matt Pocock (Total TypeScript) recommends the opposite - 'I would recommend you use type by default. It is a little more flexible and a little less surprising.' This is a legitimate stance, but the majority and the tooling default is `interface`. Pick one per codebase and enforce it.
 
 ## any vs unknown
-- Ban `any`. The `strict` config sets no-explicit-any to 'error' (in `recommended` it is only 'warn').
+- Ban `any`. `recommended` and `strict` set no-explicit-any to 'error'.
 - Use `unknown` for values of genuinely unknown type, then narrow with type guards.
 - The strict-type-checked config catches unsafe `any` flows via no-unsafe-assignment, no-unsafe-call, no-unsafe-member-access, and no-unsafe-return.
 
@@ -243,7 +243,6 @@ function pageSize(cfg: { size?: number }): number {
 ## Recommendations (staged)
 1. New projects: adopt `strictTypeChecked` + `stylisticTypeChecked`, `strict: true` tsconfig (ideally `@tsconfig/strictest`), Prettier, and .editorconfig on day one. Add consistent-type-imports and import/order.
 2. Existing projects: enable `strict` first and fix the fallout, then layer typed linting, then add `noUncheckedIndexedAccess`/`exactOptionalPropertyTypes` incrementally per directory.
-3. Escalate no-explicit-any from warn to error once the team is comfortable.
 - Threshold to change: if typed linting is too slow in CI, drop to non-type-checked `recommended` + `stylistic` until capacity improves, then re-enable.
 
 ## Caveats

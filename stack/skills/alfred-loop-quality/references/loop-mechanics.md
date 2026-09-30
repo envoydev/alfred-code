@@ -65,7 +65,7 @@ and the answer-length hook blocks a wall of prose; tables are exempt.
 - **Memories** - `memories purged: <names|none>`, fold-first per `references/domain-trio-protocol.md`.
 - **Next actions** - when Deferred items wait on the operator, a ranked what-to-do list ships IN this
   report, not on request.
-- **Mechanics** - `loop-mechanics.md: read` - the receipt that this file was read this step.
+- **Mechanics** - `loop-mechanics.md: read`, then `bootstrap.md: <yes|n/a>` - the receipt that this file was read this step (`bootstrap.md: yes` when the run seeded the loops folder, else `n/a`).
 
 Then the two closing asks the body mandates, both through AskUserQuestion and never a prose bullet: the
 commit decision (commit now / hold) when work is uncommitted and no round is queued, and tear-down-vs-keep

@@ -22,6 +22,8 @@
 // THE TOOL LISTS (M31). --write also records each pinned server's tool names in meta/mcp-tools.json, which lint
 // check 62 holds every shipped `mcp__plugin_<p>_<p>__<tool>` spelling to: a pin bump that renames or drops a tool
 // is a lint finding, not a silent drop. A server this machine cannot list keeps its committed list (NOT CHECKED).
+// A navigation tool absent from the committed list prints '!! navigation: new tool <name>': the claude-code.yml
+// hash proves the context file, not that serena added no editing tool.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -292,11 +294,11 @@ async function main(argv, deps = {})
         const now = spec.registry === 'npm' ? d.npmLatest(spec.package) : d.pypiLatest(spec.package);
         // Unreachable keeps the committed pin: a refresh run on a plane must not unpin the stack.
         let version = now || was;
-        if (name === 'navigation' && now && was && now !== was)
+        if (name === 'navigation' && now && now !== was)
         {
             const gate = serenaGate({ was, now, contextFile: d.contextFile, fetch: d.upstreamContext });
-            if (!gate.ok) { refused = true; version = was; report.push(`  ${name}: ${was} -> ${now} REFUSED - ${gate.why}`); }
-            else report.push(`  ${name}: ${was} -> ${now} (${gate.note})`);
+            if (!gate.ok) { refused = true; version = was; report.push(`  ${name}: ${was || 'unpinned'} -> ${now} REFUSED - ${gate.why}`); }
+            else report.push(`  ${name}: ${was || 'unpinned'} -> ${now} (${gate.note})`);
         }
         else if (!now) report.push(`  ${name}: NOT CHECKED (registry unreachable) - keeping ${was || 'unpinned'}`);
         else if (now === was) report.push(`  ${name}: ${now} (unchanged)`);
@@ -323,6 +325,8 @@ async function main(argv, deps = {})
     {
         const row = pins[name] || { version: null };
         const got = await d.listTools(name, row, { cutoff: excludeNewerOf(refreshed) });
+        if (name === 'navigation' && Array.isArray(got) && servers[name])
+            for (const t of new Set(got)) if (!servers[name].tools.includes(t)) lines.push(`  !! navigation: new tool ${t} - an editing tool no house hook sees would go unwatched`);
         if (Array.isArray(got) && got.length) { servers[name] = { version: row.version, tools: [...new Set(got)].sort() }; lines.push(`  tools ${name}: ${got.length}`); }
         else lines.push(`  tools ${name}: NOT CHECKED - keeping ${servers[name] ? `the ${servers[name].version || 'hosted'} list` : 'no list'}`);
     }

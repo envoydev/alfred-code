@@ -155,7 +155,12 @@ test('guard-secret-value: the Grep TOOL is the third read route, and only its CO
   assert.equal(grep({ pattern: 'SENTRY', path: f.secret, output_mode: 'count' }), 0, 'a count prints no value');
   assert.equal(grep({ pattern: 'SENTRY', path: f.secret }), 0, 'and files_with_matches is the default - a path, not a value');
   assert.equal(grep({ pattern: 'SENTRY', path: f.clean, output_mode: 'content' }), 0, 'a file with no live credential is a free read');
-  assert.equal(grep({ pattern: 'SENTRY', path: f.dir, output_mode: 'content' }), 0, 'a directory walk is not a named read - the file routes still gate it');
+  // 2.1.6 audit (guards:F1): a tree walk is judged by what it would PRINT - a credential file whose lines match
+  assert.equal(grep({ pattern: 'SENTRY', path: f.dir, output_mode: 'content' }), 2, 'a directory walk that would print a credential line is blocked');
+  assert.equal(grep({ pattern: 'no_such_word_anywhere', path: f.dir, output_mode: 'content' }), 0, 'a walk whose matches carry no credential is free');
+  assert.equal(grep({ pattern: 'SENTRY', path: f.dir, output_mode: 'content', glob: '*.cs' }), 0, 'a glob that never reaches the credential file leaves the walk free');
+  assert.equal(grep({ pattern: 'SENTRY', path: f.dir, output_mode: 'content', glob: '*.json' }), 2, 'and one that reaches it does not');
+  assert.equal(grep({ pattern: 'SENTRY', path: f.dir, output_mode: 'count' }), 0, 'a count over the walk prints no value');
 });
 
 test('guard-secret-value: a dump is rewritten into a redacted view - the file with every credential value replaced, never a block', () => {
@@ -1842,4 +1847,82 @@ test('IM1: a git dump after a step that changes the tree is piped unprobed - a n
     assert.match(out.stdout, /<set \(40 chars\)>/, `${c} shows the masked value`);
     git('reset', '-q');
   }
+});
+
+// ---- 2.1.6 audit, hooks-guards: F1 the tree walk, F2 a tokened remote URL, F3 the stdin-login idiom, F4-F6 ----------
+const at = (cwd, command) => run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd }, { CLAUDE_PROJECT_DIR: cwd });
+const REDACT_GREP = `node "${HOOK}" --redact-stdin --grep`;
+
+test('F1: a recursive search that would print a credential line is piped through the stream redactor; a clean one runs as written', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'walk-'));
+  fs.writeFileSync(path.join(dir, '.env'), 'DB_HOST=localhost\nAPI_KEY=abc123\n');
+  fs.mkdirSync(path.join(dir, 'cred'));
+  fs.writeFileSync(path.join(dir, 'cred', 'conf.yml'), 'db:\n  password: hunter2hunter2\n');
+  fs.mkdirSync(path.join(dir, 'src'));
+  fs.writeFileSync(path.join(dir, 'src', 'app.js'), 'const API_KEY_NAME = 1;\n');
+  const v = (c) => verdict(at(dir, c));
+  assert.equal(updatedCommand(at(dir, 'grep -rn API_KEY .')), `grep -rn API_KEY . | ${REDACT_GREP}`, 'the walk reaches .env, so it is piped');
+  assert.equal(v('grep -rn password cred'), REWRITE, 'a yaml credential under a named directory');
+  assert.equal(v('rg -n password cred'), REWRITE, 'ripgrep walks too');
+  assert.equal(v('grep -rn API_KEY src'), 0, 'a directory whose matches carry no credential runs as written');
+  assert.equal(v('grep -rl API_KEY .'), 0, 'a listing of names prints no value');
+  assert.equal(v('grep -rn API_KEY . | wc -l'), 0, 'a reducer after it prints no value');
+  assert.equal(v('grep -rn API_KEY $UNSET_DIR'), REWRITE, 'a word the shell would expand cannot be probed, so it is piped');
+  assert.ok(updatedCommand(at(dir, 'grep -rn API_KEY .env')).includes('--redacted'), 'a named credential file still takes the redacted view, not the pipe');
+  for (const c of ['grep -rn API_KEY .', 'grep -rn password cred']) {
+    const out = spawnSync('sh', ['-c', updatedCommand(at(dir, c))], { cwd: dir, encoding: 'utf8' });
+    assert.equal(out.status, 0, out.stderr);
+    assert.ok(!/abc123|hunter2hunter2/.test(out.stdout), `${c} printed a credential:\n${out.stdout}`);
+    assert.match(out.stdout, /<set \(\d+ chars\)>/, `${c} shows the masked value`);
+  }
+});
+
+test('F2: a git command that prints a remote URL is piped through the redactor, and a config WRITE is never probed', { skip: process.platform === 'win32' && 'posix git fixture' }, () => {
+  const repo = fs.mkdtempSync(path.join(TMP, 'git-remote-'));
+  const git = (...a) => spawnSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  git('config', 'user.email', 't@example.com');
+  git('config', 'user.name', 'before');
+  git('remote', 'add', 'origin', `https://oauth2:${FAKE_TOKEN}@gitlab.example.com/a/b.git`);
+  for (const c of ['git remote -v', 'git remote get-url origin', 'git remote show origin', 'git config --list', 'git config --get remote.origin.url', 'git config -l']) {
+    const cmd = updatedCommand(at(repo, c));
+    assert.ok(cmd && cmd.endsWith('--redact-stdin'), `${c} -> ${cmd}`);
+    if (c === 'git remote show origin') continue; // it would ask the network - only the rewrite is pinned
+    const out = spawnSync('sh', ['-c', cmd], { cwd: repo, encoding: 'utf8' });
+    assert.ok(!out.stdout.includes(FAKE_TOKEN), `${c} printed the token:\n${out.stdout}`);
+    assert.match(out.stdout, /<set \(40 chars\)>/, `${c} shows the masked password`);
+  }
+  git('remote', 'set-url', 'origin', 'https://gitlab.example.com/a/b.git');
+  assert.equal(verdict(at(repo, 'git remote -v')), 0, 'a plain URL runs as written');
+  assert.equal(verdict(at(repo, 'git config --get remote.origin.url')), 0, 'and so does its config read');
+  assert.equal(verdict(at(repo, 'git config user.name after')), 0, 'a config write is not a print');
+  assert.equal(git('config', 'user.name').stdout.trim(), 'before', 'and the probe never ran it');
+});
+
+test('F3: a credential variable piped into a stdin-reading login is a use, not a print', () => {
+  for (const c of ['echo "$GITHUB_TOKEN" | docker login ghcr.io -u me --password-stdin', 'echo $GITHUB_TOKEN | gh auth login --with-token',
+    'printf %s "$NPM_TOKEN" | docker login registry.example.com -u me --password-stdin'])
+    assert.equal(bash(c), 0, c);
+  assert.equal(bash('echo "$GITHUB_TOKEN" | docker login ghcr.io -u me'), 2, 'with no stdin flag it is still a print beside a changing step');
+  assert.equal(bash('echo $GITHUB_TOKEN'), REWRITE, 'a bare print is unchanged');
+});
+
+test('F4: ${NAME:+word} and ${NAME+word} print no value', () => {
+  assert.equal(bash('echo ${API_KEY:+set}'), 0);
+  assert.equal(bash('echo "${API_KEY+set}"'), 0);
+  assert.equal(bash('echo "${API_KEY:-fallback}"'), REWRITE, 'a default form can print the value');
+  assert.equal(bash('echo ${API_KEY}'), REWRITE);
+});
+
+test('F5: a spread of the whole environment into an object is not a dump of it', () => {
+  assert.equal(bash('node -e "const e={...process.env,X:1};console.log(Object.keys(e).length)"'), 0);
+  assert.equal(bash('node -e "console.log(JSON.stringify(process.env))"'), REWRITE, 'printing it whole still rewrites');
+});
+
+test('F6: a command whose stdout IS a token is a print, used or checked inline it is not', () => {
+  for (const c of ['gh auth token', 'echo "$(gh auth token)"', 'security find-generic-password -s svc -w', 'op read op://vault/item/field', 'az account get-access-token'])
+    assert.equal(bash(c), 2, c);
+  for (const c of ['curl -H "Authorization: Bearer $(gh auth token)" https://api.github.com/user', 'gh auth token | docker login ghcr.io -u me --password-stdin',
+    'gh auth token | wc -c', 'gh auth status', 'T=$(gh auth token); [ -n "$T" ] && echo present'])
+    assert.equal(bash(c), 0, c);
 });

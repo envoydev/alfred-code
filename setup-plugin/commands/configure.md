@@ -138,7 +138,7 @@ so never diff against or mention `develop`. Two signal lines to handle, neither 
   Say the baseline is unknown, so an update's effect cannot be previewed; the update itself is
   unaffected and will write a stamp.
 - **`compare-unreachable`** (exit 3) - the commit is gone (history rewritten, or a
-  fork/`STACK_SKILLS_REPO` source that never had it), or the API is unreachable. Report that the
+  fork install (`--repo`) that never had it), or the API is unreachable. Report that the
   baseline is unreachable and move on; never guess a diff, and never treat this as a reason to
   skip the update.
 
@@ -316,7 +316,7 @@ Environment step - every other key in `permissions` (`allow` / `deny` / `ask` /
 
 ## 11. Prerequisite check
 
-Run: `node stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--hooks-answered] [--browsers <csv>] [--config-dir ~/.claude-<space>]`
+Run: `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--hooks-answered] [--browsers <csv>] [--config-dir ~/.claude-<space>]`
 (`--hooks-answered` whenever the Hooks area was walked this run, so a walk that switched every hook off emits `hook none` rather than no hook line - which reads as 'every hook'; `--browsers` with the step-7 kept browsers whenever the browser server is kept - a kept `msedge` warns
 when Edge is not installed; `--config-dir` under a `--space` profile, so the env probe reads that account's
 settings.json), output redirected to `$TMP/select.out` like every recompute. **Fixed shape, three blocks:** (1) one

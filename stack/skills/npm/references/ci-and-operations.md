@@ -26,7 +26,7 @@ Loaded from the `npm` skill when wiring CI installs, configuring update bots, ch
 | Manager | State | Reach for it when |
 |---|---|---|
 | npm 11.x | universal default, ships with Node, gap largely closed | legacy, maximum compatibility, no pain points |
-| pnpm 10/11 | de facto default for new projects/monorepos: content-addressable store, strict resolution (no phantom deps), cooldown on by default, lifecycle scripts opt-in | monorepo pain, disk/CI cost, phantom-dependency correctness |
+| pnpm 10/11 | de facto default for new projects/monorepos: content-addressable store, strict resolution (no phantom deps), cooldown on by default in pnpm 11, lifecycle scripts opt-in | monorepo pain, disk/CI cost, phantom-dependency correctness |
 | Yarn v1 | maintenance mode - no new projects | never for new work |
 | Yarn Berry v4 | fast PnP, but toolchain-compat complexity | only if the whole stack supports PnP |
 | Bun 1.3 | fastest installs (vendor-cited 10-30x cold; treat as approximate), residual Node-compat edges | raw solo-project speed |

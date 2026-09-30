@@ -80,7 +80,8 @@ if command -v claude >/dev/null 2>&1; then
   MKT=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{sub(/^[^@]*@/,"",$2);n=$2;exit} $2~/^claude-stack@/&&o==""{sub(/^[^@]*@/,"",$2);o=$2} END{print (n!=""?n:o)}')   # legacy-name
   printf '%s\n' "$ROWS" | while read -r SCOPE ID _; do [ -n "$ID" ] && claude plugin update "$ID" --scope "$SCOPE" -y </dev/null >/dev/null 2>&1; done
 fi
-SRC=$(for d in "$CFG"/plugins/cache/*/alfred-code/* "$CFG"/plugins/cache/*/claude-stack/*; do   # legacy-name: newest valid entry, any marketplace, a 1.x dir until orphaned
+SRC=$(for d in "$CFG"/plugins/cache/*/*/*; do   # one glob: zsh aborts the whole loop when any named glob matches nothing
+  PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || [ "$PN" = claude-stack ] || continue   # legacy-name: newest valid entry, any marketplace, a 1.x dir until orphaned
   [ -d "$d/stack/skills" ] && [ -d "$d/stack/agents" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
 if [ -n "$SRC" ]; then
@@ -363,7 +364,7 @@ twins name the 1.x marketplace and entries a 2.0.0 registration cannot resolve, 
 same line the seed itself prints and exits 1 on. Never hand the Node seed a PowerShell spelling: a
 `-Scope` is an unknown flag, and it refuses before the run writes anything.
 
-Pass `--source "$TMP/repo"` (`-Source` on Windows) when running the installer's action. That is
+Pass `--source "$TMP/repo"` when running the installer's action. That is
 what keeps a guided run at ONE download instead of two, and it guarantees the run lands the same
 revision the command's earlier steps inspected. The installer copies out of `$TMP/repo`, writes the
 `alfred-code.stamp` naming that revision (from `RELEASE-SOURCE`, or the checkout's HEAD when the

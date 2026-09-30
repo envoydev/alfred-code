@@ -20,7 +20,7 @@ doc's path and the skill that owns them moved.
 - **a re-measurement of an already-recorded limit folds into its existing entry, never re-tiered upward** - measured 2026-08-21: a declared, accepted scope limit got promoted to `substantial` for gaining a measurement, on code that had not changed
 - **a property true since the project's first commit is not a new finding** - measured 2026-08-21: two such candidates were tiered - one at `structural`, the highest alarm, for a property true since the project's first commit
 - **Worth knowing carries a promotion condition, never an untiered ceilings list** - measured 2026-08-21: an untiered ceilings list reached 42 entries and had never retired one
-- **stable entry IDs, re-sorted by rank** - measured: the same kept-old-IDs re-sort drew a correction in two projects
+- **W-IDs are rank labels, renumbered on re-rank** - measured: the same kept-old-IDs re-sort drew a correction in two projects
 
 ## Don't game it
 - **keep the re-measuring; kill the inflating** - measured: the 2026-08-21 round that inflated three lens artifacts into tiered findings ALSO caught four wrong numbers by re-measurement - one where the doc and the code's own XML doc agreed with each other and were both wrong

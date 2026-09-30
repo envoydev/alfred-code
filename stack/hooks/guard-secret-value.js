@@ -1034,7 +1034,7 @@ if (process.argv[2] === '--redacted-env') {
 // everywhere, a connection string's `Password=` in config files, a known credential SHAPE anywhere, and every
 // line between a PEM private key's BEGIN and END. A diff's own prefix (`+`, `-`, ` `, `< `, `> `) stays. A
 // declaration, so the shell branch below can call it; everything it reads is initialised above this line.
-function lineRedactor() {
+function lineRedactor(grep = false) {
   let masked = 0;
   const mask = (v) => { masked++; return `<set (${v.length} chars)>`; };
   // a config file by its extension, a dotfile or a file with no extension (`.pgpass`, `.kube/config`, `credentials`)
@@ -1106,7 +1106,19 @@ function lineRedactor() {
     if (PEM_PRIVATE.test(out) && !PEM_END.test(out)) pem = true;
     return `${pre}${out}${cr}`;
   };
-  return { line, masked: () => masked };
+  // A search prints `path:12:text` (or `path:text`, or `path-12-text` around a match): the pair rules read the text, so
+  // a line the whole-line pass left alone is tried again past its prefix.
+  const GREP_PREFIX = /^(?:[A-Za-z]:)?[^\s:]+(?::\d+){0,2}[:-]/;
+  const grepLine = (raw) => {
+    const first = line(raw);
+    if (first !== raw) return first;
+    const m = GREP_PREFIX.exec(raw);
+    if (!m) return raw;
+    const rest = raw.slice(m[0].length);
+    const masked2 = line(rest);
+    return masked2 === rest ? raw : m[0] + masked2;
+  };
+  return { line: grep ? grepLine : line, masked: () => masked };
 }
 
 // `<git dump> | node guard-secret-value.js --redact-stdin` - what a git command that PRINTS file content is
@@ -1116,7 +1128,7 @@ function lineRedactor() {
 // line by line as it passes (lineRedactor above), synchronously - fd reads, so no code below this block runs -
 // and with no size cap. The note goes to STDERR, only when something was masked.
 if (process.argv[2] === '--redact-stdin') {
-  const red = lineRedactor();
+  const red = lineRedactor(process.argv[3] === '--grep');
   const write = (fd, text) => {
     const buf = Buffer.from(text, 'utf8');
     for (let off = 0; off < buf.length;) {
@@ -1144,7 +1156,7 @@ if (process.argv[2] === '--redact-stdin') {
   if (rest) write(1, red.line(rest));
   if (red.masked()) {
     const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || process.cwd(), null);
-    write(2, noteLine(`${red.masked()} credential value(s) in this output shown as <set (N chars)>, everything else as git printed it.`, receipt) + '\n');
+    write(2, noteLine(`${red.masked()} credential value(s) in this output shown as <set (N chars)>, everything else as printed.`, receipt) + '\n');
   }
   process.exit(0);
 }
@@ -2352,8 +2364,8 @@ function redactEnvStages(text) {
   return changed ? out.map((seg, i) => seg + (seps[i] || '')).join('') : text;
 }
 
-// Every stage of `text` that is a git command printing file content, and whose output would carry a credential,
-// gets `| node <this file> --redact-stdin` right after it, where it stands - its own filter and every other step
+// Every stage of `text` that is a git command printing file content - or a recursive search walking a tree (walkPrints) -
+// and whose output would carry a credential, gets `| node <this file> --redact-stdin` right after it, where it stands - its own filter and every other step
 // kept (I2, 2.1.4 audit). Whether it would is PROBED first (gitOutputLeaks): the rewritten call carries a `node`
 // stage the permission system has never seen, so an unconditional pipe would make every read-only `git diff`
 // ask. Left as written: a stage whose output goes into a file or a reducer (the env pass's own rule), a summary
@@ -2375,11 +2387,12 @@ function redactGitStages(text) {
     const stages = splitPipes(seg);
     if (stages.join('|') !== seg || stages.some((st) => REDACT.test(st))) return seg;
     if (!stages.some(teesToTerminal) && (redirectsToFile(seg) || stages.some(isReducer))) return seg;
-    const hits = stages.map((st) => gitPrintsContent(st) && (moved || gitOutputLeaks(st)));
-    if (!hits.some(Boolean)) return seg;
+    // a git dump and a recursive search take the same pipe; the search's lines carry a `path:line:` prefix the mask reads past
+    const hits = stages.map((st) => (gitPrintsContent(st) ? (moved || gitOutputLeaks(st) ? '' : null) : walkPrints(st) ? (moved || walkLeaks(st) ? ' --grep' : null) : null));
+    if (hits.every((h) => h === null)) return seg;
     changed = true;
     const view = `node "${shDouble(__filename)}" --redact-stdin`;
-    return stages.map((st, i) => (hits[i] ? `${st.replace(/\s+$/, '')} | ${view}${st.match(/\s*$/)[0]}` : st)).join('|');
+    return stages.map((st, i) => (hits[i] !== null ? `${st.replace(/\s+$/, '')} | ${view}${hits[i]}${st.match(/\s*$/)[0]}` : st)).join('|');
   });
   return changed ? out.map((seg, i) => seg + (seps[i] || '')).join('') : text;
 }
@@ -2400,6 +2413,10 @@ function gitPrintsContent(stage) {
   if (sub === 'log' || sub === 'whatchanged') return patch;
   if (sub === 'stash') return args[0] === 'show' && patch;
   if (sub === 'cat-file') return args.some((a) => /^(?:-p|blob|--textconv|--filters)$/.test(a)); // prints a blob whole (seam m5)
+  // A remote URL and a config value may carry a token (`https://user:token@host/...`): only the READ forms count, since the
+  // probe RUNS the command and `git config user.name x` must never be one.
+  if (sub === 'remote') return args[0] === 'get-url' || args[0] === 'show' || args.some((a) => /^(?:-v|--verbose)$/.test(a));
+  if (sub === 'config') return args.some((a) => /^(?:--list|-l|--get(?:-all|-regexp|-urlmatch)?)$/.test(a));
   return false;
 }
 // Would this git stage print something lineRedactor masks? It is run here the way the stack's other guards read
@@ -2419,7 +2436,10 @@ function gitOutputLeaks(stage) {
   const at = w[i] === 'stash' ? i + 2 : i + 1;
   if (w.slice(at).some((a) => /^--output(?:=|$)/.test(a))) return true;
   if (w[i] === 'cat-file' && w.some((a) => /^--(?:textconv|filters)$/.test(a))) return true; // runs a repository's own driver
-  const argv = ['-c', 'core.fsmonitor=false', ...w.slice(1, at), ...(w[i] === 'cat-file' ? [] : ['--no-ext-diff', '--no-textconv', '--no-color']), ...w.slice(at)];
+  // a remote or config read takes none of the diff flags, and `remote show` asks the network unless told `-n`
+  const plain = w[i] === 'cat-file' || w[i] === 'remote' || w[i] === 'config';
+  const tail = w[i] === 'remote' && w[at] === 'show' && !w.includes('-n') ? [w[at], '-n', ...w.slice(at + 1)] : w.slice(at);
+  const argv = ['-c', 'core.fsmonitor=false', ...w.slice(1, at), ...(plain ? [] : ['--no-ext-diff', '--no-textconv', '--no-color']), ...tail];
   const r = require('child_process').spawnSync('git', argv, {
     cwd: (payload && payload.cwd) || process.env.CLAUDE_PROJECT_DIR || process.cwd(), timeout: 3000, maxBuffer: 8 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_PAGER: 'cat', PAGER: 'cat' },
@@ -2429,6 +2449,55 @@ function gitOutputLeaks(stage) {
   const red = lineRedactor();
   for (const l of String(r.stdout || '').split('\n')) red.line(l);
   return red.masked() > 0;
+}
+
+// A recursive search prints every matching line of every file it walks, credential files included, where the same
+// search on ONE named file is rewritten or blocked. The stage's words when it is such a walk - grep, egrep, fgrep with
+// -r / -R / --recursive / -d recurse, or rg, which always recurses - that prints lines (not `-l` / `-c` / `-q`) and
+// names no existing FILE among its operands (a named credential file takes the file route's redacted view, as before).
+function walkPrints(stage) {
+  const w = shellTokens(stage.replace(PREFIX_WORDS, '').trim()).map((t) => t.replace(/^(['"])([\s\S]*)\1$/, '$2'));
+  const verb = (w[0] || '').replace(/^.*[\\/]/, '');
+  if (!/^(?:grep|egrep|fgrep|rg)$/.test(verb)) return false;
+  const args = w.slice(1);
+  const recursive = verb === 'rg' || args.some((a, k) => /^-[A-Za-z]*[rR][A-Za-z]*$/.test(a) || /^--(?:dereference-)?recursive$/.test(a)
+    || a === '--directories=recurse' || (a === '-d' && args[k + 1] === 'recurse'));
+  if (!recursive) return false;
+  if (args.some((a) => /^(?:-[A-Za-z]*[lcq]|--files-with-matches|--files-without-match|--count|--quiet|--silent|--files)$/.test(a))) return false;
+  return !args.some((a) => !a.startsWith('-') && resolveFile(a));
+}
+// Would the walk print something lineRedactor masks? Run the way gitOutputLeaks runs git: argv, never a shell, 3s and
+// 8MB at most. A word the shell would expand, ripgrep's command-running `--pre`, a run that fails, times out or
+// overflows counts as a leak, so that stage is piped unprobed: the safe side.
+function walkLeaks(stage) {
+  const raw = shellTokens(stage.replace(PREFIX_WORDS, '').trim());
+  const inert = (t) => /^'[^']*'$/.test(t) || (t.startsWith('"') ? !/[$`\\]/.test(t) : !/[$`*?[{\\]/.test(t) && !/^~/.test(t));
+  if (!raw.every(inert)) return true;
+  const w = raw.map((t) => t.replace(/^(['"])([\s\S]*)\1$/, '$2'));
+  // fd redirections that stay on the terminal or go nowhere are the shell's, not grep's arguments
+  const args = w.slice(1).filter((a, k, all) => !/^(?:&|\d*)>+(?:&\d+|\/dev\/null)?$/.test(a) && !(all[k - 1] && /^(?:&|\d*)>+$/.test(all[k - 1])));
+  if (args.some((a) => /^--(?:pre|hostname-bin)(?:=|$)/.test(a))) return true;
+  const r = require('child_process').spawnSync(w[0], args, {
+    cwd: (payload && payload.cwd) || process.env.CLAUDE_PROJECT_DIR || process.cwd(), timeout: 3000, maxBuffer: 8 * 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, RIPGREP_CONFIG_PATH: '' },
+  });
+  if (r.error || (r.status !== 0 && r.status !== 1 && !r.stdout.length)) return true;
+  const red = lineRedactor(true);
+  for (const l of String(r.stdout || '').split('\n')) red.line(l);
+  return red.masked() > 0;
+}
+
+// A credential printed and piped into a login that READS it from stdin is a use: the value never reaches the terminal.
+function feedsStdinLogin(stage) {
+  return !!stage && /(?:^|\s)--(?:password|token|secret)-stdin\b|\s--with-token\b|\bdocker\s+secret\s+create\s+\S+\s+-(?:\s|$)/.test(stage);
+}
+// A command whose stdout IS a token: run as the last stage of its pipeline (its output is the terminal's), or printed by an
+// echo / printf around a substitution. Used inline, piped onward or held in a variable it prints nothing (a variable's
+// print is the name rule's).
+function printsTokenCommand(stage, isLast) {
+  const verb = 'gh\\s+auth\\s+token|security\\s+find-(?:generic|internet)-password\\b[^|;&]*\\s-w\\b|op\\s+read\\b|az\\s+account\\s+get-access-token';
+  const bare = stage.replace(PREFIX_WORDS, '').trim();
+  return (isLast && new RegExp(`^(?:${verb})`).test(bare)) || new RegExp(`^(?:echo|printf)\\b[^;&|]*(?:\\$\\(|\`)\\s*(?:${verb})`).test(bare);
 }
 
 // A declaration, not a const: judgeShell runs from the Bash branch ABOVE these lines, so an arrow
@@ -2587,12 +2656,18 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
       const verbs = [...stage.matchAll(/(?:^|[\s(])(echo|printf|printenv)\b/g)];
       for (let i = 0; i < verbs.length; i++) {
         const args = stage.slice(verbs[i].index + verbs[i][0].length, i + 1 < verbs.length ? verbs[i + 1].index : stage.length);
-        const names = [...args.matchAll(/\$\{?(?!#)([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]);
+        // `${NAME:+word}` and `${NAME+word}` print `word` when NAME is set, never its value
+        const names = [...args.matchAll(/\$(\{)?(?!#)([A-Za-z_][A-Za-z0-9_]*)(\+|:\+)?/g)].filter((m) => !(m[1] && m[3])).map((m) => m[2]);
         if (verbs[i][1] === 'printenv') {
           names.push(...shellTokens(args).map((w) => w.replace(/[^A-Za-z0-9_]/g, '')).filter((w) => /^[A-Za-z_]\w*$/.test(w)));
         }
         const hit = names.find((n) => SECRET_KEY_RE.test(n));
-        if (hit) blockVariable(hit);
+        if (hit && !feedsStdinLogin(stages[sj + 1])) blockVariable(hit);
+      }
+      if (!IS_PWSH && !forceRuntime && !allowAll && printsTokenCommand(stage, sj === stages.length - 1)) {
+        block('Blocked: this command prints a credential - its stdout IS the token.\n' +
+          'Use it where it is needed instead, inline (`curl -H "Authorization: Bearer $(gh auth token)" ...`) or piped into a\n' +
+          'login that reads stdin, and check it without printing it (`gh auth status`, `[ -n "$(...)" ] && echo set`).\n');
       }
       if (IS_PWSH) judgePwshStage(stage);
       // `declare -p NAME` / `typeset -p NAME` print one variable's value, like printenv NAME.
@@ -2614,7 +2689,7 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
         const own = ENV_OF[stageLang];
         if (!forceRuntime) for (const script of inlineScripts(stage)) spawnedShell.push(...shellStrings(script, stageLang));
         for (const re of own ? own.named : ENV_NAMED) for (const m of stage.matchAll(re)) if (SECRET_KEY_RE.test(m[1])) blockVariable(m[1]);
-        if ((own ? own.bare : ENV_BARE).test(stage.replace(ENV_REDUCED, ' keys ')) && RUNTIME_PRINT.test(stage)) blockEnvDump();
+        if ((own ? own.bare : ENV_BARE).test(stage.replace(ENV_REDUCED, ' keys ')) && RUNTIME_PRINT.test(stage) && !printsKeysOnly(stage)) blockEnvDump();
       }
 
       // A stage whose only verb PRINTS reads no file: `printf '%s\n' '<a rotation one-liner>'`
@@ -2687,6 +2762,47 @@ if (payload.tool_name === 'Read') {
   if (key) block(`Blocked: Read of ${file}, which holds a credential under \`${key}\`.\n` + presenceHint(file));
 }
 
+// The first credential file a content-mode Grep over `root` would print a line of: a file the (glob / type) filters let the
+// search reach, whose text the pattern matches and whose CONTENT holds a credential. Depth-first in name order, so the same tree
+// gives the same answer; a tree past WALK_FILES files or WALK_BYTES bytes is left unjudged. Hidden and git-ignored files are
+// walked too (the search may reach them), and `.git` / `node_modules` are not.
+const WALK_FILES = 4000;
+const WALK_BYTES = 32 * 1024 * 1024;
+const GREP_TYPES = { js: 'js|mjs|cjs|jsx', ts: 'ts|tsx|mts|cts', py: 'py|pyi', yaml: 'ya?ml', md: 'md|markdown|mdx', cs: 'cs|csx', json: 'jsonc?|json5', sh: 'sh|bash|zsh', rust: 'rs', java: 'java', go: 'go' };
+function walkCredentialFile(root, tool) {
+  let re;
+  try { re = new RegExp(String(tool.pattern || ''), `m${tool['-i'] ? 'i' : ''}${tool.multiline ? 's' : ''}`); } catch { return null; }
+  const glob = typeof tool.glob === 'string' && tool.glob && !tool.glob.startsWith('!') ? tool.glob : '';
+  const globRes = glob ? expandBraces(glob).map((g) => new RegExp('^' + g.replace(/[.+^$()|\\]/g, '\\$&').replace(/\*\*\//g, '(?:.*/)?').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]') + '$')) : [];
+  const typeRe = typeof tool.type === 'string' && tool.type ? new RegExp(`\\.(?:${GREP_TYPES[tool.type] || tool.type.replace(/\W/g, '')})$`, 'i') : null;
+  const stack = [root];
+  let files = 0;
+  let bytes = 0;
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    entries.sort((x, y) => (x.name < y.name ? 1 : x.name > y.name ? -1 : 0)); // popped back into name order
+    for (const e of entries) {
+      const full = pathMod.join(dir, e.name);
+      if (e.isDirectory()) { if (e.name !== '.git' && e.name !== 'node_modules') stack.push(full); continue; }
+      if (!e.isFile()) continue;
+      if (++files > WALK_FILES) return null;
+      if (typeRe && !typeRe.test(e.name)) continue;
+      const rel = pathMod.relative(root, full).split(pathMod.sep).join('/');
+      if (globRes.length && !globRes.some((g) => g.test(glob.includes('/') ? rel : e.name))) continue;
+      let size;
+      try { size = fs.statSync(full).size; } catch { continue; }
+      if (size > MAX_BYTES) continue;
+      bytes += size;
+      if (bytes > WALK_BYTES) return null;
+      let text;
+      try { text = readText(full); } catch { continue; }
+      if (re.test(text) && secretInUnlessAllowed(full)) return full;
+    }
+  }
+  return null;
+}
 // The Grep TOOL is the third read route onto the same file, and it was ungated: measured live, a
 // Bash read of a project settings.json was blocked and eight seconds later a Grep with
 // `output_mode: content` on the SAME path returned its lines - nothing leaked only because the
@@ -2707,17 +2823,17 @@ if (payload.tool_name === 'Grep') {
   }
   if (String(input.output_mode || 'files_with_matches') === 'content') {
     const target = String(input.path || '');
-    // Only a NAMED file is judged. A directory target, and a search with no path at all, is a tree
-    // walk this guard does not judge - a known gap, not a covered case: the pattern would have to be
-    // matched against every credential-bearing file the walk reaches. The Read and shell routes still
-    // gate every named read of those files.
-    const roots = target ? [target] : [];
-    for (const r of roots) {
-      const file = resolveFile(r);
-      if (!file) continue;
-      let st = null;
-      try { st = fs.statSync(file); } catch { st = null; }
-      if (st && st.isDirectory()) continue;
+    // A NAMED file is judged by its own content. A directory target, or no path at all, is a tree walk: judged by what it
+    // would PRINT - a credential file under it holding a line the pattern matches (walkCredentialFile). The walk is capped
+    // by files and bytes, never by time; past a cap it stays unjudged.
+    const file = target ? resolveFile(target) : null;
+    let dir = null;
+    if (target && !file) {
+      for (const p of candidatePaths(target)) {
+        for (const c of pathMod.isAbsolute(p) ? [p] : anchorDirs().map((d) => pathMod.join(d, p))) { try { if (!dir && fs.statSync(c).isDirectory()) dir = c; } catch { /* next anchor */ } }
+      }
+    }
+    if (file) {
       const key = secretInUnlessAllowed(file);
       if (key) {
         block(`Blocked: Grep -> content of ${file}, which holds a credential under \`${key}\`.\n` +
@@ -2725,6 +2841,15 @@ if (payload.tool_name === 'Grep') {
           `shell routes already block - just spelled as a search. Use \`output_mode: "count"\` or\n` +
           `\`"files_with_matches"\` to ask whether the key is there, or the presence route for what it holds.\n` +
           presenceHint(file));
+      }
+    } else if (!target || dir) {
+      const hit = walkCredentialFile(dir || (typeof payload.cwd === 'string' && payload.cwd ? payload.cwd : process.env.CLAUDE_PROJECT_DIR || process.cwd()), input);
+      if (hit) {
+        block(`Blocked: Grep -> content over a directory reaches ${hit}, which holds a credential under \`${secretInUnlessAllowed(hit)}\`, and the pattern matches a line of it.\n` +
+          `A content-mode Grep PRINTS the matching lines, so this is the same value read the Read and shell routes\n` +
+          `already block - spelled as a tree search. Use \`output_mode: "count"\` or \`"files_with_matches"\` to ask which files\n` +
+          `mention it, narrow the pattern or \`glob\` away from that file, or the presence route for what it holds.\n` +
+          presenceHint(hit));
       }
     }
   }

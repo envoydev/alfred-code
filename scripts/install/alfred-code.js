@@ -932,7 +932,22 @@ function runLayers(ctx)
             gitMv: (from, to) => ctx.rt.execCommand('git', ['mv', '--', from, to], { cwd: path.dirname(from), stdio: 'ignore' }),
             log: ctx.log, note: ctx.note,
         }) === 'moved';
-    selection.respellRenamed({ projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, engines: pwEngines(ctx), log: ctx.log, note: ctx.note });
+    // Only a seed the ledger still holds at its hash is the stack's to re-spell; a re-spelled one keeps its ledger row.
+    const seedRow = (rel) => (rel === '.claude/AGENTS.md' ? 'AGENTS.md' : rel === '.claude/CLAUDE.md' ? 'CLAUDE.md' : '');
+    ctx.respelledSeeds = new Set();
+    selection.respellRenamed({
+        projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, engines: pwEngines(ctx),
+        owned: (rel) =>
+        {
+            const row = seedRow(rel);
+            if (!row) return false;
+            if (row === 'AGENTS.md' && ctx.stackAgentsMd) return true;
+            const held = ctx.ledger && ctx.ledger.files && ctx.ledger.files[row];
+            return Boolean(held) && library.hashItem(ledgerPath(ctx, row)) === held;
+        },
+        onWrite: (rel) => ctx.respelledSeeds.add(seedRow(rel)),
+        log: ctx.log, note: ctx.note,
+    });
     if (plugins.corePluginOn(ctx.routes))
         selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, seats: placement().plugins[CORE].agents, log: ctx.log, note: ctx.note });
     dataRootLayer(ctx, docsPath);
@@ -1241,19 +1256,42 @@ function pruneCopies(ctx, dir, names, label, why, { keepTracked = false, keep = 
     {
         const target = path.join(dir, name);
         if (!fs.existsSync(target)) continue;
-        if (keep && keep(name))
-        {
-            ctx.log(`  ${label} kept (${why}, but the project's own - the stamp does not record it): ${name}`);
-            continue;
-        }
         if (keepTracked && gitTracks(ctx, target))
         {
             ctx.log(`  ${label} kept (${why}, tracked in git): ${name}`);
             continue;
         }
+        const kept = keep && keep(name);
+        if (typeof kept === 'string') { ctx.log(`  !! ${label} kept: ${name} - ${why}, but ${kept}`); continue; }
+        if (kept)
+        {
+            ctx.log(`  ${label} kept (${why}, but the project's own - the stamp does not record it): ${name}`);
+            continue;
+        }
         fs.rmSync(target, { recursive: true, force: true });
         ctx.log(`  ${label} pruned (${why}): ${name}`);
     }
+}
+
+// A retired name is pruned only where the stack's own record holds it - the stamp's library hash for a skill, seat or rule,
+// the ledger's row for a hook - and only while the copy still hashes to it: a bare name is as often the project's own, and
+// an edit since is the user's. A skill or seat the stamp does not record still goes when only the stack uses its name.
+// Returns false to prune, else the reason it stays.
+function retiredKeep(ctx, kind, dir)
+{
+    const lib = stampLayer.readLibrary(ctx.stampFile) || {};
+    const picked = stampLayer.readPicked(ctx.stampFile) || { agents: [] };
+    const names = stackNames(ctx.manifest);
+    const bare = (n) => n.replace(/\.md$/, '');
+    return (name) =>
+    {
+        const held = kind === 'hook' ? ctx.ledger && ctx.ledger.files && ctx.ledger.files[`hooks/${name}`] : (lib[`${kind}s`] || {})[bare(name)];
+        if (held) return library.hashItem(path.join(dir, name)) === held ? false : 'edited since the stack wrote it, so it is yours - merge what you need, then remove it by hand';
+        const claimed = kind === 'skill' ? skillClaim(ctx)(name)
+            : kind === 'agent' ? picked.agents.some((e) => e.split('@')[0] === bare(name)) || stackOwnName(names, 'agents', bare(name))
+                : false;
+        return claimed ? false : 'the stamp does not record it, so it is yours - remove it by hand if it is the stack\'s';
+    };
 }
 
 // M3: a skill folder already in `.claude/skills` the stack may treat as its own copy (`claims`) - the stamp
@@ -1289,6 +1327,19 @@ const skillTestOf = (ctx) => (ctx.skillTest ||= skillTest({ skillsDir: ctx.skill
 const skillClaim = (ctx) => skillTestOf(ctx).claims;
 const foreignSkill = (ctx, name) => skillTestOf(ctx).foreign(name);
 const foreignLine = (name) => `  !! skill kept: ${name} - a project skill of that name the stamp does not record, so it is yours; the stack's ${name} is not installed here - rename or remove yours, then /alfred-code:configure adds it`;
+// The rule twin of the skill claim: a same-named rule file the stamp holds no hash for is the stack's when only the stack
+// uses the name (`alfred-` prefix) or it opens with the shipped rule's own first line (an older copy whose later text moved on).
+const ruleClaim = (ctx) => (name) =>
+{
+    if (stackOwnName(stackNames(ctx.manifest), 'rules', name)) return true;
+    const opening = (file) =>
+    {
+        try { return fs.readFileSync(file, 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').split(/\r?\n/).find((l) => l.trim()) || null; }
+        catch { return null; }
+    };
+    const ours = opening(path.join(ctx.source.dir, 'stack', 'rules', `${name}.md`));
+    return Boolean(ours) && opening(path.join(ctx.claudeDir, 'rules', `${name}.md`)) === ours;
+};
 function withoutForeign(picked, foreign)
 {
     if (!foreign || !foreign.size) return picked;
@@ -1310,8 +1361,8 @@ function installSkillsAndAgents(ctx)
     // another name, so it goes BEFORE the enable. What a release retired goes on either route.
     const skillNames = ctx.lists.skills.map((e) => e.split('|').pop());
     const agentsDir = path.join(ctx.claudeDir, 'agents');
-    pruneCopies(ctx, ctx.skillsDir, ctx.manifest.retired.skills, 'skill', 'retired upstream', { keepTracked: true });
-    pruneCopies(ctx, agentsDir, ctx.manifest.retired.agents, 'agent', 'retired upstream', { keepTracked: true });
+    pruneCopies(ctx, ctx.skillsDir, ctx.manifest.retired.skills, 'skill', 'retired upstream', { keepTracked: true, keep: retiredKeep(ctx, 'skill', ctx.skillsDir) });
+    pruneCopies(ctx, agentsDir, ctx.manifest.retired.agents, 'agent', 'retired upstream', { keepTracked: true, keep: retiredKeep(ctx, 'agent', agentsDir) });
     if (ctx.routes.skills)
     {
         // A library item this run did not pick is switched off, and its absence is how; a seat the core
@@ -1947,7 +1998,7 @@ function installHooksAndRules(ctx)
         stampLayer.markHooksRoute(stampLayer.stampPath({ projectRoot: ctx.projectRoot }), 'plugin');
     // On the plugin route a copied hook is dead weight once unwired, so its file goes too; what a
     // release retired goes on either route, file and wiring together.
-    pruneCopies(ctx, path.join(ctx.claudeDir, 'hooks'), ctx.manifest.retired.hooks, 'hook', 'retired upstream');
+    pruneCopies(ctx, path.join(ctx.claudeDir, 'hooks'), ctx.manifest.retired.hooks, 'hook', 'retired upstream', { keep: retiredKeep(ctx, 'hook', path.join(ctx.claudeDir, 'hooks')) });
     if (ctx.routes.hooks) pruneCopies(ctx, path.join(ctx.claudeDir, 'hooks'), catalogHooks.concat(HOOK_MODULES), 'hook', 'now carried by a plugin');
 
     // Only the three ENGINES and the window table are copied; the hooks themselves ride their plugin.
@@ -1982,11 +2033,11 @@ function installHooksAndRules(ctx)
         sourceDir: ctx.source.dir, rulesDir: path.join(ctx.claudeDir, 'rules'),
         rules: ruleNames,
         render,
-        stamped: stampLayer.readLibrary(ctx.stampFile), log: ctx.log, note: ctx.note,
+        stamped: stampLayer.readLibrary(ctx.stampFile), claims: (kind, name) => kind !== 'rules' || ruleClaim(ctx)(name), log: ctx.log, note: ctx.note,
     });
     ctx.library.rules = rulesLibrary.rules;
     // After the new copies landed: a throw before this point leaves the old rules loading, never none.
-    pruneCopies(ctx, path.join(ctx.claudeDir, 'rules'), ctx.manifest.retired.rules, 'rule', 'retired upstream');
+    pruneCopies(ctx, path.join(ctx.claudeDir, 'rules'), ctx.manifest.retired.rules, 'rule', 'retired upstream', { keep: retiredKeep(ctx, 'rule', path.join(ctx.claudeDir, 'rules')) });
     // A copy this run did not write may still hold the placeholder: stampDocsRoot substitutes it IN
     // PLACE, after copyLibrary already hashed it - re-hash the one file it touches, or `drift` fires
     // on every check from here on.
@@ -2280,15 +2331,15 @@ function managedFiles(ctx)
     if (!(ctx.ledger && ctx.ledger.files) && !out['AGENTS.md'] && fs.existsSync(agentsMd)
         && fs.readFileSync(agentsMd, 'utf8') === seeds.agentsMdBody({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir })) put('AGENTS.md', agentsMd);
     for (const [rel, h] of Object.entries((ctx.ledger && ctx.ledger.files) || {}))
-        if (!out[rel] && library.hashItem(ledgerPath(ctx, rel)) === h) out[rel] = h;
+        if (!out[rel] && (library.hashItem(ledgerPath(ctx, rel)) === h || (ctx.respelledSeeds && ctx.respelledSeeds.has(rel)))) out[rel] = library.hashItem(ledgerPath(ctx, rel));
     return out;
 }
 
 const ledgerPath = (ctx, rel) => (rel.startsWith('skills/') ? path.join(ctx.skillsDir, rel.slice(7)) : path.join(ctx.claudeDir, ...rel.split('/')));
 
 // R10: a copy the last run recorded that this RELEASE no longer ships at all goes - when it still holds
-// what the stack wrote; an edited one is the user's and stays, said. The `retired` lists still prune by
-// name for a stamp from before the ledger.
+// what the stack wrote; an edited one is the user's and stays, said. The `retired` lists prune under the
+// same record test (`retiredKeep`).
 function pruneDroppedCopies(ctx)
 {
     const files = (ctx.ledger && ctx.ledger.files) || {};

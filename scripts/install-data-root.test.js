@@ -285,7 +285,8 @@ test('M2 full copy route: serena\'s folder is not moved while a serena holds it,
     const { spawnSync } = require('node:child_process');
     // A grandchild the shell leaves behind is reparented, so once killed it is reaped - a child of this runner
     // would stay a zombie through the synchronous runs and still answer kill(pid, 0).
-    const pid = Number(spawnSync('sh', ['-c', 'sleep 120 >/dev/null 2>&1 & echo $!'], { encoding: 'utf8' }).stdout.trim());
+    // Its command line names serena, which is what makes a live pid a serena (`ps`).
+    const pid = Number(spawnSync('sh', ['-c', `${JSON.stringify(process.execPath)} -e 'setTimeout(() => {}, 120000)' serena-agent >/dev/null 2>&1 & echo $!`], { encoding: 'utf8' }).stdout.trim());
     const stop = () => { try { process.kill(pid); } catch { /* gone */ } for (let n = 0; n < 50; n += 1) { try { process.kill(pid, 0); } catch { return; } Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100); } };
     try
     {

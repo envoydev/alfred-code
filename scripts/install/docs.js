@@ -324,18 +324,6 @@ function docsMoveViews({ claudeDir, scope })
     return { env: envOf(readBackSettings(claudeDir, 'project', { sharedOnly: true }).env), personal };
 }
 
-// The docs plan alone as one line: `docs-move: offer <from> -> <to>\ttracked=<n> untracked=<n>[\tignored=yes][\tconflicts=<n>]`,
-// `docs-move: repoint <from> -> <to> (nothing to move)`, or `docs-move: none (<why>)`. The preflight prints the
-// whole data move instead (dataOfferLine, below), the docs part folded in.
-function docsMoveLine(plan)
-{
-    if (plan.state === 'offer')
-        return `docs-move: offer ${plan.from} -> ${plan.to}\ttracked=${plan.tracked.length} untracked=${plan.untracked.length}`
-            + (plan.ignored ? '\tignored=yes' : '') + (plan.conflicts.length ? `\tconflicts=${plan.conflicts.length}` : '');
-    if (plan.state === 'repoint') return `docs-move: repoint ${plan.from} -> ${plan.to} (nothing to move)`;
-    return `docs-move: none (${plan.why})`;
-}
-
 // One step: tracked files through `git mv` (the index records a rename, so history follows), every other
 // file by rename, then the emptied folders of the old root. Any failure puts every file moved so far back
 // - a half-moved root would leave the hooks reading one root while half the docs sit in the other.
@@ -478,7 +466,7 @@ function dataOfferLine(offer)
 }
 
 module.exports = {
-    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, ensureDocsIgnore, docsMovePlan, docsMoveViews, docsMoveLine, moveDocsRoot,
+    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, ensureDocsIgnore, docsMovePlan, docsMoveViews, moveDocsRoot,
     ensureDataIgnore, dataIgnoreText, pruneDataRoot, dataOffer, dataOfferLine,
     DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD,
 };

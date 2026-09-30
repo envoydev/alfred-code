@@ -11,6 +11,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
+const { hashItem } = require('./install/library.js');
 
 const SELECTION = 'skill markdown-style\nrule markdown-docs\n';
 const COPY_ROUTE = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
@@ -23,7 +24,7 @@ function write(repo, rel, text = 'x\n')
 
 // A 0.2.x copy-route project: the stack's shipped copies, upstream-retired leftovers, and the user's
 // own files beside them, with the hooks wired the way 0.2.87 wrote them.
-function oldLayout(repo)
+function oldLayout(repo, { recorded = false } = {})
 {
     for (const rel of [
         '.claude/agents/aspnet-implementer.md', '.claude/agents/code-analyzer.md', '.claude/agents/my-own-seat.md',
@@ -34,6 +35,17 @@ function oldLayout(repo)
     const wire = (file) => ({ type: 'command', command: `"$CLAUDE_PROJECT_DIR/.claude/hooks/${file}"` });
     write(repo, '.claude/settings.json', JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Read',
         hooks: [wire('guard-secret-value.js'), wire('require-convention-skill.js'), wire('my-own-hook.js')] }] } }, null, 2));
+    // What a stamped install records for the retired copies: the stack's own record is what lets a run prune them (audit F2/F3).
+    if (recorded)
+    {
+        const at = (rel) => hashItem(path.join(repo, rel));
+        write(repo, '.claude/alfred-code.stamp', [
+            'version: 2.1.5', 'sha: 0000000', 'hooks-route: copy',
+            `library-skills: frontend=${at('.claude/skills/frontend')}`, `library-agents: code-analyzer=${at('.claude/agents/code-analyzer.md')}`,
+            `library-rules: house-baseline=${at('.claude/rules/house-baseline.md')}`,
+            `managed-files: hooks/require-convention-skill.js=${at('.claude/hooks/require-convention-skill.js')}`, '',
+        ].join('\n'));
+    }
 }
 
 // A SNAPSHOT, taken before the sandbox is removed: every path under .claude, and the hook wiring.
@@ -68,16 +80,29 @@ for (const action of ['update', 'install'])
         assert.ok(r.hooks.includes('docs.js') && r.hooks.includes('memory.js'), `the engines must stay: ${r.hooks.join(' ')}`);
     });
 
-    test(`seed ${action}: every upstream-retired name is pruned and unwired, on either route`, POSIX_ONLY, () =>
+    test(`seed ${action}: a retired name the stack's record holds is pruned and unwired, on either route`, POSIX_ONLY, () =>
     {
         for (const env of [{}, COPY_ROUTE])
         {
-            const { result: r } = seedRun(action, SELECTION, { env, prepare: oldLayout, inspect: after });
+            const { result: r } = seedRun(action, SELECTION, { env, prepare: (repo) => oldLayout(repo, { recorded: true }), inspect: after });
             const route = Object.keys(env).length ? 'copy route' : 'plugin route';
             assert.ok(!r.has('.claude/skills/frontend'), `${route}: a retired skill survived`);
             assert.ok(!r.has('.claude/agents/code-analyzer.md'), `${route}: a retired agent survived`);
             assert.ok(!r.has('.claude/rules/house-baseline.md'), `${route}: a retired rule survived - an always-on one costs every session`);
             assert.ok(!r.has('.claude/hooks/require-convention-skill.js'), `${route}: a retired hook file survived`);
+            assert.ok(!r.wired.includes('require-convention-skill.js'), `${route}: a retired hook is still wired`);
+        }
+    });
+
+    test(`seed ${action}: a retired name nothing records may be the project's own - kept and named, its wiring still retired`, POSIX_ONLY, () =>
+    {
+        for (const env of [{}, COPY_ROUTE])
+        {
+            const { result: r, out } = seedRun(action, SELECTION, { env, prepare: oldLayout, inspect: after });
+            const route = Object.keys(env).length ? 'copy route' : 'plugin route';
+            for (const rel of ['.claude/skills/frontend', '.claude/agents/code-analyzer.md', '.claude/rules/house-baseline.md', '.claude/hooks/require-convention-skill.js'])
+                assert.ok(r.has(rel), `${route}: ${rel} was deleted with nothing to say it is the stack's`);
+            for (const line of [/!! skill kept: frontend/, /!! rule kept: house-baseline\.md/, /!! hook kept: require-convention-skill\.js/]) assert.match(out, line, `${route}: ${out}`);
             assert.ok(!r.wired.includes('require-convention-skill.js'), `${route}: a retired hook is still wired`);
         }
     });

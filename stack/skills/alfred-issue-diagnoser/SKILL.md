@@ -38,7 +38,7 @@ Read it at step 1, before the tier is named.
   an observable, the evidence tier, every digest's key lines, the hypotheses with their verdicts,
   the proven cause, and the stamps this run adds (`Tier`, `Gathered`, `Cause`, `Outcome`). On any
   conflict with memory or the chat, the file wins.
-- **The navigation-server note** (`write_memory` named `<slug>__diagnosis`) is the working cursor: current
+- **The navigation-server note** (`write_memory` named `<slug>/diagnosis`) is the working cursor: current
   step, chosen mode, resume pointer, the error signature and its proven fix once found - that
   last part is the reusable half, keyed to the signature, never a dump of the log.
 
@@ -52,7 +52,7 @@ findings <docs-path>/diagnoses/orders-sync-disposed.md:
   Observable: nightly order sync stops after the first batch; expected all batches
   Tier: 1 (ObjectDisposedException, frame OrderSyncJob.ExecuteAsync) | Gathered: 2 sources agree
   Cause: <pending>
-note 'orders-sync-disposed__diagnosis': step 3 ROOT CAUSE - mode inline, 1 hypothesis open
+note 'orders-sync-disposed/diagnosis': step 3 ROOT CAUSE - mode inline, 1 hypothesis open
 ```
 
 ## Mode - ask at start

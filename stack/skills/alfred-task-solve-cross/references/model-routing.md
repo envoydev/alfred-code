@@ -9,7 +9,7 @@ task_class: medium_feature
 risk: [auth, database_migration]
 domains: [data, backend]
 routing:
-  solution_designer: opus-high
+  solution_designer: opus-xhigh
   implementer: sonnet-medium
   verifier: sonnet-xhigh
   final_reviewer: opus-xhigh

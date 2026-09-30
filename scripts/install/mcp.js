@@ -32,7 +32,7 @@ const { excludeNewerOf, cutoffFor } = require('../../stack/mcp/uv-python.js');
 
 // The three that can never be dropped - see R7 above.
 const LOCKED = ['navigation', 'documentation', 'memory'];
-const PW_ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
+const { ENGINES: PW_ENGINES } = require('../../stack/mcp/data-root.js');
 // Every name the browser server was registered under: the 1.x single `playwright`, the
 // `playwright-<engine>` servers 2.0.0 renamed, and one `browser-<engine>` per engine.
 const PW_SERVERS = ['playwright', ...PW_ENGINES.map((e) => `playwright-${e}`), ...PW_ENGINES.map((e) => `browser-${e}`)];

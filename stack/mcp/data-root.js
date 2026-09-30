@@ -247,7 +247,16 @@ function profileLocks(dir)
 // A serena serving this folder (M2): serena 1.7.0 names each start's log after its own pid -
 // `<folder>/home/logs/<date>/mcp_<stamp>_<pid>.txt` (measured) - so a log whose pid is a live process is a
 // server holding the folder: on the copy route the very session running the installer, else a second
-// session's. A reused pid reads as busy, the safe side; this process's own pid is never one.
+// session's. A live pid counts only when its command line names serena (`ps`, so an old log's reused pid
+// no longer keeps a move pending); with no `ps` (Windows) or an unreadable answer it reads as busy, the
+// safe side. This process's own pid is never one.
+function namesSerena(pid)
+{
+    if (process.platform === 'win32') return true;
+    const r = require('node:child_process').spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' });
+    if (r.error || r.status === null) return true;
+    return r.status === 1 ? false : /serena/i.test(r.stdout);
+}
 function serenaBusy(dir)
 {
     const logs = path.join(dir, 'home', 'logs');
@@ -263,7 +272,7 @@ function serenaBusy(dir)
         {
             const m = /^mcp_.*_(\d+)\.txt$/.exec(name);
             const pid = m ? Number(m[1]) : 0;
-            if (pid > 0 && pid !== process.pid && !held.has(pid) && alive(pid)) held.add(pid);
+            if (pid > 0 && pid !== process.pid && !held.has(pid) && alive(pid) && namesSerena(pid)) held.add(pid);
         }
     }
     return [...held].sort((a, b) => a - b).map((pid) => `serena pid ${pid}`);

@@ -84,6 +84,11 @@ function audit(root)
     for (const [name, server] of Object.entries((mcp && mcp.mcpServers) || {}))
     {
         if (UNPINNED_OK.has(name)) continue;
+        if (server && server.args !== undefined && !Array.isArray(server.args))
+        {
+            rows.push({ severity: 'medium', where: '.mcp.json', finding: `.mcp.json: mcp server ${name} has an unreadable shape (args is not a list)`, fix: 'repair the entry by hand' });
+            continue;
+        }
         const pkg = launchedPackage(server || {});
         if (pkg && !isPinned(pkg))
             rows.push({ severity: 'high', where: '.mcp.json', finding: `mcp server ${name} launches an unpinned package`, fix: 'pin it to a version, or re-run the stack update' });
@@ -101,8 +106,18 @@ function audit(root)
         {
             for (const group of Array.isArray(groups) ? groups : [])
             {
+                if (group && group.hooks !== undefined && !Array.isArray(group.hooks))
+                {
+                    rows.push({ severity: 'medium', where: rel, finding: `${rel}: a hook group has an unreadable shape (hooks is not a list)`, fix: 'repair the wiring by hand' });
+                    continue;
+                }
                 for (const h of (group && group.hooks) || [])
                 {
+                    if (!h || typeof h !== 'object')
+                    {
+                        rows.push({ severity: 'medium', where: rel, finding: `${rel}: a hook entry has an unreadable shape (not an object)`, fix: 'repair the wiring by hand' });
+                        continue;
+                    }
                     if (h.type !== 'command') continue;
                     if (!h.timeout)
                         rows.push({ severity: 'medium', where: rel, finding: `a hook wiring has no timeout (600s default): ${h.command}`, fix: 'add "timeout": 10' });

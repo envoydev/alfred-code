@@ -693,7 +693,7 @@ test('M2 serena-launch: a recorded move waits while another serena holds the fol
     const { dir } = project('serena-held');
     put(path.join(dir, '.serena', 'project.yml'), 'project_name: x\n');
     stamp(dir, ['data-pending: serena .serena -> .alfred/serena']);
-    const live = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
+    const live = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)', 'serena-agent'], { stdio: 'ignore' });
     try
     {
         put(path.join(dir, '.serena', 'home', 'logs', '2026-09-29', `mcp_20260929-111111_${live.pid}.txt`), 'live');

@@ -160,7 +160,7 @@ test('M38 every shipped serena index command names the release pin and the cut-o
 // an editing tool that context would then serve unwatched. The shipped YAML records the upstream file's sha256; the
 // refresh keeps the navigation pin where it is until the new release's claude-code.yml hashes the same - i.e. until
 // someone re-diffs the stack's file against it and records the new hash.
-async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = true, lists = {} } = {})
+async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = true, lists = {}, pinsRaw = null, committed = {} } = {})
 {
     const os = require('node:os');
     const { main } = require('./refresh-mcp-pins.js');
@@ -168,13 +168,13 @@ async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = t
     const pinsFile = path.join(dir, 'mcp-pins.json');
     const toolsFile = path.join(dir, 'mcp-tools.json');
     const contextFile = path.join(dir, 'navigation-context.yml');
-    fs.copyFileSync(path.join(ROOT, 'meta', 'mcp-pins.json'), pinsFile);
-    fs.writeFileSync(toolsFile, JSON.stringify({ servers: { memory: { version: 'old', tools: ['kept_tool'] } } }));
+    if (pinsRaw === null) fs.copyFileSync(path.join(ROOT, 'meta', 'mcp-pins.json'), pinsFile); else fs.writeFileSync(pinsFile, pinsRaw);
+    fs.writeFileSync(toolsFile, JSON.stringify({ servers: { memory: { version: 'old', tools: ['kept_tool'] }, ...committed } }));
     const upstream = 'name: claude-code\nexcluded_tools: []\n';
     const sha = require('node:crypto').createHash('sha256').update(upstream).digest('hex');
     fs.writeFileSync(contextFile, `${recorded ? `# upstream: serena-agent 1.7.0 claude-code.yml sha256 ${sha}\n` : ''}name: alfred-code\n`);
     const out = [];
-    const current = JSON.parse(fs.readFileSync(pinsFile, 'utf8')).pins;
+    const current = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'mcp-pins.json'), 'utf8')).pins;
     const rc = await main(['--write'], {
         pinsFile, toolsFile, contextFile, log: (l) => out.push(l), today: () => '2026-10-01',
         npmLatest: () => current.browser.version,
@@ -203,6 +203,17 @@ test('R7 refresh-mcp-pins: a serena bump whose claude-code context changed is re
     assert.strictEqual(same.pins.pins.navigation.version, '9.9.9', 'an unchanged upstream context lets the bump through');
     assert.strictEqual(same.rc, 0);
     assert.strictEqual(same.pins.refreshed, '2026-10-01');
+});
+
+test('R7 refresh-mcp-pins: an unreadable pins file does not skip the serena gate, and a new navigation tool is named', async () =>
+{
+    const changed = await refreshRun({ pinsRaw: '{ not json', context: 'name: claude-code\nexcluded_tools: []\nnew_tool: yes\n' });
+    assert.match(changed.text, /navigation: unpinned -> 9\.9\.9 REFUSED/, 'a bump with no recorded pin went past the gate');
+    assert.strictEqual(changed.rc, 1);
+    assert.strictEqual(changed.pins.pins.navigation.version, null, 'a refused bump with no earlier pin ships unpinned');
+    const grown = await refreshRun({ committed: { navigation: { version: '1.7.0', tools: ['find_symbol'] } }, lists: { navigation: ['find_symbol', 'shiny_editor'] } });
+    assert.match(grown.text, /!! navigation: new tool shiny_editor/);
+    assert.doesNotMatch(grown.text, /!! navigation: new tool find_symbol/);
 });
 
 // M31: the refresh records each pinned server's tool names beside the pins (meta/mcp-tools.json), which lint check 62

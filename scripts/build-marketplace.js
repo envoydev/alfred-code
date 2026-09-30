@@ -14,6 +14,7 @@
 //
 //   node scripts/build-marketplace.js --write-marketplace   apply the entries to the live file
 //   node scripts/build-marketplace.js --hooks-entry         print the core's hooks block (lint 48)
+//   node scripts/build-marketplace.js --mcp-entries         the generated MCP plugin entries (`npm run marketplace`; lint 53 checks them)
 //
 // The CORE entry is generated too, from Phase 3 on. It used to ship from `./setup-plugin`, whose
 // own .claude-plugin/plugin.json was its manifest; its seats live under stack/, outside that folder,
@@ -333,7 +334,7 @@ function readPins(options = {})
 // registration route never did that (it wrote one server per KEPT engine), and the selection already
 // knows which engines those are. One plugin per engine keeps that, and drops the `/mcp disable`
 // step the one-entry shape would have needed.
-const PW_ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
+const { ENGINES: PW_ENGINES } = require('../stack/mcp/data-root.js');
 
 // INVARIANT: one plugin, one server, SAME NAME. A plugin server's tools are addressed
 // `mcp__plugin_<plugin>_<server>__<tool>`, so this is what makes every shipped tool name
