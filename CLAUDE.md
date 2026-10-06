@@ -111,9 +111,9 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
   every skill DESCRIPTION plus `when_to_use` (a `disable-model-invocation` skill's is not in context, so
   its description is skipped), and the fixed text every generated capabilities rule carries (the usage
   policy and the locked-server row) - prints each part, and fails over 70,000 chars (lowered from 160,000
-  on 2026-09-29, about 40% over the measured total; 49,987 on 2026-09-30 (2.1.6): pathless rules 23,771, agent
+  on 2026-09-29, about 40% over the measured total; 50,007 on 2026-10-06 (2.1.7): pathless rules 23,759, agent
   descriptions 12,532, skill descriptions 11,886 with 13 manual-only skipped, capabilities fixed text
-  1,798 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories
+  1,830 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories
   moving to `docs/baseline-rules-evidence.md`, and the 2.1.2 cap below cut the skill descriptions from
   50,719; the whole-file count it replaced read 51,473 and missed the generated rule). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's

@@ -55,20 +55,20 @@ test('C1: git-mode docs root keeps the usage audit\'s raw transcripts out of git
 {
     const root = repo();
     assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: '.alfred/docs', mode: 'git' }), 'written');
-    const base = path.join(root, '.alfred', 'docs', 'alfred-code-usage-report');
+    const base = path.join(root, '.alfred', 'docs', 'usage-report');
     for (const rel of ['s1/s1.jsonl', 's1/subagents/agent-a.jsonl', 's1/hook-blocks-s1.jsonl', 's1/report-usage.md', 's1/s1.json', 'SUMMARY.md'])
     {
         fs.mkdirSync(path.dirname(path.join(base, rel)), { recursive: true });
         fs.writeFileSync(path.join(base, rel), 'x\n');
     }
-    const status = execFileSync('git', ['status', '--porcelain', '--untracked-files=all', '--', '.alfred/docs/alfred-code-usage-report'], { cwd: root, encoding: 'utf8' });
+    const status = execFileSync('git', ['status', '--porcelain', '--untracked-files=all', '--', '.alfred/docs/usage-report'], { cwd: root, encoding: 'utf8' });
     assert.doesNotMatch(status, /\.jsonl/, 'no transcript or ledger copy is committable');
     assert.deepStrictEqual(status.trim().split('\n').sort(), [
-        '?? .alfred/docs/alfred-code-usage-report/SUMMARY.md',
-        '?? .alfred/docs/alfred-code-usage-report/s1/report-usage.md',
-        '?? .alfred/docs/alfred-code-usage-report/s1/s1.json',
+        '?? .alfred/docs/usage-report/SUMMARY.md',
+        '?? .alfred/docs/usage-report/s1/report-usage.md',
+        '?? .alfred/docs/usage-report/s1/s1.json',
     ]);
-    const probe = spawnSync('git', ['check-ignore', '-q', '.alfred/docs/alfred-code-usage-report/s2/x.jsonl'], { cwd: root });
+    const probe = spawnSync('git', ['check-ignore', '-q', '.alfred/docs/usage-report/s2/x.jsonl'], { cwd: root });
     assert.strictEqual(probe.status, 0, 'the skill\'s own consent probe reads a not-yet-written copy as ignored');
 });
 
@@ -78,7 +78,7 @@ test('C1: an update over the 2.1.3 git-mode file rewrites it, a re-run changes n
     fs.mkdirSync(path.dirname(ignoreOf(root)), { recursive: true });
     fs.writeFileSync(ignoreOf(root), GIT_TEXT_213);
     assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: '.alfred/docs', mode: 'git' }), 'replaced', 'the stack\'s former text is the stack\'s');
-    assert.match(fs.readFileSync(ignoreOf(root), 'utf8'), /^\/alfred-code-usage-report\/\*\*\/\*\.jsonl$/m);
+    assert.match(fs.readFileSync(ignoreOf(root), 'utf8'), /^\/usage-report\/\*\*\/\*\.jsonl$/m);
     assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: '.alfred/docs', mode: 'git' }), 'current');
 
     const crlf = repo();
@@ -96,8 +96,8 @@ test('C1: an update over the 2.1.3 git-mode file rewrites it, a re-run changes n
 
 test('C1: the usage audit keys its transcript copy on git check-ignore and asks before a committable copy', () =>
 {
-    const skill = read('stack/skills/alfred-capture-stack-usage/SKILL.md');
-    assert.match(flat(skill), /git check-ignore -q "<docs-path>\/alfred-code-usage-report\/<session-id>\/x\.jsonl"/);
+    const skill = read('stack/skills/alfred-capture-usage-report/SKILL.md');
+    assert.match(flat(skill), /git check-ignore -q "<docs-path>\/usage-report\/<session-id>\/x\.jsonl"/);
     const ask = asks(skill).find((a) => a.options.some((o) => /raw transcripts/i.test(o)));
     assert.ok(ask, 'the consent is an ask template');
     assert.deepStrictEqual(ask.options, ['Report and --json dumps only (Recommended)', 'Copy the raw transcripts too']);
@@ -187,7 +187,7 @@ test('I27: no fenced bash block in a shipped skill reads a variable another Bash
 });
 test('I27: the usage audit\'s temp dir is made under $TMPDIR, where a sandboxed command may write', () =>
 {
-    const skill = read('stack/skills/alfred-capture-stack-usage/SKILL.md');
+    const skill = read('stack/skills/alfred-capture-usage-report/SKILL.md');
     assert.match(skill, /mktemp -d "\$\{TMPDIR:-\/tmp\}\/alfred-code\.XXXXXX"/);
     assert.doesNotMatch(skill, /mktemp -d\)/, 'a bare mktemp -d ignores $TMPDIR on macOS');
 });
@@ -263,4 +263,83 @@ test('I35: verify-plan and solve-cross record the audit in one Passes shape, pin
     assert.ok(entry, 'pinned in shared-rules.json');
     assert.strictEqual(entry.owner.file, 'stack/skills/alfred-task-verify-plan/SKILL.md');
     assert.deepStrictEqual(copiesOf(entry).sort(), ['stack/skills/alfred-task-solve-cross/SKILL.md', 'stack/skills/alfred-task-verify-plan/SKILL.md']);
+});
+
+// ---- 2.1.7: the usage audit's folder is `usage-report/` (was `alfred-code-usage-report/`) ----------------------
+const GIT_TEXT_216 = GIT_TEXT_213 + '# the usage audit\'s raw transcript and ledger copies stay on this machine\n/alfred-code-usage-report/**/*.jsonl\n';
+function oldBundle(root, sessions = ['s1'])
+{
+    const base = path.join(root, '.alfred', 'docs', 'alfred-code-usage-report');
+    fs.mkdirSync(base, { recursive: true });
+    fs.writeFileSync(path.join(base, 'SUMMARY.md'), 'old summary\n');
+    for (const s of sessions)
+    {
+        fs.mkdirSync(path.join(base, s), { recursive: true });
+        fs.writeFileSync(path.join(base, s, 'report-usage.md'), `${s}\n`);
+        fs.writeFileSync(path.join(base, s, `${s}.jsonl`), '{"raw":true}\n');
+    }
+    return base;
+}
+const usageArgs = (root) => ({ projectRoot: root, docsPath: '.alfred/docs' });
+
+test('2.1.7: an update over the 2.1.6 git text rewrites it, then the old folder moves whole and its raw copies stay ignored', () =>
+{
+    const root = repo();
+    const old = oldBundle(root);
+    fs.writeFileSync(ignoreOf(root), GIT_TEXT_216);
+    execFileSync('git', ['add', '.alfred/docs'], { cwd: root });
+    execFileSync('git', ['-c', 'user.email=t@x', '-c', 'user.name=t', 'commit', '-qm', 'docs'], { cwd: root });
+    assert.strictEqual(docs.ensureDocsIgnore({ ...usageArgs(root), mode: 'git' }), 'replaced');
+    const lines = [];
+    assert.strictEqual(docs.migrateUsageReport({ ...usageArgs(root), log: (l) => lines.push(l) }), 'moved');
+    assert.ok(!fs.existsSync(old));
+    assert.strictEqual(fs.readFileSync(path.join(root, '.alfred', 'docs', 'usage-report', 's1', 'report-usage.md'), 'utf8'), 's1\n');
+    assert.match(lines.join('\n'), /alfred-code-usage-report\/ -> usage-report\//);
+    const status = execFileSync('git', ['status', '--porcelain', '--untracked-files=all', '--', '.alfred/docs'], { cwd: root, encoding: 'utf8' });
+    assert.doesNotMatch(status, /\.jsonl/, 'the moved raw copy is still out of git');
+    assert.match(status, /^R  \.alfred\/docs\/alfred-code-usage-report\/s1\/report-usage\.md -> \.alfred\/docs\/usage-report\/s1\/report-usage\.md$/m, 'a committed report moves as a staged rename');
+    assert.strictEqual(docs.migrateUsageReport(usageArgs(root)), 'none', 'a re-run finds nothing to move');
+});
+
+test('2.1.7: a folder with raw copies is held where git would not ignore them at the new name - the project\'s own file kept', () =>
+{
+    const root = repo();
+    const old = oldBundle(root);
+    fs.writeFileSync(ignoreOf(root), '# ours\n/alfred-code-usage-report/**/*.jsonl\n');
+    assert.strictEqual(docs.ensureDocsIgnore({ ...usageArgs(root), mode: 'git' }), 'kept');
+    const lines = [];
+    assert.strictEqual(docs.migrateUsageReport({ ...usageArgs(root), log: (l) => lines.push(l) }), 'held');
+    assert.ok(fs.existsSync(path.join(old, 's1', 's1.jsonl')));
+    assert.ok(!fs.existsSync(path.join(root, '.alfred', 'docs', 'usage-report')));
+    assert.match(lines.join('\n'), /^ {2}!! .*add '\/usage-report\/\*\*\/\*\.jsonl'/m);
+    // Reports alone carry nothing secret: they move whatever git says.
+    fs.rmSync(path.join(old, 's1', 's1.jsonl'));
+    assert.strictEqual(docs.migrateUsageReport(usageArgs(root)), 'moved');
+});
+
+test('2.1.7: a local root or no repository moves raw copies; a new folder already there is merged, never overwritten', () =>
+{
+    const local = repo();
+    oldBundle(local);
+    docs.ensureDocsIgnore({ ...usageArgs(local), mode: 'local' });
+    assert.strictEqual(docs.migrateUsageReport(usageArgs(local)), 'moved');
+
+    const bare = path.join(os.tmpdir(), `usage-bare-${process.pid}-${Date.now()}`);
+    oldBundle(bare);
+    try { assert.strictEqual(docs.migrateUsageReport(usageArgs(bare)), 'moved', 'outside git nothing can be committed'); }
+    finally { fs.rmSync(bare, { recursive: true, force: true }); }
+
+    const both = repo();
+    docs.ensureDocsIgnore({ ...usageArgs(both), mode: 'git' });
+    const old = oldBundle(both, ['s1', 's2']);
+    const fresh = path.join(both, '.alfred', 'docs', 'usage-report');
+    fs.mkdirSync(path.join(fresh, 's2'), { recursive: true });
+    fs.writeFileSync(path.join(fresh, 's2', 'report-usage.md'), 'new s2\n');
+    const lines = [];
+    assert.strictEqual(docs.migrateUsageReport({ ...usageArgs(both), log: (l) => lines.push(l) }), 'merged');
+    assert.strictEqual(fs.readFileSync(path.join(fresh, 's1', 'report-usage.md'), 'utf8'), 's1\n', 'a session only the old folder held moves');
+    assert.strictEqual(fs.readFileSync(path.join(fresh, 's2', 'report-usage.md'), 'utf8'), 'new s2\n', 'the new copy is never overwritten');
+    assert.strictEqual(fs.readFileSync(path.join(fresh, 'SUMMARY.md'), 'utf8'), 'old summary\n');
+    assert.ok(fs.existsSync(path.join(old, 's2')), 'the clash stays at the old name');
+    assert.match(lines.join('\n'), /!! .*already holds s2/);
 });

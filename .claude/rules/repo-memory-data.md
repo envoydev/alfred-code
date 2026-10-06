@@ -104,8 +104,10 @@ The memory levels and stores, where the docs root and the data root live, and th
   (`docs.ensureDocsIgnore`, absent-only, never under `.claude/`): `local` keeps the whole root out of
   git, `git` keeps only the hooks' machine state out (`flow/`, `hook-blocks/`, `history/`,
   `tools-usage/`, `.branches/`, `docs-log.jsonl`) plus the usage audit's raw transcript copies
-  (`alfred-code-usage-report/**/*.jsonl`, which the audit's copy step checks with `git check-ignore`
-  before it copies). A file holding a text an earlier release wrote (`DOCS_IGNORE_FORMER`) is the stack's
+  (`usage-report/**/*.jsonl`, which the audit's copy step checks with `git check-ignore`
+  before it copies; the folder was `alfred-code-usage-report/` until 2.1.7 - `docs.migrateUsageReport`, run after this
+  file is current, renames it, never moving raw copies to a path git would not ignore, never over a session folder the new
+  one holds). A file holding a text an earlier release wrote (`DOCS_IGNORE_FORMER`) is the stack's
   and is rewritten; any other text is the project's and kept. An install on the old default is never moved
   silently (`docs.docsMovePlan`): the stack's own seed (the ledger's hash, or with no ledger the
   catalog's `former_defaults`) over docs at `.claude/docs` is OFFERED once - since 2.1.0 as part of the data
@@ -113,10 +115,11 @@ The memory levels and stores, where the docs root and the data root live, and th
   or keep, and the answer is `--data-move move|keep`. Move: one step, `git mv` for tracked files (history kept, staged as
   renames), a rename for the rest, every file put back on any failure, the key re-pointed and the rule
   re-stamped - with every generated pointer rule (`alfred-project-*`, `project-code-style`) that names the
-  old root, which a capture baked in literally (`selection.respellDocsRoot`, M11) - a restart named. Keep: the key becomes the user's own value, out of the ledger, and no
-  update offers again. No answer: nothing moves, and an absent key is written back as the old root so
-  the hooks keep reading where the docs are. A value the user set is never offered: one the ledger does
-  not record, or any root in `settings.local.json` at project or user scope (the stamped rule is
+  old root, which a capture baked in literally (`selection.respellDocsRoot`, M11) - a restart named. Keep: the key becomes the user's own value, out of the ledger; a 2.1 keep writes `data-move: kept` and no
+  update offers again, while a 2.0.0 keep (no such line) is offered once more, marked `yours=yes` - never answered by
+  an unattended run (2.1.7, the user's ruling of 2026-10-06: all of the stack's data belongs under the data root). No answer: nothing moves, and an absent key is written back as the old root so
+  the hooks keep reading where the docs are. A value the user set elsewhere is never offered: one the ledger does
+  not record (the old default aside, above), or any root in `settings.local.json` at project or user scope (the stamped rule is
   settings.json's, R98). The launch environment is never read - a settings value applies over a shell
   export and the seed writes one anyway. A move keeps what git saw: an old root git ignored, with nothing
   tracked, becomes a `local` root (`ignored=yes` in the offer). A conflict or an unreadable settings file
@@ -134,12 +137,11 @@ The memory levels and stores, where the docs root and the data root live, and th
   (`docs.ensureDataIgnore`); every launcher writes it absent-only before it hands out a path under the root
   (`ensureRootIgnore`) - a 2.0.0 project whose servers are already 2.1 has none yet. THE MOVE: the docs move
   inline (`docs.docsMovePlan` generalised - the old default the stack wrote, which the ledger records or a stamp
-  from before the ledger implies; a 2.0.0 keep made it the user's and no update offers it again - or the
-  stack's docs under an earlier root); a server's own data is LIVE while the session running the installer holds it, so on
+  from before the ledger implies; a 2.0.0 keep is offered as `yours=yes` - or the stack's docs under an earlier root); a server's own data is LIVE while the session running the installer holds it, so on
   a route where its launcher runs the installer records a stamp line `data-pending: <class> <from> -> <to>` and
   the launcher moves it at its next start, only when nothing holds it (a database with no `-wal`/`-shm`/
   `-journal`, a browser profile with no Chromium `Singleton*` or Firefox `lock`, a serena folder whose logs
-  name no live pid whose command line says serena (`ps`; Windows has none, so a live pid counts) - `<folder>/home/logs/<date>/mcp_<stamp>_<pid>.txt`, `data-root.js serenaBusy`, M2: a second
+  name no live pid whose command line says serena (one `ps` call; on Windows one CIM `Win32_Process` query, a row with no command line judged by its image name - python, uv, serena; a failed query counts every pid busy) - `<folder>/home/logs/<date>/mcp_<stamp>_<pid>.txt`, `data-root.js serenaBusy`, M2: a second
   session's serena, or on the copy route the running session's own); on the copy route, which runs no launcher,
   the installer moves inline with the same checks, and a refused move stays pending for the next run. A pending line whose target already holds the
   data clears: its launcher made the move, and data at the old place again was written after it by a reader

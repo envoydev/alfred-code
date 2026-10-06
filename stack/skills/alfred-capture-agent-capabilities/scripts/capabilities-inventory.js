@@ -563,7 +563,18 @@ function precheck(projectRoot, rulePath)
         visit(path.join(projectRoot, src), 0);
     }
     hits.sort((a, b) => b.mtime - a.mtime);
-    return { first: false, hits, captured: ((/^Captured:\s*(.+)$/m.exec(readText(rulePath) || '') || [])[1] || 'no Captured: line').trim() };
+    const captured = ((/^Captured:\s*(.+)$/m.exec(readText(rulePath) || '') || [])[1] || 'no Captured: line').trim();
+    // Every update rewrites the stamp, a no-op one included, so a newer stamp alone said drift after each update and
+    // the full compose that followed came out identical. When the stamp is the ONLY newer file, its revision is
+    // compared with the one the rule's `Captured: <date> from <version>@<sha>` line recorded: the same revision is
+    // no drift. A stamp with no revision, or a rule with no `from`, stays drift.
+    const recorded = (/\bfrom\s+(\S+)\s*$/.exec(captured) || [])[1];
+    const live = installStamp(projectRoot);
+    if (hits.length && hits.every((h) => STAMPS.includes(h.path)) && live && recorded === live)
+    {
+        return { first: false, hits: [], captured, stampSame: live };
+    }
+    return { first: false, hits, captured };
 }
 
 const sectionsOf = (text) =>
@@ -649,7 +660,7 @@ function report(projectRoot)
 
     const pre = precheck(projectRoot, rulePath);
     if (pre.first) say('PRECHECK', 'FIRST - no rule yet, capture everything');
-    else if (pre.hits.length === 0) say('PRECHECK', `empty - 0 files newer than the rule (Captured: ${pre.captured}). Say so in one line and STOP, unless the user asked for a refresh or the machine-global plugin state is what changed.`);
+    else if (pre.hits.length === 0) say('PRECHECK', `empty - 0 files newer than the rule (Captured: ${pre.captured}${pre.stampSame ? `; a stamp rewrite at the same revision ${pre.stampSame} is not drift` : ''}). Say so in one line and STOP, unless the user asked for a refresh or the machine-global plugin state is what changed.`);
     else
     {
         say('PRECHECK', `drift - ${pre.hits.length} file(s) newer than the rule (Captured: ${pre.captured})`);

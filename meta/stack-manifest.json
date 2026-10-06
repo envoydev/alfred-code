@@ -183,8 +183,8 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-capture-stack-usage",
-      "note": "token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/alfred-code-usage-report/"
+      "name": "alfred-capture-usage-report",
+      "note": "token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/usage-report/"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -807,7 +807,7 @@
     },
     {
       "file": "guard-fresh-session-start.js",
-      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])(alfred-(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|stack-usage|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
+      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])(alfred-(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
       "event": "",
       "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling, so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only)"
     },
@@ -1061,6 +1061,7 @@
       "project-commit-checkpoint",
       "alfred-capture-claude-md",
       "alfred-habits-adjust-claude-md",
+      "alfred-capture-stack-usage",
       "create-ticket",
       "explain-code-tutor",
       "plugin-authoring"
@@ -1136,7 +1137,7 @@
       "project-test-coverage-analyzer": "alfred-capture-test-coverage",
       "project-related-context": "alfred-capture-related-projects",
       "project-agent-capabilities": "alfred-capture-agent-capabilities",
-      "project-stack-usage-analyzer": "alfred-capture-stack-usage",
+      "project-stack-usage-analyzer": "alfred-capture-usage-report",
       "project-first-look": "alfred-capture-first-look",
       "project-quality-loop": "alfred-loop-quality",
       "project-architecture-quality-loop": "alfred-loop-architecture-quality",
@@ -1144,6 +1145,7 @@
       "project-commit-checkpoint": "alfred-habits-commit-checkpoint",
       "alfred-capture-claude-md": "alfred-habits-adjust-agents-md",
       "alfred-habits-adjust-claude-md": "alfred-habits-adjust-agents-md",
+      "alfred-capture-stack-usage": "alfred-capture-usage-report",
       "create-ticket": "alfred-habits-create-ticket",
       "explain-code-tutor": "alfred-habits-explain-code"
     },

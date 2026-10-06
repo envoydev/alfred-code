@@ -86,14 +86,20 @@ test('plan: every explicit root is left alone - never offered', () =>
 
 // M1: a 2.0.0 keep made the key the user's own - out of the ledger - and 2.0.0 promised no update offers again.
 // Offered once more, an unattended update took the recommended move over the user's answer.
-test('plan: the old default the user kept in 2.0.0 is never offered again - the ledger that does not record it is the record', () =>
+test('plan: the old default the user kept in 2.0.0 is offered again, marked yours - a 2.1 keep ends it', () =>
 {
+    // 2026-10-06 ruling: every Alfred Code file belongs under the data root, so a 2.0.0 keep is asked once more.
     const root = repo(OLD);
     for (const [over, what] of [[{ ledger: {} }, 'a ledger that does not record the key (the 2.0.0 keep)'], [{ ledger: ledgerOf('something else') }, 'changed since the stack wrote it']])
-        assert.strictEqual(plan(root, over).state, 'none', what);
-    assert.match(plan(root, { ledger: {} }).why, /kept at \.claude\/docs/);
-    assert.strictEqual(plan(root).state, 'offer', 'the stack\'s own seed, which the ledger records, is still offered');
+    {
+        const p = plan(root, over);
+        assert.deepStrictEqual([p.state, p.yours], ['offer', true], what);
+    }
+    assert.strictEqual(plan(root).yours, undefined, 'the stack\'s own seed, which the ledger records, is offered unmarked');
+    assert.strictEqual(plan(root).state, 'offer');
     assert.strictEqual(plan(root, { ledger: {}, kept: true }).state, 'none', 'the data move was answered keep');
+    const own = repo({ 'notes/architecture/ARCHITECTURE.md': '# a\n' });
+    assert.match(plan(own, { env: { ALFRED_CODE_DOCS_PATH: 'notes' }, ledger: {} }).why, /set by hand/, 'a root of the user\'s own elsewhere is never offered');
 });
 
 test('plan: the stack\'s docs under an earlier data root move with the root', () =>
@@ -266,23 +272,25 @@ test('installer: --docs-move keep pins the old root as the user\'s own, and no l
     assert.doesNotMatch(result.stamp, /ALFRED_CODE_DOCS_PATH=/, 'out of the stack\'s ledger');
 });
 
-test('M1 installer: a .claude/docs root the user kept in 2.0.0 is never moved - not even by an unattended update taking the recommended move', POSIX_ONLY, () =>
+test('M1 installer: a .claude/docs root the user kept in 2.0.0 moves only on an explicit answer - no flag moves nothing', POSIX_ONLY, () =>
 {
-    const { outs, result } = seedRun(['install', 'update'], SELECTION, {
-        args: [['--scope', 'project'], updateArgs('--data-move', 'move')],
-        each: (r, i) =>
-        {
-            if (i !== 0) return null;
-            olderInstall(r);
-            // What 2.0.0's keep wrote: the key stays, the ledger no longer records it.
-            const stamp = path.join(r, '.claude', 'alfred-code.stamp');
-            fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/,?settings\.json:ALFRED_CODE_DOCS_PATH=[0-9a-f]{64}/, ''));
-            return null;
-        },
-        inspect: look,
-    });
-    assert.doesNotMatch(outs[1], /docs root: moved/, outs[1]);
-    assert.deepStrictEqual([result.env.ALFRED_CODE_DOCS_PATH, result.rule, result.old, result.moved], ['.claude/docs', '.claude/docs', true, false]);
+    const kept20 = (r, i) =>
+    {
+        if (i !== 0) return null;
+        olderInstall(r);
+        // What 2.0.0's keep wrote: the key stays, the ledger no longer records it.
+        const stamp = path.join(r, '.claude', 'alfred-code.stamp');
+        fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/,?settings\.json:ALFRED_CODE_DOCS_PATH=[0-9a-f]{64}/, ''));
+        return null;
+    };
+    // An unattended update passes no --data-move for a yours=yes offer (update.md): nothing moves, the key stays.
+    const quiet = seedRun(['install', 'update'], SELECTION, { args: [['--scope', 'project'], updateArgs()], each: kept20, inspect: look });
+    assert.doesNotMatch(quiet.outs[1], /docs root: moved/, quiet.outs[1]);
+    assert.deepStrictEqual([quiet.result.env.ALFRED_CODE_DOCS_PATH, quiet.result.old, quiet.result.moved], ['.claude/docs', true, false]);
+    // The user's own 'move' answer moves it.
+    const moved = seedRun(['install', 'update'], SELECTION, { args: [['--scope', 'project'], updateArgs('--data-move', 'move')], each: kept20, inspect: look });
+    assert.match(moved.outs[1], /docs root: moved/, moved.outs[1]);
+    assert.strictEqual(moved.result.moved, true);
 });
 
 test('installer: a conflict refuses the move and changes nothing', POSIX_ONLY, () =>

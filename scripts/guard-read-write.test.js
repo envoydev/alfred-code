@@ -32,7 +32,10 @@ const bash = (hook, command, opts) => run(hook, { tool_name: 'Bash', tool_input:
 const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
 const sid = () => `rw-${Math.random().toString(36).slice(2)}`;
 // The announcement is once per rule per SESSION, so every case names the session it spends.
-const announce = (command, session_id, hook = READ, opts) => ctxOf(run(hook, { tool_name: 'Bash', tool_input: { command }, session_id }, opts));
+// Run in the scratch root unless a case anchors elsewhere: the hook reads what is installed from the CWD's
+// `.claude/rules` too, and this checkout's holds only the repo's own rules since 2.1.6 (no convention rule),
+// so a run left at the checkout's cwd announced nothing - red here and in CI.
+const announce = (command, session_id, hook = READ, opts = { cwd: ROOT }) => ctxOf(run(hook, { tool_name: 'Bash', tool_input: { command }, session_id }, opts));
 const LONG_JS = 'const a = 1;\n'.repeat(400); // over the 200-line threshold
 
 test('guard-read-whole-file: the convention rule is announced for the WRITE TARGET, never for an executed script or a 2>/dev/null', () => {

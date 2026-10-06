@@ -35,11 +35,11 @@
       ],
       "plugins": []
     },
-    "alfred-capture-stack-usage": {
+    "alfred-capture-test-coverage": {
       "mcps": [],
       "plugins": []
     },
-    "alfred-capture-test-coverage": {
+    "alfred-capture-usage-report": {
       "mcps": [],
       "plugins": []
     },

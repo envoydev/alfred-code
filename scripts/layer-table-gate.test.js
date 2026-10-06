@@ -229,3 +229,37 @@ test('the denial tells the model not to re-run the table', () => {
   assert.strictEqual(r.status, 2);
   assert.match(r.stderr, /do not re-run/i);
 });
+
+// 2026-10-06: 'No tables with hooks, skills, agents, rules are shown' - a walk that never RAN a layer's table
+// asked that layer's selection with nothing on screen; the gate above judges only a table that ran.
+const layerAsk = (q) => ({ questions: [{ question: q, header: 'Layer', multiSelect: false, options: [{ label: 'Keep the marked rows (Recommended)', description: 'x' }, { label: 'Pick', description: 'y' }] }] });
+const recompute = call('r1', 'Bash', { command: 'node "$TMP/repo/scripts/stack-select.js" --selection raw.json > "$TMP/select.out"' });
+
+test('a layer ask inside a walk whose table never ran is denied, naming the --table call', () => {
+  const r = run([typed('/alfred-code:configure'), recompute, result('r1', ''), say('[step 4/13 - agents]')], layerAsk('Agents: install the marked rows? The unmarked ones are other stacks\' trios.'));
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /agents table never ran/);
+  assert.match(r.stderr, /--table agents/);
+});
+
+test('the DELTA add / drop ask names its layer too', () => {
+  const r = run([typed('/alfred-code:configure'), recompute, result('r1', '')], layerAsk('Add to the installed skills? 40 catalog rows are not installed.'));
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /skills table never ran/);
+});
+
+test('a layer ask passes once that layer table ran and was pasted', () => {
+  const r = run([typed('/alfred-code:setup'), recompute, result('r1', ''), table('hooks'), result('t1', 'total: 18 hooks'), say('```\n 1 | x\ntotal: 18 hooks\n```')], layerAsk('Hooks: keep all 18 on?'));
+  assert.strictEqual(r.status, 0);
+});
+
+test('a layer-shaped ask outside a walk (no stack-select call) is untouched', () => {
+  assert.strictEqual(run([typed('which rules?'), say('a few')], layerAsk('Rules: keep them?')).status, 0);
+});
+
+test('the never-ran denial has its own valve of three', () => {
+  const nr = (n) => [call(`n${n}`, 'AskUserQuestion', layerAsk('Rules: install?')), result(`n${n}`, 'alfred-code layer-table gate: the rules table never ran - x', true)];
+  const rows = [typed('/alfred-code:setup'), recompute, result('r1', ''), ...nr(1), ...nr(2)];
+  assert.strictEqual(run(rows, layerAsk('Rules: install?')).status, 2);
+  assert.strictEqual(run([...rows, ...nr(3)], layerAsk('Rules: install?')).status, 0);
+});

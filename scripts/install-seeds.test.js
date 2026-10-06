@@ -235,6 +235,45 @@ test('move: both .claude files present is named and left, and no CLAUDE.md at al
     assert.strictEqual(seeds.moveSeededClaudeMd({ projectRoot: dir(), sourceDir: dir(TEMPLATE), hash: hashOf }), 'none');
 });
 
+test('move: --rename-claude-md moves the user\'s own edited file and re-spells the re-include in both ignore files', () =>
+{
+    const projectRoot = dir({ '.claude/CLAUDE.md': '# mine\r\n', '.gitignore': '.claude/*\r\n!.claude/CLAUDE.md\r\n', 'excl': '!/.claude/CLAUDE.md\n# keep me\n' });
+    const logs = [];
+    const gitMvs = [];
+    const r = seeds.moveSeededClaudeMd({
+        projectRoot, sourceDir: dir(TEMPLATE), ledgerHash: '', hash: hashOf, tracked: () => true, force: true,
+        ignoreFiles: [path.join(projectRoot, 'excl'), path.join(projectRoot, 'absent')],
+        gitMv: (a, b) => { gitMvs.push([a, b]); fs.renameSync(a, b); }, log: (m) => logs.push(m), note: (m) => logs.push(`NOTE ${m}`),
+    });
+    assert.strictEqual(r, 'moved');
+    assert.strictEqual(gitMvs.length, 1);
+    assert.strictEqual(fs.readFileSync(path.join(projectRoot, '.claude', 'AGENTS.md'), 'utf8'), '# mine\r\n', 'every byte kept');
+    assert.strictEqual(fs.readFileSync(path.join(projectRoot, '.gitignore'), 'utf8'), '.claude/*\r\n!.claude/AGENTS.md\r\n', 'CRLF kept');
+    assert.strictEqual(fs.readFileSync(path.join(projectRoot, 'excl'), 'utf8'), '!/.claude/AGENTS.md\n# keep me\n');
+    assert.ok(logs.some((l) => /your file, on your answer/.test(l)) && logs.some((l) => /re-include line now names/.test(l)), logs.join(' | '));
+    assert.ok(!fs.existsSync(path.join(projectRoot, 'absent')), 'a missing ignore file is not created');
+});
+
+test('move: --rename-claude-md still never splits the instructions - a root AGENTS.md or a .claude/AGENTS.md wins', () =>
+{
+    for (const files of [{ 'AGENTS.md': '# a\n' }, { '.claude/AGENTS.md': '# b\n' }])
+    {
+        const projectRoot = dir({ ...files, '.claude/CLAUDE.md': '# mine\n' });
+        const r = seeds.moveSeededClaudeMd({ projectRoot, sourceDir: dir(TEMPLATE), hash: hashOf, force: true });
+        assert.match(r, /^kept-/);
+        assert.strictEqual(fs.readFileSync(path.join(projectRoot, '.claude', 'CLAUDE.md'), 'utf8'), '# mine\n');
+    }
+});
+
+test('offer: the agents-md line offers only a clean rename', () =>
+{
+    assert.strictEqual(seeds.claudeMdOffer(dir({ '.claude/CLAUDE.md': 'x' })), 'agents-md: offer .claude/CLAUDE.md -> .claude/AGENTS.md');
+    assert.match(seeds.claudeMdOffer(dir()), /^agents-md: none \(no \.claude\/CLAUDE\.md\)/);
+    assert.match(seeds.claudeMdOffer(dir({ '.claude/CLAUDE.md': 'x', 'AGENTS.md': 'y' })), /root AGENTS\.md/);
+    assert.match(seeds.claudeMdOffer(dir({ '.claude/CLAUDE.md': 'x', '.claude/AGENTS.md': 'y' })), /exists beside it/);
+    assert.match(seeds.claudeMdOffer(dir({ '.claude/CLAUDE.md': 'x', 'CLAUDE.local.md': 'y' })), /CLAUDE\.local\.md would keep/);
+});
+
 // --- the playwright downloads --------------------------------------------
 
 test('playwright: only firefox and webkit are downloaded, and a failure is a HINT not a stop', () =>

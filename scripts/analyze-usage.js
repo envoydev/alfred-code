@@ -816,7 +816,7 @@ function buildVintage(inv, main) {
       : cur.headings !== l.headings ? 'DIFFERS - the current source has different sections'
         : Math.abs(delta) > Math.max(64, Math.round(0.01 * l.chars)) ? `DIFFERS - same sections, ${delta > 0 ? '+' : ''}${delta} chars in the current source`
           : 'same';
-    rows.push({ name, how: 'Skill call', loadedChars: l.chars, currentChars: cur ? cur.chars : null, file, verdict, ts: l.ts });
+    rows.push({ name, how: l.via === 'slash' ? 'slash command' : 'Skill call', loadedChars: l.chars, currentChars: cur ? cur.chars : null, file, verdict, ts: l.ts });
   }
   // A run whose body never reached the transcript is NOT a match - say so rather than comparing
   // against a source nothing proves the session saw.
@@ -923,9 +923,11 @@ function addSessionUse(acc, main, agents, inventoryDir) {
       const ts = (src.commandFirstTs || {})[name] || null;
       noteNs(namespaced, name, n, ts);
       // `/clear`, `/model`, `/effort` are the harness's own commands, not skills - a slash turn
-      // only counts against the skills layer when a skill of that name is installed.
-      if (!acc.skills.has(houseBare(name))) continue;
-      mark(acc.skills.get(houseBare(name)), 'slash command', n, ts);
+      // only counts against the skills layer when a skill of that name is installed, or when its
+      // expansion carried a skill body (a manual-only skill is in no roster).
+      const isSkill = (src.slashSkillRuns || {})[name];
+      if (!acc.skills.has(houseBare(name)) && !isSkill) continue;
+      mark(ensure(acc.skills, houseBare(name)), 'slash command', n, ts);
     }
   }
 
@@ -1227,7 +1229,8 @@ async function analyzeTranscript(file, window) {
     commandFirstTs: {},          // slash-command name -> first invocation ts
     availableSkills: null,       // the roster the harness gave THIS session (Set) - the installed set at the time
     availableAgents: null,       // the agent types it registered (Set)
-    loadedSkillBodies: {},       // skill -> { chars, headings, path, ts } - the body the session really loaded
+    loadedSkillBodies: {},       // skill -> { chars, headings, path, ts, via } - the body the session really loaded
+    slashSkillRuns: {},          // slash command -> true when its expansion carried a skill body: a skill run, roster or not
     forkPrefix: { rows: 0, msgs: 0, cacheRead: 0, cacheCreate: 0, output: 0, toolCalls: 0, sessionIds: [] },
     costState: null,             // the cost-state record's own totals - the only side that sees the harness's recap calls
     toolCallIdx: [],             // { ts, tool } per tool_use outside the fork prefix - the per-side ledger join
@@ -1399,6 +1402,7 @@ async function analyzeTranscript(file, window) {
                                    // a companion (measured: a post-gate flow folded into the
                                    // ask-side skill and reported as its cost)
   let lastToolName = null;         // attributes isMeta skill-body injections to spike causes
+  let slashPending = null;         // { name } - a slash command whose expansion row has not arrived yet
   let prevAssistantNoTool = null;  // ts of an end_turn assistant msg with no tool_use
   s.gitCommits = 0; s.prMerges = 0; s.clearTs = null; s.ccVersion = null;
   s.unheldStopCandidates = [];     // { stopTs, userTs } - free-text user turn right after a
@@ -1588,6 +1592,22 @@ async function analyzeTranscript(file, window) {
     // also matched markers quoted inside tool_result payloads (measured: a foreign session's
     // /exit surfaced as this session's own invocation in two bundles), and a non-global
     // match dropped every marker after the first on a line.
+    // A slash run's body is the isMeta row the expansion writes right after the command (`Base directory for this
+    // skill: ...`), never an `invoked_skills` attachment - and a manual-only skill is in no roster, so without it the
+    // run read as a harness command (11b595da: 'No skill or slash-command run', 'used 0 of 72').
+    if (slashPending && o.type === 'user' && o.message) {
+      const c = o.message.content;
+      const txt = Array.isArray(c) ? c.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : '';
+      if (o.isMeta && /^Base directory for this skill:/.test(txt)) {
+        const body = skillBodyOf(txt);
+        const dir = (/^Base directory for this skill:\s*(.*)/.exec(txt) || [])[1] || null;
+        if (body) {
+          s.loadedSkillBodies[slashPending.name] = { chars: body.length, headings: headingFingerprint(body), path: dir && dir.trim(), ts: o.timestamp || null, via: 'slash' };
+          s.slashSkillRuns[slashPending.name] = true;
+        }
+        slashPending = null;
+      } else if (!o.isMeta && !raw.includes('<command-name>')) slashPending = null;
+    } else if (o.type === 'assistant') slashPending = null;
     if (o.type === 'user' && o.message && raw.includes('<command-name>')) {
       const own = typeof o.message.content === 'string' ? o.message.content
         : Array.isArray(o.message.content) ? o.message.content.filter((c) => c.type === 'text').map((c) => c.text || '').join('\n') : '';
@@ -1596,6 +1616,7 @@ async function analyzeTranscript(file, window) {
       // table at all.
       for (const m of own.matchAll(/<command-name>\s*\/?\s*([A-Za-z0-9_:-]+)\s*<\/command-name>/g)) {
         s.commandInvocations[m[1]] = (s.commandInvocations[m[1]] || 0) + 1;
+        slashPending = { name: m[1] };
         if (!s.commandFirstTs[m[1]]) s.commandFirstTs[m[1]] = o.timestamp || null;
         if (lastSkill) s.skillTimeline.push({ ts: o.timestamp || null, skill: null });
         lastSkill = null; // a new slash command ends the previous skill's carry-forward
@@ -2137,6 +2158,9 @@ async function analyzeTranscript(file, window) {
   s.companionOf = companionOf;
   // A correction the session ended on, with no store after it, was never saved.
   for (const p of pendingSaves) s.efficiency.correctionsUnsaved.push(p.ts);
+  // The roster omits a manual-only skill (`disable-model-invocation`), and a slash run that loaded its body proves it
+  // was installed all the same.
+  if (s.availableSkills) for (const n of Object.keys(s.slashSkillRuns)) s.availableSkills.add(n);
   // Sets do not survive JSON.stringify - the --json dump is the report's own input.
   s.availableSkills = s.availableSkills ? [...s.availableSkills].sort() : null;
   s.availableAgents = s.availableAgents ? [...s.availableAgents].sort() : null;
@@ -2167,7 +2191,7 @@ function summarizeCauses(pending) {
 
 async function analyzeSubagents(sessionFile, window) {
   // Native layout: <sid>.jsonl + <sid>/subagents/. Audit bundles (what the
-  // alfred-capture-stack-usage skill archives) put subagents/ as a SIBLING of the
+  // alfred-capture-usage-report skill archives) put subagents/ as a SIBLING of the
   // transcript - without the fallback a bundle re-analysis silently drops every seat.
   // Workflow-tool fan-outs nest under subagents/workflows/<wf-id>/agent-*.jsonl - a flat
   // scan silently dropped 703 transcripts (~35% of output) across two audited bundles,
@@ -3449,7 +3473,9 @@ const MACHINE_TABLE_SECTION_RE = /guard blocks/i;
 // the waste rows cite `L<n>`. Both are a row of the transcript the bundle ships, and both are
 // range-checked against it below.
 const LOCATOR_RE = /\b(?:L\d+|turns?\s+\d+|lines?\s+\d+|rows?\s+\d+)\b/i;
-const LOCATOR_G = /\b(?:L(\d+)|turns?\s+(\d+)|lines?\s+(\d+)|rows?\s+(\d+))\b/gi;
+// The guard after the digits keeps a date or a clock time from reading as one ('row 2026-10-05T10:55' named row 2026);
+// a range end ('L12-14') still reads its start.
+const LOCATOR_G = /\b(?:L(\d+)|turns?\s+(\d+)|lines?\s+(\d+)|rows?\s+(\d+))\b(?!:\d|-\d{1,2}-\d)/gi;
 // A number token, with the units the tables print: `8.0k`, `~12`, `1,204`, `53%`, `$0.42`. The
 // magnitude suffix binds to the digits with no space - `1 block(s)` is the number 1, not '1 b'.
 const NUMBER_TOKEN_RE = /\d[\d,]*(?:\.\d+)?(?:[kKmMbB](?![A-Za-z]))?%?/g;
@@ -3461,11 +3487,13 @@ const numValue = (tok) => {
   const mult = { k: 1e3, K: 1e3, m: 1e6, M: 1e6, b: 1e9, B: 1e9 }[m[2]] || 1;
   return n * mult;
 };
-// Dates, clock times and locators are not judgment numbers - strip them before tokenizing.
-const stripNonClaims = (line) => String(line)
+// Dates, clock times and locators are not judgment numbers - strip them before tokenizing. The locator check strips
+// the dates and times alone.
+const stripDates = (line) => String(line)
   .replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z?/g, ' ')
   .replace(/\d{4}-\d{2}-\d{2}/g, ' ')
-  .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, ' ')
+  .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, ' ');
+const stripNonClaims = (line) => stripDates(line)
   .replace(/\bL\d+(?:-L?\d+)?\b/g, ' ')
   .replace(/\b(?:turns?|lines?|rows?)\s+\d+(?:\s*-\s*\d+)?\b/gi, ' ');
 const numbersIn = (line) => {
@@ -3493,6 +3521,7 @@ function checkReport(file) {
 
   const machine = { values: new Set(), tokens: new Set() };
   const judgment = [];      // { section, line, n }
+  const authored = [];      // the judgment lines an author wrote - the only ones whose locators are citations
   let section = '(preamble)';
   let isJudgment = false;
   let machineTables = false;
@@ -3508,7 +3537,8 @@ function checkReport(file) {
     // Skeleton text is not an authored claim: the italic instruction lines and the blockquotes the
     // skeleton itself prints carry numbers of their own.
     if (/^[_>]/.test(t) || /^\|\s*-+/.test(t) || /^-{3,}$/.test(t)) return;
-    const hasLocator = LOCATOR_RE.test(line);
+    authored.push(i);
+    const hasLocator = LOCATOR_RE.test(stripDates(line));
     for (const n of numbersIn(line)) {
       if (hasLocator) continue;
       if (machine.values.has(n.value) || machine.tokens.has(n.tok.toLowerCase())) continue;
@@ -3520,11 +3550,13 @@ function checkReport(file) {
       judgment.push({ section, line: i + 1, tok: n.tok, text: t.replace(/\s+/g, ' ').slice(0, 120) });
     }
   });
-  // An out-of-range locator is not a citation either.
+  // An out-of-range locator is not a citation either. Only an authored judgment line cites: a machine section's own
+  // text ('... AFTER this session's last row 2026-10-05T10:55:30.735Z') locates nothing.
   const badLocators = [];
   if (transcriptLines) {
-    lines.forEach((line, i) => {
-      for (const m of String(line).matchAll(LOCATOR_G)) {
+    authored.forEach((i) => {
+      const line = lines[i];
+      for (const m of stripDates(line).matchAll(LOCATOR_G)) {
         const n = Number(m[1] || m[2] || m[3] || m[4]);
         if (n > transcriptLines) badLocators.push({ line: i + 1, locator: m[0].trim(), text: String(line).trim().replace(/\s+/g, ' ').slice(0, 120) });
       }

@@ -255,8 +255,11 @@ const REOFFER_GROWTH = 1.5;
 // carry THIS work on somewhere else. Cues that merely recommend something ('worth', 'recommend')
 // are deliberately NOT in the list: they are what the missed close was made of.
 const FRESH_PHRASE = '(?:fresh session|new session|fresh chat)';
+// `run` only as the imperative opening a clause ('Run `/x` in a new session', 8b5dcb1a) - the noun ('a separate run
+// from a fresh session') recommends, like 'worth'.
 const FRESH_CUE = '(?:continu\\w+|resum\\w+|carry(?:ing)? (?:it|this|on)|pick(?:ing)? (?:it|this|the work) up'
-  + '|restart\\w*|hand(?:ing)? (?:it|this) (?:off|over)|paste|plan file|resume block|move (?:it|this)|switch(?:ing)? to)';
+  + '|restart\\w*|hand(?:ing)? (?:it|this) (?:off|over)|paste|plan file|resume block|move (?:it|this)|switch(?:ing)? to'
+  + '|(?<=^|[.!?:;,\\n]\\s{0,3})(?:please\\s+|just\\s+)?run\\b)';
 const FRESH_RE = new RegExp(`${FRESH_CUE}[^.!?\\n]{0,80}${FRESH_PHRASE}|${FRESH_PHRASE}[^.!?\\n]{0,80}${FRESH_CUE}`, 'i');
 // Decision-shaped prose endings measured in the corpus. Deliberately narrow: a plain
 // clarifying question is not matched - only the offer-and-wait shapes that stalled sessions.
@@ -344,7 +347,9 @@ const DONE_RE = /\b(done|complete[d]?|finished|committed|landed|green|all tests 
 // could not fire on the one shape it was written for). `when you say so` is the same hand-back the
 // prose branch knows as 'just say so' - measured on 'everything is staged and ready to commit when
 // you say so', which stalled 2h20m and then re-cached 146.8k.
-const PENDING_RE = /\b(not pushed|nothing pushed|awaiting|waiting (on|for)|still running|pending your|next steps?|remains?|left to do|yet to|whenever you|when you'?re ready|(when|whenever|once) you say so|un-?pushed)\b/i;
+// `remains` only in its pending forms ('what remains', 'remains to be done'): the bare verb read a status line as a
+// stall - 'Done - `playwright-chrome` removed; only `sentry` remains.' was blocked (a 2.1.7 session audit).
+const PENDING_RE = /\b(not pushed|nothing pushed|awaiting|waiting (on|for)|still running|pending your|next steps?|(?:what|that|which|still) remains?|remains? (?:to|open|pending|outstanding|undone|unpushed|uncommitted)|left to do|yet to|whenever you|when you'?re ready|(when|whenever|once) you say so|un-?pushed)\b/i;
 // The same two halves in Ukrainian and Russian (review re-verify N4: an all-Cyrillic stall passed on every tree). The
 // first-person past ('Зробив', 'Сделал', 'Закоммитил') is how a close in either language reports done (re-verify 2 R2-M2).
 const DONE_RE_CYR = /(?<!\p{L})(?:готов[оаі]?|зроблено|виконан[оаі]?|завершен[оаіы]?|закінчен[оаі]?|выполнен[оаы]?|сделан[оаы]?|закончен[оаы]?|закомічено|закоммичено|запушено|злито|слито|(?:з|за|ви|до|пере)?(?:робив|робила|робили|виконав|виконала|виконали|завершив|завершила|завершили|закінчив|закінчила|закінчили|комітив|комітила|комітили|пушив|пушила|пушили)|(?:с|за|вы|до|пере)?(?:делал|делала|делали|выполнил|выполнила|выполнили|завершил|завершила|завершили|закончил|закончила|закончили|коммитил|коммитила|коммитили|пушил|пушила|пушили))(?!\p{L})/iu;
@@ -480,10 +485,12 @@ function liveBackgroundWork() {
     }
     if (!line.includes('<task-notification>')) continue;
     // A notice is read only where the harness delivers one - a user row's own text, a queued_command attachment
-    // (absorbed mid-turn), a queue operation - never a tool result or a prompt snapshot quoting one.
+    // (absorbed mid-turn), a queue operation - never a tool result or a prompt snapshot quoting one. An `enqueue` row
+    // is the notice queued, not yet delivered: the close written after it still waits on that work (177c5743, the
+    // 'still running' close sat between the enqueue and the delivered row).
     const att = o.type === 'attachment' && o.attachment && o.attachment.type === 'queued_command' ? o.attachment.prompt : '';
     const note = o.type === 'user' ? (typeof content === 'string' ? content : Array.isArray(content) ? content.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : '')
-      : o.type === 'queue-operation' ? o.content : att;
+      : o.type === 'queue-operation' ? (o.operation === 'enqueue' ? '' : o.content) : att;
     if (typeof note !== 'string') continue;
     for (const n of note.matchAll(/<task-notification>([\s\S]*?)<\/task-notification>/g)) {
       const ids = [/<task-id>([^<]+)<\/task-id>/.exec(n[1]), /<tool-use-id>([^<]+)<\/tool-use-id>/.exec(n[1])].filter(Boolean).map((m) => m[1].trim());
@@ -523,7 +530,8 @@ const RUNNING_NOUN_CYR = /(?<!\p{L})(?:агент|рев'?ю|ревью|імпл
 // opening a clause or after 'please' / 'just' / 'and' - since 'the verifier will tell me if anything is off' reports.
 const HANDBACK_RE = /\b(?:awaiting|waiting (?:on|for)) (?:you|your|the user'?s?)\b|\bnothing reports\b|(?:^|[.!;:,(]\s*|\n\s*|\s[-\u2013]\s+|\b(?:please|just|and|so|then)\s+)(?:tell me|let me know)\b(?!,?\s+(?:if|in case|how|what|whether|about)\b(?!\s+to\b))|\b(?:your call|up to you|over to you|on you|(?:is|are|'s) yours|yours to|your (?:move|court|signal|nod|turn)|ping me\b(?!,?\s+(?:if|in case|how|what|whether|about)\b(?!\s+to\b)))\b|(?<!\p{L})(?:чекаю|очікую|жду|ожидаю)\s+(?:на\s+)?(?:твоє|ваше|твого|вашого|твоего|вашего|твоё|твой|ваш|твою|вашу|твоя|ваша)(?!\p{L})|(?<!\p{L})(?:за (?:тобою|тобой|вами)|дай(?:те)? знат\p{L}*|скажи(?:те|ть)?|напиши(?:те|ть)?)(?!\p{L})(?!,?\s+(?:якщо|если|як|как|що|что)(?!\p{L}))/iu;
 const APPROVAL_WORDS = /\b(?:approval|go-?ahead|sign-?off|confirmation|decision|answer|input|reply|ok|okay|green light|call|choice|pick|permission|feedback|instructions?)\b|(?<!\p{L})(?:рішенн|решени|підтвердженн|подтверждени|згод|согласи|дозвол|разрешени|схвал|одобрени|відповід|ответ|вказівк|указани)\p{L}*/iu;
-const WORK_WORDS = /\b(?:designers?|diagnosers?|analy[sz]ers?|resolvers?|gatherers?|plans?|findings|digests?|agents?|reviews?|reviewers?|implementers?|verifiers?|auditors?|seats?|jobs?|runs?|builds?|tests?|suites?|ci|pipelines?|workflows?|deploys?|reports?|verdicts?|results?|notices?|watchers?|monitors?|packages?|it|them)\b|(?<!\p{L})(?:агент|рев'?ю|ревью|рецензент|звіт|отч[её]т|збірк|сборк|тест|пайплайн|результат|вердикт|перевірк|проверк)\p{L}*/iu;
+// forks, subagents and workers are the async agents by another name ('Waiting on the other 3 forks', 177c5743)
+const WORK_WORDS = /\b(?:forks?|subagents?|workers?|designers?|diagnosers?|analy[sz]ers?|resolvers?|gatherers?|plans?|findings|digests?|agents?|reviews?|reviewers?|implementers?|verifiers?|auditors?|seats?|jobs?|runs?|builds?|tests?|suites?|ci|pipelines?|workflows?|deploys?|reports?|verdicts?|results?|notices?|watchers?|monitors?|packages?|it|them)\b|(?<!\p{L})(?:агент|рев'?ю|ревью|рецензент|звіт|отч[её]т|збірк|сборк|тест|пайплайн|результат|вердикт|перевірк|проверк)\p{L}*/iu;
 const RUNNING_ITEM_RE = /^(?:still running|(?:ще|досі|все ще|ещё|еще|всё ещё|все еще)\s+(?:працю|викону|триває|работа|выполня|ид[её]т)\p{L}*)$/iu;
 // A hand-back needs no pending word (re-verify 2 R2-B1): 'Push when you approve', 'I need your go-ahead', 'awaiting a
 // review from you', 'waiting for it to be approved', 'Confirm and I push' each hand the next act to a person. The
@@ -647,6 +655,51 @@ function askJustAnswered() {
     fs.readSync(fd, buf, 0, buf.length, start);
     fs.closeSync(fd);
     return /Your questions have been answered:|The user (declined|chose not) to answer|tool use was rejected/i.test(buf.toString('utf8'));
+  } catch {
+    return false;
+  }
+}
+
+// Did an AskUserQuestion THIS turn (since the last typed prompt) put the fresh-session choice, and get answered?
+// Measured (8b5dcb1a): a capture skill's own gate asked 'Fresh session (Recommended) / Continue here', the user
+// answered, and the fresh-session block on the close forced an identical second ask. The choice is made either
+// way - 'Continue here' included. A Stop hook's own feedback row is no typed prompt: the re-ask it demands sits
+// after it in the same turn. Fail-open like askJustAnswered.
+const FRESH_ASK_RE = new RegExp(FRESH_PHRASE, 'i');
+function freshAskAnsweredThisTurn() {
+  try {
+    const p = payload.transcript_path;
+    if (!p) return false;
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - 512 * 1024);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    const lines = buf.toString('utf8').split('\n');
+    const answered = new Set();
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i].trim()) continue;
+      let o;
+      try { o = JSON.parse(lines[i]); } catch { continue; }
+      if (!o || !o.message) continue;
+      const c = o.message.content;
+      if (o.type === 'user') {
+        if (Array.isArray(c)) {
+          for (const b of c) {
+            if (b && b.type === 'tool_result' && /^Your questions have been answered:/.test(typeof b.content === 'string' ? b.content
+              : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('') : '')) answered.add(b.tool_use_id);
+          }
+        }
+        if (isTypedTurn(o) && !(typeof c === 'string' && /^Stop hook feedback:/.test(c))) return false;
+        continue;
+      }
+      if (o.type !== 'assistant' || !Array.isArray(c)) continue;
+      for (const b of c) {
+        if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && answered.has(b.id) && FRESH_ASK_RE.test(JSON.stringify(b.input || {}))) return true;
+      }
+    }
+    return false;
   } catch {
     return false;
   }
@@ -1381,6 +1434,10 @@ if (payload.hook_event_name === 'Stop') {
       process.exit(0);
     }
     if (FRESH_RE.test(prose)) process.exit(0); // the OFFER is prose - a fenced example is not one
+    if (freshAskAnsweredThisTurn()) {
+      breadcrumb('Stop: fresh-session offer skipped, a fresh-session ask was answered this turn');
+      process.exit(0);
+    }
     const since = lastBlockCtx();
     if (since && ctx < since * REOFFER_GROWTH) {
       breadcrumb(`Stop: fresh-session offer skipped, ctx ${ctx} has not grown ${REOFFER_GROWTH}x since ${since}`);

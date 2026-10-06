@@ -48,11 +48,11 @@ Every `##`, `###` and `####` heading in ARCHITECTURE.md and `references/*.md` ca
 
 ### ORIENTATION.md
 
-Pushed into every session and subagent by the docs hook, so it is the most expensive file per byte: at most 4,096 bytes (`wc -c`, and `docs.js lint` enforces it). It holds the one-line project shape, the module map in a few lines, the house contracts a newcomer breaks first, and one line per reference file naming its best entry section id. Every `file#id` it names must exist (`docs.js lint` checks).
+Written to `<docs-path>/architecture/ORIENTATION.md` - the only path the docs hook pushes; a copy anywhere else (`.claude/docs/`, the docs root itself) reaches no session. Pushed into every session and subagent by the docs hook, so it is the most expensive file per byte: at most 4,096 bytes (`wc -c`, and `docs.js lint` enforces it). It holds the one-line project shape, the module map in a few lines, the house contracts a newcomer breaks first, and one line per reference file naming its best entry section id. Every `file#id` it names must exist (`docs.js lint` checks).
 
 ### watch.json
 
-The files whose change can move an architecture decision, mapped to the sections that own each decision - the docs hook asks for those sections at session end only when one of these files changed:
+Written to `<docs-path>/architecture/watch.json` - the docs hook reads each domain's watch from its own top-level folder under the docs root, so a copy anywhere else is never read. The files whose change can move an architecture decision, mapped to the sections that own each decision - the docs hook asks for those sections at session end only when one of these files changed:
 
     {
       "sourceRoots": ["src", "tests"],

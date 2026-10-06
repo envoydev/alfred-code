@@ -671,6 +671,25 @@ function main()
         catch { /* a probe never changes a verdict and never throws */ }
     })();
 
+    // A marketplace removed with no --scope goes from EVERY settings scope, and the CLI uninstalls every plugin
+    // installed from it, in every project on the machine (`claude plugin marketplace remove --help`: 'Omit to remove
+    // it from every scope'). Measured 2026-10-06: a session asked to drop a retired key at user scope ran the bare
+    // form and four plugins other projects used went with it. The scoped form passes; nothing is lost by naming it.
+    (() => {
+        const bare = rawCommand.replace(/'[^'\n]*'/g, (m) => m.replace(/[^\n]/g, 'x')).replace(/"[^"\n]*"/g, (m) => m.replace(/[^\n]/g, 'x'));
+        for (const seg of bare.split(/&&|\|\||[;|&\n]/))
+        {
+            const m = /(?:^|[\s(])claude(?:\.exe|\.cmd)?\s+plugins?\s+marketplace\s+(?:remove|rm)\b(.*)$/.exec(seg);
+            if (!m || /(?:^|\s)(?:--scope(?:=|\s)|-h\b|--help\b)/.test(m[1])) continue;
+            global.BLOCK_DETAIL = { branch: 'marketplace-remove-unscoped' };
+            process.stderr.write('BLOCKED: `claude plugin marketplace remove` with no --scope removes the marketplace from EVERY scope and '
+                + 'uninstalls every plugin installed from it, in every project on this machine. Name the scope the declaration '
+                + 'sits at - `--scope user`, `project` or `local` (`claude plugin marketplace list --json` shows it) - and run it '
+                + 'once per scope the user asked for.\n');
+            process.exit(2);
+        }
+    })();
+
     // Git destroys uncommitted work with no undo, and this guard had ZERO git coverage: 225 lines
     // with no occurrence of `git`, so a destructive `git checkout --` replayed exit 0 against every
     // guard in the stack. These verbs are the same class as a recursive rm - the working tree

@@ -57,7 +57,7 @@ test('the renamed map: every old name is retired, every new name ships, and no n
     const m = loadManifest(ROOT);
     const skills = new Set(m.catalogs.skills.map((e) => e.split('|').pop()));
     const agents = new Set(m.agents.map((f) => f.replace(/\.md$/, '')));
-    assert.strictEqual(Object.keys(RENAMED.skills).length, 27, 'the 23 project-* skills, the three 2.1.0 renames and the 2.1.6 AGENTS.md one');
+    assert.strictEqual(Object.keys(RENAMED.skills).length, 28, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one and the 2.1.7 usage-report one');
     assert.strictEqual(Object.keys(RENAMED.agents).length, 2, 'the two failure diagnosers');
     for (const [from, to] of Object.entries(RENAMED.skills))
     {
@@ -860,7 +860,7 @@ test('seed install --selection and update --add: a line naming an old item insta
         write(repo, '.claude/alfred-code.stamp', 'version: 2.0.0\nsha: 0000000\npicked-skills: markdown-style@alfred-code\npicked-agents: security-auditor@alfred-code\n');
     };
     const add = seedRun('update', 'skill markdown-style\n', { plugins: listing, args: ['--installed-only', '--add', 'skill project-stack-usage-analyzer'], prepare, inspect });
-    assert.ok(add.result.skills.includes('alfred-capture-stack-usage'), add.result.skills.join(' '));
+    assert.ok(add.result.skills.includes('alfred-capture-usage-report'), add.result.skills.join(' '));
     assert.ok(!add.out.includes('names nothing this release ships'), 'an old name is carried, never reported as unknown');
 
     // M3: a --drop naming the old item drops the new one - its copy, its pick, a seat's switch-off.

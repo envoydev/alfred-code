@@ -88,7 +88,7 @@ test('M83: the coverage capture names the cobertura format flag on the MSBuild f
 
 // ---- M84: the transcript folder follows the config dir and the real slug rule ----------------------------------
 test('M84: stack-usage finds the transcript folder under the config dir, by listing it', () => {
-    const text = flat(skill('alfred-capture-stack-usage'));
+    const text = flat(skill('alfred-capture-usage-report'));
     assert.doesNotMatch(text, /under `~\/\.claude\/projects\//, 'a configured CLAUDE_CONFIG_DIR moves it');
     assert.doesNotMatch(text, /slashes replaced by dashes/, 'dots map to dashes too');
     assert.match(text, /`\$\{CLAUDE_CONFIG_DIR:-\$HOME\/\.claude\}\/projects\/<encoded-project-path>\/`/);
@@ -382,4 +382,24 @@ test('solve resumes by the feature topic and closes on the counted purge', () =>
     const own = line(flat(read('stack/skills/alfred-task-solve/references/step-mechanics.md')));
     assert.ok(own, 'the step mechanics carry the purge count line');
     assert.strictEqual(own, line(flat(read('stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md'))), 'the same line as the trio protocol');
+});
+
+// Real architecture captures: one wrote ORIENTATION.md to .claude/docs/ and spent 8 messages on lint, a docs.js
+// diagnosis, a delete and a rewrite; one met another domain's lint row on all 6 runs and could never clear it; one
+// skipped the write gate on an earlier session's `ruled:` line from a run that wrote nothing.
+test('capture-architecture names where ORIENTATION.md and watch.json go, lints its own domain, and re-asks the write gate', () =>
+{
+    const text = flat(skill('alfred-capture-architecture'));
+    assert.match(text, /writes `<docs-path>\/architecture\/ORIENTATION\.md` and `<docs-path>\/architecture\/watch\.json` to their shapes there - the only paths the docs hook reads them from/);
+    assert.match(text, /run `node \.claude\/hooks\/docs\.js lint architecture`: fix every architecture PROBLEM row before the report\. Another domain's row \(a plain `lint` prints every domain\) is named in the report, never fixed here\./);
+    assert.doesNotMatch(text, /docs\.js lint` after the write - a PROBLEM line is fixed before the report/, 'the unscoped lint the run could never clear is gone');
+    assert.match(text, /An earlier session's answer is not consent for this run - a `ruled:` line in the injected session history included - so ask again: the ruling it would rely on came from a capture that never landed\./);
+    const shapes = flat(read('stack/skills/alfred-capture-architecture/references/doc-shapes.md'));
+    assert.match(shapes, /### ORIENTATION\.md Written to `<docs-path>\/architecture\/ORIENTATION\.md` - the only path the docs hook pushes/);
+    assert.match(shapes, /### watch\.json Written to `<docs-path>\/architecture\/watch\.json`/);
+    // The paths the skill names are the ones the engine reads.
+    const engine = read('stack/hooks/docs.js');
+    assert.match(engine, /const DOCS = path\.join\(DOCS_ROOT, 'architecture'\);/);
+    assert.match(engine, /const BLOCK_FILE = path\.join\(DOCS, 'ORIENTATION\.md'\);/);
+    assert.match(engine, /path\.join\(domainDir\(domain\), 'watch\.json'\)/);
 });

@@ -28,13 +28,13 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
     nothing. No `renames` key -
     a rename strands a 1.x install, a listed id refreshes in place (`docs/rebrand-evidence.md` S11,
     S21); lint 49 fails on a `renames` key or an `alfred-code-hooks` entry.
-  - `retired-entries.json` - the 20 per-stack entries 1.2.0 shipped, FROZEN and listed under a RETIRED
-    description until evidence shows no install still resolves through them, never on a release cadence
-    (an unlisted entry still enabled silently stops loading, `docs/rebrand-evidence.md` S25; lint 49 counts
-    them as generated), so an installed one keeps working
-    until update copies its picks and uninstalls it (leaves first); a PARKED one, or one at another
-    scope, is kept and logged with its uninstall command. The FILE stays while the names are retired:
-    it is the only record of what each entry carried.
+  - `retired-entries.json` - the 20 per-stack entries 1.2.0 shipped, FROZEN. No longer LISTED in the marketplace
+    (2.1.7, the user's ruling of 2026-10-06 - the Discover tab showed 20 'RETIRED in 1.3.0' rows; `build-marketplace.js
+    unlistedRetired` drops each from an applied marketplace, lint 49 names one still there). An install still holding
+    one migrates from this file alone: update copies its picks and uninstalls it (leaves first); a PARKED one, or one
+    at another scope, is kept and logged with its uninstall command. The FILE stays while the names are retired: it is
+    the only record of what each entry carried. The two 1.x core aliases and the six renamed MCP ids stay listed
+    through the 2.x line (a straggler on them keeps its update command and its tools).
   - `evals/library/` - one `claude plugin eval` case per stack profile, graded `arm: both`, plus the
     three `size-first-*` cases of `alfred-task-solve` (2.1.4 - a library skill only the bundle carries);
     `npm run eval-bundle -- <out>` puts the core and the whole library into ONE plugin named
@@ -70,7 +70,8 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
   a session transcript (+ `subagents/`), with an EFFICIENCY scorecard (one measured number per practice);
   it reads `PowerShell` and `Monitor` as the shell route, writes with `--out <file>` (never a `>` redirect), and
   `--check-report <file>` re-reads a finished report, printing every judgment number that cites no
-  machine row of that same report. Its rollup skips the live session (`CLAUDE_CODE_SESSION_ID`,
+  machine row of that same report (judgment lines only, an ISO date never read as a locator - 2.1.7). A slash run of a
+  manual-only skill counts as a skill run, its body read from the expansion's `Base directory for this skill:` row. Its rollup skips the live session (`CLAUDE_CODE_SESSION_ID`,
   `--exclude-session <id>`) and counts a plugin only where a registry record reaches or it was used.
   `scripts/agents-md-check.js` - a project's AGENTS.md (and CLAUDE.md) files against the tree they describe, read-only
   and no model call. `scripts/scan-evidence.js` - deterministic manifest-only

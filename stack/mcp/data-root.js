@@ -247,23 +247,52 @@ function profileLocks(dir)
 // A serena serving this folder (M2): serena 1.7.0 names each start's log after its own pid -
 // `<folder>/home/logs/<date>/mcp_<stamp>_<pid>.txt` (measured) - so a log whose pid is a live process is a
 // server holding the folder: on the copy route the very session running the installer, else a second
-// session's. A live pid counts only when its command line names serena (`ps`, so an old log's reused pid
-// no longer keeps a move pending); with no `ps` (Windows) or an unreadable answer it reads as busy, the
-// safe side. This process's own pid is never one.
-function namesSerena(pid)
+// session's. A live pid counts only when its command line names serena, so an old log's REUSED pid keeps no
+// move pending: `ps` on macOS and Linux, one CIM query on Windows (measured on a Windows ARM64 machine:
+// dozens of September logs named pids Windows had handed to DefenderSessionHelper.exe and the like, and
+// the move stayed busy for good while every live pid counted). A process whose command line cannot be
+// read (another user's, an elevated one) is judged by its image - a python, uv or serena process is
+// busy. No answer at all reads as busy, the safe side. This process's own pid is never one.
+//   run(cmd, args) - spawnSync's result; injected by the tests, like `platform`.
+const SERENA_IMAGE = /^(python|pythonw|py|uv|uvx|serena)(\.exe)?$/i;
+function serenaPids(pids, { platform = process.platform, run } = {})
 {
-    if (process.platform === 'win32') return true;
-    const r = require('node:child_process').spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' });
-    if (r.error || r.status === null) return true;
-    return r.status === 1 ? false : /serena/i.test(r.stdout);
+    if (!pids.length) return new Set();
+    const spawn = run || ((cmd, args) => require('node:child_process').spawnSync(cmd, args, { encoding: 'utf8', windowsHide: true, timeout: 15000 }));
+    const all = () => new Set(pids);
+    if (platform !== 'win32')
+    {
+        const r = spawn('ps', ['-o', 'pid=,command=', '-p', pids.join(',')]);
+        if (r.error || r.status === null || (r.status !== 0 && r.status !== 1)) return all();
+        const named = new Set();
+        for (const line of String(r.stdout || '').split('\n'))
+        {
+            const m = /^\s*(\d+)\s+(.*)$/.exec(line);
+            if (m && /serena/i.test(m[2])) named.add(Number(m[1]));
+        }
+        return named;
+    }
+    // Windows: one query for every pid - `<pid>\t<image>\t<command line>` per process still running.
+    const filter = pids.map((p) => `ProcessId=${p}`).join(' OR ');
+    const script = `Get-CimInstance Win32_Process -Filter '${filter}' | ForEach-Object { [string]$_.ProcessId + [char]9 + $_.Name + [char]9 + $_.CommandLine }`;
+    const r = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script]);
+    if (r.error || r.status !== 0) return all();
+    const named = new Set();
+    for (const line of String(r.stdout || '').split(/\r?\n/))
+    {
+        const [pid, image = '', command = ''] = line.split('\t');
+        if (!/^\d+$/.test(pid || '')) continue;
+        if (command.trim() ? /serena/i.test(command) : SERENA_IMAGE.test(image.trim())) named.add(Number(pid));
+    }
+    return named;
 }
-function serenaBusy(dir)
+function serenaBusy(dir, { platform, run } = {})
 {
     const logs = path.join(dir, 'home', 'logs');
     let days;
     try { days = fs.readdirSync(logs, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { return []; }
     const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (err) { return err.code === 'EPERM'; } };
-    const held = new Set();
+    const live = new Set();
     for (const day of days)
     {
         let names;
@@ -272,10 +301,32 @@ function serenaBusy(dir)
         {
             const m = /^mcp_.*_(\d+)\.txt$/.exec(name);
             const pid = m ? Number(m[1]) : 0;
-            if (pid > 0 && pid !== process.pid && !held.has(pid) && alive(pid) && namesSerena(pid)) held.add(pid);
+            if (pid > 0 && pid !== process.pid && !live.has(pid) && alive(pid)) live.add(pid);
         }
     }
+    const held = serenaPids([...live], { platform, run });
     return [...held].sort((a, b) => a - b).map((pid) => `serena pid ${pid}`);
+}
+
+// A text write that survives a Windows Hidden or System attribute. Node opens a file for 'w' with
+// CREATE_ALWAYS, which Windows refuses (EPERM) on a hidden file unless the open asks for the attribute
+// too - measured: serena_config.yml and .serena/.gitignore carried 'H', and both the launcher's and the
+// installer's writes failed after the move. An existing file is then opened in place, truncated and
+// rewritten, which keeps its attributes. Any other error is the caller's.
+function writeText(file, text)
+{
+    try { fs.writeFileSync(file, text); return; }
+    catch (err)
+    {
+        if (!['EPERM', 'EACCES'].includes(err.code) || !fs.existsSync(file)) throw err;
+    }
+    const fd = fs.openSync(file, 'r+');
+    try
+    {
+        fs.ftruncateSync(fd, 0);
+        fs.writeSync(fd, text, 0, 'utf8');
+    }
+    finally { fs.closeSync(fd); }
 }
 
 // ------------------------------------------------------------------ moving
@@ -453,14 +504,14 @@ function ensureSerenaConfig(homeAbs, folder = `${DATA_ROOT_DEFAULT}/serena`)
     const m = at.exec(text);
     if (!m)
     {
-        fs.writeFileSync(file, `${text.replace(/\n*$/, '\n')}# Added by alfred-code: the per-project folder under the data root.\n${line}\n`);
+        writeText(file, `${text.replace(/\n*$/, '\n')}# Added by alfred-code: the per-project folder under the data root.\n${line}\n`);
         return 'appended';
     }
     const value = m[1].replace(/^(["'])(.*)\1$/, '$2');
     if (value === `$projectDir/${folder}`) return 'current';
     const stacks = value === '$projectDir/.serena' || /^\$projectDir\/[^\s$]+\/serena$/.test(value);
     if (!stacks) return 'kept';
-    fs.writeFileSync(file, text.replace(at, line));
+    writeText(file, text.replace(at, line));
     return 'rewritten';
 }
 
@@ -469,6 +520,6 @@ module.exports = {
     checkDataPath, dataRootOf, layout, targetOf, rootOfPlace, legacyOf,
     DATA_IGNORE_HEAD, dataIgnoreText, ensureRootIgnore,
     memoryDbFor, memoryLevelOf, legacyTwinOf, homeTwinOf, liveMemoryDb,
-    busyDbs, profileLocks, serenaBusy, moveEntry, movePlace, moveHomeMemory,
+    busyDbs, profileLocks, serenaBusy, serenaPids, writeText, moveEntry, movePlace, moveHomeMemory,
     dataMovePlan, renderPending, readPending, pendingOf, liveDir, ensureSerenaConfig,
 };

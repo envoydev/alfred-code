@@ -1721,6 +1721,69 @@ test('--check-report prints one row per judgment number that cites no machine ro
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// Speech-direct reports (2026-10-05): every one carrying the analyzer's own 'AFTER this session's last row <ISO date>'
+// printed 'locator out of range ... row 2026' three times.
+test('--check-report reads no date as a locator, and checks only the judgment lines an author wrote', () => {
+  const dir = tmp();
+  const report = path.join(dir, 'report-usage.md');
+  fs.writeFileSync(report, [
+    '# Stack usage report - session `s`',
+    '',
+    '## Session vintage',
+    '',
+    "| Inventory source | 70 skills from the roster, the rest from project x - INSTALLED 2026-10-05T11:00:00Z, AFTER this session's last row 2026-10-05T10:55:30.735Z |",
+    '',
+    '## Waste analysis - FILL IN',
+    '',
+    '- The stall began at row 2026-10-05T10:55:30Z and again on row 2026-10-05.',
+    '- The close at turn 12:30 was held once (L42-45).',
+    '- A claim pointing past the end of the transcript (row 5000).',
+    '- And a range whose start is past it (L4000-4010).',
+    '',
+  ].join('\n'));
+  fs.writeFileSync(path.join(dir, 'aaaaaaaa-1111-1111-1111-111111111111.jsonl'), Array.from({ length: 100 }, (_, i) => line({ type: 'user', i })).join(''));
+  const res = cli(['--check-report', report]);
+  assert.ok(!/row 2026|turn 12\b/.test(res.out), `a date or a clock time is no locator:\n${res.out}`);
+  assert.match(res.out, /row 5000 - the transcript has 100 rows/, 'a real out-of-range locator still prints');
+  assert.match(res.out, /L4000 - the transcript has 100 rows/, 'a range start past the end still prints');
+  assert.ok(!res.out.includes('L42'), 'a resolvable range settles its line');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// 11b595da: a slash run of a manual-only skill read as 'No skill or slash-command run' and 'used 0 of 72' - the
+// roster omits a `disable-model-invocation` skill, and its body arrives as the expansion's isMeta row.
+test('a slash run of a manual-only skill is a skill run, its body taken from the expansion row', () => {
+  const dir = tmp();
+  const root = path.join(dir, 'proj');
+  fs.mkdirSync(path.join(root, '.claude', 'skills', 'manual-skill'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.claude', 'skills', 'manual-skill', 'SKILL.md'),
+    '---\nname: manual-skill\ndescription: "fixture"\ndisable-model-invocation: true\n---\n\n# Manual\n\nstep one\n');
+  const file = path.join(dir, 'session.jsonl');
+  const slash = (ts, name) => line({ type: 'user', timestamp: ts, cwd: root, parentUuid: `p-${ts}`, origin: { kind: 'human' },
+    message: { role: 'user', content: `<command-message>${name}</command-message>\n<command-name>/${name}</command-name>` } });
+  fs.writeFileSync(file, [
+    line({ type: 'attachment', timestamp: '2026-07-15T07:00:00.000Z', cwd: root, attachment: { type: 'skill_listing', isInitial: true, skillCount: 1, names: ['roster-skill'], content: '- roster-skill: fixture\n' } }),
+    slash('2026-07-15T07:00:01.000Z', 'manual-skill'),
+    line({ type: 'user', isMeta: true, timestamp: '2026-07-15T07:00:01.000Z', message: { role: 'user', content: [{ type: 'text', text: `Base directory for this skill: ${root}/.claude/skills/manual-skill\n\n# Manual\n\nstep one\n` }] } }),
+    line(invAsst('m1', '2026-07-15T07:00:10.000Z', [use('t1', 'Bash', { command: 'ls' })])),
+    line({ type: 'user', timestamp: '2026-07-15T07:00:11.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } }),
+    // a harness command with no expansion row stays out, and so does a meta row arriving after the model answered
+    slash('2026-07-15T07:01:00.000Z', 'model'),
+    line(invAsst('m2', '2026-07-15T07:01:10.000Z', [use('t2', 'Bash', { command: 'pwd' })])),
+    line({ type: 'user', isMeta: true, timestamp: '2026-07-15T07:01:11.000Z', message: { role: 'user', content: [{ type: 'text', text: 'Base directory for this skill: /elsewhere\n\n# Stray\n' }] } }),
+  ].join(''));
+  const { inventory } = run([file]);
+  const row = invRow(inventory.skills, 'manual-skill');
+  assert.ok(row && row.used === 'yes' && row.source === 'installed', `the slash run counts against an installed skill: ${JSON.stringify(row)}`);
+  assert.strictEqual(invRow(inventory.skills, 'model'), undefined, "the harness's own command is no skill");
+  const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\| manual-skill \| slash command \| \d+ chars \| \d+ chars \| same \|/, 'the loaded body is compared');
+  assert.ok(!md.includes('No skill or slash-command run'));
+  assert.match(md, /### Skills \(used 1 of 2 installed\)/);
+  assert.ok(!/\| model \| slash command \|/.test(md));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('--out writes the report to a file, so no shell redirect is needed', () => {
   const dir = tmp();
   const file = writeFixture(dir);

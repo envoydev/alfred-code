@@ -24,8 +24,8 @@ const LEGACY = {
 const isCore = (name) => name === BRAND.core || name === LEGACY.core;
 
 // The name an entry goes by from 2.0.0. Only the core was renamed: the 1.x hooks id has no 2.0.0
-// counterpart (its hooks ride the core), and a per-stack entry retired in 1.3.0 stays listed under
-// its own name until update removes it.
+// counterpart (its hooks ride the core), and a per-stack entry retired in 1.3.0 keeps its own name
+// until update removes it (the marketplace no longer lists it - 2.1.7).
 const currentName = (name) => (isCore(name) ? BRAND.core : name);
 
 // A listing row as `claude plugin list --json` prints it (`id: name@key`) or as parsePluginList

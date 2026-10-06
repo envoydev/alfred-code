@@ -9,7 +9,7 @@
 //
 // The live .claude-plugin/marketplace.json is NOT touched by --write, which only regenerates
 // meta/plugin-entries.json; --write-marketplace is the Phase 3 transcription that applies those
-// entries - plus the two 1.x aliases and the retired per-stack entries - to the live file, leaving
+// entries - plus the two 1.x aliases, minus the per-stack entries retired in 1.3.0 - to the live file, leaving
 // the MCP entries and the marketplace metadata alone.
 //
 //   node scripts/build-marketplace.js --write-marketplace   apply the entries to the live file
@@ -152,32 +152,12 @@ function buildEntries(options = {})
     return [coreEntry({ ...options, placement: place, version, author })];
 }
 
-// The retired per-stack entries, listed under a RETIRED description until evidence shows no install
-// still resolves through them - an unlisted one still enabled silently stops loading (S25). The
-// shape is the one 1.2.0 shipped, so an installed entry resolves the same files until update
-// removes it - its dependencies included, verbatim: the 1.x core they name is listed again as the
-// alias below, so an entry `plugin update`d before the seed runs still resolves them.
-function retiredMarketplaceEntries(options = {})
-{
-    const version = options.version || marketplaceVersion(options);
-    const author = options.author || { name: 'envoydev', url: 'https://github.com/envoydev' };
-    return readRetiredEntries(options.repo).map((row) =>
-    {
-        const entry = {
-            name: row.name,
-            source: './',
-            // M22: its audience is a 1.x install, whose update command carries the 1.x plugin name.
-            description: `RETIRED in 1.3.0 - run /${LEGACY.core}:update: it copies the skills and agents you picked into the project and removes this entry.`,
-            version,
-            author,
-            strict: false,
-        };
-        if (row.skills.length) entry.skills = row.skills.map((s) => `./stack/skills/${s}`);
-        if (row.agents.length) entry.agents = row.agents.map((a) => `./stack/agents/${a}.md`);
-        entry.dependencies = [...row.dependencies];
-        return entry;
-    });
-}
+// The per-stack entries retired in 1.3.0 are NOT listed (2.1.7, the user's ruling of 2026-10-06: the Discover tab
+// showed 20 'RETIRED in 1.3.0' rows nobody can use). Three releases and a major past their retirement, update
+// migrates an install still holding one from meta/retired-entries.json alone - its picks copied, the entry
+// uninstalled - so the listing carried nothing an update needs. The 1.x core alias below stays listed, so a
+// 1.x install still has `/claude-stack:update` to run. An applied marketplace drops every such name. // legacy-name
+const unlistedRetired = (repo) => readRetiredEntries(repo).map((e) => e.name);
 
 // THE 1.x IDS, LISTED - never renamed. 2.0.0 ships no `renames` map: a rename strands a 1.x install
 // with no hooks and no skills for several sessions (docs/rebrand-evidence.md S11, S16), while an id
@@ -224,7 +204,7 @@ const FOLDED_ENTRIES = ['alfred-code-hooks'];
 // except a RETIRED or FOLDED name the entries no longer carry: it would keep a dead entry installable.
 function applyToMarketplace(mkt, entries, { retired = [] } = {})
 {
-    const gone = new Set([...retired, ...FOLDED_ENTRIES]);
+    const gone = new Set([...retired, ...FOLDED_ENTRIES, ...unlistedRetired()]);
     const kept = (mkt.plugins || []).filter(p => !entries.some(e => e.name === p.name) && !gone.has(p.name));
     mkt.plugins = kept.concat(entries);
     return mkt;
@@ -586,7 +566,7 @@ function main(argv)
         const file = path.resolve(arg('--marketplace-file', MARKETPLACE));
         const mkt = readJson(file, 'marketplace.json');
         const before = JSON.stringify(mkt, null, 2) + '\n';
-        const listed = entries.concat(aliasEntries(options), retiredMarketplaceEntries());
+        const listed = entries.concat(aliasEntries(options));
         const applied = applyToMarketplace(mkt, listed, { retired: loadManifest(REPO).retired.plugins });
         // No renames map in 2.0.0 (S11/S16): the 1.x ids are LISTED as aliases instead.
         delete applied.renames;
@@ -612,4 +592,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { buildEntries, coreEntry, aliasEntries, retiredMarketplaceEntries, serialize, applyToMarketplace, applyMcpPlugins, mcpPlugins, mcpAliasEntries, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE, PINS_FILE };
+module.exports = { buildEntries, coreEntry, aliasEntries, unlistedRetired, serialize, applyToMarketplace, applyMcpPlugins, mcpPlugins, mcpAliasEntries, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE, PINS_FILE };

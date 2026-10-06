@@ -113,9 +113,19 @@ const NON_ASCII = /[^\x00-\x7F]/;
 // A file path: home- or cwd-relative, under a variable, under a system or secrets directory, or a drive letter. A bare
 // `/Xk3abc/def` is left out on purpose - a base64 secret can start with a slash.
 const FILE_PATH = /^(?:~|\.\.?|\$\{?[A-Za-z_]\w*\}?|\/(?:etc|home|Users|var|opt|usr|run|tmp|srv|root|mnt|data|secrets?|certs?|keys?|ssl)|[A-Za-z]:)[\\/][^\s:*?"<>|]*$/;
+// A field named exactly `key` is most often an IDENTIFIER - measured: a Confluence page's `space.key = "SD"` blocked
+// its Read. There the value must look like a credential: a known shape, or 16+ characters, no whitespace, at least two
+// character classes. `apiKey`, `api_key`, `SECRET_KEY` are judged as before. A YAML or INI pair arrives under its
+// dotted path (`space.key`), so the last segment is the name.
+const BARE_KEY = /(?:^|[.:])key$/i;
+// A lowercase name in short separated words (`customfield_10010`, `team-alpha-board`) is an identifier, not a token.
+const IDENTIFIER = /^[a-z][a-z0-9]{0,15}(?:[_.-][a-z0-9]{1,12})+$/;
+const credentialLike = (s) => SECRET_SHAPE.test(s)
+  || (s.length >= 16 && !/\s/.test(s) && !IDENTIFIER.test(s) && [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((r) => r.test(s)).length >= 2);
 const isSampleValue = (key, v) => {
   const s = String(v).trim();
   if (PEM_PRIVATE.test(s)) return false;
+  if (BARE_KEY.test(String(key)) && !credentialLike(s)) return true;
   return s.toLowerCase() === String(key).toLowerCase() || /\s/.test(s) || TEMPLATE_VALUE.test(s) || s.startsWith('MII')
     || /^(?:true|false|yes|no|on|off|null|none|nil)$/i.test(s) // a switch (`auth: true`), not a secret
     || FILE_PATH.test(s) // where a key lives (`ssl_certificate_key /etc/nginx/site.key;`, `SSH_KEY=~/.ssh/id_rsa`), not the key
@@ -1608,10 +1618,16 @@ const teesToTerminal = (stage) => /^tee\b[^|]*?(\/dev\/(?:std(?:out|err)|tty|fd\
 // `seps` (optional) collects the separator TEXT between the parts, so a caller can put the pieces
 // back together with what joined them - what the segment splice below needs. An unbalanced scan
 // empties it, because the blind fallback's pieces are not the ones these separators sat between.
-function splitOutsideQuotes(text, sepAt, blind, seps) {
+// `subst`: a separator inside a `$(...)` or a backtick substitution belongs to the inner command, never this one.
+// Measured: the stack's own `RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)` was cut at the `||`, and
+// the unclosed `RUN_ROOT=$(git ...` half read as a changing step. A substitution left open is the same fail-safe case
+// as an open quote.
+function splitOutsideQuotes(text, sepAt, blind, seps, subst) {
   const parts = [];
   let cur = '';
   let quote = null; // the quote character we are inside, or null
+  let depth = 0; // open `$(` levels, each inner `(` counted so `$((1+2))` and `$(f (x))` close where they should
+  let tick = false; // inside a backtick substitution
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (quote) {
@@ -1622,13 +1638,21 @@ function splitOutsideQuotes(text, sepAt, blind, seps) {
     }
     if (ch === '\\' && i + 1 < text.length) { cur += ch + text[++i]; continue; } // an escaped char outside quotes
     if (ch === '"' || ch === '\'') { quote = ch; cur += ch; continue; }
+    if (subst) {
+      if (ch === '`') { tick = !tick; cur += ch; continue; }
+      if (ch === '$' && text[i + 1] === '(') { depth++; cur += '$('; i++; continue; }
+      if (depth && ch === '(') { depth++; cur += ch; continue; }
+      if (depth && ch === ')') { depth--; cur += ch; continue; }
+      if (depth || tick) { cur += ch; continue; }
+    }
     const n = sepAt(text, i);
     if (n) { parts.push(cur); if (seps) seps.push(text.substr(i, n)); cur = ''; i += n - 1; continue; }
     cur += ch;
   }
   parts.push(cur);
-  if (quote && seps) seps.length = 0;
-  return quote ? blind(text) : parts;
+  const open = quote || depth || tick;
+  if (open && seps) seps.length = 0;
+  return open ? blind(text) : parts;
 }
 // Segments split on `&&`, `||`, `;` and newline OUTSIDE quotes: a runtime's inline code carries
 // `;` inside its quoted argument (`python3 -c "import json;print(...)"`), and a naive split
@@ -1638,10 +1662,10 @@ function splitOutsideQuotes(text, sepAt, blind, seps) {
 const loneAmp = (t, i) => t[i] === '&' && t[i + 1] !== '&' && t[i + 1] !== '>' && !/[<>|&]/.test(t[i - 1] || '');
 const splitSegments = (cmd, seps) => splitOutsideQuotes(cmd,
   (t, i) => ((t[i] === '\n' || t[i] === ';' || loneAmp(t, i)) ? 1 : ((t[i] === '&' || t[i] === '|') && t[i + 1] === t[i]) ? 2 : 0),
-  (t) => t.split(/&&|\|\||;|\n|(?<![<>|&])&(?![&>])/), seps);
+  (t) => t.split(/&&|\|\||;|\n|(?<![<>|&])&(?![&>])/), seps, true);
 // A segment is a PIPELINE: its stages split on a single `|` (`||` never reaches here - splitSegments
 // consumed it), and a print verb's arguments end at its own stage.
-const splitPipes = (seg) => splitOutsideQuotes(seg, (t, i) => (t[i] === '|' ? 1 : 0), (t) => t.split('|'));
+const splitPipes = (seg) => splitOutsideQuotes(seg, (t, i) => (t[i] === '|' ? 1 : 0), (t) => t.split('|'), undefined, true);
 // Words split on whitespace OUTSIDE quotes: a naive `\s+` split cut `cat "<project>/my dir/x.json"`
 // into three tokens, none of them a path, and CLAUDE.md supports a project path with a space - so
 // that was an environment condition, not a chosen bypass.
@@ -2039,10 +2063,77 @@ function printsKeysOnly(stage) {
 // A rewrite replaces the WHOLE command, so every other step in it is dropped. That is free for a step that
 // changes nothing (a cd, an ls, an echo, a filter) and silent data loss for one that does. Measured: `grep -c
 // ... && sed -i ... "$F" && jq -r .SuperAdmin.Email "$F"` became the file's redacted view, the edit never ran,
-// and the user found the old value in the config 37 minutes later. So a command carrying a CHANGING step is
-// blocked - visibly, naming the step - and only a read-only one is rewritten. Allowlist, not denylist: a step
-// this list does not know (a build, a network call, a runtime) counts as changing.
-const READ_ONLY_STEP = /^(?:cd|pushd|popd|ls|pwd|cat|head|tail|grep|egrep|fgrep|rg|jq|yq|sed|[gmn]?awk|wc|sort|uniq|cut|tr|nl|tac|column|fold|paste|echo|printf|true|false|test|\[\[?|read|stat|file|which|type|basename|dirname|realpath|readlink|date|diff|cmp|shasum|sha\d*sum|md5sum|md5|base64|xxd|od|hexdump|strings|less|more|bat|sleep|exit|set|export|unset|shopt|local)(?=\s|$)|^command\s+-v\b|^git\s+(?:status|log|diff|show|rev-parse|ls-files)\b|^find\b(?!.*\s-(?:exec|execdir|delete|ok|okdir|fprint\w*|fls)\b)|^(?:get-content|gc|get-childitem|gci|dir|get-item|gi|get-location|set-location|sl|select-string|sls|select-object|select|where-object|where|sort-object|measure-object|measure|format-table|ft|format-list|fl|out-string|write-output|write-host|test-path|resolve-path|convertfrom-json|convertto-json)(?=\s|$)/i;
+// and the user found the old value in the config 37 minutes later. So a command whose rewrite would DROP a
+// CHANGING step is blocked - visibly, naming the step - and only a read-only one is rewritten; a splice drops only
+// the judged pipeline (refuseDroppedSteps). Allowlist, not denylist: a step this list does not know (a build, a
+// network call, a runtime that spawns or writes) counts as changing.
+const READ_ONLY_STEP = /^(?:cd|pushd|popd|ls|pwd|cat|head|tail|grep|egrep|fgrep|rg|jq|yq|sed|[gmn]?awk|wc|sort|uniq|cut|tr|nl|tac|column|fold|paste|echo|printf|true|false|test|\[\[?|read|stat|file|which|type|basename|dirname|realpath|readlink|date|diff|cmp|shasum|sha\d*sum|md5sum|md5|base64|xxd|od|hexdump|strings|less|more|bat|sleep|exit|set|export|unset|shopt|local|cygpath|uname|whoami|printenv)(?=\s|$)|^env\s*$|^command\s+-v\b|^git\s+(?:status|log|diff|show|rev-parse|ls-files|check-ignore|rev-list|merge-base|cat-file|describe|ls-remote)\b|^claude(?:\.exe)?\s+(?:--version|-v|(?:plugins?|mcp)\s+list|plugins?\s+marketplace\s+list|mcp\s+get)(?=\s|$)|^find\b(?!.*\s-(?:exec|execdir|delete|ok|okdir|fprint\w*|fls)\b)|^(?:get-content|gc|get-childitem|gci|dir|get-item|gi|get-location|set-location|sl|select-string|sls|select-object|select|where-object|where|sort-object|measure-object|measure|format-table|ft|format-list|fl|out-string|write-output|write-host|test-path|resolve-path|convertfrom-json|convertto-json)(?=\s|$)/i;
+// The verbs that read in one form and change something in another, each let through in its read form only - the Git
+// Bash sessions where every denial of `cat <settings>; git check-ignore -v .alfred` re-sent the whole context: a
+// `git branch` / `git tag` that lists, a `git config` that gets, a `git remote` that shows, `git hash-object` without
+// `-w`, a `hostname` that sets nothing. A redirect word is dropped first - one into a file already counted as a write.
+const BRANCH_WRITE = /^--(?:delete|move|copy|set-upstream(?:-to)?|unset-upstream|track|no-track|force|edit-description|create-reflog|recurse-submodules)(?:=|$)|^-[^-]*[dDmMcCuft]/;
+const BRANCH_LIST = /^(?:-l|--list|--contains|--no-contains|--merged|--no-merged|--points-at|--show-current)(?:=|$)/;
+const TAG_WRITE = /^--(?:delete|annotate|sign|force|message|file|local-user|edit|create-reflog|cleanup|trailer)(?:=|$)|^-[^-]*[dasfmFue]/;
+const CONFIG_WRITE = /^(?:--(?:add|unset|unset-all|replace-all|rename-section|remove-section|edit)|-e)$/;
+const CONFIG_READ = /^(?:--get|--get-all|--get-regexp|--get-urlmatch|--get-color|--get-colorbool|--list|-l)$/;
+function gitReadForm(sub, args) {
+  // the operands, with the value of a long option written apart from it (`--format '%(refname)'`) left out
+  const ops = args.filter((w, k) => !w.startsWith('-') && !/^--(?:format|sort|contains|no-contains|merged|no-merged|points-at)$/.test(args[k - 1] || ''));
+  switch (sub) {
+    case 'hash-object': return !args.some((w) => /^-[^-]*w/.test(w)); // -w writes the object into the store
+    case 'remote': { const rest = args.filter((w) => !/^(?:-v|--verbose)$/.test(w)); return !rest.length || /^(?:get-url|show)$/.test(rest[0]); }
+    case 'config': return !args.some((w) => CONFIG_WRITE.test(w)) && (args.some((w) => CONFIG_READ.test(w)) || /^(?:get|list)$/.test(ops[0] || ''));
+    case 'branch': return !args.some((w) => BRANCH_WRITE.test(w)) && (!ops.length || args.some((w) => BRANCH_LIST.test(w))); // a bare name creates one
+    case 'tag': return !args.some((w) => TAG_WRITE.test(w)) && (!ops.length || args.some((w) => /^(?:-[^-]*l|--list)$/.test(w)));
+    default: return false;
+  }
+}
+// What an inline runtime's code may NOT reach for to count as read-only: a process, a shell, the network, code loaded
+// from a file, or a file-system change the write list (INLINE_WRITE) does not name. A false hit only keeps the old
+// verdict - the step counts as changing.
+const CODE_EFFECT = new RegExp([
+  /\bchild_process\b|\bsubprocess\b|\bOpen3\b|\bshutil\b|\bimportlib\b|__import__|\bpcntl_\w+|\bprocess\.(?:binding|dlopen|kill)\b/,
+  /\b(?:exec|execSync|execFile|execFileSync|execv\w*|spawn\w*|fork|system|popen|Popen|getoutput|getstatusoutput|check_output|check_call|run|call|shell_exec|passthru|proc_open|eval|Function|kill)\s*\(/,
+  /\bos\.(?:system|popen|exec\w*|spawn\w*|kill|remove|unlink|rmdir|removedirs|mkdir|makedirs|rename|renames|replace|chmod|chown|link|symlink|truncate|utime)\b/,
+  /\b(?:fetch|XMLHttpRequest|WebSocket|urllib\d?|requests|socket|ftplib|smtplib|http\.client)\b|\b(?:https?|http2|net|tls|dgram)\.(?:request|get|connect|createConnection|createServer|Socket)\b/,
+  /\brequire\s*\(\s*['"](?:node:)?(?:child_process|net|http|https|http2|tls|dgram|cluster|worker_threads|vm|inspector)['"]|\brequire\s*\(\s*['"]\.{0,2}[\\/]|\bimport\s*\(/,
+  /\bDeno\.(?:run|Command|connect|listen)\b|\bBun\.(?:spawn\w*|connect|listen)\b/,
+  /\b(?:mkdir|mkdtemp|rmdir|rm|unlink|rename|chmod|chown|lchown|symlink|link|utimes|truncate|ftruncate|cp|copyFile|(?<!std(?:out|err)\.)write|writev|appendFile|mkfifo|makedirs|removedirs|rmtree|touch|write_text|write_bytes)(?:Sync)?\s*\(/,
+].map((r) => r.source).join('|'));
+// Ruby, Perl and PHP run a shell from a backtick, `%x{}` / `qx{}`, or a piped open.
+const SHELL_QUOTE_EFFECT = /`|%x\s*[{(]|\bqx\s*[{(]|\bopen\s*\([^)]*\|/;
+const INLINE_FLAG = {
+  node: (w) => /^(?:-e|-p|-pe|--eval|--print)(?:=|$)/.test(w),
+  python: (w) => /^-[bBdEhiIOqsSuvx]*c$/.test(w),
+  perl: (w) => /^-[a-zA-Z]*[eE]$/.test(w),
+  ruby: (w) => /^-[a-zA-Z]*e$/.test(w),
+  php: (w) => w === '-r',
+};
+// An inline runtime stage (`node -e '...'`, `python3 -c '...'`) that writes nothing and runs nothing - the
+// `cat <settings> | node -e '<print the keys>'` of the sessions, blocked as a changing step.
+function readOnlyInline(words, step) {
+  const lang = runtimeLang(words[0] || '');
+  const inline = INLINE_FLAG[lang];
+  if (!inline || !words.slice(1).some(inline)) return false;
+  if (lang === 'python' && words.some((w) => /^-[a-zA-Z]*m/.test(w))) return false; // a module takes the rest of the line
+  if (lang === 'node' && words.some((w) => /^(?:-r|--require|--import|--loader|--experimental-loader)(?:=|$)/.test(w))) return false; // a preloaded file
+  if (scriptFileRun(step) || stageWrites(step, null)) return false;
+  return !CODE_EFFECT.test(step) && !(lang !== 'node' && lang !== 'python' && SHELL_QUOTE_EFFECT.test(step));
+}
+function readOnlyStep(step) {
+  if (READ_ONLY_STEP.test(step)) return true;
+  const all = shellTokens(step);
+  const words = [];
+  for (let k = 0; k < all.length; k++) {
+    if (/^(?:\d*|&)>>?&?$/.test(all[k])) { k++; continue; } // `2> /dev/null`: the operator, then its target
+    if (!/^(?:\d*|&)>/.test(all[k])) words.push(all[k]);
+  }
+  const verb = unq(words[0] || '').replace(/^.*[\\/]/, '').replace(/\.exe$/i, '');
+  if (verb === 'git') return gitReadForm(words[1] || '', words.slice(2));
+  if (verb === 'hostname') return words.slice(1).every((w) => /^(?:-[sfdiIaA]|--(?:short|fqdn|long|domain|ip-address|all-ip-addresses|alias))$/.test(w));
+  return readOnlyInline(words, step);
+}
 // A stage that WRITES a file. The rewrite replaces the stage it judges too, so a writer naming the credential file
 // came back as the read-only view and its edit silently never ran - pilot 3, ours guard-02 r1:
 // `node -e "...fs.writeFileSync(path, ...)"` and `perl -0pi -e 's/.../' <file>` both returned the view, and the
@@ -2117,11 +2208,22 @@ function stageWrites(stage, code) {
 }
 const CONTROL_LEAD = /^(?:do|then|else|elif|if|while|until|!|\{|\()\s+/;
 const CONTROL_ALONE = /^(?:done|fi|esac|else|\}|\)|for\s+\w+\s+in\b.*)$/;
-const SELF_READ = /guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?)\b/;
-// The first step of `text` that may change something, skipping the stage being rewritten; null when none.
-function changingStep(text, skipSeg, skipStage) {
+// The stream redactor counts too: `git remote -v | node <this file> --redact-stdin` changes nothing.
+const SELF_READ = /guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?|redact-stdin)\b/;
+// This guard's own read, its script word spelled through a variable the command assigned: `G=<path>/guard-secret-value.js;
+// node "$G" --presence <file> KEY` was blocked as an opaque script. Resolved through VARS - only a one-value binding
+// whose value names no further variable - so the test sees the path the shell will run.
+const expandAssigned = (s) => s.replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g, (m, a, b) => {
+  const v = VARS.get(a || b);
+  return v && v.length === 1 && !v[0].includes('$') ? v[0] : m;
+});
+const selfRun = (stage, re = SELF_READ) => re.test(stage) || (stage.includes('$') && re.test(expandAssigned(stage)));
+// The first step of `text` that may change something, skipping the stage being rewritten; null when none. `onlySeg`:
+// judge the skipped stage's own segment alone - a splice keeps every other segment running as written.
+function changingStep(text, skipSeg, skipStage, onlySeg) {
   const segs = splitSegments(stripComments(text));
   for (let i = 0; i < segs.length; i++) {
+    if (onlySeg && i !== skipSeg) continue;
     const bare = segs[i].replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""');
     // stdout into a file is a write; /dev/null and a terminal device are not
     if ([...bare.matchAll(REDIRECT_RE)].some((m) => !TERMINAL_DEV.test(m[1]) && m[1] !== '/dev/null')) return segs[i].trim();
@@ -2130,26 +2232,28 @@ function changingStep(text, skipSeg, skipStage) {
     for (let j = 0; j < stages.length; j++) {
       if (i === skipSeg && j === skipStage) continue;
       let step = stages[j].trim();
-      if (!step || SELF_READ.test(step) || teesToTerminal(step)) continue;
+      if (!step || selfRun(step) || teesToTerminal(step)) continue;
       for (const m of step.matchAll(/\$\(([^()]*)\)/g)) { const inner = changingStep(m[1], -1, -1); if (inner) return inner; }
       step = step.replace(/^\(+\s*(?=(?:cd|pushd|popd)\b)/, ''); // a subshell's `(cd dir && cat f)` moves only the subshell
       while (CONTROL_LEAD.test(step)) step = step.replace(CONTROL_LEAD, '');
       step = step.replace(/^(?:\w+=(?:"[^"]*"|'[^']*'|\$\([^()]*\)|[^\s;|&]*)\s*)+/, '');
       if (!/^command\s+-v\b/.test(step)) step = step.replace(PREFIX_WORDS, '');
       if (!step || CONTROL_ALONE.test(step)) continue;
-      if (!READ_ONLY_STEP.test(step) || inPlaceFlag(step)) return stages[j].trim();
+      if (!readOnlyStep(step) || inPlaceFlag(step)) return stages[j].trim();
     }
   }
   return null;
 }
 // Called before every rewrite judgeShell makes. A runtime heredoc body is exempt: the rewrite already stands
-// in for the whole script, which no step list can judge.
-function refuseDroppedSteps(what) {
+// in for the whole script, which no step list can judge. `spliced`: the rewrite swaps the judged segment alone
+// (spliceView), so the other segments run exactly as written and only that segment's other stages are lost -
+// refusing a read-only `git check-ignore` or `claude plugin list` beside it re-sent a whole context per retry.
+function refuseDroppedSteps(what, spliced) {
   if (!judging) return;
   // The judged stage itself: a heredoc body is judged whole, since its write can sit on another line than its path.
   const own = splitPipes(splitSegments(stripComments(judging.text))[judging.seg] || '')[judging.stage] || '';
   const writes = stageWrites(own, judging.runtime ? judging.text : null);
-  const script = !writes && !judging.runtime && scriptFileRun(own);
+  const script = !writes && !judging.runtime && !selfRun(own) && scriptFileRun(own);
   if (writes || script) {
     global.BLOCK_DETAIL = { branch: writes ? 'writer' : 'opaque-script', matched: (writes || script).slice(0, 40) };
     block((writes
@@ -2162,14 +2266,15 @@ function refuseDroppedSteps(what) {
       `  node "${__filename}" --presence <file> [KEY ...]   (A.B.C reads a nested key)\n`);
   }
   if (judging.runtime) return;
-  const step = changingStep(judging.text, judging.seg, judging.stage);
+  const step = changingStep(judging.text, judging.seg, judging.stage, !!spliced);
   if (!step) return;
   global.BLOCK_DETAIL = { branch: 'dropped-steps', matched: step.split(/\s+/)[0].slice(0, 40) };
+  // A count or the presence read, never `jq ... | length`: Git Bash on Windows ships no jq (exit 127, twice).
   block(`Blocked: this command prints ${what} AND runs a step that changes something - nothing ran.\n` +
-    `The shell route would replace the WHOLE command with the redacted form and silently drop that step:\n` +
+    `The shell route would replace ${spliced ? 'the pipeline that reads it' : 'the WHOLE command'} with the redacted form and silently drop that step:\n` +
     `  ${step.slice(0, 160)}\n` +
     `Run the changing steps as their own command (an in-place \`sed -i\` edit and a \`> file\` redirect pass this guard),\n` +
-    `then check the result with a count (\`grep -c\`), \`jq '... | length'\`, or the presence read:\n` +
+    `then check the result with a count (\`grep -c KEY <file>\`) or the presence read:\n` +
     `  node "${__filename}" --presence <file> [KEY ...]\n`);
 }
 // A FILTERING read (grep KEY <file>, jq .path <file>, head -5 <file>) asked for a slice, and the whole redacted
@@ -2178,8 +2283,12 @@ function refuseDroppedSteps(what) {
 // view is piped in. Only when the file is the stage's ONE file operand, spelled once, and not a `<` redirect;
 // Bash tool only (the note goes to stderr, which a PowerShell pipe turns into an error record).
 const FILTER_VERB = /^(?:grep|egrep|fgrep|rg|jq|head|tail|sed|awk|cut)(?=\s|$)/;
+// A `cat <file> | <reader>` hands its reader the file - the view stands in for the cat, and the reader keeps reading
+// (the sessions' `cat <settings> | node -e '<print the plugin keys>'` came back as the whole view).
 function narrowFilter(stages, tok) {
   const first = stages[0];
+  const piped = stages.length > 1 && /^cat\s+(?:--\s+)?["']?[^\s"']+["']?\s*$/.test(first.replace(PREFIX_WORDS, '').trim());
+  if (piped) return shellTokens(first).filter((w) => w === tok).length === 1 ? stages.slice(1).map((x) => x.trim()).join(' | ') : null;
   if (!FILTER_VERB.test(first.replace(PREFIX_WORDS, ''))) return null;
   const words = shellTokens(first);
   if (words.filter((w) => w === tok).length !== 1) return null;
@@ -2193,9 +2302,9 @@ function narrowFilter(stages, tok) {
 // A rewrite replaces the WHOLE command, so a compound READ-ONLY command came back as one
 // `--redacted <file>` view and its other reads vanished with no note at all (replayed: a 4-part
 // read-only command came back as 1 part, and 3 recovery calls followed at ~124k). Only the SEGMENT
-// that named the credential file needs the view; every other segment is read-only by the time a
-// rewrite is reached, because refuseDroppedSteps blocks a changing one. So the view is SPLICED in
-// place and the rest of the command is kept as written. Three shapes keep the whole-command
+// that named the credential file needs the view, so the view is SPLICED in place and every other
+// segment - a changing one included, since nothing drops it - is kept as written and judged as
+// written (judgeKept). Three shapes keep the whole-command
 // rewrite, with the dropped segments NAMED in a note the model reads: a heredoc body (the judged
 // text is not the command), a split that fell back to the quote-blind form, and a command whose
 // other segments name a credential file of their own or a path this guard cannot resolve - keeping
@@ -2204,7 +2313,7 @@ function namesCredentialFileIn(part) {
   const asg = part.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;|&]*)/);
   if (asg) VARS.set(asg[1], [asg[2].replace(/^(["'])([\s\S]*)\1$/, '$2')]);
   for (const stage of splitPipes(part)) {
-    if (SELF_READ.test(stage)) continue; // this guard's own presence / redacted read
+    if (selfRun(stage)) continue; // this guard's own presence / redacted read
     const toks = shellTokens(stage).filter((t) => !t.startsWith('-') && /[\/.~$]/.test(t));
     for (const m of stage.matchAll(/(?:^|[^<])<\s*("[^"]*"|'[^']*'|[^\s;|&<>()]+)/g)) toks.push(m[1]);
     for (const m of stage.matchAll(/(["'`])([^"'`\n]{2,300})\1/g)) toks.push(m[2]);
@@ -2221,27 +2330,36 @@ function edgeSpace(s) {
   const lead = s.length - s.trimStart().length;
   return lead === s.length ? [s, ''] : [s.slice(0, lead), s.slice(s.trimEnd().length)];
 }
-function spliceOrWhole(view, file) {
-  let parts = null;
-  if (judging && judging.main) {
-    const seps = [];
-    parts = splitSegments(stripComments(judging.text), seps);
-    if (seps.length === parts.length - 1 && judging.seg < parts.length) {
-      const others = parts.filter((p, i) => i !== judging.seg);
-      if (!others.some(namesCredentialFileIn)) {
-        // the replaced segment keeps its own surrounding whitespace, so the command reads exactly as
-        // the model wrote it with one step swapped
-        const pad = [null, ...edgeSpace(parts[judging.seg])];
-        let out = '';
-        for (let i = 0; i < parts.length; i++) out += (i === judging.seg ? pad[1] + view + pad[2] : parts[i]) + (seps[i] || '');
-        return out.trim();
-      }
-    }
-  }
+// The command with the judged segment swapped for `view`, or null when it cannot be spliced (the shapes above). Asked
+// BEFORE refuseDroppedSteps, which refuses a changing step only where the rewrite actually drops it.
+function spliceView(view) {
+  if (!judging || !judging.main) return null;
+  const seps = [];
+  const parts = splitSegments(stripComments(judging.text), seps);
+  if (seps.length !== parts.length - 1 || judging.seg >= parts.length) return null;
+  if (parts.some((p, i) => i !== judging.seg && namesCredentialFileIn(p))) return null;
+  // the replaced segment keeps its own surrounding whitespace, so the command reads exactly as
+  // the model wrote it with one step swapped
+  const pad = edgeSpace(parts[judging.seg]);
+  let out = '';
+  for (let i = 0; i < parts.length; i++) out += (i === judging.seg ? pad[0] + view + pad[1] : parts[i]) + (seps[i] || '');
+  return out.trim();
+}
+// The segments a splice keeps run as written, so they are judged as written before the rewrite stands: a runtime or a
+// `bash -c` beside the read counts as read-only now, and what it prints (a credential variable, a file read through a
+// shell string) still takes its own form. The view is this guard's own read, exempt by name; main is off, so a hit in
+// here replaces the whole command rather than splicing again.
+function judgeKept(command) {
+  const from = spawnedShell.length;
+  judgeShell(command, false, false);
+  for (let n = from; n < spawnedShell.length; n++) judgeShell(spawnedShell[n], false);
+}
+function wholeView(view, file) {
   // Not spliceable: the whole command is replaced, as before - but every step that goes with it is
   // NAMED. The silence was the cost (a 4-part command came back as 1 part and nothing said so), not
   // the replacement. The judged text is the base where it is the command; otherwise (a heredoc in
   // the command, a heredoc body) the command's own segments are, minus the one naming the file.
+  const parts = judging && judging.main ? splitSegments(stripComments(judging.text)) : null;
   const base = parts || splitSegments(stripComments(String(input.command || '')));
   const dropped = [];
   for (let i = 0; i < base.length; i++) {
@@ -2644,7 +2762,7 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
       judging = { text, seg: si, stage: sj, runtime: forceRuntime, main };
       // The sanctioned read is exempt by name - it is this file - and only in its OWN stage: the
       // exemption used to cover the whole segment, so `--presence <file> | cat <file>` passed.
-      if (/guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?|redact-stdin)\b/.test(stage)) continue;
+      if (selfRun(stage, /guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?|redact-stdin)\b/)) continue;
       if (!forceRuntime && !IS_PWSH) spawnedShell.push(...shellRunStrings(stages, sj));
 
       // Printing a credential-shaped VARIABLE: echo / printf with $NAME or ${NAME...}, printenv NAME.
@@ -2738,13 +2856,16 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
           if (!file) continue;
           const key = secretInUnlessAllowed(file);
           if (!key) continue;
-          // The FIRST credential file wins and the whole call becomes its redacted view - the rest of
-          // a compound command is dropped rather than spliced, so the rewritten call is always one the
-          // model can read back whole; a dropped step that CHANGES something blocks instead.
-          refuseDroppedSteps(`${file}, which holds a credential under \`${key}\``);
+          // The FIRST credential file wins: its segment becomes the redacted view, spliced where it stands when the
+          // rest of the command can run as written (spliceView), else the whole call is replaced. A step the
+          // rewrite would DROP that changes something blocks instead.
           const view = IS_PWSH ? `node ${psSingle(__filename)} --redacted ${psSingle(file)}` : `node "${shDouble(__filename)}" --redacted "${shDouble(file)}"`;
           const narrow = !IS_PWSH && !isRuntime && sj === 0 && narrowFilter(stages, tok);
-          rewrite(spliceOrWhole(narrow ? `${view} --note-to-stderr | ${narrow}` : view, file), { branch: 'file', file: pathMod.basename(file) });
+          const shown = narrow ? `${view} --note-to-stderr | ${narrow}` : view;
+          const spliced = spliceView(shown);
+          refuseDroppedSteps(`${file}, which holds a credential under \`${key}\``, spliced != null);
+          if (spliced != null) judgeKept(spliced);
+          rewrite(spliced != null ? spliced : wholeView(shown, file), { branch: 'file', file: pathMod.basename(file) });
         }
       }
       cwdAnchor = stageAnchor; // `env -C` moves only its own stage

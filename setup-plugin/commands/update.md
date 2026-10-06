@@ -85,7 +85,7 @@ prompts as its rules; `/alfred-loop-quality staged` is the stage-by-stage run a 
 | `/project-test-coverage-analyzer` | `/alfred-capture-test-coverage` |
 | `/project-related-context` | `/alfred-capture-related-projects` |
 | `/project-agent-capabilities` | `/alfred-capture-agent-capabilities` |
-| `/project-stack-usage-analyzer` | `/alfred-capture-stack-usage` |
+| `/project-stack-usage-analyzer` | `/alfred-capture-usage-report` |
 | `/project-first-look` | `/alfred-capture-first-look` |
 | `/project-quality-loop` | `/alfred-loop-quality` |
 | `/project-architecture-quality-loop` | `/alfred-loop-architecture-quality` |
@@ -93,6 +93,7 @@ prompts as its rules; `/alfred-loop-quality staged` is the stage-by-stage run a 
 | `/project-commit-checkpoint` | `/alfred-habits-commit-checkpoint` |
 | `/alfred-capture-claude-md` | `/alfred-habits-adjust-agents-md` |
 | `/alfred-habits-adjust-claude-md` | `/alfred-habits-adjust-agents-md` |
+| `/alfred-capture-stack-usage` | `/alfred-capture-usage-report` |
 | `/create-ticket` | `/alfred-habits-create-ticket` |
 | `/explain-code-tutor` | `/alfred-habits-explain-code` |
 | seat `ci-failure-diagnoser` | seat `alfred-issue-diagnoser-ci` |
@@ -226,13 +227,16 @@ It prints, in order:
   `ALFRED_CODE_HOOKS_OFF`, the walk's None, a parked entry), `unknown` (the plugin listing could
   not be read). A rename whose old name the stamp's picks never named and the disk never held
   prints no row - it was declined under that name.
-- `data-move: offer <root><TAB>from=<places><TAB>docs=<n> serena=yes|no browser=<engines|none> memory=yes|no[<TAB>ignored=yes][<TAB>conflicts=<n>]`
+- `data-move: offer <root><TAB>from=<places><TAB>docs=<n> serena=yes|no browser=<engines|none> memory=yes|no[<TAB>ignored=yes][<TAB>conflicts=<n>][<TAB>yours=yes]`
   - this project's data sits outside its data root (`ALFRED_CODE_DATA_PATH`, `.alfred` by default): the
   docs at the old default `.claude/docs` or under an earlier root, and the 2.0.0 server folders -
   `.serena` (the navigation index, handoff notes and language servers), `.playwright/<engine>` (browser
   profiles), `.memory-mcp` (a project-level memory database). `from=` names each place. `data-move: none
   (<why>)` otherwise - an empty old docs root is re-pointed by the installer itself (report its log
   line). Only `offer` is asked, below.
+- `agents-md: offer .claude/CLAUDE.md -> .claude/AGENTS.md` - the project's instruction file still carries
+  the old name while the stack's is AGENTS.md (Claude Code reads AGENTS.md itself) and no AGENTS.md sits
+  beside it or at the root. `agents-md: none (<why>)` otherwise. Only `offer` is asked, below.
 - `env-keys: <names>` - the scope's settings `env` KEY NAMES before the run, and the
   before-state step 7 diffs its read-back against. Names only: the script never prints a value,
   and neither do you. An `unattended: on` line closes the output: nobody answers this run, and every
@@ -302,7 +306,10 @@ inside the project, never under `.claude/`, with no space. The recommended answe
 the keep answer `--data-move keep` - on the installer call of whichever path runs (the 2.0.0 spelling
 `--docs-move` is read for one release). `ignored=yes` means git never saw the old docs root: the move
 keeps it that way (the docs' own `.gitignore` of `*`, `ALFRED_CODE_DOCS_VERSIONING` becomes `local`) - say
-so in the move option. When the new-items ask fires too, both go in the SAME AskUserQuestion call, one
+so in the move option. `yours=yes` means the docs root `.claude/docs` is out of the ledger - an earlier
+release's 'keep' made it the user's value - yet every Alfred Code file belongs under the data root, so
+the move is still offered and still Recommended: say the root was kept by an earlier answer, and that
+the move re-points the key. When the new-items ask fires too, both go in the SAME AskUserQuestion call, one
 question each. A `conflicts=<n>` field means data already sits at the new place: do not ask - name the
 count, run without the flag (the old places stay in effect, except one a server already moved - there the
 new place serves, and the log's `still holds data` line names the leftover to remove or merge), and the
@@ -311,7 +318,21 @@ moved now, what waits for a server's next start), the `--log` call prints `resta
 restart this session writes the docs under the NEW root - its loaded rule text still names the old one.
 Unattended, both asks take their Recommended option - the move overwrites nothing (a conflict already
 stops it) and adding the recommended items only adds - each logged as one `unattended: <question> ->
-<choice>` line.
+<choice>` line; a `yours=yes` offer is the exception, a value the user once kept: pass no `--data-move`,
+log `unattended: <question> -> not answered (yours)`, and the next attended update asks.
+
+**The instruction file's name - ONE ask, and only on `agents-md: offer`.** Before the installer runs,
+in the same AskUserQuestion call as the other asks (one question each):
+
+```ask
+Rename .claude/CLAUDE.md to .claude/AGENTS.md? The stack's instruction file is AGENTS.md now; the content stays as it is, only the name changes.
+- 'Rename it (Recommended)' - git mv where git tracks it, and a '!.claude/CLAUDE.md' re-include in .gitignore or .git/info/exclude follows the new name
+- 'Keep CLAUDE.md' - nothing moves; Claude Code still reads it, and the next update asks again
+```
+
+A yes is `--rename-claude-md` on the installer call of whichever path runs; its log line says what moved
+(an unedited seed moves without the flag). Unattended, take the Recommended option: a rename keeps every
+byte and its git history.
 
 ## 3. Fast path - refresh in place (the common case)
 Run the installer; it reads the install back itself, closes new dependencies through
@@ -528,9 +549,10 @@ The installer has already re-spelled every renamed skill or seat name the stack 
 `AGENTS.md`, `.claude/AGENTS.md` and the generated rules (one `renamed: <file> - <n> ...` line per
 file) - report those lines, and leave the names to it.
 The installer has also dealt with the seeded file's name: an unedited `.claude/CLAUDE.md` it seeded is
-moved to `.claude/AGENTS.md` (`git mv` where git tracks it), an edited one, or any when a root AGENTS.md
-holds the project's instructions, is left in place and named in one line with its `mv` command - report
-those lines and never rename a file for the user.
+moved to `.claude/AGENTS.md` (`git mv` where git tracks it), and so is the user's own on step 2's
+rename answer (`--rename-claude-md`); without that answer an edited one, or any when an AGENTS.md
+already holds the project's instructions, is left in place and named in one line - report those lines,
+and never rename a file outside that answer.
 
 **Run the compare whatever the delta says** - the template being unchanged
 UPSTREAM says nothing about whether THIS project's AGENTS.md still matches it, and the
@@ -571,6 +593,21 @@ what was taken, what stays off or was left, each by name), and the restart line.
   move (with its `git mv` count, which the user commits), what moved now and what waits for a server's
   next start, the kept layout, the re-point, the refused move with its files, or the offer still open
   when no answer was passed.
+- **GIT HYGIENE** - the one extra call this step makes, after the installer and before `$TMP` goes:
+  `node "$TMP/repo/scripts/git-hygiene.js" --root .`. A `git-hygiene: offer <root>/<TAB><why>` line
+  means git lists the data root as untracked while nothing under it is meant to be committed; ask ONE
+  AskUserQuestion (a write, so it is asked - not a follow-up):
+
+  ```ask
+  Ignore <root>/ in git? <why>.
+  - 'The committed .gitignore (Recommended)' - one anchored line the team shares, so no clone lists it as untracked
+  - '.git/info/exclude' - this clone only, no committed file touched
+  - 'Leave it' - nothing is written, the next update asks again
+  ```
+
+  and apply the answer with `--apply gitignore` or `--apply exclude`, reporting its `applied` /
+  `current` line. A `none (...)` line is not reported. Unattended, take the Recommended option and log
+  it.
 - **MEMORY** - when the grep caught a memory line, report it verbatim: the `memory:` level/database
   line (present whenever `--memory-level` was passed, the level changed, or this run adopted the
   registration for the first time - the fast path's own default now, whenever it was absent, not

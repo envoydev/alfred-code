@@ -480,14 +480,44 @@ test('report: a project not yet migrated resolves CLAUDE_STACK_DOCS_PATH, the 1.
 // A 1.x install's stamp keeps its old name until an update rewrites it: it is still the install's
 // revision, and an update that rewrites it is still drift. This script ships inside a skill, with
 // no installer module beside it, so it names the old file itself.
-test('report + precheck: a 1.x stamp is the install revision, and a touched one is drift', { skip: posixOnly }, () =>
+test('report + precheck: a 1.x stamp is the install revision, and one rewritten at a new revision is drift', { skip: posixOnly }, () =>
 {
     const root = project('legacy-stamp', { stampName: 'claude-stack.stamp' }); // legacy-name
     const { out } = run([], { cwd: root });
     assert.match(out, /CAPTURED:\s+\d{4}-\d{2}-\d{2} from 0\.2\.79@abcdef1/);
     assert.match(out, /PRECHECK:\s+empty/);
-    touch(path.join(root, '.claude', 'claude-stack.stamp'), 300); // legacy-name
+    write(path.join(root, '.claude', 'claude-stack.stamp'), 'sha: 1234567abcdef\nversion: 0.2.80\n', 300); // legacy-name
     assert.match(run([], { cwd: root }).out, /PRECHECK:\s+drift - 1 file\(s\) newer than the rule[\s\S]*claude-stack\.stamp/); // legacy-name
+});
+
+// Every update rewrites the stamp, a no-op one included: a newer stamp alone read as drift after each update, and
+// the full compose that followed came out identical. The stamp's revision against the rule's `Captured: ... from`
+// value decides; any other newer file is still drift beside it.
+test('precheck: a stamp rewritten at the captured revision is not drift; a new revision, no revision or another file is', { skip: posixOnly }, () =>
+{
+    const root = project('stamp-same-rev');
+    const stamp = path.join(root, '.claude', 'alfred-code.stamp');
+    write(stamp, 'sha: abcdef1234567890\nversion: 0.2.79\nwritten: later\n', 300);
+    const same = run([], { cwd: root }).out;
+    assert.match(same, /PRECHECK:\s+empty - 0 files newer than the rule \(Captured: 2026-09-01 from 0\.2\.79@abcdef1; a stamp rewrite at the same revision 0\.2\.79@abcdef1 is not drift\)/);
+
+    write(stamp, 'sha: abcdef1234567890\nversion: 0.2.80\n', 300);
+    assert.match(run([], { cwd: root }).out, /PRECHECK:\s+drift - 1 file\(s\)[\s\S]*alfred-code\.stamp/, 'a new version is drift');
+
+    write(stamp, 'sha: 9999999aaaaaaa\nversion: 0.2.79\n', 300);
+    assert.match(run([], { cwd: root }).out, /PRECHECK:\s+drift - 1 file\(s\)/, 'a new commit at the same version is drift');
+
+    write(stamp, 'nothing: here\n', 300);
+    assert.match(run([], { cwd: root }).out, /PRECHECK:\s+drift - 1 file\(s\)/, 'a stamp with no revision cannot prove it is the same');
+
+    write(stamp, 'sha: abcdef1234567890\nversion: 0.2.79\n', 300);
+    touch(path.join(root, '.claude', 'rules', 'markdown-docs.md'), 200);
+    const both = run([], { cwd: root }).out;
+    assert.match(both, /PRECHECK:\s+drift - 2 file\(s\)/, 'the stamp is not dropped when another file moved too');
+
+    const noFrom = project('stamp-no-from', { rule: '---\ndescription: generated\n---\n\nCaptured: 2026-09-01\n' });
+    touch(path.join(noFrom, '.claude', 'alfred-code.stamp'), 300);
+    assert.match(run([], { cwd: noFrom }).out, /PRECHECK:\s+drift - 1 file\(s\)/, 'a rule that recorded no revision stays drift');
 });
 
 test('report: an unreadable skill frontmatter is reported as unreadable, never filled from memory', { skip: posixOnly }, () =>

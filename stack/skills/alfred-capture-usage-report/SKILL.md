@@ -1,10 +1,10 @@
 ---
-name: alfred-capture-stack-usage
+name: alfred-capture-usage-report
 description: "Use when asked to analyze the stack usage or audit this project's sessions for token and tool cost. Manual, /-only. Not for live cost or fixing findings."
 disable-model-invocation: true
 ---
 
-# Project Stack Usage Analyzer - token/tool report on stack skill runs
+# Usage Report - token/tool report on stack skill runs
 
 You audit what alfred-code skill runs in this project actually cost: find the session transcripts, run the stack's offline analyzer over them, and write one report per session with the raw data next to it, so a later agent can re-analyze without re-collecting. The question every bundle answers is whether Claude Code with the stack is EFFICIENT in this project - in tokens (what the session paid against what it delivered) and in effectiveness (did the work land, how many corrections it took, how many claims had a check behind them) - so the analyzer prints an efficiency scorecard per session and the report carries an authored efficiency verdict built from it. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
@@ -44,7 +44,7 @@ Two run modes, opposite expectations:
 ### 1. FIND the transcripts
 Claude Code writes one JSONL per session under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<encoded-project-path>/` - the folder whose name is this project's absolute path with every non-alphanumeric character replaced by a dash. List `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/` and take the folder whose name matches, rather than computing it. Grep the `*.jsonl` files there for each SKILLS name (on the DETECT default: for the invocation markers of any installed stack skill) and list which session file(s) contain which skill RUN - invocation markers only, never bare mentions. A `<session-id>/subagents/` folder next to a session file belongs to that session - note it (for the default trio, its existence is already a finding; see the report shape).
 
-With the matches listed, resolve SESSIONS: unless the invocation itself named the scope, this step IS an AskUserQuestion call - fire the run-start ask above with the counts this grep just produced, and only then continue. Never pick a scope yourself and never default to the current session on a bare invocation - the tool call is the step, the prose form of it gets skipped. Self-check before anything runs: when the resolved scope includes the session this audit is running in, stop, restate the fresh-session rule, and put the resolution through ONE AskUserQuestion - **Exclude current session (recommended)**: drop the current id from the scope and note it for the next fresh-session run; **Hand off to a fresh session**: end the turn with the invocation to paste there - never resolve it silently and never audit the live session's own tail; the prose rule alone does not hold, this check is the gate. Then audit EVERY session in the chosen scope - never just the newest, never a silent subset; each audited session gets its own step-4 bundle. One bound keeps repeated sweeps sane, and the test is the REPORT, not the folder: a session is previously-audited when `<docs-path>/alfred-code-usage-report/<session-id>/report-usage.md` exists AND carries no `FILL IN` section - skip that one, list it as previously-audited, and re-audit only on an explicit ask. The folder alone is not the test: it becomes true at the SKELETON write, long before the report is authored, so a run resumed after an interruption would skip its own unfinished bundles as done.
+With the matches listed, resolve SESSIONS: unless the invocation itself named the scope, this step IS an AskUserQuestion call - fire the run-start ask above with the counts this grep just produced, and only then continue. Never pick a scope yourself and never default to the current session on a bare invocation - the tool call is the step, the prose form of it gets skipped. Self-check before anything runs: when the resolved scope includes the session this audit is running in, stop, restate the fresh-session rule, and put the resolution through ONE AskUserQuestion - **Exclude current session (recommended)**: drop the current id from the scope and note it for the next fresh-session run; **Hand off to a fresh session**: end the turn with the invocation to paste there - never resolve it silently and never audit the live session's own tail; the prose rule alone does not hold, this check is the gate. Then audit EVERY session in the chosen scope - never just the newest, never a silent subset; each audited session gets its own step-4 bundle. One bound keeps repeated sweeps sane, and the test is the REPORT, not the folder: a session is previously-audited when `<docs-path>/usage-report/<session-id>/report-usage.md` exists AND carries no `FILL IN` section - skip that one, list it as previously-audited, and re-audit only on an explicit ask. The folder alone is not the test: it becomes true at the SKELETON write, long before the report is authored, so a run resumed after an interruption would skip its own unfinished bundles as done.
 
 ### 2. GET the analyzer
 It ships in the stack's source repo, not in this project. LOOK BEFORE DOWNLOADING: where the stack is installed as plugins, the agent tool's own plugin cache already holds the whole repo (`stack/`, `scripts/`, `meta/` and all - it is the repo root the marketplace entries are sourced from), so the newest valid entry there is the snapshot. Downloading before looking is what tripped the harness classifier in 4 audited bundles, and it pays ~1.8s for a 1.4MB archive already on disk:
@@ -79,7 +79,7 @@ The directory rollup once, to confirm which sessions matter; then per audited se
 ### 4. WRITE - one folder per session
 Read `references/diagnosis-discipline.md` now, before the first authored row of the first bundle - its checks are this step's gate, not homework: every authored section below is written against them, and the report's Environment rows carry the receipt `Discipline: read`.
 
-Everything for a session lands in `<docs-path>/alfred-code-usage-report/<session-id>/`:
+Everything for a session lands in `<docs-path>/usage-report/<session-id>/`:
 
 - `report-usage.md` - the filled `--report-md` skeleton: the analyzer's tables stay UNTOUCHED (a number a tool prints cannot be misquoted), and you author only the FILL IN sections, shaped per the section spec below.
 - The `--json` dump(s).
@@ -87,10 +87,10 @@ Everything for a session lands in `<docs-path>/alfred-code-usage-report/<session
 - The session's guard-block ledger, COPIED from `<docs-path>/hook-blocks/<sid>.jsonl` and renamed `hook-blocks-<sid>.jsonl` when it exists - one row per BLOCK, naming the hook that fired. Copied rather than moved: the ledger is the project's own running record of what its gates denied. Absent means no block fired this session - say that rather than leaving the reader to guess.
 - The session's instrumentation ledgers, MOVED (not copied) from `<docs-path>/tools-usage/` and renamed `tool-usage-<sid>.jsonl` - the session's own and its dispatched agents'. The move is deliberate: an audited run's ledgers live with its bundle, and the collection folder drains as runs get audited instead of accumulating forever; a session not audited this run keeps its ledger in place.
 
-Raw transcripts carry full conversation content - code, file contents, possibly secrets - so the copy is keyed on what git will do with it, never on which docs root is the default. Before the first copy run `git check-ignore -q "<docs-path>/alfred-code-usage-report/<session-id>/x.jsonl"`. Exit 0: git keeps the copies out (the stack's docs `.gitignore` does in both versioning modes) - copy. Any other exit (1 is a folder git can commit, 128 no repo at all): ONE ask before any copy, the answer held for the run:
+Raw transcripts carry full conversation content - code, file contents, possibly secrets - so the copy is keyed on what git will do with it, never on which docs root is the default. Before the first copy run `git check-ignore -q "<docs-path>/usage-report/<session-id>/x.jsonl"`. Exit 0: git keeps the copies out (the stack's docs `.gitignore` does in both versioning modes) - copy. Any other exit (1 is a folder git can commit, 128 no repo at all): ONE ask before any copy, the answer held for the run:
 
 ```ask
-Raw transcripts would land in <docs-path>/alfred-code-usage-report/, a folder git can commit. Keep them out of the bundle.
+Raw transcripts would land in <docs-path>/usage-report/, a folder git can commit. Keep them out of the bundle.
 - 'Report and --json dumps only (Recommended)' - the report and the dumps carry counts, tool names and paths, never code
 - 'Copy the raw transcripts too' - the whole conversation, code and file contents included, lands where git can commit it
 ```
@@ -119,7 +119,7 @@ Then append the full-report analyzer outputs verbatim at the end of the doc (the
 
 ### 5. SUMMARIZE - the project-wide picture
 
-When this run audited more than one session, or bundles from prior runs already sit in `<docs-path>/alfred-code-usage-report/`, write `<docs-path>/alfred-code-usage-report/SUMMARY.md` - replaced whole, never an append log.
+When this run audited more than one session, or bundles from prior runs already sit in `<docs-path>/usage-report/`, write `<docs-path>/usage-report/SUMMARY.md` - replaced whole, never an append log.
 
 **Rewrite it after EACH bundle closes, not once at the end of the run.** The command that writes a bundle's report writes the summary row in the same turn, so a run that is interrupted, compacted or handed off still leaves a SUMMARY.md naming every bundle finished so far - a summary held to the end is the first thing a long run loses. Rewriting it is cheap: the rows come from the bundles' own `--json` dumps.
 

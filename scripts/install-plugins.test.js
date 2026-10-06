@@ -435,6 +435,18 @@ test('retired: a row at ANOTHER scope is kept and logged with its uninstall comm
         assert.ok(logs.some((m) => m.includes(`${spec} is installed at user scope`) && m.includes(`claude plugin uninstall ${spec} --scope user`)), `${spec}: ${logs.join(' | ')}`);
 });
 
+test('retired: a project or local row of THIS project goes whatever the run scope - only a user row is shared', () =>
+{
+    const run = cli();
+    const logs = [];
+    const rows = [prow('sentry', 'envoydev', 'local'), prow('ponytail', 'ponytail', 'project'), prow('angular-cli', 'envoydev', 'user')];
+    const gone = P.prunedRetired({ rows, retired: ['sentry', 'ponytail', 'angular-cli'], retiredRows: RETIRED_ROWS, market: 'envoydev', scope: 'local', cli: run, log: (m) => logs.push(m) });
+    assert.deepStrictEqual(gone.sort(), ['ponytail', 'sentry']);
+    assert.deepStrictEqual(run.matching(/uninstall/).sort(), ['plugin uninstall ponytail@ponytail --scope project -y', 'plugin uninstall sentry@envoydev --scope local -y']);
+    assert.ok(logs.some((m) => /add it back: claude plugin install sentry@claude-plugins-official --scope local/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /angular-cli@envoydev is installed at user scope/.test(m)), logs.join(' | '));
+});
+
 test('retired: each uninstall prints the add-back line of its row, at the scope it went from', () =>
 {
     const logs = [];

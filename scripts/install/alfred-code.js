@@ -897,6 +897,17 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
 }
 
 // The shell's own order. Every step depends on what the one before it left on disk.
+// The clone's own exclude file, when the project is a git checkout - a re-include there follows a rename too.
+function excludeFileOf(ctx)
+{
+    try
+    {
+        const rel = String(ctx.rt.execCommand('git', ['rev-parse', '--git-path', 'info/exclude'], { cwd: ctx.projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })).trim();
+        return rel ? [path.resolve(ctx.projectRoot, rel)] : [];
+    }
+    catch { return []; }
+}
+
 function runLayers(ctx)
 {
     const { args } = ctx;
@@ -923,6 +934,9 @@ function runLayers(ctx)
         docs.ensureDocsIgnore({ projectRoot: ctx.projectRoot, docsPath, mode, log: ctx.log });
     }
     catch (err) { ctx.note(`${docsPath}/.gitignore could not be written (${err.message}) - add the docs root's machine state to the repo's own .gitignore`); }
+    // After the root's .gitignore names the new folder, so a raw transcript copy never lands unignored.
+    try { docs.migrateUsageReport({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
+    catch (err) { ctx.note(`the usage report folder could not be renamed under ${docsPath} (${err.message}) - it stays as alfred-code-usage-report/`); }
     if (args.action === 'install') ctx.stackAgentsMd = seeds.seedAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
     // An update moves the seed an earlier release wrote as .claude/CLAUDE.md - only while it is still unedited.
     else if (args.action === 'update')
@@ -930,6 +944,7 @@ function runLayers(ctx)
             projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, ledgerHash: (ctx.ledger && ctx.ledger.files && ctx.ledger.files['CLAUDE.md']) || '',
             hash: library.hashItem, tracked: (at) => gitTracks(ctx, at),
             gitMv: (from, to) => ctx.rt.execCommand('git', ['mv', '--', from, to], { cwd: path.dirname(from), stdio: 'ignore' }),
+            force: Boolean(args.renameClaudeMd), ignoreFiles: args.renameClaudeMd ? excludeFileOf(ctx) : [],
             log: ctx.log, note: ctx.note,
         }) === 'moved';
     // Only a seed the ledger still holds at its hash is the stack's to re-spell; a re-spelled one keeps its ledger row.
@@ -1172,7 +1187,8 @@ function docsRootStep(ctx)
         ctx.docsPath = { value: to, own: 'stack', why: 'the data root' };
     else if (plan.state === 'offer')
     {
-        const held = { value: plan.from, own: 'stack', why: 'its docs are still there' };
+        // An old default the user kept (plan.yours) stays theirs while the offer is unanswered.
+        const held = { value: plan.from, own: plan.yours ? 'user' : 'stack', why: 'its docs are still there' };
         const count = plan.tracked.length + plan.untracked.length;
         if (args.dataMove === 'keep')
         {
@@ -2421,7 +2437,9 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
             rows: plugins.parsePluginList(rawList, projectRoot, { everyScope: true }), market, scope,
             thirdParty: [...manifest.catalogs.plugins, ...CORE_DEP_PLUGINS], cli, log, note,
         });
-        log(`  the marketplace registration is the account's, kept for other projects: claude plugin marketplace remove ${market} (once none uses it)`);
+        // Never the bare form: with no --scope the CLI removes the declaration from EVERY scope and uninstalls every
+        // plugin installed from it (a session ran it and lost four plugins other projects used - 2026-10-06 report).
+        log(`  the marketplace registration is the account's, kept for other projects: claude plugin marketplace remove ${market} --scope user (once no project uses it - without --scope it is removed at every scope and every plugin installed from it goes too)`);
     }
     else if (!claudeBroken) note('the claude CLI is not on PATH - no plugin row was removed; run uninstall again where it is');
     const { removed } = mcp.removeManagedMcp({ mcpFile: path.join(projectRoot, '.mcp.json'), managed: ledger.mcp || {}, log, note });

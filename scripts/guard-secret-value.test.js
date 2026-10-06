@@ -1320,7 +1320,9 @@ test('guard-secret-value: PowerShell spelling - its read cmdlets, $env:NAME and 
     'curl.exe -H "Authorization: $env:SENTRY_ACCESS_TOKEN" https://example.test', 'Get-ChildItem src', 'Get-Item package.json']) {
     assert.equal(verdict(ps(cmd)), 0, `${cmd}: not a print of a credential`);
   }
-  assert.equal(verdict(ps(`Get-Content ${f.dotenv}; Set-Content out.txt 'x'`)), 2, 'a dropped changing step blocks, as on Bash');
+  assert.equal(updatedCommand(ps(`Get-Content ${f.dotenv}; Set-Content out.txt 'x'`)), `node '${HOOK}' --redacted '${f.dotenv}'; Set-Content out.txt 'x'`,
+    'a changing step in another segment is kept where the view is spliced, as on Bash');
+  assert.equal(verdict(ps(`Get-Content ${f.dotenv} | Set-Content out.txt`)), 2, 'a dropped changing stage blocks, as on Bash');
   assert.equal(verdict(run({ tool_name: 'Bash', tool_input: { command: 'ls env:' }, session_id: 'suite' })), 0, 'the env: drive is PowerShell only');
   // updatedInput REPLACES the tool input (code.claude.com/docs/en/hooks), so the rewrite keeps the rest of it.
   const kept = JSON.parse(ps(`Get-Content ${f.dotenv}`, {}).stdout || '{}');
@@ -1402,7 +1404,10 @@ test('guard-secret-value: a command that also CHANGES something is blocked, neve
   assert.match(r.stderr, /nothing ran/i, 'the denial says the command did not run');
   assert.match(r.stderr, /sed -i/, 'and names the step the rewrite would have dropped');
   assert.doesNotMatch(r.stderr, new RegExp(FAKE_TOKEN));
-  assert.equal(bash(`cat ${f.secret} && npm run build`), 2, 'a build after the dump');
+  // A splice keeps every other segment running as written, so a build BESIDE the read is no dropped step; one the
+  // rewrite would drop - beside a second read of the file, which forces the whole-command form - still blocks.
+  assert.equal(rewritten(`cat ${f.secret} && npm run build`), `node "${HOOK}" --redacted "${f.secret}" && npm run build`, 'a build after the dump is kept');
+  assert.equal(bash(`cat ${f.secret} && grep -c SENTRY ${f.secret} && npm run build`), 2, 'a build the whole-command rewrite would drop');
   assert.equal(bash(`jq .env ${f.secret} | tee ${path.join(f.dir, 'copy.json')}`), 2, 'a tee into a file writes as it prints');
   assert.equal(bash(`echo $SENTRY_ACCESS_TOKEN && rm -rf ${path.join(f.dir, 'gone')}`), 2, 'the variable rewrite would drop steps the same way');
   assert.equal(rewritten('env && curl https://example.test'), `node "${HOOK}" --redacted-env && curl https://example.test`,
@@ -1476,7 +1481,8 @@ test('guard-secret-value: a compound read-only command keeps its other reads - o
   // file is a changing step like any redirect - blocked, where the whole-line blank let the rewrite drop the write
   assert.equal(bash(`cat <<'EOF' > ${path.relative(ROOT, path.join(f.dir, 'notes.md'))}\nplan\nEOF\ncat ${f.secret}`), 2,
     'a heredoc write beside the read blocks rather than silently never running');
-  assert.equal(bash(`cat ${f.secret} && npm run build`), 2, 'a CHANGING step still blocks the whole command, as before');
+  assert.equal(bash(`cat ${f.secret} | sort && npm run build`), REWRITE, 'a changing step in another segment is kept, not dropped');
+  assert.equal(bash(`cat ${f.secret} | xargs touch`), 2, 'a CHANGING stage in the pipeline the view replaces still blocks');
 });
 
 test('guard-secret-value: a translation bundle holds labels, not credentials', () => {
@@ -1925,4 +1931,125 @@ test('F6: a command whose stdout IS a token is a print, used or checked inline i
   for (const c of ['curl -H "Authorization: Bearer $(gh auth token)" https://api.github.com/user', 'gh auth token | docker login ghcr.io -u me --password-stdin',
     'gh auth token | wc -c', 'gh auth status', 'T=$(gh auth token); [ -n "$T" ] && echo present'])
     assert.equal(bash(c), 0, c);
+});
+
+// Git Bash sessions (2.1.7): read-only commands beside a credential read were blocked as 'prints <settings.json> AND
+// runs a step that changes something', each retry re-sending ~150-230k tokens. Three causes: verbs missing from the
+// read-only list, an inline runtime always counted as changing, and the refusal judging segments the splice keeps.
+test('guard-secret-value: the session commands beside a credential read run as written - the view is spliced, nothing blocks', () => {
+  const f = fixtures();
+  const view = `node "${HOOK}" --redacted "${f.secret}"`;
+  assert.equal(rewritten(`cat ${f.secret}; claude plugin list --json`), `${view}; claude plugin list --json`);
+  assert.equal(rewritten(`cat ${f.secret}; git check-ignore -v .alfred`), `${view}; git check-ignore -v .alfred`);
+  assert.equal(rewritten(`grep -n env ${f.secret}; cygpath -w /tmp`), `${view} --note-to-stderr | grep -n env; cygpath -w /tmp`);
+  // a changing step the splice keeps runs; one the rewrite would DROP still blocks
+  assert.equal(rewritten(`cat ${f.secret} && npm test`), `${view} && npm test`, 'a kept changing segment is no dropped step');
+  const r = run({ tool_name: 'Bash', tool_input: { command: `grep -c SENTRY ${f.secret} && sed -i 's/acme/acme2/' ${f.secret} && jq -r .env.SENTRY_SLUG ${f.secret}` }, session_id: 'suite' });
+  assert.equal(r.status, 2, 'the edit between two reads of the file is lost to the whole-command form - blocked');
+  assert.match(r.stderr, /sed -i/);
+  assert.equal(bash(`cat ${f.secret} | sh`), 2, 'a stage of the replaced pipeline is always judged');
+  assert.equal(bash('echo $SENTRY_ACCESS_TOKEN; npm test'), 2, 'a variable rewrite replaces the whole command, as before');
+});
+
+test('guard-secret-value: the read form of a git, claude or platform verb is read-only; its writing form still blocks when dropped', () => {
+  const f = fixtures();
+  // a second read of the file forces the whole-command rewrite, so the third step is DROPPED and judged
+  const dropped = (step) => bash(`cat ${f.secret}; grep -c SENTRY ${f.secret}; ${step}`);
+  const reads = ['cygpath -w /tmp', 'uname -a', 'whoami', 'hostname', 'hostname -s', 'git check-ignore -v .alfred', 'git hash-object x.txt',
+    'git ls-remote origin', 'git remote', 'git remote -v', 'git remote get-url origin', 'git remote show origin', 'git config --get user.name',
+    'git config --get-all remote.origin.url', 'git config --list', 'git config -l --show-origin', 'git config get user.name', 'git branch', 'git branch -vv',
+    'git branch -a 2>/dev/null', 'git branch --list "feat/*"', 'git branch --show-current', 'git branch --format "%(refname)"', 'git rev-list --count HEAD',
+    'git merge-base HEAD main', 'git cat-file -p HEAD', 'git describe --tags', 'git tag', 'git tag -l', 'git tag --list "v*"', 'claude plugin list',
+    'claude plugin marketplace list', 'claude mcp list', 'claude mcp get memory', 'claude --version', 'claude.exe --version'];
+  for (const step of reads) assert.equal(dropped(step), REWRITE, step);
+  const writes = ['hostname newname', 'git hash-object -w x.txt', 'git remote add o https://example.test/r.git', 'git remote remove o',
+    'git remote set-url o https://example.test/r.git', 'git config user.name me', 'git config --unset user.name', 'git config --add a.b c',
+    'git config set user.name me', 'git branch feature', 'git branch -D old', 'git branch -m a b', 'git branch --set-upstream-to=origin/main',
+    'git branch -u origin/main', 'git branch -f main HEAD~1', 'git tag v1', 'git tag -d v1', 'git tag -a v1 -m x', 'git tag -l -d v1',
+    'claude plugin install x@y', 'claude plugin marketplace add o/r', 'claude mcp add x -- node s.js', 'claude mcp remove x'];
+  for (const step of writes) assert.equal(dropped(step), 2, step);
+});
+
+test('guard-secret-value: an inline runtime that writes, spawns or reaches the network is still a changing step', () => {
+  const f = fixtures();
+  const view = `node "${HOOK}" --redacted "${f.secret}"`;
+  const keys = 'node -e \'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(Object.keys(JSON.parse(s).env||{})))\'';
+  assert.equal(rewritten(`cat ${f.secret} | ${keys}`), `${view} --note-to-stderr | ${keys}`, 'the session command: the view feeds the reader');
+  assert.equal(bash(`cat ${f.secret} | python3 -c 'import json,sys;print(list(json.load(sys.stdin)["env"]))'`), REWRITE);
+  assert.equal(bash(`cat ${f.secret} | perl -ne 'print if /SLUG/'`), REWRITE);
+  if (process.platform !== 'win32') {
+    const out = spawnSync('bash', ['-c', rewritten(`cat ${f.secret} | ${keys}`)], { encoding: 'utf8' });
+    assert.match(out.stdout, /SENTRY_SLUG/, 'the reader parses the view');
+    assert.ok(!(out.stdout + out.stderr).includes(FAKE_TOKEN), 'and the value never appears');
+  }
+  const changing = [
+    'node -e "require(\'child_process\').execSync(\'touch x\')"', 'node -e "fetch(\'https://example.test\')"', 'node -e "require(\'fs\').mkdirSync(\'d\')"',
+    'node -e "require(\'./local.js\')"', 'node -r ./pre.js -e "1"', 'node -e "require(\'https\').get(\'https://example.test\')"',
+    'python3 -c \'import subprocess; subprocess.run(["touch","x"])\'', 'python3 -c \'import os; os.remove("x")\'', 'python3 -c \'import shutil; shutil.rmtree("d")\'',
+    'python3 -m pip install x', 'python3 -c \'import urllib.request\'', 'ruby -e \'system("touch x")\'', 'perl -e \'print `id`\'',
+    'node -e "require(\'fs\').writeFileSync(\'o.txt\', \'x\')"', 'node scripts/do.js',
+  ];
+  for (const step of changing) assert.equal(bash(`cat ${f.secret} | ${step}`), 2, step);
+  // the segments a splice keeps are judged as written: a credential print beside the read takes its own form
+  const env = rewritten(`cat ${f.secret}; node -e 'console.log(process.env.SENTRY_ACCESS_TOKEN)'`);
+  assert.match(env, /SENTRY_ACCESS_TOKEN=set|SENTRY_ACCESS_TOKEN=absent/, 'a kept runtime printing a credential variable becomes its presence line');
+  assert.doesNotMatch(env, /console\.log\(process\.env/);
+  const shell = rewritten(`cat ${f.secret}; bash -c 'cat ${f.dotenv}'`);
+  assert.ok(shell.includes(`--redacted "${f.dotenv}"`), `a kept shell string reading a second credential file is judged: ${shell}`);
+});
+
+test('guard-secret-value: a separator inside $(...) or backticks belongs to the substitution - the source-protocol snippet', () => {
+  const f = fixtures();
+  const view = `node "${HOOK}" --redacted "${f.secret}"`;
+  const lead = 'RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)';
+  assert.equal(rewritten(`${lead}; cat ${f.secret}`), `${lead}; ${view}`, 'the protocol snippet');
+  assert.equal(rewritten(`R=\`git rev-parse --show-toplevel || pwd\`; cat ${f.secret}`), `R=\`git rev-parse --show-toplevel || pwd\`; ${view}`, 'backticks');
+  assert.equal(rewritten(`N=$(echo "$(pwd)" | wc -c); X=$((1 + 2)); cat ${f.secret}`), `N=$(echo "$(pwd)" | wc -c); X=$((1 + 2)); ${view}`, 'nested and arithmetic');
+  // the substitution is still judged: a read inside it, a write inside it once dropped, an unclosed one
+  assert.notEqual(bash(`echo $(cat ${f.secret} && true)`), 0, 'a printed substitution reading the file');
+  assert.notEqual(bash(`echo $(cat ${f.secret}; ls`), 0, 'an unclosed substitution falls back to the blind split');
+  assert.equal(bash(`cat ${f.secret}; grep -c SENTRY ${f.secret}; ${lead}`), REWRITE, 'read-only inside, once dropped');
+  assert.equal(bash(`cat ${f.secret}; grep -c SENTRY ${f.secret}; R=$(touch x || true)`), 2, 'changing inside, once dropped');
+});
+
+test('guard-secret-value: the presence read spelled through a variable the command assigns is this guard, not an opaque script', () => {
+  const f = fixtures();
+  assert.equal(bash(`G="${HOOK}"; node "$G" --presence ${f.secret} SENTRY_ACCESS_TOKEN`), 0);
+  assert.equal(bash(`G='${HOOK}' && node "\${G}" --redacted ${f.secret}`), 0, 'the braced form');
+  const other = path.join(f.dir, 'dump.js');
+  fs.writeFileSync(other, "console.log(require('fs').readFileSync(process.argv[2], 'utf8'))\n");
+  const r = run({ tool_name: 'Bash', tool_input: { command: `G="${other}"; node "$G" ${f.secret}` }, session_id: 'suite' });
+  assert.equal(r.status, 2, 'another script under a variable is still opaque');
+  assert.match(r.stderr, /script FILE/);
+  assert.equal(bash(`node "$UNSET_G" --presence ${f.secret}`), 2, 'an unassigned variable resolves to nothing - still opaque');
+  assert.notEqual(bash(`G="${HOOK}"; node "$G" --presence ${f.secret} | cat ${f.secret}`), 0, 'the exemption covers its own stage only');
+});
+
+test('guard-secret-value: no denial suggests jq, which Git Bash on Windows does not ship', () => {
+  const f = fixtures();
+  assert.doesNotMatch(fs.readFileSync(HOOK, 'utf8'), /`jq '\.\.\. \| length'`/, 'the length suggestion is gone');
+  const r = run({ tool_name: 'Bash', tool_input: { command: `cat ${f.secret} | xargs touch` }, session_id: 'suite' });
+  assert.equal(r.status, 2);
+  assert.doesNotMatch(r.stderr.split('If PRESENCE')[0], /\bjq\b/);
+  assert.match(r.stderr, /--presence <file>/);
+  assert.match(r.stderr, /grep -c KEY <file>/);
+});
+
+test('guard-secret-value: a field named exactly `key` counts only with a credential-shaped value', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'barekey-'));
+  const w = (name, content) => { const p = path.join(dir, name); fs.writeFileSync(p, content); return p; };
+  const page = w('page.json', JSON.stringify({ content: { nodes: [{ space: { key: 'SD', name: 'Docs' } }] } }, null, 2));
+  assert.equal(read(page), 0, 'a Confluence space key is an identifier');
+  assert.equal(bash(`cat ${page}`), 0);
+  assert.equal(read(w('jira.json', JSON.stringify({ issue: { key: 'PROJ-1234', fields: { Key: 'summary' } } }))), 0, 'an issue key, any case');
+  assert.equal(read(w('space.yaml', 'space:\n  key: SD\n')), 0, 'the same in YAML');
+  assert.equal(read(w('custom.json', JSON.stringify({ field: { key: 'customfield_10010' } }))), 0, 'a Jira custom field id');
+  // still a credential: a known shape, or a long mixed-class token, under the same bare name
+  assert.equal(read(w('mixed.json', JSON.stringify({ service: { key: 'k3Y9fQ2mZ7xL0pR4tW8v' } }))), 2, 'a 20-char mixed-class value');
+  assert.equal(read(w('hex.json', JSON.stringify({ key: '0123456789abcdef0123' }))), 2, 'a hex token');
+  assert.equal(read(w('shaped.json', JSON.stringify({ key: `sntryu_${'0123456789abcdef'.repeat(2)}` }))), 2, 'a known shape');
+  assert.equal(read(w('mixed.yaml', 'service:\n  key: k3Y9fQ2mZ7xL0pR4tW8v\n')), 2, 'YAML too');
+  // the other credential names are judged as before - a short value under apiKey is still live
+  assert.equal(read(w('api.json', JSON.stringify({ apiKey: 'abc123' }))), 2, 'apiKey');
+  assert.equal(read(w('secret.env', 'SECRET_KEY=abc123\n')), 2, 'SECRET_KEY');
 });

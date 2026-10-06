@@ -469,6 +469,17 @@ test('guard-protected-force-push: HEAD and @ are the current branch, and -C or a
   assert.equal(fp('git push -f origin HEAD:main', dir).status, 2, 'an explicit protected destination still blocks');
 });
 
+test('guard-catastrophic-rm: an unscoped marketplace remove is blocked - it uninstalls every plugin from it at every scope', () => {
+  const rm = (c) => bash('guard-catastrophic-rm.js', c);
+  assert.equal(rm('claude plugin marketplace remove claude-stack'), 2); // legacy-name
+  assert.equal(rm('cd x && claude plugin marketplace rm envoydev'), 2);
+  assert.equal(rm('claude plugin marketplace remove envoydev --scope user'), 0);
+  assert.equal(rm('claude plugin marketplace remove envoydev --scope=project'), 0);
+  assert.equal(rm('claude plugin marketplace remove --help'), 0);
+  assert.equal(rm('claude plugin marketplace list --json'), 0);
+  assert.equal(rm("echo 'claude plugin marketplace remove envoydev'"), 0);
+});
+
 test('guard-catastrophic-rm: the catastrophic-target matrix', () => {
   const rm = (c) => bash('guard-catastrophic-rm.js', c);
   for (const c of ['rm -rf /', 'rm -rf /*', 'rm -rf /usr /lib', 'rm -rf .', 'rm -rf ./', 'rm -rf *', 'rm -rf "$HOME"/*', 'rm -rf ${HOME}',

@@ -610,8 +610,8 @@ function hudStatusLineMissing({ plugins = [], listing = [], settingsFile })
 // spec. A name that is not installed here is not an error, it is nothing to do. `rows` holds every
 // scope (`parsePluginList` everyScope); a bare `listing` is read the same way.
 //
-// A row at ANOTHER scope is every other project's install too: it stays, and the run names the
-// command that removes it. A CARRIER - a per-stack entry retired in 1.3.0 - is also the migration's
+// A USER row is every other project's install too: it stays, and the run names the command that removes
+// it; a project or local row at another scope than the run's is still this project's, and goes. A CARRIER - a per-stack entry retired in 1.3.0 - is also the migration's
 // record: parked, it is the user's off-state for its items, which have no other home once it is gone,
 // so it stays at this scope as well. After each uninstall the row's add-back line is printed: the
 // retirement takes the plugin, never the user's way back to the server.
@@ -631,9 +631,12 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], carriers
             const at = r.scope || scope;
             if (carrier && r.enabled === false)
                 log(`  ${spec} is parked here - kept, so its skills and seats stay off; remove it by hand once they may come back: claude plugin uninstall ${spec} --scope ${at}`);
-            else if (at !== scope)
+            // A project or local row in the listing is THIS project's (parsePluginList drops another project's), so
+            // it goes whatever the run's scope - the user's report of 2026-10-06: the Discover tab still listed the
+            // retired entries a project-scope row kept installed under a local-scope run. Only a user row is shared.
+            else if (at !== scope && (at === 'user' || carrier))
                 log(`  ${spec} is installed at ${at} scope, not this run's - kept for the projects that use it; the update run at that scope ${carrier ? 'copies its picks and removes it' : 'removes it'}: claude plugin uninstall ${spec} --scope ${at}`);
-            else if (!left.some((x) => x.spec === spec)) left.push({ spec, name: bare });
+            else if (!left.some((x) => x.spec === spec && x.scope === at)) left.push({ spec, name: bare, scope: at });
         }
     }
     // A per-stack leaf declares its shared entries as dependencies and the CLI refuses to remove a
@@ -643,11 +646,11 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], carriers
         const next = [];
         for (const item of left)
         {
-            if (cli(['plugin', 'uninstall', item.spec, '--scope', scope, '-y'], { quiet: true, expect: 'reported' }))
+            if (cli(['plugin', 'uninstall', item.spec, '--scope', item.scope, '-y'], { quiet: true, expect: 'reported' }))
             {
-                log(`  plugin pruned (retired upstream) [${scope}]: ${item.spec}`);
+                log(`  plugin pruned (retired upstream) [${item.scope}]: ${item.spec}`);
                 const back = addBack(item.name);
-                if (back) log(`    add it back: ${back.split('<scope>').join(scope)}`);
+                if (back) log(`    add it back: ${back.split('<scope>').join(item.scope)}`);
                 // A-I2: 1.x local mode had the user switch the hosted server off, and nothing else turns it on.
                 // `!!` (F5): the first 2.0.0 run is the 1.x update body's, which surfaces only its own grep
                 // and the `!!` lines update-preflight --log forwards - both carry this marker.
@@ -658,7 +661,7 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], carriers
         }
         left = next;
     }
-    for (const item of left) note(`plugin uninstall failed: ${item.spec} - remove it by hand: claude plugin uninstall ${item.spec} --scope ${scope}`);
+    for (const item of left) note(`plugin uninstall failed: ${item.spec} - remove it by hand: claude plugin uninstall ${item.spec} --scope ${item.scope}`);
     return gone;
 }
 
