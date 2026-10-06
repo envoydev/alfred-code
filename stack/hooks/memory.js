@@ -274,7 +274,7 @@ function registeredDbPath(projectRoot, { home = os.homedir(), configDir } = {}) 
 function namedDbPath(projectRoot, { home = os.homedir(), configDir } = {}) {
   try {
     const mcp = readJson(path.join(projectRoot, '.mcp.json'));
-    const found = memoryEnvPath(mcp && mcp.mcpServers && mcp.mcpServers.memory, home, projectRoot);
+    const found = memoryEnvPath(serverIn(mcp && mcp.mcpServers), home, projectRoot);
     if (found) return found;
   } catch {}
   try {
@@ -286,12 +286,12 @@ function namedDbPath(projectRoot, { home = os.homedir(), configDir } = {}) {
     const dir = configDir || process.env.CLAUDE_CONFIG_DIR || home;
     const account = readJson(path.join(dir, '.claude.json'));
     if (account) {
-      const userScope = memoryEnvPath(account.mcpServers && account.mcpServers.memory, home, projectRoot);
+      const userScope = memoryEnvPath(serverIn(account.mcpServers), home, projectRoot);
       if (userScope) return userScope;
       // Keyed by the path as the CLI spelled it, which on Windows is '/'-separated - both spellings are read.
       const projects = account.projects || {};
       const proj = projects[projectRoot] || projects[projectRoot.split(path.sep).join('/')];
-      const projScope = memoryEnvPath(proj && proj.mcpServers && proj.mcpServers.memory, home, projectRoot);
+      const projScope = memoryEnvPath(serverIn(proj && proj.mcpServers), home, projectRoot);
       if (projScope) return projScope;
     }
   } catch {}
@@ -856,7 +856,13 @@ const backupDir = () => {
 const backupLine = (row) => JSON.stringify({ ...row, tags: splitTags(row.tags), metadata: parseMeta(row.metadata) });
 const fromBackup = (b) => ({ ...b, tags: Array.isArray(b.tags) ? b.tags.join(',') : String(b.tags || ''), metadata: JSON.stringify(b.metadata && typeof b.metadata === 'object' ? b.metadata : {}) });
 
-const STACK_MEMORY_PLUGIN = 'memory@envoydev';
+const STACK_MEMORY_PLUGIN = 'alfred-memory@envoydev';
+// The 2.0.0-2.1.x id (renamed alfred-memory in 2.2.0): read when the current id carries no row, until its
+// project's update swaps it.
+const STACK_MEMORY_PLUGIN_FORMER = 'memory@envoydev';
+// The server's names, the current first: a registration or plugin entry of an older release keys `memory`.
+const MEMORY_SERVERS = ['alfred-memory', 'memory'];
+const serverIn = (servers) => { for (const n of MEMORY_SERVERS) if (servers && servers[n]) return servers[n]; return null; };
 // A 1.x install's plugin id: the marketplace KEY never migrates (docs/rebrand-evidence.md S4/S9), so
 // its installed_plugins.json row still keys the server this way for the whole 2.x line - read only
 // when the current key carries no row.
@@ -867,7 +873,7 @@ const STACK_MEMORY_PLUGIN_LEGACY = 'memory@claude-stack'; // legacy-name
 function registrationEntry(projectRoot, home, configDir) {
   const withCommand = (entry) => (entry && typeof entry.command === 'string' && entry.command ? entry : null);
   const mcp = readJson(path.join(projectRoot, '.mcp.json'));
-  const project = withCommand(mcp && mcp.mcpServers && mcp.mcpServers.memory);
+  const project = withCommand(serverIn(mcp && mcp.mcpServers));
   // The committed .mcp.json names a project-level database relative to the project and an account level from the home
   // (`~/`, re-verify 3 S2) - an older one by Claude Code's placeholder; a service this engine starts itself gets the
   // absolute path each names, never the literal text.
@@ -876,11 +882,11 @@ function registrationEntry(projectRoot, home, configDir) {
   if (project) return project;
   const account = readJson(path.join(configDir || process.env.CLAUDE_CONFIG_DIR || home, '.claude.json'));
   if (!account) return null;
-  const user = withCommand(account.mcpServers && account.mcpServers.memory);
+  const user = withCommand(serverIn(account.mcpServers));
   if (user) return user;
   const projects = account.projects || {};
   const proj = projects[projectRoot] || projects[projectRoot.split(path.sep).join('/')];
-  return withCommand(proj && proj.mcpServers && proj.mcpServers.memory);
+  return withCommand(serverIn(proj && proj.mcpServers));
 }
 
 // From 1.0.0 the server rides a `memory@<marketplace key>` PLUGIN, and no registration exists to
@@ -896,9 +902,8 @@ function installedPluginRoots(projectRoot, home, configDir) {
   const dir = configDir || process.env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
   const data = readJson(path.join(dir, 'plugins', 'installed_plugins.json'));
   const plugins = data && data.plugins ? data.plugins : {};
-  const current = Array.isArray(plugins[STACK_MEMORY_PLUGIN]) ? plugins[STACK_MEMORY_PLUGIN] : [];
-  const legacy = Array.isArray(plugins[STACK_MEMORY_PLUGIN_LEGACY]) ? plugins[STACK_MEMORY_PLUGIN_LEGACY] : []; // legacy-name
-  const rows = current.length ? current : legacy;
+  const rowsOf = (id) => (Array.isArray(plugins[id]) ? plugins[id] : []);
+  const rows = [STACK_MEMORY_PLUGIN, STACK_MEMORY_PLUGIN_FORMER, STACK_MEMORY_PLUGIN_LEGACY].map(rowsOf).find((r) => r.length) || [];
   const here = new Set([projectRoot, mainCheckoutRoot(projectRoot)].map(dirKey));
   const valid = rows.filter((r) => r && typeof r.installPath === 'string' && r.installPath);
   const mine = valid.filter((r) => r.projectPath && here.has(dirKey(String(r.projectPath))));
@@ -908,8 +913,9 @@ function installedPluginRoots(projectRoot, home, configDir) {
 
 function pluginServerEntry(root) {
   const market = readJson(path.join(root, '.claude-plugin', 'marketplace.json'));
-  const plugin = market && Array.isArray(market.plugins) ? market.plugins.find((p) => p && p.name === 'memory') : null;
-  const server = plugin && plugin.mcpServers && plugin.mcpServers.memory;
+  const plugins = market && Array.isArray(market.plugins) ? market.plugins : [];
+  const plugin = MEMORY_SERVERS.map((n) => plugins.find((p) => p && p.name === n)).find(Boolean);
+  const server = plugin ? serverIn(plugin.mcpServers) : null;
   if (!server || typeof server.command !== 'string') return null;
   const inRoot = (v) => String(v).split('${CLAUDE_PLUGIN_ROOT}').join(root);
   return { command: inRoot(server.command), args: (Array.isArray(server.args) ? server.args : []).map(inRoot), env: { ...(server.env || {}) } };
@@ -1150,7 +1156,7 @@ async function cliImport(args) {
   if (!items.length) { console.log(`memory import: nothing to import, from ${file}`); return 0; }
   const projectRoot = cliRoot(opts);
   const entry = serviceEntry(projectRoot);
-  if (!entry) { process.stderr.write('memory import: no memory server found for this project - no registration, and no memory@envoydev plugin installed for it\n'); return 1; }
+  if (!entry) { process.stderr.write('memory import: no memory server found for this project - no registration, and no alfred-memory@envoydev plugin installed for it\n'); return 1; }
   try {
     const res = await storeThroughService({ entry, cwd: projectRoot, items });
     console.log(`memory import: ${res.imported} imported, ${res.present} already present, from ${file}${res.sqliteNote}`);
@@ -1183,7 +1189,7 @@ function cliDuplicates(args) {
   return 0;
 }
 
-const NO_SERVER = 'no memory server found for this project - no registration, and no memory@envoydev plugin installed for it';
+const NO_SERVER = 'no memory server found for this project - no registration, and no alfred-memory@envoydev plugin installed for it';
 
 // The registered server, pointed at the database this run judges.
 function reembedEntry(projectRoot, dbPath) {

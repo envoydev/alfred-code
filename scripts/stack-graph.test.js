@@ -137,11 +137,13 @@ test('the root-cause loop keeps the step numbers its seats cite', () => {
 
 // The core's cross-marketplace companions travel in the catalog, so the walk can say 'carried with
 // the core plugin' instead of 'required by skill x' - which reads like a pick.
-test('the catalog names the plugins every install carries beside the core, and superpowers is not one', () => {
+// 2.2.0: none - claude-hud became an optional pick (the user's ruling of 2026-10-06).
+test('the catalog names the plugins every install carries beside the core - none since 2.2.0 - and superpowers is not one', () => {
     const { CORE_DEP_PLUGINS } = require('./install/plugins.js');
     assert.ok(Array.isArray(graph.catalog.dependencyPlugins), 'catalog.dependencyPlugins is generated');
     assert.deepStrictEqual(graph.catalog.dependencyPlugins, CORE_DEP_PLUGINS.map((s) => s.split('@')[0]).sort());
-    assert.deepStrictEqual(graph.catalog.dependencyPlugins, ['claude-hud']);
+    assert.deepStrictEqual(graph.catalog.dependencyPlugins, []);
+    assert.ok(graph.catalog.plugins.includes('claude-hud'), 'claude-hud is a catalog pick');
     assert.ok(!graph.catalog.dependencyPlugins.includes('superpowers'), 'superpowers is no companion');
     // R109: nor a pick - it left the plugin catalog in 2.0.0, so the walk never offers it.
     assert.ok(!graph.catalog.plugins.includes('superpowers'), 'superpowers is no catalog plugin');
@@ -156,5 +158,5 @@ test('a backticked `browser` is no MCP edge - the word is too common to prove a 
         for (const [name, node] of Object.entries(graph[kind]))
             assert.ok(!(node.mcps || []).includes('browser'), `${kind} ${name} pulls the browser server by a mention`);
     assert.ok(graph.catalog.mcps.includes('browser'), 'the browser server stays in the catalog');
-    assert.ok(graph.rules['alfred-navigation'].mcps.includes('navigation'), 'a role name that is no common word still makes its edge');
+    assert.ok(graph.rules['alfred-navigation'].mcps.includes('alfred-navigation'), 'a role name that is no common word still makes its edge');
 });

@@ -46,7 +46,7 @@ const liveRows = (file) =>
 
 // A consuming project named `proj`: a git repo, the engine COPIED to .claude/hooks/, the plugin
 // route's ALFRED_CODE_MEMORY_DB in its settings.json, and an account dir whose
-// installed_plugins.json points memory@envoydev at a fake plugin root carrying the fake server.
+// installed_plugins.json points alfred-memory@envoydev at a fake plugin root carrying the fake server.
 function sandbox({ plugin = true, dbRows = [] } = {})
 {
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'memxfer-'));
@@ -75,7 +75,7 @@ function sandbox({ plugin = true, dbRows = [] } = {})
         }, null, 2));
         fs.writeFileSync(path.join(acct, 'plugins', 'installed_plugins.json'), JSON.stringify({
             version: 2,
-            plugins: { 'memory@envoydev': [{ scope: 'project', projectPath: root, installPath: pluginRoot, version: '1.0.0' }] },
+            plugins: { 'alfred-memory@envoydev': [{ scope: 'project', projectPath: root, installPath: pluginRoot, version: '1.0.0' }] },
         }, null, 2));
     }
     const calls = path.join(work, 'calls.jsonl');
@@ -269,9 +269,9 @@ test('serviceEntry: another project\'s plugin row, a foreign marketplace and a g
     const sb = sandbox();
     const file = path.join(sb.acct, 'plugins', 'installed_plugins.json');
     const row = { scope: 'project', projectPath: path.join(sb.work, 'elsewhere'), installPath: sb.pluginRoot, version: '1.0.0' };
-    fs.writeFileSync(file, JSON.stringify({ version: 2, plugins: { 'memory@envoydev': [row], 'memory@claude-plugins-official': [{ ...row, projectPath: undefined, scope: 'user' }] } }));
+    fs.writeFileSync(file, JSON.stringify({ version: 2, plugins: { 'alfred-memory@envoydev': [row], 'memory@claude-plugins-official': [{ ...row, projectPath: undefined, scope: 'user' }] } }));
     assert.strictEqual(memory.serviceEntry(sb.root, { home: sb.work, configDir: sb.acct }), null);
-    fs.writeFileSync(file, JSON.stringify({ version: 2, plugins: { 'memory@envoydev': [{ ...row, projectPath: undefined, scope: 'user' }] } }));
+    fs.writeFileSync(file, JSON.stringify({ version: 2, plugins: { 'alfred-memory@envoydev': [{ ...row, projectPath: undefined, scope: 'user' }] } }));
     assert.ok(memory.serviceEntry(sb.root, { home: sb.work, configDir: sb.acct }), 'a user-scope row serves every project');
     fs.writeFileSync(file, '{garbage');
     assert.strictEqual(memory.serviceEntry(sb.root, { home: sb.work, configDir: sb.acct }), null);
@@ -282,7 +282,7 @@ test('serviceEntry: another project\'s plugin row, a foreign marketplace and a g
 // (docs/rebrand-evidence.md S4/S9), so its installed_plugins.json row still keys the server
 // `memory@claude-stack` for the whole 2.x line. The lookup reads the current key first, then falls // legacy-name
 // back to the legacy one, and the current key's row wins when both exist.
-test('serviceEntry: a 1.x install\'s memory@claude-stack row resolves too, and memory@envoydev wins when both exist', { skip: skipNoSqlite }, () => // legacy-name
+test('serviceEntry: a 1.x install\'s memory@claude-stack row resolves too, and alfred-memory@envoydev wins when both exist', { skip: skipNoSqlite }, () => // legacy-name
 {
     const sb = sandbox();
     const file = path.join(sb.acct, 'plugins', 'installed_plugins.json');
@@ -306,10 +306,10 @@ test('serviceEntry: a 1.x install\'s memory@claude-stack row resolves too, and m
     }, null, 2));
     fs.writeFileSync(file, JSON.stringify({ version: 2, plugins: {
         'memory@claude-stack': [row], // legacy-name
-        'memory@envoydev': [{ ...row, installPath: newRoot }],
+        'alfred-memory@envoydev': [{ ...row, installPath: newRoot }],
     } }));
     const viaBoth = memory.serviceEntry(sb.root, { home: sb.work, configDir: sb.acct });
-    assert.ok(viaBoth.args.includes('--new-key'), 'memory@envoydev wins when both rows exist');
+    assert.ok(viaBoth.args.includes('--new-key'), 'alfred-memory@envoydev wins when both rows exist');
     sb.done();
 });
 

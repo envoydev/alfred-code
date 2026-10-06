@@ -235,11 +235,11 @@ test('turn-build: the navigation server\'s two kept edit tools record their file
     const p = project();
     const sub = path.join(p.root, 'sub');
     fs.mkdirSync(sub, { recursive: true });
-    for (const server of ['plugin_navigation_navigation', 'navigation'])
+    for (const server of ['plugin_alfred-navigation_alfred-navigation', 'alfred-navigation', 'plugin_navigation_navigation', 'navigation'])
         for (const tool of ['rename_symbol', 'safe_delete_symbol'])
             assert.strictEqual(p.run({ hook_event_name: 'PostToolUse', cwd: sub, tool_name: `mcp__${server}__${tool}`, tool_input: { name_path: 'A/b', relative_path: 'src/a.ts' } }).status, 0);
-    p.run({ hook_event_name: 'PostToolUse', tool_name: 'mcp__plugin_navigation_navigation__find_symbol', tool_input: { name_path: 'A', relative_path: 'src/b.ts' } });
-    p.run({ hook_event_name: 'PostToolUse', tool_name: 'mcp__plugin_navigation_navigation__rename_symbol', tool_input: { name_path: 'A' } });
-    assert.deepStrictEqual(fs.readFileSync(p.list, 'utf8').trim().split('\n'), Array(4).fill(path.join(p.root, 'src', 'a.ts')),
-        'four edits, each from the project root whatever the cwd; a lookup and an edit with no file record nothing');
+    p.run({ hook_event_name: 'PostToolUse', tool_name: 'mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', tool_input: { name_path: 'A', relative_path: 'src/b.ts' } });
+    p.run({ hook_event_name: 'PostToolUse', tool_name: 'mcp__plugin_alfred-navigation_alfred-navigation__rename_symbol', tool_input: { name_path: 'A' } });
+    assert.deepStrictEqual(fs.readFileSync(p.list, 'utf8').trim().split('\n'), Array(8).fill(path.join(p.root, 'src', 'a.ts')),
+        'eight edits, each from the project root whatever the cwd; a lookup and an edit with no file record nothing');
 });

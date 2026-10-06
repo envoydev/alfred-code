@@ -28,6 +28,14 @@ const { parseJson } = require('./json-file.js');
 // home of the shapes - the launcher, this layer and (inline, since it ships alone) the hook engine agree.
 const dataRoot = require('../../stack/mcp/data-root.js');
 const MEMORY_DIR = dataRoot.MEMORY_FOLDER;
+// The server's registered names, the current first: a registration an older release wrote keys `memory` (renamed
+// alfred-memory in 2.2.0).
+const MEMORY_SERVERS = ['alfred-memory', 'memory'];
+function memoryServerOf(servers)
+{
+    for (const name of MEMORY_SERVERS) if (servers && servers[name]) return servers[name];
+    return undefined;
+}
 
 // Three shapes, nothing else. `root` is the project's data root (ALFRED_CODE_DATA_PATH).
 function pathForLevel(level, { home, space, projectRoot, root = dataRoot.DATA_ROOT_DEFAULT })
@@ -99,14 +107,14 @@ function recordedPath({ mcpFile, claudeDir, accountFile, projectRoot, configDir,
     const unread = settings.unread.map(label);
     // Where it was read is returned too - the file and key, or the registration's entry - so the caller can ask the
     // stamp's ledger whether the stack wrote that value (a moved or copied folder, review 2.1.6).
-    const entry = ((read(mcpFile) || {}).mcpServers || {}).memory;
+    const entry = memoryServerOf((read(mcpFile) || {}).mcpServers);
     const registered = dbOf(entry);
     if (registered) return { path: registered, from: 'registration', entry, unread };
     if (settings.db) return { path: settings.db, from: 'settings', file: label(settings.from), key: settings.key, value: settings.value, unread };
     if (!unread.length || !accountFile) return { path: '', from: '', unread };
     const account = require('./mcp.js').registrationsAt({ scope: 'local', accountFile, projectRoot });
     if (account.state === 'unreadable') unread.push(path.basename(accountFile));
-    const db = dbOf(account.servers.memory);
+    const db = dbOf(memoryServerOf(account.servers));
     return db ? { path: db, from: 'local registration', unread } : { path: '', from: '', unread };
 }
 
@@ -188,7 +196,7 @@ function importGate({ projectRoot, settingsFile, mcps = [], rules = [], tools = 
     if (state === 'false') return { go: false, already: true };   // already off - never re-run
 
     const name = (e) => (typeof e === 'string' ? e.split(/[|:]/)[0] : e.name || e.file);
-    if (!mcps.some((e) => name(e) === 'memory'))
+    if (!mcps.some((e) => name(e) === 'alfred-memory'))
         return { go: false, reason: "memory: the notes import was skipped - the memory MCP is not part of this install; Claude's own memory stays on" };
     if (!rules.some((e) => name(e) === 'alfred-memory.md'))
         return { go: false, reason: "memory: the notes import was skipped - alfred-memory.md is not part of this install; Claude's own memory stays on" };
@@ -294,15 +302,15 @@ function registeredMemory(projectRoot, { home, configDir })
         return { file, path: typeof raw === 'string' && raw ? raw.replace(/^~(?=[/\\]|$)/, home) : '' };
     };
     const mcpFile = path.join(projectRoot, '.mcp.json');
-    const project = withPath(mcpFile, (readObject(mcpFile).data || {}).mcpServers?.memory);
+    const project = withPath(mcpFile, memoryServerOf((readObject(mcpFile).data || {}).mcpServers));
     if (project) return project;
     const acctFile = path.join(configDir || process.env.CLAUDE_CONFIG_DIR || home, '.claude.json');
     const account = readObject(acctFile).data || {};
-    const user = withPath(acctFile, account.mcpServers?.memory);
+    const user = withPath(acctFile, memoryServerOf(account.mcpServers));
     if (user) return user;
     const projects = account.projects || {};
     const own = projects[projectRoot] || projects[projectRoot.split(path.sep).join('/')];
-    return withPath(acctFile, own && own.mcpServers && own.mcpServers.memory);
+    return withPath(acctFile, memoryServerOf(own && own.mcpServers));
 }
 
 // A project-level database lives in the repo, so its folder gets its own `.gitignore` (`*`) the moment
@@ -392,7 +400,7 @@ function initMemory(argv, { which, runNode, homedir, log = console.log, err = co
     if (level === 'project') ensureProjectIgnore(projectRoot, log, dbPath);
 
     const settingsFile = target;
-    const gate = importGate({ projectRoot, settingsFile, mcps: ['memory'], rules: ['alfred-memory.md'], tools: { uvx: which('uvx') } });
+    const gate = importGate({ projectRoot, settingsFile, mcps: ['alfred-memory'], rules: ['alfred-memory.md'], tools: { uvx: which('uvx') } });
     const importer = path.join(__dirname, '..', 'memory-import.js');
     const pass = ['--config-dir', '--memory-dir'].flatMap((name) => (flag(name) ? [name, flag(name)] : []));
     const out = importNotes({
@@ -411,7 +419,7 @@ function initMemory(argv, { which, runNode, homedir, log = console.log, err = co
     return 0;
 }
 
-module.exports = { MEMORY_DIR, pathForLevel, levelOfPath, resolveLevel, recordedPath, movedProjectRoot, autoMemoryState, writeSwitchOff, importGate, importNotes, countNotes, initMemory, ensureProjectIgnore };
+module.exports = { MEMORY_DIR, MEMORY_SERVERS, memoryServerOf, pathForLevel, levelOfPath, resolveLevel, recordedPath, movedProjectRoot, autoMemoryState, writeSwitchOff, importGate, importNotes, countNotes, initMemory, ensureProjectIgnore };
 
 if (require.main === module)
 {

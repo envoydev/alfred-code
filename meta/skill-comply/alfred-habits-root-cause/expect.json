@@ -8,7 +8,7 @@
     "max_turns": 30,
     "stacks": ["javascript"],
     "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill",
-      "mcp__plugin_navigation_navigation__find_symbol", "mcp__plugin_navigation_navigation__get_symbols_overview", "mcp__plugin_navigation_navigation__find_referencing_symbols"],
+      "mcp__plugin_alfred-navigation_alfred-navigation__find_symbol", "mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview", "mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols"],
     "selection": { "skills": ["javascript"], "rules": ["javascript-conventions"] }
   },
   "prompts": {

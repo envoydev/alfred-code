@@ -69,7 +69,7 @@ function project(name, opts = {})
     }
     write(path.join(root, '.claude', 'rules', 'alfred-navigation.md'), '---\n---\n\n# nav\n', -100);
     write(path.join(root, '.claude', 'rules', 'markdown-docs.md'), '---\npaths: ["**/*.md"]\n---\n\n# md\n', -100);
-    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { navigation: {}, documentation: {}, memory: {}, 'browser-chrome': {} } }, null, 2), -100);
+    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'alfred-navigation': {}, 'alfred-documentation': {}, 'alfred-memory': {}, 'browser-chrome': {} } }, null, 2), -100);
     write(path.join(root, '.claude', opts.stampName || 'alfred-code.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\n', -100);
     if (opts.rule !== false) write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), opts.rule || '---\ndescription: generated\n---\n\n# This project\'s capabilities\n\nCaptured: 2026-09-01 from 0.2.79@abcdef1\n', 0);
     return root;
@@ -140,12 +140,12 @@ test('inventory: the MCP block is the LIVE list, not .mcp.json alone, and every 
     const bin = stubCli(path.join(TMP, 'live-cli'), {
         // `Failed to connect` carries the word `connect`, so a connected-first test would report a
         // dead server as live - the one claim in this block nothing downstream can catch.
-        mcp: 'navigation: cmd - ✔ Connected\nmemory: uvx x - ✗ Failed to connect\nclaude.ai Notion: https://mcp.notion.com/mcp - ✔ Connected',
+        mcp: 'alfred-navigation: cmd - ✔ Connected\nalfred-memory: uvx x - ✗ Failed to connect\nclaude.ai Notion: https://mcp.notion.com/mcp - ✔ Connected',
     });
     const { out } = run([], { cwd: root, bin });
-    assert.match(out, /memory\s+registered\s+live: failed/);
+    assert.match(out, /alfred-memory\s+registered\s+live: failed/);
     // registered but NOT connected, and live but NOT registered - the two facts the file cannot give
-    assert.match(out, /documentation\s+registered\s+live: not in the live list/);
+    assert.match(out, /alfred-documentation\s+registered\s+live: not in the live list/);
     assert.match(out, /claude\.ai Notion\s+-\s+live: connected\s+\(reaches the session from the account or the harness/);
     const rows = out.split('\n').filter((l) => /^\s+- `/.test(l));
     // The locked three share one row pointing at the load line their baselines carry (audit I24).
@@ -381,8 +381,8 @@ const validRule = (docsRoot = '.alfred/docs') => [
     'aspnet-implementer, aspnet-verifier',
     '',
     '## MCP routing',
-    '- `serena` - symbol navigator. first call: `ToolSearch select:mcp__plugin_navigation_navigation__find_symbol`.',
-    '- `context7` - docs. first call: `ToolSearch select:mcp__plugin_documentation_documentation__query-docs`.',
+    '- `serena` - symbol navigator. first call: `ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`.',
+    '- `context7` - docs. first call: `ToolSearch select:mcp__plugin_alfred-documentation_alfred-documentation__query-docs`.',
     '',
     '## Plugins',
     'superpowers (enabled)',
@@ -425,7 +425,7 @@ test('--verify: an MCP row with no `first call:` exits non-zero and names the se
 {
     const root = project('verify-mcp');
     const rule = write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'),
-        validRule().replace('- `context7` - docs. first call: `ToolSearch select:mcp__plugin_documentation_documentation__query-docs`.', '- `playwright` - browser checks, only for that target.'));
+        validRule().replace('- `context7` - docs. first call: `ToolSearch select:mcp__plugin_alfred-documentation_alfred-documentation__query-docs`.', '- `playwright` - browser checks, only for that target.'));
     const { status, out } = run(['--verify', rule], { cwd: root });
     assert.match(out, /mcp rows:\s+FAIL - 1 of 2 carry no 'first call:' - playwright/);
     assert.match(out, /VERIFY:\s+FAIL \(1 check/);
@@ -535,9 +535,9 @@ test('report: an unreadable skill frontmatter is reported as unreadable, never f
 const routingRows = (out) => out.split('\n').filter((l) => /^\s+- `/.test(l)).map((l) => l.trim());
 const PLUGIN_LIST = JSON.stringify([
     { id: 'alfred-code@envoydev', enabled: true },
-    { id: 'navigation@envoydev', enabled: true, mcpServers: { navigation: {} } },
-    { id: 'documentation@envoydev', enabled: true, mcpServers: { documentation: {} } },
-    { id: 'memory@envoydev', enabled: true, mcpServers: { memory: {} } },
+    { id: 'alfred-navigation@envoydev', enabled: true, mcpServers: { 'alfred-navigation': {} } },
+    { id: 'alfred-documentation@envoydev', enabled: true, mcpServers: { 'alfred-documentation': {} } },
+    { id: 'alfred-memory@envoydev', enabled: true, mcpServers: { 'alfred-memory': {} } },
     { id: 'browser-chrome@envoydev', enabled: true, mcpServers: { 'browser-chrome': {} } },
     { id: 'browser-firefox@envoydev', enabled: false, mcpServers: { 'browser-firefox': {} } },
     { id: 'windows-desktop@envoydev', enabled: true, mcpServers: { 'windows-desktop': {} }, projectPath: '/nowhere/else' },
@@ -549,46 +549,46 @@ test('inventory: every server an enabled plugin provides gets its routing row in
     const root = project('plugin-mcp');
     fs.rmSync(path.join(root, '.mcp.json'));
     const bin = stubCli(path.join(TMP, 'plugin-mcp-cli'), {
-        mcp: 'plugin:navigation:navigation: uvx x - ✔ Connected\nplugin:memory:memory: uvx y - ✗ Failed to connect',
+        mcp: 'plugin:alfred-navigation:alfred-navigation: uvx x - ✔ Connected\nplugin:alfred-memory:alfred-memory: uvx y - ✗ Failed to connect',
         plugins: PLUGIN_LIST,
     });
     const { out } = run([], { cwd: root, bin });
     assert.match(out, /MCP:\s+0 registered in \.mcp\.json \(no \.mcp\.json\), 4 from enabled plugins/);
-    assert.match(out, /navigation\s+plugin\s+live: connected\s+from navigation/);
-    assert.match(out, /memory\s+plugin\s+live: failed/);
-    assert.match(out, /documentation\s+plugin\s+live: not in the live list/);
-    assert.doesNotMatch(out, /plugin:navigation:navigation.*reaches the session from the account or the harness/, 'a plugin server is not an account connector');
+    assert.match(out, /alfred-navigation\s+plugin\s+live: connected\s+from alfred-navigation/);
+    assert.match(out, /alfred-memory\s+plugin\s+live: failed/);
+    assert.match(out, /alfred-documentation\s+plugin\s+live: not in the live list/);
+    assert.doesNotMatch(out, /plugin:alfred-navigation:alfred-navigation.*reaches the session from the account or the harness/, 'a plugin server is not an account connector');
     const rows = routingRows(out);
-    assert.deepStrictEqual(rows.map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`browser-chrome`', '`navigation`, `documentation`, `memory`'],
+    assert.deepStrictEqual(rows.map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`alfred-navigation`, `alfred-documentation`, `alfred-memory`', '`browser-chrome`'],
         'one row per enabled plugin server, the locked ones on one - never a disabled one, another project\'s, or a plugin with no server');
-    assert.match(rows[0], /first call: `ToolSearch select:mcp__plugin_browser-chrome_browser-chrome__browser_snapshot/, 'plugin spelling');
-    assert.match(rows[1], /first call: the `ToolSearch select:` line its baseline names/, 'the locked row points at the baselines\' load lines');
+    assert.match(rows[1], /first call: `ToolSearch select:mcp__plugin_browser-chrome_browser-chrome__browser_snapshot/, 'plugin spelling');
+    assert.match(rows[0], /first call: the `ToolSearch select:` line its baseline names/, 'the locked row points at the baselines\' load lines');
 });
 
 test('inventory: with no CLI, the project settings enabledPlugins name the plugin servers', { skip: posixOnly }, () =>
 {
     const root = project('plugin-settings');
     fs.rmSync(path.join(root, '.mcp.json'));
-    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'navigation@envoydev': true, 'memory@envoydev': true, 'csharp-lsp@claude-plugins-official': true, 'alfred-code@envoydev': true } }), -100);
-    write(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ enabledPlugins: { 'memory@envoydev': false } }), -100);
+    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'alfred-navigation@envoydev': true, 'alfred-memory@envoydev': true, 'csharp-lsp@claude-plugins-official': true, 'alfred-code@envoydev': true } }), -100);
+    write(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ enabledPlugins: { 'alfred-memory@envoydev': false } }), -100);
     const { out } = run([], { cwd: root });
     assert.match(out, /live list unavailable - CLI absent/);
-    assert.deepStrictEqual(routingRows(out).map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`navigation`'], 'settings.local.json switches memory off; the core and the LSP carry no server');
+    assert.deepStrictEqual(routingRows(out).map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`alfred-navigation`'], 'settings.local.json switches memory off; the core and the LSP carry no server');
     assert.match(routingRows(out)[0], /first call: the `ToolSearch select:` line its baseline names/);
 });
 
 test('inventory: a registered server keeps its own row, and a third-party plugin server is spelled by its plugin', { skip: posixOnly }, () =>
 {
     const root = project('plugin-both');
-    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { navigation: {} } }), -100);
+    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'alfred-navigation': {} } }), -100);
     const bin = stubCli(path.join(TMP, 'plugin-both-cli'), {
         plugins: JSON.stringify([
-            { id: 'navigation@envoydev', enabled: true, mcpServers: { navigation: {} } },
+            { id: 'alfred-navigation@envoydev', enabled: true, mcpServers: { 'alfred-navigation': {} } },
             { id: 'acme-tools@acme', enabled: true, mcpServers: { tracker: {} } },
         ]),
     });
     const rows = routingRows(run([], { cwd: root, bin }).out);
-    assert.deepStrictEqual(rows.map((r) => /^- `([^`]+)`/.exec(r)[1]), ['navigation', 'tracker'], 'one row per server name');
+    assert.deepStrictEqual(rows.map((r) => /^- `([^`]+)`/.exec(r)[1]), ['alfred-navigation', 'tracker'], 'one row per server name');
     assert.doesNotMatch(rows[0], /mcp__plugin_/, 'the registration wins its name and keeps its own spelling');
     assert.match(rows[1], /routing: see project docs\. first call: `ToolSearch select:` plus the `mcp__plugin_acme-tools_tracker__\*` names/); // mcp-fixture
 });

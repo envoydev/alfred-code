@@ -9,13 +9,13 @@
       "spelling": "@<v>",
       "version": "0.0.83"
     },
-    "navigation": {
+    "alfred-navigation": {
       "package": "serena-agent",
       "registry": "pypi",
       "spelling": "@<v>",
       "version": "1.7.0"
     },
-    "memory": {
+    "alfred-memory": {
       "package": "mcp-memory-service",
       "registry": "pypi",
       "spelling": "==<v>",

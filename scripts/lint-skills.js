@@ -786,7 +786,7 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
 // A cite is matched backticked OR bare: every measured miss in the descriptions is bare
 // (`Companions: dotnet-testing (the test-suite host)`), and a description is where a name costs the
 // most - it is read by a model choosing between installed skills. A path or a longer identifier is
-// excluded by the boundaries (`stack/skills/dotnet-migrate/SKILL.md`, `mcp__plugin_navigation_navigation__find_symbol`).
+// excluded by the boundaries (`stack/skills/dotnet-migrate/SKILL.md`, `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`).
 // A BARE match is taken only for a HYPHENATED name, though: single-word rosters entries (`mobile`,
 // `dotnet`, `npm`, `frontend`) are ordinary English, and the trial flagged 14 sentences that merely
 // used the word - 'the mobile stack', 'npm audit'. Those still count backticked, which is how the
@@ -1117,7 +1117,7 @@ function lintAgentTools(label, text)
 // read-only support seats included (the rule that scopes what gets SAVED to lessons lives beside
 // the grant, not instead of it). An agent with no `tools:` line inherits every tool, memory
 // included, so it has nothing to fix.
-const MEMORY_TOOLS = ['mcp__plugin_memory_memory__memory_store', 'mcp__plugin_memory_memory__memory_search', 'mcp__plugin_memory_memory__memory_list'];
+const MEMORY_TOOLS = ['mcp__plugin_alfred-memory_alfred-memory__memory_store', 'mcp__plugin_alfred-memory_alfred-memory__memory_search', 'mcp__plugin_alfred-memory_alfred-memory__memory_list'];
 
 function lintAgentMemoryTools(label, text)
 {
@@ -1172,7 +1172,7 @@ const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
 // The setup / configure walk's layer asks are templates too (2026-09-29: a walk with whole-layer verdicts only left every
 // per-row change to typing). Pinned per file like the flow skills, so a layer ask dropped back to prose goes red.
 const SETUP_ASK_TEMPLATES = {
-    'setup-plugin/references/walk.md': 10,
+    'setup-plugin/references/walk.md': 12,
     'setup-plugin/commands/setup.md': 2,
     'setup-plugin/commands/configure.md': 4,
 };
@@ -1476,6 +1476,9 @@ function main()
     const known = new Set(dirs);
     for (const k of primary.active.keys()) known.add(k);
     for (const k of primary.commented.keys()) known.add(k);
+    // A catalog MCP server is a known name too: the locked three carry the `alfred-` prefix since 2.2.0, so a body's
+    // backticked `alfred-documentation` names the server, never a missing skill.
+    for (const row of readStackManifest().mcps || []) if (row && row.name) known.add(row.name);
     const knownLower = new Map([...known].map(k => [k.toLowerCase(), k]));
     const matchedNonSkill = new Set();   // for check 11 (dead-allowlist reverse check)
     for (const dir of dirs)
@@ -2584,8 +2587,8 @@ function lintCoreDependencies(manifestFile, seedList)
     catch (err) { return [`meta/stack-manifest.json plugins[] could not be read: ${err.message}`]; }
     if (!Array.isArray(rows) || !rows.length) return ['meta/stack-manifest.json has no plugins[] - the core would silently lose its cross-marketplace companion.'];
 
+    // Empty since 2.2.0: claude-hud became an optional pick (the user's ruling of 2026-10-06), so both lists are empty.
     const want = (seedList || require('./install/plugins.js').CORE_DEP_PLUGINS).map((n) => n.split('@')[0]).sort();
-    if (!want.length) out.push('install/plugins.js CORE_DEP_PLUGINS is empty - the core plugin would lose its cross-marketplace companion.');
 
     const parked = rows.filter((r) => r.active === false).map((r) => r.id.split('@')[0]).sort();
     if (want.join(',') !== parked.join(','))

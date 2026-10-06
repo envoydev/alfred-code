@@ -22,7 +22,7 @@ const BUDGET_MS = 50000;
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit']);
 // The navigation server's two edit tools the stack keeps on (I12, the user's ruling of 2026-09-29): each changes the
 // file its `relative_path` names, relative to the project root. Both routes' spellings, written as a pattern.
-const NAV_EDIT = /^mcp__(?:plugin_navigation_)?navigation__(?:rename_symbol|safe_delete_symbol)$/;
+const NAV_EDIT = /^mcp__(?:plugin_(?:alfred-)?navigation_)?(?:alfred-)?navigation__(?:rename_symbol|safe_delete_symbol)$/;
 const TS_FILE = /\.(ts|tsx|mts|cts)$/i;
 const CS_FILE = /\.cs$/i;
 const WIN = process.platform === 'win32';

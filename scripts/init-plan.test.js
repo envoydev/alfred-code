@@ -27,7 +27,7 @@ function project({ settings } = {})
 const INV = (over = {}) => ({
     skills: ['alfred-capture-related-projects', 'alfred-capture-architecture', 'alfred-capture-code-style', 'alfred-capture-project-capabilities', 'alfred-capture-agent-capabilities'],
     agents: ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer'],
-    mcps: ['navigation', 'documentation', 'memory', 'playwright'],
+    mcps: ['alfred-navigation', 'alfred-documentation', 'alfred-memory', 'playwright'],
     plugins: [{ name: 'alfred-code', scope: 'project' }, { name: 'csharp-lsp', scope: 'project' }],
     left_out: [],
     browser: { installed: ['chrome', 'firefox'], enabled: ['chrome'] },
@@ -52,7 +52,7 @@ test('machine: nothing installed - uv first, the rest after it, each with its ex
     assert.strictEqual(lineOf(lines, /^machine: playwright chrome /),
         'machine: playwright chrome - blocked: needs Google Chrome - install it, or drop chrome from the browsers (/alfred-code:configure)');
     assert.strictEqual(lineOf(lines, /^machine: serena index /),
-        `machine: serena index - missing after uv: SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer ${require('../meta/mcp-pins.json').refreshed}T23:59:59Z --from serena-agent@${PINS.navigation.version} serena project index`);
+        `machine: serena index - missing after uv: SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer ${require('../meta/mcp-pins.json').refreshed}T23:59:59Z --from serena-agent@${PINS['alfred-navigation'].version} serena project index`);
     // F2: the memory service's embedding model (~166MB) fetched ahead, so its first start fits the 30s connect budget.
     assert.strictEqual(lineOf(lines, /^machine: memory model /),
         `machine: memory model - missing after uv: node "${path.join(__dirname, '..', 'stack', 'hooks', 'memory.js')}" warm --root "${root}" --plugin-root "${path.join(__dirname, '..')}"`);
@@ -83,14 +83,14 @@ test('machine: the claude-hud item - skip without it, missing with its one comma
     const hudLine = () => lineOf(render(plan({ inv: INV(), root, env, probe: NONE })), HUD);
 
     fs.mkdirSync(acct, { recursive: true });
-    assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - skip: claude-hud is not installed in this account');
+    assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - skip: claude-hud is not installed for this project or this account');
 
     const cached = path.join(acct, 'plugins', 'cache', 'claude-hud', 'claude-hud', '0.8.0');
     fs.mkdirSync(path.join(cached, 'dist'), { recursive: true });
     fs.writeFileSync(path.join(cached, 'dist', 'index.js'), '');
     fs.writeFileSync(path.join(acct, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'claude-hud@claude-hud': [{ scope: 'user', installPath: cached, version: '0.8.0' }] } }));
     const missing = render(plan({ inv: INV(), root, env, probe: NONE }));
-    const command = `node "${path.join(__dirname, 'hud-statusline.js')}" --config-dir "${acct}"`;
+    const command = `node "${path.join(__dirname, 'hud-statusline.js')}" --config-dir "${acct}" --project "${root}"`;
     // The keys the row adds ride the command as a shell comment: named in the ask, inert when run.
     assert.strictEqual(lineOf(missing, HUD),
         `machine: claude-hud status line + compact layout - missing: ${command} # adds 13 claude-hud keys: lineLayout, showSeparators, display (8), gitStatus (2), statusLine.refreshInterval`);
@@ -125,19 +125,53 @@ test('machine: the claude-hud item - skip without it, missing with its one comma
     assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - skip: claude-hud is switched off in this account');
 });
 
+// 2.2.0: claude-hud installed for this project alone (a project- or local-scope row naming it, no user-scope row) takes
+// its status line in the project's settings.local.json - the command names this machine's node - never the account's,
+// which every other project reads. A row of ANOTHER project serves nothing here.
+test('machine: a project-scope claude-hud gets its status line in this project\'s settings.local.json, never the account\'s', () =>
+{
+    const root = project();
+    const acct = path.join(TMP, `hud-proj-${seq++}`);
+    const env = E({ CLAUDE_CONFIG_DIR: acct });
+    const HUD = /^machine: claude-hud status line \+ compact layout /;
+    const hudLine = () => lineOf(render(plan({ inv: INV(), root, env, probe: NONE })), HUD);
+    const cached = path.join(acct, 'plugins', 'cache', 'claude-hud', 'claude-hud', '0.8.0');
+    fs.mkdirSync(path.join(cached, 'dist'), { recursive: true });
+    fs.writeFileSync(path.join(cached, 'dist', 'index.js'), '');
+    const rows = (projectPath) => fs.writeFileSync(path.join(acct, 'plugins', 'installed_plugins.json'),
+        JSON.stringify({ version: 2, plugins: { 'claude-hud@claude-hud': [{ scope: 'project', projectPath, installPath: cached, version: '0.8.0' }] } }));
+    rows(path.join(TMP, 'another-project'));
+    assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - skip: claude-hud is not installed for this project or this account', 'another project\'s row serves nothing here');
+    rows(root);
+    assert.match(hudLine(), / - missing: node .* --project /);
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'hud-statusline.js'), '--config-dir', acct, '--project', root], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: path.join(TMP, 'home') } });
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /statusLine written - .*in the project \(\.claude\/settings\.local\.json\)/);
+    const local = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'settings.local.json'), 'utf8'));
+    assert.match(local.statusLine.command, /claude-hud/);
+    assert.strictEqual(local.statusLine.refreshInterval, 5, 'the row\'s refresh interval lands beside the line it belongs to');
+    const account = (() => { try { return JSON.parse(fs.readFileSync(path.join(acct, 'settings.json'), 'utf8')); } catch { return {}; } })();
+    assert.strictEqual(account.statusLine, undefined, 'the account status line is every project\'s - never written for one project\'s claude-hud');
+    assert.ok(fs.existsSync(path.join(acct, 'plugins', 'claude-hud', 'config.json')), 'claude-hud\'s own config stays account-wide');
+    assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - present');
+    // Switched off for this project: their off wins.
+    fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ enabledPlugins: { 'claude-hud@claude-hud': false } }));
+    assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - skip: claude-hud is switched off for this project');
+});
+
 test('machine: the claude-hud item reads the account --space names when CLAUDE_CONFIG_DIR is unset', () =>
 {
     const root = project();
     const home = path.join(TMP, `space-home-${seq++}`);
     fs.mkdirSync(path.join(home, '.claude-work'), { recursive: true });
     const lines = render(plan({ inv: INV(), root, platform: 'linux', env: { HOME: home }, probe: NONE, space: 'work' }));
-    assert.strictEqual(lineOf(lines, /claude-hud/), 'machine: claude-hud status line + compact layout - skip: claude-hud is not installed in this account');
+    assert.strictEqual(lineOf(lines, /claude-hud/), 'machine: claude-hud status line + compact layout - skip: claude-hud is not installed for this project or this account');
     const cached = path.join(home, '.claude-work', 'plugins', 'cache', 'claude-hud', 'claude-hud', '0.8.0', 'dist');
     fs.mkdirSync(cached, { recursive: true });
     fs.writeFileSync(path.join(cached, 'index.js'), '');
     fs.writeFileSync(path.join(home, '.claude-work', 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'claude-hud@claude-hud': [{ scope: 'user' }] } }));
     const again = render(plan({ inv: INV(), root, platform: 'linux', env: { HOME: home }, probe: NONE, space: 'work' }));
-    assert.match(lineOf(again, /claude-hud/), new RegExp(`--config-dir "${path.join(home, '.claude-work').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" # adds 13 claude-hud keys: `));
+    assert.match(lineOf(again, /claude-hud/), new RegExp(`--config-dir "${path.join(home, '.claude-work').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" --project "[^"]+" # adds 13 claude-hud keys: `));
 });
 
 test('machine: everything present is reported present, and csharp-ls is asked only when csharp-lsp is kept', () =>

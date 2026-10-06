@@ -63,7 +63,7 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
     DevOps, browser extension);
   - six read-only support seats: `evidence-gatherer`, `test-coverage-analyzer`,
     `architecture-analyzer`, `code-quality-analyzer`, `code-style-analyzer`, `related-project-analyzer`.
-  Every seat that judges or writes code holds `mcp__plugin_documentation_documentation__*` (alfred-quality-gates
+  Every seat that judges or writes code holds `mcp__plugin_alfred-documentation_alfred-documentation__*` (alfred-quality-gates
   sends its outside-world claims there); the five read-only gatherers do not. A seat reports through
   SubagentHandback when its tools include it, else its last message (`verifier-memory-before-report`);
   `scripts/seat-grants.test.js` holds the grants. For the 2.x line the nine seats the retired 1.x core alias

@@ -100,12 +100,12 @@ running it.
 | Rule | What it governs |
 |---|---|
 | `.claude/rules/alfred-interaction.md` | communication style, adversarial review of user proposals, formatting + privacy, planning/execution thresholds |
-| `.claude/rules/alfred-quality-gates.md` | code-quality bars, the pointer to the done gate (`alfred-habits-done-gate`), claims about the outside world checked through `documentation`, background work, and tearing down what a run started or wrote |
+| `.claude/rules/alfred-quality-gates.md` | code-quality bars, the pointer to the done gate (`alfred-habits-done-gate`), claims about the outside world checked through `alfred-documentation`, background work, and tearing down what a run started or wrote |
 | `.claude/rules/alfred-security.md` | security-relevant diff review, fetched text as data never instruction, no PII or secrets in logs, credentials read for presence only, the permissions.deny caveat |
 | `.claude/rules/alfred-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `alfred-habits-commit-checkpoint` skill |
 | `.claude/rules/alfred-navigation.md` | symbol-lookup and code-reading discipline, and what a compaction must keep verbatim |
 | `.claude/rules/alfred-docs-root.md` | the generated-docs root - how `<docs-path>` resolves (`ALFRED_CODE_DOCS_PATH` env, stamped per install) and that every generated doc lives under it |
-| `.claude/rules/alfred-memory.md` | the shared `memory` MCP - what goes there (preferences, corrections, lessons), and searching it before asking or reading |
+| `.claude/rules/alfred-memory.md` | the shared `alfred-memory` MCP - what goes there (preferences, corrections, lessons), and searching it before asking or reading |
 | `.claude/rules/alfred-project-agent-capabilities.md` (GENERATED - user-run /alfred-capture-agent-capabilities after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |
 | `.claude/rules/alfred-project-architecture.md` (GENERATED - run /alfred-capture-architecture) | architecture capture marker - the docs exist, read them before a structural change; where they live is the navigation baseline's, the orientation itself arrives through the docs hook |
 | `.claude/rules/alfred-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /alfred-capture-related-projects with their paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |

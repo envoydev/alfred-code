@@ -173,8 +173,8 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
      unrelated dispatch for up to 8h. A red build/test routes per the
      repair-agent rules; tick the same plan file per task as reports land. MINT the run's contract
      version - `<the plan's Approved: date>-<plan slug>` - and put it in EVERY dispatch prompt
-     verbatim, with the seat's memory-handoff line spelled out:
-     `mcp__plugin_navigation_navigation__write_memory('<feature>/<contract_version>/<seat>/<task>', ...)`. Each seat's green gate
+     verbatim, with the seat's memory-handoff line:
+     `mcp__plugin_alfred-navigation_alfred-navigation__write_memory('<feature>/<contract_version>/<seat>/<task>', ...)`. Each seat's green gate
      stays fast - build + fast tests, never integration replays or another minutes-long run; the
      slow full run happens once, in this session, at the step-5 review / step-6 done-gate.
    Both modes build to the step mechanics' bar, and the plan's `## Decisions` ledger grows as they
@@ -203,8 +203,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    ```
 
    The mark moves to the seat when the reviewer-fit rule picks it for the assembled diff.
-5. **CONFORMANCE** (unless skipped - a skip is stamped `Conformance: skipped by user`, an honest
-   record) - INVOKE the reviewer chosen at the step-4 stop: a Skill tool call on
+5. **CONFORMANCE** (unless skipped - a skip is stamped `Conformance: skipped by user`) - INVOKE the reviewer chosen at the step-4 stop: a Skill tool call on
    `alfred-task-verify-code`, or an Agent dispatch of the seat - reviewing from memory of an earlier
    load is not running it, and a COMMIT-GATE receipt may only name a review that ran. Point it at the
    plan file - its task cards and `## Decisions` ledger. The protocol is `alfred-task-verify-code`'s;
@@ -216,7 +215,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    (load `alfred-habits-done-gate` - each acceptance criterion demonstrated by a run this session,
    quoted). Stamp `Completed: <date>` with the per-task evidence table, and name the `## Decisions`
    ledger by its entry count, never re-pasted. The stamp CLOSES this plan file: print one line with it
-   - `Completed - the next scope starts a NEW plan file, not this one`. Purge the notes - `mcp__plugin_navigation_navigation__delete_memory` each
+   - `Completed - the next scope starts a NEW plan file, not this one`. Purge the notes - `mcp__plugin_alfred-navigation_alfred-navigation__delete_memory` each
    note under `topic: '<feature>'` (cycle and seat notes) plus a pre-2.1.6 run's flat `<feature>__*` - stating
    `memories purged: <names|none>` in the close report, then the purge count (`references/step-mechanics.md`). *Stop* - and this stop is where the
    close-out decisions live: anything PENDING (an uncommitted diff, an unpushed commit, a deferred

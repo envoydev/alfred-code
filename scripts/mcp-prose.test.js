@@ -74,11 +74,11 @@ test('M32 the verifiers, the integration reviewer and the solve flow spell the n
     {
         const text = read(f);
         assert.doesNotMatch(text, /\(`get_symbols_overview` \/ `find_symbol`\)/, f);
-        assert.match(text, /reopen it through the navigation server \(`mcp__plugin_navigation_navigation__get_symbols_overview` \/ `mcp__plugin_navigation_navigation__find_symbol`\)/, f);
+        assert.match(text, /reopen it through the navigation server \(`mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview` \/ `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`\)/, f);
     }
     const solve = read('stack/skills/alfred-task-solve/SKILL.md');
     assert.doesNotMatch(solve, /`write_memory\(/);
-    assert.match(solve, /`mcp__plugin_navigation_navigation__write_memory\('<feature>\/<contract_version>\/<seat>\/<task>'/);
+    assert.match(solve, /`mcp__plugin_alfred-navigation_alfred-navigation__write_memory\('<feature>\/<contract_version>\/<seat>\/<task>'/);
 });
 
 // M39: serena 1.7.0's list_memories(topic) lists the FOLDER <memories>/<topic>/ and nothing else
@@ -110,7 +110,7 @@ test('M39 the handoff notes are named as topic folders the server can filter', (
         // matching note still read the run's notes.
         const own = /(-solution-designer|-resolver|alfred-issue-diagnoser-(ci|runtime)|integration-reviewer)\.md$/.test(f);
         const reads = own ? 'the one note it lists under your own seat name' : 'the notes it lists';
-        assert.ok(text.includes(`At START, \`mcp__plugin_navigation_navigation__list_memories\` with \`topic: '<feature>/<contract_version>'\` then \`mcp__plugin_navigation_navigation__read_memory\` ${reads} for `), `${f}: reads ${reads}`);
+        assert.ok(text.includes(`At START, \`mcp__plugin_alfred-navigation_alfred-navigation__list_memories\` with \`topic: '<feature>/<contract_version>'\` then \`mcp__plugin_alfred-navigation_alfred-navigation__read_memory\` ${reads} for `), `${f}: reads ${reads}`);
         const name = /-implementer\.md$/.test(f) ? '<feature>/<contract_version>/<seat>/<task>' : '<feature>/<contract_version>/<seat>';
         assert.ok(text.includes(`one compact note named \`${name}\``), `${f}: hands off as ${name}`);
     }
@@ -225,7 +225,7 @@ test('M34 no skill says serena-first or serena-navigate', () =>
 // M37: serena 1.7.0 has no call-hierarchy tool (serena tools list --all at the pin; meta/mcp-tools.json).
 test('M37 the inventory page claims no call-hierarchy tool for the navigation server', () =>
 {
-    const row = read('docs/alfred-code.html').split('\n').find((l) => l.startsWith('  ["navigation", "MCP server"'));
+    const row = read('docs/alfred-code.html').split('\n').find((l) => l.startsWith('  ["alfred-navigation", "MCP server"'));
     assert.ok(row);
     assert.doesNotMatch(row, /call-hierarchy/);
     assert.match(row, /find-references, implementations and declarations/);
@@ -266,7 +266,7 @@ test('M44 the memory ToolSearch line is pinned across its homes', () =>
 {
     const pin = JSON.parse(read('meta/shared-rules.json')).rules['memory-toolsearch-line'];
     assert.ok(pin, 'a memory-toolsearch-line pin');
-    const line = 'ToolSearch select:mcp__plugin_memory_memory__memory_store,mcp__plugin_memory_memory__memory_search,mcp__plugin_memory_memory__memory_list';
+    const line = 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list';
     assert.strictEqual(pin.owner.file, 'stack/rules/alfred-memory.md');
     assert.strictEqual(pin.owner.marker, line);
     assert.deepStrictEqual(pin.sites.map((s) => [s.file, s.marker]), [['stack/hooks/memory-session.js', line]]);
@@ -314,33 +314,46 @@ test('R13 the macOS lines name a black vision snapshot, never a screenshot the s
 // keep serving their successor's server under the OLD name - so a 1.x install whose plugins update before its own
 // update runs had seats whose grants named only the new spelling and resolved to nothing. For the 2.x line each alias
 // seat also grants the old spelling of every renamed server it holds (an absent server's tool is inert), and denies
-// the old spelling of every browser tool it denies. No other seat carries an old spelling.
-test('M35 the 1.x alias seats also grant the renamed servers\' old spellings, and no other seat does', () =>
+// the old spelling of every browser tool it denies. No other seat carries a 1.x spelling.
+// 2.2.0 renamed navigation, documentation and memory to their alfred- names, and THEIR audience is every 2.x install:
+// a core that updates before the project's own update meets the old navigation@ / memory@ / documentation@ rows,
+// which now carry the successor's server under the old name. So EVERY seat granting an alfred- tool grants its 2.x
+// spelling too, until the line that retires those aliases.
+test('M35 every seat grants the 2.2.0 renames\' old spellings; only the 1.x alias seats grant the 2.0.0 ones', () =>
 {
-    const { mcpAliasEntries } = require('./build-marketplace.js');
     const alias = JSON.parse(read('.claude-plugin/marketplace.json')).plugins.find((p) => p.name === 'claude-stack'); // legacy-name
     const seats = alias.agents.map((a) => path.basename(a, '.md'));
     assert.strictEqual(seats.length, 9);
-    const olds = mcpAliasEntries().map((e) => e.name);
+    const late = { 'alfred-navigation': 'navigation', 'alfred-documentation': 'documentation', 'alfred-memory': 'memory' };
+    const early = ['serena', 'context7', 'playwright-chrome', 'playwright-firefox', 'playwright-webkit', 'playwright-msedge'];
     const line = (text, key) => ((text.split('\n').find((l) => l.startsWith(`${key}:`)) || '').slice(key.length + 1)).split(',').map((t) => t.trim()).filter(Boolean);
-    const toOld = { navigation: 'serena', documentation: 'context7' };
-    const oldOf = (spelling) =>
+    const toEarly = { 'alfred-navigation': 'serena', 'alfred-documentation': 'context7' };
+    const parts = (spelling) => /^mcp__plugin_([a-z-]+)_\1__(.+)$/.exec(spelling);
+    const spell = (plugin, tool) => `mcp__plugin_${plugin}_${plugin}__${tool}`;
+    const earlyOf = (spelling) =>
     {
-        const m = /^mcp__plugin_([a-z-]+)_\1__(.+)$/.exec(spelling);
+        const m = parts(spelling);
         if (!m) return null;
-        const [, plugin, tool] = m;
-        const old = toOld[plugin] || (plugin.startsWith('browser-') ? `playwright-${plugin.slice('browser-'.length)}` : null);
-        return old ? `mcp__plugin_${old}_${old}__${tool}` : null;
+        const old = toEarly[m[1]] || (m[1].startsWith('browser-') ? `playwright-${m[1].slice('browser-'.length)}` : null);
+        return old ? spell(old, m[2]) : null;
     };
+    let lateSeen = 0;
     for (const f of fs.readdirSync(path.join(ROOT, 'stack/agents')).filter((n) => n.endsWith('.md')))
     {
         const text = read(`stack/agents/${f}`);
         const seat = path.basename(f, '.md');
-        const tools = line(text, 'tools');
-        const denied = line(text, 'disallowedTools');
-        const hasOld = [...tools, ...denied].some((t) => olds.some((o) => t.startsWith(`mcp__plugin_${o}_${o}__`)));
-        if (!seats.includes(seat)) { assert.ok(!hasOld, `${seat} is no alias seat and carries an old spelling`); continue; }
-        for (const t of tools) { const old = oldOf(t); if (old) assert.ok(tools.includes(old), `${seat} grants ${t} but not ${old}`); }
-        for (const t of denied) { const old = oldOf(t); if (old) assert.ok(denied.includes(old), `${seat} denies ${t} but not ${old}`); }
+        for (const key of ['tools', 'disallowedTools'])
+        {
+            const list = line(text, key);
+            for (const t of list)
+            {
+                const m = parts(t);
+                if (m && late[m[1]]) { lateSeen += 1; assert.ok(list.includes(spell(late[m[1]], m[2])), `${seat} ${key} names ${t} but not its 2.x spelling`); }
+            }
+            const hasEarly = list.some((t) => early.some((o) => t.startsWith(`mcp__plugin_${o}_${o}__`)));
+            if (!seats.includes(seat)) { assert.ok(!hasEarly, `${seat} is no alias seat and carries a 1.x spelling`); continue; }
+            for (const t of list) { const old = earlyOf(t); if (old) assert.ok(list.includes(old), `${seat} ${key} names ${t} but not ${old}`); }
+        }
     }
+    assert.ok(lateSeen > 0, 'no seat names an alfred- tool - the check read nothing');
 });

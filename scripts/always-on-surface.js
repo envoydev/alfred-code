@@ -87,7 +87,7 @@ function capabilitiesFixedText(skillText, templateText)
     {
         if (locked && !/^[ \t]+\S/.test(tpl[i])) break;
         if (locked) locked += ` ${tpl[i].trim()}`;
-        else if (/^- `navigation`/.test(tpl[i])) locked = tpl[i].trim();
+        else if (/^- `(?:alfred-)?navigation`/.test(tpl[i])) locked = tpl[i].trim();
     }
     return { policy: injectedRuleText(policy.join('\n')), locked };
 }

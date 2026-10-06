@@ -174,7 +174,7 @@ const underDataRoot = (p) =>
 // this harness, so naming them is not having them: measured, two sessions carried the rule text
 // saying exactly that and still made 100 Bash calls and 0 navigation calls. The loading call goes in
 // the denial itself, where the model is already looking for what to do instead.
-const LOAD_SERENA = `  ToolSearch select:mcp__plugin_navigation_navigation__get_symbols_overview,mcp__plugin_navigation_navigation__find_symbol,mcp__plugin_navigation_navigation__find_referencing_symbols\n`;
+const LOAD_SERENA = `  ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview,mcp__plugin_alfred-navigation_alfred-navigation__find_symbol,mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols\n`;
 const serenaHint = (p) => (SERENA_IGNORED.test(String(p)) || underDataRoot(p)
   ? `The navigation server cannot locate anything here: the installers seed the data root (\`${dataRootEnv()}\`), \`.claude\` and the old \`.serena\` / \`.playwright\` into\n`
     + `its own ignored_paths, so this tree is not indexed. Locate inside the file instead:\n`

@@ -18,7 +18,7 @@ const { hashItem } = require('./install/library.js');
 const ROOT = path.join(__dirname, '..');
 const GRAPH = require('../meta/stack-graph.json');
 const SEATS = Object.keys(GRAPH.agents).sort();
-const LISTING = JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory']
+const LISTING = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory']
     .map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
 
 function copyIn(repo, rel, src)

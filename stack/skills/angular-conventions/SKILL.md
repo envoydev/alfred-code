@@ -12,7 +12,7 @@ Load with it:
 - The house TypeScript skill, beside this one - the language underneath (strict types, modules, async, error handling, lint and format); everything here is purely Angular.
 - Material and the CDK, and the Ionic/Capacitor layer, are each their own skill - match them from your skill list by what they cover, and skip any this project did not install.
 - Only your workspace's version delta (`references/v22.md`, `v21.md`, `v20.md`, `v19.md`: stable versus experimental, spellings and deprecations, the Node.js/TypeScript floor); on v17/v18 there is none and this file alone governs.
-- For any API surface not pinned down here, reach for the `documentation` MCP rather than memory - and never by grepping `node_modules` bundles.
+- For any API surface not pinned down here, reach for the `alfred-documentation` MCP rather than memory - and never by grepping `node_modules` bundles.
 
 The measurements behind these rules are `references/evidence.md` - an audit appendix, not a run-time load.
 

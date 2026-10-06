@@ -144,8 +144,8 @@ More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-gui
 | **Agents** | 44 | designers, implementers, verifiers, reviewers |
 | **Rules** | 20 | always-on basics and per-file conventions |
 | **Hooks** | 18 | the guards, plus the docs, memory and history hooks |
-| **MCP servers** | 4 | navigation, documentation, memory, browser |
-| **Plugins** | 2 | optional C# and TypeScript language servers |
+| **MCP servers** | 4 | alfred-navigation, alfred-documentation, alfred-memory (required) and the browser (optional), plus the two opt-in desktop servers |
+| **Plugins** | 3 | optional: claude-hud (recommended) and the C# and TypeScript language servers |
 
 The full inventory is [`docs/alfred-code.html`](docs/alfred-code.html) - open it in a browser.
 
@@ -189,6 +189,10 @@ Or run `/alfred-code:configure` and it writes the key for you.
 - **local** - the same, in `.claude/settings.local.json`, for you only.
 - **user** - the plugins are enabled for your whole account. The copies and the stamp still live in the project.
 
+That scope covers the core and the three required servers. Each optional item - a browser, a desktop server, a
+language server, claude-hud - has its own: global (every project on your account) or this project, this project
+by default. `/alfred-code:configure` moves one.
+
 </details>
 
 <details>
@@ -225,6 +229,7 @@ The flags you are most likely to want:
 | `--browsers chrome,firefox` | which browsers the browser server gets: chrome, msedge, firefox, webkit |
 | `--add 'skill dotnet'` | add one skill, agent, rule, hook, mcp or plugin |
 | `--drop 'mcp browser'` | remove one |
+| `--scope-of browser=global` | one optional item's own scope: `global` or `project` |
 | `--print-plan` | show what would change, write nothing |
 
 </details>
@@ -235,7 +240,7 @@ The flags you are most likely to want:
 Under managed settings:
 
 - With `strictKnownMarketplaces`, add `envoydev` and `claude-hud` to `extraKnownMarketplaces`.
-- Enable `alfred-code` and `claude-hud` in `enabledPlugins`.
+- Enable `alfred-code` in `enabledPlugins`, and `claude-hud` if you want its status line.
 - `allowManagedHooksOnly` silently switches off all eighteen hooks - the guards never fire.
 
 Details: [`docs/install-footprint.md`](docs/install-footprint.md#under-managed-settings).

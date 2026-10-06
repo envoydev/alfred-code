@@ -560,7 +560,7 @@ test('check 40: an agent tools: entry must be a real tool name or an mcp__ grant
     const { lintAgentTools, TOOL_NAMES } = require('./lint-skills.js');
     assert.ok(TOOL_NAMES.has('LSP'), 'LSP is in the tools reference - the audit left this unverified');
 
-    const clean = 'tools: Read, Grep, Glob, LSP, Skill, mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_browser-chrome_browser-chrome__*, mcp__github\n';
+    const clean = 'tools: Read, Grep, Glob, LSP, Skill, mcp__plugin_alfred-navigation_alfred-navigation__find_symbol, mcp__plugin_browser-chrome_browser-chrome__*, mcp__github\n';
     assert.deepStrictEqual(lintAgentTools('agents/x.md', clean), []);
     assert.deepStrictEqual(lintAgentTools('agents/x.md', 'no frontmatter tools line here\n'), []);
 
@@ -673,28 +673,28 @@ test('check 35: a trailing load verb with a back-reference is a directive too', 
 // tools - the spec gives every seat search AND save, not just the implementers who already write.
 test('check 43: an agent tools: allowlist must grant the shared memory tools', () => {
     const { lintAgentMemoryTools, MEMORY_TOOLS } = require('./lint-skills.js');
-    assert.deepStrictEqual(MEMORY_TOOLS, ['mcp__plugin_memory_memory__memory_store', 'mcp__plugin_memory_memory__memory_search', 'mcp__plugin_memory_memory__memory_list']);
+    assert.deepStrictEqual(MEMORY_TOOLS, ['mcp__plugin_alfred-memory_alfred-memory__memory_store', 'mcp__plugin_alfred-memory_alfred-memory__memory_search', 'mcp__plugin_alfred-memory_alfred-memory__memory_list']);
 
     // A fixture agent with serena tools but no memory tools - the new check reports it by file.
-    const noMemory = 'tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__write_memory, mcp__plugin_navigation_navigation__read_memory, mcp__plugin_navigation_navigation__list_memories, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
+    const noMemory = 'tools: mcp__plugin_alfred-navigation_alfred-navigation__find_symbol, mcp__plugin_alfred-navigation_alfred-navigation__write_memory, mcp__plugin_alfred-navigation_alfred-navigation__read_memory, mcp__plugin_alfred-navigation_alfred-navigation__list_memories, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
     const found = lintAgentMemoryTools('agents/fixture.md', noMemory);
     assert.strictEqual(found.length, 1, found.join('\n'));
     assert.match(found[0], /agents\/fixture\.md/);
-    assert.match(found[0], /mcp__plugin_memory_memory__memory_store/);
-    assert.match(found[0], /mcp__plugin_memory_memory__memory_search/);
-    assert.match(found[0], /mcp__plugin_memory_memory__memory_list/);
+    assert.match(found[0], /mcp__plugin_alfred-memory_alfred-memory__memory_store/);
+    assert.match(found[0], /mcp__plugin_alfred-memory_alfred-memory__memory_search/);
+    assert.match(found[0], /mcp__plugin_alfred-memory_alfred-memory__memory_list/);
 
     // The granted allowlist is clean.
-    const granted = 'tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__write_memory, mcp__plugin_navigation_navigation__read_memory, mcp__plugin_navigation_navigation__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
+    const granted = 'tools: mcp__plugin_alfred-navigation_alfred-navigation__find_symbol, mcp__plugin_alfred-navigation_alfred-navigation__write_memory, mcp__plugin_alfred-navigation_alfred-navigation__read_memory, mcp__plugin_alfred-navigation_alfred-navigation__list_memories, mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_alfred-memory_alfred-memory__memory_search, mcp__plugin_alfred-memory_alfred-memory__memory_list, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
     assert.deepStrictEqual(lintAgentMemoryTools('agents/fixture.md', granted), []);
 
     // Partial grant still fails, naming only what is missing.
-    const partial = 'tools: Read, Grep, Glob, Bash, mcp__plugin_memory_memory__memory_store\n';
+    const partial = 'tools: Read, Grep, Glob, Bash, mcp__plugin_alfred-memory_alfred-memory__memory_store\n';
     const partialFound = lintAgentMemoryTools('agents/partial.md', partial);
     assert.strictEqual(partialFound.length, 1, partialFound.join('\n'));
-    assert.ok(!partialFound[0].includes('mcp__plugin_memory_memory__memory_store,'), 'the already-granted tool is not listed as missing');
-    assert.match(partialFound[0], /mcp__plugin_memory_memory__memory_search/);
-    assert.match(partialFound[0], /mcp__plugin_memory_memory__memory_list/);
+    assert.ok(!partialFound[0].includes('mcp__plugin_alfred-memory_alfred-memory__memory_store,'), 'the already-granted tool is not listed as missing');
+    assert.match(partialFound[0], /mcp__plugin_alfred-memory_alfred-memory__memory_search/);
+    assert.match(partialFound[0], /mcp__plugin_alfred-memory_alfred-memory__memory_list/);
 
     // No tools: line at all = every tool inherited, memory included - nothing to report.
     assert.deepStrictEqual(lintAgentMemoryTools('agents/fixture.md', 'no frontmatter tools line here\n'), []);
@@ -865,9 +865,11 @@ test('check 51: the manifest\'s parked plugins are clean today, and drift in eit
     fs.writeFileSync(manifestFile, 'not json');
     assert.match(lintCoreDependencies(manifestFile, seed)[0], /could not be read/, 'unreadable JSON is a finding, not a crash');
 
+    // 2.2.0: no companion at all (claude-hud became a pick) is clean while the manifest parks nothing either.
     write([{ id: 'other@n' }]);
-    assert.deepStrictEqual(lintCoreDependencies(manifestFile, []),
-        ['install/plugins.js CORE_DEP_PLUGINS is empty - the core plugin would lose its cross-marketplace companion.']);
+    assert.deepStrictEqual(lintCoreDependencies(manifestFile, []), []);
+    write([{ id: 'other@n', active: false }]);
+    assert.match(lintCoreDependencies(manifestFile, [])[0], /manifest parks \[other\]/, 'a parked row with no companion is a finding');
 
     fs.rmSync(tmp, { recursive: true, force: true });
     assert.ok(paths, 'paths stays exported');
@@ -1156,7 +1158,7 @@ test('check 58: lintEnvironmentCatalog catches catalog/seed/command/migration dr
 test('M31 check 54 flags a renamed or retired server\'s bare spelling, and skips a marked fixture line', () => {
     const { lintMcpToolNames } = require('./lint-skills.js');
     for (const text of ['x mcp__serena__find_symbol y\n', 'mcp__context7__query-docs\n', 'mcp__playwright__browser_navigate\n', // mcp-fixture
-        'mcp__playwright-chrome__browser_snapshot\n', 'mcp__sentry__find_issues\n', 'mcp__navigation__find_symbol\n']) // mcp-fixture
+        'mcp__playwright-chrome__browser_snapshot\n', 'mcp__sentry__find_issues\n', 'mcp__alfred-navigation__find_symbol\n']) // mcp-fixture
     {
         const hit = lintMcpToolNames({ files: [{ file: 'stack/agents/a.md', text }] });
         assert.strictEqual(hit.length, 1, `${text.trim()}: ${JSON.stringify(hit)}`);
@@ -1171,9 +1173,9 @@ test('M31 check 54 flags a renamed or retired server\'s bare spelling, and skips
 // Anywhere else an alias spelling is the stale one check 59 exists for.
 test('M35 check 59 lets a seat\'s grant line name a listed alias, and nothing else', () => {
     const { lintStaleMcpToolNames } = require('./lint-skills.js');
-    const entries = [{ name: 'navigation', mcpServers: { navigation: {} } }];
+    const entries = [{ name: 'alfred-navigation', mcpServers: { 'alfred-navigation': {} } }];
     const aliases = [{ name: 'serena', mcpServers: { serena: {} } }];
-    const grant = 'tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_serena_serena__find_symbol\n'; // mcp-fixture
+    const grant = 'tools: mcp__plugin_alfred-navigation_alfred-navigation__find_symbol, mcp__plugin_serena_serena__find_symbol\n'; // mcp-fixture
     assert.deepStrictEqual(lintStaleMcpToolNames({ entries, aliases, files: [{ file: 'stack/agents/a.md', text: grant }] }), []);
     assert.strictEqual(lintStaleMcpToolNames({ entries, aliases, files: [{ file: 'stack/agents/a.md', text: 'Call `mcp__plugin_serena_serena__find_symbol`.\n' }] }).length, 1, 'a body line'); // mcp-fixture
     assert.strictEqual(lintStaleMcpToolNames({ entries, aliases, files: [{ file: 'stack/skills/x/SKILL.md', text: grant }] }).length, 1, 'a skill'); // mcp-fixture
@@ -1186,15 +1188,15 @@ test('M35 check 59 lets a seat\'s grant line name a listed alias, and nothing el
 // by its successor's list, and a wildcard names no tool.
 test('M31 check 62 flags a plugin tool spelling whose tool the pinned server does not have', () => {
     const { lintMcpToolsAtPin } = require('./lint-mcp-tools.js');
-    const tools = { servers: { memory: { version: '1', tools: ['memory_store', 'memory_search'] }, browser: { version: '1', tools: ['browser_navigate'] }, navigation: { version: '1', tools: ['find_symbol'] } } };
-    const ok = 'mcp__plugin_memory_memory__memory_store, mcp__plugin_browser-webkit_browser-webkit__browser_navigate, mcp__plugin_browser-chrome_browser-chrome__*\n';
+    const tools = { servers: { 'alfred-memory': { version: '1', tools: ['memory_store', 'memory_search'] }, browser: { version: '1', tools: ['browser_navigate'] }, 'alfred-navigation': { version: '1', tools: ['find_symbol'] } } };
+    const ok = 'mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_browser-webkit_browser-webkit__browser_navigate, mcp__plugin_browser-chrome_browser-chrome__*\n';
     assert.deepStrictEqual(lintMcpToolsAtPin({ tools, files: [{ file: 'stack/a.md', text: ok }] }), []);
-    const bad = lintMcpToolsAtPin({ tools, files: [{ file: 'stack/b.md', text: 'x\nmcp__plugin_memory_memory__retrieve_memory\n' }] }); // mcp-fixture
+    const bad = lintMcpToolsAtPin({ tools, files: [{ file: 'stack/b.md', text: 'x\nmcp__plugin_alfred-memory_alfred-memory__retrieve_memory\n' }] }); // mcp-fixture
     assert.strictEqual(bad.length, 1);
     assert.match(bad[0], /stack\/b\.md:2 .*retrieve_memory.*memory/);
     const alias = lintMcpToolsAtPin({ tools, files: [{ file: 'stack/c.md', text: 'mcp__plugin_serena_serena__find_symbol mcp__plugin_serena_serena__nope\n' }] }); // mcp-fixture
     assert.strictEqual(alias.length, 1, 'an alias spelling is judged by its successor\'s list');
-    assert.deepStrictEqual(lintMcpToolsAtPin({ tools, files: [{ file: 'scripts/t.js', text: 'mcp__plugin_memory_memory__nope // mcp-fixture\n' }] }), [], 'a marked fixture line passes');
+    assert.deepStrictEqual(lintMcpToolsAtPin({ tools, files: [{ file: 'scripts/t.js', text: 'mcp__plugin_alfred-memory_alfred-memory__nope // mcp-fixture\n' }] }), [], 'a marked fixture line passes');
     assert.deepStrictEqual(lintMcpToolsAtPin(), [], 'every shipped spelling names a tool its pinned server has');
 });
 
@@ -1204,17 +1206,17 @@ test('M31 check 62 flags a plugin tool spelling whose tool the pinned server doe
 test('lintStaleMcpToolNames flags a plugin tool spelling no shipped server answers, and the live tree carries none', () => {
     const { lintStaleMcpToolNames } = require('./lint-skills.js');
     const entries = [
-        { name: 'memory', mcpServers: { memory: {} } },
+        { name: 'alfred-memory', mcpServers: { 'alfred-memory': {} } },
         { name: 'browser-chrome', mcpServers: { 'browser-chrome': {} } },
     ];
-    const clean = 'tools: mcp__plugin_memory_memory__memory_store, mcp__plugin_browser-chrome_browser-chrome__browser_navigate\n'; // mcp-fixture
+    const clean = 'tools: mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_browser-chrome_browser-chrome__browser_navigate\n'; // mcp-fixture
     assert.deepStrictEqual(lintStaleMcpToolNames({ entries, files: [{ file: 'stack/agents/a.md', text: clean }] }), [], 'shipped spellings pass');
     const stale = 'line one\ntools: mcp__plugin_gone_gone__find_symbol\n'; // mcp-fixture
     const hit = lintStaleMcpToolNames({ entries, files: [{ file: 'stack/agents/b.md', text: stale }] });
     assert.strictEqual(hit.length, 1, 'one stale spelling, one finding');
     assert.match(hit[0], /stack\/agents\/b\.md:2 .*mcp__plugin_gone_gone__.*'gone'/, 'the finding names file:line, the spelling and the plugin'); // mcp-fixture
-    const wrongServer = 'mcp__plugin_memory_other__x\n'; // mcp-fixture
-    assert.match(lintStaleMcpToolNames({ entries, files: [{ file: 'meta/x.json', text: wrongServer }] })[0], /'memory' carries no server 'other'/, 'a server the plugin does not declare');
+    const wrongServer = 'mcp__plugin_alfred-memory_other__x\n'; // mcp-fixture
+    assert.match(lintStaleMcpToolNames({ entries, files: [{ file: 'meta/x.json', text: wrongServer }] })[0], /'alfred-memory' carries no server 'other'/, 'a server the plugin does not declare');
     const marked = 'mcp__plugin_gone_gone__x // mcp-fixture\n'; // mcp-fixture
     assert.deepStrictEqual(lintStaleMcpToolNames({ entries, files: [{ file: 'scripts/t.test.js', text: marked }] }), [], 'a marked fixture line passes');
     assert.deepStrictEqual(lintStaleMcpToolNames(), [], 'no stale plugin tool spelling under stack/, setup-plugin/, meta/ or scripts/');

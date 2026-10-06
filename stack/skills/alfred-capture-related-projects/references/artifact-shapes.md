@@ -74,7 +74,7 @@ a session on another branch knows that edge may not exist in its code>
   file new sibling-repo docs there, never in `related-projects/`.
 - The navigation server binds to THIS repo: Read/Grep a sibling directly, but symbol-navigate it only from a
   context rooted there.
-- Dynamic cross-repo findings go to the shared `memory` MCP instead of a committed file - tag them
+- Dynamic cross-repo findings go to the shared `alfred-memory` MCP instead of a committed file - tag them
   with the sibling's own name (`project:<sibling>` or bare `<sibling>`), so they surface when that
   sibling is searched later.
 ```

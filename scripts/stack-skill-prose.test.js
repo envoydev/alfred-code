@@ -83,7 +83,7 @@ test('M107: angular-conventions names no dangling cite and lists its co-loads on
     assert.doesNotMatch(text, /broader web index/);
     const head = text.slice(0, text.indexOf('## When to use'));
     assert.match(head, /^- .*TypeScript skill/m, 'the TypeScript co-load is its own bullet');
-    assert.match(head, /^- .*`documentation` MCP/m, 'the documentation-server directive is its own bullet');
+    assert.match(head, /^- .*`alfred-documentation` MCP/m, 'the documentation-server directive is its own bullet');
 });
 
 test('M108: the reward-hacking tables point at a named SKILL.md section, never at "above"', () =>

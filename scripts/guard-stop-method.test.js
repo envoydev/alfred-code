@@ -179,13 +179,13 @@ test('done gate: a Monitor shell write and a navigation rename are source edits 
     assert.ok(unrun(g1), 'a Monitor shell write then Fixed.');
     assert.match(g1.row.detail.file, /src[\\/]a\.js/);
     // both routes' spellings - the copy route's bare server is composed, never literal text (lint check 54)
-    for (const tool of ['plugin_navigation_navigation__rename_symbol', 'navigation__rename_symbol', 'plugin_navigation_navigation__safe_delete_symbol'].map((t) => `mcp__${t}`)) {
+    for (const tool of ['plugin_alfred-navigation_alfred-navigation__rename_symbol', 'alfred-navigation__safe_delete_symbol', 'plugin_navigation_navigation__rename_symbol', 'navigation__rename_symbol', 'plugin_navigation_navigation__safe_delete_symbol'].map((t) => `mcp__${t}`)) {
         const nav = call(tool, { name_path: 'Cart/total', relative_path: 'src/cart.ts', new_name: 'sum' });
         const g = gate(root, turn(nav), 'Done - renamed.');
         assert.ok(unrun(g), `${tool} then Done`);
         assert.match(g.row.detail.file, /src[\\/]cart\.ts/, `${tool}: the declaring file`);
     }
-    const lookup = call('mcp__plugin_navigation_navigation__find_symbol', { name_path: 'Cart', relative_path: 'src/cart.ts' });
+    const lookup = call('mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path: 'Cart', relative_path: 'src/cart.ts' });
     assert.strictEqual(gate(root, turn(lookup), 'Done.').row, null, 'a lookup is no edit');
 });
 

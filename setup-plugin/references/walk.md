@@ -36,7 +36,7 @@ grep at 258k context to confirm this shape):
 
 ```json
 { "skills": ["csharp"], "agents": ["aspnet-implementer"], "rules": ["csharp-conventions"],
-  "hooks": ["guard-stop-contract"], "mcps": ["navigation"], "plugins": ["csharp-lsp"] }
+  "hooks": ["guard-stop-contract"], "mcps": ["alfred-navigation"], "plugins": ["csharp-lsp"] }
 ```
 
 ## Per layer - the same three beats
@@ -290,8 +290,8 @@ neighbouring one so no question has fewer than 2 options.
 
 ## MCPs
 
-Locked = the servers the kept selection pulls: `navigation` via `alfred-navigation`, `documentation` via
-`alfred-quality-gates`, `memory` via `alfred-memory` - required in every install, the same way
+Locked = the servers the kept selection pulls: `alfred-navigation` via the `alfred-navigation` rule, `alfred-documentation`
+via `alfred-quality-gates`, `alfred-memory` via the `alfred-memory` rule - required in every install, the same way
 the navigation server and the documentation server are. `browser` is droppable: seeded on the web Angular, Ionic
 and browser-extension stacks, pre-selected elsewhere only when the evidence scan matched it, and in
 DELTA preserved across runs like any direct pick (`raw.json` carries it). The two desktop servers drive
@@ -306,19 +306,19 @@ are the whole catalog. A server 2.0.0 cut (`angular-cli`, `chrome-devtools`, `ap
 `context7-local`) is offered nowhere: the run uninstalls the stack's own copy and prints the `claude
 mcp add` line that brings it back as the user's own.
 
-FRESH asks, one per free row (navigation, documentation and memory are locked and never an option).
+FRESH asks, one per free row (alfred-navigation, alfred-documentation and alfred-memory are locked and never an option).
 Each enabled browser puts about 25 tools into every session, so keeping it is recommended only where it
 was earned: when the browser row reads `stack:<name>`, `recommended` or `evidence` in the table, ask the
 first template; otherwise (a `-` row, nothing seeded or proved it) ask the second, which leads with the drop:
 
 ```ask
-MCPs: navigation, documentation and memory always install. Keep the browser server (Playwright)?
+MCPs: alfred-navigation, alfred-documentation and alfred-memory always install. Keep the browser server (Playwright)?
 - 'Keep the browser server (Recommended)' - seeded by a web stack or proved by the evidence scan; each enabled browser adds about 25 tools
 - 'Drop the browser server' - no browser tools in any session
 ```
 
 ```ask
-MCPs: navigation, documentation and memory always install. Keep the browser server (Playwright)?
+MCPs: alfred-navigation, alfred-documentation and alfred-memory always install. Keep the browser server (Playwright)?
 - 'Drop the browser server (Recommended)' - no stack or evidence here needs it, and each enabled browser adds about 25 tools to every session
 - 'Keep the browser server' - browser tools for driving and checking a web UI
 ```
@@ -370,36 +370,66 @@ registers it.
 
 ## Plugins
 
-`claude-hud` shows as `dependency`: every install carries it beside the core plugin (at user scope -
-its status line is account-wide) and the installer puts it back on every run, so it cannot be dropped
-and is never offered as a pick (a `claude-hud` the user disabled stays off: updated, never switched
-back on). The other two (`csharp-lsp`, `typescript-lsp`) are OPTIONAL: pre-selected only as
-`evidence` (the scan matched a `*.csproj` / `*.sln`, a `tsconfig.json` or `typescript` dependency -
-the reason names the manifest) or as a confirmed stack's LSP seed, and otherwise `-`, freely
-addable. 2.0.0 retired `claude-md-management` and `security-guidance` (the core's AGENTS.md skill and
-`/security-review` cover them): neither is a row, and `/alfred-code:update` removes each from this
-project's scope with the line that adds it back.
+Three OPTIONAL rows, none locked. `claude-hud` (the status line) reads `recommended`: every install marks
+it, the user can drop it (2.2.0 - it was a required `dependency` before; a `claude-hud` the user disabled
+stays off: updated, never switched back on). `csharp-lsp` and `typescript-lsp` are pre-selected only as
+`evidence` (the scan matched a `*.csproj` / `*.sln`, a `tsconfig.json` or `typescript` dependency - the
+reason names the manifest) or as a confirmed stack's LSP seed, and otherwise `-`, freely addable. 2.0.0
+retired `claude-md-management` and `security-guidance` (the core's AGENTS.md skill and `/security-review`
+cover them): neither is a row, and `/alfred-code:update` removes each from this project's scope with the
+line that adds it back.
 
-FRESH ask (claude-hud is a dependency and never an option):
+FRESH ask, counts from the table (claude-hud marked, typescript-lsp on evidence):
 
 ```ask
-Plugins: claude-hud always installs. Which language-server plugins?
-- 'Keep the marked (Recommended)' - the marked csharp-lsp and typescript-lsp rows, each with its evidence
-- 'Only csharp-lsp' - C# symbol lookups
-- 'Only typescript-lsp' - TypeScript symbol lookups
-- 'Neither' - symbol lookups stay with the navigation server alone
+Plugins: install the <n> marked rows? <the marked rows and their reasons, one clause each>.
+- 'Keep the marked rows (Recommended)' - claude-hud's status line plus each LSP the evidence or a stack marked
+- 'Pick plugins to add or drop' - the next call lists claude-hud, csharp-lsp and typescript-lsp
+- 'Add every plugin' - claude-hud, csharp-lsp and typescript-lsp
+- 'None' - no status line; symbol lookups stay with the navigation server alone
 ```
 
-Name the marked rows and their reasons in the description; an offer with one LSP row is that row
-against 'Neither'.
+DELTA takes the two layer questions above (add, drop) like every layer.
+
+**Where each optional item installs - the last ask of the walk.** The core and the three `alfred-` servers
+follow the run's scope. Every OTHER kept item - each kept browser engine (`browser-<engine>`), a kept desktop
+server, a kept LSP, `claude-hud` - goes where the user chooses, item by item: `project` (this project only,
+the default for every one) or `global` (every project on this account loads it). Nothing kept that is
+optional: ask nothing. FRESH has no install, so every item starts at `project`:
+
+```ask
+Where do the <n> optional picks install? <names>. This project only, unless you make one global.
+- 'This project, all of them (Recommended)' - nothing here loads in your other projects
+- 'Pick which go global' - the next call lists each pick; a ticked one installs for every project on this account
+- 'Global, all of them' - every project on this account loads each of them
+```
+
+DELTA reads where each installed one lives now - `jq -c '.scopes' "$TMP/installed.json"` prints
+`{"<item>": "global" | "project"}` - names it in the question, and keeps it there by default; a newly
+added item starts at `project`:
+
+```ask
+Keep the optional picks where they are? <item: global | project, one clause each>.
+- 'Keep each where it is (Recommended)' - an update never moves one on its own; this ask is the one way it moves
+- 'Pick which to move' - the next call lists each pick with its scope now; a ticked one moves to the other
+- 'All in this project' - every global one moves here; your other projects lose it
+```
+
+'Pick ...' opens ONE call of multi-select questions (up to 4 per question, each option one item, its
+description naming the scope it would get). Pass every answer that is not the item's current place as
+`--scope-of <item>=<global|project>` (`--scope-of browser=<...>` covers every engine at once): FRESH
+passes each `global` one, DELTA each move - the installer installs the item at the new scope first, then
+removes it at the old, and says a move off `global` loud (every other project loses it, with the line that
+puts it back). An unchanged answer passes nothing. On the full copy route (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`)
+the engines and desktop servers are `.mcp.json` / `claude mcp add` registrations at the run's scope - their
+answer does not apply there; say so in one line and ask only the plugins.
 
 **Plugin settings - part of this layer's turn.** After the selection question, for every kept
-plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today `claude-hud`, which
-every install carries, whose config file is ACCOUNT-level whichever scope it is installed at - no
-emitted selection names it, so the csv below always does), report the delta and ASK here - the
-answer is applied after the installer runs, exactly like the environment choices:
+plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today `claude-hud`, when it is
+kept - its config file is ACCOUNT-level whichever scope it is installed at), report the delta and ASK
+here - the answer is applied after the installer runs, exactly like the environment choices:
 
-1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv, claude-hud always in it>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `--config-dir` is `~/.claude`, or `~/.claude-<space>` under a profile.
+1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `--config-dir` is `~/.claude`, or `~/.claude-<space>` under a profile.
 2. ONE AskUserQuestion carrying those counts: **Apply recommended** (Recommended - adds only the missing keys, every value already chosen is kept), **Apply and replace differing** (overwrite those too), **Skip** (change nothing).
 
 No kept plugin with a row: skip this silently, ask nothing. A target that needs a block the

@@ -299,7 +299,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const movedFrom = level.level === 'custom' && !args.memoryLevel && priorLedger ? memory.movedProjectRoot(recorded.path, { projectRoot, root: dataInfo.root }) : '';
         const vouched = Boolean(movedFrom) && (recorded.from === 'settings'
             ? (((priorLedger.env || {})[recorded.file]) || {})[recorded.key] === stampLayer.valueHash(recorded.value)
-            : recorded.from === 'registration' && (priorLedger.mcp || {}).memory === stampLayer.entryHash(recorded.entry));
+            : recorded.from === 'registration' && memory.MEMORY_SERVERS.some((n) => (priorLedger.mcp || {})[n] === stampLayer.entryHash(recorded.entry)));
         if (vouched)
         {
             level = { level: 'project', dbPath: memory.pathForLevel('project', { home, space: args.space, projectRoot, root: dataInfo.root }), from: 'moved' };
@@ -377,7 +377,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             log(`  !! mcp: ${accountFile} ${account.state === 'absent' ? 'does not exist, so it' : account.entry === false ? 'holds no entry for this project - a file the claude CLI recovered or rewrote, or a folder moved since the last run -' : 'is a fresh one, first started after the last install (or never), and'} holds none of the stack's ${regScope}-scope registrations its stamp records (${lostNames})${loss.backup ? `; the claude CLI kept the old one as ${loss.backup}` : ''} - they are taken as the stamp records them`);
         // Review 2.1.6 m5: a kept memory level registers nothing, and the lost account file took its registration with it -
         // the summary says so rather than 'kept'.
-        const memoryGone = accountLost && level.level === 'kept' && Object.hasOwn(recordedRegs, 'memory') && !heldRegs().memory;
+        const memoryGone = accountLost && level.level === 'kept' && ['alfred-memory', 'memory'].some((n) => Object.hasOwn(recordedRegs, n)) && !['alfred-memory', 'memory'].some((n) => heldRegs()[n]);
         // C10: the project memory level needs no refusal at user scope any more - on the full copy route,
         // the one route that registers memory itself, the registration lands in this project's .mcp.json
         // (mcp.registrationScope), so its path is this project's alone.
@@ -522,7 +522,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 // free only in the pin, the cut-off date and the paths) as well as its marks. A lost row has exactly that shape;
                 // the user's own server with the stack's package and marks usually adds a flag or an env key.
                 const stackOwn = Object.keys(servers).filter((name) => !Object.hasOwn(ours, name) && !mcp.isLocked(name)
-                    && mcp.exactStack(name, servers[name], { catalog: manifest.catalogs.mcps, remotes: { documentation: mcp.CONTEXT7_REMOTE }, projectRoot })
+                    && mcp.exactStack(name, servers[name], { catalog: manifest.catalogs.mcps, remotes: { 'alfred-documentation': mcp.CONTEXT7_REMOTE }, projectRoot })
                     && mcp.stackAuthored(name, servers[name], { engines: stampEngines || [] })
                     && (/^browser-/.test(name) || (rowOf(name).skills || []).some((sk) => recordedSkills.has(sk))));
                 if (!stackOwn.length) return recordedNames;
@@ -799,7 +799,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 log: lists.mcps.some((e) => String(e).split('|')[0] === 'windows-desktop') ? (line) => log(`  desktop: ${line}`) : () => {} }),
         };
         // The one remote server the copy route registers: documentation (Context7), the hosted transport only (2.0.0).
-        const remotes = { documentation: mcp.CONTEXT7_REMOTE };
+        const remotes = { 'alfred-documentation': mcp.CONTEXT7_REMOTE };
         // What a release retired from the MCP catalog and this run still prunes: the first update past
         // a retirement only (mcp.dueRetired) - after it, the name is the user's add-back registration.
         const versionDue = mcp.dueRetired({
@@ -988,7 +988,7 @@ function dataRootLayer(ctx, docsPath)
     const root = ctx.dataInfo.root;
     try { docs.ensureDataIgnore({ projectRoot, root, docsPath, log }); }
     catch (err) { note(`${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore, keeping its docs/ folder visible`); }
-    const navigation = ctx.lists.mcps.some((e) => e.startsWith('navigation|'));
+    const navigation = ctx.lists.mcps.some((e) => e.startsWith('alfred-navigation|'));
     const serenaDir = ctx.liveOf('serena');
     serena.seedProject({ projectRoot, selected: navigation, dir: serenaDir, root, log });
     if (navigation && serenaDir !== dataRoot.LEGACY.serena)
@@ -1073,7 +1073,7 @@ function planDataMove({ projectRoot, info, engines, memoryProject, launched, ans
     // A link is no data (M5: the project memory folder's 2.0.0 place, linked to its moved folder).
     const holds = (rel) => { try { return !fs.lstatSync(abs(rel)).isSymbolicLink() && fs.readdirSync(abs(rel)).some((n) => n !== '.gitignore'); } catch { return false; } };
     const same = (a, b) => a.cls === b.cls && a.from === b.from && a.to === b.to;
-    const server = (cls) => (cls === 'serena' ? 'navigation' : cls === 'memory' ? 'memory' : cls);
+    const server = (cls) => (cls === 'serena' ? 'alfred-navigation' : cls === 'memory' ? 'alfred-memory' : cls);
     const inline = (row) =>
     {
         // M2: serena's own check too - on the copy route the session running this installer has its serena open there.
@@ -1503,23 +1503,38 @@ function installPlugins(ctx)
         stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED, market: ctx.market,
     });
     const marketplaces = plugins.extraMarketplaces(ctx.manifest.rows.plugins, set);
+    // 2.2.0: each optional item at the scope the user chose for it (`--scope-of`); a required one follows the run.
+    const scopes = ctx.args.scopeOf || {};
     // C12: an install moved off local scope takes its plugin rows along - installed at the new scope, the
     // local row uninstalled. What moved is installed this run (`fresh`); the listing reads each at its
     // new scope from here on.
     const relocated = ctx.leavingLocal && !blind
         ? plugins.moveLocalRows({
-            plugins: set, rows, scope: ctx.cliScope, engines: pwEngines(ctx).map((e) => `browser-${e}@${ctx.market}`),
+            plugins: set, rows, scope: ctx.cliScope, scopes, engines: pwEngines(ctx).map((e) => `browser-${e}@${ctx.market}`),
             isOn, cli: ctx.cli, log: ctx.log, note: ctx.note,
         })
         : { moved: [], dropped: [] };
     for (const row of listing)
         if ([...relocated.moved, ...relocated.dropped].includes(`${row.name}@${row.marketplace}`)) row.scope = ctx.cliScope;
+    // An optional item the user gave another scope than the one it is installed at moves there first, so the passes
+    // below find it where it now lives. A listing that could not be read moves nothing.
+    const rescoped = !blind
+        ? plugins.moveScoped({
+            plugins: set, rows, scope: ctx.cliScope, scopes, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note,
+            engines: [...pwEngines(ctx).map((e) => `browser-${e}@${ctx.market}`), ...desktopKept(ctx).map((n) => `${n}@${ctx.market}`)],
+        })
+        : [];
+    for (const row of listing)
+    {
+        const hit = rescoped.find((m) => m.spec === `${row.name}@${row.marketplace}`);
+        if (hit) row.scope = hit.scope;
+    }
     // A-I4: said once, after the plugin pass on either action. Marked `!!`, like every line a user acts
     // on: a 1.x install's first 2.0.0 run is the 1.x update body's, which shows only its own grep and
     // the `!!` lines update-preflight --log forwards.
     const hudLine = () =>
     {
-        if (plugins.hudStatusLineMissing({ plugins: set, listing, settingsFile: path.join(ctx.configDir, 'settings.json') }))
+        if (plugins.hudStatusLineMissing({ plugins: set, listing, settingsFiles: [path.join(ctx.configDir, 'settings.json'), ...['settings.json', 'settings.local.json'].map((f) => path.join(ctx.projectRoot, '.claude', f))] }))
             ctx.log('  !! claude-hud has no status line yet - run /alfred-code:init to set it up');
     };
     // The per-stack entries retired in 1.3.0 come from the seed's own file, never the twins' lists:
@@ -1552,7 +1567,7 @@ function installPlugins(ctx)
         : { fresh: [], gone: [] };
     if (blind && predatesRename(ctx))
         ctx.log(`  !! the plugin listing could not be read, and this install predates the 2.0.0 rename - an old id still installed loads beside its successor; check /plugin, or: ${ctx.legacyMcps.map((n) => `claude plugin uninstall ${n}@${ctx.market} --scope ${ctx.cliScope}`).join('; ')}`);
-    const fresh = [...moved.fresh, ...relocated.moved, ...renamedMove.fresh];
+    const fresh = [...moved.fresh, ...relocated.moved, ...renamedMove.fresh, ...rescoped.map((m) => m.spec)];
     // The 1.x core counts as a live home of its seat denies while any scope still carries its old id.
     const oldCore = rows.some((r) => r.name === LEGACY.core && !moved.removed.includes(r)) ? [LEGACY.core] : [];
     const installed = (gone = []) => (listing.length ? carriers.filter((n) => plugins.fieldOf(listing, n, 'version') && !gone.includes(n)).concat(oldCore) : null);
@@ -1569,7 +1584,7 @@ function installPlugins(ctx)
         ctx.liveCarriers = installed(gone);
         standDown();
         plugins.updatePlugins({
-            plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh, restored: back.restored, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
+            plugins: set, scope: ctx.cliScope, scopes, marketplaces, before: listing, fresh, restored: back.restored, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
             after: readListing,
         });
         hudLine();
@@ -1587,7 +1602,7 @@ function installPlugins(ctx)
     }
     standDown();
     plugins.installPlugins({
-        plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
+        plugins: set, scope: ctx.cliScope, scopes, marketplaces, before: listing, fresh, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
     hudLine();
 }
@@ -1881,7 +1896,7 @@ function installMcps(ctx)
 
     if (ctx.routes.mcps)
     {
-        ctx.log('mcp: carried by the plugins (navigation, documentation, memory, and the picks) - nothing registered here');
+        ctx.log('mcp: carried by the plugins (alfred-navigation, alfred-documentation, alfred-memory, and the picks) - nothing registered here');
         return;
     }
     const scope = mcp.registrationScope(ctx.routes, ctx.cliScope);
@@ -1931,7 +1946,7 @@ function installMcps(ctx)
         .filter((e) => !unregistered.includes(e.split('|')[0]))
         .filter((e) => !held(e.split('|')[0]))
         // F2: a memory level no readable record answers is kept - its registration stays exactly as it is (said first).
-        .filter((e) => !(ctx.level.level === 'kept' && e.split('|')[0] === 'memory'));
+        .filter((e) => !(ctx.level.level === 'kept' && e.split('|')[0] === 'alfred-memory'));
     // C10: a user-scope run on the full copy route registers in .mcp.json; what an earlier one registered
     // at user scope still reaches every project on the account, and another user-scope install there
     // still loads it until its own update - so it is named with its command, never removed here. N5: so is
@@ -1949,7 +1964,7 @@ function installMcps(ctx)
     ctx.desktopHeld = new Set(Object.keys(mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers).filter((n) => DESKTOP_OS[n]));
     // I12: the navigation registration names the stack's serena context, copied first - the registration
     // and the verify pass below both read the token.
-    if (live.some((e) => e.split('|')[0] === 'navigation')) ctx.tokens.SERENA_CONTEXT = navigationContext(ctx);
+    if (live.some((e) => e.split('|')[0] === 'alfred-navigation')) ctx.tokens.SERENA_CONTEXT = navigationContext(ctx);
     const registered = [];
     for (const entry of live)
     {
@@ -2469,7 +2484,7 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
 function warmMemoryModel(ctx)
 {
     if (!['install', 'update'].includes(ctx.args.action)) return;
-    if (!ctx.lists.mcps.some((e) => e.split('|')[0] === 'memory')) return;
+    if (!ctx.lists.mcps.some((e) => e.split('|')[0] === 'alfred-memory')) return;
     if (String((ctx.env || {}).ALFRED_CODE_MEMORY_WARM || '') === '0') return;
     const engine = path.join(ctx.source.dir, 'stack', 'hooks', 'memory.js');
     let cached = false;

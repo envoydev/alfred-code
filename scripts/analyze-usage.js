@@ -131,7 +131,7 @@ function correctionMarker(text) {
 // A correction counts as saved when a memory store follows within this many replies - the plugin
 // route's name or a registration's (history plan, Gate G2).
 const SAVE_WINDOW = 3;
-const MEMORY_STORE_RE = /^mcp__(?:plugin_memory_)?memory__memory_store$/;
+const MEMORY_STORE_RE = /^mcp__(?:plugin_(?:alfred-)?memory_)?(?:alfred-)?memory__memory_store$/;
 const CHECK_WINDOW = 40;    // tool calls a check may sit before a commit and still count as its check
 // Build output, package trees, caches and lockfiles - a read there is a read of nothing the session
 // wrote. `bin/` catches a script dir too, so the report prints the paths and the reader judges. The data
@@ -198,7 +198,7 @@ const SOURCE_EXT_RE = /\.(?:cs|fs|vb|ts|tsx|mts|cts|js|jsx|mjs|cjs|py|go|rs|java
 // serena 1.7.0's locate tools: the three symbol tools plus find_declaration and find_implementations (M36).
 const SERENA_SYMBOL_TOOLS = new Set(['find_symbol', 'find_referencing_symbols', 'get_symbols_overview', 'find_declaration', 'find_implementations']);
 // The navigation server's name, and the one it went by before 2.0.0 - an older transcript still says serena.
-const NAVIGATION_SERVERS = new Set(['navigation', 'serena']);
+const NAVIGATION_SERVERS = new Set(['alfred-navigation', 'navigation', 'serena']);
 const SHELL_GREP_RE = /^\s*(?:\w+=\S*\s+)*(?:grep|egrep|fgrep|rg|ag|ack|git\s+grep)\b/;
 function locateClass(name, input) {
   if (name === 'LSP') return 'symbol';

@@ -234,8 +234,8 @@ async function diffSetups(agents) {
     if (installOnlyHooks.length) lines.push(`install-only hook file(s) (expected - needed to bring docs.js along): ${installOnlyHooks.join(', ')}`);
 
     // .mcp.json memory entry (paths compared by suffix, since the real install resolves the realpath and the self-built one does not)
-    const mcpSelf = JSON.parse(readOr(path.join(selfDir, '.mcp.json')) || '{}').mcpServers.memory;
-    const mcpInstall = JSON.parse(readOr(path.join(installDir, '.mcp.json')) || '{}').mcpServers.memory;
+    const mcpSelf = memOf(JSON.parse(readOr(path.join(selfDir, '.mcp.json')) || '{}').mcpServers);
+    const mcpInstall = memOf(JSON.parse(readOr(path.join(installDir, '.mcp.json')) || '{}').mcpServers);
     const argsMatch = JSON.stringify(mcpSelf.args) === JSON.stringify(mcpInstall.args);
     const envMatch = mcpSelf.env.MCP_MEMORY_STORAGE_BACKEND === mcpInstall.env.MCP_MEMORY_STORAGE_BACKEND
       && mcpSelf.env.MCP_MEMORY_SQLITE_PRAGMAS === mcpInstall.env.MCP_MEMORY_SQLITE_PRAGMAS
@@ -470,7 +470,7 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
     throw new Error(`pre-feature install (${PRE_FEATURE_COMMIT}) failed: ${preInstallRes.error ? preInstallRes.error.message : `exit ${preInstallRes.status}`} - ${String(preInstallRes.stderr || '').slice(-2000)}`);
   }
   const preMcp = fs.existsSync(path.join(projectDir, '.mcp.json')) ? JSON.parse(fs.readFileSync(path.join(projectDir, '.mcp.json'), 'utf8') || '{}') : {};
-  const preHasMemory = fs.existsSync(path.join(projectDir, '.claude', 'rules', 'baseline-memory.md')) || !!(preMcp.mcpServers && preMcp.mcpServers.memory);
+  const preHasMemory = fs.existsSync(path.join(projectDir, '.claude', 'rules', 'baseline-memory.md')) || !!memOf(preMcp.mcpServers);
   if (preHasMemory) throw new Error(`pre-feature install (${PRE_FEATURE_COMMIT}) unexpectedly already has the memory feature - not a valid pre-feature baseline`);
   // Controller directive: the seed install must genuinely LOOK like an older real install, not just
   // lack the memory feature by construction - a stamp, but one written before a4c0828's
@@ -524,7 +524,7 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
     if (!ruleOk) throw new Error(`update assertion failed - alfred-memory.md missing after update (${asserts.join('; ')})`);
 
     const mcpData = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8') || '{}');
-    const memEntry = mcpData.mcpServers && mcpData.mcpServers.memory;
+    const memEntry = memOf(mcpData.mcpServers);
     asserts.push(`memory registered in .mcp.json: ${!!(memEntry && memEntry.command)}`);
     if (!memEntry || !memEntry.command) throw new Error(`update assertion failed - no memory server registered in .mcp.json (${asserts.join('; ')})`);
 
@@ -554,9 +554,12 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
 // Seeding: the real server, JSON-RPC over stdio - same route as scripts/memory-import.js
 // ---------------------------------------------------------------------------------------------------
 
+// The memory server's registration under its 2.2.0 name, or the name it had before.
+function memOf(servers) { return (servers && (servers['alfred-memory'] || servers.memory)) || undefined; }
+
 function readRegistration(mcpConfigPath) {
   const data = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8'));
-  const entry = data && data.mcpServers && data.mcpServers.memory;
+  const entry = memOf(data && data.mcpServers);
   if (!entry || !entry.command) throw new Error(`no memory server registered in ${mcpConfigPath}`);
   return entry;
 }
@@ -793,7 +796,7 @@ What grounds it: seeded for scripts/memory-usage.eval.js scenario 5 - billing-se
 on disk at this path, on purpose.
 `;
 
-const MEMORY_TOOLS = ['ToolSearch', 'mcp__plugin_memory_memory__memory_store', 'mcp__plugin_memory_memory__memory_search', 'mcp__plugin_memory_memory__memory_list'];
+const MEMORY_TOOLS = ['ToolSearch', 'mcp__plugin_alfred-memory_alfred-memory__memory_store', 'mcp__plugin_alfred-memory_alfred-memory__memory_search', 'mcp__plugin_alfred-memory_alfred-memory__memory_list'];
 
 const SCENARIOS = [
   {
@@ -804,7 +807,7 @@ const SCENARIOS = [
     prompt: 'From now on, always name test files with a .spec suffix in this project.',
     allowedTools: [...MEMORY_TOOLS, 'Bash'],
     evaluate({ lines, rows, projectName }) {
-      const storeCalls = sessionToolCalls(lines, 'mcp__plugin_memory_memory__memory_store');
+      const storeCalls = sessionToolCalls(lines, 'mcp__plugin_alfred-memory_alfred-memory__memory_store');
       const row = rows.find((r) => splitTags(r.tags).some((t) => t === `project:${projectName}` || t === projectName)
         && (r.memory_type === 'user_correction' || r.memory_type === 'preference_signal'));
       return {
@@ -853,7 +856,7 @@ const SCENARIOS = [
       + "project's own memory rule.",
     allowedTools: ['Agent', 'Task', ...MEMORY_TOOLS, 'Bash', 'Read', 'Grep', 'Glob'],
     evaluate({ subTranscripts, rows }) {
-      const storeCalls = subTranscripts.flatMap((t) => sessionToolCalls(t, 'mcp__plugin_memory_memory__memory_store'));
+      const storeCalls = subTranscripts.flatMap((t) => sessionToolCalls(t, 'mcp__plugin_alfred-memory_alfred-memory__memory_store'));
       const row = rows.find((r) => splitTags(r.tags).some((t) => t.startsWith('agent:')) && r.memory_type === 'learning');
       return {
         toolEvidence: storeCalls.length ? `subagent memory_store x${storeCalls.length}` : 'no subagent memory_store call',
@@ -876,7 +879,7 @@ const SCENARIOS = [
       + 'project memory first.',
     allowedTools: ['Agent', 'Task', ...MEMORY_TOOLS, 'Bash', 'Read', 'Grep', 'Glob'],
     evaluate({ subTranscripts }) {
-      const searchCalls = subTranscripts.flatMap((t) => sessionToolCalls(t, 'mcp__plugin_memory_memory__memory_search').concat(sessionToolCalls(t, 'mcp__plugin_memory_memory__memory_list')));
+      const searchCalls = subTranscripts.flatMap((t) => sessionToolCalls(t, 'mcp__plugin_alfred-memory_alfred-memory__memory_search').concat(sessionToolCalls(t, 'mcp__plugin_alfred-memory_alfred-memory__memory_list')));
       const found = subTranscripts.some((t) => assistantTexts(t).some((txt) => /6543/.test(txt)));
       return {
         toolEvidence: searchCalls.length ? `subagent memory_search/list x${searchCalls.length}` : 'no subagent search/list call',

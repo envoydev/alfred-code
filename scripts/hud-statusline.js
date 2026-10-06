@@ -3,11 +3,14 @@
 // hud-statusline.js - claude-hud arrives CONFIGURED: /alfred-code:init's claude-hud item, made
 // deterministic instead of a model walk through claude-hud's own /claude-hud:setup.
 //
-//   node scripts/hud-statusline.js [--config-dir <dir> | --space <name>] [--catalog <file>]
+//   node scripts/hud-statusline.js [--config-dir <dir> | --space <name>] [--project <dir>] [--catalog <file>]
 //
-// Two writes into the ACCOUNT dir (CLAUDE_CONFIG_DIR, else ~/.claude-<space>, else ~/.claude - the
-// installer's rule, stamp.js accountDir), both add-only:
-//   1. settings.json `statusLine` - the command claude-hud 0.8.0's setup writes for a Node runtime: the
+// Two writes, both add-only, into the ACCOUNT dir (CLAUDE_CONFIG_DIR, else ~/.claude-<space>, else ~/.claude -
+// the installer's rule, stamp.js accountDir) - or, for the status line, into the project when claude-hud is
+// installed for that project alone (2.2.0: an optional item at the scope the user chose; a project- or
+// local-scope row naming `--project`, and no user-scope row): `<project>/.claude/settings.local.json`, since the
+// command names this machine's node. claude-hud's own config.json is account-wide either way.
+//   1. the settings file's `statusLine` - the command claude-hud 0.8.0's setup writes for a Node runtime: the
 //      first `node` on PATH as found (setup's `command -v node`), in the bash sort -V form - on Windows
 //      too when Git Bash is there, else the cmd.exe line and its launcher.
 //      No statusLine: written. claude-hud's own line in a current shape: left as it is. claude-hud's
@@ -246,17 +249,36 @@ function classify(statusLine, { platform, want, exists })
 
 const readJsonFile = (file) => { try { return parseJson(fs.readFileSync(file, 'utf8')); } catch { return null; } };
 
+// A project-scope row names its project by `projectPath`; Windows compares without case.
+const samePath = (a, b) =>
+{
+    const norm = (p) => path.resolve(p).replace(/[\\/]+$/, '');
+    return process.platform === 'win32' ? norm(a).toLowerCase() === norm(b).toLowerCase() : norm(a) === norm(b);
+};
+
+// The project's own settings files, local over shared - where a project-scope claude-hud is switched off.
+const projectOff = (project, id) => ['settings.local.json', 'settings.json']
+    .map((f) => readJsonFile(path.join(project, '.claude', f)))
+    .map((doc) => (doc && doc.enabledPlugins ? doc.enabledPlugins[id] : undefined))
+    .find((v) => v !== undefined) === false;
+
 // Installed = registered in the account's installed_plugins.json AND a runnable version in its cache
-// (the version dirs the launcher accepts, setup.md:250 and :277). The user's OFF wins.
-function hudInstall(configDir, settings)
+// (the version dirs the launcher accepts, setup.md:250 and :277). The user's OFF wins. `scope` is where its
+// status line goes: `user` for a user-scope row (every project), `project` for a project- or local-scope row
+// naming `project` alone - a row of another project serves nothing here.
+function hudInstall(configDir, settings, project)
 {
     const reg = readJsonFile(path.join(configDir, 'plugins', 'installed_plugins.json'));
     const rows = (reg && reg.plugins && typeof reg.plugins === 'object') ? reg.plugins : {};
     const ids = Object.keys(rows).filter((id) => id.split('@')[0] === HUD && Array.isArray(rows[id]) && rows[id].length);
-    const none = 'claude-hud is not installed in this account';
-    if (!ids.length) return { ok: false, why: none };
+    const none = project ? 'claude-hud is not installed for this project or this account' : 'claude-hud is not installed in this account';
+    const userIds = ids.filter((id) => rows[id].some((r) => r && (r.scope || 'user') === 'user'));
+    const projectIds = project ? ids.filter((id) => rows[id].some((r) => r && ['project', 'local'].includes(r.scope) && r.projectPath && samePath(r.projectPath, project))) : [];
+    if (!userIds.length && !projectIds.length) return { ok: false, why: none };
     const enabled = (settings && settings.enabledPlugins) || {};
-    if (ids.every((id) => enabled[id] === false)) return { ok: false, why: 'claude-hud is switched off in this account' };
+    const scope = userIds.some((id) => enabled[id] !== false) ? 'user'
+        : projectIds.some((id) => !projectOff(project, id)) ? 'project' : null;
+    if (!scope) return { ok: false, why: projectIds.length ? 'claude-hud is switched off for this project' : 'claude-hud is switched off in this account' };
     const cache = path.join(configDir, 'plugins', 'cache');
     let versions = [];
     try
@@ -272,7 +294,7 @@ function hudInstall(configDir, settings)
     }
     catch { versions = []; }
     if (!versions.length) return { ok: false, why: `${none} (registered, but its plugin cache holds no version to run)` };
-    return { ok: true };
+    return { ok: true, scope };
 }
 
 function resolveConfigDir({ flag, space, env = process.env })
@@ -310,12 +332,15 @@ function addsNote(targets)
 
 // Everything the run would do, nothing written. `item` is init-plan's machine line state: skip,
 // blocked, missing, refresh (a claude-hud line of a stale shape will be replaced) or present.
-function planHud({ configDir, platform = process.platform, env = process.env, runtime = nodeOnPath(env, platform), exists = fs.existsSync, cwd = process.cwd(), catalog })
+function planHud({ configDir, project, platform = process.platform, env = process.env, runtime = nodeOnPath(env, platform), exists = fs.existsSync, cwd = process.cwd(), catalog })
 {
-    const settingsFile = path.join(configDir, 'settings.json');
-    const settings = readDoc(settingsFile);
-    const plan = { configDir, platform, settingsFile, settings, changes: 0 };
-    plan.install = hudInstall(configDir, settings.doc);
+    const accountFile = path.join(configDir, 'settings.json');
+    const account = readDoc(accountFile);
+    const install = hudInstall(configDir, account.doc, project);
+    const own = install.ok && install.scope === 'project';
+    const settingsFile = own ? path.join(project, '.claude', 'settings.local.json') : accountFile;
+    const settings = own ? readDoc(settingsFile) : account;
+    const plan = { configDir, platform, settingsFile, settings, where: own ? 'project (.claude/settings.local.json)' : 'account', changes: 0, install };
     if (!plan.install.ok) return { ...plan, item: { state: 'skip', detail: plan.install.why } };
     if (settings.bad)
     {
@@ -329,22 +354,30 @@ function planHud({ configDir, platform = process.platform, env = process.env, ru
     plan.entry = (catalog || readJsonFile(CATALOG) || { plugins: {} }).plugins[HUD] || { targets: [] };
     plan.writesLine = ['absent', 'stale'].includes(plan.statusLine.state);
     // The row as it lands AFTER the statusLine write, which its refresh interval is gated on.
-    plan.targets = rowTargets(plan, plan.writesLine ? { 'settings.json': { ...(settings.doc || {}), statusLine: lineAfter(settings.doc, want.command) } } : {});
+    plan.targets = rowTargets(plan, plan.writesLine ? { [path.basename(settingsFile)]: { ...(settings.doc || {}), statusLine: lineAfter(settings.doc, want.command) } } : {});
     plan.changes = (plan.writesLine ? 1 : 0) + (plan.writesLine && want.launcher ? 1 : 0)
         + plan.targets.reduce((n, t) => n + (t.skipped ? 0 : t.rows.filter((r) => r.status === 'missing').length), 0);
     const note = addsNote(plan.targets);
     if (plan.changes) plan.item = { state: plan.statusLine.state === 'stale' ? 'refresh' : 'missing', detail: null, note };
     else if (plan.statusLine.state === 'foreign')
-        plan.item = { state: 'skip', detail: `the account statusLine is not claude-hud's (source: ${plan.statusLine.label}) - kept; /claude-hud:setup replaces it` };
+        plan.item = { state: 'skip', detail: `the ${plan.where} statusLine is not claude-hud's (source: ${plan.statusLine.label}) - kept; /claude-hud:setup replaces it` };
     else plan.item = { state: 'present', detail: '' };
     return plan;
 }
 
-// The claude-hud row as plugin-settings plans it - minus the settings.json patch on a line that is
-// not claude-hud's: a refresh interval would re-run the user's own command on a timer.
+// The claude-hud row as plugin-settings plans it - its settings.json patch landing in the file the status line
+// is in (the project's settings.local.json for a project-scope claude-hud), and none on a line that is not
+// claude-hud's: a refresh interval would re-run the user's own command on a timer.
 function rowTargets(plan, overlay = {})
 {
-    return planFor(plan.entry, plan.configDir, overlay).map((t) => (plan.statusLine.state === 'foreign' && t.file === 'settings.json'
+    const lineFile = path.basename(plan.settingsFile);
+    const own = plan.settingsFile !== path.join(plan.configDir, 'settings.json');
+    const pick = (keep) => ({ ...plan.entry, targets: (plan.entry.targets || []).filter((t) => (t.file === 'settings.json') === keep) });
+    const targets = own
+        ? [...planFor(pick(false), plan.configDir, overlay),
+            ...planFor({ ...pick(true), targets: pick(true).targets.map((t) => ({ ...t, file: lineFile })) }, path.dirname(plan.settingsFile), overlay)]
+        : planFor(plan.entry, plan.configDir, overlay);
+    return targets.map((t) => (plan.statusLine.state === 'foreign' && t.file === lineFile
         ? { ...t, rows: [], skipped: 'the statusLine is not claude-hud\'s - no refresh interval is added to it' }
         : t));
 }
@@ -357,8 +390,8 @@ function applyHud(plan, run = {})
     const lines = [];
     let changes = 0;
     const sl = plan.statusLine;
-    // The account settings.json is copied before the run's first write to it (setup.md:487-505).
-    if (plan.writesLine || plan.targets.some((t) => t.file === 'settings.json' && !t.skipped && t.rows.some((r) => r.status === 'missing')))
+    // The settings file is copied before the run's first write to it (setup.md:487-505).
+    if (plan.writesLine || plan.targets.some((t) => t.file === path.basename(plan.settingsFile) && !t.skipped && t.rows.some((r) => r.status === 'missing')))
     {
         try
         {
@@ -382,10 +415,10 @@ function applyHud(plan, run = {})
         }
         const doc = plan.settings.doc || {};
         doc.statusLine = lineAfter(doc, sl.command);
-        fs.mkdirSync(plan.configDir, { recursive: true });
+        fs.mkdirSync(path.dirname(plan.settingsFile), { recursive: true });
         fs.writeFileSync(plan.settingsFile, JSON.stringify(doc, null, 2) + '\n');
         lines.push(sl.state === 'absent'
-            ? 'hud: statusLine written - claude-hud\'s own shape for this platform'
+            ? `hud: statusLine written - claude-hud's own shape for this platform${plan.where === 'account' ? '' : `, in the ${plan.where} - claude-hud is installed for this project`}`
             : 'hud: statusLine refreshed - the claude-hud line had a stale shape; its other keys kept');
         changes += 1;
     }
@@ -401,13 +434,13 @@ function applyHud(plan, run = {})
     return { code: 0, lines };
 }
 
-const USAGE = 'usage: node scripts/hud-statusline.js [--config-dir <dir> | --space <name>] [--catalog <file>]';
+const USAGE = 'usage: node scripts/hud-statusline.js [--config-dir <dir> | --space <name>] [--project <dir>] [--catalog <file>]';
 
 // Strict: a flag this script does not know, one without a value, the `--flag=value` form or a flag
 // given twice throws - never read as absent, which would fall back to the environment's account.
 function parseArgs(argv)
 {
-    const known = ['--config-dir', '--space', '--catalog'];
+    const known = ['--config-dir', '--space', '--project', '--catalog'];
     const args = {};
     for (let i = 0; i < argv.length; i += 1)
     {
@@ -425,15 +458,17 @@ function parseArgs(argv)
 function main(argv, { env = process.env, out = (s) => process.stdout.write(s) } = {})
 {
     let configDir;
+    let project;
     let catalog = null;
     try
     {
         const args = parseArgs(argv);
         configDir = resolveConfigDir({ flag: args['--config-dir'], space: args['--space'], env });
+        project = args['--project'] ? path.resolve(args['--project']) : undefined;
         if (args['--catalog'] && !(catalog = readJsonFile(args['--catalog']))) throw new Error(`--catalog ${args['--catalog']} is not readable JSON`);
     }
     catch (e) { out(`hud: ${e.message} - nothing written; ${USAGE}\n`); return 2; }
-    const res = applyHud(planHud({ configDir, env, catalog }));
+    const res = applyHud(planHud({ configDir, project, env, catalog }));
     for (const line of res.lines) out(`${line}\n`);
     return res.code;
 }

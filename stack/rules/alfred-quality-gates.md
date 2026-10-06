@@ -19,8 +19,8 @@ Before you claim your own change done, fixed, passing, works or ready - the FIRS
 
 ### Claims about the outside world
 
-- A green build proves the code compiles, not that its API is current: a claim about a package, version floor, API shape, config key or deprecation is checked against the `documentation` server (Context7, locked into every install) as you write it - recall is not the authority. Prefer the durable policy plus a fetch-at-use pointer over a pinned number.
-- Use that server, not a shell stand-in (an `npx` or a registry `curl` answers only a version number). Its tools are DEFERRED: `ToolSearch select:mcp__plugin_documentation_documentation__resolve-library-id,mcp__plugin_documentation_documentation__query-docs`, then the query. Unreachable: say the claim is unverified.
+- A green build proves the code compiles, not that its API is current: a claim about a package, version floor, API shape, config key or deprecation is checked against the `alfred-documentation` server (Context7, locked into every install) as you write it - recall is not the authority. Prefer the durable policy plus a fetch-at-use pointer over a pinned number.
+- Use that server, not a shell stand-in (an `npx` or a registry `curl` answers only a version number). Its tools are DEFERRED: `ToolSearch select:mcp__plugin_alfred-documentation_alfred-documentation__resolve-library-id,mcp__plugin_alfred-documentation_alfred-documentation__query-docs`, then the query. Unreachable: say the claim is unverified.
 
 ### Partial work
 

@@ -12,8 +12,9 @@
 //     browsers, the serena index and the memory service's embedding model. Setup's install already downloaded a picked firefox / webkit, so
 //     one is here only when that download failed; chrome and msedge run the machine's own browser,
 //     probed like stack-select's msedge check, and one that is not there is `blocked` with its fix.
-//     Last, the account's claude-hud status line + compact layout (hud-statusline.js, the account dir
-//     CLAUDE_CONFIG_DIR, else ~/.claude-<space>): `skip` when claude-hud is absent or switched off, or
+//     Last, claude-hud's status line + compact layout (hud-statusline.js, the account dir CLAUDE_CONFIG_DIR,
+//     else ~/.claude-<space>; the line in the project's settings.local.json when claude-hud is installed for
+//     this project alone): `skip` when claude-hud is absent or switched off, or
 //     the statusLine is the user's own with nothing else to add; `refresh` when claude-hud's own line
 //     has a stale shape. Its command ends in `# adds <n> claude-hud keys: <names>`, a shell comment.
 //     The command is the exact one to run; init puts every missing one through ONE ask.
@@ -138,7 +139,7 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
     // The same pin and dependency cut-off the server itself starts on (M24), so the index and the server agree -
     // a UV_EXCLUDE_NEWER the user set included (a mirror with no upload times serves nothing under a cut-off).
     const cutoff = cutoffFor(excludeNewerOf(pinsFile().refreshed), userExcludeNewer({ env, projectDir: root }));
-    const index = `uvx --python ${request}${cutoff ? ` --exclude-newer ${cutoff}` : ''} --from serena-agent${pinOf('navigation')} serena project index`;
+    const index = `uvx --python ${request}${cutoff ? ` --exclude-newer ${cutoff}` : ''} --from serena-agent${pinOf('alfred-navigation')} serena project index`;
     add('serena index', nonEmptyDir(path.join(root, ...serenaDir.split('/'), 'cache')) ? 'present' : afterUv,
         win ? `$env:SERENA_HOME='${serenaHome}'; ${index}` : `SERENA_HOME=${serenaHome} ${index}`);
 
@@ -149,11 +150,12 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
     add('memory model', (probe.file || fs.existsSync)(marker) ? 'present' : afterUv,
         `node "${path.join(REPO, 'stack', 'hooks', 'memory.js')}" warm --root "${root}" --plugin-root "${REPO}"`);
 
-    // claude-hud arrives configured: its account statusLine plus the plugin-settings row, one command.
+    // claude-hud arrives configured: its statusLine (the account's, or this project's settings.local.json for a
+    // claude-hud installed for this project alone) plus the plugin-settings row, one command.
     // The runtime is planHud's default - the node the command itself finds on this PATH.
     const configDir = resolveConfigDir({ space, env });
-    const hud = planHud({ configDir, platform, env });
-    const hudCommand = `node "${path.join(REPO, 'scripts', 'hud-statusline.js')}" --config-dir "${configDir}"`;
+    const hud = planHud({ configDir, project: root, platform, env });
+    const hudCommand = `node "${path.join(REPO, 'scripts', 'hud-statusline.js')}" --config-dir "${configDir}" --project "${root}"`;
     add(HUD_ITEM, hud.item.state, ['missing', 'refresh'].includes(hud.item.state)
         ? (hud.item.note ? `${hudCommand} # ${hud.item.note}` : hudCommand)
         : hud.item.detail);

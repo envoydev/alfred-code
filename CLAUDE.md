@@ -31,7 +31,7 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
 - `meta/` (never installed) and the repo scripts (`lint-skills.js`, `analyze-usage.js`, `scan-evidence.js`): `repo-meta.md`.
 - `docs/` holds the browser inventory `docs/alfred-code.html` and the evidence files; `assets/` the logo and banner.
 
-**Three locked MCP servers** - `navigation`, `documentation`, `memory` - are in every install and may be named in artifacts; every other server is droppable, so a body describes it. **Never `Read` a whole file to find a symbol**: locate it through the navigation server (`find_symbol` / `find_referencing_symbols`) or the LSP; `Read` is for code already located.
+**Three locked MCP servers** - `alfred-navigation`, `alfred-documentation`, `alfred-memory` (2.2.0; `navigation` / `documentation` / `memory` before) - are in every install and may be named in artifacts; every other server is droppable, so a body describes it. **Never `Read` a whole file to find a symbol**: locate it through the navigation server (`find_symbol` / `find_referencing_symbols`) or the LSP; `Read` is for code already located.
 
 ## Working in THIS repo - invariants
 

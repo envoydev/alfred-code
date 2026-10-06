@@ -30,7 +30,7 @@ function project({ rules = [], servers = {}, plugins = {}, always } = {})
     const src = path.join(base, 'src');
     fs.mkdirSync(path.join(src, 'meta'), { recursive: true });
     fs.writeFileSync(path.join(src, 'meta', 'recommendations.json'), JSON.stringify({
-        always: always || { rules: ['alfred-interaction', 'alfred-security'], mcps: ['navigation', 'documentation', 'memory'] },
+        always: always || { rules: ['alfred-interaction', 'alfred-security'], mcps: ['alfred-navigation', 'alfred-documentation', 'alfred-memory'] },
     }));
     return { base, src, mcpFile: path.join(base, '.mcp.json') };
 }
@@ -153,11 +153,11 @@ test('install-stamp: installed-always records what is CARRIED, not what shipped'
 {
     const p = project({
         rules: ['alfred-interaction'],                 // security shipped but is not on disk
-        servers: { navigation: {} },                     // documentation and memory are not registered
+        servers: { 'alfred-navigation': {} },           // documentation and memory are not registered
     });
     const { text } = write(p);
     assert.match(text, /^installed-always-rules: alfred-interaction$/m);
-    assert.match(text, /^installed-always-mcps: navigation$/m);
+    assert.match(text, /^installed-always-mcps: alfred-navigation$/m);
 });
 
 test('install-stamp: a server riding its PLUGIN counts as carried - there is no .mcp.json to read', () =>
@@ -167,22 +167,22 @@ test('install-stamp: a server riding its PLUGIN counts as carried - there is no 
     const p = project({
         rules: ['alfred-interaction', 'alfred-security'],
         servers: {},
-        plugins: { 'navigation@envoydev': true, 'documentation@envoydev': true, 'memory@envoydev': true },
+        plugins: { 'alfred-navigation@envoydev': true, 'alfred-documentation@envoydev': true, 'alfred-memory@envoydev': true },
     });
     const { text } = write(p);
-    assert.match(text, /^installed-always-mcps: navigation,documentation,memory$/m);
+    assert.match(text, /^installed-always-mcps: alfred-navigation,alfred-documentation,alfred-memory$/m);
 });
 
 test('install-stamp: a browser ENGINE counts as its family', () =>
 {
     assert.strictEqual(family('browser-firefox'), 'browser');
-    assert.strictEqual(family('navigation'), 'navigation');
+    assert.strictEqual(family('alfred-navigation'), 'alfred-navigation');
     const p = project({
-        always: { rules: [], mcps: ['browser', 'documentation'] },
-        plugins: { 'browser-firefox@envoydev': true, 'documentation@envoydev': true },
+        always: { rules: [], mcps: ['browser', 'alfred-documentation'] },
+        plugins: { 'browser-firefox@envoydev': true, 'alfred-documentation@envoydev': true },
     });
     const { text } = write(p);
-    assert.match(text, /^installed-always-mcps: browser,documentation$/m);
+    assert.match(text, /^installed-always-mcps: browser,alfred-documentation$/m);
 });
 
 test('install-stamp: a missing or malformed input is empty, never a crash', () =>
@@ -199,7 +199,7 @@ test('install-stamp: a missing or malformed input is empty, never a crash', () =
 
 test('install-stamp: installedAlways reads the two lists independently', () =>
 {
-    const p = project({ rules: ['alfred-security'], servers: { memory: {} } });
+    const p = project({ rules: ['alfred-security'], servers: { 'alfred-memory': {} } });
     const got = installedAlways({
         recommendations: path.join(p.src, 'meta', 'recommendations.json'),
         mcpFile: p.mcpFile,
@@ -207,7 +207,7 @@ test('install-stamp: installedAlways reads the two lists independently', () =>
         rulesDir: path.join(p.base, '.claude', 'rules'),
     });
     assert.deepStrictEqual(got.rules, ['alfred-security']);
-    assert.deepStrictEqual(got.mcps, ['memory']);
+    assert.deepStrictEqual(got.mcps, ['alfred-memory']);
 });
 
 // T3: the skills and seats this run installed, so the next --installed-only can read back an item a
@@ -1065,11 +1065,11 @@ test('json-file: a leading BOM is stripped before the parse, and a BOM plus garb
     assert.deepStrictEqual(readJson(write('ok.json', '\uFEFF{"mcpServers":{"a":{}}}')), { mcpServers: { a: {} } });
     assert.deepStrictEqual(readJson(write('bad.json', '\uFEFF{"mcpServers":')), {}, 'unreadable reads as empty, like before');
     assert.deepStrictEqual(readJson(path.join(dir, 'absent.json')), {});
-    const p = project({ servers: { memory: {} } });
+    const p = project({ servers: { 'alfred-memory': {} } });
     fs.writeFileSync(p.mcpFile, `\uFEFF${fs.readFileSync(p.mcpFile, 'utf8')}`);
     const got = installedAlways({ recommendations: path.join(p.src, 'meta', 'recommendations.json'), mcpFile: p.mcpFile,
         settingsFile: path.join(p.base, '.claude', 'settings.json'), rulesDir: path.join(p.base, '.claude', 'rules') });
-    assert.deepStrictEqual(got.mcps, ['memory'], 'stamp.js read a BOM\'d .mcp.json as empty');
+    assert.deepStrictEqual(got.mcps, ['alfred-memory'], 'stamp.js read a BOM\'d .mcp.json as empty');
 });
 
 // Matrix F-BOM follow-up (2.1.6, V1): the legacy signature's settings read goes through the shared reader too - a BOM'd

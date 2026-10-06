@@ -31,7 +31,7 @@ const path = require('node:path');
 const { placement, formerCore, readRetiredEntries, CORE } = require('./plugin-placement.js');
 const { timeoutFor } = require('./install/settings.js');
 const { loadManifest } = require('./install/manifest.js');
-const { LEGACY } = require('./install/brand.js');
+const { BRAND, LEGACY } = require('./install/brand.js');
 const { HOOK_PROFILES } = require('../stack/hooks/hook-prelude.js');
 const { wiringRows } = require('../stack/hooks/shell-guards.js');
 const fileGuards = require('../stack/hooks/file-guards.js');
@@ -321,8 +321,8 @@ const { ENGINES: PW_ENGINES } = require('../stack/mcp/data-root.js');
 // `mcp__plugin_<n>_<n>__<tool>` for a single `<n>` - readable, and mechanical to generate. Lint
 // check 53 fails on any entry that breaks it.
 //
-// The names are the ROLE (2.0.0, the user's rename): navigation, documentation, memory, one
-// browser-<engine> per browser, and windows-desktop / macos-desktop. The upstream each one runs -
+// The names are the ROLE (2.0.0, the user's rename), `alfred-` prefixed for the locked three (2.2.0): alfred-navigation,
+// alfred-documentation, alfred-memory, one browser-<engine> per browser, and windows-desktop / macos-desktop. The upstream each one runs -
 // Serena, Context7, Playwright MCP, Windows-MCP, MacOS-MCP - is named once in its description, where a
 // reader needs it.
 
@@ -351,17 +351,17 @@ function mcpServerShapes(options = {})
     }
     return {
         // --- the three locked servers -----------------------------------------------------------
-        navigation: {
+        'alfred-navigation': {
             locked: true,
             description: 'The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Its per-project folder and home (<data root>/serena, .alfred by default) keep its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server\'s cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that places the data and pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).',
             servers: {
-                navigation: {
+                'alfred-navigation': {
                     // The launcher, not uvx directly: it hands uvx the Python this MACHINE needs
                     // (stack/mcp/uv-python.js) - a fixed --python here is wrong on one OS or another -
                     // and it sets SERENA_HOME to the data root's own home, RELATIVE, resolved against the
                     // server's cwd, which is the project (stack/mcp/serena-launch.js).
                     command: 'node',
-                    args: [`${root}/stack/mcp/serena-launch.js`, '--package', `serena-agent${suffix('navigation')}`, ...cut, '--', 'start-mcp-server',
+                    args: [`${root}/stack/mcp/serena-launch.js`, '--package', `serena-agent${suffix('alfred-navigation')}`, ...cut, '--', 'start-mcp-server',
                         // claude-code inside a Claude Code plugin (the ide-assistant value is
                         // cursor-stack's). The launcher swaps it for the stack's own context file beside
                         // it (navigation-context.yml, I12) - named here as claude-code so a project whose
@@ -370,11 +370,11 @@ function mcpServerShapes(options = {})
                 },
             },
         },
-        documentation: {
+        'alfred-documentation': {
             locked: true,
             description: 'The documentation server (Context7), as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. Locked: every install carries it beside the core, so it can never be dropped.',
             servers: {
-                documentation: {
+                'alfred-documentation': {
                     type: 'http',
                     url: 'https://mcp.context7.com/mcp',
                     // ':-' so an UNSET key sends an EMPTY header = the keyless free tier. A literal
@@ -387,16 +387,16 @@ function mcpServerShapes(options = {})
                 },
             },
         },
-        memory: {
+        'alfred-memory': {
             locked: true,
-            description: 'memory as a plugin: the shared recall the stack reads at every session start - preferences, corrections, project facts and agent lessons, searchable by meaning. The database path is the install\'s level choice (global, scoped or project), so this one server starts through a launcher that reads the project\'s own settings.json - a plugin entry cannot expand a PROJECT env key (measured).',
+            description: 'The memory server (mcp-memory-service), as a plugin: the shared recall the stack reads at every session start - preferences, corrections, project facts and agent lessons, searchable by meaning. The database path is the install\'s level choice (global, scoped or project), so this one server starts through a launcher that reads the project\'s own settings.json - a plugin entry cannot expand a PROJECT env key (measured).',
             servers: {
-                memory: {
+                'alfred-memory': {
                     // The launcher, not uvx directly: cwd is the project, so it can read
                     // <cwd>/.claude/settings.json for ALFRED_CODE_MEMORY_DB and exec uvx itself.
                     command: 'node',
                     args: [`${root}/stack/mcp/memory-launch.js`, '--package',
-                        `mcp-memory-service[sqlite]${suffix('memory')}`, ...cut],
+                        `mcp-memory-service[sqlite]${suffix('alfred-memory')}`, ...cut],
                     env: { MCP_MEMORY_STORAGE_BACKEND: 'sqlite_vec',
                         // A shared file with several writers: the busy timeout is not optional.
                         MCP_MEMORY_SQLITE_PRAGMAS: 'busy_timeout=15000' },
@@ -467,6 +467,15 @@ function mcpPlugins(options = {})
 // keeps the tool names its copies spell, and its next update swaps the plugin for the new one
 // (install/plugins.js migrateRenamed). A browser engine is renamed by its prefix. Kept until
 // evidence shows no install still resolves through them - never on a release cadence.
+// The release each old id was renamed in, and the update command its audience runs: a 2.0.0 id is held by a 1.x
+// install (the 1.x core's command), a 2.2.0 id by a 2.x one.
+const RENAMED_IN_2_2 = new Set(['navigation', 'documentation', 'memory']);
+function describeAlias(old, now)
+{
+    const late = RENAMED_IN_2_2.has(old);
+    return `RETIRED in ${late ? '2.2.0' : '2.0.0'} - renamed ${now}. Run /${late ? BRAND.core : LEGACY.core}:update: it installs ${now} in its place and removes this entry.`;
+}
+
 function mcpAliasEntries(options = {})
 {
     const renamed = options.renamedMcps || loadManifest(options.repo || REPO).renamed.mcps;
@@ -485,7 +494,7 @@ function mcpAliasEntries(options = {})
             const alias = {
                 ...entry,
                 name: old,
-                description: `RETIRED in 2.0.0 - renamed ${now}. Run /${LEGACY.core}:update: it installs ${now} in its place and removes this entry.`,
+                description: describeAlias(old, now),
                 mcpServers: { [old]: entry.mcpServers[now] },
             };
             out.push(alias);

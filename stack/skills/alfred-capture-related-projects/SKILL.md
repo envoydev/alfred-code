@@ -19,7 +19,7 @@ Both are generated files; a re-run refreshes both in place. The rule's name is d
 
 - Passing local paths or git URLs: it analyzes what you name, it never scans.
 - Characterizes each sibling and writes BOTH tiers: the always-on awareness rule `.claude/rules/alfred-project-related-context.md` (name / location / relation / seam per sibling) and the on-demand orientation doc `related-projects/RELATED-PROJECTS.md` under the docs root. Re-run to refresh - entries upserted, unlisted ones kept.
-- Not this repo's own architecture (alfred-capture-architecture), and not dynamic cross-repo findings (those go to the shared `memory` MCP, tagged with the sibling's name).
+- Not this repo's own architecture (alfred-capture-architecture), and not dynamic cross-repo findings (those go to the shared `alfred-memory` MCP, tagged with the sibling's name).
 
 ## Execution modes
 DELEGATED vs INLINE keys on dispatch capability, not file presence. When dispatch is available (and the seat exists), ask ONE question before the fan-out, via AskUserQuestion - characterize the siblings via the read-only seats that characterize one sibling repo each (recommend it: the seats absorb the reads), or in-session? - then pick once, hold for the run:
@@ -53,7 +53,7 @@ home) is MOVED into `related-projects/` as `RELATED-PROJECTS.md` and reconciled 
 behind as a stale twin. Consolidate into one doc - apply the `markdown-style` skill so it reads as a
 quick reference. Shape:
 
-1. The `Captured: <branch>@<short-sha>, <date>` lifecycle stamp, then one opening line - what the doc is: the durable orientation detail for cross-repo work; the always-loaded awareness minimum lives in the generated rule; dynamic findings go to the shared `memory` MCP instead, tagged with the sibling's own name, never here. Stamp nuance for THIS doc: the entries describe the SIBLING repos as read on that date - the date is the staleness signal (siblings drift on their own), while this repo's branch matters little; re-running the capture for a sibling upserts its entry, which is this doc's whole update path.
+1. The `Captured: <branch>@<short-sha>, <date>` lifecycle stamp, then one opening line - what the doc is: the durable orientation detail for cross-repo work; the always-loaded awareness minimum lives in the generated rule; dynamic findings go to the shared `alfred-memory` MCP instead, tagged with the sibling's own name, never here. Stamp nuance for THIS doc: the entries describe the SIBLING repos as read on that date - the date is the staleness signal (siblings drift on their own), while this repo's branch matters little; re-running the capture for a sibling upserts its entry, which is this doc's whole update path.
 2. **One `##` heading per sibling**, `<!-- id: <slug> -->` and deliberately NO `covers:` - nothing
    in this repo's code should trigger a re-read of a sibling's own characterization (`docs.js lint`
    notes a section that declares no `covers:`, but never fails on one). Each heading carries the

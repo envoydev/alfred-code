@@ -322,7 +322,7 @@ test('install-entry: an update over an install carrying no server plans all thre
     // the closure brings that layer in AFTER it (csharp requires context7) - so the first update
     // registered context7 alone and the second added serena and memory. One update is the fixed point.
     const mcps = planOverSkillOnly('csharp');
-    for (const name of ['navigation', 'documentation', 'memory'])
+    for (const name of ['alfred-navigation', 'alfred-documentation', 'alfred-memory'])
         assert.ok(mcps.includes(name), `${name} is not in the plan: ${mcps.join(' ')}`);
 });
 
@@ -331,7 +331,7 @@ test('install-entry: an update over an install carrying no server plans all thre
 // server still registers the locked three - every install carries them - and nothing else.
 test('install-entry: an install whose picks need no server still plans the locked three on the full copy route (R83 a)', () =>
 {
-    assert.deepStrictEqual(planOverSkillOnly('markdown-style').sort(), ['documentation', 'memory', 'navigation']);
+    assert.deepStrictEqual(planOverSkillOnly('markdown-style').sort(), ['alfred-documentation', 'alfred-memory', 'alfred-navigation']);
 });
 
 // 2.0.0 cut the sentry and context7-local servers (R26, R32): their flags are refused in one line
@@ -403,4 +403,22 @@ test('install-args: --playwright-browsers and --playwright-enabled still read, a
     fails(['install', '--playwright-enabled', 'all', '--browser-enabled', 'none'], /--browser-enabled and --playwright-enabled are one flag - pass --browser-enabled alone/);
     const flags = require('./install/args.js').FLAG_LIST;
     assert.ok(flags.includes('--browsers') && flags.includes('--browser-enabled') && !flags.includes('--playwright-'), flags);
+});
+
+// 2.2.0 (the user's ruling of 2026-10-06): each optional item - a browser engine, a desktop server, an LSP, claude-hud -
+// takes its own scope, global (every project on the account) or project (this one). The core and the three alfred-
+// servers follow --scope and take none.
+test('install-args: --scope-of gives an optional item its own scope; the required ones take none', () =>
+{
+    assert.deepStrictEqual(ok(['install']).scopeOf, {}, 'no choice made: the run decides');
+    const a = ok(['install', '--scope-of', 'claude-hud=global', '--scope-of=csharp-lsp=project', '--scope-of', 'Windows-Desktop=User']);
+    assert.deepStrictEqual(a.scopeOf, { 'claude-hud': 'user', 'csharp-lsp': 'project', 'windows-desktop': 'user' }, 'global and user are one, the spelling is case-free');
+    const b = ok(['install', '--scope-of', 'browser=global', '--scope-of', 'browser-webkit=project']);
+    assert.deepStrictEqual(b.scopeOf, { 'browser-chrome': 'user', 'browser-firefox': 'user', 'browser-msedge': 'user', 'browser-webkit': 'project' }, 'browser is every engine; a later engine line wins for its own');
+    for (const item of ['alfred-code', 'alfred-navigation', 'alfred-memory', 'alfred-documentation', 'superpowers'])
+        fails(['install', '--scope-of', `${item}=global`], /--scope-of: '.*' has no scope of its own - one of browser, .*the core and the alfred- servers follow --scope/);
+    for (const bad of ['claude-hud', 'claude-hud=local', 'claude-hud=', '=project'])
+        fails(['install', '--scope-of', bad], /--scope-of takes '<item>=<global\|project>'/);
+    fails(['install', '--scope-of'], /--scope-of takes/);
+    assert.ok(require('./install/args.js').FLAG_LIST.includes('--scope-of'));
 });

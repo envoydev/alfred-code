@@ -1176,7 +1176,7 @@ test('scorecard: corrections are the hook\'s marker test, not a short turn after
 test('scorecard: a correction is saved when a memory store follows within three replies, and unsaved otherwise', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
   const endTurn = (id, ts, text) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
-  const store = (id, ts, name = 'mcp__plugin_memory_memory__memory_store') => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `t${id}`, name, input: { content: 'a lesson' } }]) + toolRes(ts, `t${id}`, 'stored');
+  const store = (id, ts, name = 'mcp__plugin_alfred-memory_alfred-memory__memory_store') => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `t${id}`, name, input: { content: 'a lesson' } }]) + toolRes(ts, `t${id}`, 'stored');
   const long = 'prose '.repeat(280);
   // Transcript A, hand-counted: correction 1 saved in the first reply; correction 2 saved in the
   // THIRD reply (still inside the window); correction 3 never saved over three replies.
@@ -1284,7 +1284,7 @@ function writeInventory(root) {
   fs.writeFileSync(path.join(claude, 'rules', 'demo-conventions.md'), '---\npaths: ["**/*.cs"]\n---\n\nbody\n');
   fs.writeFileSync(path.join(claude, 'rules', 'shell-only-conventions.md'), '---\npaths: ["**/*.sql"]\n---\n\nbody\n');
   fs.writeFileSync(path.join(claude, 'rules', 'other-conventions.md'), '---\npaths: ["**/*.{ts,tsx}"]\n---\n\nbody\n');
-  fs.writeFileSync(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { navigation: {}, documentation: {} } }));
+  fs.writeFileSync(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'alfred-navigation': {}, 'alfred-documentation': {} } }));
   const pluginsFile = path.join(root, 'installed_plugins.json');
   fs.writeFileSync(pluginsFile, JSON.stringify({ version: 2, plugins: { 'demo-plugin@market': [{ scope: 'user' }], 'typescript-lsp@market': [{ scope: 'user' }], 'hooks-only-plugin@market': [{ scope: 'user' }] } }));
   return { claude, pluginsFile };
@@ -1316,7 +1316,7 @@ function writeInventoryTranscript(dir, root, name) {
     line({ type: 'attachment', timestamp: '2026-07-15T07:03:02.000Z', attachment: { type: 'nested_memory', path: `${root}/.claude/rules/demo-conventions.md`, displayPath: '.claude/rules/demo-conventions.md', content: { type: 'Project', content: 'body' } } }),
     // guard-read-whole-file's shell-route reminder names its rule, and nothing else does
     line({ type: 'attachment', timestamp: '2026-07-15T07:03:03.000Z', attachment: { type: 'hook_additional_context', hookName: 'guard-read-whole-file.js', content: ['This command touches files governed by `.claude/rules/shell-only-conventions.md`. Read the rule.'] } }),
-    line(invAsst('m4', '2026-07-15T07:04:00.000Z', [use('t4', 'mcp__plugin_navigation_navigation__find_symbol', { name_path: 'Foo' })])),
+    line(invAsst('m4', '2026-07-15T07:04:00.000Z', [use('t4', 'mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path: 'Foo' })])),
     line({ type: 'user', timestamp: '2026-07-15T07:04:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't4', content: 'sym' }] } }),
     line(invAsst('m5', '2026-07-15T07:05:00.000Z', [use('t5', 'LSP', { method: 'definition' })])),
     line({ type: 'user', timestamp: '2026-07-15T07:05:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't5', content: 'def' }] } }),
@@ -1367,8 +1367,8 @@ test('inventory vs use: every layer scores what was used, HOW it was observed, a
   assert.strictEqual(invRow(inventory.plugins, 'hooks-only-plugin').used, 'no');
 
   // --- MCP
-  assert.deepStrictEqual(invRow(inventory.mcps, 'navigation').how, ['calls x1']);
-  assert.strictEqual(invRow(inventory.mcps, 'documentation').used, 'no');
+  assert.deepStrictEqual(invRow(inventory.mcps, 'alfred-navigation').how, ['calls x1']);
+  assert.strictEqual(invRow(inventory.mcps, 'alfred-documentation').used, 'no');
   assert.match(inventory.source.skills_agents_rules, /^project /);
   assert.strictEqual(inventory.source.sessions, 1);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -1836,7 +1836,7 @@ test('a token past the label cut is still masked - the mask runs before the slic
 // opening a command segment) sits in the 3 tool calls before it, or in the same call. A symbol step
 // in that window wins over a grep. Whole-file denials come from the block ledger when it is passed,
 // else from the transcript's own hook bracket.
-const SERENA = (tool) => `mcp__plugin_navigation_navigation__${tool}`;
+const SERENA = (tool) => `mcp__plugin_alfred-navigation_alfred-navigation__${tool}`;
 const navCall = (id, name, input = {}) => ({ type: 'tool_use', id, name, input });
 function navTranscript(file, calls, results = {}) {
   let body = '';

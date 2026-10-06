@@ -198,7 +198,7 @@ test('install-scope: a --space run with no CLAUDE_CONFIG_DIR takes the space acc
             }
         },
     });
-    const serena = calls.find((c) => /^mcp add --scope project navigation /.test(c));
+    const serena = calls.find((c) => /^mcp add --scope project alfred-navigation /.test(c));
     assert.ok(serena, calls.join('\n'));
     assert.match(serena, / uvx --python 3\.10 /, `not the space account's pin: ${serena}`);
 });
@@ -384,7 +384,7 @@ test('install-scope: update --installed-only --print-plan reads a 1.x account st
 // on the FULL copy route, the one route that registers it itself, so a project level was refused there.
 // That route now registers in this project's .mcp.json (mcp.registrationScope), so the path is this
 // project's alone and the level runs.
-const memoryIn = (repo) => ((JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers || {}).memory || {}).env || {};
+const memoryIn = (repo) => ((JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers || {})["alfred-memory"] || {}).env || {};
 test('install-scope: --memory-level project at --scope user on the FULL copy route registers memory in this project\'s .mcp.json (C10)', POSIX_ONLY, () =>
 {
     const { out, calls, result } = seedRun('install', SELECTION, {
@@ -448,7 +448,7 @@ test('install-scope: a project-level memory path already in .mcp.json is kept at
     // registration byte-for-byte, and with no file anywhere the current place is named (Task 7a).
     // The row is the stack's exact shape (matrix F-OWN: with no ledger, a project-scope row of any other shape is the user's own
     // and never re-registered), taken from a fresh run.
-    const stackMemory = seedRun('install', SELECTION, { args: ['--scope', 'user'], env: FULL_COPY, inspect: (repo) => json(repo, '.mcp.json').mcpServers.memory }).result;
+    const stackMemory = seedRun('install', SELECTION, { args: ['--scope', 'user'], env: FULL_COPY, inspect: (repo) => json(repo, '.mcp.json').mcpServers["alfred-memory"] }).result;
     for (const [label, exists, want] of [['a database there', true, ['.memory-mcp', 'memory.db']], ['no database yet', false, ['.alfred', '.alfred-memory', 'memory.db']]])
     {
         const { out, result } = seedRun('update', SELECTION, {
@@ -460,7 +460,7 @@ test('install-scope: a project-level memory path already in .mcp.json is kept at
                 const db = path.join(fs.realpathSync(repo), '.memory-mcp', 'memory.db');
                 if (exists) { fs.mkdirSync(path.dirname(db), { recursive: true }); fs.writeFileSync(db, ''); }
                 fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({
-                    mcpServers: { memory: { ...stackMemory, env: { ...stackMemory.env, MCP_MEMORY_SQLITE_PATH: db } } },
+                    mcpServers: { "alfred-memory": { ...stackMemory, env: { ...stackMemory.env, MCP_MEMORY_SQLITE_PATH: db } } },
                 }));
             },
             inspect: (repo) => ({ env: memoryIn(repo), real: fs.realpathSync(repo) }),
@@ -637,7 +637,7 @@ test('install-scope: a user-scope project reads only its OWN stamp for the hooks
     const bin = path.join(work, 'bin');
     fs.mkdirSync(bin, { recursive: true });
     const pluginsFile = path.join(work, 'plugins.json');
-    fs.writeFileSync(pluginsFile, JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory']
+    fs.writeFileSync(pluginsFile, JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory']
         .map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'user', enabled: true }))));
     fs.writeFileSync(path.join(bin, 'claude'), ['#!/bin/sh', 'printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
         'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi', 'exit 0', ''].join('\n'), { mode: 0o755 });

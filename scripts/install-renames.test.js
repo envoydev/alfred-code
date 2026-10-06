@@ -126,7 +126,7 @@ test('renameLines: an old skill or seat line reads under its new name, one line 
     // is renamed, and an MCP line only by its own `mcps` part (the 2.0.0 role names) - never under a skill's.
     assert.deepStrictEqual(selection.renameLines(['rule baseline-git', 'rule baseline-project-run-book', 'hook baseline-git'], opts), ['rule alfred-git', 'rule baseline-project-run-book', 'hook baseline-git']);
     assert.deepStrictEqual(selection.renameLines(['rule project-solve-task', 'mcp project-solve-task'], opts), ['rule project-solve-task', 'mcp project-solve-task']);
-    assert.deepStrictEqual(selection.renameLines(['mcp serena', 'skill serena'], opts), ['mcp navigation', 'skill serena']);
+    assert.deepStrictEqual(selection.renameLines(['mcp serena', 'skill serena'], opts), ['mcp alfred-navigation', 'skill serena']);
 });
 
 test('renamePicked: a stamp pick keeps its home and takes the new name; no picks stays null', () =>
@@ -261,7 +261,7 @@ test('respellRenamed (I2): the longest old name wins, and a shorter one inside i
 // spellings are built, never typed: lint 54 and 59 read this file.
 const pluginTool = (n, t) => `mcp__plugin_${n}_${n}__${t}`;
 const bareTool = (n, t) => `mcp_${'_'}${n}__${t}`;
-test('respellRenamed: a generated rule\'s old MCP tool spellings and routing keys follow the 2.0.0 rename, and a second run changes nothing', () =>
+test('respellRenamed: a generated rule\'s old MCP tool spellings and routing keys follow the 2.0.0 and 2.2.0 renames straight to today\'s names, and a second run changes nothing', () =>
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-docs-'));
     try
@@ -276,10 +276,10 @@ test('respellRenamed: a generated rule\'s old MCP tool spellings and routing key
         ].join('\n');
         const after = [
             '## MCP routing',
-            `- \`navigation\` - first call: \`ToolSearch select:${pluginTool('navigation', 'find_symbol')},${pluginTool('navigation', 'get_symbols_overview')}\``,
-            `- \`documentation\` - first call: \`ToolSearch select:${pluginTool('documentation', 'query-docs')}\``,
+            `- \`alfred-navigation\` - first call: \`ToolSearch select:${pluginTool('alfred-navigation', 'find_symbol')},${pluginTool('alfred-navigation', 'get_symbols_overview')}\``,
+            `- \`alfred-documentation\` - first call: \`ToolSearch select:${pluginTool('alfred-documentation', 'query-docs')}\``,
             `- \`browser-firefox\` - registered: \`${bareTool('browser-firefox', 'browser_snapshot')}\``,
-            `- \`memory\` - \`${pluginTool('memory', 'memory_search')}\`, and my own \`serena-notes\` stay`,
+            `- \`alfred-memory\` - \`${pluginTool('alfred-memory', 'memory_search')}\`, and my own \`serena-notes\` stay`,
             '',
         ].join('\n');
         write(dir, '.claude/rules/alfred-project-agent-capabilities.md', before);
@@ -288,7 +288,7 @@ test('respellRenamed: a generated rule\'s old MCP tool spellings and routing key
         run();
         const read = () => fs.readFileSync(path.join(dir, '.claude/rules/alfred-project-agent-capabilities.md'), 'utf8');
         assert.strictEqual(read(), after);
-        assert.deepStrictEqual(logs, ['  renamed: .claude/rules/alfred-project-agent-capabilities.md - 7 old MCP tool or server name(s) re-spelled to the new names']);
+        assert.deepStrictEqual(logs, ['  renamed: .claude/rules/alfred-project-agent-capabilities.md - 9 old MCP tool or server name(s) re-spelled to the new names']);
         logs.length = 0;
         run();
         assert.strictEqual(read(), after, 'a second run changes nothing');
@@ -791,7 +791,7 @@ test('seed update --installed-only over an UNSTAMPED legacy install: picks under
     const before = { state: null };
     // The first run installs the core and the locked three, so the re-run's listing names them - with no
     // listing at all the read is blind, and a blind read carries the stamp's picks verbatim at the end.
-    const listed = JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.1.0', scope: 'project', enabled: true })));
+    const listed = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.1.0', scope: 'project', enabled: true })));
     const { steps, outs } = seedRun(['update', 'update'], '', {
         args: ['--installed-only'],
         prepare: (repo) => { unstampedLegacy(repo); before.state = stampLayer.installState(repo, { CLAUDE_CONFIG_DIR: path.join(repo, 'no-account') }); },

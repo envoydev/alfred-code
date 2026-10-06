@@ -1092,44 +1092,44 @@
       "_note": "The task-card anchors consumption rule - verbatim across all 10 implementers (each installs per stack).",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
+        "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
       },
       "sites": [
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`, re-navigating only for what they don't cover"
         }
       ]
     },
@@ -3254,32 +3254,32 @@
       "_note": "The docs-currency stance every convention skill restates: a version-coupled fact is fetched through the documentation MCP at use time rather than recalled - the durable policy stays in the skill, the drifting number is looked up live. Seven house skills carry it inline so the sentence changes in lockstep - angular-conventions in its own variant, which also bans grepping node_modules bundles (it is also where a describe-vs-lock decision on the documentation server would land).",
       "owner": {
         "file": "stack/skills/csharp/SKILL.md",
-        "marker": "`documentation` MCP rather than memory"
+        "marker": "`alfred-documentation` MCP rather than memory"
       },
       "sites": [
         {
           "file": "stack/skills/database-conventions/SKILL.md",
-          "marker": "`documentation` MCP rather than memory"
+          "marker": "`alfred-documentation` MCP rather than memory"
         },
         {
           "file": "stack/skills/dotnet-winforms/SKILL.md",
-          "marker": "`documentation` MCP rather than memory"
+          "marker": "`alfred-documentation` MCP rather than memory"
         },
         {
           "file": "stack/skills/dotnet-wpf/SKILL.md",
-          "marker": "`documentation` MCP rather than memory"
+          "marker": "`alfred-documentation` MCP rather than memory"
         },
         {
           "file": "stack/skills/devops/SKILL.md",
-          "marker": "`documentation` MCP rather than memory"
+          "marker": "`alfred-documentation` MCP rather than memory"
         },
         {
           "file": "stack/skills/javascript/SKILL.md",
-          "marker": "`documentation` MCP rather than memory"
+          "marker": "`alfred-documentation` MCP rather than memory"
         },
         {
           "file": "stack/skills/angular-conventions/SKILL.md",
-          "marker": "reach for the `documentation` MCP rather than memory - and never by grepping"
+          "marker": "reach for the `alfred-documentation` MCP rather than memory - and never by grepping"
         }
       ]
     },
@@ -4054,156 +4054,156 @@
       "_note": "The trio memory bus START step - list_memories with the run's <feature>/<contract_version> topic, then read_memory the notes it lists - in every dispatched seat that hands off through navigation-server memory. Owner aspnet-implementer (the reference twin); since 2.1.6 serena 1.7.0's topic filters by folder, so the server returns the run's notes and the seat matches no pattern. Then 'the notes it lists' (implementers, verifiers, security-auditor - every note of the run, as before) or 'the one note it lists under your own seat name' (designers, resolvers, diagnosers, integration-reviewer - their own earlier pass, as before; a run's whole folder measured p95 17,535 chars, max 42,082 over 39 local runs). The marker is the shared head.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+        "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/security-auditor.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/dotnet-build-error-resolver.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/alfred-issue-diagnoser-ci.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_navigation_navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         }
       ]
     },
@@ -5645,7 +5645,7 @@
       ]
     },
     "serena-tools-are-deferred": {
-      "_note": "The navigation-server tools arrive DEFERRED in this harness - the names exist, the schemas do not - so the first use is two calls: a `ToolSearch select:` of the three FULL `mcp__plugin_navigation_navigation__*` names, then the query. Two measurements hold the shape. The deferral itself: a rung never loaded is a rung the seat skips. And the FULL names: the bare short name is not a registered tool and only errors - 7 bare-name calls failed No-such-tool across 3 capture seats in one session. The measurement lives here because the rule it justifies is always-on text, where a parenthetical is paid for on every message of every session.",
+      "_note": "The navigation-server tools arrive DEFERRED in this harness - the names exist, the schemas do not - so the first use is two calls: a `ToolSearch select:` of the three FULL `mcp__plugin_alfred-navigation_alfred-navigation__*` names, then the query. Two measurements hold the shape. The deferral itself: a rung never loaded is a rung the seat skips. And the FULL names: the bare short name is not a registered tool and only errors - 7 bare-name calls failed No-such-tool across 3 capture seats in one session. The measurement lives here because the rule it justifies is always-on text, where a parenthetical is paid for on every message of every session.",
       "owner": {
         "file": "stack/rules/alfred-navigation.md",
         "marker": "naming them is not having them"
@@ -5784,19 +5784,6 @@
         }
       ]
     },
-    "dependency-plugin-not-removable": {
-      "_note": "A plugin every install carries beside the core (CORE_DEP_PLUGINS) is never proposed for removal: the installer puts it back on every run, so the removal would only be undone. It is not a dependency of the core - a missing one disables the core at load, commands and all (measured 2026-09-23 on a 0.2.87 -> 1.0.0 upgrade). Restated in both walks that remove plugins, beside the scope rule they already share.",
-      "owner": {
-        "file": "setup-plugin/commands/validate.md",
-        "marker": "never propose removing one: the installer puts it back on every"
-      },
-      "sites": [
-        {
-          "file": "setup-plugin/commands/configure.md",
-          "marker": "every install carries it beside the core, and the next run installs it again"
-        }
-      ]
-    },
     "inventory-read-back": {
       "_note": "configure and validate inventory an install through the installer's own read-back (`update --installed-only --print-plan --plan-out`), the same read an update writes back, and apply their walk as --add / --drop over it. A hand inventory unioned what the plugin entries carry without the denied seats, so every apply switched them back on; a --selection apply rebuilt the install from a disk that holds only the library copies. status still inventories by hand, on its own.",
       "owner": {
@@ -5873,12 +5860,12 @@
       "_note": "The memory MCP's tools are DEFERRED, so the rule and the session-start hook each hand the model the ONE ToolSearch line that loads them (2.1.5 audit M44: the line had two homes nothing tied together). A renamed tool or server is one edit here and the lint names every copy.",
       "owner": {
         "file": "stack/rules/alfred-memory.md",
-        "marker": "ToolSearch select:mcp__plugin_memory_memory__memory_store,mcp__plugin_memory_memory__memory_search,mcp__plugin_memory_memory__memory_list"
+        "marker": "ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list"
       },
       "sites": [
         {
           "file": "stack/hooks/memory-session.js",
-          "marker": "ToolSearch select:mcp__plugin_memory_memory__memory_store,mcp__plugin_memory_memory__memory_search,mcp__plugin_memory_memory__memory_list"
+          "marker": "ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list"
         }
       ]
     },

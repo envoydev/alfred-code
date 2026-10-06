@@ -143,7 +143,7 @@ try { shellReader = require(path.join(__dirname, 'shell-writes.js')); ({ isShell
 // are off at its launch): each changes a source file, named in `tool_input.relative_path` (toolPaths reads it), so
 // its first change is held like an Edit's. Both routes' spellings: the plugin's scoped server and the copy route's
 // bare one, written as a pattern.
-const NAV_EDIT = /^mcp__(?:plugin_navigation_)?navigation__(?:rename_symbol|safe_delete_symbol)$/;
+const NAV_EDIT = /^mcp__(?:plugin_(?:alfred-)?navigation_)?(?:alfred-)?navigation__(?:rename_symbol|safe_delete_symbol)$/;
 // One log file holds every session's rows, and two sessions interleave in it, so each row carries the id that
 // tells them apart. It lives under the docs root beside hook-blocks/ and tools-usage/ - every other ledger in
 // this stack does, and under .claude/ a project that commits that folder accumulated this one in git.

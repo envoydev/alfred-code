@@ -938,7 +938,7 @@ const EDIT_TOOL_RE = /^(?:Edit|Write|MultiEdit|NotebookEdit)$/;
 // The navigation server's two kept edit tools (the I12 ruling), both routes' spellings: a rename or a safe
 // delete changes source, credited to its declaring file (`relative_path`) - the references it rewrote elsewhere
 // are not named in the call (2.1.5 final review R8/R9).
-const NAV_EDIT_RE = /^mcp__(?:plugin_navigation_)?navigation__(?:rename_symbol|safe_delete_symbol)$/;
+const NAV_EDIT_RE = /^mcp__(?:plugin_(?:alfred-)?navigation_)?(?:alfred-)?navigation__(?:rename_symbol|safe_delete_symbol)$/;
 const DONE_GATE_SKILL_RE = /(?:^|:)alfred-habits-done-gate$/;
 const DISPATCH_TOOL_RE = /^(?:Agent|Task)$/;
 const PROSE_FILE_RE = /\.(?:md|mdx|markdown|txt|rst|adoc)$/i;

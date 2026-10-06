@@ -12,7 +12,7 @@ const mcp = require('./install/mcp.js');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 
 const row = (id, extra = {}) => ({ id, version: '2.0.0', scope: 'project', enabled: true, ...extra });
-const INSTALLED = (...more) => JSON.stringify([...['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => row(`${n}@envoydev`)), ...more]);
+const INSTALLED = (...more) => JSON.stringify([...['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => row(`${n}@envoydev`)), ...more]);
 const prepare = (repo) =>
 {
     fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
@@ -23,11 +23,11 @@ const WPF = 'skill markdown-style\nrule wpf-conventions\nmcp windows-desktop\n';
 
 test('desktopGate: each desktop server stays on its own OS, and a left-out one is named with the reason', () =>
 {
-    const mcps = ['navigation|x', 'windows-desktop|y', 'macos-desktop|z'];
+    const mcps = ['alfred-navigation|x', 'windows-desktop|y', 'macos-desktop|z'];
     const on = (platform) => mcp.desktopGate({ mcps, platform });
-    assert.deepStrictEqual(on('win32').kept, ['navigation|x', 'windows-desktop|y']);
-    assert.deepStrictEqual(on('darwin').kept, ['navigation|x', 'macos-desktop|z']);
-    assert.deepStrictEqual(on('linux').kept, ['navigation|x']);
+    assert.deepStrictEqual(on('win32').kept, ['alfred-navigation|x', 'windows-desktop|y']);
+    assert.deepStrictEqual(on('darwin').kept, ['alfred-navigation|x', 'macos-desktop|z']);
+    assert.deepStrictEqual(on('linux').kept, ['alfred-navigation|x']);
     assert.deepStrictEqual(on('darwin').lines, ["desktop: windows-desktop left out - it drives Windows apps and this machine runs macOS; the macOS one is macos-desktop (--add 'mcp macos-desktop'); where the project enables it, keep it off on this machine only: claude plugin disable windows-desktop@envoydev --scope local"]);
     assert.deepStrictEqual(on('win32').lines, ["desktop: macos-desktop left out - it drives macOS apps and this machine runs Windows; the Windows one is windows-desktop (--add 'mcp windows-desktop'); where the project enables it, keep it off on this machine only: claude plugin disable macos-desktop@envoydev --scope local"]);
     assert.deepStrictEqual(on('linux').lines, [

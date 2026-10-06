@@ -42,10 +42,10 @@ const UPSTREAM_LINE = /^# upstream: serena-agent (\S+) claude-code\.yml sha256 (
 // registry: how to ask, and the spelling the pin takes inside the server's own command line.
 const PACKAGES = {
     'browser':    { registry: 'npm',  package: '@playwright/mcp',       spelling: '@<v>' },
-    'navigation': { registry: 'pypi', package: 'serena-agent',          spelling: '@<v>' },
+    'alfred-navigation': { registry: 'pypi', package: 'serena-agent',   spelling: '@<v>' },
     // The memory pin is spelled '==<v>' INSIDE the extras brackets ('mcp-memory-service[sqlite]==<v>'),
     // not '@<v>' like the others, which have no extras suffix to sit next to.
-    'memory':     { registry: 'pypi', package: 'mcp-memory-service',    spelling: '==<v>' },
+    'alfred-memory': { registry: 'pypi', package: 'mcp-memory-service', spelling: '==<v>' },
     'windows-desktop': { registry: 'pypi', package: 'windows-mcp',      spelling: '==<v>' },
     'macos-desktop':   { registry: 'pypi', package: 'macos-mcp',        spelling: '==<v>' },
 };
@@ -249,19 +249,19 @@ async function listTools(name, row, { cutoff = '' } = {})
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'refresh-tools-'));
     try
     {
-        if (name === 'navigation')
+        if (name === 'alfred-navigation')
         {
             const out = rt.execCommand('uvx', ['--python', PYTHON, ...cut, '--from', `serena-agent@${v}`, 'serena', 'tools', 'list', '--all', '-q'],
                 { encoding: 'utf8', timeout: 600000, env: { ...process.env, SERENA_HOME: path.join(scratch, 'home') } });
             const names = out.split('\n').map((l) => l.trim()).filter((l) => /^[a-z][a-z0-9_]*$/.test(l));
             return names.length ? names : null;
         }
-        if (name === 'memory')
+        if (name === 'alfred-memory')
             return await stdioTools('uvx', ['--python', PYTHON, ...cut, '--with', 'numpy', '--from', `mcp-memory-service[sqlite]==${v}`, 'memory', 'server'],
                 { env: { ...process.env, MCP_MEMORY_STORAGE_BACKEND: 'sqlite_vec', MCP_MEMORY_SQLITE_PATH: path.join(scratch, 'memory.db') } });
         if (name === 'browser')
             return await stdioTools('npx', ['-y', `@playwright/mcp@${v}`, '--caps', 'vision,pdf,devtools', '--headless', '--isolated', '--output-dir', scratch]);
-        if (name === 'documentation') return await httpTools('https://mcp.context7.com/mcp');
+        if (name === 'alfred-documentation') return await httpTools('https://mcp.context7.com/mcp');
         if (name === 'windows-desktop' || name === 'macos-desktop')
         {
             const files = wheelFiles(PACKAGES[name].package, v, (f) => f.endsWith('.py'));
@@ -275,7 +275,7 @@ async function listTools(name, row, { cutoff = '' } = {})
 }
 
 // The servers with a tool list: every pinned package plus the hosted documentation server (no version).
-const TOOL_SERVERS = [...Object.keys(PACKAGES), 'documentation'];
+const TOOL_SERVERS = [...Object.keys(PACKAGES), 'alfred-documentation'];
 
 async function main(argv, deps = {})
 {
@@ -294,7 +294,7 @@ async function main(argv, deps = {})
         const now = spec.registry === 'npm' ? d.npmLatest(spec.package) : d.pypiLatest(spec.package);
         // Unreachable keeps the committed pin: a refresh run on a plane must not unpin the stack.
         let version = now || was;
-        if (name === 'navigation' && now && now !== was)
+        if (name === 'alfred-navigation' && now && now !== was)
         {
             const gate = serenaGate({ was, now, contextFile: d.contextFile, fetch: d.upstreamContext });
             if (!gate.ok) { refused = true; version = was; report.push(`  ${name}: ${was || 'unpinned'} -> ${now} REFUSED - ${gate.why}`); }
@@ -325,8 +325,8 @@ async function main(argv, deps = {})
     {
         const row = pins[name] || { version: null };
         const got = await d.listTools(name, row, { cutoff: excludeNewerOf(refreshed) });
-        if (name === 'navigation' && Array.isArray(got) && servers[name])
-            for (const t of new Set(got)) if (!servers[name].tools.includes(t)) lines.push(`  !! navigation: new tool ${t} - an editing tool no house hook sees would go unwatched`);
+        if (name === 'alfred-navigation' && Array.isArray(got) && servers[name])
+            for (const t of new Set(got)) if (!servers[name].tools.includes(t)) lines.push(`  !! alfred-navigation: new tool ${t} - an editing tool no house hook sees would go unwatched`);
         if (Array.isArray(got) && got.length) { servers[name] = { version: row.version, tools: [...new Set(got)].sort() }; lines.push(`  tools ${name}: ${got.length}`); }
         else lines.push(`  tools ${name}: NOT CHECKED - keeping ${servers[name] ? `the ${servers[name].version || 'hosted'} list` : 'no list'}`);
     }

@@ -29,9 +29,9 @@ navigator dead, with nothing reporting it. One command after the restart says so
 claude mcp list
 ```
 
-Every row should read connected. A timeout on `navigation` (Serena) usually means its first run is still
+Every row should read connected. A timeout on `alfred-navigation` (Serena) usually means its first run is still
 fetching the language server (re-run once it settles, or pre-warm with `uvx --from serena-agent
-serena --help`). A timeout on `memory` is its FIRST start downloading the embedding model (~166MB into
+serena --help`). A timeout on `alfred-memory` is its FIRST start downloading the embedding model (~166MB into
 `~/.cache/mcp_memory`: measured 33s cold, 2s warm, against the 30s budget), not a missing runtime: the
 install fetches it ahead where uvx is present (`memory: the embedding model is cached now`) and init's plan
 lists it otherwise; fetch it with `node .claude/hooks/memory.js warm`. Claude Code then remembers the
@@ -41,8 +41,8 @@ other stdio server means its runtime is not installed on this machine - fix it, 
 `/alfred-code:configure` rather than carrying a dead registration whose tool schemas are injected into
 every session.
 
-Behind a package index that publishes no upload times (a private PyPI mirror), every uvx server - `navigation`,
-`memory` and the desktop servers - fails at start: uv treats each file as unavailable under the release's dependency
+Behind a package index that publishes no upload times (a private PyPI mirror), every uvx server - `alfred-navigation`,
+`alfred-memory` and the desktop servers - fails at start: uv treats each file as unavailable under the release's dependency
 cut-off, and its error never names the cut-off. Set `UV_EXCLUDE_NEWER=false` in the shell or a settings file's `env`
 (the launchers read it at every start; on the opt-out `.mcp.json` route run `/alfred-code:update` once so the rows
 drop the cut-off too), or give that index `exclude-newer = false` in its `[[index]]` entry of the user-level

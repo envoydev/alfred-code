@@ -240,9 +240,10 @@ test('only the core carries a cross-marketplace dependency, and the allowlist na
 
 // R109: superpowers is no stack pick at all, so no run adds it on its own.
 // claude-hud is the one plugin from another marketplace every run installs.
-test('claude-hud is the plugin the installer adds from another marketplace on every run, and superpowers is not', () => {
+// 2.2.0: claude-hud is an optional pick (the user's ruling of 2026-10-06), so no plugin rides beside the core.
+test('no plugin is added from another marketplace on every run - claude-hud is a pick, superpowers none', () => {
     assert.strictEqual(shippedBy['alfred-code'].dependencies, undefined);
-    assert.deepStrictEqual(CORE_DEP_PLUGINS, ['claude-hud@claude-hud']);
+    assert.deepStrictEqual(CORE_DEP_PLUGINS, []);
     assert.ok(!CORE_DEP_PLUGINS.some((spec) => spec.split('@')[0] === 'superpowers'), `CORE_DEP_PLUGINS still names superpowers: ${CORE_DEP_PLUGINS.join(', ')}`);
 });
 
@@ -321,13 +322,16 @@ test('the two desktop MCP plugins start their upstream with its telemetry off', 
 
 // M22: a retired entry's audience is an install still on the 1.x core, whose update command is spelled with the
 // 1.x plugin name - the core alias's own description already says so. '/alfred-code:update' does not exist there.
-test('M22 every retired entry names the update command its 1.x audience has', () =>
+// A 2.0.0 rename's audience is a 1.x install, so it names the 1.x command; a 2.2.0 rename's is a 2.x install, which has
+// only the new one.
+test('M22 every retired entry names the update command its audience has', () =>
 {
-    const want = `/${LEGACY.core}:update`;
+    const late = ['navigation', 'documentation', 'memory'];
     for (const entry of mcpAliasEntries())
     {
+        const [want, never] = late.includes(entry.name) ? ['/alfred-code:update', `/${LEGACY.core}:update`] : [`/${LEGACY.core}:update`, '/alfred-code:update'];
         assert.ok(entry.description.includes(want), `${entry.name}: ${entry.description}`);
-        assert.ok(!entry.description.includes('/alfred-code:update'), `${entry.name} still names a command a 1.x install lacks`);
+        assert.ok(!entry.description.includes(never), `${entry.name} names a command its audience lacks`);
         assert.strictEqual(shippedBy[entry.name].description, entry.description, `the live ${entry.name} entry is regenerated`);
     }
 });
@@ -387,7 +391,7 @@ test('the live marketplace carries no renames key, no hooks entry, and both 1.x 
     assert.strictEqual(shippedBy['alfred-code-hooks'], undefined, 'the hooks ride the core');
     for (const alias of aliasEntries())
         assert.deepStrictEqual(shippedBy[alias.name], alias, `${alias.name} is listed exactly as generated`);
-    assert.strictEqual(SHIPPED.plugins.filter((p) => /^RETIRED/.test(p.description || '')).length, 8, 'the two aliases and the six renamed MCP ids - the 1.3.0 per-stack entries are no longer listed');
+    assert.strictEqual(SHIPPED.plugins.filter((p) => /^RETIRED/.test(p.description || '')).length, 11, 'the two aliases and the nine renamed MCP ids (six from 2.0.0, three from 2.2.0) - the 1.3.0 per-stack entries are no longer listed');
     for (const alias of mcpAliasEntries())
         assert.deepStrictEqual(shippedBy[alias.name], alias, `${alias.name} is listed exactly as generated`);
 });

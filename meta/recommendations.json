@@ -23,11 +23,13 @@
    "skill-authoring"
   ],
   "mcps": [
-   "navigation",
-   "documentation",
-   "memory"
+   "alfred-navigation",
+   "alfred-documentation",
+   "alfred-memory"
   ],
-  "plugins": [],
+  "plugins": [
+   "claude-hud"
+  ],
   "hooks": [
    "guard-protected-force-push",
    "guard-catastrophic-rm",

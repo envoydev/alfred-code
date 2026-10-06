@@ -168,11 +168,11 @@ test('derive-state: rules and MCP servers pass through as picked - they are copi
     // backwards and let an unsorted list pass.
     const file = selectionFile([
         'skill csharp', 'agent security-auditor', 'rule csharp-conventions', 'rule alfred-security',
-        'mcp documentation', 'mcp navigation', 'mcp browser-chrome', 'hook guard-secret-value',
+        'mcp alfred-documentation', 'mcp alfred-navigation', 'mcp browser-chrome', 'hook guard-secret-value',
     ]);
     const got = derive(file);
     assert.deepStrictEqual(got.rules.copy, ['alfred-security', 'csharp-conventions']);
-    assert.deepStrictEqual(got.mcps, ['browser-chrome', 'documentation', 'navigation']);
+    assert.deepStrictEqual(got.mcps, ['alfred-documentation', 'alfred-navigation', 'browser-chrome']);
     assert.deepStrictEqual(got.hooks.on, ['guard-secret-value']);
 });
 
@@ -293,10 +293,10 @@ test('readInstalled: each surface reads back only while its own route is on', ()
 test('readInstalled: MCP entries fold back onto the catalog, once each - a cut server is no catalog line', () =>
 {
     const lines = readInstalled({
-        plugins: ['navigation', 'documentation', 'context7-local', 'browser-firefox', 'browser-webkit', 'claude-hud'],
+        plugins: ['alfred-navigation', 'alfred-documentation', 'context7-local', 'browser-firefox', 'browser-webkit', 'claude-hud'],
         routes: { mcps: true }, sourceDir: ROOT,
     });
-    assert.deepStrictEqual(lines.sort(), ['mcp browser', 'mcp documentation', 'mcp navigation']);
+    assert.deepStrictEqual(lines.sort(), ['mcp alfred-documentation', 'mcp alfred-navigation', 'mcp browser']);
 });
 
 test('readInstalled: a denied seat is not read back, whatever plugin carries it', () =>
@@ -478,9 +478,9 @@ test('setup reports only keys the derivation prints', () =>
 
 test('floor: entries it does not count come back as `skipped`, never silently dropped', () =>
 {
-    const got = floor({ plugins: ['alfred-code', 'claude-hud', 'navigation@envoydev'] });
+    const got = floor({ plugins: ['alfred-code', 'claude-hud', 'alfred-navigation@envoydev'] });
     assert.deepStrictEqual(got.entries, ['alfred-code']);
-    assert.deepStrictEqual(got.skipped, ['claude-hud', 'navigation']);
+    assert.deepStrictEqual(got.skipped, ['alfred-navigation', 'claude-hud']);
 });
 
 test('floor: skill chars are the model-invocable descriptions, measured independently', () =>
@@ -652,8 +652,8 @@ const { delta } = require('./derive-state.js');
 
 test('delta: what the walk added and dropped against the inventory, one line each', () =>
 {
-    const installed = { skills: ['csharp', 'dotnet'], agents: ['evidence-gatherer'], rules: ['alfred-security'], hooks: ['docs-session', 'guard-read-whole-file'], mcps: ['navigation'], plugins: [{ name: 'claude-hud', scope: 'user' }] };
-    const selectionText = ['skill csharp', 'skill markdown-style', 'agent evidence-gatherer', 'rule alfred-security', 'rule sql-conventions', 'hook docs-session', 'mcp navigation', 'plugin claude-hud'].join('\n');
+    const installed = { skills: ['csharp', 'dotnet'], agents: ['evidence-gatherer'], rules: ['alfred-security'], hooks: ['docs-session', 'guard-read-whole-file'], mcps: ['alfred-navigation'], plugins: [{ name: 'claude-hud', scope: 'user' }] };
+    const selectionText = ['skill csharp', 'skill markdown-style', 'agent evidence-gatherer', 'rule alfred-security', 'rule sql-conventions', 'hook docs-session', 'mcp alfred-navigation', 'plugin claude-hud'].join('\n');
     assert.deepStrictEqual(delta({ installed, selectionText }), {
         add: ['skill markdown-style', 'rule sql-conventions'],
         drop: ['skill dotnet', 'hook guard-read-whole-file'],

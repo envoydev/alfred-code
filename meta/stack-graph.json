@@ -31,7 +31,7 @@
     },
     "alfred-capture-related-projects": {
       "mcps": [
-        "memory"
+        "alfred-memory"
       ],
       "plugins": []
     },
@@ -149,7 +149,7 @@
     },
     "angular-conventions": {
       "mcps": [
-        "documentation"
+        "alfred-documentation"
       ],
       "plugins": []
     },
@@ -179,7 +179,7 @@
     },
     "csharp": {
       "mcps": [
-        "documentation"
+        "alfred-documentation"
       ],
       "plugins": []
     },
@@ -189,7 +189,7 @@
     },
     "database-conventions": {
       "mcps": [
-        "documentation"
+        "alfred-documentation"
       ],
       "plugins": []
     },
@@ -207,7 +207,7 @@
     },
     "devops": {
       "mcps": [
-        "documentation"
+        "alfred-documentation"
       ],
       "plugins": []
     },
@@ -281,7 +281,7 @@
     },
     "dotnet-openapi": {
       "mcps": [
-        "documentation"
+        "alfred-documentation"
       ],
       "plugins": []
     },
@@ -323,13 +323,13 @@
     },
     "dotnet-winforms": {
       "mcps": [
-        "documentation"
+        "alfred-documentation"
       ],
       "plugins": []
     },
     "dotnet-wpf": {
       "mcps": [
-        "documentation"
+        "alfred-documentation"
       ],
       "plugins": []
     },
@@ -347,7 +347,7 @@
     },
     "javascript": {
       "mcps": [
-        "documentation"
+        "alfred-documentation"
       ],
       "plugins": []
     },
@@ -913,7 +913,7 @@
       "skills": [],
       "agents": [],
       "mcps": [
-        "memory"
+        "alfred-memory"
       ],
       "plugins": [],
       "paths": []
@@ -922,7 +922,7 @@
       "skills": [],
       "agents": [],
       "mcps": [
-        "navigation"
+        "alfred-navigation"
       ],
       "plugins": [],
       "paths": []
@@ -934,7 +934,7 @@
       ],
       "agents": [],
       "mcps": [
-        "documentation"
+        "alfred-documentation"
       ],
       "plugins": [],
       "paths": []
@@ -1175,11 +1175,11 @@
   },
   "catalog": {
     "mcps": [
+      "alfred-documentation",
+      "alfred-memory",
+      "alfred-navigation",
       "browser",
-      "documentation",
       "macos-desktop",
-      "memory",
-      "navigation",
       "windows-desktop"
     ],
     "plugins": [
@@ -1187,9 +1187,7 @@
       "csharp-lsp",
       "typescript-lsp"
     ],
-    "dependencyPlugins": [
-      "claude-hud"
-    ],
+    "dependencyPlugins": [],
     "hooks": [
       "check-turn-build",
       "docs-session",

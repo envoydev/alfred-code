@@ -270,10 +270,11 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   v0.2.17 had no guided route to the instrument hook until this entry existed). On the PLUGIN route
   an accepted add is not an install at all: the name is removed from `ALFRED_CODE_HOOKS_OFF` in the
   scope's `settings.json` env, and the apply step reports it as that edit, not as a copied file.
-- **MCPs / plugins** - no plugin is always-baseline: `claude-hud` rides beside the core, so it is
-  never REDUNDANT and the next update puts it back when it is gone. One exception:
-  a `claude-hud` the user disabled stays off - it is in no `plugins_disabled` row and never proposed
-  for an enable. The two optional ones (`csharp-lsp`, `typescript-lsp`) show
+- **MCPs / plugins** - `claude-hud` is the one always-recommended plugin (2.2.0 - an optional pick,
+  marked in every walk): never REDUNDANT, and never MISSING either - an install without it is the user's
+  choice, so it is at most one `no-evidence:`-style advisory naming `/alfred-code:configure` to add it. A
+  `claude-hud` the user disabled stays off - it is in no `plugins_disabled` row and never proposed for an
+  enable. The two optional ones (`csharp-lsp`, `typescript-lsp`) show
   MISSING only on evidence - an `evidence-missing:` line naming the matched
   manifest - or, for an LSP plugin, when its stack is detected but it was dropped. An LSP plugin
   with neither a signal nor a detected owning stack is REDUNDANT; any other optional plugin without
@@ -282,10 +283,10 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   `installed but disabled for this project` - and its accept action is `claude plugin enable
   <name>`, never an install and never an uninstall. A DISABLED plugin the user leaves alone is a
   deliberate choice and is not re-raised in the close.
-- **`memory` joins `navigation` and `documentation`** as an always-required MCP (`alfred-memory.md` locks
+- **`alfred-memory` joins `alfred-navigation` and `alfred-documentation`** as an always-required MCP (`alfred-memory.md` locks
   it in the same way `alfred-navigation.md` locks the navigation server) - MISSING when the project carries no
   registration at all, never REDUNDANT: no stack owns it, so it belongs to every install regardless
-  of what is detected. Whenever `memory` IS registered - shown in this table or already installed -
+  of what is detected. Whenever `alfred-memory` IS registered - shown in this table or already installed -
   read its level with `node .claude/hooks/memory.js level` (the project's own copy; fall back to
   `node "$TMP/repo/stack/hooks/memory.js" level` when that file is absent), which prints `<level>
   <dbPath>` or `none` - or `refused <file>` when a settings file cannot be read and no other names the database: the
@@ -418,7 +419,7 @@ turn polling for it. Five inputs, five gates:
      for a run to measure)` - and fall back to the same corroboration gate 1 uses: the evidence
      scan's verdict for that server plus bounded NAMED greps for its domain markers. Never propose
      a drop on absence of a ledger alone.
-   - The three locked servers (`navigation`, `documentation`, `memory`) are never proposed - an always-on rule names
+   - The three locked servers (`alfred-navigation`, `alfred-documentation`, `alfred-memory`) are never proposed - an always-on rule names
      them, so they are closure-held. Everything else is in scope.
 
 5. **Functional overlap among kept items.** The candidates are the tool's `overlap:` lines
@@ -516,9 +517,8 @@ profile), output to `$TMP/select.out` - then:
   log names the command for the user. Two removals the installer never makes, each with its command shown first:
   `claude mcp remove <name>` for an MCP on the copy route (browser = every
   `browser-<engine>` server), and
-  `claude plugin uninstall <name> --scope <the scope step 1 recorded for it>`, except a plugin every
-  install carries beside the core - never propose removing one: the installer puts it back on every
-  run, so the removal would only be undone. The removal ask that proposed it
+  `claude plugin uninstall <name> --scope <the scope step 1 recorded for it>` (2.2.0: no plugin rides
+  beside the core any more - claude-hud is a pick like the LSP pair). The removal ask that proposed it
   NAMES that scope ('enabled at USER scope - removing it removes it for every
   project'), since account-wide and project-local are different consents.
 - **Check the generated rule's stamped policy against this release, mechanically.** The usage-policy

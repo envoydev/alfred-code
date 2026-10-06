@@ -362,7 +362,7 @@ every scope, `--scope user` included: the plugin launcher resolves the db path p
 itself - registers it in this project's own `.mcp.json` at every scope.
 
 An install carrying no memory registration yet needs no flag at all - the `--installed-only`
-derivation now ADOPTS `alfred-memory` and the `memory` MCP the same way it adopts a new hook,
+derivation now ADOPTS the `alfred-memory` rule and MCP the same way it adopts a new hook,
 whenever they are absent: the registration lands at `global` unless `--memory-level` named another
 level. The notes import waits for `/alfred-code:init` - no run imports until the stamp's
 `initialised:` line holds a date (the log says `the notes import waits for /alfred-code:init`, and the
@@ -397,7 +397,7 @@ the log), because `claude mcp add` over a name the preceding `remove` did not cl
 exists' and exits 0 - which is how consuming projects kept a stale stdio registration through update after
 update. Servers the project added by hand are never touched. Plugins are updated
 at the scope the listing says they are installed at and their versions are read back, so the log names
-each one as `x -> y`, `installed this run` (claude-hud on an install that lacked it) or `already newest` instead of asserting a refresh. On EVERY run where claude-hud is installed - this run or already - and the account has no `statusLine` yet, the run logs `claude-hud has no status line yet - run /alfred-code:init to set it up` - paste that line verbatim and name `/alfred-code:init` in the close. A server the 2.0.0 cut removed (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`, `context7-local`)
+each one as `x -> y`, `installed this run` or `already newest` instead of asserting a refresh. Every optional item (a browser engine, a desktop server, an LSP, claude-hud) is updated where it is installed and never moved - `/alfred-code:configure` is the one place its scope changes (2.2.0); claude-hud is an optional pick since 2.2.0, so an install that never picked it gains none. On EVERY run where claude-hud is installed - this run or already - and no settings file this project reads has a `statusLine` yet, the run logs `claude-hud has no status line yet - run /alfred-code:init to set it up` - paste that line verbatim and name `/alfred-code:init` in the close. A server the 2.0.0 cut removed (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`, `context7-local`)
 is uninstalled by its stack spec only - a same-named plugin from another marketplace and a row at another
 scope are kept and logged with the uninstall command that removes them - and each removal prints its `add it back:`
 line; pass the removals, their add-back lines and every kept row's line through verbatim in the close-out. A pruned

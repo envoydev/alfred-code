@@ -215,9 +215,9 @@ listed`. No CLI: the banner + `claude CLI unavailable - skipped` for the column.
 
 | server | transport | target | health |
 |---|---|---|---|
-| navigation | stdio | node .../serena-launch.js ... --project-from-cwd | ✔ Connected |
-| memory | stdio | node .../memory-launch.js | ✔ Connected |
-| documentation | http | https://mcp.context7.com/mcp | ✔ Connected |
+| alfred-navigation | stdio | node .../serena-launch.js ... --project-from-cwd | ✔ Connected |
+| alfred-memory | stdio | node .../memory-launch.js | ✔ Connected |
+| alfred-documentation | http | https://mcp.context7.com/mcp | ✔ Connected |
 | browser-firefox | stdio | node .../browser-launch.js --package @playwright/mcp@<pin> --browser firefox | ✘ Failed to connect |
 
 `target` is the command or URL, middle-truncated to keep the row one line; on the plugin route it
@@ -226,15 +226,15 @@ is the entry's own declaration. The browser server has one server per installed 
 toggle (the stamp's `browser-enabled:` is their last answer, not the live state). Never print
 env values embedded in a registration - show `${VAR}` literally as written.
 
-`memory` is locked like `navigation` and `documentation` (every install carries it). Add ONE line under
+`alfred-memory` is locked like `alfred-navigation` and `alfred-documentation` (every install carries it). Add ONE line under
 this table whenever the row is present - the shared-memory level. `.claude/hooks/memory.js`
 present: run `node .claude/hooks/memory.js level` and render `memory level: <level> - <dbPath>`
 (or `none` if the read disagrees with the table row above - report that mismatch verbatim, never
 guess). Absent (the hook deselected in this project): do NOT attempt the read (it fails with
 `MODULE_NOT_FOUND`) - print `memory level: not checked - memory.js is not installed here`
-instead. No `memory` row at all: skip the line, nothing to read.
+instead. No `alfred-memory` row at all: skip the line, nothing to read.
 The read answers through the same settings reader the plugin's memory launcher uses. `refused <file>` (a settings file
-it cannot read, and no other file names the database) means the memory launcher refuses to start, so the `memory` row
+it cannot read, and no other file names the database) means the memory launcher refuses to start, so the `alfred-memory` row
 fails to connect: print `memory level: not served - <file> could not be read, so the memory server's launcher refuses to
 start; fix the file (ALFRED_CODE_MEMORY_DB in its env names the database) and restart the session`. An `unreadable <file>`
 line after the level means that file was skipped and the level is the next one's: add `memory: <file> could not be read -
