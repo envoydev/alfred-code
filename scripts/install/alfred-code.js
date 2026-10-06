@@ -938,7 +938,7 @@ function runLayers(ctx)
     try { docs.migrateUsageReport({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
     catch (err) { ctx.note(`the usage report folder could not be renamed under ${docsPath} (${err.message}) - it stays as alfred-code-usage-report/`); }
     try { docs.migratePlans({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
-    catch (err) { ctx.note(`the plans could not be moved out of ${docsPath}/superpowers (${err.message}) - move plans/ and specs/ up to ${docsPath}/ by hand`); }
+    catch (err) { ctx.note(`the folders under ${docsPath}/superpowers could not be moved up (${err.message}) - move each one to ${docsPath}/ by hand`); }
     if (args.action === 'install') ctx.stackAgentsMd = seeds.seedAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
     // An update moves the seed an earlier release wrote as .claude/CLAUDE.md - only while it is still unedited.
     else if (args.action === 'update')

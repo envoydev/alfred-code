@@ -344,43 +344,50 @@ test('2.1.7: a local root or no repository moves raw copies; a new folder alread
     assert.match(lines.join('\n'), /!! .*already holds s2/);
 });
 
-// 2.2.2: the plans and specs leave superpowers/ - the superpowers plugin's folder name, a pick dropped in 2.0.0.
-test('2.2.2: plans and specs move up out of superpowers/, merged, history kept, and the emptied folder goes', () =>
+// 2.2.2: superpowers/ goes - the superpowers plugin's folder name, a pick dropped in 2.0.0. Every folder in it moves up.
+test('2.2.2: every folder under superpowers/ moves up to the docs root, history kept, and the emptied folder goes', () =>
 {
     const root = repo();
     const base = path.join(root, '.alfred', 'docs');
     const put = (rel, text) => { fs.mkdirSync(path.dirname(path.join(base, rel)), { recursive: true }); fs.writeFileSync(path.join(base, rel), text); };
     put('superpowers/plans/a.md', 'a\n');
     put('superpowers/specs/s.md', 's\n');
+    put('superpowers/sdd/ledger.md', 'ledger\n');
+    put('superpowers/sdd/briefs/t1.md', 't1\n');
+    put('superpowers/NOTES.md', 'notes\n');
     put('superpowers/.DS_Store', 'x');
     execFileSync('git', ['add', '-f', '.alfred/docs/superpowers/plans/a.md'], { cwd: root });
     execFileSync('git', ['-c', 'user.email=t@x', '-c', 'user.name=t', 'commit', '-qm', 'plan'], { cwd: root });
     const lines = [];
-    assert.deepStrictEqual(docs.migratePlans({ ...usageArgs(root), log: (l) => lines.push(l) }), ['moved', 'moved']);
-    assert.strictEqual(fs.readFileSync(path.join(base, 'plans', 'a.md'), 'utf8'), 'a\n');
-    assert.strictEqual(fs.readFileSync(path.join(base, 'specs', 's.md'), 'utf8'), 's\n');
+    assert.deepStrictEqual(docs.migratePlans({ ...usageArgs(root), log: (l) => lines.push(l) }), { plans: 'moved', specs: 'moved', sdd: 'moved', 'NOTES.md': 'moved' });
+    for (const [rel, text] of [['plans/a.md', 'a\n'], ['specs/s.md', 's\n'], ['sdd/ledger.md', 'ledger\n'], ['sdd/briefs/t1.md', 't1\n'], ['NOTES.md', 'notes\n']])
+        assert.strictEqual(fs.readFileSync(path.join(base, rel), 'utf8'), text, rel);
     assert.ok(!fs.existsSync(path.join(base, 'superpowers')), 'nothing but litter was left, so the folder goes');
-    assert.match(lines.join('\n'), /docs migration \(plans\): superpowers\/plans\/ -> plans\//);
+    assert.match(lines.join('\n'), /docs migration \(superpowers\): superpowers\/plans\/ -> plans\//);
+    assert.match(lines.join('\n'), /superpowers\/ removed/);
     const status = execFileSync('git', ['status', '--porcelain', '--', '.alfred/docs'], { cwd: root, encoding: 'utf8' });
     assert.match(status, /^R {2}\.alfred\/docs\/superpowers\/plans\/a\.md -> \.alfred\/docs\/plans\/a\.md$/m, 'a committed plan moves as a staged rename');
-    assert.deepStrictEqual(docs.migratePlans(usageArgs(root)), ['none', 'none'], 'a re-run finds nothing to move');
+    assert.deepStrictEqual(docs.migratePlans(usageArgs(root)), {}, 'a re-run finds nothing to move');
 });
 
-test('2.2.2: a plan the new folder already holds is never overwritten, and superpowers/ keeps anything else', () =>
+test('2.2.2: a clash at the docs root is never overwritten - it stays under superpowers/, named, and the folder with it', () =>
 {
     const root = repo();
     const base = path.join(root, '.alfred', 'docs');
     const put = (rel, text) => { fs.mkdirSync(path.dirname(path.join(base, rel)), { recursive: true }); fs.writeFileSync(path.join(base, rel), text); };
     put('superpowers/plans/a.md', 'old a\n');
     put('superpowers/plans/b.md', 'b\n');
-    put('superpowers/sdd/ledger.md', 'the plugin\'s own\n');
+    put('superpowers/README.md', 'old readme\n');
     put('plans/a.md', 'new a\n');
+    put('README.md', 'root readme\n');
     const lines = [];
-    assert.deepStrictEqual(docs.migratePlans({ ...usageArgs(root), log: (l) => lines.push(l) }), ['merged', 'none']);
-    assert.strictEqual(fs.readFileSync(path.join(base, 'plans', 'a.md'), 'utf8'), 'new a\n', 'the new copy wins');
+    assert.deepStrictEqual(docs.migratePlans({ ...usageArgs(root), log: (l) => lines.push(l) }), { plans: 'merged', 'README.md': 'kept' });
+    assert.strictEqual(fs.readFileSync(path.join(base, 'plans', 'a.md'), 'utf8'), 'new a\n', 'the root copy wins');
     assert.strictEqual(fs.readFileSync(path.join(base, 'plans', 'b.md'), 'utf8'), 'b\n', 'a plan only the old folder held moves');
     assert.strictEqual(fs.readFileSync(path.join(base, 'superpowers', 'plans', 'a.md'), 'utf8'), 'old a\n', 'the clash stays at the old name');
-    assert.ok(fs.existsSync(path.join(base, 'superpowers', 'sdd', 'ledger.md')), 'what the stack never wrote there stays');
-    assert.match(lines.join('\n'), /!! docs migration \(plans\): plans\/ already holds a\.md/);
-    assert.deepStrictEqual(docs.migratePlans({ projectRoot: path.join(TMP, 'absent'), docsPath: '.alfred/docs' }), ['none', 'none'], 'no docs root: nothing');
+    assert.strictEqual(fs.readFileSync(path.join(base, 'superpowers', 'README.md'), 'utf8'), 'old readme\n');
+    assert.strictEqual(fs.readFileSync(path.join(base, 'README.md'), 'utf8'), 'root readme\n');
+    assert.match(lines.join('\n'), /!! docs migration \(superpowers\): plans\/ already holds a\.md/);
+    assert.match(lines.join('\n'), /!! docs migration \(superpowers\): README\.md is already at the docs root/);
+    assert.deepStrictEqual(docs.migratePlans({ projectRoot: path.join(TMP, 'absent'), docsPath: '.alfred/docs' }), {}, 'no docs root: nothing');
 });

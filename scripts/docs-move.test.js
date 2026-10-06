@@ -329,27 +329,32 @@ test('installer: hook state a stale session writes after the move is folded in a
     assert.strictEqual(result.log.match(/"event":"stranded-root"/g).length, 1, 'a second start finds nothing');
 });
 
-// 2.2.2: the plans left superpowers/ (the dropped superpowers plugin's folder name) for <docs-path>/plans/.
-test('installer: an update moves superpowers/plans up to plans/, a fresh install makes no superpowers/, a re-run is quiet', POSIX_ONLY, () =>
+// 2.2.2: superpowers/ (the dropped superpowers plugin's folder name) goes - every folder in it moves up to the docs root.
+for (const scope of ['project', 'user', 'local'])
+test(`installer (${scope} scope): an update moves every folder under superpowers/ up to the docs root, a fresh install makes none, a re-run is quiet`, POSIX_ONLY, () =>
 {
     const at = (r, rel) => path.join(r, '.alfred', 'docs', ...rel.split('/'));
     const { outs, steps } = seedRun(['install', 'update', 'update'], SELECTION, {
-        args: [['--scope', 'project'], updateArgs(), updateArgs()],
+        args: [['--scope', scope], ['--scope', scope, '--installed-only'], ['--scope', scope, '--installed-only']],
         each: (r, i) =>
         {
-            const seen = { superpowers: fs.existsSync(at(r, 'superpowers')), plan: fs.existsSync(at(r, 'plans/cart.md')) && fs.readFileSync(at(r, 'plans/cart.md'), 'utf8') };
+            const read = (rel) => fs.existsSync(at(r, rel)) && fs.readFileSync(at(r, rel), 'utf8');
+            const seen = { superpowers: fs.existsSync(at(r, 'superpowers')), plan: read('plans/cart.md'), sdd: read('sdd/ledger.md') };
             if (i === 0)
             {
                 fs.mkdirSync(at(r, 'superpowers/plans'), { recursive: true });
                 fs.writeFileSync(at(r, 'superpowers/plans/cart.md'), '# cart - plan\n');
+                fs.mkdirSync(at(r, 'superpowers/sdd'), { recursive: true });
+                fs.writeFileSync(at(r, 'superpowers/sdd/ledger.md'), 'ledger\n');
             }
             return seen;
         },
     });
-    assert.deepStrictEqual(steps[0], { superpowers: false, plan: false }, 'a fresh install creates no superpowers/');
-    assert.match(outs[1], /docs migration \(plans\): superpowers\/plans\/ -> plans\//, outs[1]);
-    assert.deepStrictEqual(steps[1], { superpowers: false, plan: '# cart - plan\n' }, 'the plan moved and the emptied folder went');
-    assert.doesNotMatch(outs[2], /docs migration \(plans\)/, 'a re-run moves nothing');
+    assert.deepStrictEqual(steps[0], { superpowers: false, plan: false, sdd: false }, 'a fresh install creates no superpowers/');
+    assert.match(outs[1], /docs migration \(superpowers\): superpowers\/plans\/ -> plans\//, outs[1]);
+    assert.match(outs[1], /docs migration \(superpowers\): superpowers\/sdd\/ -> sdd\//, outs[1]);
+    assert.deepStrictEqual(steps[1], { superpowers: false, plan: '# cart - plan\n', sdd: 'ledger\n' }, 'every folder moved and the emptied one went');
+    assert.doesNotMatch(outs[2], /docs migration \(superpowers\)/, 'a re-run moves nothing');
     assert.deepStrictEqual(steps[2], steps[1]);
 });
 

@@ -254,17 +254,34 @@ function migrateUsageReport({ projectRoot, docsPath, log = () => {} })
     return moveDocsFolder(base, oldName, newName, 'usage report', log);
 }
 
-// THE PLANS AND SPECS left the `superpowers/` folder in 2.2.2: the name was the superpowers plugin's, a pick the
-// stack dropped in 2.0.0, and read as that plugin's folder (the user's ruling of 2026-10-06). Each moves up to the
-// root, merged the same way; `superpowers/` goes once nothing but OS litter is left in it - anything else there is
-// the plugin's or the project's own and keeps it.
-const PLANS_MOVES = [['superpowers/plans', 'plans'], ['superpowers/specs', 'specs']];
+// THE `superpowers/` FOLDER goes in 2.2.2: the name was the superpowers plugin's, a pick the stack dropped in 2.0.0,
+// and read as that plugin's folder (the user's ruling of 2026-10-06). EVERY folder in it moves up to the docs root
+// (plans/, specs/ and whatever else a run wrote there), merged the moveDocsFolder way, and a loose file moves when the
+// root lacks it; a clash stays at the old name, named, never overwritten. `superpowers/` goes once only OS litter is
+// left. Returns { <entry>: 'moved' | 'merged' | 'kept' }, empty when there is no such folder.
 const OS_LITTER = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
 function migratePlans({ projectRoot, docsPath, log = () => {} })
 {
     const base = path.resolve(projectRoot, String(docsPath || ''));
-    const results = PLANS_MOVES.map(([from, to]) => moveDocsFolder(base, from, to, 'plans', log));
     const old = path.join(base, 'superpowers');
+    let entries;
+    try { entries = fs.readdirSync(old, { withFileTypes: true }); }
+    catch { return {}; }
+    const results = {};
+    for (const e of entries)
+    {
+        if (OS_LITTER.has(e.name)) continue;
+        if (e.isDirectory()) { results[e.name] = moveDocsFolder(base, `superpowers/${e.name}`, e.name, 'superpowers', log); continue; }
+        if (fs.existsSync(path.join(base, e.name)))
+        {
+            log(`  !! docs migration (superpowers): ${e.name} is already at the docs root - superpowers/${e.name} is left in place, nothing overwritten; compare and remove it by hand`);
+            results[e.name] = 'kept';
+            continue;
+        }
+        moveKeepingHistory(base, path.join(old, e.name), path.join(base, e.name));
+        log(`  docs migration (superpowers): superpowers/${e.name} -> ${e.name}`);
+        results[e.name] = 'moved';
+    }
     try
     {
         const left = fs.readdirSync(old);
@@ -272,9 +289,10 @@ function migratePlans({ projectRoot, docsPath, log = () => {} })
         {
             for (const n of left) fs.rmSync(path.join(old, n), { force: true });
             fs.rmdirSync(old);
+            log('  docs migration (superpowers): superpowers/ removed - its folders now sit at the docs root');
         }
     }
-    catch { /* absent, or not ours to remove */ }
+    catch { /* a clash keeps it */ }
     return results;
 }
 
