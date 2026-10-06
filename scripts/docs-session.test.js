@@ -1445,3 +1445,50 @@ test('CLAUDE.md says a navigation rename is credited to its declaring file alone
   assert.match(entry, /a rename is credited to that declaring file alone/);
   assert.match(entry, /'no actor claimed' bucket and outside the turn check's root/);
 });
+
+// 2.2.0 upgrade: the docs move's own PostToolUse hooks still read the old root and rebuilt .claude/docs/flow.
+test('session start folds hook state stranded under the old .claude/docs into the live root', () => {
+  const r = repo({ docsPath: '.alfred/docs', docs: { 'ORIENTATION.md': ORIENT } });
+  try {
+    r.write('.claude/docs/flow/monitor-s1.jsonl', '\n{"id":"old"}\n');
+    r.write('.claude/docs/flow/APPROVAL', 'stale\n');
+    r.write('.claude/docs/flow/turn-edits-s2', 'a.cs\n');
+    r.write('.claude/docs/hook-blocks/s1.jsonl', '{"b":1}\n');
+    r.write('.claude/docs/.DS_Store', 'x');
+    r.write('.claude/settings.json', '{}\n');
+    r.write('.alfred/docs/flow/monitor-s1.jsonl', '\n{"id":"new"}\n');
+    r.write('.alfred/docs/flow/APPROVAL', 'live\n');
+    const out = r.hook({ hook_event_name: 'SessionStart', session_id: sid() });
+    assert.strictEqual(out.status, 0, out.stderr);
+    assert.ok(!r.exists('.claude/docs'), 'the stranded root is gone');
+    assert.ok(r.exists('.claude/settings.json'), '.claude/ itself is untouched');
+    assert.match(r.read('.alfred/docs/flow/monitor-s1.jsonl'), /"new"[\s\S]*"old"/, 'a .jsonl appends');
+    assert.strictEqual(r.read('.alfred/docs/flow/APPROVAL'), 'live\n', 'the live root keeps its own state');
+    assert.strictEqual(r.read('.alfred/docs/flow/turn-edits-s2'), 'a.cs\n', 'a file the live root lacks moves');
+    assert.strictEqual(r.read('.alfred/docs/hook-blocks/s1.jsonl'), '{"b":1}\n');
+    assert.match(r.read('.alfred/docs/docs-log.jsonl'), /"event":"stranded-root","from":".claude\/docs","files":4/);
+    // A re-run finds nothing and logs nothing more.
+    r.hook({ hook_event_name: 'SessionStart', session_id: sid() });
+    assert.strictEqual(r.read('.alfred/docs/docs-log.jsonl').match(/stranded-root/g).length, 1);
+  } finally { r.rm(); }
+});
+
+test('a stranded-root sweep leaves the old root alone when it holds a doc, a tracked file or is the live root', () => {
+  const doc = repo({ docsPath: '.alfred/docs' });
+  const tracked = repo({ docsPath: '.alfred/docs' });
+  const live = repo({ docsPath: '.claude/docs' });
+  const litter = repo({ docsPath: '.alfred/docs' });
+  try {
+    doc.write('.claude/docs/flow/monitor-s1.jsonl', '{}\n');
+    doc.write('.claude/docs/architecture/ORIENTATION.md', ORIENT);
+    tracked.write('.claude/docs/flow/APPROVAL', 'x\n');
+    tracked.git('add', '-f', '.claude/docs/flow/APPROVAL'); tracked.git('commit', '-qm', 'track');
+    live.write('.claude/docs/flow/monitor-s1.jsonl', '{}\n');
+    litter.write('.claude/docs/.DS_Store', 'x');
+    for (const r of [doc, tracked, live, litter]) assert.strictEqual(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }).status, 0);
+    assert.ok(doc.exists('.claude/docs/flow/monitor-s1.jsonl') && !doc.exists('.alfred/docs/flow/monitor-s1.jsonl'), 'one doc keeps all of it');
+    assert.ok(tracked.exists('.claude/docs/flow/APPROVAL'), 'a tracked file keeps all of it');
+    assert.ok(live.exists('.claude/docs/flow/monitor-s1.jsonl'), 'the live root is never swept');
+    assert.ok(!litter.exists('.claude/docs'), 'OS litter alone goes');
+  } finally { for (const r of [doc, tracked, live, litter]) r.rm(); }
+});

@@ -17,8 +17,7 @@ audit and the build read it.
 
 ## The file
 
-One file per scope at `<docs-path>/superpowers/plans/<feature>.md` (the folder name is the stack's
-own convention). A new scope after `Completed:` starts a new file.
+One file per scope at `<docs-path>/plans/<feature>.md`. A new scope after `Completed:` starts a new file.
 
 ```text
 # <Feature> - plan

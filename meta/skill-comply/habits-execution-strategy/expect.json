@@ -68,7 +68,7 @@
       "succeeded": true,
       "tool": "Write",
       "field": "file_path",
-      "text_match": "(^|/)(plans?|superpowers/plans)/[^/]+\\.md$"
+      "text_match": "(^|/)plans?/[^/]+\\.md$"
     }
   },
   "steps": [

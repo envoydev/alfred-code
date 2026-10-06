@@ -5,7 +5,7 @@ Write tool and returns the whole plan in its report, `Oriented:` line first.
 
 ## Write the plan file
 
-Write the plan to `<docs-path>/superpowers/plans/<feature>.md` before handing off: the FILE survives
+Write the plan to `<docs-path>/plans/<feature>.md` before handing off: the FILE survives
 compaction and a fresh session, where the chat copy does not. Then verify the write, in the same turn:
 `wc -l` the plan file (it exists and is not empty) and grep it for `Oriented:` and `Asked:` - the two
 header lines `task-verify-plan` grades (a missing `Oriented:` MAJOR, a missing `Asked:` MINOR) -

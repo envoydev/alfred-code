@@ -246,7 +246,11 @@ function main() {
   if (cursorOff) return;
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   process.env.CLAUDE_PROJECT_DIR = root;
-  if (event === 'SessionStart') startNote = recordUntracked(input, root);
+  if (event === 'SessionStart') {
+    const stranded = sweepStrandedRoot(root);
+    if (stranded !== null) log(root, input, { event: 'stranded-root', from: LEGACY_DOCS_ROOT, files: stranded });
+    startNote = recordUntracked(input, root);
+  }
   // On the PLUGIN route this hook runs from the marketplace clone, where docs.js/memory.js/
   // history.js are all tracked - so a never-set-up project under a user-scope core never reaches
   // this line (M1, R47 fix round 1: the require always resolves there). The case that CAN happen is
@@ -280,6 +284,49 @@ function main() {
 // at most UNTRACKED_CAP paths (past it a path reads as the change's own), and a record past SWEEP_MS goes when the
 // next one is written.
 const UNTRACKED_CAP = 20000;
+
+// A docs move (`--data-move move`) can leave the old default behind holding hook state: the move's own tool call
+// ends in PostToolUse hooks that still read the session's old docs root, and their recursive mkdir rebuilds the
+// folder the move just emptied (2.2.0 upgrade: one monitor row in .claude/docs/flow). The next session start folds
+// it into the live root - a .jsonl appends, any other file moves when the live root lacks it and is dropped when it
+// holds one, the newer copy - then removes the emptied folders. Only a root holding nothing but hook state and OS
+// litter is touched: one doc, one other entry or one file git tracks there leaves all of it where it is.
+const LEGACY_DOCS_ROOT = '.claude/docs';
+const STATE_DIRS = new Set(['flow', 'hook-blocks', 'history', 'tools-usage']);
+const STATE_FILES = new Set(['docs-log.jsonl']);
+const OS_LITTER = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
+function sweepStrandedRoot(root) {
+  const from = path.resolve(root, LEGACY_DOCS_ROOT);
+  const to = path.resolve(root, docsRootEnv());
+  const inside = (a, b) => { const rel = path.relative(a, b); return !rel || (!rel.startsWith('..') && !path.isAbsolute(rel)); };
+  if (inside(from, to) || inside(to, from)) return null;
+  let entries;
+  try { entries = fs.readdirSync(from, { withFileTypes: true }); } catch { return null; }
+  // A case-insensitive file system answers both spellings of one folder: the same inode is the same root.
+  try { const a = fs.statSync(from); const b = fs.statSync(to); if (a.ino === b.ino && a.dev === b.dev) return null; } catch { /* no live root yet */ }
+  const state = (e) => (e.isDirectory() && STATE_DIRS.has(e.name)) || (e.isFile() && (STATE_FILES.has(e.name) || OS_LITTER.has(e.name)));
+  if (!entries.every(state)) return null;
+  try {
+    const tracked = require('child_process').execFileSync('git', ['ls-files', '-z', '--', LEGACY_DOCS_ROOT], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
+    if (tracked.length) return null;
+  } catch { /* no repo: nothing is tracked */ }
+  let files = 0;
+  const fold = (src, dst) => {
+    for (const e of fs.readdirSync(src, { withFileTypes: true })) {
+      const a = path.join(src, e.name);
+      const b = path.join(dst, e.name);
+      if (e.isDirectory()) { fold(a, b); fs.rmdirSync(a); continue; }
+      if (!e.isFile() || OS_LITTER.has(e.name)) { fs.rmSync(a, { force: true }); continue; }
+      files++;
+      if (!fs.existsSync(b)) { fs.mkdirSync(dst, { recursive: true }); fs.renameSync(a, b); continue; }
+      if (e.name.endsWith('.jsonl')) fs.appendFileSync(b, `\n${fs.readFileSync(a, 'utf8')}`);
+      fs.rmSync(a, { force: true });
+    }
+  };
+  try { fold(from, to); fs.rmdirSync(from); } catch { return null; /* a partial fold leaves the rest for the next start */ }
+  return files;
+}
+
 function recordUntracked(input, root) {
   let file;
   let list;

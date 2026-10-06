@@ -205,25 +205,19 @@ function moveKeepingHistory(base, src, dst)
     fs.renameSync(src, dst);
 }
 
-// 'none' | 'moved' | 'merged' | 'held' (raw copies git would not keep out at the new name).
-function migrateUsageReport({ projectRoot, docsPath, log = () => {} })
+// One folder under the docs root renamed: absent at the new name, the whole folder moves; present there, each entry
+// the new folder lacks moves and a clash stays at the old name, named - never overwritten. 'none' | 'moved' | 'merged'.
+function moveDocsFolder(base, oldName, newName, label, log)
 {
-    const base = path.resolve(projectRoot, String(docsPath || ''));
-    const [oldName, newName] = USAGE_REPORT_MOVE;
-    const from = path.join(base, oldName);
-    const to = path.join(base, newName);
+    const from = path.join(base, ...oldName.split('/'));
+    const to = path.join(base, ...newName.split('/'));
     try { if (!fs.statSync(from).isDirectory()) return 'none'; }
     catch { return 'none'; }
-    if (holdsRaw(from) && !rawStaysOut(base, newName))
-    {
-        log(`  !! docs migration (usage report): ${oldName}/ holds raw session copies and git would not ignore them as ${newName}/ - `
-            + `left in place; add '/${newName}/**/*.jsonl' to the docs root's .gitignore, then re-run /alfred-code:update`);
-        return 'held';
-    }
     if (!fs.existsSync(to))
     {
+        fs.mkdirSync(path.dirname(to), { recursive: true });
         moveKeepingHistory(base, from, to);
-        log(`  docs migration (usage report): ${oldName}/ -> ${newName}/`);
+        log(`  docs migration (${label}): ${oldName}/ -> ${newName}/`);
         return 'moved';
     }
     const kept = [];
@@ -233,14 +227,73 @@ function migrateUsageReport({ projectRoot, docsPath, log = () => {} })
         else moveKeepingHistory(base, path.join(from, name), path.join(to, name));
     }
     if (kept.length)
-        log(`  !! docs migration (usage report): ${newName}/ already holds ${kept.join(', ')} - the ${oldName}/ copies are left in place, `
+        log(`  !! docs migration (${label}): ${newName}/ already holds ${kept.join(', ')} - the ${oldName}/ copies are left in place, `
             + 'nothing overwritten; compare and remove them by hand');
     else
     {
         fs.rmdirSync(from);
-        log(`  docs migration (usage report): ${oldName}/ merged into ${newName}/`);
+        log(`  docs migration (${label}): ${oldName}/ merged into ${newName}/`);
     }
     return 'merged';
+}
+
+// 'none' | 'moved' | 'merged' | 'held' (raw copies git would not keep out at the new name).
+function migrateUsageReport({ projectRoot, docsPath, log = () => {} })
+{
+    const base = path.resolve(projectRoot, String(docsPath || ''));
+    const [oldName, newName] = USAGE_REPORT_MOVE;
+    const from = path.join(base, oldName);
+    try { if (!fs.statSync(from).isDirectory()) return 'none'; }
+    catch { return 'none'; }
+    if (holdsRaw(from) && !rawStaysOut(base, newName))
+    {
+        log(`  !! docs migration (usage report): ${oldName}/ holds raw session copies and git would not ignore them as ${newName}/ - `
+            + `left in place; add '/${newName}/**/*.jsonl' to the docs root's .gitignore, then re-run /alfred-code:update`);
+        return 'held';
+    }
+    return moveDocsFolder(base, oldName, newName, 'usage report', log);
+}
+
+// THE `superpowers/` FOLDER goes in 2.2.2: the name was the superpowers plugin's, a pick the stack dropped in 2.0.0,
+// and read as that plugin's folder (the user's ruling of 2026-10-06). EVERY folder in it moves up to the docs root
+// (plans/, specs/ and whatever else a run wrote there), merged the moveDocsFolder way, and a loose file moves when the
+// root lacks it; a clash stays at the old name, named, never overwritten. `superpowers/` goes once only OS litter is
+// left. Returns { <entry>: 'moved' | 'merged' | 'kept' }, empty when there is no such folder.
+const OS_LITTER = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
+function migratePlans({ projectRoot, docsPath, log = () => {} })
+{
+    const base = path.resolve(projectRoot, String(docsPath || ''));
+    const old = path.join(base, 'superpowers');
+    let entries;
+    try { entries = fs.readdirSync(old, { withFileTypes: true }); }
+    catch { return {}; }
+    const results = {};
+    for (const e of entries)
+    {
+        if (OS_LITTER.has(e.name)) continue;
+        if (e.isDirectory()) { results[e.name] = moveDocsFolder(base, `superpowers/${e.name}`, e.name, 'superpowers', log); continue; }
+        if (fs.existsSync(path.join(base, e.name)))
+        {
+            log(`  !! docs migration (superpowers): ${e.name} is already at the docs root - superpowers/${e.name} is left in place, nothing overwritten; compare and remove it by hand`);
+            results[e.name] = 'kept';
+            continue;
+        }
+        moveKeepingHistory(base, path.join(old, e.name), path.join(base, e.name));
+        log(`  docs migration (superpowers): superpowers/${e.name} -> ${e.name}`);
+        results[e.name] = 'moved';
+    }
+    try
+    {
+        const left = fs.readdirSync(old);
+        if (left.every((n) => OS_LITTER.has(n)))
+        {
+            for (const n of left) fs.rmSync(path.join(old, n), { force: true });
+            fs.rmdirSync(old);
+            log('  docs migration (superpowers): superpowers/ removed - its folders now sit at the docs root');
+        }
+    }
+    catch { /* a clash keeps it */ }
+    return results;
 }
 
 // 'written' | 'current' | 'replaced' | 'kept' (the project's own file) | 'outside' (the root is not in
@@ -555,7 +608,7 @@ function dataOfferLine(offer)
 }
 
 module.exports = {
-    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, ensureDocsIgnore, migrateUsageReport, docsMovePlan, docsMoveViews, moveDocsRoot,
+    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, ensureDocsIgnore, migrateUsageReport, migratePlans, docsMovePlan, docsMoveViews, moveDocsRoot,
     ensureDataIgnore, dataIgnoreText, pruneDataRoot, dataOffer, dataOfferLine,
     DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD,
 };

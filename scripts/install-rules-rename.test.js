@@ -127,25 +127,33 @@ test('a retired rule name the stamp does not record is the project\'s own: kept 
     assert.match(outs[1], /!! rule kept: web-conventions\.md.*yours/, outs[1]);
 });
 
-test('a garbled library-rules stamp line records nothing: the new names land, the old copies stay and are named', POSIX_ONLY, () =>
+// A garbled line, or a stamp from before library-rules (0.2.x / 1.x), records no hash: an old copy is still the stack's
+// when it opens with its alfred-* successor's first line, so it goes - a file under the old name that opens
+// otherwise is the project's own and stays, named. (2.2.0: a 0.2.87 install's seven baseline-* copies were all kept.)
+for (const [label, unstamp] of [['a garbled library-rules line', (t) => t.replace(/^library-rules: .*$/m, 'library-rules: garbage')],
+    ['a stamp from before library-rules', (t) => t.replace(/^library-rules: .*\n/m, '')]])
 {
-    const { result: r, outs } = seedRun(['install', 'update'], SEL, {
-        args: [[], UPDATE()], inspect: snap,
-        each: (repo, i) =>
-        {
-            if (i !== 0) return;
-            makeOld(repo);
-            fs.writeFileSync(stampOf(repo), fs.readFileSync(stampOf(repo), 'utf8').replace(/^library-rules: .*$/m, 'library-rules: garbage'));
-        },
-    });
-    for (const n of SHIPPED)
+    test(`${label} records nothing: old copies that open with their successor's line are pruned, one that does not is kept`, POSIX_ONLY, () =>
     {
-        assert.ok(`alfred-${n}.md` in r.files, `alfred-${n}.md missing`);
-        assert.ok(`baseline-${n}.md` in r.files, `baseline-${n}.md was deleted with no record to say it is the stack's`);
-    }
-    assert.match(outs[1], /!! rule kept: baseline-git\.md/, 'each kept copy is named');
-    assert.strictEqual(r.files['alfred-project-run-book.md'], body('run-book'));
-});
+        const { result: r, outs } = seedRun(['install', 'update'], SEL, {
+            args: [[], UPDATE()], inspect: snap,
+            each: (repo, i) =>
+            {
+                if (i !== 0) return;
+                makeOld(repo);
+                fs.writeFileSync(stampOf(repo), unstamp(fs.readFileSync(stampOf(repo), 'utf8')));
+                fs.writeFileSync(path.join(rulesOf(repo), 'baseline-security.md'), '# My own security notes\n');
+            },
+        });
+        for (const n of SHIPPED) assert.ok(`alfred-${n}.md` in r.files, `alfred-${n}.md missing`);
+        for (const n of SHIPPED.filter((x) => x !== 'security')) assert.ok(!(`baseline-${n}.md` in r.files), `baseline-${n}.md survived: ${outs[1]}`);
+        assert.strictEqual(r.files['baseline-security.md'], '# My own security notes\n', 'a copy that opens otherwise is the project\'s');
+        assert.match(outs[1], /!! rule kept: baseline-security\.md.*yours/, 'the kept copy is named');
+        assert.match(outs[1], /rule pruned \(retired upstream\): baseline-git\.md/, outs[1]);
+        assert.strictEqual(r.files['baseline-mine.md'], 'my own rule\n', 'a retired-looking name with no successor is never touched');
+        assert.strictEqual(r.files['alfred-project-run-book.md'], body('run-book'));
+    });
+}
 
 // installer:F4 - a rule copy goes through the same claim test a skill does: a same-named file the stamp does not record is the
 // project's own unless its opening line is the shipped rule's (an older copy of the stack's).

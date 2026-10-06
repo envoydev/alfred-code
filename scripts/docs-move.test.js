@@ -7,6 +7,7 @@
 // follows; a plain rename for the rest), and a no pins the old root as the user's own so no later update
 // asks again. Until an answer arrives nothing moves and the hooks keep reading the root the docs are in.
 const test = require('node:test');
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -291,6 +292,70 @@ test('M1 installer: a .claude/docs root the user kept in 2.0.0 moves only on an 
     const moved = seedRun(['install', 'update'], SELECTION, { args: [['--scope', 'project'], updateArgs('--data-move', 'move')], each: kept20, inspect: look });
     assert.match(moved.outs[1], /docs root: moved/, moved.outs[1]);
     assert.strictEqual(moved.result.moved, true);
+});
+
+// 2.2.0 upgrade: the move's own Bash call ends in PostToolUse hooks that still hold the session's old root, and the
+// monitor's recursive mkdir rebuilt .claude/docs/flow; the next session start folds it into the live root.
+test('installer: hook state a stale session writes after the move is folded in at the next session start', POSIX_ONLY, () =>
+{
+    const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
+    const run = (r, file, payload, env) => execFileSync(process.execPath, [path.join(HOOKS, file)], { cwd: r, input: JSON.stringify(payload), encoding: 'utf8',
+        env: { ...process.env, CLAUDE_PROJECT_DIR: r, CLAUDE_DOCS_PATH: '', ALFRED_CODE_MONITOR: 'log', ...env } }); // legacy-name
+    const { outs, result } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'project'], updateArgs('--data-move', 'move')],
+        each: (r, i) => (i === 0 ? olderInstall(r) : null),
+        inspect: (r) =>
+        {
+            const settings = JSON.parse(fs.readFileSync(path.join(r, '.claude', 'settings.json'), 'utf8'));
+            run(r, 'monitor-session.js', { hook_event_name: 'PostToolUse', session_id: 'stale', tool_name: 'Bash', tool_input: { command: 'update' }, cwd: r }, { ALFRED_CODE_DOCS_PATH: '.claude/docs' });
+            const raced = fs.existsSync(path.join(r, '.claude', 'docs', 'flow', 'monitor-stale.jsonl'));
+            const live = { ALFRED_CODE_DOCS_PATH: settings.env.ALFRED_CODE_DOCS_PATH };
+            run(r, 'docs-session.js', { hook_event_name: 'SessionStart', session_id: 'fresh', cwd: r }, live);
+            run(r, 'docs-session.js', { hook_event_name: 'SessionStart', session_id: 'again', cwd: r }, live);
+            const at = (rel) => path.join(r, rel);
+            return {
+                raced, docsPath: settings.env.ALFRED_CODE_DOCS_PATH,
+                old: fs.existsSync(at('.claude/docs')), row: fs.readFileSync(at('.alfred/docs/flow/monitor-stale.jsonl'), 'utf8'),
+                log: fs.readFileSync(at('.alfred/docs/docs-log.jsonl'), 'utf8'), moved: fs.existsSync(at('.alfred/docs/architecture/ARCHITECTURE.md')),
+            };
+        },
+    });
+    assert.match(outs[1], /docs root: moved \.claude\/docs -> \.alfred\/docs/, outs[1]);
+    assert.strictEqual(result.raced, true, 'the stale hook rebuilt the old root - the case this guards');
+    assert.strictEqual(result.docsPath, '.alfred/docs');
+    assert.strictEqual(result.old, false, 'the stranded root is gone after the next start');
+    assert.match(result.row, /"t":"Bash"/, 'its row now sits under the live root');
+    assert.strictEqual(result.moved, true, 'the moved docs are untouched');
+    assert.strictEqual(result.log.match(/"event":"stranded-root"/g).length, 1, 'a second start finds nothing');
+});
+
+// 2.2.2: superpowers/ (the dropped superpowers plugin's folder name) goes - every folder in it moves up to the docs root.
+for (const scope of ['project', 'user', 'local'])
+test(`installer (${scope} scope): an update moves every folder under superpowers/ up to the docs root, a fresh install makes none, a re-run is quiet`, POSIX_ONLY, () =>
+{
+    const at = (r, rel) => path.join(r, '.alfred', 'docs', ...rel.split('/'));
+    const { outs, steps } = seedRun(['install', 'update', 'update'], SELECTION, {
+        args: [['--scope', scope], ['--scope', scope, '--installed-only'], ['--scope', scope, '--installed-only']],
+        each: (r, i) =>
+        {
+            const read = (rel) => fs.existsSync(at(r, rel)) && fs.readFileSync(at(r, rel), 'utf8');
+            const seen = { superpowers: fs.existsSync(at(r, 'superpowers')), plan: read('plans/cart.md'), sdd: read('sdd/ledger.md') };
+            if (i === 0)
+            {
+                fs.mkdirSync(at(r, 'superpowers/plans'), { recursive: true });
+                fs.writeFileSync(at(r, 'superpowers/plans/cart.md'), '# cart - plan\n');
+                fs.mkdirSync(at(r, 'superpowers/sdd'), { recursive: true });
+                fs.writeFileSync(at(r, 'superpowers/sdd/ledger.md'), 'ledger\n');
+            }
+            return seen;
+        },
+    });
+    assert.deepStrictEqual(steps[0], { superpowers: false, plan: false, sdd: false }, 'a fresh install creates no superpowers/');
+    assert.match(outs[1], /docs migration \(superpowers\): superpowers\/plans\/ -> plans\//, outs[1]);
+    assert.match(outs[1], /docs migration \(superpowers\): superpowers\/sdd\/ -> sdd\//, outs[1]);
+    assert.deepStrictEqual(steps[1], { superpowers: false, plan: '# cart - plan\n', sdd: 'ledger\n' }, 'every folder moved and the emptied one went');
+    assert.doesNotMatch(outs[2], /docs migration \(superpowers\)/, 'a re-run moves nothing');
+    assert.deepStrictEqual(steps[2], steps[1]);
 });
 
 test('installer: a conflict refuses the move and changes nothing', POSIX_ONLY, () =>

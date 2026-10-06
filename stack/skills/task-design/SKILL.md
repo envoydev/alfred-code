@@ -79,7 +79,7 @@ Two header lines open the plan file, both required fields and not niceties:
 
 ## Write and hand off
 
-A DISPATCHED designer seat has no Write tool: it returns the whole plan in its report, `Oriented:` line first, and the orchestrator writes the file from it - the seat's work ends there. In this chat the plan goes to `<docs-path>/superpowers/plans/<feature>.md` before handing off - a design flow writes it as its handoff, the case the interaction baseline's plan-file rule names. Read `references/write-and-hand-off.md` once the plan is settled and follow it: it writes and verifies the file, hands off to the gate, the build and the review, and carries a worked plan.
+A DISPATCHED designer seat has no Write tool: it returns the whole plan in its report, `Oriented:` line first, and the orchestrator writes the file from it - the seat's work ends there. In this chat the plan goes to `<docs-path>/plans/<feature>.md` before handing off - a design flow writes it as its handoff, the case the interaction baseline's plan-file rule names. Read `references/write-and-hand-off.md` once the plan is settled and follow it: it writes and verifies the file, hands off to the gate, the build and the review, and carries a worked plan.
 
 ## Plan format
 

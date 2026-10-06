@@ -937,6 +937,8 @@ function runLayers(ctx)
     // After the root's .gitignore names the new folder, so a raw transcript copy never lands unignored.
     try { docs.migrateUsageReport({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
     catch (err) { ctx.note(`the usage report folder could not be renamed under ${docsPath} (${err.message}) - it stays as alfred-code-usage-report/`); }
+    try { docs.migratePlans({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
+    catch (err) { ctx.note(`the folders under ${docsPath}/superpowers could not be moved up (${err.message}) - move each one to ${docsPath}/ by hand`); }
     if (args.action === 'install') ctx.stackAgentsMd = seeds.seedAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
     // An update moves the seed an earlier release wrote as .claude/CLAUDE.md - only while it is still unedited.
     else if (args.action === 'update')
@@ -1299,13 +1301,16 @@ function retiredKeep(ctx, kind, dir)
     const picked = stampLayer.readPicked(ctx.stampFile) || { agents: [] };
     const names = stackNames(ctx.manifest);
     const bare = (n) => n.replace(/\.md$/, '');
+    // A stamp that records rules already judged every name it lacks (a run since 2.0.0 kept an edited copy as the
+    // user's and dropped it from the record), so only one that records none - pre-2.0.0, or garbled - is claimed.
+    const rulesRecorded = Object.keys(lib.rules || {}).length > 0;
     return (name) =>
     {
         const held = kind === 'hook' ? ctx.ledger && ctx.ledger.files && ctx.ledger.files[`hooks/${name}`] : (lib[`${kind}s`] || {})[bare(name)];
         if (held) return library.hashItem(path.join(dir, name)) === held ? false : 'edited since the stack wrote it, so it is yours - merge what you need, then remove it by hand';
         const claimed = kind === 'skill' ? skillClaim(ctx)(name)
             : kind === 'agent' ? picked.agents.some((e) => e.split('@')[0] === bare(name)) || stackOwnName(names, 'agents', bare(name))
-                : false;
+                : !rulesRecorded && renamedRuleClaim(ctx, dir, bare(name));
         return claimed ? false : 'the stamp does not record it, so it is yours - remove it by hand if it is the stack\'s';
     };
 }
@@ -1345,17 +1350,26 @@ const foreignSkill = (ctx, name) => skillTestOf(ctx).foreign(name);
 const foreignLine = (name) => `  !! skill kept: ${name} - a project skill of that name the stamp does not record, so it is yours; the stack's ${name} is not installed here - rename or remove yours, then /alfred-code:configure adds it`;
 // The rule twin of the skill claim: a same-named rule file the stamp holds no hash for is the stack's when only the stack
 // uses the name (`alfred-` prefix) or it opens with the shipped rule's own first line (an older copy whose later text moved on).
+const ruleOpening = (file) =>
+{
+    try { return fs.readFileSync(file, 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').split(/\r?\n/).find((l) => l.trim()) || null; }
+    catch { return null; }
+};
 const ruleClaim = (ctx) => (name) =>
 {
     if (stackOwnName(stackNames(ctx.manifest), 'rules', name)) return true;
-    const opening = (file) =>
-    {
-        try { return fs.readFileSync(file, 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').split(/\r?\n/).find((l) => l.trim()) || null; }
-        catch { return null; }
-    };
-    const ours = opening(path.join(ctx.source.dir, 'stack', 'rules', `${name}.md`));
-    return Boolean(ours) && opening(path.join(ctx.claudeDir, 'rules', `${name}.md`)) === ours;
+    const ours = ruleOpening(path.join(ctx.source.dir, 'stack', 'rules', `${name}.md`));
+    return Boolean(ours) && ruleOpening(path.join(ctx.claudeDir, 'rules', `${name}.md`)) === ours;
 };
+// A retired rule under a stamp that records no rule hash (a 0.2.x or 1.x stamp predates library-rules) is the stack's when it was
+// RENAMED and opens with its successor's first line: the 2.1.x baseline-* copies each open with their alfred-* heading.
+// A retired name with no successor stays the user's - nothing shipped is left to compare it with.
+function renamedRuleClaim(ctx, dir, name)
+{
+    const next = ((ctx.manifest.renamed || {}).rules || {})[name];
+    const ours = next && ruleOpening(path.join(ctx.source.dir, 'stack', 'rules', `${next}.md`));
+    return Boolean(ours) && ruleOpening(path.join(dir, `${name}.md`)) === ours;
+}
 function withoutForeign(picked, foreign)
 {
     if (!foreign || !foreign.size) return picked;
