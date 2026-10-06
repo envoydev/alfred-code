@@ -106,7 +106,18 @@ function splitMemoryMcpLeaf(dbPath) {
 function realpathOrSelf(p) {
   try { return fs.realpathSync.native(p); } catch {}
   try { return fs.realpathSync(p); } catch {}
-  return path.resolve(p);
+  // Not created yet: its deepest existing folder resolved natively, the rest re-attached. A database folder no run has
+  // made yet kept an 8.3 parent short while its project resolved long, and the level verb read the project's own
+  // database as 'unknown' (2.1.7, the windows-2025 job).
+  const abs = path.resolve(p);
+  const rest = [];
+  for (let dir = abs; ;) {
+    const up = path.dirname(dir);
+    if (up === dir) return abs;
+    rest.unshift(path.basename(dir));
+    dir = up;
+    try { return path.join(fs.realpathSync.native(dir), ...rest); } catch { /* keep climbing */ }
+  }
 }
 // The form two directory spellings are compared in. Windows names are case-insensitive (a drive letter
 // can arrive as 'c:' or 'C:', and a path that does not exist yet never reaches the native realpath that

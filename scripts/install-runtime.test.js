@@ -371,12 +371,13 @@ test('install-runtime: gitRoot never answers the home directory (seam m3)', () =
         if (init.status !== 0) return; // no git here: nothing to prove
         const project = path.join(home, 'work', 'proj');
         fs.mkdirSync(project, { recursive: true });
-        assert.strictEqual(fs.realpathSync(gitRoot(project)), home, 'with no home given the top is what git says');
+        // The native realpath on both sides: git answers a Windows 8.3 temp dir in its long form.
+        assert.strictEqual(fs.realpathSync.native(gitRoot(project)), fs.realpathSync.native(home), 'with no home given the top is what git says');
         assert.strictEqual(gitRoot(project, home), '', 'a top that IS the home directory is no project');
         const inner = path.join(home, 'work', 'own');
         fs.mkdirSync(inner, { recursive: true });
         spawnSync('git', ['init', '-q'], { cwd: inner });
-        assert.strictEqual(fs.realpathSync(gitRoot(inner, home)), fs.realpathSync(inner), 'a repo of its own below the home is the top');
+        assert.strictEqual(fs.realpathSync.native(gitRoot(inner, home)), fs.realpathSync.native(inner), 'a repo of its own below the home is the top');
     }
     finally { fs.rmSync(home, { recursive: true, force: true }); }
 });

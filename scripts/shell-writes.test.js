@@ -267,3 +267,14 @@ test('commandIndex walks past a body keyword, a group opener, ! and setsid', () 
   assert.strictEqual(at('setsid bash -c x'), 'bash');
   assert.strictEqual(at('echo rm'), 'echo');
 });
+
+test('dequote: a bare Windows path on win32 keeps its backslashes - bash escapes everywhere else (2.1.7, the windows-2025 job)', () => {
+  // Read as bash, `C:\Users\x\f.txt` was `C:Usersxf.txt`: a relative name, so on Windows every guard took an out-of-project
+  // write, a -C into a sibling repo and a credential read for this project's own file.
+  for (const w of ['C:\\Users\\RUNNER~1\\Temp\\other\\f.txt', 'c:\\x', '\\\\server\\share\\f.txt', 'if=C:\\Users\\x\\.aws\\credentials', '--file=D:\\out\\a.txt'])
+    assert.strictEqual(shell.dequote(w, 'win32'), w, w);
+  assert.strictEqual(shell.dequote('C:\\Users\\x\\f.txt', 'linux'), 'C:Usersxf.txt', 'off Windows the word is bash\'s');
+  assert.strictEqual(shell.dequote('"C:\\Users\\x"', 'win32'), 'C:\\Users\\x', 'a quoted path dequotes as before');
+  assert.strictEqual(shell.dequote('C:\\a\\$HOME', 'win32'), 'C:a$HOME', 'an expansion inside keeps the shell reading');
+  assert.strictEqual(shell.dequote('plain\\ space', 'win32'), 'plain space', 'a word that is no Windows path is bash\'s');
+});

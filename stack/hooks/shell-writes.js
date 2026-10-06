@@ -285,8 +285,14 @@ const ESCAPES = { n: '\n', t: '\t', r: '\r', '\\': '\\', a: '', b: '', f: '', v:
 const unescape = (s) => String(s).replace(/\\(0[0-7]{0,3}|[ntr\\abfvec'"])/g,
   (m, c) => (c[0] === '0' ? String.fromCharCode(parseInt(c.slice(1) || '0', 8)) : ESCAPES[c]));
 const PLAIN_WORD = /^[^"'\\$]*$/;
-function dequote(raw) {
+// A Windows path written bare on Windows (`C:\Users\x\f.txt`, `\\server\share\f`, `if=C:\x`) is the path the session
+// means, never bash's escape of each letter. Read as bash it collapsed to `C:Usersxf.txt`, a relative name, so every
+// guard judged an out-of-project write, a `-C` into a sibling repo and a credential read as this project's own file
+// (2.1.6 CI: the windows-2025 job red on 30 guard cases; the reader before the one-shell rewrite kept the backslashes).
+const WIN_PATH_WORD = /^(?:[\w.-]*=)?(?:[A-Za-z]:\\|\\\\)[^"'$`]*$/;
+function dequote(raw, platform = process.platform) {
   if (PLAIN_WORD.test(raw)) return raw;
+  if (platform === 'win32' && WIN_PATH_WORD.test(raw)) return raw;
   let out = '';
   for (let i = 0; i < raw.length; i++) {
     const c = raw[i];

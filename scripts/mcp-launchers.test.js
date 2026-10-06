@@ -49,7 +49,7 @@ function resolveDb(projectDir, env)
 test('memory-launch: the project settings env is the db, because a plugin entry cannot read it', () =>
 {
     const { dir } = project('proj-db', { settings: { ALFRED_CODE_MEMORY_DB: '/tmp/chosen/memory.db' } });
-    assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/chosen/memory.db');
+    assert.strictEqual(resolveDb(dir, { HOME: dir }), path.normalize('/tmp/chosen/memory.db'));
 });
 
 // I7 (R47, fix round 1): settings.local.json is read BEFORE settings.json, the same order
@@ -59,17 +59,17 @@ test('memory-launch: the project settings env is the db, because a plugin entry 
 test('memory-launch: settings.local.json is the per-machine override, and it WINS over settings.json', () =>
 {
     const { dir } = project('local-db', { local: { ALFRED_CODE_MEMORY_DB: '/tmp/local/memory.db' } });
-    assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/local/memory.db');
+    assert.strictEqual(resolveDb(dir, { HOME: dir }), path.normalize('/tmp/local/memory.db'));
     // ... and stays the winner once settings.json also registers one: local is this machine's own.
     fs.writeFileSync(path.join(dir, '.claude', 'settings.json'),
         JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: '/tmp/installed/memory.db' } }));
-    assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/local/memory.db');
+    assert.strictEqual(resolveDb(dir, { HOME: dir }), path.normalize('/tmp/local/memory.db'));
 });
 
 test('memory-launch: the ACCOUNT settings env answers for a global install', () =>
 {
     const { dir, acct } = project('acct-db', { account: { ALFRED_CODE_MEMORY_DB: '/tmp/acct/memory.db' } });
-    assert.strictEqual(resolveDb(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct }), '/tmp/acct/memory.db');
+    assert.strictEqual(resolveDb(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct }), path.normalize('/tmp/acct/memory.db'));
 });
 
 test('memory-launch: an explicit MCP_MEMORY_SQLITE_PATH wins over every file', () =>

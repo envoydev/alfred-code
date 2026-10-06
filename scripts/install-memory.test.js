@@ -279,10 +279,10 @@ test('recordedPath: a registration, then the settings key; an unreadable setting
     // Re-verify 2 R5: one rule with the memory launcher (the shared reader, stack/hooks/memory.js settingsDbState) - an unread
     // settings.local.json is no answer, and the next readable file's key answers: settings.json, then the account settings.
     write(path.join(claudeDir, 'settings.json'), { env: { ALFRED_CODE_MEMORY_DB: '/elsewhere/memory.db' } });
-    assert.deepStrictEqual(memory.recordedPath(at), { path: '/elsewhere/memory.db', from: 'settings', file: 'settings.json', key: 'ALFRED_CODE_MEMORY_DB', value: '/elsewhere/memory.db', unread: ['settings.local.json'] });
+    assert.deepStrictEqual(memory.recordedPath(at), { path: path.normalize('/elsewhere/memory.db'), from: 'settings', file: 'settings.json', key: 'ALFRED_CODE_MEMORY_DB', value: '/elsewhere/memory.db', unread: ['settings.local.json'] });
     write(path.join(claudeDir, 'settings.json'), { env: {} });
     write(path.join(path.dirname(accountFile), 'settings.json'), { env: { ALFRED_CODE_MEMORY_DB: '/account/memory.db' } });
-    assert.strictEqual(memory.recordedPath(at).path, '/account/memory.db');
+    assert.strictEqual(memory.recordedPath(at).path, path.normalize('/account/memory.db'));
     fs.rmSync(path.join(path.dirname(accountFile), 'settings.json'));
     assert.strictEqual(memory.recordedPath(at).path, projectDb, 'with no key anywhere the local registration still answers');
     // No registration either: nothing answers, and the unread file is named.
@@ -312,13 +312,13 @@ test('movedProjectRoot: another folder\'s project database - the data-root shape
 {
     const root = path.join(TMP, 'moved-here');
     fs.mkdirSync(root, { recursive: true });
-    assert.strictEqual(memory.movedProjectRoot('/old/place/.alfred/.alfred-memory/memory.db', { projectRoot: root, root: '.alfred' }), '/old/place');
-    assert.strictEqual(memory.movedProjectRoot('/old/place/data/x/.alfred-memory/memory.db', { projectRoot: root, root: 'data/x' }), '/old/place');
+    assert.strictEqual(memory.movedProjectRoot('/old/place/.alfred/.alfred-memory/memory.db', { projectRoot: root, root: '.alfred' }), path.normalize('/old/place'));
+    assert.strictEqual(memory.movedProjectRoot('/old/place/data/x/.alfred-memory/memory.db', { projectRoot: root, root: 'data/x' }), path.normalize('/old/place'));
     // The 2.0.0 shape is also a 2.0.0 GLOBAL database under another home (a folder copied between machines): it counts
     // only where this folder holds a project-level memory folder of its own, which a moved project brings along.
     assert.strictEqual(memory.movedProjectRoot('/old/place/.memory-mcp/memory.db', { projectRoot: root, root: '.alfred' }), '', 'no memory folder came with this one');
     fs.mkdirSync(path.join(root, '.memory-mcp'), { recursive: true });
-    assert.strictEqual(memory.movedProjectRoot('/old/place/.memory-mcp/memory.db', { projectRoot: root, root: '.alfred' }), '/old/place');
+    assert.strictEqual(memory.movedProjectRoot('/old/place/.memory-mcp/memory.db', { projectRoot: root, root: '.alfred' }), path.normalize('/old/place'));
     assert.strictEqual(memory.movedProjectRoot(path.join(root, '.alfred', '.alfred-memory', 'memory.db'), { projectRoot: root, root: '.alfred' }), '', 'this project\'s own');
     assert.strictEqual(memory.movedProjectRoot('/elsewhere/team/shared.db', { projectRoot: root, root: '.alfred' }), '');
     assert.strictEqual(memory.movedProjectRoot('/home/u/.alfred-memory/memory_default.db', { projectRoot: root, root: '.alfred' }), '');
