@@ -135,7 +135,7 @@ test('corpus-replay: a transcript-reading guard is actually given its transcript
   fs.writeFileSync(path.join(dir, 'session.jsonl'), [
     { type: 'assistant', cwd: dir, message: { id: 'm0', content: [{ type: 'text', text: 'first turn' }], usage: floor } },
     { type: 'assistant', cwd: dir, message: { id: 'm1', content: [{ type: 'text', text: 'x'.repeat(300) }], usage: big } },
-    toolRow('Skill', { skill: 'alfred-task-solve' }, dir),
+    toolRow('Skill', { skill: 'task-solve' }, dir),
   ].map((r) => JSON.stringify(r)).join('\n') + '\n');
   const { out } = run(dir, '--hook', 'guard-fresh-session-start.js::PreToolUse');
   const row = rowFor(out, 'guard-fresh-session-start.js::PreToolUse:Skill');
@@ -236,11 +236,11 @@ test('corpus-replay: a typed orchestration command is replayed on the UserPrompt
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-upe-'));
   const typedRow = (text) => ({ type: 'user', cwd: dir, message: { role: 'user', content: text } });
   fs.writeFileSync(path.join(dir, 'session.jsonl'), [
-    typedRow('<command-name>/alfred-loop-quality</command-name>'), typedRow('<command-name>/help</command-name>'),
+    typedRow('<command-name>/loop-quality</command-name>'), typedRow('<command-name>/help</command-name>'),
     typedRow('<command-name>/alfred-code:setup</command-name>'), typedRow('fix the cart'),
   ].map((r) => JSON.stringify(r)).join('\n') + '\n');
   const jobs = extract([path.join(dir, 'session.jsonl')], { stops: 10 }).jobs.filter((j) => /UserPromptExpansion/.test(j.route));
-  assert.deepStrictEqual(jobs.map((j) => j.payload.command_name).sort(), ['alfred-code:setup', 'alfred-loop-quality'], 'the matcher keeps /help out');
+  assert.deepStrictEqual(jobs.map((j) => j.payload.command_name).sort(), ['alfred-code:setup', 'loop-quality'], 'the matcher keeps /help out');
   for (const j of jobs) {
     assert.strictEqual(j.payload.hook_event_name, 'UserPromptExpansion');
     assert.strictEqual(j.payload.prompt, `/${j.payload.command_name}`);

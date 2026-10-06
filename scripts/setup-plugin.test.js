@@ -145,7 +145,7 @@ test('init: the bootstrap order - read, plan, one machine ask, memory, captures 
     assert.match(flat(init), /follow it inline, start to finish - never a Skill call/);
     // The five captures, in the brief's order, are the SCRIPT's table - the body cites the script.
     const { CAPTURES } = require('./init-plan.js');
-    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), ['alfred-capture-related-projects', 'alfred-capture-architecture', 'alfred-capture-code-style', 'alfred-capture-project-capabilities', 'alfred-capture-agent-capabilities']);
+    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), ['capture-related-projects', 'capture-architecture', 'capture-code-style', 'capture-project-capabilities', 'capture-agent-capabilities']);
     assert.deepStrictEqual(CAPTURES.map((c) => c.seat), ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer', null, null]);
     assert.ok(!/sentry/i.test(init), 'no sentry step (R28)');
     assert.ok(!/allowed-tools/.test(init.split('---')[1]), 'no command carries allowed-tools');
@@ -269,7 +269,7 @@ test('the always block seeds the cross-cutting agents and baseline rules', () =>
     // the entry-point orchestrator installs everywhere - previously only the four
     // repair-rule stacks pulled it, so a mobile/data/devops-only install shipped without
     // the skill that drives its own trio.
-    assert.ok((recs.always.skills || []).includes('alfred-task-solve-cross'), 'always seeds the orchestrator');
+    assert.ok((recs.always.skills || []).includes('task-solve-cross'), 'always seeds the orchestrator');
 });
 
 // A capture skill fans out its own read-only seat, and the graph cannot express that edge
@@ -279,12 +279,12 @@ test('the always block seeds the cross-cutting agents and baseline rules', () =>
 test('every always-seeded capture skill seeds the seat it fans out', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
     const PAIRS = {
-        'alfred-capture-architecture': 'architecture-analyzer',
-        'alfred-capture-architecture-quality': 'architecture-analyzer',
-        'alfred-capture-code-quality': 'code-quality-analyzer',
-        'alfred-capture-code-style': 'code-style-analyzer',
-        'alfred-capture-test-coverage': 'test-coverage-analyzer',
-        'alfred-capture-related-projects': 'related-project-analyzer',
+        'capture-architecture': 'architecture-analyzer',
+        'capture-architecture-quality': 'architecture-analyzer',
+        'capture-code-quality': 'code-quality-analyzer',
+        'capture-code-style': 'code-style-analyzer',
+        'capture-test-coverage': 'test-coverage-analyzer',
+        'capture-related-projects': 'related-project-analyzer',
     };
     for (const [skill, seat] of Object.entries(PAIRS))
     {
@@ -302,13 +302,13 @@ test('every always-seeded capture skill seeds the seat it fans out', () => {
 // missing) instead of `always`, which would install it for everyone and have validate re-add it.
 test('the related-context capture is optional, never an always-baseline seed', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
-    assert.ok(!(recs.always.skills || []).includes('alfred-capture-related-projects'), 'always must not seed the skill');
+    assert.ok(!(recs.always.skills || []).includes('capture-related-projects'), 'always must not seed the skill');
     assert.ok(!(recs.always.agents || []).includes('related-project-analyzer'), 'always must not seed the seat');
-    assert.ok((recs.general.skills || []).includes('alfred-capture-related-projects'), 'general carries the skill');
+    assert.ok((recs.general.skills || []).includes('capture-related-projects'), 'general carries the skill');
     assert.ok((recs.general.agents || []).includes('related-project-analyzer'), 'general carries the seat');
     for (const sel of Object.values(recs.stacks))
     {
-        assert.ok(!(sel.skills || []).includes('alfred-capture-related-projects'), 'no stack seeds the skill');
+        assert.ok(!(sel.skills || []).includes('capture-related-projects'), 'no stack seeds the skill');
         assert.ok(!(sel.agents || []).includes('related-project-analyzer'), 'no stack seeds the seat');
     }
 });

@@ -1,5 +1,5 @@
 'use strict';
-// alfred-capture-project-capabilities - the project's run book for a manual check: how to build, start,
+// capture-project-capabilities - the project's run book for a manual check: how to build, start,
 // reach and log in to the app, the flows to exercise, the edge cases and the debug entry points. Pinned
 // here: the doc's sections, the no-secret rule (the doc names WHERE a credential lives, never a value),
 // the generated pointer rule's template, the seats that read the run book before running the app, and
@@ -12,7 +12,7 @@ const { repo } = require('./docs-fixture.js');
 const { lintAskTemplates } = require('./lint-skills.js');
 
 const ROOT = path.join(__dirname, '..');
-const SKILL = 'alfred-capture-project-capabilities';
+const SKILL = 'capture-project-capabilities';
 const DIR = path.join(ROOT, 'stack', 'skills', SKILL);
 const read = (rel) => fs.readFileSync(path.join(DIR, rel), 'utf8');
 const squash = (s) => s.replace(/\s+/g, ' ');
@@ -33,7 +33,7 @@ const VALUE_RE = /(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z
 test('deliberate-only: the user types it, and the fresh-session guard lists it as an orchestration run', () =>
 {
     const front = body().split('---')[1];
-    assert.match(front, /^name: alfred-capture-project-capabilities$/m);
+    assert.match(front, /^name: capture-project-capabilities$/m);
     assert.match(front, /^disable-model-invocation: true$/m);
     const hook = fs.readFileSync(path.join(ROOT, 'stack', 'hooks', 'guard-fresh-session-start.js'), 'utf8');
     const src = /^const ORCHESTRATION = \/(.*)\/;$/m.exec(hook)[1];
@@ -151,7 +151,7 @@ test('the generated rule: a pathless pointer to the run book, stamped with the l
 test('the seats that run the app read the run book first', () =>
 {
     const agents = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).map((f) => f.replace(/\.md$/, ''));
-    const seats = [...agents.filter((a) => a.endsWith('-verifier')), 'alfred-issue-diagnoser-runtime', 'evidence-gatherer', 'integration-reviewer'];
+    const seats = [...agents.filter((a) => a.endsWith('-verifier')), 'issue-diagnoser-runtime', 'evidence-gatherer', 'integration-reviewer'];
     assert.strictEqual(seats.length, 13);
     // 2.1.5 M60: the seat line leaves 'build' to the generated rule - the resolvers and implementers build
     // too and carry no seat line, so a seat trigger naming it reached only some of the seats that build.

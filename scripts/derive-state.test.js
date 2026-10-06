@@ -516,7 +516,7 @@ const { stampCarried, classifyNew } = require('./derive-state.js');
 
 test('stampCarried: a seat MOVED out of an entry still enabled here into the core comes back through the core', () =>
 {
-    const stamp = { skills: ['alfred-task-solve-cross@claude-stack-old'], agents: ['security-auditor@claude-stack-old'] }; // legacy-name
+    const stamp = { skills: ['task-solve-cross@claude-stack-old'], agents: ['security-auditor@claude-stack-old'] }; // legacy-name
     assert.deepStrictEqual(stampCarried({ stamp, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), ['agent security-auditor']); // legacy-name
 });
 
@@ -524,20 +524,20 @@ test('stampCarried: a seat MOVED out of an entry still enabled here into the cor
 // still enabled - a pick the release moved, carried as one.
 test('stampCarried (2.1.0): a skill the core carried, library now, is carried as a pick', () =>
 {
-    const stamp = { skills: ['alfred-task-solve-cross@alfred-code', 'csharp'], agents: ['security-auditor@alfred-code', 'aspnet-implementer'] };
-    assert.deepStrictEqual(stampCarried({ stamp, enabled: ['alfred-code'], routes: ALL_ROUTES }), ['skill alfred-task-solve-cross']);
+    const stamp = { skills: ['task-solve-cross@alfred-code', 'csharp'], agents: ['security-auditor@alfred-code', 'aspnet-implementer'] };
+    assert.deepStrictEqual(stampCarried({ stamp, enabled: ['alfred-code'], routes: ALL_ROUTES }), ['skill task-solve-cross']);
     assert.deepStrictEqual(stampCarried({ stamp, enabled: [], routes: ALL_ROUTES }), [], 'no core enabled - nothing to carry it across');
 });
 
 test('stampCarried: no move, an uninstalled or parked old home, a parked core, a denied seat, a library item - nothing', () =>
 {
-    const moved = { skills: ['alfred-task-solve-cross@claude-stack-old'], agents: ['security-auditor@claude-stack-old'] }; // legacy-name
+    const moved = { skills: ['task-solve-cross@claude-stack-old'], agents: ['security-auditor@claude-stack-old'] }; // legacy-name
     assert.deepStrictEqual(stampCarried({ stamp: { agents: ['security-auditor@alfred-code'] }, enabled: ['alfred-code'], routes: ALL_ROUTES }), [], 'the same home - readInstalled already has it');
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: [], routes: ALL_ROUTES }), [], 'the user uninstalled the old home');
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: [], parked: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'the user parked the old home'); // legacy-name
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], parked: ['alfred-code'], routes: ALL_ROUTES }), [], 'the new home is parked'); // legacy-name
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], deny: ['Agent(claude-stack-x:security-auditor)'], routes: ALL_ROUTES }), [], 'a seat denied under any spelling'); // legacy-name
-    assert.deepStrictEqual(stampCarried({ stamp: { skills: ['angular-material', 'alfred-task-solve-cross'] }, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'a library copy, and a plain name with no stamped home'); // legacy-name
+    assert.deepStrictEqual(stampCarried({ stamp: { skills: ['angular-material', 'task-solve-cross'] }, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'a library copy, and a plain name with no stamped home'); // legacy-name
     assert.deepStrictEqual(stampCarried({ stamp: { skills: ['dotnet-web-backend@claude-stack-old'] }, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'a library item homed in an entry that is no retired one'); // legacy-name
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], routes: { skills: false } }), []); // legacy-name
 });
@@ -784,10 +784,10 @@ test('readInstalled: the core under its 1.x name, beside the 1.x hooks id, reads
 
 test('stampCarried: a 1.x stamp homed `@claude-stack` is homed in the core - no move, whichever name the listing uses', () => // legacy-name
 {
-    const stamp = { skills: [`alfred-task-solve-cross@${OLD}`], agents: [`security-auditor@${OLD}`] };
+    const stamp = { skills: [`task-solve-cross@${OLD}`], agents: [`security-auditor@${OLD}`] };
     // The seat stays in the same entry; the skill moved out of it into the project (2.1.0) either way.
-    assert.deepStrictEqual(stampCarried({ stamp, enabled: [OLD], routes: ALL_ROUTES }), ['skill alfred-task-solve-cross'], 'the old core name is the same entry, not a moved-from one');
-    assert.deepStrictEqual(stampCarried({ stamp, enabled: ['alfred-code'], routes: ALL_ROUTES }), ['skill alfred-task-solve-cross']);
+    assert.deepStrictEqual(stampCarried({ stamp, enabled: [OLD], routes: ALL_ROUTES }), ['skill task-solve-cross'], 'the old core name is the same entry, not a moved-from one');
+    assert.deepStrictEqual(stampCarried({ stamp, enabled: ['alfred-code'], routes: ALL_ROUTES }), ['skill task-solve-cross']);
 });
 
 test('floor: the 1.x core entry counts as the core, and its 1.x seat deny still hides the seat (S6)', () =>
@@ -871,12 +871,12 @@ test('readInstalled (2.1.0): a last run that copied the seats reads no item off 
 test('classifyNew (2.1.0): an always skill or seat arrives, a stack seat is offered, a denied seat stays off', () =>
 {
     const added = [
-        { category: 'skill', name: 'alfred-habits-done-gate' }, { category: 'skill', name: 'dotnet-web-backend' },
+        { category: 'skill', name: 'habits-done-gate' }, { category: 'skill', name: 'dotnet-web-backend' },
         { category: 'agent', name: 'aspnet-implementer' }, { category: 'agent', name: 'evidence-gatherer' }, { category: 'agent', name: 'code-style-analyzer' },
     ];
     const rows = classifyNew({ added, plugins: ['alfred-code'], deny: ['Agent(alfred-code:code-style-analyzer)'], routes: ALL_ROUTES, always: ALWAYS, sourceDir: ROOT });
     const by = Object.fromEntries(rows.map((r) => [`${r.category} ${r.name}`, r]));
-    assert.deepStrictEqual([by['skill alfred-habits-done-gate'].verdict, by['skill alfred-habits-done-gate'].entry], ['arrives', null], 'a locked skill is copied into every install');
+    assert.deepStrictEqual([by['skill habits-done-gate'].verdict, by['skill habits-done-gate'].entry], ['arrives', null], 'a locked skill is copied into every install');
     assert.deepStrictEqual([by['skill dotnet-web-backend'].verdict, by['skill dotnet-web-backend'].entry], ['offer', null]);
     assert.deepStrictEqual([by['agent aspnet-implementer'].verdict, by['agent aspnet-implementer'].entry, by['agent aspnet-implementer'].recommend], ['offer', 'alfred-code', 'leave'],
         'the core carries it, but a seat nobody picked is denied - taking it copies its skills');
@@ -900,12 +900,12 @@ test('writable (2.1.0): the seat off-state is written whenever the core loads th
 test('floor (2.1.0): the project\'s skill copies count - a manual-only, overridden or foreign one does not; the core counts its seats', () =>
 {
     const dir = fs.mkdtempSync(path.join(TMP, 'floor-skills-'));
-    for (const s of ['alfred-habits-done-gate', 'alfred-task-solve', 'csharp', 'markdown-style'])
+    for (const s of ['habits-done-gate', 'task-solve', 'csharp', 'markdown-style'])
         fs.cpSync(path.join(ROOT, 'stack', 'skills', s), path.join(dir, s), { recursive: true });
     fs.mkdirSync(path.join(dir, 'my-own-skill'));
     fs.writeFileSync(path.join(dir, 'my-own-skill', 'SKILL.md'), '---\nname: my-own-skill\ndescription: mine\n---\n');
     const got = floor({ plugins: ['alfred-code'], skillsDir: dir, overrides: { csharp: 'off', 'markdown-style': 'name-only' } });
-    assert.deepStrictEqual([got.skills.count, got.skills.chars], [1, descriptionChars('skill', 'alfred-habits-done-gate')], 'alfred-task-solve is manual-only');
+    assert.deepStrictEqual([got.skills.count, got.skills.chars], [1, descriptionChars('skill', 'habits-done-gate')], 'task-solve is manual-only');
     assert.strictEqual(got.agents.count, 44);
     const settingsFile = path.join(TMP, 'floor-overrides.json');
     fs.writeFileSync(settingsFile, JSON.stringify({ skillOverrides: { csharp: 'off', 'markdown-style': 'name-only' }, permissions: { deny: ['Agent(alfred-code:aspnet-implementer)'] } }));

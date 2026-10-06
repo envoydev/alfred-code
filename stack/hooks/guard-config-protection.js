@@ -210,7 +210,7 @@ global.BLOCK_DETAIL = { file: rel, why: hit.why };
 const receiptRel = path.relative(ROOT, receipt).split(path.sep).join('/');
 process.stderr.write(
   `Blocked: ${rel} already exists and ${hit.why}. Weakening a check to get a green result is not a fix -\n` +
-  `go back to the code the check flagged (alfred-habits-done-gate, step 4: 'Fix the cause - never suppress\n` +
+  `go back to the code the check flagged (habits-done-gate, step 4: 'Fix the cause - never suppress\n` +
   `a warning, weaken a test, or stub code to go green').\n\n` +
   `If the TASK is this config (the user asked for the rule change), do not decide for them: end this turn\n` +
   `with ONE AskUserQuestion carrying, in this order -\n` +

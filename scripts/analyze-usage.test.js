@@ -477,9 +477,9 @@ test('report joins: a folded companion, an unattributed denial, the biggest resu
     const at = (i) => `2026-07-15T07:${String(i).padStart(2, '0')}:00.000Z`;
     let body = '';
     // two Skill calls in one turn: the second reads as an in-protocol companion load
-    body += line({ type: 'assistant', timestamp: at(1), message: { id: 'm1', model: 'claude-opus-5', usage: usage(1, 0, 900, 20), content: [{ type: 'tool_use', id: 's1', name: 'Skill', input: { skill: 'alfred-task-solve' } }] } });
-    body += line({ type: 'assistant', timestamp: at(2), attributionSkill: 'alfred-task-solve', message: { id: 'm2', model: 'claude-opus-5', usage: usage(1, 0, 1000, 20), content: [{ type: 'tool_use', id: 's2', name: 'Skill', input: { skill: 'alfred-habits-create-ticket' } }] } });
-    body += line({ type: 'assistant', timestamp: at(3), attributionSkill: 'alfred-task-solve', message: { id: 'm3', model: 'claude-opus-5', usage: usage(1, 0, 1100, 20), content: [] } });
+    body += line({ type: 'assistant', timestamp: at(1), message: { id: 'm1', model: 'claude-opus-5', usage: usage(1, 0, 900, 20), content: [{ type: 'tool_use', id: 's1', name: 'Skill', input: { skill: 'task-solve' } }] } });
+    body += line({ type: 'assistant', timestamp: at(2), attributionSkill: 'task-solve', message: { id: 'm2', model: 'claude-opus-5', usage: usage(1, 0, 1000, 20), content: [{ type: 'tool_use', id: 's2', name: 'Skill', input: { skill: 'habits-create-ticket' } }] } });
+    body += line({ type: 'assistant', timestamp: at(3), attributionSkill: 'task-solve', message: { id: 'm3', model: 'claude-opus-5', usage: usage(1, 0, 1100, 20), content: [] } });
     // a big Bash result with its own description, and a failing one 30 minutes earlier in the day
     body += line({ type: 'assistant', timestamp: at(4), message: { id: 'm4', model: 'claude-opus-5', usage: usage(1, 0, 1200, 20), content: [{ type: 'tool_use', id: 'b1', name: 'Bash', input: { command: 'cat meta/migrations.json', description: 'read the migrations catalog' } }] } });
     body += line({ type: 'user', timestamp: at(5), message: { content: [{ type: 'tool_result', tool_use_id: 'b1', content: 'x'.repeat(5180) }] } });
@@ -495,9 +495,9 @@ test('report joins: a folded companion, an unattributed denial, the biggest resu
 
     const { main, hookBlocks } = JSON.parse(execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--json'], { encoding: 'utf8' }));
     // the companion's cost is charged to its parent, and the terminal row says so instead of 0
-    assert.strictEqual(main.companionOf['alfred-habits-create-ticket'], 'alfred-task-solve', 'the second Skill call in one turn is a companion load');
+    assert.strictEqual(main.companionOf['habits-create-ticket'], 'task-solve', 'the second Skill call in one turn is a companion load');
     const text = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
-    assert.match(text, /alfred-habits-create-ticket\s+1\s+~\d+\s+folded -> alfred-task-solve/, 'the companion row names where its cost went, never a bare 0');
+    assert.match(text, /habits-create-ticket\s+1\s+~\d+\s+folded -> task-solve/, 'the companion row names where its cost went, never a bare 0');
     // the unattributed denial is joined to the ledger row 300ms away
     assert.match(text, /joined by ledger timestamp \(within 300ms\): guard-stop-contract\.js×1/, 'the phantom guard becomes the one that actually fired');
     // the biggest results carry the call's own label
@@ -789,7 +789,7 @@ test('hook-blocks: a root-cause probe is resolved against the transcript after t
   const file = fixture(dir, [
     tool('t1', 'Bash', { command: 'npm test' }), result('t1', red),
     tool('t2', 'Edit', { file_path: 'src/a.js', old_string: 'a', new_string: 'b' }), result('t2'),
-    tool('t3', 'Skill', { skill: 'alfred-habits-root-cause' }), result('t3'),
+    tool('t3', 'Skill', { skill: 'habits-root-cause' }), result('t3'),
     tool('t4', 'Bash', { command: 'dotnet build' }), result('t4', red),
     tool('t5', 'Edit', { file_path: 'src/b.cs', old_string: 'a', new_string: 'b' }), result('t5'),
   ]);
@@ -804,7 +804,7 @@ test('hook-blocks: a root-cause probe is resolved against the transcript after t
   // a seat whose definition preloads the skill
   agent('a3', [tool('v1', 'Bash', { command: 'dotnet test' }), result('v1', red), tool('v2', 'Edit', { file_path: 'src/c.cs', old_string: 'a', new_string: 'b' }), result('v2')]);
   // the skill loaded before the fix
-  agent('a4', [tool('x1', 'Bash', { command: 'npm test' }), result('x1', red), tool('x2', 'Skill', { skill: 'alfred-code:alfred-habits-root-cause' }), result('x2'),
+  agent('a4', [tool('x1', 'Bash', { command: 'npm test' }), result('x1', red), tool('x2', 'Skill', { skill: 'alfred-code:habits-root-cause' }), result('x2'),
     tool('x3', 'Edit', { file_path: 'src/d.js', old_string: 'a', new_string: 'b' }), result('x3')]);
   const blocks = path.join(dir, 'hook-blocks');
   fs.mkdirSync(blocks);
@@ -846,7 +846,7 @@ test('hook-blocks: a fix is judged against the session\'s own cwd - inside it co
   const file = fixture(dir, [
     at(tool('a1', 'Bash', { command: 'npm test' })), at(result('a1', red)),
     at(tool('a2', 'Write', { file_path: path.join(os.homedir(), 'elsewhere', 'probe.js'), content: '1' })), at(result('a2')),
-    at(tool('a3', 'Skill', { skill: 'alfred-habits-root-cause' })), at(result('a3')),
+    at(tool('a3', 'Skill', { skill: 'habits-root-cause' })), at(result('a3')),
     at(tool('a4', 'Edit', { file_path: path.join(proj, 'src', 'a.js'), old_string: 'a', new_string: 'b' })), at(result('a4')),
   ]);
   const sub = path.join(dir, 'session', 'subagents');
@@ -864,7 +864,7 @@ test('hook-blocks: a fix is judged against the session\'s own cwd - inside it co
 // Review I7: a done-gate skill loaded in an EARLIER turn is in context, not a trigger that failed.
 test('hook-blocks: an unrun claim whose session loaded the done-gate skill earlier is counted in context, not missed', () => {
   const dir = tmp();
-  const file = fixture(dir, [tool('k1', 'Skill', { skill: 'alfred-code:alfred-habits-done-gate' }, '2026-07-15T06:00:00.000Z'), result('k1')]);
+  const file = fixture(dir, [tool('k1', 'Skill', { skill: 'alfred-code:habits-done-gate' }, '2026-07-15T06:00:00.000Z'), result('k1')]);
   const blocks = path.join(dir, 'hook-blocks');
   fs.mkdirSync(blocks);
   fs.writeFileSync(path.join(blocks, 'session.jsonl'), doneRow({}) + line({ ...JSON.parse(doneRow({})), ts: '2026-07-15T05:00:00.000Z' }));
@@ -885,7 +885,7 @@ test('hook-blocks: a shell write outside the cwd through a cd or a variable, a d
     at(tool('c2', 'Bash', { command: "cd /tmp/x && cat > p.js <<'EOF'\n1\nEOF" })), at(result('c2')),
     at(tool('c3', 'Bash', { command: 'echo 1 > "$TMPDIR/p.js"' })), at(result('c3')),
     at(tool('c4', 'Edit', { file_path: path.join(proj, 'src', 'a.js'), old_string: 'a', new_string: 'b' })), at(result('c4', { content: 'Edit operation blocked by hook', is_error: true })),
-    at(tool('c5', 'Skill', { skill: 'alfred-habits-root-cause' })), at(result('c5', { content: 'Unknown skill', is_error: true })),
+    at(tool('c5', 'Skill', { skill: 'habits-root-cause' })), at(result('c5', { content: 'Unknown skill', is_error: true })),
   ]);
   const blocks = path.join(dir, 'hook-blocks');
   fs.mkdirSync(blocks);
@@ -2178,12 +2178,29 @@ test('a 1.x session: its claude-stack scoped names join the bare inventory, and 
 // spelling. Both count as a rule attach; the old spelling comes from the manifest's `renamed` map.
 test('style rule attaches: a rule generated under the capture\'s old name still counts', () => {
   const renamed = require('../meta/stack-manifest.json').renamed.skills;
-  const old = Object.keys(renamed).find((k) => renamed[k] === 'alfred-capture-code-style');
+  const old = Object.keys(renamed).find((k) => renamed[k] === 'capture-code-style');
   assert.ok(old, 'the map names the capture\'s old spelling');
   const dir = tmp();
   const said = (ts, name) => ({ type: 'user', timestamp: ts, message: { content: `# Project code style (generated - the ${name} skill owns this rule)` } });
-  const file = fixture(dir, [said('2026-07-15T07:00:00.000Z', old), said('2026-07-15T07:00:01.000Z', 'alfred-capture-code-style'),
+  const file = fixture(dir, [said('2026-07-15T07:00:00.000Z', old), said('2026-07-15T07:00:01.000Z', 'capture-code-style'),
     { type: 'assistant', timestamp: '2026-07-15T07:00:02.000Z', message: { id: 'm1', model: 'claude-sonnet-5', usage: usage(1, 0, 1, 1), content: [{ type: 'text', text: 'ok' }] } }]);
   try { assert.strictEqual(run([file]).main.styleRuleAttaches, 2); }
   finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('houseBare: a session recorded before a rename joins the item under its new name, scoped or bare', () => {
+  const { houseBare } = require('./analyze-usage.js');
+  // The old names come from the manifest's rename map, so this cannot drift from it.
+  const { renamed } = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
+  const oldOf = (map, now, re) => Object.keys(map).find((o) => map[o] === now && re.test(o));
+  const prefixed = oldOf(renamed.skills, 'task-solve', /^alfred-/);
+  const older = oldOf(renamed.skills, 'task-solve', /^project-/);
+  const seat = oldOf(renamed.agents, 'issue-diagnoser-ci', /^alfred-/);
+  assert.ok(prefixed && older && seat, 'the map renames task-solve twice and the ci seat once');
+  assert.strictEqual(houseBare(`alfred-code:${prefixed}`), 'task-solve', 'a 2.2.0 prefix drop, plugin-scoped');
+  assert.strictEqual(houseBare(prefixed), 'task-solve', 'and bare');
+  assert.strictEqual(houseBare(older), 'task-solve', 'an older name lands on the current one in one step');
+  assert.strictEqual(houseBare(`alfred-code:${seat}`), 'issue-diagnoser-ci', 'a seat too');
+  assert.strictEqual(houseBare('alfred-code:task-solve'), 'task-solve');
+  assert.strictEqual(houseBare('superpowers:brainstorming'), 'superpowers:brainstorming', 'a foreign namespace stays whole');
 });

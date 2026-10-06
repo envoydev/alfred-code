@@ -16,16 +16,16 @@
     },
     "seat-gates-are-fast": {
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
+        "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
         "marker": "never a minutes-long verification (an integration/replay suite, an E2E pass)"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-solve/SKILL.md",
+          "file": "stack/skills/task-solve/SKILL.md",
           "marker": "never integration replays or another minutes-long run; the slow full run happens once, in this session"
         },
         {
-          "file": "stack/skills/alfred-task-implement/SKILL.md",
+          "file": "stack/skills/task-implement/SKILL.md",
           "marker": "never a minutes-long run like integration replays or an E2E pass; the full suite stays with this session's finish step"
         }
       ]
@@ -66,7 +66,7 @@
     "memory-handoff-mechanism": {
       "_note": "The navigation server's per-project memory handoff: name-addressed, local, never the shared memory MCP. Owner reference defines it; every seat restates it inline.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/capability-reuse.md",
+        "file": "stack/skills/task-solve-cross/references/capability-reuse.md",
         "marker": "Navigation-server memory is local to this project and addressed by name, not searched"
       },
       "sites": [
@@ -207,11 +207,11 @@
           "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
+          "file": "stack/agents/issue-diagnoser-runtime.md",
           "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-ci.md",
+          "file": "stack/agents/issue-diagnoser-ci.md",
           "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
@@ -227,7 +227,7 @@
     "orient-docs-durable-truth": {
       "_note": "Committed docs are the durable truth, the navigation-server note only the transient handoff.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/capability-reuse.md",
+        "file": "stack/skills/task-solve-cross/references/capability-reuse.md",
         "marker": "the durable map lives in the docs, the transient handoff in the note"
       },
       "sites": [
@@ -312,11 +312,11 @@
           "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
+          "file": "stack/agents/issue-diagnoser-runtime.md",
           "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-ci.md",
+          "file": "stack/agents/issue-diagnoser-ci.md",
           "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
@@ -332,7 +332,7 @@
     "working-seat-status-vocabulary": {
       "_note": "The working-seat status vocabulary (DONE .. BLOCKED_CONTRACT_CHANGE).",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/agent-output-protocol.md",
+        "file": "stack/skills/task-solve-cross/references/agent-output-protocol.md",
         "marker": "status: DONE | DONE_WITH_CONCERNS | NEEDS_CONTEXT | BLOCKED | BLOCKED_CONTRACT_CHANGE"
       },
       "sites": [
@@ -401,7 +401,7 @@
     "verifier-output-contract": {
       "_note": "The verifier verdict vocabulary and output contract - the literal `status:` and `contract_version:` lines, not a heading paraphrase. Two measurements set the exact wording. The literal-line demand: a resumed pass closed 'Verdict: commit-ready' off-contract, and another opened '## Verdict:' over the status key. The rubric-audit carve-out: the footer said EVERY report and 4 of 7 slice-audit seats duly appended the footer their own brief forbade, so the exception is stated in the same sentence.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/agent-output-protocol.md",
+        "file": "stack/skills/task-solve-cross/references/agent-output-protocol.md",
         "marker": "status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH"
       },
       "sites": [
@@ -450,16 +450,16 @@
     "diagnosis-status-vocabulary": {
       "_note": "The diagnosis status vocabularies - issue and CI variants sync with the investigation reference.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/issue-investigation.md",
+        "file": "stack/skills/task-solve-cross/references/issue-investigation.md",
         "marker": "status: DIAGNOSED | NOT_REPRODUCED | NEEDS_MORE_EVIDENCE | LIKELY_FLAKE | INCONCLUSIVE"
       },
       "sites": [
         {
-          "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
+          "file": "stack/agents/issue-diagnoser-runtime.md",
           "marker": "DIAGNOSED, NOT_REPRODUCED, NEEDS_MORE_EVIDENCE, LIKELY_FLAKE, or INCONCLUSIVE"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-ci.md",
+          "file": "stack/agents/issue-diagnoser-ci.md",
           "marker": "DIAGNOSED, CI_PASSING, LIKELY_FLAKE, NEEDS_MORE_EVIDENCE, or INCONCLUSIVE"
         }
       ]
@@ -467,7 +467,7 @@
     "lean-seat-disciplines": {
       "_note": "The per-seat-class lean discipline briefs (question the need / build lean / over-build review).",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/token-reduction.md",
+        "file": "stack/skills/task-solve-cross/references/token-reduction.md",
         "marker": "the seats that write code build lean, the seats that plan question the need, the seats that judge code run the over-build review"
       },
       "sites": [
@@ -612,7 +612,7 @@
     "callers-first-bug-fix": {
       "_note": "Before changing a function to fix a bug, list its callers and fix once where they all route through. The in-chat implementer and the four repair resolvers each carry it, because each is the seat that makes the fix.",
       "owner": {
-        "file": "stack/skills/alfred-task-implement/SKILL.md",
+        "file": "stack/skills/task-implement/SKILL.md",
         "marker": "fix once where they all route through - a guard on only the reported path leaves every sibling caller broken, and one guard in the shared function is also the smaller diff"
       },
       "sites": [
@@ -678,7 +678,7 @@
           "marker": "Never flag as over-build: input validation at a trust boundary, error handling that prevents data loss, a security measure, accessibility basics, anything the plan or the user explicitly asked for, or the one smallest test of non-trivial logic"
         },
         {
-          "file": "stack/skills/alfred-task-verify-code/SKILL.md",
+          "file": "stack/skills/task-verify-code/SKILL.md",
           "marker": "Never flag as over-build: input validation at a trust boundary, error handling that prevents data loss, a security measure, accessibility basics, anything the plan or the user explicitly asked for, or the one smallest test of non-trivial logic"
         }
       ]
@@ -731,12 +731,12 @@
     "known-ceilings-filing": {
       "_note": "The close step that files the ceilings rows through docs.js set - the orchestrator's close-out and the in-chat implementer's finish each carry it, because either can close a build alone.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/close-out.md",
+        "file": "stack/skills/task-solve-cross/references/close-out.md",
         "marker": "then pipe the whole section - `## Known ceilings`, a `<!-- covers: -->` line naming every row's file, the table with the new rows appended - into `docs.js set architecture/ARCHITECTURE.md#known-ceilings --expect <that hash>`"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-implement/SKILL.md",
+          "file": "stack/skills/task-implement/SKILL.md",
           "marker": "then pipe the whole section - `## Known ceilings`, a `<!-- covers: -->` line naming every row's file, the table with the new rows appended - into `docs.js set architecture/ARCHITECTURE.md#known-ceilings --expect <that hash>`"
         }
       ]
@@ -744,7 +744,7 @@
     "implementer-model-routing": {
       "_note": "The per-task implementer_model routing designers emit (haiku mechanical / sonnet floor on risk).",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/model-routing.md",
+        "file": "stack/skills/task-solve-cross/references/model-routing.md",
         "marker": "**`sonnet` FLOOR - never haiku** for any task carrying a risk trigger"
       },
       "sites": [
@@ -793,7 +793,7 @@
     "contract-freeze-protocol": {
       "_note": "The seam-contract freeze + BLOCKED_CONTRACT_CHANGE stop protocol.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/contract-protocol.md",
+        "file": "stack/skills/task-solve-cross/references/contract-protocol.md",
         "marker": "When a seat finds the recorded interface cannot be met, it stops and emits BLOCKED_CONTRACT_CHANGE"
       },
       "sites": [
@@ -907,7 +907,7 @@
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-ci.md",
+          "file": "stack/agents/issue-diagnoser-ci.md",
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {
@@ -951,7 +951,7 @@
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
+          "file": "stack/agents/issue-diagnoser-runtime.md",
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
         },
         {
@@ -1013,19 +1013,19 @@
       ]
     },
     "testing-coverage-bar": {
-      "_note": "The user-owned coverage % bar - each testing hub disclaims the number and points at the alfred-capture-test-coverage capture; verbatim in all three hubs because any may install alone.",
+      "_note": "The user-owned coverage % bar - each testing hub disclaims the number and points at the capture-test-coverage capture; verbatim in all three hubs because any may install alone.",
       "owner": {
         "file": "stack/skills/dotnet-testing/SKILL.md",
-        "marker": "The % bar is the USER's, owned and recorded by the `alfred-capture-test-coverage` capture"
+        "marker": "The % bar is the USER's, owned and recorded by the `capture-test-coverage` capture"
       },
       "sites": [
         {
           "file": "stack/skills/angular-testing/SKILL.md",
-          "marker": "The % bar is the USER's, owned and recorded by the `alfred-capture-test-coverage` capture"
+          "marker": "The % bar is the USER's, owned and recorded by the `capture-test-coverage` capture"
         },
         {
           "file": "stack/skills/ts-js-testing/SKILL.md",
-          "marker": "The % bar is the USER's, owned and recorded by the `alfred-capture-test-coverage` capture"
+          "marker": "The % bar is the USER's, owned and recorded by the `capture-test-coverage` capture"
         }
       ]
     },
@@ -1062,7 +1062,7 @@
     "capture-doc-stamp": {
       "_note": "The capture-doc lifecycle stamp format - the docs-root rule owns reader semantics; each capture skill restates the format it writes.",
       "owner": {
-        "file": "stack/skills/alfred-capture-architecture/SKILL.md",
+        "file": "stack/skills/capture-architecture/SKILL.md",
         "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
       },
       "sites": [
@@ -1071,19 +1071,19 @@
           "marker": "Captured: <branch>@<short-sha>, <date>"
         },
         {
-          "file": "stack/skills/alfred-capture-code-style/SKILL.md",
+          "file": "stack/skills/capture-code-style/SKILL.md",
           "marker": "Captured: <branch>@<short-sha>, <date>"
         },
         {
-          "file": "stack/skills/alfred-capture-related-projects/SKILL.md",
+          "file": "stack/skills/capture-related-projects/SKILL.md",
           "marker": "Captured: <branch>@<short-sha>, <date>"
         },
         {
-          "file": "stack/skills/alfred-capture-test-coverage/references/doc-shape.md",
+          "file": "stack/skills/capture-test-coverage/references/doc-shape.md",
           "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
         },
         {
-          "file": "stack/skills/alfred-capture-project-capabilities/SKILL.md",
+          "file": "stack/skills/capture-project-capabilities/SKILL.md",
           "marker": "Captured: <branch>@<short-sha>, <date>"
         }
       ]
@@ -1361,12 +1361,12 @@
     "flow-doc-drift-awareness": {
       "_note": "The close-out doc-drift awareness rule (suggest the right capture, one line, user decides, never auto-run) in both solve flows; trigger lists are flow-specific by design.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve/SKILL.md",
+        "file": "stack/skills/task-solve/SKILL.md",
         "marker": "Doc-drift awareness"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "file": "stack/skills/task-solve-cross/SKILL.md",
           "marker": "doc-drift awareness"
         }
       ]
@@ -1400,24 +1400,24 @@
     "domain-trio-protocol-vendored": {
       "_note": "The domain-trio vertical's execution protocol - vendored VERBATIM (whole file) into every skill that dispatches the trio directly, so each loop and the greenfield build reads its own copy. An edit to the owner file is a copy of the whole file over each site. Its deep-dive pointers into the owner's references/ are a sanctioned cross-folder read, like every sibling pointer check 34 resolves (2.1.5 audit M98): the owner is always installed (a locked always skill), and every such pointer names its inline fallback ('where installed', or what to do absent it), so a copy still runs where the owner's folder is missing (a Cursor twin, a trimmed install) - vendoring those references too would put five more files in four more folders.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
+        "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
         "marker": "The main session is the only orchestrator for the whole vertical"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-architecture-quality/references/domain-trio-protocol.md",
           "marker": "The main session is the only orchestrator for the whole vertical"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-test-coverage/references/domain-trio-protocol.md",
           "marker": "The main session is the only orchestrator for the whole vertical"
         },
         {
-          "file": "stack/skills/alfred-task-build-from-scratch/references/domain-trio-protocol.md",
+          "file": "stack/skills/task-build-from-scratch/references/domain-trio-protocol.md",
           "marker": "The main session is the only orchestrator for the whole vertical"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
           "marker": "The main session is the only orchestrator for the whole vertical"
         }
       ]
@@ -1425,20 +1425,20 @@
     "fresh-session-at-boundaries": {
       "_note": "The long-run session-cost guidance: a loop's round/stage boundary is a fresh-session resume point with the reconciled doc as the handoff, because measured session analysis shows carried-forward conversation (not tool output) dominates cost. Restated in each loop.",
       "owner": {
-        "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+        "file": "stack/skills/loop-architecture-quality/SKILL.md",
         "marker": "fresh-session resume point"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
           "marker": "fresh-session resume point"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "fresh-session resume point"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-quality/references/staged-mode.md",
           "marker": "fresh-session resume point"
         }
       ]
@@ -1446,12 +1446,12 @@
     "plan-review-stop": {
       "_note": "The plan-gate + plan-review-stop protocol (verify-plan five passes in-session, present the gated plan and end the turn, build only on the user's word, waivable only by explicit review words recorded as plan_review: waived) - stated in the solve-cross-task body and restated in domain-trio-protocol.md step 1 (whose vendored copies are pinned by domain-trio-protocol-vendored).",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+        "file": "stack/skills/task-solve-cross/SKILL.md",
         "marker": "plan_review: waived"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
+          "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
           "marker": "plan_review: waived"
         }
       ]
@@ -1459,24 +1459,24 @@
     "generated-rule-lifecycle": {
       "_note": "The generated-rule survival invariant: a per-project GENERATED rule is never listed in the installer's catalog (a copy would overwrite the capture) and no install ledger records it, so /alfred-code:update never touches it - library rule copies ARE pruned when dropped or retired, so 'nothing prunes .claude/rules/' is no longer the reason (2.1.5 audit M79). Every generating skill restates it.",
       "owner": {
-        "file": "stack/skills/alfred-capture-architecture/SKILL.md",
+        "file": "stack/skills/capture-architecture/SKILL.md",
         "marker": "the installer's catalog must not list this rule"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-code-style/SKILL.md",
+          "file": "stack/skills/capture-code-style/SKILL.md",
           "marker": "deliberately NOT in the stack's RULES set"
         },
         {
-          "file": "stack/skills/alfred-capture-related-projects/SKILL.md",
+          "file": "stack/skills/capture-related-projects/SKILL.md",
           "marker": "deliberately NOT in the stack installer's catalog"
         },
         {
-          "file": "stack/skills/alfred-capture-agent-capabilities/SKILL.md",
+          "file": "stack/skills/capture-agent-capabilities/SKILL.md",
           "marker": "stays out of the installer's catalog"
         },
         {
-          "file": "stack/skills/alfred-capture-project-capabilities/SKILL.md",
+          "file": "stack/skills/capture-project-capabilities/SKILL.md",
           "marker": "It stays out of the installer's catalog"
         }
       ]
@@ -1484,68 +1484,68 @@
     "mode-ask-at-start": {
       "_note": "The session-or-agents run-start question: when dispatch is available every entry-point orchestration skill and capture asks ONE question up front, holds the answer for the run, inherits inside a composed flow, and skips the ask where INLINE is forced. Canonical in execution-modes.md; each asking skill carries the sentence.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/execution-modes.md",
+        "file": "stack/skills/task-solve-cross/references/execution-modes.md",
         "marker": "The mode is the user's run-start pick, house-wide"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "file": "stack/skills/task-solve-cross/SKILL.md",
           "marker": "the scoping verdict IS the mode ask"
         },
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
           "marker": "ask ONE question before ANALYZE"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
           "marker": "ask ONE question before ANALYZE"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "ask ONE question before ANALYZE"
         },
         {
-          "file": "stack/skills/alfred-task-build-from-scratch/SKILL.md",
+          "file": "stack/skills/task-build-from-scratch/SKILL.md",
           "marker": "ask ONE question before the first slice"
         },
         {
-          "file": "stack/skills/alfred-task-implement/SKILL.md",
+          "file": "stack/skills/task-implement/SKILL.md",
           "marker": "ask ONE question before building"
         },
         {
-          "file": "stack/skills/alfred-task-design/SKILL.md",
+          "file": "stack/skills/task-design/SKILL.md",
           "marker": "ask ONE question before designing"
         },
         {
-          "file": "stack/skills/alfred-task-verify-plan/SKILL.md",
+          "file": "stack/skills/task-verify-plan/SKILL.md",
           "marker": "ask ONE question before auditing"
         },
         {
-          "file": "stack/skills/alfred-capture-architecture/SKILL.md",
+          "file": "stack/skills/capture-architecture/SKILL.md",
           "marker": "ask ONE question before gathering"
         },
         {
-          "file": "stack/skills/alfred-capture-code-style/SKILL.md",
+          "file": "stack/skills/capture-code-style/SKILL.md",
           "marker": "ask ONE question before a first capture's fan-out"
         },
         {
-          "file": "stack/skills/alfred-capture-test-coverage/SKILL.md",
+          "file": "stack/skills/capture-test-coverage/SKILL.md",
           "marker": "ask ONE question before the fan-out"
         },
         {
-          "file": "stack/skills/alfred-capture-related-projects/SKILL.md",
+          "file": "stack/skills/capture-related-projects/SKILL.md",
           "marker": "ask ONE question before the fan-out"
         },
         {
-          "file": "stack/skills/alfred-issue-diagnoser/SKILL.md",
+          "file": "stack/skills/issue-diagnoser/SKILL.md",
           "marker": "ask ONE question before the evidence pass"
         },
         {
-          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-code-quality/SKILL.md",
           "marker": "ask ONE question before GATHER"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-quality/references/staged-mode.md",
           "marker": "ask ONE question before DISCOVERY"
         }
       ]
@@ -1568,55 +1568,55 @@
       ]
     },
     "issue-leveling-ladder": {
-      "_note": "The P0-P3 priority ladder (P0 outage/data-loss now, P1 blocks release/core flow no workaround, P2 recoverable/workaround, P3 cosmetic) - canonical in issue-investigation.md, restated inline in alfred-issue-diagnoser-runtime so leveling survives when alfred-task-solve-cross is not installed.",
+      "_note": "The P0-P3 priority ladder (P0 outage/data-loss now, P1 blocks release/core flow no workaround, P2 recoverable/workaround, P3 cosmetic) - canonical in issue-investigation.md, restated inline in issue-diagnoser-runtime so leveling survives when task-solve-cross is not installed.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/issue-investigation.md",
+        "file": "stack/skills/task-solve-cross/references/issue-investigation.md",
         "marker": "data-loss or outage happening now"
       },
       "sites": [
         {
-          "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
+          "file": "stack/agents/issue-diagnoser-runtime.md",
           "marker": "P0 data-loss or outage happening now"
         }
       ]
     },
     "approval-gate-stamp": {
-      "_note": "The implementer-dispatch approval stamp (guard-unapproved-dispatch hook): path <docs-path>/flow/APPROVAL, first line APPROVED <id> - user's words verbatim (or AUTO on a literal no-stops ask), delete on run completion. Canonical in execution-modes.md; restated at every implementer-dispatch site (the version-upgrade EXECUTE step included) so the stamp format survives when alfred-task-solve-cross is not installed.",
+      "_note": "The implementer-dispatch approval stamp (guard-unapproved-dispatch hook): path <docs-path>/flow/APPROVAL, first line APPROVED <id> - user's words verbatim (or AUTO on a literal no-stops ask), delete on run completion. Canonical in execution-modes.md; restated at every implementer-dispatch site (the version-upgrade EXECUTE step included) so the stamp format survives when task-solve-cross is not installed.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/execution-modes.md",
+        "file": "stack/skills/task-solve-cross/references/execution-modes.md",
         "marker": "an earlier session's leftover stamp is not consent"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-implement/SKILL.md",
+          "file": "stack/skills/task-implement/SKILL.md",
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
-          "file": "stack/skills/alfred-task-build-from-scratch/SKILL.md",
+          "file": "stack/skills/task-build-from-scratch/SKILL.md",
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
-          "file": "stack/skills/alfred-task-solve/SKILL.md",
+          "file": "stack/skills/task-solve/SKILL.md",
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
-          "file": "stack/skills/alfred-task-version-upgrade/SKILL.md",
+          "file": "stack/skills/task-version-upgrade/SKILL.md",
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-quality/references/staged-mode.md",
           "marker": "an earlier session's leftover stamp is not consent"
         }
       ]
@@ -1646,7 +1646,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-usage-report/SKILL.md",
+          "file": "stack/skills/capture-usage-report/SKILL.md",
           "marker": "releases/latest/download/alfred-code.tar.gz"
         }
       ]
@@ -1684,44 +1684,44 @@
       "_note": "The implementers' loop findings-plan carve-out (any loop brief without a contract_version) (skip the START memory sequence + contract_version, hand-off write only when the brief names it) - identical in all 10 implementer seats because any subset installs per project; the trio memory contract stays the default.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "loop findings-plan - `alfred-loop-quality`, `alfred-loop-architecture-quality`, `alfred-loop-test-coverage`"
+        "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "loop findings-plan - `alfred-loop-quality`, `alfred-loop-architecture-quality`, `alfred-loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "loop findings-plan - `alfred-loop-quality`, `alfred-loop-architecture-quality`, `alfred-loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "loop findings-plan - `alfred-loop-quality`, `alfred-loop-architecture-quality`, `alfred-loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "loop findings-plan - `alfred-loop-quality`, `alfred-loop-architecture-quality`, `alfred-loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "loop findings-plan - `alfred-loop-quality`, `alfred-loop-architecture-quality`, `alfred-loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "loop findings-plan - `alfred-loop-quality`, `alfred-loop-architecture-quality`, `alfred-loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "loop findings-plan - `alfred-loop-quality`, `alfred-loop-architecture-quality`, `alfred-loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "loop findings-plan - `alfred-loop-quality`, `alfred-loop-architecture-quality`, `alfred-loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "loop findings-plan - `alfred-loop-quality`, `alfred-loop-architecture-quality`, `alfred-loop-test-coverage`"
+          "marker": "loop findings-plan - `loop-quality`, `loop-architecture-quality`, `loop-test-coverage`"
         }
       ]
     },
@@ -1775,24 +1775,24 @@
       ]
     },
     "assessment-coverage-carve-out": {
-      "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to alfred-capture-test-coverage's COVERAGE.md, never ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shape.md; restated at the JUDGE step and in the skill's '## When to use' section because a live run flagged coverage as a weakness with the reference-only statement (the description carried it until 2.1.2 capped descriptions at 160 chars, lint check 15c). Moved from alfred-capture-architecture to alfred-capture-architecture-quality when the findings judgment split out of the map capture.",
+      "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to capture-test-coverage's COVERAGE.md, never ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shape.md; restated at the JUDGE step and in the skill's '## When to use' section because a live run flagged coverage as a weakness with the reference-only statement (the description carried it until 2.1.2 capped descriptions at 160 chars, lint check 15c). Moved from capture-architecture to capture-architecture-quality when the findings judgment split out of the map capture.",
       "owner": {
-        "file": "stack/skills/alfred-capture-architecture-quality/references/doc-shape.md",
+        "file": "stack/skills/capture-architecture-quality/references/doc-shape.md",
         "marker": "Test-suite weaknesses are OUT OF SCOPE"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
           "marker": "Coverage never enters the weakness list"
         },
         {
-          "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
           "marker": "the assessment keeps only structural testability blockers, never coverage gaps"
         }
       ]
     },
     "capabilities-refresh-user-run": {
-      "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except alfred-capture-architecture and alfred-capture-architecture-quality carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one - except /alfred-code:init (R30), which runs the captures the install lists by READING each SKILL.md and following it inline: still never a Skill call. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by alfred-capture-agent-capabilities' usage policy.",
+      "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except capture-architecture and capture-architecture-quality carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one - except /alfred-code:init (R30), which runs the captures the install lists by READING each SKILL.md and following it inline: still never a Skill call. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by capture-agent-capabilities' usage policy.",
       "owner": {
         "file": "setup-plugin/commands/update.md",
         "marker": "Never invoke it from this run - the skill is manual-only"
@@ -1815,7 +1815,7 @@
           "marker": "the assistant cannot invoke one on your behalf"
         },
         {
-          "file": "stack/skills/alfred-capture-agent-capabilities/SKILL.md",
+          "file": "stack/skills/capture-agent-capabilities/SKILL.md",
           "marker": "is the USER's to type - never call it yourself"
         }
       ]
@@ -1864,16 +1864,16 @@
     "loop-close-commit-ask": {
       "_note": "The loop close-out commit decision goes through AskUserQuestion (commit now / hold), never a prose 'your call' bullet - verbatim in both tiered loops because either installs alone.",
       "owner": {
-        "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+        "file": "stack/skills/loop-architecture-quality/SKILL.md",
         "marker": "never a prose 'your call' bullet"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
           "marker": "never a prose 'your call' bullet"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "never a prose 'your call' bullet"
         }
       ]
@@ -1881,16 +1881,16 @@
     "loop-round-receipt": {
       "_note": "The round verdict line carries the fresh-session ask's receipt, sourced only from the AskUserQuestion answer; measured parentheticals are per-loop by design.",
       "owner": {
-        "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+        "file": "stack/skills/loop-architecture-quality/SKILL.md",
         "marker": "next: fresh-session | continue"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
           "marker": "next: fresh-session | continue"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "next: fresh-session | continue"
         }
       ]
@@ -1898,47 +1898,47 @@
     "capture-doc-batched-write": {
       "_note": "Capture docs reconcile in one write / one batched edit pass per doc, never a per-claim edit stream; measured numbers are per-capture by design.",
       "owner": {
-        "file": "stack/skills/alfred-capture-architecture/SKILL.md",
+        "file": "stack/skills/capture-architecture/SKILL.md",
         "marker": "never a per-claim edit stream"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-test-coverage/references/doc-shape.md",
+          "file": "stack/skills/capture-test-coverage/references/doc-shape.md",
           "marker": "never a per-claim edit stream"
         }
       ]
     },
     "small-tier-dispatch-consent": {
-      "_note": "In DELEGATED mode the mode ask's answer is the dispatch consent for small-tier work - the loop stamps flow/APPROVAL (APPROVED small-tier) the moment it lands, rewritten as substantial approvals arrive, because the dispatch guard is tier-blind. alfred-loop-quality's AUTO-stamp is the same policy in its own shape, deliberately not pinned here.",
+      "_note": "In DELEGATED mode the mode ask's answer is the dispatch consent for small-tier work - the loop stamps flow/APPROVAL (APPROVED small-tier) the moment it lands, rewritten as substantial approvals arrive, because the dispatch guard is tier-blind. loop-quality's AUTO-stamp is the same policy in its own shape, deliberately not pinned here.",
       "owner": {
-        "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+        "file": "stack/skills/loop-architecture-quality/SKILL.md",
         "marker": "APPROVED small-tier"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
           "marker": "APPROVED small-tier"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "APPROVED small-tier"
         }
       ]
     },
     "commit-gate-receipt": {
-      "_note": "The pre-commit checkpoint receipt: <docs-path>/flow/COMMIT-GATE, first line VERIFIED <phrase> / WAIVED - \"<words>\". alfred-habits-commit-checkpoint canonical (lifecycle incl. clearing - the protocol left the always-on alfred-git rule in 0.2.71, which now only points at the skill); verify-code writes it as the checkpoint reviewer; alfred-security binds the security-review pass; the hook enforces.",
+      "_note": "The pre-commit checkpoint receipt: <docs-path>/flow/COMMIT-GATE, first line VERIFIED <phrase> / WAIVED - \"<words>\". habits-commit-checkpoint canonical (lifecycle incl. clearing - the protocol left the always-on alfred-git rule in 0.2.71, which now only points at the skill); verify-code writes it as the checkpoint reviewer; alfred-security binds the security-review pass; the hook enforces.",
       "owner": {
-        "file": "stack/skills/alfred-habits-commit-checkpoint/SKILL.md",
+        "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
         "marker": "VERIFIED <what was reviewed, one phrase>"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-verify-code/SKILL.md",
+          "file": "stack/skills/task-verify-code/SKILL.md",
           "marker": "VERIFIED <what was reviewed, one phrase>"
         },
         {
           "file": "stack/rules/alfred-security.md",
-          "marker": "receipt (alfred-habits-commit-checkpoint) is written `VERIFIED`"
+          "marker": "receipt (habits-commit-checkpoint) is written `VERIFIED`"
         },
         {
           "file": "stack/hooks/guard-ungated-commit.js",
@@ -1949,38 +1949,38 @@
     "commit-gate-security-row": {
       "_note": "A security-relevant diff's COMMIT-GATE receipt carries a security: line naming each category checked and its verdict - alfred-security requires it and guard-ungated-commit reads a VERIFIED line that claims a security review without it as no review. The checkpoint owns it; verify-code writes the same receipt as the inline reviewer.",
       "owner": {
-        "file": "stack/skills/alfred-habits-commit-checkpoint/SKILL.md",
+        "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
         "marker": "`security:` naming each category checked and its verdict"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-verify-code/SKILL.md",
+          "file": "stack/skills/task-verify-code/SKILL.md",
           "marker": "`security:` naming each category checked and its verdict"
         }
       ]
     },
     "commit-gate-trivial-bar": {
-      "_note": "The trivial-diff exemption threshold - the hook's mechanical bar is canonical (the code enforces it); the alfred-habits-commit-checkpoint skill states the same numbers, so a threshold change re-syncs the rule.",
+      "_note": "The trivial-diff exemption threshold - the hook's mechanical bar is canonical (the code enforces it); the habits-commit-checkpoint skill states the same numbers, so a threshold change re-syncs the rule.",
       "owner": {
         "file": "stack/hooks/guard-ungated-commit.js",
         "marker": "<= 2 files and <= 15 changed lines"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-habits-commit-checkpoint/SKILL.md",
+          "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
           "marker": "at most 2 files and 15 changed lines"
         }
       ]
     },
     "commit-gate-authorized-line": {
-      "_note": "The receipt's consent line: authorized: \"<the user's words asking for THIS commit, verbatim>\" - review is not consent. alfred-habits-commit-checkpoint canonical; verify-code writes it; the hook presence-checks it (file and atomic paths) and teaches it in stderr.",
+      "_note": "The receipt's consent line: authorized: \"<the user's words asking for THIS commit, verbatim>\" - review is not consent. habits-commit-checkpoint canonical; verify-code writes it; the hook presence-checks it (file and atomic paths) and teaches it in stderr.",
       "owner": {
-        "file": "stack/skills/alfred-habits-commit-checkpoint/SKILL.md",
+        "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
         "marker": "authorized: \"<the user's words asking for THIS commit, verbatim>\""
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-verify-code/SKILL.md",
+          "file": "stack/skills/task-verify-code/SKILL.md",
           "marker": "authorized: \"<the user's words asking for THIS commit, verbatim>\""
         },
         {
@@ -1990,14 +1990,14 @@
       ]
     },
     "commit-gate-atomic-tolerance": {
-      "_note": "DECISION: the hook ACCEPTS the atomic write+commit shape (blocking it would reject the corpus's dominant conforming pattern); the alfred-habits-commit-checkpoint skill teaches own-call receipts as the discipline and now says plainly that nothing stops the atomic shape mechanically, so the reader knows the rule is the only binding - measured: 9 of 13 commits in one session took the atomic shape, two left the receipt uncleared. A future hook tightening must update both copies.",
+      "_note": "DECISION: the hook ACCEPTS the atomic write+commit shape (blocking it would reject the corpus's dominant conforming pattern); the habits-commit-checkpoint skill teaches own-call receipts as the discipline and now says plainly that nothing stops the atomic shape mechanically, so the reader knows the rule is the only binding - measured: 9 of 13 commits in one session took the atomic shape, two left the receipt uncleared. A future hook tightening must update both copies.",
       "owner": {
         "file": "stack/hooks/guard-ungated-commit.js",
         "marker": "Blocking\n// it would reject the receipt discipline this gate exists to enforce"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-habits-commit-checkpoint/SKILL.md",
+          "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
           "marker": "still ACCEPTS the atomic\nwrite+commit shape (blocking it would reject the receipt discipline itself)"
         }
       ]
@@ -2010,27 +2010,27 @@
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-test-coverage/SKILL.md",
+          "file": "stack/skills/capture-test-coverage/SKILL.md",
           "marker": "a `Leftovers:` line - what the instrumented runs started"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-quality/references/staged-mode.md",
           "marker": "Leftovers - what the pipeline's gate and audit runs started"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
           "marker": "tear-down-vs-keep through the same AskUserQuestion call"
         },
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
           "marker": "tear-down-vs-keep through the same AskUserQuestion call"
         },
         {
-          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "file": "stack/skills/task-solve-cross/SKILL.md",
           "marker": "names what this run started to build, test, or verify"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "tear-down-vs-keep through the same AskUserQuestion call"
         }
       ]
@@ -2043,7 +2043,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-related-projects/SKILL.md",
+          "file": "stack/skills/capture-related-projects/SKILL.md",
           "marker": "takes the user's explicit approval first"
         }
       ]
@@ -2121,7 +2121,7 @@
     "designer-external-claim-verification": {
       "_note": "External claims in a design plan (a vendor API's behavior, a package's capability, a rate limit) are verified via the documentation server or the vendor doc and cited - or marked unverified - never stated from recall (measured: a recalled vendor-API 'fact' forced an operating-strategy change; its retraction invalidated built-and-reviewed code). Owned by the single-chat design skill; restated at each designer's decomposition step because that is where a constraint enters a task card.",
       "owner": {
-        "file": "stack/skills/alfred-task-design/SKILL.md",
+        "file": "stack/skills/task-design/SKILL.md",
         "marker": "the documentation server or the vendor doc"
       },
       "sites": [
@@ -2166,7 +2166,7 @@
           "marker": "the documentation server or the vendor doc"
         },
         {
-          "file": "stack/skills/alfred-habits-plan-writing/SKILL.md",
+          "file": "stack/skills/habits-plan-writing/SKILL.md",
           "marker": "the documentation server or the vendor doc"
         }
       ]
@@ -2219,20 +2219,20 @@
     "implementer-worktree-step-zero": {
       "_note": "Worktree-isolated implementers verify HEAD == the brief's pinned base at step zero, ff-only on mismatch, else STOP as BLOCKED - measured: seats pinned 77 and 91 commits behind built discarded work. The OWNER is the protocol, not a seat: the protocol is the only place that knows the sha and carries the ff-only recovery and the per-stack stale-base tells; each seat keeps one sentence pointing at it.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
+        "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
         "marker": "step zero is `git rev-parse HEAD` against the brief's pinned base sha"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-architecture-quality/references/domain-trio-protocol.md",
           "marker": "step zero is `git rev-parse HEAD` against the brief's pinned base sha"
         },
         {
-          "file": "stack/skills/alfred-task-build-from-scratch/references/domain-trio-protocol.md",
+          "file": "stack/skills/task-build-from-scratch/references/domain-trio-protocol.md",
           "marker": "step zero is `git rev-parse HEAD` against the brief's pinned base sha"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-test-coverage/references/domain-trio-protocol.md",
           "marker": "step zero is `git rev-parse HEAD` against the brief's pinned base sha"
         },
         {
@@ -2276,7 +2276,7 @@
           "marker": "step zero is `git rev-parse HEAD` against the brief's pinned base sha"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
           "marker": "step zero is `git rev-parse HEAD` against the brief's pinned base sha"
         }
       ]
@@ -2411,12 +2411,12 @@
     "honor-fresh-session-answer": {
       "_note": "A fresh-session answer is honored: the turn ends on a short ack + paste-ready resume block, no new work in the old chat - measured: a tool-held 'Fresh session' answer was ignored and the run continued 1h51m to 490k ctx.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+        "file": "stack/skills/task-solve-cross/SKILL.md",
         "marker": "Honor a fresh-session answer"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-solve/SKILL.md",
+          "file": "stack/skills/task-solve/SKILL.md",
           "marker": "HONOR the answer: when the user picks it"
         }
       ]
@@ -2424,7 +2424,7 @@
     "related-context-trace-clause": {
       "_note": "Cross-repo trace routing: follow a defect into siblings named by the generated related-projects rule/doc when the project carries them; a standalone repo has neither and the trace stays in-repo. One clause, hand-synced across 11 files in the 08-24 batch - pinned so the next path change is lint-forced.",
       "owner": {
-        "file": "stack/skills/alfred-task-verify-code/SKILL.md",
+        "file": "stack/skills/task-verify-code/SKILL.md",
         "marker": "the trace then stays in-repo"
       },
       "sites": [
@@ -2473,12 +2473,12 @@
     "trio-note-naming-grammar-restated": {
       "_note": "The navigation-server note naming grammar (<feature>/<contract_version>/<seat>/<task>, each / a folder list_memories' topic filters by - 2.1.6) minted by the orchestrator - owned by the trio protocol's memory-hygiene bullet, restated operatively in solve-task's dispatch-prompt step.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
+        "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
         "marker": "<feature>/<contract_version>/<seat>"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-solve/SKILL.md",
+          "file": "stack/skills/task-solve/SKILL.md",
           "marker": "<feature>/<contract_version>/<seat>/<task>"
         }
       ]
@@ -2486,65 +2486,65 @@
     "memories-purged-receipt": {
       "_note": "The fold-first purge receipt 'memories purged: <names|none>' as a REQUIRED close field - owned by the trio protocol's memory-hygiene bullet (its vendored copies ride domain-trio-protocol-vendored); restated operatively in the flows and loops that close runs, because loop runs measured 0 purges with the reference unloaded.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
+        "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
         "marker": "memories purged: <names|none>"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-solve/SKILL.md",
+          "file": "stack/skills/task-solve/SKILL.md",
           "marker": "memories purged: <names|none>"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "memories purged: <names|none>"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/delegated-mode.md",
+          "file": "stack/skills/loop-quality/references/delegated-mode.md",
           "marker": "memories purged: <names|none>"
         },
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
           "marker": "memories purged: <names|none>"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
           "marker": "memories purged: <names|none>"
         },
         {
-          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "file": "stack/skills/task-solve-cross/SKILL.md",
           "marker": "memories purged: <names|none>"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-quality/references/staged-mode.md",
           "marker": "memories purged: <names|none>"
         }
       ]
     },
     "memories-purge-count": {
-      "_note": "The purge receipt made a FACT: at close the orchestrator counts what is left of <data root>/serena/memories/<feature>/ plus a pre-2.1.6 run's flat <feature>__* notes (and a 2.0.0 .serena/memories) with one node line (2.1.6 review B2: a find-based line read 0 wherever a foreign find came first on PATH - Windows' find.exe), and above zero the close is not done. alfred-task-solve's step mechanics carry the same line for its close, since it never loads the protocol and its body sits at the 18,000-char cap. Lives in the trio protocol's bookkeeping, so it rides every vendored copy; pinned on its own marker because domain-trio-protocol-vendored checks only one sentence of the whole file.",
+      "_note": "The purge receipt made a FACT: at close the orchestrator counts what is left of <data root>/serena/memories/<feature>/ plus a pre-2.1.6 run's flat <feature>__* notes (and a 2.0.0 .serena/memories) with one node line (2.1.6 review B2: a find-based line read 0 wherever a foreign find came first on PATH - Windows' find.exe), and above zero the close is not done. task-solve's step mechanics carry the same line for its close, since it never loads the protocol and its body sits at the 18,000-char cap. Lives in the trio protocol's bookkeeping, so it rides every vendored copy; pinned on its own marker because domain-trio-protocol-vendored checks only one sentence of the whole file.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
+        "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
         "marker": "The purge is counted, not claimed"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-architecture-quality/references/domain-trio-protocol.md",
           "marker": "The purge is counted, not claimed"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-test-coverage/references/domain-trio-protocol.md",
           "marker": "The purge is counted, not claimed"
         },
         {
-          "file": "stack/skills/alfred-task-build-from-scratch/references/domain-trio-protocol.md",
+          "file": "stack/skills/task-build-from-scratch/references/domain-trio-protocol.md",
           "marker": "The purge is counted, not claimed"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
           "marker": "The purge is counted, not claimed"
         },
         {
-          "file": "stack/skills/alfred-task-solve/references/step-mechanics.md",
+          "file": "stack/skills/task-solve/references/step-mechanics.md",
           "marker": "The purge is counted, not claimed"
         }
       ]
@@ -2552,32 +2552,32 @@
     "seat-statusless-return": {
       "_note": "2.1.6 review A1: a seat stopped at its maxTurns cap (or killed) returns cut-off output with no closing status line, and the CLI offers to message it on - a resume hands a runaway a fresh budget, so the cap would be only a pause. Every orchestrator that routes a seat's return treats it as a seat death: one scoped re-dispatch, then BLOCKED to the user. Owned by the trio protocol's Status routing (its vendored copies ride domain-trio-protocol-vendored and are listed here too); restated where a seat's return is routed without that protocol loaded - the loop's delegated mode, solve's agents mode (its step mechanics, read at step 3) and the two repair routers that dispatch the resolvers.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
+        "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
         "marker": "is never DONE and never resumed as-is"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-architecture-quality/references/domain-trio-protocol.md",
           "marker": "is never DONE and never resumed as-is"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-test-coverage/references/domain-trio-protocol.md",
           "marker": "is never DONE and never resumed as-is"
         },
         {
-          "file": "stack/skills/alfred-task-build-from-scratch/references/domain-trio-protocol.md",
+          "file": "stack/skills/task-build-from-scratch/references/domain-trio-protocol.md",
           "marker": "is never DONE and never resumed as-is"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
           "marker": "is never DONE and never resumed as-is"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/delegated-mode.md",
+          "file": "stack/skills/loop-quality/references/delegated-mode.md",
           "marker": "is never DONE and never resumed as-is"
         },
         {
-          "file": "stack/skills/alfred-task-solve/references/step-mechanics.md",
+          "file": "stack/skills/task-solve/references/step-mechanics.md",
           "marker": "is never DONE and never resumed as-is"
         },
         {
@@ -2593,24 +2593,24 @@
     "loop-stage-findings-gate-line": {
       "_note": "The starter stage prompts' shared findings-gate line - a deviation is a finding only with a named breakage; a wrong finding costs more than a missed one. Byte-identical across the five audit stage prompts.",
       "owner": {
-        "file": "stack/skills/alfred-loop-quality/assets/loops-starter/code-quality.md",
+        "file": "stack/skills/loop-quality/assets/loops-starter/code-quality.md",
         "marker": "a wrong finding costs more than a missed one"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-quality/assets/loops-starter/structure.md",
+          "file": "stack/skills/loop-quality/assets/loops-starter/structure.md",
           "marker": "a wrong finding costs more than a missed one"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/assets/loops-starter/naming.md",
+          "file": "stack/skills/loop-quality/assets/loops-starter/naming.md",
           "marker": "a wrong finding costs more than a missed one"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/assets/loops-starter/comments.md",
+          "file": "stack/skills/loop-quality/assets/loops-starter/comments.md",
           "marker": "a wrong finding costs more than a missed one"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/assets/loops-starter/logging.md",
+          "file": "stack/skills/loop-quality/assets/loops-starter/logging.md",
           "marker": "a wrong finding costs more than a missed one"
         }
       ]
@@ -2618,79 +2618,79 @@
     "loop-stage-bar-line": {
       "_note": "The starter stage prompts' shared Bar: line (zero findings at every severity, real findings only, open:[] valid on pass 1, never trimmed). Byte-identical across the five audit stage prompts.",
       "owner": {
-        "file": "stack/skills/alfred-loop-quality/assets/loops-starter/code-quality.md",
+        "file": "stack/skills/loop-quality/assets/loops-starter/code-quality.md",
         "marker": "Bar: zero findings at every severity - real findings only"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-quality/assets/loops-starter/structure.md",
+          "file": "stack/skills/loop-quality/assets/loops-starter/structure.md",
           "marker": "Bar: zero findings at every severity - real findings only"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/assets/loops-starter/naming.md",
+          "file": "stack/skills/loop-quality/assets/loops-starter/naming.md",
           "marker": "Bar: zero findings at every severity - real findings only"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/assets/loops-starter/comments.md",
+          "file": "stack/skills/loop-quality/assets/loops-starter/comments.md",
           "marker": "Bar: zero findings at every severity - real findings only"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/assets/loops-starter/logging.md",
+          "file": "stack/skills/loop-quality/assets/loops-starter/logging.md",
           "marker": "Bar: zero findings at every severity - real findings only"
         }
       ]
     },
     "assessment-strength-check": {
-      "_note": "Every Must-fix remediation is strength-checked against the recorded Strengths list; an eroding fix names the tension and preserves the strength or tiers structural. Owned by doc-shape.md; restated at the capture's JUDGE step. Moved from alfred-capture-architecture to alfred-capture-architecture-quality when the findings judgment split out of the map capture.",
+      "_note": "Every Must-fix remediation is strength-checked against the recorded Strengths list; an eroding fix names the tension and preserves the strength or tiers structural. Owned by doc-shape.md; restated at the capture's JUDGE step. Moved from capture-architecture to capture-architecture-quality when the findings judgment split out of the map capture.",
       "owner": {
-        "file": "stack/skills/alfred-capture-architecture-quality/references/doc-shape.md",
+        "file": "stack/skills/capture-architecture-quality/references/doc-shape.md",
         "marker": "erode a listed strength"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
           "marker": "erode a listed strength"
         }
       ]
     },
     "finding-count-is-output": {
-      "_note": "Finding counts are outputs, never targets or caps, in both directions. Owned by doc-shape.md's count rule; restated in the capture's REPORT step (Don't game it). Moved from alfred-capture-architecture to alfred-capture-architecture-quality when the findings judgment split out of the map capture.",
+      "_note": "Finding counts are outputs, never targets or caps, in both directions. Owned by doc-shape.md's count rule; restated in the capture's REPORT step (Don't game it). Moved from capture-architecture to capture-architecture-quality when the findings judgment split out of the map capture.",
       "owner": {
-        "file": "stack/skills/alfred-capture-architecture-quality/references/doc-shape.md",
+        "file": "stack/skills/capture-architecture-quality/references/doc-shape.md",
         "marker": "an output, never a target"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
           "marker": "an output, never a target"
         },
         {
-          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-code-quality/SKILL.md",
           "marker": "an output, never a target"
         }
       ]
     },
     "findings-gate-four-questions": {
-      "_note": "The four-question findings gate (what breaks / who notices / actually new / already decided) with three-bucket routing - owned by the pros/cons capture's doc-shape.md; the coverage capture carries an adapted binding for weak-point candidates. Moved from alfred-capture-architecture to alfred-capture-architecture-quality when the findings judgment split out of the map capture.",
+      "_note": "The four-question findings gate (what breaks / who notices / actually new / already decided) with three-bucket routing - owned by the pros/cons capture's doc-shape.md; the coverage capture carries an adapted binding for weak-point candidates. Moved from capture-architecture to capture-architecture-quality when the findings judgment split out of the map capture.",
       "owner": {
-        "file": "stack/skills/alfred-capture-architecture-quality/references/doc-shape.md",
+        "file": "stack/skills/capture-architecture-quality/references/doc-shape.md",
         "marker": "pass all four questions or it is not a finding"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
           "marker": "all four questions answered explicitly"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/rules.md",
+          "file": "stack/skills/loop-quality/references/rules.md",
           "marker": "all four are answered explicitly"
         },
         {
-          "file": "stack/skills/alfred-capture-test-coverage/references/weak-points.md",
+          "file": "stack/skills/capture-test-coverage/references/weak-points.md",
           "marker": "all four questions answered explicitly"
         },
         {
-          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-code-quality/SKILL.md",
           "marker": "all four questions answered explicitly"
         }
       ]
@@ -2758,14 +2758,14 @@
       ]
     },
     "implementer-log-points": {
-      "_note": "The implementer-side half of designer-log-points: the card's log_points are built WITH the slice through the repo's logging seam (level + identifiers as the card says), never a later pass or a second logger. One sentence verbatim in the alfred-task-implement twin and all 10 seats (any subset installs per project).",
+      "_note": "The implementer-side half of designer-log-points: the card's log_points are built WITH the slice through the repo's logging seam (level + identifiers as the card says), never a later pass or a second logger. One sentence verbatim in the task-implement twin and all 10 seats (any subset installs per project).",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
         "marker": "go in with the slice, through the repo's logging seam at the level and with the identifiers the card names"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-implement/SKILL.md",
+          "file": "stack/skills/task-implement/SKILL.md",
           "marker": "go in with the slice, through the repo's logging seam at the level and with the identifiers the card names"
         },
         {
@@ -2852,9 +2852,9 @@
       ]
     },
     "verifier-log-points-gate": {
-      "_note": "The verifier-side gate for the designer's log_points card field: each task's points placed through the repo's logging seam at the card's level with the card's identifiers, nothing beyond them. Owned by the single-chat twin alfred-task-verify-code (step 2); restated in all 10 verifier seats because the seat is the dispatched form of the same protocol and installs individually.",
+      "_note": "The verifier-side gate for the designer's log_points card field: each task's points placed through the repo's logging seam at the card's level with the card's identifiers, nothing beyond them. Owned by the single-chat twin task-verify-code (step 2); restated in all 10 verifier seats because the seat is the dispatched form of the same protocol and installs individually.",
       "owner": {
-        "file": "stack/skills/alfred-task-verify-code/SKILL.md",
+        "file": "stack/skills/task-verify-code/SKILL.md",
         "marker": "placed through the repo's logging seam (level and identifiers as the card says, nothing beyond them)"
       },
       "sites": [
@@ -2901,9 +2901,9 @@
       ]
     },
     "verifier-working-set-rules": {
-      "_note": "The verifier-side pass over the seven decision-level rules applied to the DIFF (placement, seam-without-boundary, bad-value-past-boundary / non-substitutable subtype, mutate-and-answer, name outgrown, pattern started-from) with the SOLID-is-vocabulary ruling - a finding, never a block. Owned by the single-chat twin alfred-task-verify-code (step 6); restated in all 10 verifier seats after their over-build pass, for the same selective-install reason as designer-working-set-rules.",
+      "_note": "The verifier-side pass over the seven decision-level rules applied to the DIFF (placement, seam-without-boundary, bad-value-past-boundary / non-substitutable subtype, mutate-and-answer, name outgrown, pattern started-from) with the SOLID-is-vocabulary ruling - a finding, never a block. Owned by the single-chat twin task-verify-code (step 6); restated in all 10 verifier seats after their over-build pass, for the same selective-install reason as designer-working-set-rules.",
       "owner": {
-        "file": "stack/skills/alfred-task-verify-code/SKILL.md",
+        "file": "stack/skills/task-verify-code/SKILL.md",
         "marker": "SOLID is the vocabulary of the finding, never its basis - name what breaks"
       },
       "sites": [
@@ -2978,7 +2978,7 @@
     "on-demand-skill-availability": {
       "_note": "Selection by DESCRIPTION, not by name. A skill is installed per project, so a brief that names one breaks wherever it was trimmed - the measured shapes are a skill no stack seeds (evidence-gated / opt-in) and one belonging to a different stack than the citing artifact, e.g. a cross-cutting agent naming `angular-security` in a .NET-only install. The fix is not a guard next to the name: the text describes what the skill covers, the model matches that against the installed inventory, and a project without it still reads what to do. Naming stays correct only for a skill guaranteed alongside its citer (a frontmatter preload, an own-stack skill). Lint checks 25 and 26 block a named cite that can be absent; a router hub opts out with an '**Availability**' callout. The same rule covers an MCP server the baseline does not lock: describe what it does, report what it could not run as UNVERIFIED.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
+        "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
         "marker": "match it from YOUR skill list by what each skill says it covers"
       },
       "sites": [
@@ -3055,11 +3055,11 @@
           "marker": "says it covers"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-ci.md",
+          "file": "stack/agents/issue-diagnoser-ci.md",
           "marker": "says it covers"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
+          "file": "stack/agents/issue-diagnoser-runtime.md",
           "marker": "says it covers"
         },
         {
@@ -3111,7 +3111,7 @@
           "marker": "your skill list has"
         },
         {
-          "file": "stack/skills/alfred-task-version-upgrade/references/upgrade-playbooks.md",
+          "file": "stack/skills/task-version-upgrade/references/upgrade-playbooks.md",
           "marker": "your skill list has"
         },
         {
@@ -3119,15 +3119,15 @@
           "marker": "says it covers"
         },
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-architecture-quality/references/domain-trio-protocol.md",
           "marker": "match it from YOUR skill list by what each skill says it covers"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-test-coverage/references/domain-trio-protocol.md",
           "marker": "match it from YOUR skill list by what each skill says it covers"
         },
         {
-          "file": "stack/skills/alfred-task-build-from-scratch/references/domain-trio-protocol.md",
+          "file": "stack/skills/task-build-from-scratch/references/domain-trio-protocol.md",
           "marker": "match it from YOUR skill list by what each skill says it covers"
         },
         {
@@ -3135,7 +3135,7 @@
           "marker": "what it says it covers, never by a remembered name"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
           "marker": "match it from YOUR skill list by what each skill says it covers"
         },
         {
@@ -3286,12 +3286,12 @@
     "flow-stop-contract": {
       "_note": "The gated flows' stop shape: a stop IS one AskUserQuestion call with options and a marked recommendation, never a prose question or a stop-and-wait. Owned by the solve-task flow; the diagnosis flow restates it because it ships independently.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve/SKILL.md",
+        "file": "stack/skills/task-solve/SKILL.md",
         "marker": "A stop IS one AskUserQuestion call"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-issue-diagnoser/SKILL.md",
+          "file": "stack/skills/issue-diagnoser/SKILL.md",
           "marker": "A stop IS one AskUserQuestion call"
         }
       ]
@@ -3299,12 +3299,12 @@
     "flow-state-two-layers-resume": {
       "_note": "Flow state lives in two layers (the ledger file + the navigation-server note) and every invocation resumes from them before starting anew. Owned by the solve-task flow; restated in the diagnosis flow.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve/SKILL.md",
+        "file": "stack/skills/task-solve/SKILL.md",
         "marker": "On invocation, resume before starting"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-issue-diagnoser/SKILL.md",
+          "file": "stack/skills/issue-diagnoser/SKILL.md",
           "marker": "On invocation, resume before starting"
         }
       ]
@@ -3312,12 +3312,12 @@
     "catalogue-execution-modes": {
       "_note": "The two failure-signature catalogues' execution-mode section: loaded INSIDE a diagnoser seat the section is already satisfied; loaded in the main session it inherits the calling flow's mode or asks once. Owned by the runtime catalogue; the CI catalogue restates it.",
       "owner": {
-        "file": "stack/skills/alfred-issue-signatures-runtime/SKILL.md",
+        "file": "stack/skills/issue-signatures-runtime/SKILL.md",
         "marker": "Loaded INSIDE the seat, this section is already satisfied"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-issue-signatures-ci/SKILL.md",
+          "file": "stack/skills/issue-signatures-ci/SKILL.md",
           "marker": "Loaded INSIDE the seat, this section is already satisfied"
         }
       ]
@@ -3389,14 +3389,14 @@
       ]
     },
     "cross-write-allow-receipt": {
-      "_note": "The cross-project write guard's block ends in ONE AskUserQuestion (task card - recommended / allow that tree for this session / drop), and the 'allow' answer is honoured through a receipt at <docs-path>/flow/CROSS-WRITE-ALLOW - one root per line, this session's own, under 8h, a root containing the project dropped. The hook owns the path (it resolves and reads the file); the docs-root rule and the alfred-habits-commit-checkpoint skill, which describe the ask, name the same path. A rename in one place leaves the model writing a receipt the guard never reads.",
+      "_note": "The cross-project write guard's block ends in ONE AskUserQuestion (task card - recommended / allow that tree for this session / drop), and the 'allow' answer is honoured through a receipt at <docs-path>/flow/CROSS-WRITE-ALLOW - one root per line, this session's own, under 8h, a root containing the project dropped. The hook owns the path (it resolves and reads the file); the docs-root rule and the habits-commit-checkpoint skill, which describe the ask, name the same path. A rename in one place leaves the model writing a receipt the guard never reads.",
       "owner": {
         "file": "stack/hooks/guard-cross-project-write.js",
         "marker": "'flow', 'CROSS-WRITE-ALLOW'"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-habits-commit-checkpoint/SKILL.md",
+          "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
           "marker": "`<docs-path>/flow/CROSS-WRITE-ALLOW` receipt"
         },
         {
@@ -3410,7 +3410,7 @@
       ]
     },
     "cross-project-task-card-home": {
-      "_note": "A change another repo needs is handed off as a task card at <docs-path>/cross-project-tasks/<other-project>.md, never written into that repo (guard-cross-project-write blocks the write). The hook is canonical - it prints the path in its block text; the docs-root rule lists the home, the alfred-habits-commit-checkpoint skill binds the receipt rule to it, and the three flows that hand off write the card.",
+      "_note": "A change another repo needs is handed off as a task card at <docs-path>/cross-project-tasks/<other-project>.md, never written into that repo (guard-cross-project-write blocks the write). The hook is canonical - it prints the path in its block text; the docs-root rule lists the home, the habits-commit-checkpoint skill binds the receipt rule to it, and the three flows that hand off write the card.",
       "owner": {
         "file": "stack/hooks/guard-cross-project-write.js",
         "marker": "'cross-project-tasks', '<other-project>.md'"
@@ -3421,19 +3421,19 @@
           "marker": "a change it must make is a task card in `cross-project-tasks/`"
         },
         {
-          "file": "stack/skills/alfred-habits-commit-checkpoint/SKILL.md",
+          "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
           "marker": "its change is a task card under `<docs-path>/cross-project-tasks/`"
         },
         {
-          "file": "stack/skills/alfred-issue-diagnoser/SKILL.md",
+          "file": "stack/skills/issue-diagnoser/SKILL.md",
           "marker": "a task card under `<docs-path>/cross-project-tasks/`"
         },
         {
-          "file": "stack/skills/alfred-task-solve/SKILL.md",
+          "file": "stack/skills/task-solve/SKILL.md",
           "marker": "a task card under `<docs-path>/cross-project-tasks/`"
         },
         {
-          "file": "stack/skills/alfred-capture-related-projects/references/sibling-handoff.md",
+          "file": "stack/skills/capture-related-projects/references/sibling-handoff.md",
           "marker": "Write the card at `<docs-path>/cross-project-tasks/<other-project>.md`"
         }
       ]
@@ -3441,7 +3441,7 @@
     "implementer-build-bar": {
       "_note": "The write-time quality bar the build path holds so the quality loop's five stages (structure / code quality / naming / logging / comments) pass on the first pass, plus the decisions-with-precedent and reuse-before-recreation disciplines - verbatim in the single-chat implementer twin and the 10 implementer seats, since a dispatched seat runs without the twin.",
       "owner": {
-        "file": "stack/skills/alfred-task-implement/SKILL.md",
+        "file": "stack/skills/task-implement/SKILL.md",
         "marker": "are the bar the built slice meets on the FIRST pass"
       },
       "sites": [
@@ -3566,19 +3566,19 @@
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
           "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 300,000 on any other window"
         },
         {
-          "file": "stack/skills/alfred-issue-diagnoser/SKILL.md",
+          "file": "stack/skills/issue-diagnoser/SKILL.md",
           "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 300,000 on any other window"
         },
         {
-          "file": "stack/skills/alfred-task-solve/SKILL.md",
+          "file": "stack/skills/task-solve/SKILL.md",
           "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 300,000 on any other window"
         },
         {
-          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "file": "stack/skills/task-solve-cross/SKILL.md",
           "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 300,000 on any other window"
         }
       ]
@@ -3642,7 +3642,7 @@
           "marker": "`policy-rev: stale ...` (the installed usage-policy rule's stamped revision is behind the shipped"
         },
         {
-          "file": "stack/skills/alfred-capture-agent-capabilities/SKILL.md",
+          "file": "stack/skills/capture-agent-capabilities/SKILL.md",
           "marker": "`/alfred-code:validate` compares a project's stamp against the snapshot's"
         }
       ]
@@ -3755,48 +3755,48 @@
       "_note": "R106: a baseline keeps ONE line per method it used to carry, and the method lives in a core skill. The line is the convention rules' imperative form - '<trigger> - the FIRST action is the `<skill>` Skill call, before <the act>' - never a 'see the skill' hint, because the weak phrasing is the one measured losing (convention-rule-first-action). Each pointer names a different skill, so each copy carries its own marker; a pointer reworded out of the form goes red here.",
       "owner": {
         "file": "stack/rules/alfred-quality-gates.md",
-        "marker": "the FIRST action is the `alfred-habits-done-gate` Skill call, before the claim lands"
+        "marker": "the FIRST action is the `habits-done-gate` Skill call, before the claim lands"
       },
       "sites": [
         {
           "file": "stack/rules/alfred-interaction.md",
-          "marker": "the FIRST action is the `alfred-habits-plan-writing` Skill call, before the plan file is written"
+          "marker": "the FIRST action is the `habits-plan-writing` Skill call, before the plan file is written"
         },
         {
           "file": "stack/rules/alfred-interaction.md",
-          "marker": "the FIRST action is the `alfred-habits-test-first` Skill call, before the first production edit"
+          "marker": "the FIRST action is the `habits-test-first` Skill call, before the first production edit"
         },
         {
           "file": "stack/rules/alfred-interaction.md",
-          "marker": "the FIRST action is the `alfred-habits-execution-strategy` Skill call, before the first edit"
+          "marker": "the FIRST action is the `habits-execution-strategy` Skill call, before the first edit"
         },
         {
           "file": "stack/rules/alfred-interaction.md",
-          "marker": "the FIRST action is the `alfred-habits-root-cause` Skill call, before the next fix lands"
+          "marker": "the FIRST action is the `habits-root-cause` Skill call, before the next fix lands"
         },
         {
           "file": "stack/rules/alfred-interaction.md",
-          "marker": "the FIRST action is the `alfred-habits-clarify` Skill call, before the design or the first edit"
+          "marker": "the FIRST action is the `habits-clarify` Skill call, before the design or the first edit"
         },
         {
           "file": "stack/rules/alfred-git.md",
-          "marker": "the FIRST action is the `alfred-habits-commit-checkpoint` Skill call, before the command runs"
+          "marker": "the FIRST action is the `habits-commit-checkpoint` Skill call, before the command runs"
         },
         {
           "file": "stack/rules/alfred-quality-gates.md",
-          "marker": "the FIRST action is the `alfred-habits-code-comments` Skill call, before it is written"
+          "marker": "the FIRST action is the `habits-code-comments` Skill call, before it is written"
         }
       ]
     },
     "plan-file-design-handoff": {
-      "_note": "The interaction baseline allows a plan file on request, for multi-session work, or as a design flow's handoff - alfred-task-design always writes its plan file as the handoff artifact (the user's ruling of 2026-09-29, audit I22: the rule gets the carve-out).",
+      "_note": "The interaction baseline allows a plan file on request, for multi-session work, or as a design flow's handoff - task-design always writes its plan file as the handoff artifact (the user's ruling of 2026-09-29, audit I22: the rule gets the carve-out).",
       "owner": {
         "file": "stack/rules/alfred-interaction.md",
         "marker": "or a design flow writes it as its handoff"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-design/SKILL.md",
+          "file": "stack/skills/task-design/SKILL.md",
           "marker": "a design flow writes it as its handoff"
         }
       ]
@@ -3851,9 +3851,9 @@
       ]
     },
     "implementer-bar-structure-to-comments": {
-      "_note": "The implementer seat's '## The bar I build to' block - structure / code quality / naming / logging / comments - is the review-and-fix loop's five stages held at write time. Owned by the in-chat alfred-task-implement skill (same-named section); restated verbatim in every dispatched *-implementer, which cannot preload the 13k in-chat skill for a 3.6k block. Measured identical across all 10 (one hash) before registration - this entry is what keeps it so.",
+      "_note": "The implementer seat's '## The bar I build to' block - structure / code quality / naming / logging / comments - is the review-and-fix loop's five stages held at write time. Owned by the in-chat task-implement skill (same-named section); restated verbatim in every dispatched *-implementer, which cannot preload the 13k in-chat skill for a 3.6k block. Measured identical across all 10 (one hash) before registration - this entry is what keeps it so.",
       "owner": {
-        "file": "stack/skills/alfred-task-implement/SKILL.md",
+        "file": "stack/skills/task-implement/SKILL.md",
         "marker": "the seven decision-level rules the plan settled apply to every line you add"
       },
       "sites": [
@@ -3900,9 +3900,9 @@
       ]
     },
     "implementer-decisions-ledger": {
-      "_note": "A judgment call the card left open is decided by the seat and reported as decisions: lines with a precedent - never bounced. Owned by alfred-task-implement; restated in every *-implementer.",
+      "_note": "A judgment call the card left open is decided by the seat and reported as decisions: lines with a precedent - never bounced. Owned by task-implement; restated in every *-implementer.",
       "owner": {
-        "file": "stack/skills/alfred-task-implement/SKILL.md",
+        "file": "stack/skills/task-implement/SKILL.md",
         "marker": "A judgment call the card left open - two idiomatic shapes, a placement, a name at a seam - is decided here, never bounced back"
       },
       "sites": [
@@ -3947,15 +3947,15 @@
           "marker": "A judgment call the card left open - two idiomatic shapes, a placement, a name at a seam - is decided here, never bounced back"
         },
         {
-          "file": "stack/skills/alfred-task-design/SKILL.md",
+          "file": "stack/skills/task-design/SKILL.md",
           "marker": "one line per call the design made where the requirement left two defensible shapes"
         }
       ]
     },
     "implementer-reuse-before-recreation": {
-      "_note": "The reuse ladder before new code - stdlib, existing helper, one line, then the minimum that works - never at the cost of validation, data-loss handling or secret handling. Owned by alfred-task-implement; restated in every *-implementer.",
+      "_note": "The reuse ladder before new code - stdlib, existing helper, one line, then the minimum that works - never at the cost of validation, data-loss handling or secret handling. Owned by task-implement; restated in every *-implementer.",
       "owner": {
-        "file": "stack/skills/alfred-task-implement/SKILL.md",
+        "file": "stack/skills/task-implement/SKILL.md",
         "marker": "Before new code, stop at the first rung that holds"
       },
       "sites": [
@@ -4002,9 +4002,9 @@
       ]
     },
     "implementer-comment-claims": {
-      "_note": "A checkable claim in a comment is true against the code written; a stale comment is fixed in the same edit; a simplification's ceiling goes in the report, never a comment. Owned by alfred-task-implement; restated in every *-implementer.",
+      "_note": "A checkable claim in a comment is true against the code written; a stale comment is fixed in the same edit; a simplification's ceiling goes in the report, never a comment. Owned by task-implement; restated in every *-implementer.",
       "owner": {
-        "file": "stack/skills/alfred-task-implement/SKILL.md",
+        "file": "stack/skills/task-implement/SKILL.md",
         "marker": "A checkable claim in a comment (a symbol, a count, an invariant) is true against the code you wrote"
       },
       "sites": [
@@ -4194,11 +4194,11 @@
           "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-ci.md",
+          "file": "stack/agents/issue-diagnoser-ci.md",
           "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
+          "file": "stack/agents/issue-diagnoser-runtime.md",
           "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
         },
         {
@@ -4346,44 +4346,44 @@
       "_note": "Each task is gated against its acceptance criterion by this session's run, and against the CURRENT contract_version - a divergence is CONTRACT_MISMATCH. Restated in every *-verifier.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
-        "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
+        "marker": "Gate each task against its acceptance criterion the way `habits-done-gate`"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `habits-done-gate`"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `habits-done-gate`"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `habits-done-gate`"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `habits-done-gate`"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `habits-done-gate`"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `habits-done-gate`"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `habits-done-gate`"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `habits-done-gate`"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `habits-done-gate`"
         }
       ]
     },
@@ -4646,47 +4646,47 @@
       ]
     },
     "designer-method-is-the-preload": {
-      "_note": "The design method, the design rules, the log_points stamp and the Decisions ledger are the preloaded alfred-task-design skill - not restated in the seat (the design-rules section used to be, verbatim, doubling every designer dispatch). Restated pointer in every *-solution-designer.",
+      "_note": "The design method, the design rules, the log_points stamp and the Decisions ledger are the preloaded task-design skill - not restated in the seat (the design-rules section used to be, verbatim, doubling every designer dispatch). Restated pointer in every *-solution-designer.",
       "owner": {
         "file": "stack/agents/aspnet-solution-designer.md",
-        "marker": "are all the preloaded `alfred-task-design` skill - not restated here"
+        "marker": "are all the preloaded `task-design` skill - not restated here"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "are all the preloaded `alfred-task-design` skill - not restated here"
+          "marker": "are all the preloaded `task-design` skill - not restated here"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "are all the preloaded `alfred-task-design` skill - not restated here"
+          "marker": "are all the preloaded `task-design` skill - not restated here"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "are all the preloaded `alfred-task-design` skill - not restated here"
+          "marker": "are all the preloaded `task-design` skill - not restated here"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "are all the preloaded `alfred-task-design` skill - not restated here"
+          "marker": "are all the preloaded `task-design` skill - not restated here"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "are all the preloaded `alfred-task-design` skill - not restated here"
+          "marker": "are all the preloaded `task-design` skill - not restated here"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "are all the preloaded `alfred-task-design` skill - not restated here"
+          "marker": "are all the preloaded `task-design` skill - not restated here"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "are all the preloaded `alfred-task-design` skill - not restated here"
+          "marker": "are all the preloaded `task-design` skill - not restated here"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "are all the preloaded `alfred-task-design` skill - not restated here"
+          "marker": "are all the preloaded `task-design` skill - not restated here"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "are all the preloaded `alfred-task-design` skill - not restated here"
+          "marker": "are all the preloaded `task-design` skill - not restated here"
         }
       ]
     },
@@ -4839,28 +4839,28 @@
     "skill-model-pin-turn-scoped": {
       "_note": "A skill-level `model` pin applies only for the rest of the TURN in which the skill activates and is never saved to settings - so a deliberate capture that must run on one model says so and lets the user set it, rather than trusting the frontmatter to hold across the walk. The earlier reading of this - 'the pin is not reliably honored' - was wrong about the mechanism and is retired; the pin works, its SCOPE is the turn. As of 2026-09-12 NO shipped skill carries a `model` or `effort` pin at all: a turn-scoped pin cannot hold across a multi-turn capture, so the four capture skills ask the user to set the session model instead, and the pins live only on agents, where they cover the whole subagent run.",
       "owner": {
-        "file": "stack/skills/alfred-capture-architecture/SKILL.md",
+        "file": "stack/skills/capture-architecture/SKILL.md",
         "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
           "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
         },
         {
-          "file": "stack/skills/alfred-task-version-upgrade/SKILL.md",
+          "file": "stack/skills/task-version-upgrade/SKILL.md",
           "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
         },
         {
-          "file": "stack/skills/alfred-task-build-from-scratch/SKILL.md",
+          "file": "stack/skills/task-build-from-scratch/SKILL.md",
           "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
         },
         {
-          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-code-quality/SKILL.md",
           "marker": "a skill-level pin lasts only for the turn it activates in"
         },
         {
-          "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
           "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
         }
       ]
@@ -4868,36 +4868,36 @@
     "approval-stamp-absolute-path": {
       "_note": "The APPROVAL gate stamp is written with the Write tool at the ABSOLUTE ${CLAUDE_PROJECT_DIR} path (substituted in skill content, CC >= 2.1.196) (a relative path landed in the wrong cwd; the shell route is masked) - restated in every flow that writes the stamp guard-unapproved-dispatch.js reads.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve/SKILL.md",
+        "file": "stack/skills/task-solve/SKILL.md",
         "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-implement/SKILL.md",
+          "file": "stack/skills/task-implement/SKILL.md",
           "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
         },
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
           "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
         },
         {
-          "file": "stack/skills/alfred-task-build-from-scratch/SKILL.md",
+          "file": "stack/skills/task-build-from-scratch/SKILL.md",
           "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
           "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
         },
         {
-          "file": "stack/skills/alfred-task-version-upgrade/SKILL.md",
+          "file": "stack/skills/task-version-upgrade/SKILL.md",
           "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-quality/references/staged-mode.md",
           "marker": "written with the Write tool at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL`"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
         }
       ]
@@ -4905,40 +4905,40 @@
     "approval-stamp-protected-path": {
       "_note": "The APPROVAL stamp's protected-path clause is CONDITIONAL: only a docs root kept under .claude/ (the old .claude/docs default) makes the stamp write a protected-path write, and the prompt's session option is quoted as code.claude.com/docs/en/permission-modes ('Protected paths') words it. The 2.1.4 audit found nine copies still saying every write prompts and quoting a label that does not exist.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve/references/step-mechanics.md",
+        "file": "stack/skills/task-solve/references/step-mechanics.md",
         "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
           "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
         },
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/delegated-mode.md",
+          "file": "stack/skills/loop-quality/references/delegated-mode.md",
           "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
           "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
         },
         {
-          "file": "stack/skills/alfred-task-build-from-scratch/SKILL.md",
+          "file": "stack/skills/task-build-from-scratch/SKILL.md",
           "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
         },
         {
-          "file": "stack/skills/alfred-task-implement/SKILL.md",
+          "file": "stack/skills/task-implement/SKILL.md",
           "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
         },
         {
-          "file": "stack/skills/alfred-task-solve-cross/references/execution-modes.md",
+          "file": "stack/skills/task-solve-cross/references/execution-modes.md",
           "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
         },
         {
-          "file": "stack/skills/alfred-task-version-upgrade/SKILL.md",
+          "file": "stack/skills/task-version-upgrade/SKILL.md",
           "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
         }
       ]
@@ -4972,12 +4972,12 @@
     "catalogue-dispatch-explicit-only": {
       "_note": "The two failure-signature catalogues run triage in the MAIN session and never start evidence-gatherer seats on their own say-so - dispatch is explicit-only house-wide, inherited from a calling flow that already asked, otherwise asked once. Same Execution-modes paragraph in both.",
       "owner": {
-        "file": "stack/skills/alfred-issue-signatures-runtime/SKILL.md",
+        "file": "stack/skills/issue-signatures-runtime/SKILL.md",
         "marker": "dispatch is explicit-only house-wide, so the seats never start on your own say-so"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-issue-signatures-ci/SKILL.md",
+          "file": "stack/skills/issue-signatures-ci/SKILL.md",
           "marker": "dispatch is explicit-only house-wide, so the seats never start on your own say-so"
         }
       ]
@@ -4999,12 +4999,12 @@
       "_note": "The post-install capture ORDER and its manual-only property: the four deliberate captures run related-context (only where the project has siblings) -> architecture -> code-style -> agent-capabilities LAST, the order init-plan.js CAPTURES runs, so the generated inventory reflects the final install, and the user types them because they carry disable-model-invocation. It lives in two homes because each one reaches a different reader at a different moment - the reference the guided walks open, and the seeded CLAUDE.md the adopter fills in. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to print this same order in their own next-steps log as a third and fourth home; the Node seed never carried this text (the walk's own report covers it).",
       "owner": {
         "file": "setup-plugin/references/post-install.md",
-        "marker": "`/alfred-capture-agent-capabilities` - LAST, so the generated usage-policy rule reflects the final inventory"
+        "marker": "`/capture-agent-capabilities` - LAST, so the generated usage-policy rule reflects the final inventory"
       },
       "sites": [
         {
           "file": "stack/AGENTS.template.md",
-          "marker": "/alfred-capture-agent-capabilities LAST, so its generated inventory reflects the final install"
+          "marker": "/capture-agent-capabilities LAST, so its generated inventory reflects the final install"
         }
       ]
     },
@@ -5022,7 +5022,7 @@
       ]
     },
     "resolver-root-cause-method": {
-      "_note": "The four build/test resolvers drive localization with the house root-cause loop (alfred-habits-root-cause, R72), cited as NAME + its content clause, and each skips that loop's write-a-test step (out of a resolver's scope) and runs its step 7 - questions the design after 3 fixes that each leave the failure red or surface a new one (pinned as resolver-root-cause-stop). The head is byte-identical across the four; the skipped-test clause and the noun (error / failure, tests / specs) are per-stack.",
+      "_note": "The four build/test resolvers drive localization with the house root-cause loop (habits-root-cause, R72), cited as NAME + its content clause, and each skips that loop's write-a-test step (out of a resolver's scope) and runs its step 7 - questions the design after 3 fixes that each leave the failure red or surface a new one (pinned as resolver-root-cause-stop). The head is byte-identical across the four; the skipped-test clause and the noun (error / failure, tests / specs) are per-stack.",
       "owner": {
         "file": "stack/agents/dotnet-build-error-resolver.md",
         "marker": "one hypothesis at a time, one change per hypothesis, re-run before the next, root cause before symptom"
@@ -5140,35 +5140,35 @@
       ]
     },
     "generated-rule-write-protocol": {
-      "_note": "Regenerating a generated .claude/rules/*.md is a REPLACE, never a delete: READ the existing rule first (that read is what makes the Write legal), then Write the fresh one over it. An `rm` first is denied by the auto-mode classifier and costs the blocked round trip the delete was meant to save. Nothing in the old copy is preserved. Resolved contradiction C1 of the 2026-09-12 skill audit (slice 3): alfred-capture-code-style previously mandated delete-first.",
+      "_note": "Regenerating a generated .claude/rules/*.md is a REPLACE, never a delete: READ the existing rule first (that read is what makes the Write legal), then Write the fresh one over it. An `rm` first is denied by the auto-mode classifier and costs the blocked round trip the delete was meant to save. Nothing in the old copy is preserved. Resolved contradiction C1 of the 2026-09-12 skill audit (slice 3): capture-code-style previously mandated delete-first.",
       "owner": {
-        "file": "stack/skills/alfred-capture-architecture/SKILL.md",
+        "file": "stack/skills/capture-architecture/SKILL.md",
         "marker": "READ the existing rule first so the Write is legal"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-agent-capabilities/SKILL.md",
+          "file": "stack/skills/capture-agent-capabilities/SKILL.md",
           "marker": "Do NOT `rm` it first"
         },
         {
-          "file": "stack/skills/alfred-capture-code-style/SKILL.md",
+          "file": "stack/skills/capture-code-style/SKILL.md",
           "marker": "READ the existing rule first (it is short), then Write the fresh one over it"
         },
         {
-          "file": "stack/skills/alfred-capture-project-capabilities/SKILL.md",
+          "file": "stack/skills/capture-project-capabilities/SKILL.md",
           "marker": "READ the existing rule first, then Write the fresh one over it"
         }
       ]
     },
     "push-gate-receipt": {
-      "_note": "The publish half of the commit ceremony: <docs-path>/flow/PUSH-GATE, the SAME five-line shape as COMMIT-GATE (VERIFIED/WAIVED, authorized:, head:, spec:, live-probe:), written as its own call before git push / gh pr merge and cleared after. alfred-git names it, alfred-habits-commit-checkpoint owns the protocol, guard-ungated-commit enforces it - a field added to one half drifts from the others without this pin (its twin commit-gate-receipt was registered, this one was not).",
+      "_note": "The publish half of the commit ceremony: <docs-path>/flow/PUSH-GATE, the SAME five-line shape as COMMIT-GATE (VERIFIED/WAIVED, authorized:, head:, spec:, live-probe:), written as its own call before git push / gh pr merge and cleared after. alfred-git names it, habits-commit-checkpoint owns the protocol, guard-ungated-commit enforces it - a field added to one half drifts from the others without this pin (its twin commit-gate-receipt was registered, this one was not).",
       "owner": {
         "file": "stack/rules/alfred-git.md",
         "marker": "same-shaped `<docs-path>/flow/PUSH-GATE` receipt"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-habits-commit-checkpoint/SKILL.md",
+          "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
           "marker": "their own receipt, `<docs-path>/flow/PUSH-GATE`, in the SAME five-line shape"
         },
         {
@@ -5178,14 +5178,14 @@
       ]
     },
     "verifier-output-named-fields": {
-      "_note": "The verifier skills' output contract is N NAMED fields, every run, each with a value - not prose conditions about when to write one. The measurement behind both copies: five named fields were emitted 5 of 5 times while the same step's prose condition was emitted 0 of 1. alfred-task-verify-code carries five, alfred-task-verify-plan six; the RULE is the shape, so both copies move together when a field is added.",
+      "_note": "The verifier skills' output contract is N NAMED fields, every run, each with a value - not prose conditions about when to write one. The measurement behind both copies: five named fields were emitted 5 of 5 times while the same step's prose condition was emitted 0 of 1. task-verify-code carries five, task-verify-plan six; the RULE is the shape, so both copies move together when a field is added.",
       "owner": {
-        "file": "stack/skills/alfred-task-verify-code/SKILL.md",
+        "file": "stack/skills/task-verify-code/SKILL.md",
         "marker": "named fields, every run, each with a value"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-verify-plan/SKILL.md",
+          "file": "stack/skills/task-verify-plan/SKILL.md",
           "marker": "named fields, every run, each with a value"
         }
       ]
@@ -5193,12 +5193,12 @@
     "plan-audit-passes-field": {
       "_note": "One shape for a plan audit's record: verify-plan's Passes field, one verdict per pass, which the cross-task orchestrator copies into its ledger as written.",
       "owner": {
-        "file": "stack/skills/alfred-task-verify-plan/SKILL.md",
+        "file": "stack/skills/task-verify-plan/SKILL.md",
         "marker": "Passes: risk <v> | scope <v> | existence <v> | edges <v> | soundness <v>"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "file": "stack/skills/task-solve-cross/SKILL.md",
           "marker": "Passes: risk <v> | scope <v> | existence <v> | edges <v> | soundness <v>"
         }
       ]
@@ -5206,12 +5206,12 @@
     "resume-recovery-figures": {
       "_note": "The measured resume-recovery range a fresh-session offer quotes: a resume restarts at 21.5-59.4% of the carried context with nothing lost, and the two ABSOLUTE numbers are stated to the user, never the ratio. Two flows quote it; a re-measurement moves both.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+        "file": "stack/skills/task-solve-cross/SKILL.md",
         "marker": "21.5-59.4% of its carried context with nothing lost (never under 21%; quote those absolute numbers to the user, never a ratio)"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-solve/SKILL.md",
+          "file": "stack/skills/task-solve/SKILL.md",
           "marker": "21.5-59.4% of the carried context with zero re-work - state those two absolute numbers to the user, never a ratio"
         }
       ]
@@ -5219,66 +5219,66 @@
     "delegated-inline-keys-on-capability": {
       "_note": "DELEGATED vs INLINE keys on dispatch CAPABILITY, not file presence - agent files on disk with no Agent tool to dispatch them is still INLINE. Canonical in the execution-modes reference; the two skills that must run without that file installed carry their own inline copy.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/execution-modes.md",
+        "file": "stack/skills/task-solve-cross/references/execution-modes.md",
         "marker": "Detection keys on dispatch capability, not file presence"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
-          "file": "stack/skills/alfred-capture-related-projects/SKILL.md",
+          "file": "stack/skills/capture-related-projects/SKILL.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
-          "file": "stack/skills/alfred-capture-code-style/SKILL.md",
+          "file": "stack/skills/capture-code-style/SKILL.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
-          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-code-quality/SKILL.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/staged-mode.md",
+          "file": "stack/skills/loop-quality/references/staged-mode.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
-          "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         },
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         }
       ]
     },
     "never-weaken-the-bar": {
-      "_note": "Never weaken, skip or delete a check, test or assertion to make a bar appear met - a fix that would break a test is a finding, not a fix. The quality loop's run rules own it; the upgrade flow restates it for its stage gates. alfred-loop-architecture-quality carries a third copy (handed off to the rules/architecture seat to add as a site).",
+      "_note": "Never weaken, skip or delete a check, test or assertion to make a bar appear met - a fix that would break a test is a finding, not a fix. The quality loop's run rules own it; the upgrade flow restates it for its stage gates. loop-architecture-quality carries a third copy (handed off to the rules/architecture seat to add as a site).",
       "owner": {
-        "file": "stack/skills/alfred-loop-quality/references/rules.md",
+        "file": "stack/skills/loop-quality/references/rules.md",
         "marker": "Never weaken, skip, or delete a check, test, or assertion to make a bar appear met"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-version-upgrade/SKILL.md",
+          "file": "stack/skills/task-version-upgrade/SKILL.md",
           "marker": "Never weaken a test, suppress a warning, or skip a stage gate to make a stage look green"
         },
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
           "marker": "Never weaken a test or delete an assertion to make a con look resolved"
         }
       ]
     },
     "discard-allow-receipt": {
-      "_note": "The DISCARD-ALLOW receipt is the escape from guard-catastrophic-rm.js's denial: the guard READS it, and something has to WRITE it or a user who answers 'discard it' is blocked again and the action is silently substituted with a stash (measured once). The writer is alfred-habits-commit-checkpoint, beside the CROSS-WRITE-ALLOW writer it already owns - a receipt written a few times a year does not belong in an always-on rule. Same shape as CROSS-WRITE-ALLOW: one path per line or `*`, this session's own, under 8h.",
+      "_note": "The DISCARD-ALLOW receipt is the escape from guard-catastrophic-rm.js's denial: the guard READS it, and something has to WRITE it or a user who answers 'discard it' is blocked again and the action is silently substituted with a stash (measured once). The writer is habits-commit-checkpoint, beside the CROSS-WRITE-ALLOW writer it already owns - a receipt written a few times a year does not belong in an always-on rule. Same shape as CROSS-WRITE-ALLOW: one path per line or `*`, this session's own, under 8h.",
       "owner": {
         "file": "stack/hooks/guard-catastrophic-rm.js",
         "marker": "path.resolve(root, docsRootEnv(), 'flow', 'DISCARD-ALLOW')"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-habits-commit-checkpoint/SKILL.md",
+          "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
           "marker": "`<docs-path>/flow/DISCARD-ALLOW`"
         }
       ]
@@ -5307,7 +5307,7 @@
           "marker": "Open your report with `checked prior notes: <names|none>`"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-ci.md",
+          "file": "stack/agents/issue-diagnoser-ci.md",
           "marker": "Open your report with `checked prior notes: <names|none>`"
         },
         {
@@ -5359,7 +5359,7 @@
           "marker": "Open your report with `checked prior notes: <names|none>`"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
+          "file": "stack/agents/issue-diagnoser-runtime.md",
           "marker": "Open your report with `checked prior notes: <names|none>`"
         },
         {
@@ -5428,7 +5428,7 @@
           "marker": "the whole report under ~1.5k tokens"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-ci.md",
+          "file": "stack/agents/issue-diagnoser-ci.md",
           "marker": "the whole report under ~1.5k tokens"
         },
         {
@@ -5484,7 +5484,7 @@
           "marker": "the whole report under ~1.5k tokens"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
+          "file": "stack/agents/issue-diagnoser-runtime.md",
           "marker": "the whole report under ~1.5k tokens"
         },
         {
@@ -5627,20 +5627,20 @@
       "_note": "All four repair resolvers used to restate the done gate in full, forking the always-on quality-gates rule four ways. They now CITE the rule and keep only the shapes their own domain adds - one home for the gate, four homes for the domain detail.",
       "owner": {
         "file": "stack/agents/dotnet-build-error-resolver.md",
-        "marker": "`alfred-habits-done-gate` binds here, and in this seat the shapes are"
+        "marker": "`habits-done-gate` binds here, and in this seat the shapes are"
       },
       "sites": [
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "`alfred-habits-done-gate` binds here, and in this seat the shapes are"
+          "marker": "`habits-done-gate` binds here, and in this seat the shapes are"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "`alfred-habits-done-gate` binds here, and in this seat the shapes are"
+          "marker": "`habits-done-gate` binds here, and in this seat the shapes are"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "`alfred-habits-done-gate` binds here, and in this seat the shapes are"
+          "marker": "`habits-done-gate` binds here, and in this seat the shapes are"
         }
       ]
     },
@@ -5665,7 +5665,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-agent-capabilities/references/generated-rule-template.md",
+          "file": "stack/skills/capture-agent-capabilities/references/generated-rule-template.md",
           "marker": "keeps symbol lookup, `rename_symbol`, `safe_delete_symbol` and the seat memory handoff, and every other edit goes through Edit / Write"
         }
       ]
@@ -5949,16 +5949,16 @@
     "capture-expensive-seat-reads": {
       "_note": "The three deliberate captures that judge in-session (architecture map, architecture pros/cons, code quality) all tell the Opus seat it never reads the codebase wholesale - the analyzer seats absorb the reads. Owned by the architecture capture; restated in the two quality captures because each runs alone.",
       "owner": {
-        "file": "stack/skills/alfred-capture-architecture/SKILL.md",
+        "file": "stack/skills/capture-architecture/SKILL.md",
         "marker": "You are the expensive seat: never read the codebase wholesale yourself"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
           "marker": "You are the expensive seat: never read the codebase wholesale yourself"
         },
         {
-          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-code-quality/SKILL.md",
           "marker": "You are the expensive seat: never read the codebase wholesale yourself"
         }
       ]
@@ -5966,16 +5966,16 @@
     "capture-regather-cap": {
       "_note": "A contradiction between two analyzer digests on a CHECKABLE fact is settled by the cheapest deterministic probe in-session before any re-dispatch, and gathering is capped at 3 rounds. Owned by the architecture capture; restated in the two quality captures.",
       "owner": {
-        "file": "stack/skills/alfred-capture-architecture/SKILL.md",
+        "file": "stack/skills/capture-architecture/SKILL.md",
         "marker": "settle it with the cheapest deterministic probe in-session first"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
           "marker": "settle it with the cheapest deterministic probe in-session first"
         },
         {
-          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-code-quality/SKILL.md",
           "marker": "settle it with the cheapest deterministic probe in-session first"
         }
       ]
@@ -5983,16 +5983,16 @@
     "capture-model-report-line": {
       "_note": "The capture report states the model the judgment ran on, and a run that started on Opus says there was nothing to reset. Owned by the architecture-quality capture; restated in the code-quality capture and the architecture capture's report-fields reference.",
       "owner": {
-        "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+        "file": "stack/skills/capture-architecture-quality/SKILL.md",
         "marker": "already on Opus before this run started - nothing to reset"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-code-quality/SKILL.md",
           "marker": "already on Opus before this run started - nothing to reset"
         },
         {
-          "file": "stack/skills/alfred-capture-architecture/references/report-fields.md",
+          "file": "stack/skills/capture-architecture/references/report-fields.md",
           "marker": "already on Opus before this run started - nothing to reset"
         }
       ]
@@ -6000,16 +6000,16 @@
     "loop-declined-set": {
       "_note": "A loop keeps what the user declined this run as an in-context list, never a file, so a declined finding is not re-proposed within the run and nothing about it outlives the run. Owned by the architecture-quality loop; restated in the code-quality and coverage loops.",
       "owner": {
-        "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+        "file": "stack/skills/loop-architecture-quality/SKILL.md",
         "marker": "an in-context list only, never written to a file"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "an in-context list only, never written to a file"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
           "marker": "an in-context list only, never written to a file"
         }
       ]
@@ -6017,16 +6017,16 @@
     "loop-green-across-round": {
       "_note": "Every improvement loop keeps the build and tests green across the round: each fix batch re-runs them and a red routes to the matching resolver before the next item. Owned by the architecture-quality loop; restated in the other two loops.",
       "owner": {
-        "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+        "file": "stack/skills/loop-architecture-quality/SKILL.md",
         "marker": "green across the round"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "green across the round"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
           "marker": "green across the round"
         }
       ]
@@ -6034,16 +6034,16 @@
     "loop-plateau-stop": {
       "_note": "The plateau stop: a round whose open set equals the previous round's with nothing now resolvable stops the loop rather than re-running identically. Owned by the architecture-quality loop; restated in the other two loops.",
       "owner": {
-        "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+        "file": "stack/skills/loop-architecture-quality/SKILL.md",
         "marker": "equals the previous round's and none is now resolvable"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "equals the previous round's and none is now resolvable"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
           "marker": "equals the previous round's and none is now resolvable"
         }
       ]
@@ -6051,16 +6051,16 @@
     "loop-tier-routing-authority": {
       "_note": "In every improvement loop the item's tier decides where it routes: no silent upgrade of a small item into a rewrite, no downgrade of a structural one past its approval gate. Owned by the architecture-quality loop; restated in the other two loops.",
       "owner": {
-        "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+        "file": "stack/skills/loop-architecture-quality/SKILL.md",
         "marker": "is the routing authority"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "is the routing authority"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
           "marker": "is the routing authority"
         }
       ]
@@ -6068,12 +6068,12 @@
     "loop-retier-through-ask": {
       "_note": "When the designer's findings shrink an approved structural item, its tier changes only through the user's ask, never silently. Owned by the architecture-quality loop; restated in the code-quality loop.",
       "owner": {
-        "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+        "file": "stack/skills/loop-architecture-quality/SKILL.md",
         "marker": "Re-tier only through the ask"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "Re-tier only through the ask"
         }
       ]
@@ -6081,20 +6081,20 @@
     "seat-fan-out-flat": {
       "_note": "The main session is the only orchestrator: seats carry no Agent tool so the fan-out stays flat. Owned by the cross-task orchestrator; restated in the three loops that fan seats out.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+        "file": "stack/skills/task-solve-cross/SKILL.md",
         "marker": "so the fan-out stays flat"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
           "marker": "so the fan-out stays flat"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "so the fan-out stays flat"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
           "marker": "so the fan-out stays flat"
         }
       ]
@@ -6102,12 +6102,12 @@
     "size-first-table": {
       "_note": "The size table (trivial / small / standard / cross, with the floor that keeps auth, secrets, input parsing, permissions, a public contract or a migration at standard). Owned by the single-chat solve flow; vendored into the cross-task orchestrator because both are user-invoked only and neither can load the other.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve/SKILL.md",
+        "file": "stack/skills/task-solve/SKILL.md",
         "marker": "a public contract or a migration is never below standard"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "file": "stack/skills/task-solve-cross/SKILL.md",
           "marker": "a public contract or a migration is never below standard"
         }
       ]
@@ -6115,12 +6115,12 @@
     "full-spec-checklist": {
       "_note": "What a FULL spec is - the three items and the three disqualifiers the merged design-and-audit step turns on. Owned by the single-chat solve flow; vendored into the cross-task orchestrator for its single-chat path because both are user-invoked only and neither can load the other.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve/SKILL.md",
+        "file": "stack/skills/task-solve/SKILL.md",
         "marker": "names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria)"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "file": "stack/skills/task-solve-cross/SKILL.md",
           "marker": "names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria)"
         }
       ]
@@ -6128,12 +6128,12 @@
     "full-spec-script": {
       "_note": "The two-home lookup of the full-spec check script (the project copy, else the newest plugin cache entry). The same snippet in both flows, each reading its OWN copy of the script (2.1.5 audit M100: the cross-task orchestrator carries a byte-identical twin in its scripts/, held by spec-check.test.js), so a lookup change is one pin.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve/SKILL.md",
+        "file": "stack/skills/task-solve/SKILL.md",
         "marker": "/scripts/spec-check.js\" [ -f \"$f\" ] && [ ! -e \"$d/.orphaned_at\" ]"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-solve-cross/references/full-spec.md",
+          "file": "stack/skills/task-solve-cross/references/full-spec.md",
           "marker": "/scripts/spec-check.js\" [ -f \"$f\" ] && [ ! -e \"$d/.orphaned_at\" ]"
         }
       ]
@@ -6141,12 +6141,12 @@
     "producer-first-rule": {
       "_note": "A multi-stack build runs producer-first: the producer designer runs first and the interface section of its plan is the contract. Owned by the cross-task orchestrator; restated in the greenfield build, which vendors the trio protocol and cannot load the orchestrator (both are user-invoked only).",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+        "file": "stack/skills/task-solve-cross/SKILL.md",
         "marker": "the PRODUCER designer runs first and the interface section of its plan IS the contract"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-build-from-scratch/SKILL.md",
+          "file": "stack/skills/task-build-from-scratch/SKILL.md",
           "marker": "the PRODUCER designer runs first and the interface section of its plan IS the contract"
         }
       ]
@@ -6180,7 +6180,7 @@
     "run-book-read-first": {
       "_note": "The run book is read before a seat builds, starts, logs into or hand-checks the app. The generated pointer rule (alfred-project-run-book.md, from the capture's template) is canonical and reaches every session and subagent once the capture ran; the seats that run the app restate it as a step, because a seat dispatched before the capture ran still needs to know where the doc will be. The seat line leaves 'build' to the generated rule (2.1.5 M60): the resolvers and implementers build too and carry no seat line.",
       "owner": {
-        "file": "stack/skills/alfred-capture-project-capabilities/references/run-book-rule.template.md",
+        "file": "stack/skills/capture-project-capabilities/references/run-book-rule.template.md",
         "marker": "read it before you build, start, log into or hand-check the app"
       },
       "sites": [
@@ -6225,7 +6225,7 @@
           "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
+          "file": "stack/agents/issue-diagnoser-runtime.md",
           "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
         },
         {
@@ -6241,16 +6241,16 @@
     "seat-dispatch-spelling": {
       "_note": "A plugin seat resolves only as `<plugin>:<seat>` (plugin-migration spike S1 run 4: the bare name returns 'Agent type not found'), and 2.1.0 ships all 44 seats in the core plugin, while the full copy route and cursor-stack still resolve the bare name. So every body that dispatches a named seat - or one built from the `<stack>-implementer` pattern - dispatches it as the roster spells it. Owned by the trio protocol; restated at each dispatch instruction because a flow that never reads the protocol still dispatches (scripts/seat-dispatch-spelling.test.js fails a new dispatch site without it).",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
+        "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
         "marker": "exactly as the roster spells it"
       },
       "sites": [
         {
-          "file": "stack/agents/alfred-issue-diagnoser-ci.md",
+          "file": "stack/agents/issue-diagnoser-ci.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
+          "file": "stack/agents/issue-diagnoser-runtime.md",
           "marker": "exactly as the roster spells it"
         },
         {
@@ -6262,103 +6262,103 @@
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+          "file": "stack/skills/capture-architecture-quality/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-capture-architecture/SKILL.md",
+          "file": "stack/skills/capture-architecture/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "file": "stack/skills/capture-code-quality/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-capture-code-style/SKILL.md",
+          "file": "stack/skills/capture-code-style/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-capture-related-projects/SKILL.md",
+          "file": "stack/skills/capture-related-projects/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-capture-test-coverage/SKILL.md",
+          "file": "stack/skills/capture-test-coverage/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-issue-diagnoser/SKILL.md",
+          "file": "stack/skills/issue-diagnoser/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-issue-signatures-ci/references/gatherer-fan-out.md",
+          "file": "stack/skills/issue-signatures-ci/references/gatherer-fan-out.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-issue-signatures-runtime/references/gatherer-fan-out.md",
+          "file": "stack/skills/issue-signatures-runtime/references/gatherer-fan-out.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+          "file": "stack/skills/loop-architecture-quality/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-loop-architecture-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-architecture-quality/references/domain-trio-protocol.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/loop-quality/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-loop-test-coverage/references/domain-trio-protocol.md",
+          "file": "stack/skills/loop-test-coverage/references/domain-trio-protocol.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-task-build-from-scratch/references/domain-trio-protocol.md",
+          "file": "stack/skills/task-build-from-scratch/references/domain-trio-protocol.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-task-design/SKILL.md",
+          "file": "stack/skills/task-design/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-task-implement/SKILL.md",
+          "file": "stack/skills/task-implement/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "file": "stack/skills/task-solve-cross/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-task-solve-cross/references/cross-domain-run.md",
+          "file": "stack/skills/task-solve-cross/references/cross-domain-run.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-task-solve-cross/references/issue-investigation.md",
+          "file": "stack/skills/task-solve-cross/references/issue-investigation.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-task-solve/SKILL.md",
+          "file": "stack/skills/task-solve/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-task-verify-code/SKILL.md",
+          "file": "stack/skills/task-verify-code/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-task-verify-plan/SKILL.md",
+          "file": "stack/skills/task-verify-plan/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/alfred-task-version-upgrade/SKILL.md",
+          "file": "stack/skills/task-version-upgrade/SKILL.md",
           "marker": "exactly as the roster spells it"
         }
       ]

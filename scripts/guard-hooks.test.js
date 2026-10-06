@@ -170,7 +170,7 @@ test('guard-stop-contract: a suggestion close that says nothing is pending on th
   // it), and the one line that resolves it is the disclaimer - without it the same card stays blocked.
   const card = 'Install complete - 9 skills, 4 agents, 11 hooks.\n\nSuggested next steps:\n'
     + '1. Reload the session - the next step everything else depends on; nothing installed this run is live until the MCPs connect.\n'
-    + '2. `/alfred-capture-agent-capabilities` - so the generated rule reflects the final inventory.\n\n'
+    + '2. `/capture-agent-capabilities` - so the generated rule reflects the final inventory.\n\n'
     + 'Nothing is pending on this run - these are yours to run when you choose.';
   const sug = transcript('sug', [assistantRow('m6', card)]);
   assert.equal(run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: sug }), 0, 'the disclaimer line makes the close a finished one');
@@ -279,14 +279,14 @@ test('guard-fresh-session-start: gates orchestration runs only, and only past th
   const hot = (n) => transcript(`hot-${n}`, ctxRows(`m6-${n}`, 450000));
   const cold = transcript('cold', ctxRows('m7', 50000));
   const call = (skill, tp) => run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: tp });
-  assert.equal(call('alfred-loop-quality', hot('a')), 2, 'orchestration run on carried history');
-  assert.equal(call('alfred-code:alfred-loop-quality', hot('b')), 2, 'namespaced form');
-  assert.equal(call('alfred-issue-diagnoser', hot('c')), 2, 'the gated diagnosis flow chained onto carried history');
-  assert.equal(call('alfred-loop-quality', cold), 0, 'under the threshold');
+  assert.equal(call('loop-quality', hot('a')), 2, 'orchestration run on carried history');
+  assert.equal(call('alfred-code:loop-quality', hot('b')), 2, 'namespaced form');
+  assert.equal(call('issue-diagnoser', hot('c')), 2, 'the gated diagnosis flow chained onto carried history');
+  assert.equal(call('loop-quality', cold), 0, 'under the threshold');
   assert.equal(call('csharp', hot('d')), 0, 'an ordinary skill is never gated');
   // A subagent's Skill call carries agent_id: the carry this hook reads is the parent session's, and
   // a seat has no user to answer the offer - so the size trigger never judges it.
-  assert.equal(run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'alfred-loop-quality' }, transcript_path: hot('e'), agent_id: 'a1b2c3' }), 0,
+  assert.equal(run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: hot('e'), agent_id: 'a1b2c3' }), 0,
     'a seat is not offered a fresh session on its parent\'s history');
 });
 
@@ -303,7 +303,7 @@ test('guard-fresh-session-start: the size offer is answerable - the retry passes
   const tp = transcript('rearm', ctxRows('rearm', 450000));
   const grow = (ctx) => fs.writeFileSync(tp, ctxRows('rearm', ctx).map((r) => JSON.stringify(r)).join('\n') + '\n');
   const call = () => runIn('guard-fresh-session-start.js',
-    { tool_name: 'Skill', tool_input: { skill: 'alfred-loop-quality' }, transcript_path: tp }, env).status;
+    { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp }, env).status;
   assert.equal(call(), 2, 'the offer is made once');
   assert.equal(call(), 0, 'the identical retry passes - the answer is honoured');
   grow(500000);
@@ -318,7 +318,7 @@ test('guard-fresh-session-start: the size offer is answerable - the retry passes
 test('guard-fresh-session-start: the trigger is the tier\'s own variable', () => {
   const at = (name, ctx) => transcript(name, ctxRows(name, ctx));
   const call = (tp, env) => runIn('guard-fresh-session-start.js',
-    { tool_name: 'Skill', tool_input: { skill: 'alfred-loop-quality' }, transcript_path: tp },
+    { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp },
     { env: { ...process.env, ...(env || {}) } }).status;
 
   // The window comes from ONE place, model-windows.json, keyed by the session's model id (these
@@ -557,19 +557,26 @@ test('guard-ungated-commit: the receipt states', () => {
   const tp = transcript('no-skill', [assistantRow('m1', 'reviewed')]);
   const gateT = (cmd) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: cmd }, transcript_path: tp },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
-  receipt(full({ first: 'VERIFIED alfred-task-verify-code passed' })); assert.equal(gateT('git commit -am x'), 2, 'a verify skill named but never called');
-  receipt(full({ first: 'VERIFIED alfred-task-verify-code passed' }) + 'carried: cycle 3, reviewed 2026-09-05\n');
+  receipt(full({ first: 'VERIFIED task-verify-code passed' })); assert.equal(gateT('git commit -am x'), 2, 'a verify skill named but never called');
+  receipt(full({ first: 'VERIFIED task-verify-code passed' }) + 'carried: cycle 3, reviewed 2026-09-05\n');
   assert.equal(gateT('git commit -am x'), 0, 'unless the receipt says the review is carried');
   // the 2.0.0 loop names - `quality-loop` matched the 1.x spelling only, so a receipt naming the
   // renamed loop minted consent with no loop ever run
-  receipt(full({ first: 'VERIFIED alfred-loop-quality round 2 gate' })); assert.equal(gateT('git commit -am x'), 2, 'a quality loop named but never called');
-  receipt(full({ first: 'VERIFIED alfred-loop-architecture-quality stage 3' })); assert.equal(gateT('git commit -am x'), 2, 'the architecture loop too');
+  receipt(full({ first: 'VERIFIED loop-quality round 2 gate' })); assert.equal(gateT('git commit -am x'), 2, 'a quality loop named but never called');
+  receipt(full({ first: 'VERIFIED loop-architecture-quality stage 3' })); assert.equal(gateT('git commit -am x'), 2, 'the architecture loop too');
   // ... while a loop the user TYPED is a run of it: a slash invocation writes no Skill call at all
   // (measured: 4 of 4 slash-run loops, zero Skill events), only the harness's command row
-  const slash = transcript('slash-loop', [{ type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:alfred-loop-quality</command-name>' } }, assistantRow('m1', 'round 2 green')]);
+  const slash = transcript('slash-loop', [{ type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:loop-quality</command-name>' } }, assistantRow('m1', 'round 2 green')]);
   const gateS = (cmd) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: cmd }, transcript_path: slash },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
   assert.equal(gateS('git commit -am x'), 0, 'a slash-invoked loop ran');
+  // a session that typed the pre-2.2.0 spelling ran the same loop
+  const loopRenamed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).renamed.skills;
+  const oldLoop = Object.keys(loopRenamed).find((o) => loopRenamed[o] === 'loop-quality' && /^alfred-/.test(o));
+  assert.ok(oldLoop, 'the map renames loop-quality from its alfred- spelling');
+  const slashOld = transcript('slash-loop-old', [{ type: 'user', message: { role: 'user', content: `<command-name>/${oldLoop}</command-name>` } }, assistantRow('m1', 'round 2 green')]);
+  assert.equal(runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -am x' }, transcript_path: slashOld },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status, 0, 'the old spelling typed is a run too');
 
   receipt(full());
   const old = (Date.now() - 3 * 3600 * 1000) / 1000; fs.utimesSync(gate, old, old);
@@ -1274,7 +1281,7 @@ test('guard-stop-contract: prose offers, tool-call ends, continuations and unrea
 });
 
 test('guard-stop-contract: the quality loop\'s mode ask and stage-close ask in prose are sent to ONE AskUserQuestion; the same words through the tool pass', () => {
-  // alfred-loop-quality's two structural pauses are sentences in its SKILL.md (improvement plan 2.5):
+  // loop-quality's two structural pauses are sentences in its SKILL.md (improvement plan 2.5):
   // worded as a statement they end on no '?', so the question shape alone never caught them.
   const stop = (tp) => run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp });
   const prose = (id, text) => stop(transcript(id, [assistantRow('a', text)]));
@@ -1311,12 +1318,12 @@ test('guard-fresh-session-start: other tools, unreadable transcripts, the name f
   const call = (payload) => runIn('guard-fresh-session-start.js', payload,
     { env: { ...process.env, CLAUDE_CONFIG_DIR: accountDir('fs-thresh-200k', 'claude-haiku-4-5') } }).status;
   assert.equal(call({ tool_name: 'Read', tool_input: { file_path: 'x.ts' }, transcript_path: hot }), 0, 'not a Skill call');
-  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'alfred-loop-quality' }, transcript_path: path.join(TMP, 'absent-fs.jsonl') }), 0, 'no transcript - fail open');
-  assert.equal(call({ tool_name: 'Skill', tool_input: { name: 'alfred-task-solve' }, transcript_path: hot }), 2, 'the name field spelling');
+  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: path.join(TMP, 'absent-fs.jsonl') }), 0, 'no transcript - fail open');
+  assert.equal(call({ tool_name: 'Skill', tool_input: { name: 'task-solve' }, transcript_path: hot }), 2, 'the name field spelling');
   const edge = transcript('fs-edge', ctxRows('m', 150000));
-  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'alfred-task-solve' }, transcript_path: edge }), 0, 'exactly 150k is not past it');
+  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'task-solve' }, transcript_path: edge }), 0, 'exactly 150k is not past it');
   const sum = transcript('fs-sum', [ctxRows('m', 0)[0], assistantRow('m', 'ok', { cache_read_input_tokens: 100000, cache_creation_input_tokens: 40000, input_tokens: 10001 })]);
-  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'alfred-task-solve' }, transcript_path: sum }), 2, 'the three usage fields add up');
+  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'task-solve' }, transcript_path: sum }), 2, 'the three usage fields add up');
 });
 
 test('instrument-tool-usage: off by default, one JSONL row per call when switched on, never blocks', () => {
@@ -1487,7 +1494,7 @@ test('guard-unapproved-dispatch: a diagnoser dispatches the evidence gatherer an
   const disp = (caller, seat, prompt = 'pull the failing job log and grep it to the first error') => runIn('guard-unapproved-dispatch.js',
     { tool_name: 'Agent', ...(caller ? { agent_type: caller, agent_id: 'a1' } : {}), tool_input: { subagent_type: seat, prompt } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
-  for (const caller of ['alfred-code:alfred-issue-diagnoser-ci', 'alfred-code:alfred-issue-diagnoser-runtime', 'alfred-issue-diagnoser-runtime']) {
+  for (const caller of ['alfred-code:issue-diagnoser-ci', 'alfred-code:issue-diagnoser-runtime', 'issue-diagnoser-runtime']) {
     assert.equal(disp(caller, 'alfred-code:evidence-gatherer').status, 0, `${caller}: the core's gatherer`);
     assert.equal(disp(caller, 'evidence-gatherer').status, 0, `${caller}: the copy route's gatherer`);
     for (const seat of ['general-purpose', 'claude', 'fork', 'Explore', 'Plan', 'alfred-code:aspnet-implementer', 'alfred-code:aspnet-verifier', 'someone-else:evidence-gatherer']) {
@@ -1496,14 +1503,14 @@ test('guard-unapproved-dispatch: a diagnoser dispatches the evidence gatherer an
       assert.match(r.stderr, /dispatches only the evidence gatherer/, 'the denial names the one seat it may dispatch');
     }
   }
-  const untyped = runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', agent_type: 'alfred-code:alfred-issue-diagnoser-ci', tool_input: { prompt: 'x' } },
+  const untyped = runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', agent_type: 'alfred-code:issue-diagnoser-ci', tool_input: { prompt: 'x' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
   assert.equal(untyped.status, 2, 'an untyped dispatch runs general-purpose - refused too');
   // every other caller keeps the rules it had
   assert.equal(disp(undefined, 'general-purpose').status, 0, 'the main session, no flow stamped');
   assert.equal(disp('alfred-code:aspnet-verifier', 'general-purpose').status, 0, 'another seat is not pinned here');
-  assert.equal(disp('someone-else:alfred-issue-diagnoser-ci', 'general-purpose').status, 0, 'a foreign plugin\'s namesake is not the house diagnoser');
-  assert.equal(disp('alfred-code:alfred-issue-diagnoser-ci', 'alfred-code:evidence-gatherer', 'who calls SocketConnection.Send').status, 0,
+  assert.equal(disp('someone-else:issue-diagnoser-ci', 'general-purpose').status, 0, 'a foreign plugin\'s namesake is not the house diagnoser');
+  assert.equal(disp('alfred-code:issue-diagnoser-ci', 'alfred-code:evidence-gatherer', 'who calls SocketConnection.Send').status, 0,
     'the gatherer\'s locate-a-symbol task is its job, not a grep-shaped seat\'s');
 });
 
@@ -2056,7 +2063,7 @@ test('mount paths: a POSIX host still reads /c/... as a POSIX path', () => {
 // settings model id's own suffix and then the old inference, and an unresolved one gates nothing.
 const winEnv = (extra) => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'latch-')), ...(extra || {}) });
 const askLoop = (tp, env) => runIn('guard-fresh-session-start.js',
-    { tool_name: 'Skill', tool_input: { skill: 'alfred-loop-quality' }, transcript_path: tp }, { env }).status;
+    { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp }, { env }).status;
 const ctxAt = (name, ctx) => transcript(name, ctxRows(name, ctx));
 function accountDir(name, model) {
   const d = fs.mkdtempSync(path.join(TMP, `${name}-`));
@@ -2082,22 +2089,22 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
 
     // It injects, never blocks: a blocked expansion shows its reason to the user only - the run would be
     // lost and the model would never learn why.
-    const slash = upe('alfred-loop-quality', hot, undefined, { args: 'run it' });
+    const slash = upe('loop-quality', hot, undefined, { args: 'run it' });
     assert.equal(slash.status, 0, 'the slash route never denies');
     assert.match(injected(slash), /Do NOT start the run yet/, '... it injects the ask instead');
     assert.equal(JSON.parse(slash.stdout).hookSpecificOutput.hookEventName, 'UserPromptExpansion', 'answered on its own event');
-    assert.match(injected(upe('alfred-capture-agent-capabilities', hot)), /Do NOT start the run yet/, 'a capture is a run');
+    assert.match(injected(upe('capture-agent-capabilities', hot)), /Do NOT start the run yet/, 'a capture is a run');
     assert.match(injected(upe('alfred-code:update', hot)), /Do NOT start the run yet/, 'the guided plugin walks are orchestration too');
     assert.match(injected(upe('update', hot, undefined, { typed: 'alfred-code:update' })), /Do NOT start the run yet/,
         'a plugin command named bare takes its namespace from the typed prompt');
     assert.equal(injected(upe('update', hot, undefined, { typed: 'other-plugin:update' })), '', 'another plugin\'s update is not the walk');
-    assert.equal(injected(upe('alfred-loop-quality', ctxAt('ups-cold', 40000))), '', 'a cold session is left alone');
+    assert.equal(injected(upe('loop-quality', ctxAt('ups-cold', 40000))), '', 'a cold session is left alone');
     assert.equal(injected(upe('help', hot)), '', 'a slash that is not an orchestration run passes');
-    assert.equal(injected(upe('alfred-loop-quality', hot, { ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '', '0 on the trigger this session uses disables this route too');
+    assert.equal(injected(upe('loop-quality', hot, { ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '', '0 on the trigger this session uses disables this route too');
     // An install still wired on UserPromptSubmit (an older copy-route settings.json) passes silently: nothing
     // parses the prompt any more, and the next update rewires it.
     const legacy = runIn('guard-fresh-session-start.js',
-        { hook_event_name: 'UserPromptSubmit', prompt: '<command-name>/alfred-loop-quality</command-name>', transcript_path: hot }, { env: winEnv() });
+        { hook_event_name: 'UserPromptSubmit', prompt: '<command-name>/loop-quality</command-name>', transcript_path: hot }, { env: winEnv() });
     assert.deepStrictEqual([legacy.status, legacy.stdout], [0, ''], 'the old event is no route');
 
     // SessionStart measures nothing - the transcript has just been replaced by its summary - so the
@@ -2119,8 +2126,8 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
     // the Skill route is unchanged, and the widened list reaches the review seats
     assert.equal(askLoop(hot, winEnv()), 2, 'the Skill route still BLOCKS');
     assert.equal(runIn('guard-fresh-session-start.js',
-        { tool_name: 'Skill', tool_input: { skill: 'alfred-task-verify-code' }, transcript_path: hot }, { env: winEnv() }).status, 2,
-        'alfred-task-verify-code is orchestration - measured starting at 364.6k ctx');
+        { tool_name: 'Skill', tool_input: { skill: 'task-verify-code' }, transcript_path: hot }, { env: winEnv() }).status, 2,
+        'task-verify-code is orchestration - measured starting at 364.6k ctx');
 });
 
 test('fresh-session window: the account settings model id names the tier before any usage proves it', () => {
@@ -3021,26 +3028,26 @@ test('guard-fresh-session-start: a disable-model-invocation skill is denied to t
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`);
     };
-    write('alfred-loop-quality', 'disable-model-invocation: true\n');
-    write('alfred-capture-architecture', '');   // deliberately model-invocable so the loop can call it
+    write('loop-quality', 'disable-model-invocation: true\n');
+    write('capture-architecture', '');   // deliberately model-invocable so the loop can call it
     write('csharp', '');
     const skillCall = (skill) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmi' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
 
-    const blocked = skillCall('alfred-loop-quality');
+    const blocked = skillCall('loop-quality');
     assert.equal(blocked.status, 2, 'the model may not call a slash-only skill');
     assert.match(blocked.stderr, /disable-model-invocation/, 'the denial names why');
     assert.match(blocked.stderr, /hand the turn back/, 'and says what to do instead - not to retry');
     // No threshold involved: this payload carries no transcript at all, so a context-based block
     // could not have fired. The flag is the whole verdict.
-    assert.equal(skillCall('alfred-capture-architecture').status, 0, 'the unflagged capture stays callable');
+    assert.equal(skillCall('capture-architecture').status, 0, 'the unflagged capture stays callable');
     assert.equal(skillCall('csharp').status, 0, 'an ordinary skill is untouched');
     assert.equal(skillCall('not-installed-here').status, 0, 'a skill this project does not carry is not this guard\'s business');
 
     // The USER's own route is a different event and must stay open.
     const typed = runIn('guard-fresh-session-start.js',
-        { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: 'alfred-loop-quality', prompt: '/alfred-loop-quality', cwd: root, session_id: 'dmi' },
+        { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: 'loop-quality', prompt: '/loop-quality', cwd: root, session_id: 'dmi' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
     assert.equal(typed.status, 0, 'the user typing the command is never blocked');
     assert.doesNotMatch(typed.stdout + typed.stderr, /disable-model-invocation/, 'and never told the skill is the model\'s to refuse');
@@ -3060,14 +3067,14 @@ test('guard-fresh-session-start: the flag is read from the PLUGIN cache too, not
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`);
     };
-    place('alfred-code', 'alfred-loop-quality', 'disable-model-invocation: true\n', ['stack', 'skills']);
+    place('alfred-code', 'loop-quality', 'disable-model-invocation: true\n', ['stack', 'skills']);
     place('claude-stack-wpf', 'dotnet-wpf', '', ['stack', 'skills']);
     const skillCall = (skill) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmip' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg } });
 
-    assert.equal(skillCall('alfred-loop-quality').status, 2, 'a flagged skill served by a plugin is still denied');
-    assert.equal(skillCall('alfred-code:alfred-loop-quality').status, 2, 'and under its scoped spelling');
+    assert.equal(skillCall('loop-quality').status, 2, 'a flagged skill served by a plugin is still denied');
+    assert.equal(skillCall('alfred-code:loop-quality').status, 2, 'and under its scoped spelling');
     assert.equal(skillCall('claude-stack-wpf:dotnet-wpf').status, 0, 'an unflagged plugin skill stays callable');
     assert.equal(skillCall('alfred-code:not-shipped').status, 0, 'a name no home carries is not this guard\'s business');
 
@@ -3104,7 +3111,7 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     // the command being judged, as a prompt row already on disk; one below ends without it. It never denies:
     // an offer is injected context, so the helper returns that text ('' = no offer).
     const slash = (tp, env, skill) => {
-      const name = skill || 'alfred-loop-quality';
+      const name = skill || 'loop-quality';
       const r = runIn('guard-fresh-session-start.js',
           { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: name, command_args: '', prompt: `/${name}`, transcript_path: tp },
           { env: env || winEnv() });
@@ -3116,12 +3123,12 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
         { env: winEnv() }).status;
 
     // ONE run starting - its own marker is not a prior run.
-    assert.equal(slash(transcript('chain-first', [cmd('alfred-loop-quality')])), '', 'the run that is starting is not evidence against itself');
+    assert.equal(slash(transcript('chain-first', [cmd('loop-quality')])), '', 'the run that is starting is not evidence against itself');
 
     // A finished run, a human turn, then a second typed one: the whole measured shape.
     const second = transcript('chain-second', [
-      cmd('alfred-capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(),
-      userRow('now run the quality loop'), assistantRow('a2', 'ok', COLD), cmd('alfred-loop-quality'),
+      cmd('capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(),
+      userRow('now run the quality loop'), assistantRow('a2', 'ok', COLD), cmd('loop-quality'),
     ]);
     const env = winEnv();
     const offered = slash(second, env);
@@ -3132,23 +3139,23 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     // UserPromptExpansion fires as the command expands, so the typed prompt's own row may not be on disk
     // yet: the command being judged IS the human turn after the prior run's answer (2.1.5 M14).
     assert.match(slash(transcript('chain-not-on-disk', [
-      cmd('alfred-capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(), assistantRow('a2', 'ok', COLD),
+      cmd('capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(), assistantRow('a2', 'ok', COLD),
     ])), /ALREADY run one/, 'a transcript ending on the prior run\'s answer still chains');
 
     // ONE gated cycle is one run: its phases arrive as Skill calls, and its approval step puts a
     // human turn between them. Measured 2026-09-14: the build step of a single cycle was offered a
     // fresh session when Skill calls counted as runs.
     const cycle = transcript('chain-cycle', [
-      cmd('alfred-task-solve'), assistantRow('a0', 'reading the plan', FLOOR), skillRow('a1', 'alfred-task-design'),
-      toolResult(), assistantRow('a2', 'approve the plan?', COLD), userRow('approved'), skillRow('a3', 'alfred-task-implement'),
+      cmd('task-solve'), assistantRow('a0', 'reading the plan', FLOOR), skillRow('a1', 'task-design'),
+      toolResult(), assistantRow('a2', 'approve the plan?', COLD), userRow('approved'), skillRow('a3', 'task-implement'),
     ]);
-    assert.equal(skillCall(cycle, 'alfred-task-implement'), 0, 'a phase of a run in flight is not a second run');
-    assert.equal(skillCall(cycle, 'alfred-loop-quality'), 0, '... nor is any Skill-route call - only a typed run chains');
+    assert.equal(skillCall(cycle, 'task-implement'), 0, 'a phase of a run in flight is not a second run');
+    assert.equal(skillCall(cycle, 'loop-quality'), 0, '... nor is any Skill-route call - only a typed run chains');
 
     // Chaining the SAME command twice is still chaining.
     assert.match(slash(transcript('chain-twice', [
-      cmd('alfred-loop-quality'), assistantRow('a1', 'done', FLOOR), toolResult(),
-      userRow('do it again'), assistantRow('a2', 'ok', COLD), cmd('alfred-loop-quality'),
+      cmd('loop-quality'), assistantRow('a1', 'done', FLOOR), toolResult(),
+      userRow('do it again'), assistantRow('a2', 'ok', COLD), cmd('loop-quality'),
     ])), /ALREADY run one/, 'the same run a second time carries the same carried history');
 
     // The REAL slash shape: the harness writes the skill's body as an isMeta user record right after
@@ -3156,44 +3163,44 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     // are user-typed too. None is a human turn - measured 2026-09-14, a run started right after
     // /clear was offered a fresh session.
     assert.equal(slash(transcript('chain-harness-rows', [
-      assistantRow('a0', 'hello', FLOOR), assistantRow('a1', 'ok', COLD), cmd('alfred-task-solve'),
+      assistantRow('a0', 'hello', FLOOR), assistantRow('a1', 'ok', COLD), cmd('task-solve'),
       { type: 'user', isMeta: true, message: { role: 'user', content: [{ type: 'text', text: 'Base directory for this skill: x' }] } },
       userRow('<local-command-stdout>Set effort level</local-command-stdout>'),
       userRow('<task-notification>agent done</task-notification>'),
       { type: 'user', isCompactSummary: true, message: { role: 'user', content: 'This session is being continued' } },
-    ]), winEnv(), 'alfred-task-solve'), '', 'harness-written user records are not a human turn');
+    ]), winEnv(), 'task-solve'), '', 'harness-written user records are not a human turn');
 
     // The marker as TEXT is not a run: a tool result that printed a transcript or a test file, or the
     // model's own tool input writing one. Measured 2026-09-15: 28 of 73 markers in the corpus sat in
     // tool results, and a replayed session was offered a fresh session for a run nobody typed.
-    const markup = '<command-name>/alfred-capture-architecture</command-name>';
+    const markup = '<command-name>/capture-architecture</command-name>';
     assert.equal(slash(transcript('chain-in-tool-result', [
       assistantRow('a0', 'reading', FLOOR),
       { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: `const x = '${markup}';` }] } },
-      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('alfred-loop-quality'),
+      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('loop-quality'),
     ])), '', 'a marker printed by a tool is not a prior run');
     assert.equal(slash(transcript('chain-in-tool-input', [
       { type: 'assistant', message: { id: 'a0', content: [{ type: 'tool_use', name: 'Write', input: { content: markup } }], usage: FLOOR } },
-      toolResult(), userRow('next'), assistantRow('a1', 'ok', COLD), cmd('alfred-loop-quality'),
+      toolResult(), userRow('next'), assistantRow('a1', 'ok', COLD), cmd('loop-quality'),
     ])), '', 'a marker the model wrote into a tool input is not a prior run');
     assert.equal(slash(transcript('chain-in-meta', [
       assistantRow('a0', 'hi', FLOOR),
       { type: 'user', isMeta: true, message: { role: 'user', content: [{ type: 'text', text: `skill body quoting ${markup}` }] } },
-      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('alfred-loop-quality'),
+      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('loop-quality'),
     ])), '', 'a marker inside a harness-written row is not a prior run');
 
     // An ordinary skill after a deliberate run is not a run, and the off switch covers both triggers.
     const plain = transcript('chain-plain', [
-      cmd('alfred-capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('dev-log-convert'),
+      cmd('capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('dev-log-convert'),
     ]);
     assert.equal(slash(plain, winEnv(), 'dev-log-convert'), '', 'a non-orchestration skill is untouched');
     // A chain whose whole carry IS the install's own floor has nothing for a resume to recover.
     assert.equal(slash(transcript('chain-allfloor', [
-      cmd('alfred-capture-architecture'), assistantRow('a1', 'captured', { cache_read_input_tokens: 59000 }),
-      toolResult(), userRow('next'), assistantRow('a2', 'ok', COLD), cmd('alfred-loop-quality'),
+      cmd('capture-architecture'), assistantRow('a1', 'captured', { cache_read_input_tokens: 59000 }),
+      toolResult(), userRow('next'), assistantRow('a2', 'ok', COLD), cmd('loop-quality'),
     ])), '', 'a second run carrying only the cold floor is not worth a fresh session');
     assert.equal(slash(transcript('chain-off', [
-      cmd('alfred-capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('alfred-loop-quality'),
+      cmd('capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('loop-quality'),
     ]), winEnv({ ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_1M: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '',
         'all three triggers off is the whole off switch - the chained one included');
 });
@@ -3597,7 +3604,7 @@ test('guard-config-protection: the denial routes a wanted change through ONE ask
   assert.match(r.stderr, /ONE AskUserQuestion/);
   assert.match(r.stderr, /\.alfred\/docs\/flow\/CONFIG-EDIT-ALLOW/);
   // the denial names the mandate it mechanizes, so the next maintainer (and the model) can read why
-  assert.match(r.stderr, /alfred-habits-done-gate/);
+  assert.match(r.stderr, /habits-done-gate/);
 });
 
 test('guard-config-protection: a block writes one ledger row naming the hook', () => {
@@ -3742,7 +3749,7 @@ test('fresh-session engine: both hooks run silent when the engine file is missin
   const go = (hook, payload) => spawnSync(process.execPath, [path.join(dir, hook)], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
   const stop = go('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp, last_assistant_message: 'Done.' });
   assert.equal(stop.status, 0, stop.stderr); assert.equal(stop.stderr, ''); assert.equal(stop.stdout, '');
-  const skill = go('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'alfred-task-verify-code' }, transcript_path: tp });
+  const skill = go('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-verify-code' }, transcript_path: tp });
   assert.equal(skill.status, 0, skill.stderr); assert.equal(skill.stderr, ''); assert.equal(skill.stdout, '');
 });
 

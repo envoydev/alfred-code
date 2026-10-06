@@ -96,7 +96,7 @@ function alwaysOnSurface({
     rulesDir = path.join(STACK, 'rules'),
     agentsDir = path.join(STACK, 'agents'),
     skillsDir = path.join(STACK, 'skills'),
-    capabilitiesDir = path.join(skillsDir, 'alfred-capture-agent-capabilities'),
+    capabilitiesDir = path.join(skillsDir, 'capture-agent-capabilities'),
 } = {})
 {
     const read = (file) => fs.readFileSync(file, 'utf8');

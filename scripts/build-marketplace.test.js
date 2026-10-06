@@ -155,7 +155,7 @@ test('the two 1.x ids are generated retired aliases: the core under its old name
     assert.deepStrictEqual({ ...core, name: 'alfred-code', description: coreEntry().description, skills: coreEntry().skills, agents: coreEntry().agents }, coreEntry(), 'the core alias is the core, renamed');
     assert.deepStrictEqual(core.skills, ['./setup-plugin/skills/alfred-code', ...former.skills.map((s) => `./stack/skills/${s}`)]);
     assert.deepStrictEqual(core.agents, former.agents.map((a) => `./stack/agents/${a}.md`));
-    assert.ok(core.skills.includes('./stack/skills/alfred-habits-done-gate') && !core.agents.includes('./stack/agents/aspnet-implementer.md'));
+    assert.ok(core.skills.includes('./stack/skills/habits-done-gate') && !core.agents.includes('./stack/agents/aspnet-implementer.md'));
     // S20: validated under --strict with no component but an explicit empty skills list - omitting
     // the key would auto-discover the shared root's skill folders.
     assert.deepStrictEqual(Object.keys(hooks), ['name', 'source', 'description', 'version', 'author', 'strict', 'skills']);

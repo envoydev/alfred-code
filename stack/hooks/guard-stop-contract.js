@@ -22,7 +22,7 @@
 //   (ALFRED_CODE_DONE_GATE=0 off). And the RATIONALIZATION PROBE, log-only: a close dismissing a
 //   failure in a turn with a red run, a skipped test or an added skip marker writes one row per turn.
 // PostToolUse + PostToolUseFailure (Bash|PowerShell) wiring: LOG-ONLY - a red build or test run writes one
-//   probe row per failure streak (where `alfred-habits-root-cause` was needed); the streak ends when every
+//   probe row per failure streak (where `habits-root-cause` was needed); the streak ends when every
 //   command that ran red in it has run green again, or after an hour with no red run.
 // SubagentStop wiring: a subagent that closes on a wait nobody will end, with no background work of
 //   its own, is held once and told to do its directive (see the branch below for the field report).
@@ -157,7 +157,7 @@ function ledgerRow(row) {
 }
 
 // --- PostToolUse / PostToolUseFailure on Bash and PowerShell: a red run, measured ---------------------
-// The fix that follows a red run is where a guess lands - where `alfred-habits-root-cause` is NEEDED.
+// The fix that follows a red run is where a guess lands - where `habits-root-cause` is NEEDED.
 // LOG-ONLY since 2026-09-25 (the user's ruling: rely on the skill's description and the flows that
 // load it, and count the misses): a build or test command that FAILED writes one `mode: probe` row per
 // failure streak and says nothing to the model. The row carries the run's `tool_use_id` and actor, so
@@ -311,7 +311,7 @@ const RETRO_YOUR_CALL_RE = /\b(record(ed)?|noted?|logged|captured|set|chosen|dec
 // The quoted token is the other measured half: the model writes its own hand-back word in quotes,
 // so the literal `say go` saw none of the five asks it made in one session.
 const PROSE_ASK_CLAUSE_RE = /(?:^|[\n.;:,!?)\]-]\s*|\b(?:then|and|or|so|when|otherwise)\s+)(?:(?:just |please )?tell me\b(?!\s+(?:if|when|whenever|whether|why|what|how)\b)|(?:just |then )?say\s+['"‘’“”]?(?:go|yes|ok|okay|allowed|proceed|approved?)['"‘’“”]?\b)/i;
-// alfred-loop-quality's two structural pauses - the run-start mode ask and the stage-close
+// loop-quality's two structural pauses - the run-start mode ask and the stage-close
 // fresh-session ask - live in its SKILL.md as sentences, so the loop can word them as a statement
 // that ends on no '?' ('Continue in a fresh session from the loops folder (recommended), or
 // continue here.') and the question shape never sees them (improvement plan 2.5). Each needs the
@@ -915,7 +915,7 @@ if (payload.hook_event_name === 'SubagentStop') {
 }
 
 // --- Stop: the done-gate probe - a done claim over a turn's source edit, measured ---------------------
-// 'Fixed' typed over a change nothing ran is the claim `alfred-habits-done-gate` exists to stop. LOG-ONLY
+// 'Fixed' typed over a change nothing ran is the claim `habits-done-gate` exists to stop. LOG-ONLY
 // since 2026-09-25: a close claiming the change done, fixed, passing, works or ready over a turn with a
 // source edit writes one probe row per turn - `unrun` when the edit landed after the turn's last run, or
 // none ran - and the analyzer counts the misses; it never holds the close.
@@ -939,7 +939,7 @@ const EDIT_TOOL_RE = /^(?:Edit|Write|MultiEdit|NotebookEdit)$/;
 // delete changes source, credited to its declaring file (`relative_path`) - the references it rewrote elsewhere
 // are not named in the call (2.1.5 final review R8/R9).
 const NAV_EDIT_RE = /^mcp__(?:plugin_(?:alfred-)?navigation_)?(?:alfred-)?navigation__(?:rename_symbol|safe_delete_symbol)$/;
-const DONE_GATE_SKILL_RE = /(?:^|:)alfred-habits-done-gate$/;
+const DONE_GATE_SKILL_RE = /(?:^|:)(?:alfred-)?habits-done-gate$/;
 const DISPATCH_TOOL_RE = /^(?:Agent|Task)$/;
 const PROSE_FILE_RE = /\.(?:md|mdx|markdown|txt|rst|adoc)$/i;
 // git's own bookkeeping, never a build input: setup's git-hygiene write lands here (B-M5)
@@ -952,7 +952,7 @@ const RUN_OUTPUT_RE = /\.(?:log|out|err|tmp|temp|bak|orig|rej|pid|trx)$/i;
 const NO_CONTENT_VERB_RE = /^(?:mkdir|rmdir|touch|chmod|chown)$/;
 const DONE_NOISE_RE = /\bdone[- ](?:gate|word|claim)s?\b|\bdefinition of done\b/gi;
 const NOT_RUN_RE = /\b(?:could ?n[o']?t|can ?n[o']?t|cannot|unable to|did ?n[o']?t|was ?n[o']?t able to|ha(?:ve|s) ?n[o']?t)\s+(?:yet\s+)?(?:be(?:en)?\s+)?(?:run|ran|build|built|test|tested|verif(?:y|ied)|execut(?:e|ed))\b|\bnot (?:yet )?(?:run|built|tested|verified)\b|\b(?:untested|unverified)\b/i;
-// the result line `alfred-habits-done-gate` asks for in place of a claim: 'not run - <why>' (C1)
+// the result line `habits-done-gate` asks for in place of a claim: 'not run - <why>' (C1)
 const NOT_RUN_LINE_RE = /^not (?:yet )?run\**\s*[-:\u2013\u2014]/i;
 // 'when you're ready', 'once you are done reviewing' - the user's state, not the change's
 const YOU_CLAUSE_RE = /\byou(?:'re|\u2019re|\s+are|\s+were|'ve been|\s+have been)\b[^,;]*/gi;
@@ -967,7 +967,7 @@ const CLAIM_RES = [
   // green only over a build or test subject - 'the header is green' is a colour
   /\b(?:tests?|suites?|specs?|builds?|ci|checks?|pipelines?|runs?)\s+(?:(?:is|are|'s|'re|was|were|looks?|seems?|stays?|now)\s+)*(?:all\s+)?(green)\b/i,
   /^all\s+(green)\b/i,
-  // the signs `alfred-habits-done-gate` names: 'this fixes it', 'should be good to go', 'all set'
+  // the signs `habits-done-gate` names: 'this fixes it', 'should be good to go', 'all set'
   /(?<!\b(?:how|what|why|whether|if)\s)\b(?:this|that|it|which)\s+(?:should\s+|will\s+|now\s+)?(fix(?:es)?)\s+(?:it|this|that|the|a|an)\b/i,
   /\b(good to go)\b/i,
   /(?:^|\b(?:is|are|'s|'re)\s+)all\s+(set)\b/i,
@@ -1810,7 +1810,7 @@ function solveTaskCycle() {
     const buf = Buffer.alloc(size - start);
     fs.readSync(fd, buf, 0, buf.length, start);
     fs.closeSync(fd);
-    return /<command-name>\s*\/?(?:[a-z0-9-]+:)?alfred-task-solve(-cross)?\s*<\/command-name>|"skill"\s*:\s*"[^"]*alfred-task-solve(-cross)?/.test(buf.toString('utf8'));
+    return /<command-name>\s*\/?(?:[a-z0-9-]+:)?(?:alfred-)?task-solve(-cross)?\s*<\/command-name>|"skill"\s*:\s*"[^"]*task-solve(-cross)?/.test(buf.toString('utf8'));
   } catch {
     return false;
   }

@@ -669,7 +669,7 @@ function respellRosterSeats({ projectRoot, core, seats = [], log = () => {}, not
     }
     if (!changed) return 0;
     try { fs.writeFileSync(file, lines.join('\n')); }
-    catch (err) { note(`.claude/rules/alfred-project-agent-capabilities.md names ${changed} seat(s) the core answers under ${core}:<seat> and could not be re-spelled (${err.message}) - re-run /alfred-capture-agent-capabilities`); return 0; }
+    catch (err) { note(`.claude/rules/alfred-project-agent-capabilities.md names ${changed} seat(s) the core answers under ${core}:<seat> and could not be re-spelled (${err.message}) - re-run /capture-agent-capabilities`); return 0; }
     log(`  roster: alfred-project-agent-capabilities.md - ${changed} seat name(s) re-spelled to how they resolve (${core}:<seat> on the core, bare for a kept project copy)`);
     return changed;
 }

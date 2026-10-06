@@ -25,7 +25,7 @@ function project({ settings } = {})
     return root;
 }
 const INV = (over = {}) => ({
-    skills: ['alfred-capture-related-projects', 'alfred-capture-architecture', 'alfred-capture-code-style', 'alfred-capture-project-capabilities', 'alfred-capture-agent-capabilities'],
+    skills: ['capture-related-projects', 'capture-architecture', 'capture-code-style', 'capture-project-capabilities', 'capture-agent-capabilities'],
     agents: ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer'],
     mcps: ['alfred-navigation', 'alfred-documentation', 'alfred-memory', 'playwright'],
     plugins: [{ name: 'alfred-code', scope: 'project' }, { name: 'csharp-lsp', scope: 'project' }],
@@ -240,36 +240,36 @@ test('captures: the fixed order; run, done and skip each say why; the library co
     const root = project({ settings: { env: { ALFRED_CODE_DOCS_PATH: 'notes/ai' } } });
     fs.mkdirSync(path.join(root, 'notes', 'ai', 'architecture'), { recursive: true });
     fs.writeFileSync(path.join(root, 'notes', 'ai', 'architecture', 'ARCHITECTURE.md'), '# map\n');
-    fs.mkdirSync(path.join(root, '.claude', 'skills', 'alfred-capture-related-projects'), { recursive: true });
-    fs.writeFileSync(path.join(root, '.claude', 'skills', 'alfred-capture-related-projects', 'SKILL.md'), '---\nname: x\n---\n');
+    fs.mkdirSync(path.join(root, '.claude', 'skills', 'capture-related-projects'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'skills', 'capture-related-projects', 'SKILL.md'), '---\nname: x\n---\n');
     const inv = INV({ left_out: ['agent code-style-analyzer'] });
     const lines = render(plan({ inv, root, platform: 'linux', env: E(), probe: NONE, pluginRoot: path.join(__dirname, '..') }))
         .filter((l) => l.startsWith('capture:'));
     assert.deepStrictEqual(lines.map((l) => l.split(' - ')[0]), [
-        'capture: alfred-capture-related-projects', 'capture: alfred-capture-architecture',
-        'capture: alfred-capture-code-style', 'capture: alfred-capture-project-capabilities', 'capture: alfred-capture-agent-capabilities',
+        'capture: capture-related-projects', 'capture: capture-architecture',
+        'capture: capture-code-style', 'capture: capture-project-capabilities', 'capture: capture-agent-capabilities',
     ]);
-    assert.strictEqual(lines[0], 'capture: alfred-capture-related-projects - run: read .claude/skills/alfred-capture-related-projects/SKILL.md');
-    assert.strictEqual(lines[1], 'capture: alfred-capture-architecture - done: notes/ai/architecture/ARCHITECTURE.md exists');
-    assert.strictEqual(lines[2], 'capture: alfred-capture-code-style - skip: its seat code-style-analyzer is switched off');
+    assert.strictEqual(lines[0], 'capture: capture-related-projects - run: read .claude/skills/capture-related-projects/SKILL.md');
+    assert.strictEqual(lines[1], 'capture: capture-architecture - done: notes/ai/architecture/ARCHITECTURE.md exists');
+    assert.strictEqual(lines[2], 'capture: capture-code-style - skip: its seat code-style-analyzer is switched off');
     // A path outside the project is printed with forward slashes on every OS: init reads it through Bash, where a
     // backslash is an escape (windows-2025 CI printed `D:/a/...` against a native-separator expectation).
     const libPath = (skill) => path.join(__dirname, '..', 'stack', 'skills', skill, 'SKILL.md').split(path.sep).join('/');
     // The run book has no seat: the capture reads the repo and asks in the main session.
-    assert.strictEqual(lines[3], `capture: alfred-capture-project-capabilities - run: read ${libPath('alfred-capture-project-capabilities')}`);
-    assert.strictEqual(lines[4], `capture: alfred-capture-agent-capabilities - run: read ${libPath('alfred-capture-agent-capabilities')}`);
+    assert.strictEqual(lines[3], `capture: capture-project-capabilities - run: read ${libPath('capture-project-capabilities')}`);
+    assert.strictEqual(lines[4], `capture: capture-agent-capabilities - run: read ${libPath('capture-agent-capabilities')}`);
     fs.mkdirSync(path.join(root, 'notes', 'ai', 'project-capabilities'), { recursive: true });
     fs.writeFileSync(path.join(root, 'notes', 'ai', 'project-capabilities', 'PROJECT-CAPABILITIES.md'), '# run book\n');
     const again = render(plan({ inv, root, platform: 'linux', env: E(), probe: NONE })).filter((l) => l.startsWith('capture:'));
-    assert.strictEqual(again[3], 'capture: alfred-capture-project-capabilities - done: notes/ai/project-capabilities/PROJECT-CAPABILITIES.md exists');
+    assert.strictEqual(again[3], 'capture: capture-project-capabilities - done: notes/ai/project-capabilities/PROJECT-CAPABILITIES.md exists');
 
-    const bare = render(plan({ inv: INV({ skills: ['alfred-capture-agent-capabilities'], agents: [] }), root, platform: 'linux', env: E(), probe: NONE }))
+    const bare = render(plan({ inv: INV({ skills: ['capture-agent-capabilities'], agents: [] }), root, platform: 'linux', env: E(), probe: NONE }))
         .filter((l) => l.startsWith('capture:'));
-    assert.strictEqual(bare[0], 'capture: alfred-capture-related-projects - skip: the skill is not installed');
-    assert.strictEqual(bare[1], 'capture: alfred-capture-architecture - skip: the skill is not installed');
+    assert.strictEqual(bare[0], 'capture: capture-related-projects - skip: the skill is not installed');
+    assert.strictEqual(bare[1], 'capture: capture-architecture - skip: the skill is not installed');
     const noSeat = render(plan({ inv: INV({ agents: [] }), root: project(), platform: 'linux', env: E(), probe: NONE }))
         .filter((l) => l.startsWith('capture:'));
-    assert.strictEqual(noSeat[2], 'capture: alfred-capture-code-style - skip: its seat code-style-analyzer is not installed');
+    assert.strictEqual(noSeat[2], 'capture: capture-code-style - skip: its seat code-style-analyzer is not installed');
 });
 
 // End to end through the CLI, on a stubbed PATH: the real probes, the real pins file.
@@ -311,12 +311,12 @@ test('captures: at local scope the docs root is the personal file\'s, at project
     fs.mkdirSync(path.join(root, 'docs', 'mine', 'architecture'), { recursive: true });
     fs.writeFileSync(path.join(root, 'docs', 'mine', 'architecture', 'ARCHITECTURE.md'), '# map\n');
     const line = () => render(plan({ inv: INV(), root, platform: 'linux', env: E(), probe: NONE }))
-        .find((l) => l.startsWith('capture: alfred-capture-architecture'));
+        .find((l) => l.startsWith('capture: capture-architecture'));
     const stamp = (scope) => fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), `source: x\nscope: ${scope}\n`);
     stamp('local');
-    assert.strictEqual(line(), 'capture: alfred-capture-architecture - done: docs/mine/architecture/ARCHITECTURE.md exists');
+    assert.strictEqual(line(), 'capture: capture-architecture - done: docs/mine/architecture/ARCHITECTURE.md exists');
     stamp('project');
-    assert.match(line(), /^capture: alfred-capture-architecture - run: /, 'project scope never reads the personal file');
+    assert.match(line(), /^capture: capture-architecture - run: /, 'project scope never reads the personal file');
 });
 
 // R134, the I-4 class: a --space that names no profile exits 2 - never the default account's plan.
@@ -350,7 +350,7 @@ for (const rel of ['stack/AGENTS.template.md', 'setup-plugin/references/post-ins
         const names = CAPTURES.map((c) => c.skill);
         const text = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
         const firstSeen = [];
-        for (const m of text.matchAll(/\/(alfred-capture-[a-z-]+)/g)) if (names.includes(m[1]) && !firstSeen.includes(m[1])) firstSeen.push(m[1]);
+        for (const m of text.matchAll(/\/(capture-[a-z-]+)/g)) if (names.includes(m[1]) && !firstSeen.includes(m[1])) firstSeen.push(m[1]);
         assert.deepStrictEqual(firstSeen, names);
     });
 }
@@ -375,7 +375,7 @@ test('unattended: each of init\'s own asks gets one line - additive installs tak
         { what: 'csharp-ls', state: 'blocked', detail: 'needs .NET' },
         { what: 'serena index', state: 'present', detail: '' },
         { what: 'claude-hud status line + compact layout', state: 'refresh', detail: 'node hud ...' },
-    ], captures: [{ skill: 'alfred-capture-related-projects', state: 'run', detail: 'read x' }, { skill: 'alfred-capture-architecture', state: 'run', detail: 'read y' }] };
+    ], captures: [{ skill: 'capture-related-projects', state: 'run', detail: 'read x' }, { skill: 'capture-architecture', state: 'run', detail: 'read y' }] };
     assert.deepStrictEqual(DESTRUCTIVE_MACHINE, ['refresh']);
     assert.deepStrictEqual(unattended(p), [
         'unattended: machine installs -> install uv, python 3.13',
@@ -388,7 +388,7 @@ test('unattended: each of init\'s own asks gets one line - additive installs tak
 
 test('unattended: nothing to install and no related-projects capture - no line for an ask that never fires', () =>
 {
-    const lines = unattended({ machine: [{ what: 'uv', state: 'present', detail: '' }], captures: [{ skill: 'alfred-capture-related-projects', state: 'done', detail: 'x exists' }] });
+    const lines = unattended({ machine: [{ what: 'uv', state: 'present', detail: '' }], captures: [{ skill: 'capture-related-projects', state: 'done', detail: 'x exists' }] });
     assert.deepStrictEqual(lines, ['unattended: memory level -> global (Recommended)', 'unattended: AGENTS.md -> fill it in (Recommended)']);
 });
 

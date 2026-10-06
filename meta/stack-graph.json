@@ -1,152 +1,6 @@
 {
   "generatedBy": "stack-graph",
   "skills": {
-    "alfred-capture-agent-capabilities": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-capture-architecture": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-capture-architecture-quality": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-capture-code-quality": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-capture-code-style": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-capture-first-look": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-capture-project-capabilities": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-capture-related-projects": {
-      "mcps": [
-        "alfred-memory"
-      ],
-      "plugins": []
-    },
-    "alfred-capture-test-coverage": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-capture-usage-report": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-habits-adjust-agents-md": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-habits-clarify": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-habits-code-comments": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-habits-commit-checkpoint": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-habits-create-ticket": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-habits-done-gate": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-habits-execution-strategy": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-habits-explain-code": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-habits-plan-writing": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-habits-root-cause": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-habits-skill-writing": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-habits-test-first": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-issue-diagnoser": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-issue-signatures-ci": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-issue-signatures-runtime": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-loop-architecture-quality": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-loop-quality": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-loop-test-coverage": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-task-build-from-scratch": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-task-design": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-task-implement": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-task-solve": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-task-solve-cross": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-task-verify-code": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-task-verify-plan": {
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-task-version-upgrade": {
-      "mcps": [],
-      "plugins": []
-    },
     "angular-conventions": {
       "mcps": [
         "alfred-documentation"
@@ -174,6 +28,48 @@
       "plugins": []
     },
     "capacitor-release": {
+      "mcps": [],
+      "plugins": []
+    },
+    "capture-agent-capabilities": {
+      "mcps": [],
+      "plugins": []
+    },
+    "capture-architecture": {
+      "mcps": [],
+      "plugins": []
+    },
+    "capture-architecture-quality": {
+      "mcps": [],
+      "plugins": []
+    },
+    "capture-code-quality": {
+      "mcps": [],
+      "plugins": []
+    },
+    "capture-code-style": {
+      "mcps": [],
+      "plugins": []
+    },
+    "capture-first-look": {
+      "mcps": [],
+      "plugins": []
+    },
+    "capture-project-capabilities": {
+      "mcps": [],
+      "plugins": []
+    },
+    "capture-related-projects": {
+      "mcps": [
+        "alfred-memory"
+      ],
+      "plugins": []
+    },
+    "capture-test-coverage": {
+      "mcps": [],
+      "plugins": []
+    },
+    "capture-usage-report": {
       "mcps": [],
       "plugins": []
     },
@@ -333,6 +229,54 @@
       ],
       "plugins": []
     },
+    "habits-adjust-agents-md": {
+      "mcps": [],
+      "plugins": []
+    },
+    "habits-clarify": {
+      "mcps": [],
+      "plugins": []
+    },
+    "habits-code-comments": {
+      "mcps": [],
+      "plugins": []
+    },
+    "habits-commit-checkpoint": {
+      "mcps": [],
+      "plugins": []
+    },
+    "habits-create-ticket": {
+      "mcps": [],
+      "plugins": []
+    },
+    "habits-done-gate": {
+      "mcps": [],
+      "plugins": []
+    },
+    "habits-execution-strategy": {
+      "mcps": [],
+      "plugins": []
+    },
+    "habits-explain-code": {
+      "mcps": [],
+      "plugins": []
+    },
+    "habits-plan-writing": {
+      "mcps": [],
+      "plugins": []
+    },
+    "habits-root-cause": {
+      "mcps": [],
+      "plugins": []
+    },
+    "habits-skill-writing": {
+      "mcps": [],
+      "plugins": []
+    },
+    "habits-test-first": {
+      "mcps": [],
+      "plugins": []
+    },
     "ilspy-decompile": {
       "mcps": [],
       "plugins": []
@@ -345,10 +289,34 @@
       "mcps": [],
       "plugins": []
     },
+    "issue-diagnoser": {
+      "mcps": [],
+      "plugins": []
+    },
+    "issue-signatures-ci": {
+      "mcps": [],
+      "plugins": []
+    },
+    "issue-signatures-runtime": {
+      "mcps": [],
+      "plugins": []
+    },
     "javascript": {
       "mcps": [
         "alfred-documentation"
       ],
+      "plugins": []
+    },
+    "loop-architecture-quality": {
+      "mcps": [],
+      "plugins": []
+    },
+    "loop-quality": {
+      "mcps": [],
+      "plugins": []
+    },
+    "loop-test-coverage": {
+      "mcps": [],
       "plugins": []
     },
     "markdown-style": {
@@ -371,6 +339,38 @@
       "mcps": [],
       "plugins": []
     },
+    "task-build-from-scratch": {
+      "mcps": [],
+      "plugins": []
+    },
+    "task-design": {
+      "mcps": [],
+      "plugins": []
+    },
+    "task-implement": {
+      "mcps": [],
+      "plugins": []
+    },
+    "task-solve": {
+      "mcps": [],
+      "plugins": []
+    },
+    "task-solve-cross": {
+      "mcps": [],
+      "plugins": []
+    },
+    "task-verify-code": {
+      "mcps": [],
+      "plugins": []
+    },
+    "task-verify-plan": {
+      "mcps": [],
+      "plugins": []
+    },
+    "task-version-upgrade": {
+      "mcps": [],
+      "plugins": []
+    },
     "ts-js-testing": {
       "mcps": [],
       "plugins": []
@@ -385,30 +385,10 @@
     }
   },
   "agents": {
-    "alfred-issue-diagnoser-ci": {
-      "skills": [
-        "alfred-habits-root-cause",
-        "alfred-issue-signatures-ci"
-      ],
-      "skillsSource": "frontmatter",
-      "agents": [],
-      "mcps": [],
-      "plugins": []
-    },
-    "alfred-issue-diagnoser-runtime": {
-      "skills": [
-        "alfred-habits-root-cause",
-        "alfred-issue-signatures-runtime"
-      ],
-      "skillsSource": "frontmatter",
-      "agents": [],
-      "mcps": [],
-      "plugins": []
-    },
     "angular-test-resolver": {
       "skills": [
-        "alfred-habits-done-gate",
-        "alfred-habits-root-cause"
+        "habits-done-gate",
+        "habits-root-cause"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -424,13 +404,13 @@
     },
     "aspnet-implementer": {
       "skills": [
-        "alfred-habits-done-gate",
-        "alfred-habits-test-first",
         "csharp",
         "dotnet-data-access",
         "dotnet-testing",
         "dotnet-web-backend",
-        "dotnet-web-error-handling"
+        "dotnet-web-error-handling",
+        "habits-done-gate",
+        "habits-test-first"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -439,10 +419,10 @@
     },
     "aspnet-solution-designer": {
       "skills": [
-        "alfred-task-design",
         "csharp-design-patterns",
         "dotnet-testing",
-        "dotnet-web-backend"
+        "dotnet-web-backend",
+        "task-design"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -451,12 +431,12 @@
     },
     "aspnet-verifier": {
       "skills": [
-        "alfred-habits-done-gate",
         "csharp",
         "dotnet-code-quality",
         "dotnet-data-access",
         "dotnet-testing",
-        "dotnet-web-backend"
+        "dotnet-web-backend",
+        "habits-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -465,9 +445,9 @@
     },
     "browser-extension-implementer": {
       "skills": [
-        "alfred-habits-done-gate",
-        "alfred-habits-test-first",
         "browser-extension",
+        "habits-done-gate",
+        "habits-test-first",
         "javascript",
         "typescript"
       ],
@@ -478,8 +458,8 @@
     },
     "browser-extension-solution-designer": {
       "skills": [
-        "alfred-task-design",
         "browser-extension",
+        "task-design",
         "ts-js-testing"
       ],
       "skillsSource": "frontmatter",
@@ -489,8 +469,8 @@
     },
     "browser-extension-verifier": {
       "skills": [
-        "alfred-habits-done-gate",
         "browser-extension",
+        "habits-done-gate",
         "javascript",
         "ts-js-testing",
         "typescript"
@@ -516,11 +496,11 @@
     },
     "console-implementer": {
       "skills": [
-        "alfred-habits-done-gate",
-        "alfred-habits-test-first",
         "csharp",
         "dotnet-hosted-services",
-        "dotnet-testing"
+        "dotnet-testing",
+        "habits-done-gate",
+        "habits-test-first"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -529,10 +509,10 @@
     },
     "console-solution-designer": {
       "skills": [
-        "alfred-task-design",
         "csharp-design-patterns",
         "dotnet-hosted-services",
-        "dotnet-testing"
+        "dotnet-testing",
+        "task-design"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -541,11 +521,11 @@
     },
     "console-verifier": {
       "skills": [
-        "alfred-habits-done-gate",
         "csharp",
         "dotnet-code-quality",
         "dotnet-hosted-services",
-        "dotnet-testing"
+        "dotnet-testing",
+        "habits-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -554,12 +534,12 @@
     },
     "data-implementer": {
       "skills": [
-        "alfred-habits-done-gate",
-        "alfred-habits-test-first",
         "csharp",
         "database-conventions",
         "dotnet-data-access",
-        "dotnet-testing"
+        "dotnet-testing",
+        "habits-done-gate",
+        "habits-test-first"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -568,9 +548,9 @@
     },
     "data-solution-designer": {
       "skills": [
-        "alfred-task-design",
         "database-conventions",
-        "dotnet-migrate"
+        "dotnet-migrate",
+        "task-design"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -579,10 +559,10 @@
     },
     "data-verifier": {
       "skills": [
-        "alfred-habits-done-gate",
         "database-conventions",
         "dotnet-migrate",
-        "dotnet-testing"
+        "dotnet-testing",
+        "habits-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -591,8 +571,8 @@
     },
     "devops-implementer": {
       "skills": [
-        "alfred-habits-done-gate",
-        "devops"
+        "devops",
+        "habits-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -601,8 +581,8 @@
     },
     "devops-solution-designer": {
       "skills": [
-        "alfred-task-design",
-        "devops"
+        "devops",
+        "task-design"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -611,8 +591,8 @@
     },
     "devops-verifier": {
       "skills": [
-        "alfred-habits-done-gate",
-        "devops"
+        "devops",
+        "habits-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -621,8 +601,8 @@
     },
     "dotnet-build-error-resolver": {
       "skills": [
-        "alfred-habits-done-gate",
-        "alfred-habits-root-cause"
+        "habits-done-gate",
+        "habits-root-cause"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -631,8 +611,8 @@
     },
     "dotnet-test-failure-resolver": {
       "skills": [
-        "alfred-habits-done-gate",
-        "alfred-habits-root-cause"
+        "habits-done-gate",
+        "habits-root-cause"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -655,9 +635,9 @@
     },
     "ionic-angular-implementer": {
       "skills": [
-        "alfred-habits-done-gate",
-        "alfred-habits-test-first",
         "angular-conventions",
+        "habits-done-gate",
+        "habits-test-first",
         "ionic",
         "javascript",
         "typescript"
@@ -669,10 +649,10 @@
     },
     "ionic-angular-solution-designer": {
       "skills": [
-        "alfred-task-design",
         "angular-conventions",
         "angular-testing",
-        "ionic"
+        "ionic",
+        "task-design"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -681,9 +661,9 @@
     },
     "ionic-angular-verifier": {
       "skills": [
-        "alfred-habits-done-gate",
         "angular-conventions",
         "angular-testing",
+        "habits-done-gate",
         "ionic",
         "javascript",
         "typescript"
@@ -693,10 +673,30 @@
       "mcps": [],
       "plugins": []
     },
+    "issue-diagnoser-ci": {
+      "skills": [
+        "habits-root-cause",
+        "issue-signatures-ci"
+      ],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": []
+    },
+    "issue-diagnoser-runtime": {
+      "skills": [
+        "habits-root-cause",
+        "issue-signatures-runtime"
+      ],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": []
+    },
     "ng-build-error-resolver": {
       "skills": [
-        "alfred-habits-done-gate",
-        "alfred-habits-root-cause"
+        "habits-done-gate",
+        "habits-root-cause"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -726,9 +726,9 @@
     },
     "web-angular-implementer": {
       "skills": [
-        "alfred-habits-done-gate",
-        "alfred-habits-test-first",
         "angular-conventions",
+        "habits-done-gate",
+        "habits-test-first",
         "javascript",
         "typescript"
       ],
@@ -739,9 +739,9 @@
     },
     "web-angular-solution-designer": {
       "skills": [
-        "alfred-task-design",
         "angular-conventions",
-        "angular-testing"
+        "angular-testing",
+        "task-design"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -750,9 +750,9 @@
     },
     "web-angular-verifier": {
       "skills": [
-        "alfred-habits-done-gate",
         "angular-conventions",
         "angular-testing",
+        "habits-done-gate",
         "javascript",
         "typescript"
       ],
@@ -763,12 +763,12 @@
     },
     "windows-service-implementer": {
       "skills": [
-        "alfred-habits-done-gate",
-        "alfred-habits-test-first",
         "csharp",
         "dotnet-hosted-services",
         "dotnet-testing",
-        "dotnet-windows-service"
+        "dotnet-windows-service",
+        "habits-done-gate",
+        "habits-test-first"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -777,11 +777,11 @@
     },
     "windows-service-solution-designer": {
       "skills": [
-        "alfred-task-design",
         "csharp-design-patterns",
         "dotnet-hosted-services",
         "dotnet-testing",
-        "dotnet-windows-service"
+        "dotnet-windows-service",
+        "task-design"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -790,12 +790,12 @@
     },
     "windows-service-verifier": {
       "skills": [
-        "alfred-habits-done-gate",
         "csharp",
         "dotnet-code-quality",
         "dotnet-hosted-services",
         "dotnet-testing",
-        "dotnet-windows-service"
+        "dotnet-windows-service",
+        "habits-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -804,11 +804,11 @@
     },
     "winforms-implementer": {
       "skills": [
-        "alfred-habits-done-gate",
-        "alfred-habits-test-first",
         "csharp",
         "dotnet-testing",
-        "dotnet-winforms"
+        "dotnet-winforms",
+        "habits-done-gate",
+        "habits-test-first"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -817,10 +817,10 @@
     },
     "winforms-solution-designer": {
       "skills": [
-        "alfred-task-design",
         "csharp-design-patterns",
         "dotnet-testing",
-        "dotnet-winforms"
+        "dotnet-winforms",
+        "task-design"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -829,11 +829,11 @@
     },
     "winforms-verifier": {
       "skills": [
-        "alfred-habits-done-gate",
         "csharp",
         "dotnet-code-quality",
         "dotnet-testing",
-        "dotnet-winforms"
+        "dotnet-winforms",
+        "habits-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -842,11 +842,11 @@
     },
     "wpf-implementer": {
       "skills": [
-        "alfred-habits-done-gate",
-        "alfred-habits-test-first",
         "csharp",
         "dotnet-testing",
-        "dotnet-wpf"
+        "dotnet-wpf",
+        "habits-done-gate",
+        "habits-test-first"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -855,10 +855,10 @@
     },
     "wpf-solution-designer": {
       "skills": [
-        "alfred-task-design",
         "csharp-design-patterns",
         "dotnet-testing",
-        "dotnet-wpf"
+        "dotnet-wpf",
+        "task-design"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -867,11 +867,11 @@
     },
     "wpf-verifier": {
       "skills": [
-        "alfred-habits-done-gate",
         "csharp",
         "dotnet-code-quality",
         "dotnet-testing",
-        "dotnet-wpf"
+        "dotnet-wpf",
+        "habits-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -889,7 +889,7 @@
     },
     "alfred-git": {
       "skills": [
-        "alfred-habits-commit-checkpoint"
+        "habits-commit-checkpoint"
       ],
       "agents": [],
       "mcps": [],
@@ -898,11 +898,11 @@
     },
     "alfred-interaction": {
       "skills": [
-        "alfred-habits-clarify",
-        "alfred-habits-execution-strategy",
-        "alfred-habits-plan-writing",
-        "alfred-habits-root-cause",
-        "alfred-habits-test-first"
+        "habits-clarify",
+        "habits-execution-strategy",
+        "habits-plan-writing",
+        "habits-root-cause",
+        "habits-test-first"
       ],
       "agents": [],
       "mcps": [],
@@ -929,8 +929,8 @@
     },
     "alfred-quality-gates": {
       "skills": [
-        "alfred-habits-code-comments",
-        "alfred-habits-done-gate"
+        "habits-code-comments",
+        "habits-done-gate"
       ],
       "agents": [],
       "mcps": [
@@ -941,7 +941,7 @@
     },
     "alfred-security": {
       "skills": [
-        "alfred-habits-commit-checkpoint"
+        "habits-commit-checkpoint"
       ],
       "agents": [],
       "mcps": [],
@@ -975,7 +975,7 @@
     },
     "angular-repair-agents": {
       "skills": [
-        "alfred-task-solve-cross"
+        "task-solve-cross"
       ],
       "agents": [
         "angular-test-resolver",
@@ -1063,7 +1063,7 @@
     },
     "dotnet-repair-agents": {
       "skills": [
-        "alfred-task-solve-cross"
+        "task-solve-cross"
       ],
       "agents": [
         "dotnet-build-error-resolver",
@@ -1112,7 +1112,7 @@
     },
     "skill-authoring": {
       "skills": [
-        "alfred-habits-skill-writing"
+        "habits-skill-writing"
       ],
       "agents": [],
       "mcps": [],

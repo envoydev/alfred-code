@@ -96,7 +96,7 @@ test('C1: an update over the 2.1.3 git-mode file rewrites it, a re-run changes n
 
 test('C1: the usage audit keys its transcript copy on git check-ignore and asks before a committable copy', () =>
 {
-    const skill = read('stack/skills/alfred-capture-usage-report/SKILL.md');
+    const skill = read('stack/skills/capture-usage-report/SKILL.md');
     assert.match(flat(skill), /git check-ignore -q "<docs-path>\/usage-report\/<session-id>\/x\.jsonl"/);
     const ask = asks(skill).find((a) => a.options.some((o) => /raw transcripts/i.test(o)));
     assert.ok(ask, 'the consent is an ask template');
@@ -115,14 +115,14 @@ test('I25: no shipped skill says the docs root is machine-local by default', () 
 
 test('I25: the four captures say where the docs land by the docs engine\'s own status line', () =>
 {
-    for (const rel of ['stack/skills/alfred-capture-related-projects/SKILL.md', 'stack/skills/alfred-capture-architecture/references/report-fields.md',
-        'stack/skills/alfred-capture-code-style/SKILL.md', 'stack/skills/alfred-capture-test-coverage/SKILL.md'])
+    for (const rel of ['stack/skills/capture-related-projects/SKILL.md', 'stack/skills/capture-architecture/references/report-fields.md',
+        'stack/skills/capture-code-style/SKILL.md', 'stack/skills/capture-test-coverage/SKILL.md'])
         assert.match(flat(read(rel)), /docs\.js status/, `${rel}: names the observable`);
-    const landed = read('stack/skills/alfred-capture-code-style/SKILL.md').match(/^Landed:.*$/m);
+    const landed = read('stack/skills/capture-code-style/SKILL.md').match(/^Landed:.*$/m);
     assert.ok(landed, 'the Landed field is still there');
     assert.match(landed[0], /mode: git/);
     assert.match(landed[0], /mode: overlay/);
-    assert.match(flat(read('stack/skills/alfred-capture-test-coverage/SKILL.md')), /`mode: git`[^.]*raw/, 'test-coverage says the raw files are committed under git mode');
+    assert.match(flat(read('stack/skills/capture-test-coverage/SKILL.md')), /`mode: git`[^.]*raw/, 'test-coverage says the raw files are committed under git mode');
 });
 
 // ---- I26: the APPROVAL stamp's protected-path sentence is conditional and pinned at all nine sites ---------------
@@ -130,11 +130,11 @@ const PROTECTED = 'Only where the docs root still sits under `.claude/` (the old
     + 'a prompt for it offers \'Yes, and allow Claude to edit files in this project\'s .claude folder for this session\' - '
     + 'take that, since `permissions.allow` cannot pre-approve it.';
 const STAMP_SITES = [
-    'stack/skills/alfred-loop-architecture-quality/SKILL.md', 'stack/skills/alfred-loop-quality/SKILL.md',
-    'stack/skills/alfred-loop-quality/references/delegated-mode.md', 'stack/skills/alfred-loop-test-coverage/SKILL.md',
-    'stack/skills/alfred-task-build-from-scratch/SKILL.md', 'stack/skills/alfred-task-implement/SKILL.md',
-    'stack/skills/alfred-task-solve/references/step-mechanics.md', 'stack/skills/alfred-task-solve-cross/references/execution-modes.md',
-    'stack/skills/alfred-task-version-upgrade/SKILL.md',
+    'stack/skills/loop-architecture-quality/SKILL.md', 'stack/skills/loop-quality/SKILL.md',
+    'stack/skills/loop-quality/references/delegated-mode.md', 'stack/skills/loop-test-coverage/SKILL.md',
+    'stack/skills/task-build-from-scratch/SKILL.md', 'stack/skills/task-implement/SKILL.md',
+    'stack/skills/task-solve/references/step-mechanics.md', 'stack/skills/task-solve-cross/references/execution-modes.md',
+    'stack/skills/task-version-upgrade/SKILL.md',
 ];
 test('I26: the stale prompt label is gone and every stamp site carries the one conditional sentence', () =>
 {
@@ -150,10 +150,10 @@ test('I26: the stale prompt label is gone and every stamp site carries the one c
 test('I22: the interaction baseline carves out the design flow\'s plan file, and both homes are pinned', () =>
 {
     assert.match(flat(read('stack/rules/alfred-interaction.md')), /A written plan file only when the user asks for a plan, the work spans sessions, or a design flow writes it as its handoff/);
-    assert.match(flat(read('stack/skills/alfred-task-design/SKILL.md')), /a design flow writes it as its handoff/);
+    assert.match(flat(read('stack/skills/task-design/SKILL.md')), /a design flow writes it as its handoff/);
     const entry = shared()['plan-file-design-handoff'];
     assert.ok(entry, 'pinned in shared-rules.json');
-    assert.deepStrictEqual(copiesOf(entry).sort(), ['stack/rules/alfred-interaction.md', 'stack/skills/alfred-task-design/SKILL.md']);
+    assert.deepStrictEqual(copiesOf(entry).sort(), ['stack/rules/alfred-interaction.md', 'stack/skills/task-design/SKILL.md']);
 });
 
 // ---- I27: a shell variable never crosses a Bash call ------------------------------------------------------------
@@ -187,7 +187,7 @@ test('I27: no fenced bash block in a shipped skill reads a variable another Bash
 });
 test('I27: the usage audit\'s temp dir is made under $TMPDIR, where a sandboxed command may write', () =>
 {
-    const skill = read('stack/skills/alfred-capture-usage-report/SKILL.md');
+    const skill = read('stack/skills/capture-usage-report/SKILL.md');
     assert.match(skill, /mktemp -d "\$\{TMPDIR:-\/tmp\}\/alfred-code\.XXXXXX"/);
     assert.doesNotMatch(skill, /mktemp -d\)/, 'a bare mktemp -d ignores $TMPDIR on macOS');
 });
@@ -196,9 +196,9 @@ test('I27: the usage audit\'s temp dir is made under $TMPDIR, where a sandboxed 
 test('I28: the three deliberate skills drop their question-shaped triggers', () =>
 {
     const cases = {
-        'alfred-capture-architecture': /what the structure or module boundaries are/,
-        'alfred-capture-test-coverage': /how covered the project is/,
-        'alfred-task-design': /where does this belong/,
+        'capture-architecture': /what the structure or module boundaries are/,
+        'capture-test-coverage': /how covered the project is/,
+        'task-design': /where does this belong/,
     };
     for (const [name, question] of Object.entries(cases))
     {
@@ -207,20 +207,20 @@ test('I28: the three deliberate skills drop their question-shaped triggers', () 
         assert.doesNotMatch(d, question, `${name}: the question phrasing is gone`);
         assert.ok(d.length <= 160, `${name}: ${d.length} chars`);
     }
-    assert.match(description('alfred-task-design'), /'design this feature', 'plan this change'/);
+    assert.match(description('task-design'), /'design this feature', 'plan this change'/);
 });
 
 // ---- I29: the solve flow's CLOSE and Do-not fit the compaction re-attach window ----------------------------------
-test('I29: alfred-task-solve\'s body is under 18,000 chars with its stops still templated in SKILL.md', () =>
+test('I29: task-solve\'s body is under 18,000 chars with its stops still templated in SKILL.md', () =>
 {
-    const text = read('stack/skills/alfred-task-solve/SKILL.md');
+    const text = read('stack/skills/task-solve/SKILL.md');
     const b = body(text);
     assert.ok(b.length < 18000, `body is ${b.length} chars`);
     assert.ok(b.indexOf('6. **CLOSE**') > 0 && b.indexOf('## Do not') > b.indexOf('6. **CLOSE**'), 'CLOSE and Do not are both there');
     const texts = Object.fromEntries(ASK_FLOW_SKILLS.map((n) => [n, read(`stack/skills/${n}/SKILL.md`)]));
     assert.deepStrictEqual(lintFlowAskPresence(texts), [], 'every pinned ask template stayed in SKILL.md');
     assert.doesNotMatch(b, /pilot 3|data-02|55-hour|13 sessions loaded/, 'the anecdotes left the run-time body');
-    const evidence = read('stack/skills/alfred-task-solve/references/evidence.md');
+    const evidence = read('stack/skills/task-solve/references/evidence.md');
     for (const story of [/data-02/, /6 of 6/, /55-hour/, /13 sessions loaded/, /18 of 40/]) assert.match(evidence, story, `${story} kept in the evidence appendix`);
 });
 
@@ -228,15 +228,15 @@ test('I29: alfred-task-solve\'s body is under 18,000 chars with its stops still 
 test('I32: verify-code\'s COMMIT-GATE receipt adds the security row, pinned with the checkpoint', () =>
 {
     const marker = '`security:` naming each category checked and its verdict';
-    assert.ok(flat(read('stack/skills/alfred-task-verify-code/SKILL.md')).includes(marker));
+    assert.ok(flat(read('stack/skills/task-verify-code/SKILL.md')).includes(marker));
     const entry = shared()['commit-gate-security-row'];
     assert.ok(entry, 'pinned in shared-rules.json');
-    assert.deepStrictEqual(copiesOf(entry).sort(), ['stack/skills/alfred-habits-commit-checkpoint/SKILL.md', 'stack/skills/alfred-task-verify-code/SKILL.md']);
+    assert.deepStrictEqual(copiesOf(entry).sort(), ['stack/skills/habits-commit-checkpoint/SKILL.md', 'stack/skills/task-verify-code/SKILL.md']);
 });
 
 test('I33: verify-code\'s worked example opens with the five named fields, each filled', () =>
 {
-    const example = read('stack/skills/alfred-task-verify-code/SKILL.md').split('## Example')[1] || '';
+    const example = read('stack/skills/task-verify-code/SKILL.md').split('## Example')[1] || '';
     const block = (example.match(/```text\n([\s\S]*?)```/) || [])[1] || '';
     const lines = block.split('\n').filter(Boolean);
     assert.deepStrictEqual(lines.slice(0, 5).map((l) => l.split(':')[0]), ['Build', 'Live-probe', 'Findings', 'Probe code', 'Next run']);
@@ -246,7 +246,7 @@ test('I33: verify-code\'s worked example opens with the five named fields, each 
 // ---- I34 + I35: verify-plan's mode ask is a template, and its audit record names the five passes -------------------
 test('I34: verify-plan\'s run-start mode ask is one template, this chat recommended first', () =>
 {
-    const skill = read('stack/skills/alfred-task-verify-plan/SKILL.md');
+    const skill = read('stack/skills/task-verify-plan/SKILL.md');
     const found = asks(skill);
     assert.strictEqual(found.length, 1);
     assert.deepStrictEqual(found[0].options, ['Audit this plan in this chat (Recommended)', 'Dispatch the <stack>-verifier seat']);
@@ -257,12 +257,12 @@ test('I34: verify-plan\'s run-start mode ask is one template, this chat recommen
 test('I35: verify-plan and solve-cross record the audit in one Passes shape, pinned', () =>
 {
     const line = 'Passes: risk <v> | scope <v> | existence <v> | edges <v> | soundness <v>';
-    assert.ok(flat(read('stack/skills/alfred-task-verify-plan/SKILL.md')).includes(line), 'verify-plan\'s contract');
-    assert.ok(flat(read('stack/skills/alfred-task-solve-cross/SKILL.md')).includes(line), 'solve-cross\'s ledger');
+    assert.ok(flat(read('stack/skills/task-verify-plan/SKILL.md')).includes(line), 'verify-plan\'s contract');
+    assert.ok(flat(read('stack/skills/task-solve-cross/SKILL.md')).includes(line), 'solve-cross\'s ledger');
     const entry = shared()['plan-audit-passes-field'];
     assert.ok(entry, 'pinned in shared-rules.json');
-    assert.strictEqual(entry.owner.file, 'stack/skills/alfred-task-verify-plan/SKILL.md');
-    assert.deepStrictEqual(copiesOf(entry).sort(), ['stack/skills/alfred-task-solve-cross/SKILL.md', 'stack/skills/alfred-task-verify-plan/SKILL.md']);
+    assert.strictEqual(entry.owner.file, 'stack/skills/task-verify-plan/SKILL.md');
+    assert.deepStrictEqual(copiesOf(entry).sort(), ['stack/skills/task-solve-cross/SKILL.md', 'stack/skills/task-verify-plan/SKILL.md']);
 });
 
 // ---- 2.1.7: the usage audit's folder is `usage-report/` (was `alfred-code-usage-report/`) ----------------------

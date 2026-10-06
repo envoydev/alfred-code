@@ -22,7 +22,7 @@ test('the always-on rules keep the imperatives the pilot-3 trim dropped', () =>
 
 test('the stamped usage policy keeps the slash-only imperative, and the evidence doc no longer holds it', () =>
 {
-    const skill = squash('stack/skills/alfred-capture-agent-capabilities/SKILL.md');
+    const skill = squash('stack/skills/capture-agent-capabilities/SKILL.md');
     const policy = skill.slice(skill.indexOf('<!-- policy-rev:'), skill.indexOf('## Orchestration skills (slash-only - invisible until invoked) <the script'));
     assert.ok(policy.includes('never spend the turn explaining that you cannot'), 'the policy block carries it');
     assert.ok(!squash('docs/baseline-rules-evidence.md').includes('never spend the turn explaining that you cannot'), 'an imperative is not a story');

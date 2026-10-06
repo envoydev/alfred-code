@@ -18,10 +18,10 @@ function sel(lines)
 }
 
 test('a selection file enables the core and copies its library picks', () => {
-    const picked = readSelection(sel(['skill dotnet-wpf', 'agent wpf-implementer', 'skill alfred-task-solve-cross', '# a comment', '']));
+    const picked = readSelection(sel(['skill dotnet-wpf', 'agent wpf-implementer', 'skill task-solve-cross', '# a comment', '']));
     const { plugins, copy } = pluginsFor(picked);
     assert.deepStrictEqual(plugins, [CORE], 'the core carries the commands, the hooks and every seat; no stack plugin exists');
-    assert.deepStrictEqual(copy.skills, ['alfred-task-solve-cross', 'dotnet-wpf'], 'every skill is a library copy, an always one included');
+    assert.deepStrictEqual(copy.skills, ['dotnet-wpf', 'task-solve-cross'], 'every skill is a library copy, an always one included');
     assert.deepStrictEqual(copy.agents, [], 'a seat rides the core - never copied');
 });
 

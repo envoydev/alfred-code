@@ -160,10 +160,10 @@ carries. Its seat is installed (the plan checked), so a dispatch it names is mad
 `done` or `skip` line is one narration line each - a done capture is re-run later by the user, never
 here.
 
-`alfred-capture-related-projects` takes its sibling list as arguments: ONE AskUserQuestion first - type the
+`capture-related-projects` takes its sibling list as arguments: ONE AskUserQuestion first - type the
 siblings via Other in the capture's own form (`<name> - <local path or git URL>`, several separated
 by commas), or 'none - skip it' (recommended only when the repo names no sibling). 'none' skips the
-capture. `alfred-capture-agent-capabilities` runs LAST, so its generated rule reflects everything the
+capture. `capture-agent-capabilities` runs LAST, so its generated rule reflects everything the
 captures above added; its own precheck decides whether the rule needs regenerating.
 
 ## 6. AGENTS.md - the user's call
@@ -172,7 +172,7 @@ Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQues
 recommended / skip); a 'no' ends the step cleanly. The installer seeded `.claude/AGENTS.md` from
 `stack/AGENTS.template.md` when the project had none; a AGENTS.md with the project's own text (root,
 `.claude/` or a part's own) is NEVER overwritten. On a yes, read
-`$TMP/repo/stack/skills/alfred-habits-adjust-agents-md/SKILL.md` (through Bash) and follow it inline, start to finish,
+`$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` (through Bash) and follow it inline, start to finish,
 with `<stack>` = the `$TMP/repo` path, pasted as a literal - it is this step's instructions, the one home of the fill: its script picks
 create (the seed is still unfilled) or improve (every change shown before it is written), and the
 check closes it. The captures just run are what it cites for structure. Never offer skill, agent or

@@ -27,7 +27,7 @@ The strategy keys off the *role* a unit plays, not a layer name - so it maps ont
 
 ## Coverage
 
-- The % bar is the USER's, owned and recorded by the `alfred-capture-test-coverage` capture
+- The % bar is the USER's, owned and recorded by the `capture-test-coverage` capture
   (asked at capture time, kept in its COVERAGE.md) - this skill sets no number.
 - What this skill owns is the mechanics: coverage is computed after exclusions so the number
   reflects real logic coverage, not padding - the exclusion catalog below is that list for .NET.

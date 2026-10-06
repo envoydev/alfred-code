@@ -50,7 +50,7 @@ test('an agent pulls its declared skills and plugins; body mentions pull nothing
     // The resolver PRELOADS the core's root-cause and done-gate methods (R106) and NAMES the C# skills
     // in its body: the preloads are its edges, the body mentions pull nothing.
     const resolver = computeClosure(graph, { agents: ['dotnet-build-error-resolver'] });
-    assert.deepStrictEqual([...resolver.skills].sort(), ['alfred-habits-done-gate', 'alfred-habits-root-cause'], 'a resolver locks only its preloaded method skills');
+    assert.deepStrictEqual([...resolver.skills].sort(), ['habits-done-gate', 'habits-root-cause'], 'a resolver locks only its preloaded method skills');
 });
 
 test('a rule pulls its skills', () => {
@@ -62,9 +62,9 @@ test('a rule pulls its skills', () => {
 test('a kept rule makes its mcp required; the capabilities skill locks none', () => {
     const c = computeClosure(graph, { rules: ['alfred-navigation'] });
     assert.ok(c.mcps.includes('alfred-navigation'), 'the alfred-navigation rule genuinely depends on its server');
-    // The routing-map mentions in alfred-capture-agent-capabilities are subject matter, not needs -
+    // The routing-map mentions in capture-agent-capabilities are subject matter, not needs -
     // picking it must never lock the whole MCP baseline into an install.
-    const cap = computeClosure(graph, { skills: ['alfred-capture-agent-capabilities'] });
+    const cap = computeClosure(graph, { skills: ['capture-agent-capabilities'] });
     assert.deepStrictEqual(cap.mcps, [], 'the capabilities skill pulls no MCPs');
 });
 
@@ -375,14 +375,14 @@ test('findJudgment: overlap only when both installed, dormant only when installe
 });
 
 test('emitTable: evidence label is pre-selected, below required, above recommended', () => {
-    const evidence = { skills: { 'dotnet-web-backend': 'FAKE-SIGNAL', 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'alfred-task-solve-cross': 'FAKE-SIGNAL-2' } };
+    const evidence = { skills: { 'dotnet-web-backend': 'FAKE-SIGNAL', 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'task-solve-cross': 'FAKE-SIGNAL-2' } };
     const recs = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'recommendations.json'), 'utf8'));
     const table = emitTable(graph, 'skills', { raw: { agents: ['aspnet-solution-designer'] }, recs, stacks: ['aspnet'], evidence });
     const rowOf = name => table.split('\n').find(l => new RegExp(`\\| ${name} `).test(l)) || '';
     assert.match(rowOf('dotnet-web-backend'), /required/, 'a closure lock beats evidence');
     assert.doesNotMatch(rowOf('dotnet-web-backend'), /FAKE-SIGNAL/, 'the lock reason wins the why column');
     assert.match(rowOf('dotnet-grpc'), /evidence +\| Grpc\.AspNetCore in src\/Api\.csproj/, 'evidence row carries its signal');
-    assert.match(rowOf('alfred-task-solve-cross'), /evidence/, 'evidence beats the recommended seed label');
+    assert.match(rowOf('task-solve-cross'), /evidence/, 'evidence beats the recommended seed label');
     // configure's installed mode keeps yes/- states; the signal informs the why column
     const cfg = emitTable(graph, 'skills', { raw: {}, installed: { skills: ['csharp'] }, evidence });
     const cfgRow = name => cfg.split('\n').find(l => new RegExp(`\\| ${name} `).test(l)) || '';
@@ -568,12 +568,12 @@ test('a general-listed skill is never redundant even when its only owner is abse
     const installed = {
         rules: [],
         agents: [],
-        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'alfred-capture-related-projects', 'dotnet-wpf'],
+        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'capture-related-projects', 'dotnet-wpf'],
         mcps: [], plugins: [], hooks: [],
     };
     const redundant = findStackRedundant(graph, recommendations, installed, ['aspnet']);
     const names = new Set(redundant.map(r => r.name));
-    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'alfred-capture-related-projects'])
+    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'capture-related-projects'])
     {
         assert.ok(!names.has(s), `${s} is general - never redundant`);
     }

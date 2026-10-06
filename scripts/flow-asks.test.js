@@ -32,7 +32,7 @@ const flat = (s) => s.replace(/\s+/g, ' ');
 
 // ---- A3: the review's live probe is bounded ------------------------------------------------------
 test('A3: the review counts an in-process run through the real Program, else takes ONE boot attempt', () => {
-    const core = flat(read('stack/skills/alfred-task-verify-code/SKILL.md'));
+    const core = flat(read('stack/skills/task-verify-code/SKILL.md'));
     assert.match(core, /WebApplicationFactory/, 'the in-process route is named');
     assert.match(core, /real `Program`/, 'through the app\'s own Program');
     assert.match(core, /ONE boot attempt/, 'the attempt is bounded');
@@ -73,11 +73,11 @@ test('A4: check 61 counts each flow skill\'s templates in SKILL.md itself, so re
         assert.notStrictEqual(dropped, texts[name], `${name}: a template was removed`);
         assert.match(lintFlowAskPresence({ ...texts, [name]: dropped }).join('\n'), new RegExp(`${name}/SKILL\\.md.*\`ask\` template`), `${name}: one template fewer is red`);
     }
-    assert.match(lintFlowAskPresence({ ...texts, 'alfred-task-solve': undefined }).join('\n'), /alfred-task-solve\/SKILL\.md/, 'a missing SKILL.md is red');
+    assert.match(lintFlowAskPresence({ ...texts, 'task-solve': undefined }).join('\n'), /task-solve\/SKILL\.md/, 'a missing SKILL.md is red');
 });
 
 test('A4: the three flow skills each carry ask templates, and every one passes check 61', () => {
-    assert.deepStrictEqual([...ASK_FLOW_SKILLS].sort(), ['alfred-issue-diagnoser', 'alfred-task-solve', 'alfred-task-solve-cross']);
+    assert.deepStrictEqual([...ASK_FLOW_SKILLS].sort(), ['issue-diagnoser', 'task-solve', 'task-solve-cross']);
     for (const name of ASK_FLOW_SKILLS) {
         const found = asks(skillText(name));
         assert.ok(found.length >= 2, `${name}: ${found.length} ask template(s)`);
@@ -86,12 +86,12 @@ test('A4: the three flow skills each carry ask templates, and every one passes c
 });
 
 test('A4: a flow close recommends Hold, and a picked commit still runs the whole checkpoint', () => {
-    for (const name of ['alfred-task-solve', 'alfred-task-solve-cross']) {
+    for (const name of ['task-solve', 'task-solve-cross']) {
         const text = skillText(name);
         const close = asks(text).find((a) => a.options.some((o) => /^Commit/.test(o)));
         assert.ok(close, `${name}: a close ask that offers the commit`);
         assert.match(close.options.find((o) => /\(Recommended\)$/.test(o)), /^Hold - review the diff first/, `${name}: Hold is the recommendation`);
-        assert.match(flat(text), /alfred-habits-commit-checkpoint/, `${name}: a picked commit runs the checkpoint`);
+        assert.match(flat(text), /habits-commit-checkpoint/, `${name}: a picked commit runs the checkpoint`);
     }
 });
 
@@ -107,14 +107,14 @@ test('A4: the stop-contract hook\'s pending-close push offers no commit', () => 
 
 // ---- A5: a blocked tool is recovered in the session ----------------------------------------------
 test('A5: the build-step blocker ask recommends the in-session route, never retry or you-run-it', () => {
-    const blocker = asks(skillText('alfred-task-solve')).find((a) => a.options.some((o) => /^Re-scope around it/.test(o)));
+    const blocker = asks(skillText('task-solve')).find((a) => a.options.some((o) => /^Re-scope around it/.test(o)));
     assert.ok(blocker, 'the blocker ask is a template');
     assert.match(blocker.options.find((o) => /\(Recommended\)$/.test(o)), /^Re-scope around it/, 'the in-session route is recommended');
     for (const o of blocker.options) assert.doesNotMatch(o, /you run it|run it myself|retry/i, o);
 });
 
 test('A5: the build bar - a model change never leaves its task without its migration', () => {
-    const core = flat(read('stack/skills/alfred-task-implement/SKILL.md'));
+    const core = flat(read('stack/skills/task-implement/SKILL.md'));
     assert.match(core, /model change never leaves its task without its migration/i);
     assert.match(core, /design-time/i, 'the generator runs against the design-time factory\'s project');
     assert.match(core, /hand-written/i, 'and falls back to a hand-written migration');
@@ -124,8 +124,8 @@ test('A5: the build bar - a model change never leaves its task without its migra
 // Pilot 3: the gate changed the plan in 1 of 4 feature cells, and the steps before the build cost $0.95-1.65 a cell.
 test('full spec: the solve flow states the checklist, runs the check script and pins the merged ask', () => {
     const { ASK_FLOW_TEMPLATES } = require('./lint-skills.js');
-    assert.deepStrictEqual(ASK_FLOW_TEMPLATES, { 'alfred-task-solve': 6, 'alfred-task-solve-cross': 5, 'alfred-issue-diagnoser': 4 });
-    for (const name of ['alfred-task-solve', 'alfred-task-solve-cross']) {
+    assert.deepStrictEqual(ASK_FLOW_TEMPLATES, { 'task-solve': 6, 'task-solve-cross': 5, 'issue-diagnoser': 4 });
+    for (const name of ['task-solve', 'task-solve-cross']) {
         const core = fs.readFileSync(path.join(SKILLS, name, 'SKILL.md'), 'utf8');
         assert.match(core, /scripts\/spec-check\.js/, `${name}: the check is a script, not a judgment`);
         assert.match(flat(core), /the surface/i, `${name}: surface`);
@@ -137,5 +137,5 @@ test('full spec: the solve flow states the checklist, runs the check script and 
         assert.ok(merged, `${name}: the merged step's one approval ask is a template`);
         assert.match(merged.options[0], /^Build as planned.*\(Recommended\)$/, `${name}: build as planned is recommended, first`);
     }
-    assert.match(flat(read('stack/skills/alfred-task-solve/SKILL.md')), /`path: merged` you may raise to gated[^.]*never lower\./, 'the model may raise the script\'s verdict to gated, never lower it');
+    assert.match(flat(read('stack/skills/task-solve/SKILL.md')), /`path: merged` you may raise to gated[^.]*never lower\./, 'the model may raise the script\'s verdict to gated, never lower it');
 });

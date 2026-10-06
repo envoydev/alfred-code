@@ -92,7 +92,7 @@ const gate = (root, rows, text, extraEnv, extra) =>
 {
     const before = probes(root).length;
     const r = stop(root, rows, text, extraEnv, extra);
-    assert.doesNotMatch(r.stderr, /alfred-habits-done-gate|DONE_GATE/, `the done gate never holds: ${r.stderr}`);
+    assert.doesNotMatch(r.stderr, /habits-done-gate|DONE_GATE/, `the done gate never holds: ${r.stderr}`);
     assert.ok(!ledger(root).some((o) => !o.mode && o.detail && o.detail.branch === 'done-gate'), 'no done-gate block row');
     const after = probes(root);
     return { ...r, row: after.length > before ? after[after.length - 1] : null };
@@ -103,7 +103,7 @@ test('done gate: a done claim over an edit made after the turn\'s last test run 
     const root = project();
     const g = gate(root, steps(root, [['prompt', 'fix the cart total'], ['run', 'npm test', true], ['edit', 'src/money.js']]),
         'Fixed - the cart total is right now.');
-    assert.doesNotMatch(g.stderr, /alfred-habits-done-gate/, 'no hold text reaches the model');
+    assert.doesNotMatch(g.stderr, /habits-done-gate/, 'no hold text reaches the model');
     assert.ok(unrun(g), JSON.stringify(g.row));
     assert.strictEqual(g.row.hook, 'guard-stop-contract.js');
     assert.strictEqual(g.row.event, 'Stop');
@@ -357,7 +357,7 @@ test('done gate: ALFRED_CODE_DONE_GATE=0 switches the probe off', () => {
 // What the analyzer splits the unrun rows by: was the skill loaded this turn, does the project declare
 // tests at all, and does an instruction file forbid running them (the user's two named exceptions).
 test('done gate: the row records the skill load, the project\'s test markers and a rule against running tests', () => {
-    const skill = (root) => { const c = call('Skill', { skill: 'alfred-code:alfred-habits-done-gate' }); return [c.row, result(c.id, 'Launching skill')]; };
+    const skill = (root) => { const c = call('Skill', { skill: 'alfred-code:habits-done-gate' }); return [c.row, result(c.id, 'Launching skill')]; };
     const bare = project();
     let g = gate(bare, steps(bare, [['prompt', 'fix it'], ['edit', 'src/money.js']]), 'Fixed.');
     assert.deepStrictEqual([g.row.detail.skill, g.row.detail.tests, g.row.detail.rule], [false, 'none-found', null]);

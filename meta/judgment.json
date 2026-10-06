@@ -5,8 +5,8 @@
   "occasionBound": {
     "skill:capacitor-release": "release-time - the store-submission pipeline",
     "skill:ilspy-decompile": "ad-hoc - decompile ground truth from a .dll",
-    "skill:alfred-task-version-upgrade": "upgrade-time - breaking version events",
-    "skill:alfred-task-build-from-scratch": "greenfield-time - starting a project from nothing",
+    "skill:task-version-upgrade": "upgrade-time - breaking version events",
+    "skill:task-build-from-scratch": "greenfield-time - starting a project from nothing",
     "skill:dotnet-project-setup": "setup-time - the solution build spine",
     "skill:dotnet-performance": "perf-work-time - deliberate optimization passes and benchmarks",
     "skill:dotnet-diagnostics": "diagnosis-time - benchmarks and crash/hang/leak dumps",

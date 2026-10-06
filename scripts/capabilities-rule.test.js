@@ -14,7 +14,7 @@ const { spawnSync } = require('node:child_process');
 const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const squash = (text) => text.replace(/\s+/g, ' ');
-const CAPS_DIR = 'stack/skills/alfred-capture-agent-capabilities';
+const CAPS_DIR = 'stack/skills/capture-agent-capabilities';
 const SCRIPT = path.join(ROOT, CAPS_DIR, 'scripts', 'capabilities-inventory.js');
 const TEMPLATE = `${CAPS_DIR}/references/generated-rule-template.md`;
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'capabilities-rule-'));
@@ -51,7 +51,7 @@ function routingMapText()
 function project(name, { servers = ['alfred-navigation', 'alfred-documentation', 'alfred-memory', 'browser-chrome'], settings, local, account } = {})
 {
     const root = path.join(TMP, name);
-    write(path.join(root, '.claude', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md'), '---\nname: alfred-capture-agent-capabilities\ndescription: "x"\ndisable-model-invocation: true\n---\n');
+    write(path.join(root, '.claude', 'skills', 'capture-agent-capabilities', 'SKILL.md'), '---\nname: capture-agent-capabilities\ndescription: "x"\ndisable-model-invocation: true\n---\n');
     write(path.join(root, '.claude', 'agents', 'aspnet-verifier.md'), '---\nname: aspnet-verifier\n---\n');
     write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: Object.fromEntries(servers.map((s) => [s, {}])) }));
     if (settings) write(path.join(root, '.claude', 'settings.json'), JSON.stringify(settings));
@@ -269,7 +269,7 @@ test('I24: the report prints one locked-server row, and --verify passes a rule b
     const rule = write(path.join(root, 'composed.md'), [
         '---', 'description: generated', '---', '', '# This project\'s capabilities', '', 'Captured: 2026-09-29 from 2.1.3@abcdef1', '',
         '## Usage policy (fixed - stamped verbatim, every run)', skill[at], policyBlock(), '',
-        '## Orchestration skills (slash-only - invisible until invoked)', '/alfred-capture-agent-capabilities - x', '',
+        '## Orchestration skills (slash-only - invisible until invoked)', '/capture-agent-capabilities - x', '',
         '## Subagent seats', 'aspnet-verifier', '', '## MCP routing', ...rows, '',
     ].join('\n'));
     const verified = run(['--verify', rule], { cwd: root, home });

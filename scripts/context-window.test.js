@@ -54,7 +54,7 @@ const carry = (ctx) => ({ cache_read_input_tokens: ctx });
 // Both routes, each on its own fresh state dir so an earlier offer never answers a later case.
 const HOOK_ROUTES = {
   'guard-stop-contract (turn end)': (tp, env) => ['guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp }, env],
-  'guard-fresh-session-start (run gate)': (tp, env) => ['guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'alfred-task-verify-code' }, transcript_path: tp }, env],
+  'guard-fresh-session-start (run gate)': (tp, env) => ['guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'task-verify-code' }, transcript_path: tp }, env],
 };
 function run([hook, payload, env]) {
   return spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8', env }).status;

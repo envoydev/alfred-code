@@ -658,8 +658,8 @@ test('migrateLegacyGlobal (M5): a renamed account skill is named as loading BESI
 {
     // The old name comes from the map, never spelled here (the rename guard in install-renames.test.js).
     const { renamed } = require('./install/manifest.js').loadManifest(path.join(__dirname, '..'));
-    const old = Object.keys(renamed.skills).find((k) => renamed.skills[k] === 'alfred-task-solve');
-    assert.ok(old, 'the map renames a skill to alfred-task-solve');
+    const old = Object.keys(renamed.skills).find((k) => renamed.skills[k] === 'task-solve');
+    assert.ok(old, 'the map renames a skill to task-solve');
     const run = (picks) =>
     {
         const p = project();
@@ -686,7 +686,7 @@ test('migrateLegacyGlobal (M5): a renamed account skill is named as loading BESI
     assert.match(over, /OVERRIDE the migrated ones/);
     assert.ok(over.includes(`rm -rf ${both.dir('demo')}`), over);
     assert.ok(!over.includes(both.dir(old)), `the renamed copy is filed under OVERRIDE: ${over}`);
-    assert.ok(both.summary.includes(`${old} (now alfred-task-solve)`), both.summary);
+    assert.ok(both.summary.includes(`${old} (now task-solve)`), both.summary);
     assert.ok(beside.includes(`rm -rf ${both.dir(old)}`), beside);
     assert.ok(!beside.includes(both.dir('demo')), beside);
 
@@ -920,9 +920,10 @@ test('M3 installState: generic catalog names are no signature - one stack env ke
     const olds = Object.keys(renamed.skills);
     const prefixed = olds.find((n) => /^project-/.test(n));
     const bareOld = olds.find((n) => !/^(alfred|project)-/.test(n));
-    assert.ok(prefixed && bareOld, 'the manifest renames a prefixed and an unprefixed skill');
-    assert.strictEqual(state(legacyTree({ names: ['alfred-habits-test-first', prefixed, bareOld], env: leftover })), 'legacy-unstamped');
-    assert.strictEqual(state(legacyTree({ names: ['alfred-habits-test-first', 'typescript', 'npm'], env: leftover })), 'not-installed', 'one stack name and two generic ones are under three');
+    const alfredOld = olds.find((n) => /^alfred-/.test(n));
+    assert.ok(prefixed && bareOld && alfredOld, 'the manifest renames a prefixed and an unprefixed skill');
+    assert.strictEqual(state(legacyTree({ names: [alfredOld, prefixed, bareOld], env: leftover })), 'legacy-unstamped');
+    assert.strictEqual(state(legacyTree({ names: [alfredOld, 'typescript', 'npm'], env: leftover })), 'not-installed', 'one stack name and two generic ones are under three');
 });
 
 // N2 (Task 18a re-review, R90): a git worktree carries no `.claude/` record of its own (ignored), so the

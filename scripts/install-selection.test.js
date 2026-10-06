@@ -527,7 +527,7 @@ test('read-back: closeFrom is the picked set - disk and the stamp - never an ite
     // A stamp from before 2.1.0: what its core carried ran here, and is copies and allowed seats from now
     // on - so it is recorded as picked in the same run, or the next run's stamp would differ.
     const older = readBackCase({ listing: [row('alfred-code@envoydev')], stampPicked: { skills: ['markdown-style'], agents: [] } });
-    assert.ok(older.closeFrom.includes('agent evidence-gatherer') && older.closeFrom.includes('skill alfred-habits-done-gate'), older.closeFrom.join(','));
+    assert.ok(older.closeFrom.includes('agent evidence-gatherer') && older.closeFrom.includes('skill habits-done-gate'), older.closeFrom.join(','));
 });
 
 test('closeLines: a requirement never switches back on a parked entry or a denied seat - it is left out and said so', () =>
@@ -721,14 +721,14 @@ test('read-back: a switch onto the full copy route reads back what the core stil
     assert.ok(!on.lines.includes(`agent ${seat}`), 'a denied seat stays off');
     // The settings file's word before the listing's flag (S22): a stale false flag is still a core that runs.
     const stale = back({ listing: [row('alfred-code@envoydev', { enabled: false })], isOn: () => true });
-    assert.ok(stale.lines.includes('skill alfred-capture-first-look'), items(stale).join(', '));
+    assert.ok(stale.lines.includes('skill capture-first-look'), items(stale).join(', '));
     const off = back({ listing: [row('alfred-code@envoydev')], isOn: () => false });
     assert.deepStrictEqual(items(off), [], 'a core already off (a switched install re-run) adds nothing');
     const elsewhere = back({ listing: [row('alfred-code@envoydev', { scope: 'user' })] });
     assert.deepStrictEqual(items(elsewhere), [], 'a core at another scope keeps running there - nothing to carry across');
     const plugin = sel.readBack({ claudeDir: target({ rules: ['alfred-security'] }), mcpServers: [], listing: [row('alfred-code@envoydev')], settings: {},
         routes: { skills: false, hooks: true, mcps: false }, manifest: MANIFEST, sourceDir: ROOT_DIR, always: {}, stampPicked: { skills: [], agents: [] }, marketplace: 'envoydev', scope: 'project' });
-    assert.ok(!plugin.lines.includes('skill alfred-capture-first-look'), 'a partial copy route keeps the core on - it carries its own items');
+    assert.ok(!plugin.lines.includes('skill capture-first-look'), 'a partial copy route keeps the core on - it carries its own items');
 });
 
 test('closeLines: what a LEFT-OUT item requires is not pulled in either', () =>
@@ -848,7 +848,7 @@ const OLD = 'claude-stack'; // legacy-name
 
 test('read-back: a 1.x install - the old key, the core still named claude-stack - is the same install, and its stamp picks are kept', () => // legacy-name
 {
-    const stampPicked = { skills: [`alfred-task-solve-cross@${OLD}`], agents: [`security-auditor@${OLD}`] };
+    const stampPicked = { skills: [`task-solve-cross@${OLD}`], agents: [`security-auditor@${OLD}`] };
     // A 1.x settings file carries the 1.x key name until this update's env pass renames it.
     const settings = { permissions: { deny: [`Agent(${OLD}:code-style-analyzer)`] }, env: { CLAUDE_STACK_HOOKS_OFF: 'guard-answer-length' } }; // legacy-name
     const renamed = { ...settings, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } };
@@ -863,7 +863,7 @@ test('read-back: a 1.x install - the old key, the core still named claude-stack 
         assert.deepStrictEqual(r.answered, { hooks: true, agents: true }, listing[0].name);
         assert.ok(r.lines.includes('agent evidence-gatherer') && !r.lines.includes('agent code-style-analyzer'), 'the core seats, the 1.x deny honoured');
         assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer-length'));
-        assert.ok(r.closeFrom.includes('skill alfred-task-solve-cross') && r.closeFrom.includes('agent security-auditor'), 'the 1.x stamp picks are kept');
+        assert.ok(r.closeFrom.includes('skill task-solve-cross') && r.closeFrom.includes('agent security-auditor'), 'the 1.x stamp picks are kept');
         assert.strictEqual(r.blind, false);
         assert.deepStrictEqual(r.lines.slice().sort(), now.lines.slice().sort(), 'the same read-back as the renamed install');
     }
@@ -957,18 +957,18 @@ test('read-back (2.1.0 BLOCKER): a 2.0.0 install keeps its picks - always skills
 
 test('read-back (2.1.0): a 2.1 install reads its seats off the core minus denied, as its stamp knew them - a seat a release added waits for its offer', () =>
 {
-    const claudeDir = target({ skills: ['csharp', 'alfred-habits-done-gate'], rules: ['alfred-security'] });
+    const claudeDir = target({ skills: ['csharp', 'habits-done-gate'], rules: ['alfred-security'] });
     const r = sel.readBack({
         claudeDir, mcpServers: [], listing: [row('alfred-code@envoydev')], routes: ALL, manifest: MANIFEST, sourceDir: ROOT_DIR, always: {},
         settings: { permissions: { deny: ['Agent(alfred-code:web-angular-implementer)'] } },
-        stampPicked: { skills: ['csharp', 'alfred-habits-done-gate'], agents: ['security-auditor@alfred-code', 'aspnet-implementer@alfred-code'] },
+        stampPicked: { skills: ['csharp', 'habits-done-gate'], agents: ['security-auditor@alfred-code', 'aspnet-implementer@alfred-code'] },
         seatsRoute: 'plugin', ledgerSeats: ['web-angular-implementer', 'aspnet-verifier'],
     });
     assert.ok(r.lines.includes('agent aspnet-implementer') && r.lines.includes('agent security-auditor'));
     assert.ok(r.lines.includes('agent aspnet-verifier'), 'the stack denied it and the deny is gone - the user allowed it by hand');
     assert.ok(!r.lines.includes('agent web-angular-implementer'), 'denied');
     assert.ok(!r.lines.includes('agent dotnet-console-implementer'), 'unknown to the last install - a new seat');
-    assert.ok(r.lines.includes('skill csharp') && !r.lines.includes('skill alfred-habits-clarify'), 'the skills come off the disk');
+    assert.ok(r.lines.includes('skill csharp') && !r.lines.includes('skill habits-clarify'), 'the skills come off the disk');
 });
 
 test('read-back (2.1.0): after a run that copied the seats, they are read off the disk alone', () =>
@@ -983,12 +983,12 @@ test('read-back (2.1.0): after a run that copied the seats, they are read off th
 
 test('adopt-always (2.1.0): the always skills are adopted with no drop exception; an always seat unless denied, and only while the core loads it', () =>
 {
-    const always = { skills: ['alfred-habits-done-gate'], agents: ['security-auditor', 'code-style-analyzer'], rules: ['alfred-security'] };
+    const always = { skills: ['habits-done-gate'], agents: ['security-auditor', 'code-style-analyzer'], rules: ['alfred-security'] };
     const out = sel.adoptAlways({ lines: ['rule alfred-security', 'skill csharp'], always, deny: ['Agent(alfred-code:code-style-analyzer)'], coreOn: true });
-    assert.ok(out.includes('skill alfred-habits-done-gate'), out.join(','));
+    assert.ok(out.includes('skill habits-done-gate'), out.join(','));
     assert.ok(out.includes('agent security-auditor') && !out.includes('agent code-style-analyzer'), 'a denied always seat stays off');
     const noCore = sel.adoptAlways({ lines: ['rule alfred-security', 'skill csharp'], always, coreOn: false });
-    assert.ok(noCore.includes('skill alfred-habits-done-gate') && !noCore.includes('agent security-auditor'), 'with no core, absence on disk is the seat\'s off-state');
+    assert.ok(noCore.includes('skill habits-done-gate') && !noCore.includes('agent security-auditor'), 'with no core, absence on disk is the seat\'s off-state');
 });
 
 test('read-back (2.1.0): a stamp missing its `seats-route:` line never reads a seat it homes in the core as unrun', () =>

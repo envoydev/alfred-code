@@ -209,7 +209,7 @@ test('lintJudgmentCatalog passes a clean catalog and flags bad refs, missing gap
 test('optionalSkills is every skill no seed closure reaches', () => {
     const { optionalSkills } = require('./lint-skills.js');
     const recs = {
-        always: { skills: ['alfred-task-solve'], agents: ['security-auditor'] },
+        always: { skills: ['task-solve'], agents: ['security-auditor'] },
         stacks: {
             aspnet: { skills: ['dotnet-architecture'], agents: ['aspnet-implementer'] },
         },
@@ -221,11 +221,11 @@ test('optionalSkills is every skill no seed closure reaches', () => {
         },
         rules: {},
     };
-    const dirs = new Set(['alfred-task-solve', 'dotnet-architecture', 'csharp', 'dotnet-testing', 'dotnet-architecture-tests', 'postgres']);
+    const dirs = new Set(['task-solve', 'dotnet-architecture', 'csharp', 'dotnet-testing', 'dotnet-architecture-tests', 'postgres']);
     const optional = optionalSkills(recs, graph, dirs);
 
     // seeded directly, or pulled through a seeded agent -> always installed
-    for (const reached of ['alfred-task-solve', 'dotnet-architecture', 'csharp', 'dotnet-testing'])
+    for (const reached of ['task-solve', 'dotnet-architecture', 'csharp', 'dotnet-testing'])
     {
         assert.ok(!optional.has(reached), `${reached} is reachable from a seed`);
     }
@@ -350,7 +350,7 @@ test('check 29: the capabilities usage policy carries a stamp that matches its o
     const fs = require('node:fs');
     const path = require('node:path');
     const { paths } = require('./lint-skills.js');
-    const file = path.join(paths.SKILLS_DIR, 'alfred-capture-agent-capabilities', 'SKILL.md');
+    const file = path.join(paths.SKILLS_DIR, 'capture-agent-capabilities', 'SKILL.md');
     const lines = fs.readFileSync(file, 'utf8').split('\n');
     const start = lines.findIndex((l) => l.startsWith('## Usage policy (fixed'));
     assert.ok(start >= 0, 'the stamped block is still where the lint and the skill both look for it');
@@ -428,7 +428,7 @@ test('check 35: a Companions list, a Points-at line, a routes-to sentence and a 
 test('check 36: an agent name is cited under the same absence rule as a skill name', () => {
     const { lintOptionalCites, optionalAgents, absentAgentsFor, seedClosures } = require('./lint-skills.js');
     const recs = {
-        always: { skills: ['alfred-loop-architecture-quality'] },
+        always: { skills: ['loop-architecture-quality'] },
         general: { agents: ['related-project-analyzer'] },
         stacks: {
             aspnet: { agents: ['dotnet-build-error-resolver'] },
@@ -442,7 +442,7 @@ test('check 36: an agent name is cited under the same absence rule as a skill na
     assert.deepStrictEqual([...optionalAgents(recs, graph, seats)], ['related-project-analyzer']);
 
     const closures = seedClosures(recs, graph);
-    const absent = absentAgentsFor(closures, 'skills', 'alfred-loop-architecture-quality', seats);
+    const absent = absentAgentsFor(closures, 'skills', 'loop-architecture-quality', seats);
     assert.ok(absent.has('dotnet-build-error-resolver') && absent.has('ng-build-error-resolver'));
 
     const body = 'A red routes to the matching resolver (dotnet-build-error-resolver / ng-build-error-resolver).\n';
@@ -492,8 +492,8 @@ test('check 37: a plugin-qualified cite carries a content clause, or it is bare'
     // a frontmatter `skills:` preload is the GUARANTEE shape, not a cite: the skill is injected whole
     // at seat start, a YAML list item cannot carry a content clause, and there is nothing to teach a
     // seat that already holds it. Two seats were permanently red on this line.
-    const preload = '---\nname: alfred-issue-diagnoser-ci\ntools: Read\nskills:\n  - superpowers:systematic-debugging\n  - alfred-issue-signatures-ci\n---\n\nYou are a diagnostician.\n';
-    assert.deepStrictEqual(lintPluginCites('agents/alfred-issue-diagnoser-ci.md', preload, plugins), []);
+    const preload = '---\nname: issue-diagnoser-ci\ntools: Read\nskills:\n  - superpowers:systematic-debugging\n  - issue-signatures-ci\n---\n\nYou are a diagnostician.\n';
+    assert.deepStrictEqual(lintPluginCites('agents/issue-diagnoser-ci.md', preload, plugins), []);
     // ... and the BODY of that same seat is still scanned
     assert.strictEqual(lintPluginCites('agents/x.md', preload.replace('You are a diagnostician.', 'Run `superpowers:systematic-debugging` and report.'), plugins).length, 1);
     // the description stays in scope - it is shipped prose a router reads, not a registration
@@ -503,7 +503,7 @@ test('check 37: a plugin-qualified cite carries a content clause, or it is bare'
 
 // R72: superpowers is an optional pick, so nothing the stack ships may rest on one of its skills -
 // each one it leaned on has a house home now (the done gate, the plan format, the test-first line,
-// the clarify gate, alfred-habits-root-cause). History keeps its words; the optional plugin row names the
+// the clarify gate, habits-root-cause). History keeps its words; the optional plugin row names the
 // plugin, never a skill of it. A `<docs-path>/superpowers/plans/` PATH is the stack's own folder.
 test('no shipped text cites a superpowers skill - by qualified name or in prose', () => {
     const fs = require('node:fs');
@@ -1350,7 +1350,7 @@ test('a capped agent description still names the seat to use instead', () =>
     const desc = (seat) => String(yaml.load(/^---\n([\s\S]*?)\n---/.exec(fs.readFileSync(path.join(__dirname, '..', 'stack', 'agents', `${seat}.md`), 'utf8'))[1]).description);
     for (const [seat, alternative] of [
         ['console-solution-designer', 'windows-service-solution-designer'],
-        ['devops-solution-designer', 'alfred-issue-diagnoser-ci'],
+        ['devops-solution-designer', 'issue-diagnoser-ci'],
         ['data-implementer', 'aspnet-implementer'],
     ])
     {
@@ -1365,12 +1365,12 @@ test('a capped agent description still names the seat to use instead', () =>
 // legend had no word for a skill with no / entry).
 test('check 19: the house rows\' "manual" and "model-only" flags match the frontmatter, both ways', () => {
     const { lintInvocationFlags } = require('./lint-skills.js');
-    const skills = { manual: new Set(['alfred-task-solve']), modelOnly: new Set(['typescript']) };
-    assert.deepStrictEqual(lintInvocationFlags(skills, { houseManual: new Set(['alfred-task-solve']), houseModelOnly: new Set(['typescript']) }), []);
-    const missing = lintInvocationFlags(skills, { houseManual: new Set(['alfred-task-solve']), houseModelOnly: new Set() });
+    const skills = { manual: new Set(['task-solve']), modelOnly: new Set(['typescript']) };
+    assert.deepStrictEqual(lintInvocationFlags(skills, { houseManual: new Set(['task-solve']), houseModelOnly: new Set(['typescript']) }), []);
+    const missing = lintInvocationFlags(skills, { houseManual: new Set(['task-solve']), houseModelOnly: new Set() });
     assert.strictEqual(missing.length, 1);
     assert.match(missing[0], /'typescript' misses the "model-only" invocation flag \(its SKILL\.md sets user-invocable: false\)/);
-    const stale = lintInvocationFlags(skills, { houseManual: new Set(['alfred-task-solve']), houseModelOnly: new Set(['typescript', 'npm']) });
+    const stale = lintInvocationFlags(skills, { houseManual: new Set(['task-solve']), houseModelOnly: new Set(['typescript', 'npm']) });
     assert.strictEqual(stale.length, 1);
     assert.match(stale[0], /marks 'npm' model-only but its SKILL\.md does not set user-invocable: false/);
     assert.strictEqual(lintInvocationFlags(skills, { houseManual: new Set(), houseModelOnly: new Set(['typescript']) }).length, 1, 'the manual half still holds');

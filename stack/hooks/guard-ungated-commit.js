@@ -3,7 +3,7 @@
 // PreToolUse gate (matcher: Bash): the PUBLISH ceremony, mechanized - one hook because commit
 // and push are one gate family and share the receipt machinery, the heredoc blanking and the
 // quote masking below. A non-trivial
-// `git commit` runs only after the house review gate (alfred-task-verify-code, plus
+// `git commit` runs only after the house review gate (task-verify-code, plus
 // /security-review on auth/crypto/data-access paths) or the user's explicit waiver -
 // recorded as a receipt file the gate step writes. Prose measured unreliable: 8 ungated
 // commit events across 6 audited sessions, including one where alfred-git.md was
@@ -491,7 +491,7 @@ function isOwnOptionLabel(span) {
 }
 // A skill the user TYPED writes no Skill call, only the harness's `<command-name>` row, and it is
 // as much a run of that skill as the model's own call (measured: slash-run loops, zero Skill events).
-const skillCallRan = () => /"name"\s*:\s*"Skill"|<command-name>\/(?:[\w-]+:)?(?:alfred|project)-[\w-]+<\/command-name>/.test(tail());
+const skillCallRan = () => /"name"\s*:\s*"Skill"|<command-name>\/(?:[\w-]+:)?(?:(?:alfred|project)-[\w-]+|(?:capture|habits|issue|loop|task)-[\w-]+)<\/command-name>/.test(tail());
 
 // One judge, two routes. The receipt written as its own file and the receipt written inside the
 // same command as the act are the SAME document, so they answer to the same contract - otherwise
@@ -623,9 +623,9 @@ function judgeReceipt(body, opts) {
   }
   // A stamp minted from a CARRIED resume block must say so, or a 9h30m-old answer mints fresh
   // consent in 45 seconds and defeats the freshness check.
-  // The loop arm names both spellings: the 1.x `quality-loop` and the 2.0.0 `alfred-loop-<name>`
+  // The loop arm names both spellings: the 1.x `quality-loop` and the 2.0.0 `alfred-loop-<name>` and the 2.2.0 `loop-<name>`
   // family - the rename left this arm matching nothing, so a receipt naming the loop minted consent.
-  if (/\b(project-)?verify-(code|plan)\b|\bquality-loop\b|\balfred-loop-[a-z-]+/i.test(first) && !skillCallRan() && !field('carried')) {
+  if (/\b(project-)?verify-(code|plan)\b|\bquality-loop\b|\b(?:alfred-)?loop-(?:quality|architecture-quality|test-coverage)\b/i.test(first) && !skillCallRan() && !field('carried')) {
     r.problem = `the VERIFIED line names a verify skill but no Skill call ran in this session - if this review is carried from an earlier cycle say so: \`carried: <cycle id>, reviewed <date>\``;
     return r;
   }
@@ -1260,8 +1260,8 @@ process.stderr.write(
     : c.problem
       ? `Blocked: git commit - the gate receipt at ${c.gate} does not hold: ${c.problem}.\n`
       : `Blocked: git commit on a non-trivial diff without the pre-commit gate receipt.\n`) +
-    `The checkpoint (the alfred-habits-commit-checkpoint skill - load it) runs BEFORE a non-trivial commit: the formatter, then\n` +
-    `the house review alfred-task-verify-code - plus /security-review when the diff touches\n` +
+    `The checkpoint (the habits-commit-checkpoint skill - load it) runs BEFORE a non-trivial commit: the formatter, then\n` +
+    `the house review task-verify-code - plus /security-review when the diff touches\n` +
     `auth/crypto/secrets/payment/data-access paths (alfred-security.md). When those pass, write\n` +
     `${c.gate}\n` +
     `with these lines:\n` +

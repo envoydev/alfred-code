@@ -547,7 +547,7 @@ test('guard-stop-contract: only a close that OFFERS the fresh session skips the 
   assert.equal(stop(at('fx-resume', 500000,
     'Task 4 landed. Resume in a fresh session with the block below and I pick up at task 5.')), 0,
     'the mandated resume wording is an offer');
-  assert.equal(stop(at('fx-run', 500000, 'Run `/alfred-code:alfred-capture-architecture` in a new session - answer refresh there.')), 0,
+  assert.equal(stop(at('fx-run', 500000, 'Run `/alfred-code:capture-architecture` in a new session - answer refresh there.')), 0,
     "the imperative 'Run ... in a new session' hands the work over (8b5dcb1a)");
   assert.equal(stop(at('fx-run-noun', 500000, 'The audit is written. A separate run from a fresh session would be worth it later.')), 2,
     "'run' as a noun only recommends");
@@ -667,7 +667,7 @@ test('guard-stop-contract: a solve-task stop is reminded of its three named fiel
   // Measured across the collection: 13 sessions loaded the Result / Progress / Leftovers stop
   // contract, 5 used the fields even once, across 109 asks - one session missed all 12 of its stops.
   const cycle = (name, text) => transcript(name, [
-    { type: 'user', message: { role: 'user', content: '<command-name>/alfred-task-solve</command-name>' } },
+    { type: 'user', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } },
     assistantRow(name, text, { cache_read_input_tokens: 900 }),
   ]);
   assert.match(ctxOf(askIn(cycle('sf-bare', 'Task 2 landed, tests green.'), oneQ)), /Result:.*Progress:.*Leftovers:/s,
@@ -680,7 +680,7 @@ test('guard-stop-contract: a solve-task stop is reminded of its three named fiel
     'the markdown-bold variant 5 of 13 sessions actually wrote satisfies the format');
   // M7 (Task 22 fix round 1): on the plugin route the slash command is recorded with its plugin prefix.
   const prefixed = transcript('sf-plugin', [
-    { type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:alfred-task-solve</command-name>' } },
+    { type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:task-solve</command-name>' } },
     assistantRow('sf-plugin', 'Task 2 landed, tests green.', { cache_read_input_tokens: 900 }),
   ]);
   assert.match(ctxOf(askIn(prefixed, oneQ)), /Result:.*Progress:.*Leftovers:/s,
@@ -705,7 +705,7 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
   const cmd = (name) => userRow(`<command-name>/${name}</command-name>`);
   // The slash route is UserPromptExpansion (2.1.5 M14): the typed command arrives by name.
   const slash = (tp, skill) => {
-    const name = skill || 'alfred-task-solve';
+    const name = skill || 'task-solve';
     const r = runIn('guard-fresh-session-start.js',
       { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: name, command_args: '', prompt: `/${name}`, transcript_path: tp },
       { env: logEnv() });
@@ -717,23 +717,23 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
     cmd('alfred-code:setup'), cmd('alfred-code:update'),
   ]), 'alfred-code:update'), '', 'two commands 4s apart with NO assistant turn between them is one abandoned run');
   assert.equal(slash(transcript('ab-resume', [
-    cmd('alfred-task-solve'), userRow('resume the build cycle, steps 1-3 are stamped'),
+    cmd('task-solve'), userRow('resume the build cycle, steps 1-3 are stamped'),
   ])), '', "a re-typed run the model never answered is not a run this session already made");
 
   // ... and the measured chain the trigger exists for still fires: a run, an ANSWER, then a second run.
   assert.match(slash(transcript('ab-real', [
-    cmd('alfred-capture-architecture'),
+    cmd('capture-architecture'),
     assistantRow('r1', 'Captured the architecture doc.', FLOOR),
     userRow('now run the task cycle'),
     assistantRow('r2', 'ok', COLD),
-    cmd('alfred-task-solve'),
+    cmd('task-solve'),
   ])), /ALREADY run one/i, 'a finished prior run, with the model\'s own turn in between, is still the measured chain');
 
   // `setup` is the guided install and `init` the bootstrap after it (Task 18a): both are
   // multi-phase runs, so both take the offer.
   for (const walk of ['alfred-code:init', 'alfred-code:setup'])
     assert.match(slash(transcript(`ab-${walk.split(':')[1]}`, [
-      cmd('alfred-capture-architecture'),
+      cmd('capture-architecture'),
       assistantRow('i1', 'Captured the architecture doc.', FLOOR),
       userRow('now install the stack'),
       assistantRow('i2', 'ok', COLD),

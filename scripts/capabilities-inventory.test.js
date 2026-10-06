@@ -10,8 +10,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const SCRIPT = path.join(__dirname, '..', 'stack', 'skills', 'alfred-capture-agent-capabilities', 'scripts', 'capabilities-inventory.js');
-const SKILL_MD = path.join(__dirname, '..', 'stack', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md');
+const SCRIPT = path.join(__dirname, '..', 'stack', 'skills', 'capture-agent-capabilities', 'scripts', 'capabilities-inventory.js');
+const SKILL_MD = path.join(__dirname, '..', 'stack', 'skills', 'capture-agent-capabilities', 'SKILL.md');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'capabilities-inventory-'));
 // The CLI stubs are POSIX shell: a Windows run has no way to put a fake `claude` on PATH that
 // `spawnSync(..., {shell:true})` would resolve, so those cases say so instead of passing blind.
@@ -59,7 +59,7 @@ const skillFile = (name, { slashOnly = false, description = 'Does a thing. And t
 function project(name, opts = {})
 {
     const root = path.join(TMP, name);
-    for (const [dir, s] of Object.entries(opts.skills || { 'alfred-capture-agent-capabilities': { slashOnly: true }, 'markdown-author': {} }))
+    for (const [dir, s] of Object.entries(opts.skills || { 'capture-agent-capabilities': { slashOnly: true }, 'markdown-author': {} }))
     {
         write(path.join(root, '.claude', 'skills', dir, 'SKILL.md'), skillFile(dir, s), -100);
     }
@@ -109,8 +109,8 @@ test('inventory: every layer prints its own count, including the .claude/rules l
 {
     const root = project('inventory', {
         skills: {
-            'alfred-capture-agent-capabilities': { slashOnly: true, description: 'The deliberate capabilities capture. Use when the user asks to capture the project capabilities.' },
-            'alfred-capture-architecture': { description: 'Captures the architecture. A long second sentence.' },
+            'capture-agent-capabilities': { slashOnly: true, description: 'The deliberate capabilities capture. Use when the user asks to capture the project capabilities.' },
+            'capture-architecture': { description: 'Captures the architecture. A long second sentence.' },
             'markdown-author': {},
         },
     });
@@ -121,8 +121,8 @@ test('inventory: every layer prints its own count, including the .claude/rules l
     const { out } = run([], { cwd: root, bin });
 
     assert.match(out, /SKILLS:\s+3 total, 2 orchestration \(1 model-invocable-by-design\)/);
-    assert.match(out, /\/alfred-capture-agent-capabilities - The deliberate capabilities capture$/m);
-    assert.match(out, /\/alfred-capture-architecture - .*\(model-invocable-by-design\)/);
+    assert.match(out, /\/capture-agent-capabilities - The deliberate capabilities capture$/m);
+    assert.match(out, /\/capture-architecture - .*\(model-invocable-by-design\)/);
     assert.match(out, /SEATS:\s+3 total/);
     assert.match(out, /seat families \(1\): aspnet/);
     assert.match(out, /RULES:\s+3 total, 2 pathless, 1 path-scoped/);
@@ -194,7 +194,7 @@ test('inventory: a plugin-covered install prints the plugin\'s layers, not an em
     fs.rmSync(path.join(root, '.claude', 'agents'), { recursive: true, force: true });
     const plugin = path.join(TMP, 'plugin-cache', 'house-stack', '1.0.0');
     write(path.join(plugin, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'house-stack', version: '1.0.0' }));
-    write(path.join(plugin, 'skills', 'alfred-task-solve-cross', 'SKILL.md'), skillFile('alfred-task-solve-cross', { slashOnly: true, description: 'The single entry-point orchestrator. More prose.' }));
+    write(path.join(plugin, 'skills', 'task-solve-cross', 'SKILL.md'), skillFile('task-solve-cross', { slashOnly: true, description: 'The single entry-point orchestrator. More prose.' }));
     write(path.join(plugin, 'skills', 'markdown-author', 'SKILL.md'), skillFile('markdown-author'));
     write(path.join(plugin, 'agents', 'aspnet-implementer.md'), '---\nname: aspnet-implementer\n---\n');
     // a DISABLED plugin's skills are not live, and a stale cached version is not an install: the
@@ -210,7 +210,7 @@ test('inventory: a plugin-covered install prints the plugin\'s layers, not an em
     const { out } = run([], { cwd: root, bin });
     assert.match(out, /SOURCE:\s+PLUGIN-COVERED - 1 enabled plugin\(s\) carry 2 skill\(s\) and 1 seat\(s\), beside 0 skill\(s\) and 0 seat\(s\) copied under \.claude\/: house-stack/);
     assert.match(out, /SKILLS:\s+2 total, 1 orchestration/);
-    assert.match(out, /\/alfred-task-solve-cross - The single entry-point orchestrator/);
+    assert.match(out, /\/task-solve-cross - The single entry-point orchestrator/);
     assert.match(out, /SEATS:\s+1 total/);
     assert.doesNotMatch(out, /retired-skill/, 'a disabled plugin and a stale cached version carry nothing');
 });
@@ -364,7 +364,7 @@ function policyFrom(skillText, docsRoot)
 
 const validRule = (docsRoot = '.alfred/docs') => [
     '---',
-    'description: Project capabilities awareness - generated by /alfred-capture-agent-capabilities; edit via a re-run, not by hand.',
+    'description: Project capabilities awareness - generated by /capture-agent-capabilities; edit via a re-run, not by hand.',
     '---',
     '',
     '# This project\'s capabilities',
@@ -375,7 +375,7 @@ const validRule = (docsRoot = '.alfred/docs') => [
     policyFrom(fs.readFileSync(SKILL_MD, 'utf8'), docsRoot),
     '',
     '## Orchestration skills (slash-only - invisible until invoked)',
-    '/alfred-capture-agent-capabilities - The deliberate capabilities capture',
+    '/capture-agent-capabilities - The deliberate capabilities capture',
     '',
     '## Subagent seats',
     'aspnet-implementer, aspnet-verifier',

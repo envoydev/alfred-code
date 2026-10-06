@@ -187,7 +187,7 @@ test('I15: no seat body looks for a skill in the plugin cache or the account dir
 test('I15: integration-reviewer reads .claude/skills, and keeps the two essentials only for a project without the skill', () =>
 {
     const text = squash(body('integration-reviewer'));
-    assert.match(text, /`\.claude\/skills\/alfred-task-solve-cross\/references\/\*\.md`/);
+    assert.match(text, /`\.claude\/skills\/task-solve-cross\/references\/\*\.md`/);
     assert.doesNotMatch(text, /account dir|on the plugin route/);
     assert.match(text, /switched that skill off/);
     assert.match(text, /gate on the two essentials you cannot reconstruct from the diff/);

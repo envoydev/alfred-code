@@ -35,8 +35,8 @@ test('M20 the memory launcher no longer says the service leaves numpy undeclared
 test('M23 the claude-md-management retirement row calls the skill always-on, not the core\'s', () =>
 {
     const text = read('meta/retired-plugins.json');
-    assert.doesNotMatch(text, /the core's alfred-habits-adjust-agents-md skill/);
-    assert.match(text, /the always-on alfred-habits-adjust-agents-md skill/);
+    assert.doesNotMatch(text, /the core's habits-adjust-agents-md skill/);
+    assert.match(text, /the always-on habits-adjust-agents-md skill/);
 });
 
 // M29: each kept MCP server's launcher downloads and runs its pinned package at every session start, and serena
@@ -76,7 +76,7 @@ test('M32 the verifiers, the integration reviewer and the solve flow spell the n
         assert.doesNotMatch(text, /\(`get_symbols_overview` \/ `find_symbol`\)/, f);
         assert.match(text, /reopen it through the navigation server \(`mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview` \/ `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`\)/, f);
     }
-    const solve = read('stack/skills/alfred-task-solve/SKILL.md');
+    const solve = read('stack/skills/task-solve/SKILL.md');
     assert.doesNotMatch(solve, /`write_memory\(/);
     assert.match(solve, /`mcp__plugin_alfred-navigation_alfred-navigation__write_memory\('<feature>\/<contract_version>\/<seat>\/<task>'/);
 });
@@ -108,7 +108,7 @@ test('M39 the handoff notes are named as topic folders the server can filter', (
         // 2.1.6 review B4: the 17 seats that read ONE note before (their own seat's earlier pass) still read one -
         // a run's whole folder is p95 17,535 chars, max 42,082 (39 local runs) - and the 21 that read every
         // matching note still read the run's notes.
-        const own = /(-solution-designer|-resolver|alfred-issue-diagnoser-(ci|runtime)|integration-reviewer)\.md$/.test(f);
+        const own = /(-solution-designer|-resolver|issue-diagnoser-(ci|runtime)|integration-reviewer)\.md$/.test(f);
         const reads = own ? 'the one note it lists under your own seat name' : 'the notes it lists';
         assert.ok(text.includes(`At START, \`mcp__plugin_alfred-navigation_alfred-navigation__list_memories\` with \`topic: '<feature>/<contract_version>'\` then \`mcp__plugin_alfred-navigation_alfred-navigation__read_memory\` ${reads} for `), `${f}: reads ${reads}`);
         const name = /-implementer\.md$/.test(f) ? '<feature>/<contract_version>/<seat>/<task>' : '<feature>/<contract_version>/<seat>';
@@ -122,13 +122,13 @@ test('M39 the handoff notes are named as topic folders the server can filter', (
         assert.match(text, /`list_memories` with `topic: '<feature>\/<contract_version>'`/, f);
         assert.match(text, /`<feature>` is never `global`/, f);
     }
-    const reuse = read('stack/skills/alfred-task-solve-cross/references/capability-reuse.md');
+    const reuse = read('stack/skills/task-solve-cross/references/capability-reuse.md');
     assert.doesNotMatch(reuse, /prefix-matches/);
     assert.match(reuse, /`list_memories` with `topic: '<feature>\/<contract_version>'`/);
-    const solve = read('stack/skills/alfred-task-solve/SKILL.md');
+    const solve = read('stack/skills/task-solve/SKILL.md');
     assert.match(solve, /`write_memory` named `<feature>\/cycle`/);
     assert.match(solve, /cycle note 'csv-export\/cycle'/);
-    assert.match(read('stack/skills/alfred-loop-quality/references/delegated-mode.md'), /named `<feature>\/<contract_version>\/<seat>\/<task>`/);
+    assert.match(read('stack/skills/loop-quality/references/delegated-mode.md'), /named `<feature>\/<contract_version>\/<seat>\/<task>`/);
 });
 
 // M39: the purge count reads the folder shape, and a run begun before 2.1.6 (flat `<feature>__` names) is
@@ -236,7 +236,7 @@ test('M37 the inventory page claims no call-hierarchy tool for the navigation se
 test('M40 both desktop ToolSearch lines say the session\'s listing names more tools', () =>
 {
     const skill = read('stack/skills/desktop-automation/SKILL.md');
-    const rule = read('stack/skills/alfred-capture-agent-capabilities/references/generated-rule-template.md');
+    const rule = read('stack/skills/capture-agent-capabilities/references/generated-rule-template.md');
     for (const server of ['windows-desktop', 'macos-desktop'])
     {
         assert.match(skill, new RegExp(`plus the other \`mcp__plugin_${server}_${server}__\\*\` names the session's own listing shows`), server);
@@ -275,7 +275,7 @@ test('M44 the memory ToolSearch line is pinned across its homes', () =>
 // M45: where the capabilities capture never ran, nothing told the main thread the browser tools are deferred.
 test('M45 the live probe says the browser tools are deferred and loaded through ToolSearch', () =>
 {
-    const text = read('stack/skills/alfred-task-verify-code/references/live-probe.md').replace(/\s+/g, ' ');
+    const text = read('stack/skills/task-verify-code/references/live-probe.md').replace(/\s+/g, ' ');
     // Review 2.1.5 plugin, MINOR 3: 'defers MCP tools, its tools are deferred' read as a tautology.
     assert.doesNotMatch(text, /its tools are deferred/);
     assert.match(text, /Where the harness defers MCP tools, load the browser plugin's tools through ToolSearch, by the names the deferred listing shows, before you call it absent\./);
@@ -302,7 +302,7 @@ test('R3 no page says MacOS-MCP cannot switch a tool off; each names the config.
 // R13: MacOS-MCP 0.4.6 has no Screenshot tool - the image is Snapshot with use_vision (its __main__.py tool list).
 test('R13 the macOS lines name a black vision snapshot, never a screenshot the server does not have', () =>
 {
-    for (const file of ['stack/mcp/desktop-launch.js', 'stack/skills/alfred-capture-agent-capabilities/references/generated-rule-template.md'])
+    for (const file of ['stack/mcp/desktop-launch.js', 'stack/skills/capture-agent-capabilities/references/generated-rule-template.md'])
     {
         const text = read(file);
         assert.doesNotMatch(text, /black screenshots/, file);

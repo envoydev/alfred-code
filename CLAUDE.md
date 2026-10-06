@@ -129,19 +129,19 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
   TypeScript install, 200K window, Claude Code 2.1.284: '39 skills, 19901 chars > 8000 budget' before the cap,
   '39 skills, 10781 chars' after it (the drop is exactly the 9,120 chars the stack's 24 listed descriptions
   lost) - the stack's share now ~4.3K, the other 15 entries (~6.5K) not the stack's to trim. The authoring
-  method is `alfred-habits-skill-writing`.
+  method is `habits-skill-writing`.
 
 ## Maintenance gotchas
 
 - Editing a consuming project's installed copy is local-only; mirror it into `scripts/install/` here
   (and into cursor-stack when it touches the shared baseline or a twinned agent/rule).
-- Authoring a skill in `stack/skills/`: the method is `alfred-habits-skill-writing` (the
+- Authoring a skill in `stack/skills/`: the method is `habits-skill-writing` (the
   `skill-authoring.md` rule loads it; its A/B is `scripts/skill-comply.js`); on top of it here - the
   parity lint, HTML + count sync, house voice. A stop's question is written as an ASK TEMPLATE - a
   fenced `ask` block, the question on its first line, then one `- '<label>' - <why>` line per option -
   and lint check 61 fails one that marks no option `(Recommended)`, or two, or lists the marked one anywhere
   but first (a label runs to its last quote before ` - `, so an apostrophe stays in it); the three flow skills
-  (`alfred-task-solve`, `-cross`, `alfred-issue-diagnoser`) carry theirs in SKILL.md at a count pinned in
+  (`task-solve`, `-cross`, `issue-diagnoser`) carry theirs in SKILL.md at a count pinned in
   `ASK_FLOW_TEMPLATES`, so one stop dropped back to prose goes red (pilot 3: 18 of 40 flow asks had no mark,
   and the approver took the first option each time). The setup / configure walk's layer asks are templates too (`setup-plugin/references/walk.md` and `commands/setup.md`, pinned in `SETUP_ASK_TEMPLATES`): each layer's first ask is a single-select (keep the marked rows / pick / add every / only the locked rows) and 'Pick' opens ONE call of up to 4 multi-select questions grouped from the table's own labels, so no per-row change is typed.
 - Skills are shared with Cursor: a skill body stays platform-neutral (conditionals like 'INLINE when no

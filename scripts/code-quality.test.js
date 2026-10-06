@@ -34,8 +34,8 @@ const frontmatter = (text) =>
 };
 const body = (text) => text.replace(/^---\n[\s\S]*?\n---\n/, '');
 
-const CAPTURE = 'stack/skills/alfred-capture-code-quality';
-const LOOP = 'stack/skills/alfred-loop-quality';
+const CAPTURE = 'stack/skills/capture-code-quality';
+const LOOP = 'stack/skills/loop-quality';
 const SEAT = 'stack/agents/code-quality-analyzer.md';
 
 // A loops/ folder exactly as the 1.x bootstrap seeded it, plus what a project adds over time: a stage
@@ -60,7 +60,7 @@ test('the capture is a copy and its seat rides the core, placed by the rule that
     // 2.1.0: every skill is a project copy, every seat rides the core.
     const p = placement();
     const core = p.plugins[CORE];
-    for (const s of ['alfred-capture-architecture-quality', 'alfred-loop-architecture-quality', 'alfred-loop-quality', 'alfred-capture-code-quality'])
+    for (const s of ['capture-architecture-quality', 'loop-architecture-quality', 'loop-quality', 'capture-code-quality'])
     {
         assert.ok(p.library.skills.includes(s), `${s} is a project copy`);
         assert.ok(!core.skills.includes(s), `${s} rides no plugin`);
@@ -72,27 +72,27 @@ test('the capture is a copy and its seat rides the core, placed by the rule that
     }
 
     const recs = JSON.parse(read('meta/recommendations.json'));
-    assert.ok(recs.always.skills.includes('alfred-capture-code-quality'), 'seeded where the quality loop is');
-    assert.ok(recs.always.skills.includes('alfred-loop-quality'));
+    assert.ok(recs.always.skills.includes('capture-code-quality'), 'seeded where the quality loop is');
+    assert.ok(recs.always.skills.includes('loop-quality'));
     assert.ok(recs.always.agents.includes('code-quality-analyzer'), 'the capture seeds the seat it fans out');
 
     const manifest = JSON.parse(read('meta/stack-manifest.json'));
-    assert.ok(manifest.skills.some((s) => s.name === 'alfred-capture-code-quality' && /CODE-ASSESSMENT\.md/.test(s.note)), 'manifest skill row');
+    assert.ok(manifest.skills.some((s) => s.name === 'capture-code-quality' && /CODE-ASSESSMENT\.md/.test(s.note)), 'manifest skill row');
     assert.ok(manifest.agents.some((a) => a.file === 'code-quality-analyzer.md' && /read-only/.test(a.note)), 'manifest agent row');
 
     const graph = JSON.parse(read('meta/stack-graph.json'));
-    assert.ok(graph.skills['alfred-capture-code-quality'], 'graph skill node');
+    assert.ok(graph.skills['capture-code-quality'], 'graph skill node');
     assert.ok(graph.agents['code-quality-analyzer'], 'graph agent node');
 
     const entries = JSON.stringify(JSON.parse(read('meta/plugin-entries.json')));
-    assert.ok(!entries.includes('./stack/skills/alfred-capture-code-quality"'), 'the skill is a project copy - no entry lists it');
+    assert.ok(!entries.includes('./stack/skills/capture-code-quality"'), 'the skill is a project copy - no entry lists it');
     assert.ok(entries.includes('./stack/agents/code-quality-analyzer.md"'), 'the generated core entry lists the seat');
 
     // The loop invokes the capture as a Skill call, so it carries no disable-model-invocation - and the
     // generated usage policy lists it with the orchestration skills, marked as the by-design exception.
-    const inventory = read('stack/skills/alfred-capture-agent-capabilities/scripts/capabilities-inventory.js');
+    const inventory = read('stack/skills/capture-agent-capabilities/scripts/capabilities-inventory.js');
     const set = /const MODEL_INVOCABLE_BY_DESIGN = new Set\(\[([^\]]*)\]\)/.exec(inventory);
-    assert.ok(set && set[1].includes("'alfred-capture-code-quality'"), 'the capture is model-invocable by design');
+    assert.ok(set && set[1].includes("'capture-code-quality'"), 'the capture is model-invocable by design');
 });
 
 test('the seat is a read-only sonnet support seat whose findings each name a file:line and a rule', () =>
@@ -136,7 +136,7 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
 {
     const text = read(`${CAPTURE}/SKILL.md`);
     const fm = frontmatter(text);
-    assert.strictEqual(fm.name, 'alfred-capture-code-quality');
+    assert.strictEqual(fm.name, 'capture-code-quality');
     assert.match(fm.description, /^Use when /);
     assert.match(fm.description, /Not for /);
     assert.ok(!('disable-model-invocation' in fm), 'the loop invokes it, like the architecture-quality capture');
@@ -174,7 +174,7 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     assert.match(b, /\*\*Reads decisions, never writes them - hard rule\.\*\*/);
     // No rule source at all: stop, write nothing - a doc judged against nothing reads as clean code.
     assert.match(b, /\*\*No rule source at all - stop\.\*\*[^*]*writing nothing/);
-    assert.match(b, /No rule source at all - stop\.\*\*[^*]*`\/alfred-capture-code-style`[^*]*`\/alfred-loop-quality`/, 'and names the two ways to get rules, both slash-typed');
+    assert.match(b, /No rule source at all - stop\.\*\*[^*]*`\/capture-code-style`[^*]*`\/loop-quality`/, 'and names the two ways to get rules, both slash-typed');
     // A remediation is checked against the OTHER handed rules, or the loop oscillates between them.
     const judge = squash(raw.slice(raw.indexOf('### 3. JUDGE'), raw.indexOf('### 4. RE-GATHER')));
     assert.match(judge, /Cross-check every Must-fix remediation against the other rules/);
@@ -182,9 +182,9 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     // The neighbours with their destinations live in the body's When to use (the 160-char description cannot hold them).
     const whenToUse = raw.slice(raw.indexOf('## When to use'), raw.indexOf('## Execution modes'));
     assert.ok(whenToUse.length > 0, 'the body has a When to use section before Execution modes');
-    for (const dest of ['/alfred-loop-quality', 'alfred-capture-architecture-quality', 'alfred-capture-code-style', '/security-review', 'alfred-task-verify-code'])
+    for (const dest of ['/loop-quality', 'capture-architecture-quality', 'capture-code-style', '/security-review', 'task-verify-code'])
         assert.ok(whenToUse.includes(dest), `Not for ... (${dest})`);
-    assert.ok(read('stack/skills/alfred-capture-architecture-quality/SKILL.md').split('\n')[2].includes('(alfred-capture-code-quality)'),
+    assert.ok(read('stack/skills/capture-architecture-quality/SKILL.md').split('\n')[2].includes('(capture-code-quality)'),
         'the architecture-quality capture sends code quality to its new neighbour');
 });
 
@@ -265,7 +265,7 @@ test('the numbered-prompt run stays reachable as the STAGED mode, over the same 
 {
     const loop = squash(body(read(`${LOOP}/SKILL.md`)));
     assert.match(loop, /\*\*STAGED\*\*/, 'the mode is named');
-    assert.match(loop, /`\/alfred-loop-quality staged/, 'reached by naming it in the invocation');
+    assert.match(loop, /`\/loop-quality staged/, 'reached by naming it in the invocation');
     assert.match(loop, /`RUN-STATE\.md`/, 'a staged run in progress resumes staged');
     assert.match(loop, /Read `references\/staged-mode\.md`/);
 
@@ -308,7 +308,7 @@ test('the loop runs the capture each round and routes its findings by tier', () 
         assert.ok(i > at, `${step} follows the step before it`);
         at = i;
     }
-    assert.match(b, /`alfred-capture-code-quality`/, 'ANALYZE runs the capture');
+    assert.match(b, /`capture-code-quality`/, 'ANALYZE runs the capture');
     assert.match(b, /`<docs-path>\/quality\/CODE-ASSESSMENT\.md`/);
     // Each tier is judged on its OWN bullet - a match that may span the whole body proves nothing.
     const raw = body(text);
@@ -325,7 +325,7 @@ test('the loop runs the capture each round and routes its findings by tier', () 
     assert.match(small, /batched into one scoped brief/);
     const substantial = tier('substantial');
     let from = -1;
-    for (const step of ['domain solution-designer', '`alfred-task-verify-plan`', "the user's approval on that plan before building", 'domain implementers', 'domain verifier'])
+    for (const step of ['domain solution-designer', '`task-verify-plan`', "the user's approval on that plan before building", 'domain implementers', 'domain verifier'])
     {
         const i = substantial.indexOf(step);
         assert.ok(i > from, `substantial: '${step}' comes after the step before it`);
@@ -344,12 +344,12 @@ test('the loop runs the capture each round and routes its findings by tier', () 
     assert.match(b, /never seed[^.]*around/, 'a user-authored folder is never seeded around');
 
     const mech = squash(read(`${LOOP}/references/loop-mechanics.md`));
-    assert.match(mech, /RESUME - alfred-loop-quality/);
+    assert.match(mech, /RESUME - loop-quality/);
     assert.match(mech, /\*\*Mechanics\*\* - `loop-mechanics\.md: read`/);
     assert.match(mech, /\*\*Anti-gaming\*\*/);
 
     // The substantial tier is the domain-trio vertical, vendored like the other two loops' copies.
-    assert.strictEqual(read(`${LOOP}/references/domain-trio-protocol.md`), read('stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md'));
+    assert.strictEqual(read(`${LOOP}/references/domain-trio-protocol.md`), read('stack/skills/task-solve-cross/references/domain-trio-protocol.md'));
 
     // The starter set still ships, so a project without a loops folder is seeded as before. It is a copy
     // source, never a read, so it sits in assets/ rather than references/ (2.1.5 audit M85).
@@ -373,11 +373,11 @@ function orchestration()
 
 test('every skill the inventory calls orchestration is on the fresh-session guard\'s roster', () =>
 {
-    const inventory = read('stack/skills/alfred-capture-agent-capabilities/scripts/capabilities-inventory.js');
+    const inventory = read('stack/skills/capture-agent-capabilities/scripts/capabilities-inventory.js');
     const set = /const MODEL_INVOCABLE_BY_DESIGN = new Set\(\[([^\]]*)\]\)/.exec(inventory);
     assert.ok(set, 'the inventory names its model-invocable orchestration skills');
     const names = [...set[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
-    assert.ok(names.includes('alfred-capture-code-quality'));
+    assert.ok(names.includes('capture-code-quality'));
     const roster = orchestration();
     for (const name of names)
         assert.match(name, roster, `${name} is orchestration in the inventory, so the guard gates it too`);
@@ -406,13 +406,13 @@ test('a code-quality capture started past the fresh-session trigger is offered a
         };
         const call = (skill, tp) => spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-fresh-session-start.js')],
             { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, transcript_path: tp }), encoding: 'utf8', env });
-        const hot = call('alfred-code:alfred-capture-code-quality', transcript('hot-code', 450000));
+        const hot = call('alfred-code:capture-code-quality', transcript('hot-code', 450000));
         assert.strictEqual(hot.status, 2, 'blocked past the trigger');
-        assert.match(hot.stderr, /^Blocked: alfred-code:alfred-capture-code-quality/);
+        assert.match(hot.stderr, /^Blocked: alfred-code:capture-code-quality/);
         assert.match(squash(hot.stderr), /ONE AskUserQuestion: start it in a fresh session \(recommended/);
-        assert.strictEqual(call('alfred-capture-code-quality', transcript('hot-bare', 450000)).status, 2, 'the bare name too');
-        assert.strictEqual(call('alfred-code:alfred-capture-architecture-quality', transcript('hot-arch', 450000)).status, 2, 'and its architecture twin');
-        assert.strictEqual(call('alfred-code:alfred-capture-code-quality', transcript('cold', 50000)).status, 0, 'under the trigger it runs');
+        assert.strictEqual(call('capture-code-quality', transcript('hot-bare', 450000)).status, 2, 'the bare name too');
+        assert.strictEqual(call('alfred-code:capture-architecture-quality', transcript('hot-arch', 450000)).status, 2, 'and its architecture twin');
+        assert.strictEqual(call('alfred-code:capture-code-quality', transcript('cold', 50000)).status, 0, 'under the trigger it runs');
     }
     finally
     {

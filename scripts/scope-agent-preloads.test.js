@@ -45,11 +45,11 @@ test('a FOREIGN cite is left exactly as it is - this generator owns house skills
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preload-foreign-'));
     try
     {
-        fs.writeFileSync(path.join(dir, 'alfred-issue-diagnoser-ci.md'),
-            '---\nname: alfred-issue-diagnoser-ci\nskills:\n  - other-plugin:some-skill\n  - alfred-code:alfred-habits-root-cause\n---\n\nbody\n');
+        fs.writeFileSync(path.join(dir, 'issue-diagnoser-ci.md'),
+            '---\nname: issue-diagnoser-ci\nskills:\n  - other-plugin:some-skill\n  - alfred-code:habits-root-cause\n---\n\nbody\n');
         const [row] = scopedFor({ agentsDir: dir });
         assert.strictEqual(row.problem, null, row.problem);
-        assert.strictEqual(row.wanted, 'skills:\n  - other-plugin:some-skill\n  - alfred-habits-root-cause\n',
+        assert.strictEqual(row.wanted, 'skills:\n  - other-plugin:some-skill\n  - habits-root-cause\n',
             'the foreign cite is untouched, the house one bare');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -63,19 +63,19 @@ test('a preload of a manual-only skill is a problem - Claude Code skips it silen
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preload-dmi-'));
     try
     {
-        fs.writeFileSync(path.join(dir, 'aspnet-implementer.md'), '---\nname: aspnet-implementer\nskills:\n  - alfred-task-solve\n  - csharp\n---\n\nbody\n');
+        fs.writeFileSync(path.join(dir, 'aspnet-implementer.md'), '---\nname: aspnet-implementer\nskills:\n  - task-solve\n  - csharp\n---\n\nbody\n');
         const [row] = scopedFor({ agentsDir: dir });
-        assert.match(String(row.problem), /alfred-task-solve is manual-only/);
+        assert.match(String(row.problem), /task-solve is manual-only/);
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('both diagnosers preload the house root-cause skill, bare', () => {
-    for (const file of ['alfred-issue-diagnoser-ci.md', 'alfred-issue-diagnoser-runtime.md'])
+    for (const file of ['issue-diagnoser-ci.md', 'issue-diagnoser-runtime.md'])
     {
         const r = rows.find(x => x.file === file);
         assert.ok(r, `${file} declares preloads`);
-        assert.match(r.block, /^\s*-\s*alfred-habits-root-cause$/m, `${file} preloads alfred-habits-root-cause`);
+        assert.match(r.block, /^\s*-\s*habits-root-cause$/m, `${file} preloads habits-root-cause`);
         assert.doesNotMatch(r.block, /superpowers/, `${file} still preloads a superpowers skill`);
     }
 });

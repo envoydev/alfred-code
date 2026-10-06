@@ -108,21 +108,21 @@ Skills you start by name. Every install has these.
 
 | Run | When |
 | --- | --- |
-| `/alfred-task-solve` | A change you want to approve step by step |
-| `/alfred-task-solve-cross` | A feature across backend and frontend |
-| `/alfred-issue-diagnoser` | Find the cause of a failure |
-| `/alfred-task-version-upgrade` | A breaking upgrade, like .NET 10 |
-| `/alfred-capture-first-look` | A quick map of an unfamiliar project |
-| `/alfred-capture-architecture` | Write or refresh the architecture docs |
-| `/alfred-capture-project-capabilities` | A run book: build, start, log in |
-| `/alfred-loop-quality` | Find and fix code-quality issues in rounds |
+| `/task-solve` | A change you want to approve step by step |
+| `/task-solve-cross` | A feature across backend and frontend |
+| `/issue-diagnoser` | Find the cause of a failure |
+| `/task-version-upgrade` | A breaking upgrade, like .NET 10 |
+| `/capture-first-look` | A quick map of an unfamiliar project |
+| `/capture-architecture` | Write or refresh the architecture docs |
+| `/capture-project-capabilities` | A run book: build, start, log in |
+| `/loop-quality` | Find and fix code-quality issues in rounds |
 
 Add what you want after the name:
 
 ```text
-/alfred-task-solve add paging to GET /api/loans
-/alfred-issue-diagnoser the CI build on main fails since yesterday
-/alfred-task-version-upgrade move the web app to Angular 20
+/task-solve add paging to GET /api/loans
+/issue-diagnoser the CI build on main fails since yesterday
+/task-version-upgrade move the web app to Angular 20
 ```
 
 More on the two task flows: [`docs/solve-skills-guide.md`](docs/solve-skills-guide.md).

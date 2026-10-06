@@ -91,7 +91,7 @@ The memory levels and stores, where the docs root and the data root live, and th
   notes, else by `/alfred-code:init` after a one-time import of its existing notes into the `memory` MCP - it has no search and is not shared
   with Cursor, which is why the MCP replaces it rather than sitting beside it. Which repos are
   related lives in the generated `.claude/rules/alfred-project-related-context.md` (the
-  `/alfred-capture-related-projects` skill), not memory. The session HISTORY (`<docs-path>/history/`,
+  `/capture-related-projects` skill), not memory. The session HISTORY (`<docs-path>/history/`,
   `history-session.js`) is the fourth, machine-local and never shared: what each session did and what
   the user ruled, script-written, read back at the next start on the same branch - a record, not memory.
 - **The docs root lives outside `.claude/`** (2.0.0, the user's decision of 2026-09-26). Claude Code
@@ -158,12 +158,12 @@ The memory levels and stores, where the docs root and the data root live, and th
   `.memory-mcp` until its mirror lands - the home and project memory links cover the database, not the index.
 - **Two stores, split by durability** (hard rule). The committed architecture docs
   (`<docs-path>/architecture/ARCHITECTURE.md` + `references/`, owned by
-  `alfred-capture-architecture`) are the DURABLE truth every seat reads to orient, refreshed
-  deliberately (that skill or `alfred-loop-architecture-quality`), never after each change. The code
+  `capture-architecture`) are the DURABLE truth every seat reads to orient, refreshed
+  deliberately (that skill or `loop-architecture-quality`), never after each change. The code
   style lives in `<docs-path>/code-style/CODE-STYLE.md` + the path-scoped `project-code-style.md` rule
-  (owned by `alfred-capture-code-style`). The run book lives in
+  (owned by `capture-code-style`). The run book lives in
   `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` (owned by
-  `alfred-capture-project-capabilities`, repo facts first, the user's answers for the gaps): a
+  `capture-project-capabilities`, repo facts first, the user's answers for the gaps): a
   credential appears there only as WHERE it lives - an env var, a vault item, or a key in the
   `credentials.local.env` template the capture writes empty and gitignores in its own folder - never
   as a value. The findings (`quality/ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the

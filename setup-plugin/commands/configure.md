@@ -434,7 +434,7 @@ route (browser = every `browser-<engine>` server);
 and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
 it for every project'), since account-wide and project-local are different consents and the wrong
 `--scope` fails with `not installed in project scope`. 'removals: none' when nothing was dropped;
-(3) the follow-through line - telling the USER to re-run `/alfred-capture-agent-capabilities` (when
+(3) the follow-through line - telling the USER to re-run `/capture-agent-capabilities` (when
 installed, and ONLY when this run added or removed a skill, agent, MCP server or plugin - the
 inventory that rule lists; a run that changed only env or settings names none) so the generated awareness rule reflects the new inventory (the skill is manual-only,
 `disable-model-invocation` - a Skill call from this run is blocked; the line is addressed to the
@@ -457,7 +457,7 @@ nothing at step 8 and applies nothing here.
 Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (reconcile -
 recommended / skip); a 'no' ends the run cleanly. The location: the project's own AGENTS.md - `.claude/AGENTS.md` where the installer
 seeded it, or the root `AGENTS.md` where the project already had one; name which one you found.
-On a yes, read `$TMP/repo/stack/skills/alfred-habits-adjust-agents-md/SKILL.md` and follow it inline
+On a yes, read `$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` and follow it inline
 with `<stack>` = the `$TMP/repo` path, pasted as a literal - the one home of the fill: its improve mode adds the sections the template
 gained, offers a fix for what its check reports (applied only when the user picks it) and shows every
 change before writing, never overwriting the
@@ -489,11 +489,11 @@ and apply it with `--apply gitignore` or `--apply exclude`, reporting the `appli
 `none (...)` line is not reported.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/alfred-capture-agent-capabilities`
+follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-capabilities`
 (when installed and this run changed the inventory it lists), a manual-only capture whose output this
 run made stale, the navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
-matters ('`/alfred-capture-agent-capabilities` - the selection changed, so the generated rule still
+matters ('`/capture-agent-capabilities` - the selection changed, so the generated rule still
 names what this project dropped'). No AskUserQuestion over them: the walk's asks end with the
 installer (a write still gets its consent ask where it happens - step 13's AGENTS.md reconcile),
 and the closing ask over follow-ups was dropped as friction - the user's call, made knowing a

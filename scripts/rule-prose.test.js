@@ -91,7 +91,7 @@ test('M68: the browser-only screenshot line leaves the always-on navigation rule
 {
     const nav = injected('alfred-navigation');
     assert.ok(!/screenshot/i.test(nav), 'the browser row owns screenshot readback');
-    const row = read('stack/skills/alfred-capture-agent-capabilities/references/generated-rule-template.md').split('\n').find((l) => l.startsWith('- `browser` - '));
+    const row = read('stack/skills/capture-agent-capabilities/references/generated-rule-template.md').split('\n').find((l) => l.startsWith('- `browser` - '));
     assert.ok(row && row.includes('never the iteration loop'), 'the browser row carries the mid-loop rule');
     assert.ok(nav.includes('Git Bash'), 'the Windows line stays: a per-OS rule copy would differ between teammates');
 });
@@ -119,13 +119,13 @@ test('M71: several FIRST actions due at once load together', () =>
 
 test('M72: the generated architecture rule carries only its trigger - where the docs live is the baselines\'', () =>
 {
-    const shapes = read('stack/skills/alfred-capture-architecture/references/doc-shapes.md');
+    const shapes = read('stack/skills/capture-architecture/references/doc-shapes.md');
     const at = shapes.indexOf('## .claude/rules/alfred-project-architecture.md');
     const block = /```markdown\n([\s\S]*?)```/.exec(shapes.slice(at))[1];
     const body = squash(injectedRuleText(block)).trim();
     assert.ok(!body.includes('<docs-path>'), `the body restates the root the navigation baseline names: ${body}`);
     assert.ok(body.includes('before a structural change'), body);
-    assert.ok(!squash(read('stack/skills/alfred-capture-architecture/SKILL.md')).includes('with `<docs-path>` baked to the LITERAL resolved root'), 'step 6 no longer bakes a path');
+    assert.ok(!squash(read('stack/skills/capture-architecture/SKILL.md')).includes('with `<docs-path>` baked to the LITERAL resolved root'), 'step 6 no longer bakes a path');
 });
 
 // ------------------------------------------------------------------ M73

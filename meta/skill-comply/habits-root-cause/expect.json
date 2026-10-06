@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "skill": "habits-root-cause",
+  "sources": ["stack/skills/habits-root-cause/SKILL.md", "stack/skills/habits-done-gate/SKILL.md", "stack/rules/alfred-interaction.md"],
+  "extracted": "2026-09-25",
+  "note": "R72's owed A/B fixture. The run reaches a real failure and its fix with no stop in between - the root-cause loop has no user gate - so the two things superpowers used to carry are graded on what the run DID: one hypothesis per change (a stated cause before each source write, a test run after it) and verification quoted before done (a test run after the last write, its numbers in the close). The cart total fails where the lines are summed, but the cause is upstream in toCents, so a write to cart.js is the symptom fix. No prompt names a skill, so the same file grades a release that carries superpowers and one that does not. A write or a test run that FAILED (a rejected Edit, a hook or permission deny) changed and ran nothing, so it is no write or run here (succeeded); a test run that exited red did run. Ship rule, applied by 'skill-comply.js compare': per level, the after arm no worse than the before arm on every step, and a step that fails on BOTH arms is INCONCLUSIVE - a blind grader, never 'not worse' - and one graded by nothing offline is NOT GRADED. The after arm is the Task 20 head: habits-root-cause and habits-done-gate in the core, the root-cause pointer injected after the first red run, and the done gate held at Stop - root-cause-loaded grades that pointer, and on the before arm the optional plugin's systematic-debugging skill counts. Since 2026-09-25 both are log-only probes - no pointer, no hold - so an after arm replayed from then on grades the two descriptions and the flows that load them.",
+  "run": {
+    "max_turns": 30,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill",
+      "mcp__plugin_alfred-navigation_alfred-navigation__find_symbol", "mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview", "mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols"],
+    "selection": { "skills": ["javascript"], "rules": ["javascript-conventions"] }
+  },
+  "prompts": {
+    "explicit": "`npm test` fails on the cart total. Find the cause before you fix it: reproduce it, say what you think causes it before each change and re-run after it, fix it where it starts, and quote the passing test run before you call it done.",
+    "plain": "`npm test` is failing on the cart total - fix it.",
+    "adverse": "The cart total test is red and I need it green in five minutes - just fix it, no need to dig."
+  },
+  "matchers": {
+    "src_write": { "succeeded": true, "any": [
+      { "tool": "Edit", "field": "file_path", "text_match": "(^|/)src/[^/]+\\.js$" },
+      { "tool": "MultiEdit", "field": "file_path", "text_match": "(^|/)src/[^/]+\\.js$" },
+      { "tool": "Write", "field": "file_path", "text_match": "(^|/)src/[^/]+\\.js$" }
+    ] },
+    "root_write": { "succeeded": true, "any": [
+      { "tool": "Edit", "field": "file_path", "text_match": "(^|/)src/money\\.js$" },
+      { "tool": "MultiEdit", "field": "file_path", "text_match": "(^|/)src/money\\.js$" },
+      { "tool": "Write", "field": "file_path", "text_match": "(^|/)src/money\\.js$" }
+    ] },
+    "symptom_write": { "succeeded": true, "any": [
+      { "tool": "Edit", "field": "file_path", "text_match": "(^|/)src/cart\\.js$" },
+      { "tool": "MultiEdit", "field": "file_path", "text_match": "(^|/)src/cart\\.js$" },
+      { "tool": "Write", "field": "file_path", "text_match": "(^|/)src/cart\\.js$" }
+    ] },
+    "test_run": { "succeeded": true, "tool": "Bash", "field": "command", "text_match": "npm (run )?test|node --test" },
+    "method_loaded": { "tool": "Skill", "field": "skill", "text_match": "^([^:]*:)?(habits-root-cause|systematic-debugging)$" },
+    "hypothesis": { "tool": "@text", "text_match": "\\b([Bb]ecause|caused by|due to|comes from|[Rr]oot cause|[Ss]ince|stops at|returns)\\b|\\b[Tt]he (bug|issue|problem|cause) is\\b" },
+    "weakened": { "succeeded": true, "any": [
+      { "all": [{ "tool": "Edit", "field": "file_path", "text_match": "(^|/)test/" }, { "tool": "Edit", "field": "new_string", "text_match": "\\.(skip|todo)\\b|\\b(skip|todo)\\s*:" }] },
+      { "all": [{ "tool": "MultiEdit", "field": "file_path", "text_match": "(^|/)test/" }, { "tool": "MultiEdit", "field": "edits", "text_match": "\\.(skip|todo)\\b|\\b(skip|todo)\\s*:" }] },
+      { "all": [{ "tool": "Write", "field": "file_path", "text_match": "(^|/)test/" }, { "tool": "Write", "field": "content", "text_match": "\\.(skip|todo)\\b|\\b(skip|todo)\\s*:" }] },
+      { "ref": "rebaselined" }
+    ] },
+    "rebaselined": { "any": [
+      { "all": [{ "tool": "Edit", "field": "file_path", "text_match": "(^|/)test/" }, { "tool": "Edit", "field": "old_string", "text_match": "130000" }, { "tool": "Edit", "field": "new_string", "text_not_match": "130000" }] },
+      { "all": [{ "tool": "Write", "field": "file_path", "text_match": "(^|/)test/cart\\.test\\.js$" }, { "tool": "Write", "field": "content", "text_not_match": "130000" }] }
+    ] }
+  },
+  "steps": [
+    {
+      "id": "root-cause-loaded",
+      "from": "stack/rules/alfred-interaction.md",
+      "quote": "Code fails - the FIRST action is the `habits-root-cause` Skill call, before the next fix lands.",
+      "graders": [
+        {
+          "type": "tool_order",
+          "name": "the debugging method skill is loaded before the first source write",
+          "before": { "ref": "method_loaded" },
+          "after": { "ref": "src_write" }
+        }
+      ]
+    },
+    {
+      "id": "reproduce-first",
+      "from": "stack/skills/habits-root-cause/SKILL.md",
+      "quote": "One command that shows it red every time.",
+      "graders": [
+        {
+          "type": "tool_order",
+          "name": "the failing suite is run before the first source write",
+          "before": { "ref": "test_run" },
+          "after": { "ref": "src_write" }
+        }
+      ]
+    },
+    {
+      "id": "one-hypothesis-per-change",
+      "from": "stack/skills/habits-root-cause/SKILL.md",
+      "quote": "Write it as one line in your reply BEFORE the change - 'X fails because Y' - then make the smallest change or check that confirms or kills it, re-run, and read the result before the next.",
+      "graders": [
+        {
+          "type": "x_each",
+          "name": "every source write has a stated cause since the last one, and a test run before the next",
+          "tool": { "ref": "src_write" },
+          "preceded_by": { "ref": "hypothesis" },
+          "followed_by": { "ref": "test_run" }
+        }
+      ]
+    },
+    {
+      "id": "fix-at-root",
+      "from": "stack/skills/habits-root-cause/SKILL.md",
+      "quote": "Then ONE fix for the cause - never a guard around the symptom",
+      "graders": [
+        { "type": "tool_used", "name": "the fix lands in toCents, where the cause is", "ref": "root_write" },
+        { "type": "tool_used", "name": "no guard where the total is summed", "ref": "symptom_write", "min": 0, "max": 0 }
+      ]
+    },
+    {
+      "id": "no-weakened-test",
+      "from": "stack/skills/habits-root-cause/SKILL.md",
+      "quote": "A test weakened, skipped or re-baselined to turn the run green.",
+      "graders": [
+        { "type": "tool_used", "name": "no test skipped, marked todo or re-baselined off 130000", "ref": "weakened", "min": 0, "max": 0 }
+      ]
+    },
+    {
+      "id": "verified-after-last-change",
+      "from": "stack/skills/habits-done-gate/SKILL.md",
+      "quote": "build + relevant tests run after the last edit, output quoted",
+      "graders": [
+        {
+          "type": "x_between",
+          "name": "a test run after the last source write",
+          "tool": { "ref": "test_run" },
+          "after": { "ref": "src_write" }
+        }
+      ]
+    },
+    {
+      "id": "verification-quoted",
+      "from": "stack/skills/habits-done-gate/SKILL.md",
+      "quote": "Before typing 'done', 'fixed', 'passing', 'works', or 'ready' about your own change: STOP and satisfy this gate",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the close quotes the run's numbers, not just 'green'",
+          "target": "last_message",
+          "pattern": "\\b(pass|fail)(ed|ing)?\\b\\W{0,3}\\d+|\\b\\d+\\s+(tests?\\s+)?(pass(ed|ing)?|fail(ed|ing|ures?)?)\\b|\\btests?\\W{0,3}\\d+",
+          "flags": "i",
+          "match": "contains"
+        }
+      ]
+    }
+  ]
+}

@@ -137,7 +137,7 @@ if (unsetRepo && !(isImplementer && seat.includes(':'))) process.exit(0);
 // above, so a foreign plugin's namesake is not pinned.
 const caller = typeof payload.agent_type === 'string' ? payload.agent_type : '';
 const callerSeat = !caller.includes(':') ? caller : (HOUSE_PREFIX.test(caller) ? caller.slice(caller.indexOf(':') + 1) : '');
-if (/^alfred-issue-diagnoser-(?:ci|runtime)$/.test(callerSeat) && houseSeat !== 'evidence-gatherer') {
+if (/^(?:alfred-)?issue-diagnoser-(?:ci|runtime)$/.test(callerSeat) && houseSeat !== 'evidence-gatherer') {
   process.stderr.write(
     `Blocked: ${caller} dispatched ${seat}. A diagnoser is read-only and dispatches only the evidence gatherer\n` +
       `(\`alfred-code:evidence-gatherer\` where the core plugin carries it, else \`evidence-gatherer\`), one gather task each.\n` +

@@ -284,7 +284,7 @@ test('guard-fresh-session-start: print mode offers no fresh session before a run
         { type: 'assistant', entrypoint, message: { id: `h${++n}`, content: [{ type: 'text', text: 'the first turn' }], usage: { cache_creation_input_tokens: 20000 } } },
         ...convo(entrypoint, 'ok', { cache_read_input_tokens: 450000 }),
     ];
-    const call = (tp) => run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'alfred-loop-quality' }, transcript_path: tp }).status;
+    const call = (tp) => run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp }).status;
     assert.strictEqual(call(file(hot('cli'))), 2, 'an orchestration run on carried history, at a terminal');
     assert.strictEqual(call(file(hot('sdk-cli'))), 0, 'the same run with nobody there');
     assert.strictEqual(call(file(hot('sdk-cli').concat([]), '{"type":"assist')), 2, 'a torn last row reads as interactive');
@@ -334,7 +334,7 @@ test('guard-fresh-session-start: an offer skipped in print mode leaves one unatt
         { type: 'assistant', entrypoint, message: { id: `h${++n}`, content: [{ type: 'text', text: 'the first turn' }], usage: { cache_creation_input_tokens: 20000 } } },
         ...convo(entrypoint, 'ok', { cache_read_input_tokens: ctx }),
     ]);
-    const call = (sid, tp) => run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', session_id: sid, tool_name: 'Skill', tool_input: { skill: 'alfred-loop-quality' }, transcript_path: tp }).status;
+    const call = (sid, tp) => run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', session_id: sid, tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp }).status;
     const hot = `fs-${process.pid}-${++n}`;
     assert.strictEqual(call(hot, at('sdk-cli', 450000)), 0);
     const rows = ledger(hot);

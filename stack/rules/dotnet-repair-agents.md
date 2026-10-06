@@ -15,8 +15,8 @@ A seat may register under a NAMESPACE (`<namespace>:<seat>`) rather than as a ba
 does, only that spelling resolves - dispatch it exactly as the roster spells it.
 
 A resolver that stops as BLOCKED_CONTRACT_CHANGE hit a fix needing a shared-contract change -
-outside its bounded scope by design; a running `alfred-task-solve-cross` flow handles it per its
-contract protocol - otherwise name `/alfred-task-solve-cross` as the user's next step (the skill is
+outside its bounded scope by design; a running `task-solve-cross` flow handles it per its
+contract protocol - otherwise name `/task-solve-cross` as the user's next step (the skill is
 manual-only; a model Skill call is blocked). Never edit the contract to go green.
 
 A return with no closing status line - a seat stopped at its `maxTurns` (Claude Code marks the output partial from 2.1.246) or killed mid-task - is never DONE and never resumed as-is, since a resume hands a runaway a fresh budget: re-dispatch it ONCE with a scoped resume brief (its handoff note and partial diff name what landed); a second status-less return from that task goes to the user as BLOCKED.

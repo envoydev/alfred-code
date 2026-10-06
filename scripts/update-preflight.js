@@ -300,7 +300,7 @@ function policyRevLine(root, snapshot)
     // The pre-2.1.6 name is read too, until the update this preflight precedes has moved it.
     const installedFile = ['alfred-project-agent-capabilities.md', 'baseline-project-agent-capabilities.md']
         .map((n) => path.join(root, '.claude', 'rules', n)).find((f) => fs.existsSync(f)) || path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md');
-    const snapshotFile = path.join(snapshot, 'stack', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md');
+    const snapshotFile = path.join(snapshot, 'stack', 'skills', 'capture-agent-capabilities', 'SKILL.md');
     const readRev = f => { try { return (fs.readFileSync(f, 'utf8').match(/policy-rev: ([0-9a-f]+)/) || [])[1]; } catch { return undefined; } };
     if (!fs.existsSync(installedFile)) return 'policy-rev: none';
     const installed = readRev(installedFile);

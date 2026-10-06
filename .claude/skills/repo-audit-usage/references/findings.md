@@ -29,7 +29,7 @@ contract with real consequence, or measured avoidable cost), `MINOR`. Categories
   the audit's OWN output. That last class is large and predictable - a defect in a bundle's
   `report-usage.md`, a `SUMMARY.md`, or the report-generation prompt is a local artifact, so close
   it `NOT-STACK` and route the durable half to the stack skill that owns that work
-  (`alfred-capture-usage-report`), naming the rule that landed there.
+  (`capture-usage-report`), naming the rule that landed there.
 - `OPEN` is a transient state, never a verdict. A finding is OPEN only between the audit that filed
   it and the routing answer that dispositions it - see Phase C's close-out.
 

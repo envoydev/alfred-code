@@ -93,7 +93,7 @@ grep at 258k context to confirm this shape):
    [step 5/11 - agents] adjust the agent roster · next: skills
     # | agent                       | selected     | required by
    ---+-----------------------------+--------------+---------------------------
-    1 | alfred-issue-diagnoser-ci        | recommended  | -
+    1 | issue-diagnoser-ci        | recommended  | -
     2 | dotnet-build-error-resolver | stack:aspnet | rule dotnet-repair-agents
     3 | wpf-implementer             | -            | -
    ```
@@ -209,7 +209,7 @@ Step 2: multi-select questions of 4 trios each ('Add trios 1/2', 'Add trios 2/2'
 
 ## Skills
 
-The full release catalog in one table - the generator `alfred-capture-*` / `alfred-loop-*` skills and every other house
+The full release catalog in one table - the generator `capture-*` / `loop-*` skills and every other house
 skill included, so THIS is the only place skills are ever chosen; later steps (AGENTS.md included)
 never offer skill additions. Locked = every skill the kept rules and agents REQUIRE (rule
 attachments and `skills:` frontmatter preloads), each with the reason naming its dependent. A skill
@@ -221,12 +221,12 @@ the reason column ('MassTransit in src/Api/Api.csproj') - never hand-propose add
 what the table already shows.
 
 FRESH: the only skills seed is `always.skills` - the house METHOD set: the cross-task orchestrator
-plus the manual `alfred-task-*` / `alfred-capture-*` / `alfred-loop-*` / `alfred-issue-*` skills (the inline execution twins, the capture/loop generators,
-the upgrade planner) and the `alfred-habits-*` habits, all pre-selected `recommended` - LOCKED
+plus the manual `task-*` / `capture-*` / `loop-*` / `issue-*` skills (the inline execution twins, the capture/loop generators,
+the upgrade planner) and the `habits-*` habits, all pre-selected `recommended` - LOCKED
 on every route (copies since 2.1.0, adopted by every update, so a drop logs 'not applied'; a project
 that wants one quiet sets it `off` or `name-only` in `skillOverrides`, which keeps the copy); their need is
 'the stack is installed', not anything a project manifest could prove, which is why they are seeded
-rather than evidence-scanned. The ONE deliberate exception is `alfred-task-build-from-scratch` - greenfield-only by
+rather than evidence-scanned. The ONE deliberate exception is `task-build-from-scratch` - greenfield-only by
 its own description, dead weight on an existing project, so it is never seeded; offer it as an
 unselected row like any other, and only in a greenfield run is picking it natural. Beyond the seed
 set, selected = locked + whatever the user adds.
@@ -246,7 +246,7 @@ Skills: install the marked rows? The unmarked ones are mostly other stacks' skil
 
 Step 2: two multi-select questions of 4 stack sets each (the wpf, winforms, console and
 windows-service sets; ionic-angular, data, browser-extension, js), plus one question on the
-`general` opt-ins (dotnet-hosted-services, dotnet-data-access, alfred-capture-related-projects, alfred-capture-usage-report).
+`general` opt-ins (dotnet-hosted-services, dotnet-data-access, capture-related-projects, capture-usage-report).
 
 
 ## Hooks

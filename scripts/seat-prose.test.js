@@ -59,11 +59,11 @@ test('M47: every verifier whose Checks run the built app bounds the run and repo
 // --- M49: the three opus pins outside the designers carry their reason where the other pins do -------
 test('M49: every opus pin outside the designers is named, with its effort and reason, in the house-pins paragraph', () =>
 {
-    const routing = squash(readRel('stack/skills/alfred-task-solve-cross/references/model-routing.md'));
+    const routing = squash(readRel('stack/skills/task-solve-cross/references/model-routing.md'));
     const para = routing.slice(routing.indexOf('The house pins land'), routing.indexOf('One caveat on the Escalate-when column'));
     assert.ok(para.length > 0, 'the house-pins paragraph');
     const opus = seats.filter((s) => meta(s).model === 'opus' && !s.endsWith('-solution-designer'));
-    assert.deepStrictEqual(opus, ['alfred-issue-diagnoser-ci', 'alfred-issue-diagnoser-runtime', 'security-auditor']);
+    assert.deepStrictEqual(opus, ['issue-diagnoser-ci', 'issue-diagnoser-runtime', 'security-auditor']);
     for (const seat of opus)
         assert.match(para, new RegExp(`\\b${seat} opus/${meta(seat).effort} \\(`), `${seat}: its pin and a parenthesised reason`);
     assert.match(para, /no A\/B against a sonnet pin/, 'the paragraph says the pins are unmeasured against the repo goal');
@@ -78,7 +78,7 @@ test('M50: integration-reviewer attributes the security-half pass to the commit 
     const text = squash(body('integration-reviewer'));
     assert.doesNotMatch(text, /alfred-security\.md` treats this gate's pass/, 'the security rule makes no such claim');
     assert.ok(text.includes("the commit checkpoint's security half counts this gate's pass as its review"), 'described by what it covers');
-    const skill = squash(readRel('stack/skills/alfred-habits-commit-checkpoint/SKILL.md'));
+    const skill = squash(readRel('stack/skills/habits-commit-checkpoint/SKILL.md'));
     assert.ok(skill.includes('the integration-reviewer gate does'), 'the claim\'s home still makes it');
     const rule = squash(readRel('stack/rules/alfred-security.md'));
     assert.doesNotMatch(rule, /integration-reviewer/, 'and the rule still does not');
@@ -87,7 +87,7 @@ test('M50: integration-reviewer attributes the security-half pass to the commit 
 // --- M51: security-auditor's rubric carve-out names only what the seat has ---------------------------
 test('M51: security-auditor skips on a rubric dispatch only what its Method holds', () =>
 {
-    const line = squash(body('security-auditor')).match(/When dispatched by the `alfred-loop-quality` skill[^\n]*?never to rubric audits\./);
+    const line = squash(body('security-auditor')).match(/When dispatched by the `loop-quality` skill[^\n]*?never to rubric audits\./);
     assert.ok(line, 'the rubric carve-out');
     assert.doesNotMatch(line[0], /plan\/contract diff|build\+test rerun/, 'a Method with no plan diff and no rerun skips neither');
     assert.ok(line[0].includes('the memory handoff WRITE unless the dispatch brief asks for it'), 'the registered clause stays');
@@ -114,8 +114,8 @@ test('M52: web-angular-implementer loads the design-quality reference, the exten
 test('M53: devops-implementer drops the test-first preload and describes the skill for a scripted task', () =>
 {
     const skills = meta('devops-implementer').skills || [];
-    assert.ok(!skills.includes('alfred-habits-test-first'), 'a config-only loop that never writes a test');
-    assert.ok(skills.includes('alfred-habits-done-gate'), 'the done gate stays');
+    assert.ok(!skills.includes('habits-test-first'), 'a config-only loop that never writes a test');
+    assert.ok(skills.includes('habits-done-gate'), 'the done gate stays');
     const text = squash(body('devops-implementer'));
     assert.match(text, /the always-on rule's test-first Skill call/, 'the rare script task still reaches the method');
     assert.match(text, /`test: none`/, 'and a config task records the honest line');

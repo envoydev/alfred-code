@@ -42,8 +42,6 @@
         "./setup-plugin/skills/alfred-code"
       ],
       "agents": [
-        "./stack/agents/alfred-issue-diagnoser-ci.md",
-        "./stack/agents/alfred-issue-diagnoser-runtime.md",
         "./stack/agents/angular-test-resolver.md",
         "./stack/agents/architecture-analyzer.md",
         "./stack/agents/aspnet-implementer.md",
@@ -70,6 +68,8 @@
         "./stack/agents/ionic-angular-implementer.md",
         "./stack/agents/ionic-angular-solution-designer.md",
         "./stack/agents/ionic-angular-verifier.md",
+        "./stack/agents/issue-diagnoser-ci.md",
+        "./stack/agents/issue-diagnoser-runtime.md",
         "./stack/agents/ng-build-error-resolver.md",
         "./stack/agents/related-project-analyzer.md",
         "./stack/agents/security-auditor.md",
@@ -323,7 +323,7 @@
         ],
         "UserPromptExpansion": [
           {
-            "matcher": "(^|[^A-Za-z0-9_-])(alfred-(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
+            "matcher": "(^|[^A-Za-z0-9_-])((alfred-)?(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
             "hooks": [
               {
                 "type": "command",

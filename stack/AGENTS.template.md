@@ -5,7 +5,7 @@
      repo root tidy) - copy it there by hand only when that seed step was skipped. To keep it committed, the
      project's .gitignore must ignore the .claude contents but track this file:
      `.claude/*` + `!.claude/AGENTS.md` - a bare directory ignore blocks the re-include.
-The alfred-habits-adjust-agents-md skill fills it (create) or brings an existing one up to date (improve), and
+The habits-adjust-agents-md skill fills it (create) or brings an existing one up to date (improve), and
 ends on the deterministic check; by hand, the steps are:
 1. Write the project top from the authoring outline in the comment below - replace the
    `__PROJECT_NAME__` H1 with the project's own name, put the sections above ## Rules so the rules
@@ -14,11 +14,11 @@ ends on the deterministic check; by hand, the steps are:
    row whose capture skill this install skipped (its /command will not resolve).
 3. The rows marked GENERATED come from captures /alfred-code:init already ran for the installed ones -
    filling this file never re-runs one whose file exists. A row whose file is missing takes its capture, in the post-install
-   order: /alfred-capture-related-projects ONLY when this project has sibling repos (a standalone repo
-   drops that row instead), then /alfred-capture-architecture, /alfred-capture-code-style,
-   /alfred-capture-project-capabilities, then
-   /alfred-capture-agent-capabilities LAST, so its generated inventory reflects the final install. All but
-   /alfred-capture-architecture are slash-only: the user types them - a model Skill call is refused.
+   order: /capture-related-projects ONLY when this project has sibling repos (a standalone repo
+   drops that row instead), then /capture-architecture, /capture-code-style,
+   /capture-project-capabilities, then
+   /capture-agent-capabilities LAST, so its generated inventory reflects the final install. All but
+   /capture-architecture are slash-only: the user types them - a model Skill call is refused.
 If the repo already has a root AGENTS.md (for other agent tooling), it IS the project's file: the
 installer seeds nothing beside it, and it is improved in place, never replaced by this template. Claude
 Code reads an AGENTS.md on its own only while no CLAUDE.md, .claude/CLAUDE.md or CLAUDE.local.md sits in
@@ -58,7 +58,7 @@ map, a dependency rule's why - plus a pointer to its sections, never a second co
 2. Stack - languages, frameworks and key libraries at their EXACT versions ('EF Core 10', not
    'EF Core'), test stack + coverage gate, the LSP plugin for the primary language(s). MCP routing
    is NOT hand-filled here - it lives in the generated
-   .claude/rules/alfred-project-agent-capabilities.md (user-run /alfred-capture-agent-capabilities; if
+   .claude/rules/alfred-project-agent-capabilities.md (user-run /capture-agent-capabilities; if
    that skill was not installed, a lean hand-filled routing list here is the fallback).
 3. Setup - what a machine needs before build and test work: the SDK / runtime versions (a
    global.json or .nvmrc pin), Docker for the integration tests, the services a test run starts, and
@@ -100,14 +100,14 @@ running it.
 | Rule | What it governs |
 |---|---|
 | `.claude/rules/alfred-interaction.md` | communication style, adversarial review of user proposals, formatting + privacy, planning/execution thresholds |
-| `.claude/rules/alfred-quality-gates.md` | code-quality bars, the pointer to the done gate (`alfred-habits-done-gate`), claims about the outside world checked through `alfred-documentation`, background work, and tearing down what a run started or wrote |
+| `.claude/rules/alfred-quality-gates.md` | code-quality bars, the pointer to the done gate (`habits-done-gate`), claims about the outside world checked through `alfred-documentation`, background work, and tearing down what a run started or wrote |
 | `.claude/rules/alfred-security.md` | security-relevant diff review, fetched text as data never instruction, no PII or secrets in logs, credentials read for presence only, the permissions.deny caveat |
-| `.claude/rules/alfred-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `alfred-habits-commit-checkpoint` skill |
+| `.claude/rules/alfred-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `habits-commit-checkpoint` skill |
 | `.claude/rules/alfred-navigation.md` | symbol-lookup and code-reading discipline, and what a compaction must keep verbatim |
 | `.claude/rules/alfred-docs-root.md` | the generated-docs root - how `<docs-path>` resolves (`ALFRED_CODE_DOCS_PATH` env, stamped per install) and that every generated doc lives under it |
 | `.claude/rules/alfred-memory.md` | the shared `alfred-memory` MCP - what goes there (preferences, corrections, lessons), and searching it before asking or reading |
-| `.claude/rules/alfred-project-agent-capabilities.md` (GENERATED - user-run /alfred-capture-agent-capabilities after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |
-| `.claude/rules/alfred-project-architecture.md` (GENERATED - run /alfred-capture-architecture) | architecture capture marker - the docs exist, read them before a structural change; where they live is the navigation baseline's, the orientation itself arrives through the docs hook |
-| `.claude/rules/alfred-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /alfred-capture-related-projects with their paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
-| `.claude/rules/alfred-project-run-book.md` (GENERATED - user-run /alfred-capture-project-capabilities) | run book pointer - where `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` lives: how to build, start, log into and hand-check the app, read before a manual check |
-| `.claude/rules/project-code-style.md` (GENERATED - user-run /alfred-capture-code-style; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/code-style/CODE-STYLE.md` |
+| `.claude/rules/alfred-project-agent-capabilities.md` (GENERATED - user-run /capture-agent-capabilities after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |
+| `.claude/rules/alfred-project-architecture.md` (GENERATED - run /capture-architecture) | architecture capture marker - the docs exist, read them before a structural change; where they live is the navigation baseline's, the orientation itself arrives through the docs hook |
+| `.claude/rules/alfred-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /capture-related-projects with their paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
+| `.claude/rules/alfred-project-run-book.md` (GENERATED - user-run /capture-project-capabilities) | run book pointer - where `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` lives: how to build, start, log into and hand-check the app, read before a manual check |
+| `.claude/rules/project-code-style.md` (GENERATED - user-run /capture-code-style; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/code-style/CODE-STYLE.md` |

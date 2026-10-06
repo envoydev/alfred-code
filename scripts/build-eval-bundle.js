@@ -11,7 +11,7 @@
 // it does in a project; a library agent's BARE preload (a project copy resolves it by name) is
 // rewritten to that spelling here, in the copy, never in the source. `meta/evals/library/*` travel
 // as the bundle's `evals/`: one case per stack profile, each graded on both arms so the
-// with/without-plugin delta is measured, not assumed, plus the size-first cases of alfred-task-solve
+// with/without-plugin delta is measured, not assumed, plus the size-first cases of task-solve
 // (a library skill since 2.1.0, so only the bundle carries it).
 //
 // The core's commands and router call `${CLAUDE_PLUGIN_ROOT}/scripts/...`, `.../setup-plugin/references/...`

@@ -47,7 +47,17 @@ is kept for the projects that use it, with its uninstall command printed. The in
 marketplace key (`claude-stack` on a 1.x account - a registered key never changes), so its ids read <!-- legacy-name -->
 `alfred-code@claude-stack`: expected, not broken. <!-- legacy-name -->
 
-**Renamed in 2.1.0.** Three more skills took `alfred-habits-*` names (the last skill rows of the table below); the plugin
+**Renamed in 2.2.0.** The library skills and the two diagnoser seats drop the `alfred-` prefix and keep
+their family (`/alfred-<family>-<name>` -> `/<family>-<name>`, the same for a seat; the table below gives each
+old name its current one); the rules keep it. The three locked MCP servers take it (`navigation` -> `alfred-navigation`, `documentation` ->
+`alfred-documentation`, `memory` -> `alfred-memory`): each plugin is installed under its new id before the old one
+goes, and on the copy route each `.mcp.json` key is re-keyed with its memory database kept. Update carries every
+pick, seat deny, `skillOverrides` value and instruction file across, prunes each old copy (`skill pruned (retired
+upstream)`) - a copy edited since the stack wrote it is kept and named, the user's to merge - and prints one
+`renamed:` line each. An optional item (a browser engine, a desktop server, an LSP, claude-hud) stays at the scope
+it is installed at; only configure moves it. Report the `renamed:`, `pruned` and `!!` lines.
+
+**Renamed in 2.1.0.** Three more skills took `habits-*` names (the last skill rows of the table below); the plugin
 authoring skill left the shipped catalog, and a retired copy git tracks in a project is kept and named, never pruned.
 
 **Renamed in 2.0.0.** The `project-*` skills and the two failure diagnosers take grouped `alfred-*`
@@ -63,41 +73,79 @@ their captures do not re-run by themselves. Report both kinds of line; a `!!` li
 generated file both exist, and the old one is the user's to remove.
 A 1.x global install leaves its account skill copies behind: the `were moved from` line names them
 with their `rm -rf`, the renamed ones apart because they load BESIDE the new names - report it whole.
-`/alfred-loop-quality` now works a code-quality assessment by tier, with the `loops/`
-prompts as its rules; `/alfred-loop-quality staged` is the stage-by-stage run a project may rely on.
+`/loop-quality` now works a code-quality assessment by tier, with the `loops/`
+prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project may rely on.
 
 | was | now |
 |---|---|
-| `/project-solve-task` | `/alfred-task-solve` |
-| `/project-solve-cross-task` | `/alfred-task-solve-cross` |
-| `/project-build-from-scratch` | `/alfred-task-build-from-scratch` |
-| `/project-solution-design` | `/alfred-task-design` |
-| `/project-implementer` | `/alfred-task-implement` |
-| `/project-verify-plan` | `/alfred-task-verify-plan` |
-| `/project-verify-code` | `/alfred-task-verify-code` |
-| `/project-version-upgrade` | `/alfred-task-version-upgrade` |
-| `/project-diagnose-failure` | `/alfred-issue-diagnoser` |
-| `/project-ci-failure-signatures` | `/alfred-issue-signatures-ci` |
-| `/project-runtime-failure-signatures` | `/alfred-issue-signatures-runtime` |
-| `/project-architecture-analyzer` | `/alfred-capture-architecture` |
-| `/project-architecture-quality-analyzer` | `/alfred-capture-architecture-quality` |
-| `/project-code-style-analyzer` | `/alfred-capture-code-style` |
-| `/project-test-coverage-analyzer` | `/alfred-capture-test-coverage` |
-| `/project-related-context` | `/alfred-capture-related-projects` |
-| `/project-agent-capabilities` | `/alfred-capture-agent-capabilities` |
-| `/project-stack-usage-analyzer` | `/alfred-capture-usage-report` |
-| `/project-first-look` | `/alfred-capture-first-look` |
-| `/project-quality-loop` | `/alfred-loop-quality` |
-| `/project-architecture-quality-loop` | `/alfred-loop-architecture-quality` |
-| `/project-test-coverage-loop` | `/alfred-loop-test-coverage` |
-| `/project-commit-checkpoint` | `/alfred-habits-commit-checkpoint` |
-| `/alfred-capture-claude-md` | `/alfred-habits-adjust-agents-md` |
-| `/alfred-habits-adjust-claude-md` | `/alfred-habits-adjust-agents-md` |
-| `/alfred-capture-stack-usage` | `/alfred-capture-usage-report` |
-| `/create-ticket` | `/alfred-habits-create-ticket` |
-| `/explain-code-tutor` | `/alfred-habits-explain-code` |
-| seat `ci-failure-diagnoser` | seat `alfred-issue-diagnoser-ci` |
-| seat `runtime-failure-diagnoser` | seat `alfred-issue-diagnoser-runtime` |
+| `/project-solve-task` | `/task-solve` |
+| `/project-solve-cross-task` | `/task-solve-cross` |
+| `/project-build-from-scratch` | `/task-build-from-scratch` |
+| `/project-solution-design` | `/task-design` |
+| `/project-implementer` | `/task-implement` |
+| `/project-verify-plan` | `/task-verify-plan` |
+| `/project-verify-code` | `/task-verify-code` |
+| `/project-version-upgrade` | `/task-version-upgrade` |
+| `/project-diagnose-failure` | `/issue-diagnoser` |
+| `/project-ci-failure-signatures` | `/issue-signatures-ci` |
+| `/project-runtime-failure-signatures` | `/issue-signatures-runtime` |
+| `/project-architecture-analyzer` | `/capture-architecture` |
+| `/project-architecture-quality-analyzer` | `/capture-architecture-quality` |
+| `/project-code-style-analyzer` | `/capture-code-style` |
+| `/project-test-coverage-analyzer` | `/capture-test-coverage` |
+| `/project-related-context` | `/capture-related-projects` |
+| `/project-agent-capabilities` | `/capture-agent-capabilities` |
+| `/project-stack-usage-analyzer` | `/capture-usage-report` |
+| `/project-first-look` | `/capture-first-look` |
+| `/project-quality-loop` | `/loop-quality` |
+| `/project-architecture-quality-loop` | `/loop-architecture-quality` |
+| `/project-test-coverage-loop` | `/loop-test-coverage` |
+| `/project-commit-checkpoint` | `/habits-commit-checkpoint` |
+| `/alfred-capture-claude-md` | `/habits-adjust-agents-md` |
+| `/alfred-habits-adjust-claude-md` | `/habits-adjust-agents-md` |
+| `/alfred-capture-stack-usage` | `/capture-usage-report` |
+| `/create-ticket` | `/habits-create-ticket` |
+| `/explain-code-tutor` | `/habits-explain-code` |
+| seat `ci-failure-diagnoser` | seat `issue-diagnoser-ci` |
+| seat `runtime-failure-diagnoser` | seat `issue-diagnoser-runtime` |
+| `/alfred-capture-agent-capabilities` | `/capture-agent-capabilities` |
+| `/alfred-capture-architecture` | `/capture-architecture` |
+| `/alfred-capture-architecture-quality` | `/capture-architecture-quality` |
+| `/alfred-capture-code-quality` | `/capture-code-quality` |
+| `/alfred-capture-code-style` | `/capture-code-style` |
+| `/alfred-capture-first-look` | `/capture-first-look` |
+| `/alfred-capture-project-capabilities` | `/capture-project-capabilities` |
+| `/alfred-capture-related-projects` | `/capture-related-projects` |
+| `/alfred-capture-test-coverage` | `/capture-test-coverage` |
+| `/alfred-capture-usage-report` | `/capture-usage-report` |
+| `/alfred-habits-adjust-agents-md` | `/habits-adjust-agents-md` |
+| `/alfred-habits-clarify` | `/habits-clarify` |
+| `/alfred-habits-code-comments` | `/habits-code-comments` |
+| `/alfred-habits-commit-checkpoint` | `/habits-commit-checkpoint` |
+| `/alfred-habits-create-ticket` | `/habits-create-ticket` |
+| `/alfred-habits-done-gate` | `/habits-done-gate` |
+| `/alfred-habits-execution-strategy` | `/habits-execution-strategy` |
+| `/alfred-habits-explain-code` | `/habits-explain-code` |
+| `/alfred-habits-plan-writing` | `/habits-plan-writing` |
+| `/alfred-habits-root-cause` | `/habits-root-cause` |
+| `/alfred-habits-skill-writing` | `/habits-skill-writing` |
+| `/alfred-habits-test-first` | `/habits-test-first` |
+| `/alfred-issue-diagnoser` | `/issue-diagnoser` |
+| `/alfred-issue-signatures-ci` | `/issue-signatures-ci` |
+| `/alfred-issue-signatures-runtime` | `/issue-signatures-runtime` |
+| `/alfred-loop-architecture-quality` | `/loop-architecture-quality` |
+| `/alfred-loop-quality` | `/loop-quality` |
+| `/alfred-loop-test-coverage` | `/loop-test-coverage` |
+| `/alfred-task-build-from-scratch` | `/task-build-from-scratch` |
+| `/alfred-task-design` | `/task-design` |
+| `/alfred-task-implement` | `/task-implement` |
+| `/alfred-task-solve` | `/task-solve` |
+| `/alfred-task-solve-cross` | `/task-solve-cross` |
+| `/alfred-task-verify-code` | `/task-verify-code` |
+| `/alfred-task-verify-plan` | `/task-verify-plan` |
+| `/alfred-task-version-upgrade` | `/task-version-upgrade` |
+| seat `alfred-issue-diagnoser-ci` | seat `issue-diagnoser-ci` |
+| seat `alfred-issue-diagnoser-runtime` | seat `issue-diagnoser-runtime` |
 
 ## 0. Where to run it
 
@@ -208,7 +256,7 @@ It prints, in order:
   `develop` is invisible by design, never diff against it.
 - `changed: skills=<n> agents=<n> rules=<n> hooks=<n> template=<yes|no>` - the delta bucketed by
   install class. This is what step 7 names as refreshed, and what gates the
-  `/alfred-capture-agent-capabilities` suggestion; the installer's log tail counts every file it
+  `/capture-agent-capabilities` suggestion; the installer's log tail counts every file it
   COPIED, which is all of them on every run, so it can never answer 'what changed'.
 - `migration: <id><TAB><detect kind>` per DETECTED entry, or `migrations: none detected`, each
   followed by its own indented `why:` / `then:` / `remove:` / `unwire:` / `env-rename:` /
@@ -539,7 +587,7 @@ never regex, never touching other wiring). A migration's `then` line goes in the
 as a next step - run nothing on the user's behalf.
 
 ## 6. Reconcile the project's AGENTS.md
-Read `$TMP/repo/stack/skills/alfred-habits-adjust-agents-md/SKILL.md` and follow it inline with
+Read `$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` and follow it inline with
 `<stack>` = the `$TMP/repo` path, pasted as a literal, exactly as the sibling `configure` command's step 13: its improve mode adds the
 sections the template gained and OFFERS a fix for what its check reports (never in the recommended
 option - a check row is heuristic, applied only when the user picks it), this run's own part is the rules
@@ -639,7 +687,7 @@ what was taken, what stays off or was left, each by name), and the restart line.
   this project stopped needing is validate's whole-stack-absent pass, unmentioned by this command.
 
 The run rewrote `alfred-code.stamp` - the next update or configure diffs from here. Name
-`/alfred-capture-agent-capabilities` (when installed) as the USER's next step when step 2's `changed:`
+`/capture-agent-capabilities` (when installed) as the USER's next step when step 2's `changed:`
 line shows `skills=` or `agents=` above 0 - the generated rule stamps each skill's first sentence,
 which drifts with content-only updates (measured: a 'roster unchanged, rule still accurate' skip
 left 7 of 10 stamped sentences stale and the user caught it manually). Gate it on THAT number and
@@ -662,7 +710,7 @@ frontmatter. Do not lean on the harness for it: measured both ways, one update r
 refused and another slipped through. The report line is the mechanism.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/alfred-capture-agent-capabilities`
+follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-capabilities`
 (when installed and the step-2 gate above fires), a manual-only capture whose output is stale, the
 Navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
@@ -673,7 +721,7 @@ ran without them with nothing reporting it) -
 every other follow-up runs against the session that is still holding the OLD ones, and a card that
 ranks a capture above it tells the user to re-capture an inventory that is not loaded yet (measured:
 a run that replaced two guard hooks and re-registered all four servers listed the re-capture first,
-and the user ran that first) ('`/alfred-capture-agent-capabilities` - the update refreshed 12 skill files, so the generated
+and the user ran that first) ('`/capture-agent-capabilities` - the update refreshed 12 skill files, so the generated
 rule's stamped sentences are stale'). A follow-up that is itself a deliberate run - any of the
 captures, a loop - carries a fresh-session note beside it: 'run it in a fresh session; started
 here it re-sends this walk's history on every one of its turns'. The guard cannot help with this
