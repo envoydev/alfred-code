@@ -1646,7 +1646,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-stack-usage/SKILL.md",
+          "file": "stack/skills/alfred-capture-usage-report/SKILL.md",
           "marker": "releases/latest/download/alfred-code.tar.gz"
         }
       ]

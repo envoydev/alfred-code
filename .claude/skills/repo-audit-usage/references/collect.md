@@ -7,12 +7,12 @@ always `<alfred-code repo>/docs/session-investigation/<project>/`.
 
 **Route 1 - the data is already generated.** Copy the WHOLE bundle set the project holds -
 `SUMMARY.md`, `_rollup.txt` as `rollup.txt`, and every per-session folder entire - out of
-`<project>/.alfred/docs/alfred-code-usage-report/` (or its `ALFRED_CODE_DOCS_PATH` root - the settings value wins; `<data root>/docs` since 2.1.0, `.claude/docs` on an install from before 2.0.0 that kept its old root). Add the
+`<project>/.alfred/docs/usage-report/` (`alfred-code-usage-report/` on an install not updated since 2.1.6; or its `ALFRED_CODE_DOCS_PATH` root - the settings value wins; `<data root>/docs` since 2.1.0, `.claude/docs` on an install from before 2.0.0 that kept its old root). Add the
 two ledgers per session from that same root (`tools-usage/<sid>.jsonl`, `hook-blocks/<sid>.jsonl`)
 where the bundle does not already carry them. Nothing is generated. A session in scope with no
 bundle is reported as missing, and generated only under the `fill-gaps` answer.
 
-**Route 2 - generate, `authored` sections.** `/alfred-capture-stack-usage` must run in a fresh
+**Route 2 - generate, `authored` sections.** `/alfred-capture-usage-report` must run in a fresh
 session INSIDE that project's root - it is the only route that fills the judgment sections. Invoke
 it with the scope answer, let it write one bundle per session plus its `SUMMARY.md` under the
 project's docs root, then copy the set as in route 1. For a project you are not in, name it as a

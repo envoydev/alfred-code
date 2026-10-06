@@ -979,6 +979,46 @@ test('lint: ORIENTATION.md at 4096 bytes passes, 4097 fails; watch.json problems
   } finally { r.rm(); }
 });
 
+// A capture told to fix every PROBLEM line before its report could never meet it while another domain's row
+// (a code-style section with no id) printed on all six lint runs of a real architecture capture.
+test('lint <domain> limits the rows to that domain; no argument keeps the whole docs root; an unknown domain fails', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': 'o'.repeat(4097) } });
+  try {
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({ watch: [{ kind: 'root', globs: ['src/*/Program.cs'], sections: ['patterns#nope'] }] }));
+    r.write('.claude/docs/code-style/watch.json', JSON.stringify({ watch: [{ kind: 'linter', globs: ['style/*.cs'], sections: ['CODE-STYLE#missing'] }] }));
+    r.write('.claude/docs/code-style/CODE-STYLE.md', '## no id here\nStyle rule.\n');
+    const all = r.cli(['lint']);
+    assert.strictEqual(all.status, 1);
+    for (const row of [/ORIENTATION\.md is 4097 bytes/, /architecture\/watch\.json 'root' names a section that does not exist: patterns#nope/,
+      /section without an id: CODE-STYLE 'no id here'/, /code-style\/watch\.json 'linter' names a section that does not exist: CODE-STYLE#missing/]) {
+      assert.match(all.stdout, row, 'no argument: every domain, as before');
+    }
+
+    const arch = r.cli(['lint', 'architecture']);
+    assert.strictEqual(arch.status, 1, arch.stdout);
+    assert.match(arch.stdout, /ORIENTATION\.md is 4097 bytes/);
+    assert.match(arch.stdout, /architecture\/watch\.json 'root' names a section/);
+    assert.doesNotMatch(arch.stdout, /CODE-STYLE|code-style/, 'another domain prints nothing under an architecture scope');
+    assert.match(arch.stdout, /^2 problems/m);
+
+    const style = r.cli(['lint', 'code-style']);
+    assert.strictEqual(style.status, 1, style.stdout);
+    assert.match(style.stdout, /section without an id: CODE-STYLE 'no id here'/);
+    assert.match(style.stdout, /code-style\/watch\.json 'linter'/);
+    assert.doesNotMatch(style.stdout, /ORIENTATION|patterns#nope/, 'ORIENTATION.md belongs to architecture alone');
+
+    r.write('.claude/docs/architecture/ORIENTATION.md', 'o'.repeat(10));
+    r.write('.claude/docs/architecture/watch.json', JSON.stringify({ watch: [{ kind: 'root', globs: ['src/*/Program.cs'], sections: ['patterns#orders'] }] }));
+    const clean = r.cli(['lint', 'architecture']);
+    assert.strictEqual(clean.status, 0, 'a clean domain exits 0 while another domain still has problems');
+    assert.strictEqual(r.cli(['lint']).status, 1, 'the whole root still fails on code-style');
+
+    const unknown = r.cli(['lint', 'nope']);
+    assert.strictEqual(unknown.status, 1);
+    assert.match(unknown.stdout, /PROBLEM no domain 'nope' under the docs root \(domains: architecture, code-style\)/);
+  } finally { r.rm(); }
+});
+
 test('seed-ids adds missing ids once; a second run changes nothing; duplicate headings get distinct ids', () => {
   const r = repo({ docs: { 'references/p.md': '## Orders\nA.\n\n## Orders\nB.\n\n## Users\n<!-- id: users -->\nC.\n' } });
   try {

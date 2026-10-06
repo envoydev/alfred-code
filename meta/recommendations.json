@@ -85,7 +85,7 @@
    "dotnet-hosted-services",
    "dotnet-data-access",
    "alfred-capture-related-projects",
-   "alfred-capture-stack-usage"
+   "alfred-capture-usage-report"
   ],
   "agents": [
    "related-project-analyzer"
@@ -95,7 +95,7 @@
     "dotnet-hosted-services": "for worker services, BackgroundService hosts and bots - adds the host-lifecycle rules; skip when the project has none",
     "dotnet-data-access": "for EF Core, NHibernate or Dapper data code - adds query and N+1 rules; skip when the project has no ORM",
     "alfred-capture-related-projects": "for a project that depends on sibling repos - captures how they connect; skip for a standalone repo",
-    "alfred-capture-stack-usage": "audits this project's sessions for token and tool cost - manual, run when you want the numbers"
+    "alfred-capture-usage-report": "audits this project's sessions for token and tool cost - manual, run when you want the numbers"
    },
    "agents": {
     "related-project-analyzer": "the read-only seat the related-projects capture dispatches per sibling repo - pick it with that skill"

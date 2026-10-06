@@ -20,7 +20,7 @@
 //                                   ORIENTATION.md (the first-look scan's), which is stale by definition
 //   promote <branch> | --merged     fold a branch's overrides into mainline, section by section, three ways
 //   prune [branch]                  drop one branch's overlay, or overlays of branches gone for 30 days
-//   lint                            metadata and budget problems (exit 1 when any)
+//   lint [domain]                   metadata and budget problems (exit 1 when any); a domain limits the rows to it
 //   seed-ids                        give every section a stable id (idempotent)
 //   watch <path...> [--dir <dir...>]  which watch.json entries these changed paths (and new folders) hit
 //   adr new '<title>' | adr index   allocate the next decision record under decisions/ and rewrite the DECISIONS.md
@@ -1441,10 +1441,16 @@ function status() {
   };
 }
 
-function lint() {
+// A domain (a top-level folder under the docs root) limits every row to that domain: a capture told to fix its PROBLEM
+// lines before its report could never meet that while another domain's row printed on every run. No domain keeps the
+// whole-root answer.
+function lint(domain) {
   const problems = [];
   const notes = [];
+  if (domain && !domains().includes(domain)) return { problems: [`no domain '${domain}' under the docs root (domains: ${domains().join(', ') || 'none'})`], notes };
+  const inScope = (d) => !domain || d === domain;
   for (const f of docFiles()) {
+    if (!inScope(fileDomain(f))) continue;
     const raw = fs.readFileSync(f, 'utf8');
     if (/^(<{7}|>{7})( |$)/m.test(raw)) problems.push(`merge conflict markers in ${relKey(f)} - resolve them before any reader trusts this file`);
     const hist = isHistory(f);
@@ -1458,14 +1464,17 @@ function lint() {
     }
     if (!hist && secs.length && !secs.some((s) => s.covers.length)) notes.push(`no section declares covers: ${relKey(f)}`);
   }
-  if (fs.existsSync(BLOCK_FILE)) {
-    const bytes = fs.statSync(BLOCK_FILE).size;
-    if (bytes > BLOCK_BYTES) problems.push(`ORIENTATION.md is ${bytes} bytes, cap ${BLOCK_BYTES} - every session pays for it`);
-    for (const p of verifyBlock()) problems.push(`ORIENTATION.md ${p}`);
-    if (orientationState() === 'provisional') notes.push('ORIENTATION.md is provisional - a first-look scan the architecture capture replaces');
-  } else notes.push('no ORIENTATION.md: sessions start with no map');
+  // ORIENTATION.md is architecture's own file (BLOCK_FILE), so another domain's scope never reads it.
+  if (inScope('architecture')) {
+    if (fs.existsSync(BLOCK_FILE)) {
+      const bytes = fs.statSync(BLOCK_FILE).size;
+      if (bytes > BLOCK_BYTES) problems.push(`ORIENTATION.md is ${bytes} bytes, cap ${BLOCK_BYTES} - every session pays for it`);
+      for (const p of verifyBlock()) problems.push(`ORIENTATION.md ${p}`);
+      if (orientationState() === 'provisional') notes.push('ORIENTATION.md is provisional - a first-look scan the architecture capture replaces');
+    } else notes.push('no ORIENTATION.md: sessions start with no map');
+  }
   const w = loadWatch();
-  problems.push(...w.problems);
+  problems.push(...(domain ? watchOf(domain).problems : w.problems));
   // Resolved through ALL THREE attempts the session hook makes (docs-session.js resolveHit), in its order,
   // because lint is the arbiter three shipped skills tell an agent to obey: a PROBLEM line here gets a
   // watch entry edited or deleted, so an entry the hook resolves and lint calls missing instructs the repair
@@ -1481,6 +1490,7 @@ function lint() {
   //     which is ordinary, since every domain owns a references/ folder. The entry's own domain is what
   //     disambiguates it, exactly as it does at the hook.
   for (const e of [...w.watch, ...w.newModule.map((nm) => ({ kind: 'newModule', sections: nm.sections, domain: nm.domain }))]) {
+    if (!inScope(e.domain)) continue;
     for (const id of e.sections) {
       if (protectedRef(e.domain, id) || askRef(id) || askRef(`${e.domain}/${id}`)) continue;
       problems.push(`${e.domain}/watch.json '${e.kind}' names a section that does not exist: ${id}`);
@@ -1494,9 +1504,11 @@ function lint() {
     // lost, promote's own refusal (with working advice) is what actually stops the fold.
     for (const over of overrideFiles(dir)) {
       const orphan = notOwnedOverride(dir, over);
-      if (orphan) notes.push(`this branch overrides a section of ${orphan.target}, which ${orphan.domain}/watch.json now declares notOwned - it will never fold; recover it by hand from ${shown(over)}`);
+      if (orphan && inScope(orphan.domain)) notes.push(`this branch overrides a section of ${orphan.target}, which ${orphan.domain}/watch.json now declares notOwned - it will never fold; recover it by hand from ${shown(over)}`);
     }
-    const st = status();
+    // Scoped, the overlay view is read from that domain's files only - the view status() builds over all of them.
+    const view = domain ? domainFiles(domain).flatMap((f) => sections(f).filter((s) => s.overrideOf)) : null;
+    const st = view ? { conflicts: view.filter((s) => s.conflict).map((s) => s.id), orphans: view.filter((s) => s.orphan).map((s) => s.id) } : status();
     for (const id of st.conflicts) problems.push(`this branch's version of ${id} conflicts with mainline's newer text - docs.js show ${id} --conflict`);
     for (const id of st.orphans) problems.push(`this branch overrides ${id}, which mainline removed`);
   }
@@ -1934,7 +1946,7 @@ const commands = {
     ].join('\n'));
   },
   lint: () => {
-    const { problems, notes } = lint();
+    const { problems, notes } = lint(args[0]);
     for (const p of problems) console.log(`PROBLEM ${p}`);
     for (const n of notes) console.log(`note    ${n}`);
     console.log(`${problems.length} problems, ${notes.length} notes`);
@@ -1968,6 +1980,6 @@ const commands = {
 };
 if (commands[cmd]) commands[cmd]();
 else {
-  console.log('usage: docs.js where <path...> | toc <file> | show <file>#<id>... [--conflict [branch]] | files | set <file>#<id> [textfile] [--expect <hash>] | hash <file>#<id> | status | stale | promote <branch>|--merged | prune [branch] | lint | seed-ids | watch <path...> [--dir <dir...>] | adr new \'<title>\' | adr index');
+  console.log('usage: docs.js where <path...> | toc <file> | show <file>#<id>... [--conflict [branch]] | files | set <file>#<id> [textfile] [--expect <hash>] | hash <file>#<id> | status | stale | promote <branch>|--merged | prune [branch] | lint [domain] | seed-ids | watch <path...> [--dir <dir...>] | adr new \'<title>\' | adr index');
   process.exit(cmd ? 1 : 0);
 }

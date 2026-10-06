@@ -19,7 +19,7 @@
 // ride the plugin, and a seat's bare `skills:` preload resolves the project copy (plugin-migration
 // evidence S6). Before 2.1.0 the core carried the always closure instead (`formerCore` below), and
 // every other seat was a library copy too. The per-stack entries v1.2.0 shipped are frozen in
-// meta/retired-entries.json and listed while any install may still resolve through them.
+// meta/retired-entries.json, which update migrates from; the marketplace no longer lists them (2.1.7).
 const fs = require('node:fs');
 const path = require('node:path');
 const { computeClosure } = require('./stack-select.js');

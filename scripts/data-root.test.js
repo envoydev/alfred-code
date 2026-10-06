@@ -380,6 +380,60 @@ test('M2 serena busy: a log named for a live serena pid holds the folder; an exi
     finally { live.kill(); unrelated.kill(); }
 });
 
+// 2026-10-06 (Windows): `namesSerena` said yes for every live pid on win32, so a pid reused by any process held the
+// folder for good ('Serena is not busy right now'). One query per platform now reads each pid's command line.
+test('serena pids: the Windows query reads the command line, an empty one the image name; a failed query is busy', () =>
+{
+    const calls = [];
+    const win = (stdout, status = 0) => (cmd, args) => { calls.push([cmd, args.join(' ')]); return { status, stdout }; };
+    const rows = '101\tnode.exe\tnode server.js\r\n202\tpython.exe\tC:\\uv\\python.exe -m serena start-mcp-server\r\n303\tuvx.exe\t\r\n404\tchrome.exe\t\r\n';
+    assert.deepStrictEqual([...dr.serenaPids([101, 202, 303, 404, 505], { platform: 'win32', run: win(rows) })].sort(), [202, 303]);
+    assert.strictEqual(calls.length, 1, 'one query for every pid');
+    assert.match(calls[0][1], /ProcessId=101 OR ProcessId=202 OR ProcessId=303 OR ProcessId=404 OR ProcessId=505/);
+    assert.deepStrictEqual([...dr.serenaPids([7, 8], { platform: 'win32', run: win('', 1) })], [7, 8], 'a failed query is the safe side');
+    assert.deepStrictEqual([...dr.serenaPids([7], { platform: 'win32', run: () => ({ error: new Error('ENOENT') }) })], [7]);
+    assert.deepStrictEqual([...dr.serenaPids([], { platform: 'win32', run: () => { throw new Error('never called'); } })], []);
+});
+
+test('serena pids: POSIX reads one ps call and keeps only the pids whose command names serena', () =>
+{
+    const run = () => ({ status: 0, stdout: '  11 /usr/bin/uvx --from serena-agent serena start-mcp-server\n  12 /usr/bin/vim notes\n' });
+    assert.deepStrictEqual([...dr.serenaPids([11, 12, 13], { platform: 'linux', run })], [11]);
+    assert.deepStrictEqual([...dr.serenaPids([11], { platform: 'darwin', run: () => ({ status: null }) })], [11], 'a killed ps is busy');
+});
+
+test('serena busy: on Windows a reused pid whose process is not serena holds nothing', () =>
+{
+    const p = fresh('serena-busy-win');
+    put(path.join(p, '.serena', 'home', 'logs', '2026-10-05', `mcp_20261005-101010_${process.ppid}.txt`), 'old');
+    const run = () => ({ status: 0, stdout: `${process.ppid}\tcode.exe\tC:\\code.exe --type=renderer\r\n` });
+    assert.deepStrictEqual(dr.serenaBusy(path.join(p, '.serena'), { platform: 'win32', run }), []);
+    const serena = () => ({ status: 0, stdout: `${process.ppid}\tpython.exe\tpython -m serena\r\n` });
+    assert.deepStrictEqual(dr.serenaBusy(path.join(p, '.serena'), { platform: 'win32', run: serena }), [`serena pid ${process.ppid}`]);
+});
+
+// Windows refuses fs.writeFileSync (CREATE_ALWAYS) over a HIDDEN file with EPERM - serena marks its own config and
+// `.serena/.gitignore` hidden. writeText rewrites such a file in place instead.
+test('writeText: an EPERM over an existing file is rewritten in place; a missing one still throws', () =>
+{
+    const p = fresh('write-text');
+    const file = path.join(p, 'serena_config.yml');
+    put(file, 'old text that is longer than the new one\n');
+    const real = fs.writeFileSync;
+    fs.writeFileSync = (f, ...rest) => { if (String(f) === file) { const e = new Error('EPERM: operation not permitted'); e.code = 'EPERM'; throw e; } return real(f, ...rest); };
+    try
+    {
+        dr.writeText(file, 'new\r\n');
+        assert.strictEqual(fs.readFileSync(file, 'utf8'), 'new\r\n', 'truncated, then written');
+        fs.rmSync(file);
+        assert.throws(() => dr.writeText(file, 'x'), /EPERM/, 'nothing to open in place');
+    }
+    finally { fs.writeFileSync = real; }
+    const plain = path.join(p, 'plain.txt');
+    dr.writeText(plain, 'a');
+    assert.strictEqual(fs.readFileSync(plain, 'utf8'), 'a');
+});
+
 // ------------------------------------------------------------------ the navigation server's own config
 
 test('serena config: the per-project folder key points under the data root; a user\'s own central path is kept', () =>

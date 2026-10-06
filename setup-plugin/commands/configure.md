@@ -97,6 +97,10 @@ comparable banner by banner; the content varies, the skeleton never does.
   node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" [--space <name>] > "$TMP/plan.out" 2>&1
   ```
 
+  Then read the two offers this run may ask about, with no compare: `node "$TMP/repo/scripts/update-preflight.js"
+  --offers --root .` prints a `data-move:` line (step 9's data question) and an `agents-md:` line (step 12's rename
+  ask) - `offer ...` or `none (<why>)` each.
+
   `$TMP/installed.json` is the walk's inventory (`--installed`): `{rules, agents, skills, hooks,
   mcps, plugins, plugins_disabled, parked_plugins, left_out, answered}` in catalog names (the
   browser engines folded onto `browser`). Each plugin carries the SCOPE the listing printed,
@@ -249,7 +253,22 @@ Two behaviours live here rather than in the catalog, because they are about what
 DATA ROOT (`ALFRED_CODE_DATA_PATH`) is where Alfred Code keeps this project's data - the docs, the
 navigation server's folder and home, the browser profiles, a project-level memory database - so changing
 it MOVES that data, and it goes through the installer, never the merge below. It is ONE question about
-plugin data storage as a whole, the current value shown with what it holds:
+plugin data storage as a whole, the current value shown with what it holds. Step 1's `data-move:` line
+says whether any of it still sits outside the root (the same line update reads). On `data-move: offer <root> ...` the
+MOVE is the recommendation, whatever the current value: every Alfred Code file belongs under the data
+root, and the data at `from=` (docs at `.claude/docs`, a 2.0.0 `.serena` / `.playwright` / `.memory-mcp`)
+is outside it - an earlier 'keep' (`yours=yes`) included. It is asked even when step 2 left the
+Environment area out (the data question alone, no other row). Ask this form then, and pass
+`--data-move move` on step 12's installer call (a yes is a change on its own, so the installer runs):
+
+```ask
+Move this project's Alfred Code data into <root>? From <from places>: the docs through git mv where tracked, the navigation index, browser profiles and project memory at each server's next start, after a restart.
+- '<root> - move everything (Recommended)' - one folder outside .claude/, nothing overwritten
+- 'Keep the current layout' - nothing moves; the servers keep reading where their data is
+```
+
+A `conflicts=<n>` field means data already sits at the new place: name it and do not ask. With
+`data-move: none (...)` the question is the keep-or-change one below:
 
 ```ask
 Where should Alfred Code keep this project's data - its docs, the navigation index and handoff notes, browser profiles and a project memory database? Recommended: keep <current> - the folder it uses now, so nothing moves; its own .gitignore keeps everything but the docs out of git.
@@ -334,6 +353,16 @@ run - an existing install often carries deliberate pin edits).
 
 ## 12. Update + removals
 
+**The instruction file's name - on step 1's `agents-md: offer` line only, asked before the delta:**
+
+```ask
+Rename .claude/CLAUDE.md to .claude/AGENTS.md? The stack's instruction file is AGENTS.md now; the content stays as it is, only the name changes.
+- 'Rename it (Recommended)' - git mv where git tracks it, and a '!.claude/CLAUDE.md' re-include in .gitignore or .git/info/exclude follows the new name
+- 'Keep CLAUDE.md' - nothing moves; Claude Code still reads it
+```
+
+A yes adds `--rename-claude-md` to the installer call below and is a change on its own, so the installer runs.
+
 **First, is there anything to do?** Run the delta - `node "$TMP/repo/scripts/derive-state.js"
 --delta --installed "$TMP/installed.json" --selection "$TMP/selection.txt" --picked "$TMP/raw.json"`
 prints one `add <line>` or `drop <line>` per change against step 1's read-back, or `none`, then
@@ -342,7 +371,7 @@ the user never picked - report it as 'stays switched off; pick it in the walk to
 as added; `keep-parked plugin <name>` is a parked plugin the read-back would otherwise enable -
 pass it as a `--drop` whenever the installer runs, but it is no reason to run it. When it prints `none` AND no removals were accepted AND no env,
 permission-mode, or plugin-settings change was chosen, print ONE line - `unchanged - nothing to
-install, nothing to remove` - and skip to step 13. Do not run the installer to prove it (measured: a run whose
+install, nothing to remove` - and skip to step 13 (a rename or data-move answer is a change: the installer runs). Do not run the installer to prove it (measured: a run whose
 selection it had itself proved identical spent 2 API messages and 351,777 re-sent tokens on an
 installer pass whose only real effect was resetting the agent model/effort pins).
 
@@ -351,7 +380,7 @@ lands the same revision step 1 previewed. One fixed capture form, always - `2>&1
 "$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
 written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--browser-enabled <csv|none>] [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--browser-enabled <csv|none>] [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] [--rename-claude-md] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new
@@ -445,6 +474,20 @@ MCP registration changes. When step 7 touched `memory`, add one line naming the 
 or the old -> new file) and, when `project` was chosen while sibling repos are named, that those
 projects' memories are not visible from this one. The run rewrites `alfred-code.stamp` to the
 revision it installed, so the next configure diffs from here.
+
+**Git hygiene - before `$TMP` goes.** Run `node "$TMP/repo/scripts/git-hygiene.js" --root .`. A
+`git-hygiene: offer <root>/<TAB><why>` line means git lists the data root as untracked while nothing
+under it is meant to be committed - ask once (a write, so it is asked):
+
+```ask
+Ignore <root>/ in git? <why>.
+- 'The committed .gitignore (Recommended)' - one anchored line the team shares, so no clone lists it as untracked
+- '.git/info/exclude' - this clone only, no committed file touched
+- 'Leave it' - nothing is written
+```
+
+and apply it with `--apply gitignore` or `--apply exclude`, reporting the `applied` / `current` line. A
+`none (...)` line is not reported.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
 follow-ups that are the USER's to run - restart for an MCP change, `/alfred-capture-agent-capabilities`

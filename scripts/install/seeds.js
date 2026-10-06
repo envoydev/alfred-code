@@ -118,7 +118,38 @@ function seedAgentsMd({ projectRoot, sourceDir, log = () => {}, note = () => {} 
 // 'moved' | 'kept-edited' | 'kept-root' | 'kept-both' | 'none' (a re-run finds nothing to do).
 //   ledgerHash - the hash the last run recorded for `CLAUDE.md`; hash(path) - the installer's file hash
 //   tracked(path) / gitMv(from, to) - injected so the module stays free of a git call of its own
-function moveSeededClaudeMd({ projectRoot, sourceDir, ledgerHash = '', hash, tracked = () => false, gitMv = null, log = () => {}, note = () => {} })
+// The update ask's line (update-preflight.js): `.claude/CLAUDE.md` with no AGENTS.md to clash with is offered for a
+// rename, edited or not - the user's report of 2026-10-06 ('I need to rename from CLAUDE.md to AGENTS.md manually').
+// Unedited, the run moves it anyway; a yes (`--rename-claude-md`) moves the user's own too.
+function claudeMdOffer(projectRoot)
+{
+    const from = path.join(projectRoot, '.claude', 'CLAUDE.md');
+    if (!fs.existsSync(from)) return 'agents-md: none (no .claude/CLAUDE.md)';
+    if (fs.existsSync(path.join(projectRoot, 'AGENTS.md'))) return 'agents-md: none (the root AGENTS.md holds the instructions - merge .claude/CLAUDE.md by hand)';
+    if (fs.existsSync(path.join(projectRoot, '.claude', 'AGENTS.md'))) return 'agents-md: none (.claude/AGENTS.md exists beside it - merge them by hand)';
+    // Claude Code skips AGENTS.md while a CLAUDE.local.md sits beside or above it, so the renamed file would go unread.
+    for (const local of [path.join(projectRoot, '.claude', 'CLAUDE.local.md'), path.join(projectRoot, 'CLAUDE.local.md')])
+        if (fs.existsSync(local)) return `agents-md: none (${path.relative(projectRoot, local).split(path.sep).join('/')} would keep a renamed AGENTS.md from loading)`;
+    return 'agents-md: offer .claude/CLAUDE.md -> .claude/AGENTS.md';
+}
+
+// A re-include of the old name in the project's ignore files follows the rename, or the moved file is ignored.
+function respellReinclude(projectRoot, files)
+{
+    const done = [];
+    for (const file of files)
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        const next = text.replace(/^(\s*)!(\/?)\.claude\/CLAUDE\.md(\s*)$/gm, '$1!$2.claude/AGENTS.md$3');
+        if (next === text) continue;
+        fs.writeFileSync(file, next);
+        done.push(path.relative(projectRoot, file).split(path.sep).join('/'));
+    }
+    return done;
+}
+
+function moveSeededClaudeMd({ projectRoot, sourceDir, ledgerHash = '', hash, tracked = () => false, gitMv = null, force = false, ignoreFiles = [], log = () => {}, note = () => {} })
 {
     const from = path.join(projectRoot, '.claude', 'CLAUDE.md');
     const to = path.join(projectRoot, '.claude', 'AGENTS.md');
@@ -142,7 +173,7 @@ function moveSeededClaudeMd({ projectRoot, sourceDir, ledgerHash = '', hash, tra
     }
     catch { unedited = false; }
     const git = tracked(from);
-    if (!unedited)
+    if (!unedited && !force)
     {
         const who = ledgerHash ? 'yours, edited since the stack seeded it' : 'left as-is - with no ledger row it cannot be told from an older seed';
         log(`  .claude/CLAUDE.md: ${who}; the stack's file is AGENTS.md now (${AGENTS_MD_NOTE}), to rename it: ${cmd(git)}`);
@@ -154,10 +185,18 @@ function moveSeededClaudeMd({ projectRoot, sourceDir, ledgerHash = '', hash, tra
         else fs.renameSync(from, to);
     }
     catch (err) { note(`.claude/CLAUDE.md could not be moved to .claude/AGENTS.md (${String(err.message).trim()}) - to do it by hand: ${cmd(git)}`); return 'kept-edited'; }
-    log(`  .claude/CLAUDE.md -> .claude/AGENTS.md: the unedited seed moved${git ? ' (git mv, staged as a rename)' : ''}; ${AGENTS_MD_NOTE}`);
+    log(`  .claude/CLAUDE.md -> .claude/AGENTS.md: ${unedited ? 'the unedited seed' : 'your file, on your answer,'} moved${git ? ' (git mv, staged as a rename)' : ''}; ${AGENTS_MD_NOTE}`);
+    if (force)
+    {
+        let fixed = [];
+        try { fixed = respellReinclude(projectRoot, [path.join(projectRoot, '.gitignore'), ...ignoreFiles]); }
+        catch (err) { note(`the '!.claude/CLAUDE.md' re-include line could not be re-spelled (${err.message}) - change it to '!.claude/AGENTS.md' by hand`); }
+        for (const f of fixed) log(`  ${f}: the re-include line now names .claude/AGENTS.md`);
+        return 'moved';
+    }
     try
     {
-        if (/^\s*!\.claude\/CLAUDE\.md\s*$/m.test(fs.readFileSync(path.join(projectRoot, '.gitignore'), 'utf8')))
+        if (/^\s*!\/?\.claude\/CLAUDE\.md\s*$/m.test(fs.readFileSync(path.join(projectRoot, '.gitignore'), 'utf8')))
             log("  .gitignore: change the re-include line to '!.claude/AGENTS.md', or the moved file is ignored");
     }
     catch { /* no .gitignore to read */ }
@@ -178,4 +217,4 @@ function playwrightDownloads({ browsers = [], pin = '', run, log = () => {} })
     return done;
 }
 
-module.exports = { seedAccountEnv, seedAccountKeys, seedAgentsMd, agentsMdBody, moveSeededClaudeMd, playwrightDownloads };
+module.exports = { seedAccountEnv, seedAccountKeys, seedAgentsMd, agentsMdBody, moveSeededClaudeMd, claudeMdOffer, respellReinclude, playwrightDownloads };

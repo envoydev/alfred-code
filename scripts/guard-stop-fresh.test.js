@@ -502,6 +502,35 @@ test('guard-stop-contract: the done half is read over the whole close (2.1.6 re-
   }
 });
 
+// Speech-direct sessions (2026-09-28), each close verbatim or its load-bearing clause.
+test('guard-stop-contract: a bare \'remains\' is a status, only its pending forms are a step (8b5dcb1a)', () => {
+  assert.equal(close('Done - `playwright-chrome` removed from `.mcp.json` and `enabledMcpjsonServers`; only `sentry` remains.').status, 0,
+    'what is left installed is no pending step');
+  assert.equal(close('Done. The push remains to be done.').status, 2, "'remains to be done' is pending");
+  assert.equal(close('Task 3 is done. What remains is the docs update.').status, 2, "'what remains' is pending");
+  assert.equal(close('Lint is green. That still remains open: the migration.').status, 2, "'remains open' is pending");
+});
+
+test('guard-stop-contract: a wait on forks, subagents or workers is a wait on work (177c5743)', () => {
+  const text = 'Packages page audit done. Plan at `confluence-packages-update.md` (5 tasks). Waiting on the other 3 forks (stale-archive triage, extension-bundling page, Guide).';
+  assert.equal(closeOver('fork-live', asyncAgent('toolu_fk1', 'af1'), text).status, 0, 'the measured close, its forks still out');
+  assert.equal(closeOver('fork-sub', asyncAgent('toolu_fk2', 'af2'), 'Task 2 is done. Waiting on the two subagents.').status, 0, 'subagents');
+  assert.equal(closeOver('fork-wrk', asyncAgent('toolu_fk3', 'af3'), 'Task 2 is done. Waiting for the workers to report.').status, 0, 'workers');
+  assert.equal(closeOver('fork-none', fgBash, text).status, 2, 'nothing out - the same close is a stall');
+  assert.equal(closeOver('fork-hb', asyncAgent('toolu_fk4', 'af4'), 'All 7 plans are done, waiting on your go-ahead.').status, 2,
+    'the hand-back beside a live fork still blocks (177c5743 L587)');
+});
+
+test('guard-stop-contract: a queued notice has not ended the work, the delivered one has (177c5743)', () => {
+  const body = '<task-id>aq1</task-id>\n<tool-use-id>toolu_q1</tool-use-id>\n<status>completed</status>\n<summary>Agent finished</summary>';
+  const enqueue = { type: 'queue-operation', operation: 'enqueue', content: `<task-notification>\n${body}\n</task-notification>` };
+  const text = 'Localisation audit done. Last Phase 2 fork still running, nothing pending on your end.';
+  assert.equal(closeOver('q-enq', [...asyncAgent('toolu_q1', 'aq1'), enqueue], text).status, 0, 'queued, not yet delivered');
+  assert.equal(closeOver('q-dlv', [...asyncAgent('toolu_q1', 'aq1'), enqueue, notice(body)], text).status, 2, 'delivered - the fork is done');
+  const removed = { type: 'queue-operation', operation: 'remove', content: `<task-notification>\n${body}\n</task-notification>` };
+  assert.equal(closeOver('q-rm', [...asyncAgent('toolu_q1', 'aq1'), removed], text).status, 2, 'any other queue operation still delivers');
+});
+
 // ---------------------------------------------------------------------------------------------
 // 3. fresh-offer-phrase-exempt - the offer skipped itself on any mention of the phrase
 // ---------------------------------------------------------------------------------------------
@@ -518,6 +547,37 @@ test('guard-stop-contract: only a close that OFFERS the fresh session skips the 
   assert.equal(stop(at('fx-resume', 500000,
     'Task 4 landed. Resume in a fresh session with the block below and I pick up at task 5.')), 0,
     'the mandated resume wording is an offer');
+  assert.equal(stop(at('fx-run', 500000, 'Run `/alfred-code:alfred-capture-architecture` in a new session - answer refresh there.')), 0,
+    "the imperative 'Run ... in a new session' hands the work over (8b5dcb1a)");
+  assert.equal(stop(at('fx-run-noun', 500000, 'The audit is written. A separate run from a fresh session would be worth it later.')), 2,
+    "'run' as a noun only recommends");
+});
+
+// 8b5dcb1a: a skill's own gate asked the fresh-session choice, the user answered, and the block forced the same ask again.
+test('guard-stop-contract: a fresh-session ask answered this turn is not asked again', () => {
+  const stop = (tp) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp }, { env: logEnv() }).status;
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const ask = (id, question, labels) => ({ type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'AskUserQuestion',
+    input: { questions: [{ question, header: 'Session choice', multiSelect: false, options: labels.map((label) => ({ label, description: 'x' })) }] } }] } });
+  const answer = (id, picked) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id,
+    content: `Your questions have been answered: "Where should the capture run?"="${picked}". You can now continue with these answers in mind.` }] } });
+  const floor = assistantRow('fa-floor', 'the first turn', { cache_creation_input_tokens: 20000 });
+  const closeRow = (text) => assistantRow('fa-close', text, { cache_read_input_tokens: 500000 });
+  const CLOSE = 'Acknowledged - the capture goes ahead where you picked.';
+  const fresh = (name, ...rows) => stop(transcript(name, [floor, typed('capture the architecture'), ...rows, closeRow(CLOSE)]));
+  assert.equal(fresh('fa-answered', ask('t1', 'Where should the capture run?', ['Fresh session (Recommended)', 'Continue here anyway']), answer('t1', 'Fresh session (Recommended)')), 0,
+    'the answered fresh-session ask settles it');
+  assert.equal(fresh('fa-continue', ask('t2', 'Where should the capture run?', ['Fresh session (Recommended)', 'Continue here anyway']), answer('t2', 'Continue here anyway')), 0,
+    "'continue here' is an answer too");
+  assert.equal(fresh('fa-question', ask('t3', 'Start a new session for the capture?', ['Yes (Recommended)', 'No']), answer('t3', 'No')), 0, 'the phrase in the question');
+  // the nearby stalls still get the offer
+  assert.equal(fresh('fa-other', ask('t4', 'Which module first?', ['Api (Recommended)', 'Web']), answer('t4', 'Api (Recommended)')), 2, 'an unrelated ask');
+  assert.equal(fresh('fa-open', ask('t5', 'Where should the capture run?', ['Fresh session (Recommended)', 'Continue here'])), 2, 'an ask never answered');
+  assert.equal(stop(transcript('fa-earlier', [floor, ask('t6', 'Where should the capture run?', ['Fresh session (Recommended)', 'Continue here']),
+    answer('t6', 'Continue here'), typed('now the next module'), closeRow(CLOSE)])), 2, 'an ask answered in an EARLIER turn');
+  const feedback = typed('Stop hook feedback:\n[guard-stop-contract.js]: The work in this turn is finished ...');
+  assert.equal(fresh('fa-after-block', feedback, ask('t7', 'Where should we continue?', ['Resume in a fresh session (Recommended)', 'Continue here']),
+    answer('t7', 'Continue here')), 0, "the hook's own feedback row is no typed prompt");
 });
 
 // ---------------------------------------------------------------------------------------------

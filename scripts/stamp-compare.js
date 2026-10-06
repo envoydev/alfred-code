@@ -48,8 +48,9 @@ function snapshotHead(dir)
     const rs = readStampFile(path.join(dir, 'RELEASE-SOURCE'));
     if (rs.sha) return rs;
     // A clone fallback has no RELEASE-SOURCE - its git HEAD is the same truth.
-    // The one Windows-safe spawn (R105), required only on this fallback.
-    try { return { sha: require('./install/runtime.js').execCommand('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), version: undefined }; }
+    // The one Windows-safe spawn (R105), required only on this fallback. Its stderr is dropped: a plugin-cache
+    // snapshot is no repository, and git's 'fatal: not a git repository' reached the update's preflight output.
+    try { return { sha: require('./install/runtime.js').execCommand('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(), version: undefined }; }
     catch
     {
         // A plugin-cache snapshot has neither: its version tag, the revision the installer stamps from it.

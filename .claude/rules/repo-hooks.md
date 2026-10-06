@@ -112,7 +112,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     the previous branch), `clean -f` by its own `-n` dry run (ignored files included), plus
     `stash drop` / `stash clear` / `reflog expire` / `prune` / a `gc` given a prune date or a `-c gc.*Expire`
     by what they destroy; one block names every loss. PowerShell `Remove-Item -Recurse`
-    counts. A SQL `DROP` or `dotnet ef database drop` writes a log-only probe row. A 'discard it' answer
+    counts. A `claude plugin marketplace remove|rm` with no `--scope` is denied (2.1.7): the CLI then removes the
+    declaration from every scope and uninstalls every plugin installed from it, in every project. A SQL `DROP` or `dotnet ef database drop` writes a log-only probe row. A 'discard it' answer
     is honoured via `<docs-path>/flow/DISCARD-ALLOW` (paths, `stash@{N}`, or `*`).
   - `guard-read-whole-file.js` (PreToolUse `Read` + the shell route) - blocks whole-file dumps (also through the
     shell, any oversized file, a sweep over `.md` files). A shell loop is a sweep only when a `cat` in its body
@@ -160,7 +161,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   - `guard-secret-value.js` (PreToolUse `Read` + `Grep` + the shell route) - credentials are read for PRESENCE, never
     value. Judged by file CONTENT (a JSON, dotenv, INI - `~/.aws/credentials`, `~/.pypirc`, a `[section]` file,
     `~/.npmrc` - netrc or URL-per-line (`~/.git-credentials`) file holding a `secret_key_pattern` key with a live
-    value; a key that names a key, `signingkey` or `publicKeyToken`, holds none, and neither does a file path, a switch
+    value; a key that names a key, `signingkey` or `publicKeyToken`, holds none, nor does a field named exactly `key` unless
+    its value is credential-shaped (a Confluence `space.key` of `SD`, a Jira `customfield_10010` - 2.1.7), and neither does a file path, a switch
     or a template reference). The 2.1.6 concerns round read every other format a credential ships in, the same way:
     YAML by indentation (a kubeconfig, gh's `hosts.yml`, a Kubernetes Secret's data, a compose environment list,
     bundler's host keys), XML (maven's `settings.xml`, a NuGet.Config's key/value pair, a web.config connection
@@ -185,8 +187,14 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     names, a URL password, a credential shape and a PEM body line by line, the note on stderr. A clean diff runs
     as written - an unconditional pipe would make every read-only `git diff` ask permission. Summary forms and
     `--quiet` / `--exit-code` are left alone (a pipe replaces git's exit status - `git diff --exit-code` prints
-    unmasked, a stated ceiling); bash family only, like the env pass. A file or variable rewrite drops the rest of the
-    command, so one carrying a CHANGING step (an edit, a redirect, a build) is blocked instead, and so is a
+    unmasked, a stated ceiling); bash family only, like the env pass. A file rewrite SPLICES the view into its own segment where
+    it can, and the other segments run as written - judged first, shell strings included (2.1.7: a consuming project's
+    sessions were refused `cat settings.json; claude plugin list`, `git check-ignore`, `cygpath` and the
+    source-protocol `$(git rev-parse ... || pwd)` as dropped steps). Only what the rewrite really drops counts: the
+    read's other pipe stages, or the whole command when no splice is possible (and every variable rewrite), so one
+    carrying a CHANGING step there (an edit, a redirect, a build) is blocked instead - read-only verbs (cygpath, uname,
+    the read forms of git and `claude plugin|mcp list`) and an inline runtime that neither writes, spawns nor reaches
+    the network are no changing step, and a `$(...)` / backtick keeps its separators; and so is a
     judged stage that itself WRITES - an in-place flag on sed / perl / ruby among its flags, gawk's
     `-i inplace`, inline code that writes, or a runtime run on a script FILE, which the guard cannot see into
     (pilot 3's `node -e ...writeFileSync` and `perl -0pi` came back as the view, the edit never
@@ -311,7 +319,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     in Ukrainian and Russian ('Зробив', 'Сделал', 'Закоммитил' - R2-M2), and a wait on the stack's own seats (a designer,
     a diagnoser, an analyzer) is a wait on work (R2-m3); holds ONCE a subagent that stops on a wait nobody will end ('I'll wait for...' or its own
     ScheduleWakeup) with no background work of its own; a close saying the RUN has nothing pending (the pinned line in shared-rules.json) is
-    finished. Credential branch: asks for rotation ONCE per exposure (`ALFRED_CODE_ROTATE_ASK=0` off; any ask
+    finished. A fork, subagent or worker is work that ends; a `queue-operation` row that only QUEUED a task notice
+    (`enqueue`) has not ended it - the delivered one does; 'remains' is pending only in its pending forms ('still remains',
+    'remains to be done'), so 'only sentry remains' is a status; and the fresh-session branch passes a close whose turn
+    already ANSWERED an ask carrying the fresh-session choice (2.1.7, a consuming project's session audit). Credential branch: asks for rotation ONCE per exposure (`ALFRED_CODE_ROTATE_ASK=0` off; any ask
     answered or declined after its block is the answer, a free-text 'Other' included), judged
     on what the model was SENT - a tool result's `message`, never the CLI's stored `toolUseResult` copy (an
     Edit's `originalFile` held a JWT the secret guard had kept out of context, pilot 3).

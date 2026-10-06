@@ -1174,7 +1174,7 @@ const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
 const SETUP_ASK_TEMPLATES = {
     'setup-plugin/references/walk.md': 10,
     'setup-plugin/commands/setup.md': 2,
-    'setup-plugin/commands/configure.md': 1,
+    'setup-plugin/commands/configure.md': 4,
 };
 // The setup-plugin files that carry ask templates, read from `root` (the repo, or a fixture).
 function setupAskFiles(root, fsLike = fs)
@@ -3037,7 +3037,7 @@ function lintAgentPreloads()
 }
 
 // 49. Every plugin entry in the live marketplace is GENERATED - the placement decides what the core
-// ships, meta/retired-entries.json what each retiring entry still lists, and brand.js LEGACY the two
+// ships (the per-stack entries retired in 1.3.0 are no longer listed, 2.1.7), and brand.js LEGACY the two
 // 1.x ids listed as retired aliases - so a hand-edited path list, description or dependency is
 // drift. The core is the one PLUGIN; the aliases are the only other stack entries it accepts, each
 // exactly as generated. A `renames` key or a hooks entry is a finding: 2.0.0 ships neither (S11/S16,
@@ -3052,7 +3052,7 @@ function lintMarketplaceEntries(liveIn)
     {
         build = require('./build-marketplace.js');
         if (!live) live = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8'));
-        wanted = build.buildEntries().concat(build.aliasEntries(), build.retiredMarketplaceEntries());
+        wanted = build.buildEntries().concat(build.aliasEntries());
     }
     catch (err)
     {
@@ -3079,6 +3079,8 @@ function lintMarketplaceEntries(liveIn)
         if (!p || elsewhere.has(p.name) || generated.has(p.name)) continue;
         if ((build.FOLDED_ENTRIES || []).includes(p.name))
             findings.push(`marketplace.json carries ${p.name}, whose hooks folded into the core in 2.0.0 - run \`npm run marketplace\`, which drops it`);
+        else if ((build.unlistedRetired ? build.unlistedRetired() : []).includes(p.name))
+            findings.push(`marketplace.json carries ${p.name}, a per-stack entry retired in 1.3.0 and no longer listed - run \`npm run marketplace\`, which drops it`);
         else findings.push(`marketplace.json carries ${p.name}, which the placement does not produce - remove it or give it a home in plugin-placement.js`);
     }
     return findings;
@@ -3099,7 +3101,21 @@ function lintMarketplaceSchema()
     try { rt.execCommand('claude', ['plugin', 'validate', ROOT, '--strict'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
     catch (err)
     {
-        const said = (String(err.stdout || '') + String(err.stderr || '')).trim().split('\n').filter(Boolean).slice(-4).join(' | ');
+        const text = String(err.stdout || '') + String(err.stderr || '');
+        const errors = text.split('\n').filter((l) => /^\s*❯ /.test(l));
+        // Claude Code 2.1.289's validator calls a `claude-` name reserved. The two 1.x ids are LISTED on purpose
+        // (aliasEntries - dropping one blacks out a straggler, S25), and the same CLI still adds, lists and
+        // installs such an entry (measured 2026-10-06 with a scratch CLAUDE_CONFIG_DIR) - so that error on exactly
+        // those two names is the known cost, named once, and anything else stays a finding.
+        const { LEGACY } = require('./install/brand.js');
+        const legacy = [LEGACY.core, LEGACY.hooks];
+        const known = (l) => legacy.some((n) => l.includes(`Plugin name "${n}" is reserved`));
+        if (errors.length && errors.every(known))
+        {
+            console.log(`lint-skills: \`claude plugin validate --strict\` reports only the reserved 1.x alias names (${legacy.join(', ')}) - listed on purpose, still installable.`);
+            return out;
+        }
+        const said = text.trim().split('\n').filter(Boolean).slice(-4).join(' | ');
         out.push(`\`claude plugin validate --strict\` failed on .claude-plugin/marketplace.json: ${said}`);
     }
     return out;

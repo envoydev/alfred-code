@@ -80,10 +80,14 @@ touches no committed file). The lines, minus anything the project already covers
   for every write there: the docs (`.alfred/docs/`), the navigation server's index, handoff notes and
   language servers (`.alfred/serena/`), the browser profiles holding session cookies
   (`.alfred/browser/<engine>/`) and a project-level memory database (`.alfred/.alfred-memory/`). It
-  carries its own `.gitignore`, which keeps everything but `docs/` out of git, so it never needs a line
-  here. The docs carry their own, written from `ALFRED_CODE_DOCS_VERSIONING`: `local` keeps them out of
-  git, `git` (a fresh project's default) commits them and keeps only the hooks' machine state out. To
-  keep the docs machine-local, switch it once with `/alfred-code:update --docs-versioning local`.
+  carries its own `.gitignore`, which keeps everything but `docs/` out of git, so while the docs are
+  committed it needs no line here. The docs carry their own, written from `ALFRED_CODE_DOCS_VERSIONING`:
+  `local` keeps them out of git, `git` (a fresh project's default) commits them and keeps only the hooks'
+  machine state out. To keep the docs machine-local, switch it once with
+  `/alfred-code:update --docs-versioning local`. Where nothing under it is committed (local docs, or the
+  docs root set elsewhere) git still lists `.alfred/` as untracked; then add `/.alfred/` -
+  `node scripts/git-hygiene.js --root .` from the run's snapshot says which case applies, and
+  `--apply gitignore|exclude` writes the line.
 - `.mcp.json` - a line only on the opt-out route (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`); the default run
   carries every server on its own plugin and PRUNES the stack's names out of this file. Where it
   does exist it is regenerated on every run, so a local edit is wiped anyway. No file, nothing to ignore.

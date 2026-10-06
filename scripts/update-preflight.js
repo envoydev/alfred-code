@@ -29,17 +29,21 @@
 //                                           classified by derive-state's classifyNew against THIS
 //                                           install: arrives | renamed | offer | off | unknown;
 //                                           'new: none' if none)
-//   data-move: offer <root>\tfrom=<places>\tdocs=<n> serena=yes|no browser=<engines|none> memory=yes|no[\tignored=yes][\tconflicts=<n>]
+//   data-move: offer <root>\tfrom=<places>\tdocs=<n> serena=yes|no browser=<engines|none> memory=yes|no[\tignored=yes][\tconflicts=<n>][\tyours=yes]
 //            | none (<why>)
 //                                           (the project's data outside its data root - the 2.0.0
 //                                           layout or an earlier root: the docs, serena's folder, the
 //                                           browser profiles, a project memory database; a project
 //                                           install only)
+//   agents-md: offer .claude/CLAUDE.md -> .claude/AGENTS.md | none (<why>)
+//                                           (the stack's file is AGENTS.md; a project install only)
 //   env-keys: <comma-separated key names>   (or 'env-keys: none')
 //   unattended: on                          (only with ALFRED_CODE_UNATTENDED=1)
 //
 // Exit codes are stamp-compare's, passed through so the caller's branching is unchanged:
 // 0 = compare done, 2 = no stamp, 3 = compare unreachable. A usage error is 1.
+//
+// `--offers` prints the `data-move:` and `agents-md:` lines alone (no --snapshot, no compare): configure's asks.
 //
 // `--log <installer-log>` is a SEPARATE post-install mode (no --snapshot needed): it reads the
 // installer's own log - the command already captures it via the fixed `tee "$TMP/install.log"`
@@ -322,15 +326,45 @@ function runLogMode(logFile)
     console.log(`restart: ${(mcps > 0 || hooks > 0 || docsMoved) ? 'yes' : 'no'}`);
 }
 
+// The data move, from the rules the installer applies (docs.dataOffer): the docs plan over the same
+// settings view the docs root is read from and the stamp's ledger for who wrote the value, plus every
+// server's data outside the root - the kept engines the stamp names, the memory folder at the project level.
+function dataMoveLine({ root, claudeDir, stampFile, stampScope })
+{
+    const settingsLib = require('./install/settings.js');
+    const docs = require('./install/docs.js');
+    const stampLib = require('./install/stamp.js');
+    const dataRoot = require('../stack/mcp/data-root.js');
+    const ledger = stampLib.readLedger(stampFile);
+    const managed = ledger && ledger.env ? Object.assign({}, ...Object.values(ledger.env)) : null;
+    const projectRoot = path.resolve(root);
+    let stampText = '';
+    try { stampText = fs.readFileSync(stampFile, 'utf8'); } catch { stampText = ''; }
+    const scope = stampScope === 'local' ? 'local' : 'project';
+    const env = settingsLib.readBackSettings(claudeDir, 'local').env || {};
+    const checked = dataRoot.checkDataPath(env.ALFRED_CODE_DATA_PATH || '');
+    const recorded = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
+    const dataRootNow = checked.ok ? checked.value : recorded || dataRoot.DATA_ROOT_DEFAULT;
+    const db = env.ALFRED_CODE_MEMORY_DB || '';
+    return docs.dataOfferLine(docs.dataOffer({
+        projectRoot, claudeDir, scope, ledger: managed, stampText, root: dataRootNow,
+        // An unstamped legacy install (stamp.js legacy-unstamped) is update's to take, its docs root the stack's own.
+        stamped: fs.existsSync(stampFile) || stampLib.legacyUnstamped(root),
+        engines: stampLib.readBrowserLines(stampFile).browsers || [],
+        memoryProject: dataRoot.memoryLevelOf(db, { home: require('node:os').homedir(), projectRoot }) === 'project',
+    }));
+}
+
 function main()
 {
     const logFile = arg('--log');
     if (logFile) { runLogMode(logFile); return; }
 
     const snapshot = arg('--snapshot');
-    if (!snapshot)
+    const offerOnly = process.argv.includes('--offers');
+    if (!snapshot && !offerOnly)
     {
-        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --log <installer-log> [--hooks <n>]');
+        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --offers [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --log <installer-log> [--hooks <n>]');
         process.exit(1);
     }
     const root = arg('--root', '.');
@@ -357,6 +391,13 @@ function main()
     const stampScope = readStampScope(stampFile);
     const settingsFile = arg('--settings', accountDir ? path.join(claudeDir, 'settings.json') : settingsLib.settingsTarget(claudeDir, stampScope === 'local' ? 'local' : 'project'));
     const layered = arg('--settings') || accountDir ? null : settingsLib.readBackSettings(claudeDir, 'local');
+    // configure reads the two offers alone - no compare, no network.
+    if (offerOnly)
+    {
+        console.log(accountDir ? 'data-move: none (an account install)' : dataMoveLine({ root, claudeDir, stampFile, stampScope }));
+        if (!accountDir) console.log(require('./install/seeds.js').claudeMdOffer(path.resolve(root)));
+        return;
+    }
 
     const compareArgs = [path.join(snapshot, 'scripts', 'stamp-compare.js'), '--snapshot', snapshot, '--stamp', stampFile];
     for (const flag of ['--repo', '--fixture']) { const v = arg(flag); if (v) compareArgs.push(flag, v); }
@@ -402,32 +443,10 @@ function main()
     const routes = require('./install/plugins.js').committedRoutesAt({ env: process.env, claudeDir: routeDir, scope: stampScope === 'local' ? 'local' : 'project' });
     for (const l of newItemLines({ root, claudeDir, snapshot, settings: layered || settings, stampFile, compareLines: lines, routes })) console.log(l);
 
-    // The data move, from the rules the installer applies (docs.dataOffer): the docs plan over the same
-    // settings view the docs root is read from and the stamp's ledger for who wrote the value, plus every
-    // server's data outside the root - the kept engines the stamp names, the memory folder at the project level.
     if (!accountDir)
     {
-        const docs = require('./install/docs.js');
-        const stampLib = require('./install/stamp.js');
-        const dataRoot = require('../stack/mcp/data-root.js');
-        const ledger = stampLib.readLedger(stampFile);
-        const managed = ledger && ledger.env ? Object.assign({}, ...Object.values(ledger.env)) : null;
-        const projectRoot = path.resolve(root);
-        let stampText = '';
-        try { stampText = fs.readFileSync(stampFile, 'utf8'); } catch { stampText = ''; }
-        const scope = stampScope === 'local' ? 'local' : 'project';
-        const env = settingsLib.readBackSettings(claudeDir, 'local').env || {};
-        const checked = dataRoot.checkDataPath(env.ALFRED_CODE_DATA_PATH || '');
-        const recorded = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
-        const dataRootNow = checked.ok ? checked.value : recorded || dataRoot.DATA_ROOT_DEFAULT;
-        const db = env.ALFRED_CODE_MEMORY_DB || '';
-        console.log(docs.dataOfferLine(docs.dataOffer({
-            projectRoot, claudeDir, scope, ledger: managed, stampText, root: dataRootNow,
-            // An unstamped legacy install (stamp.js legacy-unstamped) is update's to take, its docs root the stack's own.
-            stamped: fs.existsSync(stampFile) || stampLib.legacyUnstamped(root),
-            engines: stampLib.readBrowserLines(stampFile).browsers || [],
-            memoryProject: dataRoot.memoryLevelOf(db, { home: require('node:os').homedir(), projectRoot }) === 'project',
-        })));
+        console.log(dataMoveLine({ root, claudeDir, stampFile, stampScope }));
+        console.log(require('./install/seeds.js').claudeMdOffer(path.resolve(root)));
     }
 
     const keys = settings && settings.env ? Object.keys(settings.env).sort() : [];

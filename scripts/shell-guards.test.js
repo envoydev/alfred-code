@@ -598,7 +598,8 @@ test('a stalled guard ahead of the secret guard in the manifest cannot drop its 
   const read = spawnIt('file-guards.js', filePayload('Read', { file_path: path.join(dir, '.env') }, dir, 'stall-read'));
   assert.strictEqual(read.status, 2, `file-guards: the secret block arrives though the read guard stalls (status ${read.status})`);
   assert.deepStrictEqual(hooksOf(ledgerRows(dir, 'stall-read')), ['guard-secret-value.js']);
-  const sh = spawnIt('shell-guards.js', { ...bashPayload('cat .env && npm run build', dir), session_id: 'stall-bash' });
+  // a second read of the file forces the whole-command rewrite, which would drop the build - a block, not a splice
+  const sh = spawnIt('shell-guards.js', { ...bashPayload('cat .env && grep -c API_KEY .env && npm run build', dir), session_id: 'stall-bash' });
   assert.strictEqual(sh.status, 2, `shell-guards: the secret block arrives though the read guard stalls (status ${sh.status})`);
   assert.deepStrictEqual(hooksOf(ledgerRows(dir, 'stall-bash')), ['guard-secret-value.js']);
 });

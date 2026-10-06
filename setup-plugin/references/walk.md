@@ -246,7 +246,7 @@ Skills: install the marked rows? The unmarked ones are mostly other stacks' skil
 
 Step 2: two multi-select questions of 4 stack sets each (the wpf, winforms, console and
 windows-service sets; ionic-angular, data, browser-extension, js), plus one question on the
-`general` opt-ins (dotnet-hosted-services, dotnet-data-access, alfred-capture-related-projects, alfred-capture-stack-usage).
+`general` opt-ins (dotnet-hosted-services, dotnet-data-access, alfred-capture-related-projects, alfred-capture-usage-report).
 
 
 ## Hooks

@@ -152,14 +152,96 @@ const DOCS_IGNORE = {
     local: '# alfred-code: the docs root is machine-local (ALFRED_CODE_DOCS_VERSIONING=local)\n*\n',
     git: '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
         + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n'
-        + '# the usage audit\'s raw transcript and ledger copies stay on this machine\n/alfred-code-usage-report/**/*.jsonl\n',
+        + '# the usage audit\'s raw transcript and ledger copies stay on this machine\n/usage-report/**/*.jsonl\n',
 };
 // Texts an earlier release wrote, still the stack's own: an update replaces them instead of keeping them as
-// the project's. 2.1.3's git text had no usage-report line.
+// the project's. 2.1.3's git text had no usage-report line; up to 2.1.6 the folder was `alfred-code-usage-report/`.
 const DOCS_IGNORE_FORMER = [
     '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
         + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n',
+    '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
+        + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n'
+        + '# the usage audit\'s raw transcript and ledger copies stay on this machine\n/alfred-code-usage-report/**/*.jsonl\n',
 ];
+
+// THE USAGE AUDIT'S FOLDER took a plain name in 2.1.7 (`alfred-code-usage-report/` -> `usage-report/`, the user's
+// ruling of 2026-10-06). Run AFTER ensureDocsIgnore, so the root's own file already names the new folder. An audit
+// copies whole session transcripts (code, file contents, possibly secrets) beside its reports, and the old folder's
+// ignore line does not cover the new name: a folder holding a raw `.jsonl` moves only where git keeps it out at the
+// new path (no repository, a `local` root, or the project's own line), else it stays and one `!!` line names the fix.
+// A session folder the new one already holds is never overwritten - it stays at the old name and is named.
+const USAGE_REPORT_MOVE = ['alfred-code-usage-report', 'usage-report'];
+
+function holdsRaw(dir)
+{
+    for (const e of fs.readdirSync(dir, { withFileTypes: true }))
+        if (e.isDirectory() ? holdsRaw(path.join(dir, e.name)) : e.name.endsWith('.jsonl')) return true;
+    return false;
+}
+
+function rawStaysOut(base, folder)
+{
+    const git = (args) => rt.execCommand('git', ['-C', base, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    try { git(['rev-parse', '--is-inside-work-tree']); }
+    catch { return true; }
+    try { git(['check-ignore', '-q', '--', `${folder}/session/x.jsonl`]); return true; }
+    catch { return false; }
+}
+
+// A path git tracks anything under (a `git`-mode root commits the reports) moves with `git mv`, so git sees a
+// staged rename and keeps its history; anything else is a plain rename.
+function moveKeepingHistory(base, src, dst)
+{
+    const rel = (p) => path.relative(base, p).split(path.sep).join('/');
+    const git = (args) => rt.execCommand('git', ['-C', base, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    let tracked = false;
+    try { tracked = String(git(['ls-files', '--', rel(src)])).trim() !== ''; }
+    catch { tracked = false; }
+    if (tracked)
+    {
+        try { git(['mv', '--', rel(src), rel(dst)]); return; }
+        catch { /* git refused (a conflicted index): the plain rename below still moves it */ }
+    }
+    fs.renameSync(src, dst);
+}
+
+// 'none' | 'moved' | 'merged' | 'held' (raw copies git would not keep out at the new name).
+function migrateUsageReport({ projectRoot, docsPath, log = () => {} })
+{
+    const base = path.resolve(projectRoot, String(docsPath || ''));
+    const [oldName, newName] = USAGE_REPORT_MOVE;
+    const from = path.join(base, oldName);
+    const to = path.join(base, newName);
+    try { if (!fs.statSync(from).isDirectory()) return 'none'; }
+    catch { return 'none'; }
+    if (holdsRaw(from) && !rawStaysOut(base, newName))
+    {
+        log(`  !! docs migration (usage report): ${oldName}/ holds raw session copies and git would not ignore them as ${newName}/ - `
+            + `left in place; add '/${newName}/**/*.jsonl' to the docs root's .gitignore, then re-run /alfred-code:update`);
+        return 'held';
+    }
+    if (!fs.existsSync(to))
+    {
+        moveKeepingHistory(base, from, to);
+        log(`  docs migration (usage report): ${oldName}/ -> ${newName}/`);
+        return 'moved';
+    }
+    const kept = [];
+    for (const name of fs.readdirSync(from))
+    {
+        if (fs.existsSync(path.join(to, name))) kept.push(name);
+        else moveKeepingHistory(base, path.join(from, name), path.join(to, name));
+    }
+    if (kept.length)
+        log(`  !! docs migration (usage report): ${newName}/ already holds ${kept.join(', ')} - the ${oldName}/ copies are left in place, `
+            + 'nothing overwritten; compare and remove them by hand');
+    else
+    {
+        fs.rmdirSync(from);
+        log(`  docs migration (usage report): ${oldName}/ merged into ${newName}/`);
+    }
+    return 'merged';
+}
 
 // 'written' | 'current' | 'replaced' | 'kept' (the project's own file) | 'outside' (the root is not in
 // the project) | 'skipped' (no versioning to state, or a root under `.claude/`) | 'tracked' (local, over a
@@ -272,13 +354,19 @@ function docsMovePlan({ projectRoot, env = {}, personal = null, ledger = null, s
         root = normRoot(env[key]);
         if (root === base.to) return none(`the docs root is already ${root}`);
         // A root moves only when it is the stack's own: the ledger recorded it, or with no ledger (a stamp from
-        // before it) it is a default the stack seeded - the old one, or the catalog's. The old default the ledger
-        // does NOT record is the user's: 2.0.0's keep answer took it out of the ledger and promised no update
-        // would offer the move again (M1) - an unattended update takes the recommended move, so asking again moved it.
+        // before it) it is a default the stack seeded - the old one, or the catalog's. A root set by hand
+        // anywhere else is the user's and never offered.
         const hash = require('./stamp.js').valueHash(env[key]);
         const legacy = root === LEGACY_DOCS_ROOT;
         const stacks = ledger ? ledger[key] === hash || ledger.ALFRED_CODE_DOCS_PATH === hash : legacy || root === require('./copy.js').DOCS_ROOT_DEFAULT;
-        if (!stacks) return none(legacy ? `kept at ${root} - the docs root is yours (a 2.0.0 keep, or set by hand)` : `the docs root is ${root}, set by hand`);
+        // The OLD DEFAULT the ledger does not record is a 2.0.0 keep (its answer took the key out of the ledger)
+        // or one set by hand at the old default. Since 2.1.7 it is offered once more, as part of the data move (the
+        // user's ruling of 2026-10-06: 'all alfred data must be inside .alfred by default; configure and update
+        // must suggest the migration' - a 2.0.0 keep left a usage audit under the old root). It is marked
+        // `yours`: an unattended run never answers it (M1 - the recommended move would move a root the user
+        // kept), and a 2.1 keep answer (`data-move: kept`) ends the offer for good.
+        if (!stacks && !legacy) return none(`the docs root is ${root}, set by hand`);
+        if (!stacks) base.yours = true;
     }
     if (root === LEGACY_DOCS_ROOT && kept) return none('kept at the old default - the data move was answered keep');
     const plan = { ...base, from: root };
@@ -452,7 +540,8 @@ function dataOffer({ projectRoot, claudeDir, scope, ledger, stamped, stampText =
 }
 
 // The preflight's line: `data-move: offer <root>\tfrom=<places>\tdocs=<n> serena=yes|no browser=<engines|none>
-// memory=yes|no[\tignored=yes][\tconflicts=<n>]`, or `data-move: none (<why>)`.
+// memory=yes|no[\tignored=yes][\tconflicts=<n>][\tyours=yes]`, or `data-move: none (<why>)`. `yours=yes`: the docs
+// sit at the old default a 2.0.0 keep made the user's - asked, never answered unattended.
 function dataOfferLine(offer)
 {
     if (offer.state !== 'offer') return `data-move: none (${offer.why})`;
@@ -462,11 +551,11 @@ function dataOfferLine(offer)
     const engines = offer.rows.filter((r) => r.cls.startsWith('browser-')).map((r) => r.cls.slice('browser-'.length));
     const conflicts = (docs ? docs.conflicts.length : 0) + offer.rows.filter((r) => r.conflict).length;
     return `data-move: offer ${offer.root}\tfrom=${from.join(',')}\tdocs=${docs ? docs.tracked.length + docs.untracked.length : 0} serena=${has('serena')} browser=${engines.join(',') || 'none'} memory=${has('memory')}`
-        + (docs && docs.ignored ? '\tignored=yes' : '') + (conflicts ? `\tconflicts=${conflicts}` : '');
+        + (docs && docs.ignored ? '\tignored=yes' : '') + (conflicts ? `\tconflicts=${conflicts}` : '') + (docs && docs.yours ? '\tyours=yes' : '');
 }
 
 module.exports = {
-    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, ensureDocsIgnore, docsMovePlan, docsMoveViews, moveDocsRoot,
+    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, ensureDocsIgnore, migrateUsageReport, docsMovePlan, docsMoveViews, moveDocsRoot,
     ensureDataIgnore, dataIgnoreText, pruneDataRoot, dataOffer, dataOfferLine,
     DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD,
 };

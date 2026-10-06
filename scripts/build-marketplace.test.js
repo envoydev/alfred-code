@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { buildEntries, coreEntry, applyToMarketplace, retiredMarketplaceEntries, aliasEntries, mcpAliasEntries, hooksBlock, parseHookWirings, mergeHooks, FOLDED_ENTRIES } = require('./build-marketplace.js');
+const { buildEntries, coreEntry, applyToMarketplace, unlistedRetired, aliasEntries, mcpAliasEntries, hooksBlock, parseHookWirings, mergeHooks, FOLDED_ENTRIES } = require('./build-marketplace.js');
 const { LEGACY } = require('./install/brand.js');
 const { CORE_DEP_PLUGINS } = require('./install/plugins.js');
 const { LOCKED } = require('./install/mcp.js');
@@ -324,7 +324,7 @@ test('the two desktop MCP plugins start their upstream with its telemetry off', 
 test('M22 every retired entry names the update command its 1.x audience has', () =>
 {
     const want = `/${LEGACY.core}:update`;
-    for (const entry of [...retiredMarketplaceEntries(), ...mcpAliasEntries()])
+    for (const entry of mcpAliasEntries())
     {
         assert.ok(entry.description.includes(want), `${entry.name}: ${entry.description}`);
         assert.ok(!entry.description.includes('/alfred-code:update'), `${entry.name} still names a command a 1.x install lacks`);
@@ -361,14 +361,16 @@ test('M25 the documentation entry sends the key as Context7-API-Key, empty when 
     assert.strictEqual(CONTEXT7_REMOTE.header, 'Context7-API-Key: ${CONTEXT7_API_KEY:-}', 'the copy route sends the same header');
 });
 
-test('the retired entries stay listed for one release, marked retired', () =>
+// 2.1.7 (the user's ruling of 2026-10-06): the per-stack entries retired in 1.3.0 left the Discover tab. Update
+// migrates one still installed from meta/retired-entries.json alone, so the frozen file stays while the listing goes.
+test('the per-stack entries retired in 1.3.0 are no longer listed, and an applied marketplace drops them', () =>
 {
-    const mkt = applyToMarketplace({ plugins: [] }, buildEntries().concat(retiredMarketplaceEntries()));
-    const angular = mkt.plugins.find((p) => p.name === 'claude-stack-angular');
-    assert.ok(angular, 'still listed');
-    assert.match(angular.description, /^RETIRED/);
-    assert.ok(angular.skills.includes('./stack/skills/angular-conventions'));
-    assert.strictEqual(mkt.plugins.filter((p) => /^RETIRED/.test(p.description || '')).length, 20);
+    const names = unlistedRetired();
+    assert.strictEqual(names.length, 20, 'the frozen record still names every entry 1.2.0 shipped');
+    for (const name of names) assert.strictEqual(shippedBy[name], undefined, `${name} is still listed`);
+    const mkt = applyToMarketplace({ plugins: [{ name: 'claude-stack-angular', source: './' }, { name: 'third-party', source: './x' }] }, buildEntries()); // legacy-name
+    assert.strictEqual(mkt.plugins.find((p) => p.name === 'claude-stack-angular'), undefined, 'a live listing is dropped'); // legacy-name
+    assert.ok(mkt.plugins.find((p) => p.name === 'third-party'), 'a name nobody retired is kept');
 });
 
 test('a retired name missing from the frozen file is dropped from the marketplace', () =>
@@ -378,18 +380,6 @@ test('a retired name missing from the frozen file is dropped from the marketplac
     assert.ok(mkt.plugins.find((p) => p.name === 'third-party'), 'a name nobody retired is kept');
 });
 
-// The retired entries keep their FROZEN dependencies. `claude-stack` is listed again, as the core's // legacy-name
-// alias, so a retired entry a 1.x install `plugin update`s before the seed runs still resolves the
-// dependency it names (reverting 5c's mapping onto the new core's name).
-test('retiredMarketplaceEntries keeps every frozen dependency verbatim', () => {
-    const frozen = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'retired-entries.json'), 'utf8')).entries;
-    const list = retiredMarketplaceEntries();
-    assert.deepStrictEqual(list.map((e) => [e.name, e.dependencies]), frozen.map((e) => [e.name, e.dependencies]));
-    const byName = Object.fromEntries(list.map((e) => [e.name, e]));
-    assert.deepStrictEqual(byName['claude-stack-csharp'].dependencies, [LEGACY.core], 'a terminal entry names the 1.x core');
-    assert.ok(shippedBy[LEGACY.core], 'which the live marketplace lists, as the alias');
-});
-
 // Ruling 'retired aliases': 2.0.0 ships NO renames map (S11/S16 - a rename strands a 1.x install
 // with zero hooks and skills), and no hooks entry (the fold). The live file is what a CLI reads.
 test('the live marketplace carries no renames key, no hooks entry, and both 1.x aliases as generated', () => {
@@ -397,7 +387,7 @@ test('the live marketplace carries no renames key, no hooks entry, and both 1.x 
     assert.strictEqual(shippedBy['alfred-code-hooks'], undefined, 'the hooks ride the core');
     for (const alias of aliasEntries())
         assert.deepStrictEqual(shippedBy[alias.name], alias, `${alias.name} is listed exactly as generated`);
-    assert.strictEqual(SHIPPED.plugins.filter((p) => /^RETIRED/.test(p.description || '')).length, 28, '20 retired per-stack entries, the two aliases and the six renamed MCP ids');
+    assert.strictEqual(SHIPPED.plugins.filter((p) => /^RETIRED/.test(p.description || '')).length, 8, 'the two aliases and the six renamed MCP ids - the 1.3.0 per-stack entries are no longer listed');
     for (const alias of mcpAliasEntries())
         assert.deepStrictEqual(shippedBy[alias.name], alias, `${alias.name} is listed exactly as generated`);
 });

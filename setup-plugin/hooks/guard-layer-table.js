@@ -20,7 +20,9 @@
 // rows sharing message.id with the AskUserQuestion tool_use) may not be on disk yet. The hook waits for
 // the row carrying the payload's tool_use_id, and allows when it never lands - it cannot judge a
 // message it cannot see. ALFRED_CODE_LAYER_GATE_WAIT_MS overrides the 2000ms budget (tests). With no
-// table call since the typed prompt it never waits: there is nothing to judge (M15).
+// table call since the typed prompt it never waits: there is nothing to judge (M15). A layer's own
+// selection ask ('Agents: ...', 'Add to the installed skills?') inside a walk also needs that layer's
+// table to have RUN since the typed prompt - same valve, counted per layer (2.1.7).
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unreadable.
 //
 // STACK HOOK GATES (2.1.5 M4) - the core's hook-prelude.js, reached from the plugin root (the core entry ships
@@ -126,9 +128,71 @@ const tailHasTable = (rs) => {
   return false;
 };
 
+// A layer's selection ask, by the walk's own templates (walk.md): 'Agents: install the marked rows?',
+// 'Add to the installed skills?'. The gate above judges a table that RAN; a walk that never ran the
+// layer's table at all asked with nothing on screen (the user's report of 2026-10-06: 'No tables with
+// hooks, skills, agents, rules are shown'), so such an ask needs that layer's `--table` call since the
+// typed prompt - judged only inside a walk (a `stack-select.js` call in the same span).
+const LAYERS = 'rules|agents|skills|hooks|mcps|plugins';
+const LAYER_ASK = new RegExp(`^\\s*(?:(${LAYERS})\\s*:|(?:add to|drop from) the installed (${LAYERS})\\b)`, 'i');
+const layersAsked = (input) => {
+  const qs = input && Array.isArray(input.questions) ? input.questions : [];
+  const out = new Set();
+  for (const q of qs) {
+    const m = LAYER_ASK.exec(String((q && q.question) || ''));
+    if (m) out.add((m[1] || m[2]).toLowerCase());
+  }
+  return [...out];
+};
+const unrunLayer = (rs, asked) => {
+  const ran = new Set();
+  const results = {};
+  let walk = false;
+  let answered = false;
+  const denials = {};
+  for (let i = rs.length - 1; i >= 0; i--) {
+    let o;
+    try { o = JSON.parse(rs[i]); } catch { continue; }
+    const content = o && o.message && o.message.content;
+    if (o && o.type === 'user' && typeof content === 'string') break;
+    if (!Array.isArray(content)) continue;
+    for (const b of content) {
+      if (!b) continue;
+      if (o.type === 'user' && b.type === 'tool_result') {
+        const r = resultText(b.content);
+        results[b.tool_use_id] = r;
+        const d = !answered && new RegExp(`${MARKER}: the (${LAYERS}) table never ran`).exec(r);
+        if (d) denials[d[1]] = (denials[d[1]] || 0) + 1;
+      }
+      if (o.type !== 'assistant' || b.type !== 'tool_use') continue;
+      if (b.name === 'AskUserQuestion' && b.id !== ownId && b.id in results && !results[b.id].includes(MARKER)) answered = true;
+      const cmd = String((b.input && b.input.command) || '');
+      if (/stack-select\.js\b/.test(cmd)) walk = true;
+      const m = TABLE_RE.exec(cmd);
+      if (m) ran.add(m[1].toLowerCase());
+    }
+  }
+  if (!walk) return null;
+  return asked.find((l) => !ran.has(l) && (denials[l] || 0) < MAX_DENIALS) || null;
+};
+
+const resultText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (x && x.text) || '').join('\n') : '');
+
 let rows;
 try {
   rows = readRows();
+  const asked = layersAsked(payload.tool_input);
+  const missing = asked.length ? unrunLayer(rows, asked) : null;
+  if (missing) {
+    const denial =
+      `${MARKER}: the ${missing} table never ran - this ask is the ${missing} layer's selection, and the user decides ` +
+      `from the layer's WHOLE catalog. Run \`node "$TMP/repo/scripts/stack-select.js" --selection raw.json --table ${missing}\` ` +
+      `with the walk's other flags (walk.md, per layer beat 2), never redirected, then send ONE message: the step banner, ` +
+      `its output byte-for-byte inside a fenced code block, then this same ask.\n`;
+    blockRow(denial.split('\n')[0], `${missing} table`);
+    process.stderr.write(denial);
+    process.exit(2);
+  }
   if (!tailHasTable(rows)) process.exit(0);
   if (ownId && !hasOwnRow(rows)) {
     const until = Date.now() + waitMs;
@@ -141,8 +205,6 @@ try {
 } catch {
   process.exit(0);
 }
-
-const resultText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (x && x.text) || '').join('\n') : '');
 
 // Walk backwards: collect assistant text, tool results and our own earlier denials until the latest
 // decision-table call.

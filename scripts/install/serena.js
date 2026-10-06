@@ -16,6 +16,8 @@
 // 14-file fixture, 126 files attempted and 112 failed, every one inside the language-server dir.
 const fs = require('node:fs');
 const path = require('node:path');
+// A write that keeps a Windows Hidden attribute (EPERM on a plain 'w' open - data-root.js says why).
+const { writeText } = require('../../stack/mcp/data-root.js');
 
 // ~327MB of language servers, the stack's own files, and the playwright MCP's browser profile -
 // none of them project source. 2.0.0's value, before the data root; still the stack's own to rewrite.
@@ -70,12 +72,18 @@ function detectLanguages(root, { maxDepth = 4 } = {})
 }
 
 // True when ONE of the named keys carries a non-empty list - inline (`key: [a, b]`) or as the
-// `- item` block under it. An empty list, or a key followed by another key, is NOT entries.
+// `- item` block under it. An empty list, or a key followed by another key, is NOT entries. CRLF-aware:
+// serena on Windows writes its project.yml with CRLF and its block lists at column 1 (measured), and a
+// `\r` left on each line hid every key - every list read as empty, and the rewrite below then orphaned
+// the block's `- csharp` under an inline value: serena refused the file ('expected <block end>, but
+// found '-'') and the navigation server timed out at every start.
+const linesOf = (text) => String(text).split(/\r?\n/);
+const eolOf = (text) => (/\r\n/.test(String(text)) ? '\r\n' : '\n');
 function hasEntries(text, keys)
 {
     const want = new Set(keys);
     let pending = false;
-    for (const line of String(text).split('\n'))
+    for (const line of linesOf(text))
     {
         const keyMatch = /^\s*([a-z_]+)\s*:(.*)$/.exec(line);
         if (keyMatch)
@@ -94,6 +102,40 @@ function hasEntries(text, keys)
     return false;
 }
 
+// Replace a top-level key's line AND any `- item` lines under it (a block list written at column 1 or
+// indented) with one `key: value` line, in the file's own line ending. Only called for a key whose list
+// is empty, so the items it drops hold nothing.
+function replaceKey(text, key, value)
+{
+    const eol = eolOf(text);
+    const lines = linesOf(text);
+    const at = lines.findIndex((l) => new RegExp(`^[ \\t]*${key}[ \\t]*:`).test(l));
+    if (at < 0) return null;
+    let end = at + 1;
+    while (end < lines.length && /^[ \t]*-(\s|$)/.test(lines[end])) end += 1;
+    lines.splice(at, end - at, `${key}: ${value}`);
+    return lines.join(eol);
+}
+
+// A file an earlier release broke (the CRLF rewrite above): a column-1 `- item` line under a top-level key
+// whose value is already set (`key: [..]` or a scalar) is invalid YAML. Those stray lines are dropped - the
+// value on the key line is what the stack wrote - and the count is returned. Anything else is left alone.
+function repairStrayItems(text)
+{
+    const lines = linesOf(text);
+    const out = [];
+    let valued = false;
+    let dropped = 0;
+    for (const line of lines)
+    {
+        const key = /^([A-Za-z_][\w-]*)[ \t]*:(.*)$/.exec(line);
+        if (key) { valued = key[2].trim() !== '' && !key[2].trim().startsWith('#'); out.push(line); continue; }
+        if (valued && /^-(\s|$)/.test(line)) { dropped += 1; continue; }
+        out.push(line);
+    }
+    return { text: out.join(eolOf(text)), dropped };
+}
+
 // Rewrite an EMPTY key in place, append an absent one, leave a populated one alone.
 function setListKey(cfgFile, key, value, comment, { log = () => {} } = {})
 {
@@ -102,14 +144,15 @@ function setListKey(cfgFile, key, value, comment, { log = () => {} } = {})
     catch { return false; }
     if (hasEntries(text, [key])) return false;
 
-    const line = new RegExp(`^[ \\t]*${key}[ \\t]*:.*$`, 'm');
-    if (line.test(text))
+    const replaced = replaceKey(text, key, value);
+    if (replaced !== null)
     {
-        fs.writeFileSync(cfgFile, text.replace(line, `${key}: ${value}`));
+        writeText(cfgFile, replaced);
         log(`  serena: ${key} set to ${value} (was empty)`);
         return true;
     }
-    fs.writeFileSync(cfgFile, `${text}\n# Added by alfred-code: ${comment}\n${key}: ${value}\n`);
+    const eol = eolOf(text);
+    writeText(cfgFile, `${text}${eol}# Added by alfred-code: ${comment}${eol}${key}: ${value}${eol}`);
     log(`  serena: ${key} ${value} appended to project.yml`);
     return true;
 }
@@ -128,6 +171,14 @@ function seedProject({ projectRoot, selected = true, dir = '.serena', root = nul
     {
         let text = '';
         try { text = fs.readFileSync(cfg, 'utf8'); } catch { /* handled below */ }
+        // A file an earlier release broke is mended first, or serena keeps refusing it at every start.
+        const mended = repairStrayItems(text);
+        if (mended.dropped)
+        {
+            writeText(cfg, mended.text);
+            text = mended.text;
+            log(`  serena: ${dir}/project.yml - ${mended.dropped} stray list line(s) an earlier update left under a set key removed (serena refused the file)`);
+        }
         if (hasEntries(text, ['language_servers', 'languages']))
             log('  serena: project.yml already names its language servers - left as-is');
         else
@@ -137,13 +188,15 @@ function seedProject({ projectRoot, selected = true, dir = '.serena', root = nul
                 setListKey(cfg, 'language_servers', quoteList(langs),
                     'serena writes this key empty (async) or with only the single top language.', { log });
             else log("  serena: no C#/TypeScript/JS sources found - language_servers left to serena's own detection");
+            // Re-read: the ignored_paths step below writes the whole file, and must not put the old text back.
+            try { text = fs.readFileSync(cfg, 'utf8'); } catch { /* the write above failed: the text stands */ }
         }
         // ALWAYS, independent of the branch above. A value the stack wrote follows the data root; one the
         // user wrote is theirs.
         const now = (/^[ \t]*ignored_paths[ \t]*:[ \t]*(.*?)[ \t]*$/m.exec(text) || [])[1];
         if (stackIgnored(text) && now !== ignored)
         {
-            fs.writeFileSync(cfg, text.replace(/^[ \t]*ignored_paths[ \t]*:.*$/m, `ignored_paths: ${ignored}`));
+            writeText(cfg, replaceKey(text, 'ignored_paths', ignored));
             log(`  serena: ignored_paths set to ${ignored} (the stack's own value, re-pointed at the data root)`);
         }
         else setListKey(cfg, 'ignored_paths', ignored,
@@ -200,9 +253,9 @@ function ensureSerenaIgnore({ projectRoot, selected = true, log = () => {} })
         return 'kept';
     }
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, SERENA_IGNORE);
+    writeText(file, SERENA_IGNORE);
     log(`  serena: .serena/.gitignore ${have === null ? 'written' : 'widened from serena\'s own'} - the language servers, index and memories are never committed`);
     return have === null ? 'written' : 'replaced';
 }
 
-module.exports = { detectLanguages, hasEntries, setListKey, seedProject, ensureSerenaIgnore, stackIgnored, ignoredPathsFor, IGNORED_PATHS };
+module.exports = { detectLanguages, hasEntries, replaceKey, repairStrayItems, setListKey, seedProject, ensureSerenaIgnore, stackIgnored, ignoredPathsFor, IGNORED_PATHS };

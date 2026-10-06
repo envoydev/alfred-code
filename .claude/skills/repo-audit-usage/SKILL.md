@@ -19,7 +19,7 @@ this repo's own maintenance tool, not part of the shipped catalog.
 
 - The user types `/repo-audit-usage` to collect session bundles from consuming projects, audit a
   collection already under `docs/*investigation*/`, or both.
-- Not for one project's own usage report - that is the stack's `alfred-capture-stack-usage` skill, run
+- Not for one project's own usage report - that is the stack's `alfred-capture-usage-report` skill, run
   inside that project, whose bundles this audit can collect.
 
 ## How the run goes
