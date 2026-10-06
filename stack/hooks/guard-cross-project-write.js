@@ -139,18 +139,30 @@ try { ({ nativePath } = require(path.join(__dirname, 'shell-writes.js'))); } cat
 // that does not exist yet has no on-disk case, so on win32 the compare below folds case as well.
 const real = (p) => { try { return (fs.realpathSync.native || fs.realpathSync)(p); } catch { return path.resolve(p); } };
 const fold = (p) => (process.platform === 'win32' ? String(p).toLowerCase() : String(p));
+// Memoised for the run: allowed() resolves a target, then inside() resolves it again against the root and every
+// allowance - about ten climbs of existsSync plus a native realpath per write, and a 245KB chain of cd steps cost 8s
+// of CPU on Windows, where each of those calls is slow (2.1.7, the windows-2025 job). Nothing on disk changes while
+// the hook judges a command that has not run.
+const realishSeen = new Map();
+const realExisting = new Map(); // a folder -> its real path, or null when it does not exist
 function realish(p) {
+  const key = String(p);
+  if (realishSeen.has(key)) return realishSeen.get(key);
   let dir = path.resolve(nativePath(p));
   const rest = [];
+  let out = null;
   for (let i = 0; i < 64; i++) {
-    if (fs.existsSync(dir)) return path.join(real(dir), ...rest);
+    if (!realExisting.has(dir)) realExisting.set(dir, fs.existsSync(dir) ? real(dir) : null);
+    const r = realExisting.get(dir);
+    if (r !== null) { out = path.join(r, ...rest); break; }
     const parent = path.dirname(dir);
     if (parent === dir) break;
     rest.unshift(path.basename(dir));
     dir = parent;
   }
-
-  return path.resolve(nativePath(p));
+  if (out === null) out = path.resolve(nativePath(p));
+  realishSeen.set(key, out);
+  return out;
 }
 const ROOT = real(root);
 const HOME = os.homedir() || '';

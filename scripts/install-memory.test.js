@@ -295,9 +295,9 @@ test('recordedPath: a registration, then the settings key; an unreadable setting
     // key's home at every scope, is still named, so the run can say so before its first registration.
     const entry = { command: 'uvx', env: { MCP_MEMORY_SQLITE_PATH: '/r/memory.db' } };
     write(at.mcpFile, { mcpServers: { memory: entry } });
-    assert.deepStrictEqual(memory.recordedPath(at), { path: '/r/memory.db', from: 'registration', entry, unread: ['settings.local.json'] });
+    assert.deepStrictEqual(memory.recordedPath(at), { path: path.normalize('/r/memory.db'), from: 'registration', entry, unread: ['settings.local.json'] });
     write(local, { env: {} });
-    assert.deepStrictEqual(memory.recordedPath(at), { path: '/r/memory.db', from: 'registration', entry, unread: [] });
+    assert.deepStrictEqual(memory.recordedPath(at), { path: path.normalize('/r/memory.db'), from: 'registration', entry, unread: [] });
 });
 
 test('level: an unreadable record with no answer is KEPT - never the global default; the flag still wins', () =>

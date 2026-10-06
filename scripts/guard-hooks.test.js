@@ -1684,7 +1684,10 @@ test('guard-cross-project-write: the review corpus - every outside write denies,
   // arm, `eval`, `coproc`), 12 were missed by both trees (a copy target before a redirection, `cp -t`, `find -exec
   // ... \;`, a line continuation, `>|`, `sh -c`, `npx rimraf`), and 2 non-writes still denied (a subshell `cd`, `popd`).
   const { shapes } = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'cross-write-corpus.json'), 'utf8'));
-  const place = (s) => s.replace(/(?<![\w.-])O(?=[/\s"';)\]]|$)/g, XP_OTHER).replace(/(?<![\w.-])R(?=[/\s"';)\]]|$)/g, XP_ROOT);
+  // On Windows the roots go in with forward slashes: a shape puts them inside JS / Python string literals and nested shell
+  // strings, where `C:\Users` is `C:Users` - a mangled relative name the command really writes - and every layer takes `/`.
+  const slashed = (p) => (process.platform === 'win32' ? p.replace(/\\/g, '/') : p);
+  const place = (s) => s.replace(/(?<![\w.-])O(?=[/\s"';)\]]|$)/g, slashed(XP_OTHER)).replace(/(?<![\w.-])R(?=[/\s"';)\]]|$)/g, slashed(XP_ROOT));
   const wrong = shapes.filter(([, shape, expect]) => xpBash(place(shape)) !== (expect === 'deny' ? 2 : 0)).map(([id, shape, expect]) => `${id} (${expect}): ${JSON.stringify(shape)}`);
   assert.deepStrictEqual(wrong, [], `${wrong.length} of ${shapes.length} shapes judged wrong`);
 });

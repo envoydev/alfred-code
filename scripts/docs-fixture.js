@@ -11,7 +11,9 @@ const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 function repo({ tracked = false, files = {}, docs = {}, docsPath = '.claude/docs' } = {}) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'docs-engine-')));
   const git = (...args) => {
-    const r = rt.spawnCommand('git', args, { cwd: root, encoding: 'utf8' });
+    // 64MB: on Windows autocrlf warns once per file on stderr, and 7,000 files (the 1MB ls-files case) passed the
+    // default 1MB buffer - git was killed and the fixture threw on warnings alone.
+    const r = rt.spawnCommand('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
     if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`);
     return r.stdout.trim();
   };

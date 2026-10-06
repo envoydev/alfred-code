@@ -41,6 +41,9 @@ const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
 const nativePath = (p, platform = process.platform) => (platform === 'win32'
   ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\`)
   : String(p));
+// os.homedir() THROWS on Windows when USERPROFILE is set but empty (uv_os_homedir ENOENT), and a hook calling it at
+// load crashed with exit 1 - failing open (2.1.7, the windows-2025 job). HOME answers then: Git Bash expands `~` from it.
+const homeDir = () => { try { return os.homedir() || process.env.HOME || ''; } catch { return nativePath(process.env.HOME || ''); } };
 
 // ---- heredocs ----------------------------------------------------------------------------------------------------
 // A heredoc BODY is DATA, not shell - a plan that DESCRIBES a command is inert text, and matching it blocks a document
@@ -1157,7 +1160,7 @@ const normPath = (t) => {
   const s = String(t);
   const c = s[0];
   if (c !== '~' && c !== '"' && c !== "'" && s[s.length - 1] !== '"' && s[s.length - 1] !== "'" && process.platform !== 'win32') return s;
-  return nativePath(unquote(s).replace(/^~(?=\/|$)/, os.homedir()));
+  return nativePath(unquote(s).replace(/^~(?=\/|$)/, homeDir()));
 };
 const GLOB_CHARS = /[*?[]/;
 // Wildcard match of one path segment, two pointers - never a regex built from the pattern (a pattern of stars is the
@@ -2113,4 +2116,4 @@ function enclosingEnd(P, at, closesOf) {
 }
 
 module.exports = { scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
-  blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath };
+  blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir };
