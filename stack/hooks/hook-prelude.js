@@ -20,7 +20,7 @@
 // AskUserQuestions. The PLUGIN copy is the one that steps aside, because the copied one is what the
 // project's own settings file points at and is the older, already-trusted route.
 //
-// GATE 3 - the 1.x alias. 2.0.0 lists the 1.x core id as a RETIRED alias carrying the 2.0.0 core,
+// GATE 3 - the 1.x alias. 2.0.0 to 2.2.0 listed the 1.x core id as a RETIRED alias carrying the 2.0.0 core,
 // hooks included (docs/rebrand-evidence.md S20), and an installed alias refreshes into that content
 // at the next session (S21). A 1.x core left at user scope, seen from a project the seed already
 // moved onto `alfred-code`, would fire every guard twice (S23, and S26: two plugins carrying the

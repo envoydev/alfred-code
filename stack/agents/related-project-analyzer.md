@@ -1,7 +1,7 @@
 ---
 name: related-project-analyzer
 description: "Use to characterize ONE sibling repository from the host project's perspective, read-only: a YAML entry (relation, first reads, the seam a host change can break), no files written - the related-projects capture's seat. Do NOT use on the host repo itself, for code style, or to edit."
-tools: mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_alfred-memory_alfred-memory__memory_search, mcp__plugin_alfred-memory_alfred-memory__memory_list, Read, Grep, Glob, Bash, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list
+tools: mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_alfred-memory_alfred-memory__memory_search, mcp__plugin_alfred-memory_alfred-memory__memory_list, Read, Grep, Glob, Bash
 model: sonnet
 effort: medium
 color: cyan

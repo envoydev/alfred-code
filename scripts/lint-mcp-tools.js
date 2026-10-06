@@ -90,9 +90,8 @@ function lintMcpToolNames({ files, names } = {})
 // 59. Every PLUGIN tool spelling names a server the marketplace ships. Check 54 bans the bare form; this one
 // catches the plugin form outliving its plugin - a renamed server (serena -> navigation) leaves
 // `mcp__plugin_<old>_<old>__` in every allowlist and ToolSearch line, and each resolves to nothing, silently.
-// One window is deliberate (M35): the renamed ids stay LISTED as aliases for installs not yet updated, and the seats
-// the 1.x core alias carries grant their old spellings - so an alias spelling passes on a seat's `tools:` /
-// `disallowedTools:` line, and nowhere else.
+// Through 2.2.0 one window was deliberate (M35): the renamed ids were LISTED as aliases and the seats granted their
+// old spellings on a `tools:` / `disallowedTools:` line. 2.2.1 unlisted the aliases, so no old spelling passes.
 const SEAT_GRANT_LINE = (file, line) => /^stack\/agents\/[^/]+\.md$/.test(file) && /^(tools|disallowedTools):/.test(line);
 function lintStaleMcpToolNames({ files, entries, aliases } = {})
 {
@@ -101,7 +100,8 @@ function lintStaleMcpToolNames({ files, entries, aliases } = {})
     try
     {
         if (!shipped) shipped = require('./build-marketplace.js').mcpPlugins();
-        if (!listed) listed = entries ? [] : require('./build-marketplace.js').mcpAliasEntries();
+        // No RETIRED alias is listed since 2.2.1, so an old spelling is stale everywhere.
+        if (!listed) listed = [];
     }
     catch (err) { return [`the MCP entries could not be generated, so the stale tool-name sweep did not run: ${err.message}`]; }
     const servers = new Map(shipped.map((e) => [e.name, new Set(Object.keys(e.mcpServers || {}))]));

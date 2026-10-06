@@ -132,13 +132,11 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   - **The MCP renames** (`meta/stack-manifest.json` `renamed.mcps`, the one table, each old name mapped straight to
     today's - `currentMcp` is single-step): 2.0.0 made `serena`, `context7` and `playwright-<engine>` `navigation`,
     `documentation` and `browser-<engine>`; 2.2.0 (the user's call, 2026-10-06) made `navigation`, `documentation` and
-    `memory` `alfred-navigation`, `alfred-documentation` and `alfred-memory`, plugin and server alike. The 2.2.0 aliases'
-    audience is every 2.x install, so their RETIRED line names `/alfred-code:update` (`build-marketplace.js describeAlias`)
-    and EVERY seat grants the 2.x spellings beside the new ones until the aliases go (`mcp-prose.test.js` M35); the
-    memory readers take either server name (`MEMORY_SERVERS`, `stack/hooks/memory.js` and `scripts/install/memory.js`). The old ids stay LISTED as RETIRED aliases carrying their successor's server under
-    the old name and no dependency (I6: their audience has no 2.x core, so a dependency on it stops the
-    alias's server loading) (`build-marketplace.js mcpAliasEntries`, held by lint 53), so an install not yet updated
-    keeps its tools after a marketplace refresh (S25). Update swaps each old row at THIS run's scope
+    `memory` `alfred-navigation`, `alfred-documentation` and `alfred-memory`, plugin and server alike. The old ids were
+    listed as RETIRED aliases through 2.2.0 and are UNLISTED from 2.2.1 (the user's ruling of 2026-10-06, every install
+    updated), the old tool spellings leaving every seat grant with them; the
+    memory readers take either server name (`MEMORY_SERVERS`, `stack/hooks/memory.js` and `scripts/install/memory.js`). An install still on an old id
+    no longer loads it once the marketplace refreshes (S25) and gets it back on its next update. Update swaps each old row at THIS run's scope
     (`plugins.migrateRenamed`): the successor installed there first, then the old id removed - an
     engine keeps its on/off, a locked server comes on. An old row at ANOTHER scope serves the projects
     there, whose not-yet-updated files still spell the old tools, so it is stood down instead: the

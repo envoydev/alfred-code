@@ -398,8 +398,7 @@ test('the split state - the alias at user scope, the core at project scope, the 
     assert.strictEqual(alias.stdout + alias.stderr, '', 'the alias copy says nothing');
     assert.strictEqual(fire('guard-protected-force-push.js', s.env(CORE_ROOT)).status, 2, 'the core copy is the one denial');
     const market = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8'));
-    const hooksAlias = market.plugins.find((p) => p.name === HOOKS_ALIAS.split('@')[0]);
-    assert.ok(hooksAlias && !hooksAlias.hooks, 'the old hooks alias carries no hooks, so nothing launches from its root');
+    assert.ok(!market.plugins.some((p) => p.name === HOOKS_ALIAS.split('@')[0] || p.name === ALIAS.split('@')[0]), 'neither 1.x id is listed (2.2.1) - an installed copy is what the gate still guards');
     fs.rmSync(s.dir, { recursive: true, force: true });
     const untouched = scopes({ account: on(ALIAS), core: [{ id: ALIAS, scope: 'user' }] });
     assert.strictEqual(fire('guard-protected-force-push.js', untouched.env(ALIAS_ROOT)).status, 2, 'a project the split never reached keeps the alias as its guard');

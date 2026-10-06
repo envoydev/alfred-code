@@ -66,11 +66,9 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   Every seat that judges or writes code holds `mcp__plugin_alfred-documentation_alfred-documentation__*` (alfred-quality-gates
   sends its outside-world claims there); the five read-only gatherers do not. A seat reports through
   SubagentHandback when its tools include it, else its last message (`verifier-memory-before-report`);
-  `scripts/seat-grants.test.js` holds the grants. For the 2.x line the nine seats the retired 1.x core alias
-  carries also grant (and deny) the OLD spelling of each renamed server they hold - `serena`, `context7`,
-  `playwright-<engine>` - because those alias ids still serve their successor's server under the old name to an
-  install not yet updated (2.1.5 M35); an absent server's tool is inert, and check 59 allows an alias spelling on a
-  seat's `tools:` / `disallowedTools:` line only.
+  `scripts/seat-grants.test.js` holds the grants. A seat grants the CURRENT spelling only: the old spellings
+  (`serena`, `context7`, `playwright-<engine>`, the pre-2.2.0 `navigation` / `documentation` / `memory`) left every
+  grant in 2.2.1, when the RETIRED alias ids stopped being listed, and check 59 fails one anywhere.
   Pins: resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers
   `sonnet`/`medium`, support seats `sonnet`, and three read-only reasoners on `opus` - `issue-diagnoser-ci`
   `high`, `issue-diagnoser-runtime` and `security-auditor` `xhigh` (the reasons, and the A/B they still lack, in

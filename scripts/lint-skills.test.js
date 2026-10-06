@@ -799,18 +799,18 @@ test('check 48: a core missing a stack wiring, or a core with no hooks, is a fin
     assert.ok(lintHooksEntry(none).some((f) => /no `alfred-code` entry/.test(f)), 'no core at all is caught');
 });
 
-test('check 49: the two 1.x aliases pass as generated, and a drifted alias, a renames key or a hooks entry fail', () => {
+test('check 49: the live file is clean, and a stale RETIRED alias, a renames key or a hooks entry fail', () => {
     const { lintMarketplaceEntries } = require('./lint-skills.js');
     const { LEGACY } = require('./install/brand.js');
-    assert.deepStrictEqual(lintMarketplaceEntries(liveMarketplace()), [], 'the live file, aliases and all, is clean');
+    assert.deepStrictEqual(lintMarketplaceEntries(liveMarketplace()), [], 'the live file is clean');
 
-    const drifted = liveMarketplace();
-    drifted.plugins.find((p) => p.name === LEGACY.hooks).hooks = { Stop: [] };
-    assert.ok(lintMarketplaceEntries(drifted).some((f) => f.includes(`entry ${LEGACY.hooks} does not match the generated one`)), 'an alias edited by hand is drift');
-
-    const missing = liveMarketplace();
-    missing.plugins = missing.plugins.filter((p) => p.name !== LEGACY.core);
-    assert.ok(lintMarketplaceEntries(missing).some((f) => f.includes(`missing the generated entry ${LEGACY.core}`)), 'a dropped alias strands a 1.x install (S25)');
+    // 2.2.1: no RETIRED alias is listed - a 1.x id or a renamed MCP id left in the file is named with its fix.
+    for (const name of [LEGACY.core, LEGACY.hooks, 'serena', 'memory', 'playwright-chrome'])
+    {
+        const stale = liveMarketplace();
+        stale.plugins.push({ name, source: './', description: 'RETIRED', skills: [] });
+        assert.ok(lintMarketplaceEntries(stale).some((f) => f.includes(`carries ${name}, a RETIRED alias no longer listed`)), `${name} left listed is a finding`);
+    }
 
     const renamed = liveMarketplace();
     renamed.renames = { [LEGACY.core]: 'alfred-code' };

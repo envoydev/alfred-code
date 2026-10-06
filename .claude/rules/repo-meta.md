@@ -22,19 +22,17 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
     the placement rule in `scripts/plugin-placement.js`: the core is the router skill, every seat and
     every stack hook, every stack skill is library (2.1.0). Regenerate with `npm run marketplace`; lint
     checks 44 and 45 fail when the file is stale, a second plugin appears, or an item has no home or
-    two. The live marketplace also lists the two 1.x ids as RETIRED aliases (`aliasEntries`, from
-    `brand.js` `LEGACY`): the core under its old name carrying what the core carried before 2.1.0 (the
-    always closure, `formerCore` - a straggler has no copies yet), and the old hooks id carrying
-    nothing. No `renames` key -
-    a rename strands a 1.x install, a listed id refreshes in place (`docs/rebrand-evidence.md` S11,
-    S21); lint 49 fails on a `renames` key or an `alfred-code-hooks` entry.
+    two. The two 1.x ids and the renamed MCP ids were listed as RETIRED aliases through 2.2.0; from 2.2.1
+    (the user's ruling of 2026-10-06) none is (`UNLISTED_ALIASES` and the MCP prune drop each from the live
+    file, lint 49 names one still there), and update still migrates an install that holds one. No `renames` key -
+    a rename strands an install (`docs/rebrand-evidence.md` S11); lint 49 fails on a `renames` key or an
+    `alfred-code-hooks` entry.
   - `retired-entries.json` - the 20 per-stack entries 1.2.0 shipped, FROZEN. No longer LISTED in the marketplace
     (2.1.7, the user's ruling of 2026-10-06 - the Discover tab showed 20 'RETIRED in 1.3.0' rows; `build-marketplace.js
     unlistedRetired` drops each from an applied marketplace, lint 49 names one still there). An install still holding
     one migrates from this file alone: update copies its picks and uninstalls it (leaves first); a PARKED one, or one
     at another scope, is kept and logged with its uninstall command. The FILE stays while the names are retired: it is
-    the only record of what each entry carried. The two 1.x core aliases and the six renamed MCP ids stay listed
-    through the 2.x line (a straggler on them keeps its update command and its tools).
+    the only record of what each entry carried.
   - `evals/library/` - one `claude plugin eval` case per stack profile, graded `arm: both`, plus the
     three `size-first-*` cases of `task-solve` (2.1.4 - a library skill only the bundle carries);
     `npm run eval-bundle -- <out>` puts the core and the whole library into ONE plugin named
