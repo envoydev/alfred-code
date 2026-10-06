@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { buildEntries, coreEntry, applyToMarketplace, unlistedRetired, aliasEntries, mcpAliasEntries, hooksBlock, parseHookWirings, mergeHooks, FOLDED_ENTRIES } = require('./build-marketplace.js');
+const { buildEntries, coreEntry, applyToMarketplace, unlistedRetired, hooksBlock, parseHookWirings, mergeHooks, FOLDED_ENTRIES } = require('./build-marketplace.js');
 const { LEGACY } = require('./install/brand.js');
 const { CORE_DEP_PLUGINS } = require('./install/plugins.js');
 const { LOCKED } = require('./install/mcp.js');
@@ -142,31 +142,15 @@ test('mergeHooks keeps one group per matcher, the first block\'s hooks first', (
     assert.deepStrictEqual(own.PreToolUse[0].hooks, [{ command: 'own' }], 'the inputs are not mutated');
 });
 
-// Rulings R24 and 'retired aliases' (docs/rebrand-evidence.md S20-S25): 2.0.0 ships no `renames` map
-// - a rename strands a 1.x install with zero hooks and skills (S11, S16). The 1.x ids stay LISTED.
-test('the two 1.x ids are generated retired aliases: the core under its old name, and an empty hooks id', () => {
-    const [core, hooks] = aliasEntries();
-    const wantDescription = `RETIRED in 2.0.0 - Alfred Code under its 1.x name. Run /${LEGACY.core}:update: it installs alfred-code and removes this entry.`;
-    assert.strictEqual(core.name, LEGACY.core);
-    assert.strictEqual(core.description, wantDescription);
-    // The core renamed, carrying what the core carried BEFORE 2.1.0 - the always closure: a straggler on
-    // the 1.x id has no project copies yet, so the 2.1.0 lists would take its habit skills away.
-    const former = require('./plugin-placement.js').formerCore();
-    assert.deepStrictEqual({ ...core, name: 'alfred-code', description: coreEntry().description, skills: coreEntry().skills, agents: coreEntry().agents }, coreEntry(), 'the core alias is the core, renamed');
-    assert.deepStrictEqual(core.skills, ['./setup-plugin/skills/alfred-code', ...former.skills.map((s) => `./stack/skills/${s}`)]);
-    assert.deepStrictEqual(core.agents, former.agents.map((a) => `./stack/agents/${a}.md`));
-    assert.ok(core.skills.includes('./stack/skills/habits-done-gate') && !core.agents.includes('./stack/agents/aspnet-implementer.md'));
-    // S20: validated under --strict with no component but an explicit empty skills list - omitting
-    // the key would auto-discover the shared root's skill folders.
-    assert.deepStrictEqual(Object.keys(hooks), ['name', 'source', 'description', 'version', 'author', 'strict', 'skills']);
-    assert.strictEqual(hooks.name, LEGACY.hooks);
-    assert.strictEqual(hooks.source, './');
-    assert.strictEqual(hooks.description, wantDescription);
-    assert.strictEqual(hooks.strict, false);
-    assert.deepStrictEqual(hooks.skills, []);
-    assert.strictEqual(hooks.version, core.version);
-    assert.deepStrictEqual(hooks.author, core.author);
-    assert.ok(!/—/.test(wantDescription), 'house voice: no em-dash');
+// 2.2.1 (the user's ruling of 2026-10-06): no RETIRED alias is listed - the two 1.x ids and every id `renamed.mcps`
+// left behind (a browser engine renamed by its prefix) are out of the live file, which an update migrates without.
+const RETIRED_ALIAS_NAMES = [LEGACY.core, LEGACY.hooks, ...Object.keys(require('./install/manifest.js').loadManifest(path.join(__dirname, '..')).renamed.mcps)
+    .flatMap((old) => (old === 'playwright' ? ['chrome', 'msedge', 'firefox', 'webkit'].map((e) => `${old}-${e}`) : [old]))];
+test('no RETIRED alias is generated or listed: the 1.x ids and the renamed MCP ids are gone', () => {
+    assert.strictEqual(RETIRED_ALIAS_NAMES.length, 11, 'the two 1.x ids, serena, context7, the four playwright engines and the three 2.2.0 ids');
+    for (const name of RETIRED_ALIAS_NAMES) assert.strictEqual(shippedBy[name], undefined, `${name} is still listed`);
+    assert.strictEqual(SHIPPED.plugins.filter((p) => /^RETIRED/.test(p.description || '')).length, 0, 'no RETIRED row at all');
+    assert.ok(!('aliasEntries' in require('./build-marketplace.js')) && !('mcpAliasEntries' in require('./build-marketplace.js')), 'no generator is left to bring one back');
 });
 
 test('malformed input fails loudly rather than emitting a short list', () => {
@@ -298,20 +282,6 @@ test('no generated MCP entry declares a dependency - none may block a core disab
     }
 });
 
-// I6: the renamed ids exist for an install NOT yet updated - a 1.x or 2.0.0 one whose core is the old id
-// or absent. An alias naming the 2.x core is unmet for exactly that audience: after a catalog refresh the
-// CLI reports 'Dependency "alfred-code@..." is not installed' and the alias's server does not load
-// (measured on 2.1.284, spike in the plugin audit).
-test('no renamed MCP alias names a dependency, so its not-yet-updated audience keeps its server (I6)', () => {
-    const aliases = mcpAliasEntries();
-    assert.ok(aliases.some((a) => a.name.startsWith('playwright-')), 'the browser aliases are among them');
-    for (const alias of aliases)
-    {
-        assert.strictEqual(alias.dependencies, undefined, `${alias.name} declares ${JSON.stringify(alias.dependencies)}`);
-        assert.strictEqual(shippedBy[alias.name].dependencies, undefined, `the live ${alias.name} entry still declares a dependency`);
-    }
-});
-
 // Both upstreams send PostHog usage events unless ANONYMIZED_TELEMETRY is 'false' (read in each wheel's
 // lifespan: windows-mcp 0.8.5 and macos-mcp 0.4.6 __main__.py, default 'true'). A server driving the
 // user's own desktop starts with it off.
@@ -320,29 +290,13 @@ test('the two desktop MCP plugins start their upstream with its telemetry off', 
         assert.deepStrictEqual(shippedBy[name].mcpServers[name].env, { ANONYMIZED_TELEMETRY: 'false' }, `${name} must pass ANONYMIZED_TELEMETRY=false`);
 });
 
-// M22: a retired entry's audience is an install still on the 1.x core, whose update command is spelled with the
-// 1.x plugin name - the core alias's own description already says so. '/alfred-code:update' does not exist there.
-// A 2.0.0 rename's audience is a 1.x install, so it names the 1.x command; a 2.2.0 rename's is a 2.x install, which has
-// only the new one.
-test('M22 every retired entry names the update command its audience has', () =>
-{
-    const late = ['navigation', 'documentation', 'memory'];
-    for (const entry of mcpAliasEntries())
-    {
-        const [want, never] = late.includes(entry.name) ? ['/alfred-code:update', `/${LEGACY.core}:update`] : [`/${LEGACY.core}:update`, '/alfred-code:update'];
-        assert.ok(entry.description.includes(want), `${entry.name}: ${entry.description}`);
-        assert.ok(!entry.description.includes(never), `${entry.name} names a command its audience lacks`);
-        assert.strictEqual(shippedBy[entry.name].description, entry.description, `the live ${entry.name} entry is regenerated`);
-    }
-});
-
 // M24: every uvx-started server passes the release's dependency cut-off (the pins file's refreshed day, its last
 // second UTC) to its launcher, beside the pin it was generated with; the npx browser has no uvx and takes none.
 test('M24 each uvx MCP entry hands its launcher the release cut-off, and the browser entries none', () =>
 {
     const pins = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8'));
     const cutoff = `${pins.refreshed}T23:59:59Z`;
-    for (const name of ['navigation', 'memory', 'windows-desktop', 'macos-desktop'])
+    for (const name of ['alfred-navigation', 'alfred-memory', 'windows-desktop', 'macos-desktop'])
     {
         const args = shippedBy[name].mcpServers[name].args;
         const at = args.indexOf('--exclude-newer');
@@ -359,7 +313,7 @@ test('M24 each uvx MCP entry hands its launcher the release cut-off, and the bro
 // Context7-API-Key is the anonymous tier, a bogus one is 'Invalid API key' - the server reads the name.
 test('M25 the documentation entry sends the key as Context7-API-Key, empty when unset', () =>
 {
-    const server = shippedBy.documentation.mcpServers.documentation;
+    const server = shippedBy['alfred-documentation'].mcpServers['alfred-documentation'];
     assert.deepStrictEqual(server.headers, { 'Context7-API-Key': '${CONTEXT7_API_KEY:-}' });
     const { CONTEXT7_REMOTE } = require('./install/mcp.js');
     assert.strictEqual(CONTEXT7_REMOTE.header, 'Context7-API-Key: ${CONTEXT7_API_KEY:-}', 'the copy route sends the same header');
@@ -384,25 +338,19 @@ test('a retired name missing from the frozen file is dropped from the marketplac
     assert.ok(mkt.plugins.find((p) => p.name === 'third-party'), 'a name nobody retired is kept');
 });
 
-// Ruling 'retired aliases': 2.0.0 ships NO renames map (S11/S16 - a rename strands a 1.x install
-// with zero hooks and skills), and no hooks entry (the fold). The live file is what a CLI reads.
-test('the live marketplace carries no renames key, no hooks entry, and both 1.x aliases as generated', () => {
-    assert.ok(!('renames' in SHIPPED), 'a renames key would move a 1.x install onto an id it never installs');
+// The live file carries NO renames map (S11/S16 - a rename strands an install) and no hooks entry (the fold).
+test('the live marketplace carries no renames key and no hooks entry', () => {
+    assert.ok(!('renames' in SHIPPED), 'a renames key would move an install onto an id it never installs');
     assert.strictEqual(shippedBy['alfred-code-hooks'], undefined, 'the hooks ride the core');
-    for (const alias of aliasEntries())
-        assert.deepStrictEqual(shippedBy[alias.name], alias, `${alias.name} is listed exactly as generated`);
-    assert.strictEqual(SHIPPED.plugins.filter((p) => /^RETIRED/.test(p.description || '')).length, 11, 'the two aliases and the nine renamed MCP ids (six from 2.0.0, three from 2.2.0) - the 1.3.0 per-stack entries are no longer listed');
-    for (const alias of mcpAliasEntries())
-        assert.deepStrictEqual(shippedBy[alias.name], alias, `${alias.name} is listed exactly as generated`);
 });
 
-test('--write-marketplace drops a renames key and the hooks entry, and lists both aliases', () => {
+test('--write-marketplace drops a renames key, the hooks entry and a stale 1.x alias', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mkt-'));
     const file = path.join(tmp, 'marketplace.json');
     const stale = JSON.parse(JSON.stringify(SHIPPED));
     stale.renames = { [LEGACY.core]: 'alfred-code', [LEGACY.hooks]: 'alfred-code-hooks' };
-    stale.plugins = stale.plugins.filter((p) => p.name !== LEGACY.core && p.name !== LEGACY.hooks)
-        .concat({ name: 'alfred-code-hooks', source: './', description: 'pre-fold', hooks: { Stop: [] } });
+    stale.plugins = stale.plugins.concat({ name: 'alfred-code-hooks', source: './', description: 'pre-fold', hooks: { Stop: [] } },
+        { name: LEGACY.core, source: './', description: 'RETIRED in 2.0.0', skills: [] }, { name: LEGACY.hooks, source: './', description: 'RETIRED in 2.0.0', skills: [] });
     fs.writeFileSync(file, JSON.stringify(stale, null, 2) + '\n');
     try
     {
@@ -410,7 +358,7 @@ test('--write-marketplace drops a renames key and the hooks entry, and lists bot
         const after = JSON.parse(fs.readFileSync(file, 'utf8'));
         assert.ok(!('renames' in after), 'the renames key is deleted');
         assert.strictEqual(after.plugins.find((p) => p.name === 'alfred-code-hooks'), undefined, 'the hooks entry is dropped');
-        for (const alias of aliasEntries()) assert.deepStrictEqual(after.plugins.find((p) => p.name === alias.name), alias);
+        for (const name of [LEGACY.core, LEGACY.hooks]) assert.strictEqual(after.plugins.find((p) => p.name === name), undefined, `${name} is dropped`);
         const once = fs.readFileSync(file, 'utf8');
         assert.match(run(['--write-marketplace', '--marketplace-file', file]), /marketplace current/, 'a re-run changes nothing');
         assert.strictEqual(fs.readFileSync(file, 'utf8'), once);
@@ -472,12 +420,12 @@ test('the README trust surface counts what the core entry carries', () =>
 
 // Review finding 2: code.claude.com/docs/en/plugins-reference - 'If you declare `options` on any field,
 // users on Claude Code versions before v2.1.271 can't load the plugin'. The core carries every guard, so
-// no userConfig field of the core or its 1.x alias declares one - generated or committed.
-test('no userConfig field of the core or its 1.x alias declares options, so an older CLI still loads it', () => {
+// no userConfig field of the core declares one - generated or committed.
+test('no userConfig field of the core declares options, so an older CLI still loads it', () => {
     const fields = (list) => list.flatMap((e) => Object.entries(e.userConfig || {}).map(([k, f]) => [`${e.name}.${k}`, f]));
     const committed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8')).plugins
-        .filter((e) => e.name === coreEntry().name || e.name === LEGACY.core);
-    const all = [...fields([coreEntry(), ...aliasEntries()]), ...fields(committed), ...fields(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8')).entries)];
+        .filter((e) => e.name === coreEntry().name);
+    const all = [...fields([coreEntry()]), ...fields(committed), ...fields(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8')).entries)];
     assert.ok(all.some(([k]) => k.endsWith('.hook_profile')), 'the hook profile field is still declared');
     for (const [key, field] of all) assert.ok(!Object.hasOwn(field, 'options'), `${key} declares options`);
     const profile = coreEntry().userConfig.hook_profile;

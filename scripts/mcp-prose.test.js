@@ -310,50 +310,24 @@ test('R13 the macOS lines name a black vision snapshot, never a screenshot the s
     }
 });
 
-// M35: the retired 1.x core alias carries these nine seats, and the renamed MCP aliases (serena, context7, playwright-*)
-// keep serving their successor's server under the OLD name - so a 1.x install whose plugins update before its own
-// update runs had seats whose grants named only the new spelling and resolved to nothing. For the 2.x line each alias
-// seat also grants the old spelling of every renamed server it holds (an absent server's tool is inert), and denies
-// the old spelling of every browser tool it denies. No other seat carries a 1.x spelling.
-// 2.2.0 renamed navigation, documentation and memory to their alfred- names, and THEIR audience is every 2.x install:
-// a core that updates before the project's own update meets the old navigation@ / memory@ / documentation@ rows,
-// which now carry the successor's server under the old name. So EVERY seat granting an alfred- tool grants its 2.x
-// spelling too, until the line that retires those aliases.
-test('M35 every seat grants the 2.2.0 renames\' old spellings; only the 1.x alias seats grant the 2.0.0 ones', () =>
+// M35, through 2.2.0: the RETIRED aliases served their successor's server under the old name, so seats granted both
+// spellings.
+// 2.2.1 unlisted every RETIRED alias (the user's ruling of 2026-10-06), so no old spelling resolves anywhere: a seat
+// grants (and denies) the CURRENT spelling only.
+test('M35 no seat grants or denies an old spelling of a renamed server', () =>
 {
-    const alias = JSON.parse(read('.claude-plugin/marketplace.json')).plugins.find((p) => p.name === 'claude-stack'); // legacy-name
-    const seats = alias.agents.map((a) => path.basename(a, '.md'));
-    assert.strictEqual(seats.length, 9);
-    const late = { 'alfred-navigation': 'navigation', 'alfred-documentation': 'documentation', 'alfred-memory': 'memory' };
-    const early = ['serena', 'context7', 'playwright-chrome', 'playwright-firefox', 'playwright-webkit', 'playwright-msedge'];
+    const old = ['navigation', 'documentation', 'memory', 'serena', 'context7', 'playwright-chrome', 'playwright-firefox', 'playwright-webkit', 'playwright-msedge'];
     const line = (text, key) => ((text.split('\n').find((l) => l.startsWith(`${key}:`)) || '').slice(key.length + 1)).split(',').map((t) => t.trim()).filter(Boolean);
-    const toEarly = { 'alfred-navigation': 'serena', 'alfred-documentation': 'context7' };
-    const parts = (spelling) => /^mcp__plugin_([a-z-]+)_\1__(.+)$/.exec(spelling);
-    const spell = (plugin, tool) => `mcp__plugin_${plugin}_${plugin}__${tool}`;
-    const earlyOf = (spelling) =>
-    {
-        const m = parts(spelling);
-        if (!m) return null;
-        const old = toEarly[m[1]] || (m[1].startsWith('browser-') ? `playwright-${m[1].slice('browser-'.length)}` : null);
-        return old ? spell(old, m[2]) : null;
-    };
-    let lateSeen = 0;
+    let seen = 0;
     for (const f of fs.readdirSync(path.join(ROOT, 'stack/agents')).filter((n) => n.endsWith('.md')))
     {
         const text = read(`stack/agents/${f}`);
-        const seat = path.basename(f, '.md');
         for (const key of ['tools', 'disallowedTools'])
-        {
-            const list = line(text, key);
-            for (const t of list)
+            for (const t of line(text, key))
             {
-                const m = parts(t);
-                if (m && late[m[1]]) { lateSeen += 1; assert.ok(list.includes(spell(late[m[1]], m[2])), `${seat} ${key} names ${t} but not its 2.x spelling`); }
+                if (/^mcp__plugin_alfred-/.test(t)) seen += 1;
+                assert.ok(!old.some((o) => t.startsWith(`mcp__plugin_${o}_${o}__`)), `${f} ${key} still names ${t}`);
             }
-            const hasEarly = list.some((t) => early.some((o) => t.startsWith(`mcp__plugin_${o}_${o}__`)));
-            if (!seats.includes(seat)) { assert.ok(!hasEarly, `${seat} is no alias seat and carries a 1.x spelling`); continue; }
-            for (const t of list) { const old = earlyOf(t); if (old) assert.ok(list.includes(old), `${seat} ${key} names ${t} but not ${old}`); }
-        }
     }
-    assert.ok(lateSeen > 0, 'no seat names an alfred- tool - the check read nothing');
+    assert.ok(seen > 0, 'no seat names an alfred- tool - the check read nothing');
 });

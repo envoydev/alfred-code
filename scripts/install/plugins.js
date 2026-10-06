@@ -732,8 +732,8 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], carriers
     return gone;
 }
 
-// THE 1.x MOVE. 2.0.0 ships no rename: the 1.x ids stay listed as RETIRED aliases - the core's alias
-// carries the 2.0.0 core under its old name, the hooks alias nothing (docs/rebrand-evidence.md S20) -
+// THE 1.x MOVE. 2.0.0 ships no rename: the 1.x ids were listed as RETIRED aliases through 2.2.0 - the core's alias
+// carried the 2.0.0 core under its old name, the hooks alias nothing (docs/rebrand-evidence.md S20) -
 // so the install is moved here, at the old core's own scope and key. The new core is INSTALLED, never
 // `update`d (it was never installed under any name, S19), and only once that took, the retired
 // per-stack entries go the `prunedRetired` way, then the hooks alias, then the core alias - the order

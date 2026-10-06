@@ -28,10 +28,10 @@
 // there is no separate hooks entry, so a project that has the core has the guards.
 const fs = require('node:fs');
 const path = require('node:path');
-const { placement, formerCore, readRetiredEntries, CORE } = require('./plugin-placement.js');
+const { placement, readRetiredEntries, CORE } = require('./plugin-placement.js');
 const { timeoutFor } = require('./install/settings.js');
 const { loadManifest } = require('./install/manifest.js');
-const { BRAND, LEGACY } = require('./install/brand.js');
+const { LEGACY } = require('./install/brand.js');
 const { HOOK_PROFILES } = require('../stack/hooks/hook-prelude.js');
 const { wiringRows } = require('../stack/hooks/shell-guards.js');
 const fileGuards = require('../stack/hooks/file-guards.js');
@@ -155,35 +155,15 @@ function buildEntries(options = {})
 // The per-stack entries retired in 1.3.0 are NOT listed (2.1.7, the user's ruling of 2026-10-06: the Discover tab
 // showed 20 'RETIRED in 1.3.0' rows nobody can use). Three releases and a major past their retirement, update
 // migrates an install still holding one from meta/retired-entries.json alone - its picks copied, the entry
-// uninstalled - so the listing carried nothing an update needs. The 1.x core alias below stays listed, so a
-// 1.x install still has `/claude-stack:update` to run. An applied marketplace drops every such name. // legacy-name
+// uninstalled - so the listing carried nothing an update needs. An applied marketplace drops every such name.
 const unlistedRetired = (repo) => readRetiredEntries(repo).map((e) => e.name);
 
-// THE 1.x IDS, LISTED - never renamed. 2.0.0 ships no `renames` map: a rename strands a 1.x install
-// with no hooks and no skills for several sessions (docs/rebrand-evidence.md S11, S16), while an id
-// that stays listed refreshes in place (S21). So both 1.x ids stay in the catalog through the 2.x
-// line, and the seed's migration installs the new core and removes them (install/plugins.js
-// migrateLegacy). The core's alias is the core under its old name with the ITEMS the core carried
-// before 2.1.0 (`formerCore`, the always closure): a straggler on it has no project copies yet, so
-// the 2.1.0 core's own lists - no skill, every seat undenied - would take its habit skills away and
-// list 44 seats it never picked until its update runs. The hooks id carries nothing - an explicit
-// empty `skills`, because an entry that omits the key auto-discovers the shared root's skill folders
-// (S20, which validated exactly this shape under --strict). Dropping either from the catalog is a
-// total blackout for a straggler still on it (S25).
-function aliasEntries(options = {})
-{
-    const core = coreEntry(options);
-    const former = formerCore(options);
-    const description = `RETIRED in 2.0.0 - Alfred Code under its 1.x name. Run /${LEGACY.core}:update: it installs ${CORE} and removes this entry.`;
-    return [
-        {
-            ...core, name: LEGACY.core, description,
-            skills: ['./setup-plugin/skills/alfred-code'].concat(former.skills.map((s) => `./stack/skills/${s}`)),
-            agents: former.agents.map((a) => `./stack/agents/${a}.md`),
-        },
-        { name: LEGACY.hooks, source: './', description, version: core.version, author: core.author, strict: false, skills: [] },
-    ];
-}
+// THE RETIRED IDS, UNLISTED (2.2.1, the user's ruling of 2026-10-06: every install that resolved through one was
+// updated). The two 1.x ids and the renamed MCP ids were listed as RETIRED aliases through 2.2.0 so a straggler kept
+// loading (an id a catalog drops stops loading in every project still enabled on it, S25); from 2.2.1 the live file
+// drops each. An install still holding one migrates the same way as before - update installs the successor and
+// uninstalls the old id (install/plugins.js migrateLegacy / migrateRenamed) - it only no longer loads until it does.
+const UNLISTED_ALIASES = [LEGACY.core, LEGACY.hooks]; // legacy-name
 
 function serialize(entries)
 {
@@ -204,7 +184,7 @@ const FOLDED_ENTRIES = ['alfred-code-hooks'];
 // except a RETIRED or FOLDED name the entries no longer carry: it would keep a dead entry installable.
 function applyToMarketplace(mkt, entries, { retired = [] } = {})
 {
-    const gone = new Set([...retired, ...FOLDED_ENTRIES, ...unlistedRetired()]);
+    const gone = new Set([...retired, ...FOLDED_ENTRIES, ...UNLISTED_ALIASES, ...unlistedRetired()]);
     const kept = (mkt.plugins || []).filter(p => !entries.some(e => e.name === p.name) && !gone.has(p.name));
     mkt.plugins = kept.concat(entries);
     return mkt;
@@ -459,53 +439,9 @@ function mcpPlugins(options = {})
     });
 }
 
-// THE RENAMED MCP IDS, LISTED - the 1.x core's rule (aliasEntries) applied to the servers 2.0.0
-// renamed (meta/stack-manifest.json `renamed.mcps`). An id a catalog drops stops loading in every
-// project still enabled on it the moment its marketplace is refreshed, silently (S25) - and one
-// project's update refreshes it for every project on the account. So each old id stays listed,
-// RETIRED, carrying its successor's server under the OLD server name: a project not yet updated
-// keeps the tool names its copies spell, and its next update swaps the plugin for the new one
-// (install/plugins.js migrateRenamed). A browser engine is renamed by its prefix. Kept until
-// evidence shows no install still resolves through them - never on a release cadence.
-// The release each old id was renamed in, and the update command its audience runs: a 2.0.0 id is held by a 1.x
-// install (the 1.x core's command), a 2.2.0 id by a 2.x one.
-const RENAMED_IN_2_2 = new Set(['navigation', 'documentation', 'memory']);
-function describeAlias(old, now)
-{
-    const late = RENAMED_IN_2_2.has(old);
-    return `RETIRED in ${late ? '2.2.0' : '2.0.0'} - renamed ${now}. Run /${late ? BRAND.core : LEGACY.core}:update: it installs ${now} in its place and removes this entry.`;
-}
-
-function mcpAliasEntries(options = {})
-{
-    const renamed = options.renamedMcps || loadManifest(options.repo || REPO).renamed.mcps;
-    const current = options.entries || mcpPlugins(options);
-    const out = [];
-    for (const [from, to] of Object.entries(renamed))
-    {
-        const pairs = current.some((e) => e.name === to) ? [[from, to]]
-            : PW_ENGINES.filter((e) => current.some((c) => c.name === `${to}-${e}`)).map((e) => [`${from}-${e}`, `${to}-${e}`]);
-        for (const [old, now] of pairs)
-        {
-            // I6: an alias names no dependency, whatever its successor carries - its audience is an
-            // install NOT yet updated, whose core is the 1.x id or none, so a dependency on the 2.x core
-            // is unmet there and the CLI stops loading the alias's server (measured on 2.1.284).
-            const { dependencies, ...entry } = current.find((e) => e.name === now);
-            const alias = {
-                ...entry,
-                name: old,
-                description: describeAlias(old, now),
-                mcpServers: { [old]: entry.mcpServers[now] },
-            };
-            out.push(alias);
-        }
-    }
-    return out;
-}
-
 function applyMcpPlugins(mkt, entries)
 {
-    const wanted = entries || mcpPlugins().concat(mcpAliasEntries());
+    const wanted = entries || mcpPlugins();
     const plugins = Array.isArray(mkt.plugins) ? mkt.plugins : (mkt.plugins = []);
     for (const w of wanted)
     {
@@ -515,8 +451,8 @@ function applyMcpPlugins(mkt, entries)
     // PRUNE what this generator used to own. An MCP entry carries servers and nothing else, so it
     // is recognisable without a list of past names - which matters, because a regeneration that
     // only adds leaves a split entry (one playwright -> one plugin per engine) behind in the
-    // marketplace, enabled on every machine that already installed it. A RENAMED one is not left
-    // behind: its alias is among the wanted entries (mcpAliasEntries), so it stays listed on purpose.
+    // marketplace, enabled on every machine that already installed it. A RENAMED one's old id goes the same way
+    // (2.2.1: the RETIRED aliases are no longer listed).
     const keep = new Set(wanted.map(w => w.name));
     const ownedByMcp = p => p && p.mcpServers && !p.skills && !p.agents && !p.commands && !p.hooks;
     for (let i = plugins.length - 1; i >= 0; i--)
@@ -543,7 +479,7 @@ function main(argv)
     {
         const file = path.resolve(arg('--marketplace-file', MARKETPLACE));
         const mkt = readJson(file, 'marketplace.json');
-        const entries = mcpPlugins(options).concat(mcpAliasEntries(options));
+        const entries = mcpPlugins(options);
         const before = JSON.stringify(mkt, null, 2) + '\n';
         const after = JSON.stringify(applyMcpPlugins(mkt, entries), null, 2) + '\n';
         if (before === after) { console.log(`mcp entries current: ${entries.length} plugins`); return 0; }
@@ -575,9 +511,9 @@ function main(argv)
         const file = path.resolve(arg('--marketplace-file', MARKETPLACE));
         const mkt = readJson(file, 'marketplace.json');
         const before = JSON.stringify(mkt, null, 2) + '\n';
-        const listed = entries.concat(aliasEntries(options));
+        const listed = entries;
         const applied = applyToMarketplace(mkt, listed, { retired: loadManifest(REPO).retired.plugins });
-        // No renames map in 2.0.0 (S11/S16): the 1.x ids are LISTED as aliases instead.
+        // No renames map (S11/S16): a rename strands an install; update migrates it instead.
         delete applied.renames;
         const after = JSON.stringify(applied, null, 2) + '\n';
         if (before === after) { console.log(`marketplace current: ${listed.length} entries`); return 0; }
@@ -601,4 +537,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { buildEntries, coreEntry, aliasEntries, unlistedRetired, serialize, applyToMarketplace, applyMcpPlugins, mcpPlugins, mcpAliasEntries, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE, PINS_FILE };
+module.exports = { buildEntries, coreEntry, unlistedRetired, UNLISTED_ALIASES, serialize, applyToMarketplace, applyMcpPlugins, mcpPlugins, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE, PINS_FILE };

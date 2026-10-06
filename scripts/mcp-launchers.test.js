@@ -280,7 +280,7 @@ test('serena-launch: the shipped navigation entry starts serena on the stack con
     const { dir } = project('serena-context');
     fs.mkdirSync(path.join(dir, '.git'));
     const uvx = stubUvx('serena-context');
-    const args = entryArgs('navigation');
+    const args = entryArgs('alfred-navigation');
     execFileSync(process.execPath, [SERENA, ...args], { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir }, stdio: 'pipe' });
     const argv = uvx.argv().argv;
     assert.strictEqual(argv[argv.indexOf('--context') + 1], SERENA_CONTEXT, argv.join(' '));
@@ -541,7 +541,7 @@ const PINS_FILE = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'mcp-pins.j
 const CUTOFF = `${PINS_FILE.refreshed}T23:59:59Z`;
 test('M24 uvx launchers: the shipped entry\'s --exclude-newer cut-off reaches uvx right after the Python pin', POSIX, () =>
 {
-    const cases = [['navigation', SERENA], ['memory', LAUNCH], ['windows-desktop', DESKTOP], ['macos-desktop', DESKTOP]];
+    const cases = [['alfred-navigation', SERENA], ['alfred-memory', LAUNCH], ['windows-desktop', DESKTOP], ['macos-desktop', DESKTOP]];
     for (const [name, launcher] of cases)
     {
         const { dir, acct } = project(`cutoff-${name}`, { settings: { ALFRED_CODE_MEMORY_DB: path.join(TMP, `cutoff-${name}-db`, 'memory.db') } });
@@ -559,7 +559,7 @@ test('M24 uvx launchers: a UV_EXCLUDE_NEWER the user set wins over the cut-off, 
     const { dir } = project('cutoff-own');
     fs.mkdirSync(path.join(dir, '.git'), { recursive: true });
     const own = stubUvx('cutoff-own');
-    const res = require('node:child_process').spawnSync(process.execPath, [SERENA, ...entryArgs('navigation')], { cwd: dir, env: { ...BARE, PATH: own.PATH, HOME: dir, UV_EXCLUDE_NEWER: 'false' }, encoding: 'utf8' });
+    const res = require('node:child_process').spawnSync(process.execPath, [SERENA, ...entryArgs('alfred-navigation')], { cwd: dir, env: { ...BARE, PATH: own.PATH, HOME: dir, UV_EXCLUDE_NEWER: 'false' }, encoding: 'utf8' });
     assert.ok(!own.argv().argv.includes('--exclude-newer'), own.argv().argv.join(' '));
     assert.match(res.stderr, /UV_EXCLUDE_NEWER=false is set - it replaces the release cut-off/);
     const bad = stubUvx('cutoff-bad');
@@ -573,8 +573,8 @@ test('M24 uvx launchers: a UV_EXCLUDE_NEWER the user set wins over the cut-off, 
 test('M24 uvx launchers: a UV_EXCLUDE_NEWER only a settings file names reaches uv, in place of the cut-off', POSIX, () =>
 {
     const db = path.join(TMP, 'cutoff-file-db', 'memory.db');
-    const cases = [['navigation', SERENA, { settings: { UV_EXCLUDE_NEWER: 'false' } }, 'false'],
-        ['memory', LAUNCH, { settings: { ALFRED_CODE_MEMORY_DB: db }, local: { UV_EXCLUDE_NEWER: '2026-01-15' } }, '2026-01-15'],
+    const cases = [['alfred-navigation', SERENA, { settings: { UV_EXCLUDE_NEWER: 'false' } }, 'false'],
+        ['alfred-memory', LAUNCH, { settings: { ALFRED_CODE_MEMORY_DB: db }, local: { UV_EXCLUDE_NEWER: '2026-01-15' } }, '2026-01-15'],
         ['macos-desktop', DESKTOP, { account: { UV_EXCLUDE_NEWER: 'false' } }, 'false']];
     for (const [name, launcher, files, want] of cases)
     {
