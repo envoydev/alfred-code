@@ -19,7 +19,7 @@ run-time load.
 
 ## State - two layers, split by durability
 
-- **The plan file** (`<docs-path>/superpowers/plans/<feature>.md`) is the durable truth: the tasks, every stamp this cycle adds (`Gated`, `Approved` +
+- **The plan file** (`<docs-path>/plans/<feature>.md`) is the durable truth: the tasks, every stamp this cycle adds (`Gated`, `Approved` +
   build mode, `Conformance` verdict or `skipped`, `Completed`), per-task status + evidence. On any
   conflict with memory or the chat, the file wins.
 - **The navigation server cycle note** (`write_memory` named `<feature>/cycle`) is the working cursor:
@@ -33,7 +33,7 @@ step whose stamp says it already passed. A NEW cycle starting after a finished o
 session recommends the fresh-session hand-off in its first ask. A cycle mid-build looks like:
 
 ```
-plan <docs-path>/superpowers/plans/csv-export.md:
+plan <docs-path>/plans/csv-export.md:
   Gated: passed | Approved: 2026-07-16 - mode session
   task 1 DONE (dotnet test green - 4 passed) | task 2 IN_PROGRESS
 cycle note 'csv-export/cycle': step 4 BUILD - resume at task 2, mode session

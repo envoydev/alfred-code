@@ -161,10 +161,15 @@ function livePlan() {
   } catch { /* no transcript - fall through to the docs root */ }
   try {
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-    const dir = nodePath.resolve(root, docsRootEnv(), 'superpowers', 'plans');
-    const newest = fs.readdirSync(dir).filter((f) => f.endsWith('.md'))
-      .map((f) => ({ f, t: fs.statSync(nodePath.join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0];
-    if (newest) return `${nodePath.relative(root, nodePath.join(dir, newest.f)).split(nodePath.sep).join('/')} (newest under the docs root)`;
+    // plans/ since 2.2.2; superpowers/plans/ until an update moves it (docs.migratePlans).
+    for (const sub of [['plans'], ['superpowers', 'plans']]) {
+      const dir = nodePath.resolve(root, docsRootEnv(), ...sub);
+      let names;
+      try { names = fs.readdirSync(dir); } catch { continue; }
+      const newest = names.filter((f) => f.endsWith('.md'))
+        .map((f) => ({ f, t: fs.statSync(nodePath.join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0];
+      if (newest) return `${nodePath.relative(root, nodePath.join(dir, newest.f)).split(nodePath.sep).join('/')} (newest under the docs root)`;
+    }
   } catch { /* no plans folder */ }
   return null;
 }

@@ -91,14 +91,22 @@ test('compact-state: PreCompact writes the live plan, the flow stamps with ages 
 test('compact-state: with no plan in the transcript the newest plan under the docs root is taken, else none', () =>
 {
     const p = project();
-    const plans = path.join(p.root, '.alfred', 'docs', 'superpowers', 'plans');
+    const plans = path.join(p.root, '.alfred', 'docs', 'plans');
     fs.mkdirSync(plans, { recursive: true });
     fs.writeFileSync(path.join(plans, 'a.md'), 'a');
     fs.writeFileSync(path.join(plans, 'b.md'), 'b');
     const old = new Date(Date.now() - 3600000);
     fs.utimesSync(path.join(plans, 'a.md'), old, old);
     p.run({ hook_event_name: 'PreCompact', trigger: 'manual', transcript_path: p.transcript([toolUse('Bash', { command: 'ls' })]) });
-    assert.match(fs.readFileSync(p.state, 'utf8'), /^live plan: \.alfred\/docs\/superpowers\/plans\/b\.md \(newest under the docs root\)$/m);
+    assert.match(fs.readFileSync(p.state, 'utf8'), /^live plan: \.alfred\/docs\/plans\/b\.md \(newest under the docs root\)$/m);
+
+    // An install whose update has not moved the plans yet still reads them from the former superpowers/plans/.
+    const former = project();
+    const legacy = path.join(former.root, '.alfred', 'docs', 'superpowers', 'plans');
+    fs.mkdirSync(legacy, { recursive: true });
+    fs.writeFileSync(path.join(legacy, 'c.md'), 'c');
+    former.run({ hook_event_name: 'PreCompact', trigger: 'manual', transcript_path: former.transcript([toolUse('Bash', { command: 'ls' })]) });
+    assert.match(fs.readFileSync(former.state, 'utf8'), /^live plan: \.alfred\/docs\/superpowers\/plans\/c\.md \(newest under the docs root\)$/m);
 
     const none = project();
     none.run({ hook_event_name: 'PreCompact', trigger: 'manual' });

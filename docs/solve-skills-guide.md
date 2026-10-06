@@ -79,7 +79,7 @@ evidence). The plan file plus a navigation-server cycle note carry ALL state - e
 (dueDate strictly before today, status not done), newest first, with unit + integration
 tests covering the boundary: a task due today is NOT overdue.
 
-  -> DESIGN writes .alfred/docs/superpowers/plans/overdue-tasks.md, stops.
+  -> DESIGN writes .alfred/docs/plans/overdue-tasks.md, stops.
 you: go
   -> GATE stamps 'Gated: passed | 1 gap fixed', presents the audit, stops at APPROVE.
 you: Approved - build it in agents mode.
