@@ -16,7 +16,7 @@ each other.
 
 Load before writing or reviewing ANY documentation artifact of these types, whatever the subject - a sequence, ER or C4 diagram in Markdown, an ADR or decision-log entry, or a diagram-tooling choice (Mermaid vs DBML vs Structurizr). Authoring conventions for documentation as versioned text - Mermaid diagrams, decision records (ADR - Nygard + MADR 4) and C4 model views, routed per doc type to references/.
 
-NOT the repo's committed architecture capture (`alfred-capture-architecture` owns the docs root's architecture/ folder), not Markdown prose style, and not database design itself.
+NOT the repo's committed architecture capture (`capture-architecture` owns the docs root's architecture/ folder), not Markdown prose style, and not database design itself.
 
 ## Pick the artifact
 
@@ -26,7 +26,7 @@ NOT the repo's committed architecture capture (`alfred-capture-architecture` own
 | A relational schema sketch - a handful of tables, keys, cardinality | Mermaid ER diagram | `references/mermaid-er.md` |
 | A load-bearing decision - structure, cross-cutting NFRs, external dependencies, interfaces | ADR - Nygard by default, MADR 4 when options were weighed; numbered by `node .claude/hooks/docs.js adr new '<title>'` | `references/adr.md` |
 | System-in-environment or deployable-parts structure, incl. for stakeholders | C4 context/container view | `references/c4.md` |
-| THIS project's architecture map | owned by `alfred-capture-architecture` (flowchart + module table per its doc-shapes contract) - supplement it, never re-draw it |
+| THIS project's architecture map | owned by `capture-architecture` (flowchart + module table per its doc-shapes contract) - supplement it, never re-draw it |
 
 Branching business logic is a flowchart, not a sequence diagram; static structure is ER/C4, not
 sequence. When a diagram and an ADR both apply (a decision that changed structure), write both -

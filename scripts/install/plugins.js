@@ -26,11 +26,11 @@ const { parseJson } = require('./json-file.js');
 const { BRAND, LEGACY, alwaysOn, marketOf, marketKey } = require('./brand.js');
 const { envOf } = require('../../stack/hooks/hook-prelude.js');
 
-// claude-hud is a statusline HUD: a project-scoped install plus the global statusline enable
-// mismatch, so every OTHER project warns 'plugin not cached'. It is user scope, always.
-const USER_SCOPE_PLUGINS = ['claude-hud'];
-// ...and required, but the user's OFF wins: its status line is account-wide, so a user who disabled it
-// keeps it off in every project. Measured on Claude Code 2.1.282: `plugin update` over a user-disabled
+// 2.2.0: no plugin is pinned to a scope any more - each OPTIONAL item (a browser engine, a desktop server, an
+// LSP, claude-hud) goes where the user chose it (`--scope-of`, `itemScope` below), the required ones follow the
+// run. Kept as a name for the callers that still read it.
+const USER_SCOPE_PLUGINS = [];
+// claude-hud: the user's OFF wins. A user who disabled it keeps it off. Measured on Claude Code 2.1.282: `plugin update` over a user-disabled
 // claude-hud leaves `enabledPlugins` false, `plugin install --scope user -y` flips it back to true - so
 // a listed, disabled one is only ever updated, never enabled or re-installed. An absent one is installed.
 const USER_OFF_WINS = ['claude-hud'];
@@ -42,11 +42,13 @@ const STACK_MARKETPLACE = BRAND.slug;
 // (brand.js marketKey) and spells every stack spec with - never this constant.
 const CORE_SPEC = `${BRAND.core}@${BRAND.marketplace}`;
 
-// The plugin every install carries beside the core from ANOTHER marketplace - required, never a pick
-// (R27). It is not a dependency of the core: `claude plugin update` over an older core installs none
-// a release adds, and a plugin missing one is disabled at load, its commands with it (measured on
-// 2.1.280) - so the run installs it. claude-hud keeps its user-scope pin above.
-const CORE_DEP_PLUGINS = ['claude-hud@claude-hud'];
+// The plugins every install carries beside the core from ANOTHER marketplace - required, never a pick
+// (R27). None since 2.2.0: claude-hud is an optional pick, recommended (meta/recommendations.json
+// always.plugins), the user's ruling of 2026-10-06 - only the core and the three alfred- servers are required.
+// Never a `dependencies` entry of the core either: `claude plugin update` over an older core installs none a
+// release adds, and a plugin missing one is disabled at load, its commands with it (measured on 2.1.280).
+const CORE_DEP_PLUGINS = [];
+const HUD_SPEC = 'claude-hud@claude-hud';
 
 // `...=false` restores the copy route - the documented contract, and the only value either twin
 // ever promised. (The sh twin read anything but the literal 'true' as off and the ps1 anything but
@@ -154,13 +156,69 @@ const fieldOf = (listing, name, key) =>
 
 const bareName = (spec) => String(spec).split('@')[0];
 
-// Install scope for one plugin: claude-hud is pinned to user, everything else follows the run -
-// unless the LISTING already says where it lives, which wins on update.
-function scopeFor(spec, installScope, listing)
+// 2.2.0: an optional item's own scope, the user's choice (`--scope-of`): `user` is every project on the account,
+// `project` this project at the run's own scope - `project` itself when the run is a user-scope one. '' when the
+// user made no choice for it.
+function itemScope(spec, installScope, scopes = {})
+{
+    const chosen = (scopes || {})[bareName(spec)];
+    if (chosen === 'user') return 'user';
+    if (chosen === 'project') return installScope === 'user' ? 'project' : installScope;
+    return '';
+}
+
+// The optional items that carry a scope of their own (args.js SCOPED_ITEMS): the browser engines, the desktop
+// servers, the LSP pair and claude-hud. The core and the three alfred- servers follow the run.
+const scopedItem = (spec) => require('./args.js').SCOPED_ITEMS.includes(bareName(spec));
+
+// Install scope for one plugin: where the LISTING says it lives (an existing install is kept where it is - only
+// configure's choice moves it, `moveScoped`), else the user's choice for it, else the run's scope - an optional
+// item on a user-scope run lands in this project, since 'global' is only ever chosen per item.
+function scopeFor(spec, installScope, listing, scopes = {})
 {
     const known = fieldOf(listing, spec, 'scope');
     if (known) return known;
-    return USER_SCOPE_PLUGINS.includes(bareName(spec)) ? 'user' : installScope;
+    return itemScope(spec, installScope, scopes) || (installScope === 'user' && scopedItem(spec) ? 'project' : installScope);
+}
+
+// 2.2.0: an optional item the user gave a scope (`--scope-of`) that is installed at ANOTHER scope moves there -
+// installed at the chosen scope first, so a failed install leaves the old row serving, then the old row
+// uninstalled. Leaving `user` takes the item from every other project on the account, said in one `!!` line with
+// the command that puts it back; a project or local row is this project's alone. An engine or desktop server left
+// off keeps its off-state. A row of another project never shows here (parsePluginList drops it). Returns the specs
+// installed this run and the moves, so the passes after it read each at its new scope.
+function moveScoped({ plugins = [], rows = [], scope, scopes = {}, engines = [], isOn = () => undefined, cli, log = () => {}, note = () => {} })
+{
+    const moved = [];
+    for (const spec of plugins)
+    {
+        const target = itemScope(spec, scope, scopes);
+        if (!target) continue;
+        const [name, market] = String(spec).split('@');
+        const mine = rows.filter((r) => r.name === name && r.marketplace === market && r.version);
+        const away = mine.filter((r) => r.scope && r.scope !== target);
+        if (!away.length) continue;
+        const wasOn = away.some((r) => { const said = isOn(spec, r.scope); return said === undefined ? r.enabled !== false : said; });
+        if (!mine.some((r) => r.scope === target))
+        {
+            if (!cli(['plugin', 'install', spec, '--scope', target, '-y'], { quiet: true, expect: 'reported' }))
+            {
+                note(`plugin move failed: ${spec} - it stays at ${away.map((r) => r.scope).join(', ')} scope; to move it: claude plugin install ${spec} --scope ${target}, then claude plugin uninstall ${spec} --scope ${away[0].scope}`);
+                continue;
+            }
+            if (engines.includes(spec) && !wasOn) switchOff(spec, target, { cli, log, note });
+        }
+        for (const r of away)
+        {
+            if (!cli(['plugin', 'uninstall', spec, '--scope', r.scope, '-y'], { quiet: true, expect: 'reported' }))
+            { note(`plugin uninstall failed: ${spec} at ${r.scope} scope - it stays there beside the ${target}-scope install; remove it by hand: claude plugin uninstall ${spec} --scope ${r.scope}`); continue; }
+            log(r.scope === 'user'
+                ? `  !! plugin moved [user -> ${target}]: ${spec} - every other project on this account loses it; to keep it there too: claude plugin install ${spec} --scope user`
+                : `plugin moved [${r.scope} -> ${target}]: ${spec} (your choice of scope)`);
+        }
+        moved.push({ spec, scope: target });
+    }
+    return moved;
 }
 
 // The stack's own closure for this run. Returns the entries to enable, the library items copied, and
@@ -308,9 +366,9 @@ function switchOff(spec, scope, { cli, log, note })
 // S28). It is updated at its own scope, and switched only to the user's answer - at this run's scope
 // only, since one at another scope is every project's install there. A switch the settings file shows
 // already made is skipped: a no-op enable or disable exits 1 (S28), which would read as a failure.
-function engineInPlace(spec, { scope, before, engines, cli, log, note })
+function engineInPlace(spec, { scope, scopes = {}, before, engines, cli, log, note })
 {
-    const at = fieldOf(before, spec, 'version') ? scopeFor(spec, scope, before) : ((engines.presentScope || {})[spec] || scope);
+    const at = fieldOf(before, spec, 'version') ? scopeFor(spec, scope, before, scopes) : ((engines.presentScope || {})[spec] || scopeFor(spec, scope, [], scopes));
     log(`plugin update [${at}]: ${spec}`);
     cli(['plugin', 'update', spec, '--scope', at, '-y']);
     if (!engines.on) return;
@@ -361,7 +419,7 @@ function uninstallEngines({ specs = [], rows = [], blind = false, scope, cli, lo
 // already (the 1.x migration): nothing is left to do for it. A playwright engine goes the
 // `engineInPlace` way when installed, and is switched off right after its install when the user chose
 // it off (`engines`, above).
-function installPlugins({ plugins, scope, marketplaces = [], before = [], fresh = [], refreshed = new Set(), engines = NO_ENGINES, cli, log = () => {}, note = () => {} })
+function installPlugins({ plugins, scope, scopes = {}, marketplaces = [], before = [], fresh = [], refreshed = new Set(), engines = NO_ENGINES, cli, log = () => {}, note = () => {} })
 {
     cli(['plugin', 'marketplace', 'add', OFFICIAL_MARKETPLACE], { quiet: true });
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
@@ -372,12 +430,15 @@ function installPlugins({ plugins, scope, marketplaces = [], before = [], fresh 
     for (const spec of plugins)
     {
         if (fresh.includes(spec)) continue;
-        if (enginePresent(spec, before, engines)) { engineInPlace(spec, { scope, before, engines, cli, log, note }); continue; }
-        const pscope = USER_SCOPE_PLUGINS.includes(bareName(spec)) ? 'user' : scope;
+        if (enginePresent(spec, before, engines)) { engineInPlace(spec, { scope, scopes, before, engines, cli, log, note }); continue; }
+        // An optional item already installed is refreshed where it lives, never doubled at the run's scope (2.2.0);
+        // a required one is installed at the run's scope and its own row updated where it lives.
+        const pscope = scopedItem(spec) ? scopeFor(spec, scope, before, scopes) : scope;
         if (offByUser(spec, before))
         {
-            log(`plugin [${pscope}]: ${spec} is disabled - kept off, updated only`);
-            cli(['plugin', 'update', spec, '--scope', scopeFor(spec, scope, before), '-y'], { quiet: true });
+            const at = scopeFor(spec, scope, before, scopes);
+            log(`plugin [${at}]: ${spec} is disabled - kept off, updated only`);
+            cli(['plugin', 'update', spec, '--scope', at, '-y'], { quiet: true });
             continue;
         }
         log(`plugin [${pscope}]: ${spec}`);
@@ -385,7 +446,7 @@ function installPlugins({ plugins, scope, marketplaces = [], before = [], fresh 
         // which is every guided run.
         if (!cli(['plugin', 'install', spec, '--scope', pscope, '-y'], { expect: 'reported' })) { note(`plugin ${spec} failed`); continue; }
         if (fieldOf(before, spec, 'version'))
-            cli(['plugin', 'update', spec, '--scope', scopeFor(spec, scope, before), '-y'], { quiet: true });
+            cli(['plugin', 'update', spec, '--scope', scopeFor(spec, scope, before, scopes), '-y'], { quiet: true });
         else if (engines.off.includes(spec)) switchOff(spec, pscope, { cli, log, note });
     }
 }
@@ -558,9 +619,9 @@ function engineStandDown({ rows = [], market = BRAND.marketplace, scope, engines
 // it - a clone of the project-scope install got none, and every update went on updating the local
 // rows. Each spec of the run's set whose only row here is at local scope is installed at the new scope,
 // then uninstalled at local; one with a row at the new scope already loses only its local row. A
-// playwright engine left off locally arrives off (the user's own off-state); claude-hud keeps its user
-// scope. Returns `{ moved, dropped }`: the specs installed this run, and the ones whose local row went.
-function moveLocalRows({ plugins = [], rows = [], scope, engines = [], isOn = () => undefined, cli, log = () => {}, note = () => {} })
+// playwright engine left off locally arrives off (the user's own off-state); an item the user gave its own
+// scope is moveScoped's. Returns `{ moved, dropped }`: the specs installed this run, and the ones whose local row went.
+function moveLocalRows({ plugins = [], rows = [], scope, scopes = {}, engines = [], isOn = () => undefined, cli, log = () => {}, note = () => {} })
 {
     const moved = [];
     const dropped = [];
@@ -569,7 +630,8 @@ function moveLocalRows({ plugins = [], rows = [], scope, engines = [], isOn = ()
     for (const spec of plugins)
     {
         const [name, market] = String(spec).split('@');
-        if (USER_SCOPE_PLUGINS.includes(name)) continue;
+        // An item the user gave its own scope moves there instead (moveScoped).
+        if (itemScope(spec, scope, scopes)) continue;
         const mine = rows.filter((r) => r.name === name && r.marketplace === market);
         const local = mine.find((r) => r.scope === 'local');
         if (!local) continue;
@@ -593,17 +655,22 @@ function moveLocalRows({ plugins = [], rows = [], scope, engines = [], isOn = ()
 }
 
 // A-I4 (final review A): claude-hud draws nothing until its status line is set, which /alfred-code:init
-// does - so a claude-hud installed (this run, or before) with NO `statusLine` in the account settings is
-// said once. A statusLine that is there, whoever set it, is the user's choice; a claude-hud the user
-// switched off stays off (USER_OFF_WINS); an account file that cannot be read says nothing.
-function hudStatusLineMissing({ plugins = [], listing = [], settingsFile })
+// does - so a claude-hud installed (this run, or before) with NO `statusLine` in any settings file this project
+// reads (the account's, and since 2.2.0 the project's own two - a project-scope claude-hud's line is in
+// settings.local.json) is said once. A statusLine that is there, whoever set it, is the user's choice; a
+// claude-hud the user switched off stays off (USER_OFF_WINS); a file that cannot be read says nothing.
+function hudStatusLineMissing({ plugins = [], listing = [], settingsFile, settingsFiles = [settingsFile] })
 {
-    const spec = CORE_DEP_PLUGINS.find((s) => bareName(s) === 'claude-hud');
-    if (!spec || (!plugins.includes(spec) && !fieldOf(listing, spec, 'version')) || offByUser(spec, listing)) return false;
-    let data = {};
-    try { const raw = fs.readFileSync(settingsFile, 'utf8').replace(/^\uFEFF/, ''); data = raw.trim() ? JSON.parse(raw) : {}; }
-    catch (err) { if (err.code !== 'ENOENT') return false; }
-    return Boolean(data) && typeof data === 'object' && !Array.isArray(data) && !('statusLine' in data);
+    const spec = HUD_SPEC;
+    if ((!plugins.includes(spec) && !fieldOf(listing, spec, 'version')) || offByUser(spec, listing)) return false;
+    for (const file of settingsFiles.filter(Boolean))
+    {
+        let data = {};
+        try { const raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''); data = raw.trim() ? JSON.parse(raw) : {}; }
+        catch (err) { if (err.code !== 'ENOENT') return false; }
+        if (!data || typeof data !== 'object' || Array.isArray(data) || 'statusLine' in data) return false;
+    }
+    return true;
 }
 
 // UPDATE: uninstall the retired plugins this project carries AT THIS RUN'S SCOPE, each by its full
@@ -723,8 +790,9 @@ function migrateLegacy({ rows = [], scope, retired = [], retiredRows = [], carri
     return out;
 }
 
-// THE 2.0.0 RENAME (meta/stack-manifest.json `renamed.mcps`): serena, context7 and
-// playwright-<engine> are navigation, documentation and browser-<engine>. An install made before it
+// THE MCP RENAMES (meta/stack-manifest.json `renamed.mcps`): 2.0.0 made serena, context7 and
+// playwright-<engine> navigation, documentation and browser-<engine>, and 2.2.0 made navigation, documentation
+// and memory alfred-navigation, alfred-documentation and alfred-memory. An install made before one
 // holds the old rows; each one this run's set carries a successor for, at THIS run's scope, is SWAPPED
 // there - the new one installed first, so a failed install leaves the old server running, then the old
 // one removed, so the same server never loads twice after the run. An old row at ANOTHER scope serves
@@ -761,8 +829,8 @@ function migrateRenamed({ rows = [], renamed = {}, set = [], market = BRAND.mark
         const at = row.scope || scope;
         if (!set.includes(newSpec))
         {
-            if (at !== scope) { log(`  ${oldSpec} is installed at ${at} scope, not this run's - renamed ${newName} in 2.0.0 and not carried here; kept for the projects that use it: claude plugin uninstall ${oldSpec} --scope ${at}`); continue; }
-            if (drop(oldSpec, at)) { log(`  renamed: plugin ${oldSpec} removed [${at}] - ${newSpec} in 2.0.0, which this run does not carry`); out.gone.push(row); }
+            if (at !== scope) { log(`  ${oldSpec} is installed at ${at} scope, not this run's - renamed ${newName} and not carried here; kept for the projects that use it: claude plugin uninstall ${oldSpec} --scope ${at}`); continue; }
+            if (drop(oldSpec, at)) { log(`  renamed: plugin ${oldSpec} removed [${at}] - renamed ${newSpec}, which this run does not carry`); out.gone.push(row); }
             else note(`plugin uninstall failed: ${oldSpec} - remove it by hand: claude plugin uninstall ${oldSpec} --scope ${at}`);
             continue;
         }
@@ -817,15 +885,15 @@ function extraMarketplaces(rows, set)
 // (docs/rebrand-evidence.md S22). A playwright engine is never enabled for its flag - the user's own
 // off-state, which only their answer (`engines.on`) switches - and an absent one is installed as on
 // install: switched off after when the user chose it off.
-function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, fresh = [], restored = [], refreshed = new Set(), engines = NO_ENGINES, cli, log = () => {}, note = () => {} })
+function updatePlugins({ plugins, scope, scopes = {}, marketplaces = [], before = [], after, fresh = [], restored = [], refreshed = new Set(), engines = NO_ENGINES, cli, log = () => {}, note = () => {} })
 {
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
     refreshMarketplaces({ plugins, cli, refreshed });
     for (const spec of plugins)
     {
         if (fresh.includes(spec)) continue;
-        if (enginePresent(spec, before, engines)) { engineInPlace(spec, { scope, before, engines, cli, log, note }); continue; }
-        const pscope = scopeFor(spec, scope, before);
+        if (enginePresent(spec, before, engines)) { engineInPlace(spec, { scope, scopes, before, engines, cli, log, note }); continue; }
+        const pscope = scopeFor(spec, scope, before, scopes);
         if (!fieldOf(before, spec, 'version'))
         {
             log(`plugin install [${pscope}]: ${spec}`);
@@ -873,7 +941,7 @@ function parseMarketplaces(json)
 }
 
 module.exports = {
-    OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, USER_OFF_WINS, CORE_DEP_PLUGINS,
+    OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, USER_OFF_WINS, CORE_DEP_PLUGINS, HUD_SPEC, itemScope, scopedItem, moveScoped,
     pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateLegacy, migrateRenamed,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, retirementDue, updatePlugins, extraMarketplaces, uninstallEngines,

@@ -26,9 +26,9 @@ Both run against the CORE entry, never `setup-plugin/` alone: the router and the
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js" state .`, and the core's plugin root is the repo
 root, where `scripts/` lives - under `setup-plugin/` that path does not exist.
 
-The three `size-first-*` cases of `alfred-task-solve` moved to `meta/evals/library/` in 2.1.4: since 2.1.0
+The three `size-first-*` cases of `task-solve` moved to `meta/evals/library/` in 2.1.4: since 2.1.0
 the core carries no stack skill, so only the eval bundle (the core plus the whole library, one plugin)
-carries `alfred-task-solve`. They are the only cases that write (`Edit` is granted, the floor case
+carries `task-solve`. They are the only cases that write (`Edit` is granted, the floor case
 excepted), each into its own scaffolded workspace - `scaffold.sh` beside `case.yaml`, run only under
 `--scaffold`.
 

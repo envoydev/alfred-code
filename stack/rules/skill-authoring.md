@@ -3,7 +3,7 @@ paths: ["**/SKILL.md", "**/skills/**/*.md"]
 ---
 
 Writing or changing a skill - its `SKILL.md`, its frontmatter, or a file under its `references/` - the
-FIRST action after this rule attaches is the `alfred-habits-skill-writing` Skill call, before the NEXT
+FIRST action after this rule attaches is the `habits-skill-writing` Skill call, before the NEXT
 write to that file lands (a path-scoped rule attaches ON the touch, so it can never precede its own
 trigger). Skip the load only when it is already in context this session - a compaction carries a
 loaded skill forward only within a shared budget, so the load is owed again after one. Name the skill

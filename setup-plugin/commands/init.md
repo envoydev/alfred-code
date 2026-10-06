@@ -72,8 +72,8 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
 - `machine: <what> - present | missing: <command> | missing after uv: <command> | refresh: <command> | blocked: <why> | skip: <why>` -
   uv, the pinned Python fetched through it, `csharp-ls` when `csharp-lsp` is kept, the picked
   browsers (a firefox / webkit setup's install failed to download; a chrome / msedge the
-  machine does not have), the navigation-server index, then the account's claude-hud status line and compact
-  layout. The command is the exact one to run.
+  machine does not have), the navigation-server index, then claude-hud's status line and compact
+  layout (the account's, or this project's `settings.local.json` for a claude-hud installed for this project alone). The command is the exact one to run.
 - `capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - the five
   captures in their fixed order, each only when the install lists its skill AND its seat (the run
   book and agent capabilities have none).
@@ -88,8 +88,9 @@ item, the description carries its exact command - every one pre-selected, 'insta
 recommended (the servers that need them cannot start without them). A `blocked` line is not an
 option: name its fix once (the .NET SDK for csharp-ls, the browser for a picked chrome or msedge) -
 the user installs it; never attempt one. `claude-hud status line + compact layout` is one of those
-lines: its command (`hud-statusline.js`) writes the account `statusLine` claude-hud's own setup
-would, then claude-hud's row of `meta/plugin-settings.json`, add-only - a status line that is not
+lines: its command (`hud-statusline.js`) writes the `statusLine` claude-hud's own setup would - into the
+account `settings.json`, or into this project's `.claude/settings.local.json` when claude-hud is installed for
+this project alone (2.2.0: the user picks its scope, this project by default) - then claude-hud's row of `meta/plugin-settings.json`, add-only - a status line that is not
 claude-hud's is kept and reported with `/claude-hud:setup`. Its command ends in
 `# adds <n> claude-hud keys: <names>`, a shell comment the description keeps, so keys a setup Skip
 left out are named before they land. `refresh` is claude-hud's own line in a stale shape: the description says it
@@ -110,7 +111,7 @@ connects only after a restart - the close names it.
 
 ## 4. Memory - the level, then the notes import
 
-The shared memory database the `memory` server reads. Paste this table first:
+The shared memory database the `alfred-memory` server reads. Paste this table first:
 
 ```
 | level | database | who shares it |
@@ -159,10 +160,10 @@ carries. Its seat is installed (the plan checked), so a dispatch it names is mad
 `done` or `skip` line is one narration line each - a done capture is re-run later by the user, never
 here.
 
-`alfred-capture-related-projects` takes its sibling list as arguments: ONE AskUserQuestion first - type the
+`capture-related-projects` takes its sibling list as arguments: ONE AskUserQuestion first - type the
 siblings via Other in the capture's own form (`<name> - <local path or git URL>`, several separated
 by commas), or 'none - skip it' (recommended only when the repo names no sibling). 'none' skips the
-capture. `alfred-capture-agent-capabilities` runs LAST, so its generated rule reflects everything the
+capture. `capture-agent-capabilities` runs LAST, so its generated rule reflects everything the
 captures above added; its own precheck decides whether the rule needs regenerating.
 
 ## 6. AGENTS.md - the user's call
@@ -171,7 +172,7 @@ Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQues
 recommended / skip); a 'no' ends the step cleanly. The installer seeded `.claude/AGENTS.md` from
 `stack/AGENTS.template.md` when the project had none; a AGENTS.md with the project's own text (root,
 `.claude/` or a part's own) is NEVER overwritten. On a yes, read
-`$TMP/repo/stack/skills/alfred-habits-adjust-agents-md/SKILL.md` (through Bash) and follow it inline, start to finish,
+`$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` (through Bash) and follow it inline, start to finish,
 with `<stack>` = the `$TMP/repo` path, pasted as a literal - it is this step's instructions, the one home of the fill: its script picks
 create (the seed is still unfilled) or improve (every change shown before it is written), and the
 check closes it. The captures just run are what it cites for structure. Never offer skill, agent or

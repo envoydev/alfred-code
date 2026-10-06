@@ -53,8 +53,8 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   A user-scope run that registers anywhere else (the plugin route, or the MCP copy route with the
   core on) prunes the stack's own registrations from that `.mcp.json`; the user's own server under a
   stack name is kept and named with its remove command.
-  `navigation` (alfred-navigation), `documentation`
-  (alfred-quality-gates) and `memory` (alfred-memory) are LOCKED into every install and may be
+  `alfred-navigation` (the alfred-navigation rule), `alfred-documentation`
+  (alfred-quality-gates) and `alfred-memory` (the alfred-memory rule) are LOCKED into every install and may be
   named in artifacts; every other server is droppable, so a body describes it. Only those three are
   seeded everywhere; the rest arrive by proof - a stack whose surface always has them, an evidence
   signal, or the user's pick. The names are ROLES; prose names the role and gives the upstream once
@@ -123,15 +123,19 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     macOS `Snapshot` / `Wait` - the pinned wheels' readOnlyHint tools that look at the desktop), named in `tools:`
     and described in the body, so no graph edge pulls the opt-in server into an install; a stack that seeds a
     server no seat of it holds is listed main-thread-only in `scripts/seat-grants.test.js` (browser-extension's browser).
-  - plus `navigation` (Serena), `documentation` (Context7, the hosted remote only - its `Context7-API-Key` header, the name
+  - plus `alfred-navigation` (Serena), `alfred-documentation` (Context7, the hosted remote only - its `Context7-API-Key` header, the name
     Context7 documents (2.1.5 M25: a proxy may drop a header name with an underscore, and a keyed user with it), expands
-    `CONTEXT7_API_KEY` from the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,
+    `CONTEXT7_API_KEY` from the ACCOUNT settings.json `env`, keyless = the free tier) and `alfred-memory`. 2.0.0 cut `angular-cli`,
     `chrome-devtools`, `appium-mcp`, `sentry` and `context7-local` (manifest `retired.mcps`,
     `meta/retired-plugins.json`): update uninstalls each only as `name@<stack key>` and prints its
     add-back line.
-  - **The 2.0.0 rename** (`meta/stack-manifest.json` `renamed.mcps`, the one table): `serena`,
-    `context7` and `playwright-<engine>` are `navigation`, `documentation` and `browser-<engine>`, plugin
-    and server alike. The old ids stay LISTED as RETIRED aliases carrying their successor's server under
+  - **The MCP renames** (`meta/stack-manifest.json` `renamed.mcps`, the one table, each old name mapped straight to
+    today's - `currentMcp` is single-step): 2.0.0 made `serena`, `context7` and `playwright-<engine>` `navigation`,
+    `documentation` and `browser-<engine>`; 2.2.0 (the user's call, 2026-10-06) made `navigation`, `documentation` and
+    `memory` `alfred-navigation`, `alfred-documentation` and `alfred-memory`, plugin and server alike. The 2.2.0 aliases'
+    audience is every 2.x install, so their RETIRED line names `/alfred-code:update` (`build-marketplace.js describeAlias`)
+    and EVERY seat grants the 2.x spellings beside the new ones until the aliases go (`mcp-prose.test.js` M35); the
+    memory readers take either server name (`MEMORY_SERVERS`, `stack/hooks/memory.js` and `scripts/install/memory.js`). The old ids stay LISTED as RETIRED aliases carrying their successor's server under
     the old name and no dependency (I6: their audience has no 2.x core, so a dependency on it stops the
     alias's server loading) (`build-marketplace.js mcpAliasEntries`, held by lint 53), so an install not yet updated
     keeps its tools after a marketplace refresh (S25). Update swaps each old row at THIS run's scope

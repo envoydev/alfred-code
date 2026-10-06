@@ -145,7 +145,7 @@ test('init: the bootstrap order - read, plan, one machine ask, memory, captures 
     assert.match(flat(init), /follow it inline, start to finish - never a Skill call/);
     // The five captures, in the brief's order, are the SCRIPT's table - the body cites the script.
     const { CAPTURES } = require('./init-plan.js');
-    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), ['alfred-capture-related-projects', 'alfred-capture-architecture', 'alfred-capture-code-style', 'alfred-capture-project-capabilities', 'alfred-capture-agent-capabilities']);
+    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), ['capture-related-projects', 'capture-architecture', 'capture-code-style', 'capture-project-capabilities', 'capture-agent-capabilities']);
     assert.deepStrictEqual(CAPTURES.map((c) => c.seat), ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer', null, null]);
     assert.ok(!/sentry/i.test(init), 'no sentry step (R28)');
     assert.ok(!/allowed-tools/.test(init.split('---')[1]), 'no command carries allowed-tools');
@@ -269,7 +269,7 @@ test('the always block seeds the cross-cutting agents and baseline rules', () =>
     // the entry-point orchestrator installs everywhere - previously only the four
     // repair-rule stacks pulled it, so a mobile/data/devops-only install shipped without
     // the skill that drives its own trio.
-    assert.ok((recs.always.skills || []).includes('alfred-task-solve-cross'), 'always seeds the orchestrator');
+    assert.ok((recs.always.skills || []).includes('task-solve-cross'), 'always seeds the orchestrator');
 });
 
 // A capture skill fans out its own read-only seat, and the graph cannot express that edge
@@ -279,12 +279,12 @@ test('the always block seeds the cross-cutting agents and baseline rules', () =>
 test('every always-seeded capture skill seeds the seat it fans out', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
     const PAIRS = {
-        'alfred-capture-architecture': 'architecture-analyzer',
-        'alfred-capture-architecture-quality': 'architecture-analyzer',
-        'alfred-capture-code-quality': 'code-quality-analyzer',
-        'alfred-capture-code-style': 'code-style-analyzer',
-        'alfred-capture-test-coverage': 'test-coverage-analyzer',
-        'alfred-capture-related-projects': 'related-project-analyzer',
+        'capture-architecture': 'architecture-analyzer',
+        'capture-architecture-quality': 'architecture-analyzer',
+        'capture-code-quality': 'code-quality-analyzer',
+        'capture-code-style': 'code-style-analyzer',
+        'capture-test-coverage': 'test-coverage-analyzer',
+        'capture-related-projects': 'related-project-analyzer',
     };
     for (const [skill, seat] of Object.entries(PAIRS))
     {
@@ -302,13 +302,13 @@ test('every always-seeded capture skill seeds the seat it fans out', () => {
 // missing) instead of `always`, which would install it for everyone and have validate re-add it.
 test('the related-context capture is optional, never an always-baseline seed', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
-    assert.ok(!(recs.always.skills || []).includes('alfred-capture-related-projects'), 'always must not seed the skill');
+    assert.ok(!(recs.always.skills || []).includes('capture-related-projects'), 'always must not seed the skill');
     assert.ok(!(recs.always.agents || []).includes('related-project-analyzer'), 'always must not seed the seat');
-    assert.ok((recs.general.skills || []).includes('alfred-capture-related-projects'), 'general carries the skill');
+    assert.ok((recs.general.skills || []).includes('capture-related-projects'), 'general carries the skill');
     assert.ok((recs.general.agents || []).includes('related-project-analyzer'), 'general carries the seat');
     for (const sel of Object.values(recs.stacks))
     {
-        assert.ok(!(sel.skills || []).includes('alfred-capture-related-projects'), 'no stack seeds the skill');
+        assert.ok(!(sel.skills || []).includes('capture-related-projects'), 'no stack seeds the skill');
         assert.ok(!(sel.agents || []).includes('related-project-analyzer'), 'no stack seeds the seat');
     }
 });
@@ -388,7 +388,7 @@ test('the always MCP baseline is stack-neutral - the browser is seeded or proven
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-manifest.json'), 'utf8'));
     // memory joined navigation and documentation as a locked server (alfred-memory.md names it, the same
     // way alfred-navigation locks the navigation server in) - the shared-memory-mcp feature made it required.
-    assert.deepStrictEqual([...(recs.always.mcps || [])].sort(), ['documentation', 'memory', 'navigation'], 'only the three rules lock in');
+    assert.deepStrictEqual([...(recs.always.mcps || [])].sort(), ['alfred-documentation', 'alfred-memory', 'alfred-navigation'], 'only the three rules lock in');
     assert.ok(!(recs.always.mcps || []).includes('browser'), 'the browser server must not install into every project');
     assert.ok(!((recs.general || {}).mcps || []).includes('memory'), 'memory left the general (addable, never seeded) list once it locked in');
 
@@ -412,12 +412,12 @@ test('the always MCP baseline is stack-neutral - the browser is seeded or proven
 
 test('every shipped plugin is suggested somewhere - validate cannot flag what nothing suggests', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
-    // active:false rows are the plugins every install carries beside the core (claude-hud; superpowers
-    // is an optional pick since R72) - never a pick, so never part of the selectable catalog a
-    // suggestion has to reach.
+    // active:false rows are plugins every install carries beside the core - none since 2.2.0, when claude-hud
+    // became an optional pick (recommendations.json always.plugins) - never a pick, so never part of the
+    // selectable catalog a suggestion has to reach.
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-manifest.json'), 'utf8'));
     const shipped = manifest.plugins.filter((r) => r.active !== false).map((r) => r.id.split('@')[0]).sort();
-    assert.deepStrictEqual(shipped, ['csharp-lsp', 'typescript-lsp'], 'the manifest lists the shipped plugins - 2.0.0 retired the other two picks');
+    assert.deepStrictEqual(shipped, ['claude-hud', 'csharp-lsp', 'typescript-lsp'], 'the manifest lists the shipped plugins - 2.0.0 retired the other two picks');
 
     // findStackMissing sources are the always baseline plus each DETECTED stack, both run through
     // the closure - so a plugin no seed reaches is invisible to validate's ADD side on every
@@ -913,7 +913,7 @@ function assertSurfaced(report, text, { firstRun = true, start = text } = {})
 test('update: a 1.x install\'s first 2.0.0 run shows the migration lines through the 1.x body\'s own filters (A-I2, A-I3, A-I4)', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
 {
     const { seedRun } = require('./seed-sandbox.js');
-    const { out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
+    const { out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\nplugin claude-hud\n', {
         args: ['--scope', 'project'],
         plugins: JSON.stringify([OLD_KEY, `${OLD_KEY}-hooks`, 'context7-local'].map((n) => ({ id: `${n}@${OLD_KEY}`, version: '1.3.0', scope: 'user', enabled: true }))),
         prepare: (repo, work) =>
@@ -942,7 +942,7 @@ test('update: the stale-registration, kept, unreadable and here-only lines reach
     const serena = { type: 'stdio', command: 'uvx', args: ['--python', '3.13', '--from', 'serena-agent@1.6.0', 'serena', 'start-mcp-server', '--project-from-cwd'], env: {} };
     const stale = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
         env: COPY_ENV, args: ['--scope', 'user', '--memory-level', 'project'],
-        prepare: (repo, work) => account(work, JSON.stringify({ mcpServers: { navigation: serena, memory: { type: 'stdio', command: 'node', args: ['my-memory.js'], env: {} } } })),
+        prepare: (repo, work) => account(work, JSON.stringify({ mcpServers: { navigation: serena, 'alfred-memory': { type: 'stdio', command: 'node', args: ['my-memory.js'], env: {} } } })),
     }).out;
     const unreadable = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
         env: COPY_ENV, args: ['--scope', 'user', '--memory-level', 'project'],
@@ -951,13 +951,13 @@ test('update: the stale-registration, kept, unreadable and here-only lines reach
     const logs = [];
     const row = (scope, enabled = true) => ({ name: 'browser-chrome', marketplace: 'envoydev', version: '2.0.0', scope, enabled });
     P.engineStandDown({ rows: [row('user')], market: 'envoydev', scope: 'user', engines: ['chrome'], hereOnly: true, isOn: () => undefined, cli: () => true, log: (m) => logs.push(m) });
-    P.moveLocalRows({ plugins: ['navigation@envoydev'], rows: [{ ...row('local'), name: 'navigation' }], scope: 'project', cli: () => true, log: (m) => logs.push(m) });
+    P.moveLocalRows({ plugins: ['alfred-navigation@envoydev'], rows: [{ ...row('local'), name: 'alfred-navigation' }], scope: 'project', cli: () => true, log: (m) => logs.push(m) });
     const report = reportOf([stale, unreadable, ...logs.map((m) => `==> ${m}`)].join('\n'));
     assertSurfaced(report, 'mcp: navigation still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove navigation -s user');
-    assertSurfaced(report, 'mcp memory: the user-scope registration is not the stack\'s (another server under the same name) - kept; if it should go: claude mcp remove memory -s user');
+    assertSurfaced(report, 'mcp alfred-memory: the user-scope registration is not the stack\'s (another server under the same name) - kept; if it should go: claude mcp remove alfred-memory -s user');
     assertSurfaced(report, '.claude.json could not be read - no user-scope registration was removed; fix the file and re-run', { start: 'mcp: /' });
     assertSurfaced(report, 'plugin disabled [project]: browser-chrome@envoydev (the copy route registers it in .mcp.json; this project only - the user-scope install stays on for every other project)');
-    assertSurfaced(report, 'plugin moved [local -> project]: navigation@envoydev', { firstRun: false });
+    assertSurfaced(report, 'plugin moved [local -> project]: alfred-navigation@envoydev', { firstRun: false });
 });
 
 // F7 (observation 1): C8's line naming a settings.local.json this run created and git would commit - a

@@ -14,7 +14,7 @@ const { spawnSync } = require('node:child_process');
 const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const squash = (text) => text.replace(/\s+/g, ' ');
-const CAPS_DIR = 'stack/skills/alfred-capture-agent-capabilities';
+const CAPS_DIR = 'stack/skills/capture-agent-capabilities';
 const SCRIPT = path.join(ROOT, CAPS_DIR, 'scripts', 'capabilities-inventory.js');
 const TEMPLATE = `${CAPS_DIR}/references/generated-rule-template.md`;
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'capabilities-rule-'));
@@ -48,10 +48,10 @@ function routingMapText()
 }
 
 // A project the script can inventory with no CLI on PATH: its servers come from .mcp.json.
-function project(name, { servers = ['navigation', 'documentation', 'memory', 'browser-chrome'], settings, local, account } = {})
+function project(name, { servers = ['alfred-navigation', 'alfred-documentation', 'alfred-memory', 'browser-chrome'], settings, local, account } = {})
 {
     const root = path.join(TMP, name);
-    write(path.join(root, '.claude', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md'), '---\nname: alfred-capture-agent-capabilities\ndescription: "x"\ndisable-model-invocation: true\n---\n');
+    write(path.join(root, '.claude', 'skills', 'capture-agent-capabilities', 'SKILL.md'), '---\nname: capture-agent-capabilities\ndescription: "x"\ndisable-model-invocation: true\n---\n');
     write(path.join(root, '.claude', 'agents', 'aspnet-verifier.md'), '---\nname: aspnet-verifier\n---\n');
     write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: Object.fromEntries(servers.map((s) => [s, {}])) }));
     if (settings) write(path.join(root, '.claude', 'settings.json'), JSON.stringify(settings));
@@ -189,13 +189,13 @@ test('I21: the always-on surface skips manual-only descriptions and prices the g
     write(path.join(base, 'skills', 'on', 'SKILL.md'), '---\nname: on\ndescription: "1234"\nwhen_to_use: "56"\n---\n');
     write(path.join(base, 'skills', 'manual', 'SKILL.md'), '---\nname: manual\ndescription: "a long manual-only description"\ndisable-model-invocation: true\n---\n');
     write(path.join(base, 'caps', 'SKILL.md'), '# caps\n\n```markdown\n## Usage policy (fixed - stamped verbatim, every run)\n<!-- policy-rev: 00000000 -->\n- P1\n\n## Orchestration skills\n```\n');
-    write(path.join(base, 'caps', 'references', 'generated-rule-template.md'), 'The routing map (only for servers actually present):\n- `navigation`, `documentation`, `memory` - LOCKED. first call: see the baselines.\n- `browser` - not fixed text.\n');
+    write(path.join(base, 'caps', 'references', 'generated-rule-template.md'), 'The routing map (only for servers actually present):\n- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - LOCKED. first call: see the baselines.\n- `browser` - not fixed text.\n');
     const s = alwaysOnSurface({ rulesDir: path.join(base, 'rules'), agentsDir: path.join(base, 'agents'), skillsDir: path.join(base, 'skills'), capabilitiesDir: path.join(base, 'caps') });
     assert.equal(s.rules, 'ABCDE'.length, 'the body only - no frontmatter, no comment, no blank-line padding');
     assert.equal(s.agents, 5);
     assert.equal(s.skills, 6, 'description plus when_to_use, the manual-only skill not counted');
     assert.equal(s.manualOnly, 1);
-    const fixed = '## Usage policy (fixed - stamped verbatim, every run)\n- P1'.length + '- `navigation`, `documentation`, `memory` - LOCKED. first call: see the baselines.'.length;
+    const fixed = '## Usage policy (fixed - stamped verbatim, every run)\n- P1'.length + '- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - LOCKED. first call: see the baselines.'.length;
     assert.equal(s.generated, fixed, 'the policy section (its stamp comment is stripped) plus the locked-server row');
     assert.equal(s.total, s.rules + s.agents + s.skills + s.generated);
 });
@@ -235,10 +235,10 @@ test('I24: the stamped policy drops the docs-placement and memory lines and stat
 test('I24: the locked servers share ONE routing row that points at their baselines', () =>
 {
     const map = routingMapText();
-    const locked = map.split('\n').filter((l) => /^- .*`(navigation|documentation|memory)`/.test(l));
+    const locked = map.split('\n').filter((l) => /^- .*`(?:alfred-)?(navigation|documentation|memory)`/.test(l));
     assert.equal(locked.length, 1, locked.join('\n'));
-    assert.match(locked[0], /^- `navigation`, `documentation`, `memory` - /);
-    for (const select of ['mcp__plugin_navigation_navigation__find_symbol', 'mcp__plugin_documentation_documentation__resolve-library-id', 'mcp__plugin_memory_memory__memory_store'])
+    assert.match(locked[0], /^- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - /);
+    for (const select of ['mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', 'mcp__plugin_alfred-documentation_alfred-documentation__resolve-library-id', 'mcp__plugin_alfred-memory_alfred-memory__memory_store'])
         assert.ok(!map.includes(select), `the template restates a baseline's load line: ${select}`);
 });
 
@@ -259,17 +259,17 @@ test('I24: the report prints one locked-server row, and --verify passes a rule b
     const { out } = run([], { cwd: root, home });
     const rows = rowsOf(out);
     assert.equal(rows.length, 2, rows.join('\n'));
-    assert.equal(rows.filter((r) => /^- `navigation`, `documentation`, `memory` - /.test(r)).length, 1, rows.join('\n'));
+    assert.equal(rows.filter((r) => /^- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - /.test(r)).length, 1, rows.join('\n'));
     assert.equal(rows.filter((r) => /^- `browser-chrome` - /.test(r)).length, 1, rows.join('\n'));
-    const partial = rowsOf(run([], { cwd: project('locked-partial', { servers: ['memory', 'navigation'] }).root, home }).out);
-    assert.deepStrictEqual(partial.map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`navigation`, `memory`'], 'a locked server the install lacks is not named');
+    const partial = rowsOf(run([], { cwd: project('locked-partial', { servers: ['alfred-memory', 'alfred-navigation'] }).root, home }).out);
+    assert.deepStrictEqual(partial.map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`alfred-navigation`, `alfred-memory`'], 'a locked server the install lacks is not named');
 
     const skill = read(`${CAPS_DIR}/SKILL.md`).split('\n');
     const at = skill.findIndex((l) => /<!--\s*policy-rev:/.test(l));
     const rule = write(path.join(root, 'composed.md'), [
         '---', 'description: generated', '---', '', '# This project\'s capabilities', '', 'Captured: 2026-09-29 from 2.1.3@abcdef1', '',
         '## Usage policy (fixed - stamped verbatim, every run)', skill[at], policyBlock(), '',
-        '## Orchestration skills (slash-only - invisible until invoked)', '/alfred-capture-agent-capabilities - x', '',
+        '## Orchestration skills (slash-only - invisible until invoked)', '/capture-agent-capabilities - x', '',
         '## Subagent seats', 'aspnet-verifier', '', '## MCP routing', ...rows, '',
     ].join('\n'));
     const verified = run(['--verify', rule], { cwd: root, home });

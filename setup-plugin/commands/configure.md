@@ -200,7 +200,7 @@ is where the same value can also be edited by hand.
 walk.md's MCPs layer, the two browser asks pre-selected from step 1's plan (step 12 passes a
 changed answer).
 
-Whenever `memory` is PRESENT after this round - kept from before, or newly pulled in by adding
+Whenever `alfred-memory` is PRESENT after this round - kept from before, or newly pulled in by adding
 `alfred-memory` at step 3 - ask the shared memory level. Read what is registered today first:
 `node "$TMP/repo/stack/hooks/memory.js" level` prints `<level> <dbPath>` or `none` (no prior
 registration - a fresh add, default to `global`). Paste the level table init uses - `global` /
@@ -220,7 +220,7 @@ user runs - `node .claude/hooks/memory.js export --db <oldPath> > memories.jsonl
 .claude/hooks/memory.js import memories.jsonl` (stored through the new level's server; a re-run
 stores nothing) - and runs neither itself. Pass the answer to the installer as
 `--memory-level <value>` at step 12; 'keep' passes nothing - the registration already matches.
-`memory` dropped this round entirely (its holding rule dropped too): ask nothing, the MCP layer's
+`alfred-memory` dropped this round entirely (its holding rule dropped too): ask nothing, the MCP layer's
 own drop handling applies like any other server.
 
 Presence, never the value - run this and paste its lines as-is:
@@ -380,7 +380,7 @@ lands the same revision step 1 previewed. One fixed capture form, always - `2>&1
 "$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
 written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--browser-enabled <csv|none>] [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] [--rename-claude-md] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--browser-enabled <csv|none>] [--scope-of <item>=<global|project>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] [--rename-claude-md] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new
@@ -426,16 +426,15 @@ It does NOT uninstall a plugin, and on the copy MCP route it does not unregister
 stamp action) - never paste its output, and take the counts from the line that states them:
 `grep -E 'installed/refreshed this run' "$TMP/install.log"` (a `tail -20` of a 243-line log misses
 it, which is how the wrong post-check above was written); (2) removals - what the drops did, from
-`grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|scope, not this run|removed \(dropped\)|overwriting a hand-edited copy' "$TMP/install.log"` - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out,
+`grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|plugin moved|plugin move failed|scope, not this run|removed \(dropped\)|overwriting a hand-edited copy' "$TMP/install.log"` (a `plugin moved` line is a scope move the walk asked for, reported as one: `<item>: <old> -> <new>`, the `!!` one with the line it names) - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out,
 one line per item, never deleted a second time by hand; then each removal the installer does not
 make, with its command shown before running it: `claude mcp remove <name>` for an MCP on the copy
 route (browser = every `browser-<engine>` server);
 `claude plugin uninstall <name> --scope <the scope step 1's inventory carries for it>` for a plugin -
-except one the table showed as `dependency`, which is never proposed for removal at all: every
-install carries it beside the core, and the next run installs it again - and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
+and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
 it for every project'), since account-wide and project-local are different consents and the wrong
 `--scope` fails with `not installed in project scope`. 'removals: none' when nothing was dropped;
-(3) the follow-through line - telling the USER to re-run `/alfred-capture-agent-capabilities` (when
+(3) the follow-through line - telling the USER to re-run `/capture-agent-capabilities` (when
 installed, and ONLY when this run added or removed a skill, agent, MCP server or plugin - the
 inventory that rule lists; a run that changed only env or settings names none) so the generated awareness rule reflects the new inventory (the skill is manual-only,
 `disable-model-invocation` - a Skill call from this run is blocked; the line is addressed to the
@@ -458,7 +457,7 @@ nothing at step 8 and applies nothing here.
 Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (reconcile -
 recommended / skip); a 'no' ends the run cleanly. The location: the project's own AGENTS.md - `.claude/AGENTS.md` where the installer
 seeded it, or the root `AGENTS.md` where the project already had one; name which one you found.
-On a yes, read `$TMP/repo/stack/skills/alfred-habits-adjust-agents-md/SKILL.md` and follow it inline
+On a yes, read `$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` and follow it inline
 with `<stack>` = the `$TMP/repo` path, pasted as a literal - the one home of the fill: its improve mode adds the sections the template
 gained, offers a fix for what its check reports (applied only when the user picks it) and shows every
 change before writing, never overwriting the
@@ -470,7 +469,7 @@ the walk owned the selection.
 
 Report what changed per category (refreshed / added / dropped, orphans removed vs kept), the
 AGENTS.md decision and reconcile result, anything deferred, and remind that a restart picks up
-MCP registration changes. When step 7 touched `memory`, add one line naming the level (unchanged
+MCP registration changes. When step 7 touched `alfred-memory`, add one line naming the level (unchanged
 or the old -> new file) and, when `project` was chosen while sibling repos are named, that those
 projects' memories are not visible from this one. The run rewrites `alfred-code.stamp` to the
 revision it installed, so the next configure diffs from here.
@@ -490,11 +489,11 @@ and apply it with `--apply gitignore` or `--apply exclude`, reporting the `appli
 `none (...)` line is not reported.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/alfred-capture-agent-capabilities`
+follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-capabilities`
 (when installed and this run changed the inventory it lists), a manual-only capture whose output this
 run made stale, the navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
-matters ('`/alfred-capture-agent-capabilities` - the selection changed, so the generated rule still
+matters ('`/capture-agent-capabilities` - the selection changed, so the generated rule still
 names what this project dropped'). No AskUserQuestion over them: the walk's asks end with the
 installer (a write still gets its consent ask where it happens - step 13's AGENTS.md reconcile),
 and the closing ask over follow-ups was dropped as friction - the user's call, made knowing a

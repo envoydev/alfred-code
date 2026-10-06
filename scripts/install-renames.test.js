@@ -57,8 +57,8 @@ test('the renamed map: every old name is retired, every new name ships, and no n
     const m = loadManifest(ROOT);
     const skills = new Set(m.catalogs.skills.map((e) => e.split('|').pop()));
     const agents = new Set(m.agents.map((f) => f.replace(/\.md$/, '')));
-    assert.strictEqual(Object.keys(RENAMED.skills).length, 28, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one and the 2.1.7 usage-report one');
-    assert.strictEqual(Object.keys(RENAMED.agents).length, 2, 'the two failure diagnosers');
+    assert.strictEqual(Object.keys(RENAMED.skills).length, 64, 'the 23 project-* skills, the three 2.1.0 renames, the 2.1.6 AGENTS.md one, the 2.1.7 usage-report one and the 36 alfred- prefixes 2.2.0 dropped');
+    assert.strictEqual(Object.keys(RENAMED.agents).length, 4, 'the two failure diagnosers, then their alfred- prefix (2.2.0)');
     for (const [from, to] of Object.entries(RENAMED.skills))
     {
         assert.ok(m.retired.skills.includes(from), `${from} is retired, so its copy is pruned`);
@@ -74,9 +74,9 @@ test('the renamed map: every old name is retired, every new name ships, and no n
     for (const to of Object.values(RENAMED.agents)) assert.ok(!m.retired.agents.includes(`${to}.md`), `${to} is a rename target and retired too`);
 });
 
-// 2.1.0: three more skills take alfred-habits-* names, and plugin-authoring leaves the shipped catalog
+// 2.1.0: three more skills take habits-* names, and plugin-authoring leaves the shipped catalog
 // (it is retired, not renamed - this repo keeps its own copy in .claude/skills).
-const V21 = { 'alfred-capture-claude-md': 'alfred-habits-adjust-agents-md', 'create-ticket': 'alfred-habits-create-ticket', 'explain-code-tutor': 'alfred-habits-explain-code' };
+const V21 = { 'alfred-capture-claude-md': 'habits-adjust-agents-md', 'create-ticket': 'habits-create-ticket', 'explain-code-tutor': 'habits-explain-code' };
 
 test('2.1.0 renames: each old skill maps to its new name, is retired, and plugin-authoring is retired and no longer ships', () =>
 {
@@ -92,20 +92,20 @@ test('2.1.0 renames: each old skill maps to its new name, is retired, and plugin
     assert.ok(m.retired.skills.includes('plugin-authoring') && !skills.has('plugin-authoring'), 'plugin-authoring is retired and not in the catalog');
     assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'skills', 'plugin-authoring')), 'plugin-authoring is not under stack/skills');
     assert.deepStrictEqual(selection.renamePicked({ skills: ['create-ticket@alfred-code', 'explain-code-tutor', 'alfred-capture-claude-md@alfred-code'], agents: [] }, { renamed: RENAMED, log: () => {}, said: new Set() }),
-        { skills: ['alfred-habits-create-ticket@alfred-code', 'alfred-habits-explain-code', 'alfred-habits-adjust-agents-md@alfred-code'], agents: [] }, 'a pick keeps its home and takes the new name');
+        { skills: ['habits-create-ticket@alfred-code', 'habits-explain-code', 'habits-adjust-agents-md@alfred-code'], agents: [] }, 'a pick keeps its home and takes the new name');
 });
 
 // The instruction file is AGENTS.md now: the 2.1.6 skill name maps to it, is retired and is gone from disk, and the
 // pick, a deny and an override written under the old name are carried over.
-test('AGENTS.md rename: alfred-habits-adjust-claude-md maps to alfred-habits-adjust-agents-md, retired, and a pick carries over', () =>
+test('AGENTS.md rename: alfred-habits-adjust-claude-md maps to habits-adjust-agents-md, retired, and a pick carries over', () =>
 {
     const m = loadManifest(ROOT);
-    assert.strictEqual(RENAMED.skills['alfred-habits-adjust-claude-md'], 'alfred-habits-adjust-agents-md');
+    assert.strictEqual(RENAMED.skills['alfred-habits-adjust-claude-md'], 'habits-adjust-agents-md');
     assert.ok(m.retired.skills.includes('alfred-habits-adjust-claude-md'));
     assert.ok(!fs.existsSync(path.join(ROOT, 'stack', 'skills', 'alfred-habits-adjust-claude-md')));
-    assert.ok(fs.existsSync(path.join(ROOT, 'stack', 'skills', 'alfred-habits-adjust-agents-md', 'SKILL.md')));
+    assert.ok(fs.existsSync(path.join(ROOT, 'stack', 'skills', 'habits-adjust-agents-md', 'SKILL.md')));
     assert.deepStrictEqual(selection.renamePicked({ skills: ['alfred-habits-adjust-claude-md@alfred-code'], agents: [] }, { renamed: RENAMED, log: () => {}, said: new Set() }),
-        { skills: ['alfred-habits-adjust-agents-md@alfred-code'], agents: [] });
+        { skills: ['habits-adjust-agents-md@alfred-code'], agents: [] });
 });
 
 // ---------- the read-side helpers ----------
@@ -116,17 +116,17 @@ test('renameLines: an old skill or seat line reads under its new name, one line 
     const said = new Set();
     const opts = { renamed: RENAMED, log: (m) => logs.push(m), said };
     const out = selection.renameLines(['skill project-solve-task', 'agent ci-failure-diagnoser', 'rule markdown-docs', 'skill my-own-skill', 'hook none'], opts);
-    assert.deepStrictEqual(out, ['skill alfred-task-solve', 'agent alfred-issue-diagnoser-ci', 'rule markdown-docs', 'skill my-own-skill', 'hook none']);
+    assert.deepStrictEqual(out, ['skill task-solve', 'agent issue-diagnoser-ci', 'rule markdown-docs', 'skill my-own-skill', 'hook none']);
     selection.renameLines(['skill project-solve-task'], opts);
     assert.deepStrictEqual(logs, [
-        'renamed: skill project-solve-task -> alfred-task-solve',
-        'renamed: agent ci-failure-diagnoser -> alfred-issue-diagnoser-ci',
+        'renamed: skill project-solve-task -> task-solve',
+        'renamed: agent ci-failure-diagnoser -> issue-diagnoser-ci',
     ], 'the second sighting of a rename says nothing');
     // A rule line reads only by the table's own `rules` part (2.1.6: baseline-git -> alfred-git), a hook never
     // is renamed, and an MCP line only by its own `mcps` part (the 2.0.0 role names) - never under a skill's.
     assert.deepStrictEqual(selection.renameLines(['rule baseline-git', 'rule baseline-project-run-book', 'hook baseline-git'], opts), ['rule alfred-git', 'rule baseline-project-run-book', 'hook baseline-git']);
     assert.deepStrictEqual(selection.renameLines(['rule project-solve-task', 'mcp project-solve-task'], opts), ['rule project-solve-task', 'mcp project-solve-task']);
-    assert.deepStrictEqual(selection.renameLines(['mcp serena', 'skill serena'], opts), ['mcp navigation', 'skill serena']);
+    assert.deepStrictEqual(selection.renameLines(['mcp serena', 'skill serena'], opts), ['mcp alfred-navigation', 'skill serena']);
 });
 
 test('renamePicked: a stamp pick keeps its home and takes the new name; no picks stays null', () =>
@@ -134,7 +134,7 @@ test('renamePicked: a stamp pick keeps its home and takes the new name; no picks
     const opts = { renamed: RENAMED, log: () => {}, said: new Set() };
     assert.strictEqual(selection.renamePicked(null, opts), null, 'a stamp that never recorded picks is not one that recorded none');
     assert.deepStrictEqual(selection.renamePicked({ skills: [`project-verify-code@${OLD_KEY}`, 'project-related-context', 'csharp'], agents: ['runtime-failure-diagnoser@alfred-code'] }, opts),
-        { skills: [`alfred-task-verify-code@${OLD_KEY}`, 'alfred-capture-related-projects', 'csharp'], agents: ['alfred-issue-diagnoser-runtime@alfred-code'] });
+        { skills: [`task-verify-code@${OLD_KEY}`, 'capture-related-projects', 'csharp'], agents: ['issue-diagnoser-runtime@alfred-code'] });
 });
 
 test('renameDeny: a stack seat deny reads under the new seat, under any stack spelling; a foreign one is not touched', () =>
@@ -146,7 +146,7 @@ test('renameDeny: a stack seat deny reads under the new seat, under any stack sp
     const before = JSON.stringify(settings);
     const out = selection.renameDeny(settings, { renamed: RENAMED, log: () => {}, said: new Set() });
     assert.deepStrictEqual(out.permissions.deny, [
-        'Agent(alfred-code:alfred-issue-diagnoser-ci)', `Agent(${OLD_KEY}:alfred-issue-diagnoser-runtime)`,
+        'Agent(alfred-code:issue-diagnoser-ci)', `Agent(${OLD_KEY}:issue-diagnoser-runtime)`,
         'Agent(someone-else:ci-failure-diagnoser)', 'Bash(rm -rf:*)',
     ]);
     assert.strictEqual(JSON.stringify(settings), before, 'the read is a view - the file is re-spelled by the writer');
@@ -166,12 +166,12 @@ const V13_CLAUDE_MD = [
     '',
 ].join('\n');
 const V13_CLAUDE_MD_NOW = [
-    '   /alfred-capture-architecture, /alfred-capture-code-style, /alfred-capture-related-projects ONLY',
-    '   /alfred-capture-agent-capabilities LAST, so its generated inventory reflects the final install. All but',
-    '   /alfred-capture-architecture are slash-only: the user types them - a model Skill call is refused.',
-    '   .claude/rules/alfred-project-agent-capabilities.md (user-run /alfred-capture-agent-capabilities; if',
-    '| `.claude/rules/alfred-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `alfred-habits-commit-checkpoint` skill |',
-    '| `.claude/rules/alfred-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /alfred-capture-related-projects with their paths/URLs) | sibling-repo awareness |',
+    '   /capture-architecture, /capture-code-style, /capture-related-projects ONLY',
+    '   /capture-agent-capabilities LAST, so its generated inventory reflects the final install. All but',
+    '   /capture-architecture are slash-only: the user types them - a model Skill call is refused.',
+    '   .claude/rules/alfred-project-agent-capabilities.md (user-run /capture-agent-capabilities; if',
+    '| `.claude/rules/alfred-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `habits-commit-checkpoint` skill |',
+    '| `.claude/rules/alfred-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /capture-related-projects with their paths/URLs) | sibling-repo awareness |',
     '',
 ].join('\n');
 const CAPABILITIES_RULE = '# Agent capabilities\n\nGenerated by /project-agent-capabilities.\n\n- `ci-failure-diagnoser` - a red CI run; `runtime-failure-diagnoser` - a crash.\n- `alfred-code:project-architecture-quality-loop` loops the capture.\n';
@@ -186,7 +186,7 @@ test('respellRenamed (I2): every old name the stack wrote into CLAUDE.md and a g
             'CLAUDE.md': LONGER,
             '.claude/CLAUDE.md': V13_CLAUDE_MD,
             '.claude/rules/alfred-project-agent-capabilities.md': CAPABILITIES_RULE,
-            '.claude/rules/alfred-project-architecture.md': 'Nothing old here - alfred-capture-architecture writes it.\n',
+            '.claude/rules/alfred-project-architecture.md': 'Nothing old here - capture-architecture writes it.\n',
             '.claude/rules/my-own-rule.md': 'My notes on /project-solve-task stay mine.\n',
             '.claude/rules/project-code-style.md': '---\npaths: ["**/*.ts"]\n---\nthe project-code-style-analyzer skill owns this rule\n',
         };
@@ -197,12 +197,12 @@ test('respellRenamed (I2): every old name the stack wrote into CLAUDE.md and a g
         const read = (rel) => fs.readFileSync(path.join(dir, rel), 'utf8');
         assert.strictEqual(read('.claude/CLAUDE.md'), V13_CLAUDE_MD_NOW, 'the 1.3.0 template text reads under the new names; the rule FILE names stay');
         assert.strictEqual(read('.claude/rules/alfred-project-agent-capabilities.md'),
-            '# Agent capabilities\n\nGenerated by /alfred-capture-agent-capabilities.\n\n- `alfred-issue-diagnoser-ci` - a red CI run; `alfred-issue-diagnoser-runtime` - a crash.\n- `alfred-code:alfred-loop-architecture-quality` loops the capture.\n',
+            '# Agent capabilities\n\nGenerated by /capture-agent-capabilities.\n\n- `issue-diagnoser-ci` - a red CI run; `issue-diagnoser-runtime` - a crash.\n- `alfred-code:loop-architecture-quality` loops the capture.\n',
             'a seat name and a plugin-prefixed name are re-spelled too');
         assert.strictEqual(read('CLAUDE.md'), LONGER, 'an old name inside a longer name is never touched');
         assert.strictEqual(read('.claude/rules/my-own-rule.md'), files['.claude/rules/my-own-rule.md'], 'a rule the stack did not generate is not the stack\'s to re-spell');
         assert.strictEqual(read('.claude/rules/alfred-project-architecture.md'), files['.claude/rules/alfred-project-architecture.md']);
-        assert.match(read('.claude/rules/project-code-style.md'), /the alfred-capture-code-style skill owns this rule/, 'the generated code-style rule is the stack\'s too');
+        assert.match(read('.claude/rules/project-code-style.md'), /the capture-code-style skill owns this rule/, 'the generated code-style rule is the stack\'s too');
         assert.deepStrictEqual(logs, [
             '  renamed: .claude/CLAUDE.md - 8 old skill or seat name(s) re-spelled to the new names',
             '  renamed: .claude/rules/alfred-project-agent-capabilities.md - 4 old skill or seat name(s) re-spelled to the new names',
@@ -232,7 +232,7 @@ test('respellRenamed (audit F1): the user\'s own instruction files are never rew
         selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, owned: (rel) => rel === '.claude/AGENTS.md', onWrite: (rel) => wrote.push(rel), log: (m) => logs.push(m), note: (m) => assert.fail(m) });
         const read = (rel) => fs.readFileSync(path.join(dir, rel), 'utf8');
         for (const rel of ['AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md']) assert.strictEqual(read(rel), own, `${rel} is the project's`);
-        assert.strictEqual(read('.claude/AGENTS.md'), 'Use /alfred-task-solve.\n', 'the owned seed follows the rename');
+        assert.strictEqual(read('.claude/AGENTS.md'), 'Use /task-solve.\n', 'the owned seed follows the rename');
         assert.deepStrictEqual(wrote, ['.claude/AGENTS.md']);
         const named = logs.filter((l) => /!! AGENTS\.md /.test(l));
         assert.strictEqual(named.length, 1, logs.join('\n'));
@@ -261,7 +261,7 @@ test('respellRenamed (I2): the longest old name wins, and a shorter one inside i
 // spellings are built, never typed: lint 54 and 59 read this file.
 const pluginTool = (n, t) => `mcp__plugin_${n}_${n}__${t}`;
 const bareTool = (n, t) => `mcp_${'_'}${n}__${t}`;
-test('respellRenamed: a generated rule\'s old MCP tool spellings and routing keys follow the 2.0.0 rename, and a second run changes nothing', () =>
+test('respellRenamed: a generated rule\'s old MCP tool spellings and routing keys follow the 2.0.0 and 2.2.0 renames straight to today\'s names, and a second run changes nothing', () =>
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-docs-'));
     try
@@ -276,10 +276,10 @@ test('respellRenamed: a generated rule\'s old MCP tool spellings and routing key
         ].join('\n');
         const after = [
             '## MCP routing',
-            `- \`navigation\` - first call: \`ToolSearch select:${pluginTool('navigation', 'find_symbol')},${pluginTool('navigation', 'get_symbols_overview')}\``,
-            `- \`documentation\` - first call: \`ToolSearch select:${pluginTool('documentation', 'query-docs')}\``,
+            `- \`alfred-navigation\` - first call: \`ToolSearch select:${pluginTool('alfred-navigation', 'find_symbol')},${pluginTool('alfred-navigation', 'get_symbols_overview')}\``,
+            `- \`alfred-documentation\` - first call: \`ToolSearch select:${pluginTool('alfred-documentation', 'query-docs')}\``,
             `- \`browser-firefox\` - registered: \`${bareTool('browser-firefox', 'browser_snapshot')}\``,
-            `- \`memory\` - \`${pluginTool('memory', 'memory_search')}\`, and my own \`serena-notes\` stay`,
+            `- \`alfred-memory\` - \`${pluginTool('alfred-memory', 'memory_search')}\`, and my own \`serena-notes\` stay`,
             '',
         ].join('\n');
         write(dir, '.claude/rules/alfred-project-agent-capabilities.md', before);
@@ -288,7 +288,7 @@ test('respellRenamed: a generated rule\'s old MCP tool spellings and routing key
         run();
         const read = () => fs.readFileSync(path.join(dir, '.claude/rules/alfred-project-agent-capabilities.md'), 'utf8');
         assert.strictEqual(read(), after);
-        assert.deepStrictEqual(logs, ['  renamed: .claude/rules/alfred-project-agent-capabilities.md - 7 old MCP tool or server name(s) re-spelled to the new names']);
+        assert.deepStrictEqual(logs, ['  renamed: .claude/rules/alfred-project-agent-capabilities.md - 9 old MCP tool or server name(s) re-spelled to the new names']);
         logs.length = 0;
         run();
         assert.strictEqual(read(), after, 'a second run changes nothing');
@@ -346,13 +346,13 @@ test('settings writer: a renamed seat deny is re-spelled in the file, a skillOve
         run();
         const data = JSON.parse(fs.readFileSync(file, 'utf8'));
         assert.deepStrictEqual(data.permissions.deny.slice().sort(), [
-            'Agent(alfred-code:alfred-issue-diagnoser-ci)', 'Agent(alfred-code:alfred-issue-diagnoser-runtime)',
+            'Agent(alfred-code:issue-diagnoser-ci)', 'Agent(alfred-code:issue-diagnoser-runtime)',
             'Agent(someone-else:ci-failure-diagnoser)', 'Bash(rm -rf:*)',
         ].sort());
-        assert.deepStrictEqual(data.skillOverrides, { 'alfred-capture-related-projects': 'off', 'my-own-skill': 'name-only' });
+        assert.deepStrictEqual(data.skillOverrides, { 'capture-related-projects': 'off', 'my-own-skill': 'name-only' });
         assert.strictEqual(data.env.MY_OWN_KEY, 'mine', "the user's own settings key survives");
-        assert.ok(logs.some((m) => /ci-failure-diagnoser\).*alfred-issue-diagnoser-ci/.test(m)), logs.join('\n'));
-        assert.ok(logs.some((m) => /skillOverrides project-related-context .*alfred-capture-related-projects/.test(m)), logs.join('\n'));
+        assert.ok(logs.some((m) => /ci-failure-diagnoser\).*issue-diagnoser-ci/.test(m)), logs.join('\n'));
+        assert.ok(logs.some((m) => /skillOverrides project-related-context .*capture-related-projects/.test(m)), logs.join('\n'));
         const again = JSON.stringify(data);
         const second = run();
         assert.strictEqual(second.written, false, 'a second run changes nothing');
@@ -367,9 +367,9 @@ test('settings writer: a skillOverrides value already set under the new name win
     try
     {
         const file = path.join(dir, 'settings.json');
-        fs.writeFileSync(file, JSON.stringify({ skillOverrides: { 'project-first-look': 'off', 'alfred-capture-first-look': 'on' } }));
+        fs.writeFileSync(file, JSON.stringify({ skillOverrides: { 'project-first-look': 'off', 'capture-first-look': 'on' } }));
         writeSettings({ file, renamed: RENAMED, log: () => {}, note: (m) => assert.fail(m) });
-        assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).skillOverrides, { 'alfred-capture-first-look': 'on' });
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).skillOverrides, { 'capture-first-look': 'on' });
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -387,10 +387,10 @@ test('settings writer: a personal skillOverrides switch-off in settings.local.js
         const run = () => writeSettings({ file, localFile, renamed: RENAMED, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
         run();
         const local = JSON.parse(fs.readFileSync(localFile, 'utf8'));
-        assert.deepStrictEqual(local.skillOverrides, { 'my-own-skill': 'off', 'alfred-loop-quality': 'off' });
+        assert.deepStrictEqual(local.skillOverrides, { 'my-own-skill': 'off', 'loop-quality': 'off' });
         assert.strictEqual(local.MY_LOCAL_KEY, 1, "the user's own local key survives");
         assert.strictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).skillOverrides, undefined, 'a personal switch-off stays personal');
-        assert.ok(logs.some((m) => /settings\.local\.json: skillOverrides project-quality-loop re-keyed alfred-loop-quality/.test(m)), logs.join('\n'));
+        assert.ok(logs.some((m) => /settings\.local\.json: skillOverrides project-quality-loop re-keyed loop-quality/.test(m)), logs.join('\n'));
         const before = fs.readFileSync(localFile, 'utf8');
         run();
         assert.strictEqual(fs.readFileSync(localFile, 'utf8'), before, 'a second run changes nothing');
@@ -412,7 +412,7 @@ test('settings writer (I1): a seat deny in settings.local.json is re-spelled the
         fs.writeFileSync(localFile, JSON.stringify({ permissions: { deny: LOCAL_DENY }, MY_LOCAL_KEY: 1 }));
         const logs = [];
         // The read-back sees both seats off, so the run's agent off-list names them under the new name.
-        const agentDeny = ['Agent(alfred-code:alfred-issue-diagnoser-ci)', 'Agent(alfred-code:alfred-issue-diagnoser-runtime)'];
+        const agentDeny = ['Agent(alfred-code:issue-diagnoser-ci)', 'Agent(alfred-code:issue-diagnoser-runtime)'];
         const run = () => writeSettings({ file, localFile, renamed: RENAMED, liveEntries: [], agentDeny, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
         run();
         const local = JSON.parse(fs.readFileSync(localFile, 'utf8'));
@@ -421,7 +421,7 @@ test('settings writer (I1): a seat deny in settings.local.json is re-spelled the
         const shared = JSON.parse(fs.readFileSync(file, 'utf8'));
         assert.ok(!((shared.permissions || {}).deny || []).some((d) => /diagnoser/.test(d)), `a personal switch-off moved into the shared file: ${JSON.stringify(shared.permissions)}`);
         assert.strictEqual(shared.env.MY_OWN_KEY, 'mine');
-        assert.ok(logs.some((m) => /^ {2}settings\.local\.json: .*ci-failure-diagnoser\).*alfred-issue-diagnoser-ci/.test(m)), logs.join('\n'));
+        assert.ok(logs.some((m) => /^ {2}settings\.local\.json: .*ci-failure-diagnoser\).*issue-diagnoser-ci/.test(m)), logs.join('\n'));
         const before = [fs.readFileSync(file, 'utf8'), fs.readFileSync(localFile, 'utf8')];
         run();
         assert.deepStrictEqual([fs.readFileSync(file, 'utf8'), fs.readFileSync(localFile, 'utf8')], before, 'a second run changes nothing');
@@ -471,21 +471,21 @@ test('seed update --installed-only over a 1.3.0 stamp: every old pick is carried
     });
     const [first, second] = steps;
     // A skill is a copy since 2.1.0 - its pick has no plugin home.
-    assert.ok(first.pickedSkills.includes('alfred-task-solve'), first.pickedSkills.join(','));
-    assert.ok(first.pickedSkills.includes('alfred-habits-commit-checkpoint'), first.pickedSkills.join(','));
-    assert.ok(first.pickedSkills.includes('alfred-capture-related-projects'), `the library pick is carried: ${first.pickedSkills.join(',')}`);
-    assert.ok(first.pickedAgents.includes('alfred-issue-diagnoser-ci@alfred-code'), first.pickedAgents.join(','));
+    assert.ok(first.pickedSkills.includes('task-solve'), first.pickedSkills.join(','));
+    assert.ok(first.pickedSkills.includes('habits-commit-checkpoint'), first.pickedSkills.join(','));
+    assert.ok(first.pickedSkills.includes('capture-related-projects'), `the library pick is carried: ${first.pickedSkills.join(',')}`);
+    assert.ok(first.pickedAgents.includes('issue-diagnoser-ci@alfred-code'), first.pickedAgents.join(','));
     const old = new Set([...Object.keys(RENAMED.skills), ...Object.keys(RENAMED.agents)]);
     const named = (list) => list.map((e) => e.split('@')[0]).filter((n) => old.has(n));
     assert.deepStrictEqual(named([...first.pickedSkills, ...first.pickedAgents, ...first.librarySkills]), [], 'the new stamp names no old item');
-    assert.ok(first.skills.includes('alfred-capture-related-projects'), `the library copy arrives under its new name: ${first.skills.join(' ')}`);
+    assert.ok(first.skills.includes('capture-related-projects'), `the library copy arrives under its new name: ${first.skills.join(' ')}`);
     assert.ok(!first.skills.includes('project-related-context'), 'the old copy is pruned');
-    assert.deepStrictEqual(first.librarySkills.filter((n) => n.startsWith('alfred-capture-related')), ['alfred-capture-related-projects']);
+    assert.deepStrictEqual(first.librarySkills.filter((n) => n.startsWith('capture-related')), ['capture-related-projects']);
     assert.strictEqual(first.settings.env.MY_OWN_KEY, 'mine', "the user's own settings key survives");
     assert.strictEqual(first.oldStamp, false);
     const lines = renamedLines(outs[0]);
-    for (const [kind, from, to] of [['skill', 'project-solve-task', 'alfred-task-solve'], ['skill', 'project-commit-checkpoint', 'alfred-habits-commit-checkpoint'],
-        ['skill', 'project-related-context', 'alfred-capture-related-projects'], ['agent', 'ci-failure-diagnoser', 'alfred-issue-diagnoser-ci']])
+    for (const [kind, from, to] of [['skill', 'project-solve-task', 'task-solve'], ['skill', 'project-commit-checkpoint', 'habits-commit-checkpoint'],
+        ['skill', 'project-related-context', 'capture-related-projects'], ['agent', 'ci-failure-diagnoser', 'issue-diagnoser-ci']])
         assert.strictEqual(lines.filter((l) => l === `==> renamed: ${kind} ${from} -> ${to}`).length, 1, `${from}: exactly one line\n${lines.join('\n')}`);
     assert.strictEqual(lines.length, new Set(lines).size, 'no rename is said twice');
     assert.deepStrictEqual(renamedLines(outs[1]), [], 'the re-run has nothing left to rename');
@@ -510,14 +510,14 @@ test('seed update --installed-only: a seat denied under its old name stays denie
     };
     const { result: r, out } = seedRun('update', 'skill markdown-style\n', { plugins: listing, args: ['--installed-only'], prepare, inspect });
     const deny = r.settings.permissions.deny;
-    assert.ok(deny.includes('Agent(alfred-code:alfred-issue-diagnoser-ci)') && deny.includes('Agent(alfred-code:alfred-issue-diagnoser-runtime)'), deny.join('\n'));
+    assert.ok(deny.includes('Agent(alfred-code:issue-diagnoser-ci)') && deny.includes('Agent(alfred-code:issue-diagnoser-runtime)'), deny.join('\n'));
     assert.ok(!deny.some((d) => /^Agent\((alfred-code|claude-stack)[a-z0-9-]*:(ci|runtime)-failure-diagnoser\)$/.test(d)), `no stack deny keeps an old seat name:\n${deny.join('\n')}`); // legacy-name
     assert.ok(deny.includes('Agent(someone-else:ci-failure-diagnoser)') && deny.includes('Bash(rm -rf:*)'), "the user's own entries stay");
     assert.ok(!r.pickedAgents.some((e) => /diagnoser/.test(e)), `a denied seat is no pick: ${r.pickedAgents.join(',')}`);
-    assert.deepStrictEqual(r.settings.skillOverrides, { 'alfred-capture-related-projects': 'off' }, 'the skill switch-off follows the skill');
-    assert.ok(r.skills.includes('alfred-capture-related-projects') && !r.skills.includes('project-related-context'), r.skills.join(' '));
+    assert.deepStrictEqual(r.settings.skillOverrides, { 'capture-related-projects': 'off' }, 'the skill switch-off follows the skill');
+    assert.ok(r.skills.includes('capture-related-projects') && !r.skills.includes('project-related-context'), r.skills.join(' '));
     assert.strictEqual(r.settings.env.MY_OWN_KEY, 'mine');
-    assert.ok(renamedLines(out).includes('==> renamed: agent ci-failure-diagnoser -> alfred-issue-diagnoser-ci'), out);
+    assert.ok(renamedLines(out).includes('==> renamed: agent ci-failure-diagnoser -> issue-diagnoser-ci'), out);
 });
 
 // I1 / R126 at every scope: a seat the user denied for themselves in settings.local.json stays off
@@ -543,7 +543,7 @@ for (const scope of ['project', 'user', 'local'])
         const { steps, outs } = seedRun(['update', 'update'], 'skill markdown-style\n', { plugins: listing, args: ['--installed-only', '--scope', scope], prepare, each });
         const [first, second] = steps;
         const deny = first.local.permissions.deny;
-        assert.ok(deny.includes('Agent(alfred-code:alfred-issue-diagnoser-ci)') && deny.includes('Agent(alfred-code:alfred-issue-diagnoser-runtime)'), `${scope}: ${deny.join(' | ')}\n${outs[0]}`);
+        assert.ok(deny.includes('Agent(alfred-code:issue-diagnoser-ci)') && deny.includes('Agent(alfred-code:issue-diagnoser-runtime)'), `${scope}: ${deny.join(' | ')}\n${outs[0]}`);
         assert.ok(!deny.some((d) => /:(ci|runtime)-failure-diagnoser\)$/.test(d)), `${scope}: an old seat spelling is left in settings.local.json: ${deny.join(' | ')}`);
         assert.ok(deny.includes('Bash(my-own:*)') && first.local.MY_LOCAL_KEY === 1, `${scope}: the user's own local entries stay`);
         if (scope === 'local') assert.strictEqual(first.sharedRaw, shared, 'a local-scope run never writes the shared file');
@@ -569,7 +569,7 @@ test('seed update --installed-only (I2): a generated rule names the new commands
     const { steps, outs } = seedRun(['update', 'update'], 'skill markdown-style\n', { plugins: V13_LISTING, args: ['--installed-only'], prepare, each });
     assert.strictEqual(steps[0].claudeMd, V13_CLAUDE_MD, 'a 1.3.0 stamp has no ledger, so nothing proves the file is the stack\'s: it is left as written');
     assert.match(outs[0], /!! \.claude\/CLAUDE\.md is yours and names \d+ old stack name/, outs[0]);
-    assert.match(steps[0].rule, /Generated by \/alfred-capture-agent-capabilities\./);
+    assert.match(steps[0].rule, /Generated by \/capture-agent-capabilities\./);
     const lines = (out) => String(out).split('\n').filter((l) => /^==> {3}renamed: \S+ - \d+ old skill or seat name/.test(l));
     assert.deepStrictEqual(lines(outs[0]), [
         '==>   renamed: .claude/rules/alfred-project-agent-capabilities.md - 4 old skill or seat name(s) re-spelled to the new names',
@@ -597,7 +597,7 @@ test('seed update (audit F1): a ledger-held seed is re-spelled and stays owned, 
         each: (repo, i) => { if (i === 0) plant(repo, held); return { text: fs.readFileSync(seedAt(repo), 'utf8'), row: rowOf(repo), own: hashItem(seedAt(repo)) }; },
     });
     const held = run(true);
-    assert.match(held.steps[1].text, /Run \/alfred-task-solve first\./, held.outs[1]);
+    assert.match(held.steps[1].text, /Run \/task-solve first\./, held.outs[1]);
     assert.ok(held.steps[1].row.includes(`AGENTS.md=${held.steps[1].own}`), 'the ledger row follows the re-spelled bytes');
     assert.deepStrictEqual(held.steps[2], held.steps[1], 'a re-run changes nothing');
     const edited = run(false);
@@ -656,9 +656,9 @@ test('seed update --installed-only --scope local (M1): an old seat deny only set
     for (const [i, out] of outs.entries())
     {
         assert.deepStrictEqual(renamedLines(out), [], `run ${i + 1}: nothing this run wrote was renamed\n${out}`);
-        assert.match(out, new RegExp(`settings\\.json still names Agent\\(${OLD_KEY}:ci-failure-diagnoser\\) - read as alfred-issue-diagnoser-ci`), `run ${i + 1}`);
+        assert.match(out, new RegExp(`settings\\.json still names Agent\\(${OLD_KEY}:ci-failure-diagnoser\\) - read as issue-diagnoser-ci`), `run ${i + 1}`);
         assert.strictEqual(steps[i].sharedRaw, shared, 'a local-scope run never writes the shared file');
-        assert.ok(steps[i].local.permissions.deny.includes('Agent(alfred-code:alfred-issue-diagnoser-ci)'), `run ${i + 1}: the seat stays off for this user: ${JSON.stringify(steps[i].local.permissions)}`);
+        assert.ok(steps[i].local.permissions.deny.includes('Agent(alfred-code:issue-diagnoser-ci)'), `run ${i + 1}: the seat stays off for this user: ${JSON.stringify(steps[i].local.permissions)}`);
     }
 });
 
@@ -673,12 +673,12 @@ test('seed update --installed-only on the copy route: the old copies become new 
         write(repo, '.claude/claude-stack.stamp', 'version: 1.3.0\nsha: 0000000\nhooks-route: copy\n'); // legacy-name
     };
     const { result: r, out } = seedRun('update', 'skill markdown-style\n', { env: COPY_ROUTE, args: ['--installed-only'], prepare, inspect });
-    for (const n of ['alfred-task-solve', 'alfred-task-verify-code', 'markdown-style']) assert.ok(r.skills.includes(n), `${n} is copied: ${r.skills.join(' ')}`);
-    assert.ok(r.agents.includes('alfred-issue-diagnoser-ci.md') && r.agents.includes('security-auditor.md'), r.agents.join(' '));
+    for (const n of ['task-solve', 'task-verify-code', 'markdown-style']) assert.ok(r.skills.includes(n), `${n} is copied: ${r.skills.join(' ')}`);
+    assert.ok(r.agents.includes('issue-diagnoser-ci.md') && r.agents.includes('security-auditor.md'), r.agents.join(' '));
     assert.ok(!r.skills.includes('project-solve-task') && !r.skills.includes('project-verify-code'), `an old skill copy survived: ${r.skills.join(' ')}`);
     assert.ok(!r.agents.includes('ci-failure-diagnoser.md'), `an old seat copy survived: ${r.agents.join(' ')}`);
     const names = (list) => list.map((e) => e.split('@')[0]);
-    assert.ok(names(r.pickedSkills).includes('alfred-task-solve') && names(r.pickedAgents).includes('alfred-issue-diagnoser-ci'), `${r.pickedSkills} | ${r.pickedAgents}`);
+    assert.ok(names(r.pickedSkills).includes('task-solve') && names(r.pickedAgents).includes('issue-diagnoser-ci'), `${r.pickedSkills} | ${r.pickedAgents}`);
     assert.ok(!names(r.pickedSkills).includes('project-solve-task') && !names(r.pickedAgents).includes('ci-failure-diagnoser'), 'the stamp names no old item');
     assert.strictEqual(renamedLines(out).length, 3, renamedLines(out).join('\n'));
 });
@@ -715,7 +715,7 @@ test('seed update --installed-only: a seat deny and a skillOverrides key under a
         write(repo, '.claude/settings.json', JSON.stringify({ skillOverrides: { 'explain-code-tutor': 'off' }, env: { MY_OWN_KEY: 'mine' } }, null, 2));
     };
     const { result: r } = seedRun('update', '', { env: COPY_ROUTE, args: ['--installed-only'], prepare, inspect });
-    assert.strictEqual((r.settings.skillOverrides || {})['alfred-habits-explain-code'], 'off', JSON.stringify(r.settings.skillOverrides));
+    assert.strictEqual((r.settings.skillOverrides || {})['habits-explain-code'], 'off', JSON.stringify(r.settings.skillOverrides));
     assert.ok(!('explain-code-tutor' in (r.settings.skillOverrides || {})), JSON.stringify(r.settings.skillOverrides));
     assert.strictEqual(r.settings.env.MY_OWN_KEY, 'mine');
 });
@@ -791,7 +791,7 @@ test('seed update --installed-only over an UNSTAMPED legacy install: picks under
     const before = { state: null };
     // The first run installs the core and the locked three, so the re-run's listing names them - with no
     // listing at all the read is blind, and a blind read carries the stamp's picks verbatim at the end.
-    const listed = JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.1.0', scope: 'project', enabled: true })));
+    const listed = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.1.0', scope: 'project', enabled: true })));
     const { steps, outs } = seedRun(['update', 'update'], '', {
         args: ['--installed-only'],
         prepare: (repo) => { unstampedLegacy(repo); before.state = stampLayer.installState(repo, { CLAUDE_CONFIG_DIR: path.join(repo, 'no-account') }); },
@@ -807,13 +807,13 @@ test('seed update --installed-only over an UNSTAMPED legacy install: picks under
     const [first, second] = steps;
     assert.strictEqual(first.state, 'installed', 'the update wrote the stamp');
     const names = (list) => list.map((e) => e.split('@')[0]);
-    for (const n of ['alfred-task-solve', 'alfred-habits-commit-checkpoint', 'alfred-capture-related-projects', 'typescript'])
+    for (const n of ['task-solve', 'habits-commit-checkpoint', 'capture-related-projects', 'typescript'])
         assert.ok(names(first.pickedSkills).includes(n), `${n} is a pick: ${first.pickedSkills.join(',')}`);
     // M3: the generic name in words of its own is never taken over: not a pick, not rewritten, not recorded.
     assert.ok(![...first.pickedSkills, ...first.librarySkills].some((e) => /^markdown-style\b/.test(e)), `markdown-style is recorded: ${first.pickedSkills.join(',')}`);
     assert.strictEqual(first.markdownStyle, skill('markdown-style'), 'the project\'s own markdown-style is not rewritten');
     assert.match(outs[0], /skill kept[^\n]*markdown-style/, outs[0]);
-    assert.ok(names(first.pickedAgents).includes('alfred-issue-diagnoser-ci'), first.pickedAgents.join(','));
+    assert.ok(names(first.pickedAgents).includes('issue-diagnoser-ci'), first.pickedAgents.join(','));
     const old = new Set([...Object.keys(RENAMED.skills), ...Object.keys(RENAMED.agents)]);
     assert.deepStrictEqual([...first.skills, ...first.agents.map((f) => f.replace(/\.md$/, ''))].filter((n) => old.has(n)), [], 'every old copy is pruned');
     assert.ok(first.skills.includes('my-own-helper'), `the project's own skill stays: ${first.skills.join(' ')}`);
@@ -849,9 +849,9 @@ test('seed update --installed-only: a project holding only its own skills is not
 test('seed install --selection and update --add: a line naming an old item installs the new one', POSIX_ONLY, () =>
 {
     const { result: r, out } = seedRun('install', 'skill markdown-style\nskill project-related-context\nagent ci-failure-diagnoser\nrule markdown-docs\n', { inspect });
-    assert.ok(r.pickedSkills.includes('alfred-capture-related-projects') && r.skills.includes('alfred-capture-related-projects'), `${r.pickedSkills} | ${r.skills}`);
-    assert.ok(r.pickedAgents.includes('alfred-issue-diagnoser-ci@alfred-code'), r.pickedAgents.join(','));
-    assert.ok(renamedLines(out).includes('==> renamed: skill project-related-context -> alfred-capture-related-projects'), out);
+    assert.ok(r.pickedSkills.includes('capture-related-projects') && r.skills.includes('capture-related-projects'), `${r.pickedSkills} | ${r.skills}`);
+    assert.ok(r.pickedAgents.includes('issue-diagnoser-ci@alfred-code'), r.pickedAgents.join(','));
+    assert.ok(renamedLines(out).includes('==> renamed: skill project-related-context -> capture-related-projects'), out);
 
     const listing = JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'project', enabled: true }]);
     const prepare = (repo) =>
@@ -860,18 +860,18 @@ test('seed install --selection and update --add: a line naming an old item insta
         write(repo, '.claude/alfred-code.stamp', 'version: 2.0.0\nsha: 0000000\npicked-skills: markdown-style@alfred-code\npicked-agents: security-auditor@alfred-code\n');
     };
     const add = seedRun('update', 'skill markdown-style\n', { plugins: listing, args: ['--installed-only', '--add', 'skill project-stack-usage-analyzer'], prepare, inspect });
-    assert.ok(add.result.skills.includes('alfred-capture-usage-report'), add.result.skills.join(' '));
+    assert.ok(add.result.skills.includes('capture-usage-report'), add.result.skills.join(' '));
     assert.ok(!add.out.includes('names nothing this release ships'), 'an old name is carried, never reported as unknown');
 
     // M3: a --drop naming the old item drops the new one - its copy, its pick, a seat's switch-off.
-    const drop = seedRun(['install', 'update'], 'skill markdown-style\nskill alfred-capture-related-projects\nagent alfred-issue-diagnoser-ci\nrule markdown-docs\n', {
+    const drop = seedRun(['install', 'update'], 'skill markdown-style\nskill capture-related-projects\nagent issue-diagnoser-ci\nrule markdown-docs\n', {
         plugins: listing, args: [[], ['--installed-only', '--drop', 'skill project-related-context', '--drop', 'agent ci-failure-diagnoser']], each: inspect,
     });
     const [before, after] = drop.steps;
-    assert.ok(before.skills.includes('alfred-capture-related-projects') && before.pickedAgents.includes('alfred-issue-diagnoser-ci@alfred-code'), 'the install carries both');
-    assert.ok(!after.skills.includes('alfred-capture-related-projects') && !after.pickedSkills.includes('alfred-capture-related-projects'), `the dropped copy and pick are gone: ${after.skills} | ${after.pickedSkills}`);
+    assert.ok(before.skills.includes('capture-related-projects') && before.pickedAgents.includes('issue-diagnoser-ci@alfred-code'), 'the install carries both');
+    assert.ok(!after.skills.includes('capture-related-projects') && !after.pickedSkills.includes('capture-related-projects'), `the dropped copy and pick are gone: ${after.skills} | ${after.pickedSkills}`);
     assert.ok(!after.pickedAgents.some((e) => /diagnoser/.test(e)), after.pickedAgents.join(','));
-    assert.ok(after.settings.permissions.deny.includes('Agent(alfred-code:alfred-issue-diagnoser-ci)'), `the dropped core seat is denied under its new name\n${drop.outs[1]}`);
+    assert.ok(after.settings.permissions.deny.includes('Agent(alfred-code:issue-diagnoser-ci)'), `the dropped core seat is denied under its new name\n${drop.outs[1]}`);
 });
 
 // ---------- the old names stay in their homes ----------
@@ -943,14 +943,14 @@ test('settings writer: at local scope an old skillOverrides key in settings.json
         const localFile = path.join(dir, 'settings.local.json');
         const shared = { skillOverrides: { 'project-quality-loop': 'off', 'project-first-look': 'off', 'my-own-skill': 'off' } };
         fs.writeFileSync(sharedFile, JSON.stringify(shared));
-        fs.writeFileSync(localFile, JSON.stringify({ skillOverrides: { 'alfred-capture-first-look': 'on' } }));
+        fs.writeFileSync(localFile, JSON.stringify({ skillOverrides: { 'capture-first-look': 'on' } }));
         const logs = [];
         const opts = { file: localFile, renamed: RENAMED, inheritedOverrides: shared.skillOverrides, note: (m) => assert.fail(m) };
         writeSettings({ ...opts, log: (m) => logs.push(m) });
-        assert.deepStrictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')).skillOverrides, { 'alfred-capture-first-look': 'on', 'alfred-loop-quality': 'off' }, 'the user\'s switch-off stopped applying');
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')).skillOverrides, { 'capture-first-look': 'on', 'loop-quality': 'off' }, 'the user\'s switch-off stopped applying');
         assert.deepStrictEqual(JSON.parse(fs.readFileSync(sharedFile, 'utf8')), shared, 'settings.json is never written at local scope');
         const text = logs.join('\n');
-        assert.match(text, /settings\.local\.json: settings\.json still names skillOverrides project-quality-loop - set as alfred-loop-quality in settings\.local\.json; a local-scope run never writes settings\.json, a project-scope update re-keys it/);
+        assert.match(text, /settings\.local\.json: settings\.json still names skillOverrides project-quality-loop - set as loop-quality in settings\.local\.json; a local-scope run never writes settings\.json, a project-scope update re-keys it/);
         assert.doesNotMatch(text, /project-first-look/, 'a new name the local file already sets wins, silently');
         const before = fs.readFileSync(localFile, 'utf8');
         const again = [];
@@ -975,7 +975,7 @@ test('seed: a local-scope update carries settings.json\'s old skillOverrides key
             local: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')),
         }),
     });
-    assert.deepStrictEqual(result.local.skillOverrides, { 'alfred-loop-quality': 'off' });
+    assert.deepStrictEqual(result.local.skillOverrides, { 'loop-quality': 'off' });
     assert.deepStrictEqual(result.shared, { skillOverrides: { 'project-quality-loop': 'off' } }, 'a local-scope run never writes settings.json');
-    assert.match(out, /settings\.local\.json: settings\.json still names skillOverrides project-quality-loop - set as alfred-loop-quality in settings\.local\.json/, out);
+    assert.match(out, /settings\.local\.json: settings\.json still names skillOverrides project-quality-loop - set as loop-quality in settings\.local\.json/, out);
 });

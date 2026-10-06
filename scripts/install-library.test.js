@@ -262,8 +262,8 @@ test('the copy-route MCP tool-name re-spelling is hashed too - a rewritten rule 
     // Built, never typed literally: lint check 54 bans the bare `mcp__<server>__` spelling
     // anywhere under scripts/, and the down-converter itself builds it the same way.
     const bareTool = (server, tool) => `mcp__${server}__${tool}`;
-    assert.ok(result.content.includes(bareTool('memory', 'memory_store')), 'the bare-registered server name was re-spelled into the rule');
-    assert.ok(!result.content.includes('mcp__plugin_memory_memory__'), 'the plugin spelling did not survive the copy route');
+    assert.ok(result.content.includes(bareTool('alfred-memory', 'memory_store')), 'the bare-registered server name was re-spelled into the rule');
+    assert.ok(!result.content.includes('mcp__plugin_alfred-memory_alfred-memory__'), 'the plugin spelling did not survive the copy route');
     assert.strictEqual(result.recorded, result.computed, 'the recorded hash must match the RE-SPELLED file, not what copyLibrary wrote before the downconvert pass');
 });
 
@@ -308,8 +308,8 @@ test('copy route: a rule is logged as rewritten only when its content changed - 
     const logged = (out) => out.split('\n').filter((l) => /rule \[library\]: /.test(l)).map((l) => l.replace(/^.*rule \[library\]: /, ''));
     // The bare spelling is BUILT, never typed: lint check 54 bans the literal under scripts/.
     const bareTool = (server, tool) => `mcp__${server}__${tool}`;
-    assert.ok(steps[0].includes(bareTool('navigation', 'find_symbol')), 'the copy route registers serena bare, so the rule names it bare');
-    assert.doesNotMatch(steps[0], /mcp__plugin_navigation_navigation__/);
+    assert.ok(steps[0].includes(bareTool('alfred-navigation', 'find_symbol')), 'the copy route registers serena bare, so the rule names it bare');
+    assert.doesNotMatch(steps[0], /mcp__plugin_alfred-navigation_alfred-navigation__/);
     assert.deepStrictEqual(logged(outs[1]), [], 'an update that changes no rule logs none as rewritten');
     assert.strictEqual(steps[1], steps[0], 'and leaves the re-spelled rule as it was');
     assert.deepStrictEqual(logged(outs[2]), ['alfred-navigation'], 'a hand-edited rule is rewritten, and says so - alone');

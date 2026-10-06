@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Claude Code agent stack - skills, agents, rules, hooks, and MCP servers, installed and updated via the alfred-code plugin.",
-    "version": "2.1.8"
+    "version": "2.2.0"
   },
   "plugins": [
     {
       "name": "serena",
       "source": "./",
-      "description": "RETIRED in 2.0.0 - renamed navigation. Run /claude-stack:update: it installs navigation in its place and removes this entry.",
-      "version": "2.1.8",
+      "description": "RETIRED in 2.0.0 - renamed alfred-navigation. Run /claude-stack:update: it installs alfred-navigation in its place and removes this entry.",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -42,8 +42,8 @@
     {
       "name": "context7",
       "source": "./",
-      "description": "RETIRED in 2.0.0 - renamed documentation. Run /claude-stack:update: it installs documentation in its place and removes this entry.",
-      "version": "2.1.8",
+      "description": "RETIRED in 2.0.0 - renamed alfred-documentation. Run /claude-stack:update: it installs alfred-documentation in its place and removes this entry.",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -62,8 +62,8 @@
     {
       "name": "memory",
       "source": "./",
-      "description": "memory as a plugin: the shared recall the stack reads at every session start - preferences, corrections, project facts and agent lessons, searchable by meaning. The database path is the install's level choice (global, scoped or project), so this one server starts through a launcher that reads the project's own settings.json - a plugin entry cannot expand a PROJECT env key (measured).",
-      "version": "2.1.8",
+      "description": "RETIRED in 2.2.0 - renamed alfred-memory. Run /alfred-code:update: it installs alfred-memory in its place and removes this entry.",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -90,7 +90,7 @@
       "name": "playwright-chrome",
       "source": "./",
       "description": "RETIRED in 2.0.0 - renamed browser-chrome. Run /claude-stack:update: it installs browser-chrome in its place and removes this entry.",
-      "version": "2.1.8",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -113,7 +113,7 @@
       "name": "playwright-msedge",
       "source": "./",
       "description": "RETIRED in 2.0.0 - renamed browser-msedge. Run /claude-stack:update: it installs browser-msedge in its place and removes this entry.",
-      "version": "2.1.8",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -136,7 +136,7 @@
       "name": "playwright-firefox",
       "source": "./",
       "description": "RETIRED in 2.0.0 - renamed browser-firefox. Run /claude-stack:update: it installs browser-firefox in its place and removes this entry.",
-      "version": "2.1.8",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -159,7 +159,7 @@
       "name": "playwright-webkit",
       "source": "./",
       "description": "RETIRED in 2.0.0 - renamed browser-webkit. Run /claude-stack:update: it installs browser-webkit in its place and removes this entry.",
-      "version": "2.1.8",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -181,8 +181,8 @@
     {
       "name": "navigation",
       "source": "./",
-      "description": "The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Its per-project folder and home (<data root>/serena, .alfred by default) keep its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server's cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that places the data and pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).",
-      "version": "2.1.8",
+      "description": "RETIRED in 2.2.0 - renamed alfred-navigation. Run /alfred-code:update: it installs alfred-navigation in its place and removes this entry.",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -211,8 +211,8 @@
     {
       "name": "documentation",
       "source": "./",
-      "description": "The documentation server (Context7), as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. Locked: every install carries it beside the core, so it can never be dropped.",
-      "version": "2.1.8",
+      "description": "RETIRED in 2.2.0 - renamed alfred-documentation. Run /alfred-code:update: it installs alfred-documentation in its place and removes this entry.",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -232,7 +232,7 @@
       "name": "browser-chrome",
       "source": "./",
       "description": "The browser server (Playwright MCP) driving chrome, as a plugin: a real chrome browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/chrome, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
-      "version": "2.1.8",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -255,7 +255,7 @@
       "name": "browser-msedge",
       "source": "./",
       "description": "The browser server (Playwright MCP) driving msedge, as a plugin: a real msedge browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/msedge, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
-      "version": "2.1.8",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -278,7 +278,7 @@
       "name": "browser-firefox",
       "source": "./",
       "description": "The browser server (Playwright MCP) driving firefox, as a plugin: a real firefox browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/firefox, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
-      "version": "2.1.8",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -301,7 +301,7 @@
       "name": "browser-webkit",
       "source": "./",
       "description": "The browser server (Playwright MCP) driving webkit, as a plugin: a real webkit browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/webkit, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
-      "version": "2.1.8",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -324,7 +324,7 @@
       "name": "windows-desktop",
       "source": "./",
       "description": "The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (3.13) and refuses on another OS; PowerShell, Registry, Process, FileSystem stay off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE names another list (none = every tool).",
-      "version": "2.1.8",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -356,7 +356,7 @@
       "name": "macos-desktop",
       "source": "./",
       "description": "The macOS desktop server (MacOS-MCP), as a plugin: drives native macOS apps through the Accessibility API (snapshot, click, type, shortcut). macOS only; it needs Accessibility and Screen Recording granted to the terminal or IDE running Claude Code and to the uv-managed Python it runs on. Started through a launcher that pins the Python (3.13) and refuses on another OS.",
-      "version": "2.1.8",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -383,10 +383,87 @@
       }
     },
     {
+      "name": "alfred-navigation",
+      "source": "./",
+      "description": "The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Its per-project folder and home (<data root>/serena, .alfred by default) keep its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server's cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that places the data and pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).",
+      "version": "2.2.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "alfred-navigation": {
+          "command": "node",
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/serena-launch.js",
+            "--package",
+            "serena-agent@1.7.0",
+            "--exclude-newer",
+            "2026-09-29T23:59:59Z",
+            "--",
+            "start-mcp-server",
+            "--context",
+            "claude-code",
+            "--enable-web-dashboard",
+            "false",
+            "--project-from-cwd"
+          ]
+        }
+      }
+    },
+    {
+      "name": "alfred-documentation",
+      "source": "./",
+      "description": "The documentation server (Context7), as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. Locked: every install carries it beside the core, so it can never be dropped.",
+      "version": "2.2.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "alfred-documentation": {
+          "type": "http",
+          "url": "https://mcp.context7.com/mcp",
+          "headers": {
+            "Context7-API-Key": "${CONTEXT7_API_KEY:-}"
+          }
+        }
+      }
+    },
+    {
+      "name": "alfred-memory",
+      "source": "./",
+      "description": "The memory server (mcp-memory-service), as a plugin: the shared recall the stack reads at every session start - preferences, corrections, project facts and agent lessons, searchable by meaning. The database path is the install's level choice (global, scoped or project), so this one server starts through a launcher that reads the project's own settings.json - a plugin entry cannot expand a PROJECT env key (measured).",
+      "version": "2.2.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "alfred-memory": {
+          "command": "node",
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/memory-launch.js",
+            "--package",
+            "mcp-memory-service[sqlite]==11.14.0",
+            "--exclude-newer",
+            "2026-09-29T23:59:59Z"
+          ],
+          "env": {
+            "MCP_MEMORY_STORAGE_BACKEND": "sqlite_vec",
+            "MCP_MEMORY_SQLITE_PRAGMAS": "busy_timeout=15000"
+          }
+        }
+      }
+    },
+    {
       "name": "alfred-code",
       "source": "./",
       "description": "The Claude Code stack, guided: setup installs it from scratch into a project, init bootstraps it once after the restart (services, memory, captures, AGENTS.md), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables; uninstall removes what the install ledger says the stack wrote, and nothing of the user's.",
-      "version": "2.1.8",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -422,8 +499,6 @@
         "./setup-plugin/skills/alfred-code"
       ],
       "agents": [
-        "./stack/agents/alfred-issue-diagnoser-ci.md",
-        "./stack/agents/alfred-issue-diagnoser-runtime.md",
         "./stack/agents/angular-test-resolver.md",
         "./stack/agents/architecture-analyzer.md",
         "./stack/agents/aspnet-implementer.md",
@@ -450,6 +525,8 @@
         "./stack/agents/ionic-angular-implementer.md",
         "./stack/agents/ionic-angular-solution-designer.md",
         "./stack/agents/ionic-angular-verifier.md",
+        "./stack/agents/issue-diagnoser-ci.md",
+        "./stack/agents/issue-diagnoser-runtime.md",
         "./stack/agents/ng-build-error-resolver.md",
         "./stack/agents/related-project-analyzer.md",
         "./stack/agents/security-auditor.md",
@@ -535,7 +612,7 @@
             ]
           },
           {
-            "matcher": "^mcp__(plugin_navigation_)?navigation__(rename_symbol|safe_delete_symbol)$",
+            "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
             "hooks": [
               {
                 "type": "command",
@@ -691,7 +768,7 @@
             ]
           },
           {
-            "matcher": "^mcp__(plugin_navigation_)?navigation__(rename_symbol|safe_delete_symbol)$",
+            "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
             "hooks": [
               {
                 "type": "command",
@@ -703,7 +780,7 @@
         ],
         "UserPromptExpansion": [
           {
-            "matcher": "(^|[^A-Za-z0-9_-])(alfred-(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
+            "matcher": "(^|[^A-Za-z0-9_-])((alfred-)?(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
             "hooks": [
               {
                 "type": "command",
@@ -757,7 +834,7 @@
       "name": "claude-stack",
       "source": "./",
       "description": "RETIRED in 2.0.0 - Alfred Code under its 1.x name. Run /claude-stack:update: it installs alfred-code and removes this entry.",
-      "version": "2.1.8",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -791,48 +868,48 @@
       ],
       "skills": [
         "./setup-plugin/skills/alfred-code",
-        "./stack/skills/alfred-capture-agent-capabilities",
-        "./stack/skills/alfred-capture-architecture",
-        "./stack/skills/alfred-capture-architecture-quality",
-        "./stack/skills/alfred-capture-code-quality",
-        "./stack/skills/alfred-capture-code-style",
-        "./stack/skills/alfred-capture-first-look",
-        "./stack/skills/alfred-capture-project-capabilities",
-        "./stack/skills/alfred-capture-test-coverage",
-        "./stack/skills/alfred-habits-adjust-agents-md",
-        "./stack/skills/alfred-habits-clarify",
-        "./stack/skills/alfred-habits-code-comments",
-        "./stack/skills/alfred-habits-commit-checkpoint",
-        "./stack/skills/alfred-habits-done-gate",
-        "./stack/skills/alfred-habits-execution-strategy",
-        "./stack/skills/alfred-habits-plan-writing",
-        "./stack/skills/alfred-habits-root-cause",
-        "./stack/skills/alfred-habits-skill-writing",
-        "./stack/skills/alfred-habits-test-first",
-        "./stack/skills/alfred-issue-diagnoser",
-        "./stack/skills/alfred-issue-signatures-ci",
-        "./stack/skills/alfred-issue-signatures-runtime",
-        "./stack/skills/alfred-loop-architecture-quality",
-        "./stack/skills/alfred-loop-quality",
-        "./stack/skills/alfred-loop-test-coverage",
-        "./stack/skills/alfred-task-design",
-        "./stack/skills/alfred-task-implement",
-        "./stack/skills/alfred-task-solve",
-        "./stack/skills/alfred-task-solve-cross",
-        "./stack/skills/alfred-task-verify-code",
-        "./stack/skills/alfred-task-verify-plan",
-        "./stack/skills/alfred-task-version-upgrade",
+        "./stack/skills/capture-agent-capabilities",
+        "./stack/skills/capture-architecture",
+        "./stack/skills/capture-architecture-quality",
+        "./stack/skills/capture-code-quality",
+        "./stack/skills/capture-code-style",
+        "./stack/skills/capture-first-look",
+        "./stack/skills/capture-project-capabilities",
+        "./stack/skills/capture-test-coverage",
         "./stack/skills/docs-as-code",
-        "./stack/skills/markdown-style"
+        "./stack/skills/habits-adjust-agents-md",
+        "./stack/skills/habits-clarify",
+        "./stack/skills/habits-code-comments",
+        "./stack/skills/habits-commit-checkpoint",
+        "./stack/skills/habits-done-gate",
+        "./stack/skills/habits-execution-strategy",
+        "./stack/skills/habits-plan-writing",
+        "./stack/skills/habits-root-cause",
+        "./stack/skills/habits-skill-writing",
+        "./stack/skills/habits-test-first",
+        "./stack/skills/issue-diagnoser",
+        "./stack/skills/issue-signatures-ci",
+        "./stack/skills/issue-signatures-runtime",
+        "./stack/skills/loop-architecture-quality",
+        "./stack/skills/loop-quality",
+        "./stack/skills/loop-test-coverage",
+        "./stack/skills/markdown-style",
+        "./stack/skills/task-design",
+        "./stack/skills/task-implement",
+        "./stack/skills/task-solve",
+        "./stack/skills/task-solve-cross",
+        "./stack/skills/task-verify-code",
+        "./stack/skills/task-verify-plan",
+        "./stack/skills/task-version-upgrade"
       ],
       "agents": [
-        "./stack/agents/alfred-issue-diagnoser-ci.md",
-        "./stack/agents/alfred-issue-diagnoser-runtime.md",
         "./stack/agents/architecture-analyzer.md",
         "./stack/agents/code-quality-analyzer.md",
         "./stack/agents/code-style-analyzer.md",
         "./stack/agents/evidence-gatherer.md",
         "./stack/agents/integration-reviewer.md",
+        "./stack/agents/issue-diagnoser-ci.md",
+        "./stack/agents/issue-diagnoser-runtime.md",
         "./stack/agents/security-auditor.md",
         "./stack/agents/test-coverage-analyzer.md"
       ],
@@ -904,7 +981,7 @@
             ]
           },
           {
-            "matcher": "^mcp__(plugin_navigation_)?navigation__(rename_symbol|safe_delete_symbol)$",
+            "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
             "hooks": [
               {
                 "type": "command",
@@ -1060,7 +1137,7 @@
             ]
           },
           {
-            "matcher": "^mcp__(plugin_navigation_)?navigation__(rename_symbol|safe_delete_symbol)$",
+            "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
             "hooks": [
               {
                 "type": "command",
@@ -1072,7 +1149,7 @@
         ],
         "UserPromptExpansion": [
           {
-            "matcher": "(^|[^A-Za-z0-9_-])(alfred-(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
+            "matcher": "(^|[^A-Za-z0-9_-])((alfred-)?(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
             "hooks": [
               {
                 "type": "command",
@@ -1126,7 +1203,7 @@
       "name": "claude-stack-hooks",
       "source": "./",
       "description": "RETIRED in 2.0.0 - Alfred Code under its 1.x name. Run /claude-stack:update: it installs alfred-code and removes this entry.",
-      "version": "2.1.8",
+      "version": "2.2.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"

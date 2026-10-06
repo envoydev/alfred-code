@@ -229,7 +229,7 @@ test('I4: a new record sweeps records past 7 days, keeps younger ones and every 
 });
 
 test('the checkpoint skill scopes the commit to the session\'s own change', () => {
-    const text = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'alfred-habits-commit-checkpoint', 'SKILL.md'), 'utf8').replace(/\s+/g, ' ');
+    const text = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'habits-commit-checkpoint', 'SKILL.md'), 'utf8').replace(/\s+/g, ' ');
     assert.match(text, /untracked-at-start-/);
     assert.match(text, /stage the session's own paths by name/i);
     assert.match(text, /outside the change/i);

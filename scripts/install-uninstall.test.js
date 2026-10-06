@@ -80,17 +80,17 @@ test('removePlugins: the stack\'s rows at project or local scope are uninstalled
 {
     const rows = [
         { name: 'alfred-code', marketplace: 'envoydev', scope: 'project', version: '2.0.0', enabled: true },
-        { name: 'navigation', marketplace: 'envoydev', scope: 'project', version: '2.0.0', enabled: true },
+        { name: 'alfred-navigation', marketplace: 'envoydev', scope: 'project', version: '2.0.0', enabled: true },
         { name: 'browser-chrome', marketplace: 'envoydev', scope: 'user', version: '2.0.0', enabled: true },
         { name: 'csharp-lsp', marketplace: 'claude-plugins-official', scope: 'project', version: '1.0.0', enabled: true },
     ];
     const calls = [];
     // The CLI refuses a dependency first while its dependent is installed.
-    const cli = (argv) => { calls.push(argv.join(' ')); return !(argv[2] === 'navigation@envoydev' && !calls.some((c) => c.startsWith('plugin uninstall alfred-code@'))); };
+    const cli = (argv) => { calls.push(argv.join(' ')); return !(argv[2] === 'alfred-navigation@envoydev' && !calls.some((c) => c.startsWith('plugin uninstall alfred-code@'))); };
     const logs = [];
     uninstall.removePlugins({ rows, market: 'envoydev', scope: 'project', thirdParty: ['csharp-lsp@claude-plugins-official'], cli, log: (m) => logs.push(m), note: (m) => logs.push(`NOTE ${m}`) });
     assert.ok(calls.includes('plugin uninstall alfred-code@envoydev --scope project -y'));
-    assert.ok(calls.includes('plugin uninstall navigation@envoydev --scope project -y'));
+    assert.ok(calls.includes('plugin uninstall alfred-navigation@envoydev --scope project -y'));
     assert.ok(!calls.some((c) => /browser-chrome|csharp-lsp/.test(c)), calls.join('\n'));
     const text = logs.join('\n');
     assert.doesNotMatch(text, /NOTE/, 'a dependency refused first is retried once its dependent is gone');
@@ -106,7 +106,7 @@ test('removePlugins: the stack\'s rows at project or local scope are uninstalled
 // user adds their own hook, server and key, then uninstall.
 const LISTING = JSON.stringify([
     { id: 'alfred-code@envoydev', scope: 'project', version: '2.0.0', enabled: true },
-    { id: 'navigation@envoydev', scope: 'project', version: '2.0.0', enabled: true },
+    { id: 'alfred-navigation@envoydev', scope: 'project', version: '2.0.0', enabled: true },
 ]);
 const USER_HOOK = { type: 'command', command: 'node my-hook.js', timeout: 5 };
 
@@ -137,7 +137,7 @@ test('uninstall: every stack file and managed entry goes, the user\'s own hook, 
         },
     });
     assert.ok(calls.includes('plugin uninstall alfred-code@envoydev --scope project -y'), calls.join('\n'));
-    assert.ok(calls.includes('plugin uninstall navigation@envoydev --scope project -y'), calls.join('\n'));
+    assert.ok(calls.includes('plugin uninstall alfred-navigation@envoydev --scope project -y'), calls.join('\n'));
     assert.deepStrictEqual(result.settings.env, { MY_KEY: 'mine', ALFRED_CODE_PUSH_GATE: '0' }, 'the user\'s key and a value they changed stay; every seed the stack wrote goes');
     assert.deepStrictEqual(result.settings.hooks, { Stop: [{ hooks: [USER_HOOK] }] });
     assert.deepStrictEqual(result.mcp, { mcpServers: { mine: { command: 'node', args: ['srv.js'] } } });
@@ -432,10 +432,10 @@ test('uninstall removes the copy route\'s own local-scope registrations and keep
         },
         inspect: (repo) => localServers(accountOf(repo)),
     });
-    assert.deepStrictEqual(steps[0], ['documentation', 'memory', 'navigation'], outs[0]);
-    for (const name of ['navigation', 'documentation', 'memory']) assert.ok(calls.includes(`mcp remove ${name} -s local`), calls.join('\n'));
+    assert.deepStrictEqual(steps[0], ['alfred-documentation', 'alfred-memory', 'alfred-navigation'], outs[0]);
+    for (const name of ['alfred-navigation', 'alfred-documentation', 'alfred-memory']) assert.ok(calls.includes(`mcp remove ${name} -s local`), calls.join('\n'));
     assert.deepStrictEqual(result, ['mine'], outs[1]);
-    assert.match(outs[1], /mcp removed: navigation \(local scope\)/);
+    assert.match(outs[1], /mcp removed: alfred-navigation \(local scope\)/);
 });
 
 // Matrix 3d (2.1.4): at local scope the copy route registers in the account's projects[<root>].mcpServers, and the
@@ -602,7 +602,7 @@ test('seed update --installed-only (full copy route, local scope): an account fi
         assert.strictEqual(steps[i].respelled, false, `update ${i} re-spelled the desktop skill or seat to plugin tools:\n${outs[i]}`);
         assert.match(steps[i].ledger, /local:macos-desktop=/, `update ${i} lost the ledger row: ${steps[i].ledger}`);
     }
-    assert.doesNotMatch(outs[1], /adopting mcp navigation - always shipped by this release and absent here/, outs[1]);
+    assert.doesNotMatch(outs[1], /adopting mcp alfred-navigation - always shipped by this release and absent here/, outs[1]);
     const said = outs[1].split('\n').filter((l) => /\.claude\.json could not be read/.test(l));
     assert.strictEqual(said.length, 1, `the unreadable account file is said once:\n${outs[1]}`);
     assert.match(said[0], /!! .*backups/, said[0]);
@@ -794,7 +794,7 @@ test('seed update --installed-only (full copy route, local scope): the user\'s r
 // signal). (b) The memory key the stack wrote names the OLD folder's database and read as `custom`; where the ledger shows
 // the stack wrote that value it is this project's own project level, re-pointed to this folder's database (the file
 // moved or was copied with the folder), in both the move and the copy - a path the user set stays `custom`.
-const movedCase = ({ copy = false, userPath = false } = {}) => seedRun(['install', 'update'], `${DESKTOP_SEL}mcp memory\n`, {
+const movedCase = ({ copy = false, userPath = false } = {}) => seedRun(['install', 'update'], `${DESKTOP_SEL}mcp alfred-memory\n`, {
     tools: { claude: RECORDING_CLAUDE }, env: COPY_ROUTE,
     args: [['--scope', 'local', '--memory-level', 'project'], ['--installed-only', '--scope', 'local']],
     each: (repo, i) =>
@@ -827,7 +827,7 @@ test('seed update --installed-only (full copy route, local scope): a moved or co
     {
         const { steps, outs, calls, result } = movedCase({ copy });
         const { before, db } = steps[0];
-        const memoryAdds = calls.slice(before).filter((c) => c.startsWith('mcp add --scope local memory '));
+        const memoryAdds = calls.slice(before).filter((c) => c.startsWith('mcp add --scope local alfred-memory '));
         assert.ok(result.servers.includes('macos-desktop'), `copy=${copy}: macos-desktop not back: ${JSON.stringify(result)}\n${outs[1]}`);
         assert.match(outs[1], /holds no entry for this project/, `copy=${copy}`);
         assert.match(outs[1], /memory=project/, `copy=${copy}: ${outs[1]}`);
@@ -838,7 +838,7 @@ test('seed update --installed-only (full copy route, local scope): a moved or co
     // A project-level path the user set by hand (the ledger does not record it) is theirs - kept byte for byte.
     const own = movedCase({ userPath: true });
     assert.match(own.outs[1], /memory=custom/, own.outs[1]);
-    assert.ok(own.calls.slice(own.steps[0].before).some((c) => c.startsWith('mcp add --scope local memory ') && c.includes(`MCP_MEMORY_SQLITE_PATH=${own.steps[0].oldDb}`)));
+    assert.ok(own.calls.slice(own.steps[0].before).some((c) => c.startsWith('mcp add --scope local alfred-memory ') && c.includes(`MCP_MEMORY_SQLITE_PATH=${own.steps[0].oldDb}`)));
 });
 
 // Review 2.1.6 (the user's ruling) and re-verify 2 R1: an install an earlier release broke - the stack's registration
@@ -1123,7 +1123,7 @@ test('seed update --installed-only (full copy route, local scope): the user\'s o
 // as 'absent here' and left macos-desktop out of that run's set. The recovery is met by a call whose answer is not read.
 test('seed update --installed-only (plugin route): the call that meets a corrupt account file is not one the read-back reads', POSIX_ONLY, () =>
 {
-    const listing = JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory', 'macos-desktop']
+    const listing = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory', 'macos-desktop']
         .map((n) => ({ id: `${n}@envoydev`, scope: 'project', version: '2.1.5', enabled: true })));
     // The first update adopts what the install's selection left out; the second is the settled read-back the third,
     // over the corrupt file, must equal.

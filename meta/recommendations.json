@@ -1,13 +1,13 @@
 {
  "always": {
   "agents": [
-   "alfred-issue-diagnoser-ci",
+   "issue-diagnoser-ci",
    "architecture-analyzer",
    "code-quality-analyzer",
    "code-style-analyzer",
    "evidence-gatherer",
    "integration-reviewer",
-   "alfred-issue-diagnoser-runtime",
+   "issue-diagnoser-runtime",
    "security-auditor",
    "test-coverage-analyzer"
   ],
@@ -23,11 +23,13 @@
    "skill-authoring"
   ],
   "mcps": [
-   "navigation",
-   "documentation",
-   "memory"
+   "alfred-navigation",
+   "alfred-documentation",
+   "alfred-memory"
   ],
-  "plugins": [],
+  "plugins": [
+   "claude-hud"
+  ],
   "hooks": [
    "guard-protected-force-push",
    "guard-catastrophic-rm",
@@ -49,43 +51,43 @@
    "history-session"
   ],
   "skills": [
-   "alfred-habits-clarify",
-   "alfred-habits-code-comments",
-   "alfred-habits-done-gate",
-   "alfred-habits-execution-strategy",
-   "alfred-habits-plan-writing",
-   "alfred-habits-root-cause",
-   "alfred-habits-skill-writing",
-   "alfred-habits-test-first",
-   "alfred-capture-agent-capabilities",
-   "alfred-capture-architecture",
-   "alfred-capture-architecture-quality",
-   "alfred-loop-architecture-quality",
-   "alfred-capture-code-quality",
-   "alfred-capture-code-style",
-   "alfred-capture-project-capabilities",
-   "alfred-habits-commit-checkpoint",
-   "alfred-issue-diagnoser",
-   "alfred-capture-first-look",
-   "alfred-habits-adjust-agents-md",
-   "alfred-task-implement",
-   "alfred-loop-quality",
-   "alfred-task-design",
-   "alfred-task-solve-cross",
-   "alfred-task-solve",
-   "alfred-capture-test-coverage",
-   "alfred-loop-test-coverage",
-   "alfred-task-verify-code",
-   "alfred-task-verify-plan",
-   "alfred-task-version-upgrade"
+   "habits-clarify",
+   "habits-code-comments",
+   "habits-done-gate",
+   "habits-execution-strategy",
+   "habits-plan-writing",
+   "habits-root-cause",
+   "habits-skill-writing",
+   "habits-test-first",
+   "capture-agent-capabilities",
+   "capture-architecture",
+   "capture-architecture-quality",
+   "loop-architecture-quality",
+   "capture-code-quality",
+   "capture-code-style",
+   "capture-project-capabilities",
+   "habits-commit-checkpoint",
+   "issue-diagnoser",
+   "capture-first-look",
+   "habits-adjust-agents-md",
+   "task-implement",
+   "loop-quality",
+   "task-design",
+   "task-solve-cross",
+   "task-solve",
+   "capture-test-coverage",
+   "loop-test-coverage",
+   "task-verify-code",
+   "task-verify-plan",
+   "task-version-upgrade"
   ]
  },
  "general": {
   "skills": [
    "dotnet-hosted-services",
    "dotnet-data-access",
-   "alfred-capture-related-projects",
-   "alfred-capture-usage-report"
+   "capture-related-projects",
+   "capture-usage-report"
   ],
   "agents": [
    "related-project-analyzer"
@@ -94,8 +96,8 @@
    "skills": {
     "dotnet-hosted-services": "for worker services, BackgroundService hosts and bots - adds the host-lifecycle rules; skip when the project has none",
     "dotnet-data-access": "for EF Core, NHibernate or Dapper data code - adds query and N+1 rules; skip when the project has no ORM",
-    "alfred-capture-related-projects": "for a project that depends on sibling repos - captures how they connect; skip for a standalone repo",
-    "alfred-capture-usage-report": "audits this project's sessions for token and tool cost - manual, run when you want the numbers"
+    "capture-related-projects": "for a project that depends on sibling repos - captures how they connect; skip for a standalone repo",
+    "capture-usage-report": "audits this project's sessions for token and tool cost - manual, run when you want the numbers"
    },
    "agents": {
     "related-project-analyzer": "the read-only seat the related-projects capture dispatches per sibling repo - pick it with that skill"

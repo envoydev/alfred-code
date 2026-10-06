@@ -1,7 +1,7 @@
 ---
 name: test-coverage-analyzer
 description: "Use to characterize one surface's coverage from an already-produced instrumented run: parses cobertura / lcov / summary output into per-module numbers, uncovered hot spots and test smells; the coverage capture's seat. Do NOT use to run the suite or write files."
-tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Bash, Grep, Glob, Skill, mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview
+tools: mcp__plugin_alfred-navigation_alfred-navigation__find_symbol, mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols, mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview, mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_alfred-memory_alfred-memory__memory_search, mcp__plugin_alfred-memory_alfred-memory__memory_list, LSP, Read, Bash, Grep, Glob, Skill, mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview, mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list
 model: sonnet
 effort: medium
 color: orange
@@ -16,7 +16,7 @@ its already-produced raw coverage output plus the code and tests behind it - and
 structured digest. You write no files and you never run a test or coverage command: the
 instrumented run happened in the main session before you were dispatched, and your input names
 where its raw output landed. Your report IS the deliverable - write any memory first, then deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it. The
-alfred-capture-test-coverage skill that dispatched you (usually one of several, one per
+capture-test-coverage skill that dispatched you (usually one of several, one per
 surface) aggregates the digests, judges against the user's requirement, and writes the doc - so
 return raw structured data, not prose for a human.
 

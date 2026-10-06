@@ -38,7 +38,7 @@ const ROUTES = (over = {}) => ({ hooks: true, skills: true, mcps: true, ...over 
 const COPY = ROUTES({ hooks: false, skills: false, mcps: false });
 // A companion from another marketplace - a fixture: which plugin that is changes with the release (R72).
 const CORE_DEPS = ['companion@elsewhere'];
-const LOCKED = ['navigation', 'documentation', 'memory'];
+const LOCKED = ['alfred-navigation', 'alfred-documentation', 'alfred-memory'];
 const LOCKED_SPECS = LOCKED.map((n) => `${n}@envoydev`);
 
 // --- the route switches ---------------------------------------------------
@@ -83,11 +83,11 @@ test('plugin-list: a Windows projectPath matches this project whatever its lette
 {
     const json = JSON.stringify([
         { id: 'alfred-code@envoydev', version: '2.0.0', scope: 'project', projectPath: 'c:\\WINDOWS\\SystemTemp\\p\\repo' },
-        { id: 'navigation@envoydev', version: '2.0.0', scope: 'project', projectPath: 'C:/Windows/SystemTemp/p/repo/' },
-        { id: 'memory@envoydev', version: '2.0.0', scope: 'project', projectPath: 'C:\\Windows\\SystemTemp\\p\\other' },
+        { id: 'alfred-navigation@envoydev', version: '2.0.0', scope: 'project', projectPath: 'C:/Windows/SystemTemp/p/repo/' },
+        { id: 'alfred-memory@envoydev', version: '2.0.0', scope: 'project', projectPath: 'C:\\Windows\\SystemTemp\\p\\other' },
     ]);
     const rows = P.parsePluginList(json, 'C:\\Windows\\SystemTemp\\p\\repo', { everyScope: true });
-    assert.deepStrictEqual(rows.map((r) => r.name), ['alfred-code', 'navigation']);
+    assert.deepStrictEqual(rows.map((r) => r.name), ['alfred-code', 'alfred-navigation']);
     // a POSIX path keeps its exact spelling: another case is another directory there
     assert.deepStrictEqual(P.parsePluginList(JSON.stringify([{ id: 'a@m', scope: 'project', projectPath: '/Repo' }]), '/repo'), []);
 });
@@ -95,15 +95,15 @@ test('plugin-list: a Windows projectPath matches this project whatever its lette
 test('plugin-list: a marketplace filter runs BEFORE the per-name pick - a same-named foreign row never wins', () =>
 {
     const json = JSON.stringify({ installed: [
-        { id: 'navigation@claude-plugins-official', version: '9', scope: 'project', enabled: true, projectPath: '/repo' },
-        { id: 'navigation@envoydev', version: '1', scope: 'user', enabled: true },
+        { id: 'alfred-navigation@claude-plugins-official', version: '9', scope: 'project', enabled: true, projectPath: '/repo' },
+        { id: 'alfred-navigation@envoydev', version: '1', scope: 'user', enabled: true },
     ] });
     assert.deepStrictEqual(P.parsePluginList(json, '/repo', { marketplace: 'envoydev' }).map((r) => r.version), ['1']);
     assert.deepStrictEqual(P.parsePluginList(json, '/repo').map((r) => r.marketplace), ['claude-plugins-official']);
     // byMarketplace: one row per name@marketplace, so a pass over specs from BOTH reads each its own
     const both = P.parsePluginList(json, '/repo', { byMarketplace: true });
-    assert.deepStrictEqual(both.map((r) => `${r.name}@${r.marketplace} ${r.version}`), ['navigation@claude-plugins-official 9', 'navigation@envoydev 1']);
-    assert.strictEqual(P.fieldOf(both, 'navigation@envoydev', 'version'), '1');
+    assert.deepStrictEqual(both.map((r) => `${r.name}@${r.marketplace} ${r.version}`), ['alfred-navigation@claude-plugins-official 9', 'alfred-navigation@envoydev 1']);
+    assert.strictEqual(P.fieldOf(both, 'alfred-navigation@envoydev', 'version'), '1');
 });
 
 test('plugin-list: a missing `enabled` is enabled, and garbage is an EMPTY listing, never a crash', () =>
@@ -121,13 +121,13 @@ test('closure: the selection carries skill/agent lines only for the skills route
 {
     const skills = ['a|project-foo'];
     const agents = ['ng-implementer.md::sonnet'];
-    const mcps = ['navigation|x', 'documentation|@HTTP@'];
+    const mcps = ['alfred-navigation|x', 'alfred-documentation|@HTTP@'];
     assert.deepStrictEqual(P.selectionLines({ routes: ROUTES(), skills, agents, mcps }),
-        ['skill project-foo', 'agent ng-implementer', 'mcp navigation', 'mcp documentation']);
+        ['skill project-foo', 'agent ng-implementer', 'mcp alfred-navigation', 'mcp alfred-documentation']);
     assert.deepStrictEqual(P.selectionLines({ routes: ROUTES({ mcps: false }), skills, agents, mcps }),
         ['skill project-foo', 'agent ng-implementer']);
     assert.deepStrictEqual(P.selectionLines({ routes: ROUTES({ skills: false }), skills, agents, mcps }),
-        ['mcp navigation', 'mcp documentation']);
+        ['mcp alfred-navigation', 'mcp alfred-documentation']);
 });
 
 test('closure: a failure to compute it drops BOTH routes to copy, together and loudly', () =>
@@ -201,9 +201,17 @@ test('set: no hooks entry ever, and the hooks route alone brings the core', () =
 
 // --- scope ----------------------------------------------------------------
 
-test('scope: claude-hud is user scope whatever the run says, and the LISTING wins when it can speak', () =>
+test('scope: an optional item goes where the user chose (default the run\'s scope), and the LISTING wins when it can speak', () =>
 {
-    assert.strictEqual(P.scopeFor('claude-hud@m', 'project', []), 'user');
+    // 2.2.0: claude-hud is no longer pinned to user scope - the user's ruling of 2026-10-06, 'Project for all'.
+    assert.strictEqual(P.scopeFor('claude-hud@m', 'project', []), 'project');
+    assert.strictEqual(P.scopeFor('claude-hud@m', 'project', [], { 'claude-hud': 'user' }), 'user');
+    assert.strictEqual(P.scopeFor('claude-hud@m', 'local', [], { 'claude-hud': 'project' }), 'local', 'project means this project, at the run\'s scope');
+    assert.strictEqual(P.scopeFor('claude-hud@m', 'user', [], { 'claude-hud': 'project' }), 'project', 'a user-scope run puts a project choice at project scope');
+    assert.strictEqual(P.scopeFor('claude-hud@m', 'project', [{ name: 'claude-hud', marketplace: 'm', version: '1', scope: 'user', enabled: true }], { 'claude-hud': 'project' }), 'user', 'an existing row is kept where it is - only moveScoped moves it');
+    assert.strictEqual(P.scopeFor('claude-hud@m', 'user', []), 'project', 'an optional item on a user-scope run defaults to this project');
+    assert.strictEqual(P.scopeFor('browser-chrome@envoydev', 'user', []), 'project');
+    assert.strictEqual(P.scopeFor('alfred-navigation@envoydev', 'user', []), 'user', 'a required item follows the run');
     assert.strictEqual(P.scopeFor('alfred-code@envoydev', 'project', []), 'project');
     // `claude plugin update --scope <other>` is a silent no-op, so the plugin's OWN scope wins.
     assert.strictEqual(P.scopeFor('alfred-code@envoydev', 'project', [{ name: 'alfred-code', version: '1', scope: 'user', enabled: true }]), 'user');
@@ -237,7 +245,7 @@ test('install: every install carries -y and its own scope, and a failure is note
     P.installPlugins({ plugins: ['bad@m', 'claude-hud@m', 'good@m'], scope: 'project', cli: run, note: (m) => notes.push(m) });
     assert.deepStrictEqual(run.matching(/^plugin install/), [
         'plugin install bad@m --scope project -y',
-        'plugin install claude-hud@m --scope user -y',
+        'plugin install claude-hud@m --scope project -y',
         'plugin install good@m --scope project -y',
     ]);
     assert.deepStrictEqual(notes, ['plugin bad@m failed']);
@@ -290,14 +298,14 @@ test('install: an official plugin of the same NAME is not the stack\'s - it neit
     // The official marketplace ships plugins named like stack entries (`serena`, `sentry`, `playwright`
     // collided before the 2.0.0 rename); a same-named one stands in for them here. A name-only read took
     // their row for ours, and an update at THEIR scope is a silent no-op on ours.
-    const official = { name: 'navigation', marketplace: 'claude-plugins-official', version: '3.0.0', scope: 'user', enabled: true };
+    const official = { name: 'alfred-navigation', marketplace: 'claude-plugins-official', version: '3.0.0', scope: 'user', enabled: true };
     const fresh = cli();
-    P.installPlugins({ plugins: ['navigation@envoydev'], scope: 'project', before: [official], cli: fresh });
+    P.installPlugins({ plugins: ['alfred-navigation@envoydev'], scope: 'project', before: [official], cli: fresh });
     assert.deepStrictEqual(fresh.matching(/^plugin update /), [], 'the stack serena was not installed before - nothing to update');
     const both = cli();
-    const ours = { name: 'navigation', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true };
-    P.installPlugins({ plugins: ['navigation@envoydev'], scope: 'user', before: [official, ours], cli: both });
-    assert.deepStrictEqual(both.matching(/^plugin update /), ['plugin update navigation@envoydev --scope project -y']);
+    const ours = { name: 'alfred-navigation', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true };
+    P.installPlugins({ plugins: ['alfred-navigation@envoydev'], scope: 'user', before: [official, ours], cli: both });
+    assert.deepStrictEqual(both.matching(/^plugin update /), ['plugin update alfred-navigation@envoydev --scope project -y']);
 });
 
 test('install: a marketplace this run already refreshed is not refreshed again', () =>
@@ -330,8 +338,8 @@ test('source: EVERY installed stack entry is updated at its own scope before the
     P.refreshStackSource({
         listing: [
             { name: 'alfred-code', marketplace: 'envoydev', version: '1.0.0', scope: 'user', enabled: true },
-            { name: 'navigation', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true },
-            { name: 'navigation', marketplace: 'claude-plugins-official', version: '3.0.0', scope: 'user', enabled: true },
+            { name: 'alfred-navigation', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true },
+            { name: 'alfred-navigation', marketplace: 'claude-plugins-official', version: '3.0.0', scope: 'user', enabled: true },
             { name: 'alfred-code-hooks', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: false },
         ],
         cli: run, refreshed,
@@ -340,7 +348,7 @@ test('source: EVERY installed stack entry is updated at its own scope before the
         'plugin marketplace add envoydev/alfred-code',
         'plugin marketplace update envoydev',
         'plugin update alfred-code@envoydev --scope user -y',
-        'plugin update navigation@envoydev --scope project -y',
+        'plugin update alfred-navigation@envoydev --scope project -y',
         'plugin update alfred-code-hooks@envoydev --scope project -y',
     ]);
     assert.ok(refreshed.has('envoydev'), 'the later passes must not refresh it again');
@@ -529,9 +537,13 @@ test('install: a claude-hud the user disabled is updated, never re-installed (in
     const on = cli();
     P.installPlugins({ plugins: ['claude-hud@claude-hud'], scope: 'project', before: [{ ...HUD_OFF, enabled: true }], cli: on });
     assert.deepStrictEqual(on.matching(/claude-hud@/), ['plugin install claude-hud@claude-hud --scope user -y', 'plugin update claude-hud@claude-hud --scope user -y']);
+    // 2.2.0: an absent one goes where the user chose - this project by default, the account on `--scope-of claude-hud=user`.
     const absent = cli();
     P.installPlugins({ plugins: ['claude-hud@claude-hud'], scope: 'project', before: [], cli: absent });
-    assert.deepStrictEqual(absent.matching(/claude-hud@/), ['plugin install claude-hud@claude-hud --scope user -y']);
+    assert.deepStrictEqual(absent.matching(/claude-hud@/), ['plugin install claude-hud@claude-hud --scope project -y']);
+    const account = cli();
+    P.installPlugins({ plugins: ['claude-hud@claude-hud'], scope: 'project', scopes: { 'claude-hud': 'user' }, before: [], cli: account });
+    assert.deepStrictEqual(account.matching(/claude-hud@/), ['plugin install claude-hud@claude-hud --scope user -y']);
 });
 
 test('update: the listing is read AFTER the loop, never before it', () =>
@@ -648,7 +660,8 @@ test('install: a failed engine install runs no disable, and a failed disable is 
     const failed = cli(['install browser-chrome']);
     const notes = [];
     P.installPlugins({ plugins: PW, scope: 'user', engines: ENG({ off: PW }), cli: failed, note: (m) => notes.push(m) });
-    assert.deepStrictEqual(failed.matching(/^plugin disable /), ['plugin disable browser-firefox@envoydev --scope user']);
+    // A user-scope run puts a fresh engine in this project (2.2.0: global only when chosen per item).
+    assert.deepStrictEqual(failed.matching(/^plugin disable /), ['plugin disable browser-firefox@envoydev --scope project']);
     const stuck = cli(['disable browser-firefox']);
     P.installPlugins({ plugins: PW, scope: 'project', engines: ENG({ off: PW }), cli: stuck, note: (m) => notes.push(m) });
     assert.ok(notes.some((m) => /plugin disable failed: browser-firefox@envoydev.*claude plugin disable browser-firefox@envoydev --scope project/.test(m)), notes.join(' | '));
@@ -798,20 +811,30 @@ test('seed plan: --print-plan with no --source changes no plugin - it reads the 
     assert.deepStrictEqual(calls.filter((c) => /^plugin (update|install|enable|marketplace (add|update)) /.test(c)), [], calls.join('\n'));
 });
 
-// R27: claude-hud is required - installed on every run beside the core, never a pick, and still at
-// user scope (its status line is account-wide). The LSP pair are optional picks (2.0.0 retired the other
-// two), and so is superpowers (R72): a selection naming none of them installs none of them.
-const OPTIONAL = ['csharp-lsp', 'typescript-lsp'];
+// 2.2.0 (the user's ruling of 2026-10-06, superseding R27): claude-hud is an OPTIONAL pick, recommended - the
+// walk marks it - at the scope the user chose, this project by default. The LSP pair are optional picks too
+// (2.0.0 retired the other two), and so is superpowers (R72): a selection naming none of them installs none.
+const OPTIONAL = ['csharp-lsp', 'typescript-lsp', 'claude-hud'];
 
-test('seed install: a selection naming no plugin still installs claude-hud at user scope, its marketplace first, and none of the optional two', POSIX_ONLY, () =>
+test('seed install: a selection naming no plugin installs none - claude-hud included', POSIX_ONLY, () =>
 {
     const { calls } = seedRun('install', 'skill markdown-style\nrule markdown-docs\n');
-    const add = calls.indexOf('plugin marketplace add jarrodwatts/claude-hud');
-    const inst = calls.indexOf('plugin install claude-hud@claude-hud --scope user -y');
-    assert.ok(inst >= 0, `claude-hud was not installed at user scope:\n${calls.join('\n')}`);
-    assert.ok(add >= 0 && add < inst, `its marketplace was not registered first:\n${calls.join('\n')}`);
     for (const name of [...OPTIONAL, 'superpowers'])
         assert.ok(!calls.some((c) => c.startsWith(`plugin install ${name}@`)), `${name} is optional, yet a selection naming no plugin installed it:\n${calls.join('\n')}`);
+    assert.ok(!calls.includes('plugin marketplace add jarrodwatts/claude-hud'), 'its marketplace is registered only for an install');
+});
+
+test('seed install: a picked claude-hud goes to this project by default, its marketplace first, and to the account on --scope-of claude-hud=user', POSIX_ONLY, () =>
+{
+    for (const [args, scope] of [[[], 'project'], [['--scope-of', 'claude-hud=user'], 'user'], [['--scope-of', 'claude-hud=global'], 'user']])
+    {
+        const { calls } = seedRun('install', HUD_SELECTION, { args });
+        const add = calls.indexOf('plugin marketplace add jarrodwatts/claude-hud');
+        const inst = calls.indexOf(`plugin install claude-hud@claude-hud --scope ${scope} -y`);
+        assert.ok(inst >= 0, `${args.join(' ')}: claude-hud was not installed at ${scope} scope:\n${calls.join('\n')}`);
+        assert.ok(add >= 0 && add < inst, `its marketplace was not registered first:\n${calls.join('\n')}`);
+        assert.strictEqual(calls.filter((c) => /^plugin install claude-hud@/.test(c)).length, 1, calls.join('\n'));
+    }
 });
 
 test('seed install: a selection that still names claude-hud installs it once, and an optional pick it names is installed', POSIX_ONLY, () =>
@@ -821,15 +844,15 @@ test('seed install: a selection that still names claude-hud installs it once, an
     assert.ok(calls.includes('plugin install csharp-lsp@claude-plugins-official --scope project -y'), calls.join('\n'));
 });
 
-// An install from before R27 carries whichever optional plugins its walk picked, and may lack claude-hud:
-// optional is not retired, so the read-back keeps each one it finds, and the required one is added -
+// An older install carries whichever optional plugins its walk picked, and may lack claude-hud: optional is
+// not retired, so the read-back keeps each one it finds and adds none (claude-hud is a pick since 2.2.0) -
 // while a pick 2.0.0 retired leaves this scope, never updated.
-test('seed update --installed-only: an older install keeps its optional plugins, loses a retired one and gains claude-hud', POSIX_ONLY, () =>
+test('seed update --installed-only: an older install keeps its optional plugins, loses a retired one and gains no claude-hud', POSIX_ONLY, () =>
 {
     const row = (id, extra = {}) => ({ id, version: '1.0.0', scope: 'project', enabled: true, ...extra });
     const listing = JSON.stringify([
         row(`${OLD}@${OLD}`, { version: '1.3.0' }),
-        ...['navigation', 'documentation', 'memory'].map((n) => row(`${n}@${OLD}`, { version: '1.3.0' })),
+        ...['alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => row(`${n}@${OLD}`, { version: '1.3.0' })),
         row('superpowers@claude-plugins-official', { scope: 'user' }),
         row('security-guidance@claude-plugins-official'),
         row('csharp-lsp@claude-plugins-official'),
@@ -847,10 +870,7 @@ test('seed update --installed-only: an older install keeps its optional plugins,
     assert.ok(!calls.includes('plugin update security-guidance@claude-plugins-official --scope project -y'), `the retired pick was updated:\n${calls.join('\n')}`);
     for (const name of ['claude-md-management', 'typescript-lsp'])
         assert.ok(!calls.some((c) => c.startsWith(`plugin install ${name}@`)), `${name} was never picked, yet the update installed it:\n${calls.join('\n')}`);
-    const add = calls.indexOf('plugin marketplace add jarrodwatts/claude-hud');
-    const inst = calls.indexOf('plugin install claude-hud@claude-hud --scope user -y');
-    assert.ok(inst >= 0, `the update did not add claude-hud:\n${calls.join('\n')}`);
-    assert.ok(add >= 0 && add < inst, `its marketplace was not registered first:\n${calls.join('\n')}`);
+    assert.ok(!calls.some((c) => /^plugin install claude-hud@/.test(c)), `the update added claude-hud, which the install never picked:\n${calls.join('\n')}`);
 });
 
 // configure's keep-parked line for a disabled claude-hud reaches the installer as a --drop: the run
@@ -859,7 +879,7 @@ test('seed update --installed-only: a claude-hud the user disabled stays off, wi
 {
     const row = (id, extra = {}) => ({ id, version: '2.0.0', scope: 'project', enabled: true, ...extra });
     const listing = JSON.stringify([
-        ...['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => row(`${n}@envoydev`)),
+        ...['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => row(`${n}@envoydev`)),
         row('superpowers@claude-plugins-official', { version: '6.4.1', scope: 'user' }),
         row('claude-hud@claude-hud', { version: '0.8.0', scope: 'user', enabled: false }),
     ]);
@@ -871,8 +891,9 @@ test('seed update --installed-only: a claude-hud the user disabled stays off, wi
     for (const args of [['--installed-only'], ['--installed-only', '--drop', 'plugin claude-hud']])
     {
         const { calls } = seedRun('update', 'skill markdown-style\n', { plugins: listing, args, prepare });
+        // A disabled one is no read-back pick (2.2.0), so the run leaves it as it is - never installed or enabled.
         const hud = calls.filter((c) => /^plugin (install|enable|update|uninstall|disable) claude-hud@/.test(c));
-        assert.deepStrictEqual(hud, ['plugin update claude-hud@claude-hud --scope user -y'], `${args.join(' ')}:\n${calls.join('\n')}`);
+        assert.deepStrictEqual(hud.filter((c) => !/^plugin update /.test(c)), [], `${args.join(' ')}:\n${calls.join('\n')}`);
     }
 });
 
@@ -896,7 +917,7 @@ test('seed install: a selection that still names superpowers installs nothing, a
 });
 
 const spListing = (scope) => JSON.stringify([
-    ...['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })),
+    ...['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })),
     { id: SP, version: '6.4.1', scope, enabled: true },
 ]);
 const spPrepare = (version) => (repo) =>
@@ -1170,8 +1191,8 @@ test('update: the core is locked on - a stale disabled flag runs no enable and r
 test('install: a plugin this run installed is not installed again', () =>
 {
     const run = cli();
-    P.installPlugins({ plugins: [`alfred-code@${OLD}`, `navigation@${OLD}`], scope: 'project', fresh: [`alfred-code@${OLD}`], cli: run });
-    assert.deepStrictEqual(run.matching(/^plugin install /), [`plugin install navigation@${OLD} --scope project -y`]);
+    P.installPlugins({ plugins: [`alfred-code@${OLD}`, `alfred-navigation@${OLD}`], scope: 'project', fresh: [`alfred-code@${OLD}`], cli: run });
+    assert.deepStrictEqual(run.matching(/^plugin install /), [`plugin install alfred-navigation@${OLD} --scope project -y`]);
 });
 
 // The seed end to end: a 1.x project listing drives the install and the removals in order.
@@ -1194,7 +1215,7 @@ test('seed update: a 1.x project install is moved across - alfred-code installed
     assert.ok(!calls.some((c) => c.startsWith(`plugin update alfred-code@${OLD}`)), 'the new core is installed, never updated (S19)');
     assert.strictEqual(calls.filter((c) => c.startsWith('plugin install alfred-code@')).length, 1, 'installed once');
     const specs = calls.filter((c) => /^plugin (install|update|enable) /.test(c)).map((c) => c.split(' ')[2]);
-    assert.ok(!specs.some((s) => /^(alfred-code|navigation|documentation|memory)(-hooks)?@envoydev$/.test(s)), `a stack spec under the new key:\n${specs.join('\n')}`);
+    assert.ok(!specs.some((s) => /^(alfred-code|alfred-navigation|alfred-documentation|alfred-memory)(-hooks)?@envoydev$/.test(s)), `a stack spec under the new key:\n${specs.join('\n')}`);
     assert.ok(!calls.includes('plugin marketplace add envoydev/alfred-code'), calls.join('\n'));
 });
 
@@ -1250,7 +1271,7 @@ test('seed update: a project holding the new core AND a 1.x id retries the remov
 
 test('seed plan --installed-only: a stale disabled flag on the core leaves out no core item and shows no DISABLED core (S22)', POSIX_ONLY, () =>
 {
-    const listing = JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory']
+    const listing = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory']
         .map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: !n.startsWith('alfred-code') })));
     const prepare = (repo) =>
     {
@@ -1387,7 +1408,7 @@ test('seed update: a 1.x project loses the cut plugins under ITS key while it mo
 test('seed update --installed-only: a 1.x install under its old key keeps its picks, its deny and its hooks-off', POSIX_ONLY, () =>
 {
     const row = (id) => ({ id, version: '2.0.0', scope: 'user', enabled: true });
-    const listing = JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => row(`${n}@${OLD}`)));
+    const listing = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => row(`${n}@${OLD}`)));
     const prepare = (repo) =>
     {
         fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
@@ -1428,7 +1449,7 @@ test('seed update --installed-only: a pre-11b hooks-copy-route install - its pic
 {
     const { loadManifest } = require('./install/manifest.js');
     const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
-    const listing = JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+    const listing = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
     // `off`: a plugin-route install flipped to the copies - no prelude, no hook on disk, the off-state
     // in ALFRED_CODE_HOOKS_OFF. `route`: the stamp's `hooks-route:` line, which a pre-11b stamp lacks.
     const layout = (kept, off, route) => (repo) =>
@@ -1477,7 +1498,7 @@ test('seed update --installed-only: an unwired stack hook under a stamp with no 
 {
     const { loadManifest } = require('./install/manifest.js');
     const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
-    const listing = JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+    const listing = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
     const { result } = seedRun('update', 'skill markdown-style\n', {
         env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }, plugins: listing, args: ['--installed-only'],
         prepare: (repo) =>
@@ -1507,7 +1528,7 @@ test('seed: copy -> plugin -> copy hands the plugin route\'s hooks back, never a
 {
     const { loadManifest } = require('./install/manifest.js');
     const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
-    const listing = JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+    const listing = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
     const copies = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
     const MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'shell-guards.js', 'file-guards.js'];
     const read = (repo) => ({
@@ -1557,7 +1578,7 @@ test('seed: copy -> plugin -> copy hands the plugin route\'s hooks back, never a
 test('seed: on the plugin route the copied engines still run, with no copy-route module beside them', POSIX_ONLY, () =>
 {
     const { spawnSync } = require('node:child_process');
-    const listing = JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+    const listing = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
     const { result } = seedRun('install', 'skill markdown-style\n', { plugins: listing, inspect: (repo) =>
     {
         const work = path.dirname(repo);
@@ -1586,7 +1607,7 @@ test('seed: on the plugin route the copied engines still run, with no copy-route
 test('seed: the copied hooks run as CommonJS in a "type": "module" project, on both routes', POSIX_ONLY, () =>
 {
     const { spawnSync } = require('node:child_process');
-    const listing = JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+    const listing = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
     const esm = (repo) => fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ name: 'esm-app', type: 'module' }));
     const inspect = (repo) =>
     {
@@ -1675,7 +1696,7 @@ const PW_SELECTION = 'skill markdown-style\nrule markdown-docs\nmcp browser\n';
 const stampOf = (repo) => { try { return fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'); } catch { return ''; } };
 const pwMoves = (calls) => calls.filter((c) => /^plugin (install|disable|enable|update|uninstall) browser-/.test(c));
 const ROW = (id, extra = {}) => ({ id, version: '1.0.0', scope: 'project', enabled: true, ...extra });
-const CORE_ROWS = [ROW('alfred-code@envoydev'), ROW('navigation@envoydev'), ROW('documentation@envoydev'), ROW('memory@envoydev')];
+const CORE_ROWS = [ROW('alfred-code@envoydev'), ROW('alfred-navigation@envoydev'), ROW('alfred-documentation@envoydev'), ROW('alfred-memory@envoydev')];
 // A project the stack installed: a copied rule (so --installed-only finds an install), the stamp, and
 // optionally the project settings' enabledPlugins - the file the CLI writes an engine's on/off to.
 const installedProject = (stamp, enabledPlugins) => (repo) =>
@@ -1974,7 +1995,7 @@ function hooksRouteSandbox(prefix, selection = 'skill markdown-style\n')
     const bin = path.join(work, 'bin');
     fs.mkdirSync(bin);
     const pluginsFile = path.join(work, 'plugins.json');
-    fs.writeFileSync(pluginsFile, JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory']
+    fs.writeFileSync(pluginsFile, JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory']
         .map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true }))));
     fs.writeFileSync(path.join(bin, 'claude'), ['#!/bin/sh', 'printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
         'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi', 'exit 0', ''].join('\n'), { mode: 0o755 });
@@ -2236,7 +2257,7 @@ test('routes: at project scope a route switch only settings.local.json holds is 
 
 test('seed: a personal ALFRED_CODE_HOOKS_VIA_PLUGIN=false in settings.local.json does not move the committed settings.json onto the hooks copy route (C5)', POSIX_ONLY, () =>
 {
-    const listing = JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+    const listing = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
     const { outs, result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
         plugins: listing, args: [[], ['--installed-only']],
         // Claude Code puts the local file's env into the run's process: the second step carries it.
@@ -2264,7 +2285,7 @@ test('seed: on a switch to the hooks copy route the committed wiring follows set
 {
     const { loadManifest } = require('./install/manifest.js');
     const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
-    const listing = JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+    const listing = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
     const { result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
         plugins: listing, args: [[], ['--installed-only']],
         env: [{}, { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }],
@@ -2335,7 +2356,7 @@ test('retired: a context7-local prune says how to switch the hosted context7 bac
 test('seed update: a move off local scope moves each plugin row found only at local scope to the new one, an engine left off staying off (C12)', POSIX_ONLY, () =>
 {
     const rows = [
-        ...['alfred-code', 'navigation', 'documentation', 'memory', 'browser-chrome'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'local', enabled: true })),
+        ...['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory', 'browser-chrome'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'local', enabled: true })),
         { id: 'browser-firefox@envoydev', version: '2.0.0', scope: 'local', enabled: false },
         { id: 'typescript-lsp@claude-plugins-official', version: '1.0.0', scope: 'local', enabled: true },
         { id: 'claude-hud@claude-hud', version: '0.8.0', scope: 'user', enabled: true },
@@ -2347,7 +2368,7 @@ test('seed update: a move off local scope moves each plugin row found only at lo
     });
     const out = outs[1];
     const moves = calls.filter((c) => /^plugin (install|uninstall|disable|enable|update) /.test(c) && !/claude-hud/.test(c));
-    const specs = ['alfred-code', 'navigation', 'documentation', 'memory', 'browser-chrome', 'browser-firefox'].map((n) => `${n}@envoydev`).concat('typescript-lsp@claude-plugins-official');
+    const specs = ['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory', 'browser-chrome', 'browser-firefox'].map((n) => `${n}@envoydev`).concat('typescript-lsp@claude-plugins-official');
     for (const spec of specs)
     {
         const inst = moves.indexOf(`plugin install ${spec} --scope project -y`);
@@ -2368,7 +2389,7 @@ test('seed update: a move off local scope moves each plugin row found only at lo
 test('seed install: claude-hud with no status line in the account settings names /alfred-code:init; a foreign status line or a user-disabled HUD says nothing (A-I4)', POSIX_ONLY, () =>
 {
     const LINE = /claude-hud has no status line yet - run \/alfred-code:init to set it up/g;
-    const run = (accountSettings, plugins = '[]') => seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
+    const run = (accountSettings, plugins = '[]') => seedRun('install', HUD_SELECTION, {
         plugins,
         prepare: (repo, work) =>
         {
@@ -2388,9 +2409,9 @@ test('seed install: claude-hud with no status line in the account settings names
 // install made before the rename holds the old rows; update installs the new one at the scope the
 // listing reports for the old one, then removes the old one there - never both loading at once after
 // the run, and the new one before the old goes, so a failed install leaves the server running.
-const RENAMED_MCPS = { serena: 'navigation', context7: 'documentation', playwright: 'browser' };
+const RENAMED_MCPS = { serena: 'alfred-navigation', context7: 'alfred-documentation', playwright: 'browser' };
 const oldRow = (name, over = {}) => ({ name, marketplace: 'envoydev', version: '1.3.0', scope: 'project', enabled: true, ...over });
-const RENAME_SET = ['alfred-code@envoydev', 'navigation@envoydev', 'documentation@envoydev', 'memory@envoydev', 'browser-chrome@envoydev', 'browser-firefox@envoydev'];
+const RENAME_SET = ['alfred-code@envoydev', 'alfred-navigation@envoydev', 'alfred-documentation@envoydev', 'alfred-memory@envoydev', 'browser-chrome@envoydev', 'browser-firefox@envoydev'];
 
 // I2 (final review of the rename): a user-scope old row serves every project on the account, and a project
 // not yet updated still spells the old tools (its library agents' `tools:`, its navigation rule's
@@ -2404,14 +2425,14 @@ test('rename: an old row at this run\'s scope is swapped in place; one at anothe
     const rows = [oldRow('serena'), oldRow('context7', { scope: 'user' }), oldRow('playwright-chrome'), oldRow('memory')];
     const out = P.migrateRenamed({ rows, renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', cli: run, log: (m) => logs.push(m) });
     assert.deepStrictEqual(run.calls, [
-        'plugin install navigation@envoydev --scope project -y',
+        'plugin install alfred-navigation@envoydev --scope project -y',
         'plugin uninstall serena@envoydev --scope project -y',
         'plugin install browser-chrome@envoydev --scope project -y',
         'plugin uninstall playwright-chrome@envoydev --scope project -y',
-        'plugin install documentation@envoydev --scope project -y',
+        'plugin install alfred-documentation@envoydev --scope project -y',
         'plugin disable context7@envoydev --scope project',
     ], 'this scope\'s own old rows first, then the stand-downs');
-    assert.deepStrictEqual(out.fresh, ['navigation@envoydev', 'browser-chrome@envoydev', 'documentation@envoydev'], 'installed this run - the install and update passes leave them alone');
+    assert.deepStrictEqual(out.fresh, ['alfred-navigation@envoydev', 'browser-chrome@envoydev', 'alfred-documentation@envoydev'], 'installed this run - the install and update passes leave them alone');
     assert.deepStrictEqual(out.gone.map((r) => r.name), ['serena', 'playwright-chrome'], 'the user-scope row is still installed');
     const bang = logs.filter((m) => /^\s*!!/.test(m));
     assert.strictEqual(bang.length, 1, logs.join('\n'));
@@ -2423,7 +2444,7 @@ test('rename: a re-run over a stood-down old row changes nothing - the successor
     const run = cli();
     const logs = [];
     const isOn = (spec, scope) => (spec === 'context7@envoydev' && scope === 'project' ? false : undefined);
-    const rows = [oldRow('context7', { scope: 'user' }), oldRow('documentation', { version: '2.0.0' })];
+    const rows = [oldRow('context7', { scope: 'user' }), oldRow('alfred-documentation', { version: '2.0.0' })];
     const out = P.migrateRenamed({ rows, renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', isOn, cli: run, log: (m) => logs.push(m) });
     assert.deepStrictEqual(run.calls, []);
     assert.deepStrictEqual(out, { fresh: [], gone: [] });
@@ -2439,14 +2460,14 @@ test('rename: an old id at this scope and at user scope - swapped here first, th
     const run = cli();
     P.migrateRenamed({ rows: [oldRow('serena', { scope: 'user' }), oldRow('serena')], renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', cli: run });
     assert.deepStrictEqual(run.calls, [
-        'plugin install navigation@envoydev --scope project -y',
+        'plugin install alfred-navigation@envoydev --scope project -y',
         'plugin uninstall serena@envoydev --scope project -y',
         'plugin disable serena@envoydev --scope project',
     ]);
-    const failing = cli(['install navigation']);
+    const failing = cli(['install alfred-navigation']);
     const notes = [];
     P.migrateRenamed({ rows: [oldRow('serena', { scope: 'user' }), oldRow('serena')], renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', cli: failing, note: (m) => notes.push(m) });
-    assert.deepStrictEqual(failing.calls, ['plugin install navigation@envoydev --scope project -y'], 'a failed successor is tried once, and nothing old is touched');
+    assert.deepStrictEqual(failing.calls, ['plugin install alfred-navigation@envoydev --scope project -y'], 'a failed successor is tried once, and nothing old is touched');
     assert.strictEqual(notes.length, 1, notes.join('\n'));
 });
 
@@ -2454,7 +2475,7 @@ test('rename: a user-scope run swaps a user-scope old row at user scope; a user-
 {
     const run = cli();
     P.migrateRenamed({ rows: [oldRow('serena', { scope: 'user' })], renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'user', cli: run });
-    assert.deepStrictEqual(run.calls, ['plugin install navigation@envoydev --scope user -y', 'plugin uninstall serena@envoydev --scope user -y']);
+    assert.deepStrictEqual(run.calls, ['plugin install alfred-navigation@envoydev --scope user -y', 'plugin uninstall serena@envoydev --scope user -y']);
     const off = cli();
     const isOn = (spec, scope) => (spec === 'playwright-firefox@envoydev' && scope === 'user' ? false : undefined);
     P.migrateRenamed({ rows: [oldRow('playwright-firefox', { scope: 'user', enabled: false })], renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', isOn, cli: off });
@@ -2471,7 +2492,7 @@ test('rename: a browser engine the user left off arrives off; a locked server ar
         'plugin install browser-firefox@envoydev --scope project -y',
         'plugin disable browser-firefox@envoydev --scope project',
         'plugin uninstall playwright-firefox@envoydev --scope project -y',
-        'plugin install navigation@envoydev --scope project -y',
+        'plugin install alfred-navigation@envoydev --scope project -y',
         'plugin uninstall serena@envoydev --scope project -y',
     ]);
     // An enable answer given this run wins over the old row's state.
@@ -2484,7 +2505,7 @@ test('rename: a browser engine the user left off arrives off; a locked server ar
 test('rename: the new one already there is not installed again - only the old one goes (a re-run after a partial one)', () =>
 {
     const run = cli();
-    P.migrateRenamed({ rows: [oldRow('serena'), oldRow('navigation', { version: '2.0.0' })], renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', cli: run });
+    P.migrateRenamed({ rows: [oldRow('serena'), oldRow('alfred-navigation', { version: '2.0.0' })], renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', cli: run });
     assert.deepStrictEqual(run.calls, ['plugin uninstall serena@envoydev --scope project -y']);
 });
 
@@ -2492,7 +2513,7 @@ test('rename: an old one this run does not carry goes at this scope only - at an
 {
     const run = cli();
     const logs = [];
-    const set = ['alfred-code@envoydev', 'navigation@envoydev'];
+    const set = ['alfred-code@envoydev', 'alfred-navigation@envoydev'];
     P.migrateRenamed({ rows: [oldRow('playwright-webkit'), oldRow('playwright-msedge', { scope: 'user' })], renamed: RENAMED_MCPS, set, market: 'envoydev', scope: 'project', cli: run, log: (m) => logs.push(m) });
     assert.deepStrictEqual(run.calls, ['plugin uninstall playwright-webkit@envoydev --scope project -y']);
     assert.ok(logs.some((m) => /playwright-msedge@envoydev is installed at user scope.*claude plugin uninstall playwright-msedge@envoydev --scope user/.test(m)), logs.join('\n'));
@@ -2501,7 +2522,7 @@ test('rename: an old one this run does not carry goes at this scope only - at an
 test('rename: a failed install removes nothing; a failed removal is said with its command; another marketplace\'s same name is never touched', () =>
 {
     const notes = [];
-    const failing = cli(['install navigation']);
+    const failing = cli(['install alfred-navigation']);
     P.migrateRenamed({ rows: [oldRow('serena')], renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', cli: failing, note: (m) => notes.push(m) });
     assert.deepStrictEqual(failing.matching(/uninstall/), [], 'the old server keeps running when its successor did not install');
     assert.ok(notes.some((m) => /navigation@envoydev failed - serena@envoydev stays/.test(m)), notes.join('\n'));
@@ -2518,7 +2539,7 @@ test('rename: a failed install removes nothing; a failed removal is said with it
 // way, its listing holds the old ids, firefox left off in the settings file) is updated. The old rows
 // are swapped at their own scope - the user-scope context7 at user scope - each new one before its old
 // one goes, firefox arrives off, and nothing new is installed at this scope beside a swapped one.
-const OLD_ROWS = [ROW('alfred-code@envoydev'), ROW('serena@envoydev'), ROW('context7@envoydev', { scope: 'user' }), ROW('memory@envoydev'),
+const OLD_ROWS = [ROW('alfred-code@envoydev'), ROW('serena@envoydev'), ROW('context7@envoydev', { scope: 'user' }), ROW('alfred-memory@envoydev'),
     ROW('playwright-chrome@envoydev'), ROW('playwright-firefox@envoydev', { enabled: false })];
 test('seed update over a pre-rename install: every old id is swapped where it is installed, and the engines keep their on/off', POSIX_ONLY, () =>
 {
@@ -2530,7 +2551,7 @@ test('seed update over a pre-rename install: every old id is swapped where it is
     });
     const moves = calls.filter((c) => /^plugin (install|uninstall|disable|enable) /.test(c));
     const at = (c) => moves.indexOf(c);
-    for (const [from, to, scope] of [['serena', 'navigation', 'project'], ['playwright-chrome', 'browser-chrome', 'project'], ['playwright-firefox', 'browser-firefox', 'project']])
+    for (const [from, to, scope] of [['serena', 'alfred-navigation', 'project'], ['playwright-chrome', 'browser-chrome', 'project'], ['playwright-firefox', 'browser-firefox', 'project']])
     {
         const install = `plugin install ${to}@envoydev --scope ${scope} -y`;
         const remove = `plugin uninstall ${from}@envoydev --scope ${scope} -y`;
@@ -2539,9 +2560,9 @@ test('seed update over a pre-rename install: every old id is swapped where it is
         assert.match(out, new RegExp(`renamed: plugin ${from}@envoydev -> ${to}@envoydev \\[${scope}\\]`));
     }
     // I2: the user-scope context7 serves every project on the account - stood down here, never removed.
-    const install = 'plugin install documentation@envoydev --scope project -y';
+    const install = 'plugin install alfred-documentation@envoydev --scope project -y';
     assert.ok(at(install) >= 0 && at('plugin disable context7@envoydev --scope project') > at(install), moves.join('\n'));
-    assert.ok(!moves.some((c) => /context7@envoydev --scope user|documentation@envoydev --scope user/.test(c)), `the account-wide row was touched:\n${moves.join('\n')}`);
+    assert.ok(!moves.some((c) => /context7@envoydev --scope user|alfred-documentation@envoydev --scope user/.test(c)), `the account-wide row was touched:\n${moves.join('\n')}`);
     assert.match(out, /!! .*context7@envoydev.*claude plugin uninstall context7@envoydev --scope user/);
     assert.deepStrictEqual(moves.filter((c) => /^plugin disable browser-/.test(c)), ['plugin disable browser-firefox@envoydev --scope project'], moves.join('\n'));
     assert.match(result, /^browser-engines: chrome,firefox$/m, 'the stamp records the engines under the new line');
@@ -2560,4 +2581,82 @@ test('seed update over a pre-rename install with a listing it cannot read: the o
     assert.match(out, /!! the plugin listing could not be read, and this install predates the 2\.0\.0 rename.*claude plugin uninstall serena@envoydev --scope project/);
     // The stamp's old engine line names what the OLD ids installed - never a browser-<engine> already there.
     assert.ok(calls.includes('plugin install browser-chrome@envoydev --scope project -y'), calls.join('\n'));
+});
+
+// --- 2.2.0: each optional item at the scope the user chose (--scope-of) ------------------------------------------
+// The user's rulings of 2026-10-06: an optional item (engine, desktop server, LSP, claude-hud) goes where the user
+// chose, this project by default; an existing install is KEPT where it is on update, and only an explicit choice
+// (configure's --scope-of) moves it - installed at the new scope first, so a failed install leaves it serving, then
+// removed at the old one. Leaving user scope takes it from every other project, said loud with the way back.
+const hudRow = (scope, over = {}) => ({ name: 'claude-hud', marketplace: 'claude-hud', version: '0.8.0', scope, enabled: true, ...over });
+test('moveScoped: a choice moves the item - installed at the new scope first, then removed at the old; no choice moves nothing', () =>
+{
+    const run = cli();
+    const logs = [];
+    const moved = P.moveScoped({ plugins: ['claude-hud@claude-hud'], rows: [hudRow('user')], scope: 'project', scopes: { 'claude-hud': 'project' }, cli: run, log: (m) => logs.push(m) });
+    assert.deepStrictEqual(run.calls, ['plugin install claude-hud@claude-hud --scope project -y', 'plugin uninstall claude-hud@claude-hud --scope user -y']);
+    assert.deepStrictEqual(moved, [{ spec: 'claude-hud@claude-hud', scope: 'project' }]);
+    assert.ok(logs.some((m) => /^\s*!! plugin moved \[user -> project\]: claude-hud@claude-hud - every other project on this account loses it; .*claude plugin install claude-hud@claude-hud --scope user/.test(m)), logs.join('\n'));
+    const up = cli();
+    const upLogs = [];
+    P.moveScoped({ plugins: ['typescript-lsp@claude-plugins-official'], rows: [{ name: 'typescript-lsp', marketplace: 'claude-plugins-official', version: '1.0.0', scope: 'project', enabled: true }],
+        scope: 'project', scopes: { 'typescript-lsp': 'user' }, cli: up, log: (m) => upLogs.push(m) });
+    assert.deepStrictEqual(up.calls, ['plugin install typescript-lsp@claude-plugins-official --scope user -y', 'plugin uninstall typescript-lsp@claude-plugins-official --scope project -y']);
+    assert.ok(upLogs.some((m) => /^plugin moved \[project -> user\]/.test(m)) && !upLogs.some((m) => /!!/.test(m)), 'a project row is this project\'s alone - no loud line');
+    for (const scopes of [{}, { 'claude-hud': 'user' }])
+    {
+        const still = cli();
+        assert.deepStrictEqual(P.moveScoped({ plugins: ['claude-hud@claude-hud'], rows: [hudRow('user')], scope: 'project', scopes, cli: still }), []);
+        assert.deepStrictEqual(still.calls, [], `${JSON.stringify(scopes)}: no choice, or the scope it already has, moves nothing`);
+    }
+    const absent = cli();
+    assert.deepStrictEqual(P.moveScoped({ plugins: ['claude-hud@claude-hud'], rows: [], scope: 'project', scopes: { 'claude-hud': 'user' }, cli: absent }), [], 'nothing installed is nothing to move');
+    assert.deepStrictEqual(absent.calls, []);
+});
+
+test('moveScoped: a failed install removes nothing; a row already at the target loses only the old one; an engine left off arrives off', () =>
+{
+    const notes = [];
+    const failing = cli(['plugin install claude-hud']);
+    assert.deepStrictEqual(P.moveScoped({ plugins: ['claude-hud@claude-hud'], rows: [hudRow('user')], scope: 'project', scopes: { 'claude-hud': 'project' }, cli: failing, note: (m) => notes.push(m) }), []);
+    assert.deepStrictEqual(failing.matching(/uninstall/), [], 'the old row keeps serving');
+    assert.ok(notes.some((m) => /plugin move failed: claude-hud@claude-hud - it stays at user scope; .*claude plugin install claude-hud@claude-hud --scope project, then claude plugin uninstall claude-hud@claude-hud --scope user/.test(m)), notes.join('\n'));
+    const both = cli();
+    P.moveScoped({ plugins: ['claude-hud@claude-hud'], rows: [hudRow('user'), hudRow('project')], scope: 'project', scopes: { 'claude-hud': 'project' }, cli: both });
+    assert.deepStrictEqual(both.calls, ['plugin uninstall claude-hud@claude-hud --scope user -y']);
+    const engine = cli();
+    P.moveScoped({ plugins: ['browser-firefox@envoydev'], rows: [{ name: 'browser-firefox', marketplace: 'envoydev', version: '2.1.8', scope: 'user', enabled: false }],
+        scope: 'project', scopes: { 'browser-firefox': 'project' }, engines: ['browser-firefox@envoydev'], cli: engine });
+    assert.deepStrictEqual(engine.calls, ['plugin install browser-firefox@envoydev --scope project -y', 'plugin disable browser-firefox@envoydev --scope project', 'plugin uninstall browser-firefox@envoydev --scope user -y']);
+    // A local run's 'project' is the run's own scope - this checkout.
+    const local = cli();
+    P.moveScoped({ plugins: ['claude-hud@claude-hud'], rows: [hudRow('user')], scope: 'local', scopes: { 'claude-hud': 'project' }, cli: local });
+    assert.deepStrictEqual(local.matching(/^plugin install/), ['plugin install claude-hud@claude-hud --scope local -y']);
+});
+
+// The seed end to end: an update keeps each optional item where it is (the user's 'Keep, configure moves'), and the
+// --scope-of configure passes moves it; a re-run with the same choice changes nothing.
+test('seed update --installed-only: optional items stay where they are, and --scope-of moves one (configure\'s route)', POSIX_ONLY, () =>
+{
+    const row = (id, extra = {}) => ({ id, version: '2.1.8', scope: 'project', enabled: true, ...extra });
+    const listing = JSON.stringify([
+        ...['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => row(`${n}@envoydev`)),
+        row('claude-hud@claude-hud', { version: '0.8.0', scope: 'user' }),
+        row('typescript-lsp@claude-plugins-official', { version: '1.0.0' }),
+    ]);
+    const prepare = (repo) =>
+    {
+        fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'alfred-interaction.md'), 'x\n');
+    };
+    const sel = 'skill markdown-style\nplugin claude-hud\nplugin typescript-lsp\n';
+    const kept = seedRun('update', sel, { plugins: listing, args: ['--installed-only'], prepare });
+    const moves = (calls) => calls.filter((c) => /^plugin (install|uninstall) (claude-hud|typescript-lsp)@/.test(c));
+    assert.deepStrictEqual(moves(kept.calls), [], `no choice moves nothing:\n${kept.calls.join('\n')}`);
+    assert.ok(kept.calls.includes('plugin update claude-hud@claude-hud --scope user -y') && kept.calls.includes('plugin update typescript-lsp@claude-plugins-official --scope project -y'), kept.calls.join('\n'));
+    const moved = seedRun('update', sel, { plugins: listing, args: ['--installed-only', '--scope-of', 'claude-hud=project', '--scope-of', 'typescript-lsp=global'], prepare });
+    for (const [spec, from, to] of [['claude-hud@claude-hud', 'user', 'project'], ['typescript-lsp@claude-plugins-official', 'project', 'user']])
+        assert.deepStrictEqual(moves(moved.calls).filter((c) => c.includes(` ${spec} `)), [`plugin install ${spec} --scope ${to} -y`, `plugin uninstall ${spec} --scope ${from} -y`], moved.calls.join('\n'));
+    assert.match(moved.out, /!! plugin moved \[user -> project\]: claude-hud@claude-hud/);
+    assert.ok(!moved.calls.includes('plugin install claude-hud@claude-hud --scope user -y'), 'the moved item is not installed back at its old scope');
 });

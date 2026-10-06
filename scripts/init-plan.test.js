@@ -25,9 +25,9 @@ function project({ settings } = {})
     return root;
 }
 const INV = (over = {}) => ({
-    skills: ['alfred-capture-related-projects', 'alfred-capture-architecture', 'alfred-capture-code-style', 'alfred-capture-project-capabilities', 'alfred-capture-agent-capabilities'],
+    skills: ['capture-related-projects', 'capture-architecture', 'capture-code-style', 'capture-project-capabilities', 'capture-agent-capabilities'],
     agents: ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer'],
-    mcps: ['navigation', 'documentation', 'memory', 'playwright'],
+    mcps: ['alfred-navigation', 'alfred-documentation', 'alfred-memory', 'playwright'],
     plugins: [{ name: 'alfred-code', scope: 'project' }, { name: 'csharp-lsp', scope: 'project' }],
     left_out: [],
     browser: { installed: ['chrome', 'firefox'], enabled: ['chrome'] },
@@ -52,7 +52,7 @@ test('machine: nothing installed - uv first, the rest after it, each with its ex
     assert.strictEqual(lineOf(lines, /^machine: playwright chrome /),
         'machine: playwright chrome - blocked: needs Google Chrome - install it, or drop chrome from the browsers (/alfred-code:configure)');
     assert.strictEqual(lineOf(lines, /^machine: serena index /),
-        `machine: serena index - missing after uv: SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer ${require('../meta/mcp-pins.json').refreshed}T23:59:59Z --from serena-agent@${PINS.navigation.version} serena project index`);
+        `machine: serena index - missing after uv: SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer ${require('../meta/mcp-pins.json').refreshed}T23:59:59Z --from serena-agent@${PINS['alfred-navigation'].version} serena project index`);
     // F2: the memory service's embedding model (~166MB) fetched ahead, so its first start fits the 30s connect budget.
     assert.strictEqual(lineOf(lines, /^machine: memory model /),
         `machine: memory model - missing after uv: node "${path.join(__dirname, '..', 'stack', 'hooks', 'memory.js')}" warm --root "${root}" --plugin-root "${path.join(__dirname, '..')}"`);
@@ -83,14 +83,14 @@ test('machine: the claude-hud item - skip without it, missing with its one comma
     const hudLine = () => lineOf(render(plan({ inv: INV(), root, env, probe: NONE })), HUD);
 
     fs.mkdirSync(acct, { recursive: true });
-    assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - skip: claude-hud is not installed in this account');
+    assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - skip: claude-hud is not installed for this project or this account');
 
     const cached = path.join(acct, 'plugins', 'cache', 'claude-hud', 'claude-hud', '0.8.0');
     fs.mkdirSync(path.join(cached, 'dist'), { recursive: true });
     fs.writeFileSync(path.join(cached, 'dist', 'index.js'), '');
     fs.writeFileSync(path.join(acct, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'claude-hud@claude-hud': [{ scope: 'user', installPath: cached, version: '0.8.0' }] } }));
     const missing = render(plan({ inv: INV(), root, env, probe: NONE }));
-    const command = `node "${path.join(__dirname, 'hud-statusline.js')}" --config-dir "${acct}"`;
+    const command = `node "${path.join(__dirname, 'hud-statusline.js')}" --config-dir "${acct}" --project "${root}"`;
     // The keys the row adds ride the command as a shell comment: named in the ask, inert when run.
     assert.strictEqual(lineOf(missing, HUD),
         `machine: claude-hud status line + compact layout - missing: ${command} # adds 13 claude-hud keys: lineLayout, showSeparators, display (8), gitStatus (2), statusLine.refreshInterval`);
@@ -125,19 +125,53 @@ test('machine: the claude-hud item - skip without it, missing with its one comma
     assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - skip: claude-hud is switched off in this account');
 });
 
+// 2.2.0: claude-hud installed for this project alone (a project- or local-scope row naming it, no user-scope row) takes
+// its status line in the project's settings.local.json - the command names this machine's node - never the account's,
+// which every other project reads. A row of ANOTHER project serves nothing here.
+test('machine: a project-scope claude-hud gets its status line in this project\'s settings.local.json, never the account\'s', () =>
+{
+    const root = project();
+    const acct = path.join(TMP, `hud-proj-${seq++}`);
+    const env = E({ CLAUDE_CONFIG_DIR: acct });
+    const HUD = /^machine: claude-hud status line \+ compact layout /;
+    const hudLine = () => lineOf(render(plan({ inv: INV(), root, env, probe: NONE })), HUD);
+    const cached = path.join(acct, 'plugins', 'cache', 'claude-hud', 'claude-hud', '0.8.0');
+    fs.mkdirSync(path.join(cached, 'dist'), { recursive: true });
+    fs.writeFileSync(path.join(cached, 'dist', 'index.js'), '');
+    const rows = (projectPath) => fs.writeFileSync(path.join(acct, 'plugins', 'installed_plugins.json'),
+        JSON.stringify({ version: 2, plugins: { 'claude-hud@claude-hud': [{ scope: 'project', projectPath, installPath: cached, version: '0.8.0' }] } }));
+    rows(path.join(TMP, 'another-project'));
+    assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - skip: claude-hud is not installed for this project or this account', 'another project\'s row serves nothing here');
+    rows(root);
+    assert.match(hudLine(), / - missing: node .* --project /);
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'hud-statusline.js'), '--config-dir', acct, '--project', root], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: path.join(TMP, 'home') } });
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /statusLine written - .*in the project \(\.claude\/settings\.local\.json\)/);
+    const local = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'settings.local.json'), 'utf8'));
+    assert.match(local.statusLine.command, /claude-hud/);
+    assert.strictEqual(local.statusLine.refreshInterval, 5, 'the row\'s refresh interval lands beside the line it belongs to');
+    const account = (() => { try { return JSON.parse(fs.readFileSync(path.join(acct, 'settings.json'), 'utf8')); } catch { return {}; } })();
+    assert.strictEqual(account.statusLine, undefined, 'the account status line is every project\'s - never written for one project\'s claude-hud');
+    assert.ok(fs.existsSync(path.join(acct, 'plugins', 'claude-hud', 'config.json')), 'claude-hud\'s own config stays account-wide');
+    assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - present');
+    // Switched off for this project: their off wins.
+    fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ enabledPlugins: { 'claude-hud@claude-hud': false } }));
+    assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - skip: claude-hud is switched off for this project');
+});
+
 test('machine: the claude-hud item reads the account --space names when CLAUDE_CONFIG_DIR is unset', () =>
 {
     const root = project();
     const home = path.join(TMP, `space-home-${seq++}`);
     fs.mkdirSync(path.join(home, '.claude-work'), { recursive: true });
     const lines = render(plan({ inv: INV(), root, platform: 'linux', env: { HOME: home }, probe: NONE, space: 'work' }));
-    assert.strictEqual(lineOf(lines, /claude-hud/), 'machine: claude-hud status line + compact layout - skip: claude-hud is not installed in this account');
+    assert.strictEqual(lineOf(lines, /claude-hud/), 'machine: claude-hud status line + compact layout - skip: claude-hud is not installed for this project or this account');
     const cached = path.join(home, '.claude-work', 'plugins', 'cache', 'claude-hud', 'claude-hud', '0.8.0', 'dist');
     fs.mkdirSync(cached, { recursive: true });
     fs.writeFileSync(path.join(cached, 'index.js'), '');
     fs.writeFileSync(path.join(home, '.claude-work', 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'claude-hud@claude-hud': [{ scope: 'user' }] } }));
     const again = render(plan({ inv: INV(), root, platform: 'linux', env: { HOME: home }, probe: NONE, space: 'work' }));
-    assert.match(lineOf(again, /claude-hud/), new RegExp(`--config-dir "${path.join(home, '.claude-work').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" # adds 13 claude-hud keys: `));
+    assert.match(lineOf(again, /claude-hud/), new RegExp(`--config-dir "${path.join(home, '.claude-work').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" --project "[^"]+" # adds 13 claude-hud keys: `));
 });
 
 test('machine: everything present is reported present, and csharp-ls is asked only when csharp-lsp is kept', () =>
@@ -206,36 +240,36 @@ test('captures: the fixed order; run, done and skip each say why; the library co
     const root = project({ settings: { env: { ALFRED_CODE_DOCS_PATH: 'notes/ai' } } });
     fs.mkdirSync(path.join(root, 'notes', 'ai', 'architecture'), { recursive: true });
     fs.writeFileSync(path.join(root, 'notes', 'ai', 'architecture', 'ARCHITECTURE.md'), '# map\n');
-    fs.mkdirSync(path.join(root, '.claude', 'skills', 'alfred-capture-related-projects'), { recursive: true });
-    fs.writeFileSync(path.join(root, '.claude', 'skills', 'alfred-capture-related-projects', 'SKILL.md'), '---\nname: x\n---\n');
+    fs.mkdirSync(path.join(root, '.claude', 'skills', 'capture-related-projects'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'skills', 'capture-related-projects', 'SKILL.md'), '---\nname: x\n---\n');
     const inv = INV({ left_out: ['agent code-style-analyzer'] });
     const lines = render(plan({ inv, root, platform: 'linux', env: E(), probe: NONE, pluginRoot: path.join(__dirname, '..') }))
         .filter((l) => l.startsWith('capture:'));
     assert.deepStrictEqual(lines.map((l) => l.split(' - ')[0]), [
-        'capture: alfred-capture-related-projects', 'capture: alfred-capture-architecture',
-        'capture: alfred-capture-code-style', 'capture: alfred-capture-project-capabilities', 'capture: alfred-capture-agent-capabilities',
+        'capture: capture-related-projects', 'capture: capture-architecture',
+        'capture: capture-code-style', 'capture: capture-project-capabilities', 'capture: capture-agent-capabilities',
     ]);
-    assert.strictEqual(lines[0], 'capture: alfred-capture-related-projects - run: read .claude/skills/alfred-capture-related-projects/SKILL.md');
-    assert.strictEqual(lines[1], 'capture: alfred-capture-architecture - done: notes/ai/architecture/ARCHITECTURE.md exists');
-    assert.strictEqual(lines[2], 'capture: alfred-capture-code-style - skip: its seat code-style-analyzer is switched off');
+    assert.strictEqual(lines[0], 'capture: capture-related-projects - run: read .claude/skills/capture-related-projects/SKILL.md');
+    assert.strictEqual(lines[1], 'capture: capture-architecture - done: notes/ai/architecture/ARCHITECTURE.md exists');
+    assert.strictEqual(lines[2], 'capture: capture-code-style - skip: its seat code-style-analyzer is switched off');
     // A path outside the project is printed with forward slashes on every OS: init reads it through Bash, where a
     // backslash is an escape (windows-2025 CI printed `D:/a/...` against a native-separator expectation).
     const libPath = (skill) => path.join(__dirname, '..', 'stack', 'skills', skill, 'SKILL.md').split(path.sep).join('/');
     // The run book has no seat: the capture reads the repo and asks in the main session.
-    assert.strictEqual(lines[3], `capture: alfred-capture-project-capabilities - run: read ${libPath('alfred-capture-project-capabilities')}`);
-    assert.strictEqual(lines[4], `capture: alfred-capture-agent-capabilities - run: read ${libPath('alfred-capture-agent-capabilities')}`);
+    assert.strictEqual(lines[3], `capture: capture-project-capabilities - run: read ${libPath('capture-project-capabilities')}`);
+    assert.strictEqual(lines[4], `capture: capture-agent-capabilities - run: read ${libPath('capture-agent-capabilities')}`);
     fs.mkdirSync(path.join(root, 'notes', 'ai', 'project-capabilities'), { recursive: true });
     fs.writeFileSync(path.join(root, 'notes', 'ai', 'project-capabilities', 'PROJECT-CAPABILITIES.md'), '# run book\n');
     const again = render(plan({ inv, root, platform: 'linux', env: E(), probe: NONE })).filter((l) => l.startsWith('capture:'));
-    assert.strictEqual(again[3], 'capture: alfred-capture-project-capabilities - done: notes/ai/project-capabilities/PROJECT-CAPABILITIES.md exists');
+    assert.strictEqual(again[3], 'capture: capture-project-capabilities - done: notes/ai/project-capabilities/PROJECT-CAPABILITIES.md exists');
 
-    const bare = render(plan({ inv: INV({ skills: ['alfred-capture-agent-capabilities'], agents: [] }), root, platform: 'linux', env: E(), probe: NONE }))
+    const bare = render(plan({ inv: INV({ skills: ['capture-agent-capabilities'], agents: [] }), root, platform: 'linux', env: E(), probe: NONE }))
         .filter((l) => l.startsWith('capture:'));
-    assert.strictEqual(bare[0], 'capture: alfred-capture-related-projects - skip: the skill is not installed');
-    assert.strictEqual(bare[1], 'capture: alfred-capture-architecture - skip: the skill is not installed');
+    assert.strictEqual(bare[0], 'capture: capture-related-projects - skip: the skill is not installed');
+    assert.strictEqual(bare[1], 'capture: capture-architecture - skip: the skill is not installed');
     const noSeat = render(plan({ inv: INV({ agents: [] }), root: project(), platform: 'linux', env: E(), probe: NONE }))
         .filter((l) => l.startsWith('capture:'));
-    assert.strictEqual(noSeat[2], 'capture: alfred-capture-code-style - skip: its seat code-style-analyzer is not installed');
+    assert.strictEqual(noSeat[2], 'capture: capture-code-style - skip: its seat code-style-analyzer is not installed');
 });
 
 // End to end through the CLI, on a stubbed PATH: the real probes, the real pins file.
@@ -277,12 +311,12 @@ test('captures: at local scope the docs root is the personal file\'s, at project
     fs.mkdirSync(path.join(root, 'docs', 'mine', 'architecture'), { recursive: true });
     fs.writeFileSync(path.join(root, 'docs', 'mine', 'architecture', 'ARCHITECTURE.md'), '# map\n');
     const line = () => render(plan({ inv: INV(), root, platform: 'linux', env: E(), probe: NONE }))
-        .find((l) => l.startsWith('capture: alfred-capture-architecture'));
+        .find((l) => l.startsWith('capture: capture-architecture'));
     const stamp = (scope) => fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), `source: x\nscope: ${scope}\n`);
     stamp('local');
-    assert.strictEqual(line(), 'capture: alfred-capture-architecture - done: docs/mine/architecture/ARCHITECTURE.md exists');
+    assert.strictEqual(line(), 'capture: capture-architecture - done: docs/mine/architecture/ARCHITECTURE.md exists');
     stamp('project');
-    assert.match(line(), /^capture: alfred-capture-architecture - run: /, 'project scope never reads the personal file');
+    assert.match(line(), /^capture: capture-architecture - run: /, 'project scope never reads the personal file');
 });
 
 // R134, the I-4 class: a --space that names no profile exits 2 - never the default account's plan.
@@ -316,7 +350,7 @@ for (const rel of ['stack/AGENTS.template.md', 'setup-plugin/references/post-ins
         const names = CAPTURES.map((c) => c.skill);
         const text = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
         const firstSeen = [];
-        for (const m of text.matchAll(/\/(alfred-capture-[a-z-]+)/g)) if (names.includes(m[1]) && !firstSeen.includes(m[1])) firstSeen.push(m[1]);
+        for (const m of text.matchAll(/\/(capture-[a-z-]+)/g)) if (names.includes(m[1]) && !firstSeen.includes(m[1])) firstSeen.push(m[1]);
         assert.deepStrictEqual(firstSeen, names);
     });
 }
@@ -341,7 +375,7 @@ test('unattended: each of init\'s own asks gets one line - additive installs tak
         { what: 'csharp-ls', state: 'blocked', detail: 'needs .NET' },
         { what: 'serena index', state: 'present', detail: '' },
         { what: 'claude-hud status line + compact layout', state: 'refresh', detail: 'node hud ...' },
-    ], captures: [{ skill: 'alfred-capture-related-projects', state: 'run', detail: 'read x' }, { skill: 'alfred-capture-architecture', state: 'run', detail: 'read y' }] };
+    ], captures: [{ skill: 'capture-related-projects', state: 'run', detail: 'read x' }, { skill: 'capture-architecture', state: 'run', detail: 'read y' }] };
     assert.deepStrictEqual(DESTRUCTIVE_MACHINE, ['refresh']);
     assert.deepStrictEqual(unattended(p), [
         'unattended: machine installs -> install uv, python 3.13',
@@ -354,7 +388,7 @@ test('unattended: each of init\'s own asks gets one line - additive installs tak
 
 test('unattended: nothing to install and no related-projects capture - no line for an ask that never fires', () =>
 {
-    const lines = unattended({ machine: [{ what: 'uv', state: 'present', detail: '' }], captures: [{ skill: 'alfred-capture-related-projects', state: 'done', detail: 'x exists' }] });
+    const lines = unattended({ machine: [{ what: 'uv', state: 'present', detail: '' }], captures: [{ skill: 'capture-related-projects', state: 'done', detail: 'x exists' }] });
     assert.deepStrictEqual(lines, ['unattended: memory level -> global (Recommended)', 'unattended: AGENTS.md -> fill it in (Recommended)']);
 });
 

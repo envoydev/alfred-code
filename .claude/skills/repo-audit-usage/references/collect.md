@@ -12,7 +12,7 @@ two ledgers per session from that same root (`tools-usage/<sid>.jsonl`, `hook-bl
 where the bundle does not already carry them. Nothing is generated. A session in scope with no
 bundle is reported as missing, and generated only under the `fill-gaps` answer.
 
-**Route 2 - generate, `authored` sections.** `/alfred-capture-usage-report` must run in a fresh
+**Route 2 - generate, `authored` sections.** `/capture-usage-report` must run in a fresh
 session INSIDE that project's root - it is the only route that fills the judgment sections. Invoke
 it with the scope answer, let it write one bundle per session plus its `SUMMARY.md` under the
 project's docs root, then copy the set as in route 1. For a project you are not in, name it as a

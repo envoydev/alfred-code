@@ -36,7 +36,7 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
     the only record of what each entry carried. The two 1.x core aliases and the six renamed MCP ids stay listed
     through the 2.x line (a straggler on them keeps its update command and its tools).
   - `evals/library/` - one `claude plugin eval` case per stack profile, graded `arm: both`, plus the
-    three `size-first-*` cases of `alfred-task-solve` (2.1.4 - a library skill only the bundle carries);
+    three `size-first-*` cases of `task-solve` (2.1.4 - a library skill only the bundle carries);
     `npm run eval-bundle -- <out>` puts the core and the whole library into ONE plugin named
     `alfred-code` so the eval CLI can load a library item, with the `scripts/`, `meta/`, `stack/` and
     `setup-plugin/references/` trees at the core's own relative paths, so every
@@ -47,7 +47,7 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
     one row plus the seed's own (lint check 58 - not check 27, which is the `suggests:` removal
     check below).
   - `recommendations.json` - seeds + the never-flag `general` list (project-conditional opt-ins, e.g.
-    `alfred-capture-related-projects` / `related-project-analyzer`: addable, never seeded or re-added); its
+    `capture-related-projects` / `related-project-analyzer`: addable, never seeded or re-added); its
     `notes` give an opt-in row nothing selects its walk-table why.
   - `evidence.json` - need-signals `scripts/scan-evidence.js` matches against manifests; evidence rows
     arrive pre-selected, absence is advisory, evidence never creates a `required` lock.
@@ -75,4 +75,4 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
   `--exclude-session <id>`) and counts a plugin only where a registry record reaches or it was used.
   `scripts/agents-md-check.js` - a project's AGENTS.md (and CLAUDE.md) files against the tree they describe, read-only
   and no model call. `scripts/scan-evidence.js` - deterministic manifest-only
-  evidence scan; `--orientation` prints the provisional `ORIENTATION.md` the `alfred-capture-first-look` skill writes. `scripts/skill-comply.js` - grades whether a skill's steps were followed in a transcript (`check` / `grade`, offline, over the expectation files in `meta/skill-comply/`); `replay` runs the fixtures through `claude -p` only on `--live`, which is billed; `compare` applies the A/B ship rule over two replay outputs (a step failing on both arms is INCONCLUSIVE, never not-worse; one graded by nothing offline is NOT GRADED). `README.md` stays compact (headline counts lint-checked; inventories live in the HTML).
+  evidence scan; `--orientation` prints the provisional `ORIENTATION.md` the `capture-first-look` skill writes. `scripts/skill-comply.js` - grades whether a skill's steps were followed in a transcript (`check` / `grade`, offline, over the expectation files in `meta/skill-comply/`); `replay` runs the fixtures through `claude -p` only on `--live`, which is billed; `compare` applies the A/B ship rule over two replay outputs (a step failing on both arms is INCONCLUSIVE, never not-worse; one graded by nothing offline is NOT GRADED). `README.md` stays compact (headline counts lint-checked; inventories live in the HTML).

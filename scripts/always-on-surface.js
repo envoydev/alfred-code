@@ -87,7 +87,7 @@ function capabilitiesFixedText(skillText, templateText)
     {
         if (locked && !/^[ \t]+\S/.test(tpl[i])) break;
         if (locked) locked += ` ${tpl[i].trim()}`;
-        else if (/^- `navigation`/.test(tpl[i])) locked = tpl[i].trim();
+        else if (/^- `(?:alfred-)?navigation`/.test(tpl[i])) locked = tpl[i].trim();
     }
     return { policy: injectedRuleText(policy.join('\n')), locked };
 }
@@ -96,7 +96,7 @@ function alwaysOnSurface({
     rulesDir = path.join(STACK, 'rules'),
     agentsDir = path.join(STACK, 'agents'),
     skillsDir = path.join(STACK, 'skills'),
-    capabilitiesDir = path.join(skillsDir, 'alfred-capture-agent-capabilities'),
+    capabilitiesDir = path.join(skillsDir, 'capture-agent-capabilities'),
 } = {})
 {
     const read = (file) => fs.readFileSync(file, 'utf8');

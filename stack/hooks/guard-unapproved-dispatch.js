@@ -137,7 +137,7 @@ if (unsetRepo && !(isImplementer && seat.includes(':'))) process.exit(0);
 // above, so a foreign plugin's namesake is not pinned.
 const caller = typeof payload.agent_type === 'string' ? payload.agent_type : '';
 const callerSeat = !caller.includes(':') ? caller : (HOUSE_PREFIX.test(caller) ? caller.slice(caller.indexOf(':') + 1) : '');
-if (/^alfred-issue-diagnoser-(?:ci|runtime)$/.test(callerSeat) && houseSeat !== 'evidence-gatherer') {
+if (/^(?:alfred-)?issue-diagnoser-(?:ci|runtime)$/.test(callerSeat) && houseSeat !== 'evidence-gatherer') {
   process.stderr.write(
     `Blocked: ${caller} dispatched ${seat}. A diagnoser is read-only and dispatches only the evidence gatherer\n` +
       `(\`alfred-code:evidence-gatherer\` where the core plugin carries it, else \`evidence-gatherer\`), one gather task each.\n` +
@@ -186,11 +186,11 @@ if (SEARCH_SEATS.has(seat)) {
       `Blocked: dispatch of ${seat} for a SYMBOL question ('${asked[0].trim()}').\n` +
         `A grep-shaped seat answers that by name-match, and name-matches lie; the built-in\n` +
         `Explore does not load this project's rules at all, so it cannot know to use the navigation server.\n` +
-        `Answer it INLINE instead: mcp__plugin_navigation_navigation__find_symbol for a declaration or signature,\n` +
-        `mcp__plugin_navigation_navigation__find_referencing_symbols for callers, mcp__plugin_navigation_navigation__get_symbols_overview\n` +
+        `Answer it INLINE instead: mcp__plugin_alfred-navigation_alfred-navigation__find_symbol for a declaration or signature,\n` +
+        `mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols for callers, mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview\n` +
         `(ONE file, depth 2 on C#) to enumerate - falling back to the LSP plugin when the navigation server's\n` +
         `language server cannot resolve it. The navigation tools are DEFERRED - load them first with\n` +
-        `ToolSearch select:mcp__plugin_navigation_navigation__find_symbol,mcp__plugin_navigation_navigation__find_referencing_symbols,mcp__plugin_navigation_navigation__get_symbols_overview\n` +
+        `ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__find_symbol,mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols,mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview\n` +
         `Dispatch a search seat only for a genuinely broad\n` +
         `multi-file sweep that asks no symbol question.`,
     );

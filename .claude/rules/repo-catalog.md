@@ -37,7 +37,7 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   earlier release seeded is moved by `update`, an edited one named with its `mv` command; Claude Code reads AGENTS.md
   natively from 2.1.277, and only while no CLAUDE.md or CLAUDE.local.md sits beside or above it). Conventions ship separately in `stack/rules/*-conventions.md`. Its
   authoring outline (Setup and Key files among it) and keep-out list say WHAT an AGENTS.md holds; the
-  always-on `alfred-habits-adjust-agents-md` skill is HOW, the one home of the fill (create, or improve with
+  always-on `habits-adjust-agents-md` skill is HOW, the one home of the fill (create, or improve with
   every change shown first, a separate part getting its own `<part>/AGENTS.md`) - `/alfred-code:init`,
   `update` and `configure` follow it inline; and `scripts/agents-md-check.js` (AGENTS.md and any CLAUDE.md the project keeps) is the verdict it closes
   on: every named path exists, every command's program resolves on PATH or in the project, no
@@ -55,7 +55,7 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   `seat-dispatch-spelling`; `scripts/seat-dispatch-spelling.test.js` fails a new site without it):
   - resolvers: `dotnet-build-error-resolver`, `dotnet-test-failure-resolver`, `ng-build-error-resolver`,
     `angular-test-resolver`;
-  - cross-cutting: `alfred-issue-diagnoser-ci`, `alfred-issue-diagnoser-runtime`, `security-auditor` (read-only
+  - cross-cutting: `issue-diagnoser-ci`, `issue-diagnoser-runtime`, `security-auditor` (read-only
     OWASP/CWE posture audit), `integration-reviewer` (mandatory read-only cross-domain final gate
     against the frozen contract);
   - 30 per-domain seats - `<stack>-solution-designer` -> `<stack>-implementer` -> `<stack>-verifier`
@@ -63,7 +63,7 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
     DevOps, browser extension);
   - six read-only support seats: `evidence-gatherer`, `test-coverage-analyzer`,
     `architecture-analyzer`, `code-quality-analyzer`, `code-style-analyzer`, `related-project-analyzer`.
-  Every seat that judges or writes code holds `mcp__plugin_documentation_documentation__*` (alfred-quality-gates
+  Every seat that judges or writes code holds `mcp__plugin_alfred-documentation_alfred-documentation__*` (alfred-quality-gates
   sends its outside-world claims there); the five read-only gatherers do not. A seat reports through
   SubagentHandback when its tools include it, else its last message (`verifier-memory-before-report`);
   `scripts/seat-grants.test.js` holds the grants. For the 2.x line the nine seats the retired 1.x core alias
@@ -72,9 +72,9 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   install not yet updated (2.1.5 M35); an absent server's tool is inert, and check 59 allows an alias spelling on a
   seat's `tools:` / `disallowedTools:` line only.
   Pins: resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers
-  `sonnet`/`medium`, support seats `sonnet`, and three read-only reasoners on `opus` - `alfred-issue-diagnoser-ci`
-  `high`, `alfred-issue-diagnoser-runtime` and `security-auditor` `xhigh` (the reasons, and the A/B they still lack, in
-  `stack/skills/alfred-task-solve-cross/references/model-routing.md`). Turn caps (`maxTurns`, 2.1.6 M59 - a runaway
+  `sonnet`/`medium`, support seats `sonnet`, and three read-only reasoners on `opus` - `issue-diagnoser-ci`
+  `high`, `issue-diagnoser-runtime` and `security-auditor` `xhigh` (the reasons, and the A/B they still lack, in
+  `stack/skills/task-solve-cross/references/model-routing.md`). Turn caps (`maxTurns`, 2.1.6 M59 - a runaway
   backstop at twice the most turns measured for the seat's kind over 802 local subagent transcripts, rounded up to
   the next 50; at the cap Claude Code returns the output marked partial (2.1.246+), with no closing status line, which
   every orchestrator routes as a seat death - one scoped re-dispatch, then BLOCKED to the user, pinned as
@@ -82,14 +82,14 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   350 (152), `architecture-analyzer` 100 (30), and the four resolvers the implementers' 250 (one run seen) since an
   until-green loop is the runaway the cap is for; every other seat had too few runs, so none. Lint check 15d fails a
   seat with a `## Loop` section and no cap. Captures are deliberate-only
-  (`alfred-capture-architecture` writes `architecture/ARCHITECTURE.md` and
-  `alfred-project-architecture.md`; the findings go to `alfred-capture-architecture-quality`
-  (`quality/ASSESSMENT.md`), the code's to `alfred-capture-code-quality` (`quality/CODE-ASSESSMENT.md`), and the
-  run book to `alfred-capture-project-capabilities` (`project-capabilities/PROJECT-CAPABILITIES.md` and
+  (`capture-architecture` writes `architecture/ARCHITECTURE.md` and
+  `alfred-project-architecture.md`; the findings go to `capture-architecture-quality`
+  (`quality/ASSESSMENT.md`), the code's to `capture-code-quality` (`quality/CODE-ASSESSMENT.md`), and the
+  run book to `capture-project-capabilities` (`project-capabilities/PROJECT-CAPABILITIES.md` and
   `alfred-project-run-book.md` - how to build, start, reach, log into and hand-check the app, which the
-  ten verifiers, `alfred-issue-diagnoser-runtime`, `evidence-gatherer` and `integration-reviewer` read
+  ten verifiers, `issue-diagnoser-runtime`, `evidence-gatherer` and `integration-reviewer` read
   before they run it, pinned as `run-book-read-first`); never in a build flow).
-  `alfred-task-solve-cross` is the single entry-point orchestrator (single-stack vertical per
+  `task-solve-cross` is the single entry-point orchestrator (single-stack vertical per
   `references/domain-trio-protocol.md`; cross-domain runs freeze the contract and end at
   `integration-reviewer`; two tasks sharing a directory run as `isolation: "worktree"` seats, which
   branch from HEAD because the installer seeds `worktree.baseRef: "head"` add-only, and fan in as an
@@ -99,7 +99,7 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   hard-disable).
 - `stack/rules/` - twenty single-job rules, each a library copy in `.claude/rules/`. Seven always-on `alfred-*.md`
   (no `paths:`): interaction, quality-gates, security, git (the commit checkpoint itself is the
-  `alfred-habits-commit-checkpoint` skill), navigation, docs-root (`ALFRED_CODE_DOCS_PATH` is the ONLY lever the
+  `habits-commit-checkpoint` skill), navigation, docs-root (`ALFRED_CODE_DOCS_PATH` is the ONLY lever the
   hooks read, default `.alfred/docs`, written by the installer as `<data root>/docs`; it stamps its value over
   `__DOCS_ROOT__` on every run),
   memory (what belongs in the shared `memory` MCP, when to save it, and to search before asking or

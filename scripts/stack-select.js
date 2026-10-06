@@ -124,7 +124,7 @@ const SCOPED_PREREQS = [
     // keyless free tier, measured; a LITERAL `${CONTEXT7_API_KEY}` was rejected on every call), and
     // `claude mcp list` no longer warns for the `:-` form - so this line is the one place a missing
     // key shows up at install time.
-    { when: { mcp: 'documentation' }, env: 'CONTEXT7_API_KEY', severity: 'warning', need: 'documentation server API key (Context7)', how: 'add CONTEXT7_API_KEY to the account settings.json env - export it in the shell the installer runs in and the run writes it there (optional, higher rate limits) - unset = the keyless free tier' },
+    { when: { mcp: 'alfred-documentation' }, env: 'CONTEXT7_API_KEY', severity: 'warning', need: 'documentation server API key (Context7)', how: 'add CONTEXT7_API_KEY to the account settings.json env - export it in the shell the installer runs in and the run writes it there (optional, higher rate limits) - unset = the keyless free tier' },
     { when: { option: 'githubCli' }, bin: 'brew', severity: 'warning', need: 'Homebrew', how: 'install Homebrew to auto-install the GitHub CLI (macOS)' },
 ];
 

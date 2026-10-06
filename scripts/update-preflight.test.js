@@ -196,12 +196,12 @@ test('policy-rev: none when the generated rule is not installed', () => {
 test('policy-rev: current when the stamped rev matches the shipped skill; stale otherwise', () => {
     const { snap, install, fixtureFile } = scaffold();
     fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
-    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'alfred-capture-agent-capabilities'), { recursive: true });
+    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'capture-agent-capabilities'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), 'policy-rev: abc123\nsome text');
-    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md'), 'policy-rev: abc123\nsome text');
+    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-capabilities', 'SKILL.md'), 'policy-rev: abc123\nsome text');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: current$/m);
 
-    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md'), 'policy-rev: def456\nsome text');
+    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-capabilities', 'SKILL.md'), 'policy-rev: def456\nsome text');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: stale installed=abc123 snapshot=def456$/m);
 
     fs.writeFileSync(path.join(install, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), 'no rev stamped here');
@@ -211,9 +211,9 @@ test('policy-rev: current when the stamped rev matches the shipped skill; stale 
 test('policy-rev: an install still holding the pre-2.1.6 file name is read, not reported as none', () => {
     const { snap, install, fixtureFile } = scaffold();
     fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
-    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'alfred-capture-agent-capabilities'), { recursive: true });
+    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'capture-agent-capabilities'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), 'policy-rev: abc123\nsome text');
-    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md'), 'policy-rev: abc123\nsome text');
+    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-capabilities', 'SKILL.md'), 'policy-rev: abc123\nsome text');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: current$/m);
 });
 
@@ -260,7 +260,7 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
               remove: ['.claude/hooks/inject-code-style.js'],
               unwire_settings_hook: 'inject-code-style.js::PostToolUse',
               why: 'style delivery moved to a generated rule',
-              then: 're-run /alfred-capture-code-style' },
+              then: 're-run /capture-code-style' },
             { id: 'env-one',
               detect: { settings_env_key: 'CLAUDE_DOCS_PATH' },
               rename_settings_env: { from: 'CLAUDE_DOCS_PATH', to: 'ALFRED_CODE_DOCS_PATH' },
@@ -282,7 +282,7 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
     const { out } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
     assert.match(out, /^migration: fired-one\tfile_exists$/m, 'the id line is unchanged - existing branches still read');
     assert.match(out, /^ {2}why: style delivery moved to a generated rule$/m, 'the reason the report labels it with');
-    assert.match(out, /^ {2}then: re-run \/alfred-capture-code-style$/m, 'the follow-up the report prints');
+    assert.match(out, /^ {2}then: re-run \/capture-code-style$/m, 'the follow-up the report prints');
     assert.match(out, /^ {2}remove: \.claude\/hooks\/inject-code-style\.js$/m, 'what the prune list takes');
     assert.match(out, /^ {2}unwire: inject-code-style\.js::PostToolUse$/m, 'the exact settings.json entry to drop');
     assert.match(out, /^ {2}env-rename: CLAUDE_DOCS_PATH -> ALFRED_CODE_DOCS_PATH$/m, 'the env edit, on the entry that carries one');
@@ -423,19 +423,19 @@ test('new items: the snapshot\'s renamed map names the old spelling when the com
     const renamed = loadManifest(path.join(__dirname, '..')).renamed;
     const oldOf = (to) => Object.keys(renamed.skills).find((k) => renamed.skills[k] === to);
     const { snap, install, fixtureFile } = scaffold({ fixture: { files: [
-        { status: 'added', filename: 'stack/skills/alfred-capture-related-projects/SKILL.md' },
-        { status: 'added', filename: 'stack/skills/alfred-task-solve/SKILL.md' },
+        { status: 'added', filename: 'stack/skills/capture-related-projects/SKILL.md' },
+        { status: 'added', filename: 'stack/skills/task-solve/SKILL.md' },
     ] } });
     fs.writeFileSync(path.join(snap, 'meta', 'stack-manifest.json'), JSON.stringify({ renamed }));
-    const old = oldOf('alfred-capture-related-projects');
+    const old = oldOf('capture-related-projects');
     fs.mkdirSync(path.join(install, '.claude', 'skills', old), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'skills', old, 'SKILL.md'), `---\nname: ${old}\n---\n`);
     const listing = path.join(install, 'listing.json');
     fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
     const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
     assert.strictEqual(code, 0, out);
-    assert.match(out, new RegExp(`^new: skill alfred-capture-related-projects\\trenamed\\t-\\tfrom=${old}\\told-on-disk$`, 'm'), out);
-    assert.match(out, new RegExp(`^new: skill alfred-task-solve\\tarrives\\t-\\tfrom=${oldOf('alfred-task-solve')}$`, 'm'), out);
+    assert.match(out, new RegExp(`^new: skill capture-related-projects\\trenamed\\t-\\tfrom=${old}\\told-on-disk$`, 'm'), out);
+    assert.match(out, new RegExp(`^new: skill task-solve\\tarrives\\t-\\tfrom=${oldOf('task-solve')}$`, 'm'), out);
 });
 
 // M8 (Task 22 fix round 1): a renamed library item whose OLD name the stamp's picks never named and the
@@ -444,8 +444,8 @@ test('new items: the snapshot\'s renamed map names the old spelling when the com
 test('new items: a renamed library item the stamp never picked, with no old copy, is not offered as new', () => {
     const { loadManifest } = require('./install/manifest.js');
     const renamed = loadManifest(path.join(__dirname, '..')).renamed;
-    const old = Object.keys(renamed.skills).find((k) => renamed.skills[k] === 'alfred-capture-related-projects');
-    const fixture = { files: [{ status: 'added', filename: 'stack/skills/alfred-capture-related-projects/SKILL.md' }] };
+    const old = Object.keys(renamed.skills).find((k) => renamed.skills[k] === 'capture-related-projects');
+    const fixture = { files: [{ status: 'added', filename: 'stack/skills/capture-related-projects/SKILL.md' }] };
     const newLines = (stamp) =>
     {
         const { snap, install, fixtureFile } = scaffold({ fixture, stamp });
@@ -459,9 +459,9 @@ test('new items: a renamed library item the stamp never picked, with no old copy
     const base = 'sha: aaa111\nversion: 0.2.60\n';
     assert.strictEqual(newLines(`${base}picked-skills: markdown-style@alfred-code\n`), 'new: none',
         'an old name the picks never named, with no copy, is not offered under its new one');
-    assert.match(newLines(`${base}picked-skills: ${old}\n`), new RegExp(`^new: skill alfred-capture-related-projects\\toffer\\t.*from=${old}`, 'm'),
+    assert.match(newLines(`${base}picked-skills: ${old}\n`), new RegExp(`^new: skill capture-related-projects\\toffer\\t.*from=${old}`, 'm'),
         'a picked old name with no copy on disk is still offered');
-    assert.match(newLines(base), /^new: skill alfred-capture-related-projects\toffer\t/m,
+    assert.match(newLines(base), /^new: skill capture-related-projects\toffer\t/m,
         'a stamp with no picks line judges nothing - still an offer');
 });
 

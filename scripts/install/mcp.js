@@ -8,7 +8,7 @@
 //
 // Four rules earned the hard way, each one a bug that shipped:
 //
-//   - R7, THE LOCKED THREE. navigation, documentation and memory are plugins the installer puts beside the
+//   - R7, THE LOCKED THREE. alfred-navigation, alfred-documentation and alfred-memory are plugins the installer puts beside the
 //     core whenever the core is enabled at all - which is whenever ANY plugin route is on (not
 //     dependencies: a missing one would disable the core at load). Registering them as well
 //     double-loads them. They come back to `.mcp.json` only on the FULL copy route, where the core
@@ -31,13 +31,14 @@ const { offeredOn, skipNote } = require('../../stack/mcp/desktop-launch.js');
 const { excludeNewerOf, cutoffFor } = require('../../stack/mcp/uv-python.js');
 
 // The three that can never be dropped - see R7 above.
-const LOCKED = ['navigation', 'documentation', 'memory'];
+const LOCKED = ['alfred-navigation', 'alfred-documentation', 'alfred-memory'];
 const { ENGINES: PW_ENGINES } = require('../../stack/mcp/data-root.js');
 // Every name the browser server was registered under: the 1.x single `playwright`, the
 // `playwright-<engine>` servers 2.0.0 renamed, and one `browser-<engine>` per engine.
 const PW_SERVERS = ['playwright', ...PW_ENGINES.map((e) => `playwright-${e}`), ...PW_ENGINES.map((e) => `browser-${e}`)];
 
-// THE 2.0.0 RENAME (meta/stack-manifest.json `renamed.mcps`, old -> new): an MCP name an older release
+// THE MCP RENAMES (meta/stack-manifest.json `renamed.mcps`, old -> new; 2.0.0 gave the servers role names,
+// 2.2.0 the `alfred-` prefix - each old name maps straight to today's): an MCP name an older release
 // used reads as the name it goes by now - the plugin and its server alike, a browser engine by its
 // prefix (`playwright-chrome` -> `browser-chrome`). Any other name comes back as it is.
 function currentMcp(name, renamed = {})
@@ -342,7 +343,7 @@ function verifyUser({ expects = [], scope, getShape, reregister, owned = () => t
 // which have no extras suffix to sit next to - each row names its own spelling. The desktop servers
 // take `==<ver>` too (`--from windows-mcp==<ver>`).
 const PIN_ROWS = {
-    browser: ['PW_PIN', '@<v>'], navigation: ['SERENA_PIN', '@<v>'], memory: ['MEMORY_PIN', '==<v>'],
+    browser: ['PW_PIN', '@<v>'], 'alfred-navigation': ['SERENA_PIN', '@<v>'], 'alfred-memory': ['MEMORY_PIN', '==<v>'],
     'windows-desktop': ['WINDOWS_DESKTOP_PIN', '==<v>'], 'macos-desktop': ['MACOS_DESKTOP_PIN', '==<v>'],
 };
 
@@ -845,12 +846,12 @@ function exactStack(name, entry, { catalog = [], remotes = {}, projectRoot = '',
 // source - local, project, user, then plugins - and matches a PLUGIN server against those three by
 // ENDPOINT, not by name (code.claude.com/docs/en/mcp, scope precedence). Measured on 2.1.282 through the
 // session's init row: a user- or project-scope registration of the Context7 url, under `context7` or
-// any other name, left the documentation plugin out of the session, so every `mcp__plugin_documentation_documentation__`
+// any other name, left the documentation plugin out of the session, so every `mcp__plugin_alfred-documentation_alfred-documentation__`
 // spelling the stack ships (its tool grants, alfred-quality-gates' ToolSearch line) resolved nothing.
 // A stdio server matches on command AND args, which a launcher-started plugin entry never shares, so a
 // same-NAMED stdio registration runs BESIDE the plugin's own server - a second one. One row per
 // registration, in precedence order: `{ scope, name, plugin, kind: 'replaces' | 'beside' }`.
-const PLUGIN_ENDPOINTS = { documentation: () => `http:${CONTEXT7_REMOTE.url}` };
+const PLUGIN_ENDPOINTS = { 'alfred-documentation': () => `http:${CONTEXT7_REMOTE.url}` };
 function shadowingRegistrations({ plugins = [], scopes = {} })
 {
     const rows = [];

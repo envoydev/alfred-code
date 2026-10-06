@@ -30,7 +30,7 @@ const askCount = (text) => [...text.matchAll(/^[ \t]*```ask[ \t]*$/gm)].length;
 
 test('M105: a central package version moves through the dotnet CLI in the upgrade playbook too', () =>
 {
-    const playbook = squash(skill('alfred-task-version-upgrade', 'references/upgrade-playbooks.md'));
+    const playbook = squash(skill('task-version-upgrade', 'references/upgrade-playbooks.md'));
     assert.doesNotMatch(playbook, /that is one edit in `Directory\.Packages\.props`/);
     assert.match(playbook, /one `<PackageVersion>` change in `Directory\.Packages\.props`, made through the dotnet CLI/);
     assert.match(squash(skill('csharp')), /never hand-edit `Directory\.Packages\.props`/);
@@ -83,7 +83,7 @@ test('M107: angular-conventions names no dangling cite and lists its co-loads on
     assert.doesNotMatch(text, /broader web index/);
     const head = text.slice(0, text.indexOf('## When to use'));
     assert.match(head, /^- .*TypeScript skill/m, 'the TypeScript co-load is its own bullet');
-    assert.match(head, /^- .*`documentation` MCP/m, 'the documentation-server directive is its own bullet');
+    assert.match(head, /^- .*`alfred-documentation` MCP/m, 'the documentation-server directive is its own bullet');
 });
 
 test('M108: the reward-hacking tables point at a named SKILL.md section, never at "above"', () =>
@@ -330,8 +330,8 @@ test('M128: the rule-forced convention layers are model-only, and no other skill
 // under it.
 test('H2: the commit checkpoint states spec: over what the commit takes in, and the trivial bar over the session\'s change', () =>
 {
-    const body = squash(skill('alfred-habits-commit-checkpoint'));
-    const evidence = squash(skill('alfred-habits-commit-checkpoint', 'references/evidence.md'));
+    const body = squash(skill('habits-commit-checkpoint'));
+    const evidence = squash(skill('habits-commit-checkpoint', 'references/evidence.md'));
     for (const text of [body, evidence]) assert.doesNotMatch(text, /covered the whole diff/, 'the whole-diff claim is gone');
     assert.match(body, /`spec:` proves it covered every file the commit takes in/);
     assert.match(evidence, /`spec:` - it covered every file the commit takes in/);

@@ -39,7 +39,7 @@ function tmp(prefix)
 const PROMPT = 'Commit the session expiry change.';
 const RECEIPT_PATH = '/work/project/.claude/docs/flow/COMMIT-GATE';
 const RECEIPT = [
-    'VERIFIED alfred-task-verify-code over the session expiry diff, security half inline',
+    'VERIFIED task-verify-code over the session expiry diff, security half inline',
     `authorized: "${PROMPT}"`,
     'head: 1a2b3c4',
     'spec: 4 files - git add -N . && git diff HEAD, the whole change set',
@@ -54,7 +54,7 @@ function checkpointRun({ format = true, receiptFirst = true, receipt = RECEIPT, 
     const rows = [user(PROMPT), tool('Bash', { command: 'git status --short' })];
     if (format) rows.push(tool('Bash', { command: 'npm run format' }));
     if (editAfterFormat) rows.push(tool('Edit', { file_path: '/work/project/src/auth/session.js', old_string: 'a', new_string: 'b' }));
-    rows.push(tool('Skill', { skill: 'alfred-task-verify-code' }));
+    rows.push(tool('Skill', { skill: 'task-verify-code' }));
     rows.push(tool('Bash', { command: 'git add -N . && git diff HEAD; git reset -q' }));
     rows.push(tool('Bash', { command: 'npm test' }));
     rows.push(say('Security review: auth ok, secrets ok, injection n/a, data-access n/a.'));
@@ -72,7 +72,7 @@ function checkpointRun({ format = true, receiptFirst = true, receipt = RECEIPT, 
 
 test('a compliant commit-checkpoint trace follows every step', () =>
 {
-    const r = sc.grade(expectOf('alfred-habits-commit-checkpoint'), checkpointRun(), { level: 'plain' });
+    const r = sc.grade(expectOf('habits-commit-checkpoint'), checkpointRun(), { level: 'plain' });
     assert.deepStrictEqual(failing(r), []);
     assert.strictEqual(r.passed, r.graded);
     assert.strictEqual(r.graded, 9);
@@ -80,20 +80,20 @@ test('a compliant commit-checkpoint trace follows every step', () =>
 
 test('skipping the formatter fails that step and only that step', () =>
 {
-    const r = sc.grade(expectOf('alfred-habits-commit-checkpoint'), checkpointRun({ format: false }));
+    const r = sc.grade(expectOf('habits-commit-checkpoint'), checkpointRun({ format: false }));
     assert.deepStrictEqual(failing(r), ['formatter-fresh']);
     assert.match(r.steps[0].results[0].explanation, /no Bash .*\(called at nowhere\)/);
 });
 
 test('a formatter run BEFORE the last source edit is stale, not fresh', () =>
 {
-    const r = sc.grade(expectOf('alfred-habits-commit-checkpoint'), checkpointRun({ editAfterFormat: true }));
+    const r = sc.grade(expectOf('habits-commit-checkpoint'), checkpointRun({ editAfterFormat: true }));
     assert.deepStrictEqual(failing(r), ['formatter-fresh']);
 });
 
 test('committing before the receipt is written is out of order, even when the commit lands later', () =>
 {
-    const r = sc.grade(expectOf('alfred-habits-commit-checkpoint'), checkpointRun({ receiptFirst: false }));
+    const r = sc.grade(expectOf('habits-commit-checkpoint'), checkpointRun({ receiptFirst: false }));
     assert.deepStrictEqual(failing(r), ['receipt-before-commit']);
     const why = r.steps.find((s) => s.id === 'receipt-before-commit').results[0].explanation;
     assert.match(why, /does NOT precede/);
@@ -103,12 +103,12 @@ test('committing before the receipt is written is out of order, even when the co
 
 test('a WAIVED receipt the user never asked for, and a paraphrased authorized line, both fail', () =>
 {
-    const waived = sc.grade(expectOf('alfred-habits-commit-checkpoint'), checkpointRun({ receipt: `WAIVED - "${PROMPT}"\n` }), { level: 'plain' });
+    const waived = sc.grade(expectOf('habits-commit-checkpoint'), checkpointRun({ receipt: `WAIVED - "${PROMPT}"\n` }), { level: 'plain' });
     assert.ok(failing(waived).includes('no-self-waiver'));
     assert.ok(failing(waived).includes('receipt-five-lines'));
 
     const paraphrase = RECEIPT.replace(`"${PROMPT}"`, '"the user asked me to commit the change"');
-    const r = sc.grade(expectOf('alfred-habits-commit-checkpoint'), checkpointRun({ receipt: paraphrase }), { level: 'plain' });
+    const r = sc.grade(expectOf('habits-commit-checkpoint'), checkpointRun({ receipt: paraphrase }), { level: 'plain' });
     assert.deepStrictEqual(failing(r), ['authorized-quotes-user']);
     assert.match(r.steps.find((s) => s.id === 'authorized-quotes-user').results[0].explanation, /a paraphrase, not a quote/);
 });
@@ -118,37 +118,37 @@ test('words found only in a harness-written row (a loaded skill body) are not th
     const template = 'the user\'s words asking for THIS commit, verbatim';
     const meta = { type: 'user', isMeta: true, message: { role: 'user', content: [{ type: 'text', text: `authorized: "<${template}>"` }] } };
     const run = checkpointRun({ receipt: RECEIPT.replace(`"${PROMPT}"`, `"${template}"`) });
-    const r = sc.grade(expectOf('alfred-habits-commit-checkpoint'), JSON.stringify(meta) + '\n' + run);
+    const r = sc.grade(expectOf('habits-commit-checkpoint'), JSON.stringify(meta) + '\n' + run);
     assert.deepStrictEqual(failing(r), ['authorized-quotes-user']);
 });
 
 test('a receipt written inside the commit command is not its own call', () =>
 {
-    const rows = [user(PROMPT), tool('Bash', { command: 'npm run format' }), tool('Skill', { skill: 'alfred-task-verify-code' }),
+    const rows = [user(PROMPT), tool('Bash', { command: 'npm run format' }), tool('Skill', { skill: 'task-verify-code' }),
         tool('Bash', { command: 'git add -N . && git diff HEAD; git reset -q' }),
         tool('Bash', { command: `printf '%s' "$R" > .claude/docs/flow/COMMIT-GATE && ${COMMIT}` }),
         tool('Bash', { command: 'rm -f .claude/docs/flow/COMMIT-GATE' })];
-    const r = sc.grade(expectOf('alfred-habits-commit-checkpoint'), jsonl(rows));
+    const r = sc.grade(expectOf('habits-commit-checkpoint'), jsonl(rows));
     assert.ok(failing(r).includes('receipt-before-commit'));
 });
 
 test('a verifier seat satisfies the review step the same as the in-session skill', () =>
 {
-    const run = checkpointRun().replace('"name":"Skill","input":{"skill":"alfred-task-verify-code"}',
+    const run = checkpointRun().replace('"name":"Skill","input":{"skill":"task-verify-code"}',
         '"name":"Agent","input":{"subagent_type":"claude-stack-web-angular:web-angular-verifier","prompt":"review"}');
-    const r = sc.grade(expectOf('alfred-habits-commit-checkpoint'), run, { level: 'plain' });
+    const r = sc.grade(expectOf('habits-commit-checkpoint'), run, { level: 'plain' });
     assert.strictEqual(verdicts(r)['review-runs'], 'PASS');
 });
 
 // --- solve-task: the size line and the first stop -------------------------------------------------
 
-function solveRun({ sizeFirst = true, size = 'standard', resume = 'mcp__plugin_navigation_navigation__list_memories', approve = false } = {})
+function solveRun({ sizeFirst = true, size = 'standard', resume = 'mcp__plugin_alfred-navigation_alfred-navigation__list_memories', approve = false } = {})
 {
     const sizeRow = say(`Size: ${size} - request validation is input parsing, on the floor whatever the file count.`);
-    const rows = [user('<command-name>/alfred-task-solve</command-name>\n<command-args>Add request validation to the create-order handler</command-args>')];
+    const rows = [user('<command-name>/task-solve</command-name>\n<command-args>Add request validation to the create-order handler</command-args>')];
     if (resume) rows.push(tool(resume, {}));
     if (sizeFirst) rows.push(sizeRow);
-    rows.push(tool('Skill', { skill: 'alfred-task-design' }));
+    rows.push(tool('Skill', { skill: 'task-design' }));
     if (!sizeFirst) rows.push(sizeRow);
     rows.push(tool('Read', { file_path: '/work/project/src/orders.js' }));
     rows.push(tool('Write', { file_path: '/work/project/.claude/docs/superpowers/plans/order-validation.md', content: `# Order validation\n\n${approve ? 'Approved: 2026-09-23 - mode session\n' : ''}## Tasks\n` }));
@@ -159,35 +159,35 @@ function solveRun({ sizeFirst = true, size = 'standard', resume = 'mcp__plugin_n
 
 test('a compliant solve-task first leg follows every step', () =>
 {
-    const r = sc.grade(expectOf('alfred-task-solve'), solveRun());
+    const r = sc.grade(expectOf('task-solve'), solveRun());
     assert.deepStrictEqual(failing(r), []);
     assert.strictEqual(r.graded, 9);
 });
 
 test('the size line after the design step is out of order', () =>
 {
-    const r = sc.grade(expectOf('alfred-task-solve'), solveRun({ sizeFirst: false }));
+    const r = sc.grade(expectOf('task-solve'), solveRun({ sizeFirst: false }));
     assert.deepStrictEqual(failing(r), ['size-first']);
 });
 
 test('an input-parsing task sized small breaks the floor', () =>
 {
-    const r = sc.grade(expectOf('alfred-task-solve'), solveRun({ size: 'small' }));
+    const r = sc.grade(expectOf('task-solve'), solveRun({ size: 'small' }));
     assert.deepStrictEqual(failing(r), ['size-floor']);
 });
 
 test('skipping the resume check fails it; a self-written Approved stamp fails no-self-approval', () =>
 {
-    assert.deepStrictEqual(failing(sc.grade(expectOf('alfred-task-solve'), solveRun({ resume: null }))), ['resume-first']);
-    assert.deepStrictEqual(failing(sc.grade(expectOf('alfred-task-solve'), solveRun({ approve: true }))), ['no-self-approval']);
+    assert.deepStrictEqual(failing(sc.grade(expectOf('task-solve'), solveRun({ resume: null }))), ['resume-first']);
+    assert.deepStrictEqual(failing(sc.grade(expectOf('task-solve'), solveRun({ approve: true }))), ['no-self-approval']);
 });
 
 test('an MCP tool counts in both spellings: the plugin route and the registration route', () =>
 {
-    assert.strictEqual(sc.canonical('mcp__plugin_navigation_navigation__list_memories'), BARE('navigation', 'list_memories'));
+    assert.strictEqual(sc.canonical('mcp__plugin_alfred-navigation_alfred-navigation__list_memories'), BARE('alfred-navigation', 'list_memories'));
     assert.strictEqual(sc.canonical('mcp__plugin_browser-chrome_browser-chrome__browser_navigate'), BARE('browser-chrome', 'browser_navigate'));
     assert.strictEqual(sc.canonical('Read'), 'Read');
-    const r = sc.grade(expectOf('alfred-task-solve'), solveRun({ resume: BARE('navigation', 'list_memories') }));
+    const r = sc.grade(expectOf('task-solve'), solveRun({ resume: BARE('alfred-navigation', 'list_memories') }));
     assert.strictEqual(verdicts(r)['resume-first'], 'PASS');
 });
 
@@ -233,7 +233,7 @@ const RC_SYMPTOM = '/work/project/src/cart.js';
 // `rejected` adds a write that errored ('String to replace not found', a hook deny) and so changed
 // nothing: 'retry' before its own retry, 'early' before the repro, 'symptom' as a guard in cart.js.
 function rootCauseRun({ repro = true, hypothesis = true, cause = 'The total is 200 instead of 130000 because toCents calls parseFloat, which stops at the comma in 1,299.00.',
-    target = RC_ROOT, twoChanges = false, rerun = true, quoted = true, weaken = false, rebaseline = false, rejected = null, loaded = 'alfred-habits-root-cause' } = {})
+    target = RC_ROOT, twoChanges = false, rerun = true, quoted = true, weaken = false, rebaseline = false, rejected = null, loaded = 'habits-root-cause' } = {})
 {
     const rows = [user('npm test is failing on the cart total - fix it.')];
     const reject = (file) => { const e = tool('Edit', { file_path: file, old_string: 'parseFloat(price )', new_string: 'x' }); rows.push(e, denied(e)); };
@@ -267,23 +267,23 @@ function rootCauseRun({ repro = true, hypothesis = true, cause = 'The total is 2
 
 test('root-cause: a run that reproduces, states its hypothesis, fixes at the root and quotes the green run follows every step', () =>
 {
-    const r = sc.grade(expectOf('alfred-habits-root-cause'), rootCauseRun());
+    const r = sc.grade(expectOf('habits-root-cause'), rootCauseRun());
     assert.deepStrictEqual(failing(r), []);
     assert.strictEqual(r.graded, 7);
 });
 
 test('root-cause: the method skill loads before the first fix; either arm\'s spelling of it counts', () =>
 {
-    const exp = expectOf('alfred-habits-root-cause');
+    const exp = expectOf('habits-root-cause');
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ loaded: false }))), ['root-cause-loaded'], 'no method skill before the fix');
-    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ loaded: 'alfred-code:alfred-habits-root-cause' }))), [], 'the core-scoped spelling');
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ loaded: 'alfred-code:habits-root-cause' }))), [], 'the core-scoped spelling');
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ loaded: 'superpowers:systematic-debugging' }))), [], 'the before arm\'s equivalent');
-    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ loaded: 'alfred-habits-done-gate' }))), ['root-cause-loaded'], 'another skill is not this one');
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ loaded: 'habits-done-gate' }))), ['root-cause-loaded'], 'another skill is not this one');
 });
 
 test('root-cause: each skipped part of the loop fails its own step', () =>
 {
-    const exp = expectOf('alfred-habits-root-cause');
+    const exp = expectOf('habits-root-cause');
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ repro: false }))), ['reproduce-first']);
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ hypothesis: false }))), ['one-hypothesis-per-change']);
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ twoChanges: true }))), ['one-hypothesis-per-change']);
@@ -297,7 +297,7 @@ test('root-cause: each skipped part of the loop fails its own step', () =>
 
 test('root-cause: a write that errored changed nothing - its retry is the same change, not a second one', () =>
 {
-    const exp = expectOf('alfred-habits-root-cause');
+    const exp = expectOf('habits-root-cause');
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rejected: 'retry' }))), []);
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rejected: 'early' }))), [], 'a rejected write before the repro is no source write yet');
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rejected: 'symptom' }))), [], 'a rejected guard in cart.js is no symptom fix');
@@ -305,7 +305,7 @@ test('root-cause: a write that errored changed nothing - its retry is the same c
 
 test('root-cause: a test run that was denied never ran; one that ran and exited red is the repro', () =>
 {
-    const exp = expectOf('alfred-habits-root-cause');
+    const exp = expectOf('habits-root-cause');
     // a hook or permission deny: nothing was reproduced, nothing was re-checked
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ repro: 'denied', rerun: true }))), ['reproduce-first']);
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rerun: 'denied' }))), ['one-hypothesis-per-change', 'verified-after-last-change']);
@@ -326,7 +326,7 @@ test('the reader: a shell command that exited non-zero ran; a deny, a block or a
 
 test('root-cause: the cause stated in the shapes a run really uses counts; narration does not', () =>
 {
-    const exp = expectOf('alfred-habits-root-cause');
+    const exp = expectOf('habits-root-cause');
     for (const cause of [
         'The bug is in toCents: parseFloat stops at the comma in 1,299.00.',
         'Root cause: toCents hands 1,299.00 to parseFloat, which reads only 1.',
@@ -339,9 +339,9 @@ test('root-cause: the cause stated in the shapes a run really uses counts; narra
 
 test('compare: a step failing on both arms is INCONCLUSIVE, never not-worse; the ship rule holds only on a clean sheet', () =>
 {
-    const exp = expectOf('alfred-habits-root-cause');
+    const exp = expectOf('habits-root-cause');
     const g = (o) => sc.grade(exp, rootCauseRun(o), { level: 'plain' });
-    const key = 'alfred-habits-root-cause/plain';
+    const key = 'habits-root-cause/plain';
     const outcome = (c, step) => c.rows.find((r) => r.step === step).outcome;
 
     const blind = sc.compareArms({ [key]: g({ hypothesis: false }) }, { [key]: g({ hypothesis: false }) });
@@ -380,19 +380,19 @@ test('compare CLI: grades both arms\' transcripts with this tree\'s expectation 
     {
         const put = (arm, level, text) =>
         {
-            const d = path.join(dir, arm, 'alfred-habits-root-cause', level);
+            const d = path.join(dir, arm, 'habits-root-cause', level);
             fs.mkdirSync(d, { recursive: true });
             fs.writeFileSync(path.join(d, 'transcript.jsonl'), text);
         };
         put('before', 'plain', rootCauseRun({ hypothesis: false }));
         put('after', 'plain', rootCauseRun({ hypothesis: false }));
-        const args = ['compare', path.join(dir, 'before'), path.join(dir, 'after'), '--skill', 'alfred-habits-root-cause'];
+        const args = ['compare', path.join(dir, 'before'), path.join(dir, 'after'), '--skill', 'habits-root-cause'];
         const r = cli([...args, '--level', 'plain']);
         assert.strictEqual(r.code, 1, r.out + r.err);
-        assert.match(r.out, /alfred-habits-root-cause plain one-hypothesis-per-change: before FAIL, after FAIL -> INCONCLUSIVE/);
+        assert.match(r.out, /habits-root-cause plain one-hypothesis-per-change: before FAIL, after FAIL -> INCONCLUSIVE/);
         assert.match(r.out, /^ship rule: NOT PROVEN - 0 worse, 1 inconclusive, 0 not run, 0 not graded$/m);
         const all = cli(args);
-        assert.match(all.out, /alfred-habits-root-cause explicit reproduce-first: before -, after - -> NOT RUN/);
+        assert.match(all.out, /habits-root-cause explicit reproduce-first: before -, after - -> NOT RUN/);
         put('after', 'plain', rootCauseRun());
         const ok = cli([...args, '--level', 'plain']);
         assert.strictEqual(ok.code, 0, ok.out + ok.err);
@@ -491,18 +491,18 @@ test('grade CLI: a report per step, --json, and an empty or missing transcript i
     {
         const t = path.join(dir, 't.jsonl');
         fs.writeFileSync(t, checkpointRun({ format: false }));
-        const text = cli(['grade', 'alfred-habits-commit-checkpoint', t, '--level', 'plain']);
+        const text = cli(['grade', 'habits-commit-checkpoint', t, '--level', 'plain']);
         assert.strictEqual(text.code, 0, text.err);
-        assert.match(text.out, /alfred-habits-commit-checkpoint \(level plain\) - 8 of 9 graded steps followed/);
+        assert.match(text.out, /habits-commit-checkpoint \(level plain\) - 8 of 9 graded steps followed/);
         assert.match(text.out, /^ {2}FAIL {2}formatter-fresh/m);
-        const json = JSON.parse(cli(['grade', 'alfred-habits-commit-checkpoint', t, '--json']).out);
+        const json = JSON.parse(cli(['grade', 'habits-commit-checkpoint', t, '--json']).out);
         assert.strictEqual(json.passed, 8);
 
         fs.writeFileSync(t, '');
-        const empty = cli(['grade', 'alfred-habits-commit-checkpoint', t]);
+        const empty = cli(['grade', 'habits-commit-checkpoint', t]);
         assert.strictEqual(empty.code, 1);
         assert.match(empty.err, /a failed or empty run, not a grade/);
-        assert.strictEqual(cli(['grade', 'alfred-habits-commit-checkpoint', path.join(dir, 'absent.jsonl')]).code, 1);
+        assert.strictEqual(cli(['grade', 'habits-commit-checkpoint', path.join(dir, 'absent.jsonl')]).code, 1);
         assert.strictEqual(cli(['grade', 'no-such-skill', t]).code, 1);
         assert.strictEqual(cli(['grade', 'csharp', t, '--level', 'loud']).code, 2);
     }
@@ -513,44 +513,44 @@ test('grade CLI: a report per step, --json, and an empty or missing transcript i
 
 test('a code-comments trace grades the load order and the two never-add steps', () =>
 {
-    const exp = expectOf('alfred-habits-code-comments');
+    const exp = expectOf('habits-code-comments');
     const doc = (text) => tool('Edit', { file_path: '/w/src/orders.js', old_string: '', new_string: text });
-    const good = jsonl([user('add refundTotal'), tool('Skill', { skill: 'alfred-code:alfred-habits-code-comments' }),
+    const good = jsonl([user('add refundTotal'), tool('Skill', { skill: 'alfred-code:habits-code-comments' }),
         doc('/**\n * Refunds an order minus the restock fee.\n * @param {object} order - Order with at least one line.\n */\nfunction refundTotal(order) {}'), say('Added it.')]);
     assert.deepStrictEqual(failing(sc.grade(exp, good, { level: 'plain' })), []);
 
-    const late = jsonl([user('add refundTotal'), doc('/** Refunds. */\nfunction refundTotal() {}'), tool('Skill', { skill: 'alfred-habits-code-comments' })]);
+    const late = jsonl([user('add refundTotal'), doc('/** Refunds. */\nfunction refundTotal() {}'), tool('Skill', { skill: 'habits-code-comments' })]);
     assert.deepStrictEqual(failing(sc.grade(exp, late, { level: 'plain' })), ['code-comments-loaded']);
 
-    const ticket = jsonl([user('x'), tool('Skill', { skill: 'alfred-habits-code-comments' }), doc('/** Refunds. */\n// SHOP-42 restock fee\nfunction refundTotal() {}')]);
+    const ticket = jsonl([user('x'), tool('Skill', { skill: 'habits-code-comments' }), doc('/** Refunds. */\n// SHOP-42 restock fee\nfunction refundTotal() {}')]);
     assert.deepStrictEqual(failing(sc.grade(exp, ticket, { level: 'plain' })), ['no-ticket-id']);
 
-    const narrated = jsonl([user('x'), tool('Skill', { skill: 'alfred-habits-code-comments' }), doc('/** Refunds. */\n// Added the restock fee\nfunction refundTotal() {}')]);
+    const narrated = jsonl([user('x'), tool('Skill', { skill: 'habits-code-comments' }), doc('/** Refunds. */\n// Added the restock fee\nfunction refundTotal() {}')]);
     assert.deepStrictEqual(failing(sc.grade(exp, narrated, { level: 'plain' })), ['no-change-narration']);
 
     // a why comment that merely contains a word from the narration list is not narration
-    const why = jsonl([user('x'), tool('Skill', { skill: 'alfred-habits-code-comments' }), doc('/** Refunds. */\n// The fee is fixed per order, never per line.\nfunction refundTotal() {}')]);
+    const why = jsonl([user('x'), tool('Skill', { skill: 'habits-code-comments' }), doc('/** Refunds. */\n// The fee is fixed per order, never per line.\nfunction refundTotal() {}')]);
     assert.deepStrictEqual(failing(sc.grade(exp, why, { level: 'plain' })), []);
 });
 
 test('an execution-strategy trace grades the load before the first edit and no plan file', () =>
 {
-    const exp = expectOf('alfred-habits-execution-strategy');
+    const exp = expectOf('habits-execution-strategy');
     const edit = (file) => tool('Edit', { file_path: `/w/${file}`, old_string: 'a', new_string: 'b' });
-    const good = jsonl([user('add a discount'), tool('Skill', { skill: 'alfred-habits-execution-strategy' }), say('Plan: 3 subtasks, one agent.'), edit('src/cart.js'), edit('src/invoice.js')]);
+    const good = jsonl([user('add a discount'), tool('Skill', { skill: 'habits-execution-strategy' }), say('Plan: 3 subtasks, one agent.'), edit('src/cart.js'), edit('src/invoice.js')]);
     assert.deepStrictEqual(failing(sc.grade(exp, good, { level: 'plain' })), []);
 
-    const skipped = jsonl([user('add a discount'), edit('src/cart.js'), tool('Skill', { skill: 'alfred-habits-execution-strategy' })]);
+    const skipped = jsonl([user('add a discount'), edit('src/cart.js'), tool('Skill', { skill: 'habits-execution-strategy' })]);
     assert.deepStrictEqual(failing(sc.grade(exp, skipped, { level: 'plain' })), ['strategy-loaded']);
 
-    const planned = jsonl([user('add a discount'), tool('Skill', { skill: 'alfred-habits-execution-strategy' }),
+    const planned = jsonl([user('add a discount'), tool('Skill', { skill: 'habits-execution-strategy' }),
         tool('Write', { file_path: '/w/.alfred/docs/superpowers/plans/discount.md', content: '# plan' }), edit('src/cart.js')]);
     assert.deepStrictEqual(failing(sc.grade(exp, planned, { level: 'plain' })), ['no-plan-file']);
 });
 
 test('check: every shipped expectation is valid and its quotes are still in the skill', () =>
 {
-    assert.deepStrictEqual(sc.listSkills(), ['alfred-habits-code-comments', 'alfred-habits-commit-checkpoint', 'alfred-habits-execution-strategy', 'alfred-habits-root-cause', 'alfred-task-solve', 'csharp']);
+    assert.deepStrictEqual(sc.listSkills(), ['csharp', 'habits-code-comments', 'habits-commit-checkpoint', 'habits-execution-strategy', 'habits-root-cause', 'task-solve']);
     const r = cli(['check']);
     assert.strictEqual(r.code, 0, r.out + r.err);
 });
@@ -616,7 +616,7 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
             assert.match(b, /--max-budget-usd 1\.5 --model=claude-sonnet-4-5 > /);
             assert.ok(b.includes(`CLAUDE_CONFIG_DIR=${path.join(out, 'config')}`));
         }
-        assert.ok(billed.some((b) => b.includes(BARE('navigation', 'list_memories'))), 'the copy route allows the bare spelling');
+        assert.ok(billed.some((b) => b.includes(BARE('alfred-navigation', 'list_memories'))), 'the copy route allows the bare spelling');
         const installs = lines.filter((l) => l.includes('alfred-code.js install'));
         assert.strictEqual(installs.length, 18);
         for (const i of installs) assert.match(i, /env -i PATH="\$PATH" .* ALFRED_CODE_SKILLS_VIA_PLUGIN=false ALFRED_CODE_HOOKS_VIA_PLUGIN=false ALFRED_CODE_MCPS_VIA_PLUGIN=false node /);
@@ -637,7 +637,7 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         // the project gets what an init walk installs: the locked always-on set and the stack's seeds too
         const sel = JSON.parse(one.out.match(/^printf '%s\\n' '(\{.*\})' > /m)[1]);
         for (const r of ['alfred-interaction', 'alfred-navigation', 'csharp-conventions', 'dotnet-repair-agents']) assert.ok(sel.rules.includes(r), r);
-        for (const m of ['navigation', 'documentation', 'memory']) assert.ok(sel.mcps.includes(m), m);
+        for (const m of ['alfred-navigation', 'alfred-documentation', 'alfred-memory']) assert.ok(sel.mcps.includes(m), m);
         assert.ok(sel.skills.includes('csharp') && sel.skills.includes('dotnet-testing'));
         assert.strictEqual((one.out.match(/^# billed/mg) || []).length, 1);
         assert.strictEqual(cli(['replay', '--dry-run', '--level', 'loud']).code, 2);
@@ -646,17 +646,17 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
 
         // An A/B arm: --source names ANOTHER release, and the project gets what an init walk of THAT
         // release installs - its own recommendations, never this tree's (R72: the before arm carries no
-        // alfred-habits-root-cause, the after arm does).
+        // habits-root-cause, the after arm does).
         const other = path.join(dir, 'other');
         fs.mkdirSync(path.join(other, 'scripts', 'install'), { recursive: true });
         fs.mkdirSync(path.join(other, 'meta'));
         fs.writeFileSync(path.join(other, 'scripts', 'install', 'alfred-code.js'), '');
         fs.writeFileSync(path.join(other, 'meta', 'recommendations.json'), JSON.stringify({ always: { skills: ['from-the-source'], rules: ['alfred-interaction'] }, stacks: {} }));
-        const arm = cli(['replay', '--dry-run', '--skill', 'alfred-habits-root-cause', '--level', 'plain', '--source', other, '--out', out]);
+        const arm = cli(['replay', '--dry-run', '--skill', 'habits-root-cause', '--level', 'plain', '--source', other, '--out', out]);
         assert.strictEqual(arm.code, 0, arm.err);
         const armSel = JSON.parse(arm.out.match(/^printf '%s\\n' '(\{.*\})' > /m)[1]);
         assert.ok(armSel.skills.includes('from-the-source'), `the source's own always set: ${armSel.skills}`);
-        assert.ok(!armSel.skills.includes('alfred-habits-root-cause'), 'never this tree\'s recommendations');
+        assert.ok(!armSel.skills.includes('habits-root-cause'), 'never this tree\'s recommendations');
         assert.ok(armSel.skills.includes('javascript'), 'the fixture\'s own selection still rides along');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }

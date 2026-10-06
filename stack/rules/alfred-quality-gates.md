@@ -8,19 +8,19 @@ description: "House baseline - quality gates: code quality, the done-claim gate,
 
 - No dead code (unfinished work goes in the report).
 - Unit tests for new code; integration tests for DB / external service.
-- Comments: none by default; a why only when the code cannot say it, in one short line. Never a ticket id, change narration, commented-out code or an unasked `TODO`; the project's comment conventions and language win; a comment your change made stale is updated or deleted. Writing a doc comment (XML docs, TSDoc, JSDoc, docstring) - the FIRST action is the `alfred-habits-code-comments` Skill call, before it is written.
+- Comments: none by default; a why only when the code cannot say it, in one short line. Never a ticket id, change narration, commented-out code or an unasked `TODO`; the project's comment conventions and language win; a comment your change made stale is updated or deleted. Writing a doc comment (XML docs, TSDoc, JSDoc, docstring) - the FIRST action is the `habits-code-comments` Skill call, before it is written.
 
 ## Definition of done
 
 ### The done gate
 
 Before you claim your own change done, fixed, passing, works or ready - the FIRST action is the
-`alfred-habits-done-gate` Skill call, before the claim lands.
+`habits-done-gate` Skill call, before the claim lands.
 
 ### Claims about the outside world
 
-- A green build proves the code compiles, not that its API is current: a claim about a package, version floor, API shape, config key or deprecation is checked against the `documentation` server (Context7, locked into every install) as you write it - recall is not the authority. Prefer the durable policy plus a fetch-at-use pointer over a pinned number.
-- Use that server, not a shell stand-in (an `npx` or a registry `curl` answers only a version number). Its tools are DEFERRED: `ToolSearch select:mcp__plugin_documentation_documentation__resolve-library-id,mcp__plugin_documentation_documentation__query-docs`, then the query. Unreachable: say the claim is unverified.
+- A green build proves the code compiles, not that its API is current: a claim about a package, version floor, API shape, config key or deprecation is checked against the `alfred-documentation` server (Context7, locked into every install) as you write it - recall is not the authority. Prefer the durable policy plus a fetch-at-use pointer over a pinned number.
+- Use that server, not a shell stand-in (an `npx` or a registry `curl` answers only a version number). Its tools are DEFERRED: `ToolSearch select:mcp__plugin_alfred-documentation_alfred-documentation__resolve-library-id,mcp__plugin_alfred-documentation_alfred-documentation__query-docs`, then the query. Unreachable: say the claim is unverified.
 
 ### Partial work
 

@@ -3,7 +3,7 @@
 Read at Phase B, before the first bundle.
 
 Contents: bundle anatomy - principles - Phase B0 discovery - Phase B1 per bundle (facts, decision trail,
-contract conformance, token and effectiveness verdicts, generated docs, skills, `/alfred-*` runs, report
+contract conformance, token and effectiveness verdicts, generated docs, skills, the stack's flow-skill runs (`/task-*`, `/loop-*`, `/capture-*`, `/issue-*`), report
 integrity, the audit file) - delegated execution.
 
 `SESSIONS_ROOT` is the root step 0 found (default name `docs/session-investigation`, any
@@ -109,7 +109,7 @@ already has one is skipped on re-invocation.
   past the fresh-session trigger. Close with ONE line: what the session delivered, what it cost,
   and the avoidable share as a measured number (`~180k of 940k, 19%`), never an adjective. A
   session that spent heavily and delivered the result reliably is a PASS - say so; waste is spend
-  with nothing bought, and that is the verdict this audit exists to reach. The analyzer's EFFICIENCY block is the floor of this breakdown (`--json` carries it as `main.efficiency` plus `dispatchOverhead`): cache misses by Claude Code's own rule and the tokens they re-cached, compaction re-reads, build-dir reads, scoped against whole-suite runs, checked commits, green claims with no check, correction streaks, long answers, heavy seats. Each row is opened per the analyzer skill's discipline reference (`stack/skills/alfred-capture-usage-report/references/diagnosis-discipline.md`) before it is costed; the avoidable share sums only the rows that survived.
+  with nothing bought, and that is the verdict this audit exists to reach. The analyzer's EFFICIENCY block is the floor of this breakdown (`--json` carries it as `main.efficiency` plus `dispatchOverhead`): cache misses by Claude Code's own rule and the tokens they re-cached, compaction re-reads, build-dir reads, scoped against whole-suite runs, checked commits, green claims with no check, correction streaks, long answers, heavy seats. Each row is opened per the analyzer skill's discipline reference (`stack/skills/capture-usage-report/references/diagnosis-discipline.md`) before it is costed; the avoidable share sums only the rows that survived.
 - **Effectiveness verdict - did it work?** One line beside the token verdict: what landed (the artifact, the commits and whether each had a check before it), how many user corrections it took and whether the hook's streak threshold would have met them, how many green claims had no check in their turn, how many stops went unheld. A session can be cheap and ineffective - that is a finding against the flow, never a PASS.
 - **Generated docs - useful, and actually used?** For every task that needed orientation
   (a fix, an investigation, a design), check whether the session READ what the stack generates for
@@ -134,11 +134,11 @@ already has one is skipped on re-invocation.
   project's - re-run with `--inventory <that project's .claude>` before filing a non-use finding
   off it. Read the `how` column too: a skill preloaded by a dispatched seat's frontmatter was paid
   for in full with zero calls, which is a different finding from a skill nothing reached.
-- **`/alfred-*` skills under load.** Every one that ran is judged against its own `SKILL.md`: the
+- **The stack's flow skills under load.** Every one that ran is judged against its own `SKILL.md`: the
   phases it promises, the asks it must put through AskUserQuestion, the artifact it must write, the
   state file it resumes from, and whether it VERIFIED its result or asserted it. Report each as a
   row - skill, sessions seen, tokens, conformed / violated / conformed-into-a-bad-outcome, and the
-  one thing that would make it cheaper or more reliable. A `/alfred-*` run that produced its
+  one thing that would make it cheaper or more reliable. A flow-skill run that produced its
   artifact but cost more than the work it saved is a MATERIAL token-waste finding against that
   skill, with the two numbers side by side.
 - **Report integrity.** Spot-check a model-written report's countable claims -
@@ -148,7 +148,7 @@ already has one is skipped on re-invocation.
 - **The audit file** `<AUDIT_DIR>/<session-id>.md`: header (id, date, stacks, task, headline
   numbers), one-line verdict, the TOKEN VERDICT and EFFECTIVENESS lines (delivered / cost / avoidable share; landed / corrections / unchecked claims / unheld stops), the scorecard rows quoted, the
   stack-surface scorecard (generated docs used or bypassed; skills fired, missed and misused; each
-  `/alfred-*` run with its conformance and cost), the findings ledger including positive findings,
+  flow-skill run with its conformance and cost), the findings ledger including positive findings,
   report-integrity result, and `FIXED-SINCE` observations.
 
 ## Delegated execution

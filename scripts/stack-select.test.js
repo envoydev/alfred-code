@@ -50,7 +50,7 @@ test('an agent pulls its declared skills and plugins; body mentions pull nothing
     // The resolver PRELOADS the core's root-cause and done-gate methods (R106) and NAMES the C# skills
     // in its body: the preloads are its edges, the body mentions pull nothing.
     const resolver = computeClosure(graph, { agents: ['dotnet-build-error-resolver'] });
-    assert.deepStrictEqual([...resolver.skills].sort(), ['alfred-habits-done-gate', 'alfred-habits-root-cause'], 'a resolver locks only its preloaded method skills');
+    assert.deepStrictEqual([...resolver.skills].sort(), ['habits-done-gate', 'habits-root-cause'], 'a resolver locks only its preloaded method skills');
 });
 
 test('a rule pulls its skills', () => {
@@ -61,10 +61,10 @@ test('a rule pulls its skills', () => {
 
 test('a kept rule makes its mcp required; the capabilities skill locks none', () => {
     const c = computeClosure(graph, { rules: ['alfred-navigation'] });
-    assert.ok(c.mcps.includes('navigation'), 'alfred-navigation genuinely depends on serena');
-    // The routing-map mentions in alfred-capture-agent-capabilities are subject matter, not needs -
+    assert.ok(c.mcps.includes('alfred-navigation'), 'the alfred-navigation rule genuinely depends on its server');
+    // The routing-map mentions in capture-agent-capabilities are subject matter, not needs -
     // picking it must never lock the whole MCP baseline into an install.
-    const cap = computeClosure(graph, { skills: ['alfred-capture-agent-capabilities'] });
+    const cap = computeClosure(graph, { skills: ['capture-agent-capabilities'] });
     assert.deepStrictEqual(cap.mcps, [], 'the capabilities skill pulls no MCPs');
 });
 
@@ -74,10 +74,10 @@ test('a kept rule makes its mcp required; the capabilities skill locks none', ()
 // server cannot be both offered-not-seeded and locked at once.
 test('memory is locked like serena - alfred-memory pulls it in, general no longer offers it', () => {
     const c = computeClosure(graph, { rules: ['alfred-memory'] });
-    assert.ok(c.mcps.includes('memory'), 'alfred-memory genuinely depends on the memory mcp');
+    assert.ok(c.mcps.includes('alfred-memory'), 'the alfred-memory rule genuinely depends on the memory mcp');
     const recommendations = require('../meta/recommendations.json');
     assert.ok((recommendations.always.rules || []).includes('alfred-memory'), 'alfred-memory is an always-on rule');
-    assert.ok((recommendations.always.mcps || []).includes('memory'), 'memory is locked into every install');
+    assert.ok((recommendations.always.mcps || []).includes('alfred-memory'), 'memory is locked into every install');
     assert.ok(!((recommendations.general || {}).mcps || []).includes('memory'), 'memory left the general (addable) list');
 });
 
@@ -149,7 +149,7 @@ test('a non-array raw field does not char-split into bogus items', () => {
 const { findUnknownNames, dropUnknownNames } = require('./stack-select.js');
 
 test('unknown selection names are detected per category and dropped', () => {
-    const raw = { skills: ['csharp', 'totally-retired-skill'], agents: ['no-such-agent'], rules: [], mcps: ['navigation', 'no-such-mcp'], plugins: [] };
+    const raw = { skills: ['csharp', 'totally-retired-skill'], agents: ['no-such-agent'], rules: [], mcps: ['alfred-navigation', 'no-such-mcp'], plugins: [] };
     const unknown = findUnknownNames(graph, raw);
     assert.deepStrictEqual(unknown, [
         { category: 'skill', name: 'totally-retired-skill' },
@@ -159,7 +159,7 @@ test('unknown selection names are detected per category and dropped', () => {
     const filtered = dropUnknownNames(raw, unknown);
     assert.deepStrictEqual(filtered.skills, ['csharp']);
     assert.deepStrictEqual(filtered.agents, []);
-    assert.deepStrictEqual(filtered.mcps, ['navigation']);
+    assert.deepStrictEqual(filtered.mcps, ['alfred-navigation']);
     assert.ok(!computeClosure(graph, filtered).skills.includes('totally-retired-skill'));
 });
 
@@ -252,11 +252,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 
 test('emitSelectionFile produces Component B selection lines', () => {
-    const text = emitSelectionFile({ skills: ['csharp'], agents: ['aspnet-implementer'], rules: ['csharp-conventions'], mcps: ['navigation'], plugins: ['csharp-lsp'] });
+    const text = emitSelectionFile({ skills: ['csharp'], agents: ['aspnet-implementer'], rules: ['csharp-conventions'], mcps: ['alfred-navigation'], plugins: ['csharp-lsp'] });
     const lines = text.trim().split('\n');
     assert.ok(lines.includes('skill csharp'));
     assert.ok(lines.includes('agent aspnet-implementer'));
-    assert.ok(lines.includes('mcp navigation'));
+    assert.ok(lines.includes('mcp alfred-navigation'));
     assert.ok(lines.includes('plugin csharp-lsp'));
     assert.ok(lines.includes('rule csharp-conventions'));
 });
@@ -375,14 +375,14 @@ test('findJudgment: overlap only when both installed, dormant only when installe
 });
 
 test('emitTable: evidence label is pre-selected, below required, above recommended', () => {
-    const evidence = { skills: { 'dotnet-web-backend': 'FAKE-SIGNAL', 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'alfred-task-solve-cross': 'FAKE-SIGNAL-2' } };
+    const evidence = { skills: { 'dotnet-web-backend': 'FAKE-SIGNAL', 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'task-solve-cross': 'FAKE-SIGNAL-2' } };
     const recs = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'recommendations.json'), 'utf8'));
     const table = emitTable(graph, 'skills', { raw: { agents: ['aspnet-solution-designer'] }, recs, stacks: ['aspnet'], evidence });
     const rowOf = name => table.split('\n').find(l => new RegExp(`\\| ${name} `).test(l)) || '';
     assert.match(rowOf('dotnet-web-backend'), /required/, 'a closure lock beats evidence');
     assert.doesNotMatch(rowOf('dotnet-web-backend'), /FAKE-SIGNAL/, 'the lock reason wins the why column');
     assert.match(rowOf('dotnet-grpc'), /evidence +\| Grpc\.AspNetCore in src\/Api\.csproj/, 'evidence row carries its signal');
-    assert.match(rowOf('alfred-task-solve-cross'), /evidence/, 'evidence beats the recommended seed label');
+    assert.match(rowOf('task-solve-cross'), /evidence/, 'evidence beats the recommended seed label');
     // configure's installed mode keeps yes/- states; the signal informs the why column
     const cfg = emitTable(graph, 'skills', { raw: {}, installed: { skills: ['csharp'] }, evidence });
     const cfgRow = name => cfg.split('\n').find(l => new RegExp(`\\| ${name} `).test(l)) || '';
@@ -568,12 +568,12 @@ test('a general-listed skill is never redundant even when its only owner is abse
     const installed = {
         rules: [],
         agents: [],
-        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'alfred-capture-related-projects', 'dotnet-wpf'],
+        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'capture-related-projects', 'dotnet-wpf'],
         mcps: [], plugins: [], hooks: [],
     };
     const redundant = findStackRedundant(graph, recommendations, installed, ['aspnet']);
     const names = new Set(redundant.map(r => r.name));
-    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'alfred-capture-related-projects'])
+    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'capture-related-projects'])
     {
         assert.ok(!names.has(s), `${s} is general - never redundant`);
     }
@@ -669,7 +669,7 @@ test('CLI: a --selection built from that inventory keeps its {name,scope} plugin
         const sel = path.join(dir, 'final.json');
         const emit = path.join(dir, 'selection.txt');
         const dropped = path.join(dir, 'dropped.json');
-        fs.writeFileSync(sel, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [{ name: 'navigation' }, 'documentation'], hooks: [],
+        fs.writeFileSync(sel, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [{ name: 'alfred-navigation' }, 'alfred-documentation'], hooks: [],
             plugins: [{ name: 'typescript-lsp', scope: 'project' }, { name: 'csharp-lsp', scope: 'user' }] }));
         fs.writeFileSync(dropped, JSON.stringify({}));
         const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--emit', emit, '--dropped', dropped,
@@ -678,7 +678,7 @@ test('CLI: a --selection built from that inventory keeps its {name,scope} plugin
         const txt = fs.readFileSync(emit, 'utf8');
         assert.match(txt, /^plugin typescript-lsp$/m, 'a scoped plugin stays selected');
         assert.match(txt, /^plugin csharp-lsp$/m, 'every scoped plugin stays selected');
-        assert.match(txt, /^mcp navigation$/m, 'an object mcp entry stays selected');
+        assert.match(txt, /^mcp alfred-navigation$/m, 'an object mcp entry stays selected');
     }
     finally
     {
@@ -819,7 +819,7 @@ test('a table still renders when --found and --dropped name missing files (advis
 // prerequisite check is the one place a missing key still shows.
 test('the documentation server selected without a key warns, never blocks; with the key, clean', () => {
     const bins = { node: true, npx: true, git: true, claude: true, uvx: true };
-    const sel = { skills: [], mcps: ['documentation'], plugins: [] };
+    const sel = { skills: [], mcps: ['alfred-documentation'], plugins: [] };
     const r = evaluatePrereqs(sel, { bins, envs: {} }, {});
     assert.ok(r.warnings.some(w => /documentation server API key \(Context7\)/.test(w.need)), 'warns without a key');
     assert.ok(!r.blockers.some(b => /context7/i.test(b.need)), 'never a blocker - unset is the keyless free tier');
@@ -918,9 +918,10 @@ test('a plugin the core carries beside it gets its own row status, in both table
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// R27: claude-hud is required - a `dependency` row, never a pick - and no plugin is an always-baseline
-// SEED any more: the optional LSP pair is suggested on evidence, and superpowers (R109) is no pick at all.
-test('claude-hud gets the dependency row, and no plugin is seeded into every install', () => {
+// 2.2.0 (the user's ruling of 2026-10-06, superseding R27): claude-hud is an optional pick the walk marks
+// `recommended` - the one always-baseline plugin seed - and nothing is a `dependency` row; the LSP pair is
+// suggested on evidence, and superpowers (R109) is no pick at all.
+test('claude-hud is a recommended pick, no plugin is a dependency row, and the LSP pair is optional', () => {
     const fs = require('node:fs');
     const os = require('node:os');
     const { execFileSync } = require('node:child_process');
@@ -932,11 +933,12 @@ test('claude-hud gets the dependency row, and no plugin is seeded into every ins
         '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json')], { encoding: 'utf8' });
     fs.rmSync(dir, { recursive: true, force: true });
     const rowOf = (name) => out.split('\n').find((l) => l.split('|')[1] && l.split('|')[1].trim() === name) || '';
-    assert.match(rowOf('claude-hud'), /\|\s*dependency\s*\|.*cannot be dropped.*one you disable stays off/, `claude-hud row: ${rowOf('claude-hud')}`);
+    assert.match(rowOf('claude-hud'), /\|\s*recommended\s*\|/, `claude-hud row: ${rowOf('claude-hud')}`);
+    assert.doesNotMatch(out, /\|\s*dependency\s*\|/, 'no plugin is a dependency row');
     for (const name of ['csharp-lsp', 'typescript-lsp'])
         assert.match(rowOf(name), /\|\s*-\s*\|/, `${name} is optional - no evidence, no stack, not selected: ${rowOf(name)}`);
     const recs = require('../meta/recommendations.json');
-    assert.deepStrictEqual(recs.always.plugins || [], [], 'no plugin is an always-baseline seed');
+    assert.deepStrictEqual(recs.always.plugins || [], ['claude-hud'], 'claude-hud is the one always-baseline plugin seed');
 });
 
 // R109: superpowers left every selection surface in 2.0.0 - no seed, no suggestion, no closure, no

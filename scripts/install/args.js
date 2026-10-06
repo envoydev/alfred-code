@@ -54,9 +54,15 @@ const REMOVED = new Map([
     ['--sentry-auth', 'the sentry server left the stack'],
 ]);
 
+// 2.2.0: the OPTIONAL items, each installed at its own scope - global (the CLI's `user`, every project on the
+// account) or this project (the run's own scope; `project` when the run is a user-scope one). The required ones -
+// the core and the three alfred- servers - follow --scope. `browser` names every engine at once.
+const SCOPED_ITEMS = [...PW_ENGINES.map((e) => `browser-${e}`), 'windows-desktop', 'macos-desktop', 'typescript-lsp', 'csharp-lsp', 'claude-hud'];
+const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project)$/;
+
 const ALIASES = new Map([['--playwright-browsers', '--browsers'], ['--playwright-enabled', '--browser-enabled'], ['--docs-move', '--data-move']]);
 
-const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --print-plan, --plan-out, --skills-only, --rename-claude-md, --source';
+const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --scope-of, --print-plan, --plan-out, --skills-only, --rename-claude-md, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -77,7 +83,7 @@ function parseArgs(argv)
         playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '', dataMove: '', dataPath: '',
         selection: '', source: '', planOut: '',
         githubCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
-        add: [], drop: [],
+        add: [], drop: [], scopeOf: {},
     };
 
     const given = new Set();
@@ -97,6 +103,19 @@ function parseArgs(argv)
             const value = eq > -1 && name !== arg ? arg.slice(eq + 1) : argv[++i];
             if (!value || !ADD_LINE.test(value.trim())) fail(`${name} takes '<skill|agent|rule|hook|mcp|plugin> <name>' (got '${value || ''}')`);
             out[name.slice(2)].push(value.trim());
+            continue;
+        }
+
+        // Repeatable: `--scope-of <item>=<global|project>`, one optional item's own scope.
+        if (name === '--scope-of')
+        {
+            const value = lower(eq > -1 && name !== arg ? arg.slice(eq + 1) : argv[++i]).trim();
+            const m = SCOPE_OF.exec(value);
+            if (!m) fail(`--scope-of takes '<item>=<global|project>' (got '${value}')`);
+            const items = m[1] === 'browser' ? PW_ENGINES.map((e) => `browser-${e}`) : [m[1]];
+            if (!items.every((n) => SCOPED_ITEMS.includes(n)))
+                fail(`--scope-of: '${m[1]}' has no scope of its own - one of browser, ${SCOPED_ITEMS.join(', ')}; the core and the alfred- servers follow --scope`);
+            for (const n of items) out.scopeOf[n] = m[2] === 'project' ? 'project' : 'user';
             continue;
         }
 
@@ -203,4 +222,4 @@ function parseArgs(argv)
     return out;
 }
 
-module.exports = { parseArgs, PW_ENGINES, FLAG_LIST, ENUMS };
+module.exports = { parseArgs, PW_ENGINES, FLAG_LIST, ENUMS, SCOPED_ITEMS };

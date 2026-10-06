@@ -72,7 +72,7 @@ Q-EVIDENCE  (always first, alone)
   a project with history and no bundles can only answer the first or third - say so instead of
   offering a choice that cannot run.
 - **Q-SECTIONS** (only when something is being generated) - `authored` - invoke
-  `/alfred-capture-usage-report` so a model fills each report's judgment sections (slower, richer,
+  `/capture-usage-report` so a model fills each report's judgment sections (slower, richer,
   needs a session inside that project) - or `skeleton` - `analyze-usage.js --report-md` only,
   judgment left unwritten because the audit re-derives it anyway (recommended for more than one
   project, and the only route that works from outside the project).

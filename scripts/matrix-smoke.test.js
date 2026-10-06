@@ -19,7 +19,7 @@ const ROUTES = {
     copy: { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
 };
 const STAMP = path.join('repo', '.claude', 'alfred-code.stamp');
-const LOCKED = ['navigation', 'documentation', 'memory'];
+const LOCKED = ['alfred-navigation', 'alfred-documentation', 'alfred-memory'];
 
 // Every file the sandbox holds after a run - the project (its .git aside) AND the HOME around it, where
 // the account dir lives - so a write that lands outside the project is counted too. The stub's own call

@@ -3,7 +3,7 @@
   "skills": [
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-habits-create-ticket",
+      "name": "habits-create-ticket",
       "note": "ticket generator (bug/story/epic/task) - tracker-agnostic EN Markdown, routes to references/<type>.md"
     },
     {
@@ -13,177 +13,177 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-habits-explain-code",
+      "name": "habits-explain-code",
       "note": "senior-mentor explainer for code/bug/concept/trade-off via real-file walkthrough; depth ELI5/intermediate/expert"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-loop-quality",
+      "name": "loop-quality",
       "note": "deliberate code-quality analyze-triage-fix loop - runs the code-quality capture each round (CODE-ASSESSMENT.md fresh), fixes findings by tier (small to an implementer, substantial designer-led with the plan approved, structural = user decision), anti-gaming sweep, reconcile; the loops/ numbered prompts are the rules, and `staged` keeps the numbered-prompt pipeline; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-loop-architecture-quality",
+      "name": "loop-architecture-quality",
       "note": "deliberate analyze-assess-improve loop - the architecture capture writes ARCHITECTURE.md, the pros/cons capture writes ASSESSMENT.md fresh every round, fix cons by tier, reconcile; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-capture-code-style",
+      "name": "capture-code-style",
       "note": "deliberate code-style capture - fans out code-style-analyzer per language, merges docs/code-style/CODE-STYLE.md (its own docs domain), generates the path-scoped project-code-style rule; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-capture-architecture",
+      "name": "capture-architecture",
       "note": "deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule alfred-project-architecture.md; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-capture-first-look",
+      "name": "capture-first-look",
       "note": "provisional ORIENTATION.md from one manifest scan (scripts/scan-evidence.js --orientation) - stack, modules, build/test/run commands, entry points; never over a capture, replaced by the architecture capture"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-habits-adjust-agents-md",
+      "name": "habits-adjust-agents-md",
       "note": "create or improve a project's AGENTS.md - the template's outline (Setup and Key files among it), the project's own root AGENTS.md improved in place and never overwritten, a part's own <part>/AGENTS.md, changes shown before an improve writes, and scripts/agents-md-check.js last; the one home of the AGENTS.md fill /alfred-code:init runs (renamed: the seeded file is .claude/AGENTS.md now, not CLAUDE.md)"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-capture-architecture-quality",
+      "name": "capture-architecture-quality",
       "note": "deliberate pros/cons capture over the architecture map - dispatches architecture-analyzer per module, reasons a gated, tiered strengths/weaknesses assessment in the main session, writes docs/quality/ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json, so the docs engine never treats it as a domain); reads the decision log, never writes it; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-capture-code-quality",
+      "name": "capture-code-quality",
       "note": "deliberate code-quality capture - dispatches code-quality-analyzer per module against the loops/ numbered prompts, the convention rules and CODE-STYLE.md (no loops/ -> says so, judges the other two), gates and tiers the findings in the main session, writes docs/quality/CODE-ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json), every finding tied to file:line and its rule; reads the decision log, never writes it"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-capture-test-coverage",
+      "name": "capture-test-coverage",
       "note": "deliberate coverage capture - detect tooling per surface, instrumented run ONCE per surface in the main session, writes docs/test-coverage/COVERAGE.md (90% line after exclusions default, tiered weak points) + raw/ machine-readable results; manual /-only (the loop Read-loads it)"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-loop-test-coverage",
+      "name": "loop-test-coverage",
       "note": "deliberate coverage analyze-triage-fix loop - runs the capture, works weak points by tier (tests inline/implementer briefs, testability refactors approval-gated, structural = user decision), reconciles docs; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-task-version-upgrade",
+      "name": "task-version-upgrade",
       "note": "deliberate BREAKING version-event flow (framework/runtime/package major) - plan in-session via the documentation server + architecture-analyzer digests, approval gate (auto mode only on explicit user ask), staged execution via implementers + resolvers; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-capture-agent-capabilities",
+      "name": "capture-agent-capabilities",
       "note": "deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule alfred-project-agent-capabilities.md; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-capture-project-capabilities",
+      "name": "capture-project-capabilities",
       "note": "deliberate run-book capture - reads the repo first (the first-look scan, launch configs, compose, README), asks only for the gaps (start and reach, login and where the credentials live, flows and edge cases, before-you-run and debugging), writes docs/project-capabilities/PROJECT-CAPABILITIES.md (its own docs domain) + the generated pointer rule alfred-project-run-book.md; credentials by location, never by value; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-capture-related-projects",
+      "name": "capture-related-projects",
       "note": "deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule alfred-project-related-context.md + docs/related-projects/RELATED-PROJECTS.md (its own docs domain; docs/related-context/ stays the plain drop box for every other sibling-repo paper); manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-task-build-from-scratch",
+      "name": "task-build-from-scratch",
       "note": "greenfield scaffolding + design->scaffold->slice-by-slice build orchestration over the pipeline"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-task-solve-cross",
+      "name": "task-solve-cross",
       "note": "entry-point router: classify -> smallest execution mode -> cross-domain contract freeze + integration gate; home of the shared subagent policies"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-task-verify-plan",
+      "name": "task-verify-plan",
       "note": "audit an implementation plan BEFORE building - risk-coverage review (traps named per the stack skill, scope, edges, minimal); precedes /code-review"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-task-verify-code",
+      "name": "task-verify-code",
       "note": "single-chat, no-dispatch review of an assembled build - the inline alternative to /code-review: rerun build/test, gate vs plan, RUN the app on failable inputs, trace wire-contract changes to consumers, ranked punch-list"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-habits-commit-checkpoint",
+      "name": "habits-commit-checkpoint",
       "note": "the pre-commit checkpoint + publish ceremony, out of the always-on git rule: formatter, house review, security review, the COMMIT-GATE / PUSH-GATE receipt the guard reads"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-task-implement",
+      "name": "task-implement",
       "note": "single-chat build step: execute a verified plan task-by-task (contracts + per-task green gate + inline red-resolution, no dispatch), finish via /code-review + the done-gate"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-task-design",
-      "note": "single-chat designer twin: read the architecture, judge where a change fits (extend/refactor/isolate), load the stack skill for traps, decompose into an ordered plan; feeds alfred-task-verify-plan"
+      "name": "task-design",
+      "note": "single-chat designer twin: read the architecture, judge where a change fits (extend/refactor/isolate), load the stack skill for traps, decompose into an ordered plan; feeds task-verify-plan"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-task-solve",
-      "note": "gated single-chat vertical: design -> plan audit -> user approval + build mode -> build -> build review (skippable: alfred-task-verify-code inline or the verifier seat) -> done-gate; hard user stop between steps, plan-file + serena-note state survives compaction"
+      "name": "task-solve",
+      "note": "gated single-chat vertical: design -> plan audit -> user approval + build mode -> build -> build review (skippable: task-verify-code inline or the verifier seat) -> done-gate; hard user stop between steps, plan-file + serena-note state survives compaction"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-issue-diagnoser",
+      "name": "issue-diagnoser",
       "note": "gated single-chat investigation: triage evidence to a tier -> gather (evidence-gatherer seats or inline) -> prove root cause -> user fork (report / contracted fix tasks / log-points card); read-only, any evidence source incl. none but a client report"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-habits-root-cause",
+      "name": "habits-root-cause",
       "note": "the house root-cause loop (R72, written fresh): read, reproduce, localize, compare, one hypothesis per change, fix at the root test-first, question the design after three; preloaded by both diagnosers and the four resolvers, pointed at by alfred-interaction, loaded first in the investigation's root-cause step; the stop contract's failing-run branch logs a probe row per streak, nothing injected"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-habits-done-gate",
+      "name": "habits-done-gate",
       "note": "the done gate (R106, moved out of alfred-quality-gates): build + relevant tests after the last edit, output quoted, green summary vs red trace, scoped runs then the full suite once, never a gamed pass; pointed at by alfred-quality-gates, preloaded by every verifier and implementer, loaded by the solve and implement closes; the stop contract's done-claim branch logs a probe row, never a hold"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-habits-test-first",
-      "note": "test-first (R106): write the test, watch it fail for the expected reason, minimal code, green, refactor; pointed at by alfred-interaction, preloaded by every implementer but devops-implementer (2.1.5 M53: its loop validates config and writes no test), loaded by alfred-task-implement"
+      "name": "habits-test-first",
+      "note": "test-first (R106): write the test, watch it fail for the expected reason, minimal code, green, refactor; pointed at by alfred-interaction, preloaded by every implementer but devops-implementer (2.1.5 M53: its loop validates config and writes no test), loaded by task-implement"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-habits-execution-strategy",
+      "name": "habits-execution-strategy",
       "note": "execution strategy (2026-09-30, from the user's Execution Strategy Module, adapted): a short inline plan, one agent by default, batched calls, subagents only for independent sizeable contract-backed tracks, three check tiers (per batch, once after the change, CI parity before a push); pointed at by alfred-interaction, defers to a stamped solve flow, never preloaded by a seat (the dispatcher decides the split)"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-habits-code-comments",
+      "name": "habits-code-comments",
       "note": "code comments (2026-09-30, from the user's Code Comments guidance, adapted): default none, a why only when the code cannot say it, no ticket ids (two exceptions), no change narration, commented-out code or unasked TODO; doc-comment when and structure per language (XML docs, TSDoc, JSDoc), one line per tag; project conventions and language win; pointed at by alfred-quality-gates, never preloaded by a seat (the implementers' write-time bar and the verifier's step 6 already cite the rule's comments line)"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-habits-plan-writing",
-      "note": "the plan file's one shape (R106, was alfred-task-design's references/plan-format.md): header lines, task card, status marks, Decisions ledger, resume line; loaded by alfred-task-design at step 4, alfred-task-verify-plan and alfred-task-implement before reading a plan"
+      "name": "habits-plan-writing",
+      "note": "the plan file's one shape (R106, was task-design's references/plan-format.md): header lines, task card, status marks, Decisions ledger, resume line; loaded by task-design at step 4, task-verify-plan and task-implement before reading a plan"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-habits-clarify",
-      "note": "the clarify discipline's one home (R106): one AskUserQuestion at a time, 2-3 options with the recommended one marked, until one reading is left - the requirement, never the implementation; loaded by alfred-task-solve step 1, alfred-task-solve-cross and alfred-task-build-from-scratch before any design"
+      "name": "habits-clarify",
+      "note": "the clarify discipline's one home (R106): one AskUserQuestion at a time, 2-3 options with the recommended one marked, until one reading is left - the requirement, never the implementation; loaded by task-solve step 1, task-solve-cross and task-build-from-scratch before any design"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-habits-skill-writing",
+      "name": "habits-skill-writing",
       "note": "skill writing (Task 21, written fresh): skill vs rule / hook / reference, the description as the trigger, one home per piece, a lean platform-neutral body, proven without and with the skill plus the adverse phrasing; loaded by the skill-authoring rule on every skill file"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-issue-signatures-runtime",
-      "note": "single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with alfred-habits-root-cause"
+      "name": "issue-signatures-runtime",
+      "note": "single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with habits-root-cause"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-issue-signatures-ci",
-      "note": "single-chat CI-diagnoser twin: red-pipeline signatures (compile/restore, green-locally-red-on-runner, quality-gate, signing/release, workflow-config, infra-flake) -> code-vs-environment call + route; pairs with alfred-issue-signatures-runtime"
+      "name": "issue-signatures-ci",
+      "note": "single-chat CI-diagnoser twin: red-pipeline signatures (compile/restore, green-locally-red-on-runner, quality-gate, signing/release, workflow-config, infra-flake) -> code-vs-environment call + route; pairs with issue-signatures-runtime"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-capture-usage-report",
+      "name": "capture-usage-report",
       "note": "token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/usage-report/"
     },
     {
@@ -214,7 +214,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "ts-js-testing",
-      "note": "plain TS/JS testing hub: runner routing (Vitest default), role-keyed strategy, seam stubs over module mocks, exclusion catalog - practices only, the % bar is user-set via alfred-capture-test-coverage"
+      "note": "plain TS/JS testing hub: runner routing (Vitest default), role-keyed strategy, seam stubs over module mocks, exclusion catalog - practices only, the % bar is user-set via capture-test-coverage"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -239,7 +239,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "angular-testing",
-      "note": "Angular testing hub: TestBed/harness patterns, runner routing, exclusion catalog - practices only, the % bar is user-set via alfred-capture-test-coverage"
+      "note": "Angular testing hub: TestBed/harness patterns, runner routing, exclusion catalog - practices only, the % bar is user-set via capture-test-coverage"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -480,26 +480,26 @@
     },
     {
       "file": "test-coverage-analyzer.md",
-      "note": "analysis phase (sonnet/medium): read-only per-surface coverage characterizer - the alfred-capture-test-coverage skill fans it out over the raw results; never runs the suite"
+      "note": "analysis phase (sonnet/medium): read-only per-surface coverage characterizer - the capture-test-coverage skill fans it out over the raw results; never runs the suite"
     },
     {
       "file": "code-quality-analyzer.md",
-      "note": "analysis phase (sonnet/medium): read-only per-module code-quality judge - the alfred-capture-code-quality skill fans it out per module and gates, tiers and writes docs/quality/CODE-ASSESSMENT.md from its findings (each tied to file:line and a rule)"
+      "note": "analysis phase (sonnet/medium): read-only per-module code-quality judge - the capture-code-quality skill fans it out per module and gates, tiers and writes docs/quality/CODE-ASSESSMENT.md from its findings (each tied to file:line and a rule)"
     },
     {
       "file": "code-style-analyzer.md",
-      "note": "analysis phase (sonnet/medium): read-only per-language style characterizer - the alfred-capture-code-style skill fans it out per language and merges docs/code-style/CODE-STYLE.md + the generated project-code-style rule from its structured reports"
+      "note": "analysis phase (sonnet/medium): read-only per-language style characterizer - the capture-code-style skill fans it out per language and merges docs/code-style/CODE-STYLE.md + the generated project-code-style rule from its structured reports"
     },
     {
       "file": "related-project-analyzer.md",
-      "note": "analysis support (sonnet/medium): read-only sibling-repo characterizer (name/relation/first_read/seam, URL siblings shallow-cloned to scratch) - the alfred-capture-related-projects skill fans it out per sibling and merges docs/related-projects/RELATED-PROJECTS.md"
+      "note": "analysis support (sonnet/medium): read-only sibling-repo characterizer (name/relation/first_read/seam, URL siblings shallow-cloned to scratch) - the capture-related-projects skill fans it out per sibling and merges docs/related-projects/RELATED-PROJECTS.md"
     },
     {
-      "file": "alfred-issue-diagnoser-ci.md",
+      "file": "issue-diagnoser-ci.md",
       "note": "analysis phase (opus/high - a bounded catalogue match over structured CI logs, one notch under the runtime diagnoser's open-ended root-cause search): read-only CI red-run diagnosis via gh - categorize, local repro, route"
     },
     {
-      "file": "alfred-issue-diagnoser-runtime.md",
+      "file": "issue-diagnoser-runtime.md",
       "note": "analysis phase (opus/xhigh): read-only bug diagnosis from logs/errors/screenshots - root cause + route, no fix"
     },
     {
@@ -807,7 +807,7 @@
     },
     {
       "file": "guard-fresh-session-start.js",
-      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])(alfred-(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
+      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
       "event": "",
       "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling, so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only)"
     },
@@ -897,7 +897,7 @@
     },
     {
       "file": "docs-session.js",
-      "matcher": "^mcp__(plugin_navigation_)?navigation__(rename_symbol|safe_delete_symbol)$",
+      "matcher": "^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
       "event": "",
       "note": "the same hold on the navigation server's two edit tools the stack keeps on (the other five are off at its launch) - the file is tool_input.relative_path; both routes' spellings"
     },
@@ -939,7 +939,7 @@
     },
     {
       "file": "check-turn-build.js",
-      "matcher": "@PostToolUse:^mcp__(plugin_navigation_)?navigation__(rename_symbol|safe_delete_symbol)$",
+      "matcher": "@PostToolUse:^mcp__(plugin_(alfred-)?navigation_)?(alfred-)?navigation__(rename_symbol|safe_delete_symbol)$",
       "event": "",
       "note": "the same record for the navigation server's two kept edit tools - the path is tool_input.relative_path, from the project root; both routes' spellings"
     },
@@ -979,14 +979,13 @@
     },
     {
       "id": "claude-hud@claude-hud",
-      "active": false,
-      "note": "statusline HUD - required, installed beside the core on every run at user scope (its status line is account-wide); pin: a third-party marketplace, its plugin.json version - auto-update is off there by default, so the stack's update is what moves it",
+      "note": "statusline HUD - optional since 2.2.0, recommended in every install (meta/recommendations.json always.plugins), at the scope the user picks for it (this project by default; a project-scope one gets its status line in the project's settings.local.json); pin: a third-party marketplace, its plugin.json version - auto-update is off there by default, so the stack's update is what moves it",
       "marketplace": "jarrodwatts/claude-hud"
     }
   ],
   "mcps": [
     {
-      "name": "navigation",
+      "name": "alfred-navigation",
       "args": "-e SERENA_HOME=@SERENA_HOME@ -- node -e @ROOT_BOOT@ -- checkout uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false @SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@",
       "note": "the navigation server (Serena): LSP symbol navigation; per-project SERENA_HOME (<data root>/serena/home - the data root ignores it, ~327MB LSP) isolates its registry/memories/logs/LSP, no pooling across projects/accounts; its home config points serena at <data root>/serena; --project-from-cwd self-activates the repo on launch (@SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@; a project with no .git whose serena folder moved under the data root registers --project . instead, which the cwd walk cannot find); PyPI (not git), dashboard off; --context names the stack's own serena context (@SERENA_CONTEXT@ = .claude/navigation-context.yml, copied there from stack/mcp) - the upstream claude-code one minus five editing tools and onboarding"
     },
@@ -996,12 +995,12 @@
       "note": "the browser server (Playwright MCP): drive a real browser for visual checks / web app verification - expanded after the selection into one browser-<engine> server per kept browser; --no-webmcp, so a visited page never adds tools of its own"
     },
     {
-      "name": "memory",
+      "name": "alfred-memory",
       "args": "-e MCP_MEMORY_STORAGE_BACKEND=@MEMORY_BACKEND@ -e MCP_MEMORY_SQLITE_PATH=@MEMORY_DB_PATH@ -e MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000 -- node -e @ROOT_BOOT@ -- project uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --with numpy --from mcp-memory-service[sqlite]@MEMORY_PIN@ memory server",
       "note": "memory: required, like navigation and documentation (alfred-memory.md locks it in) - shared recall across sessions/projects; --memory-level picks where its db lives"
     },
     {
-      "name": "documentation",
+      "name": "alfred-documentation",
       "args": "@HTTP@",
       "note": "the documentation server (Context7): up-to-date library/framework/SDK docs (beats recalled API knowledge) - the hosted server only since 2.0.0 (the local npx transport was cut, R32)"
     },
@@ -1064,7 +1063,43 @@
       "alfred-capture-stack-usage",
       "create-ticket",
       "explain-code-tutor",
-      "plugin-authoring"
+      "plugin-authoring",
+      "alfred-capture-agent-capabilities",
+      "alfred-capture-architecture",
+      "alfred-capture-architecture-quality",
+      "alfred-capture-code-quality",
+      "alfred-capture-code-style",
+      "alfred-capture-first-look",
+      "alfred-capture-project-capabilities",
+      "alfred-capture-related-projects",
+      "alfred-capture-test-coverage",
+      "alfred-capture-usage-report",
+      "alfred-habits-adjust-agents-md",
+      "alfred-habits-clarify",
+      "alfred-habits-code-comments",
+      "alfred-habits-commit-checkpoint",
+      "alfred-habits-create-ticket",
+      "alfred-habits-done-gate",
+      "alfred-habits-execution-strategy",
+      "alfred-habits-explain-code",
+      "alfred-habits-plan-writing",
+      "alfred-habits-root-cause",
+      "alfred-habits-skill-writing",
+      "alfred-habits-test-first",
+      "alfred-issue-diagnoser",
+      "alfred-issue-signatures-ci",
+      "alfred-issue-signatures-runtime",
+      "alfred-loop-architecture-quality",
+      "alfred-loop-quality",
+      "alfred-loop-test-coverage",
+      "alfred-task-build-from-scratch",
+      "alfred-task-design",
+      "alfred-task-implement",
+      "alfred-task-solve",
+      "alfred-task-solve-cross",
+      "alfred-task-verify-code",
+      "alfred-task-verify-plan",
+      "alfred-task-version-upgrade"
     ],
     "agents": [
       "angular-solution-designer.md",
@@ -1079,7 +1114,9 @@
       "code-analyzer.md",
       "issue-diagnoser.md",
       "ci-failure-diagnoser.md",
-      "runtime-failure-diagnoser.md"
+      "runtime-failure-diagnoser.md",
+      "alfred-issue-diagnoser-ci.md",
+      "alfred-issue-diagnoser-runtime.md"
     ],
     "rules": [
       "baseline-agents-skills.md",
@@ -1120,38 +1157,76 @@
   },
   "renamed": {
     "skills": {
-      "project-solve-task": "alfred-task-solve",
-      "project-solve-cross-task": "alfred-task-solve-cross",
-      "project-build-from-scratch": "alfred-task-build-from-scratch",
-      "project-solution-design": "alfred-task-design",
-      "project-implementer": "alfred-task-implement",
-      "project-verify-plan": "alfred-task-verify-plan",
-      "project-verify-code": "alfred-task-verify-code",
-      "project-version-upgrade": "alfred-task-version-upgrade",
-      "project-diagnose-failure": "alfred-issue-diagnoser",
-      "project-ci-failure-signatures": "alfred-issue-signatures-ci",
-      "project-runtime-failure-signatures": "alfred-issue-signatures-runtime",
-      "project-architecture-analyzer": "alfred-capture-architecture",
-      "project-architecture-quality-analyzer": "alfred-capture-architecture-quality",
-      "project-code-style-analyzer": "alfred-capture-code-style",
-      "project-test-coverage-analyzer": "alfred-capture-test-coverage",
-      "project-related-context": "alfred-capture-related-projects",
-      "project-agent-capabilities": "alfred-capture-agent-capabilities",
-      "project-stack-usage-analyzer": "alfred-capture-usage-report",
-      "project-first-look": "alfred-capture-first-look",
-      "project-quality-loop": "alfred-loop-quality",
-      "project-architecture-quality-loop": "alfred-loop-architecture-quality",
-      "project-test-coverage-loop": "alfred-loop-test-coverage",
-      "project-commit-checkpoint": "alfred-habits-commit-checkpoint",
-      "alfred-capture-claude-md": "alfred-habits-adjust-agents-md",
-      "alfred-habits-adjust-claude-md": "alfred-habits-adjust-agents-md",
-      "alfred-capture-stack-usage": "alfred-capture-usage-report",
-      "create-ticket": "alfred-habits-create-ticket",
-      "explain-code-tutor": "alfred-habits-explain-code"
+      "project-solve-task": "task-solve",
+      "project-solve-cross-task": "task-solve-cross",
+      "project-build-from-scratch": "task-build-from-scratch",
+      "project-solution-design": "task-design",
+      "project-implementer": "task-implement",
+      "project-verify-plan": "task-verify-plan",
+      "project-verify-code": "task-verify-code",
+      "project-version-upgrade": "task-version-upgrade",
+      "project-diagnose-failure": "issue-diagnoser",
+      "project-ci-failure-signatures": "issue-signatures-ci",
+      "project-runtime-failure-signatures": "issue-signatures-runtime",
+      "project-architecture-analyzer": "capture-architecture",
+      "project-architecture-quality-analyzer": "capture-architecture-quality",
+      "project-code-style-analyzer": "capture-code-style",
+      "project-test-coverage-analyzer": "capture-test-coverage",
+      "project-related-context": "capture-related-projects",
+      "project-agent-capabilities": "capture-agent-capabilities",
+      "project-stack-usage-analyzer": "capture-usage-report",
+      "project-first-look": "capture-first-look",
+      "project-quality-loop": "loop-quality",
+      "project-architecture-quality-loop": "loop-architecture-quality",
+      "project-test-coverage-loop": "loop-test-coverage",
+      "project-commit-checkpoint": "habits-commit-checkpoint",
+      "alfred-capture-claude-md": "habits-adjust-agents-md",
+      "alfred-habits-adjust-claude-md": "habits-adjust-agents-md",
+      "alfred-capture-stack-usage": "capture-usage-report",
+      "create-ticket": "habits-create-ticket",
+      "explain-code-tutor": "habits-explain-code",
+      "alfred-capture-agent-capabilities": "capture-agent-capabilities",
+      "alfred-capture-architecture": "capture-architecture",
+      "alfred-capture-architecture-quality": "capture-architecture-quality",
+      "alfred-capture-code-quality": "capture-code-quality",
+      "alfred-capture-code-style": "capture-code-style",
+      "alfred-capture-first-look": "capture-first-look",
+      "alfred-capture-project-capabilities": "capture-project-capabilities",
+      "alfred-capture-related-projects": "capture-related-projects",
+      "alfred-capture-test-coverage": "capture-test-coverage",
+      "alfred-capture-usage-report": "capture-usage-report",
+      "alfred-habits-adjust-agents-md": "habits-adjust-agents-md",
+      "alfred-habits-clarify": "habits-clarify",
+      "alfred-habits-code-comments": "habits-code-comments",
+      "alfred-habits-commit-checkpoint": "habits-commit-checkpoint",
+      "alfred-habits-create-ticket": "habits-create-ticket",
+      "alfred-habits-done-gate": "habits-done-gate",
+      "alfred-habits-execution-strategy": "habits-execution-strategy",
+      "alfred-habits-explain-code": "habits-explain-code",
+      "alfred-habits-plan-writing": "habits-plan-writing",
+      "alfred-habits-root-cause": "habits-root-cause",
+      "alfred-habits-skill-writing": "habits-skill-writing",
+      "alfred-habits-test-first": "habits-test-first",
+      "alfred-issue-diagnoser": "issue-diagnoser",
+      "alfred-issue-signatures-ci": "issue-signatures-ci",
+      "alfred-issue-signatures-runtime": "issue-signatures-runtime",
+      "alfred-loop-architecture-quality": "loop-architecture-quality",
+      "alfred-loop-quality": "loop-quality",
+      "alfred-loop-test-coverage": "loop-test-coverage",
+      "alfred-task-build-from-scratch": "task-build-from-scratch",
+      "alfred-task-design": "task-design",
+      "alfred-task-implement": "task-implement",
+      "alfred-task-solve": "task-solve",
+      "alfred-task-solve-cross": "task-solve-cross",
+      "alfred-task-verify-code": "task-verify-code",
+      "alfred-task-verify-plan": "task-verify-plan",
+      "alfred-task-version-upgrade": "task-version-upgrade"
     },
     "agents": {
-      "ci-failure-diagnoser": "alfred-issue-diagnoser-ci",
-      "runtime-failure-diagnoser": "alfred-issue-diagnoser-runtime"
+      "ci-failure-diagnoser": "issue-diagnoser-ci",
+      "runtime-failure-diagnoser": "issue-diagnoser-runtime",
+      "alfred-issue-diagnoser-ci": "issue-diagnoser-ci",
+      "alfred-issue-diagnoser-runtime": "issue-diagnoser-runtime"
     },
     "rules": {
       "baseline-docs-root": "alfred-docs-root",
@@ -1163,9 +1238,12 @@
       "baseline-security": "alfred-security"
     },
     "mcps": {
-      "serena": "navigation",
-      "context7": "documentation",
-      "playwright": "browser"
+      "serena": "alfred-navigation",
+      "context7": "alfred-documentation",
+      "playwright": "browser",
+      "navigation": "alfred-navigation",
+      "documentation": "alfred-documentation",
+      "memory": "alfred-memory"
     }
   }
 }

@@ -131,7 +131,7 @@ function correctionMarker(text) {
 // A correction counts as saved when a memory store follows within this many replies - the plugin
 // route's name or a registration's (history plan, Gate G2).
 const SAVE_WINDOW = 3;
-const MEMORY_STORE_RE = /^mcp__(?:plugin_memory_)?memory__memory_store$/;
+const MEMORY_STORE_RE = /^mcp__(?:plugin_(?:alfred-)?memory_)?(?:alfred-)?memory__memory_store$/;
 const CHECK_WINDOW = 40;    // tool calls a check may sit before a commit and still count as its check
 // Build output, package trees, caches and lockfiles - a read there is a read of nothing the session
 // wrote. `bin/` catches a script dir too, so the report prints the paths and the reader judges. The data
@@ -198,7 +198,7 @@ const SOURCE_EXT_RE = /\.(?:cs|fs|vb|ts|tsx|mts|cts|js|jsx|mjs|cjs|py|go|rs|java
 // serena 1.7.0's locate tools: the three symbol tools plus find_declaration and find_implementations (M36).
 const SERENA_SYMBOL_TOOLS = new Set(['find_symbol', 'find_referencing_symbols', 'get_symbols_overview', 'find_declaration', 'find_implementations']);
 // The navigation server's name, and the one it went by before 2.0.0 - an older transcript still says serena.
-const NAVIGATION_SERVERS = new Set(['navigation', 'serena']);
+const NAVIGATION_SERVERS = new Set(['alfred-navigation', 'navigation', 'serena']);
 const SHELL_GREP_RE = /^\s*(?:\w+=\S*\s+)*(?:grep|egrep|fgrep|rg|ag|ack|git\s+grep)\b/;
 function locateClass(name, input) {
   if (name === 'LSP') return 'symbol';
@@ -307,7 +307,7 @@ function readJsonl(file, onObj) {
 
 // A rule or preamble written before the capture was renamed carries its old name, read from the
 // manifest's `renamed` map rather than spelled here.
-const STYLE_SKILL = 'alfred-capture-code-style';
+const STYLE_SKILL = 'capture-code-style';
 const STYLE_SKILL_NAMES = [STYLE_SKILL, ...Object.entries(loadManifest(path.join(__dirname, '..')).renamed.skills)
   .filter(([, now]) => now === STYLE_SKILL).map(([old]) => old)];
 const STYLE_RULE_MARKERS = STYLE_SKILL_NAMES.map((n) => `the ${n} skill owns this rule`);
@@ -848,6 +848,16 @@ function inventoryFor(acc, inventoryDir, main) {
   return { inv: applySessionRoster(hit.inv, main), mcp: hit.mcp };
 }
 
+// A stack item's name as the inventory keys it: the house plugin scope stripped (`alfred-code:task-solve`, a 1.x
+// `claude-stack-wpf:wpf-implementer`), and an old name a release renamed read as its new one (manifest `renamed`). // legacy-name
+let houseRenamed = null;
+function houseBare(name) {
+  const { BRAND, LEGACY } = require('./install/brand.js');
+  if (!houseRenamed) { const { renamed } = loadManifest(path.join(__dirname, '..')); houseRenamed = { ...renamed.skills, ...renamed.agents }; }
+  const bare = String(name || '').replace(new RegExp(`^(?:${BRAND.core}|${LEGACY.core})(?:-[a-z0-9-]+)?:`), '');
+  return Object.hasOwn(houseRenamed, bare) ? houseRenamed[bare] : bare;
+}
+
 function addSessionUse(acc, main, agents, inventoryDir) {
   acc.sessions += 1;
   const { inv, mcp } = inventoryFor(acc, inventoryDir, main);
@@ -894,14 +904,12 @@ function addSessionUse(acc, main, agents, inventoryDir) {
   };
 
   // The stack's own skills and agents ship as plugins, so a call or a dispatch arrives under the
-  // plugin-scoped name (`alfred-code:alfred-task-solve-cross`, `claude-stack-wpf:wpf-implementer`)
+  // plugin-scoped name (`alfred-code:task-solve-cross`, `claude-stack-wpf:wpf-implementer`)
   // while the INVENTORY keys everything bare. Joining the two without this strips nothing and the
   // row silently splits in two - one 'installed, never used' and one 'used, not installed'. A
   // FOREIGN namespace (`superpowers:...`) is left whole: it is not this stack's item. A session
-  // recorded before 2.0.0 names the same items under the 1.x plugin names.
-  const { BRAND, LEGACY } = require('./install/brand.js');
-  const houseScope = new RegExp(`^(?:${BRAND.core}|${LEGACY.core})(?:-[a-z0-9-]+)?:`);
-  const houseBare = (name) => String(name || '').replace(houseScope, '');
+  // recorded before 2.0.0 names the same items under the 1.x plugin names, and one recorded before a rename
+  // (2.2.0 dropped the `alfred-` prefix) under the old item name - read under the new one (houseBare).
 
   // --- skills: the Skill tool, the slash route, and the seats' frontmatter preload
   const namespaced = new Map();   // `<plugin>:<x>` called or typed - the plugin layer's evidence
@@ -2191,7 +2199,7 @@ function summarizeCauses(pending) {
 
 async function analyzeSubagents(sessionFile, window) {
   // Native layout: <sid>.jsonl + <sid>/subagents/. Audit bundles (what the
-  // alfred-capture-usage-report skill archives) put subagents/ as a SIBLING of the
+  // capture-usage-report skill archives) put subagents/ as a SIBLING of the
   // transcript - without the fallback a bundle re-analysis silently drops every seat.
   // Workflow-tool fan-outs nest under subagents/workflows/<wf-id>/agent-*.jsonl - a flat
   // scan silently dropped 703 transcripts (~35% of output) across two audited bundles,
@@ -2479,7 +2487,7 @@ function readBlockLedger(target, sessionId) {
 }
 
 // ---------- the two method-skill probes (log-only since 2026-09-25) ----------
-// guard-stop-contract.js writes where `alfred-habits-done-gate` and `alfred-habits-root-cause` were
+// guard-stop-contract.js writes where `habits-done-gate` and `habits-root-cause` were
 // NEEDED, and never holds or injects: the misses are counted here instead. A done-gate row is a claim
 // over a turn's source edit; its unrun rows split EXCLUSIVELY by the user's two named exceptions
 // first - a rule against running tests, a project with no tests found - then by whether the skill was
@@ -2496,7 +2504,7 @@ function tallyDoneGate(t, d, loadedBefore) {
   else if (loadedBefore(d.ts)) t.inContext += 1;
   else t.missed += 1;
 }
-const DONE_GATE_SKILL_RE = /(?:^|:)alfred-habits-done-gate$/;
+const DONE_GATE_SKILL_RE = /(?:^|:)(?:alfred-)?habits-done-gate$/;
 const doneGateLine = (t) => `DONE GATE (probe): ${t.claims} done claim(s) over an edit - ${t.ran} ran after the edit, ${t.unrun} unrun: `
   + `${t.byRule} excused by a rule, ${t.noTests} with no tests found, ${t.skillLoaded} with the skill loaded, ${t.inContext} with it loaded earlier, ${t.missed} MISSED`;
 
@@ -2551,7 +2559,7 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
 // cwd falls back to reading a temp-dir path as scratch. A call whose result is an error - a denied edit,
 // a failed Skill load - changed nothing and loaded nothing.
 const newRootCause = () => ({ streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0 });
-const ROOT_CAUSE_SKILL_RE = /(?:^|:)alfred-habits-root-cause$/;
+const ROOT_CAUSE_SKILL_RE = /(?:^|:)(?:alfred-)?habits-root-cause$/;
 const FIX_EDIT_TOOL_RE = /^(?:Edit|Write|MultiEdit|NotebookEdit)$/;
 const FIX_SKIP_RE = /\.(?:md|mdx|markdown|txt|rst|adoc|log|out|err|tmp|bak)$|(?:^|[\\/])\.claude[\\/]/i;
 const TEMP_PATH_RE = /^\/(?:tmp|dev|private\/tmp)\//;
@@ -3590,7 +3598,7 @@ function sessionsDirOf(cwd, configDir) {
   return path.join(configDir, 'projects', require('./memory-import.js').slugify(cwd));
 }
 
-module.exports = { loadPluginLayers, hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf };
+module.exports = { houseBare, loadPluginLayers, hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf };
 
 // ---------- entry ----------
 

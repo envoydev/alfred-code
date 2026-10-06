@@ -50,7 +50,7 @@ Assess blast radius with the navigation server (`find_symbol`, `find_referencing
 
 ## Flow B - target framework / SDK upgrade
 
-A breaking major the user wants planned and gated stage by stage - a framework or runtime major, an EOL, a load-bearing package's breaking major - is the deliberate version-upgrade flow, which only the user starts, with `/alfred-task-version-upgrade`: name that command to them. The steps below are the per-stage mechanics either way.
+A breaking major the user wants planned and gated stage by stage - a framework or runtime major, an EOL, a load-bearing package's breaking major - is the deliberate version-upgrade flow, which only the user starts, with `/task-version-upgrade`: name that command to them. The steps below are the per-stage mechanics either way.
 
 1. **Start clean.** Green tests and zero pending migrations before you touch a version - you want any new red to be unambiguously the upgrade's fault.
 2. **Move the SDK first.** Bump `global.json` if it pins one, then `<TargetFramework>` and `<LangVersion>` in each project. Sweep the whole solution for stragglers on the old TFM - a mixed-framework solution is its own class of bug.

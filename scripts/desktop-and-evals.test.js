@@ -117,7 +117,7 @@ test('I9: every setup-plugin/evals case invokes a command or skill the core entr
     }
 });
 
-test('I9: the size-first cases live with the library cases, where the eval bundle carries alfred-task-solve', () =>
+test('I9: the size-first cases live with the library cases, where the eval bundle carries task-solve', () =>
 {
     const { build } = require('./build-eval-bundle.js');
     const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'desktop-and-evals-bundle-')), 'b');

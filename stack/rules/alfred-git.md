@@ -29,6 +29,6 @@ PROJ-142
 ## Pre-commit checkpoint and publishing
 
 A non-trivial commit, a `git push` or a `gh pr merge` is next - the FIRST action is the
-`alfred-habits-commit-checkpoint` Skill call, before the command runs. It writes the
+`habits-commit-checkpoint` Skill call, before the command runs. It writes the
 `<docs-path>/flow/COMMIT-GATE` receipt, or the same-shaped `<docs-path>/flow/PUSH-GATE` receipt for a
 publish; `guard-ungated-commit` blocks all three without a fresh one.

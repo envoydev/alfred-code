@@ -92,7 +92,7 @@ const gate = (root, rows, text, extraEnv, extra) =>
 {
     const before = probes(root).length;
     const r = stop(root, rows, text, extraEnv, extra);
-    assert.doesNotMatch(r.stderr, /alfred-habits-done-gate|DONE_GATE/, `the done gate never holds: ${r.stderr}`);
+    assert.doesNotMatch(r.stderr, /habits-done-gate|DONE_GATE/, `the done gate never holds: ${r.stderr}`);
     assert.ok(!ledger(root).some((o) => !o.mode && o.detail && o.detail.branch === 'done-gate'), 'no done-gate block row');
     const after = probes(root);
     return { ...r, row: after.length > before ? after[after.length - 1] : null };
@@ -103,7 +103,7 @@ test('done gate: a done claim over an edit made after the turn\'s last test run 
     const root = project();
     const g = gate(root, steps(root, [['prompt', 'fix the cart total'], ['run', 'npm test', true], ['edit', 'src/money.js']]),
         'Fixed - the cart total is right now.');
-    assert.doesNotMatch(g.stderr, /alfred-habits-done-gate/, 'no hold text reaches the model');
+    assert.doesNotMatch(g.stderr, /habits-done-gate/, 'no hold text reaches the model');
     assert.ok(unrun(g), JSON.stringify(g.row));
     assert.strictEqual(g.row.hook, 'guard-stop-contract.js');
     assert.strictEqual(g.row.event, 'Stop');
@@ -179,13 +179,13 @@ test('done gate: a Monitor shell write and a navigation rename are source edits 
     assert.ok(unrun(g1), 'a Monitor shell write then Fixed.');
     assert.match(g1.row.detail.file, /src[\\/]a\.js/);
     // both routes' spellings - the copy route's bare server is composed, never literal text (lint check 54)
-    for (const tool of ['plugin_navigation_navigation__rename_symbol', 'navigation__rename_symbol', 'plugin_navigation_navigation__safe_delete_symbol'].map((t) => `mcp__${t}`)) {
+    for (const tool of ['plugin_alfred-navigation_alfred-navigation__rename_symbol', 'alfred-navigation__safe_delete_symbol', 'plugin_navigation_navigation__rename_symbol', 'navigation__rename_symbol', 'plugin_navigation_navigation__safe_delete_symbol'].map((t) => `mcp__${t}`)) {
         const nav = call(tool, { name_path: 'Cart/total', relative_path: 'src/cart.ts', new_name: 'sum' });
         const g = gate(root, turn(nav), 'Done - renamed.');
         assert.ok(unrun(g), `${tool} then Done`);
         assert.match(g.row.detail.file, /src[\\/]cart\.ts/, `${tool}: the declaring file`);
     }
-    const lookup = call('mcp__plugin_navigation_navigation__find_symbol', { name_path: 'Cart', relative_path: 'src/cart.ts' });
+    const lookup = call('mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', { name_path: 'Cart', relative_path: 'src/cart.ts' });
     assert.strictEqual(gate(root, turn(lookup), 'Done.').row, null, 'a lookup is no edit');
 });
 
@@ -357,7 +357,7 @@ test('done gate: ALFRED_CODE_DONE_GATE=0 switches the probe off', () => {
 // What the analyzer splits the unrun rows by: was the skill loaded this turn, does the project declare
 // tests at all, and does an instruction file forbid running them (the user's two named exceptions).
 test('done gate: the row records the skill load, the project\'s test markers and a rule against running tests', () => {
-    const skill = (root) => { const c = call('Skill', { skill: 'alfred-code:alfred-habits-done-gate' }); return [c.row, result(c.id, 'Launching skill')]; };
+    const skill = (root) => { const c = call('Skill', { skill: 'alfred-code:habits-done-gate' }); return [c.row, result(c.id, 'Launching skill')]; };
     const bare = project();
     let g = gate(bare, steps(bare, [['prompt', 'fix it'], ['edit', 'src/money.js']]), 'Fixed.');
     assert.deepStrictEqual([g.row.detail.skill, g.row.detail.tests, g.row.detail.rule], [false, 'none-found', null]);

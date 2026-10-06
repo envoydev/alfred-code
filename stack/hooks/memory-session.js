@@ -23,7 +23,7 @@ if (require.main === module) {
 
 const CAP_BYTES = 4096;
 const STDIN_TIMEOUT_MS = 2000;
-const TOOL_SEARCH_LINE = 'ToolSearch select:mcp__plugin_memory_memory__memory_store,mcp__plugin_memory_memory__memory_search,mcp__plugin_memory_memory__memory_list';
+const TOOL_SEARCH_LINE = 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list';
 
 // A plain `fs.readFileSync(0)` blocks forever when stdin never closes (a TTY, or a harness that keeps
 // the pipe open) - this hook only ever needs `cwd` out of the payload, and that already has a

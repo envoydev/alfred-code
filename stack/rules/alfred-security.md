@@ -6,7 +6,7 @@ description: House baseline - security. Always-on (no paths), installer-managed 
 
 ## Reviewing a security-relevant diff
 
-- Crypto / secret / auth / payment / data-access work: review the FULL change set for vulnerabilities before presenting it, the reset chained into the SAME call - `git add -N . && git diff HEAD; git reset -q` - because a diff-fed review skips brand-new files. The method, the `/security-review` bound and the exemptions are `alfred-habits-commit-checkpoint`'s security half; on these paths the `COMMIT-GATE` receipt (alfred-habits-commit-checkpoint) is written `VERIFIED` only after the review ran.
+- Crypto / secret / auth / payment / data-access work: review the FULL change set for vulnerabilities before presenting it, the reset chained into the SAME call - `git add -N . && git diff HEAD; git reset -q` - because a diff-fed review skips brand-new files. The method, the `/security-review` bound and the exemptions are `habits-commit-checkpoint`'s security half; on these paths the `COMMIT-GATE` receipt (habits-commit-checkpoint) is written `VERIFIED` only after the review ran.
 - A 'test-only diff' skip is a claim: verify it from the diff's file list and name the carve-out in the close ('security review: skipped - test-only diff: <paths>').
 - An inline review names a finding per category, and the categories land in the receipt's own `security:` row (`security: auth ok, secrets ok, injection ok, data-access n/a`) - a one-line 'no issues' is no review.
 - A user override of a security recommendation: proceed, and record it with the risk named and their words quoted, in the close and any receipt.

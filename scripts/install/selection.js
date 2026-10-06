@@ -669,7 +669,7 @@ function respellRosterSeats({ projectRoot, core, seats = [], log = () => {}, not
     }
     if (!changed) return 0;
     try { fs.writeFileSync(file, lines.join('\n')); }
-    catch (err) { note(`.claude/rules/alfred-project-agent-capabilities.md names ${changed} seat(s) the core answers under ${core}:<seat> and could not be re-spelled (${err.message}) - re-run /alfred-capture-agent-capabilities`); return 0; }
+    catch (err) { note(`.claude/rules/alfred-project-agent-capabilities.md names ${changed} seat(s) the core answers under ${core}:<seat> and could not be re-spelled (${err.message}) - re-run /capture-agent-capabilities`); return 0; }
     log(`  roster: alfred-project-agent-capabilities.md - ${changed} seat name(s) re-spelled to how they resolve (${core}:<seat> on the core, bare for a kept project copy)`);
     return changed;
 }
@@ -786,8 +786,25 @@ function planInventory({ lists, listing = [], answered, pluginCatalog = [], left
         plugins_disabled: listing.filter((r) => !rowOn(r) && !USER_OFF_WINS.includes(r.name) && !(engineOf(r.name) && pickedMcps.has(r.name))).map((r) => r.name),
         parked_plugins: pluginCatalog.filter((n) => rowOf.has(n) && !rowOf.get(n).enabled),
         left_out: leftOut,
+        scopes: itemScopes(listing),
         answered,
     };
+}
+
+// 2.2.0: where each installed OPTIONAL item lives now (args.js SCOPED_ITEMS) - `global` for a user-scope row, every
+// project on the account, `project` for this project's own (project or local) - so the walk shows it and offers the
+// move as `--scope-of <item>=<global|project>`. An item at both reads `project`: this project's row is the one it loads.
+function itemScopes(listing = [])
+{
+    const { SCOPED_ITEMS } = require('./args.js');
+    const out = {};
+    for (const r of listing)
+    {
+        if (!SCOPED_ITEMS.includes(r.name) || !r.version) continue;
+        const here = r.scope === 'user' ? 'global' : 'project';
+        if (out[r.name] !== 'project') out[r.name] = here;
+    }
+    return out;
 }
 
 // What the user switched off, as selection lines: every item a parked stack entry carries, and
@@ -815,7 +832,7 @@ function leftOut({ parked = [], deny = [] })
 //
 // The core (the hooks ride it) and the three locked servers are never queued: a drop of them is
 // refused before it gets here anyway.
-const NEVER_DISABLED = new Set([BRAND.core, 'navigation', 'documentation', 'memory']);
+const NEVER_DISABLED = new Set([BRAND.core, 'alfred-navigation', 'alfred-documentation', 'alfred-memory']);
 function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 {
     const gone = new Set(before.filter((n) => !after.includes(n)));

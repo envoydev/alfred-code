@@ -1152,7 +1152,7 @@ test('an empty ref or one ending in a slash is refused rather than composed into
 });
 
 // The compatibility proof itself: a bare id straight out of a shipped watch.json's sections array
-// (alfred-capture-architecture/references/doc-shapes.md's own example uses this shape, e.g.
+// (capture-architecture/references/doc-shapes.md's own example uses this shape, e.g.
 // 'modules#module-map') and the 'references/<topic>#<id>' spelling docs-session.js documents as an
 // equivalent way to write the same ref (stack/hooks/docs-session.js:220) - both must resolve to the one
 // file that actually holds the section, architecture/references/patterns.md, not to a nonexistent

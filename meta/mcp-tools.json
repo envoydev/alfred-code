@@ -52,7 +52,7 @@
         "browser_wait_for"
       ]
     },
-    "documentation": {
+    "alfred-documentation": {
       "version": null,
       "tools": [
         "query-docs",
@@ -76,7 +76,7 @@
         "Wait"
       ]
     },
-    "memory": {
+    "alfred-memory": {
       "version": "11.14.0",
       "tools": [
         "commit_session_legacy",
@@ -109,7 +109,7 @@
         "unquarantine_memory"
       ]
     },
-    "navigation": {
+    "alfred-navigation": {
       "version": "1.7.0",
       "tools": [
         "activate_project",

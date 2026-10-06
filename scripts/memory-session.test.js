@@ -87,7 +87,7 @@ test('a session start with a registered, populated database pushes the memory bl
     const ownIdx = text.indexOf('own project note');
     const sibIdx = text.indexOf('a sibling note');
     assert.ok(prefIdx > -1 && ownIdx > prefIdx && sibIdx > ownIdx, text);
-    assert.match(text, /ToolSearch select:mcp__plugin_memory_memory__memory_store,mcp__plugin_memory_memory__memory_search,mcp__plugin_memory_memory__memory_list/);
+    assert.match(text, /ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list/);
     // Proof this is the real end-to-end stdout, not a shape assumption.
     console.log('--- memory-session.js real stdout (fixture project) ---\n' + r.stdout + '\n--- end ---');
   } finally { p.rm(); }
@@ -129,7 +129,7 @@ test('an empty database still names the project tag and the search hint - never 
     // Kept short: just the tag line and the search hint, no 'Memory (...)' header, no frame, no body.
     assert.strictEqual(text, [
       `This project's memory tag: project:${projectName}`,
-      'Store, search or list more: ToolSearch select:mcp__plugin_memory_memory__memory_store,mcp__plugin_memory_memory__memory_search,mcp__plugin_memory_memory__memory_list',
+      'Store, search or list more: ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list',
     ].join('\n'));
   } finally { p.rm(); }
 });

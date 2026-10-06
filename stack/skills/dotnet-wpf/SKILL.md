@@ -6,7 +6,7 @@ user-invocable: false
 
 # WPF conventions
 
-For any WPF or NuGet API surface not pinned down here, resolve signatures with the `documentation` MCP rather than memory - never by grepping the NuGet cache or decompiled sources.
+For any WPF or NuGet API surface not pinned down here, resolve signatures with the `alfred-documentation` MCP rather than memory - never by grepping the NuGet cache or decompiled sources.
 
 WPF is a retained-mode XAML UI on the data-binding engine. The whole discipline below exists to keep
 view concerns (visuals, the visual tree, the dispatcher) on one side of a line and application state

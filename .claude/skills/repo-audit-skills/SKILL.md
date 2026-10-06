@@ -19,7 +19,7 @@ assume a particular set. It is this repo's own maintenance tool, not part of the
 
 - The user types `/repo-audit-skills` to audit the shipped catalog in `stack/skills`, or a root they name.
 - Not for the subagents (`/repo-audit-agents`) or the rule files (`/repo-audit-rules`), and not for
-  writing one skill - that method is `stack/skills/alfred-habits-skill-writing/SKILL.md`.
+  writing one skill - that method is `stack/skills/habits-skill-writing/SKILL.md`.
 
 ## Parameters
 

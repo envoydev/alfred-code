@@ -151,7 +151,7 @@ walk.md's Agents layer.
 
 ## 6. Skills
 
-walk.md's Skills layer, with the FRESH seed set (`always.skills`, `alfred-task-build-from-scratch` never
+walk.md's Skills layer, with the FRESH seed set (`always.skills`, `task-build-from-scratch` never
 seeded).
 
 ## 7. Hooks
@@ -202,8 +202,10 @@ the install writes.
 
 Then run the installer **from the snapshot**, and pass it back with `--source` so it installs from what you already downloaded instead of fetching again:
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--browsers <csv> --browser-enabled <csv|none>] [--docs-versioning git|local] [--data-path <folder>] [--github-cli]`
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--browsers <csv> --browser-enabled <csv|none>] [--scope-of <item>=global ...] [--docs-versioning git|local] [--data-path <folder>] [--github-cli]`
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
+
+`--scope-of` carries the walk's last answer (`references/walk.md`, 'Where each optional item installs'): one `--scope-of <item>=global` per optional pick the user made global; every other one installs in this project, so a 'This project, all of them' answer passes none.
 
 `--docs-versioning` carries screen B's docs-versioning answer whenever screen B asked it: the installer then WRITES that decision instead of seeding a detected value, prints one `ALFRED_CODE_DOCS_VERSIONING <old> -> '<new>'` line instead of a seed line, and so leaves nothing for the re-probe below to touch.
 

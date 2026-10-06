@@ -34,20 +34,20 @@ const verifiers = seats.filter((s) => s.endsWith('-verifier'));
 // deprecation to the documentation server. A seat that judges or writes code and cannot call it can only
 // guess or mark the claim unverified. The five gatherers extract facts from THIS project and pass no
 // outside-world verdict, so they stay without it.
-const DOC_GRANT = 'mcp__plugin_documentation_documentation__*';
+const DOC_GRANT = 'mcp__plugin_alfred-documentation_alfred-documentation__*';
 const GATHERERS = new Set(['architecture-analyzer', 'code-style-analyzer', 'evidence-gatherer', 'related-project-analyzer', 'test-coverage-analyzer']);
 
 test('I13: every seat that judges or writes code holds the documentation grant the always-on rule sends it to', () =>
 {
     const rule = fs.readFileSync(path.join(ROOT, 'stack', 'rules', 'alfred-quality-gates.md'), 'utf8');
-    assert.match(squash(rule), /is checked against the `documentation` server/, 'the always-on rule still directs the lookup');
+    assert.match(squash(rule), /is checked against the `alfred-documentation` server/, 'the always-on rule still directs the lookup');
     const missing = seats.filter((s) => !GATHERERS.has(s) && !tools(s).includes(DOC_GRANT));
     assert.deepStrictEqual(missing, [], `each needs ${DOC_GRANT} in tools:`);
 });
 
 test('I13: a seat whose own body sends it to the documentation server holds the grant', () =>
 {
-    const missing = seats.filter((s) => /documentation server|mcp__plugin_documentation_documentation__/.test(body(s)) && !tools(s).includes(DOC_GRANT));
+    const missing = seats.filter((s) => /documentation server|mcp__plugin_alfred-documentation_alfred-documentation__/.test(body(s)) && !tools(s).includes(DOC_GRANT));
     assert.deepStrictEqual(missing, []);
 });
 
@@ -187,7 +187,7 @@ test('I15: no seat body looks for a skill in the plugin cache or the account dir
 test('I15: integration-reviewer reads .claude/skills, and keeps the two essentials only for a project without the skill', () =>
 {
     const text = squash(body('integration-reviewer'));
-    assert.match(text, /`\.claude\/skills\/alfred-task-solve-cross\/references\/\*\.md`/);
+    assert.match(text, /`\.claude\/skills\/task-solve-cross\/references\/\*\.md`/);
     assert.doesNotMatch(text, /account dir|on the plugin route/);
     assert.match(text, /switched that skill off/);
     assert.match(text, /gate on the two essentials you cannot reconstruct from the diff/);

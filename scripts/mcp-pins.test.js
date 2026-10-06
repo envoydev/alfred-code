@@ -17,7 +17,7 @@ const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const FLOATING = /[\w@/.-]+@latest\b/;
-const PINNED = { browser: '@playwright/mcp', navigation: 'serena-agent', memory: 'mcp-memory-service', 'windows-desktop': 'windows-mcp', 'macos-desktop': 'macos-mcp' };
+const PINNED = { browser: '@playwright/mcp', 'alfred-navigation': 'serena-agent', 'alfred-memory': 'mcp-memory-service', 'windows-desktop': 'windows-mcp', 'macos-desktop': 'macos-mcp' };
 
 test('no shipped MCP launch line runs a package on @latest - manifest or generated plugin entries', () =>
 {
@@ -140,7 +140,7 @@ test('refresh-mcp-pins: a PyPI pin never moves past what the pinned Python can i
 test('M38 every shipped serena index command names the release pin and the cut-off', () =>
 {
     const file = JSON.parse(read('meta/mcp-pins.json'));
-    const want = `--exclude-newer ${file.refreshed}T23:59:59Z --from serena-agent@${file.pins.navigation.version} serena project index`;
+    const want = `--exclude-newer ${file.refreshed}T23:59:59Z --from serena-agent@${file.pins["alfred-navigation"].version} serena project index`;
     const sites = [];
     const walk = (dir) =>
     {
@@ -169,7 +169,7 @@ async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = t
     const toolsFile = path.join(dir, 'mcp-tools.json');
     const contextFile = path.join(dir, 'navigation-context.yml');
     if (pinsRaw === null) fs.copyFileSync(path.join(ROOT, 'meta', 'mcp-pins.json'), pinsFile); else fs.writeFileSync(pinsFile, pinsRaw);
-    fs.writeFileSync(toolsFile, JSON.stringify({ servers: { memory: { version: 'old', tools: ['kept_tool'] }, ...committed } }));
+    fs.writeFileSync(toolsFile, JSON.stringify({ servers: { "alfred-memory": { version: 'old', tools: ['kept_tool'] }, ...committed } }));
     const upstream = 'name: claude-code\nexcluded_tools: []\n';
     const sha = require('node:crypto').createHash('sha256').update(upstream).digest('hex');
     fs.writeFileSync(contextFile, `${recorded ? `# upstream: serena-agent 1.7.0 claude-code.yml sha256 ${sha}\n` : ''}name: alfred-code\n`);
@@ -189,18 +189,18 @@ async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = t
 
 test('R7 refresh-mcp-pins: a serena bump whose claude-code context changed is refused until it is re-diffed', async () =>
 {
-    const was = JSON.parse(read('meta/mcp-pins.json')).pins.navigation.version;
+    const was = JSON.parse(read('meta/mcp-pins.json')).pins["alfred-navigation"].version;
     const changed = await refreshRun({ context: 'name: claude-code\nexcluded_tools: []\nnew_tool: yes\n' });
-    assert.strictEqual(changed.pins.pins.navigation.version, was, 'the navigation pin stays');
-    assert.match(changed.text, /navigation: .* -> 9\.9\.9 REFUSED - serena-agent 9\.9\.9's claude-code\.yml is not the one stack\/mcp\/navigation-context\.yml was diffed against/);
+    assert.strictEqual(changed.pins.pins["alfred-navigation"].version, was, 'the navigation pin stays');
+    assert.match(changed.text, /alfred-navigation: .* -> 9\.9\.9 REFUSED - serena-agent 9\.9\.9's claude-code\.yml is not the one stack\/mcp\/navigation-context\.yml was diffed against/);
     assert.strictEqual(changed.rc, 1, 'a refused bump is a failed refresh');
     const none = await refreshRun({ recorded: false });
-    assert.strictEqual(none.pins.pins.navigation.version, was, 'no recorded hash refuses too');
+    assert.strictEqual(none.pins.pins["alfred-navigation"].version, was, 'no recorded hash refuses too');
     assert.match(none.text, /REFUSED - .*records no upstream sha256/);
     const unreadable = await refreshRun({ context: null });
-    assert.strictEqual(unreadable.pins.pins.navigation.version, was, 'an unreadable upstream context refuses');
+    assert.strictEqual(unreadable.pins.pins["alfred-navigation"].version, was, 'an unreadable upstream context refuses');
     const same = await refreshRun();
-    assert.strictEqual(same.pins.pins.navigation.version, '9.9.9', 'an unchanged upstream context lets the bump through');
+    assert.strictEqual(same.pins.pins["alfred-navigation"].version, '9.9.9', 'an unchanged upstream context lets the bump through');
     assert.strictEqual(same.rc, 0);
     assert.strictEqual(same.pins.refreshed, '2026-10-01');
 });
@@ -208,12 +208,12 @@ test('R7 refresh-mcp-pins: a serena bump whose claude-code context changed is re
 test('R7 refresh-mcp-pins: an unreadable pins file does not skip the serena gate, and a new navigation tool is named', async () =>
 {
     const changed = await refreshRun({ pinsRaw: '{ not json', context: 'name: claude-code\nexcluded_tools: []\nnew_tool: yes\n' });
-    assert.match(changed.text, /navigation: unpinned -> 9\.9\.9 REFUSED/, 'a bump with no recorded pin went past the gate');
+    assert.match(changed.text, /alfred-navigation: unpinned -> 9\.9\.9 REFUSED/, 'a bump with no recorded pin went past the gate');
     assert.strictEqual(changed.rc, 1);
-    assert.strictEqual(changed.pins.pins.navigation.version, null, 'a refused bump with no earlier pin ships unpinned');
-    const grown = await refreshRun({ committed: { navigation: { version: '1.7.0', tools: ['find_symbol'] } }, lists: { navigation: ['find_symbol', 'shiny_editor'] } });
-    assert.match(grown.text, /!! navigation: new tool shiny_editor/);
-    assert.doesNotMatch(grown.text, /!! navigation: new tool find_symbol/);
+    assert.strictEqual(changed.pins.pins["alfred-navigation"].version, null, 'a refused bump with no earlier pin ships unpinned');
+    const grown = await refreshRun({ committed: { "alfred-navigation": { version: '1.7.0', tools: ['find_symbol'] } }, lists: { "alfred-navigation": ['find_symbol', 'shiny_editor'] } });
+    assert.match(grown.text, /!! alfred-navigation: new tool shiny_editor/);
+    assert.doesNotMatch(grown.text, /!! alfred-navigation: new tool find_symbol/);
 });
 
 // M31: the refresh records each pinned server's tool names beside the pins (meta/mcp-tools.json), which lint check 62
@@ -223,8 +223,8 @@ test('M31 refresh-mcp-pins: --write records each server\'s tool names, and keeps
     const got = await refreshRun({ lists: { browser: ['browser_navigate', 'browser_click'] } });
     assert.deepStrictEqual(got.tools.servers.browser.tools, ['browser_click', 'browser_navigate'], 'sorted');
     assert.strictEqual(got.tools.servers.browser.version, JSON.parse(read('meta/mcp-pins.json')).pins.browser.version);
-    assert.deepStrictEqual(got.tools.servers.memory.tools, ['kept_tool'], 'an unlisted server keeps what it had');
-    assert.match(got.text, /tools memory: NOT CHECKED/);
+    assert.deepStrictEqual(got.tools.servers["alfred-memory"].tools, ['kept_tool'], 'an unlisted server keeps what it had');
+    assert.match(got.text, /tools alfred-memory: NOT CHECKED/);
 });
 
 test('M31 meta/mcp-tools.json lists every pinned server at its pin, and the desktop launcher\'s gate names the same Windows tools', () =>
@@ -236,7 +236,7 @@ test('M31 meta/mcp-tools.json lists every pinned server at its pin, and the desk
         assert.ok(tools[name] && tools[name].tools.length, `${name} has a tool list`);
         assert.strictEqual(tools[name].version, row.version, `${name}'s list is for the pinned version`);
     }
-    assert.ok(tools.documentation && tools.documentation.tools.includes('query-docs'), 'the hosted documentation server is listed');
+    assert.ok(tools["alfred-documentation"] && tools["alfred-documentation"].tools.includes('query-docs'), 'the hosted documentation server is listed');
     const { WINDOWS_TOOLS } = require('../stack/mcp/desktop-launch.js');
     assert.deepStrictEqual([...WINDOWS_TOOLS].sort(), [...tools['windows-desktop'].tools].sort());
 });

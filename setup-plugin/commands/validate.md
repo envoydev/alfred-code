@@ -208,7 +208,7 @@ candidates, the signal as the reason - already deduped against the `missing:` li
 The tool already excludes shared items, deliberate non-stack extras, already-installed baseline,
 anything the scan matched, and the curated `general` set in recommendations.json (artifacts no stack owns: cross-stack skills a
 narrow seat happens to preload - e.g. dotnet-data-access - and the project-conditional opt-ins whose
-applicability no manifest can prove, e.g. the `alfred-capture-related-projects` / `related-project-analyzer`
+applicability no manifest can prove, e.g. the `capture-related-projects` / `related-project-analyzer`
 pair, which apply only where the project has sibling repos) - present its output as printed above.
 
 One addition of your own, in ONE call - never by opening the catalog, which is a maintainer file
@@ -250,7 +250,7 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
 ---+------------------------+-----------+-----------------------------------
  1 | wpf-implementer        | REDUNDANT | owned by wpf, not detected
  2 | aspnet-verifier        | MISSING   | needed by aspnet
- 3 | alfred-issue-diagnoser-ci   | MISSING   | needed by baseline
+ 3 | issue-diagnoser-ci   | MISSING   | needed by baseline
 ```
 
 2. **One consent round through AskUserQuestion** - four options (the tool's cap), typed numbers via
@@ -270,10 +270,11 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   v0.2.17 had no guided route to the instrument hook until this entry existed). On the PLUGIN route
   an accepted add is not an install at all: the name is removed from `ALFRED_CODE_HOOKS_OFF` in the
   scope's `settings.json` env, and the apply step reports it as that edit, not as a copied file.
-- **MCPs / plugins** - no plugin is always-baseline: `claude-hud` rides beside the core, so it is
-  never REDUNDANT and the next update puts it back when it is gone. One exception:
-  a `claude-hud` the user disabled stays off - it is in no `plugins_disabled` row and never proposed
-  for an enable. The two optional ones (`csharp-lsp`, `typescript-lsp`) show
+- **MCPs / plugins** - `claude-hud` is the one always-recommended plugin (2.2.0 - an optional pick,
+  marked in every walk): never REDUNDANT, and never MISSING either - an install without it is the user's
+  choice, so it is at most one `no-evidence:`-style advisory naming `/alfred-code:configure` to add it. A
+  `claude-hud` the user disabled stays off - it is in no `plugins_disabled` row and never proposed for an
+  enable. The two optional ones (`csharp-lsp`, `typescript-lsp`) show
   MISSING only on evidence - an `evidence-missing:` line naming the matched
   manifest - or, for an LSP plugin, when its stack is detected but it was dropped. An LSP plugin
   with neither a signal nor a detected owning stack is REDUNDANT; any other optional plugin without
@@ -282,10 +283,10 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   `installed but disabled for this project` - and its accept action is `claude plugin enable
   <name>`, never an install and never an uninstall. A DISABLED plugin the user leaves alone is a
   deliberate choice and is not re-raised in the close.
-- **`memory` joins `navigation` and `documentation`** as an always-required MCP (`alfred-memory.md` locks
+- **`alfred-memory` joins `alfred-navigation` and `alfred-documentation`** as an always-required MCP (`alfred-memory.md` locks
   it in the same way `alfred-navigation.md` locks the navigation server) - MISSING when the project carries no
   registration at all, never REDUNDANT: no stack owns it, so it belongs to every install regardless
-  of what is detected. Whenever `memory` IS registered - shown in this table or already installed -
+  of what is detected. Whenever `alfred-memory` IS registered - shown in this table or already installed -
   read its level with `node .claude/hooks/memory.js level` (the project's own copy; fall back to
   `node "$TMP/repo/stack/hooks/memory.js" level` when that file is absent), which prints `<level>
   <dbPath>` or `none` - or `refused <file>` when a settings file cannot be read and no other names the database: the
@@ -418,7 +419,7 @@ turn polling for it. Five inputs, five gates:
      for a run to measure)` - and fall back to the same corroboration gate 1 uses: the evidence
      scan's verdict for that server plus bounded NAMED greps for its domain markers. Never propose
      a drop on absence of a ledger alone.
-   - The three locked servers (`navigation`, `documentation`, `memory`) are never proposed - an always-on rule names
+   - The three locked servers (`alfred-navigation`, `alfred-documentation`, `alfred-memory`) are never proposed - an always-on rule names
      them, so they are closure-held. Everything else is in scope.
 
 5. **Functional overlap among kept items.** The candidates are the tool's `overlap:` lines
@@ -516,9 +517,8 @@ profile), output to `$TMP/select.out` - then:
   log names the command for the user. Two removals the installer never makes, each with its command shown first:
   `claude mcp remove <name>` for an MCP on the copy route (browser = every
   `browser-<engine>` server), and
-  `claude plugin uninstall <name> --scope <the scope step 1 recorded for it>`, except a plugin every
-  install carries beside the core - never propose removing one: the installer puts it back on every
-  run, so the removal would only be undone. The removal ask that proposed it
+  `claude plugin uninstall <name> --scope <the scope step 1 recorded for it>` (2.2.0: no plugin rides
+  beside the core any more - claude-hud is a pick like the LSP pair). The removal ask that proposed it
   NAMES that scope ('enabled at USER scope - removing it removes it for every
   project'), since account-wide and project-local are different consents.
 - **Check the generated rule's stamped policy against this release, mechanically.** The usage-policy
@@ -528,13 +528,13 @@ profile), output to `$TMP/select.out` - then:
 
   ```bash
   grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/alfred-project-agent-capabilities.md
-  grep -m1 -o 'policy-rev: [0-9a-f]*' "$TMP/repo/stack/skills/alfred-capture-agent-capabilities/SKILL.md"
+  grep -m1 -o 'policy-rev: [0-9a-f]*' "$TMP/repo/stack/skills/capture-agent-capabilities/SKILL.md"
   ```
 
   Equal - say `capabilities policy: current`. Different, or the project's rule carries no rev at all
   (written before the stamp existed) - report it as a finding with both values and name the re-run as
   the fix. No rule on disk is not a finding here; it is the capture never having run.
-- Then name `/alfred-capture-agent-capabilities` (when installed) in the post-check report as the
+- Then name `/capture-agent-capabilities` (when installed) in the post-check report as the
   USER's next step, so the generated awareness rule reflects the reconciled inventory - the
   skill is manual-only (`disable-model-invocation`), a Skill call from this run is denied by `guard-fresh-session-start.js`;
   never attempt it. `alfred-code.stamp` is rewritten ONLY by an installer invocation - the apply step's
@@ -543,11 +543,11 @@ profile), output to `$TMP/select.out` - then:
   fabricated install time that every later stamp compare then trusts (measured: one run did exactly this).
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/alfred-capture-agent-capabilities`
+follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-capabilities`
 (when installed and this run added or removed something it lists), a manual-only capture whose
 output this run made stale, the navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
-matters ('`/alfred-capture-agent-capabilities` - validate added 3 skills, so the generated rule's
+matters ('`/capture-agent-capabilities` - validate added 3 skills, so the generated rule's
 inventory is short'). No AskUserQuestion over them: the walk's asks end with the installer (a
 write still gets its consent ask where it happens), and the closing ask over follow-ups was
 dropped as friction - the user's call, made knowing a prose next step was ignored 3 of 3 in one
@@ -619,7 +619,7 @@ that is gone, a command whose program is not on PATH, a placeholder or TODO left
 carrying the template's authoring text. Rows get ONE AskUserQuestion with NO option marked
 recommended - the check is heuristic, and a row can be correct text it could not resolve (a folder
 under a prefixed name, a program a script installs), so each row is the user's read: 'Review them with
-`/alfred-habits-adjust-agents-md`' (its improve mode shows every change before writing) or 'Leave them'.
+`/habits-adjust-agents-md`' (its improve mode shows every change before writing) or 'Leave them'.
 Never edit an instruction file from this command; a `command` row on a program only another OS runs is the
 user's call, not a fix.
 

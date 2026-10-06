@@ -198,15 +198,15 @@ test('the slash route is UserPromptExpansion, its matcher naming every orchestra
     const matches = (name) => new RegExp(slash[0].matcher).test(name);
     const src = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', file), 'utf8');
     const orchestration = new RegExp(src.match(/^const ORCHESTRATION = \/(.+)\/;$/m)[1]);
-    const names = ['alfred-loop-quality', 'alfred-loop-architecture-quality', 'alfred-loop-test-coverage', 'alfred-capture-architecture',
-        'alfred-capture-project-capabilities', 'alfred-task-solve', 'alfred-task-solve-cross', 'alfred-task-verify-code', 'alfred-issue-diagnoser',
+    const names = ['loop-quality', 'loop-architecture-quality', 'loop-test-coverage', 'capture-architecture',
+        'capture-project-capabilities', 'task-solve', 'task-solve-cross', 'task-verify-code', 'issue-diagnoser',
         'security-review', 'alfred-code:init', 'alfred-code:setup', 'alfred-code:update', 'alfred-code:configure', 'alfred-code:validate'];
     for (const n of names) {
         assert.ok(orchestration.test(n), `${n} is one the hook judges`);
         assert.ok(matches(n) && matches(n.replace(/^.*:/, '')), `${n} reaches the hook under either spelling`);
         if (!n.includes(':')) assert.ok(matches(`alfred-code:${n}`), `${n} reaches it plugin-scoped too`);
     }
-    for (const n of ['help', 'clear', 'compact', 'dev-log-convert', 'my-setup', 'alfred-task-solved', 'csharp', 'alfred-code:status'])
+    for (const n of ['help', 'clear', 'compact', 'dev-log-convert', 'my-setup', 'task-solved', 'csharp', 'alfred-code:status'])
         assert.ok(!matches(n), `${n} never spawns the hook`);
 });
 

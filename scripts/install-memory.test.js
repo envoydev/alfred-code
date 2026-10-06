@@ -26,7 +26,7 @@ function project({ settings, rules = ['alfred-memory.md'] } = {})
 const settingsOf = (root) => path.join(root, '.claude', 'settings.json');
 const GATE = (root, over = {}) => ({
     projectRoot: root, settingsFile: settingsOf(root),
-    mcps: ['serena|x', 'memory|y'], rules: ['alfred-memory.md::x'], ...over,
+    mcps: ['serena|x', 'alfred-memory|y'], rules: ['alfred-memory.md::x'], ...over,
 });
 
 // --- the level -> path rule ----------------------------------------------
@@ -339,7 +339,7 @@ test('level: KEPT only where a stamp records an install - a fresh one takes the 
 //
 // setup installs with no level; init asks it in a LATER session and sets it through this entry point
 // alone - the settings key the plugin's launcher reads, the notes import, the switch-off - with no
-// reinstall. Driven against the fake stdio server behind a fake memory@envoydev plugin row, the
+// reinstall. Driven against the fake stdio server behind a fake alfred-memory@envoydev plugin row, the
 // route every plugin install has (no .mcp.json registration).
 const { spawnSync, execFileSync } = require('node:child_process');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
@@ -367,7 +367,7 @@ function initSandbox({ settings = { env: { ALFRED_CODE_MEMORY_DB: '/elsewhere/me
     fs.writeFileSync(path.join(pluginRoot, '.claude-plugin', 'marketplace.json'), JSON.stringify({ name: 'envoydev',
         plugins: [{ name: 'memory', mcpServers: { memory: { command: process.execPath, args: ['${CLAUDE_PLUGIN_ROOT}/fake-memory-server.js'], env: {} } } }] }));
     fs.writeFileSync(path.join(acct, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2,
-        plugins: { 'memory@envoydev': [{ scope: 'user', installPath: pluginRoot, version: '1.0.0' }] } }));
+        plugins: { 'alfred-memory@envoydev': [{ scope: 'user', installPath: pluginRoot, version: '1.0.0' }] } }));
     const bin = path.join(work, 'bin');
     fs.mkdirSync(bin);
     if (uvx) { fs.writeFileSync(path.join(bin, 'uvx'), '#!/bin/sh\nexit 0\n'); fs.chmodSync(path.join(bin, 'uvx'), 0o755); }
@@ -687,15 +687,15 @@ test('seed update (full copy route): an unreadable settings.local.json re-points
                 {
                     const data = JSON.parse(fs.readFileSync(account, 'utf8'));
                     const held = data.projects[fs.realpathSync(repo)].mcpServers;
-                    assert.strictEqual(held.memory.env.MCP_MEMORY_SQLITE_PATH, projectDb, 'the install registered memory elsewhere');
-                    if (!registered) { delete held.memory; fs.writeFileSync(account, JSON.stringify(data)); }
+                    assert.strictEqual(held["alfred-memory"].env.MCP_MEMORY_SQLITE_PATH, projectDb, 'the install registered memory elsewhere');
+                    if (!registered) { delete held["alfred-memory"]; fs.writeFileSync(account, JSON.stringify(data)); }
                 }
                 fs.writeFileSync(local, '{ "env": { "A": 1, } garbage');
                 return { projectDb, work, before: fs.readFileSync(path.join(work, 'claude-calls.log'), 'utf8').split('\n').filter(Boolean).length };
             },
         });
         const { projectDb, work, before } = steps[0];
-        const adds = calls.slice(before).filter((c) => c.startsWith(`mcp add --scope ${scope} memory `));
+        const adds = calls.slice(before).filter((c) => c.startsWith(`mcp add --scope ${scope} alfred-memory `));
         const out = outs[1];
         assert.ok(!adds.some((c) => c.includes(path.join(work, '.alfred-memory'))), `re-pointed at the global database:\n${adds.join('\n')}`);
         if (registered)
@@ -736,7 +736,7 @@ test('seed install (full copy route): a fresh install over an unreadable setting
                 fs.writeFileSync(path.join(repo, '.claude', file), '{ "env": { "A": 1, } garbage');
             },
         });
-        const adds = calls.filter((c) => c.startsWith(`mcp add --scope ${scope} memory `));
+        const adds = calls.filter((c) => c.startsWith(`mcp add --scope ${scope} alfred-memory `));
         assert.strictEqual(adds.length, 1, `${scope}/${file}: memory is registered\n${out}`);
         // The committed .mcp.json names the account level from the home (re-verify 3 S2); the account registration by its path.
         const want = scope === 'project' ? '~/.alfred-memory/memory.db' : path.join(home, '.alfred-memory', 'memory.db');
@@ -773,7 +773,7 @@ test('seed update (full copy route, local scope): a kept memory level registers 
         },
     });
     assert.match(outs[1], /memory=kept/, outs[1]);
-    assert.ok(!calls.slice(steps[0]).some((c) => c.startsWith('mcp add --scope local memory ')), 'the kept level registers no memory server');
+    assert.ok(!calls.slice(steps[0]).some((c) => c.startsWith('mcp add --scope local alfred-memory ')), 'the kept level registers no memory server');
     assert.notStrictEqual(steps[1].autoMemoryEnabled, false, `Claude's own memory was switched off with no memory server in its place:\n${outs[1]}`);
 });
 
@@ -813,7 +813,7 @@ test('seed update (full copy route): an unstamped legacy install with no memory 
             fs.rmSync(path.join(repo, '.claude', 'hooks', 'docs.js'));
             const mcpFile = path.join(repo, '.mcp.json');
             const data = JSON.parse(fs.readFileSync(mcpFile, 'utf8'));
-            delete data.mcpServers.memory;
+            delete data.mcpServers["alfred-memory"];
             fs.writeFileSync(mcpFile, JSON.stringify(data, null, 2));
             fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), '{ "env": { "A": 1, } garbage');
             return fs.readFileSync(path.join(path.dirname(repo), 'claude-calls.log'), 'utf8').split('\n').filter(Boolean).length;
@@ -821,7 +821,7 @@ test('seed update (full copy route): an unstamped legacy install with no memory 
     });
     assert.match(outs[1], /no stamp: an unstamped legacy install/, outs[1]);
     assert.match(outs[1], /memory=global/, outs[1]);
-    assert.ok(calls.slice(steps[0]).some((c) => c.startsWith('mcp add --scope project memory ')), 'the memory server is registered');
+    assert.ok(calls.slice(steps[0]).some((c) => c.startsWith('mcp add --scope project alfred-memory ')), 'the memory server is registered');
 });
 
 // The user's ruling (review 2.1.6, concern 4): on the plugin route a kept level leaves the memory plugin's launcher to
@@ -911,7 +911,7 @@ test('seed install and update (full copy route, project scope): the anchored reg
             const elsewhere = path.join(work, 'elsewhere');
             fs.mkdirSync(elsewhere, { recursive: true });
             const started = {};
-            for (const name of ['memory', 'navigation', 'browser-chrome'])
+            for (const name of ['alfred-memory', 'alfred-navigation', 'browser-chrome'])
             {
                 const e = servers[name];
                 started[name] = [{}, { CLAUDE_PROJECT_DIR: elsewhere }].map((inherited) =>
@@ -938,22 +938,22 @@ test('seed install and update (full copy route, project scope): the anchored reg
     });
     const { before, after, out, servers, started, real, engineDb, work } = steps[1];
     // The documentation row's key header is the account env's by design; the three project-anchored rows carry no variable.
-    const text = JSON.stringify([servers.memory, servers.navigation, servers['browser-chrome']]);
+    const text = JSON.stringify([servers["alfred-memory"], servers["alfred-navigation"], servers['browser-chrome']]);
     assert.doesNotMatch(text, /\$\{/, 'no parse-time variable in a project-anchored registration');
     assert.ok(work.every((w) => !text.includes(w)), `a registration names this machine's path: ${text}`);
-    for (const [name, anchor] of [['memory', 'project'], ['navigation', 'checkout'], ['browser-chrome', 'checkout']])
+    for (const [name, anchor] of [['alfred-memory', 'project'], ['alfred-navigation', 'checkout'], ['browser-chrome', 'checkout']])
         assert.deepStrictEqual([servers[name].command, ...servers[name].args.slice(0, 4)], ['node', '-e', engine.ROOT_BOOT, '--', anchor], name);
     // The emitted rows, whole, hold no character cmd.exe reads: a row may reach cmd.exe on Windows (re-verify 3).
-    for (const name of ['memory', 'navigation', 'browser-chrome'])
+    for (const name of ['alfred-memory', 'alfred-navigation', 'browser-chrome'])
     {
         const words = [servers[name].command, ...servers[name].args, ...Object.values(servers[name].env || {})];
         const bad = words.filter((w) => /["%^&|<>!\r\n]/.test(w));
         assert.deepStrictEqual(bad, [], `${name} carries a character cmd.exe reads`);
     }
-    assert.strictEqual(servers.memory.env.MCP_MEMORY_SQLITE_PATH, '.alfred/.alfred-memory/memory.db');
-    for (const run of started.memory) assert.deepStrictEqual([run.cwd, run.db], [real, engineDb], 'the server opens the database the engine names');
+    assert.strictEqual(servers["alfred-memory"].env.MCP_MEMORY_SQLITE_PATH, '.alfred/.alfred-memory/memory.db');
+    for (const run of started["alfred-memory"]) assert.deepStrictEqual([run.cwd, run.db], [real, engineDb], 'the server opens the database the engine names');
     assert.strictEqual(engineDb, path.join(real, '.alfred', '.alfred-memory', 'memory.db'));
-    for (const run of started.navigation) assert.deepStrictEqual([run.cwd, run.context, run.home], [real, path.join(real, '.claude', 'navigation-context.yml'), path.join(real, '.alfred', 'serena', 'home')]);
+    for (const run of started["alfred-navigation"]) assert.deepStrictEqual([run.cwd, run.context, run.home], [real, path.join(real, '.claude', 'navigation-context.yml'), path.join(real, '.alfred', 'serena', 'home')]);
     for (const run of started['browser-chrome']) assert.deepStrictEqual([run.cwd, run.profile], [real, path.join(real, '.alfred', 'browser', 'chrome')]);
     assert.strictEqual(after.mcp, before.mcp, `the second checkout rewrote .mcp.json:\n${out}`);
     assert.strictEqual(after.stamp, before.stamp, 'the second checkout changed the stamp beyond its time lines');
@@ -976,7 +976,7 @@ test('seed install (full copy route, project scope): the global and scoped level
             inspect: (repo) =>
             {
                 const work = path.dirname(repo);
-                const e = JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers.memory;
+                const e = JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers["alfred-memory"];
                 const bin = path.join(work, 'anchor-bin');
                 const record = path.join(work, 'anchor.txt');
                 fs.mkdirSync(bin, { recursive: true });
@@ -1027,7 +1027,7 @@ test('seed install (full copy and plugin routes, project and user scope): a link
                     fs.mkdirSync(bin, { recursive: true });
                     fs.writeFileSync(path.join(bin, 'uvx'), `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(record)}, JSON.stringify({ cwd: process.cwd(), db: require('path').resolve(process.env.MCP_MEMORY_SQLITE_PATH || '') }));\n`, { mode: 0o755 });
                     const runEnv = { PATH: bin + path.delimiter + process.env.PATH, HOME: work, CLAUDE_CONFIG_DIR: path.join(work, 'acct') };
-                    const row = route === 'copy' ? JSON.parse(fs.readFileSync(path.join(wt, '.mcp.json'), 'utf8')).mcpServers.memory : null;
+                    const row = route === 'copy' ? JSON.parse(fs.readFileSync(path.join(wt, '.mcp.json'), 'utf8')).mcpServers["alfred-memory"] : null;
                     const started = [wt, path.join(wt, 'src')].map((cwd) =>
                     {
                         fs.rmSync(record, { force: true });
@@ -1060,7 +1060,7 @@ test('seed install and update (full copy route, project scope): an account-level
         each: (repo) =>
         {
             const work = path.dirname(repo);
-            const e = JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers.memory;
+            const e = JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers["alfred-memory"];
             const bin = path.join(work, 'anchor-bin');
             const record = path.join(work, 'anchor.txt');
             fs.mkdirSync(bin, { recursive: true });

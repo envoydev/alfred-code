@@ -109,12 +109,12 @@ function hookCatalog(raw)
 const MCP_COMMON_WORDS = new Set(['browser']);
 
 // Skills whose backticked MCP/plugin mentions are SUBJECT MATTER, not dependencies.
-// alfred-capture-agent-capabilities documents the house routing map for every server so the
+// capture-agent-capabilities documents the house routing map for every server so the
 // generated rule can be stamped from it - selecting it must never lock the whole MCP
 // baseline into an install (the skill inventories what IS installed; it calls nothing).
 // desktop-automation teaches BOTH desktop servers, one per OS: its mentions of them are the subject, and
 // the edge runs the other way (each server brings the skill - the graph's `mcps` block, below).
-const DOC_MENTION_SKILLS = new Set(['alfred-capture-agent-capabilities', 'desktop-automation']);
+const DOC_MENTION_SKILLS = new Set(['capture-agent-capabilities', 'desktop-automation']);
 
 // Rule body mentions that are NOT dependencies: conditional loads ('in an Ionic
 // workspace also load `ionic`') and routing-away prose ('EF logic routes through

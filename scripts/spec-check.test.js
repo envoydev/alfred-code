@@ -9,7 +9,7 @@ const assert = require('node:assert');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const SCRIPT = path.join(__dirname, '..', 'stack', 'skills', 'alfred-task-solve', 'scripts', 'spec-check.js');
+const SCRIPT = path.join(__dirname, '..', 'stack', 'skills', 'task-solve', 'scripts', 'spec-check.js');
 const { classify } = require(SCRIPT);
 const run = (text, args = []) => spawnSync(process.execPath, [SCRIPT, ...args], { input: text, encoding: 'utf8' });
 
@@ -158,10 +158,10 @@ test('the CLI prints one line per item and the path last, from stdin or a file',
 });
 
 // The cross-task orchestrator runs the same check on its single-chat path. Every skill is a library copy in its
-// own folder, so it carries its own copy of the script rather than reading into alfred-task-solve's (2.1.5 audit M100);
+// own folder, so it carries its own copy of the script rather than reading into task-solve's (2.1.5 audit M100);
 // the two stay byte-identical.
 test('the cross-task orchestrator carries a byte-identical copy of the script in its own folder', () => {
-  const twin = path.join(__dirname, '..', 'stack', 'skills', 'alfred-task-solve-cross', 'scripts', 'spec-check.js');
-  assert.ok(require('node:fs').existsSync(twin), 'alfred-task-solve-cross/scripts/spec-check.js exists');
+  const twin = path.join(__dirname, '..', 'stack', 'skills', 'task-solve-cross', 'scripts', 'spec-check.js');
+  assert.ok(require('node:fs').existsSync(twin), 'task-solve-cross/scripts/spec-check.js exists');
   assert.strictEqual(require('node:fs').readFileSync(twin, 'utf8'), require('node:fs').readFileSync(SCRIPT, 'utf8'), 'the twin matches the owner byte for byte');
 });

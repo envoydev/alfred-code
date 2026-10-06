@@ -164,13 +164,13 @@ test('guard-read-whole-file: no serena remedy for a path serena is seeded to ign
   assert.equal(r.status, 2, 'the whole-file read is still blocked');
   // M30: the hook's remedy line is the plugin spelling - the old `select:mcp__serena` pattern matched nothing any hook
   // writes, so it could never fail (the ordinary-path case below proves this pattern does match a real remedy).
-  assert.doesNotMatch(r.stderr, /ToolSearch select:mcp__plugin_navigation_navigation__/, 'but no tools that cannot index this tree');
+  assert.doesNotMatch(r.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__/, 'but no tools that cannot index this tree');
   assert.match(r.stderr, /ignored_paths/, 'the denial says why');
   assert.match(r.stderr, /grep -n/, 'and gives a remedy that works there');
   const inSerena = path.join(ROOT, '.serena', 'cache', 'big.ts');
   fs.mkdirSync(path.dirname(inSerena), { recursive: true });
   fs.writeFileSync(inSerena, LONG_JS);
-  assert.doesNotMatch(run(READ, { tool_name: 'Read', tool_input: { file_path: inSerena } }).stderr, /ToolSearch select:mcp__plugin_navigation_navigation__/,
+  assert.doesNotMatch(run(READ, { tool_name: 'Read', tool_input: { file_path: inSerena } }).stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__/,
     "serena's own tree either");
   // The data root (ALFRED_CODE_DATA_PATH, default .alfred) holds serena's own home and the browser profiles:
   // seeded into ignored_paths too, so no navigation remedy there either - the default and a custom root alike.
@@ -181,7 +181,7 @@ test('guard-read-whole-file: no serena remedy for a path serena is seeded to ign
     fs.writeFileSync(inData, LONG_JS);
     const d = run(READ, { tool_name: 'Read', tool_input: { file_path: inData } }, { env: { ...process.env, ...env } });
     assert.equal(d.status, 2, root);
-    assert.doesNotMatch(d.stderr, /ToolSearch select:mcp__plugin_navigation_navigation__/, `no navigation remedy under ${root}`);
+    assert.doesNotMatch(d.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__/, `no navigation remedy under ${root}`);
     assert.match(d.stderr, /grep -n/, root);
   }
   // ... and an ordinary source path still gets the whole ladder, loading call included
@@ -190,7 +190,7 @@ test('guard-read-whole-file: no serena remedy for a path serena is seeded to ign
   fs.writeFileSync(src, LONG_JS);
   const ok = run(READ, { tool_name: 'Read', tool_input: { file_path: src } });
   assert.equal(ok.status, 2);
-  assert.match(ok.stderr, /ToolSearch select:mcp__plugin_navigation_navigation__get_symbols_overview/, 'the serena ladder is unchanged where it works');
+  assert.match(ok.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview/, 'the serena ladder is unchanged where it works');
 });
 
 test('guard-read-whole-file: an oversized binary or minified file is answered with PAGING, not a grep', () => {
