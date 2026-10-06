@@ -208,7 +208,13 @@ function gitRoot(cwd, home)
     const r = spawnCommand('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' });
     const top = r.status === 0 ? r.stdout.trim() : '';
     if (!top || !home) return top;
-    const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+    // The native realpath expands a Windows 8.3 name (git answers the long one) and Windows names fold case.
+    const real = (p) =>
+    {
+        let r;
+        try { r = fs.realpathSync.native(p); } catch { try { r = fs.realpathSync(p); } catch { r = path.resolve(p); } }
+        return process.platform === 'win32' ? r.toLowerCase() : r;
+    };
     return real(top) === real(home) ? '' : top;
 }
 

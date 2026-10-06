@@ -793,15 +793,23 @@ test('a record in a folder between the launch directory and the git top counts a
 
 test('a git repo at the home directory is no top for checkoutsOf (seam m3)', () => {
     const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-home-')));
+    // os.homedir() reads USERPROFILE on Windows, HOME elsewhere - set both or the case runs against the real home there.
     const saved = process.env.HOME;
+    const savedProfile = process.env.USERPROFILE;
     try
     {
         process.env.HOME = home;
+        process.env.USERPROFILE = home;
         fs.mkdirSync(path.join(home, '.git'));
         const project = path.join(home, 'work', 'proj');
         fs.mkdirSync(project, { recursive: true });
         assert.ok(!checkoutsOf(project).includes(home), 'the home directory is never a checkout');
         assert.deepStrictEqual(checkoutsOf(project), [project], 'a project below a home repo stands on its own');
     }
-    finally { process.env.HOME = saved; fs.rmSync(home, { recursive: true, force: true }); }
+    finally
+    {
+        process.env.HOME = saved;
+        if (savedProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = savedProfile;
+        fs.rmSync(home, { recursive: true, force: true });
+    }
 });

@@ -599,7 +599,9 @@ test('guard-ungated-commit: a ! shell alias is judged as the command it runs, an
   assert.strictEqual(gateIn(dir, 'git save'), 2, 'the shell alias commits');
   assert.strictEqual(gateIn(dir, 'git run commit -m x'), 2, 'its git subcommand is a variable: unjudgeable, gated like a commit');
   assert.strictEqual(gateIn(dir, 'git hi'), 0, 'a shell alias that commits nothing passes');
-  // a lookup git cannot answer (anything but 0 or 1 - 1 is 'no such alias') fails closed: the call gates as a commit
+  // a lookup git cannot answer (anything but 0 or 1 - 1 is 'no such alias') fails closed: the call gates as a commit.
+  // The stub is a POSIX sh script named `git` on PATH; Windows resolves git.exe through PATHEXT and never runs it.
+  if (process.platform === 'win32') return;
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'git-stub-'));
   const realGit = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
   fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\ncase "$*" in *"config"*"alias"*) exit 128;; esac\nexec "${realGit}" "$@"\n`, { mode: 0o755 });

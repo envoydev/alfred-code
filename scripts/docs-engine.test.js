@@ -1471,9 +1471,11 @@ test('changedSince reports both sides of a staged rename', () => {
 // The engine's git() had no maxBuffer, so past 1MB of stdout ls-files threw ENOBUFS, snapshot() recorded no folders
 // and changedSince() called every parent of every changed file a newly created module.
 test('a tree whose ls-files output passes 1MB still snapshots its folders', () => {
+  // Over 1MB of ls-files output (7,000 lines of ~166 bytes) with every path inside Windows' 260-character limit: a
+  // 200-character name under the runner's temp dir passed it, and git refused to index the file there.
   const files = {};
-  const pad = 'x'.repeat(200);
-  for (let i = 0; i < 5200; i++) files[`src/Api/${pad}${i}.cs`] = 'c\n';
+  const pad = 'x'.repeat(150);
+  for (let i = 0; i < 7000; i++) files[`src/Api/${pad}${i}.cs`] = 'c\n';
   const r = repo({ files });
   try {
     const engine = requireEngine(r.root);

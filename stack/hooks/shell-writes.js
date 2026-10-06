@@ -41,6 +41,9 @@ const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
 const nativePath = (p, platform = process.platform) => (platform === 'win32'
   ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\`)
   : String(p));
+// os.homedir() THROWS on Windows when USERPROFILE is set but empty (uv_os_homedir ENOENT), and a hook calling it at
+// load crashed with exit 1 - failing open (2.1.7, the windows-2025 job). HOME answers then: Git Bash expands `~` from it.
+const homeDir = () => { try { return os.homedir() || process.env.HOME || ''; } catch { return nativePath(process.env.HOME || ''); } };
 
 // ---- heredocs ----------------------------------------------------------------------------------------------------
 // A heredoc BODY is DATA, not shell - a plan that DESCRIBES a command is inert text, and matching it blocks a document
@@ -285,8 +288,14 @@ const ESCAPES = { n: '\n', t: '\t', r: '\r', '\\': '\\', a: '', b: '', f: '', v:
 const unescape = (s) => String(s).replace(/\\(0[0-7]{0,3}|[ntr\\abfvec'"])/g,
   (m, c) => (c[0] === '0' ? String.fromCharCode(parseInt(c.slice(1) || '0', 8)) : ESCAPES[c]));
 const PLAIN_WORD = /^[^"'\\$]*$/;
-function dequote(raw) {
+// A Windows path written bare on Windows (`C:\Users\x\f.txt`, `\\server\share\f`, `if=C:\x`) is the path the session
+// means, never bash's escape of each letter. Read as bash it collapsed to `C:Usersxf.txt`, a relative name, so every
+// guard judged an out-of-project write, a `-C` into a sibling repo and a credential read as this project's own file
+// (2.1.6 CI: the windows-2025 job red on 30 guard cases; the reader before the one-shell rewrite kept the backslashes).
+const WIN_PATH_WORD = /^(?:[\w.-]*=)?(?:[A-Za-z]:\\|\\\\)[^"'$`]*$/;
+function dequote(raw, platform = process.platform) {
   if (PLAIN_WORD.test(raw)) return raw;
+  if (platform === 'win32' && WIN_PATH_WORD.test(raw)) return raw;
   let out = '';
   for (let i = 0; i < raw.length; i++) {
     const c = raw[i];
@@ -1151,7 +1160,7 @@ const normPath = (t) => {
   const s = String(t);
   const c = s[0];
   if (c !== '~' && c !== '"' && c !== "'" && s[s.length - 1] !== '"' && s[s.length - 1] !== "'" && process.platform !== 'win32') return s;
-  return nativePath(unquote(s).replace(/^~(?=\/|$)/, os.homedir()));
+  return nativePath(unquote(s).replace(/^~(?=\/|$)/, homeDir()));
 };
 const GLOB_CHARS = /[*?[]/;
 // Wildcard match of one path segment, two pointers - never a regex built from the pattern (a pattern of stars is the
@@ -2107,4 +2116,4 @@ function enclosingEnd(P, at, closesOf) {
 }
 
 module.exports = { scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
-  blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath };
+  blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir };

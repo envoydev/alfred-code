@@ -59,6 +59,8 @@
 'use strict';
 const fs = require('node:fs');
 const os = require('node:os');
+// os.homedir() throws on Windows when USERPROFILE is set but empty - every hook loads this file, so it never may.
+const homeDir = () => { try { return os.homedir() || process.env.HOME || ''; } catch { return process.env.HOME || ''; } };
 const path = require('node:path');
 
 // The wiring the installers write, in both spellings that shipped: quoted (current) and bare
@@ -214,7 +216,7 @@ function aliasYieldsToCore(env)
     if (!source || !launchedFromAlias(source.CLAUDE_PLUGIN_ROOT)) return false;
     const root = source.CLAUDE_PROJECT_DIR;
     if (!root) return false;
-    const account = source.CLAUDE_CONFIG_DIR || path.join(os.homedir() || '', '.claude');
+    const account = source.CLAUDE_CONFIG_DIR || path.join(homeDir(), '.claude');
     // Lowest scope first, so the project and then its local file win for a key more than one names.
     const merged = new Map();
     for (const file of [path.join(account, 'settings.json'), path.join(root, '.claude', 'settings.json'), path.join(root, '.claude', 'settings.local.json')])
@@ -245,7 +247,7 @@ function checkoutsOf(dir)
         try { stat = fs.statSync(dotGit); } catch { /* not this level */ }
         if (stat)
         {
-            if (at !== dir && at !== os.homedir()) roots.push(...between, at);
+            if (at !== dir && at !== homeDir()) roots.push(...between, at);
             if (!stat.isFile()) return roots;
             const line = /^gitdir:\s*(.+?)\s*$/m.exec(fs.readFileSync(dotGit, 'utf8'));
             if (!line) return roots;
@@ -258,7 +260,7 @@ function checkoutsOf(dir)
         }
         if (at !== dir) between.push(at);
         up = path.dirname(at);
-        if (up === at || up === os.homedir()) return roots; // the home directory is never a project's top (its `.claude/` is the account dir)
+        if (up === at || up === homeDir()) return roots; // the home directory is never a project's top (its `.claude/` is the account dir)
     }
 }
 

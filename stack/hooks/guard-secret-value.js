@@ -530,8 +530,10 @@ function secretIn(file) {
 // is a real POSIX path and is never touched.
 // The translation is shell-writes.js's one home (2.1.5 M8); without the module a path is taken as written.
 let nativePath = (p) => String(p);
+// homeDir: os.homedir() throws on Windows under an empty USERPROFILE, which crashed this guard at load (exit 1, open).
+const homeDir = () => { try { return os.homedir() || process.env.HOME || ''; } catch { return nativePath(process.env.HOME || ''); } };
 try { ({ nativePath } = require(pathMod.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
-const HOME = os.homedir() || '';
+const HOME = homeDir();
 const accountDir = () => process.env.CLAUDE_CONFIG_DIR || pathMod.join(HOME, '.claude');
 // The variables a credential path is spelled with (`~`, $HOME, $CLAUDE_PROJECT_DIR,
 // $CLAUDE_CONFIG_DIR - also in the `${VAR:-default}` form), PLUS the NAME=value assignments the

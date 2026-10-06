@@ -191,7 +191,7 @@ test('the level CLI names an unreadable settings file, and says "refused" where 
 // answer: the launcher and the level CLI refuse, as when no file answers; a lower key answers only where the ledger
 // records none in the unreadable file.
 test('settingsDbState: an unreadable file the ledger records the memory key in refuses - a lower key never answers for it', () => {
-  const root = fs.realpathSync(tmpDir('memory-ledger-refuse-'));
+  const root = fs.realpathSync.native(tmpDir('memory-ledger-refuse-'));
   const config = tmpDir('memory-ledger-refuse-acct-');
   try {
     fs.mkdirSync(path.join(root, '.claude'));
@@ -222,7 +222,7 @@ test('settingsDbState: an unreadable file the ledger records the memory key in r
 // and the session-start injection name the global database while the server opened the project's. The registration
 // answers first, as the installer's recordedPath reads it; a relative path is the project's.
 test('registeredDbPath: a .mcp.json memory registration answers before the settings key, a relative path resolved at the project', () => {
-  const root = fs.realpathSync(tmpDir('memory-reg-first-'));
+  const root = fs.realpathSync.native(tmpDir('memory-reg-first-'));
   const home = tmpDir('memory-reg-first-home-');
   try {
     fs.mkdirSync(path.join(root, '.claude'));
@@ -240,7 +240,7 @@ test('registeredDbPath: a .mcp.json memory registration answers before the setti
 // never past the checkout's git top level, else that top level; with no git, the launch directory alone (re-verify 4
 // T1); a linked worktree works on its own checkout, and its memory is the main checkout's.
 test('projectRootOf: the launch directory resolves to the folder holding the install record, else its git top level', () => {
-  const outer = fs.realpathSync(tmpDir('memory-root-'));
+  const outer = fs.realpathSync.native(tmpDir('memory-root-'));
   const home = path.join(outer, 'home');
   try {
     fs.mkdirSync(home);
@@ -277,7 +277,7 @@ test('projectRootOf: the launch directory resolves to the folder holding the ins
 });
 
 test('projectRootOf: a linked worktree works on its own checkout, and its memory is the main checkout\'s', () => {
-  const outer = fs.realpathSync(tmpDir('memory-root-wt-'));
+  const outer = fs.realpathSync.native(tmpDir('memory-root-wt-'));
   try {
     const repo = path.join(outer, 'repo');
     fs.mkdirSync(repo);
@@ -299,7 +299,7 @@ test('projectRootOf: a linked worktree works on its own checkout, and its memory
 // opened a second, empty database (and on the plugin route read no settings key at all: main's settings.local.json is
 // untracked). A worktree's project is its main checkout whenever that one holds a record, whatever the worktree carries.
 test('projectRootOf: a linked worktree that carries its own record still shares the main checkout\'s project (re-verify 4 T2)', () => {
-  const outer = fs.realpathSync(tmpDir('memory-root-wt-own-'));
+  const outer = fs.realpathSync.native(tmpDir('memory-root-wt-own-'));
   try {
     const repo = path.join(outer, 'repo');
     fs.mkdirSync(repo);
@@ -325,7 +325,7 @@ test('projectRootOf: a linked worktree that carries its own record still shares 
 // project, the browser profile and the memory tag. The walk stops at the checkout's git top level; with no git it is the
 // launch directory alone; a home is never passed; and a `.git` another user owns is no repository (git's own rule).
 test('projectRootOf: a record above the git top level, or above a folder with no git, never names the project (re-verify 4 T1)', () => {
-  const outer = fs.realpathSync(tmpDir('memory-root-planted-'));
+  const outer = fs.realpathSync.native(tmpDir('memory-root-planted-'));
   try {
     const plant = (dir) => {
       fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
@@ -355,7 +355,7 @@ test('projectRootOf: a record above the git top level, or above a folder with no
 
 const OTHER_OWNER = process.platform === 'win32' || !process.getuid || process.getuid() === 0 ? 'needs a posix non-root user' : false;
 test('projectRootOf: a .git another user owns is no repository - the launch directory alone (re-verify 4 T1)', { skip: OTHER_OWNER }, () => {
-  const outer = fs.realpathSync(tmpDir('memory-root-foreign-'));
+  const outer = fs.realpathSync.native(tmpDir('memory-root-foreign-'));
   try {
     // A `.git` owned by root, standing in for one another account planted in a shared folder.
     const foreign = path.join(outer, 'foreign');
@@ -375,7 +375,7 @@ test('projectRootOf: a .git another user owns is no repository - the launch dire
 // asked of the fix: from a subdirectory, and under an exported CLAUDE_PROJECT_DIR naming another folder, the server's
 // MCP_MEMORY_SQLITE_PATH resolves to the engine's own database.
 test('ROOT_BOOT: a copy-route server started in a subdirectory, or under another folder\'s CLAUDE_PROJECT_DIR, runs at its project', { skip: process.platform === 'win32' && 'posix stub' }, () => {
-  const outer = fs.realpathSync(tmpDir('memory-boot-'));
+  const outer = fs.realpathSync.native(tmpDir('memory-boot-'));
   try {
     const proj = path.join(outer, 'proj');
     fs.mkdirSync(path.join(proj, '.claude', 'hooks'), { recursive: true });
@@ -447,7 +447,7 @@ const plantEngine = (dir, mark) => {
 // level (the launch directory alone with no git, never a home, never under a .git another user owns); a checkout row loads
 // no engine at all.
 test('ROOT_BOOT: an engine above the git top level, above a folder with no git, or under a .git another user owns is never loaded (re-verify 4 T1)', POSIX_BOOT, () => {
-  const outer = fs.realpathSync(tmpDir('memory-boot-planted-'));
+  const outer = fs.realpathSync.native(tmpDir('memory-boot-planted-'));
   try {
     fs.mkdirSync(path.join(outer, 'home'));
     const mark = path.join(outer, 'planted-ran');
@@ -489,7 +489,7 @@ test('ROOT_BOOT: an engine above the git top level, above a folder with no git, 
 // git top level, else that top level - and it requires none of the project's code, so a user-scope row runs nothing a
 // repo ships.
 test('ROOT_BOOT: a checkout row starts its command at the checkout and runs no project code - a repo never set up starts at its top level (re-verify 4 T1)', POSIX_BOOT, () => {
-  const outer = fs.realpathSync(tmpDir('memory-boot-checkout-'));
+  const outer = fs.realpathSync.native(tmpDir('memory-boot-checkout-'));
   try {
     fs.mkdirSync(path.join(outer, 'home'));
     const mark = path.join(outer, 'engine-ran');
@@ -515,7 +515,7 @@ test('ROOT_BOOT: a checkout row starts its command at the checkout and runs no p
 // The Windows half of a checkout row, on any POSIX runner: with process.platform read as win32 the command goes through
 // %ComSpec% as `/d /s /c "<command> <args>"` - the one quoted line runAtRoot builds - at the checkout.
 test('ROOT_BOOT: on Windows a checkout row starts its command through cmd.exe as one quoted line, at the checkout', POSIX_BOOT, () => {
-  const outer = fs.realpathSync(tmpDir('memory-boot-win-'));
+  const outer = fs.realpathSync.native(tmpDir('memory-boot-win-'));
   try {
     fs.mkdirSync(path.join(outer, 'home'));
     const record = path.join(outer, 'comspec.json');
@@ -537,7 +537,7 @@ test('ROOT_BOOT: on Windows a checkout row starts its command through cmd.exe as
 // second, empty database relative to the worktree - base opened the main checkout's. The engine runs the row at the main
 // checkout whenever that one holds a record; the checkout rows stay on the worktree.
 test('ROOT_BOOT: a project row started in a linked worktree runs at the main checkout, whose database it shares (re-verify 4 T2)', POSIX_BOOT, () => {
-  const outer = fs.realpathSync(tmpDir('memory-boot-wt-'));
+  const outer = fs.realpathSync.native(tmpDir('memory-boot-wt-'));
   try {
     fs.mkdirSync(path.join(outer, 'home'));
     const boot = bootIn(outer);
@@ -568,7 +568,7 @@ test('ROOT_BOOT: a project row started in a linked worktree runs at the main che
 // ~/.alfred-memory/<file>, and the machine that starts the server opens the live file there: the new place, else an
 // unmoved 2.0.0 one.
 test('ROOT_BOOT: a database named from the home opens the live file of the machine that starts it - the new place, else an unmoved 2.0.0 one (re-verify 4 T6)', POSIX_BOOT, () => {
-  const outer = fs.realpathSync(tmpDir('memory-boot-home-'));
+  const outer = fs.realpathSync.native(tmpDir('memory-boot-home-'));
   try {
     const home = path.join(outer, 'home');
     const boot = bootIn(outer);
@@ -596,7 +596,7 @@ test('ROOT_BOOT: a database named from the home opens the live file of the machi
 // started there used the project database; `export` and `import` took the same folder. Every verb resolves its project the
 // way the servers do - a subdirectory's install, and a linked worktree's main checkout.
 test('the level and export verbs resolve their project the way the servers do - from a subdirectory and from a linked worktree (re-verify 4 T3)', () => {
-  const outer = fs.realpathSync(tmpDir('memory-cli-anchor-'));
+  const outer = fs.realpathSync.native(tmpDir('memory-cli-anchor-'));
   try {
     const home = path.join(outer, 'home');
     fs.mkdirSync(home);

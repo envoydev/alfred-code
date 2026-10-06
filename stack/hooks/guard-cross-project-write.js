@@ -139,18 +139,40 @@ try { ({ nativePath } = require(path.join(__dirname, 'shell-writes.js'))); } cat
 // that does not exist yet has no on-disk case, so on win32 the compare below folds case as well.
 const real = (p) => { try { return (fs.realpathSync.native || fs.realpathSync)(p); } catch { return path.resolve(p); } };
 const fold = (p) => (process.platform === 'win32' ? String(p).toLowerCase() : String(p));
+// Memoised for the run: allowed() resolves a target, then inside() resolves it again against the root and every
+// allowance - about ten climbs of existsSync plus a native realpath per write, and a 245KB chain of cd steps cost 8s
+// of CPU on Windows, where each of those calls is slow (2.1.7, the windows-2025 job). Nothing on disk changes while
+// the hook judges a command that has not run.
+const realishSeen = new Map();
+const realExisting = new Map(); // a folder -> its real path, or null when it does not exist
+// The climb reads the cache first and touches the disk top-down from the deepest folder it already knows: a folder
+// that does not exist has no children, so `cd pkg9 && cp a b9` costs one existsSync, never one per level.
 function realish(p) {
-  let dir = path.resolve(nativePath(p));
-  const rest = [];
-  for (let i = 0; i < 64; i++) {
-    if (fs.existsSync(dir)) return path.join(real(dir), ...rest);
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    rest.unshift(path.basename(dir));
-    dir = parent;
+  const key = String(p);
+  if (realishSeen.has(key)) return realishSeen.get(key);
+  const abs = path.resolve(nativePath(p));
+  const chain = [abs]; // abs, its parent, ... up to the deepest folder the cache knows EXISTS, or the filesystem root
+  const knownReal = (d) => realExisting.has(d) && realExisting.get(d) !== null;
+  for (let i = 0; i < 64 && !knownReal(chain[chain.length - 1]); i++) {
+    const up = path.dirname(chain[chain.length - 1]);
+    if (up === chain[chain.length - 1]) break;
+    chain.push(up);
   }
-
-  return path.resolve(nativePath(p));
+  let out = null;
+  let known = -1; // the index in `chain` of the deepest folder found to exist
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const dir = chain[i];
+    if (!realExisting.has(dir)) realExisting.set(dir, fs.existsSync(dir) ? real(dir) : null);
+    if (realExisting.get(dir) === null) {
+      for (let j = i - 1; j >= 0; j--) realExisting.set(chain[j], null); // below a missing folder nothing exists
+      break;
+    }
+    known = i;
+  }
+  if (known >= 0) out = path.join(realExisting.get(chain[known]), ...chain.slice(0, known).reverse().map((d) => path.basename(d)));
+  if (out === null) out = abs;
+  realishSeen.set(key, out);
+  return out;
 }
 const ROOT = real(root);
 const HOME = os.homedir() || '';
@@ -241,10 +263,12 @@ function resolveTarget(p, base) {
 const docsRoot = docsRootEnv();
 // Name the other PROJECT, not the file: its repo root when one is findable (the nearest
 // ancestor holding a .git), else the first path segment that diverges from this project.
+const gitAt = new Map(); // a folder -> whether it holds a .git, for the run
+const holdsGit = (dir) => { if (!gitAt.has(dir)) gitAt.set(dir, fs.existsSync(path.join(dir, '.git'))); return gitAt.get(dir); };
 function otherProjectName(target) {
   let dir = path.dirname(realish(target));
   for (let i = 0; i < 64; i++) {
-    if (fs.existsSync(path.join(dir, '.git'))) return path.basename(dir);
+    if (holdsGit(dir)) return path.basename(dir);
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -431,10 +455,13 @@ function judge(rawIn, index, what) {
   const abs = resolveTarget(expanded, base);
   // A target whose own leading segment is a GLOB names no project, and the denial then built its
   // remedy out of the fabricated name - 'finish YOUR side against the current behaviour of `*`'.
-  // Nothing can be handed off to a repo that cannot be named, so this passes rather than blocks.
+  // Nothing can be handed off to a repo that cannot be named, so this passes rather than blocks. Asked only of a write
+  // that is not allowed: the name climbs to the filesystem root for a .git, and asked of every write it cost a 245KB
+  // chain of cd steps most of its time on Windows (2.1.7).
+  if (allowed(abs)) return;
   if (/[*?\[]/.test(otherProjectName(abs))) return;
   // name the token the session wrote unless a cd moved it - then the resolved path says where it lands
-  if (!allowed(abs)) block(what, explicit ? raw : abs, abs);
+  block(what, explicit ? raw : abs, abs);
 }
 // Only WRITE-shaped commands are considered, and only the paths they actually write to. A path
 // that resolves inside the project - the overwhelming majority, relative paths included - never

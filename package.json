@@ -1,6 +1,6 @@
 {
   "name": "alfred-code",
-  "version": "2.1.7",
+  "version": "2.1.8",
   "private": true,
   "description": "Alfred Code - the house coding-agent stack for Claude Code: skills, agents, rules, hooks and MCP servers, installed per project from one source. This package is the repo tooling: lint, tests, marketplace build.",
   "license": "MIT",
