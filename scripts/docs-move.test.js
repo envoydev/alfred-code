@@ -64,7 +64,7 @@ test('plan: the stack\'s own seed over docs at the old root is offered, with wha
 test('plan: no ledger (a stamp from before it) - the old seed value is the evidence', () =>
 {
     assert.strictEqual(plan(repo(OLD), { ledger: null }).state, 'offer');
-    assert.strictEqual(plan(repo(OLD), { ledger: null, env: { CLAUDE_STACK_DOCS_PATH: '.claude/docs' } }).state, 'offer', 'the 1.x spelling'); // legacy-name
+    assert.strictEqual(plan(repo(OLD), { ledger: null, env: { ALFRED_CODE_DOCS_PATH: '.claude/docs' } }).state, 'offer', 'the key still holding the old seed');
 });
 
 test('plan: an absent key on an installed project means the old default applied', () =>
@@ -117,7 +117,7 @@ test('plan: the launch environment never decides - settings apply over a shell e
     // Review M2: a local install moved to project scope loses its local key earlier in the run while the
     // session still exports it; reading the export as the user's orphaned the docs with no offer.
     assert.strictEqual(plan(repo(OLD), { env: {}, launchEnv: { ALFRED_CODE_DOCS_PATH: '.claude/docs' } }).state, 'offer');
-    assert.strictEqual(plan(repo(OLD), { launchEnv: { CLAUDE_STACK_DOCS_PATH: 'stale/value' } }).state, 'offer'); // legacy-name
+    assert.strictEqual(plan(repo(OLD), { launchEnv: { ALFRED_CODE_DOCS_PATH: 'stale/value' } }).state, 'offer');
 });
 
 test('plan: the old root git ignored, with nothing tracked, is named so the move keeps it out of git', () =>
@@ -238,9 +238,9 @@ test('installer: an unstamped legacy install with docs at the old root keeps the
     assert.match(out, /docs root: \.claude\/docs is the old default and holds 2 file\(s\) - \/alfred-code:update offers the move to \.alfred\/docs \(--data-move move\|keep\); nothing moved/, out);
     assert.deepStrictEqual([result.env.ALFRED_CODE_DOCS_PATH, result.rule, result.old, result.moved], ['.claude/docs', '.claude/docs', true, false]);
 
-    // The 1.x key holding the old default is the stack's own seed there too - no ledger says otherwise, so the
+    // The key holding the old default is the stack's own seed there too - no ledger says otherwise, so the
     // installer offers what the preflight offered, and a 'move' answer moves the tree.
-    const keyed = (r) => { prepare(r); fs.writeFileSync(path.join(r, '.claude', 'settings.json'), JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: '.claude/docs' } })); }; // legacy-name
+    const keyed = (r) => { prepare(r); fs.writeFileSync(path.join(r, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: '.claude/docs' } })); };
     const held = seedRun('update', '', { args: updateArgs(), prepare: keyed, inspect: look });
     assert.match(held.out, /docs root: \.claude\/docs is the old default and holds 2 file\(s\)/, held.out);
     // With no answer the held root stays the stack's in the new ledger, so the next update offers again: an
@@ -300,7 +300,7 @@ test('installer: hook state a stale session writes after the move is folded in a
 {
     const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
     const run = (r, file, payload, env) => execFileSync(process.execPath, [path.join(HOOKS, file)], { cwd: r, input: JSON.stringify(payload), encoding: 'utf8',
-        env: { ...process.env, CLAUDE_PROJECT_DIR: r, CLAUDE_DOCS_PATH: '', ALFRED_CODE_MONITOR: 'log', ...env } }); // legacy-name
+        env: { ...process.env, CLAUDE_PROJECT_DIR: r, ALFRED_CODE_MONITOR: 'log', ...env } });
     const { outs, result } = seedRun(['install', 'update'], SELECTION, {
         args: [['--scope', 'project'], updateArgs('--data-move', 'move')],
         each: (r, i) => (i === 0 ? olderInstall(r) : null),

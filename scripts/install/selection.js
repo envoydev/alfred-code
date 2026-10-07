@@ -25,9 +25,9 @@
 //     is adopted unless the user denied it.
 const fs = require('node:fs');
 const path = require('node:path');
-const { readInstalled, stampCarried, splitPick, homeOf, retiredHomeOf, stackSeat } = require('../derive-state.js');
+const { readInstalled, stampCarried, splitPick, homeOf, stackSeat } = require('../derive-state.js');
 const { hookDisabled, envOf } = require('../../stack/hooks/hook-prelude.js');
-const { BRAND, LEGACY, currentName, rowOn } = require('./brand.js');
+const { BRAND, rowOn } = require('./brand.js');
 const { USER_OFF_WINS, corePluginOn, rowsOn } = require('./plugins.js');
 const { currentMcp } = require('./mcp.js');
 const { stackNames } = require('./manifest.js');
@@ -106,7 +106,6 @@ const listDir = (dir, test) =>
 
 // What the TARGET carries, read off disk. Generated project-owned files and the engine modules are
 // excluded; a browser engine server collapses back to the one manifest entry it expands from.
-// `skillsDir`: a 1.x global install kept its skills in the account dir, everything else in the project.
 // `shippedHooks` (R56): the stack's hook names - `.claude/hooks/` is the user's folder too, and a file
 // of their own there is no hook item; null (no catalog to go by) reads every non-engine file.
 // `known` (manifest.js stackNames): the same for skills, seats and rules - only a name the stack ever
@@ -233,8 +232,6 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers
     // What the user PICKED - the disk and the stamp - is what the closure runs over; an item an
     // enabled entry merely carries is not a pick.
     const closeFrom = [...lines];
-    // A 1.x listing can still name the core by its old name: the same entry. The hooks ride the core
-    // (2.0.0), so the 1.x hooks id says nothing a core row does not.
     // With the stamp's record of the installed engines, an engine it does not name is not kept: a drop
     // whose uninstall failed, was refused, or sits at another scope is still listed, and read back here
     // it was written into the stamp again. It is left as it is and named with its command.
@@ -242,7 +239,7 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers
     const unrecorded = (r) => recordedEngines !== null && engineOf(cur(r.name)) && !recordedEngines.includes(engineOf(cur(r.name)));
     for (const r of ours.filter((x) => rowOn(x) && unrecorded(x)))
         log(`installed-only: ${r.name}@${r.marketplace} is installed but not among the browsers the last install kept - left as it is, not kept; remove it: claude plugin uninstall ${r.name}@${r.marketplace} --scope ${r.scope || 'project'}, or pick it again in /alfred-code:configure`);
-    const names = ours.filter((r) => rowOn(r) && !unrecorded(r)).map((r) => currentName(cur(r.name)));
+    const names = ours.filter((r) => rowOn(r) && !unrecorded(r)).map((r) => cur(r.name));
     const stored = renameDeny(settings && typeof settings === 'object' ? settings : {}, { ...renaming, sharedOnly: sharedOnlyDeny });
     const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
@@ -252,8 +249,7 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers
     // a switch onto the copy route has no registration yet, and read from .mcp.json alone it dropped
     // the engines and wrote the stamp's two lines blank.
     const pickedEngines = Array.isArray(stampEngines) ? stampEngines : [];
-    const parked = ours.filter((r) => !rowOn(r) && !pickedEngines.includes(engineOf(cur(r.name)))).map((r) => currentName(cur(r.name)));
-    // A 1.x settings file spells the switch-off CLAUDE_STACK_HOOKS_OFF until this run's env pass renames it. // legacy-name
+    const parked = ours.filter((r) => !rowOn(r) && !pickedEngines.includes(engineOf(cur(r.name)))).map((r) => cur(r.name));
     // A switch onto the FULL copy route disables the core (plugins.copyRouteStandDown), and that route
     // reads skills and seats from the disk - where a plugin-route install holds no seat (2.1.0) or, before
     // 2.1.0, none of the core's items, so they were never copied and loaded nowhere after the switch.
@@ -261,12 +257,9 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers
     // copied before the core goes off. The rows the stand-down disables - on at this run's scope by the settings file's word,
     // else the listing's flag (S22, S28).
     const leaving = !corePluginOn(routes)
-        && rowsOn({ rows: ours, names: [BRAND.core, LEGACY.core], market: marketplace, isOn }).some((r) => !scope || r.scope === scope);
-    // A retired entry carries its whole stack, picked or not, and the library copies what the
-    // selection holds - so with the stamp's picks to go by, an item only an enabled retired entry
-    // carries joins it only as a pick; one a kept pick requires comes back through the closure. A
-    // stamp without picks takes everything (the adoption path below). The same picks gate the seats
-    // a 2.1 core carries (readInstalled's `known`).
+        && rowsOn({ rows: ours, names: [BRAND.core], market: marketplace, isOn }).some((r) => !scope || r.scope === scope);
+    // With the stamp's picks to go by, they gate the seats a 2.1 core carries (readInstalled's
+    // `known`); a stamp without picks takes everything (the adoption path below).
     const picks = ours.length && stampPicked
         ? new Set(['skill', 'agent'].flatMap((k) => (stampPicked[`${k}s`] || []).map((e) => `${k} ${splitPick(e).name}`)))
         : null;
@@ -293,7 +286,7 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers
         for (const entry of stampPicked.agents || [])
         {
             const { name, home } = splitPick(entry);
-            if (home && currentName(home) === BRAND.core && validSeat(name) && !denied.has(name) && !lines.includes(`agent ${name}`)) lines.push(`agent ${name}`);
+            if (home === BRAND.core && validSeat(name) && !denied.has(name) && !lines.includes(`agent ${name}`)) lines.push(`agent ${name}`);
         }
     }
     if (noneBefore && installed.some((l) => l.startsWith('hook ') && l !== 'hook none'))
@@ -348,7 +341,7 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers
     // route prunes every copy - so one on disk now is a switch to the copy route that died part way,
     // never a pick. Its files are set aside and the rule above reads the stored list instead.
     // R94: with no `hooks-route:` line (1.x, 2.0.0 before the line) the last route is inferred from what
-    // the copy route leaves behind - the STORED hooks switch set to false (either spelling; the run's
+    // the copy route leaves behind - the STORED hooks switch set to false (the run's
     // own switch says only where this run goes), or the folder's stack hooks wired as
     // `.claude/hooks/<name>.js`, since a copy route wires what it copies. Either one: the copies were the
     // picks (a pre-11b copy route left the unpicked out). Neither: the plugin route, set aside as above.
@@ -700,16 +693,14 @@ function closeLines(lines, { from = [], graph, parked = [], deny = [], log = () 
     // stays denied - left out and said so, never switched back on behind them. A left-out item's own
     // requirements go with it: its node is blanked and the closure recomputed until nothing new is
     // left out.
-    const { placement, readRetiredEntries } = require('../plugin-placement.js');
+    const { placement } = require('../plugin-placement.js');
     const place = placement();
-    const retired = readRetiredEntries();
     const off = new Set(parked);
     const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
     const offReason = (category, name) =>
     {
-        // A library item's home is the retired entry that carried it, while that entry is installed.
         const kind = `${category}s`;
-        const home = category === 'skill' || category === 'agent' ? homeOf(place, kind, name) || retiredHomeOf(kind, name, retired) : null;
+        const home = category === 'skill' || category === 'agent' ? homeOf(place, kind, name) : null;
         if (home && off.has(home)) return `its entry ${home} is parked here`;
         if (category === 'agent' && denied.has(name)) return 'switched off in permissions.deny';
         return null;
@@ -811,13 +802,12 @@ function itemScopes(listing = [])
 // every seat `permissions.deny` names under a stack entry. The closure never crosses either.
 function leftOut({ parked = [], deny = [] })
 {
-    const { placement, readRetiredEntries } = require('../plugin-placement.js');
+    const { placement } = require('../plugin-placement.js');
     const place = placement();
-    const retired = new Map(readRetiredEntries().map((e) => [e.name, e]));
     const out = [];
     for (const name of parked)
     {
-        const entry = place.plugins[name] || retired.get(name);
+        const entry = place.plugins[name];
         if (!entry) continue;
         for (const s of entry.skills) out.push(`skill ${s}`);
         for (const a of entry.agents) out.push(`agent ${a}`);
@@ -837,7 +827,7 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 {
     const gone = new Set(before.filter((n) => !after.includes(n)));
     const queue = listing
-        .filter((r) => r.marketplace === marketplace && r.enabled && !NEVER_DISABLED.has(currentName(r.name)) && gone.has(foldMcp(r.name)))
+        .filter((r) => r.marketplace === marketplace && r.enabled && !NEVER_DISABLED.has(r.name) && gone.has(foldMcp(r.name)))
         .sort((a, b) => a.name.localeCompare(b.name));
     const out = [];
     while (queue.length)

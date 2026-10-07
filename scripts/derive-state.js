@@ -35,11 +35,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { pluginsFor, readSelection, parseSelectionText, itemsOf } = require('./selection-plugins.js');
-const { placement, formerCore, descriptionChars, readRetiredEntries, CORE } = require('./plugin-placement.js');
+const { placement, formerCore, descriptionChars, CORE } = require('./plugin-placement.js');
 const { loadManifest } = require('./install/manifest.js');
 const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
 const { committedRoutesAt, corePluginOn } = require('./install/plugins.js');
-const { BRAND, LEGACY, currentName } = require('./install/brand.js');
+const { BRAND } = require('./install/brand.js');
 const { validItemName } = require('./install/stamp.js');
 
 const REPO = path.resolve(__dirname, '..');
@@ -47,13 +47,11 @@ const REPO = path.resolve(__dirname, '..');
 // The scoped identifier - the address S1's dispatch finding and S3's deny measurement both used.
 // `Tool(param:value)` rules exist too, but only for a direct field of the tool's input ('Match by
 // input parameter', code.claude.com/docs/en/permissions) - so a plugin named like an Agent field
-// (`model`, `isolation`) would be read as one; every stack entry starts `alfred-code` - or, written
-// by a 1.x release, the old core name (brand.js LEGACY).
+// (`model`, `isolation`) would be read as one; every stack entry starts `alfred-code`.
 const denySpec = (agent, plugin) => `Agent(${plugin}:${agent})`;
 
-// The seat a stack deny names, under ANY stack entry's spelling, 1.x ones included - null for a
-// user's own entry.
-const SEAT_DENY = new RegExp(`^Agent\\((?:${BRAND.core}|${LEGACY.core})[a-z0-9-]*:([A-Za-z0-9_-]+)\\)$`);
+// The seat a stack deny names, under ANY stack entry's spelling - null for a user's own entry.
+const SEAT_DENY = new RegExp(`^Agent\\(${BRAND.core}[a-z0-9-]*:([A-Za-z0-9_-]+)\\)$`);
 const stackSeat = (spec) => (SEAT_DENY.exec(String(spec)) || [])[1] || null;
 
 // Which plugin carries each agent - the deny spelling needs the home, not just the name.
@@ -97,8 +95,7 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
     const off = carried.agents.filter((a) => !picked.agents.has(a));
     // The seats an enabled plugin carries AND the selection kept, plus the library seats it copies.
     // Their specs exist for one job: clearing a deny a PREVIOUS run wrote, so a seat added back
-    // through configure actually comes back - a library seat's under the core spelling a retired
-    // entry's deny also carries (install/settings.js); clearing a seat clears every spelling of it.
+    // through configure actually comes back; clearing a seat clears every spelling of it.
     const kept = carried.agents.filter((a) => picked.agents.has(a)).concat(copy.agents);
     const shipped = [...new Set(loadManifest(sourceDir).catalogs.hooks.map((row) => row.split('::')[0].replace(/\.js$/, '')))];
     // No hook line at all means every hook, exactly as the installer's copy filter reads it - a
@@ -157,32 +154,20 @@ const catalogServer = (name) => String(name)
 //   - 'none' - the last run copied the seats (`seats-route: copy`): the disk decides.
 function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceDir = REPO, core = 'current', picks = null, managedSeats = [] } = {})
 {
-    // A 1.x listing's core is the same entry under its old name, and it carries the hooks.
-    const names = [...new Set(plugins.map((p) => currentName(String(p).split('@')[0])))];
+    const names = [...new Set(plugins.map((p) => String(p).split('@')[0]))];
     const lines = [];
     if (routes.skills)
     {
         const place = placement();
         const coreItems = core === 'former' ? formerCore() : core === 'none' ? { skills: [], agents: [] } : place.plugins[CORE];
         const read = { ...place, plugins: { ...place.plugins, [CORE]: { ...place.plugins[CORE], ...coreItems } } };
-        const carried = itemsOf(names.filter((n) => read.plugins[n]), { placement: read, retired: [] });
+        const carried = itemsOf(names.filter((n) => read.plugins[n]), { placement: read });
         // By SEAT, under any stack entry's spelling: a release that moves a seat to another entry
         // changes its deny spelling, and the seat the user switched off must stay off across it.
         const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
         const known = core === 'current' && picks ? new Set([...picks].filter((l) => l.startsWith('agent ')).map((l) => l.slice(6)).concat(managedSeats)) : null;
         for (const s of carried.skills) lines.push(`skill ${s}`);
         for (const a of carried.agents) if (!denied.has(a) && (!known || known.has(a))) lines.push(`agent ${a}`);
-        // An entry retired in 1.3.0 that is still enabled here: its items are what the project runs
-        // today, so they read back as installed until update copies the picks and removes it - with
-        // the stamp's picks to go by, only as a pick (an item one of them requires comes back through
-        // the closure).
-        const retired = new Map(readRetiredEntries(sourceDir).map((e) => [e.name, e]));
-        const joins = (line) => !lines.includes(line) && (!picks || picks.has(line));
-        for (const name of names.filter((n) => retired.has(n)))
-        {
-            for (const s of retired.get(name).skills) if (joins(`skill ${s}`)) lines.push(`skill ${s}`);
-            for (const a of retired.get(name).agents) if (!denied.has(a) && joins(`agent ${a}`)) lines.push(`agent ${a}`);
-        }
     }
     const manifest = loadManifest(sourceDir);
     if (routes.hooks && names.includes(HOOKS_HOME))
@@ -207,10 +192,6 @@ function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceD
 // The item's home entry under THIS release's placement, or null for a library item (copied, never carried).
 const homeOf = (place, kind, name) => Object.keys(place.plugins).find((p) => place.plugins[p][kind].includes(name)) || null;
 
-// The retired entry that carried a library item in 1.2.0, or null - the one other place a project's
-// off-state for it can live while that entry is still installed (parked, or its seat denied).
-const retiredHomeOf = (kind, name, retired = readRetiredEntries()) => (retired.find((e) => e[kind].includes(name)) || {}).name || null;
-
 // A stamp's picked entry is `name@home` - the entry that carried it when it was stamped (plain
 // `name` for a library copy, which the disk holds and no entry carries).
 const splitPick = (entry) => { const [name, home = ''] = String(entry).split('@'); return { name, home: home || null }; };
@@ -224,26 +205,23 @@ function stampCarried({ stamp = {}, enabled = [], parked = [], deny = [], routes
 {
     if (!routes.skills) return [];
     const place = placement();
-    const on = new Set(enabled.map(currentName));
-    const off = new Set(parked.map(currentName));
+    const on = new Set(enabled);
+    const off = new Set(parked);
     const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
-    const retiredNames = new Set(readRetiredEntries().map((e) => e.name));
     const lines = [];
     for (const [kind, line] of [['skills', 'skill'], ['agents', 'agent']])
         for (const entry of stamp[kind] || [])
         {
-            // A 1.x stamp homes a core pick `@claude-stack`: the same entry, never a moved-from one. // legacy-name
-            const { name, home: stamped } = splitPick(entry);
+            const { name, home: was } = splitPick(entry);
             // R78: the one name check every stamp reader runs - a carried name becomes a selection
             // line the library layer joins into a path.
             if (!validItemName(name)) continue;
-            const was = stamped && currentName(stamped);
             const home = homeOf(place, kind, name);
-            // Homed in the core or a retired entry, still enabled here, library now: carried as a pick -
-            // the release moved it into the project (2.1.0 moved every core skill so).
+            // Homed in the core, still enabled here, library now: carried as a pick - the release moved
+            // it into the project (2.1.0 moved every core skill so).
             // A core-homed SEAT with no home now is no seat this release ships (every seat rides the core).
             const movedOutOfCore = was === CORE && kind === 'skills' && place.library.skills.includes(name);
-            if (was && (retiredNames.has(was) || movedOutOfCore) && on.has(was) && !home)
+            if (was && movedOutOfCore && on.has(was) && !home)
             {
                 if (!(kind === 'agents' && denied.has(name))) lines.push(`${line} ${name}`);
                 continue;
@@ -302,8 +280,8 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
         rule: new Set(manifest.rules.map((e) => String(e).replace(/\.md$/, ''))),
         hook: new Set(manifest.catalogs.hooks.map((row) => row.split('::')[0].replace(/\.js$/, ''))),
     };
-    const enabled = plugins === null ? null : new Set(plugins.map((p) => currentName(String(p).split('@')[0])));
-    const off = new Set(parked.map(currentName));
+    const enabled = plugins === null ? null : new Set(plugins.map((p) => String(p).split('@')[0]));
+    const off = new Set(parked);
     const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
     const hookOff = (h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(hooksOff || '') });
     const rows = [];
@@ -436,20 +414,14 @@ function copiedSkills(skillsDir, overrides = {})
 function floor({ plugins = [], deny = [], skillsDir = null, overrides = {} } = {})
 {
     const place = placement();
-    const named = [...new Set(plugins.map((p) => currentName(String(p).split('@')[0])).filter(Boolean))];
-    // A retired entry still enabled here loads what it carried every session until update removes it.
-    const retired = readRetiredEntries().filter((e) => named.includes(e.name));
-    const entries = named.filter((n) => place.plugins[n] || retired.some((e) => e.name === n)).sort();
-    const carried = itemsOf(entries, { placement: place, retired });
-    // The EXACT spelling Claude Code matches - the seat under its home entry (a retired entry's own
-    // name while it is installed). A deny left under an entry the seat has since moved out of hides
-    // nothing until the next install rewrites it.
+    const named = [...new Set(plugins.map((p) => String(p).split('@')[0]).filter(Boolean))];
+    const entries = named.filter((n) => place.plugins[n]).sort();
+    const carried = itemsOf(entries, { placement: place });
+    // The EXACT spelling Claude Code matches - the seat under its home entry. A deny left under an
+    // entry the seat has since moved out of hides nothing until the next install rewrites it.
     const homes = agentHomes(place);
-    for (const e of retired) for (const a of e.agents) if (!homes.has(a)) homes.set(a, e.name);
     const specs = new Set(Array.isArray(deny) ? deny.map(String) : []);
-    // A core seat's 1.x spelling still hides it after the rename (docs/rebrand-evidence.md S6).
-    const denied = new Set(carried.agents.filter((a) => specs.has(denySpec(a, homes.get(a) || CORE))
-        || (!homes.has(a) || homes.get(a) === CORE) && specs.has(denySpec(a, LEGACY.core))));
+    const denied = new Set(carried.agents.filter((a) => specs.has(denySpec(a, homes.get(a) || CORE))));
     const skills = carried.skills.filter((s) => !manualOnly(s));
     const copies = copiedSkills(skillsDir, overrides);
     const seats = carried.agents.filter((a) => !denied.has(a));
@@ -571,4 +543,4 @@ function delta({ installed = {}, selectionText, picked = null })
 }
 
 module.exports = {
-    delta, stampCarried, classifyNew, homeOf, retiredHomeOf, splitPick, deriveState, readInstalled, writable, floor, manualOnlyText, denySpec, stackSeat, agentHomes, REPO };
+    delta, stampCarried, classifyNew, homeOf, splitPick, deriveState, readInstalled, writable, floor, manualOnlyText, denySpec, stackSeat, agentHomes, REPO };

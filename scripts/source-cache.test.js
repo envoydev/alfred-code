@@ -159,11 +159,11 @@ test("the protocol's bash snippet updates the core FIRST, takes the entry that l
     }
 });
 
-// zsh aborts a whole `for` when ANY of its globs matches nothing, so a snippet naming the 1.x glob
-// beside the 2.x one resolved to nothing on a clean 2.x machine (macOS's default shell) and curled the
-// archive. A curl that fails and records itself makes that fallback loud.
+// zsh aborts a whole `for` when ANY of its globs matches nothing, so a snippet naming a second glob
+// beside the core's resolved to nothing on a machine where that one matched nothing (macOS's default
+// shell) and curled the archive. A curl that fails and records itself makes that fallback loud.
 const hasZsh = spawnSync('zsh', ['-c', 'exit 0'], { encoding: 'utf8' }).status === 0;
-test("the protocol's bash snippet finds the plugin cache under zsh too, on a machine with no 1.x cache dir", { skip: POSIX_STUB.skip || (!hasZsh && 'zsh not installed') }, () => {
+test("the protocol's bash snippet finds the plugin cache under zsh too", { skip: POSIX_STUB.skip || (!hasZsh && 'zsh not installed') }, () => {
     const home = work();
     const script = path.join(home, 'resolve.sh');
     let tmp = '';
@@ -361,14 +361,12 @@ test('the capabilities script resolves to the NEWEST cached entry', () => {
     }
 });
 
-// --- 2.0.0: a 1.x install's cache dir, and the one a removed id orphans -----------------------------
-// A 1.x install caches the stack at cache/<key>/claude-stack/<v>, and 2.0.0 lists that id as a retired // legacy-name
-// alias, so `plugin update` of it lands the 2.0.0 repo in the same old slot (docs/rebrand-evidence.md
-// S21); cache/<key>/alfred-code/<v> exists once the seed installs the new core. A dir the CLI no longer
-// serves is marked `.orphaned_at` with its files KEPT (S3). So every lookup reads BOTH dirs, newest
-// valid first, and never takes an orphaned one - a stale 1.x copy must never serve a 2.0.0 run.
+// --- the cache dir under any marketplace key, and the one a removed id orphans ----------------------
+// The core is cached at cache/<key>/alfred-code/<v>, and a machine can hold it under more than one key.
+// A dir the CLI no longer serves is marked `.orphaned_at` with its files KEPT (S3). So every lookup reads
+// every key, newest valid first, and never takes an orphaned one - a stale copy must never serve a run.
 const { pluginCache } = require('./install/source.js');
-const LEGACY_DIR = 'claude-stack'; // legacy-name - the 1.x core's cache dir and marketplace key
+const OTHER_KEY = 'other-key';
 
 // A bare cache entry: the two trees the validity test reads, and the RELEASE-SOURCE the snippets print.
 function plantBare(cfg, marketplace, plugin, version, { orphaned = false, file } = {}) {
@@ -382,61 +380,39 @@ function plantBare(cfg, marketplace, plugin, version, { orphaned = false, file }
     return dir;
 }
 
-test('pluginCache takes the newest valid entry across the alfred-code AND the 1.x claude-stack dir', () => { // legacy-name
-    const cfg = fs.mkdtempSync(path.join(os.tmpdir(), 'srccache-legacy-'));
+test('pluginCache takes the newest valid alfred-code entry across every marketplace key, and no other plugin dir', () => {
+    const cfg = fs.mkdtempSync(path.join(os.tmpdir(), 'srccache-keys-'));
     try
     {
-        const old = plantBare(cfg, LEGACY_DIR, LEGACY_DIR, '1.3.0');
-        assert.strictEqual(pluginCache(cfg), old, 'a 1.x cache holding only the claude-stack dir is still the snapshot'); // legacy-name
-        const renamed = plantBare(cfg, LEGACY_DIR, 'alfred-code', '2.0.0');
-        assert.strictEqual(pluginCache(cfg), renamed, 'the renamed entry under the OLD key is newer');
-        const legacyNewer = plantBare(cfg, 'envoydev', LEGACY_DIR, '2.10.0');
-        assert.strictEqual(pluginCache(cfg), legacyNewer, 'newest by VERSION across both dir names, not by name');
+        assert.strictEqual(pluginCache(cfg), null, 'an empty config dir is no snapshot');
+        const other = plantBare(cfg, OTHER_KEY, 'alfred-code', '2.0.0');
+        assert.strictEqual(pluginCache(cfg), other, 'a core cached under another key is still the snapshot');
+        const newer = plantBare(cfg, 'envoydev', 'alfred-code', '2.10.0');
+        assert.strictEqual(pluginCache(cfg), newer, 'newest by VERSION across keys, not by name');
+        plantBare(cfg, 'envoydev', 'serena', '9.0.0');
+        assert.strictEqual(pluginCache(cfg), newer, 'another plugin\'s dir is never the snapshot');
     }
     finally { fs.rmSync(cfg, { recursive: true, force: true }); }
 });
 
-test('pluginCache skips a version dir marked .orphaned_at - a stale 1.x copy never serves a 2.0.0 run', () => {
+test('pluginCache skips a version dir marked .orphaned_at - a stale copy never serves a run', () => {
     const cfg = fs.mkdtempSync(path.join(os.tmpdir(), 'srccache-orphan-'));
     try
     {
-        plantBare(cfg, LEGACY_DIR, LEGACY_DIR, '2.1.0', { orphaned: true });
+        plantBare(cfg, OTHER_KEY, 'alfred-code', '2.1.0', { orphaned: true });
         plantBare(cfg, 'envoydev', 'alfred-code', '2.2.0', { orphaned: true });
         assert.strictEqual(pluginCache(cfg), null, 'an orphaned dir alone is no snapshot - the archive route answers instead');
-        const valid = plantBare(cfg, LEGACY_DIR, 'alfred-code', '2.0.0');
+        const valid = plantBare(cfg, OTHER_KEY, 'alfred-code', '2.0.0');
         assert.strictEqual(pluginCache(cfg), valid, 'the orphaned dirs are newer by version and still passed over');
     }
     finally { fs.rmSync(cfg, { recursive: true, force: true }); }
 });
 
-// A recording `claude` for a 1.x account after the catalog refresh: `plugin update` of the OLD id works
-// and lands the 2.0.0 repo under the old slot, cache/<key>/claude-stack/<lands> (S21), while the new id // legacy-name
-// is not installed, so updating it fails `not_installed` (S19). The rows still carry a rename note - a
-// 2.0.0 catalog prints none, and a snippet that followed one would update the id nothing installed.
-const ROWS_1X = JSON.stringify([LEGACY_DIR, `${LEGACY_DIR}-hooks`].map((name) => ({
-    id: `${name}@${LEGACY_DIR}`, version: '1.3.0', scope: 'user', enabled: true,
-    noteDetails: [{ type: 'plugin-renamed', plugin: name, marketplace: LEGACY_DIR, related: name.replace(LEGACY_DIR, 'alfred-code') }],
-})));
-function stub1x(home, listing, lands) {
-    const bin = path.join(home, 'bin');
-    fs.mkdirSync(bin, { recursive: true });
-    fs.writeFileSync(path.join(home, 'listing.json'), listing);
-    const land = path.join(home, '.claude', 'plugins', 'cache', LEGACY_DIR, LEGACY_DIR, lands || 'none');
-    fs.writeFileSync(path.join(bin, 'claude'), ['#!/bin/sh',
-        `printf '%s\\n' "$*" >> ${JSON.stringify(path.join(home, 'claude-calls.log'))}`,
-        `if [ "$1 $2" = "plugin list" ]; then cat ${JSON.stringify(path.join(home, 'listing.json'))}; fi`,
-        `if [ "$1 $2 $3" = "plugin update alfred-code@${LEGACY_DIR}" ]; then exit 1; fi`,
-        lands ? `if [ "$1 $2 $3" = "plugin update ${LEGACY_DIR}@${LEGACY_DIR}" ]; then mkdir -p ${JSON.stringify(path.join(land, 'stack', 'skills'))} ${JSON.stringify(path.join(land, 'stack', 'agents'))}; printf 'sha: x\\nref: main\\nversion: ${lands}\\n' > ${JSON.stringify(path.join(land, 'RELEASE-SOURCE'))}; fi` : '',
-        'exit 0', ''].join('\n'), { mode: 0o755 });
-    return bin + path.delimiter + process.env.PATH;
-}
-const WANT_1X = [`plugin update ${LEGACY_DIR}-hooks@${LEGACY_DIR} --scope user -y`, `plugin update ${LEGACY_DIR}@${LEGACY_DIR} --scope user -y`];
-
 function runBashSnippet(home, PATH, extra = {}) {
     const script = path.join(home, 'resolve.sh');
     fs.writeFileSync(script, protocolSnippet('bash', 0));
     const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH, ...extra };
-    for (const k of ['ALFRED_CODE_SEED', 'CLAUDE_STACK_SEED']) if (!(k in extra)) delete env[k]; // legacy-name
+    if (!('ALFRED_CODE_SEED' in extra)) delete env.ALFRED_CODE_SEED;
     const out = execFileSync('bash', [script], { cwd: home, encoding: 'utf8', env });
     const m = out.match(/RESOLVED TMP=(\S+) (\S+) .*running=(\S+)/);
     assert.ok(m, `the snippet printed no RESOLVED line:\n${out}`);
@@ -446,33 +422,16 @@ function runBashSnippet(home, PATH, extra = {}) {
     return { version: m[2], running: m[3], seed: (out.match(/ seed=(\S+)/) || [])[1], key: (out.match(/ key=(\S+)/) || [])[1] };
 }
 
-test("the protocol's bash snippet updates each 1.x row by its OWN id and takes the 2.0.0 entry that lands under the old name", POSIX_STUB, () => {
-    const home = work();
-    try
-    {
-        plantBare(path.join(home, '.claude'), LEGACY_DIR, LEGACY_DIR, '1.3.0');
-        const r = runBashSnippet(home, stub1x(home, ROWS_1X, '2.0.0'));
-        assert.strictEqual(r.version, '2.0.0', 'it read the 1.3.0 entry, not the 2.0.0 one the update landed');
-        assert.strictEqual(r.running, '1.3.0', 'running= names the version this session loaded');
-        assert.strictEqual(r.key, LEGACY_DIR, 'key= names the key the core is listed under - the 1.x one here');
-        const calls = claudeCalls(home);
-        assert.ok(calls.includes(`plugin marketplace update ${LEGACY_DIR}`), `the 1.x key's catalog was never refreshed: ${calls.join(' | ')}`);
-        assert.deepStrictEqual(updatesIn(home), WANT_1X, calls.join(' | '));
-        assert.ok(!calls.some((c) => c.startsWith('plugin update alfred-code')), 'the new ids are not installed yet - the seed installs the core');
-    }
-    finally { fs.rmSync(home, { recursive: true, force: true }); }
-});
-
-// D1: the shell seed is refused from 2.0.0, under either spelling of the setting - so the resolve
-// line reports either one, and the command bodies stop on it. No listing: key= is the fresh one.
-test("the protocol's bash snippet reports the seed under either setting name, and key= with no core listed", POSIX_STUB, () => {
-    for (const [extra, want] of [[{}, 'node'], [{ ALFRED_CODE_SEED: 'shell' }, 'shell'], [{ CLAUDE_STACK_SEED: 'shell' }, 'shell']]) // legacy-name
+// D1: the shell seed is refused from 2.0.0 - so the resolve line reports the setting, and the command
+// bodies stop on it. An empty setting is unset. No listing: key= is the fresh one.
+test("the protocol's bash snippet reports the seed setting, and key= with no core listed", POSIX_STUB, () => {
+    for (const [extra, want] of [[{}, 'node'], [{ ALFRED_CODE_SEED: '' }, 'node'], [{ ALFRED_CODE_SEED: 'shell' }, 'shell']])
     {
         const home = work();
         try
         {
             plantBare(path.join(home, '.claude'), 'envoydev', 'alfred-code', '2.0.0');
-            const r = runBashSnippet(home, stub1x(home, '[]'), extra);
+            const r = runBashSnippet(home, stubClaude(home, '[]'), extra);
             assert.strictEqual(r.seed, want, JSON.stringify(extra));
             assert.strictEqual(r.key, '?', 'no core row, no key to name');
         }
@@ -480,67 +439,56 @@ test("the protocol's bash snippet reports the seed under either setting name, an
     }
 });
 
-test("the protocol's bash snippet reads the 1.x dir alone, and skips an orphaned dir newer than a valid one", POSIX_STUB, () => {
+test("the protocol's bash snippet reads a core cached under another key, and skips an orphaned dir newer than a valid one", POSIX_STUB, () => {
     for (const [plant, want] of [
-        [(cfg) => plantBare(cfg, LEGACY_DIR, LEGACY_DIR, '1.3.0'), '1.3.0'],
-        [(cfg) => { plantBare(cfg, LEGACY_DIR, LEGACY_DIR, '2.1.0', { orphaned: true }); plantBare(cfg, LEGACY_DIR, 'alfred-code', '2.0.0'); }, '2.0.0'],
+        [(cfg) => plantBare(cfg, OTHER_KEY, 'alfred-code', '1.3.0'), '1.3.0'],
+        [(cfg) => { plantBare(cfg, 'envoydev', 'alfred-code', '2.1.0', { orphaned: true }); plantBare(cfg, OTHER_KEY, 'alfred-code', '2.0.0'); }, '2.0.0'],
     ])
     {
         const home = work();
         try
         {
             plant(path.join(home, '.claude'));
-            assert.strictEqual(runBashSnippet(home, stub1x(home, '[]')).version, want);
+            assert.strictEqual(runBashSnippet(home, stubClaude(home, '[]')).version, want);
         }
         finally { fs.rmSync(home, { recursive: true, force: true }); }
     }
 });
 
-test("the protocol's PowerShell snippet updates each 1.x row by its own id, reads the 1.x dir and skips an orphaned one", { skip: skipNoPwsh || POSIX_STUB.skip }, () => {
+test("the protocol's PowerShell snippet reads a core cached under another key, skips an orphaned dir and reports the seed", { skip: skipNoPwsh || POSIX_STUB.skip }, () => {
     const run = (home, PATH) => {
         const script = path.join(home, 'resolve.ps1');
-        fs.writeFileSync(script, `${protocolSnippet('powershell', 0)}\nWrite-Output "PS-VER=$Ver"\nWrite-Output "PS-WAS=$Was"\nWrite-Output "PS-TMP=$TMP"\n`);
-        const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH, CLAUDE_STACK_SEED: 'shell' }; // legacy-name
-        delete env.ALFRED_CODE_SEED;
+        fs.writeFileSync(script, `${protocolSnippet('powershell', 0)}\nWrite-Output "PS-VER=$Ver"\nWrite-Output "PS-TMP=$TMP"\n`);
+        const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH, ALFRED_CODE_SEED: 'shell' };
         const out = execFileSync('pwsh', ['-NoProfile', '-File', script], { cwd: home, encoding: 'utf8', env });
         fs.rmSync(out.match(/PS-TMP=(.+)/)[1].trim(), { recursive: true, force: true });
         const resolved = /RESOLVED TMP=\S+ \S* seed=(\S+) running=\S+ key=(\S+)/.exec(out) || [];
-        return { version: (out.match(/PS-VER=(\S*)/) || [])[1], was: (out.match(/PS-WAS=(\S*)/) || [])[1], seed: resolved[1], key: resolved[2], out };
+        return { version: (out.match(/PS-VER=(\S*)/) || [])[1], seed: resolved[1], key: resolved[2], out };
     };
-    let home = work();
+    const home = work();
     try
     {
-        plantBare(path.join(home, '.claude'), LEGACY_DIR, LEGACY_DIR, '1.3.0');
-        const r = run(home, stub1x(home, ROWS_1X, '2.0.0'));
-        assert.strictEqual(r.version, '2.0.0', r.out);
-        assert.strictEqual(r.was, '1.3.0', r.out);
-        assert.strictEqual(r.seed, 'shell', `the 1.x seed setting is reported: ${r.out}`);
-        assert.strictEqual(r.key, LEGACY_DIR, `key= names the 1.x key: ${r.out}`);
-        assert.ok(claudeCalls(home).includes(`plugin marketplace update ${LEGACY_DIR}`), claudeCalls(home).join(' | '));
-        assert.deepStrictEqual(updatesIn(home), WANT_1X, claudeCalls(home).join(' | '));
-    }
-    finally { fs.rmSync(home, { recursive: true, force: true }); }
-    home = work();
-    try
-    {
-        plantBare(path.join(home, '.claude'), LEGACY_DIR, LEGACY_DIR, '1.3.0');
-        assert.strictEqual(run(home, stub1x(home, '[]')).version, '1.3.0', 'the 1.x dir alone');
-        plantBare(path.join(home, '.claude'), LEGACY_DIR, LEGACY_DIR, '2.1.0', { orphaned: true });
-        plantBare(path.join(home, '.claude'), LEGACY_DIR, 'alfred-code', '2.0.0');
-        assert.strictEqual(run(home, stub1x(home, '[]')).version, '2.0.0', 'an orphaned dir newer than a valid one');
+        plantBare(path.join(home, '.claude'), OTHER_KEY, 'alfred-code', '1.3.0');
+        const r = run(home, stubClaude(home, '[]'));
+        assert.strictEqual(r.version, '1.3.0', `a core cached under another key: ${r.out}`);
+        assert.strictEqual(r.seed, 'shell', `the seed setting is reported: ${r.out}`);
+        assert.strictEqual(r.key, '?', `no core row, no key to name: ${r.out}`);
+        plantBare(path.join(home, '.claude'), 'envoydev', 'alfred-code', '2.1.0', { orphaned: true });
+        plantBare(path.join(home, '.claude'), OTHER_KEY, 'alfred-code', '2.0.0');
+        assert.strictEqual(run(home, stubClaude(home, '[]')).version, '2.0.0', 'an orphaned dir newer than a valid one');
     }
     finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
 
-test('the three body snippets read the 1.x cache dir too, and never an orphaned one', () => {
+test('the three body snippets read a core cached under any key, and never an orphaned one', () => {
     const snippets = {
         capabilities: [bodySnippet('stack/skills/capture-agent-capabilities/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS"\n```/) + 'printf %s "$CAPS"', '/stack/skills/capture-agent-capabilities/scripts/capabilities-inventory.js'],
         firstLook: [bodySnippet('stack/skills/capture-first-look/SKILL.md', /```bash\n(SCAN=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SCAN"', '/scripts/scan-evidence.js'],
         usage: [bodySnippet('stack/skills/capture-usage-report/SKILL.md', /```bash\n(TMP=\$\(mktemp -d "\$\{TMPDIR:-\/tmp\}\/alfred-code\.XXXXXX"\)[^\n]*\nCFG=[\s\S]*?cut -f2\))\n/) + '\nrm -rf "$TMP"; printf %s "$SRC"', ''],
     };
     for (const [plant, want] of [
-        [(cfg) => plantBare(cfg, LEGACY_DIR, LEGACY_DIR, '1.3.0'), `/${LEGACY_DIR}/1.3.0`],
-        [(cfg) => { plantBare(cfg, LEGACY_DIR, LEGACY_DIR, '2.1.0', { orphaned: true }); plantBare(cfg, LEGACY_DIR, 'alfred-code', '2.0.0'); }, '/alfred-code/2.0.0'],
+        [(cfg) => plantBare(cfg, OTHER_KEY, 'alfred-code', '1.3.0'), `/${OTHER_KEY}/alfred-code/1.3.0`],
+        [(cfg) => { plantBare(cfg, 'envoydev', 'alfred-code', '2.1.0', { orphaned: true }); plantBare(cfg, OTHER_KEY, 'alfred-code', '2.0.0'); }, `/${OTHER_KEY}/alfred-code/2.0.0`],
     ])
     {
         const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cache lookup '));

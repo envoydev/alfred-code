@@ -2,7 +2,7 @@
 // THE MANIFEST IS ONE FILE - and, since Phase 7b deleted the frozen shell twins, the ONLY file.
 //
 // Until Phase 7 the six lists the installers work from - skills, agents, rules, hooks, plugins and
-// MCPs - were declared inline in both `scripts/os/claude-stack.{sh,ps1}`, about 273 lines each, and // legacy-name
+// MCPs - were declared inline in both frozen shell twins (sh and ps1), about 273 lines each, and
 // `build-manifest.js` extracted `meta/stack-manifest.json` out of the sh twin while refusing to
 // write when the ps1 twin disagreed. Phase 7b deleted both twins (R33): there is nothing left to
 // extract from or check agreement against, so `meta/stack-manifest.json` is now hand-edited
@@ -99,29 +99,24 @@ test('stack-manifest: the seed (install/manifest.js) reads every list off this f
     assert.ok(m.mcps.every((s) => s.includes('|')), 'mcps render as name|args');
 });
 
-// Phase 7b (R33) deleted `scripts/os/claude-stack.{sh,ps1}` for good - they are not coming back for // legacy-name
-// one more release the way Phase 7 froze them. Nothing shipped may point at that path again: a
-// revived reference is either a leftover this task missed or a regression re-introducing it. A line
-// that must still spell it out - this file's own header above, an explanatory comment, a historical
-// note in source-protocol.md - carries a trailing `legacy-name` marker; every OTHER matching line
-// in the scanned tree is an offender, checked line by line so a marked line never hides an
-// unmarked one three lines down in the same file.
-test('stack-manifest: scripts/os/ is gone, and no script or test names it without marking it', () => // legacy-name
+// Phase 7b (R33) deleted the frozen shell twins and their folder for good - they are not coming back
+// for one more release the way Phase 7 froze them. Nothing shipped may point at that path again: a
+// revived reference is either a leftover or a regression re-introducing it.
+test('stack-manifest: the twins folder is gone, and no script or test names it', () =>
 {
-    assert.ok(!fs.existsSync(path.join(ROOT, 'scripts', 'os')), 'scripts/os/ still exists - the frozen twins were supposed to be deleted'); // legacy-name
+    assert.ok(!fs.existsSync(path.join(ROOT, 'scripts', 'os')), 'the twins folder still exists - the frozen twins were supposed to be deleted');
 
     const SCAN_DIRS = ['scripts', 'stack', 'setup-plugin', 'meta'];
     // The repo root is never walked (only its named directories are), so a root file - CLAUDE.md's
     // own installer-layout prose named the deleted twins unmarked and the sweep missed it - is
     // checked explicitly by name instead.
     const SCAN_FILES = [...require('./claude-docs.js').claudeDocFiles(), 'README.md', 'docs/install-footprint.md'];
-    const TWIN_PATTERN = /scripts\/os\/|claude-stack\.sh|claude-stack\.ps1/; // legacy-name
+    const TWIN_PATTERN = /scripts\/os\//;
     const offenders = [];
     const check = (full) =>
     {
         const text = fs.readFileSync(full, 'utf8');
-        const unmarked = text.split('\n').some((l) => TWIN_PATTERN.test(l) && !/legacy-name/.test(l));
-        if (unmarked) offenders.push(path.relative(ROOT, full));
+        if (TWIN_PATTERN.test(text)) offenders.push(path.relative(ROOT, full));
     };
     const walk = (dir) =>
     {
@@ -138,5 +133,5 @@ test('stack-manifest: scripts/os/ is gone, and no script or test names it withou
     };
     for (const d of SCAN_DIRS) walk(path.join(ROOT, d));
     for (const f of SCAN_FILES) check(path.join(ROOT, f));
-    assert.deepStrictEqual(offenders, [], `these files name the deleted twins on an unmarked line: ${offenders.join(', ')}`);
+    assert.deepStrictEqual(offenders, [], `these files name the deleted twins: ${offenders.join(', ')}`);
 });

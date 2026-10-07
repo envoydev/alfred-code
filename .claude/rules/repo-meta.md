@@ -22,17 +22,11 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
     the placement rule in `scripts/plugin-placement.js`: the core is the router skill, every seat and
     every stack hook, every stack skill is library (2.1.0). Regenerate with `npm run marketplace`; lint
     checks 44 and 45 fail when the file is stale, a second plugin appears, or an item has no home or
-    two. The two 1.x ids and the renamed MCP ids were listed as RETIRED aliases through 2.2.0; from 2.2.1
-    (the user's ruling of 2026-10-06) none is (`UNLISTED_ALIASES` and the MCP prune drop each from the live
-    file, lint 49 names one still there), and update still migrates an install that holds one. No `renames` key -
-    a rename strands an install (`docs/rebrand-evidence.md` S11); lint 49 fails on a `renames` key or an
+    two. The renamed MCP ids were listed as RETIRED aliases through 2.2.0; from 2.2.1 (the user's ruling of
+    2026-10-06) none is (the MCP prune drops each from the live file, lint 49 names one still there), and update
+    still migrates an install that holds one. No `renames` key - a rename strands an install
+    (`docs/plugin-cli-evidence.md` S11); lint 49 fails on a `renames` key or an
     `alfred-code-hooks` entry.
-  - `retired-entries.json` - the 20 per-stack entries 1.2.0 shipped, FROZEN. No longer LISTED in the marketplace
-    (2.1.7, the user's ruling of 2026-10-06 - the Discover tab showed 20 'RETIRED in 1.3.0' rows; `build-marketplace.js
-    unlistedRetired` drops each from an applied marketplace, lint 49 names one still there). An install still holding
-    one migrates from this file alone: update copies its picks and uninstalls it (leaves first); a PARKED one, or one
-    at another scope, is kept and logged with its uninstall command. The FILE stays while the names are retired: it is
-    the only record of what each entry carried.
   - `evals/library/` - one `claude plugin eval` case per stack profile, graded `arm: both`, plus the
     three `size-first-*` cases of `task-solve` (2.1.4 - a library skill only the bundle carries);
     `npm run eval-bundle -- <out>` puts the core and the whole library into ONE plugin named
@@ -61,8 +55,8 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
     no row is reported 'not on the pricing page (fetched <date>)', never guessed (2.1.6 K3).
   - `judgment.json`, `migrations.json` - existence-detected retirements of GENERATED artifacts plus the
     `env` RENAMES the env pass applies every run (order pinned as `env-pass-order`). A renamed key is read
-    under its old spelling as fallback until every install has it (e.g. `ALFRED_CODE_DOCS_PATH`,
-    ex-`CLAUDE_DOCS_PATH`).
+    under its old spelling as fallback until every install has it; the 1.x spellings are past that point
+    and read nowhere (the user's ruling of 2026-10-07: every install had moved across).
   Commands reach `meta/` through the run's snapshot (`$TMP/repo/meta/`), never `${CLAUDE_PLUGIN_ROOT}`.
 - `scripts/lint-skills.js` - the parity lint. `scripts/analyze-usage.js` - offline token/tool report over
   a session transcript (+ `subagents/`), with an EFFICIENCY scorecard (one measured number per practice);

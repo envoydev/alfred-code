@@ -70,7 +70,7 @@ function project(name, opts = {})
     write(path.join(root, '.claude', 'rules', 'alfred-navigation.md'), '---\n---\n\n# nav\n', -100);
     write(path.join(root, '.claude', 'rules', 'markdown-docs.md'), '---\npaths: ["**/*.md"]\n---\n\n# md\n', -100);
     write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'alfred-navigation': {}, 'alfred-documentation': {}, 'alfred-memory': {}, 'browser-chrome': {} } }, null, 2), -100);
-    write(path.join(root, '.claude', opts.stampName || 'alfred-code.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\n', -100);
+    write(path.join(root, '.claude', 'alfred-code.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\n', -100);
     if (opts.rule !== false) write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), opts.rule || '---\ndescription: generated\n---\n\n# This project\'s capabilities\n\nCaptured: 2026-09-01 from 0.2.79@abcdef1\n', 0);
     return root;
 }
@@ -464,30 +464,6 @@ test('report: the docs root is resolved and printed, so `<docs-path>` is never l
     assert.match(out, /DOCS ROOT: docs\/ai\s+\(from ALFRED_CODE_DOCS_PATH in \.claude\/settings\.json env\)/);
     assert.match(out, /CAPTURED:\s+\d{4}-\d{2}-\d{2} from 0\.2\.79@abcdef1/);
     assert.match(out, /COMPARE:\s+no --body yet/);
-});
-
-// 2.0.0 renamed the setting; a 1.x install still carries CLAUDE_STACK_DOCS_PATH until its own // legacy-name
-// update renames it, and this script has no hook-prelude.js to share envOf with - so it needs its
-// own regression proving the legacy spelling alone still resolves.
-test('report: a project not yet migrated resolves CLAUDE_STACK_DOCS_PATH, the 1.x spelling', { skip: posixOnly }, () => // legacy-name
-{
-    const root = project('docs-root-legacy');
-    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs/ai-legacy' } }), -100); // legacy-name
-    const { out } = run([], { cwd: root });
-    assert.match(out, /DOCS ROOT: docs\/ai-legacy\s+\(from CLAUDE_STACK_DOCS_PATH in \.claude\/settings\.json env\)/); // legacy-name
-});
-
-// A 1.x install's stamp keeps its old name until an update rewrites it: it is still the install's
-// revision, and an update that rewrites it is still drift. This script ships inside a skill, with
-// no installer module beside it, so it names the old file itself.
-test('report + precheck: a 1.x stamp is the install revision, and one rewritten at a new revision is drift', { skip: posixOnly }, () =>
-{
-    const root = project('legacy-stamp', { stampName: 'claude-stack.stamp' }); // legacy-name
-    const { out } = run([], { cwd: root });
-    assert.match(out, /CAPTURED:\s+\d{4}-\d{2}-\d{2} from 0\.2\.79@abcdef1/);
-    assert.match(out, /PRECHECK:\s+empty/);
-    write(path.join(root, '.claude', 'claude-stack.stamp'), 'sha: 1234567abcdef\nversion: 0.2.80\n', 300); // legacy-name
-    assert.match(run([], { cwd: root }).out, /PRECHECK:\s+drift - 1 file\(s\) newer than the rule[\s\S]*claude-stack\.stamp/); // legacy-name
 });
 
 // Every update rewrites the stamp, a no-op one included: a newer stamp alone read as drift after each update, and

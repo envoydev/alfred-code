@@ -1,5 +1,7 @@
 # Plugin-native migration - Phase 0 spike evidence
 
+<!-- Re-spelled 2026-10-07: the stack's names read as it is named now; the measurements are unchanged. -->
+
 Every row is a run, not a reading: the command, what came back, and the verdict the plan's PASS
 condition gives it. A spike that was not run is reported NOT RUN, never implied as passing.
 
@@ -58,7 +60,7 @@ BOTH forms do. Agents move to the plugin; they do not stay in the seed.
 
 **What it settles for the build:**
 - `skills:` in agent frontmatter resolves under BOTH spellings when the plugin skill is the only
-  candidate. **Corrected by S6:** it must still be rewritten to the scoped `claude-stack:<skill>`.
+  candidate. **Corrected by S6:** it must still be rewritten to the scoped `alfred-code:<skill>`.
   S6 ran the same two agents with a stale project copy of `alpha` present and the bare form
   preloaded the PROJECT copy, silently. Every migrating project has exactly that shape for one
   session. The Phase 3 edit pass stands.
@@ -67,7 +69,7 @@ BOTH forms do. Agents move to the plugin; they do not stay in the seed.
   trio protocol, and `guard-unapproved-dispatch.js`, whose `*-implementer` test is a bare-name match
   today.
 - Hook matchers on `SubagentStart` / `SubagentStop` take the scoped identifier and are regexes, so
-  they need anchoring: `^claude-stack:aspnet-implementer$`. `docs-session.js` is wired on both
+  they need anchoring: `^alfred-code:aspnet-implementer$`. `docs-session.js` is wired on both
   events and attributes writes per `agent_id`, so this is a Phase 2 edit, not a Phase 3 one.
 
 **Docs check (same sitting, context7 `/websites/code_claude`):**
@@ -164,7 +166,7 @@ firing to `$CLAUDE_PLUGIN_DATA/fired.jsonl`.
 
 Observed over the spike session: SessionStart-any 2, UserPromptSubmit 3, PreToolUse-Bash 1, Stop 2,
 SubagentStop 1. Every row carried `CLAUDE_PROJECT_DIR`, `CLAUDE_PLUGIN_ROOT`, `CLAUDE_PLUGIN_DATA`,
-`cwd`, and `CLAUDE_STACK_DOCS_PATH=docs-x` read out of the project `settings.json` `env`. Rows landed
+`cwd`, and `ALFRED_CODE_DOCS_PATH=docs-x` read out of the project `settings.json` `env`. Rows landed
 at `~/.claude/plugins/data/spike-inline/fired.jsonl`.
 
 **Verdict: PASS.** Exec form with `args` and `timeout` works, all five events fire, and the three
@@ -210,7 +212,7 @@ error and no sign in the transcript. Every project being migrated has that shape
 session.
 
 **What it settles for the build:**
-- Phase 3 rewrites all 43 seats' `skills:` lines to the scoped `claude-stack:<skill>` spelling. The
+- Phase 3 rewrites all 43 seats' `skills:` lines to the scoped `alfred-code:<skill>` spelling. The
   edit pass S1 removed goes back in.
 - The migration must PRUNE the old `.claude/skills/` and `.claude/agents/` in the same run that
   enables the plugin, not leave them for a later cleanup. 865 tokens is the visible cost of leaving
@@ -244,7 +246,7 @@ already has content?
 **Run.** Marketplace `dep-mkt` holding `depee`; marketplace `spike-mkt` holding `spike2` whose entry
 declares `dependencies` on `depee@dep-mkt` and whose marketplace declares
 `allowCrossMarketplaceDependenciesOn: ["dep-mkt"]`. The project `settings.json` already carried
-`"env": {"CLAUDE_STACK_DOCS_PATH": "docs-x"}`.
+`"env": {"ALFRED_CODE_DOCS_PATH": "docs-x"}`.
 
 ```
 claude plugin install spike2@spike-mkt --scope project
@@ -252,7 +254,7 @@ claude plugin install spike2@spike-mkt --scope project
 ```
 
 ```json
-{ "env": { "CLAUDE_STACK_DOCS_PATH": "docs-x" },
+{ "env": { "ALFRED_CODE_DOCS_PATH": "docs-x" },
   "enabledPlugins": { "spike2@spike-mkt": true, "depee@dep-mkt": true } }
 ```
 
@@ -349,7 +351,7 @@ depends on the answer.
 { "mcpServers": { "cwd-probe": {
   "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/mcp-stub.js", "--probe"],
   "env": { "PROBE_LITERAL": "${CLAUDE_PROJECT_DIR}",
-           "PROBE_FROM_PROJ_ENV": "${CLAUDE_STACK_DOCS_PATH}" } } } }
+           "PROBE_FROM_PROJ_ENV": "${ALFRED_CODE_DOCS_PATH}" } } } }
 ```
 
 ```json
@@ -357,7 +359,7 @@ depends on the answer.
   "CLAUDE_PROJECT_DIR": "<project dir>",
   "CLAUDE_PLUGIN_ROOT": "<the plugin's source root>",
   "CLAUDE_PLUGIN_DATA": "~/.claude/plugins/data/shared-one-shared-mkt",
-  "CLAUDE_STACK_DOCS_PATH": "docs-x",
+  "ALFRED_CODE_DOCS_PATH": "docs-x",
   "argv": ["--probe"],
   "PROBE_LITERAL": "<project dir>",
   "PROBE_FROM_PROJ_ENV": "docs-x" }
@@ -477,7 +479,7 @@ two engines, so once the guards stopped being copied it smoked NOTHING and still
 install used - the copied files, else the source tree the plugin serves - prints it, and FAILS below
 13 hooks. This is the exact failure mode the matrix exists to catch, found in the matrix itself.
 
-**3. `CLAUDE_STACK_HOOKS_OFF` carried each hook twice.** A hook wired on two events has two
+**3. `ALFRED_CODE_HOOKS_OFF` carried each hook twice.** A hook wired on two events has two
 `HOOKS_CATALOG` rows, so the complement listed `guard-read-whole-file.js` twice. De-duplicated in
 both twins; the value is a list of NAMES.
 
@@ -488,7 +490,7 @@ judged without it (exit 2). Only the second assert makes the first one mean anyt
 
 ### The walk's hooks layer - ruling R4
 
-The layer was going to be deleted. It stays and now feeds `CLAUDE_STACK_HOOKS_OFF` with the
+The layer was going to be deleted. It stays and now feeds `ALFRED_CODE_HOOKS_OFF` with the
 complement of the user's picks, because deleting it removes a real choice and renumbers a
 twelve-step walk in two commands. Only a selection that CARRIES `hook ` lines counts as an answer:
 `update --installed-only` reads hooks off disk, and on the plugin route there are none, which would
@@ -498,10 +500,10 @@ Covered by two tests in `scripts/mcp-verify.test.js` (both twins) and the `hooks
 
 ### `status` reads the guard from either home
 
-`/claude-stack:status` is deliberately offline (no snapshot, no `$TMP`), and its presence read called
+`/alfred-code:status` is deliberately offline (no snapshot, no `$TMP`), and its presence read called
 `node .claude/hooks/guard-secret-value.js`, which the plugin route removes. The line now takes
 whichever home exists, newest first: the project copy, else
-`<config>/plugins/cache/claude-stack/claude-stack-hooks/*/hooks/`. The cache layout was verified in
+`<config>/plugins/cache/envoydev/alfred-code-hooks/*/hooks/`. The cache layout was verified in
 the same sitting against this machine's `~/.claude/plugins/installed_plugins.json` (`installPath`
 reads `<config>/plugins/cache/<marketplace>/<plugin>/<version>`), and the resolver was exercised in
 all four states - plugin only, both, copy only, neither - with the last leaving `$G` empty so the
@@ -527,7 +529,7 @@ COUNT and not on a crash. Tracked, re-run green.
 
 **2. `update` never installed the stack's own plugins.** `update_plugins` / `Update-Plugins`
 iterated `$PLUGINS` only, so `claude plugin update` ran over the third-party six and never over
-`claude-stack-hooks` or any per-stack entry - and `claude plugin update` is a no-op on a plugin that
+`alfred-code-hooks` or any per-stack entry - and `claude plugin update` is a no-op on a plugin that
 is not installed. An update from a 0.2.x install would therefore have pruned every copied hook,
 skill and agent and enabled nothing in their place. This is a Phase 2 defect the Phase 3 cases
 surfaced: the stack entries now travel the same install-when-absent, enable-when-parked, then-update
@@ -539,7 +541,7 @@ swallowed a missing file in its catch. Thirteen skills carry the flag and the co
 several of them, so the gate would have stopped firing the moment the skills moved, with no error
 anywhere. It now reads both homes - the project copy first, then
 `<config>/plugins/cache/<marketplace>/<plugin>/<version>/stack/skills/<name>/SKILL.md` - and a
-scoped call (`claude-stack:project-quality-loop`) narrows the scan to its own plugin. Covered by a
+scoped call (`alfred-code:project-quality-loop`) narrows the scan to its own plugin. Covered by a
 new test in `scripts/guard-hooks.test.js` against a fixture cache.
 
 **4. `analyze-usage.js` would have scored a plugin-native install as empty.** Its inventory is
@@ -559,7 +561,7 @@ with a local copy winning a name clash (it is what the harness loads first).
 `<installPath>/stack/skills|agents` gave `95 skills and 860 seats`: each of the 20 stack entries has
 the WHOLE repo in its cache. The entry's own lists in the marketplace manifest shipped in that root
 are read instead, and the scan is kept only for a plugin with a root of its own. A first cut of that
-read still fell back to scanning when an entry listed nothing, which handed `claude-stack-hooks` all
+read still fell back to scanning when an entry listed nothing, which handed `alfred-code-hooks` all
 43 seats (85 where the truth is 42 plus one local extra); an entry that exists and lists nothing now
 ships nothing. Final, against a real install: `SKILLS: 81, SEATS: 43`. The same manifest-first read
 went into `analyze-usage.js`.
@@ -571,7 +573,7 @@ exist on this route - the skill itself is served by a plugin. It is the only ski
 manifest that invokes its own script that way (`grep -rl 'node \.claude/skills/'`, one file, three
 sites). The body now resolves the script ONCE into `$CAPS` and reuses it. The resolver uses `find`
 over the plugin cache rather than a glob: zsh, the default shell on macOS, treats an unmatched glob
-as an ERROR and kills the command, which is also why `/claude-stack:status` moved off the `ls -dt`
+as an ERROR and kills the command, which is also why `/alfred-code:status` moved off the `ls -dt`
 form Phase 2 gave it. Both were exercised under zsh against a real plugin-native install.
 
 **8. `--skills-only` would have left a project with neither route.** The flag runs the skill step and
@@ -594,7 +596,7 @@ plugin at all - and re-ran green at 35 pass, 0 fail.
 a plugin and deliberately absent from `.claude/skills`, so the case now deletes and restores an
 EXTRA (`angular-material`) instead. And `phase1` expected NO stack plugin enabled against the
 published marketplace; the core entry has existed there since 0.2.x, so a migration-window install
-enables exactly `claude-stack@claude-stack` and reports all twenty siblings failed. Both re-cut, and
+enables exactly `alfred-code@envoydev` and reports all twenty siblings failed. Both re-cut, and
 the second is the honest picture of the window this release closes.
 
 ### The scope ruling, as implemented
@@ -638,13 +640,13 @@ So `superpowers` leaves the installer's `PLUGINS` pick list and arrives as the c
 dependency. It stays in the block COMMENTED, because three readers build their catalog from that
 block and 27 skills and agents cite it: `stack-graph.js` `catalog.plugins`, the parity lint's
 resolvable namespaces, and the walk's plugin layer. The walk now prints it with its own status
-(`dependency`, 'carried by claude-stack@claude-stack - cannot be dropped') rather than as a pick the
+(`dependency`, 'carried by alfred-code@envoydev - cannot be dropped') rather than as a pick the
 closure happens to force.
 
 ### Three defects, each found by reading a result rather than an exit code
 
-1. **The copy route would have lost it entirely.** With `CLAUDE_STACK_HOOKS_VIA_PLUGIN=false` and
-   `CLAUDE_STACK_SKILLS_VIA_PLUGIN=false` no stack plugin is enabled, so nothing pulls the
+1. **The copy route would have lost it entirely.** With `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` and
+   `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` no stack plugin is enabled, so nothing pulls the
    dependency - and both switches promise the 0.2.x route UNCHANGED. Both twins now carry
    `CORE_DEP_PLUGINS` and install it explicitly when, and only when, the run enables no stack
    plugin. Lint check 51 pins that list to the generated core entry, in both directions.
@@ -705,7 +707,7 @@ five placeholders, one spawn:
 | `${KEY:-fallback}`, key absent everywhere | expanded to `fallback` |
 | `${KEY}`, key absent everywhere | **stays literal** - this is S14's answer |
 
-S10 most likely read `${CLAUDE_STACK_DOCS_PATH}` out of the shell, not the project file. So a plugin
+S10 most likely read `${ALFRED_CODE_DOCS_PATH}` out of the shell, not the project file. So a plugin
 MCP entry sees exactly the two sources a project `.mcp.json` sees, and Phase 6 gets NO new
 per-project env channel. Per-project values need a launcher that reads the project itself - which
 works, because a stdio server's `cwd` IS the project dir (S10's first claim, re-confirmed here).
@@ -785,7 +787,7 @@ reverting one `ToolSearch select:` name in `baseline-navigation.md` produced exa
 
 - `memory.js` resolved the db path from the `.mcp.json` `memory` entry - which the plugin route never
   writes, so `status` and `validate` would have said `none` and the session-start block would have
-  injected nothing. It now reads `CLAUDE_STACK_MEMORY_DB` from the project settings first: the same
+  injected nothing. It now reads `ALFRED_CODE_MEMORY_DB` from the project settings first: the same
   key the plugin launcher reads, so resolver and running server agree by construction.
 - `instrument-tool-usage.js` and `analyze-usage.js` read `tool.split('__')[1]` as the server name,
   which is now `plugin_<plugin>_<server>`. Both fold it back, so 0.2.x and 1.0.0 transcripts still
@@ -799,17 +801,17 @@ Plus four command bodies (`validate`, `configure`, `status`, `update`) that inve
 
 ### The opt-out route needed the tool names back
 
-`CLAUDE_STACK_MCPS_VIA_PLUGIN=false` registers the bare names, where the shipped plugin spelling
+`ALFRED_CODE_MCPS_VIA_PLUGIN=false` registers the bare names, where the shipped plugin spelling
 resolves to nothing - silently. Granting both spellings everywhere would have cost ~830 extra
 entries, most in agent `tools:` lists re-sent on every dispatch, undoing R1's whole saving. So the
 copy route RE-SPELLS instead: one pass over the copied `skills`, `agents`, `rules` and `hooks`
 turns `mcp__plugin_<n>_<n>__` back into `mcp__<n>__`. It needs the files, so that switch belongs
-with `CLAUDE_STACK_SKILLS_VIA_PLUGIN=false`; the mixed pair is reported in the log, never half-fixed.
+with `ALFRED_CODE_SKILLS_VIA_PLUGIN=false`; the mixed pair is reported in the log, never half-fixed.
 
 ### The escape hatch reintroduced the double-load it exists to prevent
 
-Measured by the `mcpcopy` matrix case, not by reading: with `CLAUDE_STACK_MCPS_VIA_PLUGIN=false` the
-run wrote serena, context7 and memory into `.mcp.json` AND enabled `serena|context7|memory@claude-stack`,
+Measured by the `mcpcopy` matrix case, not by reading: with `ALFRED_CODE_MCPS_VIA_PLUGIN=false` the
+run wrote serena, context7 and memory into `.mcp.json` AND enabled `serena|context7|memory@envoydev`,
 because those three are hard `dependencies` of the core entry and the hooks route had the core on.
 Each of the three would have run twice, with both sets of tool schemas in every session.
 
@@ -832,7 +834,7 @@ in either case is removed, plus a fixed list of others; a server at user or loca
 MCP, from a claude.ai connector, or passed with `--mcp-config` keeps them.
 
 Both keys `stack/mcp/sentry-headers.js` reads match that pattern - `SENTRY_ACCESS_TOKEN` and
-`CLAUDE_STACK_SENTRY_AUTH` - so on the plugin route its environment branch answers for neither. The
+`ALFRED_CODE_SENTRY_AUTH` - so on the plugin route its environment branch answers for neither. The
 0.2.x `.mcp.json` route expanded `${SENTRY_ACCESS_TOKEN}` straight from the shell, so an install that
 relied on an export loses its auth header at the moment the server moves to a plugin.
 

@@ -493,7 +493,6 @@ const CATALOG_DIR = path.join(__dirname, '..', 'stack');
 // 22 agents / 15 rules installed, because a later install on the same path was read back as if it
 // had been there. Two more bundles carried a rule and an MCP name the session's own listing did
 // not have.
-// A 1.x install's stamp keeps its old name until an update rewrites it; the new one wins when both exist.
 function readInstallStamp(claudeDir) {
   const file = require('./install/brand.js').stampFile(claudeDir).read;
   let txt;
@@ -848,13 +847,13 @@ function inventoryFor(acc, inventoryDir, main) {
   return { inv: applySessionRoster(hit.inv, main), mcp: hit.mcp };
 }
 
-// A stack item's name as the inventory keys it: the house plugin scope stripped (`alfred-code:task-solve`, a 1.x
-// `claude-stack-wpf:wpf-implementer`), and an old name a release renamed read as its new one (manifest `renamed`). // legacy-name
+// A stack item's name as the inventory keys it: the house plugin scope stripped (`alfred-code:task-solve`), and an
+// old name a release renamed read as its new one (manifest `renamed`).
 let houseRenamed = null;
 function houseBare(name) {
-  const { BRAND, LEGACY } = require('./install/brand.js');
+  const { BRAND } = require('./install/brand.js');
   if (!houseRenamed) { const { renamed } = loadManifest(path.join(__dirname, '..')); houseRenamed = { ...renamed.skills, ...renamed.agents }; }
-  const bare = String(name || '').replace(new RegExp(`^(?:${BRAND.core}|${LEGACY.core})(?:-[a-z0-9-]+)?:`), '');
+  const bare = String(name || '').replace(new RegExp(`^${BRAND.core}(?:-[a-z0-9-]+)?:`), '');
   return Object.hasOwn(houseRenamed, bare) ? houseRenamed[bare] : bare;
 }
 
@@ -904,7 +903,7 @@ function addSessionUse(acc, main, agents, inventoryDir) {
   };
 
   // The stack's own skills and agents ship as plugins, so a call or a dispatch arrives under the
-  // plugin-scoped name (`alfred-code:task-solve-cross`, `claude-stack-wpf:wpf-implementer`)
+  // plugin-scoped name (`alfred-code:task-solve-cross`)
   // while the INVENTORY keys everything bare. Joining the two without this strips nothing and the
   // row silently splits in two - one 'installed, never used' and one 'used, not installed'. A
   // FOREIGN namespace (`superpowers:...`) is left whole: it is not this stack's item. A session

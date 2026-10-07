@@ -23,8 +23,8 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-stop-method-'));
 process.on('exit', () => fs.rmSync(TMP, { recursive: true, force: true }));
 
 // A session's own settings env reaches this process; pin every switch the branches read.
-for (const k of ['ALFRED_CODE_DONE_GATE', 'CLAUDE_STACK_DONE_GATE', 'ALFRED_CODE_HOOKS_OFF', 'CLAUDE_STACK_HOOKS_OFF', // legacy-name
-    'ALFRED_CODE_DOCS_PATH', 'CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH', 'CLAUDE_PLUGIN_ROOT', 'ALFRED_CODE_ROTATE_ASK']) // legacy-name
+for (const k of ['ALFRED_CODE_DONE_GATE', 'ALFRED_CODE_HOOKS_OFF',
+    'ALFRED_CODE_DOCS_PATH', 'CLAUDE_PLUGIN_ROOT', 'ALFRED_CODE_ROTATE_ASK'])
     delete process.env[k];
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 

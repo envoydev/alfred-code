@@ -134,8 +134,7 @@ if (require.main === module)
   const event = payload.hook_event_name;
   if (event !== 'PostToolUse' && event !== 'UserPromptSubmit') process.exit(0);
 
-  // ALFRED_CODE_DOCS_PATH is the name; envOf also answers CLAUDE_STACK_DOCS_PATH (pre-2.0.0) and // legacy-name
-  // CLAUDE_DOCS_PATH (pre-0.2.43).
+  // The docs root, ALFRED_CODE_DOCS_PATH.
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
   const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs');
   const sid = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_');

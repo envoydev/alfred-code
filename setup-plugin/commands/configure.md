@@ -78,13 +78,11 @@ comparable banner by banner; the content varies, the skeleton never does.
 ## 1. Install status - find it, inventory it, diff it
 
 - **Find the install.** `node "$TMP/repo/scripts/install/stamp.js" state .` prints one word (two for a worktree), read
-  from the install records the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp`, a <!-- legacy-name -->
+  from the install records the hooks read (`alfred-code.stamp`, a
   copied `hooks/docs.js`) in this repo, its git top level or a worktree's main checkout - never
   from `.claude/skills` or `.claude/agents`, which a plugin-route install may not have.
   `not-installed` -> stop and route to the sibling `/alfred-code:setup` command; there is nothing
-  to configure yet. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:configure from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here. `legacy-global` (a 1.x global install whose stamp is still in the account dir)
-  -> stop and route to `/alfred-code:update`, which moves it into the project; configure runs after
-  it. `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to `/alfred-code:update`,
+  to configure yet. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:configure from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here. `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to `/alfred-code:update`,
   which reads its picks off disk and writes the stamp; configure runs after it. `installed` / `initialised` -> go on. Every scope keeps the stamp, the library copies and the
   settings in the project's `.claude/`, so there is one mode.
 - **Inventory the installed set through the installer's own read-back** - never by hand, from disk
@@ -119,9 +117,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   `node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json"
   --out "$TMP/found.json"` - so the walk's tables can label what the project provably uses
   (`--found`).
-- **Report what changed since the install.** `.claude/alfred-code.stamp` (a 1.x install has
-  `claude-stack.stamp` until its first 2.0.0 update, which `stamp-compare.js` reads <!-- legacy-name -->
-  when the new one is absent) records the commit every artifact of the current install was copied from - the stack versions
+- **Report what changed since the install.** `.claude/alfred-code.stamp` records the commit every artifact of the current install was copied from - the stack versions
   the INSTALL, not the file. Use it to tell the user what an update would actually bring, BEFORE
   they choose:
 
@@ -381,7 +377,7 @@ lands the same revision step 1 previewed. One fixed capture form, always - `2>&1
 written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
 - **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--browser-enabled <csv|none>] [--scope-of <item>=<global|project>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] [--rename-claude-md] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
-- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
+- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new
   value in one line. A value changed at step 9 is already in the file, and the installer never re-seeds a

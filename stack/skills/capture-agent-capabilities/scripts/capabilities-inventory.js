@@ -230,8 +230,7 @@ function pluginCoveredLayers(pluginRows)
 // The seats `permissions.deny` switches off, merged across the account, project and local settings
 // (deny rules merge across scopes) - `Agent(<dispatch name>)`, the exact name Claude Code matches. From
 // 2.1.0 the core carries every seat and the project denies each one it did not pick: a denied seat is
-// not in the listing (spike S3) and fails at dispatch, so the rule must never route to one. A 1.x core
-// spelling still blocks the renamed seat (rebrand-evidence S6), so it reads as the core's. An
+// not in the listing (spike S3) and fails at dispatch, so the rule must never route to one. An
 // unreadable file denies nothing.
 function deniedSeats(projectRoot)
 {
@@ -245,7 +244,7 @@ function deniedSeats(projectRoot)
         for (const rule of deny)
         {
             const m = /^Agent\(([^()\s]+)\)$/.exec(String(rule).trim());
-            if (m) out.add(m[1].replace(/^claude-stack:/, 'alfred-code:')); // legacy-name
+            if (m) out.add(m[1]);
         }
     }
     return out;
@@ -493,10 +492,8 @@ function pluginServers(projectRoot, pluginProbe, pluginRows, map)
 
 // ---------------------------------------------------------------- the project, and the live rule
 
-// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*; an install not yet updated still // legacy-name
-// carries the 1.x spelling (CLAUDE_STACK_DOCS_PATH), and one from before 0.2.43 the oldest of all // legacy-name
-// (CLAUDE_DOCS_PATH) - this script has no hook-prelude.js to share, so the fallback order is inline.
-const DOCS_PATH_KEYS = ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH']; // legacy-name
+// This script has no hook-prelude.js to share, so it reads the key itself.
+const DOCS_PATH_KEYS = ['ALFRED_CODE_DOCS_PATH'];
 
 function docsRoot(projectRoot)
 {
@@ -520,9 +517,8 @@ function docsRoot(projectRoot)
     return { value: '.alfred/docs', from: 'the default - no ALFRED_CODE_DOCS_PATH set' };
 }
 
-// The stamp's two names: a 1.x install keeps `claude-stack.stamp` until an update rewrites it. This // legacy-name
-// script ships inside a skill with no installer module beside it, so it names the old file itself.
-const STAMPS = ['.claude/alfred-code.stamp', '.claude/claude-stack.stamp']; // legacy-name
+// This script ships inside a skill with no installer module beside it, so it names the stamp itself.
+const STAMPS = ['.claude/alfred-code.stamp'];
 
 function installStamp(projectRoot)
 {

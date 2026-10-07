@@ -8,7 +8,6 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
-for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const SCRIPT = path.join(__dirname, 'skill-comply.js');
 const sc = require('./skill-comply.js');
@@ -135,7 +134,7 @@ test('a receipt written inside the commit command is not its own call', () =>
 test('a verifier seat satisfies the review step the same as the in-session skill', () =>
 {
     const run = checkpointRun().replace('"name":"Skill","input":{"skill":"task-verify-code"}',
-        '"name":"Agent","input":{"subagent_type":"claude-stack-web-angular:web-angular-verifier","prompt":"review"}');
+        '"name":"Agent","input":{"subagent_type":"alfred-code:web-angular-verifier","prompt":"review"}');
     const r = sc.grade(expectOf('habits-commit-checkpoint'), run, { level: 'plain' });
     assert.strictEqual(verdicts(r)['review-runs'], 'PASS');
 });
@@ -195,7 +194,7 @@ test('an MCP tool counts in both spellings: the plugin route and the registratio
 
 function csharpRun({ loadFirst = true, testing = true, namespaced = false } = {})
 {
-    const skill = (n) => tool('Skill', { skill: namespaced ? `claude-stack-dotnet:${n}` : n });
+    const skill = (n) => tool('Skill', { skill: namespaced ? `alfred-code:${n}` : n });
     const rows = [user('OrderService.Total ignores the discount - fix it and add a test for it.'),
         tool('Read', { file_path: '/work/project/src/Orders/OrderService.cs' })];
     if (loadFirst) rows.push(skill('csharp'), say('Loaded csharp for the .cs edit.'));

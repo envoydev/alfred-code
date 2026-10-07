@@ -8,7 +8,6 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 const { repo, section, HOOKS } = require('./docs-fixture');
 
 const PATTERNS = section('orders', 'src/Api/Orders/**', 'Refunds are ledgered before the payment call.') + '\n'
@@ -281,7 +280,7 @@ test('the mode messages name the env key that declared the mode, never a hardcod
   const enginePath = require.resolve('../stack/hooks/docs.js');
   const saved = { ...process.env };
   try {
-    Object.assign(process.env, { CLAUDE_PROJECT_DIR: r.root, ALFRED_CODE_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '', ALFRED_CODE_DOCS_VERSIONING: '' });
+    Object.assign(process.env, { CLAUDE_PROJECT_DIR: r.root, ALFRED_CODE_DOCS_PATH: '.claude/docs', ALFRED_CODE_DOCS_VERSIONING: '' });
     delete require.cache[enginePath];
     const docs = require(enginePath);
     docs.VERSIONING_KEYS.unshift('DOCS_VERSIONING_OTHER_SPELLING');
@@ -296,16 +295,15 @@ test('the mode messages name the env key that declared the mode, never a hardcod
   }
 });
 
-// B-M6: a 1.x project declared the mode under the old spelling. Between the plugin update and its first
-// /alfred-code:update that declaration is READ, never inferred over - and the new spelling wins when both exist.
-test('the legacy docs-versioning key declares the mode until the rename lands, and the new key wins over it', () => {
+// B-M6: a declared mode is READ, never inferred over.
+test('the docs-versioning key declares the mode, and an empty one leaves it inferred', () => {
   const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
   const enginePath = require.resolve('../stack/hooks/docs.js');
   const saved = { ...process.env };
-  const LEGACY_KEY = 'CLAUDE_STACK_DOCS_VERSIONING'; // legacy-name
+  const KEY = 'ALFRED_CODE_DOCS_VERSIONING';
   const under = (env) => {
     for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
-    Object.assign(process.env, saved, { CLAUDE_PROJECT_DIR: r.root, ALFRED_CODE_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '', ALFRED_CODE_DOCS_VERSIONING: '', [LEGACY_KEY]: '' }, env);
+    Object.assign(process.env, saved, { CLAUDE_PROJECT_DIR: r.root, ALFRED_CODE_DOCS_PATH: '.claude/docs', [KEY]: '' }, env);
     delete require.cache[enginePath];
     const docs = require(enginePath);
     return { mode: docs.docsMode(), status: docs.status().mode };
@@ -313,10 +311,10 @@ test('the legacy docs-versioning key declares the mode until the rename lands, a
   try {
     const inferred = under({}).mode;
     const other = inferred === 'git' ? 'local' : 'git';
-    const legacy = under({ [LEGACY_KEY]: other });
-    assert.strictEqual(legacy.mode, other, 'the old spelling is read, not inferred over');
-    assert.match(legacy.status, new RegExp(`^${other === 'git' ? 'git' : 'overlay'} \\(declared by ${LEGACY_KEY} - `));
-    assert.strictEqual(under({ ALFRED_CODE_DOCS_VERSIONING: inferred, [LEGACY_KEY]: other }).mode, inferred, 'the new spelling wins');
+    const declared = under({ [KEY]: other });
+    assert.strictEqual(declared.mode, other, 'the declared mode is read, not inferred over');
+    assert.match(declared.status, new RegExp(`^${other === 'git' ? 'git' : 'overlay'} \\(declared by ${KEY} - `));
+    assert.strictEqual(under({ [KEY]: '' }).mode, inferred, 'an empty key declares nothing');
   } finally {
     delete require.cache[enginePath];
     for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
@@ -1055,7 +1053,6 @@ function requireEngine(root) {
   delete require.cache[ENGINE_PATH];
   process.env.CLAUDE_PROJECT_DIR = root;
   process.env.ALFRED_CODE_DOCS_PATH = '.claude/docs';
-  process.env.CLAUDE_DOCS_PATH = '';
   return require(ENGINE_PATH);
 }
 
@@ -1987,7 +1984,7 @@ test('status says the end-of-session check is blind without git', () => {
     fs.mkdirSync(path.join(root, '.claude', 'docs', 'architecture', 'references'), { recursive: true });
     fs.writeFileSync(path.join(root, '.claude', 'docs', 'architecture', 'references', 'patterns.md'), PATTERNS);
     const out = spawnSync(process.execPath, [path.join(HOOKS, 'docs.js'), 'status'], {
-      cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '' },
+      cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs' },
     });
     assert.strictEqual(out.status, 0);
     assert.match(out.stdout, /^mode: no git \(docs written in place; the end-of-session check cannot see what changed\)/m);

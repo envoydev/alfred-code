@@ -31,7 +31,7 @@
       ]
     },
     "docs-root-resolution": {
-      "_note": "The docs-root default: ALFRED_CODE_DOCS_PATH from the settings env (.claude/settings.local.json over .claude/settings.json, the order Claude Code merges them in - audit M61), absent = .alfred/docs - outside .claude/, the directory Claude Code protects (2.0.0; an install on the old default .claude/docs - environment.json former_defaults - is moved only on update's one-time ask, scripts/install/docs.js docsMovePlan) (CLAUDE_DOCS_PATH is the pre-0.2.43 spelling, still read as a fallback by every consumer until the rename reaches every install; the installer renames the key in place). The always-on alfred-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (each hook's docsRootEnv() fallback, the skill line that quotes it, the re-probe script) must state the same value. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to carry this default too, as their own two sites. Every other code home of the fallback (each hook's inline docsRootEnv, the analyzers) is held to the same value by scripts/docs-root-default.test.js, which also fails on a NEW home spelling the old one.",
+      "_note": "The docs-root default: ALFRED_CODE_DOCS_PATH from the settings env (.claude/settings.local.json over .claude/settings.json, the order Claude Code merges them in - audit M61), absent = .alfred/docs - outside .claude/, the directory Claude Code protects (2.0.0; an install on the old default .claude/docs - environment.json former_defaults - is moved only on update's one-time ask, scripts/install/docs.js docsMovePlan). The always-on alfred-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (each hook's docsRootEnv() fallback, the skill line that quotes it, the re-probe script) must state the same value. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to carry this default too, as their own two sites. Every other code home of the fallback (each hook's inline docsRootEnv, the analyzers) is held to the same value by scripts/docs-root-default.test.js, which also fails on a NEW home spelling the old one.",
       "owner": {
         "file": "stack/rules/alfred-docs-root.md",
         "marker": "the `ALFRED_CODE_DOCS_PATH` env value, `.claude/settings.local.json` over `.claude/settings.json`; absent = `.alfred/docs`"
@@ -4827,12 +4827,12 @@
       "_note": "The prerequisite check output has one fixed three-block shape: the verdict line, the closed selection by category, the blocker/warning lists. setup and configure carry it verbatim.",
       "owner": {
         "file": "setup-plugin/commands/setup.md",
-        "marker": "Fixed shape, three blocks:** (1) one verdict line - `blockers: N \u00b7 warnings: N`"
+        "marker": "Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`"
       },
       "sites": [
         {
           "file": "setup-plugin/commands/configure.md",
-          "marker": "Fixed shape, three blocks:** (1) one verdict line - `blockers: N \u00b7 warnings: N`"
+          "marker": "Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`"
         }
       ]
     },
@@ -5869,28 +5869,28 @@
         }
       ]
     },
-    "env-legacy-fallback": {
-      "_note": "2.0.0 renamed every setting from its 1.x prefix to ALFRED_CODE_*. hook-prelude.js's envOf(env, suffix) is the ONE implementation every ordinary hook requires; the three engines (docs.js, memory.js, history.js) and the uv-python.js launcher ship without the prelude beside them on at least one route, so each carries its own byte-identical inline copy instead of a require (the memory launcher reads its key through memory.js settingsDbState, the one reader it shares with the installer - review 2.1.6 R5). A change to the fallback rule (the DOCS_PATH third spelling included) is four edits, not one.",
+    "env-reader": {
+      "_note": "hook-prelude.js's envOf(env, suffix) reads the stack's ALFRED_CODE_* setting and is the ONE implementation every ordinary hook requires; the three engines (docs.js, memory.js, history.js) and the uv-python.js launcher ship without the prelude beside them on at least one route, so each carries its own byte-identical inline copy instead of a require (the memory launcher reads its key through memory.js settingsDbState, the one reader it shares with the installer - review 2.1.6 R5). A change to the reader is five edits, not one.",
       "owner": {
         "file": "stack/hooks/hook-prelude.js",
-        "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+        "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
       },
       "sites": [
         {
           "file": "stack/hooks/docs.js",
-          "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+          "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         },
         {
           "file": "stack/hooks/memory.js",
-          "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+          "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         },
         {
           "file": "stack/hooks/history.js",
-          "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+          "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         },
         {
           "file": "stack/mcp/uv-python.js",
-          "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+          "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         }
       ]
     },
@@ -5898,12 +5898,12 @@
       "_note": "What marks a folder as set up (review 2.1.6 re-verify 3 S3): hook-prelude's 'set up' gate and memory.js projectRootOf - the one project-root resolver the launchers, memory-session.js and the engine's CLI verbs read - look for the same install records, inside the same bound (re-verify 4 T1): the folder up to its git top level and a linked worktree's main checkout, never an ancestor above that top level. The engine is copied into .claude/hooks on every route without the prelude beside it, so it carries its own copy of the list; a record added to one is added to both.",
       "owner": {
         "file": "stack/hooks/hook-prelude.js",
-        "marker": "const INSTALL_RECORDS = [['alfred-code.stamp'], ['claude-stack.stamp'], ['hooks', 'docs.js']]; // legacy-name"
+        "marker": "const INSTALL_RECORDS = [['alfred-code.stamp'], ['hooks', 'docs.js']];"
       },
       "sites": [
         {
           "file": "stack/hooks/memory.js",
-          "marker": "const INSTALL_RECORDS = [['alfred-code.stamp'], ['claude-stack.stamp'], ['hooks', 'docs.js']]; // legacy-name"
+          "marker": "const INSTALL_RECORDS = [['alfred-code.stamp'], ['hooks', 'docs.js']];"
         }
       ]
     },

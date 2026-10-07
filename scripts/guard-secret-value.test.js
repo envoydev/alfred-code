@@ -9,7 +9,6 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-secret-value.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-secret-'));
@@ -119,7 +118,7 @@ test('guard-secret-value: a credential-shaped key holding an identifier NAME is 
   }
   const f = fixtures();
   const names = path.join(f.dir, 'catalog.json');
-  fs.writeFileSync(names, JSON.stringify({ env: [{ key: 'SENTRY_ACCESS_TOKEN' }, { key: 'CONTEXT7_API_KEY' }], rename: { settings_env_key: 'CLAUDE_DOCS_PATH' } }));
+  fs.writeFileSync(names, JSON.stringify({ env: [{ key: 'SENTRY_ACCESS_TOKEN' }, { key: 'CONTEXT7_API_KEY' }], rename: { settings_env_key: 'ALFRED_CODE_FRESH_SESSION_PCT' } }));
   assert.equal(read(names), 0, 'a catalog of credential NAMES is not a credential file');
   // ...and the tell never excuses a value that is shaped like a credential
   const aws = path.join(f.dir, 'aws.json');

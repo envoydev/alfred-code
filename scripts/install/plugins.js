@@ -23,7 +23,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { parseJson } = require('./json-file.js');
-const { BRAND, LEGACY, alwaysOn, marketOf, marketKey } = require('./brand.js');
+const { BRAND, alwaysOn, marketOf, marketKey } = require('./brand.js');
 const { envOf } = require('../../stack/hooks/hook-prelude.js');
 
 // 2.2.0: no plugin is pinned to a scope any more - each OPTIONAL item (a browser engine, a desktop server, an
@@ -38,8 +38,8 @@ const offByUser = (spec, listing) => USER_OFF_WINS.includes(bareName(spec)) && f
 
 const OFFICIAL_MARKETPLACE = 'anthropics/claude-plugins-official';
 const STACK_MARKETPLACE = BRAND.slug;
-// The FRESH-install spelling. A 1.x install keeps its own marketplace key, which the run resolves
-// (brand.js marketKey) and spells every stack spec with - never this constant.
+// The FRESH-install spelling. An install keeps the marketplace key it was registered under, which the
+// run resolves (brand.js marketKey) and spells every stack spec with - never this constant.
 const CORE_SPEC = `${BRAND.core}@${BRAND.marketplace}`;
 
 // The plugins every install carries beside the core from ANOTHER marketplace - required, never a pick
@@ -53,7 +53,6 @@ const HUD_SPEC = 'claude-hud@claude-hud';
 // `...=false` restores the copy route - the documented contract, and the only value either twin
 // ever promised. (The sh twin read anything but the literal 'true' as off and the ps1 anything but
 // 'false' as on; on every documented value they agree, and this takes the documented reading.)
-// M7: `envOf` reads the 1.x spelling when the new one is unset - the new one wins where both are.
 const pluginRoutes = (env = {}) => ({
     hooks: envOf(env, 'HOOKS_VIA_PLUGIN') !== 'false',
     skills: envOf(env, 'SKILLS_VIA_PLUGIN') !== 'false',
@@ -106,7 +105,7 @@ function committedRoutesAt({ env = {}, claudeDir, scope = 'project', log = () =>
 // (`serena`, `sentry`, `playwright`), and a name-only read took theirs for ours. `byMarketplace`
 // keeps one row per name@marketplace instead, for a pass whose specs come from several, read through
 // `fieldOf` with the full spec. `everyScope` keeps one per name@marketplace@scope: the same plugin at
-// the account and in this project is two installs, and the 1.x migration moves only its own scope's.
+// the account and in this project is two installs, and a migration moves only its own scope's.
 // A Windows drive path is compared case-blind: the file system is, and the listing's projectPath can
 // spell the drive or a folder unlike git's root (`c:\WINDOWS` against `C:\Windows`) - a case-exact
 // compare dropped this project's rows, and uninstall then left them behind without a word.
@@ -144,9 +143,7 @@ function parsePluginList(json, projectRoot, { marketplace, byMarketplace = false
 
 // `name` alone, or a full `name@marketplace` spec - which never matches another marketplace's row of
 // the same name (the official `serena`, `sentry`, `playwright`). A row that names no marketplace
-// matches either way. A 1.x row answers only to its OWN id: 2.0.0 lists the old ids as retired
-// aliases, a different plugin from the new core (docs/rebrand-evidence.md S20) - read as the core, it
-// would have the run `update` a core never installed, which fails `not_installed` (S19).
+// matches either way.
 const fieldOf = (listing, name, key) =>
 {
     const [bare, market] = String(name).split('@');
@@ -300,10 +297,10 @@ function refreshMarketplaces({ plugins, cli, refreshed = new Set() })
     }
 }
 
-// THE STACK'S MARKETPLACE KEY for this run. A 1.x install keeps its key (`claude-stack`), and a // legacy-name
-// second registration of the new slug would list the stack twice - so the add runs only where the
-// key is the current one: a no-op when it is registered already, the registration on a fresh
-// account, whose key is then whatever the add actually produced (read back).
+// THE STACK'S MARKETPLACE KEY for this run. An install keeps the key it was registered under, and a
+// second registration of the slug would list the stack twice - so the add runs only where the key is
+// the current one: a no-op when it is registered already, the registration on a fresh account, whose
+// key is then whatever the add actually produced (read back).
 function stackMarket({ listing = [], marketplaces = [], readMarketplaces, cli, env = {} })
 {
     const found = marketOf({ listing, marketplaces, env });
@@ -323,11 +320,7 @@ function stackMarket({ listing = [], marketplaces = [], readMarketplaces, cli, e
 // docs/uv-python-pin-evidence.md), so after this refresh an entry left on its older version can name
 // a file that version does not carry - and a run that stops at a question never reaches the apply
 // step that would update it. Each at its OWN scope, because `plugin update --scope <other>` is a
-// silent no-op.
-//
-// Each row by its OWN id, a 1.x one included: 2.0.0 lists the old ids as retired aliases carrying the
-// 2.0.0 core, so updating one lands 2.0.0 in the cache under the old name (docs/rebrand-evidence.md
-// S21), and the plugin pass moves the install across. `listing` may be a function, read once.
+// silent no-op. `listing` may be a function, read once.
 // Returns the marketplace key the run uses.
 function refreshStackSource({ listing = [], marketplaces = [], readMarketplaces, cli, refreshed = new Set(), log = () => {}, env = {} })
 {
@@ -362,7 +355,7 @@ function switchOff(spec, scope, { cli, log, note })
 }
 
 // An engine already installed NEVER gets the install verb: over one, `install` turns a disabled
-// engine back on, or adds an enabled project install beside a user-scope one (docs/rebrand-evidence.md
+// engine back on, or adds an enabled project install beside a user-scope one (docs/plugin-cli-evidence.md
 // S28). It is updated at its own scope, and switched only to the user's answer - at this run's scope
 // only, since one at another scope is every project's install there. A switch the settings file shows
 // already made is skipped: a no-op enable or disable exits 1 (S28), which would read as a failure.
@@ -416,7 +409,7 @@ function uninstallEngines({ specs = [], rows = [], blind = false, scope, cli, lo
 // INSTALL: register the marketplaces, refresh them, then install each plugin at its scope - and
 // update one the listing already carries, which `install` leaves where it was. A failure is noted
 // and the run continues - fail-soft, like every other layer. `fresh` names what this run installed
-// already (the 1.x migration): nothing is left to do for it. A playwright engine goes the
+// already (a rename or a move): nothing is left to do for it. A playwright engine goes the
 // `engineInPlace` way when installed, and is switched off right after its install when the user chose
 // it off (`engines`, above).
 function installPlugins({ plugins, scope, scopes = {}, marketplaces = [], before = [], fresh = [], refreshed = new Set(), engines = NO_ENGINES, cli, log = () => {}, note = () => {} })
@@ -451,8 +444,7 @@ function installPlugins({ plugins, scope, scopes = {}, marketplaces = [], before
     }
 }
 
-// A retired name's FULL spec: the stack's own plugin under the key the core is listed under (a 1.x
-// install keeps its old one), unless its row in meta/retired-plugins.json names another marketplace -
+// A retired name's FULL spec: the stack's own plugin under the key the core is listed under, unless its row in meta/retired-plugins.json names another marketplace -
 // a third-party pick the stack dropped. Never the bare name: the official catalog ships a `sentry` too.
 function retiredSpec(name, market, retiredRows = [])
 {
@@ -476,7 +468,7 @@ function retirementDue({ name, rows = [], lastVersion = '', compare })
 
 // The rows of `name@<market>` for each name, at any scope, that are ON: the settings file's word at the
 // row's scope when it names the plugin, else the listing's flag - which read a running project-scope
-// core as off (docs/rebrand-evidence.md S22), while a switch the file shows made already exits 1 (S28).
+// core as off (docs/plugin-cli-evidence.md S22), while a switch the file shows made already exits 1 (S28).
 function rowsOn({ rows = [], names = [], market, isOn = () => undefined })
 {
     const on = (r) => { const said = isOn(`${r.name}@${r.marketplace}`, r.scope); return said === undefined ? Boolean(r.enabled) : said; };
@@ -486,14 +478,10 @@ function rowsOn({ rows = [], names = [], market, isOn = () => undefined })
 // THE FULL COPY ROUTE runs beside none of the stack's own plugins (R107): the locked servers come back
 // to .mcp.json there, and a core or locked-server plugin left enabled would run each server twice and
 // list every core skill beside its copy. A switch from a plugin route disables them BEFORE anything is
-// registered - the core, its two 1.x ids (R111: a 1.3.0 install switched straight across never took
-// the 1.x move) and the locked three, only as `name@<stack key>` (a same-named plugin of another
-// marketplace is not ours) and only rows of the run's scope (a row at another scope serves other
-// projects: named with its command, never disabled). A row already off is left alone, so a re-run
-// calls nothing. The 1.x ids are DISABLED, not uninstalled: a later switch back to the plugin route
-// reads the old core's row - its key and scope - and moves the install across from there
-// (migrateLegacy). The old hooks id goes BEFORE the old core: 1.3.0 declares it dependent on the core,
-// and the CLI refuses to disable a plugin an enabled one depends on (measured on 2.1.282).
+// registered - the core and the locked three, only as `name@<stack key>` (a same-named plugin of
+// another marketplace is not ours) and only rows of the run's scope (a row at another scope serves
+// other projects: named with its command, never disabled). A row already off is left alone, so a
+// re-run calls nothing.
 //
 // AT USER SCOPE (I2, R132) a row serves every project of the account while the copies land in this one
 // alone, so it is switched off HERE ONLY: `disable --scope project` over a user-scope install writes
@@ -504,9 +492,8 @@ const standDownScope = (scope) => (scope === 'user' ? 'project' : scope);
 function copyRouteStandDown({ rows = [], market = BRAND.marketplace, scope, locked = [], isOn, cli, log = () => {}, note = () => {} })
 {
     const off = [];
-    const legacy = [LEGACY.hooks, LEGACY.core];
     const at = standDownScope(scope);
-    for (const row of rowsOn({ rows, names: [...legacy, BRAND.core, ...locked], market, isOn }))
+    for (const row of rowsOn({ rows, names: [BRAND.core, ...locked], market, isOn }))
     {
         const spec = `${row.name}@${market}`;
         if (row.scope !== scope)
@@ -516,9 +503,7 @@ function copyRouteStandDown({ rows = [], market = BRAND.marketplace, scope, lock
         }
         // Already off in this project (a re-run): the settings file there says so.
         if (at !== row.scope && isOn(spec, at) === false) continue;
-        const why = (legacy.includes(row.name)
-            ? 'a 1.x id - the full copy route carries it as copies; a switch back to the plugin route moves it across'
-            : 'the full copy route carries it as copies')
+        const why = 'the full copy route carries it as copies'
             + (at !== row.scope ? `; this project only - the ${row.scope}-scope install stays on for every other project` : '');
         if (cli(['plugin', 'disable', spec, '--scope', at], { quiet: true, expect: 'reported' }))
         {
@@ -678,11 +663,10 @@ function hudStatusLineMissing({ plugins = [], listing = [], settingsFile, settin
 // scope (`parsePluginList` everyScope); a bare `listing` is read the same way.
 //
 // A USER row is every other project's install too: it stays, and the run names the command that removes
-// it; a project or local row at another scope than the run's is still this project's, and goes. A CARRIER - a per-stack entry retired in 1.3.0 - is also the migration's
-// record: parked, it is the user's off-state for its items, which have no other home once it is gone,
-// so it stays at this scope as well. After each uninstall the row's add-back line is printed: the
-// retirement takes the plugin, never the user's way back to the server.
-function prunedRetired({ rows, listing, retired = [], retiredRows = [], carriers = [], market = BRAND.marketplace, scope, cli, log = () => {}, note = () => {} })
+// it; a project or local row at another scope than the run's is still this project's, and goes. After
+// each uninstall the row's add-back line is printed: the retirement takes the plugin, never the user's
+// way back to the server.
+function prunedRetired({ rows, listing, retired = [], retiredRows = [], market = BRAND.marketplace, scope, cli, log = () => {}, note = () => {} })
 {
     const all = rows || listing || [];
     const gone = [];
@@ -692,22 +676,19 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], carriers
     {
         const spec = retiredSpec(name, market, retiredRows);
         const [bare, mp] = spec.split('@');
-        const carrier = carriers.includes(bare);
         for (const r of all.filter((x) => x.name === bare && x.marketplace === mp && x.version))
         {
             const at = r.scope || scope;
-            if (carrier && r.enabled === false)
-                log(`  ${spec} is parked here - kept, so its skills and seats stay off; remove it by hand once they may come back: claude plugin uninstall ${spec} --scope ${at}`);
             // A project or local row in the listing is THIS project's (parsePluginList drops another project's), so
             // it goes whatever the run's scope - the user's report of 2026-10-06: the Discover tab still listed the
             // retired entries a project-scope row kept installed under a local-scope run. Only a user row is shared.
-            else if (at !== scope && (at === 'user' || carrier))
-                log(`  ${spec} is installed at ${at} scope, not this run's - kept for the projects that use it; the update run at that scope ${carrier ? 'copies its picks and removes it' : 'removes it'}: claude plugin uninstall ${spec} --scope ${at}`);
+            if (at !== scope && at === 'user')
+                log(`  ${spec} is installed at ${at} scope, not this run's - kept for the projects that use it; the update run at that scope removes it: claude plugin uninstall ${spec} --scope ${at}`);
             else if (!left.some((x) => x.spec === spec && x.scope === at)) left.push({ spec, name: bare, scope: at });
         }
     }
-    // A per-stack leaf declares its shared entries as dependencies and the CLI refuses to remove a
-    // dependency first, so a refusal is retried once everything else in the pass has gone.
+    // A retired entry can declare another as a dependency and the CLI refuses to remove a dependency
+    // first, so a refusal is retried once everything else in the pass has gone.
     for (let pass = 0; pass < 2 && left.length; pass++)
     {
         const next = [];
@@ -718,9 +699,7 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], carriers
                 log(`  plugin pruned (retired upstream) [${item.scope}]: ${item.spec}`);
                 const back = addBack(item.name);
                 if (back) log(`    add it back: ${back.split('<scope>').join(item.scope)}`);
-                // A-I2: 1.x local mode had the user switch the hosted server off, and nothing else turns it on.
-                // `!!` (F5): the first 2.0.0 run is the 1.x update body's, which surfaces only its own grep
-                // and the `!!` lines update-preflight --log forwards - both carry this marker.
+                // A-I2: the old local mode had the user switch the hosted server off, and nothing else turns it on.
                 if (item.name === 'context7-local') log('  !! context7-local removed - if you ran /mcp disable context7 for it, run /mcp enable context7');
                 gone.push(item.name);
             }
@@ -730,64 +709,6 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], carriers
     }
     for (const item of left) note(`plugin uninstall failed: ${item.spec} - remove it by hand: claude plugin uninstall ${item.spec} --scope ${item.scope}`);
     return gone;
-}
-
-// THE 1.x MOVE. 2.0.0 ships no rename: the 1.x ids were listed as RETIRED aliases through 2.2.0 - the core's alias
-// carried the 2.0.0 core under its old name, the hooks alias nothing (docs/rebrand-evidence.md S20) -
-// so the install is moved here, at the old core's own scope and key. The new core is INSTALLED, never
-// `update`d (it was never installed under any name, S19), and only once that took, the retired
-// per-stack entries go the `prunedRetired` way, then the hooks alias, then the core alias - the order
-// their dependencies allow (S22). A failed install removes NOTHING, since the old core is what still
-// carries the guards; an old core at another scope is every other project's install too, so it stays
-// and is named. The new core already here beside a 1.x id at this scope is a move an earlier run did
-// not finish (an uninstall refused, or cut short): the install is skipped and the removals retried,
-// in the same order. `ran` says the retired pass ran here. `rows` keeps every scope
-// (`parsePluginList` everyScope), which is what `prunedRetired` reads too - under the old core's key.
-function migrateLegacy({ rows = [], scope, retired = [], retiredRows = [], carriers = [], cli, log = () => {}, note = () => {} })
-{
-    const out = { fresh: [], gone: [], removed: [], failed: null, ran: false };
-    const named = (name, key) => rows.filter((r) => r.name === name && (!key || r.marketplace === key));
-    const here = (name, key) => named(name, key).some((r) => r.scope === scope);
-    const kept = (r) => log(`  ${r.name}@${r.marketplace} is installed at ${r.scope} scope, not this run's - kept for the projects that use it; the update run at that scope moves it across: claude plugin uninstall ${r.name}@${r.marketplace} --scope ${r.scope}`);
-    // C13: the 1.x hooks id at another scope is named the same way - a move to local scope left it on
-    // at project scope with no line.
-    for (const r of [...named(LEGACY.core), ...named(LEGACY.hooks)].filter((x) => x.scope !== scope)) kept(r);
-    const core = named(LEGACY.core).find((r) => r.scope === scope && !here(BRAND.core, r.marketplace));
-    const left = core ? null : [...named(LEGACY.core), ...named(LEGACY.hooks)].find((r) => r.scope === scope && here(BRAND.core, r.marketplace));
-    if (!core && !left) return out;
-
-    const key = (core || left).marketplace;
-    const spec = `${BRAND.core}@${key}`;
-    if (core)
-    {
-        const install = ['plugin', 'install', spec, '--scope', scope, '-y'];
-        log(`plugin [${scope}]: ${spec} (moves the 1.x install across - installed before its old ids go)`);
-        if (!cli(install, { expect: 'reported' }))
-        {
-            out.failed = spec;
-            note(`the 1.x install was not moved - 'claude ${install.join(' ')}' failed, so nothing was removed and the old core keeps the guards running; run it by hand, then update again`);
-            return out;
-        }
-        out.fresh.push(spec);
-    }
-    else log(`plugin [${scope}]: ${spec} is installed beside a 1.x id - the removals an earlier move left are retried`);
-    out.ran = true;
-    out.gone = prunedRetired({ rows, retired, retiredRows, carriers, market: key, scope, cli, log, note });
-    for (const name of [LEGACY.hooks, LEGACY.core])
-        for (const r of named(name, key))
-        {
-            if (r.scope !== scope) continue;
-            const id = `${name}@${key}`;
-            if (cli(['plugin', 'uninstall', id, '--scope', scope, '-y'], { quiet: true, expect: 'reported' }))
-            { log(`  plugin removed (a 1.x id, now a retired alias) [${scope}]: ${id}`); out.removed.push(r); }
-            else note(`plugin uninstall failed: ${id} - its hooks run beside the new core's until it goes; the next update retries it, or: claude plugin uninstall ${id} --scope ${scope}`);
-        }
-    // A-I3: a user-scope core serves every project on the account, and a seat deny is matched by the
-    // exact home name - another project's `Agent(<1.x core>:<seat>)` stops matching until its own update.
-    // `!!`: this move runs under the 1.x update body, which surfaces only its grep and the `!!` lines.
-    if (core && scope === 'user')
-        log('  !! core moved to alfred-code at user scope - other projects on this account keep their 1.x seat denies until each runs /alfred-code:update');
-    return out;
 }
 
 // THE MCP RENAMES (meta/stack-manifest.json `renamed.mcps`): 2.0.0 made serena, context7 and
@@ -880,9 +801,9 @@ function extraMarketplaces(rows, set)
 
 // UPDATE: adopt, enable, update, then READ THE VERSIONS BACK. An absent plugin is INSTALLED here, so
 // its marketplace is registered first, exactly as the install pass does. `fresh` names what this run
-// installed already (the 1.x migration): it is not touched again, and it is ENABLED - its install
+// installed already (a rename or a move): it is not touched again, and it is ENABLED - its install
 // said so, while the listing's own flag can read a fresh project-scope install as disabled
-// (docs/rebrand-evidence.md S22). A playwright engine is never enabled for its flag - the user's own
+// (docs/plugin-cli-evidence.md S22). A playwright engine is never enabled for its flag - the user's own
 // off-state, which only their answer (`engines.on`) switches - and an absent one is installed as on
 // install: switched off after when the user chose it off.
 function updatePlugins({ plugins, scope, scopes = {}, marketplaces = [], before = [], after, fresh = [], restored = [], refreshed = new Set(), engines = NO_ENGINES, cli, log = () => {}, note = () => {} })
@@ -942,7 +863,7 @@ function parseMarketplaces(json)
 
 module.exports = {
     OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, USER_OFF_WINS, CORE_DEP_PLUGINS, HUD_SPEC, itemScope, scopedItem, moveScoped,
-    pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateLegacy, migrateRenamed,
+    pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateRenamed,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, retirementDue, updatePlugins, extraMarketplaces, uninstallEngines,
     copyRouteStandDown, restoreStoodDown, standDownScope, engineStandDown, rowsOn, moveLocalRows, hudStatusLineMissing,

@@ -13,7 +13,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k.startsWith('ALFRED_CODE_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // legacy-name
+for (const k of Object.keys(process.env)) if (k.startsWith('ALFRED_CODE_')) delete process.env[k];
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const DOCS = '.alfred/docs';

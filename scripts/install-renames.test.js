@@ -21,7 +21,6 @@ const { writeSettings, readBackSettings } = require('./install/settings.js');
 const ROOT = path.join(__dirname, '..');
 const RENAMED = loadManifest(ROOT).renamed;
 const COPY_ROUTE = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
-const OLD_KEY = 'claude-stack'; // legacy-name
 
 const write = (repo, rel, text = 'x\n') =>
 {
@@ -46,7 +45,6 @@ function inspect(repo)
         pickedSkills: line('picked-skills'), pickedAgents: line('picked-agents'),
         librarySkills: line('library-skills').map((e) => e.split('=')[0]),
         skills: list('skills'), agents: list('agents'), settings,
-        oldStamp: fs.existsSync(path.join(claude, 'claude-stack.stamp')), // legacy-name
     };
 }
 
@@ -133,20 +131,20 @@ test('renamePicked: a stamp pick keeps its home and takes the new name; no picks
 {
     const opts = { renamed: RENAMED, log: () => {}, said: new Set() };
     assert.strictEqual(selection.renamePicked(null, opts), null, 'a stamp that never recorded picks is not one that recorded none');
-    assert.deepStrictEqual(selection.renamePicked({ skills: [`project-verify-code@${OLD_KEY}`, 'project-related-context', 'csharp'], agents: ['runtime-failure-diagnoser@alfred-code'] }, opts),
-        { skills: [`task-verify-code@${OLD_KEY}`, 'capture-related-projects', 'csharp'], agents: ['issue-diagnoser-runtime@alfred-code'] });
+    assert.deepStrictEqual(selection.renamePicked({ skills: ['project-verify-code@my-home', 'project-related-context', 'csharp'], agents: ['runtime-failure-diagnoser@alfred-code'] }, opts),
+        { skills: ['task-verify-code@my-home', 'capture-related-projects', 'csharp'], agents: ['issue-diagnoser-runtime@alfred-code'] });
 });
 
-test('renameDeny: a stack seat deny reads under the new seat, under any stack spelling; a foreign one is not touched', () =>
+test('renameDeny: a stack seat deny reads under the new seat; a foreign one is not touched', () =>
 {
     const settings = { env: { MY_OWN_KEY: '1' }, permissions: { deny: [
-        'Agent(alfred-code:ci-failure-diagnoser)', `Agent(${OLD_KEY}:runtime-failure-diagnoser)`,
+        'Agent(alfred-code:ci-failure-diagnoser)', 'Agent(alfred-code:runtime-failure-diagnoser)',
         'Agent(someone-else:ci-failure-diagnoser)', 'Bash(rm -rf:*)',
     ] } };
     const before = JSON.stringify(settings);
     const out = selection.renameDeny(settings, { renamed: RENAMED, log: () => {}, said: new Set() });
     assert.deepStrictEqual(out.permissions.deny, [
-        'Agent(alfred-code:issue-diagnoser-ci)', `Agent(${OLD_KEY}:issue-diagnoser-runtime)`,
+        'Agent(alfred-code:issue-diagnoser-ci)', 'Agent(alfred-code:issue-diagnoser-runtime)',
         'Agent(someone-else:ci-failure-diagnoser)', 'Bash(rm -rf:*)',
     ]);
     assert.strictEqual(JSON.stringify(settings), before, 'the read is a view - the file is re-spelled by the writer');
@@ -337,12 +335,12 @@ test('settings writer: a renamed seat deny is re-spelled in the file, a skillOve
             env: { MY_OWN_KEY: 'mine' },
             skillOverrides: { 'project-related-context': 'off', 'my-own-skill': 'name-only' },
             permissions: { deny: [
-                'Agent(alfred-code:ci-failure-diagnoser)', `Agent(${OLD_KEY}:runtime-failure-diagnoser)`,
+                'Agent(alfred-code:ci-failure-diagnoser)', 'Agent(alfred-code:runtime-failure-diagnoser)',
                 'Agent(someone-else:ci-failure-diagnoser)', 'Bash(rm -rf:*)',
             ] },
         }, null, 2));
         const logs = [];
-        const run = () => writeSettings({ file, renamed: RENAMED, liveEntries: [], log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        const run = () => writeSettings({ file, renamed: RENAMED, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
         run();
         const data = JSON.parse(fs.readFileSync(file, 'utf8'));
         assert.deepStrictEqual(data.permissions.deny.slice().sort(), [
@@ -400,7 +398,7 @@ test('settings writer: a personal skillOverrides switch-off in settings.local.js
 
 // I1 (fix round 1): a seat the user switched off for themselves - a deny in settings.local.json - is
 // re-spelled where it is, never moved into the shared file, and the read-back sees it off.
-const LOCAL_DENY = [`Agent(${OLD_KEY}:ci-failure-diagnoser)`, 'Agent(alfred-code:runtime-failure-diagnoser)', 'Bash(my-own:*)'];
+const LOCAL_DENY = ['Agent(alfred-code:ci-failure-diagnoser)', 'Agent(alfred-code:runtime-failure-diagnoser)', 'Bash(my-own:*)'];
 test('settings writer (I1): a seat deny in settings.local.json is re-spelled there, and the shared file gains none of it', () =>
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-settings-'));
@@ -413,7 +411,7 @@ test('settings writer (I1): a seat deny in settings.local.json is re-spelled the
         const logs = [];
         // The read-back sees both seats off, so the run's agent off-list names them under the new name.
         const agentDeny = ['Agent(alfred-code:issue-diagnoser-ci)', 'Agent(alfred-code:issue-diagnoser-runtime)'];
-        const run = () => writeSettings({ file, localFile, renamed: RENAMED, liveEntries: [], agentDeny, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        const run = () => writeSettings({ file, localFile, renamed: RENAMED, agentDeny, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
         run();
         const local = JSON.parse(fs.readFileSync(localFile, 'utf8'));
         assert.deepStrictEqual(local.permissions.deny.slice().sort(), [...agentDeny, 'Bash(my-own:*)'].sort(), local.permissions.deny.join('\n'));
@@ -448,17 +446,17 @@ test('readBackSettings (I1): at project and user scope a stack seat deny in sett
 
 // ---------- end to end, one case per migration shape ----------
 
-// Shape 1: a 1.3.0 install on the plugin route - the 1.x core under the old key, a stamp whose picks
-// name the old core skills and seat plus a library pick, and that library pick's copy on disk.
-const V13_LISTING = JSON.stringify([OLD_KEY, 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@${OLD_KEY}`, version: '1.3.0', scope: 'project', enabled: true })));
+// Shape 1: a 1.3.0 install on the plugin route - a stamp whose picks name the old core skills and seat
+// plus a library pick, and that library pick's copy on disk.
+const V13_LISTING = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '1.3.0', scope: 'project', enabled: true })));
 function v13Plugin(repo)
 {
     write(repo, '.claude/rules/alfred-interaction.md');
     write(repo, '.claude/skills/project-related-context/SKILL.md', skill('project-related-context'));
-    write(repo, '.claude/claude-stack.stamp', [ // legacy-name
+    write(repo, '.claude/alfred-code.stamp', [
         'version: 1.3.0', 'sha: 0000000',
-        `picked-skills: project-solve-task@${OLD_KEY},project-commit-checkpoint@${OLD_KEY},project-related-context,markdown-style@${OLD_KEY}`,
-        `picked-agents: ci-failure-diagnoser@${OLD_KEY},security-auditor@${OLD_KEY}`,
+        'picked-skills: project-solve-task@alfred-code,project-commit-checkpoint@alfred-code,project-related-context,markdown-style@alfred-code',
+        'picked-agents: ci-failure-diagnoser@alfred-code,security-auditor@alfred-code',
         `library-skills: project-related-context=${hashItem(path.join(repo, '.claude/skills/project-related-context'))}`, '',
     ].join('\n'));
     write(repo, '.claude/settings.json', JSON.stringify({ env: { MY_OWN_KEY: 'mine' } }, null, 2));
@@ -482,7 +480,6 @@ test('seed update --installed-only over a 1.3.0 stamp: every old pick is carried
     assert.ok(!first.skills.includes('project-related-context'), 'the old copy is pruned');
     assert.deepStrictEqual(first.librarySkills.filter((n) => n.startsWith('capture-related')), ['capture-related-projects']);
     assert.strictEqual(first.settings.env.MY_OWN_KEY, 'mine', "the user's own settings key survives");
-    assert.strictEqual(first.oldStamp, false);
     const lines = renamedLines(outs[0]);
     for (const [kind, from, to] of [['skill', 'project-solve-task', 'task-solve'], ['skill', 'project-commit-checkpoint', 'habits-commit-checkpoint'],
         ['skill', 'project-related-context', 'capture-related-projects'], ['agent', 'ci-failure-diagnoser', 'issue-diagnoser-ci']])
@@ -492,8 +489,8 @@ test('seed update --installed-only over a 1.3.0 stamp: every old pick is carried
     assert.deepStrictEqual([second.pickedSkills, second.pickedAgents, second.skills, second.agents], [first.pickedSkills, first.pickedAgents, first.skills, first.agents], 'the re-run changes nothing');
 });
 
-// Shape 2: a seat the user switched off under its old name - the 2.0.0 core spelling and the 1.x one
-// - stays off under its new name, and a skillOverrides switch-off follows its skill.
+// Shape 2: a seat the user switched off under its old name stays off under its new name, and a
+// skillOverrides switch-off follows its skill.
 test('seed update --installed-only: a seat denied under its old name stays denied under the new one, and nothing else of the user\'s moves', POSIX_ONLY, () =>
 {
     const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
@@ -505,13 +502,13 @@ test('seed update --installed-only: a seat denied under its old name stays denie
         write(repo, '.claude/settings.json', JSON.stringify({
             env: { MY_OWN_KEY: 'mine' },
             skillOverrides: { 'project-related-context': 'off' },
-            permissions: { deny: ['Agent(alfred-code:ci-failure-diagnoser)', `Agent(${OLD_KEY}:runtime-failure-diagnoser)`, 'Agent(someone-else:ci-failure-diagnoser)', 'Bash(rm -rf:*)'] },
+            permissions: { deny: ['Agent(alfred-code:ci-failure-diagnoser)', 'Agent(alfred-code:runtime-failure-diagnoser)', 'Agent(someone-else:ci-failure-diagnoser)', 'Bash(rm -rf:*)'] },
         }, null, 2));
     };
     const { result: r, out } = seedRun('update', 'skill markdown-style\n', { plugins: listing, args: ['--installed-only'], prepare, inspect });
     const deny = r.settings.permissions.deny;
     assert.ok(deny.includes('Agent(alfred-code:issue-diagnoser-ci)') && deny.includes('Agent(alfred-code:issue-diagnoser-runtime)'), deny.join('\n'));
-    assert.ok(!deny.some((d) => /^Agent\((alfred-code|claude-stack)[a-z0-9-]*:(ci|runtime)-failure-diagnoser\)$/.test(d)), `no stack deny keeps an old seat name:\n${deny.join('\n')}`); // legacy-name
+    assert.ok(!deny.some((d) => /^Agent\(alfred-code[a-z0-9-]*:(ci|runtime)-failure-diagnoser\)$/.test(d)), `no stack deny keeps an old seat name:\n${deny.join('\n')}`);
     assert.ok(deny.includes('Agent(someone-else:ci-failure-diagnoser)') && deny.includes('Bash(rm -rf:*)'), "the user's own entries stay");
     assert.ok(!r.pickedAgents.some((e) => /diagnoser/.test(e)), `a denied seat is no pick: ${r.pickedAgents.join(',')}`);
     assert.deepStrictEqual(r.settings.skillOverrides, { 'capture-related-projects': 'off' }, 'the skill switch-off follows the skill');
@@ -641,7 +638,7 @@ test('seed update --installed-only: an unedited .claude/CLAUDE.md seed moves to 
 test('seed update --installed-only --scope local (M1): an old seat deny only settings.json holds is noted, never reported as renamed, and the seat stays off', POSIX_ONLY, () =>
 {
     const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'local', enabled: true })));
-    const shared = JSON.stringify({ permissions: { deny: [`Agent(${OLD_KEY}:ci-failure-diagnoser)`] } }, null, 2);
+    const shared = JSON.stringify({ permissions: { deny: ['Agent(alfred-code:ci-failure-diagnoser)'] } }, null, 2);
     const prepare = (repo) =>
     {
         write(repo, '.claude/rules/alfred-interaction.md');
@@ -656,7 +653,7 @@ test('seed update --installed-only --scope local (M1): an old seat deny only set
     for (const [i, out] of outs.entries())
     {
         assert.deepStrictEqual(renamedLines(out), [], `run ${i + 1}: nothing this run wrote was renamed\n${out}`);
-        assert.match(out, new RegExp(`settings\\.json still names Agent\\(${OLD_KEY}:ci-failure-diagnoser\\) - read as issue-diagnoser-ci`), `run ${i + 1}`);
+        assert.match(out, /settings\.json still names Agent\(alfred-code:ci-failure-diagnoser\) - read as issue-diagnoser-ci/, `run ${i + 1}`);
         assert.strictEqual(steps[i].sharedRaw, shared, 'a local-scope run never writes the shared file');
         assert.ok(steps[i].local.permissions.deny.includes('Agent(alfred-code:issue-diagnoser-ci)'), `run ${i + 1}: the seat stays off for this user: ${JSON.stringify(steps[i].local.permissions)}`);
     }
@@ -670,7 +667,7 @@ test('seed update --installed-only on the copy route: the old copies become new 
         write(repo, '.claude/rules/alfred-interaction.md');
         for (const n of ['project-solve-task', 'project-verify-code', 'markdown-style']) write(repo, `.claude/skills/${n}/SKILL.md`, skill(n));
         for (const n of ['ci-failure-diagnoser', 'security-auditor']) write(repo, `.claude/agents/${n}.md`, `---\nname: ${n}\n---\n`);
-        write(repo, '.claude/claude-stack.stamp', 'version: 1.3.0\nsha: 0000000\nhooks-route: copy\n'); // legacy-name
+        write(repo, '.claude/alfred-code.stamp', 'version: 1.3.0\nsha: 0000000\nhooks-route: copy\n');
     };
     const { result: r, out } = seedRun('update', 'skill markdown-style\n', { env: COPY_ROUTE, args: ['--installed-only'], prepare, inspect });
     for (const n of ['task-solve', 'task-verify-code', 'markdown-style']) assert.ok(r.skills.includes(n), `${n} is copied: ${r.skills.join(' ')}`);
@@ -766,7 +763,7 @@ test('seed update (audit F2): a retired skill, seat or hook the record does not 
 });
 
 // Shape 4 (2.1.0 Task 3): a legacy copy-route install that never wrote a stamp - old-name copies, the stack's
-// hooks copied and wired, an old seat, a rule, the 1.x env key - and beside them a project's own skill. The
+// hooks copied and wired, an old seat, a rule, the stack's env key - and beside them a project's own skill. The
 // state is `legacy-unstamped`, update's to take: its picks come off disk under their new names, the old
 // copies go, the stamp is written, and the project's own skill is neither touched nor recorded.
 function unstampedLegacy(repo)
@@ -780,7 +777,7 @@ function unstampedLegacy(repo)
     write(repo, '.claude/agents/ci-failure-diagnoser.md', '---\nname: ci-failure-diagnoser\n---\n');
     write(repo, '.claude/rules/alfred-interaction.md');
     write(repo, '.claude/settings.json', JSON.stringify({
-        env: { CLAUDE_STACK_DOCS_PATH: '.claude/docs', MY_OWN_KEY: 'mine' }, // legacy-name
+        env: { ALFRED_CODE_DOCS_PATH: '.claude/docs', MY_OWN_KEY: 'mine' },
         hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-catastrophic-rm.js"' }] },
             { matcher: 'Bash', hooks: [{ type: 'command', command: 'node my-own-check.js' }] }] },
     }, null, 2));
@@ -819,10 +816,9 @@ test('seed update --installed-only over an UNSTAMPED legacy install: picks under
     assert.ok(first.skills.includes('my-own-helper'), `the project's own skill stays: ${first.skills.join(' ')}`);
     assert.strictEqual(first.mine, skill('my-own-helper'), 'and is not rewritten');
     assert.ok(![...first.pickedSkills, ...first.librarySkills].some((e) => /my-own-helper/.test(e)), 'nor recorded as a stack pick');
-    // The 1.x key held the old default, the stack's own seed, over no docs at all - so it takes the new default.
+    // The key held the old default, the stack's own seed, over no docs at all - so it takes the new default.
     assert.strictEqual(first.settings.env.ALFRED_CODE_DOCS_PATH, '.alfred/docs', 'an empty old root is re-pointed');
     assert.match(outs[0], /docs root: \.claude\/docs holds nothing - re-pointed to \.alfred\/docs/);
-    assert.ok(!Object.keys(first.settings.env).some((k) => k.startsWith('CLAUDE_STACK_')), JSON.stringify(first.settings.env)); // legacy-name
     assert.strictEqual(first.settings.env.MY_OWN_KEY, 'mine');
     const wired = JSON.stringify(first.settings.hooks || {});
     assert.ok(!wired.includes('.claude/hooks/guard-'), `the old copy's wiring goes with its file: ${wired}`);

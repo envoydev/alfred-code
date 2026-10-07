@@ -30,8 +30,7 @@ function use(p) {
 // 396,954 / 397,171 across three projects), so on that tier the Stop offer is usually unreachable
 // by design and the SessionStart `compact` route is what reaches the user - lower the variable to
 // be asked before the harness decides. Which WINDOW this session runs in is resolved below.
-// Read through envOf, so a 1.x settings.json's CLAUDE_STACK_* spelling answers until its update // legacy-name
-// renames it - the key is passed with the ALFRED_CODE_ prefix and read by its suffix.
+// Read through envOf - the key is passed with the ALFRED_CODE_ prefix and read by its suffix.
 function freshAt(key, dflt) {
   const n = parseInt(envOf(process.env, String(key).replace(/^ALFRED_CODE_/, '')), 10);
   return Number.isNaN(n) || n < 0 ? dflt : n;   // garbage takes the default; 0 is a real answer (off)
@@ -45,7 +44,7 @@ const FRESH_AT_1M = freshAt('ALFRED_CODE_FRESH_SESSION_1M', 400000);
 // there can run past its window without an offer; lower the variable for such models (it sat at
 // 180,000 until 2.1.6 for exactly that reason).
 const FRESH_AT_DEFAULT = freshAt('ALFRED_CODE_FRESH_SESSION_DEFAULT', 300000);
-// `0` on ALL THREE is the whole off switch. The retired CLAUDE_STACK_FRESH_SESSION_PCT is not read // legacy-name
+// `0` on ALL THREE is the whole off switch. The retired ALFRED_CODE_FRESH_SESSION_PCT is not read
 // at all any more - a percentage of a window is not what this gate fires on.
 const FRESH_OFF = FRESH_AT_200K === 0 && FRESH_AT_1M === 0 && FRESH_AT_DEFAULT === 0;
 

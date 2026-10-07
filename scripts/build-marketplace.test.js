@@ -5,8 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { buildEntries, coreEntry, applyToMarketplace, unlistedRetired, hooksBlock, parseHookWirings, mergeHooks, FOLDED_ENTRIES } = require('./build-marketplace.js');
-const { LEGACY } = require('./install/brand.js');
+const { buildEntries, coreEntry, applyToMarketplace, hooksBlock, parseHookWirings, mergeHooks, FOLDED_ENTRIES } = require('./build-marketplace.js');
 const { CORE_DEP_PLUGINS } = require('./install/plugins.js');
 const { LOCKED } = require('./install/mcp.js');
 
@@ -142,12 +141,12 @@ test('mergeHooks keeps one group per matcher, the first block\'s hooks first', (
     assert.deepStrictEqual(own.PreToolUse[0].hooks, [{ command: 'own' }], 'the inputs are not mutated');
 });
 
-// 2.2.1 (the user's ruling of 2026-10-06): no RETIRED alias is listed - the two 1.x ids and every id `renamed.mcps`
-// left behind (a browser engine renamed by its prefix) are out of the live file, which an update migrates without.
-const RETIRED_ALIAS_NAMES = [LEGACY.core, LEGACY.hooks, ...Object.keys(require('./install/manifest.js').loadManifest(path.join(__dirname, '..')).renamed.mcps)
+// 2.2.1 (the user's ruling of 2026-10-06): no RETIRED alias is listed - every id `renamed.mcps` left behind
+// (a browser engine renamed by its prefix) is out of the live file, which an update migrates without.
+const RETIRED_ALIAS_NAMES = [...Object.keys(require('./install/manifest.js').loadManifest(path.join(__dirname, '..')).renamed.mcps)
     .flatMap((old) => (old === 'playwright' ? ['chrome', 'msedge', 'firefox', 'webkit'].map((e) => `${old}-${e}`) : [old]))];
-test('no RETIRED alias is generated or listed: the 1.x ids and the renamed MCP ids are gone', () => {
-    assert.strictEqual(RETIRED_ALIAS_NAMES.length, 11, 'the two 1.x ids, serena, context7, the four playwright engines and the three 2.2.0 ids');
+test('no RETIRED alias is generated or listed: the renamed MCP ids are gone', () => {
+    assert.strictEqual(RETIRED_ALIAS_NAMES.length, 9, 'serena, context7, the four playwright engines and the three 2.2.0 ids');
     for (const name of RETIRED_ALIAS_NAMES) assert.strictEqual(shippedBy[name], undefined, `${name} is still listed`);
     assert.strictEqual(SHIPPED.plugins.filter((p) => /^RETIRED/.test(p.description || '')).length, 0, 'no RETIRED row at all');
     assert.ok(!('aliasEntries' in require('./build-marketplace.js')) && !('mcpAliasEntries' in require('./build-marketplace.js')), 'no generator is left to bring one back');
@@ -181,13 +180,11 @@ test('every shipped entry reaches the core through its dependencies, with no cyc
     // the core blocks each core disable while it is on (I7) - an alias naming the 2.x core is unmet for
     // the not-yet-updated installs it exists for (I6). An MCP entry carries servers and nothing else,
     // which is how applyMcpPlugins recognises one. Everything else must reach the core, or enabling it
-    // would not enable the baseline. The two 1.x aliases are the core under its old name and an empty
-    // id, so the old core's alias counts as the core for a retired entry, whose frozen dependency still
-    // names it.
+    // would not enable the baseline.
     const mcpOnly = (p) => p.mcpServers && !p.skills && !p.agents && !p.commands && !p.hooks;
     for (const e of SHIPPED.plugins)
     {
-        if (e.name === 'alfred-code' || e.name === LEGACY.core || e.name === LEGACY.hooks || LOCKED.includes(e.name) || mcpOnly(e)) continue;
+        if (e.name === 'alfred-code' || LOCKED.includes(e.name) || mcpOnly(e)) continue;
         const seen = new Set();
         const stack = [e.name];
         while (stack.length)
@@ -203,7 +200,7 @@ test('every shipped entry reaches the core through its dependencies, with no cyc
                 stack.push(d);
             }
         }
-        assert.ok(seen.has('alfred-code') || seen.has(LEGACY.core), `${e.name} does not reach the core plugin - enabling it would not enable the baseline`);
+        assert.ok(seen.has('alfred-code'), `${e.name} does not reach the core plugin - enabling it would not enable the baseline`);
     }
 });
 
@@ -319,22 +316,10 @@ test('M25 the documentation entry sends the key as Context7-API-Key, empty when 
     assert.strictEqual(CONTEXT7_REMOTE.header, 'Context7-API-Key: ${CONTEXT7_API_KEY:-}', 'the copy route sends the same header');
 });
 
-// 2.1.7 (the user's ruling of 2026-10-06): the per-stack entries retired in 1.3.0 left the Discover tab. Update
-// migrates one still installed from meta/retired-entries.json alone, so the frozen file stays while the listing goes.
-test('the per-stack entries retired in 1.3.0 are no longer listed, and an applied marketplace drops them', () =>
+test('a retired name is dropped from the marketplace, and a name nobody retired is kept', () =>
 {
-    const names = unlistedRetired();
-    assert.strictEqual(names.length, 20, 'the frozen record still names every entry 1.2.0 shipped');
-    for (const name of names) assert.strictEqual(shippedBy[name], undefined, `${name} is still listed`);
-    const mkt = applyToMarketplace({ plugins: [{ name: 'claude-stack-angular', source: './' }, { name: 'third-party', source: './x' }] }, buildEntries()); // legacy-name
-    assert.strictEqual(mkt.plugins.find((p) => p.name === 'claude-stack-angular'), undefined, 'a live listing is dropped'); // legacy-name
-    assert.ok(mkt.plugins.find((p) => p.name === 'third-party'), 'a name nobody retired is kept');
-});
-
-test('a retired name missing from the frozen file is dropped from the marketplace', () =>
-{
-    const mkt = applyToMarketplace({ plugins: [{ name: 'claude-stack-gone', source: './' }, { name: 'third-party', source: './x' }] }, buildEntries(), { retired: ['claude-stack-gone'] }); // legacy-name
-    assert.strictEqual(mkt.plugins.find((p) => p.name === 'claude-stack-gone'), undefined); // legacy-name
+    const mkt = applyToMarketplace({ plugins: [{ name: 'gone-entry', source: './' }, { name: 'third-party', source: './x' }] }, buildEntries(), { retired: ['gone-entry'] });
+    assert.strictEqual(mkt.plugins.find((p) => p.name === 'gone-entry'), undefined);
     assert.ok(mkt.plugins.find((p) => p.name === 'third-party'), 'a name nobody retired is kept');
 });
 
@@ -344,13 +329,12 @@ test('the live marketplace carries no renames key and no hooks entry', () => {
     assert.strictEqual(shippedBy['alfred-code-hooks'], undefined, 'the hooks ride the core');
 });
 
-test('--write-marketplace drops a renames key, the hooks entry and a stale 1.x alias', () => {
+test('--write-marketplace drops a renames key and the hooks entry', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mkt-'));
     const file = path.join(tmp, 'marketplace.json');
     const stale = JSON.parse(JSON.stringify(SHIPPED));
-    stale.renames = { [LEGACY.core]: 'alfred-code', [LEGACY.hooks]: 'alfred-code-hooks' };
-    stale.plugins = stale.plugins.concat({ name: 'alfred-code-hooks', source: './', description: 'pre-fold', hooks: { Stop: [] } },
-        { name: LEGACY.core, source: './', description: 'RETIRED in 2.0.0', skills: [] }, { name: LEGACY.hooks, source: './', description: 'RETIRED in 2.0.0', skills: [] });
+    stale.renames = { 'old-core': 'alfred-code' };
+    stale.plugins = stale.plugins.concat({ name: 'alfred-code-hooks', source: './', description: 'pre-fold', hooks: { Stop: [] } });
     fs.writeFileSync(file, JSON.stringify(stale, null, 2) + '\n');
     try
     {
@@ -358,7 +342,6 @@ test('--write-marketplace drops a renames key, the hooks entry and a stale 1.x a
         const after = JSON.parse(fs.readFileSync(file, 'utf8'));
         assert.ok(!('renames' in after), 'the renames key is deleted');
         assert.strictEqual(after.plugins.find((p) => p.name === 'alfred-code-hooks'), undefined, 'the hooks entry is dropped');
-        for (const name of [LEGACY.core, LEGACY.hooks]) assert.strictEqual(after.plugins.find((p) => p.name === name), undefined, `${name} is dropped`);
         const once = fs.readFileSync(file, 'utf8');
         assert.match(run(['--write-marketplace', '--marketplace-file', file]), /marketplace current/, 'a re-run changes nothing');
         assert.strictEqual(fs.readFileSync(file, 'utf8'), once);

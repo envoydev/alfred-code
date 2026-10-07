@@ -46,16 +46,13 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync, spawn } = require('child_process');
 
-// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. This engine ships alone (copied // legacy-name
-// beside memory-session.js, without hook-prelude.js), so its own copy of envOf is inline rather
-// than required - pinned with the hooks' copy as env-legacy-fallback (meta/shared-rules.json).
+// The stack's setting ALFRED_CODE_<suffix>, '' read as unset. This engine ships alone (copied beside
+// memory-session.js, without hook-prelude.js), so its own copy of envOf is inline rather than
+// required - pinned with the hooks' copy as env-reader (meta/shared-rules.json).
 function envOf(env, suffix)
 {
-    const fresh = env[`ALFRED_CODE_${suffix}`];
-    if (fresh !== undefined && fresh !== '') return fresh;
-    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name
-    if (old !== undefined && old !== '') return old;
-    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name
+    const value = env[`ALFRED_CODE_${suffix}`];
+    return value === '' ? undefined : value;
 }
 
 const MEMORY_FOLDER = '.alfred-memory';
@@ -202,7 +199,7 @@ function settingsDbState(projectRoot, { home = os.homedir(), configDir } = {}) {
     try { data = raw.trim() ? JSON.parse(raw) : {}; } catch { if (refuse(file)) break; continue; }
     if (!data || typeof data !== 'object' || Array.isArray(data)) { if (refuse(file)) break; continue; }
     const env = data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {};
-    const key = ['ALFRED_CODE_MEMORY_DB', 'CLAUDE_STACK_MEMORY_DB'].find((k) => typeof env[k] === 'string' && env[k]); // legacy-name
+    const key = typeof env.ALFRED_CODE_MEMORY_DB === 'string' && env.ALFRED_CODE_MEMORY_DB ? 'ALFRED_CODE_MEMORY_DB' : '';
     if (!key) continue;
     const expanded = expandProjectDir(expandHome(env[key], home), projectRoot);
     return { db: path.normalize(path.isAbsolute(expanded) ? expanded : path.join(projectRoot, expanded)), from: file, key, value: env[key], unread };
@@ -214,15 +211,12 @@ function settingsDbState(projectRoot, { home = os.homedir(), configDir } = {}) {
 // memory key in. Empty with no stamp or no such row. Never throws.
 function ledgerKeyFiles(projectRoot) {
   const out = new Set();
-  for (const name of ['alfred-code.stamp', 'claude-stack.stamp']) { // legacy-name
-    let text;
-    try { text = fs.readFileSync(path.join(projectRoot, '.claude', name), 'utf8'); } catch { continue; }
-    const line = /^managed-env: ?(.*)$/m.exec(text);
-    for (const item of line ? line[1].split(',') : []) {
-      const m = /^\s*(settings(?:\.local)?\.json):(?:ALFRED_CODE|CLAUDE_STACK)_MEMORY_DB=/.exec(item); // legacy-name
-      if (m) out.add(m[1]);
-    }
-    break;
+  let text;
+  try { text = fs.readFileSync(path.join(projectRoot, '.claude', 'alfred-code.stamp'), 'utf8'); } catch { return out; }
+  const line = /^managed-env: ?(.*)$/m.exec(text);
+  for (const item of line ? line[1].split(',') : []) {
+    const m = /^\s*(settings(?:\.local)?\.json):ALFRED_CODE_MEMORY_DB=/.exec(item);
+    if (m) out.add(m[1]);
   }
   return out;
 }
@@ -332,7 +326,7 @@ function mainCheckoutRoot(projectRoot) {
 //   checkout  the folder the session works in - the navigation server indexes it, the browser keeps its profiles there.
 //   project   the install the checkout belongs to - in a linked worktree the main checkout whenever that one holds a record,
 //             whatever the worktree carries (a committed stamp or engine): it shares main's database, settings and stamp.
-const INSTALL_RECORDS = [['alfred-code.stamp'], ['claude-stack.stamp'], ['hooks', 'docs.js']]; // legacy-name
+const INSTALL_RECORDS = [['alfred-code.stamp'], ['hooks', 'docs.js']];
 const holdsRecord = (dir) => INSTALL_RECORDS.some((r) => fs.existsSync(path.join(dir, '.claude', ...r)));
 
 // The main checkout of a linked worktree (a `.git` FILE naming `<main>/.git/worktrees/<n>`), read from the files alone.
@@ -863,11 +857,6 @@ const STACK_MEMORY_PLUGIN_FORMER = 'memory@envoydev';
 // The server's names, the current first: a registration or plugin entry of an older release keys `memory`.
 const MEMORY_SERVERS = ['alfred-memory', 'memory'];
 const serverIn = (servers) => { for (const n of MEMORY_SERVERS) if (servers && servers[n]) return servers[n]; return null; };
-// A 1.x install's plugin id: the marketplace KEY never migrates (docs/rebrand-evidence.md S4/S9), so
-// its installed_plugins.json row still keys the server this way for the whole 2.x line - read only
-// when the current key carries no row.
-const STACK_MEMORY_PLUGIN_LEGACY = 'memory@claude-stack'; // legacy-name
-
 // A registration the copy route (or a pre-1.0.0 install) wrote: the project's .mcp.json, then the
 // account file's user-scope and project-scope entries - the files registeredDbPath reads.
 function registrationEntry(projectRoot, home, configDir) {
@@ -893,9 +882,7 @@ function registrationEntry(projectRoot, home, configDir) {
 // read. The plugin's install directory is the whole stack repo (every marketplace entry is sourced
 // from its root), so its own marketplace.json declares the server exactly as Claude Code launches
 // it. The key is the marketplace's REGISTERED name, not a constant one: a fresh install adds the
-// marketplace as `envoydev`, but a 1.x install's marketplace key never migrates on rename
-// (docs/rebrand-evidence.md S4/S9), so its row still keys `memory@claude-stack` for the whole 2.x // legacy-name
-// line - read only as a fallback, and the current key's row wins when both exist. This project's
+// marketplace as `envoydev`. This project's
 // install first, then an account-level one; another project's install, or a `memory` plugin from
 // any other marketplace, is never used.
 function installedPluginRoots(projectRoot, home, configDir) {
@@ -903,7 +890,7 @@ function installedPluginRoots(projectRoot, home, configDir) {
   const data = readJson(path.join(dir, 'plugins', 'installed_plugins.json'));
   const plugins = data && data.plugins ? data.plugins : {};
   const rowsOf = (id) => (Array.isArray(plugins[id]) ? plugins[id] : []);
-  const rows = [STACK_MEMORY_PLUGIN, STACK_MEMORY_PLUGIN_FORMER, STACK_MEMORY_PLUGIN_LEGACY].map(rowsOf).find((r) => r.length) || [];
+  const rows = [STACK_MEMORY_PLUGIN, STACK_MEMORY_PLUGIN_FORMER].map(rowsOf).find((r) => r.length) || [];
   const here = new Set([projectRoot, mainCheckoutRoot(projectRoot)].map(dirKey));
   const valid = rows.filter((r) => r && typeof r.installPath === 'string' && r.installPath);
   const mine = valid.filter((r) => r.projectPath && here.has(dirKey(String(r.projectPath))));

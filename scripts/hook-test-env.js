@@ -13,8 +13,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const STACK_KEY = /^(ALFRED_CODE_|CLAUDE_STACK_)/; // legacy-name
-const SESSION_KEYS = ['CLAUDE_DOCS_PATH', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_PLUGIN_ROOT', 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE', 'CLAUDE_PROJECT_DIR']; // legacy-name
+const STACK_KEY = /^ALFRED_CODE_/;
+const SESSION_KEYS = ['CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_PLUGIN_ROOT', 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE', 'CLAUDE_PROJECT_DIR'];
 
 // The docs roots a hook falls back to under a project dir of os.tmpdir(): the default and the old one.
 const strayRoots = () => ['.alfred', '.claude'].map((d) => path.join(os.tmpdir(), d, 'docs'));

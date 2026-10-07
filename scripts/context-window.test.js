@@ -26,11 +26,6 @@ const KNOBS = ['ALFRED_CODE_FRESH_SESSION_1M', 'ALFRED_CODE_FRESH_SESSION_200K',
 const baseEnv = () => {
   const env = { ...process.env };
   for (const k of KNOBS) delete env[k];
-  // envOf (hook-prelude.js, 2.0.0) now answers a bare CLAUDE_STACK_* the same way it answers // legacy-name
-  // ALFRED_CODE_* - so the same session-env leakage the KNOBS list guards against reaches every
-  // 1.x-spelled knob too (measured here: a real CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW=1000000 turned // legacy-name
-  // the 'no fallback set' case's DEFAULT trigger into the 1M one). Strip the whole prefix.
-  for (const k of Object.keys(env)) if (k.startsWith('CLAUDE_STACK_')) delete env[k]; // legacy-name
   env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));    // no account settings model
   env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));   // no project settings, no ledger in the repo
   return env;

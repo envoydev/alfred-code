@@ -15,18 +15,16 @@
 //   blocked - a skill set to 'off' or 'user-invocable-only' in skillOverrides that a rule copy still sends
 //             the model to (a backticked name): that Skill call fails
 //
-// T16 (R29): every scope's stamp and library copies live in the PROJECT now - `--config-dir` is a
-// LEGACY fallback only, for a 1.x global install this project has not yet run an `update` over (the
-// installer's own migrateLegacyGlobal moves it on that first update; until then this is how
-// validate/status still find it). `--scope` is gone - a 2.x install never puts either in the
-// account dir again, whatever scope it was made at.
+// T16 (R29): every scope's stamp and library copies live in the PROJECT - `--config-dir` names the
+// account dir only for the shadow check below. `--scope` is gone - an install never puts either in
+// the account dir, whatever scope it was made at.
 //
 // Exit 1 on any finding, 0 when clean - and 0 with 'no library stamp' when the stamp has no library
 // lines (an older release, the shell twin, a project the stack never installed): nothing to check.
 const fs = require('node:fs');
 const path = require('node:path');
 const { readLibrary, validItemName, readSeatsRoute } = require('./install/stamp.js');
-const { stampFile, LEGACY } = require('./install/brand.js');
+const { stampFile } = require('./install/brand.js');
 const { hashItem, hashBuffer } = require('./install/library.js');
 const { parseJson } = require('./install/json-file.js');
 const { resolveDocsRoot } = require('./install/copy.js');
@@ -51,29 +49,16 @@ const newer = (a, b) =>
 function check({ project, source, configDir })
 {
     const claudeDir = path.join(project, '.claude');
-    let base = claudeDir;
-    // A 1.x project's own stamp keeps its old name until the next update rewrites it.
     const own = stampFile(claudeDir).read;
-    let stamp = readLibrary(own);
-    if (!own && configDir)
-    {
-        // A 1.x GLOBAL install left its stamp (and its skills) in the account dir, not yet migrated
-        // by an update - read it there too, once, so validate/status still report it. Only when the
-        // project has NO stamp file (R54 M3): one whose own stamp carries no library lines is its own
-        // install, and the account stamp describes some other.
-        const legacy = path.join(configDir, LEGACY.stamp);
-        if (fs.existsSync(legacy)) { stamp = readLibrary(legacy); base = configDir; }
-    }
+    const stamp = readLibrary(own);
     if (!stamp) return null;
     const overrides = (file) => { const o = readJson(file).skillOverrides; return o && typeof o === 'object' ? o : {}; };
     const settings = overrides(path.join(project, '.claude', 'settings.json'));
     const local = overrides(path.join(project, '.claude', 'settings.local.json'));
     const sourceVersion = source ? (readJson(path.join(source, 'setup-plugin', '.claude-plugin', 'plugin.json')).version || '') : '';
     const rows = [];
-    // `base` is the project at every scope now - only a not-yet-migrated 1.x global install's
-    // legacy read still points `skills` at the account dir. Agents and rules were always project-
-    // only - no plugin ever carries a rule, so a rule is always a project copy.
-    const dirs = { skills: path.join(base, 'skills'), agents: path.join(project, '.claude', 'agents'), rules: path.join(project, '.claude', 'rules') };
+    // Every kind is a project copy - no plugin ever carries a rule.
+    const dirs = { skills: path.join(claudeDir, 'skills'), agents: path.join(project, '.claude', 'agents'), rules: path.join(project, '.claude', 'rules') };
     const docsRoot = resolveDocsRoot(project);
     // The pristine SOURCE hash for one item - normalised for alfred-docs-root.md, whose source
     // content never matches an up-to-date project copy byte for byte (see the constant's comment).
@@ -112,13 +97,8 @@ function check({ project, source, configDir })
             {
                 row.mode = local[name] || settings[name] || 'on';
                 // I6 (R47, fix round 1): Claude Code runs a PERSONAL skill over a project one of the
-                // same name - an account copy of this same skill (left by migrateLegacyGlobal, or
-                // hand-added separately) silently overrides this project's own library copy however
-                // clean everything else above reads. configDir is checked whether or not it was this
-                // run's STAMP source, because the shadow can exist beside an install that was always
-                // project-native too - EXCEPT when dirs.skills already IS configDir/skills (a 1.x
-                // global install not yet migrated): that is the project's own copy, not a shadow.
-                // N1: a name the PROJECT stamp records is validated before it is ever joined against
+                // same name - an account copy of this same skill silently overrides this project's own
+                // library copy however clean everything else above reads. N1: a name the PROJECT stamp records is validated before it is ever joined against
                 // the account skills/ dir - a corrupted or hand-edited stamp can never make this
                 // check (or the printed rm -rf below) point outside it. configDir is checked for
                 // truthiness FIRST - path.join throws on a null/undefined first argument, and most
@@ -126,7 +106,7 @@ function check({ project, source, configDir })
                 if (configDir)
                 {
                     const acctSkillsDir = path.join(configDir, 'skills');
-                    if (dirs.skills !== acctSkillsDir && validItemName(name, acctSkillsDir))
+                    if (validItemName(name, acctSkillsDir))
                     {
                         let isDir = false;
                         try { isDir = fs.statSync(path.join(acctSkillsDir, name)).isDirectory(); } catch { isDir = false; }
@@ -157,7 +137,7 @@ function check({ project, source, configDir })
     }
     const stale = Boolean(sourceVersion && stamp.version && newer(sourceVersion, stamp.version));
     // The 2.1.0 move: a stamp from before it names no `seats-route:`.
-    const moved = stale && !newer('2.1.0', sourceVersion) && newer('2.1.0', stamp.version) && !readSeatsRoute(base === claudeDir ? own : path.join(base, LEGACY.stamp));
+    const moved = stale && !newer('2.1.0', sourceVersion) && newer('2.1.0', stamp.version) && !readSeatsRoute(own);
     return { version: stamp.version, sourceVersion, rows, invalid, stale, moved, blocked };
 }
 

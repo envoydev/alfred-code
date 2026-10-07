@@ -31,7 +31,7 @@ call is its own shell, so a variable set here is gone by the next). Run all of i
 ```bash
 CAPS=.claude/skills/capture-agent-capabilities/scripts/capabilities-inventory.js
 [ -f "$CAPS" ] || CAPS=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/*/*; do   # one glob: zsh aborts the loop when any named glob matches nothing
-  PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || [ "$PN" = claude-stack ] || continue   # legacy-name: a 1.x dir until orphaned
+  PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || continue
   f="$d/stack/skills/capture-agent-capabilities/scripts/capabilities-inventory.js"
   [ -f "$f" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)

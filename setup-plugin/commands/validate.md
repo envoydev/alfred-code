@@ -47,15 +47,12 @@ recompute, no pasted tool output, one narration line between steps.
 **Every scope.** A project, user or local install keeps its stamp, its library copies and its
 settings in the project's `.claude/`, so validate reconciles all three the same way - there is no
 account-only install to refuse. Find the install with `node "$TMP/repo/scripts/install/stamp.js"
-state .`, which reads the install records the hooks read (`alfred-code.stamp`, the 1.x
-`claude-stack.stamp`, a copied `hooks/docs.js`) in this repo, its git top level or a worktree's main <!-- legacy-name -->
+state .`, which reads the install records the hooks read (`alfred-code.stamp`, a copied
+`hooks/docs.js`) in this repo, its git top level or a worktree's main
 checkout - never `.claude/skills` or `.claude/agents`, which a plugin-route install may not have:
-`not-installed` -> stop and route to `/alfred-code:setup`; `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:validate from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; `legacy-global` (a 1.x global install
-whose stamp is still in the account dir) -> stop and route to `/alfred-code:update`, which moves it
-into the project first; `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to
+`not-installed` -> stop and route to `/alfred-code:setup`; `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:validate from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to
 `/alfred-code:update`, which reads its picks off disk and writes the stamp first; `installed` / `initialised` -> go on. `<scope>` below is `node "$TMP/repo/scripts/install/stamp.js" scope .` -
-the same script, reading the stamp under either name (a 1.x install keeps `claude-stack.stamp` until <!-- legacy-name -->
-its first 2.0.0 update), a 1.x `global` as `user`, anything else as `project` - passed to every
+the same script, reading the stamp, a `global` line as `user`, anything else as `project` - passed to every
 installer call so the read-back and the apply read and write the settings file that scope uses
 (`.claude/settings.local.json` laid over `.claude/settings.json` at local scope; at project and user
 scope `settings.json`, with every stack key `settings.local.json` holds laid over it and written back
@@ -497,8 +494,8 @@ profile), output to `$TMP/select.out` - then:
   - one `--add` per `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted,
   applied on top of the same read-back, so nothing the reconcile did not touch moves. Never
   `--selection` on this seed: that route neither removes nor disables what the reconcile dropped,
-  and it stamps every carried item as a pick. On `ALFRED_CODE_SEED=shell` (or the 1.x
-  `CLAUDE_STACK_SEED`) the frozen twin no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
+  and it stamps every carried item as a pick. On `ALFRED_CODE_SEED=shell` the frozen twin no
+  longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
   The browser server among the ADDS: ask which browsers to install (`chrome` pre-selected, `msedge`,
   `firefox`, `webkit`), then which of those to enable (all pre-selected; each enabled one adds its ~25
   tools to every session) and pass both; `/plugin` toggles them later. An installed browser server passes

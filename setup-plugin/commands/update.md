@@ -23,30 +23,6 @@ small half of the bill: one audited run read 11.1k of file content and cost 886.
 message re-sends the whole carried session. An extra grep is not 200 tokens, it is another full
 context re-send - so fold reads together rather than trimming what each one returns.
 
-## Upgrading a 1.x install to 2.0.0
-
-A 1.x install upgrades through its OWN update command - `/claude-stack:update`, or <!-- legacy-name -->
-`/alfred-code:update` where the session lists that one. Nothing is run by hand:
-
-1. The refresh lands 2.0.0 under the old names: 2.0.0 lists `claude-stack` and `claude-stack-hooks` <!-- legacy-name -->
-   as retired aliases, so `plugin update` of each old id takes the new release into the cache.
-2. The 2.0.0 installer installs `alfred-code` at the old core's scope and marketplace key - a 1.x
-   GLOBAL install (its stamp lives in the account dir, not the project yet) keeps USER scope on this
-   first run whatever `--scope` the 1.3.0 update body itself passed, logging
-   `scope: this project is a 1.x global install - migrated at user scope (the passed --scope <x> is
-   ignored on this first run)` when a different one was passed (`node
-   "$TMP/repo/scripts/install/stamp.js" scope .` reads `user` for it from then on) - and only
-   once that took, removes the old entries - the retired per-stack ones first, then both aliases. It
-   also renames every `CLAUDE_STACK_*` setting to `ALFRED_CODE_*` (one log line per key) and replaces <!-- legacy-name -->
-   `claude-stack.stamp` with `alfred-code.stamp`. <!-- legacy-name -->
-3. Restart Claude Code once: the commands are `/alfred-code:*` from then on.
-
-A failed install of the new core removes nothing - the old core keeps running - and the run prints
-the exact `claude plugin install` command to run before updating again. A 1.x core at another scope
-is kept for the projects that use it, with its uninstall command printed. The install keeps its
-marketplace key (`claude-stack` on a 1.x account - a registered key never changes), so its ids read <!-- legacy-name -->
-`alfred-code@claude-stack`: expected, not broken. <!-- legacy-name -->
-
 **Renamed in 2.2.0.** The library skills and the two diagnoser seats drop the `alfred-` prefix and keep
 their family (`/alfred-<family>-<name>` -> `/<family>-<name>`, the same for a seat; the table below gives each
 old name its current one); the rules keep it. The three locked MCP servers take it (`navigation` -> `alfred-navigation`, `documentation` ->
@@ -71,8 +47,6 @@ docs they write keep their paths (`<docs-path>/architecture/`, `code-style/`, `t
 upstream)`), writes the new one, and MOVES each generated file with its content kept (`moved: rule ...`) -
 their captures do not re-run by themselves. Report both kinds of line; a `!!` line means the old and the new
 generated file both exist, and the old one is the user's to remove.
-A 1.x global install leaves its account skill copies behind: the `were moved from` line names them
-with their `rm -rf`, the renamed ones apart because they load BESIDE the new names - report it whole.
 `/loop-quality` now works a code-quality assessment by tier, with the `loops/`
 prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project may rely on.
 
@@ -212,12 +186,10 @@ machinery, no pasted output, one narration line between steps.
 
 ## 1. Preconditions
 `node "$TMP/repo/scripts/install/stamp.js" state .` prints one word (two for a worktree), read from the install records
-the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp`, a copied `hooks/docs.js`) in this <!-- legacy-name -->
+the hooks read (`alfred-code.stamp`, a copied `hooks/docs.js`) in this
 repo, its git top level or a worktree's main checkout - never from `.claude/skills` or
 `.claude/agents`, which a plugin-route install may not have. `not-installed` -> stop and route to
-the sibling `/alfred-code:setup` command. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:update from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; the installer refuses that tree too. `legacy-global` is a 1.x GLOBAL install whose stamp still
-sits in the account dir: this command is its route - step 2's preflight reads that stamp and the
-installer moves it into the project. `legacy-unstamped` is a legacy copy-route install that never wrote a
+the sibling `/alfred-code:setup` command. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:update from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; the installer refuses that tree too. `legacy-unstamped` is a legacy copy-route install that never wrote a
 stamp (no install record, but two of the stack's own signatures in `.claude/`: its hook files, its env keys,
 three or more skill, seat or rule names only it uses - never a catalog name like `typescript` alone) -> go on:
 this command is its route - step 2's preflight prints `no-stamp` (the fast path) and offers its data move like
@@ -237,8 +209,7 @@ node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root .
 ```
 
 (It reads the scope's settings as the installer does - `settings.local.json` laid over
-`settings.json` at local scope, and at every other scope the stack keys `settings.local.json` holds. A `--space` install passes `--config-dir ~/.claude-<space>`, so a
-1.x global stamp is looked for in that account. A fork install passes `--repo <owner/name>`; a
+`settings.json` at local scope, and at every other scope the stack keys `settings.local.json` holds. A fork install passes `--repo <owner/name>`; a
 non-default stamp or settings path passes `--stamp` / `--settings`.) This is the WHOLE
 pre-install read - never hand-write a second probe for anything it already prints, and never
 open `meta/migrations.json` yourself: the catalog is a maintainer file with a 2,000-character
@@ -249,8 +220,7 @@ three-line existence check.
 It prints, in order:
 
 - `version: <old> -> <new>` then `base: <sha> head: <sha>` - lead your narration with the
-  version delta. A `legacy-stamp: <file> - a 1.x global install; ...` line means the baseline is
-  the account's 1.x stamp: say once that this update moves it into the project.
+  version delta.
 - `status<TAB>path` lines (`modified`/`added`/`removed`, `renamed` with `<- old-path`) filtered
   to stack-owned paths; the diff is what has been RELEASED since the stamp - work still on
   `develop` is invisible by design, never diff against it.
@@ -298,9 +268,7 @@ It prints, in order:
 
 **Environment migrations are the exception: they never join the prune list.** They act on the
 scope's settings.json `env`, and none of them can lose anything the user chose: `rename_settings_env`
-changes a KEY and carries the value across, `rename_settings_env_prefix` does the same for every key
-sharing an old PREFIX in one entry (the 2.0.0 rebrand's `CLAUDE_STACK_* -> ALFRED_CODE_*` is the only <!-- legacy-name -->
-one shipped so far), and `remove_settings_env` drops a key this stack
+changes a KEY and carries the value across, and `remove_settings_env` drops a key this stack
 RETIRED - one nothing reads any more, and where the key still means something outside this stack it
 carries the exact seeded value it is dropped at, so a hand-set value stays. The installer's env pass
 applies them during the refresh in both step 3 and step 4
@@ -391,7 +359,7 @@ post-install read below has a file that was actually written (the shared contrac
 `source-protocol.md`'s 'Capture the installer's own output'):
 
 - **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--data-move move|keep] [--data-path <folder>] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"`
-- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
+- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 
 `--docs-versioning` is passed ONLY when the user's own invocation names a value (`/alfred-code:update
 --docs-versioning local`, or 'switch docs versioning to git') - never asked for, never inferred. The
@@ -435,7 +403,7 @@ breach spent 14 messages and 1.69M tokens on improvised forensics after exit 1 a
 files under the user's `.claude` with no ask.
 
 `<scope>` comes from `node "$TMP/repo/scripts/install/stamp.js" scope .` - the same script
-validate.md uses, reading the stamp under either name, a 1.x `global` as `user`, anything else as
+validate.md uses, reading the stamp, a `global` line as `user`, anything else as
 `project` (`project`, `user` or `local`) - and `--space` the profile
 that owns the install; `--keep-pins` is the default here - a fast
 refresh must not flatten deliberate local model/effort pin edits. The refresh re-registers every MCP
@@ -451,10 +419,7 @@ scope are kept and logged with the uninstall command that removes them - and eac
 line; pass the removals, their add-back lines and every kept row's line through verbatim in the close-out. A pruned
 `context7-local` also logs `context7-local removed - if you ran /mcp disable context7 for it, run /mcp enable context7`
 - paste that line too, since the hosted server stays disabled by the user's own earlier command
-otherwise. A user-scope core move (this run's own, not a prior one) logs
-`core moved to alfred-code at user scope - other projects on this account keep their 1.x seat denies
-until each runs /alfred-code:update` - paste it and name that as a follow-up for the user's other
-projects. The browser server keeps its browsers the same
+otherwise. The browser server keeps its browsers the same
 way: every browser the stamp's `browser-engines:` names is updated in place, never installed over (a legacy single `playwright` server
 migrates to `browser-<its --browser>`, none = `chrome`), a `firefox` / `webkit` build is downloaded again
 at the release's pin, and no browser is switched on or off - the user's `/plugin` toggle stands. One the user uninstalled by hand
@@ -466,7 +431,7 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|roster:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|were moved from|docs (migration|domain|root|move)|data root:|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|scope: this project is a 1\.x global install|context7-local removed|core moved to alfred-code|has no status line yet|plugin moved \[' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|roster:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|docs (migration|domain|root|move)|data root:|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|context7-local removed|has no status line yet|plugin moved \[' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired
@@ -478,8 +443,7 @@ moved folder switched on as a domain (`docs migration` / `docs domain:` - report
 memory registration line and the importer's own `memory import:` line or error text (present whenever
 `--memory-level` was passed, the level changed, or an install gained the memory MCP for the first
 time this run - now the fast path's own default outcome whenever it was absent, not a special case),
-the credential presence lines, the navigation-server re-index hint, the 1.x-global-install scope line, the
-user-scope core-move line, the pruned `context7-local`'s `/mcp enable context7` line, and the
+the credential presence lines, the navigation-server re-index hint, the pruned `context7-local`'s `/mcp enable context7` line, and the
 claude-hud 'no status line yet' line. Add a marker to the pattern when the report needs another
 fact; do not add a call. Never tail the log instead - a tail is ~75% static boilerplate and misses
 the lines above it.
@@ -669,16 +633,11 @@ what was taken, what stays off or was left, each by name), and the restart line.
   closed with no restart step, having re-registered all seven servers) and every `warn: <line>` (a
   fail-soft that fell back and continued - not a re-run trigger, see Do not below; an audited run
   surfaced its only `!!` in 1 of 4 runs that had one, buried in a raw grep dump). Report both verbatim.
-- **1.x MIGRATION** - when the grep caught them, report each verbatim: the `scope: this project is a
-  1.x global install - migrated at user scope ...` line (this project's own first run, not a status to
-  infer from the stamp), the `core moved to alfred-code at user scope - other projects on this account
-  keep their 1.x seat denies until each runs /alfred-code:update` line (name that as a follow-up for
-  the user's OTHER projects, not this one), the `context7-local removed - if you ran /mcp disable
-  context7 for it, run /mcp enable context7` line, and the `claude-hud has no status line yet - run
-  /alfred-code:init to set it up` line (add `/alfred-code:init` to the suggestion card when this one
-  printed). None caught: say nothing about any of the four. The last three carry the `!!` marker (the
-  1.x update body a first run executes surfaces only its grep and the `!!` lines), so each also
-  arrives as a `warn:` line - report it once, here, not again under RESTART / WARN.
+- **FOLLOW-UPS** - when the grep caught them, report each verbatim: the `context7-local removed - if
+  you ran /mcp disable context7 for it, run /mcp enable context7` line, and the `claude-hud has no
+  status line yet - run /alfred-code:init to set it up` line (add `/alfred-code:init` to the
+  suggestion card when this one printed). None caught: say nothing about either. Both carry the `!!`
+  marker, so each also arrives as a `warn:` line - report it once, here, not again under RESTART / WARN.
 - **VALIDATE** - step 2's `validate: yes` (the version delta spans more than one release) or
   `policy-rev: stale ...` (the installed usage-policy rule's stamped revision is behind the shipped
   skill's, or carries none) each add a `/alfred-code:validate` suggestion-card row with that reason

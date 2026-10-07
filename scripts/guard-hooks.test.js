@@ -40,15 +40,9 @@ delete process.env.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW;
 // Same route, second key: an install of this stack writes ALFRED_CODE_DOCS_PATH into the
 // project's settings.json env, which Claude Code exports into every tool call - so a suite run
 // inside a stack-INSTALLED checkout resolves the receipt cases below from the SESSION's docs root
-// instead of from the case, and the old-spelling fallback case can never take its fallback
-// (measured 2026-09-22: red on an installed checkout, green in CI, which installs nothing).
+// instead of from the case (measured 2026-09-22: red on an installed checkout, green in CI, which
+// installs nothing).
 delete process.env.ALFRED_CODE_DOCS_PATH;
-delete process.env.CLAUDE_DOCS_PATH;
-// envOf (hook-prelude.js, 2.0.0) now answers a bare CLAUDE_STACK_* the same way it answers // legacy-name
-// ALFRED_CODE_* - so the same session-env leakage above reaches every 1.x-spelled setting too
-// (measured here: CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW=1000000 resolved every unproven window in // legacy-name
-// this file as 1M). Strip the whole prefix rather than naming each key by hand.
-for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_')) delete process.env[k]; // legacy-name
 // Every guard appends a block row to `<root>/<docs-path>/hook-blocks/`, where the root falls back
 // to the process cwd when CLAUDE_PROJECT_DIR is unset - so a suite run from this checkout forged
 // 4MB of field ledger into the repo's own `.alfred/docs/hook-blocks/` (measured 2026-09-07: 12,480
@@ -351,10 +345,7 @@ test('guard-fresh-session-start: the trigger is the tier\'s own variable', () =>
     'without a model id it is not the 1M tier - it is the default one, off here');
   assert.equal(call(at('w-1m-260k', 260000), w1m({ ALFRED_CODE_FRESH_SESSION_1M: '250000' })), 2, 'the tier variable moves it');
   assert.equal(call(at('w-1m-450k-off', 450000), w1m({ ALFRED_CODE_FRESH_SESSION_1M: '0' })), 0, '0 switches that tier off');
-  assert.equal(call(at('w-1m-450k-pct0', 450000), w1m({ CLAUDE_STACK_FRESH_SESSION_PCT: '0' })), 2, 'the retired percentage key is dead - it is no longer an off switch'); // legacy-name
-  // A 1.x settings.json keeps its CLAUDE_STACK_* names until its first 2.0.0 update renames them - the // legacy-name
-  // tier variables answer under the old name meanwhile, like every other setting envOf reads.
-  assert.equal(call(at('w-200k-110-legacy', 110000), w200({ ALFRED_CODE_FRESH_SESSION_200K: '', CLAUDE_STACK_FRESH_SESSION_200K: '100000' })), 2, 'the 1.x name moves it too'); // legacy-name
+  assert.equal(call(at('w-1m-450k-pct0', 450000), w1m({ ALFRED_CODE_FRESH_SESSION_PCT: '0' })), 2, 'the retired percentage key is dead - it is no longer an off switch');
 });
 
 // ---- hooks audit: every gate branch pinned in both directions (block AND the exemption) ----
@@ -471,7 +462,7 @@ test('guard-protected-force-push: HEAD and @ are the current branch, and -C or a
 
 test('guard-catastrophic-rm: an unscoped marketplace remove is blocked - it uninstalls every plugin from it at every scope', () => {
   const rm = (c) => bash('guard-catastrophic-rm.js', c);
-  assert.equal(rm('claude plugin marketplace remove claude-stack'), 2); // legacy-name
+  assert.equal(rm('claude plugin marketplace remove other-market'), 2);
   assert.equal(rm('cd x && claude plugin marketplace rm envoydev'), 2);
   assert.equal(rm('claude plugin marketplace remove envoydev --scope user'), 0);
   assert.equal(rm('claude plugin marketplace remove envoydev --scope=project'), 0);
@@ -593,9 +584,6 @@ test('guard-ungated-commit: the receipt states', () => {
   fs.mkdirSync(path.join(dir, 'docs', 'flow'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'docs', 'flow', 'COMMIT-GATE'), 'WAIVED - "go"\n');
   assert.equal(gateIn(dir, 'git commit -am x', { ALFRED_CODE_DOCS_PATH: 'docs' }), 0, 'the receipt is looked up under ALFRED_CODE_DOCS_PATH');
-  // the pre-0.2.43 spelling still resolves, so an install the rename has not reached keeps working
-  assert.equal(gateIn(dir, 'git commit -am x', { CLAUDE_DOCS_PATH: 'docs' }), 0, 'the old key is read as a fallback');
-  assert.equal(gateIn(dir, 'git commit -am x', { ALFRED_CODE_DOCS_PATH: 'docs', CLAUDE_DOCS_PATH: 'nowhere' }), 0, 'and the new key wins when both are set');
 });
 
 test('guard-ungated-commit: an option label THIS run wrote is not the user asking', () => {
@@ -1167,7 +1155,7 @@ test('guard-unapproved-dispatch: a scoped house seat is the same seat, a foreign
   const disp = (seat) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt: 'x' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } }).status;
   assert.equal(disp('wpf-implementer'), 2, 'bare - the copy route and cursor-stack');
-  assert.equal(disp('claude-stack-wpf:wpf-implementer'), 2, 'scoped to a per-stack plugin');
+  assert.equal(disp('alfred-code-wpf:wpf-implementer'), 2, 'scoped to a per-stack plugin');
   assert.equal(disp('alfred-code:wpf-implementer'), 2, 'scoped to the core plugin');
   // 2.1.0 ships every seat in the core, so this is the ONLY spelling a plugin-route flow can dispatch.
   assert.equal(disp('alfred-code:aspnet-implementer'), 2, 'a stack implementer on the core, no APPROVAL');
@@ -1176,12 +1164,12 @@ test('guard-unapproved-dispatch: a scoped house seat is the same seat, a foreign
   // in - it carries no APPROVAL convention, so there is nothing for the stamp to authorize.
   assert.equal(disp('someoneelse:their-implementer'), 0, 'a FOREIGN plugin implementer is not this flow\'s seat');
   // A hyphenated foreign plugin name, carrying a REAL house seat name after the colon, is still
-  // judged by its PREFIX, not by whether the seat name happens to match - the legacy claude-stack // legacy-name
+  // judged by its PREFIX, not by whether the seat name happens to match - the scoped alfred-code-<x>
   // spelling must not widen HOUSE_PREFIX into matching any hyphenated home.
   assert.equal(disp('someone-else:wpf-implementer'), 0, 'a hyphenated FOREIGN plugin is still foreign');
-  assert.equal(disp('claude-stack-wpf:wpf-verifier'), 0, 'a scoped verifier still needs no stamp');
+  assert.equal(disp('alfred-code-wpf:wpf-verifier'), 0, 'a scoped verifier still needs no stamp');
   fs.writeFileSync(gate, 'APPROVED plan-1 - "go ahead"\n');
-  assert.equal(disp('claude-stack-wpf:wpf-implementer'), 0, 'and the stamp releases the scoped seat too');
+  assert.equal(disp('alfred-code-wpf:wpf-implementer'), 0, 'and the stamp releases the scoped seat too');
   assert.equal(disp('alfred-code:aspnet-implementer'), 0, 'and the core spelling');
 });
 
@@ -1545,7 +1533,7 @@ test('guard-stop-contract: the tier variable at 0 turns the offer off', () => {
   assert.equal(stop({ ...w1m, ALFRED_CODE_FRESH_SESSION_1M: '0' }), 0, '0 on the trigger this session uses disables the offer outright');
   assert.equal(stop(w1m), 2, 'and the same session still qualifies at the 1M default');
   assert.equal(stop({ ...w1m, ALFRED_CODE_FRESH_SESSION_DEFAULT: '0', ALFRED_CODE_FRESH_SESSION_200K: '0' }), 2, 'the other tiers\' switches do not reach it');
-  assert.equal(stop({ ...w1m, CLAUDE_STACK_FRESH_SESSION_PCT: '0' }), 2, 'and the retired percentage key is not read at all'); // legacy-name
+  assert.equal(stop({ ...w1m, ALFRED_CODE_FRESH_SESSION_PCT: '0' }), 2, 'and the retired percentage key is not read at all');
   const acct1m = fs.mkdtempSync(path.join(TMP, 'stopoff-1m-'));
   fs.writeFileSync(path.join(acct1m, 'settings.json'), JSON.stringify({ model: 'claude-opus-5' }));
   assert.equal(stop({ CLAUDE_CONFIG_DIR: acct1m, ALFRED_CODE_FRESH_SESSION_1M: '0' }), 0, 'a readable 1M window reads its own switch');
@@ -2055,11 +2043,11 @@ test('mount paths: a POSIX host still reads /c/... as a POSIX path', () => {
 });
 
 // --- the context window the trigger scales against: reported 2026-09-04 on a 1M session -------
-// CLAUDE_STACK_FRESH_SESSION_PCT was documented as a percentage of the window but inert on a // legacy-name
+// ALFRED_CODE_FRESH_SESSION_PCT was documented as a percentage of the window but inert on a
 // fresh 1M session: the window was INFERRED from observed usage, so it read 200k until the
 // session had already grown past 200k per message - the state the gate exists to prevent - and
 // 200k x every percent from 5 to 75 collapses onto the 150k floor. Both that key and the
-// CLAUDE_STACK_CONTEXT_WINDOW override are retired; the window is DETECTED in two layers, the // legacy-name
+// ALFRED_CODE_CONTEXT_WINDOW override are retired; the window is DETECTED in two layers, the
 // settings model id's own suffix and then the old inference, and an unresolved one gates nothing.
 const winEnv = (extra) => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'latch-')), ...(extra || {}) });
 const askLoop = (tp, env) => runIn('guard-fresh-session-start.js',
@@ -2143,15 +2131,15 @@ test('fresh-session window: the account settings model id names the tier before 
     assert.equal(askLoop(ctxAt('win-model-450k', 450000), winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-1m2', 'claude-opus-5') })), 2, 'and 450k on the 1M tier still fires');
 });
 
-test('fresh-session window: the retired CLAUDE_STACK_CONTEXT_WINDOW override is inert', () => { // legacy-name
+test('fresh-session window: the retired ALFRED_CODE_CONTEXT_WINDOW override is inert', () => {
     // It used to be the FIRST resolution layer and is gone: the window is detected, never stated.
     // Every install seeded the key, so a settings block still carrying one must not move a tier.
     const hot = ctxAt('win-env-170k', 170000);
-    assert.equal(askLoop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '200000' })), 0, // legacy-name
+    assert.equal(askLoop(hot, winEnv({ ALFRED_CODE_CONTEXT_WINDOW: '200000' })), 0,
         'a stated 200k window resolves nothing now - the default trigger applies, and 170k is under it');
-    assert.equal(askLoop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000', CLAUDE_CONFIG_DIR: accountDir('acct-inert', 'claude-haiku-4-5') })), 2, // legacy-name
+    assert.equal(askLoop(hot, winEnv({ ALFRED_CODE_CONTEXT_WINDOW: '1000000', CLAUDE_CONFIG_DIR: accountDir('acct-inert', 'claude-haiku-4-5') })), 2,
         'the model id decides alone: 170k is past the 200k tier trigger, whatever the dead key says');
-    assert.equal(askLoop(ctxAt('win-env-450k', 450000), winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '200000' })), 2, // legacy-name
+    assert.equal(askLoop(ctxAt('win-env-450k', 450000), winEnv({ ALFRED_CODE_CONTEXT_WINDOW: '200000' })), 2,
         '... and 450k fires on the default trigger, the dead key naming a tier it cannot set');
 });
 
@@ -2229,7 +2217,7 @@ test('stop contract: the fresh-session offer reads the window exactly as its twi
     assert.equal(stop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('stop-acct-1m', 'claude-opus-5') })), 0, 'a 1M model id lifts it past 190k');
     assert.equal(stop(at('stopwin-450k', 450000), winEnv()), 2, 'and 450k is past the default trigger');
     assert.equal(stop(at('stopwin-450k-1m', 450000), winEnv({ CLAUDE_CONFIG_DIR: accountDir('stop-acct-1m2', 'claude-opus-5') })), 2, '... as it is past the 1M one');
-    assert.equal(stop(at('stopwin-310k-retired', 310000), winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000' })), 2, 'the retired override moves nothing here either - it resolves no window, so the default trigger applies and 310k is past it'); // legacy-name
+    assert.equal(stop(at('stopwin-310k-retired', 310000), winEnv({ ALFRED_CODE_CONTEXT_WINDOW: '1000000' })), 2, 'the retired override moves nothing here either - it resolves no window, so the default trigger applies and 310k is past it');
 });
 
 test('guard-answer-length: the cap holds, and never deletes a report field or a self-correction', () => {
@@ -3068,14 +3056,14 @@ test('guard-fresh-session-start: the flag is read from the PLUGIN cache too, not
         fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`);
     };
     place('alfred-code', 'loop-quality', 'disable-model-invocation: true\n', ['stack', 'skills']);
-    place('claude-stack-wpf', 'dotnet-wpf', '', ['stack', 'skills']);
+    place('alfred-code-wpf', 'dotnet-wpf', '', ['stack', 'skills']);
     const skillCall = (skill) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmip' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg } });
 
     assert.equal(skillCall('loop-quality').status, 2, 'a flagged skill served by a plugin is still denied');
     assert.equal(skillCall('alfred-code:loop-quality').status, 2, 'and under its scoped spelling');
-    assert.equal(skillCall('claude-stack-wpf:dotnet-wpf').status, 0, 'an unflagged plugin skill stays callable');
+    assert.equal(skillCall('alfred-code-wpf:dotnet-wpf').status, 0, 'an unflagged plugin skill stays callable');
     assert.equal(skillCall('alfred-code:not-shipped').status, 0, 'a name no home carries is not this guard\'s business');
 
     // Claude Code runs a personal skill over a project one of the same name ('personal over project', skills

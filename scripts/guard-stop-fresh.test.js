@@ -13,7 +13,6 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-stop-fresh-'));
@@ -753,7 +752,7 @@ const promptSubmit = (prompt, tp, env) => {
 test('guard-answer-length: a verbatim-repeated prompt is an ambiguity signal, not a re-answer', () => {
   // Measured in three sessions of one day: the user re-sent an identical question 2-3 times,
   // escalating /model and /effort between them, before the model asked what was meant.
-  const q = 'do we need to update claude file according to claude stack?';
+  const q = 'do we need to update claude file according to alfred code?';
   const again = transcript('vr-again', [
     { type: 'user', message: { role: 'user', content: q } },
     assistantRow('v1', 'Here is a long answer about the file.'),

@@ -17,19 +17,15 @@ test.after(() => { for (const r of roots) fs.rmSync(r, { recursive: true, force:
 
 const stampOf = (version) => `sha: ${'a'.repeat(40)}\nversion: ${version}\npicked-skills: demo\npicked-agents: \nlibrary-skills: demo=aa\nlibrary-agents: \n`;
 
-// 2.0.0: a project the 1.x release installed still holds `claude-stack.stamp` until its first update - // legacy-name
-// the hook reads it, at project and at account level, and the new name wins when both exist.
-const OLD_STAMP = 'claude-stack.stamp'; // legacy-name
-
 // The repo files the hook loads from a plugin root: stamp.js and brand.js, and everything they require at load, followed
 // across folders (stamp.js reads the browser engine order from stack/mcp/data-root.js since 2.1.6, and that file loads
 // uv-python.js). The pinned test below walks the eager requires, so a missing file is never the six silent no-ops it was
 // - develop went red on exactly this in 2.1.6, an eager `../../` require the old `./`-only pin never saw.
 const HOOK_INSTALL_FILES = ['scripts/install/stamp.js', 'scripts/install/brand.js', 'scripts/install/json-file.js', 'stack/mcp/data-root.js', 'stack/mcp/uv-python.js'];
 // A plugin root holding the files the hook reads - the stamp reader (with the prelude its install-state
-// read walks) and the release version - and a project with (or without) a stamp. `record` leaves the
-// copied engine a 1.x GLOBAL install put in the project, with its stamp in the account dir.
-function fx({ stampVersion = '1.3.0', stackVersion = '1.3.0', noStamp = false, stampText, globalStamp, stampName = 'alfred-code.stamp', record = false } = {})
+// read walks) and the release version - and a project with (or without) a stamp. `record` leaves a
+// copied engine in the project, `globalStamp` a stamp in the account dir the hook must never read.
+function fx({ stampVersion = '1.3.0', stackVersion = '1.3.0', noStamp = false, stampText, globalStamp, record = false } = {})
 {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'libstamp-'));
     roots.push(root);
@@ -50,10 +46,10 @@ function fx({ stampVersion = '1.3.0', stackVersion = '1.3.0', noStamp = false, s
         fs.mkdirSync(path.join(project, '.claude', 'hooks'), { recursive: true });
         fs.writeFileSync(path.join(project, '.claude', 'hooks', 'docs.js'), '// a copied engine\n');
     }
-    if (!noStamp) fs.writeFileSync(path.join(project, '.claude', stampName), stampText === undefined ? stampOf(stampVersion) : stampText);
+    if (!noStamp) fs.writeFileSync(path.join(project, '.claude', 'alfred-code.stamp'), stampText === undefined ? stampOf(stampVersion) : stampText);
     const config = path.join(root, 'config');
     fs.mkdirSync(config, { recursive: true });
-    if (globalStamp) fs.writeFileSync(path.join(config, stampName), stampOf(globalStamp));
+    if (globalStamp) fs.writeFileSync(path.join(config, 'alfred-code.stamp'), stampOf(globalStamp));
     return { plugin, project, config };
 }
 
@@ -99,23 +95,16 @@ test('bad stdin, or no plugin root, never fails the session', () =>
     assert.equal(r.stdout, '');
 });
 
-// B-I1: the account fallback belongs to a 1.x GLOBAL install - an install record in the project plus the
-// 1.x account stamp, stamp.js installState's 'legacy-global'. The migration never deletes that account
-// stamp (another project not yet updated still reads it), so a repo never set up must never read it.
-test('a 1.x global install (a project record, the 1.x account stamp) reads the account stamp; the project stamp wins over it', () =>
+// B-I1: the hook reads the PROJECT stamp only - an account-dir stamp belongs to no project, so a repo
+// never set up, or one with an install record but no stamp, is silent beside it.
+test('a project with no stamp is silent beside an account stamp with old library lines (B-I1)', () =>
 {
-    const out = JSON.parse(runHook(fx({ noStamp: true, record: true, globalStamp: '1.3.0', stackVersion: '1.4.0', stampName: OLD_STAMP })));
-    assert.match(out.systemMessage, /from 1\.3\.0, the stack is 1\.4\.0/);
-    assert.equal(runHook(fx({ stampVersion: '1.4.0', globalStamp: '1.3.0', stackVersion: '1.4.0', stampName: OLD_STAMP })), '', 'the project stamp wins over the account one');
-});
-
-test('a repo never set up is silent beside a 1.x account stamp with old library lines (B-I1)', () =>
-{
-    assert.equal(runHook(fx({ noStamp: true, globalStamp: '1.2.0', stackVersion: '2.0.0', stampName: OLD_STAMP })), '', 'no install record in the repo');
-    const bare = fx({ noStamp: true, globalStamp: '1.2.0', stackVersion: '2.0.0', stampName: OLD_STAMP });
+    assert.equal(runHook(fx({ noStamp: true, globalStamp: '1.2.0', stackVersion: '2.0.0' })), '', 'no install record in the repo');
+    const bare = fx({ noStamp: true, globalStamp: '1.2.0', stackVersion: '2.0.0' });
     fs.rmSync(path.join(bare.project, '.claude'), { recursive: true });
     assert.equal(runHook(bare), '', 'no .claude at all');
-    assert.equal(runHook(fx({ noStamp: true, record: true, globalStamp: '1.2.0', stackVersion: '2.0.0' })), '', 'an account stamp under the NEW name is no 1.x global install');
+    assert.equal(runHook(fx({ noStamp: true, record: true, globalStamp: '1.2.0', stackVersion: '2.0.0' })), '', 'an install record and an account stamp - still no project stamp');
+    assert.equal(runHook(fx({ stampVersion: '1.4.0', globalStamp: '1.3.0', stackVersion: '1.4.0' })), '', 'the project stamp is the one read');
 });
 
 // The stamp is a file in the project, and a cloned repo can carry any text in it: only a plain
@@ -172,26 +161,14 @@ test('a stamp key that resolves outside skills/ is never echoed into the session
     assert.equal(out, '', `an invalid name must never be echoed or reach the isDir probe: ${out}`);
 });
 
-// N3: the shadow check must never fire when the ACCOUNT fallback supplied the stamp - the project has
-// not migrated yet, so the account copy is the only one running, not a shadow of a project copy that
-// does not exist.
-test('no shadow warning when the project has not migrated yet - the account copy is the only one running (N3)', () =>
+// N3: with no project stamp there is no project copy to shadow - an account stamp and an account
+// skill of a library name never make a shadow warning.
+test('no shadow warning without a project stamp, whatever the account dir holds (N3)', () =>
 {
-    const f = fx({ noStamp: true, record: true, globalStamp: '1.4.0', stackVersion: '1.4.0', stampName: OLD_STAMP });
+    const f = fx({ noStamp: true, record: true, globalStamp: '1.4.0', stackVersion: '1.4.0' });
     fs.mkdirSync(path.join(f.config, 'skills', 'demo'), { recursive: true });
     fs.writeFileSync(path.join(f.config, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\ndescription: d\n---\nbody\n');
-    assert.equal(runHook(f), '', 'the account fallback is the only copy running - not a shadow of a project copy that does not exist');
-});
-
-test('a 1.x stamp under its old name is read - the project copy, and the account one for a global install', () =>
-{
-    const own = JSON.parse(runHook(fx({ stampVersion: '1.3.0', stackVersion: '2.0.0', stampName: OLD_STAMP })));
-    assert.match(own.systemMessage, /library copies are from 1\.3\.0, the stack is 2\.0\.0/);
-    const global = JSON.parse(runHook(fx({ noStamp: true, record: true, globalStamp: '1.3.0', stackVersion: '2.0.0', stampName: OLD_STAMP })));
-    assert.match(global.systemMessage, /from 1\.3\.0/);
-    const both = fx({ stampVersion: '2.0.0', stackVersion: '2.0.0' });
-    fs.writeFileSync(path.join(both.project, '.claude', OLD_STAMP), stampOf('1.3.0'));
-    assert.equal(runHook(both), '', 'the new stamp wins - an old file left beside it is not read');
+    assert.equal(runHook(f), '', 'no project stamp - no project copy for the account skill to shadow');
 });
 
 // 2.1.0 moved every skill into the project and every seat into the core, and the core updates itself

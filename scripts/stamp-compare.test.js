@@ -102,19 +102,12 @@ test('usage error exits 1 and prints no signal line', () => {
     assert.ok(!/no-stamp|compare-unreachable/.test(out || ''), 'no signal line on a usage error');
 });
 
-// A 1.x project's stamp keeps its old name until the next update rewrites it, and configure passes
-// the NEW name as --stamp: the compare must read the 1.x file beside it, not report no-stamp.
-test('a 1.x stamp is read beside a missing alfred-code.stamp, and by the default --stamp', () => {
+// configure runs the compare with no --stamp: the default reads the project's .claude/alfred-code.stamp.
+test('the default --stamp reads .claude/alfred-code.stamp in the working directory', () => {
     const { snap, stampFile } = makeDirs({ stamp: null, releaseSource: 'sha: same999\nversion: 2.0.0\n' });
-    const old = path.join(path.dirname(stampFile), 'claude-stack.stamp'); // legacy-name
-    fs.writeFileSync(old, 'sha: same999\nversion: 1.3.0\n');
-    const named = run(['--snapshot', snap, '--stamp', stampFile]);
-    assert.strictEqual(named.code, 0, named.out);
-    assert.match(named.out, /^version: 1\.3\.0 -> 2\.0\.0$/m);
-
-    const project = path.dirname(stampFile);   // the temp root: a project whose .claude holds the 1.x stamp
+    const project = path.dirname(stampFile);   // the temp root: a project whose .claude holds the stamp
     fs.mkdirSync(path.join(project, '.claude'), { recursive: true });
-    fs.renameSync(old, path.join(project, '.claude', 'claude-stack.stamp')); // legacy-name
+    fs.writeFileSync(path.join(project, '.claude', 'alfred-code.stamp'), 'sha: same999\nversion: 1.3.0\n');
     let dflt;
     try { dflt = { out: execFileSync('node', [SCRIPT, '--snapshot', snap], { encoding: 'utf8', cwd: project }), code: 0 }; }
     catch (e) { dflt = { out: e.stdout, code: e.status }; }

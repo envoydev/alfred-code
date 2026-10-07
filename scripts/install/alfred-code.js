@@ -12,9 +12,9 @@
 // left on disk (the plugins are enabled before the copied files they replace are pruned; the stamp
 // is written after every copy step, so it only ever names a revision that fully landed).
 //
-// The frozen sh/ps1 twins were removed in 2.0.0 (Phase 7b, R33): `ALFRED_CODE_SEED=shell` (or the
-// 1.x `CLAUDE_STACK_SEED`) no longer routes anywhere - it refuses with one line and exit 1, before // legacy-name
-// this file does anything else (the D1 check, below).
+// The frozen sh/ps1 twins were removed in 2.0.0 (Phase 7b, R33): `ALFRED_CODE_SEED=shell` no longer
+// routes anywhere - it refuses with one line and exit 1, before this file does anything else (the D1
+// check, below).
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -34,7 +34,7 @@ const serena = require('./serena.js');
 const memory = require('./memory.js');
 const docs = require('./docs.js');
 const { deriveState, writable, homeOf, splitPick, stackSeat } = require('../derive-state.js');
-const { placement, readRetiredEntries, readRetiredPlugins, CORE } = require('../plugin-placement.js');
+const { placement, readRetiredPlugins, CORE } = require('../plugin-placement.js');
 const seeds = require('./seeds.js');
 const pinsLayer = require('./pins.js');
 const stampLayer = require('./stamp.js');
@@ -43,7 +43,7 @@ const uninstallLayer = require('./uninstall.js');
 const runtime = require('./runtime.js');
 const { readJson } = require('./json-file.js');
 const { envMigrations } = require('./env-migrations.js');
-const { BRAND, LEGACY, marketOf } = require('./brand.js');
+const { BRAND, marketOf } = require('./brand.js');
 const { envOf } = require('../../stack/hooks/hook-prelude.js');
 
 const USAGE = `alfred-code - install or update the Claude Code stack into a project.
@@ -62,8 +62,8 @@ What each flag does is documented where it is set: the guided /alfred-code:setup
 the repo's CLAUDE.md covers the install surface end to end.`;
 
 const { CORE_DEP_PLUGINS } = plugins;
-// D1: the frozen twins hardcode the 1.x names, which a 2.0.0 registration cannot resolve.
-const SHELL_SEED_RETIRED = 'the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer'; // legacy-name
+// D1: the frozen twins are gone; the setting that chose them refuses.
+const SHELL_SEED_RETIRED = 'the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer';
 // permissions.deny, the Read-tool half of the credential gate: it reaches the Read TOOL ONLY (a
 // shell `cat` of a denied file is not blocked by anything here - guard-secret-value.js is that
 // route). RETIRED_DENY are the four ACCOUNT-settings entries releases up to 0.2.62 wrote; they are
@@ -153,7 +153,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             return 1;
         }
     }
-    let skillsDir = path.join(projectRoot, '.claude', 'skills');
+    const skillsDir = path.join(projectRoot, '.claude', 'skills');
     const mcpFile = path.join(projectRoot, '.mcp.json');
     // The memory database this install points at: the flag's level, else the path already registered,
     // else global. C9 (R136 r): CLAUDE_CONFIG_DIR alone names the account, but the global and scoped
@@ -228,9 +228,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     // The marketplaces this run already refreshed, so no later pass pays the round trip twice.
     const refreshed = new Set();
 
-    // THE MARKETPLACE KEY every stack spec of this run is spelled with: the key whose core is installed
-    // (a 1.x install keeps `claude-stack`), else a registration of the stack's repo, else the current // legacy-name
-    // name - read from the listings, never assumed (brand.js marketOf).
+    // THE MARKETPLACE KEY every stack spec of this run is spelled with: the key whose core is installed,
+    // else a registration of the stack's repo, else the current name - read from the listings, never
+    // assumed (brand.js marketOf).
     const readRaw = () => (hasClaude ? rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env: cliEnv }) : '');
     const readMarkets = () => (hasClaude ? plugins.parseMarketplaces(rt.capture('claude', ['plugin', 'marketplace', 'list', '--json'], { cwd: projectRoot, env: cliEnv })) : []);
     let market = BRAND.marketplace;
@@ -265,32 +265,18 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const resolved = source.resolve();
         if (!resolved) return 1;
 
-        // What this run READS of the last install: the new stamp, else a 1.x install's under its old name,
-        // else - a 1.x GLOBAL project not yet migrated - the account's own, read IN PLACE until the
-        // refusal below has passed (m4: a refused update moves nothing). A --print-plan never migrates
-        // and reads the account skills too - the same fallback library-check.js uses.
-        const projectStamp = () => stampLayer.stampFiles({ scope: args.scope, configDir, projectRoot }).read;
-        let stampFile = projectStamp();
-        const legacyAcct = !stampFile && configDir ? path.join(configDir, LEGACY.stamp) : '';
-        const unmigrated = Boolean(legacyAcct) && (args.action === 'update' || args.printPlan) && fs.existsSync(legacyAcct);
-        if (unmigrated) stampFile = legacyAcct;
-        if (unmigrated && args.printPlan) skillsDir = path.join(configDir, 'skills');
+        // What this run READS of the last install: the project's stamp.
+        const stampFile = stampLayer.stampFiles({ scope: args.scope, configDir, projectRoot }).read;
         const manifest = loadManifest(resolved.dir);
         // Task 3 (2.1.0): a legacy copy-route install that never wrote a stamp - the router's own test
         // (stamp.js legacyUnstamped), read BEFORE any layer prunes the old copies it is recognised by. Its
         // picks come off disk, and it is an install from before the ledger, like an older stamp's (below).
         const legacyUnstamped = !stampFile && stampLayer.legacyUnstamped(projectRoot, { manifest });
         // R10: the last run's ledger - what it wrote and manages here. Null for a stamp from before it
-        // (and a 1.x account stamp, and an unstamped legacy install): each layer then falls back to its old
+        // (and an unstamped legacy install): each layer then falls back to its old
         // evidence. No stamp at all is otherwise a project the stack has managed nothing in yet, so whatever
         // is already there is the user's.
         const priorLedger = stampFile ? stampLayer.readLedger(stampFile) : legacyUnstamped ? null : stampLayer.emptyLedger();
-        // Review 2.1.6 re-verify N5: a 1.x account-dir stamp this update migrates is a prior install too - its memory level
-        // is kept over an unreadable settings file, never the fresh-install default. An unstamped legacy install is not
-        // (measured: a v0.2.84 copy-route install from a plain directory registers memory in .mcp.json with its database,
-        // which answers first; with that registration gone there is no level to keep, and 'kept' registered none).
-        if (!stampedBefore && unmigrated && level.from === 'default' && recorded.unread.length)
-            level = memory.resolveLevel({ unread: recorded.unread, stamped: true, home, space: args.space, projectRoot, root: dataInfo.root });
         // Review 2.1.6 (the every-issue ruling): a project folder moved or copied here carries its settings and .mcp.json, so
         // the level they record names the OLD folder's project database and read as `custom`. Where the stamp's ledger shows
         // the stack wrote that very value (the settings key's hash, or the .mcp.json entry's), it is this project's own
@@ -316,22 +302,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 : level.from === 'default'
                     ? `  !! ${unreadSettings.join(', ')} could not be read and no install is recorded here - the memory level is the default (${level.level}: ${level.dbPath}); fix the file, and re-run with --memory-level for another`
                     : `  !! ${unreadSettings.join(', ')} could not be read - the memory level is the one ${recorded.from === 'settings' ? `${recorded.file}'s ${recorded.key}` : recordedFrom[recorded.from]} records (${level.level}: ${recorded.path})${recorded.from === 'settings' ? ', the database the memory server\'s launcher opens too' : ''}, so nothing re-points it; fix the file and re-run`);
-
-        // A-I1 (final review A, ruling): an unmigrated 1.x GLOBAL install - the router's legacy-global
-        // test - keeps the scope its account stamp names (`global` = user), whatever --scope arrives: the
-        // 1.3.0 update body passes a model-judged one, and 'project' put the core beside the live
-        // user-scope alias. A repo never set up is not one, and keeps the scope it was handed.
-        if (unmigrated && stampLayer.legacyGlobalStamp(projectRoot, { ...env, CLAUDE_CONFIG_DIR: configDir }))
-        {
-            const raw = stampLayer.readStampScope(legacyAcct).toLowerCase();
-            const legacyScope = raw === 'global' ? 'user' : raw;
-            if (legacyScope && ENUMS.scope.values.includes(legacyScope))
-            {
-                if (args.scope && args.scope !== legacyScope)
-                    log(`scope: this project is a 1.x global install - migrated at ${legacyScope} scope (the passed --scope ${args.scope} is ignored on this first run)`);
-                args.scope = legacyScope;
-            }
-        }
 
         // I3 (R47): args.js left '' when --scope was not given. `update` takes the
         // scope the LAST install actually used, from the stamp's own `scope:` line (a 1.x `global`
@@ -381,15 +351,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // C10: the project memory level needs no refusal at user scope any more - on the full copy route,
         // the one route that registers memory itself, the registration lands in this project's .mcp.json
         // (mcp.registrationScope), so its path is this project's alone.
-
-        // T16/R47 (I4): the migration is a WRITE - a real `update` only, never `--print-plan`
-        // (configure and validate call it as a run that writes nothing), inside the try so an EACCES
-        // is reported. C1/m1: a failed copy goes through `note`.
-        if (args.action === 'update' && !args.printPlan && unmigrated)
-        {
-            stampLayer.migrateLegacyGlobal({ configDir, projectRoot, renamed: manifest.renamed, log, note });
-            stampFile = projectStamp();
-        }
 
         // R78: an install moved off `local` scope carries the stack's own entries out of
         // settings.local.json first, so the read-back below and every write after it find them in
@@ -709,24 +670,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             for (const line of selection.renderPlan(lists)) plain(line);
             plain(`plan answered: hooks=${answered.hooks ? 'yes' : 'no'} agents=${answered.agents ? 'yes' : 'no'}`);
             plain(`plan routes: skills=${routes.skills ? 'plugin' : 'copy'} hooks=${routes.hooks ? 'plugin' : 'copy'} mcps=${routes.mcps ? 'plugin' : 'copy'}`);
-            // A 1.x install's move, as the plugin pass would run it - recorded, never run.
-            if (hasClaude && plugins.corePluginOn(routes))
-            {
-                const raw = rawListing ?? readRaw();
-                const carriers = readRetiredEntries(resolved.dir).map((e) => e.name);
-                const retiredRows = readRetiredPlugins(resolved.dir);
-                const planned = [];
-                // The recording cli answers every call as done, so the lines a run prints AFTER a
-                // removal would claim one that never ran: a plan keeps only what describes the move.
-                const OUTCOME = /plugin pruned|add it back:|plugin removed|core moved to|context7-local removed/;
-                const planLog = (m) => { if (!OUTCOME.test(m)) plain(`plan note: ${String(m).trim()}`); };
-                plugins.migrateLegacy({
-                    rows: plugins.parsePluginList(raw, projectRoot, { everyScope: true }),
-                    scope: cliScope, retired: [...new Set([...manifest.retired.plugins, ...retiredRows.map((r) => r.name), ...carriers])], retiredRows, carriers, log: planLog,
-                    cli: (argv) => { planned.push(`claude ${argv.join(' ')}`); return true; },
-                });
-                for (const step of planned) plain(`plan migrate: ${step}`);
-            }
             if (args.planOut)
             {
                 if (!listing) listing = hasClaude ? plugins.parsePluginList(rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env: cliEnv }), projectRoot) : [];
@@ -1185,7 +1128,7 @@ function docsRootStep(ctx)
         selection.respellDocsRoot({ projectRoot: ctx.projectRoot, from: plan.from, to: plan.to, log, note });
     }
     // A first install lays the docs under the data root it was given - unless a docs root is already set.
-    else if (!stamped && plan.state === 'none' && !['ALFRED_CODE_DOCS_PATH', 'CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH'].some((k) => views.env[k] || (views.personal && views.personal[k]))) // legacy-name
+    else if (!stamped && plan.state === 'none' && !(views.env.ALFRED_CODE_DOCS_PATH || (views.personal && views.personal.ALFRED_CODE_DOCS_PATH)))
         ctx.docsPath = { value: to, own: 'stack', why: 'the data root' };
     else if (plan.state === 'offer')
     {
@@ -1493,9 +1436,8 @@ function installPlugins(ctx)
     if (ctx.routes.mcps) ctx.desktopHeld = new Set(rows.filter((r) => r.marketplace === ctx.market && DESKTOP_OS[r.name]).map((r) => r.name));
     const engines = playwrightMoves(ctx, { blind, rows });
     // R107 / R111: what the copy route registers in .mcp.json after this layer must never also load as
-    // a plugin. On the full copy route the stack's own rows go off (the core, its 1.x ids and the locked
-    // three) - after the retired carriers that depend on the old core are pruned (M3), and before the
-    // MCP layer registers anything; wherever the copy route registers a playwright engine, that engine's
+    // a plugin. On the full copy route the stack's own rows go off (the core and the locked three) -
+    // before the MCP layer registers anything; wherever the copy route registers a playwright engine, that engine's
     // row goes. Which rows are on is the settings file's word at each scope before the listing's (S22,
     // S28). M4 (R132): a listing that could not be read is no list of rows - one loud line names what
     // could not be switched off, and nothing is acted on.
@@ -1543,35 +1485,20 @@ function installPlugins(ctx)
         const hit = rescoped.find((m) => m.spec === `${row.name}@${row.marketplace}`);
         if (hit) row.scope = hit.scope;
     }
-    // A-I4: said once, after the plugin pass on either action. Marked `!!`, like every line a user acts
-    // on: a 1.x install's first 2.0.0 run is the 1.x update body's, which shows only its own grep and
-    // the `!!` lines update-preflight --log forwards.
+    // A-I4: said once, after the plugin pass on either action. Marked `!!`, like every line a user acts on.
     const hudLine = () =>
     {
         if (plugins.hudStatusLineMissing({ plugins: set, listing, settingsFiles: [path.join(ctx.configDir, 'settings.json'), ...['settings.json', 'settings.local.json'].map((f) => path.join(ctx.projectRoot, '.claude', f))] }))
             ctx.log('  !! claude-hud has no status line yet - run /alfred-code:init to set it up');
     };
-    // The per-stack entries retired in 1.3.0 come from the seed's own file, never the twins' lists:
-    // only this route copies their picks before they go. The ones still installed after this run are
-    // what the settings writer keeps a seat's old deny spelling for; an unreadable listing says
-    // nothing, so it keeps them all.
-    const carriers = readRetiredEntries(ctx.source.dir).map((e) => e.name);
     // The plugins a release cut (meta/retired-plugins.json) go the same way, each by its full spec and
     // with its add-back line - 2.0.0's five MCP entries among them.
     const retiredRows = readRetiredPlugins(ctx.source.dir);
     // A retired third-party pick goes on the first update past its retirement only (plugins.retirementDue):
     // after it, a row under that spec is the user's own, put back with the add-back line.
     const lastVersion = stampLayer.readVersion(ctx.stampFile);
-    const retired = [...new Set([...ctx.manifest.retired.plugins, ...retiredRows.map((r) => r.name), ...carriers])]
+    const retired = [...new Set([...ctx.manifest.retired.plugins, ...retiredRows.map((r) => r.name)])]
         .filter((name) => plugins.retirementDue({ name, rows: retiredRows, lastVersion, compare: compareVersions }));
-    // A 1.x install is moved across first - the new core installed, then the old ids removed - before
-    // the core is installed or updated below (plugins.migrateLegacy).
-    const moved = plugins.corePluginOn(ctx.routes)
-        ? plugins.migrateLegacy({ rows, scope: ctx.cliScope, retired, retiredRows, carriers, cli: ctx.cli, log: ctx.log, note: ctx.note })
-        : { fresh: [], gone: [], removed: [], failed: null, ran: false };
-    // A failed move leaves the old core carrying the guards; a second install of the new one beside it
-    // would run both, and leave nothing for the next update to move.
-    if (moved.failed) set = set.filter((spec) => spec !== moved.failed);
     // The 2.0.0 rename (plugins.migrateRenamed): each old MCP id at this run's scope swapped for its
     // successor, one at another scope stood down here only, on either action - a setup over an older
     // install would otherwise run both. A
@@ -1581,21 +1508,14 @@ function installPlugins(ctx)
         : { fresh: [], gone: [] };
     if (blind && predatesRename(ctx))
         ctx.log(`  !! the plugin listing could not be read, and this install predates the 2.0.0 rename - an old id still installed loads beside its successor; check /plugin, or: ${ctx.legacyMcps.map((n) => `claude plugin uninstall ${n}@${ctx.market} --scope ${ctx.cliScope}`).join('; ')}`);
-    const fresh = [...moved.fresh, ...relocated.moved, ...renamedMove.fresh, ...rescoped.map((m) => m.spec)];
-    // The 1.x core counts as a live home of its seat denies while any scope still carries its old id.
-    const oldCore = rows.some((r) => r.name === LEGACY.core && !moved.removed.includes(r)) ? [LEGACY.core] : [];
-    const installed = (gone = []) => (listing.length ? carriers.filter((n) => plugins.fieldOf(listing, n, 'version') && !gone.includes(n)).concat(oldCore) : null);
-    ctx.liveCarriers = installed(moved.gone);
+    const fresh = [...relocated.moved, ...renamedMove.fresh, ...rescoped.map((m) => m.spec)];
     // The switch back (R116, M9): what the full copy route switched off comes back on - the record only.
     const back = copyRoute ? { restored: [], owed: null }
         : plugins.restoreStoodDown({ record: ctx.standDown.prior, plugins: set, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note });
     ctx.standDown.owed = back.owed;
     if (ctx.args.action === 'update')
     {
-        // A move that ran (or retried) pruned the retired entries already; a failed one removes nothing.
-        const moving = moved.ran || moved.failed;
-        const gone = moving ? moved.gone : plugins.prunedRetired({ rows, retired, retiredRows, carriers, market: ctx.market, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log, note: ctx.note });
-        ctx.liveCarriers = installed(gone);
+        plugins.prunedRetired({ rows, retired, retiredRows, market: ctx.market, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log, note: ctx.note });
         standDown();
         plugins.updatePlugins({
             plugins: set, scope: ctx.cliScope, scopes, marketplaces, before: listing, fresh, restored: back.restored, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
@@ -2124,7 +2044,6 @@ function installHooksAndRules(ctx)
         sharedFile: ctx.args.scope === 'local' ? path.join(ctx.claudeDir, 'settings.json') : null,
         catalog, migrations, hookSpecs: wired,
         denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, agentDeny, agentAllow,
-        retiredEntries: readRetiredEntries(ctx.source.dir).map((e) => e.name), liveEntries: ctx.liveCarriers || null,
         // On the copy route a --drop'd hook is unwired like a retired one - the writer keeps a merely
         // unselected hook's entries on purpose, so the drop has to name it.
         retiredHooks: ctx.manifest.retired.hooks.concat(ctx.routes.hooks

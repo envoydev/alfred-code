@@ -350,7 +350,7 @@ function ensureDocsIgnore({ projectRoot, docsPath, mode, log = () => {} })
 // stack's own root under an earlier data root; update and configure ask; `--data-move move` moves the tree,
 // `--data-move keep` makes an old-default root the user's.
 const LEGACY_DOCS_ROOT = '.claude/docs';
-const DOCS_PATH_KEYS = ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH']; // legacy-name
+const DOCS_PATH_KEYS = ['ALFRED_CODE_DOCS_PATH'];
 const normRoot = (v) => String(v || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
 const heldIn = (env) => DOCS_PATH_KEYS.find((k) => env && typeof env[k] === 'string' && env[k] !== '') || null;
 

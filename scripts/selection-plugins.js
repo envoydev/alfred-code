@@ -11,7 +11,7 @@
 // else - a seat it did not pick is denied (derive-state.js). `copy` is that library list.
 const fs = require('node:fs');
 const path = require('node:path');
-const { placement, CORE, readRetiredEntries } = require('./plugin-placement.js');
+const { placement, CORE } = require('./plugin-placement.js');
 
 const REPO = path.resolve(__dirname, '..');
 
@@ -86,13 +86,11 @@ function pluginsFor(picked, options = {})
 function itemsOf(names, options = {})
 {
     const place = options.placement || placement(options);
-    // A retired per-stack entry still installed here carries what 1.2.0 put in it, frozen.
-    const retired = new Map((options.retired || readRetiredEntries()).map((e) => [e.name, e]));
     const out = { skills: [], agents: [] };
     for (const name of names)
     {
         const bare = String(name).split('@')[0];
-        const plug = place.plugins[bare] || retired.get(bare);
+        const plug = place.plugins[bare];
         if (!plug) continue;
         out.skills.push(...plug.skills);
         out.agents.push(...plug.agents);

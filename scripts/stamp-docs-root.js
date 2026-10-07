@@ -20,8 +20,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
-// ALFRED_CODE_<key>, else a 1.x install's CLAUDE_STACK_<key> the installer's env pass has not renamed // legacy-name
-// yet (and, for DOCS_PATH, the pre-0.2.43 CLAUDE_DOCS_PATH).
 const { envOf } = require('../stack/hooks/hook-prelude.js');
 
 const DEFAULT_ROOT = '.alfred/docs';
@@ -32,8 +30,6 @@ function resolveDocsRoot(settingsFile)
     try
     {
         const env = JSON.parse(fs.readFileSync(settingsFile, 'utf8')).env || {};
-        // CLAUDE_DOCS_PATH is the pre-0.2.43 spelling - still read, so an install whose settings
-        // the rename has not reached yet stamps its own root rather than the default.
         return envOf(env, 'DOCS_PATH') || DEFAULT_ROOT;
     }
     catch

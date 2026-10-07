@@ -9,14 +9,13 @@ You are bootstrapping an install `/alfred-code:setup` laid down, in a session st
 restart - the plugins, servers and seats it installed load at session start, and this run uses
 them. Three checks come first, in order, each one line. The first is one call,
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js" state . ; node "${CLAUDE_PLUGIN_ROOT}/scripts/init-plan.js" --mode`:
-its first line reads the same install records the hooks read (`alfred-code.stamp`, the 1.x
-`claude-stack.stamp`, a copied `hooks/docs.js`) in this repo, its git top level or a worktree's <!-- legacy-name -->
+its first line reads the same install records the hooks read (`alfred-code.stamp`, a copied
+`hooks/docs.js`) in this repo, its git top level or a worktree's
 main checkout; its second, `unattended: on|off`, says whether anyone answers this run's asks
 (`on` - the Unattended section below governs every ask from here):
 
 - **Nothing installed** - `not-installed`: stop and name `/alfred-code:setup` for the USER to type,
-  then end the turn. `legacy-global` (a 1.x global install whose stamp still sits in the account
-  dir): stop the same way on `/alfred-code:update`, which moves it into the project. `legacy-unstamped`
+  then end the turn. `legacy-unstamped`
   (a legacy copy-route install that never wrote a stamp): stop the same way on `/alfred-code:update`,
   which reads its picks off disk and writes the stamp. All are
   `disable-model-invocation` - the user's to type, never a Skill call from this run - and each
@@ -63,7 +62,7 @@ install · 2 the plan · 3 machine installs · 4 memory · 5 captures · 6 AGENT
 
 One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1` - the installer's own read-back (skills, agents, plugins, `left_out`, `browser`), under the scope the stamp records. `--installed-only found nothing installed` means there is no install: route to `/alfred-code:setup` as above.
 
-**`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell`: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
+**`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell`: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 
 ## 2. The plan - a script states it, never you
 

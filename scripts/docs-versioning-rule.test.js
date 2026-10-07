@@ -1,5 +1,5 @@
 'use strict';
-// ONE rule, THREE homes (Phase 7b, R33, dropped the two frozen twin homes - scripts/os/claude-stack.{sh,ps1} are // legacy-name
+// ONE rule, THREE homes (Phase 7b, R33, dropped the two frozen shell twin homes, which are
 // deleted). When ALFRED_CODE_DOCS_VERSIONING is absent, the docs are versioned 'local' only when they are kept OUT
 // of git - no domain is tracked AND either (a) a domain exists or (b) git ignores the docs root - and 'git'
 // otherwise, a fresh project whose docs root is not ignored included. The rule is written in three languages: the
@@ -86,7 +86,7 @@ const readValue = (repo) => JSON.parse(fs.readFileSync(settingsFile(repo), 'utf8
 function viaEngine(sc)
 {
     const { repo, docsPath } = build(sc, 'engine');
-    const env = { ...process.env, CLAUDE_PROJECT_DIR: repo, ALFRED_CODE_DOCS_PATH: docsPath, CLAUDE_DOCS_PATH: '', ALFRED_CODE_DOCS_VERSIONING: sc.declared || '', CLAUDE_STACK_DOCS_VERSIONING: '' }; // legacy-name
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: repo, ALFRED_CODE_DOCS_PATH: docsPath, ALFRED_CODE_DOCS_VERSIONING: sc.declared || '' };
     const r = spawnSync(process.execPath, ['-e', `process.stdout.write(require(${JSON.stringify(DOCS_JS)}).docsMode())`], { cwd: repo, env, encoding: 'utf8' });
     return r.status === 0 ? r.stdout : `error: ${r.stderr}`;
 }

@@ -27,7 +27,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { parseJson } = require('./json-file.js');
 const { stackSeat } = require('../derive-state.js');
-const { BRAND, LEGACY } = require('./brand.js');
+const { BRAND } = require('./brand.js');
 const { valueHash } = require('./stamp.js');
 const shellGuards = require('../../stack/hooks/shell-guards.js');
 const fileGuards = require('../../stack/hooks/file-guards.js');
@@ -198,14 +198,11 @@ function renameEnv(env, migrations, log, label = 'settings.json')
     };
     // 1. RENAMES - value first, then drop the old key.
     for (const [oldKey, newKey] of migrations.renames || []) if (oldKey in env) move(oldKey, newKey);
-    // 1b. PREFIX RENAMES - after the exact ones, so a chain of renames finishes in one run.
-    for (const [from, to] of migrations.prefixRenames || [])
-        for (const oldKey of Object.keys(env).filter((k) => k.startsWith(from))) move(oldKey, to + oldKey.slice(from.length));
     return changed;
 }
 
-// The env keys the stack owns, under either name - what R99 reads from and writes to settings.local.json.
-const isStackKey = (key) => /^(ALFRED_CODE_|CLAUDE_STACK_)/.test(key) || key === 'CLAUDE_DOCS_PATH'; // legacy-name
+// The env keys the stack owns - what R99 reads from and writes to settings.local.json.
+const isStackKey = (key) => key.startsWith('ALFRED_CODE_');
 
 // C8 (R100, R101): keys that hold a value of THIS machine - the memory database's absolute path. At
 // every scope they live in settings.local.json, never in the committed settings.json.
@@ -434,8 +431,7 @@ function unwireIds(data, ids)
 function renamedFrom(key, value, before, migrations)
 {
     if (key in before) return null;
-    const olds = (migrations.renames || []).filter(([, n]) => n === key).map(([o]) => o)
-        .concat((migrations.prefixRenames || []).filter(([, to]) => key.startsWith(to)).map(([from, to]) => from + key.slice(to.length)));
+    const olds = (migrations.renames || []).filter(([, n]) => n === key).map(([o]) => o);
     return olds.find((old) => old in before && before[old] === value) || null;
 }
 
@@ -473,7 +469,7 @@ function ledgerEnv({ name, env, before, prior, release, seedsOf, written, userOw
 function writeSettings(opts)
 {
     const {
-        file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [], retiredEntries = [], liveEntries = null,
+        file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [],
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], mcpjsonDisable = [], mcpjsonEnable = [], catalog = [], migrations = {},
         docsVersioning, docsPath = null, dataPath = null, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
@@ -512,38 +508,11 @@ function writeSettings(opts)
     // clears what an older install seeded. A project's own entry is never touched.
     for (const rule of [...deny]) if (retiredDeny.includes(rule))
     { deny.splice(deny.indexOf(rule), 1); changed = true; log(`  ${label}: dropped retired deny entry ${rule}`); }
-    // A seat denied through a per-stack entry retired in 1.3.0 is the user's off-state - a picked
-    // rule's closure would copy the seat back without it - so it gains the core spelling, which every
-    // later run reads as off; picking the seat again clears both (derive-state's allow list). The old
-    // spelling goes only once that entry is uninstalled: Claude Code matches the exact home name, so
-    // while the entry still loads (another scope, a refused uninstall, a listing this run could not
-    // read) it is the spelling that keeps the seat off. `liveEntries` absent = cannot say = kept.
-    //
-    // The 1.x CORE is one more row: 2.0.0 renamed it, so `Agent(claude-stack:<seat>)` is re-spelled // legacy-name
-    // too, keeping the settings in one spelling. Its old spelling stays only while the listing still
-    // shows the old core (a rename no session has taken yet); a listing that cannot say does not
-    // keep it, because every session from 2.0.0 on runs the renamed core, and the new spelling is the
-    // one that blocks it (docs/rebrand-evidence.md S6).
-    const live = (home) => (liveEntries || (home === LEGACY.core ? [] : retiredEntries)).includes(home);
-    const homes = [...retiredEntries, LEGACY.core];
-    // I1 (fix round 1): both passes below also run over settings.local.json's deny list - a seat the
+    // I1 (fix round 1): the pass below also runs over settings.local.json's deny list - a seat the
     // user switched off for themselves is re-spelled THERE, never moved into the shared file.
     const respellSeats = (list, lab) =>
     {
         let touched = false;
-        for (const entry of [...list])
-        {
-            const m = /^Agent\(([a-z0-9-]+):([A-Za-z0-9_-]+)\)$/.exec(entry);
-            if (!m || !homes.includes(m[1])) continue;
-            const core = `Agent(${BRAND.core}:${seatNow(m[2])})`;
-            const why = m[1] === LEGACY.core ? 'the core was renamed' : 'its entry retired';
-            if (!list.includes(core)) { list.push(core); touched = true; log(`  ${lab}: ${entry} also denied as ${core} (${why})`); }
-            if (live(m[1])) continue;
-            list.splice(list.indexOf(entry), 1);
-            touched = true;
-            log(`  ${lab}: ${entry} dropped - ${m[1] === LEGACY.core ? 'the old core name loads nowhere now' : 'its entry is uninstalled'}, ${core} keeps the seat off`);
-        }
-
         // A renamed seat's core deny is re-spelled in place, so the user's switch-off holds under the new
         // name; the read-back already read it that way (selection.js renameDeny).
         for (const entry of [...list])
@@ -586,14 +555,10 @@ function writeSettings(opts)
     // it was; an --installed-only refresh passes the lists it READ BACK from this array, so it
     // writes the same seat state it found. A seat's OTHER stack spellings go either way: a release
     // that moved the seat to another entry left an entry addressing nothing.
-    // A deny leaves the spelling of a retired entry (or the 1.x core) that still loads here: Claude Code
-    // matches the exact home name, so that spelling is what keeps the seat off while the entry loads
-    // (the respell pass above); an allow clears every spelling.
-    const liveSpelling = (entry) => { const m = /^Agent\(([a-z0-9-]+):/.exec(entry); return Boolean(m && homes.includes(m[1]) && live(m[1])); };
     const dropSeat = (rule, keep) =>
     {
         const seat = stackSeat(rule);
-        for (const entry of [...deny]) if (entry !== keep && seat && stackSeat(entry) === seat && !(keep && liveSpelling(entry)))
+        for (const entry of [...deny]) if (entry !== keep && seat && stackSeat(entry) === seat)
         { deny.splice(deny.indexOf(entry), 1); changed = true; log(entry === rule ? `  ${label}: agent allowed again ${entry}` : `  ${label}: agent entry dropped ${entry} (the seat's old spelling)`); }
     };
     for (const rule of agentDeny)

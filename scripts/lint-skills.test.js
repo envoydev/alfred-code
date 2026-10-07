@@ -24,18 +24,6 @@ test('lint-skills.js: the environment-catalog check and the suggests-edge check 
     assert.strictEqual(suggestsCallSite[1], '27');
 });
 
-// F4 re-review N3: CLAUDE.md's Install-stamp row lists who reads a 1.x account-dir stamp, written
-// before F1/F2 merged - it omitted stamp.js's own `scope` command (installScope falls back to
-// legacyGlobalStamp, A-I1, stamp.js:409/431-434) and the library-stamp.js SessionStart hook (B-I1,
-// setup-plugin/hooks/library-stamp.js:39-41).
-test('N3: CLAUDE.md names stamp.js scope and library-stamp.js among the 1.x account-dir stamp readers', () => {
-    const claudeMd = require('./claude-docs.js').readClaudeDocs();
-    const readerLine = /A 1\.x account-dir stamp is read by[^|]*\|/.exec(claudeMd);
-    assert.ok(readerLine, 'the Install stamp row must still name its stamp readers');
-    assert.match(readerLine[0], /stamp\.js scope/, 'stamp.js scope must be named - it falls back to the legacy account stamp');
-    assert.match(readerLine[0], /library-stamp\.js/, 'the library-stamp.js SessionStart hook must be named');
-});
-
 // F4 re-review N8: README.md's 'Writes, in the account dir' row must name the account writes every
 // `claude plugin install` makes (the plugin cache + installed_plugins.json, at every scope - measured
 // repeatedly in docs/rebrand-evidence.md) and the MCP copy route's ~/.claude.json write at user/local
@@ -509,7 +497,7 @@ test('no shipped text cites a superpowers skill - by qualified name or in prose'
     const fs = require('node:fs');
     const path = require('node:path');
     const root = path.join(__dirname, '..');
-    const history = new Set(['meta/migrations.json', 'meta/retired-entries.json', 'meta/retired-plugins.json']);
+    const history = new Set(['meta/migrations.json', 'meta/retired-plugins.json']);
     const cite = /superpowers:[a-z]/;
     const prose = /superpowers['’]?s? +(systematic-debugging|brainstorm\w*|writing-plans|verification|verify|test-driven|tdd|plan-format|dispatch\w*|subagent-driven|executing-plans)/i;
     const hits = [];
@@ -711,7 +699,7 @@ test('check 44: a second plugin, a double home and a lost item are all findings'
     const { placement } = require('./plugin-placement.js');
 
     const second = placement();
-    second.plugins['claude-stack-aspnet'] = { skills: [], agents: [], dependencies: [] };
+    second.plugins['alfred-code-aspnet'] = { skills: [], agents: [], dependencies: [] };
     assert.ok(lintPluginPlacement(second).some(f => /ships plugins other than alfred-code/.test(f)), 'a per-stack plugin is caught');
 
     const doubled = placement();
@@ -801,11 +789,10 @@ test('check 48: a core missing a stack wiring, or a core with no hooks, is a fin
 
 test('check 49: the live file is clean, and a stale RETIRED alias, a renames key or a hooks entry fail', () => {
     const { lintMarketplaceEntries } = require('./lint-skills.js');
-    const { LEGACY } = require('./install/brand.js');
     assert.deepStrictEqual(lintMarketplaceEntries(liveMarketplace()), [], 'the live file is clean');
 
-    // 2.2.1: no RETIRED alias is listed - a 1.x id or a renamed MCP id left in the file is named with its fix.
-    for (const name of [LEGACY.core, LEGACY.hooks, 'serena', 'memory', 'playwright-chrome'])
+    // 2.2.1: no RETIRED alias is listed - a renamed MCP id left in the file is named with its fix.
+    for (const name of ['serena', 'memory', 'playwright-chrome'])
     {
         const stale = liveMarketplace();
         stale.plugins.push({ name, source: './', description: 'RETIRED', skills: [] });
@@ -813,7 +800,7 @@ test('check 49: the live file is clean, and a stale RETIRED alias, a renames key
     }
 
     const renamed = liveMarketplace();
-    renamed.renames = { [LEGACY.core]: 'alfred-code' };
+    renamed.renames = { serena: 'alfred-navigation' };
     assert.ok(lintMarketplaceEntries(renamed).some((f) => /`renames` key/.test(f)), 'a renames map is a finding');
 
     const hooks = liveMarketplace();
@@ -962,91 +949,64 @@ test('lintRetiredNames flags a retired plugin name left in shipped stack text, a
     assert.deepStrictEqual(lintRetiredNames(stackTextFiles()), [], 'no retired plugin name is left under stack/');
 });
 
-// Check 57. The 1.x spellings are built from these two, so no fixture line below spells one out.
-const OLD = 'claude-stack'; // legacy-name
-const OLD_ENV = 'CLAUDE_STACK_'; // legacy-name
+// Check 57. The retired 1.x spellings are built from parts, so no line of this file spells one out.
+const OLD = ['claude', 'stack'].join('-');
+const OLD_ENV = `${['CLAUDE', 'STACK'].join('_')}_`;
+const OLD_DOCS = ['CLAUDE', 'DOCS', 'PATH'].join('_');
+const MARK = ['legacy', 'name'].join('-');
 
-test('check 57: a 1.x name outside the legacy readers is a finding, named file:line', () => {
+test('check 57: a retired 1.x name in any file is a finding, named file:line', () => {
     const { lintLegacyNames } = require('./lint-skills.js');
-    const of = (file, text) => lintLegacyNames([{ file, text }], { retiredEntries: [`${OLD}-wpf`, `${OLD}-aspnet`, `${OLD}-aspnet-data`] });
+    const of = (file, text) => lintLegacyNames([{ file, text }]);
     const skill = of('stack/skills/x/SKILL.md', `intro\nrun /${OLD}:update first\n`);
     assert.strictEqual(skill.length, 1, 'one line, one finding');
     assert.match(skill[0], /^stack\/skills\/x\/SKILL\.md:2 /, 'the finding names file:line');
-    assert.match(skill[0], /legacy-name/, 'the finding names the way out');
+    assert.match(skill[0], /use alfred-code \/ ALFRED_CODE_/, 'the finding names the way out');
     assert.strictEqual(of('stack/hooks/h.js', `const v = env.${OLD_ENV}MONITOR;\n`).length, 1, 'the env prefix is a 1.x name too');
+    assert.strictEqual(of('stack/hooks/h.js', `const v = env.${OLD_DOCS};\n`).length, 1, 'the older docs-path key is a 1.x name too');
     assert.strictEqual(of('stack/hooks/h.js', `a ${OLD}\nb ${OLD_ENV}X\nc\n`).length, 2, 'every line is its own finding');
     assert.deepStrictEqual(of('README.md', 'the Cursor twin is cursor-stack\n'), [], 'cursor-stack never matches');
-    assert.strictEqual(of('docs/notes.md', `${OLD}\n`).length, 1, 'a docs file that is not evidence is checked');
-    assert.strictEqual(of('scripts/install/brand.js', `const X = '${OLD}';\n`).length, 1, 'brand.js outside its LEGACY block is checked');
+    // No file is exempt: evidence, history and the installer's own brand file are checked like any other.
+    for (const file of ['docs/plugin-migration-evidence.md', 'docs/notes.md', 'meta/migrations.json', 'meta/stack-manifest.json', 'scripts/install/brand.js', 'scripts/x.test.js', 'CLAUDE.md'])
+        assert.strictEqual(of(file, `${OLD} and ${OLD_ENV}X\n`).length, 1, `${file} is checked`);
 });
 
-test('check 57: every allowed shape passes - evidence, history files, the retired entries and the marker', () => {
+test('check 57: the match ignores case and separator, and the old marker exempts nothing', () => {
     const { lintLegacyNames } = require('./lint-skills.js');
-    const retiredEntries = [`${OLD}-wpf`, `${OLD}-aspnet`, `${OLD}-aspnet-data`];
-    const of = (file, text) => lintLegacyNames([{ file, text }], { retiredEntries });
-    for (const file of ['docs/rebrand-evidence.md', 'docs/plugin-migration-evidence.md', 'meta/migrations.json', 'meta/retired-entries.json'])
-        assert.deepStrictEqual(of(file, `${OLD} and ${OLD_ENV}X\n`), [], `${file} is allowed whole`);
-    // brand.js LEGACY and the manifest's retired block carry no allowance of their own: every LEGACY
-    // line is marked, and the retired lists hold no 1.x name.
-    const brand = `'use strict';\nconst LEGACY = {\n    core: '${OLD}', // legacy-name\n    stamp: '${OLD}.stamp',\n};\n`;
-    assert.deepStrictEqual(of('scripts/install/brand.js', brand).map((f) => f.split(' ')[0]), ['scripts/install/brand.js:4'], 'an unmarked LEGACY line is a finding');
-    const manifest = `{\n  "retired": {\n    "plugins": [\n      "${OLD}-old"\n    ]\n  }\n}\n`;
-    assert.deepStrictEqual(of('meta/stack-manifest.json', manifest).map((f) => f.split(' ')[0]), ['meta/stack-manifest.json:4'], 'the retired block is checked like any other');
-    assert.deepStrictEqual(of('scripts/x.test.js', `const home = '${OLD}-wpf';\nconst deny = 'Agent(${OLD}-aspnet-data:seat)';\n`), [], 'a retired per-stack entry name is allowed wherever it appears');
-    assert.strictEqual(of('scripts/x.test.js', `const id = '${OLD}-wpf@${OLD}';\n`).length, 1, 'the key beside a retired entry name is still the 1.x key');
-    assert.strictEqual(of('scripts/x.test.js', `const id = '${OLD}-wpfx';\n`).length, 1, 'a longer name is not a retired entry');
-    assert.deepStrictEqual(of('stack/hooks/h.js', `const old = env.${OLD_ENV}X; // legacy-name\n`), [], 'a marked code line');
-    assert.deepStrictEqual(of('CLAUDE.md', `the 1.x \`${OLD}.stamp\` <!-- legacy-name -->\n`), [], 'a marked markdown line');
-    assert.deepStrictEqual(of('.github/workflows/w.yml', `cp a ${OLD}.zip # legacy-name - the 1.x fallback\n`), [], 'a marked shell / yaml line');
-    assert.deepStrictEqual(of('setup-plugin/references/p.md', `x ${OLD} # a probe; legacy-name: the 1.x cache dir\n`), [], 'the marker with a colon after it');
+    const of = (file, text) => lintLegacyNames([{ file, text }]);
+    const [a, b] = ['claude', 'stack'];
+    for (const spelling of [`${a}-${b}`, `${a}_${b}`, `${a} ${b}`, `${a}${b}`, `${a.toUpperCase()}-${b.toUpperCase()}`, `Claude ${b[0].toUpperCase()}${b.slice(1)}`, OLD_DOCS.toLowerCase()])
+        assert.strictEqual(of('docs/notes.md', `see ${spelling} here\n`).length, 1, `'${spelling}' is a finding`);
+    assert.strictEqual(of('stack/hooks/h.js', `const old = env.${OLD_ENV}X; // ${MARK}\n`).length, 1, 'a marked code line is still a finding');
+    assert.strictEqual(of('CLAUDE.md', `the 1.x \`${OLD}.stamp\` <!-- ${MARK} -->\n`).length, 1, 'a marked markdown line is still a finding');
+    assert.strictEqual(of('.github/workflows/w.yml', `cp a ${OLD}.zip # ${MARK} - the 1.x fallback\n`).length, 1, 'a marked shell / yaml line is still a finding');
+    assert.deepStrictEqual(of('scripts/x.js', `const a = 'claude'; const b = 'stack';\n`), [], 'the two words apart are no spelling');
 });
 
-test('check 57: the marker is a whole word in a comment - a line merely containing the letters is checked', () => {
-    const { lintLegacyNames } = require('./lint-skills.js');
-    const of = (file, text) => lintLegacyNames([{ file, text }], { retiredEntries: [] });
-    assert.strictEqual(of('scripts/x.js', `const a = 'my-legacy-names-list ${OLD}';\n`).length, 1, 'a longer word is not the marker');
-    assert.strictEqual(of('scripts/x.js', `const a = '${OLD}'; // legacy-names\n`).length, 1, 'a plural in a comment is not the marker');
-    assert.strictEqual(of('scripts/x.js', `const a = '${OLD}'; // old-legacy-name\n`).length, 1, 'a prefixed word is not the marker');
-    assert.strictEqual(of('scripts/x.js', `const a = 'legacy-name ${OLD}';\n`).length, 1, 'the word outside a comment is not the marker');
-});
-
-test('check 57: in the marketplace only the generated plugins[] passes - name, owner and metadata are checked', () => {
+test('check 57: in the marketplace every line is checked - plugins[] included', () => {
     const fs = require('node:fs');
     const path = require('node:path');
     const { lintLegacyNames } = require('./lint-skills.js');
-    const of = (text) => lintLegacyNames([{ file: '.claude-plugin/marketplace.json', text }], { retiredEntries: [] }).map((f) => f.split(' ')[0]);
+    const of = (text) => lintLegacyNames([{ file: '.claude-plugin/marketplace.json', text }]).map((f) => f.split(' ')[0]);
     const market = [
         '{',
         '  "name": "envoydev",',
         '  "owner": {',
         `    "url": "https://github.com/envoydev/${OLD}"`,
         '  },',
-        '  "metadata": {',
-        `    "description": "installed via the ${OLD} plugin",`,
-        '    "version": "2.0.0"',
-        '  },',
         '  "plugins": [',
-        '    {',
-        `      "name": "${OLD}",`,
-        `      "description": "[RETIRED] ] ${OLD} - brackets in a string do not end the list"`,
-        '    },',
-        `    { "name": "${OLD}-hooks" }`,
+        `    { "name": "${OLD}" },`,
+        '    { "name": "alfred-code" }',
         '  ]',
         '}',
         '',
     ].join('\n');
-    assert.deepStrictEqual(of(market), ['.claude-plugin/marketplace.json:4', '.claude-plugin/marketplace.json:7'], 'owner.url and metadata.description are findings, every plugins[] line passes');
-    // The live file: the plugins[] entries check 49 generates pass, and a 1.x name in the hand-edited
-    // metadata is caught.
+    assert.deepStrictEqual(of(market), ['.claude-plugin/marketplace.json:4', '.claude-plugin/marketplace.json:7'], 'owner.url and a plugins[] entry are both findings');
     const live = fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8');
     assert.deepStrictEqual(of(live), [], 'the committed marketplace is clean');
-    const bumped = JSON.parse(live);
-    bumped.metadata.description = `installed via the ${OLD} plugin`;
-    bumped.owner.url = `https://github.com/envoydev/${OLD}`;
-    assert.strictEqual(of(`${JSON.stringify(bumped, null, 2)}\n`).length, 2, 'a hand edit to metadata.description or owner.url is a finding');
 });
 
-test('check 57: the walk reads tracked text files, and the live tree carries no unmarked 1.x name', () => {
+test('check 57: the walk reads tracked text files, and the live tree carries no 1.x name', () => {
     const fs = require('node:fs');
     const os = require('node:os');
     const path = require('node:path');
@@ -1062,13 +1022,13 @@ test('check 57: the walk reads tracked text files, and the live tree carries no 
         fs.writeFileSync(path.join(dir, 'c.bin'), Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from(OLD)]));
         const files = repoTextFiles(dir);
         assert.deepStrictEqual(files.map((f) => f.file), ['a.md'], 'only the text file outside node_modules');
-        assert.strictEqual(lintLegacyNames(files, { retiredEntries: [] }).length, 1);
+        assert.strictEqual(lintLegacyNames(files).length, 1);
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 
     const live = repoTextFiles();
     assert.ok(live.length > 300, `the walk reaches the tree (${live.length} files)`);
-    assert.deepStrictEqual(lintLegacyNames(live), [], 'every 1.x spelling left is a marked legacy reader or an allowed history file');
+    assert.deepStrictEqual(lintLegacyNames(live), [], 'no tracked file spells a retired 1.x name');
 });
 
 // Check 27. Task 12 rewrote lintEnvironmentCatalog from a twin-diff to a seed-literal-name diff

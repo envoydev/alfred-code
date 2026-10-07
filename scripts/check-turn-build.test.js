@@ -11,7 +11,6 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'check-turn-build.js');
 const { runChecks, groupRoots, commandFor, MAX_LINES } = require(HOOK);
@@ -20,7 +19,7 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const posix = process.platform !== 'win32';
 
 const BASE_ENV = { ...process.env };
-for (const k of ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_TURN_CHECK', 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE']) delete BASE_ENV[k];
+for (const k of ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_TURN_CHECK', 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE']) delete BASE_ENV[k];
 
 let seq = 0;
 function project()

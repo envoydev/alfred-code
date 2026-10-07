@@ -278,15 +278,11 @@ function readObject(file)
     catch { return { error: `${file} is not valid JSON` }; }
 }
 
-// The `scope:` line of this project's stamp (2.x, else the 1.x name), '' when there is none.
+// The `scope:` line of this project's stamp, '' when there is none.
 function stampScope(claudeDir)
 {
-    for (const name of ['alfred-code.stamp', 'claude-stack.stamp']) // legacy-name
-    {
-        try { return (/^scope: *(\S+)/m.exec(fs.readFileSync(path.join(claudeDir, name), 'utf8')) || [])[1] || ''; }
-        catch { /* absent: the next name */ }
-    }
-    return '';
+    try { return (/^scope: *(\S+)/m.exec(fs.readFileSync(path.join(claudeDir, 'alfred-code.stamp'), 'utf8')) || [])[1] || ''; }
+    catch { return ''; }
 }
 
 // The registration the importer spawns the server from, in its own order (the engine's

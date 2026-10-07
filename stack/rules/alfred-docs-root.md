@@ -19,7 +19,4 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
      installer's next-steps say the same thing at install time. -->
 
 <!-- Maintainer note: the env value is read as process.env.ALFRED_CODE_DOCS_PATH by the hooks and
-     the installer; both also read the pre-0.2.43
-     CLAUDE_DOCS_PATH spelling as a fallback, and an install/update renames the key in place. That
-     history changed no model behaviour, so it is not injected - meta/shared-rules.json's
-     docs-root-resolution entry is where the fallback is recorded. -->
+     the installer - meta/shared-rules.json's docs-root-resolution entry pins every reader. -->
