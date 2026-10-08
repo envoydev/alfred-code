@@ -25,7 +25,7 @@ One block, no re-pasted plans or ledgers:
 mode: <the recorded mode> | contract: <interface + version, or n/a>
 lanes: <domain> - <what landed> - <SIGNED_OFF | PUNCH_LIST | BLOCKED>   (one line per lane)
 final gate: <integration-reviewer verdict, or n/a for single-domain>
-pending: <each undecided or unlanded item, or none>
+pending: <each undecided or unlanded item, or none - an earlier ask still unanswered, unpushed commits (check the upstream), an undecided push, a gate still owed (a verifier not run, a review skipped - named in the user-facing text, never only in a private receipt), a bug flagged this run but not fixed>
 leftovers: <what this run started and still has up, or none>
 doc-drift: <the one line, or none>
 ceilings: <rows filed under architecture/ARCHITECTURE.md#known-ceilings, or none>

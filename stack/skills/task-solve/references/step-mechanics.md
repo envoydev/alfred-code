@@ -37,7 +37,9 @@ are in `SKILL.md`; these are the mechanics around them.
 - If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier,
   stop and put the choice through AskUserQuestion (retry the stamp, or run this stage inline)
   rather than retrying blind or dispatching around the gate.
-- **Lifetime.** The AUTO stamp lives until step 6's close deletes it. Step 4's
+- **Lifetime.** The AUTO stamp lives until step 6's close deletes it or the session ends - a
+  resumed session re-writes it only from the user's waiver words typed in THAT session, else the
+  next dispatch asks. Step 4's
   delete-when-fan-out-completes applies to per-plan APPROVED stamps, and a step-5 punch-list
   re-dispatch under AUTO rides the still-live waiver.
 

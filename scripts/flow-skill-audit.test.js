@@ -215,3 +215,92 @@ test('task-version-upgrade: a hard stop puts re-plan, roll back or stop through 
     assert.doesNotMatch(text, /stop and re-plan, never push through/);
     assert.match(text, /stop and put it through ONE AskUserQuestion - 'Re-plan from this stage \(Recommended\)' \/ 'Roll back to the last stage's rollback point' \/ 'Stop here' - never push through or skip a stage gate\./);
 });
+
+// ---- the two solve flows and the plan-bound review -------------------------------------------------------------
+const body = (text) => String(text).replace(/^---\n[\s\S]*?\n---\n/, '');
+
+// MINOR task-solve/references/step-mechanics.md:40: the dispatch guard reads a pre-session stamp as stale.
+test('task-solve: the AUTO stamp ends with the session; a resumed session re-writes it only from that session\'s words', () => {
+    const mech = flat(read('stack/skills/task-solve/references/step-mechanics.md'));
+    assert.match(mech, /The AUTO stamp lives until step 6's close deletes it or the session ends - a resumed session re-writes it only from the user's waiver words typed in THAT session, else the next dispatch asks\./);
+});
+
+// MINOR task-solve:172: the agents-mode stamp's first line is given, not learned from a bounce.
+test('task-solve: the agents-mode approval stamp names its first line', () => {
+    assert.match(flat(skill('task-solve')), /Write the approval gate file first - first line `APPROVED <contract_version> - "<the step-3 answer, verbatim>"`/);
+    assert.deepStrictEqual(registryFindings('approval-gate-stamp'), []);
+});
+
+// MINOR task-solve:110-120: the spec-check lookup is a reference, mirroring the cross-task flow's; the body keeps the rule.
+test('task-solve: the spec-check lookup lives in references/full-spec.md, the verdict line stays in the body', () => {
+    const b = body(skill('task-solve'));
+    assert.doesNotMatch(b, /```bash\nSPEC=/, 'the lookup block left the body');
+    assert.match(flat(b), /Run it by the lookup in `references\/full-spec\.md`/);
+    assert.match(flat(b), /`Spec: <full\|not full> - <path> - <its reason>`/);
+    const ref = read('stack/skills/task-solve/references/full-spec.md');
+    assert.match(ref, /SPEC=\.claude\/skills\/task-solve\/scripts\/spec-check\.js/);
+    assert.ok(copiesOf(shared()['full-spec-script']).includes('stack/skills/task-solve/references/full-spec.md'));
+    assert.deepStrictEqual(registryFindings('full-spec-script'), []);
+    assert.ok(b.length < 17700, `the move frees room under the 18,000 cap: ${b.length}`);
+});
+
+// MATERIAL task-solve-cross/references/issue-investigation.md:93: the fix decision is a marked ask.
+test('task-solve-cross: the investigate-and-fix decision is ONE marked ask, the diagnosis route recommended', () => {
+    const inv = flat(read('stack/skills/task-solve-cross/references/issue-investigation.md'));
+    assert.doesNotMatch(inv, /pass an EXPLICIT fix decision gate/);
+    assert.match(inv, /Diagnose, then put the fix decision through ONE AskUserQuestion - the diagnosis's `fix_recommendation\.route` as the option marked `\(Recommended\)`, then 'Diagnosis only - stop here' - never slide silently from diagnosis into implementation\./);
+});
+
+// agents.md F09 (C3): CI_PASSING is a status the diagnosis protocol can route.
+test('task-solve-cross: the diagnosis vocabulary carries CI_PASSING, the status the CI diagnoser returns', () => {
+    const inv = read('stack/skills/task-solve-cross/references/issue-investigation.md');
+    assert.match(inv, /^status: DIAGNOSED \| NOT_REPRODUCED \| NEEDS_MORE_EVIDENCE \| LIKELY_FLAKE \| INCONCLUSIVE \| CI_PASSING/m);
+    assert.deepStrictEqual(registryFindings('diagnosis-status-vocabulary'), []);
+});
+
+// Named cites (skills.md 4): the four resolver seats carry the absent path.
+test('task-solve-cross: the fix routing names what runs when a resolver seat is not installed', () => {
+    assert.match(flat(read('stack/skills/task-solve-cross/references/issue-investigation.md')), /Each resolver above runs where the project installed one; otherwise the fix loop runs in-session\./);
+});
+
+// MINOR task-solve-cross:51, :72 + capability-reuse.md:27-30.
+test('task-solve-cross: the standard row names its modes, the routing read has a receipt, and the dispatch claim is true', () => {
+    const b = body(skill('task-solve-cross'));
+    assert.match(b, /\| standard \| anything else in one domain \| a single-stack mode below \(`implementer_only` \/ `domain_trio`\) \|/);
+    assert.match(flat(b), /Read it before you pick, then pick the smallest mode, and write `routing policy: read` into the ledger beside the mode answer\./);
+    assert.ok(b.length < 18000, `M99 cap holds: ${b.length}`);
+    const reuse = flat(read('stack/skills/task-solve-cross/references/capability-reuse.md'));
+    assert.doesNotMatch(reuse, /the house dispatch guard denies a run started any other way/);
+    assert.doesNotMatch(reuse, /lands on this skill/);
+    assert.match(reuse, /the house flows are the entry points for multi-agent work, dispatch is explicit and never automatic, and the dispatch guard blocks an implementer that carries no approval stamp\./);
+    assert.deepStrictEqual(registryFindings('size-first-table'), []);
+});
+
+// MINOR task-verify-code:60: step 4's two unfielded checks get a receipt.
+test('task-verify-code: the output carries a Regression field, and the worked example fills it', () => {
+    const text = skill('task-verify-code');
+    assert.match(flat(text), /\*\*Six named fields, every run, each with a value\.\*\*/);
+    assert.match(text, /^Regression: <callers checked: N, vacuous tests: none \| the test and why>$/m);
+    const example = (text.split('## Example')[1] || '').match(/```text\n([\s\S]*?)```/)[1];
+    assert.match(example, /^Regression: callers checked: \d+, vacuous tests: none$/m);
+    assert.match(shared()['verifier-output-named-fields']._note, /task-verify-code carries six/);
+});
+
+// MINOR task-verify-code:74: the receipt shape is read when a commit is next; the no-receipt guard stays in the body.
+test('task-verify-code: the COMMIT-GATE receipt moves to a reference, the punch-list guard stays in the body', () => {
+    const b = flat(body(skill('task-verify-code')));
+    assert.doesNotMatch(b, /`VERIFIED <what was reviewed, one phrase>`/, 'the receipt lines left the body');
+    assert.match(b, /When the review is the pre-commit checkpoint \(a commit is the next act\) and the verdict is sound - or sound after fixes that landed and re-verified - Read `references\/commit-gate-receipt\.md` and write the receipt it shapes\. A punch-list with unresolved BLOCKER\/MATERIAL findings writes no receipt\./);
+    const ref = flat(read('stack/skills/task-verify-code/references/commit-gate-receipt.md'));
+    for (const piece of ['VERIFIED <what was reviewed, one phrase>', 'authorized: "<the user\'s words asking for THIS commit, verbatim>"', '`security:` naming each category checked and its verdict'])
+        assert.ok(ref.includes(piece), piece);
+    for (const id of ['commit-gate-receipt', 'commit-gate-security-row', 'commit-gate-authorized-line'])
+        assert.ok(copiesOf(shared()[id]).includes('stack/skills/task-verify-code/references/commit-gate-receipt.md'), id);
+    assert.deepStrictEqual(registryFindings('commit-gate-receipt', 'commit-gate-security-row', 'commit-gate-authorized-line'), []);
+});
+
+// MINOR task-verify-code:36 (D3): the in-process probe is the stack's in-memory host test; .NET's is a labelled example.
+test('task-verify-code: the in-process probe is stated for any stack, the .NET host named as its example', () => {
+    const b = flat(body(skill('task-verify-code')));
+    assert.match(b, /For a web API an in-process run through the app's real entry point IS that call - the stack's in-memory host test \(on \.NET a `WebApplicationFactory<Program>` test through the real `Program`/);
+});

@@ -48,7 +48,7 @@ The size line is `Size: <trivial|small|standard|cross> - <the signal that decide
 |---|---|---|
 | trivial | one file, no new dependency, no behaviour a test would see (typo, comment, format, rename inside a file) | edit -> scoped check -> close. No design, no audit, no stop |
 | small | up to 3 files in one domain, no new dependency, no public contract touched | plan inline -> build -> verifier -> close. One stop, the close |
-| standard | anything else in one domain | the full gated vertical |
+| standard | anything else in one domain | a single-stack mode below (`implementer_only` / `domain_trio`) |
 | cross | more than one domain | this pipeline |
 
 Floor: auth, secrets, input parsing, permissions, a public contract or a migration is never below
@@ -69,7 +69,7 @@ Size <size> across <domains>. Run it <in this session | through the seats>: <the
 - **A mode already named IS the answer.** An invocation that already names the mode (an agents opt-in, an explicit 'inline') is never re-asked - record it and continue. No dispatch capability is the current session without asking.
 - **Cross-domain carries its own recommendation.** The dispatched producer-first recommendation goes inside the ask; the user's pick stands.
 - **The recommended slot follows the session's state, not habit.** The smallest safe mode normally; past a chained-run trigger (a prior plan approval, APPROVAL stamp, or cycle/run ledger from THIS session is in context) or the install's fresh-session trigger for its context window (150,000 tokens on a 200k window, 400,000 on a 1M one, 300,000 on any other window), the fresh-session hand-off TAKES the recommended slot - and every ask this skill fires past that trigger carries the fresh-session option (this skill's job per ask; the stop hook backs it only at a clean close).
-- **Read the routing policy before you pick.** Dispatch is explicit-only house-wide; the modes (`single_chat`, `implementer_only`, `domain_trio`, `fanout_domain_trio`, `cross_domain_light`, `full_cross_domain`) with their flows and triggers, the seat pins, the 3-implementer fan-out cap, the decision ladder and the escalation guardrails are `references/execution-modes.md` - Read it before you pick, then pick the smallest mode. Read `references/model-routing.md` with it when the pick lands on a dispatching mode: task class and risk -> the seat and effort to dispatch, the frontmatter pins as the defaults, and when to escalate.
+- **Read the routing policy before you pick.** Dispatch is explicit-only house-wide; the modes (`single_chat`, `implementer_only`, `domain_trio`, `fanout_domain_trio`, `cross_domain_light`, `full_cross_domain`) with their flows and triggers, the seat pins, the 3-implementer fan-out cap, the decision ladder and the escalation guardrails are `references/execution-modes.md` - Read it before you pick, then pick the smallest mode, and write `routing policy: read` into the ledger beside the mode answer. Read `references/model-routing.md` with it when the pick lands on a dispatching mode: task class and risk -> the seat and effort to dispatch, the frontmatter pins as the defaults, and when to escalate.
 
 **Honor a fresh-session answer.** When any ask's answer picks the fresh-session hand-off, the turn ends with a short ack plus the paste-ready resume block - nothing else: no 'one more step', no new work in this chat. If the user keeps typing here afterwards, answer questions plainly, but route new WORK back to the hand-off once - then follow their explicit choice.
 
@@ -122,7 +122,7 @@ This run started <what is still up>. Tear it down - nothing later in this run ne
 - 'Keep it up' - it stays running for you
 ```
 
-The close opens with a **pending sweep** - anything undecided or unlanded is named as its own line or ask option, never dropped at the session's end: an earlier ask still unanswered, unpushed commits (check the upstream), an undecided push, any gate still owed (a verifier not run, a review skipped - named in the user-facing text, never only in a private receipt), and any bug flagged this run but not fixed. A flagged-but-unfixed bug also goes into the ledger or task docs BEFORE any memory purge, so the purge cannot destroy its only record.
+The close opens with a **pending sweep** - anything undecided or unlanded is named as its own line or ask option, never dropped at the session's end (what counts: `references/close-out.md`'s `pending:` field). A flagged-but-unfixed bug also goes into the ledger or task docs BEFORE any memory purge, so the purge cannot destroy its only record.
 
 Before the close report, Read `references/close-out.md` and run it: the doc-drift triggers, the filing of every `where | limit | revisit when` row a seat reported into the architecture map's Known ceilings, and the close report's fixed shape - one block, no re-pasted plans or ledgers, `memories purged: <names|none>` among its required fields.
 

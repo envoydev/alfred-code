@@ -56,7 +56,7 @@ The two diagnosers dispatching a read-only evidence-gatherer (exactly as the ros
 Use when the user asks to investigate, find root cause, explain what is broken, or check why CI failed. Diagnose, then STOP - do not implement unless the user or policy asks for a fix.
 
 ```yaml
-status: DIAGNOSED | NOT_REPRODUCED | NEEDS_MORE_EVIDENCE | LIKELY_FLAKE | INCONCLUSIVE
+status: DIAGNOSED | NOT_REPRODUCED | NEEDS_MORE_EVIDENCE | LIKELY_FLAKE | INCONCLUSIVE | CI_PASSING   # CI_PASSING: the CI diagnoser's confirm-red found every check green - nothing to diagnose
 confidence: high | medium | low
 root_cause:
   summary:
@@ -90,7 +90,7 @@ A display-only value that renders wrong with no data loss and a reload or re-nav
 
 ## Investigation + optional fix mode
 
-Use when the user asks to investigate and fix if obvious/safe. Diagnose, then pass an EXPLICIT fix decision gate - never slide silently from diagnosis into implementation.
+Use when the user asks to investigate and fix if obvious/safe. Diagnose, then put the fix decision through ONE AskUserQuestion - the diagnosis's `fix_recommendation.route` as the option marked `(Recommended)`, then 'Diagnosis only - stop here' - never slide silently from diagnosis into implementation.
 
 ```text
 If safe/local:  domain implementer or resolver -> domain verifier -> final report.
@@ -106,6 +106,8 @@ Runtime bug, single domain:  issue-diagnoser-runtime -> domain implementer -> do
 Runtime bug, multi domain:   issue-diagnoser-runtime (+ parallel evidence-gatherers) -> contract/fix plan -> per-domain implementer+verifier -> integration-reviewer
 Security issue:  security-auditor -> OWASP/CWE punch-list -> affected domain implementers -> affected domain verifiers -> security re-check -> integration-reviewer if cross-domain
 ```
+
+Each resolver above runs where the project installed one; otherwise the fix loop runs in-session.
 
 If a fix changes a shared contract, the issue flow uses the same BLOCKED_CONTRACT_CHANGE protocol as feature work (`references/contract-protocol.md`).
 

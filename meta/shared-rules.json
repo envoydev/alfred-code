@@ -448,10 +448,10 @@
       ]
     },
     "diagnosis-status-vocabulary": {
-      "_note": "The diagnosis status vocabularies - issue and CI variants sync with the investigation reference.",
+      "_note": "The diagnosis status vocabularies - issue and CI variants sync with the investigation reference, which carries the union (CI_PASSING, the CI seat's word for a confirm-red that came back green, joined it in the 2026-10-08 audit, agents F09).",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/issue-investigation.md",
-        "marker": "status: DIAGNOSED | NOT_REPRODUCED | NEEDS_MORE_EVIDENCE | LIKELY_FLAKE | INCONCLUSIVE"
+        "marker": "status: DIAGNOSED | NOT_REPRODUCED | NEEDS_MORE_EVIDENCE | LIKELY_FLAKE | INCONCLUSIVE | CI_PASSING"
       },
       "sites": [
         {
@@ -2025,7 +2025,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/task-verify-code/SKILL.md",
+          "file": "stack/skills/task-verify-code/references/commit-gate-receipt.md",
           "marker": "VERIFIED <what was reviewed, one phrase>"
         },
         {
@@ -2046,7 +2046,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/task-verify-code/SKILL.md",
+          "file": "stack/skills/task-verify-code/references/commit-gate-receipt.md",
           "marker": "`security:` naming each category checked and its verdict"
         }
       ]
@@ -2072,7 +2072,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/task-verify-code/SKILL.md",
+          "file": "stack/skills/task-verify-code/references/commit-gate-receipt.md",
           "marker": "authorized: \"<the user's words asking for THIS commit, verbatim>\""
         },
         {
@@ -5368,7 +5368,7 @@
       ]
     },
     "verifier-output-named-fields": {
-      "_note": "The verifier skills' output contract is N NAMED fields, every run, each with a value - not prose conditions about when to write one. The measurement behind both copies: five named fields were emitted 5 of 5 times while the same step's prose condition was emitted 0 of 1. task-verify-code carries five, task-verify-plan six; the RULE is the shape, so both copies move together when a field is added.",
+      "_note": "The verifier skills' output contract is N NAMED fields, every run, each with a value - not prose conditions about when to write one. The measurement behind both copies: five named fields were emitted 5 of 5 times while the same step's prose condition was emitted 0 of 1. task-verify-code carries six (Regression joined in the 2026-10-08 audit, the receipt for step 4's callers and vacuous-test checks), task-verify-plan six; the RULE is the shape, so both copies move together when a field is added.",
       "owner": {
         "file": "stack/skills/task-verify-code/SKILL.md",
         "marker": "named fields, every run, each with a value"
@@ -6333,9 +6333,9 @@
       ]
     },
     "full-spec-script": {
-      "_note": "The two-home lookup of the full-spec check script (the project copy, else the newest plugin cache entry). The same snippet in both flows, each reading its OWN copy of the script (2.1.5 audit M100: the cross-task orchestrator carries a byte-identical twin in its scripts/, held by spec-check.test.js), so a lookup change is one pin.",
+      "_note": "The two-home lookup of the full-spec check script (the project copy, else the newest plugin cache entry). The same snippet in both flows, each reading its OWN copy of the script (2.1.5 audit M100: the cross-task orchestrator carries a byte-identical twin in its scripts/, held by spec-check.test.js), so a lookup change is one pin. Both flows keep the lookup in a references/full-spec.md their body reads by name (task-solve's moved out of SKILL.md in the 2026-10-08 audit, to fit its 18,000-char cap).",
       "owner": {
-        "file": "stack/skills/task-solve/SKILL.md",
+        "file": "stack/skills/task-solve/references/full-spec.md",
         "marker": "/scripts/spec-check.js\" [ -f \"$f\" ] && [ ! -e \"$d/.orphaned_at\" ]"
       },
       "sites": [
