@@ -280,6 +280,41 @@ test('audit 2026-10-08: the execution verdict stays out of plan files, small tas
     assert.match(squash(rule), /A small task settles it inline, no Skill call, and gets no plan: a typo, a one-line fix, formatting, a dep bump, a single-file rename, or a mechanical change across 10\+ files once the user confirms its scope list\. Any other task/, 'one line holds both sides of the threshold');
 });
 
+// Audit 2026-10-08 C8 (BLOCKER 5): the diagnose flow loads the root-cause loop at its step 3 and
+// forbids every edit, so the loop's own scope cut must name that in-chat read-only run - otherwise
+// 'a single-chat run takes all seven' tells it to add a probe and write the fix.
+test('audit 2026-10-08: the root-cause loop cuts to steps 1-5 for the in-chat diagnose flow too', () => {
+    const rc = squash(read('stack/skills/habits-root-cause/SKILL.md'));
+    assert.ok(rc.includes('A read-only run - a diagnoser seat, or the gated diagnose flow in this chat - runs steps 1-5, adds no instrumentation to the code and writes no fix'),
+        'the read-only cut names the in-chat diagnose flow');
+    const diag = squash(read('stack/skills/issue-diagnoser/SKILL.md'));
+    assert.ok(diag.includes('the FIRST action of this step is the `habits-root-cause` Skill call'), 'the diagnose flow loads the loop');
+    assert.ok(diag.includes('Never write code, edit a file under test'), 'and forbids the edits a full loop makes');
+    // the design question at step 7 is a user ask, so it carries the ask tool's shape
+    assert.ok(rc.includes('in a chat, ONE AskUserQuestion with the redesign recommended; a seat returns it in its report'), 'step 7 asks through the tool');
+});
+
+// Audit 2026-10-08 C11 (BLOCKER 6): the walkthrough defers to the answer-length gate, so every trigger
+// phrase its description advertises must be one the gate's depth patterns lift - a phrase they do not
+// lift fires a walkthrough the gate then blocks past its hard cap.
+test('audit 2026-10-08: every phrase habits-explain-code advertises lifts the answer-length gate', () => {
+    const hook = read('stack/hooks/guard-answer-length.js');
+    const re = (name) =>
+    {
+        const m = new RegExp(`^const ${name} = /(.*)/(\\w*);$`, 'm').exec(hook);
+        assert.ok(m, `guard-answer-length.js still declares ${name}`);
+        return new RegExp(m[1], m[2]);
+    };
+    const depth = [re('DEPTH_RE'), re('DEPTH_RE_CYR')];
+    const text = read('stack/skills/habits-explain-code/SKILL.md');
+    const desc = (text.match(/^description:\s*"?(.*?)"?$/m) || [])[1] || '';
+    const phrases = [...desc.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    assert.ok(phrases.length >= 3, 'the description quotes its trigger phrases');
+    for (const p of phrases)
+        assert.ok(depth.some((r) => r.test(p)), `'${p}' fires the walkthrough but does not lift the answer-length gate`);
+    assert.ok(squash(text).includes('The answer-length gate decides, not this file'), 'the body still defers to the gate');
+});
+
 test('the inline task skills load their method skill through the Skill tool at the right point', () => {
     const body = (n) => squash(read(`stack/skills/${n}/SKILL.md`));
     const design = body('task-design');

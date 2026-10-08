@@ -2000,6 +2000,23 @@
         }
       ]
     },
+    "capture-docs-engine-write-route": {
+      "_note": "How a capture lands its doc through the docs engine: a first capture writes the file whole, because `docs.js set` refuses a file that does not exist yet (stack/hooks/docs.js `no such doc file`); a re-run lands each changed section through `docs.js set`, and the ENGINE picks in place (mainline, no git, git versioning) or the branch overlay - the capture never checks the mode. Two copies once said both 'writes directly' and 'calls set unconditionally' (audit 2026-10-08 C9), so a first capture on an overlay branch failed. Owned by the run-book capture's doc shape; restated in the code-style and related-projects write mechanics.",
+      "owner": {
+        "file": "stack/skills/capture-project-capabilities/references/doc-shape.md",
+        "marker": "and into this branch's overlay otherwise - the capture never decides which"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/capture-code-style/references/doc-shape.md",
+          "marker": "and into this branch's overlay otherwise - the capture never decides which"
+        },
+        {
+          "file": "stack/skills/capture-related-projects/references/artifact-shapes.md",
+          "marker": "and into this branch's overlay otherwise - the capture never decides which"
+        }
+      ]
+    },
     "small-tier-dispatch-consent": {
       "_note": "In DELEGATED mode the mode ask's answer is the dispatch consent for small-tier work - the loop stamps flow/APPROVAL (APPROVED small-tier) the moment it lands, rewritten as substantial approvals arrive, because the dispatch guard is tier-blind. loop-quality's AUTO-stamp is the same policy in its own shape, deliberately not pinned here.",
       "owner": {
