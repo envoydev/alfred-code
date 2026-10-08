@@ -25,8 +25,11 @@ const TEXT_CAP = 300;
 const MAX_PASS_BYTES = 8 * 1024 * 1024;
 const scrub = (text) => String(text == null ? '' : text).replace(new RegExp(SECRET_SHAPE.source, 'g'), '[redacted]').replace(/\s+/g, ' ').trim().slice(0, TEXT_CAP);
 
+// Five calls a pass at 1.5s each stay inside the hook's 10s (3s each was 15s), and GIT_OPTIONAL_LOCKS=0 keeps the Stop's
+// `status` from taking .git/index.lock beside a git command the session is running (audit 2026-10-08 row 44).
+const GIT_MS = 1500;
 const git = (root, args) => {
-  try { return execFileSync('git', args, { cwd: root, timeout: 3000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trimEnd(); } // trimEnd, never trim: the first porcelain row starts with a space that is part of its status column
+  try { return execFileSync('git', args, { cwd: root, timeout: GIT_MS, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }).toString().trimEnd(); } // trimEnd, never trim: the first porcelain row starts with a space that is part of its status column
   catch { return ''; }
 };
 
@@ -57,7 +60,19 @@ function readNewRows(transcriptPath, offset) {
 }
 
 const PLAN_FILE = /(^|\/)plans\/[^/]+\.md$/;
-function digest(rows, entry) {
+// The plan is kept as the start block shows it: project-relative inside the project, `~/` under the home directory -
+// an absolute path spent the 600-character block on a home folder's name (audit 2026-10-08 row 44).
+function planPath(fp, root) {
+  const abs = path.resolve(root || '.', String(fp));
+  const rel = root ? path.relative(root, abs) : '';
+  const posix = (p) => p.split(path.sep).join('/');
+  if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) return posix(rel);
+  const home = require('os').homedir();
+  const fromHome = home ? path.relative(home, abs) : '';
+  if (fromHome && !fromHome.startsWith('..') && !path.isAbsolute(fromHome)) return `~/${posix(fromHome)}`;
+  return posix(abs);
+}
+function digest(rows, entry, root) {
   for (const r of rows) {
     const answers = r && r.toolUseResult && r.toolUseResult.answers;
     if (answers && typeof answers === 'object') {
@@ -67,7 +82,7 @@ function digest(rows, entry) {
     if (!Array.isArray(content)) continue;
     for (const b of content) {
       const fp = b && b.type === 'tool_use' && /^(Write|Edit|MultiEdit)$/.test(b.name) && b.input && b.input.file_path;
-      if (fp && PLAN_FILE.test(String(fp).split(path.sep).join('/'))) entry.plan = String(fp).split(path.sep).join('/');
+      if (fp && PLAN_FILE.test(String(fp).split(path.sep).join('/'))) entry.plan = planPath(fp, root);
     }
   }
   if (entry.rulings.length > 60) entry.rulings = entry.rulings.slice(-60);
@@ -107,7 +122,7 @@ function upsert(root, payload) {
       entry = { session, branch: '', startedAt: new Date().toISOString(), startSha: git(root, ['rev-parse', 'HEAD']), offset: 0, rulings: [], plan: null };
     }
     const { rows, next } = readNewRows(String(payload.transcript_path || ''), Number(entry.offset) || 0);
-    digest(rows, entry);
+    digest(rows, entry, root);
     entry.offset = next;
     entry.branch = git(root, ['rev-parse', '--abbrev-ref', 'HEAD']) || entry.branch;
     entry.headSha = git(root, ['rev-parse', 'HEAD']);

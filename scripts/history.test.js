@@ -40,6 +40,32 @@ test('upsert records rulings, the live plan, commits and dirty files - and reads
   assert.strictEqual(e.offset, fs.statSync(tr).size);
 });
 
+// Audit 2026-10-08 row 44: an absolute plan path spent the 600-character start block on a home folder's name, and the
+// Stop's git calls took the index lock beside the session's own git command, at 3s each.
+test('the plan is kept project- or home-relative, and every git call runs lock-free', { skip: process.platform === 'win32' && 'a sh shim on PATH' }, () => {
+  const { root } = project();
+  const tr = transcriptFile();
+  const home = os.homedir();
+  fs.writeFileSync(tr, planWrite(path.join(root, 'docs', 'plans', 'in-tree.md')));
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'hist-git-shim-'));
+  const calls = path.join(bin, 'calls.log');
+  const real = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+  fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\necho "locks=$GIT_OPTIONAL_LOCKS $*" >> "${calls}"\nexec "${real}" "$@"\n`, { mode: 0o755 });
+  const PATH = process.env.PATH;
+  process.env.PATH = `${bin}${path.delimiter}${PATH}`;
+  try {
+    assert.strictEqual(H.upsert(root, { session_id: 'p1', transcript_path: tr, cwd: root }).plan, 'docs/plans/in-tree.md');
+    const lines = fs.readFileSync(calls, 'utf8').trim().split('\n');
+    assert.ok(lines.length >= 3 && lines.every((l) => l.startsWith('locks=0 ')), lines.join('\n'));
+  } finally { process.env.PATH = PATH; fs.rmSync(bin, { recursive: true, force: true }); }
+  if (home) {
+    fs.appendFileSync(tr, planWrite(path.join(home, '.claude', 'plans', 'from-plan-mode.md')));
+    assert.strictEqual(H.upsert(root, { session_id: 'p1', transcript_path: tr, cwd: root }).plan, '~/.claude/plans/from-plan-mode.md');
+  }
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'history.js'), 'utf8'), /const GIT_MS = 1500;/);
+  fs.rmSync(root, { recursive: true, force: true }); fs.rmSync(path.dirname(tr), { recursive: true, force: true });
+});
+
 test('a half-written last line is left for the next pass', () => {
   const { root } = project();
   const tr = transcriptFile();
