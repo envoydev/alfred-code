@@ -1056,6 +1056,29 @@ function requireEngine(root) {
   return require(ENGINE_PATH);
 }
 
+// Audit 2026-10-08 row 21: SessionStart ran the whole lint for these two checks, and lint re-parsed every doc per watch id
+// (94ms small, 2,301ms at 100 docs / 300 ids - a trend that crosses the 10s timeout). integrity() is the two checks
+// alone, in lint's own words, one read per file.
+test('integrity names the conflict markers and duplicate ids lint names, reading each doc file once', () => {
+  const r = repo({ docs: {
+    'references/a.md': '## one\n<!-- id: same -->\nOne.\n\n## two\n<!-- id: same -->\nTwo.\n',
+    'references/c.md': '## merged\n<!-- id: merged -->\n<<<<<<< mainline\nx\n=======\ny\n>>>>>>> feat\n',
+    'references/patterns.md': PATTERNS,
+  } });
+  const real = fs.readFileSync;
+  try {
+    const docs = requireEngine(r.root);
+    const reads = new Map();
+    fs.readFileSync = function (p, ...rest) { if (/\.md$/.test(String(p))) reads.set(String(p), (reads.get(String(p)) || 0) + 1); return real.call(this, p, ...rest); };
+    let got;
+    try { got = docs.integrity(); } finally { fs.readFileSync = real; }
+    const fromLint = docs.lint().problems.filter((p) => /^(merge conflict markers|duplicate id)/.test(p));
+    assert.strictEqual(got.length, 2, got.join('\n'));
+    assert.deepStrictEqual([...got].sort(), [...fromLint].sort());
+    assert.ok(reads.size >= 3 && [...reads.values()].every((n) => n === 1), JSON.stringify([...reads]));
+  } finally { fs.readFileSync = real; delete require.cache[ENGINE_PATH]; r.rm(); }
+});
+
 test('a folder is a domain only when it holds a watch.json', () => {
   const r = repo();
   try {
