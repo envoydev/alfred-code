@@ -256,6 +256,8 @@ test('task-solve-cross: the diagnosis vocabulary carries CI_PASSING, the status 
     const inv = read('stack/skills/task-solve-cross/references/issue-investigation.md');
     assert.match(inv, /^status: DIAGNOSED \| NOT_REPRODUCED \| NEEDS_MORE_EVIDENCE \| LIKELY_FLAKE \| INCONCLUSIVE \| CI_PASSING/m);
     assert.deepStrictEqual(registryFindings('diagnosis-status-vocabulary'), []);
+    // The agents seat pins this phrase as a shared-rules marker on the same file (F13), so it stays verbatim.
+    assert.match(flat(inv), /is the stack's one sanctioned nested dispatch\./);
 });
 
 // Named cites (skills.md 4): the four resolver seats carry the absent path.
