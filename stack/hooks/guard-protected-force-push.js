@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
 // PreToolUse gate: block a force-push or deletion of a protected branch (main / master /
-// develop). This is the one git rule in CLAUDE.md that is a deterministic,
-// catastrophic, irreversible event - so it is enforced by a hook, not left to
+// develop). It is a deterministic, catastrophic, irreversible event - so it is enforced by a
+// hook with no prose copy to consult (alfred-git.md only prefers --force-with-lease), never left to
 // prose the model can skip. Reads the tool-call JSON on stdin; exit 2 blocks
 // (stderr fed back to the model), exit 0 allows.
 //
@@ -105,12 +105,32 @@ function currentBranch(cwd)
 {
     try
     {
-        return execFileSync('git', ['-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8', timeout: 5000 }).trim();
+        // git's stderr stays out of the hook's: on an unborn repo it printed `fatal: ambiguous argument 'HEAD'` (audit 2026-10-08).
+        return execFileSync('git', ['-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     }
     catch
     {
         return null; // not a repo / detached / git missing -> caller fails open
     }
+}
+
+// The push's words with each option's VALUE dropped: `-o ci.skip` read `ci.skip` as a refspec, so `git push -f -o
+// ci.skip origin` on main was no bare push and passed (audit 2026-10-08). A value attached with `=` is one word already.
+const VALUE_OPTIONS = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
+function pushWords(argv)
+{
+    const out = [];
+    for (let i = 0; i < argv.length; i++)
+    {
+        if (VALUE_OPTIONS.has(argv[i]))
+        {
+            i++;
+            continue;
+        }
+        out.push(argv[i]);
+    }
+
+    return out;
 }
 
 // Block a push that would force-update, delete, or mirror a protected branch.
@@ -123,7 +143,7 @@ function isProtectedForcePush(command, cwd)
         {
             continue;
         }
-        const after = call.argv;
+        const after = pushWords(call.argv);
         const gitCwd = read.callDir(call);
         // HEAD and @ name the branch checked out where git runs - `git push -f origin HEAD` on main is
         // the bare force spelled out, and read literally it named no protected branch and passed.
@@ -134,12 +154,22 @@ function isProtectedForcePush(command, cwd)
         // also catch clustered short flags (-fu, -uf, -fv): single-dash token containing f.
         const hasForceFlag = after.some(t => FORCE_FLAG.test(t))
             || after.some(t => /^-[A-Za-z]*f[A-Za-z]*$/.test(t) && !t.startsWith('--'));
-        const hasDeleteFlag = after.includes('--delete') || after.includes('-d');
+        // ... and -d inside a cluster (`-ud origin main` deleted main - audit 2026-10-08).
+        const hasDeleteFlag = after.includes('--delete') || after.some(t => /^-[A-Za-z]*d[A-Za-z]*$/.test(t) && !t.startsWith('--'));
 
         // --mirror / --mirror=<value> (and a forced --all) rewrite/prune every remote ref,
         // protected ones included, without naming them - always catastrophic on a shared remote.
         if (after.some(t => t === '--mirror' || t.startsWith('--mirror='))
             || (after.includes('--all') && hasForceFlag))
+        {
+            return true;
+        }
+
+        // A wildcard destination (`'refs/heads/*:refs/heads/*'`) names every branch, protected ones included: forced, or
+        // under --prune (which deletes every remote branch the source side lacks), it is the --all case spelled as a
+        // refspec, and it passed (audit 2026-10-08).
+        const prune = after.some(t => t === '--prune');
+        if (after.some(t => !t.startsWith('-') && refDestination(t).includes('*') && (unquote(t).startsWith('+') || hasForceFlag || prune)))
         {
             return true;
         }
@@ -157,8 +187,9 @@ function isProtectedForcePush(command, cwd)
             }
         }
 
-        // Bare push targets HEAD's branch - block a force or delete of a protected one.
-        if (isBarePush(after) && PROTECTED.includes(branchOf('HEAD')) && (hasForceFlag || hasDeleteFlag))
+        // Bare push targets HEAD's branch - block a force or delete of a protected one. The flags are read first, so an
+        // ordinary push spawns no git.
+        if ((hasForceFlag || hasDeleteFlag) && isBarePush(after) && PROTECTED.includes(branchOf('HEAD')))
         {
             return true;
         }

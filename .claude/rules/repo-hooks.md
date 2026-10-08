@@ -106,7 +106,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `if` / `for` body, `bash -c '...'`, a heredoc or here-string into a shell, `eval`, a script file and a git alias
     (`alias.pf = push --force`), each from the directory a leading `cd` moved it to; a computed name (`bash -c "$(...)"`,
     `source <(...)`, a loop variable) is out of model (2.1.6 seam review M3). It loads `shell-writes.js` inside a try and
-    passes the call when the file is absent (the parity test's copy set), as the rm and commit guards do.
+    passes the call when the file is absent (the parity test's copy set), as the rm and commit guards do. An option's
+    value is never a refspec (`-o ci.skip`, `--repo x`), a `-d` inside a short cluster deletes (`-ud`), and a wildcard
+    destination forced or under `--prune` is the `--all` case (audit 2026-10-08).
   - `guard-catastrophic-rm.js` (PreToolUse, the shell route) - a recursive `rm` of an unrecoverable target (a bare `.git` included, a `$VAR/.git` path not; and a
     literal `find <target> -delete` / `-exec rm` with no filter test before the action in its `-o` branch, or a piped `Get-ChildItem <target> | Remove-Item`
     with `-Recurse` on either side - 2.1.5 M1; read past any wrapper of shell-writes.js's list, an `if` / `do` body, a subshell

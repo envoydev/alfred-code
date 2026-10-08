@@ -460,6 +460,25 @@ test('guard-protected-force-push: HEAD and @ are the current branch, and -C or a
   assert.equal(fp('git push -f origin HEAD:main', dir).status, 2, 'an explicit protected destination still blocks');
 });
 
+test('guard-protected-force-push: option values, a clustered -d and a forced wildcard (audit 2026-10-08)', () => {
+  const dir = scratchRepoOn('main');
+  const fp = (c, tool = 'Bash') => runIn('guard-protected-force-push.js', { tool_name: tool, tool_input: { command: c }, cwd: dir }, {});
+  for (const c of ['git push -f -o ci.skip origin', 'git push --force --push-option=x --repo origin', 'git push -ud origin main', 'git push -qd origin develop',
+    "git push -f origin 'refs/heads/*:refs/heads/*'", "git push origin '+refs/heads/*:refs/heads/*'", "git push --prune origin 'refs/heads/*:refs/heads/*'"])
+    assert.equal(fp(c).status, 2, `must block on main: ${c}`);
+  for (const c of ['git push -o ci.skip origin main', 'git push -u origin feature/x', "git push origin 'refs/heads/*:refs/heads/*'", 'git push -o ci.skip origin'])
+    assert.equal(fp(c).status, 0, `must allow: ${c}`);
+  // The other two shell routes: PowerShell and Monitor run the same push.
+  assert.equal(fp('git push --force origin main', 'PowerShell').status, 2, 'PowerShell');
+  assert.equal(fp('git push -ud origin main', 'Monitor').status, 2, 'Monitor');
+  // git's own stderr stays out of the denial: an unborn repo printed `fatal: ambiguous argument 'HEAD'`.
+  const unborn = fs.mkdtempSync(path.join(os.tmpdir(), 'unborn-'));
+  spawnSync('git', ['-C', unborn, 'init', '-q']);
+  const r = runIn('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: 'git push -f' }, cwd: unborn }, {});
+  assert.equal(r.status, 0);
+  assert.doesNotMatch(r.stderr, /fatal/, 'no git noise on stderr');
+});
+
 test('guard-catastrophic-rm: an unscoped marketplace remove is blocked - it uninstalls every plugin from it at every scope', () => {
   const rm = (c) => bash('guard-catastrophic-rm.js', c);
   assert.equal(rm('claude plugin marketplace remove other-market'), 2);
