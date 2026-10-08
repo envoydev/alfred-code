@@ -306,15 +306,52 @@ test('guard-fresh-session-start: the size offer is answerable - the retry passes
   // ONE transcript throughout: the offer is remembered per session, so growth has to be written
   // into the same file a real session would grow.
   const tp = transcript('rearm', ctxRows('rearm', 450000));
-  const grow = (ctx) => fs.writeFileSync(tp, ctxRows('rearm', ctx).map((r) => JSON.stringify(r)).join('\n') + '\n');
+  // growth is appended, as a real session grows: the answer written before it stays in the file
+  const grow = (ctx) => fs.appendFileSync(tp, JSON.stringify(assistantRow(`rearm-${ctx}`, 'ok', { cache_read_input_tokens: ctx })) + '\n');
+  const answer = () => fs.appendFileSync(tp, JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'ask1', content: 'Your questions have been answered: "Start it here?"="Run it here anyway"' }] } }) + '\n');
   const call = () => runIn('guard-fresh-session-start.js',
     { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp }, env).status;
   assert.equal(call(), 2, 'the offer is made once');
-  assert.equal(call(), 0, 'the identical retry passes - the answer is honoured');
+  // audit 2026-10-08: the retry passed with no ask between - a soft gate; the offer stands until an ask answers it
+  assert.equal(call(), 2, 'an identical retry with no answered ask is the same offer again');
+  answer();
+  assert.equal(call(), 0, 'once the ask is answered, the retry passes - the answer is honoured');
   grow(500000);
   assert.equal(call(), 0, 'still inside 1.5x of the offered context');
   grow(700000);
   assert.equal(call(), 2, 'past 1.5x growth the number changed, so the question is new');
+});
+
+test('audit 2026-10-08: the fresh-session guard reads commands and the router skill, an answered fresh ask, and only its own namespace', () => {
+  const home = fs.mkdtempSync(path.join(TMP, 'fresh-cmd-'));
+  const plugin = path.join(home, 'plugins', 'cache', 'envoydev', 'alfred-code', '9.9.9');
+  for (const [rel, body] of [['setup-plugin/commands/setup.md', '---\ndescription: "x"\ndisable-model-invocation: true\n---\nbody\n'],
+    ['setup-plugin/skills/alfred-code/SKILL.md', '---\nname: alfred-code\ndisable-model-invocation: true\n---\nbody\n']]) {
+    fs.mkdirSync(path.dirname(path.join(plugin, rel)), { recursive: true });
+    fs.writeFileSync(path.join(plugin, rel), body);
+  }
+  const skillCall = (skill, extra = {}) => runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: transcript(`fc-${skill}`, ctxRows('fc', 1000)) },
+    { env: { ...process.env, CLAUDE_CONFIG_DIR: home, ...extra } });
+  for (const s of ['alfred-code:setup', 'alfred-code:alfred-code']) {
+    const r = skillCall(s);
+    assert.equal(r.status, 2, `${s}: a flagged command or router skill in the cache`);
+    assert.match(r.stderr, new RegExp(`can run /${s} themselves`), 'the escape names the command as it is typed');
+  }
+  // (the running plugin root is read through the same pluginHeads list; a plugin-launched hook in this unset-up
+  // scratch project stands down, so that route is not replayed here)
+  // a stop ask that carried the fresh-session choice was answered this turn: the phase Skill call is not asked again
+  const answeredFresh = transcript('fresh-answered', [
+    ...ctxRows('fa', 450000),
+    { type: 'user', message: { content: 'go on with the plan' } },
+    { type: 'assistant', message: { id: 'fa-ask', content: [{ type: 'tool_use', id: 'ask9', name: 'AskUserQuestion', input: { questions: [{ question: 'Next step?', options: [{ label: 'Implement (Recommended)' }, { label: 'Resume in a fresh session' }] }] } }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'ask9', content: 'Your questions have been answered: "Next step?"="Implement (Recommended)"' }] } },
+  ]);
+  const logDir = fs.mkdtempSync(path.join(TMP, 'fresh-fa-'));
+  const phase = (skill, tp) => runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: tp },
+    { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir } }).status;
+  assert.equal(phase('task-implement', answeredFresh), 0, 'the answered fresh ask is the answer');
+  assert.equal(phase('task-implement', transcript('fresh-unanswered', ctxRows('fu', 450000))), 2, 'with no such ask the offer stands');
+  assert.equal(phase('other:task-solve', transcript('fresh-foreign', ctxRows('ff', 450000))), 0, 'another plugin\'s task-solve is not this stack\'s run');
 });
 
 // The trigger is an absolute token count PER WINDOW TIER, one environment variable each. The

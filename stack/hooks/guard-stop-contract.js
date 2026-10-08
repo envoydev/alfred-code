@@ -667,49 +667,11 @@ function askJustAnswered() {
   }
 }
 
-// Did an AskUserQuestion THIS turn (since the last typed prompt) put the fresh-session choice, and get answered?
-// Measured (8b5dcb1a): a capture skill's own gate asked 'Fresh session (Recommended) / Continue here', the user
-// answered, and the fresh-session block on the close forced an identical second ask. The choice is made either
-// way - 'Continue here' included. A Stop hook's own feedback row is no typed prompt: the re-ask it demands sits
-// after it in the same turn. Fail-open like askJustAnswered.
-const FRESH_ASK_RE = new RegExp(FRESH_PHRASE, 'i');
+// Did an AskUserQuestion THIS turn put the fresh-session choice, and get answered? One home, fresh-session.js, shared
+// with guard-fresh-session-start.js (audit 2026-10-08: the phase Skill call after an answered stop ask was denied with
+// the same question). The stand-in of an install without the engine answers no.
 function freshAskAnsweredThisTurn() {
-  try {
-    const p = payload.transcript_path;
-    if (!p) return false;
-    const size = fs.statSync(p).size;
-    const start = Math.max(0, size - 512 * 1024);
-    const fd = fs.openSync(p, 'r');
-    const buf = Buffer.alloc(size - start);
-    fs.readSync(fd, buf, 0, buf.length, start);
-    fs.closeSync(fd);
-    const lines = buf.toString('utf8').split('\n');
-    const answered = new Set();
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (!lines[i].trim()) continue;
-      let o;
-      try { o = JSON.parse(lines[i]); } catch { continue; }
-      if (!o || !o.message) continue;
-      const c = o.message.content;
-      if (o.type === 'user') {
-        if (Array.isArray(c)) {
-          for (const b of c) {
-            if (b && b.type === 'tool_result' && /^Your questions have been answered:/.test(typeof b.content === 'string' ? b.content
-              : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('') : '')) answered.add(b.tool_use_id);
-          }
-        }
-        if (isTypedTurn(o) && !(typeof c === 'string' && /^Stop hook feedback:/.test(c))) return false;
-        continue;
-      }
-      if (o.type !== 'assistant' || !Array.isArray(c)) continue;
-      for (const b of c) {
-        if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && answered.has(b.id) && FRESH_ASK_RE.test(JSON.stringify(b.input || {}))) return true;
-      }
-    }
-    return false;
-  } catch {
-    return false;
-  }
+  return typeof fresh.freshAskAnsweredThisTurn === 'function' ? fresh.freshAskAnsweredThisTurn() : false;
 }
 
 // --- credential exposure ------------------------------------------------------------------

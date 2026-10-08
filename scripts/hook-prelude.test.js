@@ -597,7 +597,7 @@ test('every hook suite takes the containment helper, and no suite hands a hook t
     for (const control of ['guard-hooks', 'shell-guards', 'check-turn-build', 'hooks-entry', 'install-plugins'])
         assert.ok(discovered.includes(control), `the discovery finds ${control}.test.js (found: ${discovered.join(', ')})`);
     for (const s of discovered)
-        assert.match(fs.readFileSync(path.join(__dirname, `${s}.test.js`), 'utf8'), /require\('\.\/hook-test-env'\)\.isolateHookSuite\(\)/, `${s}.test.js spawns a hook and takes no helper`);
+        assert.match(fs.readFileSync(path.join(__dirname, `${s}.test.js`), 'utf8'), /require\('\.\/hook-test-env'\)\.isolateHookSuite\((?:\{[^()]*\})?\)/, `${s}.test.js spawns a hook and takes no helper`);
     for (const f of fs.readdirSync(__dirname).filter((n) => n.endsWith('.test.js')))
         assert.doesNotMatch(fs.readFileSync(path.join(__dirname, f), 'utf8'), /CLAUDE_PROJECT_DIR:\s*os\.tmpdir\(\)/, `${f} hands a hook the temp root as its project`);
     const env = require('./hook-test-env');

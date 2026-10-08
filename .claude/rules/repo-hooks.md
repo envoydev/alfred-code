@@ -392,10 +392,16 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     offer under the window (`ALFRED_CODE_FRESH_SESSION_AFTER_HOURS`, default 2, unseeded, `0` off).
   - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
     `disable-model-invocation` skill (read from its frontmatter - the personal copy first, then the project's, then the
-    running plugin's own root, then the plugin caches newest version first, the order Claude Code resolves a name in, M10; the user's slash turn is untouched), and
+    running plugin's own root, then the plugin caches newest version first, the order Claude Code resolves a name in, M10; the user's slash turn is untouched;
+    a plugin COMMAND and the router skill too - `commands/`, `setup-plugin/commands/`, `setup-plugin/skills/` - audit
+    2026-10-08: the seven guided commands and `alfred-code` were never resolved), and
     offers a fresh session before a deliberate orchestration run (capture, loop, solve flow, review,
-    guided walk) when the context is past the window trigger OR (slash route only) this session already
-    TYPED a run - a Skill call is a phase of a run in flight, and harness-written user rows are no turn. Routes:
+    guided walk; only the `alfred-code:` namespace is stripped, so another plugin's `other:task-solve` is not one) when the
+    context is past the window trigger OR (slash route only) this session already
+    TYPED a run - a Skill call is a phase of a run in flight, and harness-written user rows are no turn. The size offer
+    stands until an ask is answered after it (its file records the transcript size; a retry with no ask between was a
+    soft gate), and a Skill call whose turn already ANSWERED an ask carrying the fresh-session choice (task-solve's stop
+    asks) is not offered again - `freshAskAnsweredThisTurn`, one home in `fresh-session.js`, the stop contract's too. Routes:
     PreToolUse `Skill` BLOCKS; `UserPromptExpansion` INJECTS for slash-invoked runs (2.1.5 M14: the event fires on a
     typed command and names it in `command_name`, the typed prompt settling a plugin command's namespace; its matcher, a
     regex with no colon, lists the orchestration commands, so no ordinary prompt spawns it; never blocks - a blocked

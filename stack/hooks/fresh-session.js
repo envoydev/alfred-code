@@ -213,7 +213,74 @@ function lowestTrigger() {
   return live.length ? Math.min(...live, 90000) : null;
 }
 
+// ---- the asks this session answered (moved from guard-stop-contract.js, audit 2026-10-08) ------------------------------
+// The transcript's bytes from `from` on, the newest `max` at most; '' when there is none.
+function transcriptText(from = 0, max = 512 * 1024) {
+  try {
+    const p = payload.transcript_path;
+    if (!p) return '';
+    const size = fs.statSync(p).size;
+    const start = Math.max(from, size - max, 0);
+    if (start >= size) return '';
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    return buf.toString('utf8');
+  } catch { return ''; }
+}
+function transcriptSize() { try { return fs.statSync(String(payload.transcript_path || '')).size; } catch { return 0; } }
+// A user row is a TYPED turn only when it carries text and no tool_result - a tool result arrives as a user message.
+function isTypedTurn(o) {
+  const c = o.message.content;
+  if (typeof c === 'string') return !o.isMeta && c.trim().length > 0;
+  if (!Array.isArray(c)) return false;
+  if (c.some((b) => b && b.type === 'tool_result')) return false;
+  return !o.isMeta && c.some((b) => b && b.type === 'text' && String(b.text || '').trim());
+}
+// Did an AskUserQuestion THIS turn (since the last typed prompt) put the fresh-session choice, and get answered?
+// Measured (8b5dcb1a): a capture skill's own gate asked 'Fresh session (Recommended) / Continue here', the user
+// answered, and the fresh-session block on the close forced an identical second ask; task-solve's stop asks carry
+// 'Resume in a fresh session', and after 'Implement' the phase Skill call was denied with the same question. The
+// choice is made either way - 'Continue here' included. A Stop hook's own feedback row is no typed prompt. Fail-open.
+const FRESH_ASK_RE = /(?:fresh session|new session|fresh chat)/i;
+function freshAskAnsweredThisTurn() {
+  try {
+    const lines = transcriptText().split('\n');
+    const answered = new Set();
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i].trim()) continue;
+      let o;
+      try { o = JSON.parse(lines[i]); } catch { continue; }
+      if (!o || !o.message) continue;
+      const c = o.message.content;
+      if (o.type === 'user') {
+        if (Array.isArray(c)) {
+          for (const b of c) {
+            if (b && b.type === 'tool_result' && /^Your questions have been answered:/.test(typeof b.content === 'string' ? b.content
+              : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('') : '')) answered.add(b.tool_use_id);
+          }
+        }
+        if (isTypedTurn(o) && !(typeof c === 'string' && /^Stop hook feedback:/.test(c))) return false;
+        continue;
+      }
+      if (o.type !== 'assistant' || !Array.isArray(c)) continue;
+      for (const b of c) {
+        if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && answered.has(b.id) && FRESH_ASK_RE.test(JSON.stringify(b.input || {}))) return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+// Was any ask answered (or declined) in the transcript past byte `from` - the size an offer recorded?
+function askAnsweredSince(from) {
+  return /Your questions have been answered:|The user (?:declined|chose not) to answer/i.test(transcriptText(from, 8 * 1024 * 1024));
+}
+
 module.exports = {
   use, freshAt, FRESH_AT_200K, FRESH_AT_1M, FRESH_AT_DEFAULT, FRESH_OFF, sessionModelId, tableWindow,
   envWindow, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, worthResuming, contextNow, lowestTrigger,
+  transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, askAnsweredSince,
 };
