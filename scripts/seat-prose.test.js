@@ -222,3 +222,161 @@ test('M59: the turn caps sit where the measurement put them, and nowhere else', 
     assert.match(claude, /the most turns measured for the seat's kind over 802 local subagent transcripts/);
     assert.match(claude, /Claude Code returns the output marked partial \(2\.1\.246\+\)/);
 });
+
+// --- 2026-10-08 audit (agents.md F01-F17, hooks.md #9) ------------------------------------------------
+// Each case names the report row it holds, so a regression reads as the audit line it reopens.
+const designers = seats.filter((s) => s.endsWith('-solution-designer'));
+const implementers = seats.filter((s) => s.endsWith('-implementer'));
+const resolvers = seats.filter((s) => s.endsWith('-resolver'));
+const diagnosers = ['issue-diagnoser-ci', 'issue-diagnoser-runtime'];
+// The `## Scope` section's first paragraph - the Use-when line.
+const scopeLine = (seat) => (section(body(seat), 'Scope').split('\n\n')[1] || '').replace(/\s+/g, ' ').trim();
+
+test('agents F01: integration-reviewer runs migrations only on a disposable database, as data-verifier does', () =>
+{
+    const text = squash(body('integration-reviewer'));
+    assert.ok(text.includes('both on a disposable database this run starts (the Testcontainers fixture or a throwaway container) - never to the project\'s configured connection'), 'check 4 names its target');
+    assert.ok(text.includes('the down path (or a documented forward-fix) is proven on that same database'));
+    assert.ok(text.includes('the migration scripts (against the disposable database of check 4)'), 'the Bash line points at the same target');
+    const entry = rules()['migration-disposable-database'];
+    assert.ok(entry, 'registered');
+    assert.strictEqual(entry.owner.file, 'stack/agents/data-verifier.md');
+    assert.deepStrictEqual([...listedIn('migration-disposable-database')].sort(),
+        ['stack/agents/data-verifier.md', 'stack/agents/evidence-gatherer.md', 'stack/agents/integration-reviewer.md']);
+});
+
+test('agents F02: issue-diagnoser-ci hands the tree back on the ref it found', () =>
+{
+    const text = squash(body('issue-diagnoser-ci'));
+    assert.ok(text.includes('before the report check it back out (or remove the worktree you added) so the tree is handed back where you found it; name both refs in the report'));
+});
+
+test('agents F04: every designer closes on literal status and contract_version lines, the verdict no longer mid-report', () =>
+{
+    assert.strictEqual(designers.length, 10);
+    for (const s of designers)
+    {
+        const report = squash(section(body(s), 'Report'));
+        assert.ok(!report.includes('End with the verdict'), `${s}: the 'end with X, then Y' order`);
+        const close = report.indexOf('Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked - and a literal `contract_version:` line');
+        assert.ok(close > report.indexOf('the integration notes') && close > report.indexOf('task list'), `${s}: the close comes after the plan`);
+        assert.ok(listedIn('designer-verdict-line').has(`stack/agents/${s}.md`), `${s}: pinned`);
+    }
+});
+
+test('agents F08: resolvers and diagnosers close on a literal status line', () =>
+{
+    for (const s of [...resolvers, ...diagnosers])
+    {
+        const report = squash(section(body(s), 'Report'));
+        assert.doesNotMatch(report, /Lead with a status|End with a diagnosis status|give the diagnosis status/, s);
+        assert.ok(report.includes('Close with a literal `status:` line, the last line of the report - '), s);
+        assert.ok(report.trim().endsWith('reads as a seat death.') || report.trim().endsWith('reads as a status-less return.'), `${s}: the close is the section's last sentence`);
+    }
+    for (const s of resolvers) assert.ok(listedIn('working-seat-status-vocabulary').has(`stack/agents/${s}.md`), s);
+});
+
+test('agents F05: the trimmed Scopes keep the short Use-when shape, and no Scope carries a roster attribution or a flow name', () =>
+{
+    const trimmed = [...['wpf', 'winforms', 'console', 'windows-service', 'ionic-angular', 'data', 'devops', 'browser-extension']
+        .flatMap((st) => [`${st}-implementer`, `${st}-verifier`, `${st}-solution-designer`]), 'related-project-analyzer'];
+    assert.strictEqual(trimmed.length, 25);
+    for (const s of trimmed)
+    {
+        const line = scopeLine(s);
+        assert.ok(line.length > 0 && line.length <= 450, `${s}: Scope ${line.length} chars`);
+        assert.doesNotMatch(line, /primary caller/, `${s}: a caller attribution`);
+    }
+    for (const s of seats) assert.doesNotMatch(scopeLine(s), /Best (dispatched|as)|task-build-from-scratch|task-verify-code|\/code-review/, s);
+});
+
+test('agents F07: the colliding descriptions draw the sibling boundary, and no resolver claims a hand-off it cannot make', () =>
+{
+    const d = (s) => meta(s).description;
+    assert.match(d('aspnet-implementer'), /schema\/migration tasks \(data-implementer\)/);
+    assert.match(d('aspnet-solution-designer'), /schema-only change \(data-solution-designer\)/);
+    assert.match(d('aspnet-verifier'), /schema is data-verifier/);
+    for (const role of ['implementer', 'solution-designer', 'verifier'])
+        assert.match(d(`web-angular-${role}`), new RegExp(`Ionic/Capacitor \\(ionic-angular-${role}\\)`), role);
+    assert.match(d('issue-diagnoser-runtime'), /a red test suite \(the test resolvers\)/);
+    assert.match(d('architecture-analyzer'), /rule-based findings \(code-quality-analyzer\)/);
+    for (const s of ['dotnet-build-error-resolver', 'ng-build-error-resolver'])
+        assert.doesNotMatch(read(s), /hands off to/, `${s}: the seat holds no Agent tool`);
+    for (const s of seats) assert.ok(d(s).length <= 300, `${s}: ${d(s).length}`);
+});
+
+test('agents F11: every implementer treats a red outside its boundary as BLOCKED, not an attempt', () =>
+{
+    assert.strictEqual(implementers.length, 10);
+    for (const s of implementers) assert.ok(squash(body(s)).includes('A red that traces to code OUTSIDE your boundary'), s);
+    assert.deepStrictEqual([...listedIn('implementer-solution-test-gate')].sort(), implementers.map((s) => `stack/agents/${s}.md`).sort(), 'the sibling-red half is pinned in every copy');
+});
+
+test('hooks #9: no implementer is told to git-restore its own files - the discard guard blocks it and only the user can open it', () =>
+{
+    for (const s of implementers)
+    {
+        const text = squash(body(s));
+        assert.ok(!text.includes('beyond your own task\'s files'), `${s}: the carve-out the guard blocks`);
+        assert.ok(text.includes('revert YOUR files by editing them back'), s);
+    }
+});
+
+test('agents F13: the diagnoser and analyzer copies are pinned', () =>
+{
+    const want = {
+        'diagnoser-sanctioned-nested-dispatch': ['stack/agents/issue-diagnoser-ci.md', 'stack/agents/issue-diagnoser-runtime.md', 'stack/skills/task-solve-cross/references/issue-investigation.md'],
+        'diagnoser-gather-accounting': ['stack/agents/issue-diagnoser-ci.md', 'stack/agents/issue-diagnoser-runtime.md'],
+        'analyzer-first-call-navigation': ['stack/agents/architecture-analyzer.md', 'stack/agents/code-quality-analyzer.md', 'stack/agents/code-style-analyzer.md'],
+        'analyzer-bash-reading-only': ['stack/agents/architecture-analyzer.md', 'stack/agents/code-quality-analyzer.md', 'stack/agents/code-style-analyzer.md', 'stack/agents/test-coverage-analyzer.md'],
+        'analyzer-batch-lookups': ['stack/agents/code-quality-analyzer.md', 'stack/agents/code-style-analyzer.md'],
+        'analyzer-generated-code-excluded': ['stack/agents/code-quality-analyzer.md', 'stack/agents/code-style-analyzer.md'],
+    };
+    for (const [id, files] of Object.entries(want)) assert.deepStrictEqual([...listedIn(id)].sort(), files.sort(), id);
+});
+
+test('agents F14 + F16: the run-book line leads with its condition, and the gatherer skips it when it never runs the app', () =>
+{
+    const line = 'When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app';
+    for (const s of [...seats.filter((x) => x.endsWith('-verifier')), 'issue-diagnoser-runtime', 'evidence-gatherer', 'integration-reviewer'])
+    {
+        const text = squash(body(s));
+        assert.ok(text.includes(line), s);
+        assert.ok(!text.includes('Before you start, log into'), `${s}: the line that read as 'log in before you start'`);
+    }
+    assert.ok(squash(body('evidence-gatherer')).includes('A gather-task that never runs the app - a CI-log pull, a symbol lookup - skips it.'));
+});
+
+test('agents F15 + F17: no implementation product in a role line, and the reviewer\'s fallback reads as three bullets', () =>
+{
+    for (const s of seats) assert.ok(!body(s).includes('serena-first'), s);
+    const text = body('integration-reviewer');
+    assert.ok(!text.includes('predates 2.1.0'), 'install history dropped');
+    assert.match(text, /^- When that Glob finds nothing \(the project switched that skill off\), gate on the two essentials/m);
+    assert.match(text, /^- Load the domain skill for a seam you must judge in depth/m);
+});
+
+test('agents F06: every quoted skill-section pointer in a trap list resolves to a heading of a skill the seat preloads', () =>
+{
+    const headings = (skill) =>
+    {
+        try { return fs.readFileSync(path.join(ROOT, 'stack', 'skills', skill, 'SKILL.md'), 'utf8').split('\n').filter((l) => l.startsWith('## ')).map((l) => l.slice(3).trim()); }
+        catch { return []; }
+    };
+    let pointers = 0;
+    for (const s of seats)
+    {
+        const traps = section(body(s), 'Failure modes I hunt');
+        const preloads = meta(s).skills || [];
+        for (const m of traps.matchAll(/'## ([^']+)'/g))
+        {
+            pointers++;
+            assert.ok(preloads.some((k) => headings(k).some((h) => h.startsWith(m[1]))), `${s}: '## ${m[1]}' is no heading of ${preloads.join(', ')}`);
+        }
+    }
+    assert.ok(pointers >= 20, `found ${pointers}`);
+    const asp = squash(section(body('aspnet-implementer'), 'Failure modes I hunt'));
+    assert.ok(!asp.includes('(the loaded skills carry the fix;'), 'the over-claim: three of the seven traps have no preload home');
+    for (const h of ['Session lifetime and thread-safety', 'Identity map and change tracking', 'Loading strategy and N+1', 'Model expected failures as return values'])
+        assert.ok(asp.includes(`'## ${h}'`), h);
+});

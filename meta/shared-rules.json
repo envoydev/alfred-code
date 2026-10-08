@@ -378,19 +378,19 @@
         },
         {
           "file": "stack/agents/dotnet-build-error-resolver.md",
-          "marker": "Lead with a status - DONE"
+          "marker": "Close with a literal `status:` line, the last line of the report - DONE"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "Lead with a status - DONE"
+          "marker": "Close with a literal `status:` line, the last line of the report - DONE"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "Lead with a status - DONE"
+          "marker": "Close with a literal `status:` line, the last line of the report - DONE"
         },
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "Lead with a status - DONE"
+          "marker": "Close with a literal `status:` line, the last line of the report - DONE"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
@@ -461,6 +461,36 @@
         {
           "file": "stack/agents/issue-diagnoser-ci.md",
           "marker": "DIAGNOSED, CI_PASSING, LIKELY_FLAKE, NEEDS_MORE_EVIDENCE, or INCONCLUSIVE"
+        }
+      ]
+    },
+    "diagnoser-sanctioned-nested-dispatch": {
+      "_note": "The two diagnosers dispatching the read-only evidence-gatherer is the stack's one sanctioned nested dispatch; gathering is observation, so it keeps the one-change-at-a-time rule (2026-10-08 agents audit F13).",
+      "owner": {
+        "file": "stack/skills/task-solve-cross/references/issue-investigation.md",
+        "marker": "is the stack's one sanctioned nested dispatch"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/issue-diagnoser-ci.md",
+          "marker": "the stack's one sanctioned nested dispatch"
+        },
+        {
+          "file": "stack/agents/issue-diagnoser-runtime.md",
+          "marker": "the stack's one sanctioned nested dispatch"
+        }
+      ]
+    },
+    "diagnoser-gather-accounting": {
+      "_note": "A diagnoser reports how many gatherers it dispatched and their summed cost, so the delegated gathering is visible in the diagnosis's price (2026-10-08 agents audit F13).",
+      "owner": {
+        "file": "stack/agents/issue-diagnoser-runtime.md",
+        "marker": "Account for the gathering: state how many evidence-gatherers you dispatched and their summed `subagent_tokens` / `tool_uses` (from each gather-task's result)"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/issue-diagnoser-ci.md",
+          "marker": "Account for the gathering: state how many evidence-gatherers you dispatched and their summed `subagent_tokens` / `tool_uses` (from each gather-task's result)"
         }
       ]
     },
@@ -2122,6 +2152,70 @@
         }
       ]
     },
+    "analyzer-first-call-navigation": {
+      "_note": "An analyzer's first tool call locates with the navigation server, never a whole-file Read the read guard blocks (measured: 10 of 13 analyzer seats spent their first Read on a blocked dump). 2026-10-08 agents audit F13.",
+      "owner": {
+        "file": "stack/agents/architecture-analyzer.md",
+        "marker": "FIRST tool call of your run: locate with the navigation server, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/code-quality-analyzer.md",
+          "marker": "FIRST tool call of your run: locate with the navigation server, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
+        },
+        {
+          "file": "stack/agents/code-style-analyzer.md",
+          "marker": "FIRST tool call of your run: locate with the navigation server, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
+        }
+      ]
+    },
+    "analyzer-bash-reading-only": {
+      "_note": "A read-only analyzer holds Bash for the docs engine and cheap counting probes only - never a write, build, install or state-changing git command (2026-10-08 agents audit F13).",
+      "owner": {
+        "file": "stack/agents/architecture-analyzer.md",
+        "marker": "for READING only - the architecture docs engine (`node .claude/hooks/docs.js where <path>` / `show <file>#<id>`"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/code-quality-analyzer.md",
+          "marker": "for READING only - the architecture docs engine (`node .claude/hooks/docs.js where <path>` / `show <file>#<id>`"
+        },
+        {
+          "file": "stack/agents/code-style-analyzer.md",
+          "marker": "for READING only - the architecture docs engine (`node .claude/hooks/docs.js where <path>` / `show <file>#<id>`"
+        },
+        {
+          "file": "stack/agents/test-coverage-analyzer.md",
+          "marker": "for READING only - the architecture docs engine (`node .claude/hooks/docs.js where <path>` / `show <file>#<id>`"
+        }
+      ]
+    },
+    "analyzer-batch-lookups": {
+      "_note": "Independent lookups go in one turn - a seat that trickles them re-sends its whole preload every turn (2026-10-08 agents audit F13).",
+      "owner": {
+        "file": "stack/agents/code-style-analyzer.md",
+        "marker": "Batch independent lookups into ONE turn"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/code-quality-analyzer.md",
+          "marker": "Batch independent lookups into ONE turn"
+        }
+      ]
+    },
+    "analyzer-generated-code-excluded": {
+      "_note": "Generated and vendored code is excluded from an analyzer's sample - it judges the code the team writes, not what tools emit (2026-10-08 agents audit F13).",
+      "owner": {
+        "file": "stack/agents/code-style-analyzer.md",
+        "marker": "**Generated and vendored code"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/code-quality-analyzer.md",
+          "marker": "**Generated and vendored code"
+        }
+      ]
+    },
     "designer-external-claim-verification": {
       "_note": "External claims in a design plan (a vendor API's behavior, a package's capability, a rate limit) are verified via the documentation server or the vendor doc and cited - or marked unverified - never stated from recall (measured: a recalled vendor-API 'fact' forced an operating-strategy change; its retraction invalidated built-and-reviewed code). Owned by the single-chat design skill; restated at each designer's decomposition step because that is where a constraint enters a task card.",
       "owner": {
@@ -2331,7 +2425,7 @@
       ]
     },
     "implementer-solution-test-gate": {
-      "_note": "The .NET implementers' test gate is the whole solution's (fitness project included) unless the brief names a single project, with a sibling-caused red reported as BLOCKED instead of burning attempts - measured: an own-project reading skipped the fitness suite, ~111k tokens redone. The two TypeScript implementers carry the sibling-red half only - a workspace has no solution file, so the gate itself differs while the BLOCKED-not-burn rule is the same.",
+      "_note": "The .NET implementers' test gate is the whole solution's (fitness project included) unless the brief names a single project, with a sibling-caused red reported as BLOCKED instead of burning attempts - measured: an own-project reading skipped the fitness suite, ~111k tokens redone. The TypeScript and devops implementers carry the sibling-red half only - a workspace or a pipeline has no solution file, so the gate itself differs while the BLOCKED-not-burn rule is the same (devops and browser-extension gained it in the 2026-10-08 agents audit, F11).",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
         "marker": "The test gate is the SOLUTION's - run it at the solution root"
@@ -2364,6 +2458,14 @@
         {
           "file": "stack/agents/web-angular-implementer.md",
           "marker": "a sibling's in-flight task failing the shared workspace suite"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "a sibling's in-flight task failing the shared workspace suite"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "a sibling's in-flight task failing the shared build or validation"
         }
       ]
     },
@@ -4631,47 +4733,47 @@
       ]
     },
     "designer-verdict-line": {
-      "_note": "The designer report ends with PLAN_READY / NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE then the architecture, ordered task list with contracts, shared-seam owner, test strategy. Restated in every *-solution-designer.",
+      "_note": "The designer report closes on literal `status: PLAN_READY | NEEDS_CONTEXT | BLOCKED_CONTRACT_CHANGE` and `contract_version:` lines, after the architecture, ordered task list with contracts, shared-seam owner and test strategy - the orchestrator routes on the keys, and a prose verdict mid-report read as a status-less return (2026-10-08 agents audit F04). Restated in every *-solution-designer.",
       "owner": {
         "file": "stack/agents/aspnet-solution-designer.md",
-        "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+        "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         }
       ]
     },
@@ -5653,6 +5755,23 @@
         }
       ]
     },
+    "migration-disposable-database": {
+      "_note": "A seat that applies or rolls back a migration does it only on a disposable database the run starts, never the project's configured connection - and a read-only gatherer never applies one at all (2026-10-08 agents audit F01: integration-reviewer ran the down path with no target guard).",
+      "owner": {
+        "file": "stack/agents/data-verifier.md",
+        "marker": "Then apply it to the disposable database the Testcontainers suite spins up - never to the project's configured connection"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/integration-reviewer.md",
+          "marker": "both on a disposable database this run starts (the Testcontainers fixture or a throwaway container) - never to the project's configured connection"
+        },
+        {
+          "file": "stack/agents/evidence-gatherer.md",
+          "marker": "Never run a repro that applies an EF Core migration against a real database"
+        }
+      ]
+    },
     "resolver-done-gate-citation": {
       "_note": "All four repair resolvers used to restate the done gate in full, forking the always-on quality-gates rule four ways. They now CITE the rule and keep only the shapes their own domain adds - one home for the gate, four homes for the domain detail.",
       "owner": {
@@ -6216,55 +6335,55 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/issue-diagnoser-runtime.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/evidence-gatherer.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         }
       ]
     },

@@ -158,8 +158,9 @@ test('the seats that run the app read the run book first', () =>
     for (const seat of seats)
     {
         const text = squash(fs.readFileSync(path.join(ROOT, 'stack', 'agents', `${seat}.md`), 'utf8'));
-        assert.ok(text.includes('Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists'), `${seat} reads the run book first`);
-        assert.ok(!text.includes('Before you build, start'), `${seat}: build commands are the generated rule's`);
+        // 2026-10-08 agents audit F14: the condition leads, so the line no longer reads as 'log in before you start'.
+        assert.ok(text.includes('When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app'), `${seat} reads the run book first`);
+        assert.ok(!/before you build/i.test(text), `${seat}: build commands are the generated rule's`);
     }
     assert.ok(squash(read('references/run-book-rule.template.md')).includes('read it before you build, start, log into or hand-check the app'), 'the generated rule keeps build');
 });
