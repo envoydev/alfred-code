@@ -306,6 +306,28 @@ test('m postgres: transaction pooling is set explicitly, not assumed', () =>
     assert.match(squash(skill('postgres')), /set it explicitly \(`pool_mode = transaction` on PgBouncer, whose own default is `session`\)/);
 });
 
+// MINOR devops:72-74 - the proof is three numbered, named tools; actionlint per https://github.com/rhysd/actionlint
+test('m devops: the pipeline proof is three numbered checks with named tools', () =>
+{
+    const prove = squash(section(skill('devops'), 'Prove the pipeline change'));
+    assert.match(prove, /1\. `docker build` on the Dockerfile you touched/);
+    assert.match(prove, /2\. `actionlint` on the workflow you touched\./);
+    assert.match(prove, /3\. `gitleaks` over the diff\./);
+    assert.match(prove, /report that leg UNVERIFIED/);
+    assert.match(skill('devops', 'references/github-actions.md'), /\(packages\.lock\.json, package-lock\.json, yarn\.lock\)/);
+});
+
+// MATERIAL desktop-automation:61-63, :87 - a stop puts its question through the ask tool with a marked recommendation.
+test('M desktop-automation: the two stops ask through AskUserQuestion, and the listing names its boundary', () =>
+{
+    const text = squash(skill('desktop-automation'));
+    assert.doesNotMatch(text, /report what it says, and hand it to the user/);
+    assert.doesNotMatch(text, /Say so and stop: only the user can grant either/);
+    assert.match(text, /ONE AskUserQuestion - 'I have dealt with it - continue' \(Recommended\) \/ 'Stop the task'/);
+    assert.match(text, /ONE AskUserQuestion - 'Granted and reconnected - continue' \(Recommended\) \/ 'Stop here'/);
+    assert.match(description('desktop-automation'), /Not for web pages or the app code\.$/);
+});
+
 // Situational detail moved out of a preloaded or rule-forced body into a reference the body cites.
 const MOVED = [
     ['dotnet-code-quality', 'references/legacy-backlog.md', 'Never `CS8019`, a hidden diagnostic'],
@@ -324,6 +346,8 @@ const MOVED = [
     ['capacitor-release', 'references/versioning-and-symbols.md', 'capacitor-set-version'],
     ['ionic', 'references/native-seam.md', "'Which OS?' -> `Capacitor.getPlatform()`"],
     ['typescript', 'references/typescript-style.md', 'Hold on TS 6 if you depend on the programmatic compiler API'],
+    ['devops', 'references/github-actions.md', 'cancel-in-progress: true'],
+    ['devops', 'references/deploy.md', 'expand-then-contract'],
 ];
 test('moves: each moved block lives in its reference, not the body, and the body cites the reference', () =>
 {

@@ -7,7 +7,7 @@ description: "Load when authoring or reviewing a Dockerfile, compose file, workf
 
 For any action, image, or tool flag not pinned down here, resolve it with the `alfred-documentation` MCP rather than memory.
 
-The pipeline is production code - a broken workflow blocks every merge and a leaked secret is an incident, not a warning. This is the delivery-surface map for the house stacks (ASP.NET Core, Angular, and their SQL/data layer). It pairs with whichever of these the project installed - the skill covering local cloud-native orchestration, the one covering the .NET migration workflow, and the ones covering application- and data-layer hardening (crypto primitives are a fourth). With none of them present, the rules here are the whole guidance and any check they would have run is reported UNVERIFIED. The rule under all of it - the build is reproducible, the secret never touches an image or a log, and every deploy is reversible.
+The pipeline is production code - a broken workflow blocks every merge and a leaked secret is an incident, not a warning. This is the delivery-surface map for the house stacks (ASP.NET Core, Angular, and their SQL/data layer). With no companion skill present for orchestration, migrations or hardening, the rules here are the whole guidance and any check one would have run is reported UNVERIFIED. The rule under all of it - the build is reproducible, the secret never touches an image or a log, and every deploy is reversible.
 
 ## When to use
 
@@ -59,26 +59,21 @@ ENTRYPOINT ["dotnet", "App.dll"]
 
 ## GitHub Actions - the CI/CD contract
 
-- Structure the graph - a lint/build job and a test job sequenced with needs, fail-fast on lint so a formatting break does not burn a full test run. A matrix covers multiple target frameworks or Node versions.
-- Key the cache on a lockfile hash (packages.lock.json, yarn.lock) with restore-keys for partial hits; a cache key that ignores the lockfile serves a stale restore. Restore deterministically - restore in locked mode, npm ci, never a floating install.
-- Pin every third-party action to a full commit SHA, not a moving major tag - the tag is mutable, and a compromised action runs with your token.
-- Handle secrets as GitHub Secrets only; mask any derived secret before it can reach a log, never echo one, and set a least-privilege permissions block (default read, elevate per job). Federate to the cloud with OIDC (short-lived) rather than a long-lived stored credential.
-- Run integration tests against real service containers, not a mock - a suite green against a stub proves nothing about the wired system.
-- Add a security-scan stage past the dependency audit - a secret scanner (gitleaks) failing the build on a committed credential, and a Trivy scan of the built image gating CRITICAL/HIGH; run the dependency + image scans on a cron schedule off the PR path too, so a CVE disclosed against an already-merged clean dependency is still caught.
-- Set timeout-minutes on every job so a hung step is killed in minutes instead of burning the runner's full default budget.
-- Add a concurrency group keyed on workflow + ref with cancel-in-progress: true, so a fast follow-up push cancels the now-stale run instead of queueing behind it.
-- Upload diagnostic artifacts on failure only (if: failure()) - test results and logs with a short retention - so a red run is debuggable without a rerun.
-
-## Prove the pipeline change
-
-A workflow that parses is not a workflow that runs. Before any done word on a change here, quote three result lines: `docker build` on the Dockerfile you touched (an image that does not build is the whole finding), the workflow linter on the workflow you touched, and the secret scanner over the diff. Where one of the three is not installed, say which and report that leg UNVERIFIED rather than skipping it silently.
+Pin every third-party action to a full commit SHA, keep secrets in GitHub Secrets behind a least-privilege `permissions` block, and federate to the cloud with OIDC; the full contract - job graph, lockfile-keyed caches, real service containers, the scan stage, timeouts, concurrency, failure artifacts - is `references/github-actions.md`. Read it before writing or reviewing a workflow.
 
 ## Deploy and release - reversible and health-gated
 
-- Promote one immutable artifact through the environments (with required reviewers on prod); never rebuild per environment, or you ship something you never tested.
-- Run migrations as a discrete, gated step BEFORE the app rolls, expand-then-contract so the old and new app versions both work mid-deploy (mechanics belong to the skill covering the .NET migration workflow, where the install has it; without it, keep the step gated and reversible from here); every deploy carries a rollback path.
-- Cut over health-gated - blue-green, or a rolling update behind readiness checks, never a big-bang replace that routes traffic to a not-ready instance.
-- Pull config and secrets at runtime from the store (Key Vault, an OIDC-federated secret) - never bake them into the image (the app- and data-layer hardening skills own the placement rule where installed; without them, this line is the rule).
+One immutable artifact promoted through the environments, migrations as a gated step before the app rolls, a health-gated cutover, every deploy with a rollback path, secrets pulled at runtime and never baked in; the mechanics are `references/deploy.md`. Read it before writing or reviewing a deploy step.
+
+## Prove the pipeline change
+
+A workflow that parses is not a workflow that runs. Before any done word on a change here:
+
+1. `docker build` on the Dockerfile you touched - an image that does not build is the whole finding.
+2. `actionlint` on the workflow you touched.
+3. `gitleaks` over the diff.
+
+Quote each result line. Where a tool is not installed, name it and report that leg UNVERIFIED rather than skipping it silently.
 
 ## .NET Aspire - orchestration
 
