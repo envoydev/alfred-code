@@ -1345,6 +1345,19 @@ test('guard-stop-contract: the AskUserQuestion branch injects its notes, and den
   assert.match(fixedMixed.stderr, /Keep the 'fast' path and `echo \\"x\\"`\?/, 'the prose is corrected, the code span is handed back as written');
   const fenced = [{ question: 'Apply this?', header: 'Apply', options: [{ label: 'Apply', description: '```\n{"k": "v"} \u2014 json\n```' }] }];
   assert.equal(ask(cold, fenced).status, 0, 'a fenced block is code too, dashes included');
+  // audit 2026-10-08: a curly double quote is a double quote, the horizontal bar is a dash, and a log dir that cannot be
+  // written records the once-per-ask marker under the temp dir - the same ask was denied on every re-send
+  const curly = [{ question: 'Keep the \u201Cfast\u201D path \u2015 now?', header: 'Curly', options: [{ label: 'Keep', description: 'ok' }] }];
+  const c1 = ask(cold, curly);
+  assert.equal(c1.status, 2, 'curly quotes and a horizontal bar deny like their plain twins');
+  assert.match(c1.stderr, /Keep the 'fast' path - now\?/, 'and are corrected the same way');
+  const noDirSession = `nodir-${process.pid}-${Date.now()}`;
+  const noDir = (questions) => runIn('guard-stop-contract.js',
+    { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: cold, session_id: noDirSession, tool_input: { questions } },
+    { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: path.join(logDir, 'missing', 'dir') } });
+  const once = [{ question: 'Ship it \u2014 today?', header: 'Ship', options: [{ label: 'Yes', description: 'ok' }] }];
+  assert.equal(noDir(once).status, 2, 'the first send is denied');
+  assert.equal(noDir(once).status, 0, 'the re-send passes, the marker kept under the temp dir');
   // The rule line names the deny that enforces it - '(the Stop hook never sees an ask)' read as 'nothing checks it'.
   const ruleLine = fs.readFileSync(path.join(__dirname, '..', 'stack', 'rules', 'alfred-interaction.md'), 'utf8').split('\n').find((l) => /No double quotes in prose/.test(l));
   assert.doesNotMatch(ruleLine, /the Stop hook never sees an ask/, 'the stale parenthetical is gone');

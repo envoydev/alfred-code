@@ -345,14 +345,18 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   - `guard-stop-contract.js` (`Stop` + `SubagentStop`; PreToolUse `AskUserQuestion` - its notes INJECTED, and a
     PreToolUse note lands beside the tool result, which for an ask is the user's ANSWER, so each is worded for that
     moment ('the ask just answered ... verify, re-ask if it moved'); the one DENY is the ask's own house voice (an
-    em- or en-dash, a double quote) outside a backticked span or fenced block, which it neither judges nor rewrites
-    (R5: a string's delimiters in code stay double), once per ask text, carrying the corrected strings (I3);
+    em- or en-dash or a horizontal bar - `hook-prelude.js` `HOUSE_DASH`, the answer-length block's class too - or a straight or
+    curly double quote; audit 2026-10-08) outside a backticked span or fenced block, which it neither judges nor rewrites
+    (R5: a string's delimiters in code stay double), once per ask text (a marker the log dir cannot hold goes under the temp
+    dir, so a missing dir never re-denies), carrying the corrected strings (I3);
     LOG-ONLY: `PostToolUse` + `PostToolUseFailure` on the shell tools) - blocks a turn ending on a decision-shaped question in prose (the quality
     loop's mode and stage-close asks worded as statements included), or a 'done, next step pending' close - unless every pending item the close states is a WAIT ('still running',
     'waiting on', 'awaiting') on work this session launched that is still out and ENDS (an async Agent, one a SendMessage
     resumed, a Monitor, a background shell whose command names finite work - a test, build, lint, install, migrate, deploy
     run - and no watcher: re-verify 2 R2-B1 turned a list of servers into a list of work that finishes; read from the
-    transcript's newest 8MB, 2.1.6 H4; when
+    transcript's newest 8MB, 2.1.6 H4 - and before it, at Stop, the payload's own `background_tasks` registry when it
+    carries one: a running subagent, workflow, teammate, cloud session, MCP task or monitor, or a finite shell, is live work,
+    and an empty registry outranks the lagging transcript, audit 2026-10-08; when
     that cannot be read, an agent / review / implementer still running or a waiter that wakes the session); a wait counts only when
     it names the running work (a report, a verdict, an agent - an approval, a go-ahead, a decision or a sign-off is a
     hand-back), a dev server, `dotnet run`, `docker compose up` or another server or watcher is no work that ends, and a
@@ -460,8 +464,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     -v q` for C# - and hands the first 20 error lines back as a block, once per turn (its own continuation Stop
     passes). A missing compiler or a timeout is a pass.
   - `guard-answer-length.js` (`UserPromptSubmit` + `Stop`) - injects the answer budget every turn; the
-    Stop half blocks prose past 1800 chars when the user asked for no depth, and blocks an em-dash in
-    prose at any length. After the third consecutive short correction following a long answer it injects
+    Stop half blocks prose past 1800 chars when the user asked for no depth, and blocks an em-dash (en-dash and horizontal
+    bar too, `HOUSE_DASH`) in prose at any length. After the third consecutive short correction following a long answer it injects
     the format ask (injection only). A correction turn (short, after an answer, carrying a correction marker -
     the test the analyzer shares, `correction-turn-test`) writes one `correction` probe row;
     `ALFRED_CODE_CORRECTION_NUDGE` is seeded `log`, `inject` adds the memory-save line with the `ToolSearch select:`

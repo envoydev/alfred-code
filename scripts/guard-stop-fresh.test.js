@@ -157,6 +157,18 @@ test('guard-stop-contract: a main-session close over its own live background wor
   assert.equal(closeOver('h4-quoted', [...live, ...quoted], RUNNING_CLOSE).status, 0, 'a quoted notice is no completion');
 });
 
+test('audit 2026-10-08: the Stop payload\'s background_tasks registry is read before the lagging transcript', () => {
+  // code.claude.com/docs/en/hooks 'Stop input': present when the task registry is reachable, empty when nothing is in flight
+  const over = (name, rows, tasks) => close(WAITING_CLOSE, { transcript_path: transcript(name, [...rows, assistantRow(`${name}-close`, WAITING_CLOSE)]), background_tasks: tasks });
+  assert.equal(over('bt-sub', fgBash, [{ id: 't1', type: 'subagent', status: 'running', description: 'review', agent_type: 'general-purpose' }]).status, 0,
+    'a running subagent the transcript has not caught up with');
+  assert.equal(over('bt-shell', fgBash, [{ id: 't2', type: 'shell', status: 'running', description: 'tests', command: 'npm test' }]).status, 0, 'a finite shell');
+  assert.equal(over('bt-server', fgBash, [{ id: 't3', type: 'shell', status: 'running', description: 'dev', command: 'npm run dev' }]).status, 2, 'a server never reports back');
+  assert.equal(over('bt-done', fgBash, [{ id: 't4', type: 'subagent', status: 'completed', description: 'review' }]).status, 2, 'a settled task is no live work');
+  assert.equal(over('bt-empty', [...fgBash, ...asyncAgent('toolu_bt5', 'b5')], []).status, 2, 'an empty registry outranks a launch the transcript still shows open');
+  assert.equal(over('bt-none', [...fgBash, ...asyncAgent('toolu_bt6', 'b6')], undefined).status, 0, 'with no registry the transcript decides, as before');
+});
+
 test('guard-stop-contract: the same closes with no live background work of their own still block (2.1.6 H4)', () => {
   // the measured case the branch exists for is untouched: done, a next action, nothing out to wake the session
   assert.equal(closeOver('h4-none-a', fgBash, WAITING_CLOSE).status, 2, 'nothing launched');

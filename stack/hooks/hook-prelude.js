@@ -408,4 +408,8 @@ function scanBudget(limits = {})
     };
 }
 
-module.exports = { hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS };
+// The dashes the house voice replaces with a single dash - the em-dash, the en-dash and the horizontal bar - ONE class for
+// the stop contract's ask deny and the answer-length Stop block, which disagreed ([\u2014\u2013] vs [\u2014\u2015], audit 2026-10-08).
+const HOUSE_DASH = /[\u2014\u2013\u2015]/;
+
+module.exports = { HOUSE_DASH, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS };

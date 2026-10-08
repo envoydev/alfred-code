@@ -204,7 +204,7 @@ test('the em-dash ban is enforced on the same prose the cap reads', () => {
         last_assistant_message: text,
     });
     assert.strictEqual(stop(SHORT).status, 0, 'a clean short answer passes');
-    const one = stop('Done — the build is green.');
+    const one = stop('Done \u2014 the build is green.');
     assert.strictEqual(one.status, 2, 'an em-dash in prose is blocked');
     assert.match(one.stderr, /single dashes/, 'the denial names the rule');
     assert.match(one.stderr, /replaced by a single dash/, '... and asks for the same answer, not a shorter one');
@@ -221,6 +221,9 @@ test('the em-dash ban is enforced on the same prose the cap reads', () => {
     assert.strictEqual(both.status, 2, 'over the cap and carrying an em-dash');
     assert.match(both.stderr, /also uses 1 em-dash/, 'the length denial carries the voice fix');
     assert.match(both.stderr, /characters of prose/, '... and still names the length');
+    // audit 2026-10-08: one dash class with the stop contract's ask deny (hook-prelude.js HOUSE_DASH)
+    assert.strictEqual(stop('Done \u2013 the build is green.').status, 2, 'an en-dash, which the ask deny already read');
+    assert.strictEqual(stop('Done \u2015 the build is green.').status, 2, 'the horizontal bar');
 });
 
 // The interaction rule's 're-ask on the SAME deliverable -> ONE format AskUserQuestion' shipped as

@@ -44,11 +44,13 @@ let unattended = () => false;
 // The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
 let stopHeld = (input) => !!(input && input.stop_hook_active);
 let markHeld = () => {};
+let houseDash = /[\u2014\u2013\u2015]/; // hook-prelude.js HOUSE_DASH, the one dash class
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     unattended = prelude.unattended || unattended;
+    houseDash = prelude.HOUSE_DASH || houseDash;
     if (prelude.stopHeldThisCycle) {
       stopHeld = (input) => prelude.stopHeldThisCycle('guard-stop-contract', input);
       markHeld = (input) => prelude.markStopHeld('guard-stop-contract', input);
@@ -426,7 +428,24 @@ const NEVER_ENDS_RE = /\b(?:dev|serve|server|start|watch|preview)\b|--(?:watch|r
 const FINITE_RE = /\b(?:tests?|build|lint|typecheck|tsc|check|checks|install|restore|ci|migrate|deploy|publish|pack|compile|e2e|coverage|bench|seed|sync|clone|fetch|pull|download|upload|sleep|wait|make|cargo|mvn|gradle|pytest|jest|vitest|mocha|playwright)\b/;
 const NEVER_ENDS_EXTRA_RE = /\s-w\b|--watch\w*|\bng\s+test\b(?![^;&|]*--watch=false)|\blogs?\s+-f\b|port-forward|\bngrok\b|runserver/;
 const MONITOR_END_RE = /\bMonitor (?:expired|stopped|ended|exited)\b|\bexpired after\b/i;
+// The harness's own task registry is read before the transcript, which lags the turn: a Stop payload's `background_tasks`
+// (code.claude.com/docs/en/hooks, 'Stop input': present when the registry is reachable, empty when nothing is in flight;
+// at SubagentStop it is the PARENT's, so it is read at Stop only - audit 2026-10-08). A subagent, workflow, teammate, cloud
+// session, MCP task or monitor ends and reports; a shell counts on the same terms as above, never a server or watcher.
+// null: no registry in the payload.
+const SETTLED_STATUS = /^(?:completed?|done|failed|killed|stopped|cancell?ed|error|finished)$/i;
+function registeredWork() {
+  if (payload.hook_event_name !== 'Stop' || !Array.isArray(payload.background_tasks)) return null;
+  return payload.background_tasks.some((t) => {
+    if (!t || typeof t !== 'object' || SETTLED_STATUS.test(String(t.status || ''))) return false;
+    const type = String(t.type || '').toLowerCase();
+    if (type === 'shell') { const c = String(t.command || ''); return !NEVER_ENDS_RE.test(c) && !NEVER_ENDS_EXTRA_RE.test(c) && FINITE_RE.test(c); }
+    return /^(?:subagent|workflow|teammate|cloud session|mcp task|monitor)$/.test(type);
+  });
+}
 function liveBackgroundWork() {
+  const reg = registeredWork();
+  if (reg !== null) return reg;
   const p = payload.transcript_path;
   if (!p) return null;
   let text;
@@ -1378,7 +1397,7 @@ if (payload.hook_event_name === 'Stop') {
       'the run states it as a closing bullet, the user reads it and does not act (19m, 1h40m,\n' +
       'and one that quit 2m02s later with the token still live). A pasted or printed secret\n' +
       'CANNOT be unsent - it is in the transcript on disk and in every later request - so the\n' +
-      'only open question is whether it gets rotated. End this turn with ONE AskUserQuestion:\n' +
+      'only open question is whether it gets rotated. Per alfred-security.md, end this turn with ONE AskUserQuestion:\n' +
       "'Rotate it now (Recommended)' and 'Acknowledge and defer'. Name the credential by its KEY\n" +
       'and its shape only - never repeat the value, and never pass it to a tool.\n' +
       'This ask comes once: answered, it covers every credential already in this session, and only\n' +
@@ -1461,7 +1480,7 @@ if (payload.hook_event_name === 'Stop') {
     process.stderr.write(
       'This turn reports the step done and leaves the next action pending, stated as a fact\n' +
       'rather than asked. Measured across four projects: that close draws a literal "are you\n' +
-      'finished?" from the user 2-22 minutes later. Put the pending decision (continue or stop,\n' +
+      'finished?" from the user 2-22 minutes later. Per alfred-interaction.md, put the pending decision (continue or stop,\n' +
       'which deliverable next) through ONE AskUserQuestion call with the options you already\n' +
       'have in mind, recommended one marked. An uncommitted diff is held for the user\'s review:\n' +
       'a commit waits for their own word (alfred-git.md), so it is never the recommended\n' +
@@ -1498,7 +1517,8 @@ if (payload.hook_event_name === 'Stop') {
     '(recommended one marked). ' + freshLine +
     'If the turn truly holds no decision -\n' +
     'the question was rhetorical or informational - restate the close WITHOUT question\n' +
-    'phrasing and stop.',
+    'phrasing and stop. If AskUserQuestion is not available in this session, keep the\n' +
+    'plain-text options and stop - the flows\' own no-tool exit.',
   );
   process.exit(2);
 }
@@ -1583,11 +1603,14 @@ if (payload.tool_name === 'AskUserQuestion') {
     // back unchanged by the fix - rewriting it corrupted the snippet the corrected ask carried.
     const CODE_SPAN = /```[\s\S]*?```|`[^`\n]*`/g;
     const proseText = askText.replace(CODE_SPAN, (m) => ' '.repeat(m.length));
+    // One dash class with the answer-length Stop block (hook-prelude.js HOUSE_DASH), and a curly double quote is a
+    // double quote too - U+201C / U+201D passed the `"` test (audit 2026-10-08).
+    const DASH = houseDash.source;
     const voice = [];
-    if (/[\u2014\u2013]/.test(proseText)) voice.push('an em- or en-dash (use a single dash)');
-    if (/"/.test(proseText)) voice.push('a double quote (use single quotes)');
+    if (new RegExp(DASH).test(proseText)) voice.push('an em- or en-dash (use a single dash)');
+    if (/["\u201c\u201d]/.test(proseText)) voice.push('a double quote (use single quotes)');
     if (voice.length) {
-      const fixProse = (t) => String(t).replace(/\s*[\u2014\u2013]\s*/g, ' - ').replace(/"/g, "'");
+      const fixProse = (t) => String(t).replace(new RegExp(`\\s*${DASH}\\s*`, 'g'), ' - ').replace(/["\u201c\u201d]/g, "'");
       const fix = (t) => String(t).split(/(```[\s\S]*?```|`[^`\n]*`)/).map((s, i) => (i % 2 ? s : fixProse(s))).join('');
       const fixed = (((payload.tool_input || {}).questions) || []).map((q) => (q && typeof q === 'object' ? {
         ...q,
@@ -1597,8 +1620,15 @@ if (payload.tool_name === 'AskUserQuestion') {
       } : q));
       const key = require('crypto').createHash('sha1').update(askText).digest('hex').slice(0, 16);
       const marker = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-askvoice-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}-${key}.denied`;
+      // Once per ask text: a marker that cannot be written where HOOK_LOG_DIR points is written under the temp dir, and
+      // one that cannot be written at all denies nothing - a missing log dir denied the same ask on every re-send.
       let first = true;
-      try { fs.writeFileSync(marker, '', { flag: 'wx' }); } catch (e) { if (e && e.code === 'EEXIST') first = false; }
+      try { fs.writeFileSync(marker, '', { flag: 'wx' }); } catch (e) {
+        if (e && e.code === 'EEXIST') first = false;
+        else {
+          try { fs.writeFileSync(require('path').join(require('os').tmpdir(), require('path').basename(marker)), '', { flag: 'wx' }); } catch { first = false; }
+        }
+      }
       if (first) {
         global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]) };
         process.stderr.write(`Blocked: this AskUserQuestion's own text carries ${voice.join(' and ')}. The house voice `

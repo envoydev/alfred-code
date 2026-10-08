@@ -36,11 +36,13 @@ let unattended = () => false;
 let stopHeld = (input) => !!(input && input.stop_hook_active);
 let markHeld = () => {};
 let contractHeld = () => false;
+let houseDash = /[\u2014\u2013\u2015]/; // hook-prelude.js HOUSE_DASH, the one dash class
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     unattended = prelude.unattended || unattended;
+    houseDash = prelude.HOUSE_DASH || houseDash;
     if (prelude.stopHeldThisCycle) {
       stopHeld = (input) => prelude.stopHeldThisCycle('guard-answer-length', input);
       markHeld = (input) => prelude.markStopHeld('guard-answer-length', input);
@@ -461,10 +463,12 @@ if (payload.hook_event_name === 'Stop') {
   // one, 4 in another, 2 each in two more - with the budget text carrying that clause loaded THREE
   // times in the same transcript, so this is not a placement problem: the rule was injected every
   // turn and enforced on no surface. The Stop branch already holds the turn's prose, so it is one
-  // more pass over text this hook has read anyway. Only the em-dash and its horizontal-bar twin are
-  // checked - the same injection's 'single quotes in prose' clause is not, because a double quote
-  // legitimately names a string value and the false positives would cost a turn each.
-  const DASHES = /[\u2014\u2015]/g;
+  // more pass over text this hook has read anyway. Only the dashes are checked - the em-dash, its
+  // horizontal-bar twin and the en-dash, the one class the stop contract's ask deny reads too
+  // (hook-prelude.js HOUSE_DASH; the two disagreed, audit 2026-10-08) - and the same injection's
+  // 'single quotes in prose' clause is not, because a double quote legitimately names a string value
+  // and the false positives would cost a turn each.
+  const DASHES = new RegExp(houseDash.source, 'g');
   const dashes = (body.match(DASHES) || []).length;
   let overLength = transcriptRead && body.length > HARD_CAP;
   if (!overLength && !dashes) process.exit(0);
