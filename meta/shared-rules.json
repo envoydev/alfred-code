@@ -684,7 +684,7 @@
       ]
     },
     "implementer-ceilings-row": {
-      "_note": "Each implementer reports a deliberate simplification in one fixed shape, so the close can file it under the architecture docs' Known ceilings section instead of losing it with the session.",
+      "_note": "Each implementer reports a deliberate simplification in one fixed shape, so the close can file it under the architecture docs' Known ceilings section instead of losing it with the session. The always-on quality gates carry the same row for the main session, beside the comment rules (2026-10-08 rules audit F9).",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
         "marker": "Record each deliberate simplification in your closing report as a `ceilings:` row, `where | limit | revisit when`"
@@ -725,6 +725,10 @@
         {
           "file": "stack/agents/wpf-implementer.md",
           "marker": "Record each deliberate simplification in your closing report as a `ceilings:` row, `where | limit | revisit when`"
+        },
+        {
+          "file": "stack/rules/alfred-quality-gates.md",
+          "marker": "No code comment flagging a deliberate simplification - its ceiling goes in the report as a `where | limit | revisit when` row"
         }
       ]
     },
@@ -3788,6 +3792,19 @@
         }
       ]
     },
+    "execution-strategy-trigger-list": {
+      "_note": "What loads the execution-strategy habit: the always-on interaction line binds the load, the skill's When to use restates the same trigger in house skill shape. A trigger widened in one home and not the other mis-fires the load (2026-10-08 rules audit D2, F8).",
+      "owner": {
+        "file": "stack/rules/alfred-interaction.md",
+        "marker": "one spanning stacks or touching auth, a migration or a public contract, or one that would dispatch a seat"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/habits-execution-strategy/SKILL.md",
+          "marker": "spans stacks, touches auth, a migration or a public contract, or would dispatch a seat"
+        }
+      ]
+    },
     "plan-file-design-handoff": {
       "_note": "The interaction baseline allows a plan file on request, for multi-session work, or as a design flow's handoff - task-design always writes its plan file as the handoff artifact (the user's ruling of 2026-09-29, audit I22: the rule gets the carve-out).",
       "owner": {
@@ -4047,6 +4064,19 @@
         {
           "file": "stack/agents/wpf-implementer.md",
           "marker": "A checkable claim in a comment (a symbol, a count, an invariant) is true against the code you wrote"
+        }
+      ]
+    },
+    "inline-comment-never-list": {
+      "_note": "The inline-comment floor - no ticket id (a public upstream issue on a workaround excepted), no change narration, no commented-out code, no unasked TODO. The comments skill owns the method; the always-on quality gates carry the floor because most edits never load the skill, so both copies stay (2026-10-08 rules audit D3, F7; skills audit D11).",
+      "owner": {
+        "file": "stack/skills/habits-code-comments/SKILL.md",
+        "marker": "Commented-out code - delete it, version control keeps it"
+      },
+      "sites": [
+        {
+          "file": "stack/rules/alfred-quality-gates.md",
+          "marker": "Never a ticket id (a public upstream issue on a workaround excepted), change narration, commented-out code or an unasked `TODO`"
         }
       ]
     },

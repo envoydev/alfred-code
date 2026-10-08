@@ -151,3 +151,102 @@ test('the repair routers route a status-less resolver return as a seat death', (
         assert.ok(homes(registry()['seat-statusless-return'] || { owner: {} }).some((h) => h.file === `stack/rules/${name}.md`), `${name}: a pinned home`);
     }
 });
+
+// ------------------------------------------------------------------ 2026-10-08 audit (rules.md F3-F16, hooks.md #14)
+// Each case names the report row it holds, so a regression reads as the audit line it reopens.
+
+test('rules F3: the AGENTS template restates none of the seven always-on rules - each loads itself every session', () =>
+{
+    const text = read('stack/AGENTS.template.md');
+    const rulesSection = text.slice(text.indexOf('\n## Rules'));
+    for (const name of ['interaction', 'quality-gates', 'security', 'git', 'navigation', 'docs-root', 'memory'])
+        assert.ok(!rulesSection.includes(`| \`.claude/rules/alfred-${name}.md\` |`), `alfred-${name}.md has a template row`);
+    for (const generated of ['alfred-project-agent-capabilities', 'alfred-project-architecture', 'alfred-project-related-context', 'alfred-project-run-book', 'project-code-style'])
+        assert.ok(rulesSection.includes(`| \`.claude/rules/${generated}.md\` (GENERATED`), `${generated}.md keeps its GENERATED row`);
+});
+
+test('hooks #14: an ask with no options to name still goes through the tool - the stop contract blocks a prose question', () =>
+{
+    const text = injected('alfred-interaction');
+    assert.ok(!text.includes('free-form prose only when no options can be named'), 'the prose carve-out the hook blocks');
+    assert.ok(text.includes('with no options to name, the tool still carries it - the likeliest answers as options, the rest via Other'));
+});
+
+test('rules F4: background output is polled from one home, the quality gates', () =>
+{
+    assert.ok(!/Monitor/.test(injected('alfred-navigation')), 'the navigation copy is folded away');
+    assert.match(injected('alfred-quality-gates'), /Poll it through `Monitor` or its new lines, never a whole-log re-read\./);
+});
+
+test('rules F5 + F16: the navigation rule says one thing per line, in plain words', () =>
+{
+    const nav = injected('alfred-navigation');
+    assert.ok(!nav.includes("A language serena's"), 'the ungrammatical fused line');
+    assert.match(nav, /- A language the navigation server's `project\.yml` \(`<data root>\/serena\/`\) does not list takes the fallback from its first call\. -/);
+    assert.match(nav, /- A large JSON \/ YAML \/ lock \/ fixture file is queried/);
+    assert.ok(!nav.includes('check the tool list before an edit call'), 'F16');
+    assert.ok(nav.includes('confirm an edit tool is in the tool list before calling it'), 'F16');
+});
+
+test('rules F6: the compaction section carries the name the docs give it', () =>
+{
+    assert.match(rule('alfred-navigation'), /^## Compact Instructions$/m);
+    assert.doesNotMatch(rule('alfred-navigation'), /^## Compaction$/m);
+});
+
+test('rules F7 + skills habits-code-comments: the inline-comment floor admits the upstream-issue link and is pinned to the comments skill', () =>
+{
+    const gates = injected('alfred-quality-gates');
+    assert.ok(gates.includes('Never a ticket id (a public upstream issue on a workaround excepted), change narration, commented-out code or an unasked `TODO`'));
+    const entry = registry()['inline-comment-never-list'];
+    assert.ok(entry, 'registered');
+    assert.strictEqual(entry.owner.file, 'stack/skills/habits-code-comments/SKILL.md');
+    assert.ok(homes(entry).some((h) => h.file === 'stack/rules/alfred-quality-gates.md'));
+});
+
+test('rules F8: the execution-strategy trigger list is pinned in the rule and the skill it routes to', () =>
+{
+    const entry = registry()['execution-strategy-trigger-list'];
+    assert.ok(entry, 'registered');
+    assert.strictEqual(entry.owner.file, 'stack/rules/alfred-interaction.md');
+    assert.ok(homes(entry).some((h) => h.file === 'stack/skills/habits-execution-strategy/SKILL.md'));
+});
+
+test('rules F9: the simplification-ceiling line sits with the comment rules and is pinned with the implementers\' copies', () =>
+{
+    assert.ok(!injected('alfred-interaction').includes('deliberate simplification'), 'moved out of Formatting and privacy');
+    const gates = injected('alfred-quality-gates');
+    const comments = gates.indexOf('Comments: none by default');
+    const ceiling = gates.indexOf('No code comment flagging a deliberate simplification');
+    assert.ok(comments >= 0 && ceiling > comments, 'right after the comments line');
+    assert.ok(homes(registry()['implementer-ceilings-row']).some((h) => h.file === 'stack/rules/alfred-quality-gates.md'));
+});
+
+test('rules F10: an in-session pick on a broken build starts at the root-cause habit, in both routers', () =>
+{
+    for (const name of ['dotnet-repair-agents', 'angular-repair-agents'])
+    {
+        const text = squash(rule(name));
+        assert.ok(text.includes('resolver recommended; an in-session pick starts at the `habits-root-cause` Skill call)'), name);
+        assert.ok(text.includes('offer the resolver through AskUserQuestion'), `${name}: the pinned ask stays`);
+    }
+    const graph = JSON.parse(read('meta/stack-graph.json'));
+    for (const name of ['dotnet-repair-agents', 'angular-repair-agents'])
+        assert.ok((graph.rules[name].skills || []).includes('habits-root-cause'), `${name}: the graph pulls the named skill`);
+});
+
+test('rules F11: the docs root exempts instruction files and drops capture-internal trivia', () =>
+{
+    const line = read('stack/rules/alfred-docs-root.md').split('\n').find((l) => /EVERY doc the assistant creates/.test(l)) || '';
+    assert.ok(line.includes('EVERY doc the assistant creates - an instruction file (AGENTS.md, a rule, a skill) excepted - lives under ONE root'));
+    assert.ok(!line.includes('watch.json'));
+});
+
+test('rules F12 + F13: the commit header and the memory verify clause are each stated once', () =>
+{
+    const vcs = injected('alfred-git');
+    assert.strictEqual((vcs.match(/Conventional[- ]Commits/g) || []).length, 1, vcs);
+    assert.match(vcs, /\*\*Header\*\* - one line, one of two shapes: the ticket id \(`PROJ-142`\) or a Conventional-Commits subject/);
+    const memory = injected('alfred-memory');
+    assert.strictEqual((memory.match(/verified before use/g) || []).length, 1, memory);
+});

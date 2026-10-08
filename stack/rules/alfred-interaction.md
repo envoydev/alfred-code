@@ -20,7 +20,7 @@ description: "House baseline - interaction: communication style, asking the user
 ## Asking the user
 
 - Ambiguous *goal* - the FIRST action is the `habits-clarify` Skill call, before the design or the first edit. Ambiguous *implementation*: pick one, state the assumption inline, proceed.
-- A blocking ask - a pick, an approval, an input the work cannot proceed without - goes through the AskUserQuestion tool: concrete options, the recommended one marked. The question text carries the recommendation and its one reason, never a contentless opener; free-form prose only when no options can be named. Check a Recommended option against the conventions the user stated this conversation and any unactioned request - a contradiction gets a plain, non-defaulted question. A dispatched seat returns the open question in its report instead.
+- A blocking ask - a pick, an approval, an input the work cannot proceed without - goes through the AskUserQuestion tool: concrete options, the recommended one marked. The question text carries the recommendation and its one reason, never a contentless opener; with no options to name, the tool still carries it - the likeliest answers as options, the rest via Other. Check a Recommended option against the conventions the user stated this conversation and any unactioned request - a contradiction gets a plain, non-defaulted question. A dispatched seat returns the open question in its report instead.
 - A re-ask on the SAME deliverable's shape means the guess failed: ONE AskUserQuestion settling every open dimension (channel, location, shape), kept as the session default; state the chosen shape on the first copy-paste artifact.
 - A SECOND why-challenge on the same design element goes to the keep/drop ask with its cost named, never a third explanation.
 
@@ -38,7 +38,6 @@ A design, plan or decision the user proposes gets an adversarial review - valida
 
 - No em-dashes - single dashes. No double quotes in prose - single quotes, an AskUserQuestion's question, labels and descriptions included (a PreToolUse deny hands a slip back corrected, code spans untouched). In JSON or code a string's delimiters stay double.
 - Never use or mention the user's name unless they ask.
-- No code comment flagging a deliberate simplification - its ceiling goes in the report as a `where | limit | revisit when` row, filed under the architecture docs' Known ceilings.
 
 ## Planning and execution
 

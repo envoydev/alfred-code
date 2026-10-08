@@ -8,7 +8,8 @@ description: "House baseline - quality gates: code quality, the done-claim gate,
 
 - No dead code (unfinished work goes in the report).
 - Unit tests for new code; integration tests for DB / external service.
-- Comments: none by default; a why only when the code cannot say it, in one short line. Never a ticket id, change narration, commented-out code or an unasked `TODO`; the project's comment conventions and language win; a comment your change made stale is updated or deleted. Writing a doc comment (XML docs, TSDoc, JSDoc, docstring) - the FIRST action is the `habits-code-comments` Skill call, before it is written.
+- Comments: none by default; a why only when the code cannot say it, in one short line. Never a ticket id (a public upstream issue on a workaround excepted), change narration, commented-out code or an unasked `TODO`; the project's comment conventions and language win; a comment your change made stale is updated or deleted. Writing a doc comment (XML docs, TSDoc, JSDoc, docstring) - the FIRST action is the `habits-code-comments` Skill call, before it is written.
+- No code comment flagging a deliberate simplification - its ceiling goes in the report as a `where | limit | revisit when` row, filed under the architecture docs' Known ceilings.
 
 ## Definition of done
 
@@ -29,6 +30,6 @@ one option each, recommendation marked (a prose-only ask gets skipped).
 
 ## Long-running and leftover work
 
-- A wait measured in MINUTES (a CI run, a container build, a full suite, an emulator boot) runs in the background while you do work that does not depend on it; arm the wait when you start it - the `Monitor` tool, deferred: `ToolSearch select:Monitor` first. A 'what is running' check keys on a specific PID, marker file or output sentinel, never a bare process-name grep; task lists track tasks, not shells.
+- A wait measured in MINUTES (a CI run, a container build, a full suite, an emulator boot) runs in the background while you do work that does not depend on it; arm the wait when you start it - the `Monitor` tool, deferred: `ToolSearch select:Monitor` first. Poll it through `Monitor` or its new lines, never a whole-log re-read. A 'what is running' check keys on a specific PID, marker file or output sentinel, never a bare process-name grep; task lists track tasks, not shells.
 - Infrastructure the run started to build, test or verify (a container or compose stack, a test database and its data, a dev server, an emulator, a watcher) never outlives the work silently: at close list what is still up and put tear-down-vs-keep through AskUserQuestion (batched into the flow's close ask), teardown recommended for the disposable. Tear down only AFTER the answer, and never what you did not start.
 - Files the run wrote only to build, test or verify (a scratch script, a temp fixture, a coverage or log dump, a downloaded sample) are deleted once their check passes, no ask - unless the user asked for them, a later step needs them, or they are a deliverable; name those in the close. Never delete what this run did not create; `git status` at the close shows only the intended change.
