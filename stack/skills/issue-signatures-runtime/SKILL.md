@@ -35,16 +35,21 @@ the inline and seated forms never drift. Loaded INSIDE the seat, this section is
 MAIN session, run the triage HERE and Read `references/gatherer-fan-out.md` before deciding on
 evidence-gatherers - the inherit-or-ask rule, the four dispatch triggers, the stay-inline shapes
 and a worked fan-out are that file. Either way, dispatch is explicit-only house-wide, so the seats
-never start on your own say-so.
+never start on your own say-so. Do NOT dispatch the diagnoser seat from this skill - the
+signatures are already in context, so the seat would only duplicate them; the seat exists for the
+orchestrated issue flow and direct @agent- calls, where it runs this same file in an isolated
+context with the same gatherer fan-out.
 
 ## How to use it
 
-Match the evidence to one signature, form the fewest hypotheses it warrants, and confirm each against located code before you touch anything - root cause before symptom, never a plausible guess. State the match in three lines - the quoted evidence, the signature, the isolation point (and the hypothesis it warrants) - then run the loop:
+Match the evidence to one signature, form the fewest hypotheses it warrants, and confirm each against located code before you touch anything - root cause before symptom, never a plausible guess. State the match in four lines - the quoted evidence, the signature, the isolation point and the hypothesis it warrants - plus the proof line once the check has run, then run the loop:
 
 ```text
-Evidence:  'ObjectDisposedException: Cannot access a disposed context instance' in OrderSyncJob.ExecuteAsync
-Signature: disposed / lifecycle - a DbContext captured past its scope.
-Isolate:   the lifetime boundary - the scoped DbContext resolved once and stored on the singleton job - not the query line that threw.
+Evidence:   'ObjectDisposedException: Cannot access a disposed context instance' in OrderSyncJob.ExecuteAsync
+Signature:  disposed / lifecycle - a DbContext captured past its scope.
+Isolate:    the lifetime boundary - the scoped DbContext resolved once and stored on the singleton job - not the query line that threw.
+Hypothesis: the singleton job stores the scoped DbContext it resolved at startup
+Proof:      <the log or breakpoint at the boundary, quoted> | unproven - <what would decide it>
 ```
 
 Prove the isolation point before the fix goes anywhere near it: the check is that the symptom changes when THAT point changes - a breakpoint or log at the boundary that shows the wrong lifetime, value or order, or the smallest edit that makes the failure move. A signature match that sends a fix at the wrong symbol is the failure this catalogue exists to prevent, so an unproven isolation point is stated as a hypothesis, never as the cause. Once the cause is proven, load the stack's house skill for the fix convention - your project's convention rules auto-attach it on a matching file touch. If the signature stays ambiguous after two passes, report the surviving hypotheses and what would decide between them rather than guessing.

@@ -5160,15 +5160,28 @@
       ]
     },
     "catalogue-dispatch-explicit-only": {
-      "_note": "The two failure-signature catalogues run triage in the MAIN session and never start evidence-gatherer seats on their own say-so - dispatch is explicit-only house-wide, inherited from a calling flow that already asked, otherwise asked once. Same Execution-modes paragraph in both.",
+      "_note": "The two failure-signature catalogues run triage in the MAIN session and never start evidence-gatherer seats on their own say-so - dispatch is explicit-only house-wide, inherited from a calling flow that already asked, otherwise asked once - and never dispatch the diagnoser seat (the runtime copy's never-the-seat rule left its gatherer reference for the body in the 2026-10-08 audit). Same Execution-modes paragraph in both.",
       "owner": {
         "file": "stack/skills/issue-signatures-runtime/SKILL.md",
-        "marker": "dispatch is explicit-only house-wide, so the seats never start on your own say-so"
+        "marker": "dispatch is explicit-only house-wide, so the seats never start on your own say-so. Do NOT dispatch the diagnoser seat from this skill - the signatures are already in context, so the seat would only duplicate them"
       },
       "sites": [
         {
           "file": "stack/skills/issue-signatures-ci/SKILL.md",
-          "marker": "dispatch is explicit-only house-wide, so the seats never start on your own say-so"
+          "marker": "dispatch is explicit-only house-wide, so the seats never start on your own say-so. Do NOT dispatch the diagnoser seat from this skill - the signatures are already in context, so the seat would only duplicate them"
+        }
+      ]
+    },
+    "catalogue-gatherer-ask": {
+      "_note": "The two catalogues' gatherer fan-out references share their ask: dispatch is judged from the run's shape, inherited from a calling flow that already asked, otherwise ONE marked ask; a shape that stays inline needs none (2026-10-08 audit D10). The shapes themselves differ per catalogue and stay local.",
+      "owner": {
+        "file": "stack/skills/issue-signatures-runtime/references/gatherer-fan-out.md",
+        "marker": "A calling flow that already asked seats-or-inline (the gated investigation skill) has answered it - inherit, never re-ask; otherwise, when a shape below warrants gatherers, put it through ONE AskUserQuestion (gatherers recommended, the trigger named in the option's description; plain-text options where the harness lacks the tool) and stay inline on an inline answer. A shape that stays inline needs no ask."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/issue-signatures-ci/references/gatherer-fan-out.md",
+          "marker": "A calling flow that already asked seats-or-inline (the gated investigation skill) has answered it - inherit, never re-ask; otherwise, when a shape below warrants gatherers, put it through ONE AskUserQuestion (gatherers recommended, the trigger named in the option's description; plain-text options where the harness lacks the tool) and stay inline on an inline answer. A shape that stays inline needs no ask."
         }
       ]
     },

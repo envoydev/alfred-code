@@ -299,6 +299,60 @@ test('task-verify-code: the COMMIT-GATE receipt moves to a reference, the punch-
     assert.deepStrictEqual(registryFindings('commit-gate-receipt', 'commit-gate-security-row', 'commit-gate-authorized-line'), []);
 });
 
+// ---- the diagnose flow and the two signature catalogues --------------------------------------------------------
+// MINOR issue-diagnoser:3, :164, :113/:131/:183, evidence-tiers.md:31.
+test('issue-diagnoser: a when-shaped description, cards on the strategy\'s split, stories in the appendix, the paste as a marked ask', () => {
+    const desc = (skill('issue-diagnoser').match(/^description:\s*"(.*)"\s*$/m) || [])[1] || '';
+    assert.match(desc, /^Use when a failure needs investigating/);
+    assert.match(desc, /Not for the fix, which \/task-solve owns\.$/);
+    assert.ok(desc.length <= 160, `${desc.length} chars`);
+    const b = flat(body(skill('issue-diagnoser')));
+    assert.match(b, /Read-only throughout: it never writes the fix\./, 'read-only stays in the body');
+    assert.match(b, /Then decompose the minimal change per cause into tasks on that split, each with a contract/);
+    for (const story of [/36-call stretch/, /17h15m/, /a listing held the local-runtime catalogue/]) {
+        assert.doesNotMatch(b, story, `${story} left the run-time body`);
+        assert.match(flat(read('stack/skills/issue-diagnoser/references/evidence.md')), story, `${story} kept in the appendix`);
+    }
+    const tiers = flat(read('stack/skills/issue-diagnoser/references/evidence-tiers.md'));
+    assert.doesNotMatch(tiers, /ask the user to paste the event/);
+    assert.match(tiers, /say so in one line and put it through the step-1 stop: 'Paste the event \(Recommended\)' \/ 'Proceed at tier 4 from the code'/);
+});
+
+// MATERIAL issue-signatures-ci:55-59 + MINOR :25.
+test('issue-signatures-ci: the worked verdict carries its proof line, and the quality gate is stated for any stack', () => {
+    const text = skill('issue-signatures-ci');
+    assert.match(flat(text), /The four-line verdict it produces:/);
+    const verdict = (text.match(/```text\n(signature:[\s\S]*?)```/) || [])[1] || '';
+    assert.deepStrictEqual(verdict.split('\n').filter(Boolean).map((l) => l.split(':')[0]), ['signature', 'call', 'route', 'proof']);
+    assert.match(verdict, /^proof: after the feed secret is rotated, `gh run rerun --failed` passes with no code change - NOT RUN until then$/m);
+    assert.doesNotMatch(flat(text), /The \.NET gate is a build/);
+    assert.match(flat(text), /A quality gate is usually a build with warnings promoted to errors plus a formatter check \(`dotnet format --verify-no-changes`, `prettier --check`, `eslint`\)/);
+});
+
+// MATERIAL issue-signatures-runtime:44-48 + MINOR gatherer-fan-out.md:33-37.
+test('issue-signatures-runtime: the match states its hypothesis and proof, and the never-the-seat rule sits in the body', () => {
+    const text = skill('issue-signatures-runtime');
+    assert.match(flat(text), /State the match in four lines - the quoted evidence, the signature, the isolation point and the hypothesis it warrants - plus the proof line once the check has run/);
+    const block = (text.match(/```text\n(Evidence:[\s\S]*?)```/) || [])[1] || '';
+    assert.deepStrictEqual(block.split('\n').filter(Boolean).map((l) => l.split(':')[0]), ['Evidence', 'Signature', 'Isolate', 'Hypothesis', 'Proof']);
+    assert.match(block, /^Hypothesis: the singleton job stores the scoped DbContext it resolved at startup$/m);
+    const exec = flat(text.split('## Execution modes')[1].split('\n## ')[0]);
+    assert.match(exec, /Do NOT dispatch the diagnoser seat from this skill/);
+    assert.doesNotMatch(read('stack/skills/issue-signatures-runtime/references/gatherer-fan-out.md'), /## Never the diagnoser seat/);
+    assert.deepStrictEqual(registryFindings('catalogue-dispatch-explicit-only'), []);
+    for (const c of shared()['catalogue-dispatch-explicit-only'].sites.concat(shared()['catalogue-dispatch-explicit-only'].owner))
+        assert.match(c.marker, /Do NOT dispatch the diagnoser seat from this skill/, `${c.file}: the marker covers the never-the-seat sentence`);
+});
+
+// MINOR issue-signatures-ci gatherer-fan-out.md (D10): the shared 'The ask' paragraph is one registered rule.
+test('D10: the two gatherer fan-out references share one registered ask rule, owned by the runtime copy', () => {
+    const entry = shared()['catalogue-gatherer-ask'];
+    assert.ok(entry, 'registered');
+    assert.strictEqual(entry.owner.file, 'stack/skills/issue-signatures-runtime/references/gatherer-fan-out.md');
+    assert.deepStrictEqual(copiesOf(entry).sort(), ['stack/skills/issue-signatures-ci/references/gatherer-fan-out.md', 'stack/skills/issue-signatures-runtime/references/gatherer-fan-out.md']);
+    assert.deepStrictEqual(registryFindings('catalogue-gatherer-ask'), []);
+});
+
 // MINOR task-verify-code:36 (D3): the in-process probe is the stack's in-memory host test; .NET's is a labelled example.
 test('task-verify-code: the in-process probe is stated for any stack, the .NET host named as its example', () => {
     const b = flat(body(skill('task-verify-code')));
