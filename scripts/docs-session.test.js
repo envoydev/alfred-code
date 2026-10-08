@@ -363,6 +363,10 @@ test('shell reads are never held; shell writes are', () => {
     assert.ok(!denied(r.hook(pre('Bash', { command: 'grep -n Refund src/Api/Orders/Refund.cs 2>/dev/null' }, s))));
     assert.ok(!denied(r.hook(pre('Bash', { command: 'dotnet test tests/Api > run.log 2>&1' }, s))));
     assert.ok(denied(r.hook(pre('Bash', { command: "cat > src/Api/Orders/Refund.cs <<'EOF'\nclass Refund {}\nEOF" }, s))));
+    // Audit 2026-10-08 row 46: the Monitor tool runs its command under the shell route, and its writes are held too.
+    const m = sid();
+    assert.ok(denied(r.hook(pre('Monitor', { command: 'echo x > src/Api/Orders/Refund.cs' }, m))), 'a Monitor write is held');
+    assert.ok(!denied(r.hook(pre('Monitor', { command: 'tail -f run.log' }, m))), 'a Monitor watch is not');
   } finally { r.rm(); }
 });
 

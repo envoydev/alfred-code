@@ -105,6 +105,17 @@ test('guard-ungated-commit: a push whose diff spans two projects needs a scope: 
   assert.equal(gateIn(dir, 'git push'), 0, 'a workspace-scope probe passes whatever the diff touches');
 });
 
+// Audit 2026-10-08 row 46: the Monitor tool runs its command under the shell route; no test replayed a commit through it.
+test('audit 2026-10-08: a commit through the Monitor tool is gated like one through Bash', () => {
+  const dir = scratchRepo();
+  const viaMonitor = (command) => runIn('guard-ungated-commit.js', { tool_name: 'Monitor', tool_input: { command } }, {
+    env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir,
+  }).status;
+  assert.equal(gateIn(dir, 'git add -A && git commit -m x'), 2, 'Bash');
+  assert.equal(viaMonitor('git add -A && git commit -m x'), 2, 'Monitor');
+  assert.equal(viaMonitor('git log --oneline -3'), 0, 'a read through Monitor passes');
+});
+
 test('audit 2026-10-08: a commit, merge or reset chained before a push on a level branch still needs the publish receipt', () => {
   const { dir, git } = pushRepo();
   assert.equal(gateIn(dir, 'git push'), 0, 'control: a push with nothing ahead of its upstream publishes nothing');
