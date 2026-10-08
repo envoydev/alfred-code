@@ -11,7 +11,7 @@
 // Both directions are pinned: a gate that also fires on the clean neighbour teaches a bypass.
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
-require('./hook-test-env').isolateHookSuite();
+require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // audit 2026-10-08: its hooks' tmp state stays in a dir of its own
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');

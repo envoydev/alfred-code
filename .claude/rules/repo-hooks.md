@@ -171,10 +171,23 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (`JUDGE_MAX_WORK`, 20x the costliest of 54,503 recorded commands; `JUDGE_MAX_DEPTH`). A test holds each
     40,000-character pathological shape to linear work in both guards, and a command past the work budget is blocked
     while code nested past the depth cap is read as printing what it read (the secret guard blocks it) - never let
-    through; nothing stops reading silently at a count. Every denial carries the
-    `ToolSearch select:` line that loads the navigation server's tools. Its convention-rule announcement
+    through; nothing stops reading silently at a count; a shell heredoc nested past three levels is out of budget and
+    blocks (audit 2026-10-08: five `bash <<EOF` levels passed). The audit 2026-10-08 route fixes: a pipe into a filter
+    exempts a segment only when the filter bounds it - an identity filter (`grep ""`, `awk 1`, wholeFiles' rules) or a
+    `head` / `tail` past THRESHOLD lets the print through - and a literal span on the file (`head -n 9999`, `sed -n
+    1,99999p`, `tail -n +2`) is a dump when it prints past THRESHOLD lines and more than half the file; a glob of any
+    sweep extension (`cat skills/*/SKILL.md`) and a listing substitution (`cat $(find ...)`) are sweeps; any other
+    extension printed whole to the terminal past BIG_BYTES is blocked, as the Read half blocks it (route gap S2), unless a
+    program reads the output (`| jq`). On the Read half a rendered image (PNG, JPEG, GIF, WebP - its pixels, at most 4,784
+    visual tokens, are sent, never its bytes: platform.claude.com/docs/en/build-with-claude/vision) and a PDF Read naming
+    `pages` pass the size test, extensions match in any case, and the 60% range cap is a per-session log of ranges
+    appended before each verdict and replayed in order, keyed by real path, so parallel Reads cannot each pass it.
+    Every denial on a file the navigation server indexes carries the
+    `ToolSearch select:` line that loads the navigation server's tools (a size denial on another extension and a tree it
+    never indexes name grep instead). Its convention-rule announcement
     names only a rule in the project's own `.claude/rules` - a plugin-launched hook's sibling `rules/` is
-    the whole catalog (it named `winforms-conventions.md` to a project without it, the 2026-09-26 pilot).
+    the whole catalog (it named `winforms-conventions.md` to a project without it, the 2026-09-26 pilot); with no rules
+    directory anywhere it cannot tell and names the rule (a recorded choice, pinned in `guard-read-write.test.js`).
   - `guard-secret-value.js` (PreToolUse `Read` + `Grep` + the shell route) - credentials are read for PRESENCE, never
     value. Judged by file CONTENT (a JSON, dotenv, INI - `~/.aws/credentials`, `~/.pypirc`, a `[section]` file,
     `~/.npmrc` - netrc or URL-per-line (`~/.git-credentials`) file holding a `secret_key_pattern` key with a live

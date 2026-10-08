@@ -7,7 +7,7 @@
 'use strict';
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
-require('./hook-test-env').isolateHookSuite();
+require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // audit 2026-10-08: its hooks' tmp state stays in a dir of its own
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -197,9 +197,11 @@ test('guard-read-whole-file: an oversized binary or minified file is answered wi
   // file, a 93KB PNG included, where neither applies - 2 wasted calls. This branch judges SIZE, not
   // language, so it has to say what to do with bytes that have no lines.
   const dir = fs.mkdtempSync(path.join(TMP, 'big-'));
-  const png = path.join(dir, 'shot.png');
-  fs.writeFileSync(png, Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]), Buffer.alloc(70 * 1024, 7)]));
-  const b = run(READ, { tool_name: 'Read', tool_input: { file_path: png } });
+  // audit 2026-10-08: a rendered image (PNG, JPEG, GIF, WebP) is no longer here - the model is sent its pixels, at most
+  // 4,784 visual tokens (platform.claude.com/docs/en/build-with-claude/vision), never its bytes; see the screenshot case.
+  const blob = path.join(dir, 'store.bin');
+  fs.writeFileSync(blob, Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]), Buffer.alloc(70 * 1024, 7)]));
+  const b = run(READ, { tool_name: 'Read', tool_input: { file_path: blob } });
   assert.equal(b.status, 2, 'still blocked - a whole Read of it spends its whole size on context');
   assert.match(b.stderr, /head -c 2000/, 'paging, capped');
   assert.doesNotMatch(b.stderr, /grep -n '<pattern>'/, 'never a line-based remedy on bytes with no lines');
@@ -215,6 +217,64 @@ test('guard-read-whole-file: an oversized binary or minified file is answered wi
   assert.equal(t.status, 2);
   assert.match(t.stderr, /grep -n '<pattern>'/, 'a spilled text output is grepped, as before');
   assert.equal(run(READ, { tool_name: 'Read', tool_input: { file_path: notes, offset: 1, limit: 50 } }).status, 0, 'a ranged read passes');
+});
+
+test('audit 2026-10-08: a screenshot Read and a PDF Read naming its pages pass; any extension case is gated', () => {
+  // The issue-diagnoser reads a screenshot, and a rendered image costs its pixels (at most 4,784 visual tokens,
+  // platform.claude.com/docs/en/build-with-claude/vision) - every PNG over 60KB was blocked, and so was a paged PDF.
+  const dir = fs.mkdtempSync(path.join(TMP, 'shots-'));
+  const read = (file_path, extra = {}) => run(READ, { tool_name: 'Read', tool_input: { file_path, ...extra } }).status;
+  for (const name of ['shot.png', 'photo.JPG', 'anim.gif', 'pic.webp']) {
+    fs.writeFileSync(path.join(dir, name), Buffer.alloc(100 * 1024, 1));
+    assert.equal(read(path.join(dir, name)), 0, `${name}: a rendered image`);
+  }
+  fs.writeFileSync(path.join(dir, 'doc.pdf'), Buffer.alloc(100 * 1024, 1));
+  assert.equal(read(path.join(dir, 'doc.pdf'), { pages: '1-2' }), 0, 'a PDF read by its pages is a range');
+  assert.equal(read(path.join(dir, 'doc.pdf')), 2, 'a whole one is still its whole size');
+  fs.writeFileSync(path.join(dir, 'BIG.TS'), 'const a = 1;\n'.repeat(500));
+  assert.equal(read(path.join(dir, 'BIG.TS')), 2, 'an upper-case extension is the same source file');
+});
+
+test('audit 2026-10-08: a span, an identity filter, a glob or a listing past the threshold is the dump it prints; a big file of any extension too', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'spans-'));
+  fs.writeFileSync(path.join(dir, 'big.ts'), 'const a = 1;\n'.repeat(500));
+  fs.writeFileSync(path.join(dir, 'big.md'), `${'word '.repeat(20)}\n`.repeat(1300));
+  fs.mkdirSync(path.join(dir, 'skills', 'a'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'skills', 'a', 'SKILL.md'), 'x\n');
+  const sh = (command, tool_name = 'Bash') => run(READ, { tool_name, tool_input: { command }, session_id: sid(), cwd: dir },
+    { cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir } }).status;
+  for (const c of ['head -n 9999 big.ts', 'sed -n 1,99999p big.ts', 'tail -n +2 big.ts', 'cat big.ts | grep ""', 'cat big.ts | awk 1',
+    'cat big.ts | head -n 9999', 'cat skills/*/SKILL.md', "cat $(find src -name '*.ts')", 'cat big.md'])
+    assert.equal(sh(c), 2, c);
+  assert.equal(sh('cat big.ts', 'Monitor'), 2, 'the Monitor tool runs its command under the shell route');
+  assert.equal(sh('bash <<A\nbash <<B\nbash <<C\nbash <<D\nbash <<E\ncat big.ts\nE\nD\nC\nB\nA\n'), 2, 'a shell body nested past three levels is judged out of budget');
+  for (const c of ['head -40 big.ts', 'head -n 150 big.ts', 'sed -n 1,100p big.ts', 'tail -n +400 big.ts', 'cat big.ts | head -40', 'cat big.ts | grep const',
+    'cat big.md | jq .', 'head -n 5 skills/*/SKILL.md', 'cat big.md > copy.md', 'cat skills/a/SKILL.md'])
+    assert.equal(sh(c), 0, c);
+});
+
+test('audit 2026-10-08: parallel ranged Reads cannot each pass the cumulative cap, and the cap follows the real path', async () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'par-')));
+  const file = path.join(dir, 'big.ts');
+  fs.writeFileSync(file, 'const a = 1;\n'.repeat(500));
+  const { spawn } = require('node:child_process');
+  const ranged = (session_id, file_path, offset) => new Promise((resolve) => {
+    const p = spawn(process.execPath, [READ], { cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+    p.on('exit', resolve);
+    p.stdin.end(JSON.stringify({ session_id, cwd: dir, tool_name: 'Read', tool_input: { file_path, offset, limit: 125 } }));
+  });
+  for (let t = 0; t < 5; t++) {
+    const session = sid();
+    const codes = await Promise.all([1, 126, 251, 376].map((o) => ranged(session, file, o)));
+    assert.ok(codes.includes(2), `trial ${t}: four parallel quarters all passed (${codes})`);
+  }
+  // the same file spelled through a link is the same file
+  const link = path.join(TMP, `par-link-${sid()}`);
+  fs.symlinkSync(dir, link, 'junction');
+  const s = sid();
+  assert.equal(await ranged(s, file, 1), 0);
+  assert.equal(await ranged(s, path.join(link, 'big.ts'), 126), 0, 'half, through the link');
+  assert.equal(await ranged(s, file, 251), 2, 'a third quarter of the same real file passes the cap');
 });
 
 test('guard-cross-project-write: a quote inside a $( ) substitution does not close the outer span', () => {

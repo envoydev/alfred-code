@@ -23,7 +23,7 @@ const SESSION_KEYS = ['CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_PLUGIN_ROOT', 'CLAUDE_PL
 const strayRoots = () => [...['.alfred', '.claude'].map((d) => path.join(os.tmpdir(), d, 'docs')), path.join(process.cwd(), '.alfred', 'docs', 'hook-blocks')];
 
 // Every file under the stray roots written at or after `since` (ms), as paths.
-function strayWrites(since)
+function strayWrites(since, roots = strayRoots())
 {
     const out = [];
     const walk = (dir) =>
@@ -37,7 +37,7 @@ function strayWrites(since)
             else { try { if (fs.statSync(p).mtimeMs >= since) out.push(p); } catch { /* gone */ } }
         }
     };
-    for (const root of strayRoots()) walk(root);
+    for (const root of roots) walk(root);
     return out;
 }
 
@@ -49,19 +49,30 @@ function scrubbed(env = process.env)
     return out;
 }
 
-function isolateHookSuite()
+// `ownTmp`: the suite and every hook it spawns get a temp dir of their own (TMPDIR, TEMP and TMP), removed after
+// the run - the read and stop hooks keep per-session state files under os.tmpdir(), and the suites left thousands of
+// them in the machine's temp dir (audit 2026-10-08: 5,910 `guard-read-*.json`). The stray check reads both temp dirs.
+function isolateHookSuite({ ownTmp = false } = {})
 {
     for (const k of Object.keys(process.env)) if (STACK_KEY.test(k) || SESSION_KEYS.includes(k)) delete process.env[k];
+    const machineRoots = strayRoots();
+    let tmp = null;
+    if (ownTmp)
+    {
+        tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'hook-suite-tmp-')));
+        for (const k of ['TMPDIR', 'TEMP', 'TMP']) process.env[k] = tmp;
+    }
     const project = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'hook-suite-project-')));
     const since = Date.now() - 1000;   // a coarse filesystem clock never hides a write made this second
     const test = require('node:test');
     test.after(() =>
     {
         fs.rmSync(project, { recursive: true, force: true });
-        const stray = strayWrites(since);
+        const stray = [...new Set([...strayWrites(since), ...strayWrites(since, machineRoots)])];
+        if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
         if (stray.length) throw new Error(`this suite wrote under os.tmpdir()'s own docs root or the checkout's ledger - a hook ran with the temp dir or the runner's cwd as its project: ${stray.join(', ')}`);
     });
-    return { project };
+    return { project, tmp };
 }
 
 module.exports = { isolateHookSuite, scrubbed, strayWrites, strayRoots, STACK_KEY, SESSION_KEYS };
