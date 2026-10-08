@@ -471,7 +471,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     lists the turn's written paths in `<docs-path>/flow/turn-edits-<session>`; at `Stop` it runs ONE scoped
     check per nearest root - the project's own `tsc --noEmit -p` for TypeScript, `dotnet build --no-restore
     -v q` for C# - and hands the first 20 error lines back as a block, once per turn (its own continuation Stop
-    passes). A missing compiler or a timeout is a pass.
+    passes). A missing compiler or a timeout is a pass, and so is a C# project never restored (every error line
+    `NETSDK1004`, which `--no-restore` cannot get past), written as one `mode: probe` row (audit 2026-10-08).
   - `guard-answer-length.js` (`UserPromptSubmit` + `Stop`) - injects the answer budget every turn; the
     Stop half blocks prose past 1800 chars when the user asked for no depth, and blocks an em-dash (en-dash and horizontal
     bar too, `HOUSE_DASH`) in prose at any length. After the third consecutive short correction following a long answer it injects

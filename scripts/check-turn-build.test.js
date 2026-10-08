@@ -193,6 +193,27 @@ test('turn-build: a C# file runs dotnet build --no-restore -v q on its nearest p
     assert.strictEqual((r.stderr.match(/error CS0103/g) || []).length, 1, 'the duplicate summary line was repeated');
 });
 
+// Audit 2026-10-08 row 45: a never-restored C# project failed `dotnet build --no-restore` with NETSDK1004 on every line
+// and blocked the turn - the check never restores, so that is no error of the turn's. A pass with a probe row.
+test('turn-build: a C# project never restored is a pass with a probe row, and a real error beside NETSDK1004 still blocks', { skip: !posix && 'stub binaries are shell scripts' }, () =>
+{
+    const p = project();
+    p.file('src/Api/Api.csproj', '<Project />');
+    const bin = path.join(p.root, 'bin-stub');
+    fs.mkdirSync(bin);
+    const stub = (extra) => fs.writeFileSync(path.join(bin, 'dotnet'), `#!/bin/sh\necho "dotnet $*" >> '${p.log}'\necho "/r/obj/x.targets(266,5): error NETSDK1004: Assets file '/r/src/Api/obj/project.assets.json' not found. Run a NuGet package restore to generate this file. [/r/src/Api/Api.csproj]"\n${extra}\necho 'Build FAILED.'\nexit 1\n`, { mode: 0o755 });
+    const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}` };
+    stub('');
+    p.write('src/Api/Controllers/A.cs');
+    const r = p.run({ hook_event_name: 'Stop' }, env);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const rows = fs.readFileSync(path.join(p.root, '.alfred', 'docs', 'hook-blocks', 'sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepStrictEqual(rows.map((x) => [x.mode, x.kind, x.detail.roots]), [['probe', 'not-restored', ['src/Api/Api.csproj']]]);
+    stub(`echo '/r/src/Api/A.cs(3,5): error CS0103: The name x does not exist [/r/src/Api/Api.csproj]'`);
+    p.write('src/Api/Controllers/A.cs');
+    assert.strictEqual(p.run({ hook_event_name: 'Stop' }, env).status, 2, 'a compile error beside it is still the turn\'s');
+});
+
 test('turn-build: runChecks - a timeout or a missing binary is a pass, and the budget is shared across roots', () =>
 {
     const roots = [{ kind: 'ts', config: '/r/a/tsconfig.json', cwd: '/r/a', bin: '/r/node_modules/.bin/tsc' }, { kind: 'ts', config: '/r/b/tsconfig.json', cwd: '/r/b', bin: '/r/node_modules/.bin/tsc' }];

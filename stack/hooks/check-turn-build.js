@@ -95,6 +95,10 @@ function runChecks(roots, { budgetMs = BUDGET_MS, spawn = spawnSync, now = Date.
     if (res.status === null) { outcomes.push({ root: r.config, outcome: 'timeout' }); continue; }
     const pattern = r.kind === 'ts' ? /error TS\d+/ : /: error [A-Z]+\d+/;
     const lines = `${res.stdout || ''}\n${res.stderr || ''}`.split(/\r?\n/).filter((l) => pattern.test(l));
+    // A project never restored fails `--no-restore` with NETSDK1004 (no assets file) on every line - not this turn's
+    // error, and the check never restores, as its header says. A pass, said in the outcome (audit 2026-10-08 row 45).
+    if (r.kind === 'cs' && res.status !== 0 && lines.length && lines.every((l) => /error NETSDK1004\b/.test(l)))
+    { outcomes.push({ root: r.config, outcome: 'not-restored' }); continue; }
     outcomes.push({ root: r.config, outcome: res.status === 0 ? 'clean' : 'errors', errors: lines.length });
     for (const l of lines) if (errors.length < MAX_LINES && !errors.includes(l.trim())) errors.push(l.trim());
   }
@@ -170,6 +174,22 @@ if (require.main === module)
   const roots = groupRoots(files, root);
   if (!roots.length) process.exit(0);
   const { errors, outcomes } = runChecks(roots);
+  // A root left unchecked because it was never restored is one `mode: probe` row, so the week's tally can tell a
+  // checked turn from one the check could not judge; the block rate skips it like every mode row.
+  if (outcomes.some((o) => o.outcome === 'not-restored'))
+  {
+    try
+    {
+      const dir = path.join(docs, 'hook-blocks');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.appendFileSync(path.join(dir, `${sid}.jsonl`), `${JSON.stringify({
+        ts: new Date().toISOString(), hook: path.basename(__filename), event: 'Stop', tool: '', mode: 'probe', kind: 'not-restored',
+        reason: 'probe: a project the turn changed was never restored, so dotnet build --no-restore could not judge it - logged, not blocked',
+        detail: { roots: outcomes.filter((o) => o.outcome === 'not-restored').map((o) => path.relative(root, o.root)) },
+      })}\n`);
+    }
+    catch { /* a log row never throws */ }
+  }
   if (!errors.length) process.exit(0);
 
   const ran = outcomes.filter((o) => o.outcome === 'errors').map((o) => o.root);
