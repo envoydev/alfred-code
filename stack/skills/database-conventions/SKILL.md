@@ -1,6 +1,6 @@
 ---
 name: database-conventions
-description: "Load before designing or changing a schema, writing SQL raw or via an ORM, or adding a migration, view, procedure or index. Not for in-memory data structures."
+description: "Load before designing or changing a schema, writing SQL raw or via an ORM, or adding a migration, view, procedure or index. Not for a security review."
 ---
 
 # Database conventions
@@ -50,17 +50,7 @@ The query-*writing* style - explicit column lists over `SELECT *`, ANSI `JOIN` s
 - **Every query is either parameterized or it is a vulnerability.** Never build SQL by string concatenation. Keep parameter values out of logs too: query text that carries PII or secrets must never be logged verbatim.
 - **Read with the least authority the work needs.** Default reads to read-only intent and `READ COMMITTED` isolation; reach for `SNAPSHOT` or `REPEATABLE READ` only when a specific consistency requirement justifies the extra cost, and say why.
 - **Bound every result set that could grow** - a `LIMIT` or `TOP` on any open-ended query - and never `SELECT *`, which drags unused columns over the wire and breaks the moment the schema changes.
-- **Deep pagination is keyset (seek), never `OFFSET`.** `OFFSET 20000` still scans and discards those 20000 rows, so page 1000 keeps getting slower; a keyset seek with a unique tiebreaker column holds every page equally fast:
-
-```sql
-SELECT id, created_at, total
-FROM orders
-WHERE (created_at, id) < (:last_created_at, :last_id)
-ORDER BY created_at DESC, id DESC
-LIMIT 20;
-```
-
-(SQL Server has no row-value comparison - expand to `created_at < :ts OR (created_at = :ts AND id < :id)`.)
+- **Deep pagination is keyset (seek), never `OFFSET`** - `OFFSET 20000` still scans and discards 20000 rows; the seek shape and its SQL Server spelling are `references/sql-style.md` §10.
 
 ## N+1 prevention
 
@@ -77,15 +67,14 @@ The migration *workflow* - previewing the generated SQL, carrying a rollback, re
 - **Idempotent at deploy time** - the script a deploy runs is safe to run again after a partial deploy, so a retry never fails on what the first attempt already did.
 - **Backfills run separately from schema changes** when the row count is large. Reshape the schema in one step and move the data in batches in another, so neither holds a long table lock.
 - **Production migrations are reviewed for lock impact** before they ship: an `ALTER TABLE` or an index rebuild on a large table can lock it for the duration, and that is a downtime decision, not an afterthought.
-- **Prove the rerun and the rollback, do not assert them** - a second run through a history-tracked tool (EF Core, Flyway, Liquibase) is a no-op and proves nothing, so against a scratch copy of the database: run the tool's guarded script (EF Core `migrations script --idempotent`, where the provider emits one) twice from the previous state, then roll back through the down path, then apply again - quoting each exit line. A step that fails its second pass cannot survive a partial deploy.
+- **Prove the rerun and the rollback, do not assert them** - a second run through a history-tracked tool (EF Core, Flyway, Liquibase) is a no-op and proves nothing. Against a scratch copy of the database:
+  1. Run the tool's guarded script (EF Core `migrations script --idempotent`, where the provider emits one) twice from the previous state.
+  2. On the same copy, roll back through the down path, then apply again.
+  3. Report the three exit lines - `rerun: <exit line>`, `down: <exit line>`, `reapply: <exit line>`. A step that fails its second pass cannot survive a partial deploy.
 
 ## Naming
 
-The naming *style* - keyword casing, table singular/plural, column suffixes, and constraint/index name prefixes - lives in `references/sql-style.md`. The schema-side essentials here:
-
-- Naming is a convention, which means its only job is to be consistent - the specific choice matters far less than not mixing two. Keep all identifiers in English.
-- Pick one case per project and hold it. `references/sql-style.md`'s universal default is `snake_case` unquoted, with the per-engine case (SQL Server's `PascalCase`) in its cheat-sheet. Pick singular or plural table names once and never mix the two.
-- Foreign-key columns follow the related table - `<related_table>_id` or `<RelatedTable>Id` to match the project's case. Indexes self-describe (`ix_orders_customer_id_status`) so a name tells you what it serves; leave anonymous index names to the tool only when the migration generator produces them.
+Naming style - keyword casing, singular/plural, FK and index names - is `references/sql-style.md` §2. Pick one case and one table-name number per project and never mix them; keep identifiers in English.
 
 ## Indexes
 

@@ -249,10 +249,24 @@ SQL Server also supports `OPTION (MAXRECURSION n)` to cap recursion depth (defau
 | Task | PostgreSQL | SQL Server | SQLite |
 |---|---|---|---|
 | Top N | `LIMIT n` | `SELECT TOP (n) ...` | `LIMIT n` |
-| Pagination | `LIMIT n OFFSET m` | `OFFSET m ROWS FETCH NEXT n ROWS ONLY` (2012+; requires `ORDER BY`) | `LIMIT n OFFSET m` |
+| Pagination (shallow pages) | `LIMIT n OFFSET m` | `OFFSET m ROWS FETCH NEXT n ROWS ONLY` (2012+; requires `ORDER BY`) | `LIMIT n OFFSET m` |
+| Deep pagination | keyset seek (below) | keyset seek, expanded (below) | keyset seek (below) |
 | ANSI standard | `OFFSET m FETCH NEXT n ROWS ONLY` also supported | `OFFSET/FETCH` is the ANSI form | `LIMIT`/`OFFSET` |
 
-`LIMIT`/`OFFSET` is shared by PostgreSQL and SQLite; SQL Server uses `TOP` for simple cases and `OFFSET/FETCH` for pagination (and requires `ORDER BY` with it). Always use `ORDER BY` with any row-limiting for deterministic results (PostgreSQL docs: 'using different LIMIT/OFFSET values... will give inconsistent results unless you enforce a predictable result ordering with ORDER BY'). Note large `OFFSET` values are inefficient (rows are still computed then discarded); keyset/seek pagination scales better.
+`LIMIT`/`OFFSET` is shared by PostgreSQL and SQLite; SQL Server uses `TOP` for simple cases and `OFFSET/FETCH` for pagination (and requires `ORDER BY` with it). Always use `ORDER BY` with any row-limiting for deterministic results (PostgreSQL docs: 'using different LIMIT/OFFSET values... will give inconsistent results unless you enforce a predictable result ordering with ORDER BY'). Large `OFFSET` values are inefficient (rows are still computed then discarded), so deep pagination is a keyset seek and `LIMIT`/`OFFSET` serves shallow pages only.
+
+#### Keyset (seek) pagination
+A keyset seek with a unique tiebreaker column holds every page equally fast, where `OFFSET` makes page 1000 keep getting slower:
+
+```sql
+SELECT id, created_at, total
+FROM orders
+WHERE (created_at, id) < (:last_created_at, :last_id)
+ORDER BY created_at DESC, id DESC
+LIMIT 20;
+```
+
+SQL Server has no row-value comparison - expand to `created_at < :ts OR (created_at = :ts AND id < :id)`, with `TOP (20)` in place of `LIMIT`.
 
 #### String concatenation
 | Engine | Operator/function |

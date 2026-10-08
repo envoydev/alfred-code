@@ -85,6 +85,20 @@ test('B8: Angular fake time follows the runner - fakeAsync under Karma/Jest, vi.
     assert.match(timing, /`vi\.useFakeTimers\(\)` \+ `vi\.advanceTimersByTime\(\)`/);
 });
 
+// BLOCKER 9 (conflict C4): the SQLite rebuild sample retyped an order total to REAL against the hub's money rule; the
+// lesson now rides an integer quantity (STRICT tables allow no NUMERIC - https://www.sqlite.org/stricttables.html).
+test('B9: no data-skill sample stores money in a binary float', () =>
+{
+    for (const name of ['sqlite', 'postgres', 'database-conventions', 'database-security', 'dotnet-data-access'])
+    {
+        for (const [rel, text] of skillDocs(name))
+            assert.doesNotMatch(text, /\b(total|price|amount|cost|balance)\s+(REAL|FLOAT|DOUBLE)\b|CAST\((total|price|amount) AS REAL\)/i, `${rel} types money as a binary float`);
+    }
+    const sqlite = skill('sqlite');
+    assert.match(sqlite, /^\s*qty\s+INTEGER NOT NULL,\s+-- was TEXT$/m);
+    assert.match(sqlite, /SELECT id, CAST\(qty AS INTEGER\), placed FROM orders;/);
+});
+
 // MATERIAL csharp:116 - the async baseline is stated in the preloaded body, not two reference hops away.
 test('M csharp: the body states the never-block / no-async-void rule itself', () =>
 {
@@ -255,6 +269,41 @@ test('m javascript: the async reference is generic and names where the floating-
     const ref = squash(skill('javascript', 'references/async-patterns.md'));
     assert.doesNotMatch(ref, /CancellationToken/);
     assert.match(ref, /`no-floating-promises` where the project type-checks, otherwise review every un-awaited call/);
+});
+
+// MATERIAL database-conventions:53-63 (conflict C14) - the body's keyset rule wins, and the style reference no longer
+// offers OFFSET as the one pagination form; :82-88 naming has one home.
+test('M database-conventions: keyset pagination lives in sql-style \u00a710 with no OFFSET contradiction, naming in \u00a72', () =>
+{
+    const body = squash(skill('database-conventions'));
+    assert.match(body, /\*\*Deep pagination is keyset \(seek\), never `OFFSET`\*\* - `OFFSET 20000` still scans and discards 20000 rows; the seek shape and its SQL Server spelling are `references\/sql-style\.md` \u00a710\./);
+    assert.doesNotMatch(body, /WHERE \(created_at, id\) </);
+    assert.match(body, /Naming style - keyword casing, singular\/plural, FK and index names - is `references\/sql-style\.md` \u00a72\./);
+    const style = squash(skill('database-conventions', 'references/sql-style.md'));
+    assert.match(style, /\| Pagination \(shallow pages\) \|/);
+    assert.match(style, /\| Deep pagination \| keyset seek/);
+    assert.match(style, /WHERE \(created_at, id\) < \(:last_created_at, :last_id\)/);
+    assert.match(squash(section(skill('database-conventions'), 'Migrations')), /3\. Report the three exit lines - `rerun: <exit line>`, `down: <exit line>`, `reapply: <exit line>`/);
+});
+
+// MINOR database-security:58 - each probe is given per engine, verified against the catalogs:
+// https://www.postgresql.org/docs/current/infoschema-role-table-grants.html , https://www.postgresql.org/docs/current/catalog-pg-policy.html ,
+// https://learn.microsoft.com/en-us/sql/relational-databases/system-functions/sys-fn-my-permissions-transact-sql ,
+// https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/sys-security-policies-transact-sql
+test('m database-security: the two probes are spelled per engine, and the description names its boundary', () =>
+{
+    const probe = section(skill('database-security'), 'Probe before you report');
+    assert.match(probe, /FROM information_schema\.role_table_grants WHERE grantee = '<runtime login>';/);
+    assert.match(probe, /LEFT JOIN pg_policy p ON p\.polrelid = c\.oid/);
+    assert.match(probe, /SELECT \* FROM fn_my_permissions\(NULL, 'DATABASE'\);/);
+    assert.match(probe, /SELECT name, is_enabled FROM sys\.security_policies;/);
+    assert.match(description('database-security'), /Not for schema design\.$/);
+});
+
+// MINOR postgres:122 - PgBouncer's own pool_mode default is session (https://www.pgbouncer.org/config.html).
+test('m postgres: transaction pooling is set explicitly, not assumed', () =>
+{
+    assert.match(squash(skill('postgres')), /set it explicitly \(`pool_mode = transaction` on PgBouncer, whose own default is `session`\)/);
 });
 
 // Situational detail moved out of a preloaded or rule-forced body into a reference the body cites.

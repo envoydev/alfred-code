@@ -1,11 +1,11 @@
 ---
 name: database-security
-description: "Load when hardening or security-reviewing SQL or data-layer code - 'is this query injectable', 'can one tenant read another's rows'. Not for non-security work."
+description: "Load when hardening or security-reviewing SQL or data-layer code - 'is this query injectable', 'can one tenant read another's rows'. Not for schema design."
 ---
 
 # SQL / data-layer security
 
-The database is the crown jewels and the last line of defense - by the time a request reaches it, every app-layer control has either held or failed. This is the persistence-layer map: how injection, over-privilege, tenant leakage, and secret handling show up at the SQL boundary and what to do about each. It pairs with the .NET application-security hardening skill (the app-layer EF and access-control surface; the ORM mechanics behind it are the .NET data-access skill's), the .NET cryptography-primitives skill (KDF, AES-GCM, constant-time compare) and the .NET migration-workflow skill (the reversible, data-loss-safe migration workflow) - each where the install has it. The rule under all of it: the database enforces its own security, because an app bug should not become a full-table breach.
+The database is the crown jewels and the last line of defense - by the time a request reaches it, every app-layer control has either held or failed. This is the persistence-layer map: how injection, over-privilege, tenant leakage, and secret handling show up at the SQL boundary and what to do about each. The rule under all of it: the database enforces its own security, because an app bug should not become a full-table breach.
 
 ## When to use
 
@@ -17,7 +17,7 @@ Do NOT load for non-security work.
 
 ## Injection - close every sink
 
-- **Parameterize, always.** Never build SQL by string concatenation or interpolation. In EF Core, `FromSqlInterpolated` / `FromSql` parameterize the interpolated values; raw `FromSqlRaw` / `ExecuteSqlRaw` with a concatenated string does not - a `FromSqlRaw($"... {userInput}")` is injection. ADO.NET uses `SqlParameter` / `NpgsqlParameter`, never a formatted command text.
+- **Parameterize, always.** Never build SQL by string concatenation or interpolation (any driver: bound placeholders - `$1`, `?`, `@p` - never a formatted string). In EF Core, `FromSqlInterpolated` / `FromSql` parameterize the interpolated values; raw `FromSqlRaw` / `ExecuteSqlRaw` with a concatenated string does not - a `FromSqlRaw($"... {userInput}")` is injection. ADO.NET uses `SqlParameter` / `NpgsqlParameter`, never a formatted command text.
 
 ```csharp
 var bad  = db.Users.FromSqlRaw("select * from users where name = '" + name + "'"); // injection - the string is built before the API sees it
@@ -55,7 +55,17 @@ var safe = db.Users.FromSql($"select * from users where name = {name}");        
 
 ## Probe before you report
 
-Two checks turn this from an opinion into a finding, and both are one query. List the runtime login's grants and quote the result - a login that can `CREATE`, `DROP` or read another schema is the finding, whatever the queries look like. Then confirm row-level security is enabled on every tenant-scoped table and quote the policy count; zero policies on a tenant table is the IDOR. A check you did not run is reported UNVERIFIED.
+Two checks turn this from an opinion into a finding, and both are one query, run as the runtime login. List the login's grants and quote the result - a login that can `CREATE`, `DROP` or read another schema is the finding, whatever the queries look like. Then confirm row-level security is enabled on every tenant-scoped table and quote the policy count; zero policies on a tenant table is the IDOR. A check you did not run is reported UNVERIFIED.
+
+```sql
+-- PostgreSQL: grants, then RLS state and policy count per table
+SELECT table_schema, table_name, privilege_type FROM information_schema.role_table_grants WHERE grantee = '<runtime login>';
+SELECT c.relname, c.relrowsecurity, count(p.polname) AS policies FROM pg_class c LEFT JOIN pg_policy p ON p.polrelid = c.oid WHERE c.relkind = 'r' GROUP BY 1, 2;
+
+-- SQL Server: the login's database permissions, then the security policies and whether each is on
+SELECT * FROM fn_my_permissions(NULL, 'DATABASE');
+SELECT name, is_enabled FROM sys.security_policies;
+```
 
 ## Review output
 

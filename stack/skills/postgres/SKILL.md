@@ -119,7 +119,7 @@ A high `dead_pct` with an old `last_autovacuum` is the table whose scale factor 
 ## Connections and pooling
 
 - Each backend is a real process (~1-3MB) - always pool (PgBouncer or built-in). Rule of thumb `pool_size ~= cores*2`; a few dozen real connections serve hundreds of clients.
-- Transaction-mode pooling is the default. Session mode is required only for features bound to one backend: temp tables, session GUCs, session advisory locks, and SQL-level `PREPARE` / `EXECUTE`.
+- Run the pooler in transaction mode by default - set it explicitly (`pool_mode = transaction` on PgBouncer, whose own default is `session`) rather than trusting the pooler's default. Session mode is required only for features bound to one backend: temp tables, session GUCs, session advisory locks, and SQL-level `PREPARE` / `EXECUTE`.
 - Size `max_connections` to RAM (100-200), not to peak client count - that is the pooler's job, and `work_mem * max_connections` must stay bounded.
 - Protocol-level prepared statements work behind a transaction pooler that tracks them: PgBouncer does from 1.21 when `max_prepared_statements` is non-zero (the default is 200 from 1.24; read the live value with `SHOW CONFIG` on its admin console). For any other pooler, check its docs at use. Only on a pooler that does not track them, disable driver-side preparation: Npgsql keeps `Max Auto Prepare` at its default 0 and the code calls no explicit `Prepare()` (the ORM-side skill covers the EF Core wiring), postgres.js `{ prepare: false }`, JDBC `prepareThreshold=0`.
 
