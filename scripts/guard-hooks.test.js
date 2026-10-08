@@ -4111,6 +4111,19 @@ test('guard-desktop-exec: App launch_executable and every macOS Shell call are d
   assert.ok(rows.every((row) => row.hook === 'guard-desktop-exec.js'));
 });
 
+// Audit 2026-10-08 row 40: the ledger kept 120 characters of the Shell command, credential included, and the denial
+// suggested a file-name receipt line, which opens that name in every directory.
+test('guard-desktop-exec: the ledger keeps the Shell verb only, and the denial suggests the full path', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'desk-ledger-'));
+  const shell = desktopRun(root, MAC_SHELL[0], { command: 'TOKEN=ghp_0123456789abcdefghijABCDEFGHIJ012345 curl -H "x-api-key: sk-ant-api03-secretvalue" https://example.com' });
+  assert.equal(shell.status, 2);
+  const ledger = fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'desk.jsonl'), 'utf8');
+  assert.deepStrictEqual(JSON.parse(ledger.trim()).detail, { tool: 'Shell', verb: 'curl' });
+  assert.doesNotMatch(ledger, /ghp_|sk-ant/, 'no credential reaches the ledger');
+  const app = desktopRun(root, WIN_APP[0], { mode: 'launch_executable', executable: 'C:\\Tools\\build.exe' });
+  assert.match(app.stderr, /with the line `C:\\Tools\\build\.exe`/, 'the full path, not build.exe');
+});
+
 test('guard-desktop-exec: the DESKTOP-EXEC-ALLOW receipt opens it - this session, under 8h', () => {
   const root = fs.mkdtempSync(path.join(TMP, 'desk-allow-'));
   const receipt = path.join(root, '.alfred', 'docs', 'flow', 'DESKTOP-EXEC-ALLOW');

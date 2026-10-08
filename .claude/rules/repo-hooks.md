@@ -451,7 +451,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     user's ruling of 2026-09-29 (I10): Windows-MCP's `App` with `mode: launch_executable` (any executable, caller-given
     args - the server excludes tools by NAME, never by mode) and every MacOS-MCP `Shell` call (a shell command no
     shell guard sees) are denied; `App`'s `launch` / `switch` / `resize` pass. 'Allow' is honoured through
-    `<docs-path>/flow/DESKTOP-EXEC-ALLOW` (`App`, `Shell`, one executable's path or file name, or `*`). PROTECTIVE
+    `<docs-path>/flow/DESKTOP-EXEC-ALLOW` (`App`, `Shell`, one executable's path or file name, or `*`); the denial
+    suggests the full path, since a file-name line opens that name in every directory, and a Shell block row keeps
+    the command's verb only, never the command (audit 2026-10-08). PROTECTIVE
     (final review IM2, the user's ruling): it holds under `minimal`, a Cursor payload and a repo never set up, where
     it writes no row - the Shell it gates is one the other protective guards never see.
   - `monitor-session.js` (`PostToolUse` on every tool + `UserPromptSubmit`) - a live monitor that never

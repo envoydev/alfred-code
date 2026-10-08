@@ -121,7 +121,10 @@ if (allowed) process.exit(0);
 
 const receiptRel = path.relative(ROOT, receipt).split(path.sep).join('/');
 if (isShell) {
-  global.BLOCK_DETAIL = { tool: 'Shell', command: String(input.command || '').slice(0, 120) };
+  // The ledger keeps the command's VERB, as every other guard keeps a branch or a token: 120 characters of the command
+  // carried whatever credential it held (audit 2026-10-08 row 40). A leading `NAME=value` is skipped, never recorded.
+  const verb = (String(input.command || '').trim().split(/\s+/).find((w) => !/^[A-Za-z_]\w*=/.test(w)) || '').slice(0, 40);
+  global.BLOCK_DETAIL = { tool: 'Shell', verb };
   process.stderr.write(
     `Blocked: the macOS desktop server's Shell tool runs a shell command outside every shell guard (the rm,\n` +
     `secret, force-push and cross-project write guards judge the Bash tool, not this one).\n` +
@@ -146,7 +149,8 @@ process.stderr.write(
   `carrying, in this order -\n` +
   `  'Launch it by name or drive the UI instead (Recommended)' - App mode launch, then Click / Type\n` +
   `  'Allow this executable this session' - it starts with the user's full rights\n` +
-  `On 'Allow', write the receipt ${receiptRel} with the line \`${exeBase || 'App'}\` (or \`App\` for every launch this\n` +
+  // The full path, not its file name: a file-name line opens that name in every directory (audit 2026-10-08 row 40).
+  `On 'Allow', write the receipt ${receiptRel} with the line \`${executable || 'App'}\` (or \`App\` for every launch this\n` +
   `session) and retry the SAME call. It is honoured for this session only, under 8h.\n`,
 );
 process.exit(2);
