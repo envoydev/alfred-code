@@ -17,15 +17,12 @@ narration line per area at most. Anything the user wants CHANGED routes to the s
 ## 1. Find the install
 
 Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js" state .` - one word (two for a worktree), read from the same
-install records the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp`, a copied <!-- legacy-name -->
+install records the hooks read (`alfred-code.stamp`, a copied
 `hooks/docs.js`) in this repo, its git top level or a worktree's main checkout. Never test for
 `.claude/skills` or `.claude/agents`: a plugin-route install can have neither.
 
 - `not-installed` -> say so and route to `/alfred-code:setup`.
 - `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:status from there' and stop - every table below reads this tree's own `.claude`, which holds nothing.
-- `legacy-global` -> a 1.x global install whose stamp still sits in the account dir: say so and
-  route to `/alfred-code:update`, which moves it into the project. Render nothing else - its copies
-  are not where this command reads.
 - `legacy-unstamped` -> say so and route to `/alfred-code:update`: a legacy copy-route install that never
   wrote a stamp (no install record, but two of the stack's own signatures in `.claude/`), whose picks
   update reads off disk before it writes the stamp. Render nothing else - with no stamp every table below
@@ -55,11 +52,10 @@ One table, no ask - it is six rows and every other area reads against it:
 | docs root | .alfred/docs (default) |
 | initialised | 2026-09-24 |
 
-- `stack version`: the stamp's version and commit - `alfred-code.stamp`, or a 1.x
-  `claude-stack.stamp` read the same way until its first 2.0.0 update (`no stamp - source never <!-- legacy-name -->
-  resolved at install time` when neither is there).
+- `stack version`: the stamp's version and commit - `alfred-code.stamp` (`no stamp - source never
+  resolved at install time` when it is not there).
 - `running plugin`: the `alfred-code` row of `claude plugin list --json` - its version, its
-  marketplace key (the part after `@`; a 1.x install keeps its own for the whole 2.x line) and its
+  marketplace key (the part after `@`) and its
   scope. No CLI: `claude CLI unavailable`.
 - `scope`: the stamp's `scope:` line; absent = `project`.
 - `data root`: `ALFRED_CODE_DATA_PATH` from the scope file (`settings.local.json` over `settings.json`),
@@ -93,8 +89,7 @@ interleaves its rows (fragments render as broken, misaligned pieces). Every tabl
 `total: N` line. Read everything from disk at render time - never from memory or a prior run's
 output.
 
-**Skills and agents** - the ROUTE decides the set. With the core `alfred-code` entry (or a
-`claude-stack-<stack>` entry an older release installed and update has not removed yet) enabled in <!-- legacy-name -->
+**Skills and agents** - the ROUTE decides the set. With the core `alfred-code` entry enabled in
 the plugins listing, the installed set is what those plugins CARRY - `node
 "${CLAUDE_PLUGIN_ROOT}/scripts/selection-plugins.js" --items <their names, comma-separated>` prints
 one `skill <name>` / `agent <name>` line each (the core: every seat, no skill) - minus every seat
@@ -262,7 +257,7 @@ reported nothing to do. `health` is `ok` when the row's `errors` list is empty o
 `type` of each `errorDetails` entry, comma-separated (the `errors` text when a row has no details).
 It is the only place a plugin that cannot load says so: a row the catalog no longer lists reads
 `enabled: true` in settings, loads nothing, and shows the failure nowhere but this field
-(`docs/rebrand-evidence.md` S13, S25).
+(`docs/plugin-cli-evidence.md` S13, S25).
 
 **Environment** - the install's knobs, one row each, from the STACK VIEW (`settings.local.json` over
 `settings.json` key by key, at every scope):

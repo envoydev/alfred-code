@@ -28,5 +28,5 @@ reproduce - and the verdict says plainly which tier it rests on.
   where the project registered one (the baseline comments out the MCPs a project does not need,
   so it can simply be absent from your tool list here).
 - **Never in reach:** a LINK. A monitoring-issue URL, a private dashboard, a ticket - if no tool
-  in this session can fetch it, say so in one line and ask the user to paste the event, rather
-  than guessing what it contained.
+  in this session can fetch it, say so in one line and put it through the step-1 stop: 'Paste the event
+  (Recommended)' / 'Proceed at tier 4 from the code', rather than guessing what it contained.

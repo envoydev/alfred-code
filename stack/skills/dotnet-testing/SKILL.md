@@ -1,6 +1,6 @@
 ---
 name: dotnet-testing
-description: "Use before writing, changing or reviewing .NET tests, auditing test quality, mutation testing or coverage. Not for Angular, Ionic or plain TS/JS tests."
+description: "Use before writing, changing or reviewing .NET tests, auditing test quality, mutation testing or coverage setup. Not for Angular, Ionic or plain TS/JS tests."
 ---
 
 # .NET Testing Approach
@@ -31,6 +31,7 @@ The strategy keys off the *role* a unit plays, not a layer name - so it maps ont
   (asked at capture time, kept in its COVERAGE.md) - this skill sets no number.
 - What this skill owns is the mechanics: coverage is computed after exclusions so the number
   reflects real logic coverage, not padding - the exclusion catalog below is that list for .NET.
+- The collection commands and the CRAP ranking: `references/coverage-collection.md`.
 
 ## Standard exclusions (via `[ExcludeFromCodeCoverage]` or coverlet filters)
 
@@ -57,18 +58,13 @@ The strategy keys off the *role* a unit plays, not a layer name - so it maps ont
 
 Defaults for a new project: **xUnit** runner, **NSubstitute** substitutes, **FluentAssertions 7.x** assertions (v8+ needs a paid commercial licence, so an upgrade is a licensing decision, not a routine bump; the Apache-2.0 fork AwesomeAssertions is the permissive way forward). One runner, one substitute library and one assertion library per project - migrate, never blend. When the project has already picked, or is picking now, the alternatives and the reason for each are `references/library-routing.md`. Substitute only what you cannot construct, stay loose rather than strict, and verify the boundary that matters instead of every interaction. Snapshot / Verify assertions - approving serialized output instead of hand-written asserts - are `references/snapshot-testing.md`.
 
-### Coverage collection
-
-- **coverlet** is the default collector (msbuild or runsettings). Combined with `dotnet test --collect:"XPlat Code Coverage"`.
-- Reports via `ReportGenerator` for HTML / Cobertura / OpenCover formats.
-- For CRAP-score risk hotspots, pair the coverage report with a complexity pass: CRAP = cyclomatic complexity weighed against that method's coverage, so a long, branchy, thinly-covered method ranks above a simple uncovered one. ReportGenerator emits complexity per method beside coverage, which is enough to rank; where the repo has a dedicated analysis for it, use that instead, and with neither, rank by uncovered branches alone.
-
 ## Test project conventions
 
 - One test project per production project, mirroring namespace and folder structure.
 - Folder layout inside test project mirrors the SUT's folder layout.
 - Shared fixtures live in `*.TestSupport` / `*.Testing` projects when reused across multiple test projects; otherwise inline.
 - Run the suite at minimal verbosity so the captured output stays lean: `dotnet test -v minimal` (or `--logger "console;verbosity=minimal"`), and read a failure by windowing to the first error / failed assertion, not the whole log - test output is context every seat that runs the gate pays for.
+- Before any done word: run `dotnet test -v minimal` and quote its summary line; for a fix, quote the red run on the unfixed code first.
 
 ## Cancellation and async
 
@@ -84,11 +80,7 @@ Defaults for a new project: **xUnit** runner, **NSubstitute** substitutes, **Flu
 
 ## What NOT to test
 
-- Auto-properties with no logic.
-- Generated code, EF migrations, framework-provided types.
-- DI registration extension methods (cover via integration test, not unit test).
-- Pure DTOs / records used only as data carriers.
-- Other people's libraries - assume `FluentValidation`, `Polly`, `EF Core` work. Test your wiring of them, not them.
+Everything in §Standard exclusions (DI registration extensions are covered by an integration test, not a unit test), plus auto-properties with no logic and other people's libraries - assume `FluentValidation`, `Polly`, `EF Core` work; test your wiring of them, not them.
 
 ## Auditing an existing suite
 
@@ -99,5 +91,5 @@ The rules above are for *writing* tests; reviewing an existing suite is its own 
 These areas sit outside this skill. Where your skill list has nothing covering one, the note beside it is what to do instead.
 
 - Performance microbenchmarks and crash / hang dump capture belong to the skill covering live-process measurement (BenchmarkDotNet, dotnet-dump, dotnet-gcdump). A test is not a benchmark: without that skill, keep timing assertions out of the suite entirely rather than approximating one.
-- The reward-hacking / coverage-gaming check before any 'done' belongs to the skill covering .NET analyzers and build-gate enforcement; the CRAP ranking is paired at §Coverage above. Without it, the shortcuts to refuse are still the obvious ones: a skipped test, a weakened assertion, a lowered threshold.
-- Testability refactors, the clock seam, and async-returns-`Task`-not-`void` are baseline rules owned by `csharp`. Exception and Result shapes under assertion belong to the skill covering HTTP error handling; without it, assert the shape the production code already returns rather than inventing an envelope.
+- The reward-hacking / coverage-gaming check before any 'done' belongs to the skill covering .NET analyzers and build-gate enforcement; the CRAP ranking is `references/coverage-collection.md`. Without it, the shortcuts to refuse are still the obvious ones: a skipped test, a weakened assertion, a lowered threshold.
+- Exception and Result shapes under assertion belong to the skill covering HTTP error handling; without it, assert the shape the production code already returns rather than inventing an envelope.

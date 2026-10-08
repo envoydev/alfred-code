@@ -94,7 +94,10 @@ var result = source
 ### Spacing
 - One space after keywords (`if (`, `while (`), none after method names (`Foo(`).
 - Spaces around binary operators. No space around unary or `.`.
-- No trailing whitespace. One blank line between members. Never more than one consecutive blank line.
+- No trailing whitespace. One blank line between members. Never more than one consecutive blank line - that is the formatter's to catch, or IDE2000 (experimental: `dotnet_style_allow_multiple_blank_lines_experimental = false`).
+
+### Member order and StyleCop
+The house member order (SKILL.md's 'Class member ordering') has no SDK analyzer behind it, and StyleCop is no stand-in: its SA1201 puts constructors before properties and SA1202 puts public members before private, so adding that pack flags the house order rather than holding it.
 
 ### `this.` qualification
 - Do not qualify with `this.` unless required to disambiguate (e.g. constructor parameter shadowing when not using primary constructors). Rider flags redundant `this.` by default.

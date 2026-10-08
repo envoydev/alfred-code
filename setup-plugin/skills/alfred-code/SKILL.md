@@ -10,14 +10,12 @@ Route by install state, then hand the user the ONE command to run. The actions a
 commands - the user stays at the wheel, so you answer with the command, never run the flow
 yourself. The state is one script read of the project's `.claude/`, nothing inferred:
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js" state .` prints `not-installed`,
-`legacy-global`, `legacy-unstamped`, `worktree-of-installed <main>`, `installed` or `initialised`.
+`legacy-unstamped`, `worktree-of-installed <main>`, `installed` or `initialised`.
 
-- **Installed** = an install record in this repo or its git top level: `alfred-code.stamp`,
-  the 1.x `claude-stack.stamp`, or a copied `hooks/docs.js`. <!-- legacy-name -->
+- **Installed** = an install record in this repo or its git top level: `alfred-code.stamp` or a
+  copied `hooks/docs.js`.
 - **Worktree of an installed checkout** = a git worktree whose own `.claude/` holds no record,
   while its main checkout (`<main>`) does. The hooks count it set up; the commands cannot act on it.
-- **Legacy global** = no project record, but a 1.x global install's `claude-stack.stamp` in the <!-- legacy-name -->
-  account dir - the one install whose stamp does not live in the project yet.
 - **Legacy unstamped** = no install record, but a legacy copy-route install's signatures in `.claude/` -
   two of: the stack's hook files, its env keys, three or more of its skill, seat or rule names.
 - **Initialised** = the stamp's `initialised:` line holds a date - init's memory step writes it once
@@ -32,8 +30,6 @@ Then:
 - Worktree of an installed checkout -> no command here: 'This is a git worktree of <main>, which
   holds the install - run /alfred-code:<the command the ask needs> from there' - every command stops
   on this tree, and the installer refuses it.
-- Legacy global -> `/alfred-code:update`, whatever the ask: it moves the 1.x global install into
-  this project, and every other command reads the project.
 - Legacy unstamped -> `/alfred-code:update`, whatever the ask: it reads the picks off disk, each old
   name under its new one, and writes the stamp every other command reads.
 - Installed, never initialised -> `/alfred-code:init` (the one-time bootstrap, in a session started

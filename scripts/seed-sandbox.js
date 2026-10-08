@@ -16,11 +16,10 @@ const ROOT = path.join(__dirname, '..');
 const SEED = path.join(__dirname, 'install', 'alfred-code.js');
 const POSIX_ONLY = { skip: process.platform === 'win32' && 'the recording stub is a shell script' };
 
-// A 1.x install's shell may still export CLAUDE_STACK_* alongside the current ALFRED_CODE_* names - // legacy-name
-// both prefixes are stripped so neither reaches the sandbox, in place, returning the same object.
-function scrubLegacyEnv(env)
+// The stack's ALFRED_CODE_* names are stripped so none reaches the sandbox, in place, returning the same object.
+function scrubStackEnv(env)
 {
-    for (const k of Object.keys(env)) if (k.startsWith('ALFRED_CODE_') || k.startsWith('CLAUDE_STACK_')) delete env[k]; // legacy-name
+    for (const k of Object.keys(env)) if (k.startsWith('ALFRED_CODE_')) delete env[k];
     return env;
 }
 
@@ -132,7 +131,7 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
     for (const k of ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY']) delete env[k];
     // uv's own cut-off variable changes what the copy route registers (M24) - a case sets it through `env`.
     delete env.UV_EXCLUDE_NEWER;
-    scrubLegacyEnv(env);
+    scrubStackEnv(env);
     // The memory model pre-warm starts the service the snapshot declares (~166MB on a cold machine): off in the
     // sandbox unless a case switches it on with its own stand-in for uvx.
     env.ALFRED_CODE_MEMORY_WARM = '0';
@@ -179,4 +178,4 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 }
 
-module.exports = { seedRun, POSIX_ONLY, scrubLegacyEnv };
+module.exports = { seedRun, POSIX_ONLY, scrubStackEnv };

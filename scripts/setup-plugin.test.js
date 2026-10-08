@@ -63,14 +63,13 @@ test('setup is the walk and init the bootstrap - both manual-only, neither a poi
     assert.match(setup, /^## 11\. Install$/m, 'the walk lives in setup');
     assert.ok(!/^## \d+\. Install$/m.test(init), 'init never installs');
     assert.ok(!/commands\/(init|setup)\.md/.test(setup + init), 'neither reads the other as its instructions');
-    // Over an existing install setup routes to configure, over a 1.x global one to update; with
-    // none, init routes to setup. Both read the install the way the hooks do - the stamp state.
+    // Over an existing install setup routes to configure; with none, init routes to setup. Both read
+    // the install the way the hooks do - the stamp state.
     assert.match(setup, STATE_READ);
     assert.match(init, STATE_READ);
     assert.match(flat(setup), /`installed` or `initialised` -> stop and route to `\/alfred-code:configure`/);
-    assert.match(flat(setup), /`legacy-global` \(a 1\.x global install whose stamp still sits in the account dir\) -> stop and route to `\/alfred-code:update`/);
     assert.match(flat(init), /\*\*Nothing installed\*\* - `not-installed`: stop and name `\/alfred-code:setup`/);
-    assert.match(flat(init), /`legacy-global` \(a 1\.x global install whose stamp still sits in the account dir\): stop the same way on `\/alfred-code:update`/);
+    assert.ok(!/legacy-global/.test(setup + init), 'no state for an account-dir install is left');
     assert.match(flat(init), /\*\*Setup ran in THIS session\*\* - stop: name the restart/);
 });
 
@@ -107,7 +106,7 @@ test('setup: no memory level, the init prerequisites deferred, and a close that 
 
 // R77: the ENABLE question pre-selects the LIVE state (plan-out) over an install - never the
 // stamp's own line - and every installed engine only on a first install. Setup never meets a stamp
-// any more (a 1.x global one routes to update first), so the live read is the DELTA walk's.
+// any more, so the live read is the DELTA walk's.
 test('the walk: the playwright ENABLE pre-selection reads plan-out\'s live state in DELTA (R77)', () => {
     const walk = walkBody();
     const mcps = flat(walk.slice(walk.indexOf('## MCPs'), walk.indexOf('## Plugins')));
@@ -154,10 +153,8 @@ test('init: the bootstrap order - read, plan, one machine ask, memory, captures 
 // The router's three states, each read from a file rather than inferred.
 test('the router: nothing installed -> setup, installed but never initialised -> init, initialised -> no bootstrap', () => {
     const router = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md'), 'utf8'));
-    assert.match(router, /\*\*Installed\*\* = an install record in this repo or its git top level: `alfred-code\.stamp`, the 1\.x `claude-stack\.stamp`, or a copied `hooks\/docs\.js`/); // legacy-name
-    // R90 N1: a 1.x global install is routed to update, which moves it into the project.
-    assert.match(router, /`legacy-global`/);
-    assert.match(router, /Legacy global -> `\/alfred-code:update`, whatever the ask/);
+    assert.match(router, /\*\*Installed\*\* = an install record in this repo or its git top level: `alfred-code\.stamp` or a copied `hooks\/docs\.js`/);
+    assert.ok(!/legacy-global|Legacy global/.test(router), 'no state for an account-dir install is left');
     assert.ok(!/project mode only/.test(router), 'validate runs at every scope');
     // I1: the state is ONE script read - the stamp's `initialised:` line only init writes - never the
     // memory switch alone, which an update or the user's own settings could flip.
@@ -170,7 +167,7 @@ test('the router: nothing installed -> setup, installed but never initialised ->
     assert.match(router, /Initialised -> no bootstrap/);
     // The same record list the hook gate and init read - one definition of 'set up'.
     const { INSTALL_RECORDS } = require('../stack/hooks/hook-prelude.js');
-    assert.deepStrictEqual(INSTALL_RECORDS.map((r) => r.join('/')), ['alfred-code.stamp', 'claude-stack.stamp', 'hooks/docs.js']); // legacy-name
+    assert.deepStrictEqual(INSTALL_RECORDS.map((r) => r.join('/')), ['alfred-code.stamp', 'hooks/docs.js']);
 });
 
 // `claude plugin eval` has no offline mode, so the checks it would run before billing are run here:
@@ -508,40 +505,32 @@ test('every command that runs the installer runs the SEED, and names the shell s
     assert.ok(!/alfred-code\.(sh|ps1)|install\/alfred-code\.js/.test(status), 'status must stay read-only');
 });
 
-// D1: from 2.0.0 the shell seed is refused. The frozen twin hardcodes the 1.x names a 2.0.0
-// registration cannot resolve, so a body that still RUNS it on `seed=shell` installs a broken
-// release. Every body names the refusal line the seed itself prints, and runs no twin.
-const D1 = 'the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer'; // legacy-name
+// D1: from 2.0.0 the shell seed is refused. The frozen twin cannot resolve a 2.0.0 registration, so
+// a body that still RUNS it on `seed=shell` installs a broken release. Every body names the refusal
+// line the seed itself prints, and runs no twin.
+const D1 = 'the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer';
 test('D1: on seed=shell every command body prints the refusal and runs no twin', () => {
     for (const file of ['commands/setup.md', 'commands/init.md', 'commands/update.md', 'commands/configure.md', 'commands/validate.md', 'commands/uninstall.md', 'references/source-protocol.md'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, file), 'utf8');
         assert.ok(body.includes(D1), `${file} does not print the D1 refusal`);
-        assert.ok(!/(bash|pwsh -File) "\$TMP\/repo\/scripts\/os\/claude-stack\.(sh|ps1)"/.test(body), `${file} still runs the frozen twin`); // legacy-name
+        assert.ok(!/(bash|pwsh -File) "\$TMP\/repo\/scripts\/os\//.test(body), `${file} still runs the frozen twin`);
     }
 });
 
-// A 1.x install keeps its marketplace key (`claude-stack`) for the whole 2.x line, so a body that // legacy-name
-// READS the user's install never spells a stack entry `@envoydev`: it names the key the core is
-// listed under - the resolve line's `key=`.
+// A registered marketplace key is the user's own, so a body that READS the user's install never
+// spells a stack entry `@envoydev`: it names the key the core is listed under - the resolve line's
+// `key=`. The resolve line's own row filter (`@envoydev$`, the anchored match it derives `key=` from)
+// is the one place the key is spelled.
 test('the command bodies read stack entries under the key the core is listed under, never a literal @envoydev', () => {
     const files = ['references/source-protocol.md', ...fs.readdirSync(path.join(PLUGIN_DIR, 'commands')).map((f) => `commands/${f}`)];
     for (const file of files)
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, file), 'utf8');
-        assert.ok(!/@envoydev\b/.test(body), `${file} spells a stack entry @envoydev: ${(/.{0,60}@envoydev.{0,20}/.exec(body) || [''])[0]}`);
+        assert.ok(!/@envoydev\b(?!\$)/.test(body), `${file} spells a stack entry @envoydev: ${(/.{0,60}@envoydev\b(?!\$).{0,20}/.exec(body) || [''])[0]}`);
     }
     const protocol = fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'source-protocol.md'), 'utf8');
     assert.match(protocol, /key=\$\{MKT:-\?\}/, 'the bash resolve line names the key (its variable is MKT - a KEY-shaped name is what the secret guard blocks)');
-});
-
-// A 1.x install's stamp keeps its old name until its first 2.0.0 update, so a manual read names both.
-test('status and configure name the 1.x stamp beside alfred-code.stamp', () => {
-    for (const name of ['status', 'configure'])
-    {
-        const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
-        assert.ok(body.includes('claude-stack.stamp'), `${name} names only alfred-code.stamp`); // legacy-name
-    }
 });
 
 // Task 3 (2.1.0): a legacy copy-route install that never wrote a stamp read `not-installed`, so setup took
@@ -550,7 +539,7 @@ test('status and configure name the 1.x stamp beside alfred-code.stamp', () => {
 test('an unstamped legacy install routes to update from every gate; setup asks once, update recommended', () =>
 {
     const router = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md'), 'utf8'));
-    assert.match(router, /prints `not-installed`, `legacy-global`, `legacy-unstamped`,/);
+    assert.match(router, /prints `not-installed`, `legacy-unstamped`,/);
     assert.match(router, /Legacy unstamped -> `\/alfred-code:update`, whatever the ask/);
     const setup = flat(cmdBody('setup'));
     assert.match(setup, /`legacy-unstamped` \([^)]*\) -> ONE AskUserQuestion: 'Update this install \(Recommended\)'[^;]*'Fresh setup anyway'/);
@@ -614,7 +603,7 @@ test('status: read-only from the running plugin - stamp state, health columns, u
     assert.ok(!/\$TMP\/repo/.test(status), 'status resolves no snapshot - every script is the running plugin\'s');
     assert.ok(!/global mode|project mode/i.test(status), 'status has no global mode');
     assert.match(f, /Never test for `\.claude\/skills` or `\.claude\/agents`: a plugin-route install can have neither/);
-    assert.match(f, /`legacy-global` -> a 1\.x global install whose stamp still sits in the account dir: say so and route to `\/alfred-code:update`/);
+    assert.ok(!/legacy-global/.test(f), 'status has no account-dir install state');
     assert.match(status, /"\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/library-check\.js" --project \. --source "\$\{CLAUDE_PLUGIN_ROOT\}" --json/);
     assert.match(f, /When `invalid` is above 0, one more line: `invalid: <n> stamp name\(s\) are not valid item names/);
     assert.match(f, /`health` is `ok` when the row's `errors` list is empty or absent, else the `type` of each `errorDetails` entry/);
@@ -794,15 +783,14 @@ test('configure and validate inventory through --print-plan --plan-out and apply
     }
 });
 
-test('configure emits hook none when its Hooks area was walked, and update finds a 1.x global install through the preflight', () =>
+test('configure emits hook none when its Hooks area was walked, and update has no global mode', () =>
 {
     const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
     assert.match(configure, /--emit "\$TMP\/selection\.txt" --check \[--hooks-answered\]/);
-    // R51 / I8: the preflight reads the account's 1.x stamp itself - update has no global mode.
+    // R51 / I8: the preflight reads the project's stamp only - update has no global mode.
     const update = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8'));
     assert.ok(!/Global mode:/.test(update), 'update has no global mode left');
-    assert.match(update, /A `--space` install passes `--config-dir ~\/\.claude-<space>`, so a 1\.x global stamp is looked for in that account/);
-    assert.match(update, /A `legacy-stamp: <file> - a 1\.x global install; \.\.\.` line means the baseline is the account's 1\.x stamp: say once that this update moves it into the project/);
+    assert.ok(!/legacy-stamp:/.test(update), 'no account-stamp baseline line is left to read');
     assert.match(update, /`settings\.local\.json` laid over `settings\.json` at local scope/);
 });
 
@@ -825,7 +813,7 @@ test('a hand-edited library copy is reported before an apply overwrites it, and 
 
 // update.md's ONE post-install grep is all the close-out ever reads of the installer log, so every
 // retirement line the installer writes - the removal, its add-back line, and a row KEPT at another
-// scope or parked, each with the uninstall command the user runs - must pass that pattern. The lines
+// scope, with the uninstall command the user runs - must pass that pattern. The lines
 // come from a real seed run, so a reworded log line or a narrowed pattern turns this red.
 test('update: the post-install grep passes every retirement line the installer writes', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
 {
@@ -838,7 +826,6 @@ test('update: the post-install grep passes every retirement line the installer w
         { id: 'alfred-code@envoydev', version: '1.3.0', scope: 'project', enabled: true },
         { id: 'sentry@envoydev', version: '1.3.0', scope: 'project', enabled: true },
         { id: 'angular-cli@envoydev', version: '1.3.0', scope: 'user', enabled: true },
-        { id: 'claude-stack-aspnet@envoydev', version: '1.3.0', scope: 'project', enabled: false }, // legacy-name
     ]);
     const prepare = (repo) =>
     {
@@ -852,7 +839,6 @@ test('update: the post-install grep passes every retirement line the installer w
         'registration removal': /mcp pruned: /,
         'add-back line': /add it back: claude mcp add /,
         'kept at another scope': /is installed at user scope, not this run's - kept/,
-        'kept parked': /is parked here - kept/,
     };
     for (const [kind, re] of Object.entries(kinds))
     {
@@ -868,7 +854,6 @@ test('update: the post-install grep passes every retirement line the installer w
 // of the log, from the snapshot the run installs from (this repo's script). A line only the 2.0.0 grep
 // carries is never seen on that run, so each line a user must act on carries the `!!` marker both read.
 const GREP_1X = /installed\/refreshed this run|mcp repaired:|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings\.json env:|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy/;
-const OLD_KEY = 'claude-stack'; // legacy-name
 const COPY_ENV = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
 
 // What each update body shows of one installer log: `first` - the 1.x body's grep and the `warn:` lines
@@ -908,28 +893,6 @@ function assertSurfaced(report, text, { firstRun = true, start = text } = {})
     assert.ok(report.first.warn.includes(line.trim()), `update-preflight --log does not forward: ${line}\nwarn: ${report.first.warn.join('\nwarn: ')}`);
 }
 
-// A-I2 / A-I3 / A-I4 (re-review): the three migration lines print on the first 2.0.0 run of a 1.x global
-// install - the run the 1.x body drives, passing a model-judged --scope.
-test('update: a 1.x install\'s first 2.0.0 run shows the migration lines through the 1.x body\'s own filters (A-I2, A-I3, A-I4)', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
-{
-    const { seedRun } = require('./seed-sandbox.js');
-    const { out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\nplugin claude-hud\n', {
-        args: ['--scope', 'project'],
-        plugins: JSON.stringify([OLD_KEY, `${OLD_KEY}-hooks`, 'context7-local'].map((n) => ({ id: `${n}@${OLD_KEY}`, version: '1.3.0', scope: 'user', enabled: true }))),
-        prepare: (repo, work) =>
-        {
-            fs.mkdirSync(path.join(work, 'acct'), { recursive: true });
-            fs.writeFileSync(path.join(work, 'acct', `${OLD_KEY}.stamp`), 'sha: abc\nversion: 1.3.0\nscope: global\n');
-            fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true });
-            fs.writeFileSync(path.join(repo, '.claude', 'hooks', 'docs.js'), '');
-        },
-    });
-    const report = reportOf(out);
-    assertSurfaced(report, 'context7-local removed - if you ran /mcp disable context7 for it, run /mcp enable context7');
-    assertSurfaced(report, 'core moved to alfred-code at user scope - other projects on this account keep their 1.x seat denies until each runs /alfred-code:update');
-    assertSurfaced(report, 'claude-hud has no status line yet - run /alfred-code:init to set it up');
-});
-
 // N1 (re-review): C10's stale user-scope registration (the line carrying the command to run), A-M2's kept
 // and unreadable lines and C11's here-only switch-off reach neither body without a marker. C12's move
 // off local scope cannot meet the 1.x body: 1.x wrote no local scope (its --scope took project or
@@ -962,17 +925,17 @@ test('update: the stale-registration, kept, unreadable and here-only lines reach
 
 // F7 (observation 1): C8's line naming a settings.local.json this run created and git would commit - a
 // machine path in the repo unless the user acts - matched neither the 1.x body's grep (`settings\.json
-// env:` only) nor its `warn:` lines, so a 1.x project's first 2.0.0 run never showed the advice.
-test('update: a 1.x project install\'s first 2.0.0 run shows the settings.local.json gitignore advice through both update bodies (F7)', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
+// env:` only) nor its `warn:` lines, so the advice never showed there.
+test('update: a project install\'s update shows the settings.local.json gitignore advice through both update bodies (F7)', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
 {
     const { seedRun } = require('./seed-sandbox.js');
     const { out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
         args: ['--scope', 'project'],
-        plugins: JSON.stringify([OLD_KEY, `${OLD_KEY}-hooks`].map((n) => ({ id: `${n}@${OLD_KEY}`, version: '1.3.0', scope: 'project', enabled: true }))),
+        plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '1.3.0', scope: 'project', enabled: true }]),
         prepare: (repo) =>
         {
             fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true });
-            fs.writeFileSync(path.join(repo, '.claude', `${OLD_KEY}.stamp`), 'sha: abc\nversion: 1.3.0\nscope: project\n');
+            fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 1.3.0\nscope: project\n');
             fs.writeFileSync(path.join(repo, '.claude', 'hooks', 'docs.js'), '');
         },
     });

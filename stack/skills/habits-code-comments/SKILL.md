@@ -24,7 +24,7 @@ No ticket or work-item id (JIRA-123, #456, an Azure DevOps item) in a comment: i
 
 ## Doc comments
 
-**When.** Required on public and protected members and on anything a module or library exports. On internal and private members only when the name and signature leave the contract unclear - most private helpers need none.
+**When.** Where the project shows no pattern, on public and protected members and on anything a module or library exports. On internal and private members only when the name and signature leave the contract unclear - most private helpers need none.
 
 **Structure.** A doc comment is written complete, because a partial tag set misleads and trips CS1573:
 

@@ -49,6 +49,12 @@
 // without this line the next update would read the pick back as gone; with it the pick stays, and the first update
 // after the user removes theirs registers the stack's own. A run writes it afresh from what it held.
 //
+// `mcp-denied` is each `deniedMcpServers` serverName entry the stack wrote (`<file scope>:<name>`, `local` for
+// settings.local.json, `project` for settings.json): a configure drop of a server the stack registered at a BROADER
+// scope switches it off for this scope alone (code.claude.com/docs/en/managed-mcp - the denylist merges from every
+// settings scope). The file cannot tell that entry from the user's own, so this line is what a later run lifts when
+// the server is picked again, and what uninstall lifts.
+//
 // `data-root` is the project's data root this run left in effect (ALFRED_CODE_DATA_PATH, stack/mcp/data-root.js):
 // the next run's baseline for a root change, even one made by hand in settings. `data-pending` is each move of
 // a server's own data the run recorded for that server's launcher to make at its next start
@@ -84,7 +90,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { stampFile, LEGACY } = require('./brand.js');
+const { stampFile } = require('./brand.js');
 // Fix round 1: inlined rather than `require('../derive-state.js')` - that module pulls in
 // selection-plugins.js, plugin-placement.js, install/manifest.js, hook-prelude.js and install/
 // plugins.js, a heavy graph for a one-line splitter, and every consumer of stamp.js (library-
@@ -101,7 +107,7 @@ const { readJson, parseJson } = require('./json-file.js');
 
 // N1 (R58 fix round 2, security): a stamp is a project file a clone can fill with ANY text, so a
 // name it records - a skill, a seat or a rule - is validated before it ever reaches a path join, a
-// copy, a printed 'rm -rf' or a selection line: migrateLegacyGlobal below, library-check.js's rows,
+// copy, a printed 'rm -rf' or a selection line: library-check.js's rows,
 // library-stamp.js's session echo, derive-state.js's stampCarried. One path segment, the shape the
 // installer itself gives an item name (lowercase letters, digits, dot, underscore, hyphen, starting
 // with a letter or digit); never empty, never '.' or '..', no '/' or '\'. The regex alone already
@@ -236,7 +242,7 @@ function readLedger(file)
 
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, stoodDown = [], mcpHeld = [], library = {}, ledger = null, data = null } = fields;
+    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, stoodDown = [], mcpHeld = [], mcpDenied = [], library = {}, ledger = null, data = null } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
@@ -264,6 +270,7 @@ function renderStamp(fields)
         ...(Array.isArray(playwrightEnabled) ? [`browser-enabled: ${playwrightEnabled.join(',')}`] : []),
         ...(stoodDown.length ? [`stood-down: ${stoodDown.map((e) => `${e.scope}:${e.spec}`).join(',')}`] : []),
         ...(mcpHeld.length ? [`mcp-held: ${mcpHeld.map((e) => `${e.scope}:${e.name}`).join(',')}`] : []),
+        ...(mcpDenied.length ? [`mcp-denied: ${mcpDenied.map((e) => `${e.scope}:${e.name}`).join(',')}`] : []),
         ...(data && data.root ? [`data-root: ${data.root}`] : []),
         ...(data ? require('../../stack/mcp/data-root.js').renderPending(data.pending || []) : []),
         ...(data && data.kept ? ['data-move: kept'] : []),
@@ -275,15 +282,13 @@ function renderStamp(fields)
     ].join('\n');
 }
 
-// T16 (R29): every scope's stamp lives in the PROJECT now - a 1.x GLOBAL install's account-dir
-// stamp is a LEGACY read only (migrateLegacyGlobal below moves it into the project on the first
-// 2.x update; the account copy is left in place for other projects that still read it).
+// T16 (R29): every scope's stamp lives in the PROJECT.
 const stampDir = ({ projectRoot }) => path.join(projectRoot, '.claude');
 
 function stampPath(at) { return stampFile(stampDir(at)).write; }
 
-// What a run READS: the new stamp, else a 1.x install's under its old name (null when neither is
-// there). Every reader of the last install goes through this; only writeStamp writes.
+// What a run READS: the stamp, or null when there is none. Every reader of the last install goes
+// through this; only writeStamp writes.
 function stampFiles(at)
 {
     const { read, write } = stampFile(stampDir(at));
@@ -293,7 +298,7 @@ function stampFiles(at)
 function writeStamp(opts)
 {
     const {
-        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, seatsRoute, picked, playwright, playwrightEnabled, stoodDown, mcpHeld, library, ledger, data,
+        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, seatsRoute, picked, playwright, playwrightEnabled, stoodDown, mcpHeld, mcpDenied, library, ledger, data,
         version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
     const initialised = opts.initialised || initialisedValue({ claudeDir: stampDir({ projectRoot }), now });
@@ -322,15 +327,10 @@ function writeStamp(opts)
             installed: now.toISOString().replace(/\.\d{3}Z$/, 'Z'), installedMs: now.getTime(),
             action, scope, initialised,
             hooks: shippedHooks(hooksCatalog), hooksRoute, seatsRoute,
-            alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, playwrightEnabled, stoodDown, mcpHeld, library, ledger, data,
+            alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, playwrightEnabled, stoodDown, mcpHeld, mcpDenied, library, ledger, data,
         }));
     }
     catch (err) { note(`stamp could not be written to ${dest} (${err.message})`); return null; }
-
-    // The 1.x stamp goes only once the new one is on disk - until then it is the only record.
-    const { legacy } = stampFile(dir);
-    try { if (fs.existsSync(legacy)) { fs.rmSync(legacy, { force: true }); log(`  stamp: ${path.basename(legacy)} removed - ${path.basename(dest)} replaces it`); } }
-    catch (err) { note(`the old stamp ${legacy} could not be removed (${err.message}) - the new one is read first either way`); }
 
     log(`  stamp: ${dest} @ ${source.sha.slice(0, 12)}`);
     return dest;
@@ -393,7 +393,7 @@ function readInstalledAt(file)
 }
 
 // The release the last install recorded (`version:`), or '' - no stamp, or none on it. Read from any
-// stamp, a 1.x one included: the retirements key on it.
+// stamp: the retirements key on it.
 function readVersion(file)
 {
     let text = '';
@@ -468,6 +468,16 @@ function readMcpHeld(file)
     if (!m) return [];
     return m[1].split(',').map((s) => /^(project|local|user):(.+)$/.exec(s.trim())).filter((e) => e && validItemName(e[2])).map(([, scope, name]) => ({ scope, name }));
 }
+// The `mcp-denied` record - [] with no stamp or no line; an entry of any other shape is dropped, so a hand-edited
+// line never makes a run lift an entry from a file it did not name.
+function readMcpDenied(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return []; }
+    const m = /^mcp-denied:(.*)$/m.exec(text);
+    if (!m) return [];
+    return m[1].split(',').map((s) => /^(project|local):(.+)$/.exec(s.trim())).filter((e) => e && validItemName(e[2])).map(([, scope, name]) => ({ scope, name }));
+}
 // The data lines - { root: '' when none, pending: [], kept } with no stamp or none of them.
 function readDataLines(file)
 {
@@ -534,19 +544,9 @@ function initialisedValue({ claudeDir, now = new Date() })
 }
 
 // The account dir - the installer's own rule (alfred-code.js): CLAUDE_CONFIG_DIR, else the --space
-// profile's ~/.claude-<space>, else ~/.claude. A 1.x global install kept its stamp there.
+// profile's ~/.claude-<space>, else ~/.claude.
 const accountDir = (env = process.env, space = '') => env.CLAUDE_CONFIG_DIR
     || path.join(env.HOME || env.USERPROFILE || require('node:os').homedir(), space ? `.claude-${space}` : '.claude');
-
-// R51 / R90 N1: a 1.x GLOBAL install's stamp, still in the account dir because no update has migrated
-// it - read only while the project holds no stamp of its own (the migrateLegacyGlobal guard). The path,
-// or null. update-preflight.js and the router read it; the installer's own read is the same fallback.
-function legacyAccountStamp({ claudeDir, env = process.env })
-{
-    if (stampFile(claudeDir).read) return null;
-    const file = path.join(accountDir(env), LEGACY.stamp);
-    return fs.existsSync(file) ? file : null;
-}
 
 // The checkout that holds this directory's install record - the prelude's own record list over the
 // prelude's own checkouts (the dir, its git top level, a worktree's main checkout), so the router and
@@ -599,7 +599,7 @@ function worktreeMain(projectRoot)
 // not plausibly have it of its own (manifest.js stackOwnName) - `typescript`, `npm`, `markdown-docs` are a
 // project's as often as the stack's, and a tree an uninstall left (a changed env key kept) beside them is no
 // install to take over.
-const STACK_ENV_KEY = /^(ALFRED_CODE_|CLAUDE_STACK_)/; // legacy-name
+const STACK_ENV_KEY = /^ALFRED_CODE_/;
 function legacySignature(root, { manifest } = {})
 {
     let names;
@@ -637,43 +637,28 @@ function legacyUnstamped(projectRoot, { manifest } = {})
     return ownCheckouts(projectRoot).some((at) => legacySignature(at, { manifest }));
 }
 
-// The router's one read: not-installed | legacy-global | legacy-unstamped | worktree-of-installed |
-// installed (never initialised) | initialised. The stamp is read in the checkout that holds the record.
-// worktree-of-installed is R95 above - the CLI prints the main checkout's path after it. legacy-global
-// is a 1.x global install whose stamp the first update has not moved into the project yet: update's to
-// take, never init's (N1). legacy-unstamped is the record-less copy-route install above, update's too.
-function installState(projectRoot, env = process.env)
+// The router's one read: not-installed | legacy-unstamped | worktree-of-installed | installed (never
+// initialised) | initialised. The stamp is read in the checkout that holds the record.
+// worktree-of-installed is R95 above - the CLI prints the main checkout's path after it.
+// legacy-unstamped is the record-less copy-route install above, update's to take.
+function installState(projectRoot)
 {
     const { at } = recordCheckout(projectRoot);
     if (!at) return legacyUnstamped(projectRoot) ? 'legacy-unstamped' : 'not-installed';
     if (worktreeMain(projectRoot)) return 'worktree-of-installed';
     const claudeDir = path.join(at, '.claude');
-    if (legacyGlobalStamp(projectRoot, env)) return 'legacy-global';
     return isInitialised(initialisedValue({ claudeDir })) ? 'initialised' : 'installed';
 }
 
-// THE ONE TEST for `legacy-global` (A-I1): an install record in the project's checkouts, no stamp of its
-// own there, and the 1.x stamp in the account dir - the account stamp's path, or null. The router's state,
-// the scope a command passes back and the installer's own scope decision all read it, so they never
-// disagree; a repo that was never set up is none of it, whatever the account holds.
-function legacyGlobalStamp(projectRoot, env = process.env)
-{
-    const { at } = recordCheckout(projectRoot);
-    return at ? legacyAccountStamp({ claudeDir: path.join(at, '.claude'), env }) : null;
-}
-
 // M5 (Task 18b fix round 1): the scope the last install used, for a command to pass back to the
-// installer - the stamp under either name (a 1.x install keeps `claude-stack.stamp` until its first // legacy-name
-// 2.0.0 update), a 1.x `global` as `user` (args.js reads the flag the same way), and anything else -
+// installer - a `global` line as `user` (args.js reads the flag the same way), and anything else -
 // no stamp, no line, a hand-edited value - as `project`, the floor every scope always had. Read in the
-// tree the command runs in, never a worktree's main checkout (R95 stops those before this read). A-I1: an
-// unmigrated 1.x GLOBAL install (legacyGlobalStamp) reads the account stamp's scope - its `global` is
-// `user` - so the first update moves the install at the scope it lives at.
+// tree the command runs in, never a worktree's main checkout (R95 stops those before this read).
 const SCOPES = ['project', 'user', 'local'];
-function installScope(projectRoot, env = process.env)
+function installScope(projectRoot)
 {
     const own = ownCheckouts(projectRoot);
-    const read = stampFile(path.join(own[own.length - 1], '.claude')).read || legacyGlobalStamp(projectRoot, env);
+    const read = stampFile(path.join(own[own.length - 1], '.claude')).read;
     const raw = read ? readStampScope(read).toLowerCase() : '';
     const scope = raw === 'global' ? 'user' : raw;
     return SCOPES.includes(scope) ? scope : 'project';
@@ -691,95 +676,10 @@ function markInitialised(claudeDir, now = new Date())
     try { fs.writeFileSync(read, next); return true; } catch { return false; }
 }
 
-// T16 (R29): a 1.x GLOBAL install put its stamp AND its skills in the account dir. A project that
-// still shows no stamp of its own (a native project/user/local install already writes one - this
-// never runs twice) is READ from there ONCE, on the first 'update' after 2.0.0, and copied into the
-// project: the stamp under its OWN (1.x) name, so the existing read-new-else-legacy logic above
-// picks it up unchanged, and the skills tree beside it. The ACCOUNT copies are never touched - other
-// projects on the same machine may still be reading them.
-//
-// C1 (R47): copy only the names THIS STAMP RECORDS - the `library-skills` keys plus the
-// `picked-skills` names (with `@home` stripped) - directories only, never the whole account
-// `skills/` tree. The account dir also holds the user's PERSONAL skills and the claude.ai-synced
-// `synced/` folder (a reserved name), neither of which this project's stamp ever named; a blind
-// `fs.cpSync` of every entry copied those into the repo too, and force-overwrote a project skill of
-// the same name in place. A name the stamp records but the project already has is left alone and
-// logged - the account copy is never allowed to clobber a project file.
-function migrateLegacyGlobal({ configDir, projectRoot, renamed = null, log = () => {}, note = () => {} })
-{
-    if (!configDir || !projectRoot) return false;
-    const acctLegacy = path.join(configDir, LEGACY.stamp);
-    if (!fs.existsSync(acctLegacy)) return false;
-    const claudeDir = path.join(projectRoot, '.claude');
-    if (stampFile(claudeDir).read) return false;   // this project already has its own stamp - nothing to migrate
-
-    fs.mkdirSync(claudeDir, { recursive: true });
-    fs.copyFileSync(acctLegacy, path.join(claudeDir, LEGACY.stamp));
-
-    const legacy = readLibrary(acctLegacy) || {};
-    const picked = readPicked(acctLegacy) || { skills: [] };
-    const names = new Set([
-        ...Object.keys(legacy.skills || {}),
-        ...(picked.skills || []).map((e) => splitPick(e).name),
-    ]);
-
-    let moved = 0;
-    const shadow = [];
-    const acctSkills = path.join(configDir, 'skills');
-    if (names.size && fs.existsSync(acctSkills))
-    {
-        const dstSkills = path.join(claudeDir, 'skills');
-        fs.mkdirSync(dstSkills, { recursive: true });
-        for (const name of names)
-        {
-            // N1: a name the account 1.x stamp records is not trusted shape-blind - skipped and
-            // logged by its LENGTH only, never echoed, so a corrupted or hand-edited stamp can never
-            // widen the copy (or the removal command below) past the account's own skills/ dir.
-            if (!validItemName(name, acctSkills)) { log(`  skill name skipped (${String(name).length} chars) - not a valid skill name`); continue; }
-            const src = path.join(acctSkills, name);
-            let isDir = false;
-            try { isDir = fs.statSync(src).isDirectory(); } catch { isDir = false; }
-            if (!isDir) continue;   // the stamp named it, the account no longer has a folder for it
-            const dst = path.join(dstSkills, name);
-            // Either way - copied now, or already there - the account still holds a same-named
-            // folder, so it still SHADOWS the project's once Claude Code loads this session
-            // (personal over project); both branches record it for the disclosure below.
-            if (fs.existsSync(dst)) { log(`  skill ${name}: already in the project - the account copy was not used`); shadow.push(name); continue; }
-            try { fs.cpSync(src, dst, { recursive: true }); moved += 1; shadow.push(name); }
-            catch (err) { note(`the account skill ${name} could not be copied (${err.message})`); }
-        }
-    }
-    // I6 (R47): the account copies are LEFT IN PLACE, and Claude Code runs a personal skill over a
-    // project one of the same name ('Resolve skills that share a name', code.claude.com/docs/en/skills)
-    // - so every name just migrated is still what actually loads, from the account, until it is
-    // removed by hand. Name the exact command rather than a wholesale `rm -rf` of the account
-    // skills dir, which may hold other, unrelated personal skills.
-    // M5 (Task 22 fix round 1): a RENAMED name overrides nothing - the project now loads the new name, so
-    // the account copy loads BESIDE it under the old one, in every project. Named apart, own command.
-    const renames = (renamed && renamed.skills) || {};
-    const beside = shadow.filter((n) => Object.hasOwn(renames, n));
-    const over = shadow.filter((n) => !Object.hasOwn(renames, n));
-    const rmOf = (list) => `rm -rf ${list.map((n) => `'${path.join(acctSkills, n)}'`).join(' ')}`;
-    const rmCmd = over.length ? rmOf(over) : '';
-    log(`  a 1.x global install's stamp and ${moved} skill(s) were moved from ${configDir} into the project - `
-        + (over.length || !beside.length
-            ? 'the account copies stay in place and OVERRIDE the migrated ones (Claude Code runs a personal skill '
-                + 'over a project one of the same name) - once every project has updated, remove them:'
-                + (rmCmd ? ` ${rmCmd}` : ' (nothing was actually copied - no removal needed)')
-                + (beside.length ? '; ' : '')
-            : '')
-        + (beside.length
-            ? `the account copies of the renamed ${beside.map((n) => `${n} (now ${renames[n]})`).join(', ')} override `
-                + 'nothing - they load BESIDE the new names, under the old ones, in every project - once every '
-                + `project has updated, remove them: ${rmOf(beside)}`
-            : ''));
-    return true;
-}
-
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
-    readPicked, readLibrary, readLedger, emptyLedger, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, readStoodDown, readMcpHeld, readVersion, readInstalledAt, migrateLegacyGlobal, validItemName,
-    readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacyAccountStamp, legacyGlobalStamp, legacySignature, legacyUnstamped, worktreeMain, installScope, readDataLines,
+    readPicked, readLibrary, readLedger, emptyLedger, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, readStoodDown, readMcpHeld, readMcpDenied, readVersion, readInstalledAt, validItemName,
+    readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacySignature, legacyUnstamped, worktreeMain, installScope, readDataLines,
     accountDir,
 };
 

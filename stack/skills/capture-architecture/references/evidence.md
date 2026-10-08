@@ -12,6 +12,7 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 - **One `+dirty` escape hatch: the same uncommitted files still unchanged** - measured: one run proved exactly this and stayed inline correctly - the escalation is for a dirty set the diff CANNOT account for, not for the suffix itself
 
 ## 2. GATHER
+- **merge the smallest modules into ONE combined dispatch** - measured: preload is 51% of seat input tokens across the collection, paid per seat whatever it returns
 - **A spilled digest: grep it, or Read it with an offset and a limit - never whole** - measured: one unranged Read of a spilled result cost ~10.5k tokens for a fact a single grep would have returned
 
 ## 3. AGGREGATE + REASON
@@ -22,6 +23,7 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 - **settle it with the cheapest deterministic probe in-session first** - measured: two digest conflicts settled by one command each, where a re-dispatch would have cost ~50k tokens and returned another opinion
 
 ## 5. WRITE
+- **no probe that checks a code claim runs after that quoted line** - measured: a line-number grep re-verified a code claim after the first doc write, with nothing marking where verification was supposed to have already ended
 - **the queue is drained in ONE closing pass once every probe is done** - measured: verification that continued past the first write turned one doc into 6 extra patch passes and 1.02M tokens, each pass re-reading a doc that had grown since the last
 - **Over target, run the spill pass NOW - this run owns the doc** - measured: a map grew 460 -> 738 lines across rounds because the capture declined to fix it and the loop's intake at the time read only the assessment
 

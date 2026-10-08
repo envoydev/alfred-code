@@ -4,7 +4,7 @@
 // Both directions matter: a hook that fires on the wrong turn trains the model to ignore blocks.
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
-require('./hook-test-env').isolateHookSuite();
+require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // audit 2026-10-08: its hooks' tmp state stays in a dir of its own
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -40,15 +40,9 @@ delete process.env.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW;
 // Same route, second key: an install of this stack writes ALFRED_CODE_DOCS_PATH into the
 // project's settings.json env, which Claude Code exports into every tool call - so a suite run
 // inside a stack-INSTALLED checkout resolves the receipt cases below from the SESSION's docs root
-// instead of from the case, and the old-spelling fallback case can never take its fallback
-// (measured 2026-09-22: red on an installed checkout, green in CI, which installs nothing).
+// instead of from the case (measured 2026-09-22: red on an installed checkout, green in CI, which
+// installs nothing).
 delete process.env.ALFRED_CODE_DOCS_PATH;
-delete process.env.CLAUDE_DOCS_PATH;
-// envOf (hook-prelude.js, 2.0.0) now answers a bare CLAUDE_STACK_* the same way it answers // legacy-name
-// ALFRED_CODE_* - so the same session-env leakage above reaches every 1.x-spelled setting too
-// (measured here: CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW=1000000 resolved every unproven window in // legacy-name
-// this file as 1M). Strip the whole prefix rather than naming each key by hand.
-for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_')) delete process.env[k]; // legacy-name
 // Every guard appends a block row to `<root>/<docs-path>/hook-blocks/`, where the root falls back
 // to the process cwd when CLAUDE_PROJECT_DIR is unset - so a suite run from this checkout forged
 // 4MB of field ledger into the repo's own `.alfred/docs/hook-blocks/` (measured 2026-09-07: 12,480
@@ -196,6 +190,17 @@ test('guard-stop-contract: a credential shape in a tool result demands the rotat
   fs.mkdirSync(path.dirname(receipt), { recursive: true });
   fs.writeFileSync(receipt, '*\n');
   assert.equal(stop().status, 0, 'the consented exposure is not re-asked');
+  // audit 2026-10-08: a Stop naming its session reads the receipt only through a `session:` line naming it
+  const stopAs = (sid) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp, session_id: sid },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' } });
+  assert.equal(stopAs('s1').status, 2, 'a receipt naming no session is no consent for a session');
+  fs.writeFileSync(receipt, 'session: s2\n*\n');
+  assert.equal(stopAs('s1').status, 2, 'another session\'s receipt is no consent');
+  fs.writeFileSync(receipt, 'session: s1\n*\n');
+  assert.equal(stopAs('s1').status, 0, 'this session\'s receipt is');
+  fs.writeFileSync(receipt, 'session: s1\n');
+  assert.equal(stopAs('s1').status, 2, 'a session line alone allows nothing');
+  fs.writeFileSync(receipt, '*\n');
   const old = (Date.now() - 9 * 3600 * 1000) / 1000; fs.utimesSync(receipt, old, old);
   assert.equal(stop().status, 2, 'a stale receipt is no consent');
 });
@@ -301,15 +306,52 @@ test('guard-fresh-session-start: the size offer is answerable - the retry passes
   // ONE transcript throughout: the offer is remembered per session, so growth has to be written
   // into the same file a real session would grow.
   const tp = transcript('rearm', ctxRows('rearm', 450000));
-  const grow = (ctx) => fs.writeFileSync(tp, ctxRows('rearm', ctx).map((r) => JSON.stringify(r)).join('\n') + '\n');
+  // growth is appended, as a real session grows: the answer written before it stays in the file
+  const grow = (ctx) => fs.appendFileSync(tp, JSON.stringify(assistantRow(`rearm-${ctx}`, 'ok', { cache_read_input_tokens: ctx })) + '\n');
+  const answer = () => fs.appendFileSync(tp, JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'ask1', content: 'Your questions have been answered: "Start it here?"="Run it here anyway"' }] } }) + '\n');
   const call = () => runIn('guard-fresh-session-start.js',
     { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp }, env).status;
   assert.equal(call(), 2, 'the offer is made once');
-  assert.equal(call(), 0, 'the identical retry passes - the answer is honoured');
+  // audit 2026-10-08: the retry passed with no ask between - a soft gate; the offer stands until an ask answers it
+  assert.equal(call(), 2, 'an identical retry with no answered ask is the same offer again');
+  answer();
+  assert.equal(call(), 0, 'once the ask is answered, the retry passes - the answer is honoured');
   grow(500000);
   assert.equal(call(), 0, 'still inside 1.5x of the offered context');
   grow(700000);
   assert.equal(call(), 2, 'past 1.5x growth the number changed, so the question is new');
+});
+
+test('audit 2026-10-08: the fresh-session guard reads commands and the router skill, an answered fresh ask, and only its own namespace', () => {
+  const home = fs.mkdtempSync(path.join(TMP, 'fresh-cmd-'));
+  const plugin = path.join(home, 'plugins', 'cache', 'envoydev', 'alfred-code', '9.9.9');
+  for (const [rel, body] of [['setup-plugin/commands/setup.md', '---\ndescription: "x"\ndisable-model-invocation: true\n---\nbody\n'],
+    ['setup-plugin/skills/alfred-code/SKILL.md', '---\nname: alfred-code\ndisable-model-invocation: true\n---\nbody\n']]) {
+    fs.mkdirSync(path.dirname(path.join(plugin, rel)), { recursive: true });
+    fs.writeFileSync(path.join(plugin, rel), body);
+  }
+  const skillCall = (skill, extra = {}) => runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: transcript(`fc-${skill}`, ctxRows('fc', 1000)) },
+    { env: { ...process.env, CLAUDE_CONFIG_DIR: home, ...extra } });
+  for (const s of ['alfred-code:setup', 'alfred-code:alfred-code']) {
+    const r = skillCall(s);
+    assert.equal(r.status, 2, `${s}: a flagged command or router skill in the cache`);
+    assert.match(r.stderr, new RegExp(`can run /${s} themselves`), 'the escape names the command as it is typed');
+  }
+  // (the running plugin root is read through the same pluginHeads list; a plugin-launched hook in this unset-up
+  // scratch project stands down, so that route is not replayed here)
+  // a stop ask that carried the fresh-session choice was answered this turn: the phase Skill call is not asked again
+  const answeredFresh = transcript('fresh-answered', [
+    ...ctxRows('fa', 450000),
+    { type: 'user', message: { content: 'go on with the plan' } },
+    { type: 'assistant', message: { id: 'fa-ask', content: [{ type: 'tool_use', id: 'ask9', name: 'AskUserQuestion', input: { questions: [{ question: 'Next step?', options: [{ label: 'Implement (Recommended)' }, { label: 'Resume in a fresh session' }] }] } }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'ask9', content: 'Your questions have been answered: "Next step?"="Implement (Recommended)"' }] } },
+  ]);
+  const logDir = fs.mkdtempSync(path.join(TMP, 'fresh-fa-'));
+  const phase = (skill, tp) => runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: tp },
+    { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir } }).status;
+  assert.equal(phase('task-implement', answeredFresh), 0, 'the answered fresh ask is the answer');
+  assert.equal(phase('task-implement', transcript('fresh-unanswered', ctxRows('fu', 450000))), 2, 'with no such ask the offer stands');
+  assert.equal(phase('other:task-solve', transcript('fresh-foreign', ctxRows('ff', 450000))), 0, 'another plugin\'s task-solve is not this stack\'s run');
 });
 
 // The trigger is an absolute token count PER WINDOW TIER, one environment variable each. The
@@ -351,10 +393,7 @@ test('guard-fresh-session-start: the trigger is the tier\'s own variable', () =>
     'without a model id it is not the 1M tier - it is the default one, off here');
   assert.equal(call(at('w-1m-260k', 260000), w1m({ ALFRED_CODE_FRESH_SESSION_1M: '250000' })), 2, 'the tier variable moves it');
   assert.equal(call(at('w-1m-450k-off', 450000), w1m({ ALFRED_CODE_FRESH_SESSION_1M: '0' })), 0, '0 switches that tier off');
-  assert.equal(call(at('w-1m-450k-pct0', 450000), w1m({ CLAUDE_STACK_FRESH_SESSION_PCT: '0' })), 2, 'the retired percentage key is dead - it is no longer an off switch'); // legacy-name
-  // A 1.x settings.json keeps its CLAUDE_STACK_* names until its first 2.0.0 update renames them - the // legacy-name
-  // tier variables answer under the old name meanwhile, like every other setting envOf reads.
-  assert.equal(call(at('w-200k-110-legacy', 110000), w200({ ALFRED_CODE_FRESH_SESSION_200K: '', CLAUDE_STACK_FRESH_SESSION_200K: '100000' })), 2, 'the 1.x name moves it too'); // legacy-name
+  assert.equal(call(at('w-1m-450k-pct0', 450000), w1m({ ALFRED_CODE_FRESH_SESSION_PCT: '0' })), 2, 'the retired percentage key is dead - it is no longer an off switch');
 });
 
 // ---- hooks audit: every gate branch pinned in both directions (block AND the exemption) ----
@@ -398,6 +437,32 @@ const gateIn = (dir, command, env = {}) => runIn('guard-ungated-commit.js', { to
   env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ...env }, cwd: dir,
 }).status;
 const forty = () => Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n');
+
+// Audit 2026-10-08 S9: the stop contract's markers and log, the fresh-session offers and the read guard's session files
+// were never pruned. Each hook sweeps its own prefix past 7 days when it writes its state.
+test('the stop contract, the fresh-session offer and the read guard sweep their own state past 7 days', () => {
+  const logDir = fs.mkdtempSync(path.join(TMP, 'sweep-logs-'));
+  const plant = (dir, name, days, body = 'x') => { const f = path.join(dir, name); fs.writeFileSync(f, body); const t = new Date(Date.now() - days * 86400000); fs.utimesSync(f, t, t); return f; };
+  const env = { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir } };
+  const stopOld = plant(logDir, 'guard-stop-askvoice-old-x', 8);
+  const chainOld = plant(logDir, 'alfred-stop-held-guard-x-Stop-old-main', 8);
+  const stopFresh = plant(logDir, 'guard-stop-rotate-new-x.logged', 6);
+  const log = path.join(logDir, 'guard-stop-contract.log');
+  fs.writeFileSync(log, Array.from({ length: 60000 }, (_, i) => `2026-10-01T00:00:00Z row ${i}`).join('\n') + '\n');
+  assert.equal(runIn('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'sweep', last_assistant_message: 'Done.', stop_hook_active: false }, env).status, 0);
+  assert.ok(!fs.existsSync(stopOld) && !fs.existsSync(chainOld), 'the stop contract swept its markers and the chain markers');
+  assert.ok(fs.existsSync(stopFresh), 'a six-day marker is kept');
+  assert.ok(fs.statSync(log).size <= 256 * 1024, `the log was capped (${fs.statSync(log).size} bytes)`);
+  const freshOld = plant(logDir, 'guard-fresh-size-old.offered', 8, '100 1');
+  const tp = transcript('sweep-fresh', ctxRows('sweep-fresh', 450000));
+  assert.equal(runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp }, env).status, 2, 'the offer is made');
+  assert.ok(!fs.existsSync(freshOld), 'writing an offer swept an offer past 7 days');
+  // the hook's temp dir is this suite's own (isolateHookSuite ownTmp), the parent of TMP
+  const readOld = plant(os.tmpdir(), 'guard-read-gone.json', 8, '{}');
+  const readFresh = plant(os.tmpdir(), 'guard-read-kept.json', 6, '{}');
+  assert.equal(run('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: BIG, offset: 1, limit: 10 }, session_id: 'sweep-read' }), 0);
+  assert.ok(!fs.existsSync(readOld) && fs.existsSync(readFresh), 'the read guard swept its own session files past 7 days');
+});
 
 test('guard-read-whole-file: the Read matcher gates whole-file shapes and the cumulative cap', () => {
   const read = (input, session_id) => run('guard-read-whole-file.js', { tool_name: 'Read', tool_input: input, session_id });
@@ -469,9 +534,28 @@ test('guard-protected-force-push: HEAD and @ are the current branch, and -C or a
   assert.equal(fp('git push -f origin HEAD:main', dir).status, 2, 'an explicit protected destination still blocks');
 });
 
+test('guard-protected-force-push: option values, a clustered -d and a forced wildcard (audit 2026-10-08)', () => {
+  const dir = scratchRepoOn('main');
+  const fp = (c, tool = 'Bash') => runIn('guard-protected-force-push.js', { tool_name: tool, tool_input: { command: c }, cwd: dir }, {});
+  for (const c of ['git push -f -o ci.skip origin', 'git push --force --push-option=x --repo origin', 'git push -ud origin main', 'git push -qd origin develop',
+    "git push -f origin 'refs/heads/*:refs/heads/*'", "git push origin '+refs/heads/*:refs/heads/*'", "git push --prune origin 'refs/heads/*:refs/heads/*'"])
+    assert.equal(fp(c).status, 2, `must block on main: ${c}`);
+  for (const c of ['git push -o ci.skip origin main', 'git push -u origin feature/x', "git push origin 'refs/heads/*:refs/heads/*'", 'git push -o ci.skip origin'])
+    assert.equal(fp(c).status, 0, `must allow: ${c}`);
+  // The other two shell routes: PowerShell and Monitor run the same push.
+  assert.equal(fp('git push --force origin main', 'PowerShell').status, 2, 'PowerShell');
+  assert.equal(fp('git push -ud origin main', 'Monitor').status, 2, 'Monitor');
+  // git's own stderr stays out of the denial: an unborn repo printed `fatal: ambiguous argument 'HEAD'`.
+  const unborn = fs.mkdtempSync(path.join(os.tmpdir(), 'unborn-'));
+  spawnSync('git', ['-C', unborn, 'init', '-q']);
+  const r = runIn('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: 'git push -f' }, cwd: unborn }, {});
+  assert.equal(r.status, 0);
+  assert.doesNotMatch(r.stderr, /fatal/, 'no git noise on stderr');
+});
+
 test('guard-catastrophic-rm: an unscoped marketplace remove is blocked - it uninstalls every plugin from it at every scope', () => {
   const rm = (c) => bash('guard-catastrophic-rm.js', c);
-  assert.equal(rm('claude plugin marketplace remove claude-stack'), 2); // legacy-name
+  assert.equal(rm('claude plugin marketplace remove other-market'), 2);
   assert.equal(rm('cd x && claude plugin marketplace rm envoydev'), 2);
   assert.equal(rm('claude plugin marketplace remove envoydev --scope user'), 0);
   assert.equal(rm('claude plugin marketplace remove envoydev --scope=project'), 0);
@@ -591,11 +675,8 @@ test('guard-ungated-commit: the receipt states', () => {
   assert.equal(gateIn(dir, `echo 'VERIFIED x' > .alfred/docs/flow/COMMIT-GATE && git commit -am x`), 2, 'atomic VERIFIED without authorized:');
   assert.equal(gateIn(dir, 'git commit -am "COMMIT-GATE VERIFIED authorized: x > flow/COMMIT-GATE"'), 2, 'receipt words inside the commit message');
   fs.mkdirSync(path.join(dir, 'docs', 'flow'), { recursive: true });
-  fs.writeFileSync(path.join(dir, 'docs', 'flow', 'COMMIT-GATE'), 'WAIVED - "go"\n');
+  fs.writeFileSync(path.join(dir, 'docs', 'flow', 'COMMIT-GATE'), 'WAIVED - "skip the review"\n');
   assert.equal(gateIn(dir, 'git commit -am x', { ALFRED_CODE_DOCS_PATH: 'docs' }), 0, 'the receipt is looked up under ALFRED_CODE_DOCS_PATH');
-  // the pre-0.2.43 spelling still resolves, so an install the rename has not reached keeps working
-  assert.equal(gateIn(dir, 'git commit -am x', { CLAUDE_DOCS_PATH: 'docs' }), 0, 'the old key is read as a fallback');
-  assert.equal(gateIn(dir, 'git commit -am x', { ALFRED_CODE_DOCS_PATH: 'docs', CLAUDE_DOCS_PATH: 'nowhere' }), 0, 'and the new key wins when both are set');
 });
 
 test('guard-ungated-commit: an option label THIS run wrote is not the user asking', () => {
@@ -1068,6 +1149,43 @@ test('guard-catastrophic-rm: the PowerShell spellings and the Windows roots', ()
   assert.equal(bash('guard-catastrophic-rm.js', 'rm -rf \\*'), 0, 'a backslash-escaped star is a file named *, not a glob');
 });
 
+test('guard-catastrophic-rm: PowerShell .\\ and ..\\ are the cwd and its parent; Monitor runs the same shell (audit 2026-10-08)', () => {
+  for (const c of ['Remove-Item -Recurse -Force .\\', 'Remove-Item -Recurse -Force .\\*', 'Remove-Item -Recurse -Force ..\\', 'ri -Recurse ..\\*'])
+    assert.equal(pwsh('guard-catastrophic-rm.js', c), 2, `must block: ${c}`);
+  for (const c of ['Remove-Item -Recurse -Force .\\build', 'Remove-Item -Recurse -Force ..\\other\\out'])
+    assert.equal(pwsh('guard-catastrophic-rm.js', c), 0, `must allow: ${c}`);
+  assert.equal(run('guard-catastrophic-rm.js', { tool_name: 'Monitor', tool_input: { command: 'rm -rf ~' } }), 2, 'Monitor');
+});
+
+test('guard-catastrophic-rm: past the judged-call cap a clean, a stash clear and unread git text are still read (audit 2026-10-08)', () => {
+  const { SCAN_LIMITS } = require(path.join(HOOKS, 'hook-prelude.js'));
+  const dir = cleanRepo();
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  fs.writeFileSync(path.join(dir, 'seed.txt'), 'stashed\n'); git('stash', '-q');
+  fs.writeFileSync(path.join(dir, 'untracked.txt'), 'only copy\n');
+  const rm = (c) => runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: c }, cwd: dir }, { cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+  const filler = Array.from({ length: SCAN_LIMITS.gitJudged }, () => 'git restore --staged seed.txt').join('\n');
+  assert.equal(rm(`${filler}\ngit status`).status, 0, 'control: the tracked tree is clean and nothing destructive follows');
+  const clean = rm(`${filler}\ngit clean -fd`);
+  assert.equal(clean.status, 2, 'git clean past the cap deletes the untracked file - it passed before');
+  assert.match(clean.stderr, /untracked\.txt/);
+  assert.equal(rm(`${filler}\ngit stash clear`).status, 2, 'git stash clear past the cap destroys the stash - it passed before');
+  assert.equal(rm('git clean -fd').status, 2, 'control: the same clean alone');
+  // A subcommand xargs supplies is text the reader cannot read: judged as a whole-tree discard where the shell runs.
+  fs.writeFileSync(path.join(dir, 'seed.txt'), 'dirty\n');
+  assert.equal(rm('echo checkout -- seed.txt | xargs git').status, 2, 'an xargs-fed git call on a dirty tree');
+  git('checkout', '--', 'seed.txt');
+  assert.equal(rm('echo status | xargs git').status, 0, 'and on a clean tree nothing is lost');
+});
+
+test('guard-catastrophic-rm: an unscoped marketplace remove is blocked by path and inside bash -c (audit 2026-10-08)', () => {
+  const rm = (c) => bash('guard-catastrophic-rm.js', c);
+  for (const c of ['/usr/local/bin/claude plugin marketplace remove foo', "bash -c 'claude plugin marketplace remove foo'", 'sh -c "claude plugin marketplace rm foo"'])
+    assert.equal(rm(c), 2, `must block: ${c}`);
+  for (const c of ["bash -c 'claude plugin marketplace remove foo --scope user'", 'echo "claude plugin marketplace remove foo"', '/usr/local/bin/claude plugin marketplace list'])
+    assert.equal(rm(c), 0, `must allow: ${c}`);
+});
+
 test('guard-catastrophic-rm: a literal find delete and a piped Remove-Item are judged by the rm target set (2.1.5 M1)', () => {
   // The literal form is flat tokens: `find <start> ... -delete` / `-exec rm` deletes what it walks, so its
   // start points are the targets. A filter test narrows the delete to what matches, like `-Include`.
@@ -1167,7 +1285,7 @@ test('guard-unapproved-dispatch: a scoped house seat is the same seat, a foreign
   const disp = (seat) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt: 'x' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } }).status;
   assert.equal(disp('wpf-implementer'), 2, 'bare - the copy route and cursor-stack');
-  assert.equal(disp('claude-stack-wpf:wpf-implementer'), 2, 'scoped to a per-stack plugin');
+  assert.equal(disp('alfred-code-wpf:wpf-implementer'), 2, 'scoped to a per-stack plugin');
   assert.equal(disp('alfred-code:wpf-implementer'), 2, 'scoped to the core plugin');
   // 2.1.0 ships every seat in the core, so this is the ONLY spelling a plugin-route flow can dispatch.
   assert.equal(disp('alfred-code:aspnet-implementer'), 2, 'a stack implementer on the core, no APPROVAL');
@@ -1176,12 +1294,12 @@ test('guard-unapproved-dispatch: a scoped house seat is the same seat, a foreign
   // in - it carries no APPROVAL convention, so there is nothing for the stamp to authorize.
   assert.equal(disp('someoneelse:their-implementer'), 0, 'a FOREIGN plugin implementer is not this flow\'s seat');
   // A hyphenated foreign plugin name, carrying a REAL house seat name after the colon, is still
-  // judged by its PREFIX, not by whether the seat name happens to match - the legacy claude-stack // legacy-name
+  // judged by its PREFIX, not by whether the seat name happens to match - the scoped alfred-code-<x>
   // spelling must not widen HOUSE_PREFIX into matching any hyphenated home.
   assert.equal(disp('someone-else:wpf-implementer'), 0, 'a hyphenated FOREIGN plugin is still foreign');
-  assert.equal(disp('claude-stack-wpf:wpf-verifier'), 0, 'a scoped verifier still needs no stamp');
+  assert.equal(disp('alfred-code-wpf:wpf-verifier'), 0, 'a scoped verifier still needs no stamp');
   fs.writeFileSync(gate, 'APPROVED plan-1 - "go ahead"\n');
-  assert.equal(disp('claude-stack-wpf:wpf-implementer'), 0, 'and the stamp releases the scoped seat too');
+  assert.equal(disp('alfred-code-wpf:wpf-implementer'), 0, 'and the stamp releases the scoped seat too');
   assert.equal(disp('alfred-code:aspnet-implementer'), 0, 'and the core spelling');
 });
 
@@ -1253,6 +1371,19 @@ test('guard-stop-contract: the AskUserQuestion branch injects its notes, and den
   assert.match(fixedMixed.stderr, /Keep the 'fast' path and `echo \\"x\\"`\?/, 'the prose is corrected, the code span is handed back as written');
   const fenced = [{ question: 'Apply this?', header: 'Apply', options: [{ label: 'Apply', description: '```\n{"k": "v"} \u2014 json\n```' }] }];
   assert.equal(ask(cold, fenced).status, 0, 'a fenced block is code too, dashes included');
+  // audit 2026-10-08: a curly double quote is a double quote, the horizontal bar is a dash, and a log dir that cannot be
+  // written records the once-per-ask marker under the temp dir - the same ask was denied on every re-send
+  const curly = [{ question: 'Keep the \u201Cfast\u201D path \u2015 now?', header: 'Curly', options: [{ label: 'Keep', description: 'ok' }] }];
+  const c1 = ask(cold, curly);
+  assert.equal(c1.status, 2, 'curly quotes and a horizontal bar deny like their plain twins');
+  assert.match(c1.stderr, /Keep the 'fast' path - now\?/, 'and are corrected the same way');
+  const noDirSession = `nodir-${process.pid}-${Date.now()}`;
+  const noDir = (questions) => runIn('guard-stop-contract.js',
+    { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: cold, session_id: noDirSession, tool_input: { questions } },
+    { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: path.join(logDir, 'missing', 'dir') } });
+  const once = [{ question: 'Ship it \u2014 today?', header: 'Ship', options: [{ label: 'Yes', description: 'ok' }] }];
+  assert.equal(noDir(once).status, 2, 'the first send is denied');
+  assert.equal(noDir(once).status, 0, 'the re-send passes, the marker kept under the temp dir');
   // The rule line names the deny that enforces it - '(the Stop hook never sees an ask)' read as 'nothing checks it'.
   const ruleLine = fs.readFileSync(path.join(__dirname, '..', 'stack', 'rules', 'alfred-interaction.md'), 'utf8').split('\n').find((l) => /No double quotes in prose/.test(l));
   assert.doesNotMatch(ruleLine, /the Stop hook never sees an ask/, 'the stale parenthetical is gone');
@@ -1273,7 +1404,13 @@ test('guard-stop-contract: prose offers, tool-call ends, continuations and unrea
   assert.equal(stop(transcript('p1', [assistantRow('a', 'Patch is ready. Say the word and I will push it.')])), 2, "'say the word'");
   assert.equal(stop(transcript('p2', [assistantRow('a', 'All green. Want me to open the PR?')])), 2, "'want me to'");
   assert.equal(stop(transcript('p3', [{ type: 'assistant', message: { id: 'b', content: [{ type: 'text', text: 'Want me to push?' }, { type: 'tool_use', id: 't', name: 'Bash', input: {} }] } }])), 0, 'ended on a tool call');
-  assert.equal(stop(transcript('p4', [assistantRow('a', 'Want me to push?')]), { stop_hook_active: true }), 0, 'a continuation we caused');
+  // The Stop chain (audit 2026-10-08 S1): `stop_hook_active` is set after ANY Stop hook's block, so only a
+  // continuation THIS hook caused stands down - the one a sibling caused (answer length, the build check) is judged.
+  const own = { session_id: `p4-${process.pid}-${Date.now()}` };
+  assert.equal(stop(transcript('p4', [assistantRow('a', 'Want me to push?')]), own), 2, 'the first Stop holds');
+  assert.equal(stop(transcript('p4', [assistantRow('a', 'Want me to push?')]), { ...own, stop_hook_active: true }), 0, 'a continuation we caused');
+  assert.equal(stop(transcript('p4s', [assistantRow('a', 'Build fixed. Should I commit?')]), { session_id: `p4s-${process.pid}-${Date.now()}`, stop_hook_active: true }), 2,
+    "a continuation a sibling Stop hook caused is judged - the rewritten close 'Build fixed. Should I commit?' passed before");
   assert.equal(stop(path.join(TMP, 'absent-stop.jsonl')), 0, 'missing transcript');
   assert.equal(stop(transcript('p5', [{ type: 'assistant', message: { id: 'c', content: [{ type: 'thinking', thinking: 'hm' }] } }])), 0, 'no text at all');
   assert.equal(stop(transcript('p6', [assistantRow('a', 'Is it safe? Yes - the guard fails closed.')])), 0, 'a question answered in the same breath');
@@ -1331,9 +1468,11 @@ test('instrument-tool-usage: off by default, one JSONL row per call when switche
   const inst = (payload, env) => runIn('instrument-tool-usage.js', payload, { env: { ...process.env, ALFRED_CODE_INSTRUMENT_LOG: log, ...env } }).status;
   assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '0' }), 0);
   assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '' }), 0);
+  // `1` only (audit 2026-10-08 row 29): the copy route's shell gate and environment.json read `true` as off
+  assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: 'true' }), 0);
   assert.equal(fs.existsSync(log), false, 'nothing is written while the switch is off');
   assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1', cwd: '/x' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
-  assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat secret', description: 'run tests' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: 'true' }), 0);
+  assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat secret', description: 'run tests' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', tool_input: {}, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   // a dispatch row names the SEAT (65 of 65 Agent rows were detail-blind), and a Bash call whose
   // description the model omitted falls back to the VERB - never a path or an argument
@@ -1351,6 +1490,24 @@ test('instrument-tool-usage: off by default, one JSONL row per call when switche
   assert.equal(inst({ tool_name: 'Grep', tool_input: { pattern: 'x' }, session_id: 'sid/../up' },
     { ALFRED_CODE_INSTRUMENT: '1', ALFRED_CODE_INSTRUMENT_LOG: '', CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: 'docs' }), 0);
   assert.deepEqual(fs.readdirSync(path.join(root, 'docs', 'tools-usage')), ['sid..up.jsonl'], 'default ledger under the docs root, session id sanitized');
+});
+
+// Audit 2026-10-08 row 29: a dispatch description, a search pattern and a Bash description are the model's own text, and
+// a token rode in them verbatim.
+test('instrument-tool-usage: a credential in a description or a pattern is masked before it is logged', () => {
+  const log = path.join(TMP, 'ledger-masked.jsonl');
+  const inst = (tool_name, tool_input) => runIn('instrument-tool-usage.js', { tool_name, tool_input, session_id: 's2' },
+    { env: { ...process.env, ALFRED_CODE_INSTRUMENT: '1', ALFRED_CODE_INSTRUMENT_LOG: log } }).status;
+  const gh = `ghp_${'a1B2'.repeat(9)}`;
+  const ant = `sk-ant-api03-${'x9Y8'.repeat(6)}`;
+  assert.equal(inst('Agent', { description: `push with ${gh}`, prompt: 'x' }), 0);
+  assert.equal(inst('Grep', { pattern: `token=${ant}` }), 0);
+  // the token sits across the 60-character cut: masked on the whole text first, so no fragment survives the cut
+  assert.equal(inst('Bash', { command: 'true', description: `${'d'.repeat(50)} ${gh}` }), 0);
+  const text = fs.readFileSync(log, 'utf8');
+  const rows = text.trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepEqual(rows.map((r) => r.detail), ['push with [redacted]', 'token=[redacted]', `${'d'.repeat(50)} [redacted`]);
+  assert.doesNotMatch(text, /ghp_|sk-ant/);
 });
 
 test('guard-unapproved-dispatch: a symbol question never goes to a grep-shaped seat', () => {
@@ -1432,6 +1589,45 @@ test('guard-unapproved-dispatch: what-type and where-defined sweeps over plain w
   assert.equal(disp('Explore', 'what type does `OrderService` expose'), 2, 'what type of a backticked identifier');
   assert.equal(disp('Explore', 'Where is ISocketFactory declared?'), 2, 'where is a CamelCase name declared');
   assert.equal(disp('Explore', 'where are `AddSocketServices` and its friends registered'), 2, 'where are a backticked name registered');
+});
+
+// Audit 2026-10-08 row 39: the caller and definition shapes carried no identifier test, the class I5 already paid for;
+// the APPROVAL root skipped `payload.cwd`; and the block rows did not say which branch fired.
+test('guard-unapproved-dispatch: the caller and definition shapes need a code name, and every block names its branch', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
+  const disp = (seat, prompt, extra = {}) => runIn('guard-unapproved-dispatch.js',
+    { tool_name: 'Agent', session_id: 'disp-branch', tool_input: { subagent_type: seat, prompt }, ...extra }, { env }).status;
+  // the replayed false positives - plain words after the shape
+  assert.equal(disp('Explore', 'find the definition of done in the CONTRIBUTING docs'), 0, 'definition of a plain word');
+  assert.equal(disp('Explore', 'locate the component responsible for the page header'), 0, 'a kind word before prose');
+  assert.equal(disp('Explore', 'list the call sites of the deprecated logger'), 0, 'call sites of plain words');
+  assert.equal(disp('Explore', 'who calls the nightly job and when'), 0, 'who calls plain words');
+  // a real symbol hunt in each shape still blocks
+  assert.equal(disp('Explore', 'find the definition of `parseRef`'), 2, 'definition of a backticked name');
+  assert.equal(disp('Explore', 'list the call sites of OrderService.Refund'), 2, 'call sites of a member');
+  assert.equal(disp('Explore', 'who calls loadManifest( from the installer'), 2, 'who calls a call');
+  assert.equal(disp('Explore', 'all implementations of IRepository'), 2, 'implementations of an interface');
+  assert.equal(disp('Explore', 'subclasses of the BaseController'), 2, 'subclasses of a CamelCase type');
+  assert.equal(disp('Explore', 'find the class Order'), 2, 'a kind word before a capitalised name');
+  assert.equal(disp('Explore', 'who calls Foo'), 2, 'a capitalised name after any shape');
+  const rows = () => fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'disp-branch.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepStrictEqual(rows().at(-1).detail, { branch: 'symbol-question', asked: 'who calls Foo' });
+  assert.equal(disp('alfred-code:aspnet-implementer', 'build it'), 2);
+  assert.equal(rows().at(-1).detail.branch, 'implementer-unapproved');
+  assert.equal(disp('alfred-code:aspnet-implementer', 'build it', { agent_type: 'alfred-code:issue-diagnoser-ci' }), 2);
+  assert.equal(rows().at(-1).detail.branch, 'diagnoser-pin');
+  // the stamp is read where the session runs when no project dir is set
+  const cwdRoot = fs.mkdtempSync(path.join(TMP, 'proj-cwd-'));
+  fs.mkdirSync(path.join(cwdRoot, '.alfred', 'docs', 'flow'), { recursive: true });
+  fs.writeFileSync(path.join(cwdRoot, '.alfred', 'docs', 'flow', 'APPROVAL'), 'APPROVED plan-1 - "go"\n');
+  const noDir = { ...process.env, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
+  delete noDir.CLAUDE_PROJECT_DIR;
+  const stamped = (seat) => runIn('guard-unapproved-dispatch.js',
+    { tool_name: 'Agent', cwd: cwdRoot, session_id: 'disp-cwd', tool_input: { subagent_type: seat, prompt: 'build it' } }, { env: noDir }).status;
+  assert.equal(stamped('alfred-code:aspnet-implementer'), 0, 'the payload cwd holds the approval');
+  assert.equal(stamped('general-purpose'), 2, 'and the stamp gates a generic seat there');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(cwdRoot, '.alfred', 'docs', 'hook-blocks', 'disp-cwd.jsonl'), 'utf8').trim()).detail.branch, 'generic-while-stamped');
 });
 
 // The built-in Explore and Plan load none of the project's rules, so alfred-security's untrusted-content
@@ -1545,7 +1741,7 @@ test('guard-stop-contract: the tier variable at 0 turns the offer off', () => {
   assert.equal(stop({ ...w1m, ALFRED_CODE_FRESH_SESSION_1M: '0' }), 0, '0 on the trigger this session uses disables the offer outright');
   assert.equal(stop(w1m), 2, 'and the same session still qualifies at the 1M default');
   assert.equal(stop({ ...w1m, ALFRED_CODE_FRESH_SESSION_DEFAULT: '0', ALFRED_CODE_FRESH_SESSION_200K: '0' }), 2, 'the other tiers\' switches do not reach it');
-  assert.equal(stop({ ...w1m, CLAUDE_STACK_FRESH_SESSION_PCT: '0' }), 2, 'and the retired percentage key is not read at all'); // legacy-name
+  assert.equal(stop({ ...w1m, ALFRED_CODE_FRESH_SESSION_PCT: '0' }), 2, 'and the retired percentage key is not read at all');
   const acct1m = fs.mkdtempSync(path.join(TMP, 'stopoff-1m-'));
   fs.writeFileSync(path.join(acct1m, 'settings.json'), JSON.stringify({ model: 'claude-opus-5' }));
   assert.equal(stop({ CLAUDE_CONFIG_DIR: acct1m, ALFRED_CODE_FRESH_SESSION_1M: '0' }), 0, 'a readable 1M window reads its own switch');
@@ -1622,6 +1818,43 @@ test('guard-cross-project-write: the session\'s own scratch and the account dir 
   const home = os.homedir();
   if (home) assert.equal(w(path.join(home, '.claude', 'projects', 'p', 'memory', 'm.md')), 0, 'memory writes must keep working');
   assert.equal(w(path.join(path.dirname(repoRoot), 'some-other-repo', 'src', 'a.ts')), 2, 'a real sibling repo is still blocked');
+});
+
+// Audit 2026-10-08 row 23: the shell runs in the Bash tool's persisted cwd (`payload.cwd`), and the guard anchored every
+// shell path at the project root - a false block one way, a write into a sibling checkout let through the other.
+test('guard-cross-project-write: a shell path is anchored at the payload cwd, both ways (audit 2026-10-08)', () => {
+  const sub = path.join(XP_ROOT, 'sub');
+  fs.mkdirSync(sub, { recursive: true });
+  const at = (cwd, command, tool = 'Bash') => xp({ tool_name: tool, cwd, tool_input: { command } });
+  assert.equal(at(sub, 'echo hi > ../x.txt'), 0, 'up one from a subfolder is still the project');
+  assert.equal(at(sub, 'echo hi > x.txt'), 0, 'and a bare file there is too');
+  assert.equal(at(XP_OTHER, 'echo hi > x.txt'), 2, 'a bare file from a sibling checkout lands in it');
+  assert.equal(at(XP_OTHER, 'git commit -qm x'), 2, 'and so does a git write there');
+  assert.equal(at(XP_OTHER, 'echo hi > x.txt', 'Monitor'), 2, 'on the Monitor route as well');
+  assert.equal(at(XP_OTHER, `echo hi > ${path.join(XP_ROOT, 'x.txt')}`), 0, 'an absolute path into the project passes from anywhere');
+  assert.equal(at(path.join(XP_ROOT, 'gone'), 'echo hi > ../../x.txt'), 2, 'a cwd that is gone reads as the project root');
+  assert.equal(at('relative/dir', 'echo hi > x.txt'), 0, 'and so does a relative one');
+  assert.equal(xp({ tool_name: 'Write', cwd: XP_OTHER, tool_input: { file_path: 'src/a.ts' } }), 0, 'a file tool keeps the project root');
+});
+
+// Audit 2026-10-08 row 37: a relocated account dir holds the harness's memory writes, and a project under /tmp dropped
+// /tmp - and with it the harness scratch root - by the containment rule.
+test('guard-cross-project-write: a relocated CLAUDE_CONFIG_DIR and the harness scratch root stay writable (audit 2026-10-08)', (t) => {
+  const cfg = fs.mkdtempSync(path.join(TMP, 'xw-cfg-'));
+  const run = (root, payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ...env } }).status;
+  const w = (f) => ({ tool_name: 'Write', tool_input: { file_path: f } });
+  assert.equal(run(XP_ROOT, w(path.join(cfg, 'projects', 'p', 'memory', 'm.md')), { CLAUDE_CONFIG_DIR: cfg }), 0, 'the relocated account dir');
+  assert.equal(run(XP_ROOT, w(path.join(cfg, 'projects', 'p', 'memory', 'm.md')), { CLAUDE_CONFIG_DIR: '' }), 2, 'unset, it is a sibling like any other');
+  assert.equal(run(XP_ROOT, w(path.join(XP_OTHER, 'a.ts')), { CLAUDE_CONFIG_DIR: cfg }), 2, 'and a real sibling stays blocked');
+  if (process.platform === 'win32') return t.skip('no /tmp/claude-<uid> on Windows');
+  let proj = null;
+  try { proj = fs.mkdtempSync('/tmp/xw-proj-'); } catch { return t.skip('/tmp is not writable here'); }
+  try {
+    const scratch = `/tmp/claude-${process.getuid()}/s/scratchpad/notes.md`;
+    assert.equal(run(proj, w(scratch)), 0, 'a project under /tmp still writes the harness scratch');
+    assert.equal(run(proj, w('/tmp/xw-other/a.ts')), 2, 'while a sibling under /tmp stays blocked');
+  } finally { fs.rmSync(proj, { recursive: true, force: true }); }
 });
 
 test('guard-cross-project-write: the session cleaning its own scratch is not a cross-project write', () => {
@@ -1936,7 +2169,11 @@ test('guard-cross-project-write: space account dirs, ~ in the allowance, and unr
   const repoRoot = path.join(__dirname, '..');
   const inRepo = (payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
     { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: LEDGER, ...env } }).status;
-  if (home) {
+  // An isolated runner points HOME inside os.tmpdir(), where every path is session scratch the guard allows - the
+  // 'outside HOME' cases below then cannot block, so they run only on a real home (audit 2026-10-08: 55/56 isolated).
+  const tmpReal = fs.realpathSync(os.tmpdir());
+  const homeInTmp = !!home && (() => { try { const h = fs.realpathSync(home); return h === tmpReal || h.startsWith(tmpReal + path.sep); } catch { return false; } })();
+  if (home && !homeInTmp) {
     // A --space install keeps its memory under ~/.claude-<space>; the old check disabled that
     // allowance for every project living under HOME, i.e. every real project (reproduced).
     assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(home, '.claude-work', 'projects', 'p', 'memory', 'm.md') } }), 0, 'a space account dir');
@@ -2055,11 +2292,11 @@ test('mount paths: a POSIX host still reads /c/... as a POSIX path', () => {
 });
 
 // --- the context window the trigger scales against: reported 2026-09-04 on a 1M session -------
-// CLAUDE_STACK_FRESH_SESSION_PCT was documented as a percentage of the window but inert on a // legacy-name
+// ALFRED_CODE_FRESH_SESSION_PCT was documented as a percentage of the window but inert on a
 // fresh 1M session: the window was INFERRED from observed usage, so it read 200k until the
 // session had already grown past 200k per message - the state the gate exists to prevent - and
 // 200k x every percent from 5 to 75 collapses onto the 150k floor. Both that key and the
-// CLAUDE_STACK_CONTEXT_WINDOW override are retired; the window is DETECTED in two layers, the // legacy-name
+// ALFRED_CODE_CONTEXT_WINDOW override are retired; the window is DETECTED in two layers, the
 // settings model id's own suffix and then the old inference, and an unresolved one gates nothing.
 const winEnv = (extra) => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'latch-')), ...(extra || {}) });
 const askLoop = (tp, env) => runIn('guard-fresh-session-start.js',
@@ -2143,15 +2380,15 @@ test('fresh-session window: the account settings model id names the tier before 
     assert.equal(askLoop(ctxAt('win-model-450k', 450000), winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-1m2', 'claude-opus-5') })), 2, 'and 450k on the 1M tier still fires');
 });
 
-test('fresh-session window: the retired CLAUDE_STACK_CONTEXT_WINDOW override is inert', () => { // legacy-name
+test('fresh-session window: the retired ALFRED_CODE_CONTEXT_WINDOW override is inert', () => {
     // It used to be the FIRST resolution layer and is gone: the window is detected, never stated.
     // Every install seeded the key, so a settings block still carrying one must not move a tier.
     const hot = ctxAt('win-env-170k', 170000);
-    assert.equal(askLoop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '200000' })), 0, // legacy-name
+    assert.equal(askLoop(hot, winEnv({ ALFRED_CODE_CONTEXT_WINDOW: '200000' })), 0,
         'a stated 200k window resolves nothing now - the default trigger applies, and 170k is under it');
-    assert.equal(askLoop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000', CLAUDE_CONFIG_DIR: accountDir('acct-inert', 'claude-haiku-4-5') })), 2, // legacy-name
+    assert.equal(askLoop(hot, winEnv({ ALFRED_CODE_CONTEXT_WINDOW: '1000000', CLAUDE_CONFIG_DIR: accountDir('acct-inert', 'claude-haiku-4-5') })), 2,
         'the model id decides alone: 170k is past the 200k tier trigger, whatever the dead key says');
-    assert.equal(askLoop(ctxAt('win-env-450k', 450000), winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '200000' })), 2, // legacy-name
+    assert.equal(askLoop(ctxAt('win-env-450k', 450000), winEnv({ ALFRED_CODE_CONTEXT_WINDOW: '200000' })), 2,
         '... and 450k fires on the default trigger, the dead key naming a tier it cannot set');
 });
 
@@ -2229,7 +2466,7 @@ test('stop contract: the fresh-session offer reads the window exactly as its twi
     assert.equal(stop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('stop-acct-1m', 'claude-opus-5') })), 0, 'a 1M model id lifts it past 190k');
     assert.equal(stop(at('stopwin-450k', 450000), winEnv()), 2, 'and 450k is past the default trigger');
     assert.equal(stop(at('stopwin-450k-1m', 450000), winEnv({ CLAUDE_CONFIG_DIR: accountDir('stop-acct-1m2', 'claude-opus-5') })), 2, '... as it is past the 1M one');
-    assert.equal(stop(at('stopwin-310k-retired', 310000), winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000' })), 2, 'the retired override moves nothing here either - it resolves no window, so the default trigger applies and 310k is past it'); // legacy-name
+    assert.equal(stop(at('stopwin-310k-retired', 310000), winEnv({ ALFRED_CODE_CONTEXT_WINDOW: '1000000' })), 2, 'the retired override moves nothing here either - it resolves no window, so the default trigger applies and 310k is past it');
 });
 
 test('guard-answer-length: the cap holds, and never deletes a report field or a self-correction', () => {
@@ -3068,14 +3305,14 @@ test('guard-fresh-session-start: the flag is read from the PLUGIN cache too, not
         fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`);
     };
     place('alfred-code', 'loop-quality', 'disable-model-invocation: true\n', ['stack', 'skills']);
-    place('claude-stack-wpf', 'dotnet-wpf', '', ['stack', 'skills']);
+    place('alfred-code-wpf', 'dotnet-wpf', '', ['stack', 'skills']);
     const skillCall = (skill) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmip' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg } });
 
     assert.equal(skillCall('loop-quality').status, 2, 'a flagged skill served by a plugin is still denied');
     assert.equal(skillCall('alfred-code:loop-quality').status, 2, 'and under its scoped spelling');
-    assert.equal(skillCall('claude-stack-wpf:dotnet-wpf').status, 0, 'an unflagged plugin skill stays callable');
+    assert.equal(skillCall('alfred-code-wpf:dotnet-wpf').status, 0, 'an unflagged plugin skill stays callable');
     assert.equal(skillCall('alfred-code:not-shipped').status, 0, 'a name no home carries is not this guard\'s business');
 
     // Claude Code runs a personal skill over a project one of the same name ('personal over project', skills
@@ -3594,6 +3831,44 @@ test('guard-config-protection: a heredoc body or a quoted message naming a confi
   });
 });
 
+test('guard-config-protection: comments, MSBuild attributes, wrappers, carried scripts and whole-file replaces (audit 2026-10-08)', () => {
+  const H = 'guard-config-protection.js';
+  const { root, at } = cfgProject('cfg-audit-');
+  const edit = (file, old_string, new_string) => run(H, { tool_name: 'Edit', cwd: root, tool_input: { file_path: file, old_string, new_string } });
+  const write = (file, content) => run(H, { tool_name: 'Write', cwd: root, tool_input: { file_path: file, content } });
+  const sh = (command, tool = 'Bash', cwd = root) => run(H, { tool_name: tool, cwd, tool_input: { command } });
+  withProject(root, {}, () => {
+    const ts = at('tsconfig.json', '{\n  "$schema": "https://json.schemastore.org/tsconfig",\n  "compilerOptions": {\n    "strict": true,\n    "paths": {}\n  }\n}\n');
+    assert.strictEqual(edit(ts, '"strict": true', '// "strict": true'), 2, 'commenting a strictness key out removes it');
+    assert.strictEqual(edit(ts, '"strict": true', '/* "strict": true */'), 2, '... in a block comment too');
+    assert.strictEqual(write(ts, '{"$schema":"https://json.schemastore.org/tsconfig","compilerOptions":{"strict":false}}'), 2, 'a URL is no comment start');
+    assert.strictEqual(edit(ts, '"paths": {}', '"paths": {} // the app aliases'), 0, 'a comment beside an unrelated key is open');
+    assert.strictEqual(edit(ts, '"paths": {}', '"paths": {}, "noFallthroughCasesInSwitch": false'), 2, 'a tsconfig key the list lacked');
+    const proj = at('src/App/App.csproj', '<Project><PropertyGroup><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup></Project>');
+    assert.strictEqual(edit(proj, '<TreatWarningsAsErrors>', '<TreatWarningsAsErrors Condition="false">'), 2, 'a Condition switches it off');
+    assert.strictEqual(edit(proj, '<TreatWarningsAsErrors>true</TreatWarningsAsErrors>', '<!-- <TreatWarningsAsErrors>true</TreatWarningsAsErrors> -->'), 2, 'an XML comment removes it');
+    at('.eslintrc.json', '{}');
+    at('.eslintignore', 'dist/\n');
+    fs.mkdirSync(path.join(root, 'sub'), { recursive: true });
+    assert.strictEqual(sh("echo '{}' | sudo tee .eslintrc.json"), 2, 'tee behind sudo');
+    assert.strictEqual(sh("bash -c 'rm .eslintrc.json'"), 2, 'a carried script');
+    assert.strictEqual(sh('cd sub && rm ../.eslintrc.json'), 2, 'after a cd');
+    assert.strictEqual(sh("echo '{}' > tsconfig.json"), 2, 'a whole-file replace of a keyed file holding a strictness key');
+    assert.strictEqual(sh('echo src/ >> .eslintignore'), 2, 'an ignore file takes a path out of the check');
+    assert.strictEqual(sh('Set-Content -Path .\\.eslintrc.json -Value "{}"', 'PowerShell'), 2, 'PowerShell .\\ on a POSIX host');
+    assert.strictEqual(sh("echo '{}' > other.json && cat tsconfig.json"), 0, 'a read of the keyed file passes');
+    const plain = at('tsconfig.build.json', '{ "extends": "./tsconfig.json" }');
+    assert.strictEqual(sh(`echo '{}' > ${path.basename(plain)}`), 0, 'replacing a keyed file that holds no strictness key passes');
+    assert.strictEqual(run(H, { tool_name: 'Monitor', cwd: root, tool_input: { command: 'rm .eslintrc.json' } }), 2, 'Monitor');
+    assert.strictEqual(run(H, { tool_name: 'NotebookEdit', cwd: root, tool_input: { notebook_path: path.join(root, '.eslintrc.json'), new_source: '{}' } }), 2, 'NotebookEdit');
+    // The same file through the real path of a symlinked root is inside the project.
+    const link = `${root}-link`;
+    fs.symlinkSync(root, link);
+    try { assert.strictEqual(withProject(link, {}, () => write(path.join(root, '.eslintrc.json'), '{"x":1}')), 2, 'a realpath spelling is inside'); }
+    finally { fs.unlinkSync(link); }
+  });
+});
+
 test('guard-config-protection: the denial routes a wanted change through ONE ask and the receipt', () => {
   const { root, at } = cfgProject('cfg-msg-');
   const file = at('.editorconfig', 'root = true');
@@ -3881,6 +4156,19 @@ test('guard-desktop-exec: App launch_executable and every macOS Shell call are d
   const rows = fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'desk.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.equal(rows.length, WIN_APP.length + MAC_SHELL.length, 'one ledger row per block');
   assert.ok(rows.every((row) => row.hook === 'guard-desktop-exec.js'));
+});
+
+// Audit 2026-10-08 row 40: the ledger kept 120 characters of the Shell command, credential included, and the denial
+// suggested a file-name receipt line, which opens that name in every directory.
+test('guard-desktop-exec: the ledger keeps the Shell verb only, and the denial suggests the full path', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'desk-ledger-'));
+  const shell = desktopRun(root, MAC_SHELL[0], { command: 'TOKEN=ghp_0123456789abcdefghijABCDEFGHIJ012345 curl -H "x-api-key: sk-ant-api03-secretvalue" https://example.com' });
+  assert.equal(shell.status, 2);
+  const ledger = fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'desk.jsonl'), 'utf8');
+  assert.deepStrictEqual(JSON.parse(ledger.trim()).detail, { tool: 'Shell', verb: 'curl' });
+  assert.doesNotMatch(ledger, /ghp_|sk-ant/, 'no credential reaches the ledger');
+  const app = desktopRun(root, WIN_APP[0], { mode: 'launch_executable', executable: 'C:\\Tools\\build.exe' });
+  assert.match(app.stderr, /with the line `C:\\Tools\\build\.exe`/, 'the full path, not build.exe');
 });
 
 test('guard-desktop-exec: the DESKTOP-EXEC-ALLOW receipt opens it - this session, under 8h', () => {

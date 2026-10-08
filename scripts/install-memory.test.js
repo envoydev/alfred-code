@@ -377,7 +377,7 @@ function initSandbox({ settings = { env: { ALFRED_CODE_MEMORY_DB: '/elsewhere/me
     const calls = path.join(work, 'calls.jsonl');
     const env = { ...process.env, HOME: work, USERPROFILE: work, CLAUDE_CONFIG_DIR: acct, PATH: `${bin}${path.delimiter}${path.dirname(process.execPath)}${path.delimiter}/usr/bin:/bin`,
         FAKE_MEMORY_DB: path.join(work, 'fake-db.json'), FAKE_MEMORY_CALLS_LOG: calls };
-    for (const k of Object.keys(env)) if (/^(ALFRED_CODE_|CLAUDE_STACK_|MCP_MEMORY_|CLAUDE_PROJECT_DIR$)/.test(k)) delete env[k]; // legacy-name
+    for (const k of Object.keys(env)) if (/^(ALFRED_CODE_|MCP_MEMORY_|CLAUDE_PROJECT_DIR$)/.test(k)) delete env[k];
     const run = (...args) => spawnSync(process.execPath, [CLI, 'init', '--project-root', root, '--config-dir', acct, '--memory-dir', notes, ...args],
         { cwd: root, env, encoding: 'utf8', timeout: 60000 });
     const callCount = () => (fs.existsSync(calls) ? fs.readFileSync(calls, 'utf8').trim().split('\n').filter(Boolean).length : 0);
@@ -777,25 +777,6 @@ test('seed update (full copy route, local scope): a kept memory level registers 
     assert.notStrictEqual(steps[1].autoMemoryEnabled, false, `Claude's own memory was switched off with no memory server in its place:\n${outs[1]}`);
 });
 
-// Review 2.1.6 re-verify N5: a 1.x account-dir stamp is a prior install too, read as this project's on its migrating
-// update - so its memory level is kept over an unreadable settings file, never the default a fresh install takes.
-test('seed update: an unmigrated 1.x account-dir stamp is a prior install - an unreadable settings.local.json keeps the level', POSIX_ONLY, () =>
-{
-    const { LEGACY } = require('./install/brand.js');
-    const { out } = seedRun('update', 'rule alfred-memory\nmcp navigation\nmcp documentation\nmcp memory\n', {
-        prepare: (repo, work) =>
-        {
-            fs.mkdirSync(path.join(work, 'acct'), { recursive: true });
-            fs.writeFileSync(path.join(work, 'acct', LEGACY.stamp), 'sha: abc\nversion: 1.3.0\nscope: global\n');
-            fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true });
-            fs.writeFileSync(path.join(repo, '.claude', 'hooks', 'docs.js'), '');
-            fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), '{ "env": { "A": 1, } garbage');
-        },
-    });
-    assert.doesNotMatch(out, /no install is recorded here/, out);
-    assert.match(out, /memory=kept/, out);
-});
-
 // Review 2.1.6, the every-issue ruling: an unstamped legacy install (measured: v0.2.84 from a plain directory - no stamp, and
 // no docs.js install record) registers memory in .mcp.json with its database, which answers the level first. With that
 // registration removed by hand there is no level to keep, so it takes the default like a fresh install - 'kept' left the
@@ -885,7 +866,7 @@ test('seed install (plugin route): a fresh install over an unreadable settings.l
 // project it resolves (memory.js projectRootOf) - with plain relative paths: no parse-time variable, no machine's path.
 test('seed install and update (full copy route, project scope): the anchored registrations name no path of this machine, a second checkout rewrites nothing, and a server started in a subdirectory or under another folder\'s CLAUDE_PROJECT_DIR runs at the project', POSIX_ONLY, () =>
 {
-    const { scrubLegacyEnv } = require('./seed-sandbox.js');
+    const { scrubStackEnv } = require('./seed-sandbox.js');
     const engine = require('../stack/hooks/memory.js');
     const COPY = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
     // The machine-local key is this checkout's absolute path (re-verify 3 S1), so its ledger hash is the one stamp change a
@@ -927,7 +908,7 @@ test('seed install and update (full copy route, project scope): the anchored reg
             const env = { ...process.env, HOME: work, CLAUDE_CONFIG_DIR: path.join(work, 'acct'), PATH: path.join(work, 'bin') + path.delimiter + process.env.PATH,
                 CLAUDE_STUB_LOG: path.join(work, 'claude-calls.log'), CLAUDE_STUB_PLUGINS: path.join(work, 'plugins.json'), ALFRED_CODE_MEMORY_WARM: '0' };
             for (const k of ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY', 'UV_EXCLUDE_NEWER']) delete env[k];
-            scrubLegacyEnv(env);
+            scrubStackEnv(env);
             Object.assign(env, COPY);
             const out = execFileSync(process.execPath, [path.join(__dirname, 'install', 'alfred-code.js'), 'update', '--installed-only', '--source', path.join(__dirname, '..'), '--scope', 'project'],
                 { cwd: second, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });

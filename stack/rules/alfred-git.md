@@ -4,7 +4,7 @@ description: House baseline - git, pull requests, and the pre-commit checkpoint.
 
 # Git and pull requests
 
-- Conventional Commits, or the ticket-id header below - the only two valid headers. Branch `<type>/<short-description>` or `<type>/<ticket-id>`.
+- Branch `<type>/<short-description>` or `<type>/<ticket-id>`.
 - Do NOT commit or push until the user explicitly says to, however done the task looks. Show the diff for review first.
 - The scope at a commit ask is derived FRESH - `git add -N . && git diff HEAD --stat; git reset -q`, ONE Bash call with the reset chained, so untracked files count and no intent-to-add entry outlives it - and the ask names anything still owed on the diff (a gate not run, a review skipped).
 - Never mention yourself: no AI/assistant attribution in commits, branches, or PR text (deliberate override of the platform default).
@@ -13,7 +13,7 @@ description: House baseline - git, pull requests, and the pre-commit checkpoint.
 
 ## Commit message shape
 
-- **Header** - the ticket id (`PROJ-142`) or the feature delivered (a Conventional-Commits subject such as `feat(auth): token refresh` counts as the feature). One line.
+- **Header** - one line, one of two shapes: the ticket id (`PROJ-142`) or a Conventional-Commits subject for the feature delivered (`feat(auth): token refresh`).
 - Then a blank line, then the body: one short, understandable sentence per thing done, each on its own line, indented two spaces, with NO blank line between them.
 - A critical caveat (a constraint a later change must not break, a footgun, a silent tradeoff) goes LAST, after a blank line, indented, prefixed `Critical:`. Omit it when there is none.
 

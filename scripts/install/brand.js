@@ -1,32 +1,15 @@
 'use strict';
-// THE NAME - what the stack is called now, and what a 1.x install still calls it.
-//
-// 2.0.0 renamed claude-stack to alfred-code, but nothing forces an install across: a registered // legacy-name
-// marketplace's KEY never changes (and `marketplace remove` would uninstall the stack from every
-// project on the machine), the stamp and the seat denies stay as the last update wrote them, and
-// the plugin cache keeps the 1.x directory. So every READ takes either spelling - the new one wins
-// when both exist - and every WRITE uses the new one. This file is the one home of the old names in
-// the installer: a call site uses LEGACY, never a literal of its own.
+// THE NAME - what the stack is called: its marketplace, core plugin, repo slug and stamp file. A call
+// site uses BRAND, never a literal of its own. A registered marketplace's KEY is read from the
+// listings (marketOf), never assumed: `marketplace remove` would uninstall the stack from every
+// project on the machine, so a key is never re-registered under another name.
 const fs = require('node:fs');
 const path = require('node:path');
 
-// No hooks entry: 2.0.0 folds the hooks into the core (user ruling 'Fold into core in 2.0.0'). The
-// 1.x hooks id stays in LEGACY - a retired alias the migration uninstalls (plugins.migrateLegacy).
+// No hooks entry: 2.0.0 folds the hooks into the core (user ruling 'Fold into core in 2.0.0').
 const BRAND = { marketplace: 'envoydev', core: 'alfred-code', slug: 'envoydev/alfred-code', stamp: 'alfred-code.stamp' };
-const LEGACY = {
-    marketplace: 'claude-stack', // legacy-name
-    core: 'claude-stack', // legacy-name
-    hooks: 'claude-stack-hooks', // legacy-name
-    slug: 'envoydev/claude-stack', // legacy-name
-    stamp: 'claude-stack.stamp', // legacy-name
-};
 
-const isCore = (name) => name === BRAND.core || name === LEGACY.core;
-
-// The name an entry goes by from 2.0.0. Only the core was renamed: the 1.x hooks id has no 2.0.0
-// counterpart (its hooks ride the core), and a per-stack entry retired in 1.3.0 keeps its own name
-// until update removes it (the marketplace no longer lists it - 2.1.7).
-const currentName = (name) => (isCore(name) ? BRAND.core : name);
+const isCore = (name) => name === BRAND.core;
 
 // A listing row as `claude plugin list --json` prints it (`id: name@key`) or as parsePluginList
 // returns it (`name`, `marketplace`) - both callers exist.
@@ -37,9 +20,9 @@ const rowId = (row) =>
     return [String(row.name || ''), String(row.marketplace || '')];
 };
 
-// The core is LOCKED on, under either spelling, so a listed core row is enabled whatever its
-// `enabled` flag says: the listing reads `false` for a moved project-scope core that visibly runs,
-// session after session (docs/rebrand-evidence.md S22). Only the plugin-level flag is overruled - a
+// The core is LOCKED on, so a listed core row is enabled whatever its `enabled` flag says: the listing
+// reads `false` for a project-scope core that visibly runs, session after session
+// (docs/plugin-cli-evidence.md S22). Only the plugin-level flag is overruled - a
 // user's off-switch for one core item (a seat deny, a skillOverrides value, a hook named in
 // ALFRED_CODE_HOOKS_OFF) is read elsewhere and still holds.
 const alwaysOn = (name) => isCore(name);
@@ -59,7 +42,7 @@ function stackSlug(row, setting)
 {
     const src = row && typeof row.source === 'object' && row.source ? row.source : {};
     const repo = row.repo || src.repo || urlSlug(row.url || src.url);
-    for (const slug of [BRAND.slug, LEGACY.slug]) if (sameSlug(repo, slug)) return slug;
+    if (sameSlug(repo, BRAND.slug)) return BRAND.slug;
     if (setting.slug && sameSlug(repo, setting.slug)) return BRAND.slug;
     const dir = row.path || src.path;
     if (setting.dir && dir && resolved(dir) === resolved(setting.dir)) return BRAND.slug;
@@ -68,9 +51,8 @@ function stackSlug(row, setting)
 
 // THE KEY this install's stack lives under, and whether anything registered says so (`known`: a
 // fresh account has no registration yet, and only then does the caller add one):
-//   1. the key of the marketplace whose CORE is installed (either name) - an enabled row first;
-//   2. else the key of a registered marketplace whose source is the stack's repo (the current slug
-//      first, since a fresh install takes that one);
+//   1. the key of the marketplace whose CORE is installed - an enabled row first;
+//   2. else the key of a registered marketplace whose source is the stack's repo;
 //   3. else BRAND.marketplace.
 function marketOf({ listing = [], marketplaces = [], env = {} } = {})
 {
@@ -86,23 +68,18 @@ function marketOf({ listing = [], marketplaces = [], env = {} } = {})
     const isSlug = /^[\w.-]+\/[\w.-]+$/.test(named) && !fs.existsSync(named);
     const setting = { slug: isSlug ? named : '', dir: named && !isSlug ? named : '' };
     const regs = (Array.isArray(marketplaces) ? marketplaces : []).filter((m) => m && m.name);
-    for (const slug of [BRAND.slug, LEGACY.slug])
-    {
-        const hit = regs.find((m) => stackSlug(m, setting) === slug);
-        if (hit) return { key: String(hit.name), known: true };
-    }
+    const hit = regs.find((m) => stackSlug(m, setting) === BRAND.slug);
+    if (hit) return { key: String(hit.name), known: true };
     return { key: BRAND.marketplace, known: false };
 }
 
 const marketKey = (opts) => marketOf(opts).key;
 
-// The stamp in `dir`: read the new file, else the 1.x one; always write the new one.
+// The stamp in `dir`: `read` is the file when it exists (else null), `write` its path either way.
 function stampFile(dir)
 {
     const write = path.join(dir, BRAND.stamp);
-    const old = path.join(dir, LEGACY.stamp);
-    const read = fs.existsSync(write) ? write : fs.existsSync(old) ? old : null;
-    return { read, write, legacy: old };
+    return { read: fs.existsSync(write) ? write : null, write };
 }
 
-module.exports = { BRAND, LEGACY, isCore, alwaysOn, rowOn, currentName, marketOf, marketKey, stampFile };
+module.exports = { BRAND, isCore, alwaysOn, rowOn, marketOf, marketKey, stampFile };

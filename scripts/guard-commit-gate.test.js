@@ -11,7 +11,6 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-commit-gate-'));
@@ -104,6 +103,120 @@ test('guard-ungated-commit: a push whose diff spans two projects needs a scope: 
 
   writeReceipt(dir, 'PUSH-GATE', pushReceipt(head, { scope: 'scope: workspace' }));
   assert.equal(gateIn(dir, 'git push'), 0, 'a workspace-scope probe passes whatever the diff touches');
+});
+
+// Audit 2026-10-08 row 46: the Monitor tool runs its command under the shell route; no test replayed a commit through it.
+test('audit 2026-10-08: a commit through the Monitor tool is gated like one through Bash', () => {
+  const dir = scratchRepo();
+  const viaMonitor = (command) => runIn('guard-ungated-commit.js', { tool_name: 'Monitor', tool_input: { command } }, {
+    env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir,
+  }).status;
+  assert.equal(gateIn(dir, 'git add -A && git commit -m x'), 2, 'Bash');
+  assert.equal(viaMonitor('git add -A && git commit -m x'), 2, 'Monitor');
+  assert.equal(viaMonitor('git log --oneline -3'), 0, 'a read through Monitor passes');
+});
+
+test('audit 2026-10-08: a commit, merge or reset chained before a push on a level branch still needs the publish receipt', () => {
+  const { dir, git } = pushRepo();
+  assert.equal(gateIn(dir, 'git push'), 0, 'control: a push with nothing ahead of its upstream publishes nothing');
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\nnext\n');
+  const chained = gateFull(dir, 'git commit -am x && git push');
+  assert.equal(chained.status, 2, `the commit runs first, so the push publishes it - exit ${chained.status}: ${chained.stderr}`);
+  assert.match(chained.stderr, /publish gate receipt|PUSH-GATE/, 'blocked by the publish half');
+  git('checkout', '-q', '-b', 'feature'); fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n'); git('add', '-A'); git('commit', '-qm', 'feat'); git('checkout', '-q', 'main');
+  for (const c of ['git merge feature && git push', 'git pull && git push', 'git cherry-pick feature; git push', 'git reset --hard feature && git push']) {
+    const r = gateFull(dir, c);
+    assert.equal(r.status, 2, `${c} - exit ${r.status}`);
+  }
+  assert.equal(gateIn(dir, 'git status && git push'), 0, 'a read before the push moves nothing');
+  assert.equal(gateIn(dir, 'git push && git merge feature'), 0, 'a mover AFTER the push is not what it publishes');
+});
+
+test('audit 2026-10-08: a push of another ref, a set or a tag is judged ahead even when HEAD is level', () => {
+  const { dir, git } = pushRepo();
+  git('checkout', '-q', '-b', 'feature'); fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n'); git('add', '-A'); git('commit', '-qm', 'feat');
+  git('tag', 'v1'); git('checkout', '-q', 'main');
+  for (const c of ['git push origin feature', 'git push origin feature:main', 'git push origin +feature:main', 'git push origin HEAD:release',
+    'git push --all', 'git push --tags', 'git push origin --follow-tags', 'git push origin v1', 'git push -o ci.skip origin feature', 'git push origin :old']) {
+    const r = gateFull(dir, c);
+    assert.equal(r.status, 2, `${c} publishes what HEAD's upstream never shows - exit ${r.status}`);
+  }
+  for (const c of ['git push', 'git push origin', 'git push origin main', 'git push origin HEAD', 'git push origin main:main', 'git push -o ci.skip origin main', 'git push -u origin main']) {
+    assert.equal(gateIn(dir, c), 0, `${c} pushes the level branch under its own name`);
+  }
+});
+
+test('audit 2026-10-08: a first push names the projects its commits touch, with no upstream to diff', () => {
+  const { dir, git } = pushRepo();
+  git('checkout', '-q', '-b', 'two-projects');
+  fs.mkdirSync(path.join(dir, 'apps', 'auth'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'apps', 'consumer'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'apps', 'auth', 'a.ts'), forty());
+  fs.writeFileSync(path.join(dir, 'apps', 'consumer', 'b.ts'), forty());
+  git('add', '-A'); git('commit', '-qm', 'feat: auth + consumer');
+  writeReceipt(dir, 'PUSH-GATE', pushReceipt(headOf(dir), { scope: null }));
+  const r = gateFull(dir, 'git push -u origin two-projects');
+  assert.equal(r.status, 2, `the first push spans two projects and the receipt names no scope - exit ${r.status}`);
+  assert.match(r.stderr, /auth.*consumer|consumer.*auth/, 'names both projects');
+  writeReceipt(dir, 'PUSH-GATE', pushReceipt(headOf(dir), { scope: 'scope: workspace' }));
+  assert.equal(gateIn(dir, 'git push -u origin two-projects'), 0, 'a workspace scope covers it');
+});
+
+test('audit 2026-10-08: head: is the first sha word on its line, and a header: line is not it', () => {
+  const { dir } = pushRepo();
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\nnext\n');
+  spawnSync('git', ['-C', dir, 'commit', '-qam', 'next'], { encoding: 'utf8' });
+  const head = headOf(dir);
+  writeReceipt(dir, 'PUSH-GATE', pushReceipt(head, { head: 'unknown' }));
+  assert.equal(gateIn(dir, 'git push'), 2, "'head: unknown' names no sha - it passed before");
+  writeReceipt(dir, 'PUSH-GATE', pushReceipt(head, { head: null }).replace('VERIFIED the release\n', `VERIFIED the release\nheader: ${head}\n`));
+  assert.equal(gateIn(dir, 'git push'), 2, 'a header: line is no head: line');
+  writeReceipt(dir, 'PUSH-GATE', pushReceipt(head, { head: `${head.slice(0, 12)} (main)` }));
+  assert.equal(gateIn(dir, 'git push'), 0, "a sha with the branch after it is that sha - '(main)' added hex letters before");
+  writeReceipt(dir, 'PUSH-GATE', pushReceipt(head, { head: head.toUpperCase() }));
+  assert.equal(gateIn(dir, 'git push'), 0, 'an upper-case sha is the same sha');
+});
+
+test('audit 2026-10-08: a WAIVED quote must waive the review, in the user\'s words', () => {
+  const { dir } = pushRepo();
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\nnext\n');
+  spawnSync('git', ['-C', dir, 'commit', '-qam', 'next'], { encoding: 'utf8' });
+  for (const [quote, want] of [['what time is it?', 2], ['push it', 2], ['skip the review', 0], ['just push', 0], ['push it anyway, no review', 0], ['пуш без перевірки', 0]]) {
+    writeReceipt(dir, 'PUSH-GATE', `WAIVED - "${quote}"\n`);
+    assert.equal(gateIn(dir, 'git push'), want, `WAIVED - "${quote}"`);
+  }
+  const tp = path.join(dir, '..', 'waived-transcript.jsonl');
+  fs.writeFileSync(tp, JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'q1', name: 'AskUserQuestion', input: { questions: [{ question: 'Push?', options: [{ label: 'Skip the review and push', description: 'x' }] }] } }] } }) + '\n');
+  writeReceipt(dir, 'PUSH-GATE', 'WAIVED - "Skip the review and push"\n');
+  const r = runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git push' }, transcript_path: tp }, { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+  assert.equal(r.status, 2, 'an option label this run wrote is the model\'s sentence, not the user\'s waiver');
+});
+
+test('audit 2026-10-08: a publish receipt written before this session began is absent, and the act is capped and masked', () => {
+  const { dir } = pushRepo();
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\nnext\n');
+  spawnSync('git', ['-C', dir, 'commit', '-qam', 'next'], { encoding: 'utf8' });
+  writeReceipt(dir, 'PUSH-GATE', pushReceipt(headOf(dir)));
+  const gate = path.join(dir, '.alfred', 'docs', 'flow', 'PUSH-GATE');
+  const past = (Date.now() - 10 * 60 * 1000) / 1000;
+  fs.utimesSync(gate, past, past);
+  const tp = path.join(dir, '..', `session-${process.pid}.jsonl`);
+  fs.writeFileSync(tp, '');
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+  fs.appendFileSync(tp, '{}\n'); // a live transcript has been written since its birth, so its ctime moved past it
+  const st = fs.statSync(tp);
+  if (process.platform === 'darwin') assert.ok(st.birthtimeMs && st.birthtimeMs !== st.ctimeMs, 'APFS reports a birthtime - the session case must run here');
+  const push = (command) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command }, transcript_path: tp }, { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+  if (st.birthtimeMs && st.birthtimeMs !== st.ctimeMs) {
+    assert.equal(push('git push').status, 2, 'another session\'s receipt opens no push in this one');
+    fs.utimesSync(gate, Date.now() / 1000, Date.now() / 1000);
+    assert.equal(push('git push').status, 0, 'one written in this session does');
+  }
+  fs.rmSync(gate);
+  const masked = push('git push https://bob:tok3n-secret-value@example.invalid/x.git main');
+  assert.equal(masked.status, 2);
+  assert.doesNotMatch(masked.stderr, /tok3n-secret-value/, 'the denial never echoes a credential in a remote URL');
+  assert.match(masked.stderr, /\/\/\*\*\*@example\.invalid/);
 });
 
 test('guard-ungated-commit: plain top-level folders are not projects - only a folder with its own manifest is', () => {

@@ -1,11 +1,11 @@
 ---
 name: habits-root-cause
-description: "Use when a failure's cause is unproven, before the first fix - red test, build error, stack trace, flaky run. Not for known signatures, which catalogs own."
+description: "Use when a failure's cause is unproven, before the first fix - red test, build error, stack trace, flaky run. Not for a signature's meaning, which catalogs add."
 ---
 
 # Root cause - one hypothesis, one change, then the fix
 
-A fix aimed at a symptom moves the failure somewhere nobody is looking. This is the loop every diagnosis in the stack runs on: the diagnoser seats preload it, the build and test resolvers localize with it, and the investigation flow proves its root cause through it. It finds the cause and says where the fix belongs; who writes the fix is the caller's scope. The loop runs on the obvious one-liner and under time pressure too - a simple bug is one fast pass, not a skipped one.
+A fix aimed at a symptom moves the failure somewhere nobody is looking. It finds the cause and says where the fix belongs; who writes the fix is the caller's scope. The loop runs on the obvious one-liner and under time pressure too - a simple bug is one fast pass, not a skipped one.
 
 ## When to use
 
@@ -21,13 +21,13 @@ A fix aimed at a symptom moves the failure somewhere nobody is looking. This is 
 4. **Compare with a case that works.** A sibling path in the same code, a passing test, the last green commit. List every difference, small ones included - that list is where the hypotheses come from.
 5. **One hypothesis, one change.** Write it as one line in your reply BEFORE the change - 'X fails because Y' - then make the smallest change or check that confirms or kills it, re-run, and read the result before the next. A cause worked out silently and stated only in the close is not a hypothesis - it is the fix explaining itself afterwards. Two changes at once prove nothing. A killed hypothesis is progress: revert its change before the next one, and note it so it is not tried twice.
 6. **Fix at the root, test first.** Where writing tests is in scope, a test that fails for the reason you found lands first. Then ONE fix for the cause - never a guard around the symptom, never a bundle of 'while I am here' edits - then the repro and the relevant suite, output quoted, per `habits-done-gate`. The repro still red after the fix means the hypothesis was wrong: revert the fix and go back to step 3.
-7. **Three fixes that did not hold: stop.** Three fixes that left the repro red, or that each surfaced a failure somewhere else, mean the shape is wrong, not the line. Put the design question to whoever owns the design instead of forcing a fourth fix.
+7. **Three fixes that did not hold: stop.** Three fixes that left the repro red, or that each surfaced a failure somewhere else, mean the shape is wrong, not the line. Put the design question to whoever owns the design - in a chat, ONE AskUserQuestion with the redesign recommended; a seat returns it in its report - instead of forcing a fourth fix.
 
 No root cause in the code - the evidence points at the environment, timing or an outside service: say what was ruled out, then handle it where it surfaces (a retry, a timeout, a clear error) and add a log point that catches it next time.
 
 ## Where a seat's scope cuts the loop
 
-- A read-only seat (a diagnoser) runs steps 1-5, adds no instrumentation to the code and writes no fix: it reports the cause, the evidence and the route.
+- A read-only run - a diagnoser seat, or the gated diagnose flow in this chat - runs steps 1-5, adds no instrumentation to the code and writes no fix: it reports the cause, the evidence and the route.
 - A repair seat that does not write new tests (a build or test-suite resolver) runs steps 1-5, the one fix of step 6 without its failing test, and step 7.
 - A single-chat run takes all seven.
 

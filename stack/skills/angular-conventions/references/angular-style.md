@@ -90,7 +90,7 @@ export class UserProfile {
 }
 ```
 
-Legacy (pre-v17 patterns to avoid in new code - decorator inputs, constructor injection, `*ngIf`, mutable field, type suffix):
+Legacy (pre-v17 patterns to avoid in new code - decorator inputs, `*ngIf`, mutable field, type suffix):
 ```ts
 @Component({
   selector: 'app-user-profile',

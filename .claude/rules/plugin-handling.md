@@ -17,7 +17,7 @@ Adding, changing, renaming or removing anything the plugin ships. `CLAUDE.md` ho
 - A skill is `stack/skills/<name>/SKILL.md`, an agent `stack/agents/<seat>.md`, a rule `stack/rules/alfred-<job>.md`, a hook `stack/hooks/<name>.js` plus its `hooks[]` row, an MCP server its manifest row plus `meta/mcp-pins.json`, a command `setup-plugin/commands/<name>.md`.
 - `meta/stack-manifest.json` is hand-edited and lists every one of them. Change the item and its manifest row in the same step.
 - A rename adds a `renamed` row (old to new), a removal a `retired` row, or installed projects keep the old copy or prune it wrongly.
-- New names are `alfred-code` / `ALFRED_CODE_`. A 1.x spelling is written only where `CLAUDE.md` allows it, with its `legacy-name` mark.
+- New names are `alfred-code` / `ALFRED_CODE_`. The 1.x name is gone: lint 57 fails on it in any tracked file.
 
 ## Generated files are regenerated, never edited
 

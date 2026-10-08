@@ -68,9 +68,7 @@ if (require.main === module) {
   // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
   if (off) process.exit(0);
 }
-// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
-// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
-// project whose settings.json has not been migrated yet keeps resolving.
+// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 
 // The reader every git guard shares (heredoc bodies are data there, carried scripts are shell). A copy that runs before
@@ -675,11 +673,13 @@ function main()
     // installed from it, in every project on the machine (`claude plugin marketplace remove --help`: 'Omit to remove
     // it from every scope'). Measured 2026-10-06: a session asked to drop a retired key at user scope ran the bare
     // form and four plugins other projects used went with it. The scoped form passes; nothing is lost by naming it.
-    (() => {
-        const bare = rawCommand.replace(/'[^'\n]*'/g, (m) => m.replace(/[^\n]/g, 'x')).replace(/"[^"\n]*"/g, (m) => m.replace(/[^\n]/g, 'x'));
+    // Read over the shared reader's text too, which joins every carried script (`bash -c '...'`), and the binary may be
+    // spelled by its path (`/usr/local/bin/claude`) - both passed (audit 2026-10-08). Called once `read` exists, below.
+    const marketplaceGate = (text) => {
+        const bare = text.replace(/'[^'\n]*'/g, (m) => m.replace(/[^\n]/g, 'x')).replace(/"[^"\n]*"/g, (m) => m.replace(/[^\n]/g, 'x'));
         for (const seg of bare.split(/&&|\|\||[;|&\n]/))
         {
-            const m = /(?:^|[\s(])claude(?:\.exe|\.cmd)?\s+plugins?\s+marketplace\s+(?:remove|rm)\b(.*)$/.exec(seg);
+            const m = /(?:^|[\s(/\\])claude(?:\.exe|\.cmd)?\s+plugins?\s+marketplace\s+(?:remove|rm)\b(.*)$/.exec(seg);
             if (!m || /(?:^|\s)(?:--scope(?:=|\s)|-h\b|--help\b)/.test(m[1])) continue;
             global.BLOCK_DETAIL = { branch: 'marketplace-remove-unscoped' };
             process.stderr.write('BLOCKED: `claude plugin marketplace remove` with no --scope removes the marketplace from EVERY scope and '
@@ -688,7 +688,7 @@ function main()
                 + 'once per scope the user asked for.\n');
             process.exit(2);
         }
-    })();
+    };
 
     // Git destroys uncommitted work with no undo, and this guard had ZERO git coverage: 225 lines
     // with no occurrence of `git`, so a destructive `git checkout --` replayed exit 0 against every
@@ -715,16 +715,18 @@ function main()
     const powershell = /powershell/i.test(String(payload.tool_name || ''));
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
     const read = shellWrites.gitText(powershell ? rawCommand.replace(/\\/g, '\\\\').replace(/`([\s\S])/g, '\\$1') : rawCommand, path.resolve(payload.cwd || root));
+    marketplaceGate(rawCommand);
+    marketplaceGate(read.command);
     const losses = [];
     const { execFileSync } = require('child_process');
     const budget = shellWrites.newRun().budget;
-    let overCap = null; // the first destructive call past the cap: read as one whole-tree discard below
+    const overCap = []; // the destructive calls past the cap: read conservatively below
     const gitIn = (gitCwd) => (argv) => execFileSync('git', argv, { cwd: gitCwd, timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, LC_ALL: 'C' } }).toString();
     for (const call of read.calls)
     {
         const verb = call.sub;
         if (!verb || !LOSS_VERBS.has(verb)) continue; // `git add`, `git status`, `git log`: nothing to lose, no git spawned
-        if (!budget.judge()) { overCap = overCap || call; continue; }
+        if (!budget.judge()) { overCap.push(call); continue; }
         const gitCwd = read.callDir(call);
         // argv, never a shell string: the pathspec used to be single-quoted into an execSync line, and on
         // win32 that line runs through cmd.exe, where a single quote is a literal character - git was
@@ -745,11 +747,38 @@ function main()
         try { losses.push(...readLoss(plan, run, gitCwd)); }
         catch { /* nothing read, nothing claimed */ }
     }
-    if (overCap)
+    // Past the cap each call is still read as one whole-tree discard where it runs - and now ALSO by its own plan when
+    // that is no tree plan: the whole-tree read counts no untracked file and reads no stash, reflog or object, so 48
+    // judged calls then `git clean -fd` or `git stash clear` passed (audit 2026-10-08, replayed). A plan is read from the
+    // argv alone (no rev lookup - a checkout's word is a path, judged as the whole tree anyway), once per directory and
+    // kind, at most OVER_CAP_READS of them; past that the rest is a loss nobody read, never let through.
+    const OVER_CAP_READS = 16;
+    const unread = (why) => losses.push({ kind: 'tree', rows: [why], targets: ['*'], named: false });
+    const overCapRead = (plan, gitCwd, seen) =>
     {
-        const gitCwd = read.callDir(overCap);
-        try { losses.push(...readLoss({ kind: 'tree', paths: [], target: undefined }, gitIn(gitCwd), gitCwd)); }
+        const key = `${gitCwd}|${plan.kind}|${plan.kind === 'tree' ? '' : JSON.stringify(plan)}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        if (seen.size > OVER_CAP_READS) { if (seen.size === OVER_CAP_READS + 1) unread(`more distinct git calls than the guard reads (${OVER_CAP_READS}) - not judged`); return; }
+        try { losses.push(...readLoss(plan, gitIn(gitCwd), gitCwd)); }
         catch { /* nothing read, nothing claimed */ }
+    };
+    const seenOverCap = new Set();
+    for (const call of overCap)
+    {
+        const gitCwd = read.callDir(call);
+        overCapRead({ kind: 'tree', paths: [], target: undefined }, gitCwd, seenOverCap);
+        let own = null;
+        try { own = gitPlan(call.sub, call.argv, call.config, () => false); } catch { own = null; }
+        if (own && own.kind !== 'tree') overCapRead(own, gitCwd, seenOverCap);
+    }
+    // Text the reader could not read (an alias git cannot answer, a subcommand xargs supplies, text past the scan budget
+    // that names git) is judged as a whole-tree discard where the shell runs, as the scan budget promises
+    // (hook-prelude.js SCAN_LIMITS: 'never let through') - it passed unjudged before (audit 2026-10-08).
+    if (read.unreadAt >= 0)
+    {
+        const gitCwd = path.resolve(payload.cwd || root);
+        overCapRead({ kind: 'tree', paths: [], target: undefined }, gitCwd, seenOverCap);
     }
 
     // ONE block for the whole command: the losses grouped by what they destroy, every row named.
@@ -826,15 +855,18 @@ function main()
                 `  ${keep}\n` +
                 `  'Discard it' - the loss is intended and the user says so\n` +
                 (narrow ? `  ${narrow}\n` : '') +
-                `On 'Discard it', write the receipt ${receiptRel} - ${spell} - then retry the SAME command. It is honoured\n` +
+                `On 'Discard it', write the receipt ${receiptRel} - ${spell} - then retry the SAME command, and delete\n` +
+                `the receipt once the discard ran (a \`*\` left in place opens every discard for 8h). It is honoured\n` +
                 `for this session only, under 8h. Nothing to lose passes this gate untouched.`,
             );
             process.exit(2);
         }
     }
 
-    // PowerShell carries no `sh -c` script, and its Windows roots (`C:\`) must reach the target test as written.
-    if (!isCatastrophicRm(shellWrites.blankHeredocs(powershell ? rawCommand : read.command)))
+    // PowerShell carries no `sh -c` script, and its Windows roots (`C:\`) must reach the target test as written - with
+    // every backslash read as the path separator it is there (its escape is the backtick): `.\`, `.\*` and `..\` kept
+    // the backslash and named no catastrophic target, so `Remove-Item -Recurse -Force .\` passed (audit 2026-10-08).
+    if (!isCatastrophicRm(shellWrites.blankHeredocs(powershell ? rawCommand.replace(/\\/g, '/') : read.command)))
     {
         process.exit(0);
     }

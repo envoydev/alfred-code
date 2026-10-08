@@ -1,6 +1,6 @@
 ---
 name: desktop-automation
-description: "Use when driving a native desktop app through the windows-desktop or macos-desktop server - clicking, typing, checking UI, reading a Snapshot or Click result."
+description: "Use when driving a native desktop app through the windows-desktop or macos-desktop server - click, type, read a Snapshot. Not for web pages or the app code."
 ---
 
 # Desktop automation - observe, one action, verify
@@ -58,7 +58,8 @@ screen shows.
   the app.
 - **Stop at elevation, credentials, payment and destructive confirmations.** A UAC or admin prompt, a
   sign-in or password field, a payment or purchase step, a delete, overwrite, format or 'discard'
-  confirmation: take no action on it, report what it says, and hand it to the user. A destructive
+  confirmation: take no action on it; quote what it says and put it to the user through ONE
+  AskUserQuestion - 'I have dealt with it - continue' (Recommended) / 'Stop the task'. A destructive
   confirmation is clicked only when the user asked for that exact deletion in this conversation - a
   dialog that appeared on its own never is. Never type a credential; the user types it.
 
@@ -84,8 +85,9 @@ Read the reference for the OS before retrying anything:
 - **macOS: the server fails to connect at start and System Settings opens** - a grant is missing, and
   its log names which. With `MACOS_MCP_SKIP_PERMISSION_CHECK=1` the server starts ungranted, and only then
   is there an empty snapshot (no focused window, no elements) with apps open - Accessibility is missing,
-  not the app closed. **Black screenshots** mean Screen Recording is not granted. Say so and stop: only
-  the user can grant either. `references/macos.md`.
+  not the app closed. **Black screenshots** mean Screen Recording is not granted. Only the user can grant
+  either: name the missing grant and ask through ONE AskUserQuestion - 'Granted and reconnected -
+  continue' (Recommended) / 'Stop here'. `references/macos.md`.
 - **Windows: App cannot find an app** on a non-English display language; **clicks do nothing** in an
   app running as administrator while Claude Code is not (or the reverse). `references/windows.md`.
 - **Either: the first start times out** while uvx downloads Python and the server - reconnect it from

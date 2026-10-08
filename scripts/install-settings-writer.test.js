@@ -25,8 +25,8 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
 const CATALOG = require('../meta/environment.json').env;
 const MIGRATIONS = {
-    renames: [['CLAUDE_DOCS_PATH', 'ALFRED_CODE_DOCS_PATH']],
-    retired: [['CLAUDE_STACK_FRESH_SESSION_PCT', null], ['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', '40']], // legacy-name
+    renames: [['ALFRED_CODE_DOCS_DIR', 'ALFRED_CODE_DOCS_PATH']],
+    retired: [['ALFRED_CODE_FRESH_SESSION_PCT', null], ['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', '40']],
     reseed: [['ALFRED_CODE_FRESH_SESSION_DEFAULT', '250000', '180000']],
 };
 
@@ -172,6 +172,24 @@ test('settings-writer: an @Event matcher wires a lifecycle event, with its own m
         'without the matcher the entry fires on every session start');
 });
 
+// Audit 2026-10-08 row 28: the tool-usage log is a side effect only, so it runs async - the call never waits on its spawn.
+test('settings-writer: the instrument hook alone is wired async, an older blocking entry is backfilled, and a re-run changes nothing', () =>
+{
+    const inst = hookCommand('instrument-tool-usage.js', '').command;
+    const file = settingsFile({ hooks: { PreToolUse: [{ matcher: '.*', hooks: [{ type: 'command', command: inst, timeout: 10 }] }] } });
+    const specs = [HOOK('instrument-tool-usage.js', '.*'), HOOK('a.js', 'Bash')];
+    const { data } = write(file, { hookSpecs: specs });
+    const hooks = data.hooks.PreToolUse.flatMap((e) => e.hooks);
+    assert.strictEqual(hooks.filter((h) => h.command === inst).length, 1, 'one entry, not a second beside the old one');
+    assert.strictEqual(hooks.find((h) => h.command === inst).async, true, 'the older blocking entry is backfilled');
+    assert.ok(!('async' in hooks.find((h) => h.command !== inst)), 'a guard is never async - it must be able to block');
+    const fresh = write(settingsFile({}), { hookSpecs: specs }).data.hooks.PreToolUse.flatMap((e) => e.hooks);
+    assert.strictEqual(fresh.find((h) => h.command === inst).async, true, 'a fresh install wires it async');
+    const before = fs.readFileSync(file, 'utf8');
+    assert.strictEqual(write(file, { hookSpecs: specs }).result.written, false, 'a re-run changes nothing');
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), before);
+});
+
 test('settings-writer: the write is IDEMPOTENT - a second run changes nothing', () =>
 {
     const file = settingsFile({});
@@ -229,23 +247,23 @@ const envPass = (env, opts = {}) =>
 
 test('settings-env: a RENAME carries the value before any seed can overwrite it', () =>
 {
-    const { env } = envPass({ CLAUDE_DOCS_PATH: 'docs/mine' });
+    const { env } = envPass({ ALFRED_CODE_DOCS_DIR: 'docs/mine' });
     assert.strictEqual(env.ALFRED_CODE_DOCS_PATH, 'docs/mine',
         'the seed ran first and wrote the default over the user\'s value');
-    assert.ok(!('CLAUDE_DOCS_PATH' in env), 'the old key survived the rename');
+    assert.ok(!('ALFRED_CODE_DOCS_DIR' in env), 'the old key survived the rename');
 });
 
 test('settings-env: a rename never overwrites a value already set under the NEW name', () =>
 {
-    const { env } = envPass({ CLAUDE_DOCS_PATH: 'old', ALFRED_CODE_DOCS_PATH: 'new' });
+    const { env } = envPass({ ALFRED_CODE_DOCS_DIR: 'old', ALFRED_CODE_DOCS_PATH: 'new' });
     assert.strictEqual(env.ALFRED_CODE_DOCS_PATH, 'new');
-    assert.ok(!('CLAUDE_DOCS_PATH' in env));
+    assert.ok(!('ALFRED_CODE_DOCS_DIR' in env));
 });
 
 test('settings-env: a RETIRED key is dropped, and a conditional one only at its old seed', () =>
 {
-    const dropped = envPass({ CLAUDE_STACK_FRESH_SESSION_PCT: '40' }).env; // legacy-name
-    assert.ok(!('CLAUDE_STACK_FRESH_SESSION_PCT' in dropped)); // legacy-name
+    const dropped = envPass({ ALFRED_CODE_FRESH_SESSION_PCT: '40' }).env;
+    assert.ok(!('ALFRED_CODE_FRESH_SESSION_PCT' in dropped));
 
     const atSeed = envPass({ CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '40' }).env;
     assert.ok(!('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE' in atSeed), 'the stack\'s own old seed was kept');
@@ -277,17 +295,14 @@ test('settings-env: the WRITTEN key overwrites, because it tracks this run\'s ch
     assert.strictEqual(env.ALFRED_CODE_MEMORY_DB, '/new/memory.db', 'a level change did not land - the launcher keeps the old db');
 });
 
-test('settings-env: the retired sentry auth key goes under either spelling, and the SENTRY_* keys stay', () =>
+test('settings-env: the retired sentry auth key goes, and the SENTRY_* keys stay', () =>
 {
     const migrations = envMigrations(require('../meta/migrations.json'));
-    for (const key of ['ALFRED_CODE_SENTRY_AUTH', 'CLAUDE_STACK_SENTRY_AUTH']) // legacy-name
-    {
-        const env = { [key]: 'token', SENTRY_SLUG: 'acme', SENTRY_ACCESS_TOKEN: 'kept' };
-        applyEnv(env, { catalog: CATALOG, migrations, log: () => {} });
-        assert.ok(!('ALFRED_CODE_SENTRY_AUTH' in env) && !(key in env), `${key} outlived the 2.0.0 cut`);
-        assert.strictEqual(env.SENTRY_SLUG, 'acme');
-        assert.strictEqual(env.SENTRY_ACCESS_TOKEN, 'kept');
-    }
+    const env = { ALFRED_CODE_SENTRY_AUTH: 'token', SENTRY_SLUG: 'acme', SENTRY_ACCESS_TOKEN: 'kept' };
+    applyEnv(env, { catalog: CATALOG, migrations, log: () => {} });
+    assert.ok(!('ALFRED_CODE_SENTRY_AUTH' in env), 'ALFRED_CODE_SENTRY_AUTH outlived the 2.0.0 cut');
+    assert.strictEqual(env.SENTRY_SLUG, 'acme');
+    assert.strictEqual(env.SENTRY_ACCESS_TOKEN, 'kept');
 });
 
 test('settings-env: docs versioning - the FLAG writes over a value, the seed only fills an absence', () =>
@@ -321,47 +336,22 @@ test('settings-writer: a dropped seat is denied, and the project keeps its own d
     const file = settingsFile({ permissions: { deny: ['Agent(my-own-seat)', 'Read(./private)'] } });
     const { data } = write(file, {
         denySpecs: ['Read(./.env)'],
-        agentDeny: ['Agent(alfred-code:evidence-gatherer)', 'Agent(claude-stack-aspnet:aspnet-verifier)'],
+        agentDeny: ['Agent(alfred-code:evidence-gatherer)', 'Agent(alfred-code-aspnet:aspnet-verifier)'],
     });
     assert.ok(data.permissions.deny.includes('Agent(alfred-code:evidence-gatherer)'));
-    assert.ok(data.permissions.deny.includes('Agent(claude-stack-aspnet:aspnet-verifier)'));
+    assert.ok(data.permissions.deny.includes('Agent(alfred-code-aspnet:aspnet-verifier)'));
     assert.ok(data.permissions.deny.includes('Agent(my-own-seat)'), "the project's own Agent rule was dropped");
     assert.ok(data.permissions.deny.includes('Read(./private)'), "the project's own Read rule was dropped");
     assert.ok(data.permissions.deny.includes('Read(./.env)'), 'the secret blocks still land beside them');
-});
-
-test('settings-writer: a retired entry seat deny is re-spelled to the core, so the seat stays off; the rest is untouched', () =>
-{
-    const file = settingsFile({ permissions: { deny: ['Agent(claude-stack-angular:angular-test-resolver)', 'Agent(alfred-code:security-auditor)', 'Agent(my-own-seat)', 'Read(./.env)'] } });
-    const { data, logs } = write(file, { retiredEntries: ['claude-stack-angular'], liveEntries: [], agentDeny: ['Agent(alfred-code:security-auditor)'] });
-    assert.deepStrictEqual(data.permissions.deny.slice().sort(), ['Agent(alfred-code:angular-test-resolver)', 'Agent(alfred-code:security-auditor)', 'Agent(my-own-seat)', 'Read(./.env)']);
-    assert.ok(logs.some((m) => /angular-test-resolver/.test(m) && /retired/.test(m)), logs.join('\n'));
-    const again = write(file, { retiredEntries: ['claude-stack-angular'], liveEntries: [], agentDeny: ['Agent(alfred-code:security-auditor)'] });
-    assert.strictEqual(again.result.written, false, 'a second run changes nothing');
-});
-
-// Claude Code matches a seat's deny by its exact home spelling, so while the retired entry is still
-// installed (kept at another scope, a refused uninstall, a blind listing, an install run) the seat
-// loads under the OLD name - dropping that spelling would switch the user's seat back on.
-test('settings-writer: a retired entry still installed keeps the user\'s deny spelling beside the core one', () =>
-{
-    const file = settingsFile({ permissions: { deny: ['Agent(claude-stack-aspnet:aspnet-verifier)'] } });
-    const live = write(file, { retiredEntries: ['claude-stack-aspnet'], liveEntries: ['claude-stack-aspnet'], agentDeny: ['Agent(alfred-code:security-auditor)'] });
-    assert.ok(live.data.permissions.deny.includes('Agent(claude-stack-aspnet:aspnet-verifier)'), live.data.permissions.deny.join(','));
-    assert.ok(live.data.permissions.deny.includes('Agent(alfred-code:aspnet-verifier)'), live.data.permissions.deny.join(','));
-    const unknown = write(settingsFile({ permissions: { deny: ['Agent(claude-stack-aspnet:aspnet-verifier)'] } }), { retiredEntries: ['claude-stack-aspnet'] });
-    assert.ok(unknown.data.permissions.deny.includes('Agent(claude-stack-aspnet:aspnet-verifier)'), 'a caller that cannot say keeps it');
-    const gone = write(file, { retiredEntries: ['claude-stack-aspnet'], liveEntries: [], agentDeny: ['Agent(alfred-code:security-auditor)'] });
-    assert.deepStrictEqual(gone.data.permissions.deny.filter((d) => /aspnet-verifier/.test(d)), ['Agent(alfred-code:aspnet-verifier)'], 'once the entry is gone only the core spelling stays');
 });
 
 test('settings-writer: a seat the selection now KEEPS has its deny cleared', () =>
 {
     // The failure this prevents: a user adds a seat back through configure, the install enables its
     // plugin, and a stale deny from the previous run silently drops the seat they just asked for.
-    const file = settingsFile({ permissions: { deny: ['Agent(claude-stack-aspnet:aspnet-verifier)', 'Agent(my-own-seat)'] } });
-    const { data, logs } = write(file, { agentAllow: ['Agent(claude-stack-aspnet:aspnet-verifier)'] });
-    assert.ok(!data.permissions.deny.includes('Agent(claude-stack-aspnet:aspnet-verifier)'));
+    const file = settingsFile({ permissions: { deny: ['Agent(alfred-code-aspnet:aspnet-verifier)', 'Agent(my-own-seat)'] } });
+    const { data, logs } = write(file, { agentAllow: ['Agent(alfred-code-aspnet:aspnet-verifier)'] });
+    assert.ok(!data.permissions.deny.includes('Agent(alfred-code-aspnet:aspnet-verifier)'));
     assert.ok(data.permissions.deny.includes('Agent(my-own-seat)'), 'clearing one entry cleared another');
     assert.ok(logs.some((m) => /aspnet-verifier/.test(m)), 'a silent clear is unauditable');
 });
@@ -392,42 +382,12 @@ test('settings-writer: a seat that moved home loses its OLD stack spelling, whic
 {
     // The deny names the carrying plugin; a release that moves the seat changes the spelling. The
     // old entry then addresses nothing and would sit in the file forever.
-    const file = settingsFile({ permissions: { deny: ['Agent(claude-stack-old:security-auditor)', 'Agent(claude-stack-old:evidence-gatherer)', 'Agent(my-own:security-auditor)'] } }); // legacy-name
+    const file = settingsFile({ permissions: { deny: ['Agent(alfred-code-old:security-auditor)', 'Agent(alfred-code-old:evidence-gatherer)', 'Agent(my-own:security-auditor)'] } });
     const { data } = write(file, {
         agentDeny: ['Agent(alfred-code:security-auditor)'],
         agentAllow: ['Agent(alfred-code:evidence-gatherer)'],
     });
     assert.deepStrictEqual(data.permissions.deny, ['Agent(my-own:security-auditor)', 'Agent(alfred-code:security-auditor)']);
-});
-
-// 2.0.0 renamed the core. A 1.x seat deny `Agent(claude-stack:<seat>)` still blocks the renamed seat // legacy-name
-// (docs/rebrand-evidence.md S6), but the settings stay in ONE spelling (ruling R7): the old core is
-// the retired home whose new spelling is the core, one more row of the retired-entry re-spell.
-const OLD_CORE = 'claude-stack'; // legacy-name
-
-test('settings-writer: a 1.x core seat deny is re-spelled to the new core, and a hand-written foreign home is left alone', () =>
-{
-    const file = settingsFile({ permissions: { deny: [`Agent(${OLD_CORE}:seat-a)`, 'Agent(other:seat-a)', 'Read(./.env)'] } });
-    const { data, logs } = write(file);
-    assert.deepStrictEqual(data.permissions.deny.slice().sort(), ['Agent(alfred-code:seat-a)', 'Agent(other:seat-a)', 'Read(./.env)']);
-    assert.ok(logs.some((m) => m.includes(`Agent(${OLD_CORE}:seat-a)`) && m.includes('Agent(alfred-code:seat-a)')), logs.join('\n'));
-    assert.strictEqual(write(file).result.written, false, 'a second run changes nothing');
-});
-
-test('settings-writer: while the listing still shows the 1.x core (a rename no session has taken yet), both spellings stay', () =>
-{
-    const file = settingsFile({ permissions: { deny: [`Agent(${OLD_CORE}:seat-a)`] } });
-    const pending = write(file, { liveEntries: [OLD_CORE] });
-    assert.deepStrictEqual(pending.data.permissions.deny.slice().sort(), ['Agent(alfred-code:seat-a)', `Agent(${OLD_CORE}:seat-a)`]);
-    const renamed = write(file, { liveEntries: [] });
-    assert.deepStrictEqual(renamed.data.permissions.deny, ['Agent(alfred-code:seat-a)']);
-});
-
-test('settings-writer: a 1.x seat deny the selection now KEEPS is cleared under either spelling', () =>
-{
-    const file = settingsFile({ permissions: { deny: [`Agent(${OLD_CORE}:seat-a)`, `Agent(${OLD_CORE}:seat-b)`] } });
-    const { data } = write(file, { agentDeny: ['Agent(alfred-code:seat-b)'], agentAllow: ['Agent(alfred-code:seat-a)'] });
-    assert.deepStrictEqual(data.permissions.deny, ['Agent(alfred-code:seat-b)']);
 });
 
 // I1/I2 (R47, fix round 1): settingsTarget is the one place that decides which file a run WRITES.
@@ -458,7 +418,7 @@ test('readBackSettings: local over shared for the stack keys at every scope, the
         permissions: { deny: ['Agent(alfred-code:a)'], allow: ['Bash(ls:*)'] }, hooks: sharedHooks,
     }));
     fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({
-        env: { BOTH: 'local', LOCAL_ONLY: '1', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', CLAUDE_STACK_INSTRUMENT: '1' }, // legacy-name
+        env: { BOTH: 'local', LOCAL_ONLY: '1', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' },
         permissions: { deny: ['Agent(alfred-code:b)', 'Agent(alfred-code:a)'] }, hooks: { PreToolUse: [] },
     }));
     for (const scope of ['project', 'user'])
@@ -466,7 +426,6 @@ test('readBackSettings: local over shared for the stack keys at every scope, the
         const r = readBackSettings(dir, scope);
         assert.deepStrictEqual(r.env, {
             ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_PUSH_GATE: '1', SHARED_ONLY: '1', BOTH: 'shared',
-            CLAUDE_STACK_INSTRUMENT: '1', // legacy-name
         }, `${scope}: the stack keys the local file holds win, nothing else of it is read`);
         assert.deepStrictEqual(r.permissions.deny, ['Agent(alfred-code:a)', 'Agent(alfred-code:b)'], `${scope}: deny is the shared file's plus the stack seat denies the local file holds (Task 22 I1)`);
         assert.deepStrictEqual(r.hooks, sharedHooks, `${scope}: hooks are the shared file's`);
@@ -476,7 +435,6 @@ test('readBackSettings: local over shared for the stack keys at every scope, the
     const merged = readBackSettings(dir, 'local');
     assert.deepStrictEqual(merged.env, {
         ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_PUSH_GATE: '1', SHARED_ONLY: '1', BOTH: 'local', LOCAL_ONLY: '1',
-        CLAUDE_STACK_INSTRUMENT: '1', // legacy-name
     });
     assert.deepStrictEqual(merged.permissions.deny, ['Agent(alfred-code:a)', 'Agent(alfred-code:b)']);
     assert.deepStrictEqual(merged.permissions.allow, ['Bash(ls:*)']);
@@ -509,12 +467,12 @@ test('settings-writer: at project scope a write to a stack key settings.local.js
     const localFile = path.join(dir, 'settings.local.json');
     fs.writeFileSync(sharedFile, JSON.stringify({ env: { TEAM: 'y' } }));
     fs.writeFileSync(localFile, JSON.stringify({
-        env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_FRESH_SESSION_DEFAULT: '250000', ALFRED_CODE_DOCS_VERSIONING: 'local', CLAUDE_STACK_MONITOR: 'inject', MY_OWN: 'x' }, // legacy-name
+        env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_FRESH_SESSION_DEFAULT: '250000', ALFRED_CODE_DOCS_VERSIONING: 'local', ALFRED_CODE_MONITOR_MODE: 'inject', MY_OWN: 'x' },
         permissions: { allow: ['Bash(ls)'] },
     }));
     const logs = [];
     const opts = {
-        file: sharedFile, localFile, catalog: CATALOG, migrations: { ...MIGRATIONS, prefixRenames: [['CLAUDE_STACK_', 'ALFRED_CODE_']] }, // legacy-name
+        file: sharedFile, localFile, catalog: CATALOG, migrations: { ...MIGRATIONS, renames: [...MIGRATIONS.renames, ['ALFRED_CODE_MONITOR_MODE', 'ALFRED_CODE_MONITOR']] },
         hooksOff: ['guard-answer-length', 'guard-secret-value'], hooksAnswered: true, docsVersioning: { value: 'git', seed: 'git' },
     };
     writeSettings({ ...opts, log: (m) => logs.push(m) });
@@ -535,7 +493,7 @@ test('settings-writer: at project scope a write to a stack key settings.local.js
     const text = logs.join('\n');
     assert.match(text, /settings\.local\.json env: ALFRED_CODE_HOOKS_OFF = guard-answer-length,guard-secret-value/);
     assert.match(text, /settings\.local\.json env: ALFRED_CODE_FRESH_SESSION_DEFAULT reset to 180000/);
-    assert.match(text, /settings\.local\.json env: CLAUDE_STACK_MONITOR renamed to ALFRED_CODE_MONITOR/); // legacy-name
+    assert.match(text, /settings\.local\.json env: ALFRED_CODE_MONITOR_MODE renamed to ALFRED_CODE_MONITOR/);
     assert.match(text, /settings\.json env: ALFRED_CODE_PUSH_GATE seeded/);
 
     // Idempotent: a second run writes neither file.
@@ -566,9 +524,9 @@ test('settings-env: an inherited key counts as present for every absent-only see
     for (const key of Object.keys(inherited)) assert.ok(!(key in env), `N6: ${key} was seeded over the inherited '${inherited[key]}'`);
     assert.strictEqual(env.ALFRED_CODE_INSTRUMENT, '0', 'a key the inherited view lacks is still seeded');
 
-    // A legacy spelling there is the same key: renamed on read, so the new spelling is not seeded over it.
-    const legacy = envPass({}, { inherited: { CLAUDE_STACK_PUSH_GATE: '0', CLAUDE_DOCS_PATH: 'docs/old' }, migrations: { ...MIGRATIONS, prefixRenames: [['CLAUDE_STACK_', 'ALFRED_CODE_']] } }).env; // legacy-name
-    assert.ok(!('ALFRED_CODE_PUSH_GATE' in legacy) && !('ALFRED_CODE_DOCS_PATH' in legacy), JSON.stringify(legacy));
+    // A renamed spelling there is the same key: renamed on read, so the new spelling is not seeded over it.
+    const renamed = envPass({}, { inherited: { ALFRED_CODE_GATE_PUSH: '0', ALFRED_CODE_DOCS_DIR: 'docs/old' }, migrations: { ...MIGRATIONS, renames: [...MIGRATIONS.renames, ['ALFRED_CODE_GATE_PUSH', 'ALFRED_CODE_PUSH_GATE']] } }).env;
+    assert.ok(!('ALFRED_CODE_PUSH_GATE' in renamed) && !('ALFRED_CODE_DOCS_PATH' in renamed), JSON.stringify(renamed));
 
     // Decisions still write the local file.
     const decided = envPass({}, { inherited, hooksOff: ['check-turn-build'], hooksAnswered: true, docsVersioning: { value: 'git' }, memoryDb: '/db' }).env;
@@ -734,16 +692,17 @@ test('leaveLocalScope: no local file, a malformed one, or a malformed settings.j
 // what actually happened to each.
 test('settings-writer env: the rename log says renamed only when the value moved', () =>
 {
-    const file = settingsFile({ env: { CLAUDE_STACK_MONITOR: 'log', ALFRED_CODE_MONITOR: 'inject', CLAUDE_STACK_PUSH_GATE: '', CLAUDE_STACK_ROTATE_ASK: '0' } }); // legacy-name
-    const { logs, data } = write(file, { migrations: { ...MIGRATIONS, prefixRenames: [['CLAUDE_STACK_', 'ALFRED_CODE_']] } }); // legacy-name
+    const file = settingsFile({ env: { ALFRED_CODE_MONITOR_MODE: 'log', ALFRED_CODE_MONITOR: 'inject', ALFRED_CODE_GATE_PUSH: '', ALFRED_CODE_ASK_ROTATE: '0' } });
+    const renames = [['ALFRED_CODE_MONITOR_MODE', 'ALFRED_CODE_MONITOR'], ['ALFRED_CODE_GATE_PUSH', 'ALFRED_CODE_PUSH_GATE'], ['ALFRED_CODE_ASK_ROTATE', 'ALFRED_CODE_ROTATE_ASK']];
+    const { logs, data } = write(file, { migrations: { ...MIGRATIONS, renames: [...MIGRATIONS.renames, ...renames] } });
     const text = logs.join('\n');
     assert.strictEqual(data.env.ALFRED_CODE_MONITOR, 'inject', 'the new key wins');
     assert.strictEqual(data.env.ALFRED_CODE_ROTATE_ASK, '0');
-    assert.match(text, /settings\.json env: CLAUDE_STACK_ROTATE_ASK renamed to ALFRED_CODE_ROTATE_ASK/); // legacy-name
-    assert.doesNotMatch(text, /CLAUDE_STACK_MONITOR renamed/); // legacy-name
-    assert.match(text, /settings\.json env: CLAUDE_STACK_MONITOR dropped - ALFRED_CODE_MONITOR is already set and wins/); // legacy-name
-    assert.doesNotMatch(text, /CLAUDE_STACK_PUSH_GATE renamed/); // legacy-name
-    assert.match(text, /settings\.json env: CLAUDE_STACK_PUSH_GATE dropped - it was empty/); // legacy-name
+    assert.match(text, /settings\.json env: ALFRED_CODE_ASK_ROTATE renamed to ALFRED_CODE_ROTATE_ASK/);
+    assert.doesNotMatch(text, /ALFRED_CODE_MONITOR_MODE renamed/);
+    assert.match(text, /settings\.json env: ALFRED_CODE_MONITOR_MODE dropped - ALFRED_CODE_MONITOR is already set and wins/);
+    assert.doesNotMatch(text, /ALFRED_CODE_GATE_PUSH renamed/);
+    assert.match(text, /settings\.json env: ALFRED_CODE_GATE_PUSH dropped - it was empty/);
 });
 
 // Two settings files in one .claude dir, for the project-scope cases below.
@@ -1199,17 +1158,17 @@ test('removeManagedSettings: the attribution keys it seeded go, an edited one st
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')), { enabledMcpjsonServers: ['mine'], enabledPlugins: { 'x@y': true } }, 'a list that names something is never touched');
 });
 
-// A local-scope run writes settings.local.json, but a legacy copy-route install's stack wiring and its 1.x
-// env keys sit in settings.json: left there, every Bash call ran a hook file the plugin route had pruned.
+// A local-scope run writes settings.local.json, but a copy-route install's stack wiring and its
+// renamed or retired env keys sit in settings.json: left there, every Bash call ran a hook file the plugin route had pruned.
 // The stack's own stale rows leave settings.json; a hook the user wrote stays.
-test('settings-writer: a local-scope run removes the stack\'s stale wiring and 1.x env key from settings.json, never the user\'s own', () =>
+test('settings-writer: a local-scope run removes the stack\'s stale wiring and env keys from settings.json, never the user\'s own', () =>
 {
     const dir = path.join(TMP, `sharedprune-${seq++}`, '.claude');
     fs.mkdirSync(dir, { recursive: true });
     const shared = path.join(dir, 'settings.json');
     const mine = { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/scripts/my-hook.js"', timeout: 5 };
     fs.writeFileSync(shared, JSON.stringify({
-        env: { CLAUDE_DOCS_PATH: '.claude/docs', MY_KEY: '1', CLAUDE_STACK_FRESH_SESSION_PCT: '50' }, // legacy-name
+        env: { ALFRED_CODE_DOCS_DIR: '.claude/docs', MY_KEY: '1', ALFRED_CODE_FRESH_SESSION_PCT: '50' },
         hooks: {
             PreToolUse: [
                 { matcher: 'Bash', hooks: [hookCommandEntry('guard-catastrophic-rm.js'), mine] },
@@ -1229,9 +1188,9 @@ test('settings-writer: a local-scope run removes the stack\'s stale wiring and 1
     assert.ok(cmds.includes('my-hook.js'), 'the user\'s own hook was removed');
     assert.strictEqual(after.hooks.PreToolUse.length, 1);
     assert.strictEqual(after.env.MY_KEY, '1');
-    assert.ok(!('CLAUDE_DOCS_PATH' in after.env), 'the 1.x docs key stayed'); // legacy-name
+    assert.ok(!('ALFRED_CODE_DOCS_DIR' in after.env), 'the renamed docs key stayed');
     assert.strictEqual(after.env.ALFRED_CODE_DOCS_PATH, '.claude/docs');
-    assert.ok(!('CLAUDE_STACK_FRESH_SESSION_PCT' in after.env)); // legacy-name
+    assert.ok(!('ALFRED_CODE_FRESH_SESSION_PCT' in after.env), 'the retired key stayed');
     // Idempotent, and a missing or malformed shared file is left alone.
     const bytes = fs.readFileSync(shared, 'utf8');
     writeSettings({ file: local, sharedFile: shared, catalog: CATALOG, migrations: MIGRATIONS, retiredHooks: ['guard-stop-contract.js'], log: () => {} });

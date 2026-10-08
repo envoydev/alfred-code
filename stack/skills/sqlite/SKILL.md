@@ -1,6 +1,6 @@
 ---
 name: sqlite
-description: "Use when the work touches SQLite - a .db file, a PRAGMA, an embedded or test store, an EF Core SQLite quirk. Not for server-class concurrent writers (Postgres)."
+description: "Use when the work touches SQLite - a .db file, a PRAGMA, 'database is locked', an embedded or test store, an EF Core quirk. Not for Postgres-class writers."
 ---
 
 # sqlite (engine specialist)
@@ -35,10 +35,10 @@ Not the cross-engine schema and transaction rules - those are the hub skill, loa
 The connection-open sequence the rules above add up to:
 
 ```sql
-PRAGMA foreign_keys = ON;     -- every connection - enforcement is OFF by default
-PRAGMA busy_timeout = 5000;   -- ms - a contended writer waits instead of failing with SQLITE_BUSY
-PRAGMA journal_mode = WAL;    -- persists on the file; readers no longer block the single writer
-PRAGMA synchronous = NORMAL;  -- the usual durability/speed balance with WAL
+PRAGMA foreign_keys = ON;
+PRAGMA busy_timeout = 5000;
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
 ```
 
 ## Schema changes
@@ -65,11 +65,11 @@ BEGIN;
   -- step 3: SELECT type, name, sql FROM sqlite_schema WHERE tbl_name='orders';
   CREATE TABLE new_orders (                       -- step 4: the revised schema
     id      INTEGER PRIMARY KEY,
-    total   REAL NOT NULL,                        -- was TEXT
+    qty     INTEGER NOT NULL,                     -- was TEXT
     placed  TEXT NOT NULL
   ) STRICT;
-  INSERT INTO new_orders (id, total, placed)      -- step 5
-    SELECT id, CAST(total AS REAL), placed FROM orders;
+  INSERT INTO new_orders (id, qty, placed)        -- step 5
+    SELECT id, CAST(qty AS INTEGER), placed FROM orders;
   DROP TABLE orders;                              -- step 6
   ALTER TABLE new_orders RENAME TO orders;        -- step 7
   -- steps 8-9: replay the saved index / trigger / view SQL here

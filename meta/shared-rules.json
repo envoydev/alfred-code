@@ -31,7 +31,7 @@
       ]
     },
     "docs-root-resolution": {
-      "_note": "The docs-root default: ALFRED_CODE_DOCS_PATH from the settings env (.claude/settings.local.json over .claude/settings.json, the order Claude Code merges them in - audit M61), absent = .alfred/docs - outside .claude/, the directory Claude Code protects (2.0.0; an install on the old default .claude/docs - environment.json former_defaults - is moved only on update's one-time ask, scripts/install/docs.js docsMovePlan) (CLAUDE_DOCS_PATH is the pre-0.2.43 spelling, still read as a fallback by every consumer until the rename reaches every install; the installer renames the key in place). The always-on alfred-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (each hook's docsRootEnv() fallback, the skill line that quotes it, the re-probe script) must state the same value. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to carry this default too, as their own two sites. Every other code home of the fallback (each hook's inline docsRootEnv, the analyzers) is held to the same value by scripts/docs-root-default.test.js, which also fails on a NEW home spelling the old one.",
+      "_note": "The docs-root default: ALFRED_CODE_DOCS_PATH from the settings env (.claude/settings.local.json over .claude/settings.json, the order Claude Code merges them in - audit M61), absent = .alfred/docs - outside .claude/, the directory Claude Code protects (2.0.0; an install on the old default .claude/docs - environment.json former_defaults - is moved only on update's one-time ask, scripts/install/docs.js docsMovePlan). The always-on alfred-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (each hook's docsRootEnv() fallback, the skill line that quotes it, the re-probe script) must state the same value. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to carry this default too, as their own two sites. Every other code home of the fallback (each hook's inline docsRootEnv, the analyzers) is held to the same value by scripts/docs-root-default.test.js, which also fails on a NEW home spelling the old one.",
       "owner": {
         "file": "stack/rules/alfred-docs-root.md",
         "marker": "the `ALFRED_CODE_DOCS_PATH` env value, `.claude/settings.local.json` over `.claude/settings.json`; absent = `.alfred/docs`"
@@ -378,19 +378,19 @@
         },
         {
           "file": "stack/agents/dotnet-build-error-resolver.md",
-          "marker": "Lead with a status - DONE"
+          "marker": "Close with a literal `status:` line, the last line of the report - DONE"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "Lead with a status - DONE"
+          "marker": "Close with a literal `status:` line, the last line of the report - DONE"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "Lead with a status - DONE"
+          "marker": "Close with a literal `status:` line, the last line of the report - DONE"
         },
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "Lead with a status - DONE"
+          "marker": "Close with a literal `status:` line, the last line of the report - DONE"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
@@ -448,10 +448,10 @@
       ]
     },
     "diagnosis-status-vocabulary": {
-      "_note": "The diagnosis status vocabularies - issue and CI variants sync with the investigation reference.",
+      "_note": "The diagnosis status vocabularies - issue and CI variants sync with the investigation reference, which carries the union (CI_PASSING, the CI seat's word for a confirm-red that came back green, joined it in the 2026-10-08 audit, agents F09).",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/issue-investigation.md",
-        "marker": "status: DIAGNOSED | NOT_REPRODUCED | NEEDS_MORE_EVIDENCE | LIKELY_FLAKE | INCONCLUSIVE"
+        "marker": "status: DIAGNOSED | NOT_REPRODUCED | NEEDS_MORE_EVIDENCE | LIKELY_FLAKE | INCONCLUSIVE | CI_PASSING"
       },
       "sites": [
         {
@@ -461,6 +461,36 @@
         {
           "file": "stack/agents/issue-diagnoser-ci.md",
           "marker": "DIAGNOSED, CI_PASSING, LIKELY_FLAKE, NEEDS_MORE_EVIDENCE, or INCONCLUSIVE"
+        }
+      ]
+    },
+    "diagnoser-sanctioned-nested-dispatch": {
+      "_note": "The two diagnosers dispatching the read-only evidence-gatherer is the stack's one sanctioned nested dispatch; gathering is observation, so it keeps the one-change-at-a-time rule (2026-10-08 agents audit F13).",
+      "owner": {
+        "file": "stack/skills/task-solve-cross/references/issue-investigation.md",
+        "marker": "is the stack's one sanctioned nested dispatch"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/issue-diagnoser-ci.md",
+          "marker": "the stack's one sanctioned nested dispatch"
+        },
+        {
+          "file": "stack/agents/issue-diagnoser-runtime.md",
+          "marker": "the stack's one sanctioned nested dispatch"
+        }
+      ]
+    },
+    "diagnoser-gather-accounting": {
+      "_note": "A diagnoser reports how many gatherers it dispatched and their summed cost, so the delegated gathering is visible in the diagnosis's price (2026-10-08 agents audit F13).",
+      "owner": {
+        "file": "stack/agents/issue-diagnoser-runtime.md",
+        "marker": "Account for the gathering: state how many evidence-gatherers you dispatched and their summed `subagent_tokens` / `tool_uses` (from each gather-task's result)"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/issue-diagnoser-ci.md",
+          "marker": "Account for the gathering: state how many evidence-gatherers you dispatched and their summed `subagent_tokens` / `tool_uses` (from each gather-task's result)"
         }
       ]
     },
@@ -684,7 +714,7 @@
       ]
     },
     "implementer-ceilings-row": {
-      "_note": "Each implementer reports a deliberate simplification in one fixed shape, so the close can file it under the architecture docs' Known ceilings section instead of losing it with the session.",
+      "_note": "Each implementer reports a deliberate simplification in one fixed shape, so the close can file it under the architecture docs' Known ceilings section instead of losing it with the session. The always-on quality gates carry the same row for the main session, beside the comment rules (2026-10-08 rules audit F9).",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
         "marker": "Record each deliberate simplification in your closing report as a `ceilings:` row, `where | limit | revisit when`"
@@ -725,18 +755,22 @@
         {
           "file": "stack/agents/wpf-implementer.md",
           "marker": "Record each deliberate simplification in your closing report as a `ceilings:` row, `where | limit | revisit when`"
+        },
+        {
+          "file": "stack/rules/alfred-quality-gates.md",
+          "marker": "No code comment flagging a deliberate simplification - its ceiling goes in the report as a `where | limit | revisit when` row"
         }
       ]
     },
     "known-ceilings-filing": {
-      "_note": "The close step that files the ceilings rows through docs.js set - the orchestrator's close-out and the in-chat implementer's finish each carry it, because either can close a build alone.",
+      "_note": "The close step that files the ceilings rows through docs.js set - the orchestrator's close-out and the in-chat implementer's finish each carry it, because either can close a build alone. Both live in a close-time reference the body reads at its finish (the implementer's moved out of SKILL.md in the 2026-10-08 audit).",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/close-out.md",
         "marker": "then pipe the whole section - `## Known ceilings`, a `<!-- covers: -->` line naming every row's file, the table with the new rows appended - into `docs.js set architecture/ARCHITECTURE.md#known-ceilings --expect <that hash>`"
       },
       "sites": [
         {
-          "file": "stack/skills/task-implement/SKILL.md",
+          "file": "stack/skills/task-implement/references/known-ceilings.md",
           "marker": "then pipe the whole section - `## Known ceilings`, a `<!-- covers: -->` line naming every row's file, the table with the new rows appended - into `docs.js set architecture/ARCHITECTURE.md#known-ceilings --expect <that hash>`"
         }
       ]
@@ -1039,6 +1073,19 @@
         {
           "file": "stack/skills/ts-js-testing/SKILL.md",
           "marker": "Detect, never install or migrate a runner inside a task; a migration is its own user-approved change"
+        }
+      ]
+    },
+    "device-e2e-suite": {
+      "_note": "Real-device E2E belongs to a device suite, never a jsdom unit spec, and a flow with no such suite is reported UNVERIFIED. The Ionic native-seam reference owns it; the Angular testing hub restates it because the Ionic layer may be absent (2026-10-08 audit, D15).",
+      "owner": {
+        "file": "stack/skills/ionic/references/native-seam.md",
+        "marker": "device E2E suite (Appium or WebdriverIO against a device or simulator"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/angular-testing/SKILL.md",
+          "marker": "device E2E suite (Appium or WebdriverIO against a device or simulator"
         }
       ]
     },
@@ -1384,6 +1431,19 @@
         }
       ]
     },
+    "bot-worker-io-floors": {
+      "_note": "The 24/7 I/O floors a bot host needs when the hosted-worker skill is absent - one pooled HttpClient over SocketsHttpHandler, backoff with jitter on reconnect, 429 / Retry-After, a persisted idempotency key. The hosted-services skill's I/O reference owns them; the console-apps skill restates them in one sentence for an install without it (2026-10-08 audit), so a change to one floor changes both.",
+      "owner": {
+        "file": "stack/skills/dotnet-hosted-services/references/resilience-and-io.md",
+        "marker": "A singleton `HttpClient` over a `SocketsHttpHandler` with `PooledConnectionLifetime`"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-console-apps/SKILL.md",
+          "marker": "one `HttpClient` over a `SocketsHttpHandler` with `PooledConnectionLifetime`, never `new HttpClient()` per call"
+        }
+      ]
+    },
     "dotnet10-executeasync-thread": {
       "_note": "The .NET 10 ExecuteAsync-on-background-thread fact - hosted-services owns the full note, windows-service carries the surface-specific one-liner.",
       "owner": {
@@ -1419,6 +1479,47 @@
         {
           "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
           "marker": "The main session is the only orchestrator for the whole vertical"
+        }
+      ]
+    },
+    "fan-out-cap": {
+      "_note": "Implementer fan-out runs at most 3 seats at once by default, more only on the user's ask - every site that dispatches implementers in parallel states the cap in its own words. The vendored trio protocol once said 'all in parallel ... expose all of it' against the owner's cap (2026-10-08 audit BLOCKER 1), so each phrasing is pinned here.",
+      "owner": {
+        "file": "stack/skills/task-solve-cross/references/execution-modes.md",
+        "marker": "fan-out is capped at 3 implementers at once by default, more only on the user's ask"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
+          "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
+        },
+        {
+          "file": "stack/skills/loop-architecture-quality/references/domain-trio-protocol.md",
+          "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
+        },
+        {
+          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
+          "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
+        },
+        {
+          "file": "stack/skills/loop-test-coverage/references/domain-trio-protocol.md",
+          "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
+        },
+        {
+          "file": "stack/skills/task-build-from-scratch/references/domain-trio-protocol.md",
+          "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
+        },
+        {
+          "file": "stack/skills/task-solve/references/step-mechanics.md",
+          "marker": "`<stack>-implementer` seat, up to 3 at once"
+        },
+        {
+          "file": "stack/skills/task-implement/SKILL.md",
+          "marker": "up to 3 at once, each on its frontmatter model"
+        },
+        {
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "marker": "up to 3 at once, routes a red build/test"
         }
       ]
     },
@@ -1862,19 +1963,36 @@
       ]
     },
     "loop-close-commit-ask": {
-      "_note": "The loop close-out commit decision goes through AskUserQuestion (commit now / hold), never a prose 'your call' bullet - verbatim in both tiered loops because either installs alone.",
+      "_note": "The loop close-out commit decision goes through AskUserQuestion - Hold recommended and listed first, a picked commit running habits-commit-checkpoint whole (the flows' close template; the commit guard blocks a commit with no receipt) - never a prose 'your call' bullet. Verbatim in all three loops because each installs alone.",
       "owner": {
         "file": "stack/skills/loop-architecture-quality/SKILL.md",
-        "marker": "never a prose 'your call' bullet"
+        "marker": "'Hold - review the diff first (Recommended)' / 'Commit now', which runs `habits-commit-checkpoint` whole - never a prose 'your call' bullet"
       },
       "sites": [
         {
           "file": "stack/skills/loop-test-coverage/SKILL.md",
-          "marker": "never a prose 'your call' bullet"
+          "marker": "'Hold - review the diff first (Recommended)' / 'Commit now', which runs `habits-commit-checkpoint` whole - never a prose 'your call' bullet"
         },
         {
           "file": "stack/skills/loop-quality/SKILL.md",
-          "marker": "never a prose 'your call' bullet"
+          "marker": "'Hold - review the diff first (Recommended)' / 'Commit now', which runs `habits-commit-checkpoint` whole - never a prose 'your call' bullet"
+        }
+      ]
+    },
+    "loop-blocked-capture-retry": {
+      "_note": "A capture Skill call the fresh-session guard blocks is answered through one marked ask, and a 'continue' answer re-issues the same call - the guard records the offer and passes the retry until the context grows 1.5x past it (scripts/guard-hooks.test.js 'the size offer is answerable'). Replaces 'never retry a blocked call - read the capture's SKILL.md instead' (2026-10-08 audit C5), verbatim in all three loops.",
+      "owner": {
+        "file": "stack/skills/loop-architecture-quality/SKILL.md",
+        "marker": "is the gate working, not a fault: put the choice through AskUserQuestion - 'Resume in a fresh session (Recommended)', ending this turn with the RESUME BLOCK / 'Continue here' - and on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/loop-quality/SKILL.md",
+          "marker": "is the gate working, not a fault: put the choice through AskUserQuestion - 'Resume in a fresh session (Recommended)', ending this turn with the RESUME BLOCK / 'Continue here' - and on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it"
+        },
+        {
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "marker": "is the gate working, not a fault: put the choice through AskUserQuestion - 'Resume in a fresh session (Recommended)', ending this turn with the RESUME BLOCK / 'Continue here' - and on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it"
         }
       ]
     },
@@ -1908,6 +2026,23 @@
         }
       ]
     },
+    "capture-docs-engine-write-route": {
+      "_note": "How a capture lands its doc through the docs engine: a first capture writes the file whole, because `docs.js set` refuses a file that does not exist yet (stack/hooks/docs.js `no such doc file`); a re-run lands each changed section through `docs.js set`, and the ENGINE picks in place (mainline, no git, git versioning) or the branch overlay - the capture never checks the mode. Two copies once said both 'writes directly' and 'calls set unconditionally' (audit 2026-10-08 C9), so a first capture on an overlay branch failed. Owned by the run-book capture's doc shape; restated in the code-style and related-projects write mechanics.",
+      "owner": {
+        "file": "stack/skills/capture-project-capabilities/references/doc-shape.md",
+        "marker": "and into this branch's overlay otherwise - the capture never decides which"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/capture-code-style/references/doc-shape.md",
+          "marker": "and into this branch's overlay otherwise - the capture never decides which"
+        },
+        {
+          "file": "stack/skills/capture-related-projects/references/artifact-shapes.md",
+          "marker": "and into this branch's overlay otherwise - the capture never decides which"
+        }
+      ]
+    },
     "small-tier-dispatch-consent": {
       "_note": "In DELEGATED mode the mode ask's answer is the dispatch consent for small-tier work - the loop stamps flow/APPROVAL (APPROVED small-tier) the moment it lands, rewritten as substantial approvals arrive, because the dispatch guard is tier-blind. loop-quality's AUTO-stamp is the same policy in its own shape, deliberately not pinned here.",
       "owner": {
@@ -1933,7 +2068,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/task-verify-code/SKILL.md",
+          "file": "stack/skills/task-verify-code/references/commit-gate-receipt.md",
           "marker": "VERIFIED <what was reviewed, one phrase>"
         },
         {
@@ -1954,7 +2089,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/task-verify-code/SKILL.md",
+          "file": "stack/skills/task-verify-code/references/commit-gate-receipt.md",
           "marker": "`security:` naming each category checked and its verdict"
         }
       ]
@@ -1980,7 +2115,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/task-verify-code/SKILL.md",
+          "file": "stack/skills/task-verify-code/references/commit-gate-receipt.md",
           "marker": "authorized: \"<the user's words asking for THIS commit, verbatim>\""
         },
         {
@@ -2036,7 +2171,7 @@
       ]
     },
     "generated-docs-root-placement": {
-      "_note": "Every assistant-created doc lands under <docs-path>; the sibling-repo orientation doc lives in the related-projects/ domain, every OTHER sibling-repo doc (cross-repo plans/change requests/issue notes/run recipes) in the plain related-context/ folder, and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; restated in the related-context skill's folder-ownership statement. The capabilities rule template carried a copy until the 2026-09-29 audit (I24): both are always-on in the same session, so the copy was pure rent.",
+      "_note": "Every assistant-created doc lands under <docs-path>; the sibling-repo orientation doc lives in the related-projects/ domain, every OTHER sibling-repo doc (cross-repo plans/change requests/issue notes/run recipes) in the plain related-context/ folder, and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; the related-projects capture restates only the outside-root approval (its related-context/ copy went in the 2026-10-08 audit - the always-on baseline carries it). The capabilities rule template carried a copy until the 2026-09-29 audit (I24): both are always-on in the same session, so the copy was pure rent.",
       "owner": {
         "file": "stack/rules/alfred-docs-root.md",
         "marker": "only on the user's asked-first approval"
@@ -2115,6 +2250,70 @@
         {
           "file": "stack/agents/code-quality-analyzer.md",
           "marker": "never a directory: list the directory first"
+        }
+      ]
+    },
+    "analyzer-first-call-navigation": {
+      "_note": "An analyzer's first tool call locates with the navigation server, never a whole-file Read the read guard blocks (measured: 10 of 13 analyzer seats spent their first Read on a blocked dump). 2026-10-08 agents audit F13.",
+      "owner": {
+        "file": "stack/agents/architecture-analyzer.md",
+        "marker": "FIRST tool call of your run: locate with the navigation server, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/code-quality-analyzer.md",
+          "marker": "FIRST tool call of your run: locate with the navigation server, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
+        },
+        {
+          "file": "stack/agents/code-style-analyzer.md",
+          "marker": "FIRST tool call of your run: locate with the navigation server, never a whole-file `Read` - the read guard blocks one and the block costs a turn"
+        }
+      ]
+    },
+    "analyzer-bash-reading-only": {
+      "_note": "A read-only analyzer holds Bash for the docs engine and cheap counting probes only - never a write, build, install or state-changing git command (2026-10-08 agents audit F13).",
+      "owner": {
+        "file": "stack/agents/architecture-analyzer.md",
+        "marker": "for READING only - the architecture docs engine (`node .claude/hooks/docs.js where <path>` / `show <file>#<id>`"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/code-quality-analyzer.md",
+          "marker": "for READING only - the architecture docs engine (`node .claude/hooks/docs.js where <path>` / `show <file>#<id>`"
+        },
+        {
+          "file": "stack/agents/code-style-analyzer.md",
+          "marker": "for READING only - the architecture docs engine (`node .claude/hooks/docs.js where <path>` / `show <file>#<id>`"
+        },
+        {
+          "file": "stack/agents/test-coverage-analyzer.md",
+          "marker": "for READING only - the architecture docs engine (`node .claude/hooks/docs.js where <path>` / `show <file>#<id>`"
+        }
+      ]
+    },
+    "analyzer-batch-lookups": {
+      "_note": "Independent lookups go in one turn - a seat that trickles them re-sends its whole preload every turn (2026-10-08 agents audit F13).",
+      "owner": {
+        "file": "stack/agents/code-style-analyzer.md",
+        "marker": "Batch independent lookups into ONE turn"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/code-quality-analyzer.md",
+          "marker": "Batch independent lookups into ONE turn"
+        }
+      ]
+    },
+    "analyzer-generated-code-excluded": {
+      "_note": "Generated and vendored code is excluded from an analyzer's sample - it judges the code the team writes, not what tools emit (2026-10-08 agents audit F13).",
+      "owner": {
+        "file": "stack/agents/code-style-analyzer.md",
+        "marker": "**Generated and vendored code"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/code-quality-analyzer.md",
+          "marker": "**Generated and vendored code"
         }
       ]
     },
@@ -2327,7 +2526,7 @@
       ]
     },
     "implementer-solution-test-gate": {
-      "_note": "The .NET implementers' test gate is the whole solution's (fitness project included) unless the brief names a single project, with a sibling-caused red reported as BLOCKED instead of burning attempts - measured: an own-project reading skipped the fitness suite, ~111k tokens redone. The two TypeScript implementers carry the sibling-red half only - a workspace has no solution file, so the gate itself differs while the BLOCKED-not-burn rule is the same.",
+      "_note": "The .NET implementers' test gate is the whole solution's (fitness project included) unless the brief names a single project, with a sibling-caused red reported as BLOCKED instead of burning attempts - measured: an own-project reading skipped the fitness suite, ~111k tokens redone. The TypeScript and devops implementers carry the sibling-red half only - a workspace or a pipeline has no solution file, so the gate itself differs while the BLOCKED-not-burn rule is the same (devops and browser-extension gained it in the 2026-10-08 agents audit, F11).",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
         "marker": "The test gate is the SOLUTION's - run it at the solution root"
@@ -2360,6 +2559,14 @@
         {
           "file": "stack/agents/web-angular-implementer.md",
           "marker": "a sibling's in-flight task failing the shared workspace suite"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "a sibling's in-flight task failing the shared workspace suite"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "a sibling's in-flight task failing the shared build or validation"
         }
       ]
     },
@@ -2696,7 +2903,7 @@
       ]
     },
     "plain-ts-js-vitest-default": {
-      "_note": "Vitest is the house default runner for a NEW plain-TS/JS suite - owned by the javascript skill; ts-js-testing's runner routing attributes and applies it.",
+      "_note": "Vitest is the house default runner for a NEW plain-TS/JS suite - owned by the javascript skill; ts-js-testing's runner routing applies it.",
       "owner": {
         "file": "stack/skills/javascript/SKILL.md",
         "marker": "Default test runner for plain JS/TS projects"
@@ -3389,16 +3596,12 @@
       ]
     },
     "cross-write-allow-receipt": {
-      "_note": "The cross-project write guard's block ends in ONE AskUserQuestion (task card - recommended / allow that tree for this session / drop), and the 'allow' answer is honoured through a receipt at <docs-path>/flow/CROSS-WRITE-ALLOW - one root per line, this session's own, under 8h, a root containing the project dropped. The hook owns the path (it resolves and reads the file); the docs-root rule and the habits-commit-checkpoint skill, which describe the ask, name the same path. A rename in one place leaves the model writing a receipt the guard never reads.",
+      "_note": "The cross-project write guard's block ends in ONE AskUserQuestion (task card - recommended / allow that tree for this session / drop), and the 'allow' answer is honoured through a receipt at <docs-path>/flow/CROSS-WRITE-ALLOW - one root per line, this session's own, under 8h, a root containing the project dropped. The hook owns the path (it resolves and reads the file); the docs-root rule and the repo hook notes name the same path (the habits-commit-checkpoint copy went in the 2026-10-08 audit - the guard's denial carries the ask and the receipt at the moment of need). A rename in one place leaves the model writing a receipt the guard never reads.",
       "owner": {
         "file": "stack/hooks/guard-cross-project-write.js",
         "marker": "'flow', 'CROSS-WRITE-ALLOW'"
       },
       "sites": [
-        {
-          "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
-          "marker": "`<docs-path>/flow/CROSS-WRITE-ALLOW` receipt"
-        },
         {
           "file": "stack/rules/alfred-docs-root.md",
           "marker": "`<docs-path>/flow/CROSS-WRITE-ALLOW` receipt"
@@ -3788,6 +3991,19 @@
         }
       ]
     },
+    "execution-strategy-trigger-list": {
+      "_note": "What loads the execution-strategy habit: the always-on interaction line binds the load, the skill's When to use restates the same trigger in house skill shape. A trigger widened in one home and not the other mis-fires the load (2026-10-08 rules audit D2, F8).",
+      "owner": {
+        "file": "stack/rules/alfred-interaction.md",
+        "marker": "one spanning stacks or touching auth, a migration or a public contract, or one that would dispatch a seat"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/habits-execution-strategy/SKILL.md",
+          "marker": "spans stacks, touches auth, a migration or a public contract, or would dispatch a seat"
+        }
+      ]
+    },
     "plan-file-design-handoff": {
       "_note": "The interaction baseline allows a plan file on request, for multi-session work, or as a design flow's handoff - task-design always writes its plan file as the handoff artifact (the user's ruling of 2026-09-29, audit I22: the rule gets the carve-out).",
       "owner": {
@@ -3798,6 +4014,32 @@
         {
           "file": "stack/skills/task-design/SKILL.md",
           "marker": "a design flow writes it as its handoff"
+        }
+      ]
+    },
+    "plan-approved-mode-shape": {
+      "_note": "The plan file's `Approved:` line, first shape: the gated solve flow stamps it from its approval ask with the mode picked. The flow owns it; the plan-writing habit restates both shapes for whoever reads or resumes a plan (audit 2026-10-08 D12).",
+      "owner": {
+        "file": "stack/skills/task-solve/SKILL.md",
+        "marker": "`Approved: <date> - mode <session|agents>`"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/habits-plan-writing/SKILL.md",
+          "marker": "`Approved: <date> - mode <session|agents>`"
+        }
+      ]
+    },
+    "plan-approved-verbatim-shape": {
+      "_note": "The plan file's `Approved:` line, second shape: the build skill run on its own stamps the user's words verbatim from its one approval ask. The build skill owns it; the plan-writing habit restates it (audit 2026-10-08 D12).",
+      "owner": {
+        "file": "stack/skills/task-implement/SKILL.md",
+        "marker": "`Approved: <date> - \"<the user's words, verbatim>\"`"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/habits-plan-writing/SKILL.md",
+          "marker": "`Approved: <date> - \"<the user's words, verbatim>\"`"
         }
       ]
     },
@@ -4047,6 +4289,19 @@
         {
           "file": "stack/agents/wpf-implementer.md",
           "marker": "A checkable claim in a comment (a symbol, a count, an invariant) is true against the code you wrote"
+        }
+      ]
+    },
+    "inline-comment-never-list": {
+      "_note": "The inline-comment floor - no ticket id (a public upstream issue on a workaround excepted), no change narration, no commented-out code, no unasked TODO. The comments skill owns the method; the always-on quality gates carry the floor because most edits never load the skill, so both copies stay (2026-10-08 rules audit D3, F7; skills audit D11).",
+      "owner": {
+        "file": "stack/skills/habits-code-comments/SKILL.md",
+        "marker": "Commented-out code - delete it, version control keeps it"
+      },
+      "sites": [
+        {
+          "file": "stack/rules/alfred-quality-gates.md",
+          "marker": "Never a ticket id (a public upstream issue on a workaround excepted), change narration, commented-out code or an unasked `TODO`"
         }
       ]
     },
@@ -4601,47 +4856,47 @@
       ]
     },
     "designer-verdict-line": {
-      "_note": "The designer report ends with PLAN_READY / NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE then the architecture, ordered task list with contracts, shared-seam owner, test strategy. Restated in every *-solution-designer.",
+      "_note": "The designer report closes on literal `status: PLAN_READY | NEEDS_CONTEXT | BLOCKED_CONTRACT_CHANGE` and `contract_version:` lines, after the architecture, ordered task list with contracts, shared-seam owner and test strategy - the orchestrator routes on the keys, and a prose verdict mid-report read as a status-less return (2026-10-08 agents audit F04). Restated in every *-solution-designer.",
       "owner": {
         "file": "stack/agents/aspnet-solution-designer.md",
-        "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+        "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "End with the verdict - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
+          "marker": "Close with a literal `status:` line - PLAN_READY, or NEEDS_CONTEXT / BLOCKED_CONTRACT_CHANGE when blocked"
         }
       ]
     },
@@ -4827,12 +5082,12 @@
       "_note": "The prerequisite check output has one fixed three-block shape: the verdict line, the closed selection by category, the blocker/warning lists. setup and configure carry it verbatim.",
       "owner": {
         "file": "setup-plugin/commands/setup.md",
-        "marker": "Fixed shape, three blocks:** (1) one verdict line - `blockers: N \u00b7 warnings: N`"
+        "marker": "Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`"
       },
       "sites": [
         {
           "file": "setup-plugin/commands/configure.md",
-          "marker": "Fixed shape, three blocks:** (1) one verdict line - `blockers: N \u00b7 warnings: N`"
+          "marker": "Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`"
         }
       ]
     },
@@ -4970,15 +5225,28 @@
       ]
     },
     "catalogue-dispatch-explicit-only": {
-      "_note": "The two failure-signature catalogues run triage in the MAIN session and never start evidence-gatherer seats on their own say-so - dispatch is explicit-only house-wide, inherited from a calling flow that already asked, otherwise asked once. Same Execution-modes paragraph in both.",
+      "_note": "The two failure-signature catalogues run triage in the MAIN session and never start evidence-gatherer seats on their own say-so - dispatch is explicit-only house-wide, inherited from a calling flow that already asked, otherwise asked once - and never dispatch the diagnoser seat (the runtime copy's never-the-seat rule left its gatherer reference for the body in the 2026-10-08 audit). Same Execution-modes paragraph in both.",
       "owner": {
         "file": "stack/skills/issue-signatures-runtime/SKILL.md",
-        "marker": "dispatch is explicit-only house-wide, so the seats never start on your own say-so"
+        "marker": "dispatch is explicit-only house-wide, so the seats never start on your own say-so. Do NOT dispatch the diagnoser seat from this skill - the signatures are already in context, so the seat would only duplicate them"
       },
       "sites": [
         {
           "file": "stack/skills/issue-signatures-ci/SKILL.md",
-          "marker": "dispatch is explicit-only house-wide, so the seats never start on your own say-so"
+          "marker": "dispatch is explicit-only house-wide, so the seats never start on your own say-so. Do NOT dispatch the diagnoser seat from this skill - the signatures are already in context, so the seat would only duplicate them"
+        }
+      ]
+    },
+    "catalogue-gatherer-ask": {
+      "_note": "The two catalogues' gatherer fan-out references share their ask: dispatch is judged from the run's shape, inherited from a calling flow that already asked, otherwise ONE marked ask; a shape that stays inline needs none (2026-10-08 audit D10). The shapes themselves differ per catalogue and stay local.",
+      "owner": {
+        "file": "stack/skills/issue-signatures-runtime/references/gatherer-fan-out.md",
+        "marker": "A calling flow that already asked seats-or-inline (the gated investigation skill) has answered it - inherit, never re-ask; otherwise, when a shape below warrants gatherers, put it through ONE AskUserQuestion (gatherers recommended, the trigger named in the option's description; plain-text options where the harness lacks the tool) and stay inline on an inline answer. A shape that stays inline needs no ask."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/issue-signatures-ci/references/gatherer-fan-out.md",
+          "marker": "A calling flow that already asked seats-or-inline (the gated investigation skill) has answered it - inherit, never re-ask; otherwise, when a shape below warrants gatherers, put it through ONE AskUserQuestion (gatherers recommended, the trigger named in the option's description; plain-text options where the harness lacks the tool) and stay inline on an inline answer. A shape that stays inline needs no ask."
         }
       ]
     },
@@ -5178,7 +5446,7 @@
       ]
     },
     "verifier-output-named-fields": {
-      "_note": "The verifier skills' output contract is N NAMED fields, every run, each with a value - not prose conditions about when to write one. The measurement behind both copies: five named fields were emitted 5 of 5 times while the same step's prose condition was emitted 0 of 1. task-verify-code carries five, task-verify-plan six; the RULE is the shape, so both copies move together when a field is added.",
+      "_note": "The verifier skills' output contract is N NAMED fields, every run, each with a value - not prose conditions about when to write one. The measurement behind both copies: five named fields were emitted 5 of 5 times while the same step's prose condition was emitted 0 of 1. task-verify-code carries six (Regression joined in the 2026-10-08 audit, the receipt for step 4's callers and vacuous-test checks), task-verify-plan six; the RULE is the shape, so both copies move together when a field is added.",
       "owner": {
         "file": "stack/skills/task-verify-code/SKILL.md",
         "marker": "named fields, every run, each with a value"
@@ -5271,14 +5539,14 @@
       ]
     },
     "discard-allow-receipt": {
-      "_note": "The DISCARD-ALLOW receipt is the escape from guard-catastrophic-rm.js's denial: the guard READS it, and something has to WRITE it or a user who answers 'discard it' is blocked again and the action is silently substituted with a stash (measured once). The writer is habits-commit-checkpoint, beside the CROSS-WRITE-ALLOW writer it already owns - a receipt written a few times a year does not belong in an always-on rule. Same shape as CROSS-WRITE-ALLOW: one path per line or `*`, this session's own, under 8h.",
+      "_note": "The DISCARD-ALLOW receipt is the escape from guard-catastrophic-rm.js's denial: the guard READS it, and its denial carries the whole route - the three-option ask, the receipt path and spelling, the retry - at the moment of need ('no prose copy to consult'). The habits-commit-checkpoint copy went in the 2026-10-08 audit: that skill never fires on a discard, so it was paid on every commit for a receipt written a few times a year. The repo hook notes name the same path, pinned here so a rename in the hook re-syncs them.",
       "owner": {
         "file": "stack/hooks/guard-catastrophic-rm.js",
         "marker": "path.resolve(root, docsRootEnv(), 'flow', 'DISCARD-ALLOW')"
       },
       "sites": [
         {
-          "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
+          "file": ".claude/rules/repo-hooks.md",
           "marker": "`<docs-path>/flow/DISCARD-ALLOW`"
         }
       ]
@@ -5623,6 +5891,23 @@
         }
       ]
     },
+    "migration-disposable-database": {
+      "_note": "A seat that applies or rolls back a migration does it only on a disposable database the run starts, never the project's configured connection - and a read-only gatherer never applies one at all (2026-10-08 agents audit F01: integration-reviewer ran the down path with no target guard).",
+      "owner": {
+        "file": "stack/agents/data-verifier.md",
+        "marker": "Then apply it to the disposable database the Testcontainers suite spins up - never to the project's configured connection"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/integration-reviewer.md",
+          "marker": "both on a disposable database this run starts (the Testcontainers fixture or a throwaway container) - never to the project's configured connection"
+        },
+        {
+          "file": "stack/agents/evidence-gatherer.md",
+          "marker": "Never run a repro that applies an EF Core migration against a real database"
+        }
+      ]
+    },
     "resolver-done-gate-citation": {
       "_note": "All four repair resolvers used to restate the done gate in full, forking the always-on quality-gates rule four ways. They now CITE the rule and keep only the shapes their own domain adds - one home for the gate, four homes for the domain detail.",
       "owner": {
@@ -5711,16 +5996,16 @@
       "_note": "A skill that prescribes an edit guard-config-protection.js blocks names the gate: a change to a strictness key in an existing tsconfig or MSBuild file, or any edit to an existing .editorconfig, needs the user's allowance - asked with the count the change surfaces, never routed around. typescript was the precedent (owner); dotnet-project-setup (Nullable) and dotnet-code-quality (the WarningsAsErrors waves) restate it with their own keys. 2.1.4 audit I44.",
       "owner": {
         "file": "stack/skills/typescript/SKILL.md",
-        "marker": "until the user allows it. Ask for that allowance with the error count the flag surfaces, and never route around the block"
+        "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
       },
       "sites": [
         {
           "file": "stack/skills/dotnet-project-setup/SKILL.md",
-          "marker": "until the user allows it. Ask for that allowance with the warning count the flag surfaces, and never route around the block"
+          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
         },
         {
           "file": "stack/skills/dotnet-code-quality/SKILL.md",
-          "marker": "until the user allows it. Ask for that allowance with the warning count the wave surfaces, and never route around the block"
+          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
         }
       ]
     },
@@ -5798,7 +6083,7 @@
       ]
     },
     "credential-literal-shapes": {
-      "_note": "guard-secret-value.js judges a credential by these shapes; scripts/audit-install.js scans an install's own config files for the same ones. The hook is copied into projects and cannot require repo tooling, so scripts/credential-shapes.js holds a copy - a shape added to the hook and not the copy is a credential the install audit silently misses. The stop contract copies it to redact what it logs, and memory.js to redact what the session start injects.",
+      "_note": "guard-secret-value.js judges a credential by these shapes; scripts/audit-install.js scans an install's own config files for the same ones. The hook is copied into projects and cannot require repo tooling, so scripts/credential-shapes.js holds a copy - a shape added to the hook and not the copy is a credential the install audit silently misses. The stop contract copies it to redact what it logs, memory.js to redact what the session start injects, and instrument-tool-usage.js to mask its detail hints.",
       "owner": {
         "file": "stack/hooks/guard-secret-value.js",
         "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
@@ -5822,6 +6107,10 @@
         },
         {
           "file": "stack/hooks/guard-stop-contract.js",
+          "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
+        },
+        {
+          "file": "stack/hooks/instrument-tool-usage.js",
           "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
         }
       ]
@@ -5869,28 +6158,28 @@
         }
       ]
     },
-    "env-legacy-fallback": {
-      "_note": "2.0.0 renamed every setting from its 1.x prefix to ALFRED_CODE_*. hook-prelude.js's envOf(env, suffix) is the ONE implementation every ordinary hook requires; the three engines (docs.js, memory.js, history.js) and the uv-python.js launcher ship without the prelude beside them on at least one route, so each carries its own byte-identical inline copy instead of a require (the memory launcher reads its key through memory.js settingsDbState, the one reader it shares with the installer - review 2.1.6 R5). A change to the fallback rule (the DOCS_PATH third spelling included) is four edits, not one.",
+    "env-reader": {
+      "_note": "hook-prelude.js's envOf(env, suffix) reads the stack's ALFRED_CODE_* setting and is the ONE implementation every ordinary hook requires; the three engines (docs.js, memory.js, history.js) and the uv-python.js launcher ship without the prelude beside them on at least one route, so each carries its own byte-identical inline copy instead of a require (the memory launcher reads its key through memory.js settingsDbState, the one reader it shares with the installer - review 2.1.6 R5). A change to the reader is five edits, not one.",
       "owner": {
         "file": "stack/hooks/hook-prelude.js",
-        "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+        "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
       },
       "sites": [
         {
           "file": "stack/hooks/docs.js",
-          "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+          "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         },
         {
           "file": "stack/hooks/memory.js",
-          "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+          "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         },
         {
           "file": "stack/hooks/history.js",
-          "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+          "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         },
         {
           "file": "stack/mcp/uv-python.js",
-          "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+          "marker": "function envOf(env, suffix)\n{\n    const value = env[`ALFRED_CODE_${suffix}`];\n    return value === '' ? undefined : value;\n}"
         }
       ]
     },
@@ -5898,12 +6187,12 @@
       "_note": "What marks a folder as set up (review 2.1.6 re-verify 3 S3): hook-prelude's 'set up' gate and memory.js projectRootOf - the one project-root resolver the launchers, memory-session.js and the engine's CLI verbs read - look for the same install records, inside the same bound (re-verify 4 T1): the folder up to its git top level and a linked worktree's main checkout, never an ancestor above that top level. The engine is copied into .claude/hooks on every route without the prelude beside it, so it carries its own copy of the list; a record added to one is added to both.",
       "owner": {
         "file": "stack/hooks/hook-prelude.js",
-        "marker": "const INSTALL_RECORDS = [['alfred-code.stamp'], ['claude-stack.stamp'], ['hooks', 'docs.js']]; // legacy-name"
+        "marker": "const INSTALL_RECORDS = [['alfred-code.stamp'], ['hooks', 'docs.js']];"
       },
       "sites": [
         {
           "file": "stack/hooks/memory.js",
-          "marker": "const INSTALL_RECORDS = [['alfred-code.stamp'], ['claude-stack.stamp'], ['hooks', 'docs.js']]; // legacy-name"
+          "marker": "const INSTALL_RECORDS = [['alfred-code.stamp'], ['hooks', 'docs.js']];"
         }
       ]
     },
@@ -5921,7 +6210,7 @@
       ]
     },
     "fix-test-named-for-defect": {
-      "_note": "A test added for a fix is named for the defect it pins and fails on the unfixed code first - dotnet-testing owns it, angular-testing carries the spec-shaped copy.",
+      "_note": "A test added for a fix is named for the defect it pins and fails on the unfixed code first - dotnet-testing owns it, angular-testing and ts-js-testing carry the spec-shaped copy (ts-js-testing since the 2026-10-08 audit, D2).",
       "owner": {
         "file": "stack/skills/dotnet-testing/SKILL.md",
         "marker": "fails on the unfixed code before it passes"
@@ -5930,11 +6219,15 @@
         {
           "file": "stack/skills/angular-testing/SKILL.md",
           "marker": "fails on the unfixed code before it passes"
+        },
+        {
+          "file": "stack/skills/ts-js-testing/SKILL.md",
+          "marker": "fails on the unfixed code before it passes"
         }
       ]
     },
     "self-review-is-not-the-check": {
-      "_note": "Re-reading your own change is not verification; the check is a run or a reviewer who did not write it - dotnet-testing owns it, angular-testing carries the copy.",
+      "_note": "Re-reading your own change is not verification; the check is a run or a reviewer who did not write it - dotnet-testing owns it, angular-testing and ts-js-testing carry the copy (ts-js-testing since the 2026-10-08 audit, D2).",
       "owner": {
         "file": "stack/skills/dotnet-testing/SKILL.md",
         "marker": "A self-review is never the check"
@@ -5942,6 +6235,10 @@
       "sites": [
         {
           "file": "stack/skills/angular-testing/SKILL.md",
+          "marker": "A self-review is never the check"
+        },
+        {
+          "file": "stack/skills/ts-js-testing/SKILL.md",
           "marker": "A self-review is never the check"
         }
       ]
@@ -6126,9 +6423,9 @@
       ]
     },
     "full-spec-script": {
-      "_note": "The two-home lookup of the full-spec check script (the project copy, else the newest plugin cache entry). The same snippet in both flows, each reading its OWN copy of the script (2.1.5 audit M100: the cross-task orchestrator carries a byte-identical twin in its scripts/, held by spec-check.test.js), so a lookup change is one pin.",
+      "_note": "The two-home lookup of the full-spec check script (the project copy, else the newest plugin cache entry). The same snippet in both flows, each reading its OWN copy of the script (2.1.5 audit M100: the cross-task orchestrator carries a byte-identical twin in its scripts/, held by spec-check.test.js), so a lookup change is one pin. Both flows keep the lookup in a references/full-spec.md their body reads by name (task-solve's moved out of SKILL.md in the 2026-10-08 audit, to fit its 18,000-char cap).",
       "owner": {
-        "file": "stack/skills/task-solve/SKILL.md",
+        "file": "stack/skills/task-solve/references/full-spec.md",
         "marker": "/scripts/spec-check.js\" [ -f \"$f\" ] && [ ! -e \"$d/.orphaned_at\" ]"
       },
       "sites": [
@@ -6186,55 +6483,55 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/issue-diagnoser-runtime.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/evidence-gatherer.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "Before you start, log into or hand-check the app, read the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` when it exists"
+          "marker": "When the run book `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` exists, read it before you start, log into or hand-check the app"
         }
       ]
     },

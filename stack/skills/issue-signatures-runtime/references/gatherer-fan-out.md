@@ -29,9 +29,3 @@ lacks the tool) and stay inline on an inline answer. A shape that stays inline n
 once: one windows the ops log to the failing requests, one inspects the suspect DB rows, one curls
 the month matrix against a local run. Their digests come back; the signature match, the judgment,
 and the fix-route gate stay in this session.
-
-## Never the diagnoser seat
-
-Do NOT dispatch the diagnoser seat from this skill - the catalogue is already in context, so the
-seat would only duplicate it; the seat exists for the orchestrated issue flow and direct @agent-
-calls, where it runs this same file in an isolated context with the same gatherer fan-out.

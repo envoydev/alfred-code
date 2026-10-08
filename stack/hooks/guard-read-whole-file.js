@@ -11,9 +11,7 @@
 // the remainder goes through the navigation server. A cat whose output is redirected into a file is a copy,
 // not a dump, and passes. exit 2 = block (stderr fed back); exit 0 = allow.
 const fs = require('fs');
-// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
-// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
-// project whose settings.json has not been migrated yet keeps resolving.
+// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 const os = require('os');
 const pathMod = require('path');
@@ -94,7 +92,9 @@ if (cursorOff) process.exit(0);
     exit(code);
   };
 })();
-const GATED_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html)$/;
+const GATED_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html)$/i; // any case: `BIG.TS` read whole passed
+// The image formats the Read tool renders for the model (the vision page's supported formats), judged by pixels, not bytes.
+const RENDERED_IMAGE = /\.(?:png|jpe?g|gif|webp)$/i;
 // Same extensions, unanchored - a sweep command names its files inside a glob or a loop body,
 // never as the string's own tail, so the anchored form above can never match a command line.
 const GATED_EXT_ANY = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html)\b/i;
@@ -120,7 +120,7 @@ const lineCountOf = (p) => {
 // relative path must be anchored - same anchor the sibling hooks use (measured: 10 relative
 // `cat -n` dumps after a `cd` all resolved ENOENT -> lineCount 0 -> the guard silently passed
 // ~20k tokens of whole-file dumps; reproduced: the same payload blocks from the project root).
-const anchorDirs = [process.env.CLAUDE_PROJECT_DIR, payload.cwd, process.cwd()].filter(Boolean);
+const anchorDirs = [process.env.CLAUDE_PROJECT_DIR, payload.cwd, process.cwd()].filter((d) => typeof d === 'string' && d);
 // A `cd <dir> &&` at the head of the command moves the anchor for everything after it, and a
 // relative target then resolves nowhere - which failed CLOSED and denied the call. Add every
 // literal `cd` target as one more candidate anchor; a variable or `-` target is unfollowable and
@@ -147,6 +147,14 @@ const expandWith = (assigns, s) => String(s).replace(/\$\{([A-Za-z_]\w*)\}|\$([A
 // The translation is shell-writes.js's one home (2.1.5 M8); without the module a path is taken as written.
 let nativePath = (p) => String(p);
 try { ({ nativePath } = require(pathMod.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
+// The byte size of a possibly-relative path, anchored like the line count; 0 when it is no regular file.
+const sizeOf = (raw) => {
+  const p = nativePath(raw);
+  for (const abs of pathMod.isAbsolute(p) ? [p] : anchorDirs.map((d) => pathMod.join(d, p))) {
+    try { const st = fs.statSync(abs); return st.isFile() ? st.size : 0; } catch { /* next anchor */ }
+  }
+  return 0;
+};
 const resolveLineCount = (raw) => {
   const p = nativePath(raw);
   if (pathMod.isAbsolute(p)) return { lc: lineCountOf(p), resolved: true };
@@ -211,7 +219,12 @@ function stripHeredocsOf(c, depth = 0) {
   if (!depth) shellBodies = [];
   const docs = heredocsOf(c);
   let out = hereStringsAsInline(blankHeredocs(c, docs));
-  if (depth > 3) return out;
+  // A shell body nested past three levels is not read as data: it is judged out of budget and blocks, as the work
+  // budget does - `cat big.ts` five `bash <<EOF` levels deep passed (audit 2026-10-08).
+  if (depth > 3) {
+    if (docs.some((h) => { const line = c.slice(h.lineStart, h.lineEnd); const word = heredocRunner(line, h.index - h.lineStart); return word && SHELL_RUNNER.test(word) && !heredocBounded(line, h.index - h.lineStart); })) throw new JudgeBudget('depth');
+    return out;
+  }
   for (const h of docs) {
     const line = c.slice(h.lineStart, h.lineEnd);
     const word = heredocRunner(line, h.index - h.lineStart);
@@ -1946,6 +1959,97 @@ function wholeFiles(seg, command, hseg = seg) {
   }
   return out;
 }
+// ---- how many of a file's lines a pipeline segment prints (audit 2026-10-08) --------------------------------------------
+// A pipe into a filter verb exempted the whole segment, so a filter that bounds nothing let the dump through: `cat big.ts
+// | grep ""`, `| awk 1`, `| head -n 9999`; a literal span on the file itself passed the same way (`head -n 9999 big.ts`,
+// `sed -n 1,99999p big.ts`). A segment's stages are cut where the shell cuts them (`fseg`, quotes filled).
+function pipeStagesOf(seg, fseg) {
+  const out = [];
+  let from = 0;
+  for (const s of fseg.matchAll(/(?<!\|)\|(?!\|)/g)) { out.push([seg.slice(from, s.index), fseg.slice(from, s.index)]); from = s.index + 1; }
+  out.push([seg.slice(from), fseg.slice(from)]);
+  return out;
+}
+const FILTER_STAGE = /^\s*(head|tail|sed|grep|rg|wc|awk|cut|select-object|select|select-string|sls|measure-object|measure|findstr)\b/i;
+// The lines a head / tail stage lets through as a function of what it is fed, or null when the stage is not one: a count
+// (`-n N`, `-N`, `--lines=N`), all but the last K (`head -n -K`), from line K on (`tail -n +K`), ten with no count, a byte
+// count past BIG_BYTES as the whole input.
+function headTailSpan(words) {
+  const verb = String(words[0] || '').replace(/^.*[\\/]/, '').toLowerCase();
+  if (verb !== 'head' && verb !== 'tail') return null;
+  let n = '10'; let bytes = false;
+  for (let i = 1; i < words.length; i++) {
+    const w = words[i].replace(/^["']|["']$/g, '');
+    const m = w.match(/^(?:-n|--lines=?)(.*)$/) || w.match(/^-(\d+)$/) || w.match(/^(?:-c|--bytes=?)(.*)$/);
+    if (!m) continue;
+    bytes = /^(?:-c|--bytes)/.test(w);
+    n = m[1] !== '' && !(w === '--lines' || w === '--bytes') ? m[1] : String(words[++i] || '').replace(/^["']|["']$/g, '');
+  }
+  if (bytes) { const b = parseInt(n, 10); return (lc) => (b > BIG_BYTES ? lc : 0); }
+  const v = parseInt(n.replace(/^[+-]/, ''), 10);
+  if (!Number.isFinite(v)) return null;
+  if (verb === 'tail' && n.startsWith('+')) return (lc) => Math.max(0, lc - v + 1);
+  if (verb === 'head' && n.startsWith('-')) return (lc) => Math.max(0, lc - v);
+  return (lc) => Math.min(v, lc);
+}
+// What a segment's later stages let through of what its first stages print: null when a filter bounds it (the exemption it
+// always had), else the lines printed as a function of a file's line count - every later filter an identity (wholeFiles'
+// own rules, fed a marker on stdin) or a head / tail span, composed in order. `consumer` is set when a later stage is a
+// program reading the output (`jq`, `python3`, `sort`): the size-only half below then judges nothing.
+function segmentSpan(seg, fseg) {
+  const stages = pipeStagesOf(seg, fseg).slice(1);
+  if (!/\|\s*(head|tail|sed|grep|rg|wc|awk|cut|select-object|select|select-string|sls|measure-object|measure|findstr)\b/i.test(seg)) {
+    return { printed: (lc) => lc, consumer: stages.length > 0 };
+  }
+  const MARK = '\u0002stdin';
+  let printed = (lc) => lc;
+  let filters = 0;
+  let consumer = false;
+  for (const [raw, filled] of stages) {
+    if (!FILTER_STAGE.test(filled)) { consumer = true; continue; }
+    filters++;
+    const words = raw.trim().match(/"[^"]*"|'[^']*'|\S+/g) || [];
+    const span = headTailSpan(words.slice(commandIndex(words)));
+    if (span) { const before = printed; printed = (lc) => span(before(lc)); continue; }
+    if (wholeFiles(`${raw} < ${MARK}`, raw, `${filled} < ${MARK}`).includes(MARK)) continue;
+    return null;
+  }
+  return filters ? { printed, consumer } : null; // a filter word the shell does not run as a stage (quoted) kept its old exemption
+}
+// The file operands a head / tail / `sed -n 'a,bp'` stage prints a literal span of, each with the lines it prints.
+function spanFiles(seg, fseg) {
+  const out = [];
+  for (const [raw] of pipeStagesOf(seg, fseg)) {
+    const words = raw.trim().match(/"[^"]*"|'[^']*'|\S+/g) || [];
+    const k = commandIndex(words);
+    const own = words.slice(k);
+    const verb = String(own[0] || '').replace(/^.*[\\/]/, '').toLowerCase();
+    const valued = verb === 'head' || verb === 'tail' ? /^(?:-n|-c|--lines|--bytes)$/ : /^(?:-e|--expression|-f|--file|-l|--line-length)$/;
+    const ops = [];
+    for (let i = 1; i < own.length; i++) {
+      if (/^#/.test(own[i])) break; // a comment ends the words the command runs
+      const w = own[i].replace(/^["']|["']$/g, '');
+      if (valued.test(w)) { i++; continue; }
+      if (/^\d*[<>]/.test(w)) { if (/^\d*[<>]+&?$/.test(w)) i++; continue; }
+      if (w.startsWith('-')) continue;
+      ops.push(w);
+    }
+    const span = headTailSpan(own);
+    if (span && ops.length) { for (const f of ops) out.push({ f, printed: span }); continue; }
+    if ((verb === 'sed' || verb === 'gsed') && own.some((w) => /^-[a-zA-Z]*n[a-zA-Z]*$/.test(w)) && !own.some((w) => /^-[a-zA-Z]*i/.test(w) || /^--in-place/.test(w))) {
+      const script = (ops[0] || '').replace(/\s+/g, '');
+      const m = script.match(/^(\d+),(\d+|\$)p$/);
+      if (m) {
+        const a = +m[1]; const b = m[2] === '$' ? Infinity : +m[2];
+        for (const f of ops.slice(1)) out.push({ f, printed: (lc) => Math.max(0, Math.min(b, lc) - a + 1) });
+      }
+    }
+  }
+  return out;
+}
+// A `cat` / `nl` / `tac` handed a substitution that lists files (`cat $(find src -name '*.ts')`, `` cat `git ls-files` ``)
+// prints every one it lists: the glob sweep spelled as a command.
+const SUBST_SWEEP = /\b(?:cat|nl|tac|bat)\s+(?:-\w+\s+)*["']?(?:\$\(|`)\s*(?:find|fd|ls|git\s+ls-files|rg\s+--files)\b[^)`]*[)`]/;
 // ---- Shell matcher: a whole-file dump via cat/sed is the Read block routed around ----
 // SHELL ROUTE: which tools carry a shell command (Bash, PowerShell, Monitor) is shell-writes.js's one list,
 // shipped beside this hook on both routes. A copy that runs before it lands judges by the payload's shape - a
@@ -2120,7 +2224,10 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     const seg = command.slice(at, cuts[c + 1]);
     const fseg = filled.slice(at, cuts[c + 1]);
     const hseg = /\|[ \t]*(?:(?:sudo|env|exec|command)[ \t]+)*(?:\S*\/)?(?:bash|sh|zsh|dash|ksh|fish|pwsh|powershell)\b/i.test(fseg) ? seg : fseg;
-    if (/\|\s*(head|tail|sed|grep|rg|wc|awk|cut|select-object|select|select-string|sls|measure-object|measure|findstr)\b/i.test(seg)) continue;
+    // A pipe into a filter bounds the segment - unless every filter passes its input on (`grep ""`, `awk 1`) or lets
+    // more than THRESHOLD lines through (`head -n 9999`): then the segment is judged with what they let through.
+    const pipeSpan = segmentSpan(seg, fseg);
+    if (!pipeSpan || pipeSpan.printed(1e9) <= THRESHOLD) continue;
     // Output redirected INTO a file never reaches the context - `cat a.ts > copy.ts` is a copy,
     // not a dump (an fd form like `2>&1` / `>&2` still prints, so only a path target is exempt).
     if (/\s>>?\s*[^&\s>]/.test(seg)) continue;
@@ -2175,19 +2282,50 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
       }
     }
     files.push(...wholeFiles(seg, filled, hseg));
-    for (const rawF of files) {
+    // A substitution that lists files hands every one to the dump verb (`cat $(find src -name '*.ts')`).
+    const subSweep = unquotedMatch(seg, hseg, SUBST_SWEEP);
+    if (subSweep && SWEEP_EXT_ANY.test(subSweep[0])) {
+      global.BLOCK_DETAIL = { branch: 'sweep', shape: 'substitution' };
+      process.stderr.write(
+        `Blocked: a listing substitution (${subSweep[0].slice(0, 120)}) hands every file it names to the dump verb - a whole-file sweep.\n` +
+        `Name the one file and read a range, or grep -n across them for what you need first:\n` + LOAD_SERENA,
+      );
+      process.exit(2);
+    }
+    const entries = files.map((f) => ({ f, printed: (lc) => lc })).concat(spanFiles(seg, fseg));
+    for (const { f: rawF, printed } of entries) {
     const f = expandWith(assigns, rawF);
-    if (!GATED_EXT.test(f)) continue;
+    const shown = (lc) => pipeSpan.printed(printed(lc));
+    if (shown(1e9) <= THRESHOLD) continue; // a span that never prints past the threshold is the targeted read
     // A target still carrying an unexpanded variable is unknowable - the sibling guard's rule:
     // judge nothing rather than deny on a guess. This failed CLOSED before, and half the denials
     // in one measured project were `$R/...` paths the session had every right to read.
     if (isVar(f)) continue;
-    if (/[*?[]/.test(f)) {
+    // A glob is a sweep whatever each file weighs - markdown included, the most measured sweep (`cat skills/*/SKILL.md`).
+    if (/[*?[]/.test(f) && (GATED_EXT.test(f) || SWEEP_EXT_ANY.test(f))) {
       process.stderr.write(
-        `Blocked: a glob (${f}) hands every matching source file to cat - a whole-file sweep, whatever each one weighs.\n` +
+        `Blocked: a glob (${f}) hands every matching file to cat - a whole-file sweep, whatever each one weighs.\n` +
         `Name the one file and read a range, or locate the symbol first:\n` + serenaHint(f),
       );
       process.exit(2);
+    }
+    if (!GATED_EXT.test(f)) {
+      // Any other extension is judged by SIZE, as the Read half is: a 130KB `cat big.md` printed whole passed the shell
+      // route (audit 2026-10-08, route gap S2). Only a whole print that reaches the terminal - no program reading it.
+      if (/[*?[]/.test(f) || pipeSpan.consumer || shown(1e9) !== 1e9) continue;
+      const size = sizeOf(f);
+      if (size > BIG_BYTES) {
+        global.BLOCK_DETAIL = { branch: 'size', bytes: size };
+        process.stderr.write(
+          `Blocked: whole-file print of ${f} (${Math.round(size / 1024)}KB) via ${payload.tool_name}.\n` +
+          `A file this large does not fit a tool result - printing it whole spends its entire size on context, the\n` +
+          `whole-file Read the Read gate blocks routed through the shell. Take what you came for instead:\n` +
+          `  grep -n '<pattern>' '${f}'   ->  then a bounded sed -n '<start>,<end>p' on the lines it names\n` +
+          `  head -c 2000 '${f}'          ->  the first bytes, when it has no lines\n`,
+        );
+        process.exit(2);
+      }
+      continue;
     }
     const { lc, resolved } = resolveLineCount(f);
     if (!resolved) {
@@ -2201,9 +2339,12 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
       );
       process.exit(2);
     }
-    if (lc > THRESHOLD) {
+    // A whole print past THRESHOLD lines, or a span printing past THRESHOLD lines and more than half the file - the
+    // Read half's own 'half the file or less per range'.
+    const n = shown(lc);
+    if (lc > THRESHOLD && n > THRESHOLD && (n === lc || n > lc / 2)) {
       process.stderr.write(
-        `Blocked: whole-file dump of ${f} (${lc} lines) via ${payload.tool_name}.\n` +
+        `Blocked: ${n === lc ? 'whole-file dump' : `a ${n}-line span`} of ${f} (${lc} lines) via ${payload.tool_name}.\n` +
         `Per alfred-navigation.md, a bare cat/sed of a large source file is the same\n` +
         `whole-file read the Read gate blocks - routed through the shell.\n` + serenaHint(f),
       );
@@ -2238,7 +2379,11 @@ const path = input.file_path || '';
 if (!GATED_EXT.test(path)) {
   let size = 0;
   try { size = fs.statSync(path).size; } catch { /* missing - let Read surface its own error */ }
-  const whole = (input.offset ?? 0) <= 1 && input.limit == null;
+  // A PDF Read naming its `pages` is a range, and a rendered image costs visual tokens by its pixels, never its bytes -
+  // at most 4,784 for the largest the model takes (platform.claude.com/docs/en/build-with-claude/vision, 'Resolution and
+  // token cost'), where 60KB of text is about 15,000. Both were blocked, and the issue-diagnoser's screenshot Read with
+  // them (audit 2026-10-08).
+  const whole = (input.offset ?? 0) <= 1 && input.limit == null && input.pages == null && !RENDERED_IMAGE.test(path);
   if (size > BIG_BYTES && whole) {
     // A grep remedy needs LINES. This branch judges size, not language, so it also catches the 93KB
     // PNG and the one-line minified bundle, where `grep -n` and an offset+limit Read both answer
@@ -2290,19 +2435,42 @@ if (wholeShape) {
 // Cumulative cap: merge this range into the per-session interval set for the file; if the
 // merged coverage would exceed ~60% of the file, the remainder goes through the navigation server - two
 // half-splits reconstructing the file are the whole-file read in two calls (measured).
+// The ranges are ROWS appended to a per-session log, one per Read, before the verdict - never a read-merge-write of one
+// object, which four parallel Reads of a file's quarters each passed against an empty state (8 of 10 trials, audit
+// 2026-10-08). Each Read replays the log up to its own row in append order, every earlier row judged by this same rule,
+// so a row past the cap counts nothing and the last of a parallel batch sees the rows before it. The file is keyed by
+// its real path: `./big.ts` reset the coverage `big.ts` had.
 const CAP = 0.6;
 const end = Math.min(lineCount, offset + (input.limit != null ? input.limit : lineCount) - 1);
-const stateFile = sessionStateFile();
-let state = {};
-try { state = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch { /* fresh state */ }
-const intervals = (state[path] || []).concat([[offset, end]]).sort((a, b) => a[0] - b[0]);
-const merged = [];
-for (const iv of intervals) {
-  const last = merged[merged.length - 1];
-  if (last && iv[0] <= last[1] + 1) last[1] = Math.max(last[1], iv[1]);
-  else merged.push([iv[0], iv[1]]);
-}
-const covered = merged.reduce((n, [a, b]) => n + (b - a + 1), 0);
+let fileKey = pathMod.resolve(anchorDirs[0] || process.cwd(), path);
+try { fileKey = fs.realpathSync(fileKey); } catch { /* as resolved */ }
+const rangeLog = sessionStateFile().replace(/\.json$/, '-ranges.jsonl');
+const rowId = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+try { fs.appendFileSync(rangeLog, JSON.stringify({ f: fileKey, a: offset, b: end, id: rowId }) + '\n'); } catch { /* best-effort */ }
+// State hygiene when this guard writes its state (hook-prelude.js sweepStale, audit 2026-10-08 S9): its session files
+// past 7 days go.
+try { const pre = require('./hook-prelude.js'); if (typeof pre.sweepStale === 'function') pre.sweepStale(os.tmpdir(), 'guard-read-'); } catch { /* no prelude */ }
+const mergeIn = (merged, a, b) => {
+  const out = merged.concat([[a, b]]).sort((x, y) => x[0] - y[0]);
+  const m = [];
+  for (const iv of out) { const last = m[m.length - 1]; if (last && iv[0] <= last[1] + 1) last[1] = Math.max(last[1], iv[1]); else m.push([iv[0], iv[1]]); }
+  return m;
+};
+const coverOf = (m) => m.reduce((n, [a, b]) => n + (b - a + 1), 0);
+let merged = [];
+let mine = false;
+try {
+  for (const line of fs.readFileSync(rangeLog, 'utf8').split('\n')) {
+    let row;
+    try { row = JSON.parse(line); } catch { continue; }
+    if (!row || row.f !== fileKey) continue;
+    const next = mergeIn(merged, row.a, row.b);
+    if (row.id === rowId) { merged = next; mine = true; break; }
+    if (coverOf(next) <= lineCount * CAP) merged = next; // an earlier row past the cap was blocked: it read nothing
+  }
+} catch { /* no log - this range alone */ }
+if (!mine) merged = mergeIn(merged, offset, end);
+const covered = coverOf(merged);
 if (covered > lineCount * CAP) {
   process.stderr.write(
     `Blocked: ranged Reads of ${path} now cover ${Math.round((100 * covered) / lineCount)}% of its ${lineCount} lines this session -\n` +
@@ -2311,6 +2479,4 @@ if (covered > lineCount * CAP) {
   );
   process.exit(2);
 }
-state[path] = merged;
-try { fs.writeFileSync(stateFile, JSON.stringify(state)); } catch { /* state is best-effort */ }
 process.exit(0);

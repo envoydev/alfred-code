@@ -25,12 +25,19 @@ const path = require('path');
 // of crashing.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let unattended = () => false;
+// The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
+let stopHeld = (input) => !!(input && input.stop_hook_active);
+let markHeld = () => {};
 if (require.main === module) {
   let off = false;
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     unattended = prelude.unattended || unattended;
+    if (prelude.stopHeldThisCycle) {
+      stopHeld = (input) => prelude.stopHeldThisCycle('docs-session', input);
+      markHeld = (input) => prelude.markStopHeld('docs-session', input);
+    }
     off = prelude.standDown('docs-session');
   } catch { /* an install without the prelude runs the hook unchanged */ }
   // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
@@ -66,7 +73,7 @@ function sweepOldState(now = Date.now(), dir = os.tmpdir()) {
   const deadline = Date.now() + SWEEP_BUDGET_MS;
   try {
     for (const f of fs.readdirSync(dir)) {
-      if (!f.startsWith('docs-session-') || !f.endsWith('.json')) continue;
+      if (!f.startsWith('docs-session-') || !/\.json(?:\.\d+\.tmp)?$/.test(f)) continue;
       if (Date.now() > deadline) return;
       try { if (now - fs.statSync(path.join(dir, f)).mtimeMs > SWEEP_MS) fs.rmSync(path.join(dir, f), { force: true }); } catch {}
     }
@@ -76,7 +83,14 @@ const saveState = (s, v, agent) => {
   const file = statePath(s, agent);
   let fresh = false;
   try { fresh = !fs.existsSync(file); } catch {}
-  try { fs.writeFileSync(file, JSON.stringify(v)); } catch {}
+  // Written whole or not at all: a parallel PreToolUse call read a half-written file as `{snapshot: null}` and saved it
+  // back, losing the session's snapshot - 1 in 40 rounds at 4 parallel calls, 6 in 10 at 24 - and with it the Stop ask
+  // (audit 2026-10-08). A rename replaces the file in one step; where it cannot (a reader holding it open on win32), the
+  // direct write is the old behaviour.
+  const tmp = `${file}.${process.pid}.tmp`;
+  let staged = false;
+  try { fs.writeFileSync(tmp, JSON.stringify(v)); staged = true; fs.renameSync(tmp, file); }
+  catch { try { fs.rmSync(tmp, { force: true }); if (staged) fs.writeFileSync(file, JSON.stringify(v)); } catch {} }
   if (fresh && !swept) { swept = true; sweepOldState(); }
 };
 // A dispatched agent gets a state file of its OWN, beside the session's and named for it. Same store, one key finer:
@@ -158,6 +172,11 @@ const log = (root, input, row) => {
 function orientation(root, docs) {
   let block = '';
   try { block = fs.readFileSync(docs.BLOCK_FILE, 'utf8').trim(); } catch {}
+  // The 4KB cap is enforced here, not only reported by lint: an 11,901-byte file pushed the block past the harness's
+  // 10,000-character context cap, which swaps it for a path and a preview - the where / show lines at its end were
+  // lost (audit 2026-10-08).
+  const BLOCK_CAP = 4096;
+  if (block.length > BLOCK_CAP) block = `${block.slice(0, BLOCK_CAP)}\n... (ORIENTATION.md continues past its 4KB cap - \`${READ} lint\` names the overrun; read the rest by section)`;
   // ORIENTATION.md stays architecture's own file, read exactly as before - a domain gets no per-domain twin.
   // The one line below is the part that used to name architecture/ as if it were the only docs folder; a
   // project whose docs are code-style/ and related-projects/ (no architecture/ at all) is named correctly here.
@@ -216,8 +235,10 @@ function sessionStart(input, root, docs, state) {
   // status without it, and an unguarded read would throw away the whole block.
   if (st && st.stranded && st.stranded.length) extra.push(`Doc versions stranded by this install's git versioning: ${st.stranded.slice(0, 6).join(', ')}${st.stranded.length > 6 ? ` (+${st.stranded.length - 6} more)` : ''} - nothing reads or promotes .branches/ any more, and this line returns every session until they are gone: re-apply what is still wanted with \`${READ} set <file>#<id>\`, then end it with \`${READ} prune ${st.stranded[0]}\`${st.stranded.length > 1 ? ' (one prune per name)' : ''}.`);
   // After a git merge of committed docs, or a hand edit: the two breakages that make a doc untrustworthy to read.
+  // Read by the engine's own integrity pass - the two checks alone, one parse per file: the whole lint re-parsed every
+  // doc per watch id (492ms at 40 docs, 2,301ms at 100, audit 2026-10-08). An older engine beside this hook has none.
   let broken = [];
-  try { broken = docs.lint().problems.filter((p) => /^(merge conflict markers|duplicate id)/.test(p)); } catch {}
+  try { broken = typeof docs.integrity === 'function' ? docs.integrity() : docs.lint().problems.filter((p) => /^(merge conflict markers|duplicate id)/.test(p)); } catch {}
   if (broken.length) extra.push(`The docs need a repair before they are trusted: ${broken.slice(0, 3).join('; ')}${broken.length > 3 ? ` (+${broken.length - 3} more: \`${READ} lint\`)` : ''}.`);
   if (st && st.overrides.length) extra.push(`You are on branch ${st.branch}. ${st.overrides.length} doc section(s) hold this branch's own decisions and replace mainline's in every read: ${st.overrides.slice(0, 6).join(', ')}${st.overrides.length > 6 ? ` ... (\`${READ} status\`)` : ''}.`);
   if (st && st.conflicts.length) extra.push(`Conflicts: ${st.conflicts.join(', ')} - mainline changed lines this branch also changed; \`${READ} show <id> --conflict\` shows both, \`${READ} set <id>\` saves the reconciled text.`);
@@ -483,6 +504,9 @@ function sectionRefs(docs, hits, limit, exclude = () => false) {
   while (more && (asks.length < limit || (canWarn && warnings.length < limit))) {
     more = false;
     for (const q of queues) {
+      // the round stops at the cap too: it resolved every hit's next id first, so ~300 hits cost the Stop ask its
+      // timeout (137 / 738 / 2,261ms at 1 / 30 / 100 hits, audit 2026-10-08)
+      if (asks.length >= limit && !(canWarn && warnings.length < limit)) break;
       if (!q.ids.length) continue;
       more = true;
       const resolved = resolveHit(docs, q.h, q.ids.shift());
@@ -544,6 +568,7 @@ function subagentStop(input, root, docs) {
     log(root, input, { event: 'ask-skipped', why: 'no write attributed to this agent', agent: key, agentType: input.agent_type || '' });
     return;
   }
+  if (noWatch(docs)) return;
   let changed;
   let hits = [];
   try {
@@ -573,7 +598,7 @@ function subagentStop(input, root, docs) {
   const { asks, warnings } = sectionRefs(docs, hits, ASK_SECTIONS, (id) => a.asked.includes(id));
   if (!asks.length && !warnings.length) return;
   const files = [...new Set(hits.flatMap((h) => h.files))];
-  const reason = finishAsk(docs, files, asks, warnings);
+  const reason = finishAsk(docs, files, asks, warnings, SEAT_REPORT_LAST);
   a.blocked = true;
   // Only ASK ids: a warning can never appear in setsSince (the write refusal means `docs.js set` never
   // records one), so folding its id in here would only ever pull the outcome below toward 'partial' or
@@ -641,22 +666,57 @@ const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.rela
 // override under .branches/ is not credited either, on the same reasoning - it mixes real override text
 // (<id>.md) with pure internal state (BASE.json, .base/, .conflict markers), and the intended way to read an
 // override is `docs.js show <ref>`, which the branch above already credits wherever the text physically lives.
-function consultedBy(input, paths, docRoots) {
+// Stricter since the audit of 2026-10-08, which unlocked the hold with a Glob of `references/`, an `ls`, a Read of
+// `watch.json`, `echo "docs.js show x"` and a show of a ref that does not exist - none of them read a section:
+// a `show` counts only where the shell RUNS it (a quoted string holding spaces is text) and only for a ref the engine
+// resolves; a file read counts only for a doc file (`.md`), by Read or Grep, or by a shell command that READS (a reading
+// verb, no write) - never a listing.
+const SHELL_READ_VERB = /(?:^|[\s;&|(])(?:cat|head|tail|sed|awk|grep|rg|less|more|bat|nl|type|get-content|gc|select-string)\b/i;
+function consultedBy(input, paths, docRoots, docs) {
   const name = input.tool_name || '';
   const t = input.tool_input || {};
   const command = typeof t.command === 'string' ? t.command : '';
-  if (/docs\.js[ \t]+show[ \t]/.test(command)) {
-    return (command.match(/docs\.js[ \t]+show[ \t]+[\w#.\/-]+(?:[ \t]+[\w#.\/-]+)*/g) || [])
+  let run = command;
+  try {
+    if (shellReader && typeof shellReader.quotedSpans === 'function') {
+      const chars = command.split('');
+      for (const [a, b] of shellReader.quotedSpans(command)) if (/\s/.test(command.slice(a, b))) for (let i = a; i < b && i < chars.length; i++) chars[i] = ' ';
+      run = chars.join('');
+    }
+  } catch { run = command; }
+  if (/docs\.js["']?[ \t]+show[ \t]/.test(run)) {
+    const resolves = (r) => {
+      if (!docs || typeof docs.findFile !== 'function') return true;
+      try { if (!docs.findFile(r.split('#')[0])) return false; } catch { return false; }
+      try { return !r.includes('#') || typeof docs.askRef !== 'function' || !!docs.askRef(r); } catch { return true; }
+    };
+    return (run.match(/docs\.js["']?[ \t]+show[ \t]+[\w#.\/-]+(?:[ \t]+[\w#.\/-]+)*/g) || [])
       .flatMap((r) => r.split(/[ \t]+/).slice(2))
-      .filter((r) => !r.startsWith('-') && /^[A-Za-z][\w.\/-]*(#[\w-]+)?$/.test(r));
+      .filter((r) => !r.startsWith('-') && /^[A-Za-z][\w.\/-]*(#[\w-]+)?$/.test(r))
+      .filter(resolves);
   }
   if (/docs\.js[ \t]+(toc|where|files|status|lint|watch|stale)\b/.test(command)) return [];
-  const isDoc = (p) => docRoots.some((d) => p === d || p.startsWith(`${d}/`));
-  const hits = paths.filter(isDoc);
-  if (hits.length && (/^(Read|Grep|Glob)$/.test(name) || (isShellTool(name) && !writeTargets(command).length))) return hits;
+  const underDocs = (p) => docRoots.some((d) => p === d || p.startsWith(`${d}/`));
+  // a Grep reads the text of what it searches, a doc folder included; a Read or a shell read names its file
+  const hits = paths.filter((p) => underDocs(p) && (name === 'Grep' ? !/\.(?:json|jsonl)$/i.test(p) : /\.md$/i.test(p)));
+  if (hits.length && (/^(Read|Grep)$/.test(name) || (isShellTool(name) && !writeTargets(command).length && SHELL_READ_VERB.test(run)))) return hits;
   return [];
 }
 
+// No domain declares a watch entry or a new-module rule, so no change can hit one: watchHits() would return nothing.
+function noWatch(docs) {
+  try { const w = docs.loadWatch(); return !w.watch.length && !w.newModule.length; } catch { return false; }
+}
+
+// A skip with nobody at the terminal is one `mode: unattended` row in the hook-blocks ledger, as every other asking hook
+// writes it - it went to docs-log.jsonl alone, which the block-rate tally never reads (audit 2026-10-08).
+function unattendedRow(root, input, kind) {
+  try {
+    const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, `${String(input.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'docs-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', mode: 'unattended', kind, reason: `${kind} skipped - nobody at the terminal` })}\n`);
+  } catch {}
+}
 function blockRow(root, input, reason) {
   try {
     const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
@@ -686,7 +746,7 @@ function preToolUse(input, root, docs, state) {
   // so a write this hook holds is not credited to the seat that tried it. Banked before the source-root filter,
   // because a watch entry may name a path no source root covers and a write this hook never judges is still a write.
   const attribute = () => { if (wrote.length) recordWrite(root, input, shellWrites && shellWrites.includes(UNKNOWN_SOURCE_WRITE) ? [...wrote, UNKNOWN_SOURCE_WRITE] : wrote); };
-  const consults = consultedBy(input, paths, docRoots);
+  const consults = consultedBy(input, paths, docRoots, docs);
   if (consults.length) {
     // One shell command can read a doc AND write a file - the shape the orientation block and the gate together
     // teach - so the read must not swallow the write.
@@ -713,7 +773,7 @@ function preToolUse(input, root, docs, state) {
   if (!readable) { allow(); return; }
   if (state.holds >= MAX_HOLDS) { log(root, input, { event: 'bypass', target: targets[0], holds: state.holds }); allow(); return; }
   // Nobody at the terminal (hook-prelude.js unattended): the hold is still logged as a bypass, never made.
-  if (unattended(input)) { log(root, input, { event: 'bypass', target: targets[0], why: 'unattended' }); allow(); return; }
+  if (unattended(input)) { log(root, input, { event: 'bypass', target: targets[0], why: 'unattended' }); unattendedRow(root, input, 'docs hold'); allow(); return; }
   state.holds++;
   saveState(input.session_id, state);
   let hits = [];
@@ -807,6 +867,12 @@ const SUMMARY_LAST = [
   'This reply is your last message, so it carries the task summary: the docs line first (docs ok, or',
   'the section you rewrote), then what you did in at most three lines.',
 ];
+// ...and a seat's reply is what its caller receives: the 'docs ok' line alone replaced a report whose contract ends on
+// literal `status:` and `contract_version:` lines (the implementer seats), so the ask says to keep them (audit 2026-10-08).
+const SEAT_REPORT_LAST = [
+  'This reply is what your caller receives: the docs line first, then your report as your brief asks for it -',
+  'its status: and contract_version: lines, where it has them, unchanged.',
+];
 function finishAsk(docs, files, asks, warnings = [], closing = []) {
   const named = `${files.slice(0, FILES_NAMED).join(', ')}${files.length > FILES_NAMED ? ` and ${files.length - FILES_NAMED} more` : ''}`;
   const parts = [`Docs check: you changed ${named}`];
@@ -819,8 +885,13 @@ function finishAsk(docs, files, asks, warnings = [], closing = []) {
 // The same check for work done outside any subagent - and the only cover skills have, since a skill has no end
 // event of its own and its work lands here.
 function stop(input, root, docs, state) {
-  if (envOf(process.env, 'DOCS_ASK') === '0' || input.stop_hook_active || state.asked || !state.snapshot) return;
+  // Once per session (state.asked); a continuation a SIBLING Stop hook caused is judged, since what it rewrote is this
+  // session's change too (hook-prelude.js, the Stop chain - audit 2026-10-08 S1).
+  if (envOf(process.env, 'DOCS_ASK') === '0' || stopHeld(input) || state.asked || !state.snapshot) return;
   if (typeof docs.askRef !== 'function') return;
+  // Nothing watched, nothing to ask: the tree diff it would pay for (47-261ms, every turn) can only end in no hit
+  // (audit 2026-10-08).
+  if (noWatch(docs)) return;
   let changed;
   let hits = [];
   try {
@@ -845,16 +916,21 @@ function stop(input, root, docs, state) {
   const files = [...new Set(hits.flatMap((h) => h.files))];
   // Nobody at the terminal (hook-prelude.js unattended): the ask would only turn the final answer into
   // 'docs ok' (8 of 12 print-mode cells, pilot 2). Logged, never made.
-  if (unattended(input)) { log(root, input, { event: 'ask-skipped', why: 'unattended', sections: asks.map((r) => r.id), files: files.slice(0, 5) }); return; }
+  if (unattended(input)) {
+    log(root, input, { event: 'ask-skipped', why: 'unattended', sections: asks.map((r) => r.id), files: files.slice(0, 5) });
+    unattendedRow(root, input, 'docs finish ask');
+    return;
+  }
   state.asked = true;
   saveState(input.session_id, state);
   const reason = finishAsk(docs, files, asks, warnings, SUMMARY_LAST);
   log(root, input, { event: 'ask-update', sections: asks.map((r) => r.id), warnings: warnings.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
   blockRow(root, input, reason);
+  markHeld(input);
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }
 
-module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState };
+module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState, saveState, loadState, sectionRefs };
 if (require.main === module) {
   try { main(); if (startNote) { const note = startNote; startNote = ''; emit('SessionStart', note); } } catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
 }

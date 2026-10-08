@@ -15,8 +15,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-// C19: the session's own stack env, in either spelling, never decides a case - legacy-name
-for (const k of Object.keys(process.env)) if (/^(?:ALFRED_CODE|CLAUDE_STACK)_/.test(k) || k === 'CLAUDE_DOCS_PATH') delete process.env[k];
+// C19: the session's own stack env never decides a case
+for (const k of Object.keys(process.env)) if (k.startsWith('ALFRED_CODE_')) delete process.env[k];
 delete process.env.CLAUDE_PLUGIN_ROOT;
 // The runner's own entrypoint (cli in an interactive session, sdk-cli under claude -p) never decides a case.
 delete process.env.CLAUDE_CODE_ENTRYPOINT;

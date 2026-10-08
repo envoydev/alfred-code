@@ -44,9 +44,7 @@ if (require.main === module) {
     if (prelude.standDown('guard-fresh-session-start')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
-// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
-// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
-// project whose settings.json has not been migrated yet keeps resolving.
+// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 let payload;
 try {
@@ -125,6 +123,7 @@ try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } ca
     use() {}, freshAt: (k, d) => d, FRESH_AT_200K: 0, FRESH_AT_1M: 0, FRESH_AT_DEFAULT: 0, FRESH_OFF: true,
     sessionModelId: () => null, tableWindow: () => null, envWindow: () => null, knownWindow: () => null,
     ctxThreshold: () => null, MIN_RECOVERABLE_SHARE: 0.4, coldFloor: () => null, worthResuming: () => false,
+    transcriptSize: () => 0, freshAskAnsweredThisTurn: () => false, askAnsweredSince: () => true,
   };
 }
 fresh.use(payload);
@@ -239,8 +238,9 @@ function compactPointer() {
 // they are multi-phase walks too, and the slash route is what finally reaches them.
 const ORCHESTRATION = /^((alfred-)?(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|alfred-code:(init|setup|update|configure|validate))$/;
 // a plugin-namespaced Skill call arrives as `<plugin>:<skill>`; the guided commands are
-// matched on their FULL name, so a bare `/setup` from some other plugin is not read as one of them
-const isOrchestration = (n) => ORCHESTRATION.test(n) || ORCHESTRATION.test(n.replace(/^.*:/, ''));
+// matched on their FULL name, so a bare `/setup` from some other plugin is not read as one of them - and only this
+// stack's own namespace is stripped, so another plugin's `other:task-solve` is not this stack's run (audit 2026-10-08)
+const isOrchestration = (n) => ORCHESTRATION.test(n) || ORCHESTRATION.test(n.replace(/^alfred-code:/, ''));
 let skill = '';
 if (IS_SKILL_CALL) {
   skill = String((payload.tool_input || {}).skill || (payload.tool_input || {}).name || '');
@@ -267,19 +267,27 @@ if (IS_SKILL_CALL) {
 // the PERSONAL copy (`<config dir>/skills/`) first - 'personal over project' (code.claude.com/docs/en/skills),
 // so reading the project copy first judged the copy that never runs (2.1.5 M10) - then the project copy,
 // then the plugin caches.
+// A plugin COMMAND and the router skill carry the flag too - the seven guided commands and `alfred-code` itself, 8 of
+// the 21 flagged entries, were never resolved, so a model's `Skill(alfred-code:setup)` ran (audit 2026-10-08). Each
+// plugin root is read at every home its entries ship from: `stack/skills`, `skills`, `setup-plugin/skills`,
+// `commands` and `setup-plugin/commands`.
+const pluginHeads = (base, bare) => [
+  nodePath.join(base, 'stack', 'skills', bare, 'SKILL.md'), nodePath.join(base, 'skills', bare, 'SKILL.md'),
+  nodePath.join(base, 'setup-plugin', 'skills', bare, 'SKILL.md'), nodePath.join(base, 'commands', `${bare}.md`),
+  nodePath.join(base, 'setup-plugin', 'commands', `${bare}.md`),
+];
 function skillHeads(root, skill) {
   const bare = skill.replace(/^.*:/, '');
   const cfg = process.env.CLAUDE_CONFIG_DIR || nodePath.join(process.env.HOME || process.env.USERPROFILE || '', '.claude');
-  const out = [nodePath.join(cfg, 'skills', bare, 'SKILL.md'), nodePath.join(root, '.claude', 'skills', bare, 'SKILL.md')];
+  const out = [nodePath.join(cfg, 'skills', bare, 'SKILL.md'), nodePath.join(root, '.claude', 'skills', bare, 'SKILL.md'),
+    nodePath.join(cfg, 'commands', `${bare}.md`), nodePath.join(root, '.claude', 'commands', `${bare}.md`)];
   const cache = nodePath.join(cfg, 'plugins', 'cache');
   // <cache>/<marketplace>/<plugin>/<version>/stack/skills/<bare>/SKILL.md - the plugin is known
   // when the call carries a scoped name, and is a short scan otherwise.
   const want = skill.includes(':') ? skill.slice(0, skill.indexOf(':')) : null;
   // The running plugin's own root is the copy that is loaded, so it is read before any cached one.
   const running = process.env.CLAUDE_PLUGIN_ROOT;
-  if (running && (!want || nodePath.basename(nodePath.dirname(running)) === want)) {
-    out.push(nodePath.join(running, 'stack', 'skills', bare, 'SKILL.md'), nodePath.join(running, 'skills', bare, 'SKILL.md'));
-  }
+  if (running && (!want || nodePath.basename(nodePath.dirname(running)) === want)) out.push(...pluginHeads(running, bare));
   let markets = [];
   try { markets = fs.readdirSync(cache); } catch { return out; }
   for (const market of markets) {
@@ -290,8 +298,7 @@ function skillHeads(root, skill) {
       let versions = [];
       try { versions = fs.readdirSync(nodePath.join(cache, market, plugin)); } catch { continue; }
       for (const version of versions.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))) {
-        out.push(nodePath.join(cache, market, plugin, version, 'stack', 'skills', bare, 'SKILL.md'));
-        out.push(nodePath.join(cache, market, plugin, version, 'skills', bare, 'SKILL.md'));
+        out.push(...pluginHeads(nodePath.join(cache, market, plugin, version), bare));
       }
     }
   }
@@ -299,7 +306,6 @@ function skillHeads(root, skill) {
 }
 
 if (IS_SKILL_CALL && skill) {
-  const bare = skill.replace(/^.*:/, '');
   try {
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
     // the flag lives in the frontmatter - read the head, never the body
@@ -318,7 +324,7 @@ if (IS_SKILL_CALL && skill) {
         `Blocked: ${skill} is marked disable-model-invocation - it is the USER's to type, never yours\n` +
         `to call. Do not retry it under another spelling and do not spend the turn explaining that you\n` +
         `cannot: name the command, say in ONE line what it does, and hand the turn back so the user\n` +
-        `can run /${bare} themselves.`,
+        `can run /${skill} themselves.`,
       );
       process.exit(2);
     }
@@ -492,11 +498,28 @@ function sizeOfferFile() {
   const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
   return `${envOf(process.env, 'HOOK_LOG_DIR') || os.tmpdir()}/guard-fresh-size-${key}.offered`;
 }
+// The offer file holds the context it was made at and the transcript's size then: the offer counts as ANSWERED only
+// once an ask was answered past that size. Written at the deny alone, the identical retry passed with no ask between
+// (audit 2026-10-08, replayed 2 then 0). A file from before this line carries no size and reads as answered.
 function sizeOfferedAt() {
   try { return parseInt(fs.readFileSync(sizeOfferFile(), 'utf8'), 10) || 0; } catch { return 0; }
 }
+function sizeOfferAnswered() {
+  try {
+    const at = fs.readFileSync(sizeOfferFile(), 'utf8').trim().split(/\s+/)[1];
+    return at === undefined || fresh.askAnsweredSince(parseInt(at, 10) || 0);
+  } catch { return true; }
+}
 function recordSizeOffer(ctx) {
-  try { fs.writeFileSync(sizeOfferFile(), String(ctx)); } catch { /* never let state break the gate */ }
+  try { fs.writeFileSync(sizeOfferFile(), `${ctx} ${fresh.transcriptSize()}`); } catch { /* never let state break the gate */ }
+  sweepOffers();
+}
+// State hygiene when an offer is written (hook-prelude.js sweepStale, audit 2026-10-08 S9): offers past 7 days go.
+function sweepOffers() {
+  try {
+    const pre = require('./hook-prelude.js');
+    if (typeof pre.sweepStale === 'function') pre.sweepStale(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), 'guard-fresh-');
+  } catch { /* no prelude: nothing swept */ }
 }
 
 // A SUBAGENT's Skill call (the payload carries agent_id) is a phase of work its parent dispatched:
@@ -512,8 +535,11 @@ const FRESH_AT = ctxThreshold();   // null = this window's trigger is switched o
 // Both triggers are subject to the same question - what a resume would actually recover - so the
 // gate and the offer can never sit on different arithmetic in one session.
 const sizeAlreadyOffered = sizeOfferedAt();
+// An offer stands until an ask answers it; an ask THIS turn that already put the fresh-session choice to the user
+// (task-solve's stop asks carry it) is that answer for the phase Skill call that follows (audit 2026-10-08).
 const overSize = !FRESH_OFF && FRESH_AT !== null && ctx > FRESH_AT && worthResuming(ctx)
-  && (!sizeAlreadyOffered || ctx >= sizeAlreadyOffered * REOFFER_GROWTH);
+  && (!sizeAlreadyOffered || !sizeOfferAnswered() || ctx >= sizeAlreadyOffered * REOFFER_GROWTH)
+  && !(IS_SKILL_CALL && fresh.freshAskAnsweredThisTurn());
 // The chained trigger judges only a run the user TYPED (the slash route); a Skill call is a phase
 // of a run already in flight, and the size trigger still covers that route.
 const chained = EVENT === 'UserPromptExpansion' && !FRESH_OFF && !overSize && worthResuming(ctx)
@@ -527,6 +553,7 @@ if (unattended(payload)) {
 }
 if (chained) {
   try { fs.writeFileSync(chainedOfferFile(), new Date().toISOString()); } catch { /* never let state break the gate */ }
+  sweepOffers();
 }
 // Written on BOTH routes. The slash route injects rather than denies, but it is the same offer to
 // the same user about the same number, so answering it there must silence the Skill route too.

@@ -52,19 +52,9 @@ Three return shapes exist; pick by what the action actually does.
 
 - **`ActionResult<T>`** is the default for an action with a single success payload plus framework helpers. It beats `IActionResult` because the implicit cast operators let you `return dto;` (it wraps in an `ObjectResult`) or `return NotFound();` from the same method, and because `[ProducesResponseType(StatusCodes.Status200OK)]` can omit the `Type` - it is inferred from `T`. A naked `IEnumerable<T>` does not get the implicit cast (C# has no implicit operators on interfaces), so declare `ActionResult<IEnumerable<T>>` and materialize the sequence.
 - **`IActionResult`** only where there is genuinely no single payload type to name - a download stream, a redirect, a pure status. It carries no payload type for the document, so reach for it rarely.
-- **`Results<TResult1, TResultN>` / `TypedResults`** - the same `HttpResults` types minimal APIs use, and they work in a controller action. The generic union names every outcome in the signature, the compiler rejects a return path that produces an undeclared one, and the union retains OpenAPI metadata automatically. This is the pick when you want the controller's outcome contract to read like a minimal-API handler:
+- **`Results<...>` / `TypedResults`** (from `Microsoft.AspNetCore.Http.HttpResults`) also work in an action - only for deliberate symmetry with minimal-API handlers; never mix them with the `ControllerBase` helpers in one controller.
 
-```csharp
-[HttpPost]
-public async Task<Results<Created<TodoDto>, ValidationProblem, Conflict>> Create(
-    CreateTodoRequest request, CancellationToken ct)
-{
-    var result = await todos.CreateAsync(request, ct);
-    return TypedResults.Created($"/api/v1/todos/{result.Id}", result.ToDto());
-}
-```
-
-`TypedResults` types come from `Microsoft.AspNetCore.Http.HttpResults`, not the MVC `ControllerBase` helpers (`Ok`, `NotFound`, `CreatedAtAction`). Do not mix the two styles within one controller - either lean on the `ControllerBase` helpers with `ActionResult<T>`, or commit to `TypedResults` with the union. Recommendation: `ActionResult<T>` with the `ControllerBase` helpers for ordinary brownfield controllers (it is the idiom every MVC reader expects); `Results<>` only where you are deliberately keeping symmetry with minimal-API handlers or sharing handler code between the two.
+Recommendation: `ActionResult<T>` with the `ControllerBase` helpers for ordinary brownfield controllers - it is the idiom every MVC reader expects.
 
 Serialize DTOs, never domain entities or EF Core models - a `record` request and response type at the action edge. Sending an entity leaks the persistence shape, drags lazy-loaded relations into the serializer, and welds the public contract to the schema.
 
@@ -81,11 +71,7 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 });
 ```
 
-With it suppressed, the FluentValidation filter runs and produces the one canonical error envelope. The related knobs on `ApiBehaviorOptions`, for the cases where you keep the built-in path instead:
-
-- `InvalidModelStateResponseFactory` - the delegate that builds the automatic 400. Override it to reshape the body or log the failure; by default it uses `ProblemDetailsFactory` to emit a `ValidationProblemDetails`.
-- `SuppressMapClientErrors` - stops `[ApiController]` from converting bare error status codes (a `NotFound()` with no body) into `ProblemDetails`. Leave it off; the mapping is what gives every 4xx/5xx an RFC-shaped body for free.
-- If you do keep model-state validation on a given action and need a *custom* 400 that matches the automatic one, call `ValidationProblem()` (which returns a `ValidationProblemDetails`), never `BadRequest(...)` with an ad-hoc object - that is how the two paths stay shape-consistent.
+With it suppressed, the FluentValidation filter runs and produces the one canonical error envelope. Keeping the built-in path on some action? `InvalidModelStateResponseFactory`, `SuppressMapClientErrors` and the `ValidationProblem()` rule are in `references/api-behavior-options.md`.
 
 Do not assemble the error body here (see ProblemDetails below) - this section only decides where the validation gate sits and how to stop the framework from competing with it.
 
@@ -129,11 +115,9 @@ public sealed class ValidationFilter<TRequest> : IAsyncActionFilter
 }
 ```
 
-`ActionExecutingContext.ActionArguments` exposes the bound parameters before the action runs; setting `context.Result` (or simply not calling `next()`) short-circuits the pipeline so the action body never executes. The post-action `ActionExecutedContext` carries `Result`, `Exception`, and `Canceled` for the after side.
+`ActionExecutingContext.ActionArguments` exposes the bound parameters before the action runs; setting `context.Result` (or simply not calling `next()`) short-circuits the pipeline so the action body never executes. The post-action `ActionExecutedContext` carries `Result`, `Exception`, and `Canceled` for the after side. This action-filter form is the per-action alternative; the house validation gate stays the HTTP error-handling skill's endpoint filter, attached to the controller actions.
 
-Where filters live in the request pipeline, outermost first: authorization filters, then resource filters, then model binding, then **action filters**, then the action, then result filters; exception filters wrap unhandled action faults. An action filter therefore sees bound arguments but runs inside authorization - it is the wrong place for an auth decision (that is `[Authorize]`, configured by the authentication skill).
-
-Filter **ordering** is two-dimensional. By default, scope decides: global filters wrap controller filters wrap action filters - so a global filter's *before* runs first and its *after* runs last. To override that, implement `IOrderedFilter` and set `Order`; a lower `Order` runs its before-code earlier and its after-code later, and `Order` always beats scope. Register a filter globally in `AddControllers(o => o.Filters.Add<T>())`, or attach it as an attribute on a controller or action for narrower scope.
+An action filter runs inside authorization - never put an auth decision in it; the full pipeline order and `IOrderedFilter` are `references/filter-pipeline.md`.
 
 ## Thin controllers
 
@@ -160,7 +144,13 @@ Both produce the same HTTP service; the choice is about fit, not capability. Gre
 
 ## Prove the pipeline
 
-A controller that compiles is not a controller that behaves. Before any done word, call the action three ways and quote each result: a valid request returns the expected 2xx and body; an invalid one returns a single 400 in the canonical envelope (two competing shapes means the built-in filter was never suppressed); and an unauthorized one returns 401 or 403 rather than falling through to the action.
+A controller that compiles is not a controller that behaves. Before any done word, call the action three ways:
+
+1. A valid request - quote the expected 2xx and body.
+2. An invalid request - quote the single 400 in the canonical envelope (two competing shapes means the built-in filter was never suppressed).
+3. An unauthorized request - quote the 401 or 403 rather than a fall-through to the action.
+
+Report: the three quoted results.
 
 ## Anti-patterns
 

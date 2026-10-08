@@ -7,7 +7,7 @@
 //   Stop         when that list holds source files, runs ONE check per nearest root - `tsc --noEmit -p
 //                <tsconfig>` (the project's own node_modules/.bin/tsc) for TypeScript, `dotnet build
 //                --no-restore -v q <csproj>` for C# - and hands the first 20 error lines back as a
-//                Stop block. Once per turn: the continuation Stop after a block (stop_hook_active)
+//                Stop block. Once per turn: the continuation Stop after ITS OWN block (the Stop chain)
 //                passes, and its fix-up edits wait in the list for the next turn's check.
 // A missing compiler, a timeout or anything unreadable is a pass: this hook reports errors, it never
 // guesses them. It carries its OWN declared timeout (60s, install/settings.js HOOK_TIMEOUTS) - the one
@@ -95,6 +95,10 @@ function runChecks(roots, { budgetMs = BUDGET_MS, spawn = spawnSync, now = Date.
     if (res.status === null) { outcomes.push({ root: r.config, outcome: 'timeout' }); continue; }
     const pattern = r.kind === 'ts' ? /error TS\d+/ : /: error [A-Z]+\d+/;
     const lines = `${res.stdout || ''}\n${res.stderr || ''}`.split(/\r?\n/).filter((l) => pattern.test(l));
+    // A project never restored fails `--no-restore` with NETSDK1004 (no assets file) on every line - not this turn's
+    // error, and the check never restores, as its header says. A pass, said in the outcome (audit 2026-10-08 row 45).
+    if (r.kind === 'cs' && res.status !== 0 && lines.length && lines.every((l) => /error NETSDK1004\b/.test(l)))
+    { outcomes.push({ root: r.config, outcome: 'not-restored' }); continue; }
     outcomes.push({ root: r.config, outcome: res.status === 0 ? 'clean' : 'errors', errors: lines.length });
     for (const l of lines) if (errors.length < MAX_LINES && !errors.includes(l.trim())) errors.push(l.trim());
   }
@@ -111,10 +115,18 @@ if (require.main === module)
   // skewed copy (a newer hook beside an older/missing engine) must still orient, not crash.
   let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
   let switchOn = (suffix) => String(envOf(process.env, suffix) || '').trim() === '1';
+  // The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
+  let stopHeld = (input) => !!(input && input.stop_hook_active);
+  let markHeld = () => {};
   try
   {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
+    if (prelude.stopHeldThisCycle)
+    {
+      stopHeld = (input) => prelude.stopHeldThisCycle('check-turn-build', input);
+      markHeld = (input) => prelude.markStopHeld('check-turn-build', input);
+    }
     // the hook profile applies here: strict reads the seeded 0 as on
     if (typeof prelude.switchOn === 'function') switchOn = (suffix) => prelude.switchOn(suffix);
     if (prelude.standDown('check-turn-build')) process.exit(0);
@@ -150,9 +162,10 @@ if (require.main === module)
     process.exit(0);
   }
   if (event !== 'Stop') process.exit(0);
-  // The continuation after a block - ours or another Stop hook's - is not a new turn: pass, and keep
-  // what it wrote for the next turn's check.
-  if (payload.stop_hook_active) process.exit(0);
+  // The continuation after OUR block passes, and keeps what it wrote for the next turn's check - once per turn. One a
+  // sibling Stop hook caused is checked: its fix-up edits are this turn's (hook-prelude.js, the Stop chain - audit
+  // 2026-10-08 S1).
+  if (stopHeld(payload)) process.exit(0);
 
   let files = [];
   try { files = [...new Set(fs.readFileSync(list, 'utf8').split('\n').map((l) => l.trim()).filter((l) => path.isAbsolute(l)))]; }
@@ -161,6 +174,22 @@ if (require.main === module)
   const roots = groupRoots(files, root);
   if (!roots.length) process.exit(0);
   const { errors, outcomes } = runChecks(roots);
+  // A root left unchecked because it was never restored is one `mode: probe` row, so the week's tally can tell a
+  // checked turn from one the check could not judge; the block rate skips it like every mode row.
+  if (outcomes.some((o) => o.outcome === 'not-restored'))
+  {
+    try
+    {
+      const dir = path.join(docs, 'hook-blocks');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.appendFileSync(path.join(dir, `${sid}.jsonl`), `${JSON.stringify({
+        ts: new Date().toISOString(), hook: path.basename(__filename), event: 'Stop', tool: '', mode: 'probe', kind: 'not-restored',
+        reason: 'probe: a project the turn changed was never restored, so dotnet build --no-restore could not judge it - logged, not blocked',
+        detail: { roots: outcomes.filter((o) => o.outcome === 'not-restored').map((o) => path.relative(root, o.root)) },
+      })}\n`);
+    }
+    catch { /* a log row never throws */ }
+  }
   if (!errors.length) process.exit(0);
 
   const ran = outcomes.filter((o) => o.outcome === 'errors').map((o) => o.root);
@@ -183,5 +212,6 @@ if (require.main === module)
     'Fix them, or say plainly why they stand, before ending the turn. The check runs once per turn;\n' +
     'ALFRED_CODE_TURN_CHECK=0 in the settings.json env switches it off.\n',
   );
+  markHeld(payload);
   process.exit(2);
 }

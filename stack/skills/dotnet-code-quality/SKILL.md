@@ -5,13 +5,13 @@ description: "Use when setting up formatting, analyzers, .editorconfig, warnings
 
 # .NET code quality - enforcement, not opinion
 
-The `csharp` skill says *what* good C# looks like; this skill makes a build *prove* it. The goal is that style and correctness rules are a gate the compiler and CI enforce, so they never depend on a reviewer noticing. Baseline is .NET 8 / C# 12. This is about configuring the tools - authoring your own Roslyn analyzers belongs to the skill covering source-generator and analyzer authoring, and judging whether the *tests* are any good to the .NET testing hub.
+The `csharp` skill says *what* good C# looks like; this skill makes a build *prove* it. The goal is that style and correctness rules are a gate the compiler and CI enforce, so they never depend on a reviewer noticing. Baseline is .NET 8 / C# 12. This is about configuring the tools - authoring a source generator belongs to the skill covering source-generator authoring, a Roslyn analyzer has no house skill (resolve its API through the documentation server), and judging whether the *tests* are any good belongs to the .NET testing hub.
 
 ## When to use
 
 - Also fires on: fixing formatting or analyzer warnings, Roslynator, AnalysisLevel, NoWarn.
 - .NET conventions for mechanically enforcing code quality: making the house style a build gate, not a review opinion.
-- Do NOT use for authoring Roslyn analyzers or source generators (the source-generator skill) or for test-suite quality (dotnet-testing).
+- Do NOT use for authoring a source generator (the source-generator skill) or a Roslyn analyzer (no house skill covers it - resolve the analyzer API through the documentation server), or for test-suite quality (dotnet-testing).
 
 ## Two owners, one boundary: formatting vs rules
 
@@ -73,13 +73,9 @@ If the fix is genuinely too large, put it to the user through ONE AskUserQuestio
 
 ## Legacy backlog: promote in batches, never all at once
 
-Flipping `TreatWarningsAsErrors=true` on an existing codebase yields hundreds of errors and floods the context; fix quality collapses. Promote a curated set of IDs via `WarningsAsErrors`, in waves, building green between each:
+Flipping `TreatWarningsAsErrors=true` on an existing codebase floods the build - promote curated IDs in waves; the waves, their prerequisites and the per-wave proof are `references/legacy-backlog.md`.
 
-1. **Trivial hygiene first** - mechanical, near-zero-risk: `IDE0005` (unnecessary using), `CS0219`/`CS0168` (unused variable), `CS1591` (missing XML doc on public API), `CS0612`/`CS0618` (obsolete member). Add `IDE0005;CS0219;CS0168` to `WarningsAsErrors`, fix all, commit. `IDE0005` fires on build only with three prerequisites: `EnforceCodeStyleInBuild=true`, `GenerateDocumentationFile=true`, and `dotnet_diagnostic.IDE0005.severity = warning` in `.editorconfig` - without the second the build prints an `EnableGenerateDocumentationFile` warning and gates nothing. Never `CS8019`, a hidden diagnostic that `WarningsAsErrors` cannot promote (measured on SDK 10.0.203: three unused usings, `0 Warning(s) 0 Error(s)`). `GenerateDocumentationFile` is also what makes `CS1591` fire, on every undocumented public member - a warning flood the moment the property lands (an error flood under `TreatWarningsAsErrors`), so keep `CS1591` out of this wave's `WarningsAsErrors` and promote it in its own. Prove the wave before calling it green: add one deliberate unused using and quote the red `IDE0005` line before removing it.
-2. **Code-quality CA rules next, by category** - put the category order to the user through one AskUserQuestion listing the categories, recommending the one with the most findings first: `CA2000` (dispose before scope loss), `CA1062` (validate public args), `CA2007` (`ConfigureAwait`), `CA1822` (mark static), `CA1860`/`CA1861` (LINQ/array perf).
-3. **Promote security rules to error** - the `CA3xxx` (injection) and `CA5xxx` (crypto/TLS) families belong at `error` in `.editorconfig`; which rules and why is `dotnet-security`'s (A03 and A02).
-
-Where the house config-protection guard runs, it blocks any change to `WarningsAsErrors`, `EnforceCodeStyleInBuild` or another warning key in a Directory.Build.props or csproj that already exists, and any edit to an existing `.editorconfig` - a tightening included - until the user allows it. Ask for that allowance with the warning count the wave surfaces, and never route around the block; a new file takes the settings from the start.
+Where the house config-protection guard runs, it blocks any change to `WarningsAsErrors`, `EnforceCodeStyleInBuild` or another warning key in a Directory.Build.props or csproj that already exists, and any edit to an existing `.editorconfig` - a tightening included - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new file takes the settings from the start.
 
 ## The gate is `dotnet build`
 
@@ -90,6 +86,7 @@ Prove the gate before calling any of this done, and quote the result:
 1. `dotnet tool restore` - the pinned tools resolve from the manifest, not from a machine-global install.
 2. `dotnet csharpier check .` - exit 0, or the list of unformatted files.
 3. `dotnet build -warnaserror` - exit 0, or the analyzer IDs it failed on.
+4. Check the diff against `references/reward-hacking.md` row by row - report `Reward-hack scan: clean` or the rows hit.
 
 Report the command and its result line for each, never the claim alone. A gate you did not run is a gate you cannot say holds.
 

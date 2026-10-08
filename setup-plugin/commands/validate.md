@@ -47,15 +47,12 @@ recompute, no pasted tool output, one narration line between steps.
 **Every scope.** A project, user or local install keeps its stamp, its library copies and its
 settings in the project's `.claude/`, so validate reconciles all three the same way - there is no
 account-only install to refuse. Find the install with `node "$TMP/repo/scripts/install/stamp.js"
-state .`, which reads the install records the hooks read (`alfred-code.stamp`, the 1.x
-`claude-stack.stamp`, a copied `hooks/docs.js`) in this repo, its git top level or a worktree's main <!-- legacy-name -->
+state .`, which reads the install records the hooks read (`alfred-code.stamp`, a copied
+`hooks/docs.js`) in this repo, its git top level or a worktree's main
 checkout - never `.claude/skills` or `.claude/agents`, which a plugin-route install may not have:
-`not-installed` -> stop and route to `/alfred-code:setup`; `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:validate from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; `legacy-global` (a 1.x global install
-whose stamp is still in the account dir) -> stop and route to `/alfred-code:update`, which moves it
-into the project first; `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to
+`not-installed` -> stop and route to `/alfred-code:setup`; `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:validate from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to
 `/alfred-code:update`, which reads its picks off disk and writes the stamp first; `installed` / `initialised` -> go on. `<scope>` below is `node "$TMP/repo/scripts/install/stamp.js" scope .` -
-the same script, reading the stamp under either name (a 1.x install keeps `claude-stack.stamp` until <!-- legacy-name -->
-its first 2.0.0 update), a 1.x `global` as `user`, anything else as `project` - passed to every
+the same script, reading the stamp, a `global` line as `user`, anything else as `project` - passed to every
 installer call so the read-back and the apply read and write the settings file that scope uses
 (`.claude/settings.local.json` laid over `.claude/settings.json` at local scope; at project and user
 scope `settings.json`, with every stack key `settings.local.json` holds laid over it and written back
@@ -281,7 +278,7 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   a signal is a `no-evidence:` advisory, never a removal.
   Every name in `plugins_disabled` gets its own **DISABLED** row in the plugins table - reason
   `installed but disabled for this project` - and its accept action is `claude plugin enable
-  <name>`, never an install and never an uninstall. A DISABLED plugin the user leaves alone is a
+  <name> --scope <the install's scope>`, never an install and never an uninstall. A DISABLED plugin the user leaves alone is a
   deliberate choice and is not re-raised in the close.
 - **`alfred-memory` joins `alfred-navigation` and `alfred-documentation`** as an always-required MCP (`alfred-memory.md` locks
   it in the same way `alfred-navigation.md` locks the navigation server) - MISSING when the project carries no
@@ -467,8 +464,8 @@ advisory. Name each item's idle cost and off lever honestly, per layer:
 agents and manual `/`-skills cost nothing installed (explicit dispatch only - say so, so working
 machinery is not pruned for phantom savings); an auto-firing skill costs its description line per
 session (lever: remove, or accept it); an MCP costs its server launch + tools every session
-(lever: `claude mcp remove`, cheap to re-add via configure); a plugin can be switched off in place
-(`claude plugin disable <name>`). Act on a lever only on an explicit user request in this run -
+(lever: `claude mcp remove <name> -s <its scope>`, cheap to re-add via configure); a plugin can be switched off in place
+(`claude plugin disable <name> --scope <the install's scope>` - from a narrower scope it switches a broader row off there alone). Act on a lever only on an explicit user request in this run -
 dormancy alone is never a removal argument.
 
 ## 11. Apply - the same paths setup/configure use
@@ -497,8 +494,8 @@ profile), output to `$TMP/select.out` - then:
   - one `--add` per `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted,
   applied on top of the same read-back, so nothing the reconcile did not touch moves. Never
   `--selection` on this seed: that route neither removes nor disables what the reconcile dropped,
-  and it stamps every carried item as a pick. On `ALFRED_CODE_SEED=shell` (or the 1.x
-  `CLAUDE_STACK_SEED`) the frozen twin no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
+  and it stamps every carried item as a pick. On `ALFRED_CODE_SEED=shell` the frozen twin no
+  longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
   The browser server among the ADDS: ask which browsers to install (`chrome` pre-selected, `msedge`,
   `firefox`, `webkit`), then which of those to enable (all pre-selected; each enabled one adds its ~25
   tools to every session) and pass both; `/plugin` toggles them later. An installed browser server passes
@@ -513,9 +510,9 @@ profile), output to `$TMP/select.out` - then:
   nothing kept needs any more is disabled. Report them from `grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|scope, not this run|removed \(dropped\)|overwriting a hand-edited copy' "$TMP/install.log"` - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out: `skill <name> stays loaded` is a core
   skill, which the core plugin goes on carrying - report it as carried, never as removed; `--drop
   <line> not applied` is an item something kept requires, or an always-on rule or server (`locked`) -
-  report it as kept, with the reason; a stack entry enabled at another scope is never disabled, the
-  log names the command for the user. Two removals the installer never makes, each with its command shown first:
-  `claude mcp remove <name>` for an MCP on the copy route (browser = every
+  report it as kept, with the reason; a stack entry enabled at a broader scope is switched off for this
+  scope alone, a narrower or managed one is named, never switched. Two removals the installer never makes, each with its command shown first:
+  `claude mcp remove <name> -s <its scope>` for an MCP on the copy route (browser = every
   `browser-<engine>` server), and
   `claude plugin uninstall <name> --scope <the scope step 1 recorded for it>` (2.2.0: no plugin rides
   beside the core any more - claude-hud is a pick like the LSP pair). The removal ask that proposed it

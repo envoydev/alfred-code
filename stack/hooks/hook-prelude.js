@@ -20,20 +20,14 @@
 // AskUserQuestions. The PLUGIN copy is the one that steps aside, because the copied one is what the
 // project's own settings file points at and is the older, already-trusted route.
 //
-// GATE 3 - the 1.x alias. 2.0.0 to 2.2.0 listed the 1.x core id as a RETIRED alias carrying the 2.0.0 core,
-// hooks included (docs/rebrand-evidence.md S20), and an installed alias refreshes into that content
-// at the next session (S21). A 1.x core left at user scope, seen from a project the seed already
-// moved onto `alfred-code`, would fire every guard twice (S23, and S26: two plugins carrying the
-// byte-identical command both run) - so the ALIAS's copy steps aside whenever the project or the
-// account enables the new core AND that core is installed where it can load.
+// GATE 3 - retired: the 1.x alias gate, gone once every install moved onto the core.
 //
 // GATE 4 - a project never set up. A user-scope core enables every hook in EVERY repo the user
 // opens, and a repo nobody ran /alfred-code:setup in carries none of the rules the guards enforce -
 // so a plugin-launched hook there does nothing and writes nothing (no `.alfred/docs/` ledger or
 // history in a repo merely opened: R54). Set up means an install record in the project's `.claude/`,
-// or its git top level's, or - for a linked worktree - the main checkout's: the stamp (2.x, or the
-// 1.x name), or a copied engine (a 1.x global install kept its stamp in the account dir, never its
-// engines). A copied hook is set up by definition. Four guards stay live even there (R86, IM2), each
+// or its git top level's, or - for a linked worktree - the main checkout's: the stamp, or a copied
+// engine. A copied hook is set up by definition. Four guards stay live even there (R86, IM2), each
 // skipping its block row: what they stop cannot be undone, and a user-scope core is the only guard
 // a repo never set up has.
 //
@@ -74,15 +68,12 @@ function baseName(hook)
     return String(hook || '').trim().toLowerCase().replace(/\.js$/, '');
 }
 
-// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. A hook runs at 2.0.0 before the // legacy-name
-// project's own update renames its settings, so the old name answers until then.
+// The stack's setting ALFRED_CODE_<suffix>, '' read as unset - the one reader every ordinary hook
+// requires (env-reader in meta/shared-rules.json pins the inline copies).
 function envOf(env, suffix)
 {
-    const fresh = env[`ALFRED_CODE_${suffix}`];
-    if (fresh !== undefined && fresh !== '') return fresh;
-    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name
-    if (old !== undefined && old !== '') return old;
-    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name
+    const value = env[`ALFRED_CODE_${suffix}`];
+    return value === '' ? undefined : value;
 }
 
 // GATE 5. The core's `hook_profile` userConfig is a plain string, default `standard`: these are the
@@ -162,74 +153,9 @@ function yieldToCopiedTwin(hook, env)
     return false;
 }
 
-// The alias is recognised by its plugin root: the CLI caches a plugin at
-// `<config>/plugins/cache/<marketplace>/<plugin>/<version>`, so the alias runs from a directory
-// whose PARENT is the 1.x core's name - the new core's never is, whatever its marketplace key.
 const CORE_PLUGIN = 'alfred-code';
-const ALIAS_PLUGIN = 'claude-stack'; // legacy-name
 
-function launchedFromAlias(root)
-{
-    const parts = String(root || '').split(/[\\/]+/).filter(Boolean);
-    return parts.length >= 2 && parts[parts.length - 2].toLowerCase() === ALIAS_PLUGIN;
-}
-
-// `enabledPlugins` of one settings file: an ABSENT file enables nothing; one that exists and cannot
-// be read or parsed returns null - the caller runs the hook.
-function enabledIn(file)
-{
-    let parsed;
-    try { parsed = JSON.parse(fs.readFileSync(file, 'utf8')); }
-    catch (err) { return err && err.code === 'ENOENT' ? new Map() : null; }
-    const map = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed.enabledPlugins : null;
-    return new Map(map && typeof map === 'object' && !Array.isArray(map) ? Object.entries(map) : []);
-}
-
-const realOf = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
-const samePath = (a, b) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
-const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
-
-// A settings key is not a loaded plugin: a committed settings file names `alfred-code@<key>` for a
-// teammate whose core never installed (no marketplace, a declined trust prompt), and yielding then
-// leaves that session with no guard at all. So the named core counts only with its row in the CLI's
-// own `<config>/plugins/installed_plugins.json` - at user scope, or for THIS project - and that row's
-// cache directory on disk. Anything unreadable is not installed: the alias runs.
-function coreInstalled(account, root, ids)
-{
-    let plugins;
-    try { plugins = JSON.parse(fs.readFileSync(path.join(account, 'plugins', 'installed_plugins.json'), 'utf8')).plugins; }
-    catch { return false; }
-    if (!plugins || typeof plugins !== 'object' || Array.isArray(plugins)) return false;
-    const here = realOf(root);
-    for (const id of ids)
-        for (const row of [].concat(plugins[id] || []))
-        {
-            if (!row || typeof row !== 'object' || typeof row.installPath !== 'string' || !isDir(row.installPath)) continue;
-            if (row.scope === 'user' || (typeof row.projectPath === 'string' && samePath(realOf(row.projectPath), here))) return true;
-        }
-    return false;
-}
-
-function aliasYieldsToCore(env)
-{
-    const source = env || process.env;
-    if (!source || !launchedFromAlias(source.CLAUDE_PLUGIN_ROOT)) return false;
-    const root = source.CLAUDE_PROJECT_DIR;
-    if (!root) return false;
-    const account = source.CLAUDE_CONFIG_DIR || path.join(homeDir(), '.claude');
-    // Lowest scope first, so the project and then its local file win for a key more than one names.
-    const merged = new Map();
-    for (const file of [path.join(account, 'settings.json'), path.join(root, '.claude', 'settings.json'), path.join(root, '.claude', 'settings.local.json')])
-    {
-        const enabled = enabledIn(file);
-        if (!enabled) return false;
-        for (const [id, value] of enabled) merged.set(id, value);
-    }
-    const cores = [...merged].filter(([id, value]) => value === true && String(id).split('@')[0] === CORE_PLUGIN).map(([id]) => id);
-    return cores.length > 0 && coreInstalled(account, root, cores);
-}
-
-const INSTALL_RECORDS = [['alfred-code.stamp'], ['claude-stack.stamp'], ['hooks', 'docs.js']]; // legacy-name
+const INSTALL_RECORDS = [['alfred-code.stamp'], ['hooks', 'docs.js']];
 
 // The checkouts whose record speaks for `dir`: itself, its git top level, and - for a linked worktree,
 // whose `.git` is a FILE - the main checkout it belongs to. The record is machine-local and `.claude/`
@@ -389,8 +315,110 @@ function standDown(hook, env, argv, { setUp = true } = {})
     try
     {
         if (isCliInvocation(argv)) return false;
-        return hookDisabled(hook, env) || profileOff(hook, env) || yieldToCopiedTwin(hook, env) || aliasYieldsToCore(env)
+        return hookDisabled(hook, env) || profileOff(hook, env) || yieldToCopiedTwin(hook, env)
             || (setUp && neverSetUp(env) && !PROTECTIVE.has(baseName(hook)));
+    }
+    catch { return false; }
+}
+
+// THE STOP CHAIN (hooks audit 2026-10-08, S1). Four hooks can block a Stop (the stop contract, answer length,
+// docs-session, the turn build check), and `stop_hook_active` is true whenever Claude Code continues because ANY of
+// them blocked ('true when Claude Code is already continuing as a result of a stop hook' - code.claude.com/docs/en/
+// hooks, Stop input). A blocker that stood down on the flag alone never judged the close rewritten after a SIBLING's
+// block ('Build fixed. Should I commit?' passed the stop contract). So each blocker marks its own block
+// (markStopHeld) and stands down on a continuation only when IT held this cycle (stopHeldThisCycle): every blocker
+// judges each rewritten close once more and blocks at most ONCE per cycle, so four blockers make at most four
+// continuations - never a loop - with Claude Code's 8-consecutive-continuation cap the outer guard. A Stop with the
+// flag false opens a new cycle and clears the hook's marker. Where a marker could not be written (an unwritable dir)
+// a continuation stands down, the old reading - judging again there could block again.
+function stopMarkerFile(hook, input, env)
+{
+    const dir = envOf(env || process.env, 'HOOK_LOG_DIR') || os.tmpdir();
+    const part = (s) => String(s || '').replace(/[^\w.-]/g, '_').slice(-80);
+    return path.join(dir, `alfred-stop-held-${baseName(hook)}-${part(input.hook_event_name)}-${part(input.session_id || 'nosession')}-${part(input.agent_id || 'main')}`);
+}
+
+function stopHeldThisCycle(hook, input, env)
+{
+    if (!input || typeof input !== 'object' || !input.stop_hook_active)
+    {
+        try { if (input && typeof input === 'object') fs.rmSync(stopMarkerFile(hook, input, env), { force: true }); } catch { /* the next block rewrites it */ }
+        return false;
+    }
+    try
+    {
+        const file = stopMarkerFile(hook, input, env);
+        if (fs.existsSync(file)) return true;
+        fs.accessSync(path.dirname(file), fs.constants.W_OK);
+        return false;
+    }
+    catch { return true; }
+}
+
+function markStopHeld(hook, input, env)
+{
+    try { fs.writeFileSync(stopMarkerFile(hook, input, env), new Date().toISOString()); } catch { /* stopHeldThisCycle stands down where this cannot write */ }
+}
+
+// STATE HYGIENE (audit 2026-10-08 S9). The hooks' per-session state - the stop contract's markers and log, the
+// fresh-session offers, the read guard's range logs, the Stop-chain markers above, `<docs>/flow/monitor-*` and
+// `trivial-*` - was never pruned. sweepStale removes the FILES in `dir` named with `prefix` and untouched for 7 days,
+// once per (dir, prefix) per process, inside a 50ms budget of its own (the docs-session sweep's pattern: a bounded,
+// fail-silent pass a hook makes when it writes its own state). A file exactly at the cutoff is kept.
+const STALE_MS = 7 * 24 * 3600 * 1000;
+const STALE_BUDGET_MS = 50;
+const sweptStale = new Set();
+function sweepStale(dir, prefix, { now = Date.now(), maxAgeMs = STALE_MS } = {})
+{
+    const key = `${dir}\u0000${prefix}`;
+    if (!dir || !prefix || sweptStale.has(key)) return 0;
+    sweptStale.add(key);
+    const deadline = Date.now() + STALE_BUDGET_MS;
+    let removed = 0;
+    try
+    {
+        for (const name of fs.readdirSync(dir))
+        {
+            if (!name.startsWith(prefix)) continue;
+            if (Date.now() > deadline) break;
+            const file = path.join(dir, name);
+            try
+            {
+                const st = fs.lstatSync(file);
+                if (st.isFile() && now - st.mtimeMs > maxAgeMs) { fs.rmSync(file, { force: true }); removed++; }
+            }
+            catch { /* gone or unreadable - the next sweep */ }
+        }
+    }
+    catch { /* no dir */ }
+    return removed;
+}
+// An append-only log past `maxBytes` keeps its newest `keepBytes`, cut at a line start.
+function capLog(file, maxBytes = 1024 * 1024, keepBytes = 256 * 1024)
+{
+    try
+    {
+        const size = fs.statSync(file).size;
+        if (size <= maxBytes) return false;
+        const fd = fs.openSync(file, 'r');
+        const buf = Buffer.alloc(Math.min(keepBytes, size));
+        try { fs.readSync(fd, buf, 0, buf.length, size - buf.length); } finally { fs.closeSync(fd); }
+        const nl = buf.indexOf(0x0a);
+        fs.writeFileSync(file, nl >= 0 ? buf.subarray(nl + 1) : buf);
+        return true;
+    }
+    catch { return false; }
+}
+
+// Did `hook` (another Stop blocker) hold this cycle, at or after `sinceMs` (this turn's typed prompt)? Read-only - the
+// answer-length hook's yield to the stop contract. The two run in parallel on a turn's first Stop, so a false there
+// only drops the yield line; on a continuation the sibling's marker is on disk.
+function stopHeldBy(hook, input, sinceMs, env)
+{
+    try
+    {
+        const st = fs.statSync(stopMarkerFile(hook, input, env));
+        return !Number.isFinite(sinceMs) || st.mtimeMs >= sinceMs;
     }
     catch { return false; }
 }
@@ -430,4 +458,8 @@ function scanBudget(limits = {})
     };
 }
 
-module.exports = { hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, aliasYieldsToCore, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, ALIAS_PLUGIN, envOf, scanBudget, SCAN_LIMITS };
+// The dashes the house voice replaces with a single dash - the em-dash, the en-dash and the horizontal bar - ONE class for
+// the stop contract's ask deny and the answer-length Stop block, which disagreed ([\u2014\u2013] vs [\u2014\u2015], audit 2026-10-08).
+const HOUSE_DASH = /[\u2014\u2013\u2015]/;
+
+module.exports = { HOUSE_DASH, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, capLog, STALE_MS };

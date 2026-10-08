@@ -9,7 +9,6 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-secret-value.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-secret-'));
@@ -119,7 +118,7 @@ test('guard-secret-value: a credential-shaped key holding an identifier NAME is 
   }
   const f = fixtures();
   const names = path.join(f.dir, 'catalog.json');
-  fs.writeFileSync(names, JSON.stringify({ env: [{ key: 'SENTRY_ACCESS_TOKEN' }, { key: 'CONTEXT7_API_KEY' }], rename: { settings_env_key: 'CLAUDE_DOCS_PATH' } }));
+  fs.writeFileSync(names, JSON.stringify({ env: [{ key: 'SENTRY_ACCESS_TOKEN' }, { key: 'CONTEXT7_API_KEY' }], rename: { settings_env_key: 'ALFRED_CODE_FRESH_SESSION_PCT' } }));
   assert.equal(read(names), 0, 'a catalog of credential NAMES is not a credential file');
   // ...and the tell never excuses a value that is shaped like a credential
   const aws = path.join(f.dir, 'aws.json');
@@ -1251,23 +1250,37 @@ test("guard-secret-value: a block ends in an ask, and the user's allow is honour
     assert.doesNotMatch(denied.stderr, /stale/, 'no receipt, no staleness talk');
     assert.match(cli('--redacted', f.secret).stdout, /ONE AskUserQuestion/, 'the redacted view carries the ask too');
     assert.match(rewritten('echo $SENTRY_ACCESS_TOKEN'), /AskUserQuestion/, 'and so does the variable rewrite');
+    assert.match(denied.stderr, /the line `session: suite`/, 'the denial names the session line the receipt needs');
     // a file entry opens that file - by any dump verb and by Read - and nothing else
-    fs.writeFileSync(receipt, `# allowed by the user in this session\n${f.secret}\n`);
+    fs.writeFileSync(receipt, `# allowed by the user in this session\nsession: suite\n${f.secret}\n`);
     assert.equal(bash(`cat ${f.secret}`), 0, 'the listed file');
     assert.equal(bash(`jq -r .env.SENTRY_ACCESS_TOKEN ${f.secret}`), 0, 'any dump verb');
     assert.equal(read(f.secret), 0, 'and the Read tool');
     assert.equal(bash(`cat ${f.dotenv}`), REWRITE, 'an unlisted file stays blocked');
     assert.equal(bash('echo $SENTRY_ACCESS_TOKEN'), REWRITE, 'a file entry is not a variable');
     // a NAME entry opens that variable's print
-    fs.writeFileSync(receipt, 'SENTRY_ACCESS_TOKEN\n');
+    fs.writeFileSync(receipt, 'session: suite\nSENTRY_ACCESS_TOKEN\n');
     assert.equal(bash('echo $SENTRY_ACCESS_TOKEN'), 0, 'the listed variable');
     assert.equal(bash('echo $API_KEY'), REWRITE, 'another variable stays blocked');
     assert.equal(bash('env'), REWRITE, 'a whole-environment dump is not one variable');
     // `*` opens everything for the session - the remote user's 'just do the work'
-    fs.writeFileSync(receipt, '*\n');
+    fs.writeFileSync(receipt, 'session: suite\n*\n');
     assert.equal(bash(`cat ${f.dotenv}`), 0, 'any file');
     assert.equal(bash('env'), 0, 'the environment');
     assert.equal(bash(`echo 'TOKEN=${'ghp_' + 'A'.repeat(24)}' >> ${path.join(f.dir, '.env')}`), 0, 'a literal placed into a file');
+    // audit 2026-10-08: the receipt is this session's only through its session line - another session open on the
+    // same project, or a receipt naming none, opens nothing and lifts no literal check
+    for (const body of ['*\n', 'session: other\n*\n']) {
+      fs.writeFileSync(receipt, body);
+      assert.equal(bash(`cat ${f.dotenv}`), REWRITE, `${JSON.stringify(body)}: no session line for this call`);
+      assert.equal(bash(`echo 'TOKEN=${'ghp_' + 'A'.repeat(24)}' >> ${path.join(f.dir, '.env')}`), 2, `${JSON.stringify(body)}: the literal check stands`);
+      const other = run({ tool_name: 'Read', tool_input: { file_path: f.secret }, session_id: 'suite' });
+      assert.equal(other.status, 2);
+      assert.match(other.stderr, /stale \(older than 8h, written before this session began, or naming another session\)/);
+    }
+    fs.writeFileSync(receipt, 'session: other\nsession: suite\n*\n');
+    assert.equal(bash(`cat ${f.dotenv}`), 0, 'a receipt may name several sessions');
+    assert.equal(verdict(run({ tool_name: 'Bash', tool_input: { command: `cat ${f.dotenv}` } })), 0, 'a call naming no session keeps the time rule');
     // stale: older than 8h reads as absent, and the denial says so
     const old = (Date.now() - 9 * 3600 * 1000) / 1000; fs.utimesSync(receipt, old, old);
     const aged = run({ tool_name: 'Read', tool_input: { file_path: f.secret }, session_id: 'suite' });
@@ -1881,6 +1894,109 @@ test('F1: a recursive search that would print a credential line is piped through
     assert.ok(!/abc123|hunter2hunter2/.test(out.stdout), `${c} printed a credential:\n${out.stdout}`);
     assert.match(out.stdout, /<set \(\d+ chars\)>/, `${c} shows the masked value`);
   }
+});
+
+test('audit 2026-10-08: the walk probe never runs a path-qualified search verb - a repo script named grep or rg stays unrun', { skip: process.platform === 'win32' && 'sh script fixture' }, () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'walk-script-'));
+  fs.mkdirSync(path.join(dir, 'tools'));
+  const marker = path.join(dir, 'RAN');
+  for (const name of ['grep', 'rg']) {
+    const f = path.join(dir, 'tools', name);
+    fs.writeFileSync(f, `#!/bin/sh\necho ran >> "${marker}"\n`);
+    fs.chmodSync(f, 0o755);
+  }
+  fs.mkdirSync(path.join(dir, 'src'));
+  fs.writeFileSync(path.join(dir, 'src', 'app.js'), 'const x = 1;\n');
+  const v = (c) => verdict(at(dir, c));
+  for (const c of ['./tools/grep -rn x .', 'tools/rg -n x', 'tools/grep -r x src']) {
+    assert.equal(v(c), REWRITE, `${c} is piped unprobed - the safe side`);
+    assert.ok(!fs.existsSync(marker), `${c} ran the repo script before any permission prompt`);
+  }
+  assert.equal(v('grep -rn no_such_word_anywhere src'), 0, 'a bare verb is still probed and a clean walk runs as written');
+});
+
+test('audit 2026-10-08: the stream redactor masks INI, properties and .npmrc pairs - in a diff, a headerless show and a search', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const redact = (input, ...flags) => spawnSync(process.execPath, [HOOK, '--redact-stdin', ...flags], { input, encoding: 'utf8' }).stdout;
+  const diff = ['diff --git a/.npmrc b/.npmrc', '+++ b/.npmrc', `+//registry.npmjs.org/:_authToken=${FAKE_TOKEN}`,
+    'diff --git a/application.properties b/application.properties', '+++ b/application.properties',
+    `+spring.datasource.password=${FAKE_TOKEN}`, `+client-secret = ${FAKE_TOKEN}`, '+db.pass=hunter2hunter2', '+server.port=8080', '+db.password=${DB_PASSWORD}'].join('\n') + '\n';
+  const out = redact(diff);
+  assert.ok(!out.includes(FAKE_TOKEN) && !out.includes('hunter2hunter2'), out);
+  for (const l of ['+//registry.npmjs.org/:_authToken=<set (40 chars)>', '+spring.datasource.password=<set (40 chars)>', '+client-secret = <set (40 chars)>',
+    '+db.pass=<set (14 chars)>', '+server.port=8080', '+db.password=${DB_PASSWORD}'])
+    assert.ok(out.split('\n').includes(l), `${l} in:\n${out}`);
+  assert.equal(redact(`//registry.npmjs.org/:_authToken=${FAKE_TOKEN}\n`), '//registry.npmjs.org/:_authToken=<set (40 chars)>\n', 'a headerless show');
+  const found = redact(`app.properties:3:db.pass=hunter2hunter2\nsecrets.properties:4:foo=bar\n`, '--grep');
+  assert.equal(found, 'app.properties:3:db.pass=<set (14 chars)>\nsecrets.properties:4:foo=bar\n', 'a search prefix is never read as the key');
+  // end to end: the probe judged these clean, so the command ran as written and printed the token
+  const repo = fs.mkdtempSync(path.join(TMP, 'git-ini-'));
+  const git = (...a) => spawnSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  git('config', 'user.email', 't@example.com');
+  git('config', 'user.name', 't');
+  fs.writeFileSync(path.join(repo, '.npmrc'), `//registry.npmjs.org/:_authToken=${FAKE_TOKEN}\n`);
+  fs.writeFileSync(path.join(repo, 'application.properties'), 'server.port=8080\n');
+  git('add', '.');
+  git('commit', '-qm', 'init');
+  fs.writeFileSync(path.join(repo, 'application.properties'), `server.port=8080\nspring.datasource.password=${FAKE_TOKEN}\n`);
+  for (const c of ['git show HEAD:.npmrc', 'git diff']) {
+    const cmd = updatedCommand(at(repo, c));
+    assert.ok(cmd && cmd.endsWith('--redact-stdin'), `${c} -> ${cmd}`);
+    const shown = spawnSync('sh', ['-c', cmd], { cwd: repo, encoding: 'utf8' });
+    assert.ok(!shown.stdout.includes(FAKE_TOKEN), `${c} printed a credential:\n${shown.stdout}`);
+  }
+});
+
+test('audit 2026-10-08: a Grep pattern JavaScript reads differently, and a credential file past a dependency tree, are judged', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'grep-walk-'));
+  fs.mkdirSync(path.join(dir, 'src', 'config'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'src', 'config', '.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
+  const grep = (tool_input) => run({ tool_name: 'Grep', tool_input: { output_mode: 'content', path: dir, ...tool_input }, session_id: 'suite' }).status;
+  // ripgrep syntax: an inline flag group, an end anchor JavaScript read as a literal z, a group JavaScript cannot compile
+  assert.equal(grep({ pattern: '(?i)api_token' }), 2, '(?i) - JavaScript threw, the walk passed');
+  assert.equal(grep({ pattern: `${FAKE_TOKEN.slice(-6)}\\z` }), 2, '\\z is the line end');
+  assert.equal(grep({ pattern: '(?P<k>API)_TOKEN' }), 2, 'uncompilable - judged by content alone');
+  assert.equal(grep({ pattern: '(?i)no_such_word_here' }), 0, 'a translated pattern that matches nothing passes');
+  // 4,001 files the walk reached first ended it before the credential file: a dependency tree, and a filtered-out folder
+  fs.mkdirSync(path.join(dir, '.venv', 'lib'), { recursive: true });
+  for (let i = 0; i <= 4000; i++) fs.writeFileSync(path.join(dir, '.venv', 'lib', `m${i}.py`), '');
+  assert.equal(grep({ pattern: 'API_TOKEN' }), 2, 'a .venv walked first - counted before the credential file');
+  fs.rmSync(path.join(dir, '.venv'), { recursive: true, force: true });
+  fs.mkdirSync(path.join(dir, 'aaa'));
+  for (let i = 0; i <= 4000; i++) fs.writeFileSync(path.join(dir, 'aaa', `n${i}.txt`), '');
+  assert.equal(grep({ pattern: 'API_TOKEN', glob: '*.env' }), 2, 'files the glob filters out no longer count toward the cap');
+  assert.equal(grep({ pattern: 'API_TOKEN', glob: '*.md' }), 0, 'a glob that reaches no credential file passes');
+});
+
+test('audit 2026-10-08: the probes are capped per call, never run a repository filter, and survive a malformed cwd', { skip: process.platform === 'win32' && 'posix git fixture' }, () => {
+  const repo = fs.mkdtempSync(path.join(TMP, 'git-probe-'));
+  const git = (...a) => spawnSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  git('config', 'user.email', 't@example.com');
+  git('config', 'user.name', 't');
+  fs.writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+  git('add', '.');
+  git('commit', '-qm', 'init');
+  fs.writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+  // four probes run; the fifth stage is piped unprobed
+  const four = updatedCommand(at(repo, 'git diff; git diff; git diff; git diff'));
+  assert.equal(four, null, 'four clean probes - the command runs as written');
+  const five = updatedCommand(at(repo, 'git diff; git diff; git diff; git diff; git diff'));
+  assert.ok(five && five.split('--redact-stdin').length === 2 && five.endsWith('--redact-stdin'), `only the fifth is piped: ${five}`);
+  // a clean filter the repository configures would run inside the probe's working-tree diff
+  const marker = path.join(repo, 'FILTER-RAN');
+  git('config', 'filter.mark.clean', `sh -c 'touch "${marker}"; cat'`);
+  fs.writeFileSync(path.join(repo, '.gitattributes'), '*.txt filter=mark\n');
+  assert.equal(verdict(at(repo, 'git diff')), REWRITE, 'a repository filter: piped unprobed');
+  assert.ok(!fs.existsSync(marker), 'the filter never ran before approval');
+  // a non-string cwd reached spawnSync and threw - the guard failed open
+  for (const cwd of [5, { a: 1 }]) {
+    const r = run({ tool_name: 'Bash', tool_input: { command: 'git diff' }, session_id: 'suite', cwd });
+    assert.notEqual(r.status, 1, `cwd ${JSON.stringify(cwd)}: ${r.stderr}`);
+  }
+  // the Monitor tool runs its command under the shell route
+  const f = fixtures();
+  assert.equal(verdict(run({ tool_name: 'Monitor', tool_input: { command: `cat ${f.secret}` }, session_id: 'suite' })), REWRITE, 'Monitor');
 });
 
 test('F2: a git command that prints a remote URL is piped through the redactor, and a config WRITE is never probed', { skip: process.platform === 'win32' && 'posix git fixture' }, () => {

@@ -86,76 +86,29 @@ test('install-scope: --scope project and --scope user write the shared settings.
     assert.doesNotMatch(ignored.out, said, 'the repo already ignores it');
 });
 
-// R29: a 1.x GLOBAL install's stamp and skills sat in the account dir (CLAUDE_CONFIG_DIR). The
-// first 2.x `update` reads them once and copies both into the project; the account copies stay in
-// place, for other projects on the same machine that may still read them.
-test('install-scope: a 1.x global install\'s account-dir stamp and skills are moved into the project on update', POSIX_ONLY, () =>
+// A-I1: the scope comes from the PROJECT's own stamp or the --scope passed - a stamp in the account dir
+// (CLAUDE_CONFIG_DIR) is no project's install, so it never overrides either, with or without a copied
+// engine in the project.
+for (const record of [true, false])
 {
-    const { result, out } = seedRun('update', SELECTION, {
-        prepare: (repo, work) =>
-        {
-            const acct = path.join(work, 'acct');
-            fs.mkdirSync(path.join(acct, 'skills', 'demo'), { recursive: true });
-            fs.writeFileSync(path.join(acct, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\ndescription: d\n---\nbody\n');
-            fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\n'); // legacy-name
-        },
-        inspect: (repo) =>
-        {
-            const acctSkills = path.join(path.dirname(repo), 'acct', 'skills', 'demo', 'SKILL.md');
-            const acctStamp = path.join(path.dirname(repo), 'acct', 'claude-stack.stamp'); // legacy-name
-            return {
-                migratedSkill: exists(repo, '.claude', 'skills', 'demo', 'SKILL.md'),
-                acctSkillStillThere: fs.existsSync(acctSkills),
-                acctStampStillThere: fs.existsSync(acctStamp),
-                newStamp: exists(repo, '.claude', 'alfred-code.stamp'),
-            };
-        },
-    });
-    assert.match(out, /1 skill\(s\) were moved from .*acct.* into the project/, out);
-    assert.ok(result.migratedSkill, 'the account skill was not copied into the project');
-    assert.ok(result.acctSkillStillThere, 'the account skill copy was deleted - it must stay for other projects');
-    assert.ok(result.acctStampStillThere, 'the account stamp was deleted - it must stay for other projects');
-    assert.ok(result.newStamp, 'the run did not finish writing its own 2.x stamp');
-});
-
-// A-I1 (final review A, ruling): a 1.x GLOBAL install not yet migrated keeps the scope its account stamp
-// names (`global` = user) whatever --scope the 1.3.0 update body passes - the model-judged 'project' put
-// the core beside the live user-scope alias. One line says so, only when the passed scope differed. The
-// test is the router's own legacy-global one: a repo never set up, with the same account stamp, keeps
-// the scope it was handed.
-const LEGACY_GLOBAL_LINE = 'scope: this project is a 1.x global install - migrated at user scope (the passed --scope project is ignored on this first run)';
-const legacyGlobal = (record) => (repo, work) =>
-{
-    const acct = path.join(work, 'acct');
-    fs.mkdirSync(acct, { recursive: true });
-    fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nversion: 1.3.0\nscope: global\n'); // legacy-name
-    if (record) { fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true }); fs.writeFileSync(path.join(repo, '.claude', 'hooks', 'docs.js'), ''); }
-};
-for (const [label, args, line] of [['--scope project', ['--scope', 'project'], true], ['no --scope', [], false], ['--scope global', ['--scope', 'global'], false]])
-{
-    test(`install-scope: an unmigrated 1.x global install updated with ${label} is migrated at user scope (A-I1)`, POSIX_ONLY, () =>
+    test(`install-scope: an update keeps the --scope it was handed beside an account-dir stamp naming another (${record ? 'a copied engine' : 'never set up'}) (A-I1)`, POSIX_ONLY, () =>
     {
-        const { calls, out, result } = seedRun('update', SELECTION, {
-            args, prepare: legacyGlobal(true),
+        const { out, result, calls } = seedRun('update', SELECTION, {
+            args: ['--scope', 'project'],
+            prepare: (repo, work) =>
+            {
+                const acct = path.join(work, 'acct');
+                fs.mkdirSync(acct, { recursive: true });
+                fs.writeFileSync(path.join(acct, 'alfred-code.stamp'), 'sha: abc\nversion: 1.3.0\nscope: global\n');
+                if (record) { fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true }); fs.writeFileSync(path.join(repo, '.claude', 'hooks', 'docs.js'), ''); }
+            },
             inspect: (repo) => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
         });
-        assert.strictEqual(out.split('\n').filter((l) => l.includes(LEGACY_GLOBAL_LINE)).length, line ? 1 : 0, out);
-        assert.match(out, /action: update \[scope=user,/, out);
-        assert.match(result, /^scope: user$/m, 'the stamp records the scope the install lives at');
-        assert.ok(calls.some((c) => /^plugin (install|update) alfred-code@envoydev --scope user -y$/.test(c)), calls.join('\n'));
-        assert.ok(!calls.some((c) => / --scope project( |$)/.test(c) && /^plugin /.test(c)), calls.join('\n'));
+        assert.match(out, /action: update \[scope=project,/, out);
+        assert.match(result, /^scope: project$/m);
+        assert.ok(!calls.some((c) => / --scope user( |$)/.test(c) && /^plugin /.test(c)), calls.join('\n'));
     });
 }
-
-test('install-scope: a repo never set up keeps the --scope it was handed, whatever the account stamp says (A-I1)', POSIX_ONLY, () =>
-{
-    const { out, result } = seedRun('update', SELECTION, {
-        args: ['--scope', 'project'], prepare: legacyGlobal(false),
-        inspect: (repo) => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
-    });
-    assert.doesNotMatch(out, /is a 1\.x global install/, out);
-    assert.match(result, /^scope: project$/m);
-});
 
 // A-I5 (final review A, ruling): `--space <name>` with no CLAUDE_CONFIG_DIR puts the installer's own
 // writes in ~/.claude-<name>, but every `claude` spawn inherited an env naming no account, so the CLI
@@ -201,46 +154,6 @@ test('install-scope: a --space run with no CLAUDE_CONFIG_DIR takes the space acc
     const serena = calls.find((c) => /^mcp add --scope project alfred-navigation /.test(c));
     assert.ok(serena, calls.join('\n'));
     assert.match(serena, / uvx --python 3\.10 /, `not the space account's pin: ${serena}`);
-});
-
-test('install-scope: a 1.x account-dir stamp is left alone by a plain install - only update migrates it', POSIX_ONLY, () =>
-{
-    const { out } = seedRun('install', SELECTION, {
-        prepare: (repo, work) =>
-        {
-            const acct = path.join(work, 'acct');
-            fs.mkdirSync(acct, { recursive: true });
-            fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nversion: 1.3.0\n'); // legacy-name
-        },
-    });
-    assert.doesNotMatch(out, /were moved from/, 'a bare install must not migrate a 1.x account install');
-});
-
-// C1/m1 (fix round 2): the migration's own comment always claimed a failed copy is 'reported
-// through note' - round 1 added the parameter to migrateLegacyGlobal's signature but never actually
-// passed it at the call site, so a failed copy was silently dropped and never counted.
-test('install-scope: a failed copy during 1.x migration is reported through note, not silently dropped (C1/m1)', POSIX_ONLY, () =>
-{
-    // No 'skill' line - the run's ONLY skill-directory write is the migration's own copy of 'demo',
-    // so making the destination skills/ dir read-only cannot also break an unrelated LATER copy
-    // (the installer treats a regular library copy failure as fatal, unlike the migration's own
-    // fail-soft note() path - conflating the two would test the wrong thing).
-    const { out } = seedRun('update', 'rule markdown-docs\n', {
-        prepare: (repo, work) =>
-        {
-            const acct = path.join(work, 'acct');
-            fs.mkdirSync(path.join(acct, 'skills', 'demo'), { recursive: true });
-            fs.writeFileSync(path.join(acct, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\ndescription: d\n---\nbody\n');
-            fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\n'); // legacy-name
-            // The project's destination skills dir, made READ-ONLY before the run - cpSync cannot
-            // create the 'demo' entry inside it and fails with EACCES, a normal catchable JS error.
-            fs.mkdirSync(path.join(repo, '.claude', 'skills'), { recursive: true });
-            fs.chmodSync(path.join(repo, '.claude', 'skills'), 0o555);
-        },
-        inspect: (repo) => { fs.chmodSync(path.join(repo, '.claude', 'skills'), 0o755); return null; },
-    });
-    assert.match(out, /!! the account skill demo could not be copied/, out);
-    assert.match(out, /1 step\(s\) reported a failure above/, out);
 });
 
 // R29: the memory db path is resolved PER PROJECT by the launcher, never baked into the
@@ -352,34 +265,6 @@ test('install-scope: --scope local, then a bare update with no --scope flag, kee
     assert.match(result.stampText, /^scope: local$/m);
 });
 
-// I4 (R47, fix round 1): `--installed-only --print-plan` is read-only - configure.md and
-// validate.md call it as a run that writes nothing. Over an unmigrated 1.x global project it must
-// read the legacy account stamp and skills IN PLACE (the library-check.js fallback pattern) rather
-// than either failing 'nothing installed' or migrating them into the project.
-test('install-scope: update --installed-only --print-plan reads a 1.x account stamp in place and never migrates it', POSIX_ONLY, () =>
-{
-    const { out, result } = seedRun('update', SELECTION, {
-        args: ['--installed-only', '--print-plan'],
-        prepare: (repo, work) =>
-        {
-            const acct = path.join(work, 'acct');
-            fs.mkdirSync(path.join(acct, 'skills', 'csharp'), { recursive: true });
-            fs.writeFileSync(path.join(acct, 'skills', 'csharp', 'SKILL.md'), '---\nname: csharp\ndescription: d\n---\nbody\n');
-            fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nversion: 1.3.0\npicked-skills: csharp\n'); // legacy-name
-        },
-        inspect: (repo) => ({
-            migratedSkill: exists(repo, '.claude', 'skills', 'csharp', 'SKILL.md'),
-            projectStamp: exists(repo, '.claude', 'alfred-code.stamp'),
-        }),
-    });
-    // The pick, read in place, plus the always skills - locked, and a copy on every route since 2.1.0.
-    assert.match(out, /^plan skills: (.* )?csharp( .*)?$/m, out);
-    assert.match(out, /^plan skills: (.* )?habits-done-gate( .*)?$/m, out);
-    assert.doesNotMatch(out, /were moved from/, 'a --print-plan read must never migrate');
-    assert.strictEqual(result.migratedSkill, false, 'the account skill must not be copied into the project by a read-only run');
-    assert.strictEqual(result.projectStamp, false, 'a --print-plan run must never write the project its own stamp');
-});
-
 // C10 (R136 q), replacing I5's refusal: memory baked ONE path into a user-scope `claude mcp add -s user`
 // on the FULL copy route, the one route that registers it itself, so a project level was refused there.
 // That route now registers in this project's .mcp.json (mcp.registrationScope), so the path is this
@@ -411,37 +296,8 @@ test('install-scope: --memory-level project at --scope user is NOT refused on th
 
 const FULL_COPY = { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
 
-// m4 / m5, after C10: nothing refuses a project memory level at user scope on the full copy route any
-// more - a 1.x global install updated with one is migrated (its scope kept, A-I1), and a project-level
-// path its .mcp.json already holds is kept, each registered in this project's .mcp.json.
-test('install-scope: a 1.x global install updated with --memory-level project on the full copy route migrates, memory in this project\'s .mcp.json (m4, C10)', POSIX_ONLY, () =>
-{
-    for (const scopeArgs of [['--scope', 'user'], []])
-    {
-        const { out, result } = seedRun('update', SELECTION, {
-            args: [...scopeArgs, '--memory-level', 'project'],
-            env: FULL_COPY,
-            prepare: (repo, work) =>
-            {
-                const acct = path.join(work, 'acct');
-                fs.mkdirSync(path.join(acct, 'skills', 'demo'), { recursive: true });
-                fs.writeFileSync(path.join(acct, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\ndescription: d\n---\nbody\n');
-                fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nscope: global\nversion: 1.3.0\npicked-skills: demo\n'); // legacy-name
-            },
-            inspect: (repo) => ({
-                stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
-                skill: exists(repo, '.claude', 'skills', 'demo'),
-                env: memoryIn(repo), real: fs.realpathSync(repo),
-            }),
-        });
-        const label = scopeArgs.join(' ') || 'no --scope';
-        assert.match(out, /were moved from/, `${label}: the 1.x install was not migrated\n${out}`);
-        assert.strictEqual(result.skill, true, label);
-        assert.match(result.stamp, /^scope: user$/m, label);
-        assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, '.alfred/.alfred-memory/memory.db', `${label}\n${out}`);
-    }
-});
-
+// m5, after C10: nothing refuses a project memory level at user scope on the full copy route any more - a
+// project-level path its .mcp.json already holds is kept, registered in this project's .mcp.json.
 test('install-scope: a project-level memory path already in .mcp.json is kept at --scope user on the full copy route (m5, C10)', POSIX_ONLY, () =>
 {
     // The level is kept; the path is the one the database LIVES at - a 2.0.0 file not moved yet keeps its

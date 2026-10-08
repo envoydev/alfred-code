@@ -11,12 +11,11 @@ const { copyLibrary } = require('./install/library.js');
 const { renderStamp } = require('./install/stamp.js');
 
 const SCRIPT = path.join(__dirname, 'library-check.js');
-const OLD_STAMP = 'claude-stack.stamp'; // legacy-name - what a 1.x release wrote
 const roots = [];
 test.after(() => { for (const r of roots) fs.rmSync(r, { recursive: true, force: true }); });
 
 function fx({
-    sourceVersion = '1.3.0', sourceEdit = false, settings, local, rawSettings, noStamp = false, legacy = false,
+    sourceVersion = '1.3.0', sourceEdit = false, settings, local, rawSettings, noStamp = false,
     ruleEdit = false, docsRoot, gitRule = '# git\n',
 } = {})
 {
@@ -40,11 +39,7 @@ function fx({
     const config = path.join(root, 'config');
     const claudeDir = path.join(project, '.claude');
     fs.mkdirSync(claudeDir, { recursive: true });
-    // `legacy` simulates a 1.x GLOBAL install this project has not yet run an `update` over - its
-    // own stamp and skills still sit under the ACCOUNT dir, under the 1.x stamp NAME (a 2.x install
-    // never writes either there again, at any scope).
-    const base = legacy ? config : claudeDir;
-    const skills = path.join(base, 'skills');
+    const skills = path.join(claudeDir, 'skills');
     const agents = path.join(claudeDir, 'agents');
     const rules = path.join(claudeDir, 'rules');
     if (settings) fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify(settings));
@@ -61,9 +56,9 @@ function fx({
     library.rules['alfred-docs-root'] = require('./install/library.js').hashItem(docsRootFile);
     if (!noStamp)
     {
-        fs.writeFileSync(path.join(base, legacy ? OLD_STAMP : 'alfred-code.stamp'), renderStamp({
+        fs.writeFileSync(path.join(claudeDir, 'alfred-code.stamp'), renderStamp({
             repoUrl: 'https://example.invalid/r', ref: 'main', sha: 'a'.repeat(40), version: '1.3.0', installed: '2026-09-24T00:00:00Z',
-            action: 'install', scope: legacy ? 'global' : 'project', hooks: [], alwaysRules: [], alwaysMcps: [], picked: { skills: ['demo'], agents: ['seat'] }, library,
+            action: 'install', scope: 'project', hooks: [], alwaysRules: [], alwaysMcps: [], picked: { skills: ['demo'], agents: ['seat'] }, library,
         }));
     }
     if (local) fs.writeFileSync(path.join(claudeDir, 'settings.local.json'), JSON.stringify(local));
@@ -196,43 +191,18 @@ test('no stamp, or a stamp without library lines, reads as nothing to check', ()
     const r = run(fx({ noStamp: true }));
     assert.equal(r.code, 0);
     assert.match(r.out, /no library stamp/);
-    // A 1.2.0 project: its stamp still carries the 1.x name and no library lines.
-    const f = fx();
-    fs.rmSync(path.join(f.project, '.claude', 'alfred-code.stamp'));
-    const old = path.join(f.project, '.claude', OLD_STAMP);
-    fs.writeFileSync(old, 'sha: abc\nversion: 1.2.0\npicked-skills: demo\n');
-    assert.match(run(f).out, /no library stamp/);
-    assert.equal(fs.readFileSync(old, 'utf8'), 'sha: abc\nversion: 1.2.0\npicked-skills: demo\n', 'a read-only check leaves the 1.x stamp as it was');
-});
-
-test('a 1.3.0 stamp under its 1.x name is checked like the new one - the new name wins when both exist', () =>
-{
+    // A 1.2.0 project: its stamp carries no library lines.
     const f = fx();
     const stamp = path.join(f.project, '.claude', 'alfred-code.stamp');
-    fs.renameSync(stamp, path.join(f.project, '.claude', OLD_STAMP));
-    const r = run(f);
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /library: clean \(4 copies\)/);
-    fs.writeFileSync(stamp, 'sha: abc\nversion: 2.0.0\npicked-skills: demo\n');
-    assert.match(run(f).out, /no library stamp/, 'the new stamp is read first, even beside a 1.x one');
+    fs.writeFileSync(stamp, 'sha: abc\nversion: 1.2.0\npicked-skills: demo\n');
+    assert.match(run(f).out, /no library stamp/);
+    assert.equal(fs.readFileSync(stamp, 'utf8'), 'sha: abc\nversion: 1.2.0\npicked-skills: demo\n', 'a read-only check leaves the stamp as it was');
 });
 
 test('a malformed settings file does not crash the check', () =>
 {
     const r = run(fx({ rawSettings: '{garbage' }));
     assert.equal(r.code, 0, r.out);
-});
-
-// T16, R29: every 2.x install keeps its stamp and its skills in the PROJECT, whatever scope it was
-// made at - only a 1.x GLOBAL install this project has never run an `update` over still has them in
-// the account dir, and `--config-dir` is the legacy fallback that still finds them there.
-test('a 1.x global install not yet migrated is still found through --config-dir', () =>
-{
-    const f = fx({ legacy: true });
-    const r = run(f, ['--config-dir', f.config]);
-    assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /library: clean \(4 copies\)/);
-    assert.match(run(f).out, /no library stamp/, 'without --config-dir the project alone has nothing yet');
 });
 
 // I6 (R47, fix round 1): a project-native install (never migrated, its own stamp and skills always
@@ -302,19 +272,20 @@ test('a traversal name in the drift/missing rows is never joined, hashed or echo
     assert.strictEqual(json.invalid, 2);
 });
 
-// R54 M3: the account stamp is a fallback for a project that has NO stamp file - never for one whose
-// own stamp simply carries no library lines (a 1.2.0 project, or one the account stamp does not
-// describe). Reading it there reported another install's library as this project's.
-test('a project stamp without library lines never falls back to the account stamp (M3)', () =>
+// R54 M3: the stamp is read from the PROJECT only - an account-dir stamp is another install's, never
+// this project's, whether the project's own stamp carries no library lines or is absent altogether.
+test('an account-dir stamp is never read as this project\'s, with or without a project stamp (M3)', () =>
 {
-    const f = fx({ legacy: true });
-    fs.writeFileSync(path.join(f.project, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 2.0.0\npicked-skills: demo\n');
+    const f = fx();
+    const stamp = path.join(f.project, '.claude', 'alfred-code.stamp');
+    fs.mkdirSync(f.config, { recursive: true });
+    fs.copyFileSync(stamp, path.join(f.config, 'alfred-code.stamp'));
+    fs.writeFileSync(stamp, 'sha: abc\nversion: 2.0.0\npicked-skills: demo\n');
     const r = run(f, ['--config-dir', f.config]);
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /no library stamp/, 'the project has its own stamp - the account one is not this install');
-    fs.rmSync(path.join(f.project, '.claude', 'alfred-code.stamp'));
-    fs.writeFileSync(path.join(f.project, '.claude', OLD_STAMP), 'sha: abc\nversion: 1.2.0\n');
-    assert.match(run(f, ['--config-dir', f.config]).out, /no library stamp/, 'a 1.x-named project stamp counts as its own stamp too');
+    fs.rmSync(stamp);
+    assert.match(run(f, ['--config-dir', f.config]).out, /no library stamp/, 'no project stamp - the account one is still not read');
 });
 
 // R83 b: at local scope the docs-root rule is stamped from settings.local.json over settings.json, so

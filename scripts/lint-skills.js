@@ -2426,8 +2426,7 @@ function main()
     // 48. The core's hooks block matches the manifest's own wiring table.
     for (const finding of lintHooksEntry()) flag(finding);
     // 49. The LIVE marketplace matches the generated entries - from Phase 3 the core is generated
-    // too, so a hand edit to any entry is drift, not a change; the two 1.x aliases are generated
-    // like the retired entries, and a `renames` key or a hooks entry is a finding.
+    // too, so a hand edit to any entry is drift, not a change, and a `renames` key or a hooks entry is a finding.
     for (const finding of lintMarketplaceEntries()) flag(finding);
     // 50. Every agent's `skills:` preload is spelled as the placement homes it - bare, the project copy.
     for (const finding of lintAgentPreloads()) flag(finding);
@@ -2452,7 +2451,7 @@ function main()
     for (const finding of lintWorkflows(workflowFiles())) flag(finding);
     // 56. No retired plugin's name is left in shipped stack text.
     for (const finding of lintRetiredNames(stackTextFiles())) flag(finding);
-    // 57. The 1.x name stays in the legacy readers - every other tracked line spells alfred-code.
+    // 57. No tracked line spells the retired 1.x name.
     for (const finding of lintLegacyNames(repoTextFiles())) flag(finding);
     for (const finding of lintMarketplaceSchema()) flag(finding);
 
@@ -2828,73 +2827,21 @@ function stackTextFiles(root = ROOT)
     return files;
 }
 
-// 57. The 1.x name stays in the legacy readers. 2.0.0 renamed the stack to alfred-code, and the
-// old spellings are READ for the whole 2.x line - so a 1.x spelling left anywhere else is either a
-// reader nobody marked or a new thing named after a retired product. A line that must keep one
-// carries the marker - the whole word `legacy-name` in a comment (`// legacy-name`, `# legacy-name`,
-// `<!-- legacy-name -->`, or `legacy-name:` inside one), never the letters alone. What passes without
-// a marker, each for its reason:
-const LEGACY_NAME = /claude-stack|CLAUDE_STACK_/g; // legacy-name
-const LEGACY_MARKER = /(?:\/\/|#|<!--)[^\n]*?(?<![\w-])legacy-name(?![\w-])/;
-const LEGACY_FILES = [
-    { re: /^docs\/[^/]+-evidence\.md$/, why: 'measured evidence keeps its words' },
-    { re: /^meta\/migrations\.json$/, why: 'a migration names the spelling it migrates from' },
-    { re: /^meta\/retired-entries\.json$/, why: 'the only record of what each 1.x per-stack entry carried' },
-];
-// JSON carries no comment. Only the marketplace's plugins[] passes: check 49 holds every entry there
-// to its generator (the core, the 1.x aliases from brand.js LEGACY, the retired entries) and check 53
-// the MCP plugins. Its name, owner and metadata are hand-edited at every release, so they are checked.
-const LEGACY_SPANS = [
-    { file: '.claude-plugin/marketplace.json', start: /^\s*"plugins"\s*:\s*\[/, why: 'generated entries, held to their generator by checks 49 and 53' },
-];
-// The per-stack entries 1.2.0 shipped keep their 1.x names while they are retired (plan decision
-// D2): a name listed in meta/retired-entries.json passes wherever it appears.
-function retiredEntryNames(root = ROOT)
+// 57. The 1.x name is gone. 2.0.0 renamed the stack to alfred-code, and every install has since moved
+// across, so no reader of the old spellings is left - one anywhere in a tracked file is a dead reader
+// come back or a new thing named after a retired product. No marker or file passes. The pattern is
+// assembled from parts so this file never spells the name it looks for.
+const OLD = ['claude', 'stack'];
+const LEGACY_NAME = new RegExp(`${OLD.join('[-_ ]?')}|${OLD[0]}_DOCS_PATH`, 'gi');
+function lintLegacyNames(files)
 {
-    try { return JSON.parse(fs.readFileSync(path.join(root, 'meta', 'retired-entries.json'), 'utf8')).entries.map((e) => e.name); }
-    catch { return []; }
-}
-// The line range of the `{...}` or `[...]` block opening on the first line `start` matches, strings
-// skipped.
-function blockSpan(lines, start)
-{
-    const first = lines.findIndex((l) => start.test(l));
-    if (first < 0) return null;
-    let depth = 0;
-    let quote = '';
-    for (let i = first; i < lines.length; i++)
-    {
-        const line = lines[i];
-        for (let c = 0; c < line.length; c++)
-        {
-            const ch = line[c];
-            if (quote) { if (ch === '\\') c++; else if (ch === quote) quote = ''; continue; }
-            if (ch === '"' || ch === "'" || ch === '`') quote = ch;
-            else if (ch === '{' || ch === '[') depth++;
-            else if ((ch === '}' || ch === ']') && --depth === 0) return [first, i];
-        }
-    }
-    return [first, lines.length - 1];
-}
-function lintLegacyNames(files, { retiredEntries = retiredEntryNames() } = {})
-{
-    const escaped = [...retiredEntries].sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&'));
-    const retiredRe = escaped.length ? new RegExp(`(?:${escaped.join('|')})(?![\\w-])`, 'g') : null;
     const out = [];
     for (const { file, text } of files)
-    {
-        if (LEGACY_FILES.some((a) => a.re.test(file))) continue;
-        const lines = text.split('\n');
-        const spans = LEGACY_SPANS.filter((s) => s.file === file).map((s) => blockSpan(lines, s.start)).filter(Boolean);
-        lines.forEach((line, i) =>
+        text.split('\n').forEach((line, i) =>
         {
-            if (LEGACY_MARKER.test(line) || spans.some(([a, b]) => i >= a && i <= b)) return;
-            const rest = retiredRe ? line.replace(retiredRe, '') : line;
-            const hits = [...new Set(rest.match(LEGACY_NAME) || [])];
-            if (hits.length)
-                out.push(`${file}:${i + 1} spells the 1.x name (${hits.join(', ')}) - use alfred-code / ALFRED_CODE_, or mark a legacy reader's line \`legacy-name\` (\`// legacy-name\` in code, \`<!-- legacy-name -->\` in markdown).`);
+            const hits = [...new Set(line.match(LEGACY_NAME) || [])];
+            if (hits.length) out.push(`${file}:${i + 1} spells the retired 1.x name (${hits.join(', ')}) - use alfred-code / ALFRED_CODE_.`);
         });
-    }
     return out;
 }
 // Every tracked text file: `git ls-files` when `root` is a repo's top level, else a walk of the
@@ -3037,9 +2984,7 @@ function lintAgentPreloads()
 }
 
 // 49. Every plugin entry in the live marketplace is GENERATED - the placement decides what the core
-// ships (the per-stack entries retired in 1.3.0 are no longer listed, 2.1.7), and brand.js LEGACY the two
-// 1.x ids listed as retired aliases - so a hand-edited path list, description or dependency is
-// drift. The core is the one PLUGIN; the aliases are the only other stack entries it accepts, each
+// ships - so a hand-edited path list, description or dependency is drift. The core is the one PLUGIN,
 // exactly as generated. A `renames` key or a hooks entry is a finding: 2.0.0 ships neither (S11/S16,
 // and the fold). `liveIn` is a parsed marketplace for a test; the lint reads the committed file.
 function lintMarketplaceEntries(liveIn)
@@ -3068,7 +3013,7 @@ function lintMarketplaceEntries(liveIn)
     }
     const generated = new Set(wanted.map(e => e.name));
     if (live && Object.prototype.hasOwnProperty.call(live, 'renames'))
-        findings.push('marketplace.json carries a `renames` key - 2.0.0 ships none: a rename strands a 1.x install with no hooks and no skills (docs/rebrand-evidence.md S11, S16); update migrates a renamed id instead - run `npm run marketplace`');
+        findings.push('marketplace.json carries a `renames` key - 2.0.0 ships none: a rename strands an install with no hooks and no skills (docs/plugin-cli-evidence.md S11, S16); update migrates a renamed id instead - run `npm run marketplace`');
     // The MCP plugins are generated by ANOTHER table and have their own check (53, from
     // meta/mcp-pins.json plus the shapes in build-marketplace.js). Placement never produces them, so
     // they are not drift.
@@ -3079,10 +3024,8 @@ function lintMarketplaceEntries(liveIn)
         if (!p || elsewhere.has(p.name) || generated.has(p.name)) continue;
         if ((build.FOLDED_ENTRIES || []).includes(p.name))
             findings.push(`marketplace.json carries ${p.name}, whose hooks folded into the core in 2.0.0 - run \`npm run marketplace\`, which drops it`);
-        else if ((build.UNLISTED_ALIASES || []).includes(p.name) || Object.hasOwn(require('./install/manifest.js').loadManifest(ROOT).renamed.mcps, p.name.replace(/-(chrome|msedge|firefox|webkit)$/, '')))
+        else if (Object.hasOwn(require('./install/manifest.js').loadManifest(ROOT).renamed.mcps, p.name.replace(/-(chrome|msedge|firefox|webkit)$/, '')))
             findings.push(`marketplace.json carries ${p.name}, a RETIRED alias no longer listed (2.2.1) - run \`npm run marketplace\`, which drops it`);
-        else if ((build.unlistedRetired ? build.unlistedRetired() : []).includes(p.name))
-            findings.push(`marketplace.json carries ${p.name}, a per-stack entry retired in 1.3.0 and no longer listed - run \`npm run marketplace\`, which drops it`);
         else findings.push(`marketplace.json carries ${p.name}, which the placement does not produce - remove it or give it a home in plugin-placement.js`);
     }
     return findings;
@@ -3136,17 +3079,7 @@ function lintEnvironmentCatalog(catalog, seedSrc, migrations, commandSrc)
         return ['environment.json has no `env` array - the guided commands would read an empty environment layer'];
     }
 
-    // migrations.json keeps its history's words under the 1.x prefix; read here under the catalog's
-    // own name, via the SAME prefix mapping applyEnv runs at install time (meta/migrations.json is
-    // the one source, not a hard-coded regex).
-    const { prefixRenames } = require('./install/env-migrations.js').envMigrations(migrations);
-    const current = (key) =>
-    {
-        for (const [from, to] of prefixRenames)
-            if (key.startsWith(from)) return to + key.slice(from.length);
-        return key;
-    };
-    const namedInSeed = new Set([...seedSrc.matchAll(/ALFRED_CODE_[A-Z0-9_]+/g)].map((m) => current(m[0])));
+    const namedInSeed = new Set([...seedSrc.matchAll(/ALFRED_CODE_[A-Z0-9_]+/g)].map((m) => m[0]));
     const keys = new Set();
     for (const row of rows)
     {
@@ -3176,8 +3109,8 @@ function lintEnvironmentCatalog(catalog, seedSrc, migrations, commandSrc)
     {
         const r = m.rename_settings_env;
         if (!r) { continue; }
-        if (!keys.has(current(r.to))) { out.push(`migrations.json '${m.id}' renames ${r.from} to ${r.to}, which environment.json does not list`); }
-        const row = rows.find(x => x.key === current(r.to));
+        if (!keys.has(r.to)) { out.push(`migrations.json '${m.id}' renames ${r.from} to ${r.to}, which environment.json does not list`); }
+        const row = rows.find(x => x.key === r.to);
         if (row && row.renamed_from !== r.from) { out.push(`environment.json ${r.to} does not record renamed_from '${r.from}' - validate reads it to spot the old spelling on disk`); }
     }
 

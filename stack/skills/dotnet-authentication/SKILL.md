@@ -1,6 +1,6 @@
 ---
 name: dotnet-authentication
-description: "Load before wiring sign-in, JWT bearer, cookies, OpenID Connect, ASP.NET Identity or authorization policies. Not for OWASP sweeps or crypto."
+description: "Load before wiring ASP.NET Core sign-in, JWT bearer, cookies, OpenID Connect, Identity or authorization policies. Not for OWASP sweeps or crypto."
 ---
 
 # ASP.NET Core authentication and authorization
@@ -21,6 +21,9 @@ The right authentication scheme is decided by what kind of client talks to the e
 - **Stateless REST API** -> JWT bearer (`Microsoft.AspNetCore.Authentication.JwtBearer`). The token carries the identity; the server keeps no session.
 - **Server-rendered app** (MVC, Razor Pages, Blazor Server) -> cookie authentication. The browser already holds a cookie; use it.
 - **Delegated identity / single sign-on** -> OpenID Connect, with an external provider doing the actual sign-in.
+- **A service or webhook caller that cannot do a real handshake** -> an API key, the weakest credential.
+
+The cookie + OIDC wiring and the API-key rules (hash at rest, constant-time compare) are `references/oidc-and-api-keys.md` - read it before wiring either.
 
 Do not invent a user store. ASP.NET Identity already solves password hashing (PBKDF2 by default), account lockout, two-factor, and email confirmation - all the places a hand-rolled store quietly gets wrong. On .NET 8+, `MapIdentityApi<TUser>()` emits ready-made register / login / refresh / 2FA endpoints when those defaults fit; reach past it only when the contract genuinely differs.
 
@@ -90,7 +93,6 @@ builder.Services.AddAuthorizationBuilder()   // fluent, .NET 7+ - on the floor
     .AddPolicy("AdultsOnly", p => p.AddRequirements(new MinimumAgeRequirement(18)));
 ```
 
-On targets before .NET 7, use `AddAuthorization(options => options.AddPolicy(...))` - same policies, older registration call.
 
 When a rule needs more than a claim check - comparing a date, reading the resource being acted on, calling a service - write a requirement and a handler:
 
@@ -136,45 +138,10 @@ var admin = app.MapGroup("/admin").RequireAuthorization("CanPublish");
 
 ```csharp
 app.MapGet("/me", (ClaimsPrincipal user) =>
-    Results.Ok(new { id = user.FindFirstValue(ClaimTypes.NameIdentifier) }));
+    TypedResults.Ok(new { id = user.FindFirstValue(ClaimTypes.NameIdentifier) }));
 ```
 
 `FindFirstValue` returns the string or null; treat null as unauthenticated, not as a default user.
-
-## OpenID Connect for delegated identity
-
-When an external provider owns sign-in, pair a cookie scheme for the local session with the OIDC handler for the challenge:
-
-```csharp
-builder.Services
-    .AddAuthentication(options =>
-    {
-        options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;
-    })
-    .AddCookie()
-    .AddOpenIdConnect(options =>
-    {
-        options.Authority = config["Oidc:Authority"];
-        options.ClientId = config["Oidc:ClientId"];
-        options.ClientSecret = config["Oidc:ClientSecret"];
-        options.ResponseType = "code";          // authorization code flow
-        options.Scope.Add("openid");
-        options.Scope.Add("profile");
-        options.SaveTokens = true;
-    });
-```
-
-Use the authorization code flow (`response_type=code`), not the deprecated implicit flow. The client secret is a secret like any other.
-
-## API keys
-
-API keys are the weakest credential - a single static string with no identity, expiry, or scope - so use them only for service-to-service or webhook callers that cannot do a real handshake, and never as your primary user auth. When you must:
-
-- Store a **hash** of the key, not the key itself; a leaked database must not leak working credentials.
-- Compare in **constant time** so the check leaks no timing information about how many characters matched.
-
-Hash with `SHA256.HashData` (an API key is high-entropy, so a fast hash is enough) and compare with `CryptographicOperations.FixedTimeEquals` - the .NET cryptography skill owns their correct use; reimplement neither. Implement the check as an authentication handler or a small middleware that sets a `ClaimsPrincipal` on success, so the rest of the pipeline treats an API-key caller exactly like any other authenticated principal.
 
 ## Where secrets live
 
@@ -184,7 +151,13 @@ The broader access-control and SSRF threat model - what an attacker does once pa
 
 ## Prove the wiring
 
-Auth that compiles is not auth that holds. Before any done word, run the three checks and quote the result of each: a protected endpoint returns 401 with no token and 403 with a token that fails the policy; a valid token returns 200 and the handler reads the expected claim; and an integration test pins all three so the next change cannot silently open the endpoint. A validation flag turned off to make one of them pass is the failure this section exists to catch.
+Auth that compiles is not auth that holds. Before any done word:
+
+1. Call a protected endpoint with no token - quote the 401.
+2. Call it with a token that fails the policy - quote the 403.
+3. Call it with a valid token - quote the 200 and the claim the handler read.
+
+Pin all three in an integration test so the next change cannot silently open the endpoint. Report: the 401, 403 and 200 lines. A validation flag turned off to make one of them pass is the failure this section exists to catch.
 
 ## Anti-patterns
 

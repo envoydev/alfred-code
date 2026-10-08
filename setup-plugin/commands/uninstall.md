@@ -20,8 +20,6 @@ worktree), before anything is downloaded:
 
 - `not-installed` -> say there is no install here to remove, and stop.
 - `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:uninstall from there' and stop - the installer refuses this tree too.
-- `legacy-global` -> a 1.x global install: route to `/alfred-code:update` first (it moves the
-  install into the project and records the ledger), and stop.
 - `legacy-unstamped` -> a legacy copy-route install that never wrote a stamp: route to `/alfred-code:update` first (it writes the
   stamp and the ledger this command removes by - with neither it refuses), and stop.
 - `installed` / `initialised` -> go on.
@@ -40,8 +38,8 @@ since the user-scope core stays loaded). 'Keep it' -> end the turn, nothing down
 
 The shared contract is `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`: resolve
 the snapshot once into `$TMP/repo` from the plugin cache, exactly as it says, and remove `$TMP` on
-every exit path (step 5). A resolve line reporting `seed=shell` (`ALFRED_CODE_SEED=shell`, or the
-1.x `CLAUDE_STACK_SEED`) is refused: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
+every exit path (step 5). A resolve line reporting `seed=shell` (`ALFRED_CODE_SEED=shell`) is refused:
+print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 
 `node "$TMP/repo/scripts/install/alfred-code.js" uninstall --source "$TMP/repo" 2>&1 | tee "$TMP/install.log"`
 

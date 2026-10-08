@@ -81,16 +81,17 @@ a session on another branch knows that edge may not exist in its code>
 
 ## Write mechanics
 
-Same mechanics as every other non-protected domain. **On mainline, or without git, MERGE writes
-`related-projects/RELATED-PROJECTS.md` directly** (Write, REPLACE-in-place: read what exists first,
-reconcile section by section, so the write is legal). **On a feature branch under local/overlay
-versioning, MERGE lands each changed sibling's section through
-`node .claude/hooks/docs.js set RELATED-PROJECTS#<id>`** instead of writing the file - the engine
-puts it in that branch's overlay under `.branches/`, stamps the section itself, and the section
-folds into mainline by itself at the first mainline session after the branch merges. **The capture
-does not check which mode is active** - `docs.js status` names it, but MERGE calls `set`
-unconditionally and the engine decides where the text lands, the same rule `code-style/CODE-STYLE.md`
-follows.
+Same mechanics as every other non-protected domain:
+
+- **A first capture** writes `RELATED-PROJECTS.md` and `watch.json` whole (Write; a legacy
+  `PROJECT-RELATED-CONTEXT.md` moved in is read first, so the Write is legal) - `docs.js set` refuses
+  a file that does not exist yet.
+- **A re-run** lands each changed sibling's section through
+  `node .claude/hooks/docs.js set RELATED-PROJECTS#<id> <textfile>`: the engine writes it in place
+  on mainline, without git or under git versioning, and into this branch's overlay otherwise - the
+  capture never decides which. Entries nobody passed are not rewritten. Each section `set` writes
+  carries its own `captured:` stamp; where it wrote in place, also edit the top `Captured:` line to
+  this run's.
 
 **Verify the shape before it ships.** `docs.js lint` is the arbiter of whether `watch.json` and the
 section metadata are valid - run it against a temp fixture holding this shape before trusting it.

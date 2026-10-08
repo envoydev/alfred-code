@@ -322,7 +322,8 @@ test('M104: the Angular playbook says to load the Angular conventions skill once
 test('the full-spec lookup with no script in either home prints the gated line and runs nothing', { skip: process.platform === 'win32' }, () => {
     const { spawnSync } = require('node:child_process');
     const os = require('node:os');
-    for (const f of ['stack/skills/task-solve/SKILL.md', 'stack/skills/task-solve-cross/references/full-spec.md']) {
+    // task-solve's lookup moved to its own references/full-spec.md (2026-10-08 audit), the cross-task flow's twin of it.
+    for (const f of ['stack/skills/task-solve/references/full-spec.md', 'stack/skills/task-solve-cross/references/full-spec.md']) {
         const block = (read(f).match(/```bash\n(SPEC=[\s\S]*?)```/) || [])[1];
         assert.ok(block, `${f} carries the lookup block`);
         const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'spec-lookup-'));

@@ -1,5 +1,7 @@
 # ECC vs alfred-code - deep comparison (2026-09-20)
 
+<!-- Re-spelled 2026-10-07: the stack's names read as it is named now; the measurements are unchanged. -->
+
 Subject: `github.com/affaan-m/ECC` ('everything-claude-code', plugin `ecc` v2.2.2), read at commit
 `934195f` (2026-09-19). Method: a local clone, six parallel area reads (packaging, hooks, agents and
 flows, skills, rules + multi-harness + MCP, quality infrastructure), then every claim used below was
@@ -53,7 +55,7 @@ scripted install copies all 122 rule files whatever language was picked.
 | 1 | Add ECC's three schema gotchas to migration spike S9: a marketplace entry listing agent FILES validates and loads; no explicit `hooks` path beside a default `hooks/hooks.json`; nothing at the shared plugin root is auto-discovered by accident (`.mcp.json`, `agents/`, `commands/`) | S | low | 1.0.0, Phase 0 |
 | 2 | Install ledger (per-file hash + ownership) for everything the seed still writes: rules, copied extras, settings keys, `.mcp.json` entries. `validate` gets drift detection, the 0.2.x -> 1.0.0 prune gets an exact list, RETIRED_RULES shrinks to history | M | low | 1.0.0, Phase 3 / 5 |
 | 3 | One Node seed instead of the twins - promote the plan's optional Phase 7. The seed is being cut down anyway and ECC shows the wrapper pattern works on Windows | L | medium (installer test suites rewritten) | 1.0.0 or right after |
-| 4 | Hook switches through plugin `userConfig` (`CLAUDE_PLUGIN_OPTION_*`): a per-user on / off and tier; keep the per-project `CLAUDE_STACK_HOOKS_OFF` in the project `env` | S | low | 1.0.0, Phase 2 | <!-- legacy-name -->
+| 4 | Hook switches through plugin `userConfig` (`CLAUDE_PLUGIN_OPTION_*`): a per-user on / off and tier; keep the per-project `ALFRED_CODE_HOOKS_OFF` in the project `env` | S | low | 1.0.0, Phase 2 |
 | 5 | Hidden-character sweep in lint (extend check 32 to zero-width, bidi, tag block). First hit already found: a literal BOM inside a regex in `stack/hooks/guard-secret-value.js:377` - write it as `\uFEFF` | S | low | any time |
 | 6 | Config-protection guard with our allow-receipt pattern and a block row per denial, covering `.eslintrc*`, `.prettierrc*`, `.editorconfig`, `tsconfig*.json` strictness, analyzer rulesets | S | low - measure its block rate before tuning | after 1.0.0 |
 | 7 | Machine-enforce one slice of the temp-project matrix in CI: fresh install, re-run idempotent, user config not clobbered, on 3 OSes | M | low | with Phase 3 |
@@ -401,7 +403,7 @@ What is real and what is a shell, checked in their tree:
 | `aside`, `checkpoint`, `spec-miner`, `harness-optimizer`, `context-budget`, `contexts/*.md` | - | - | skip |
 
 The self-audit is sharper than it looks, because our own manifest fails it today:
-`scripts/os/claude-stack.sh:848-849` registers `chrome-devtools-mcp@latest` and `appium-mcp@latest`, <!-- legacy-name -->
+the frozen shell installer (`scripts/os/`, deleted in 2.0.0, lines 848-849) registers `chrome-devtools-mcp@latest` and `appium-mcp@latest`,
 and `:845` runs `@angular/cli mcp` unpinned (that one on purpose, to match the workspace). Two floating
 packages executed at every session start are a supply-chain opening the stack itself writes. Either
 pin them like the playwright server is pinned, or make the float an explicit, printed choice.

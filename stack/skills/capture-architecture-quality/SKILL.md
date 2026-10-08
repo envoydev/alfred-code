@@ -1,6 +1,6 @@
 ---
 name: capture-architecture-quality
-description: "Use when asked to assess, evaluate or judge the architecture, or its weaknesses, risks or tradeoffs. Not for code-rule findings (capture-code-quality)."
+description: "Use when asked to assess or judge the architecture - its weaknesses, risks or tradeoffs. Deliberate only. Not for code-rule findings (capture-code-quality)."
 ---
 
 # Project Architecture Quality Analyzer - Judge the Architecture (Deliberate)
@@ -9,9 +9,9 @@ You are the judgment seat for this run: you read the project's architecture map,
 
 - `<docs-path>/quality/ASSESSMENT.md` - the reasoned, tiered evaluation. The doc you write; over target its detail spills to `<docs-path>/quality/references/<topic>.md`, replaced wholesale with it.
 
-**`quality/` carries no `watch.json` and is therefore not a docs domain at all.** The engine (`node .claude/hooks/docs.js`) never sections it, never versions it per branch, never asks about it at session end - that machinery exists to make a doc survive a branch switch, and there is nothing here worth making survive: weaknesses and strengths are a function of the map plus the code, recomputable on demand for whatever branch you are on. Versioning them would be storing a cache and calling it a record. Read `references/doc-shape.md` before JUDGE - the findings gate, the count rule, the three buckets, the shape and the format budget are this skill's contract, not suggestions; the same file also says exactly what engine machinery this skill skips and why.
+**`quality/` is no docs domain - recomputed every run; `references/doc-shape.md` says why.** Read `references/doc-shape.md` before JUDGE - the findings gate, the count rule, the three buckets, the shape and the format budget are this skill's contract, not suggestions; the same file also says exactly what engine machinery this skill skips and why.
 
-**Reads decisions, never writes them - hard rule.** `<docs-path>/decisions/` is a domain like any other (`references/doc-shape.md` has the shape) rather than an ad-hoc folder - its own `watch.json` declares every document in it `notOwned`, so the engine itself refuses every write to it, from any actor; where the domain has not been seeded on this project yet, read the ADRs wherever it keeps them instead. Either way it is a person's own record of what the project decided on purpose, and this skill's own findings gate asks 'has the project already decided this' before it opens a weakness - an analyzer that could write its own answer would be marking its own homework against its own gate. When this run turns up a candidate worth deciding rather than fixing (a repeatedly-declined Must-fix entry, a tradeoff worth recording), it names the proposal in the report and in the doc's Proposed decisions - the claim, the reason, what it costs - and a person accepts it by writing the decision themselves. When the code instead CONTRADICTS an existing decision, the session hook warns rather than asks (`references/doc-shape.md` says what a person does about it) - this skill's own job there is unchanged: report what the run observed, never adjudicate it. `loop-architecture-quality`, which drives this skill across rounds, holds the same rule: it proposes, it never writes.
+**Reads decisions, never writes them - hard rule.** Reads the decision log, never writes it - a Proposed decision is named for a person to accept; doc-shape has the domain shape. Code that contradicts a recorded decision is reported as observed, never adjudicated.
 
 **No first-run/update split, no zero-drift shortcut.** Every other capture in this stack skips its expensive work when nothing changed since the last stamp; this one cannot, because 'nothing changed in the code' does not mean 'nothing changed in what should be recorded' - a person may have just accepted a decision this run needs to fold in, or the last round may have shipped a fix. Every run reads fresh and writes fresh.
 
@@ -30,6 +30,14 @@ The measurements behind these rules live in `references/evidence.md` - an audit 
   blockers, never coverage gaps.
 
 ## Execution modes
+
+**Run gate - a run no calling flow started asks first.** The run dispatches seats and replaces ASSESSMENT.md, and a conversational 'what are the risks here?' can match this skill. So unless the quality loop invoked this run, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run.
+
+```ask
+Run a fresh architecture assessment and replace ASSESSMENT.md?
+- 'Run the assessment and replace ASSESSMENT.md (Recommended)' - a fresh judgment, seats as picked in the mode ask
+- 'Answer from the existing ASSESSMENT.md only' - nothing dispatched, nothing written; with no ASSESSMENT.md yet the run stops here
+```
 
 DELEGATED vs INLINE keys on dispatch capability, not file presence - agent files on disk with no Agent tool to dispatch them is still INLINE. When dispatch is available, ask ONE question before GATHER, via AskUserQuestion - hunt weaknesses and strengths via architecture-analyzer seats (recommend it: the cheap seats absorb the reads), or in-session? - unless a calling flow (the quality loop) already picked the run's mode, which is inherited, never re-asked.
 
@@ -59,7 +67,7 @@ Strength-check every Must-fix remediation against the Strengths list before it l
 Where a smell is unclear or a claim uncovered, dispatch architecture-analyzer again on exactly that topic. Where two digests contradict each other on a CHECKABLE fact, settle it with the cheapest deterministic probe in-session first - a `grep -c`, a navigation-server lookup, the stack's own command - and re-dispatch only for a judgment conflict no command can settle. **Hard cap: 3 gather rounds.** Still unsettled after 3: write what is established, mark what is uncertain and what would settle it - never guess to fill an entry.
 
 ### 5. WRITE - <docs-path>/quality/ASSESSMENT.md, per references/doc-shape.md
-No write gate here (see doc-shape.md's Write mechanics) - REPLACE the file wholesale every run: READ it first if it exists so the Write is legal (an `rm` first is denied by the auto-mode classifier), then Write the fresh judgment over it. Compose the whole doc in-session and land it in one write (or one batched edit pass) - never a per-claim edit stream. Write ONLY `<docs-path>/quality/ASSESSMENT.md` and, over target, its `<docs-path>/quality/references/<topic>.md` spill files - never the map, never source, never the decision log. After the write, `wc -l` it against the ~300-line target; over target, run the spill pass now - this run owns the doc, and no other flow will.
+No diff check here - once the run gate is answered, REPLACE the file wholesale every run: READ it first if it exists so the Write is legal (an `rm` first is denied by the auto-mode classifier), then Write the fresh judgment over it. Compose the whole doc in-session and land it in one write (or one batched edit pass) - never a per-claim edit stream. Write ONLY `<docs-path>/quality/ASSESSMENT.md` and, over target, its `<docs-path>/quality/references/<topic>.md` spill files - never the map, never source, never the decision log. After the write, `wc -l` it against the ~300-line target; over target, run the spill pass now - this run owns the doc, and no other flow will.
 
 ### 6. REPORT
 Confirm the file written (created vs refreshed), then lean: gather rounds used and whether the picture settled within the cap, the assessment's shape (per-bucket counts, the Must-fix tier tally, the top few highest-leverage fixes `loop-architecture-quality` should take first, the over-build `net:` line), any Proposed decisions this run surfaced, anything unverified and what would settle it. Then the receipt lines - one per field, UNCONDITIONAL:
@@ -70,6 +78,8 @@ Confirm the file written (created vs refreshed), then lean: gather rounds used a
 | `Decisions:` | the decision records step 1 actually opened, or `none found at <path looked>` |
 | `Findings gate:` | candidates considered, passed, routed to Worth knowing, folded into an existing entry, and rejected (naming the question each rejected one failed) |
 | `Write:` | created / refreshed, and the post-write line count against the ~300 target |
+| `Run gate:` | the answer verbatim, or `invoked by the quality loop` |
+| `Ceilings:` | the Known-ceilings rows with no 'revisit when', for a person to supply one, or `none` |
 | `Model:` | what the session is on NOW and the exact `/model` command for the USER to paste - `raised for this run - run /model <prior model> to drop back`, `already on Opus before this run started - nothing to reset` (only when you can point at the message that proves it), or `not on Opus - the judgment above ran on <model>` |
 
 No re-paste of the doc body - point to the file.

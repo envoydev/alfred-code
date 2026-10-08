@@ -5,7 +5,6 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const SCRIPT = path.join(__dirname, 'update-preflight.js');
 
@@ -56,9 +55,9 @@ test('ONE call carries the compare contract, the changed classes, the fired migr
     const { snap, install, fixtureFile } = scaffold({
         migrations: [
             { id: 'inject-code-style-hook-to-rule', detect: { file_exists: '.claude/hooks/inject-code-style.js' } },
-            { id: 'docs-path-env-rename', detect: { settings_env_key: 'CLAUDE_DOCS_PATH' } },
+            { id: 'fresh-session-pct-retired', detect: { settings_env_key: 'ALFRED_CODE_FRESH_SESSION_PCT' } },
         ],
-        settings: { env: { CLAUDE_DOCS_PATH: '.claude/docs', SENTRY_ACCESS_TOKEN: FAKE_TOKEN } },
+        settings: { env: { ALFRED_CODE_FRESH_SESSION_PCT: '60', SENTRY_ACCESS_TOKEN: FAKE_TOKEN } },
     });
     fs.mkdirSync(path.join(install, '.claude', 'hooks'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'hooks', 'inject-code-style.js'), '// legacy');
@@ -71,8 +70,8 @@ test('ONE call carries the compare contract, the changed classes, the fired migr
     // every file it copied, which is all of them on every run
     assert.match(out, /^changed: skills=2 agents=0 rules=1 hooks=3 template=no$/m, 'distinct ITEMS: a skill folder counts once, model-windows.json is a hooks-class file');
     assert.match(out, /^migration: inject-code-style-hook-to-rule\tfile_exists$/m);
-    assert.match(out, /^migration: docs-path-env-rename\tsettings_env_key$/m);
-    assert.match(out, /^env-keys: CLAUDE_DOCS_PATH,SENTRY_ACCESS_TOKEN$/m);
+    assert.match(out, /^migration: fresh-session-pct-retired\tsettings_env_key$/m);
+    assert.match(out, /^env-keys: ALFRED_CODE_FRESH_SESSION_PCT,SENTRY_ACCESS_TOKEN$/m);
 });
 
 test('an env VALUE never leaves the script - the key names are the whole output', () => {
@@ -107,27 +106,12 @@ test('settings_env_value fires only on the exact seeded value; an unknown detect
     assert.ok(!out.includes('from-the-future'), 'a detect kind this release does not know never claims a detection');
 });
 
-test('settings_env_prefix fires on ANY key under that prefix, and reports the prefix rename', () => {
-    const migrations = [{
-        id: 'alfred-code-settings-prefix',
-        detect: { settings_env_prefix: 'CLAUDE_STACK_' }, // legacy-name
-        rename_settings_env_prefix: { from: 'CLAUDE_STACK_', to: 'ALFRED_CODE_' }, // legacy-name
-    }];
-    const none = scaffold({ migrations, settings: { env: { MY_OWN_APP_KEY: 'x' } } });
-    assert.match(run(['--snapshot', none.snap, '--root', none.install, '--fixture', none.fixtureFile]).out, /^migrations: none detected$/m);
-
-    const seeded = scaffold({ migrations, settings: { env: { CLAUDE_STACK_MONITOR: 'log' } } }); // legacy-name
-    const out = run(['--snapshot', seeded.snap, '--root', seeded.install, '--fixture', seeded.fixtureFile]).out;
-    assert.match(out, /^migration: alfred-code-settings-prefix\tsettings_env_prefix$/m);
-    assert.match(out, /^ {2}env-rename-prefix: CLAUDE_STACK_\* -> ALFRED_CODE_\*$/m); // legacy-name
-});
-
 test('a BOM-prefixed settings.json is read like any other (audit F5)', () => {
-    const migrations = [{ id: 'alfred-code-settings-prefix', detect: { settings_env_prefix: 'CLAUDE_STACK_' } }]; // legacy-name
+    const migrations = [{ id: 'fresh-session-pct-retired', detect: { settings_env_key: 'ALFRED_CODE_FRESH_SESSION_PCT' } }];
     const bom = scaffold({ migrations });
-    fs.writeFileSync(path.join(bom.install, '.claude', 'settings.json'), `\uFEFF${JSON.stringify({ env: { CLAUDE_STACK_MONITOR: 'log' } })}`); // legacy-name
+    fs.writeFileSync(path.join(bom.install, '.claude', 'settings.json'), `\uFEFF${JSON.stringify({ env: { ALFRED_CODE_FRESH_SESSION_PCT: '60' } })}`);
     const out = run(['--snapshot', bom.snap, '--root', bom.install, '--fixture', bom.fixtureFile]).out;
-    assert.match(out, /^migration: alfred-code-settings-prefix\tsettings_env_prefix$/m, out);
+    assert.match(out, /^migration: fresh-session-pct-retired\tsettings_env_key$/m, out);
 });
 
 test('settings_hook_wired reads the wiring, not a file; the matcher scopes it', () => {
@@ -144,19 +128,19 @@ test('settings_hook_wired reads the wiring, not a file; the matcher scopes it', 
 test('the compare exit codes pass through unchanged, and the preflight still reports the rest', () => {
     const { snap, install, fixtureFile } = scaffold({
         stamp: null,
-        migrations: [{ id: 'docs-path-env-rename', detect: { settings_env_key: 'CLAUDE_DOCS_PATH' } }],
-        settings: { env: { CLAUDE_DOCS_PATH: '.claude/docs' } },
+        migrations: [{ id: 'fresh-session-pct-retired', detect: { settings_env_key: 'ALFRED_CODE_FRESH_SESSION_PCT' } }],
+        settings: { env: { ALFRED_CODE_FRESH_SESSION_PCT: '60' } },
     });
     const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
     assert.strictEqual(code, 2, 'no-stamp is still the refresh-only signal');
     assert.match(out, /^no-stamp$/m);
-    assert.match(out, /^migration: docs-path-env-rename\tsettings_env_key$/m, 'a migration detect does not depend on the compare');
-    assert.match(out, /^env-keys: CLAUDE_DOCS_PATH$/m);
+    assert.match(out, /^migration: fresh-session-pct-retired\tsettings_env_key$/m, 'a migration detect does not depend on the compare');
+    assert.match(out, /^env-keys: ALFRED_CODE_FRESH_SESSION_PCT$/m);
 });
 
 test('the shipped catalog parses under the shipped detect vocabulary - every entry has a known kind', () => {
     const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'migrations.json'), 'utf8'));
-    const known = new Set(['file_exists', 'settings_env_key', 'settings_env_value', 'settings_env_prefix', 'settings_hook_wired']);
+    const known = new Set(['file_exists', 'settings_env_key', 'settings_env_value', 'settings_hook_wired']);
     for (const e of catalog.migrations)
     {
         const kinds = Object.keys(e.detect || {});
@@ -262,9 +246,9 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
               why: 'style delivery moved to a generated rule',
               then: 're-run /capture-code-style' },
             { id: 'env-one',
-              detect: { settings_env_key: 'CLAUDE_DOCS_PATH' },
-              rename_settings_env: { from: 'CLAUDE_DOCS_PATH', to: 'ALFRED_CODE_DOCS_PATH' },
-              why: 'every other variable this stack owns is ALFRED_CODE_*' },
+              detect: { settings_env_key: 'ALFRED_CODE_OLD_KEY' },
+              rename_settings_env: { from: 'ALFRED_CODE_OLD_KEY', to: 'ALFRED_CODE_NEW_KEY' },
+              why: 'the key was renamed' },
             { id: 'reset-one',
               detect: { settings_env_value: { key: 'ALFRED_CODE_EXAMPLE', equals: 'old' } },
               clear_settings_env: { key: 'ALFRED_CODE_EXAMPLE', when_value: 'old', to: 'new' },
@@ -274,7 +258,7 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
               why: 'this entry did not fire and must print nothing',
               then: 'nothing' },
         ],
-        settings: { env: { CLAUDE_DOCS_PATH: '.claude/docs', ALFRED_CODE_EXAMPLE: 'old' } },
+        settings: { env: { ALFRED_CODE_OLD_KEY: '1', ALFRED_CODE_EXAMPLE: 'old' } },
     });
     fs.mkdirSync(path.join(install, '.claude', 'hooks'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'hooks', 'inject-code-style.js'), '// legacy');
@@ -285,7 +269,7 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
     assert.match(out, /^ {2}then: re-run \/capture-code-style$/m, 'the follow-up the report prints');
     assert.match(out, /^ {2}remove: \.claude\/hooks\/inject-code-style\.js$/m, 'what the prune list takes');
     assert.match(out, /^ {2}unwire: inject-code-style\.js::PostToolUse$/m, 'the exact settings.json entry to drop');
-    assert.match(out, /^ {2}env-rename: CLAUDE_DOCS_PATH -> ALFRED_CODE_DOCS_PATH$/m, 'the env edit, on the entry that carries one');
+    assert.match(out, /^ {2}env-rename: ALFRED_CODE_OLD_KEY -> ALFRED_CODE_NEW_KEY$/m, 'the env edit, on the entry that carries one');
     assert.match(out, /^ {2}env-reset: ALFRED_CODE_EXAMPLE: old -> new$/m, 'a seeded default the installers reset, on the entry that carries one');
     assert.doesNotMatch(out, /quiet-one|did not fire/, 'an entry that did not fire costs nothing at all');
     assert.doesNotMatch(out, /xxxx/, 'and the maintainer comment never reaches the caller');
@@ -314,7 +298,6 @@ test('new items: a core item arrives, a library item is offered, the user\'s off
     const listing = path.join(install, 'listing.json');
     fs.writeFileSync(listing, JSON.stringify([
         { id: 'alfred-code@envoydev', enabled: true },
-        { id: 'claude-stack-aspnet@envoydev', enabled: false },
     ]));
     const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
     assert.strictEqual(code, 0, out);
@@ -503,10 +486,6 @@ test('new items: an arriving rename still names its old copy for the prune; None
     fs.writeFileSync(listing, JSON.stringify([{ id: 'serena@envoydev', enabled: true }]));
     const absent = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
     assert.match(absent, /^new: hook docs-session\tarrives\talfred-code$/m, 'no core listed: the installer installs it and writes no hook none - the hook arrives');
-    // A leftover 1.x hooks id says nothing on its own: the hooks ride the core.
-    fs.writeFileSync(listing, JSON.stringify([{ id: 'serena@envoydev', enabled: true }, { id: 'claude-stack-hooks@envoydev', enabled: true }])); // legacy-name
-    const alias = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
-    assert.match(alias, /^new: hook docs-session\tarrives\talfred-code$/m, 'the hooks alias is no hooks home');
 });
 
 test('new items: a stale disabled flag on the core changes no verdict - a core item arrives, a denied seat stays off (S22)', () => {
@@ -526,67 +505,19 @@ test('new items: a stale disabled flag on the core changes no verdict - a core i
     ]);
 });
 
-// A 1.x install as 2.0.0's update first meets it: the stamp under its old name, every stack row
-// under the old marketplace KEY (a registered key never changes), the core, the hooks id and the
-// seat deny under the old names. The preflight must read all four, or it reports no stamp, reads the listing
-// as empty, and offers items the project already carries.
-test('new items: a 1.x install is read under its old stamp, marketplace key, core and deny', () => {
+// An explicit --marketplace wins over the key the listing names: a key no core row is listed under reads
+// the core as absent - which no longer moves a skill (a copy since 2.1.0, whatever the key), and a denied
+// seat stays off either way.
+test('new items: an explicit --marketplace wins over the listing\'s key - a skill still arrives, a denied seat stays off', () => {
     const { snap, install, fixtureFile } = scaffold({
-        stamp: null,
         fixture: NEW_FIXTURE,
-        settings: { permissions: { deny: ['Agent(claude-stack:code-style-analyzer)'] } }, // legacy-name
+        settings: { permissions: { deny: ['Agent(alfred-code:code-style-analyzer)'] } },
     });
-    fs.writeFileSync(path.join(install, '.claude', 'claude-stack.stamp'), 'sha: aaa111\nversion: 1.3.0\nshipped-hooks: guard-read-whole-file\n'); // legacy-name
     const listing = path.join(install, 'listing.json');
-    fs.writeFileSync(listing, JSON.stringify([
-        { id: 'claude-stack@claude-stack', enabled: true }, // legacy-name
-        { id: 'claude-stack-hooks@claude-stack', enabled: true }, // legacy-name
-        { id: 'alfred-code@envoydev', enabled: false },   // another account's leftover: never the stack this project runs
-    ]));
-    const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
-    assert.strictEqual(code, 0, out);
-    assert.match(out, /^version: 1\.3\.0 -> 0\.2\.70$/m, 'the 1.x stamp is the compare base');
-    const rows = out.split('\n').filter((l) => l.startsWith('new: ') && !l.startsWith('new: rule '));
-    assert.deepStrictEqual(rows, [
-        'new: skill markdown-style\tarrives\t-',
-        'new: skill dotnet-web-backend\toffer\t-\tleave',
-        'new: agent code-style-analyzer\toff\talfred-code',
-        'new: hook docs-session\tarrives\talfred-code',
-    ]);
-    // an explicit --marketplace still wins over what the listing says: a key no core row is listed
-    // under reads the core as absent - which no longer moves a skill (a copy since 2.1.0, whatever the
-    // key), and the denied seat stays off either way (a listed core is never parked by its flag any
-    // more - S22 - so the leftover's disabled row cannot show the forcing)
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
     const forced = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing, '--marketplace', 'elsewhere']).out;
     assert.match(forced, /^new: skill markdown-style\tarrives\t-$/m, forced);
     assert.match(forced, /^new: agent code-style-analyzer\toff\talfred-code$/m, forced);
-});
-
-test('global mode: an account dir holding only the 1.x stamp is still the account dir', () => {
-    const { snap, install, fixtureFile } = scaffold({ stamp: null, fixture: { files: [] } });
-    const acct = path.join(path.dirname(install), 'acct-any-name');
-    fs.mkdirSync(acct, { recursive: true });
-    fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: aaa111\nversion: 1.3.0\n'); // legacy-name
-    const { out, code } = run(['--snapshot', snap, '--root', acct, '--fixture', fixtureFile]);
-    assert.strictEqual(code, 0, out);
-    assert.match(out, /^version: 1\.3\.0 -> 0\.2\.70$/m);
-});
-
-// A 1.x settings file spells the switch-off CLAUDE_STACK_HOOKS_OFF until the installer's env pass // legacy-name
-// renames it - which runs AFTER this preflight. The walk's None, and a hook named off, hold under it.
-test('new items: a 1.x CLAUDE_STACK_HOOKS_OFF is the switch-off - the None holds, a named hook is off', () => { // legacy-name
-    const fixture = { files: [{ status: 'added', filename: 'stack/hooks/docs-session.js' }] };
-    const none = scaffold({ stamp: 'sha: aaa111\nversion: 1.3.0\nshipped-hooks: guard-read-whole-file\n', fixture,
-        settings: { env: { CLAUDE_STACK_HOOKS_OFF: 'guard-read-whole-file' } } }); // legacy-name
-    const listing = path.join(none.install, 'listing.json');
-    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
-    const held = run(['--snapshot', none.snap, '--root', none.install, '--fixture', none.fixtureFile, '--listing', listing]).out;
-    assert.match(held, /^new: hook docs-session\toff\talfred-code$/m, `the None held: ${held}`);
-    const named = scaffold({ stamp: 'sha: aaa111\nversion: 1.3.0\nshipped-hooks: guard-read-whole-file,other-hook\n', fixture,
-        settings: { env: { CLAUDE_STACK_HOOKS_OFF: 'docs-session' } } }); // legacy-name
-    fs.writeFileSync(path.join(named.install, 'listing.json'), fs.readFileSync(listing));
-    const off = run(['--snapshot', named.snap, '--root', named.install, '--fixture', named.fixtureFile, '--listing', path.join(named.install, 'listing.json')]).out;
-    assert.match(off, /^new: hook docs-session\toff\talfred-code$/m, `the named hook is off: ${off}`);
 });
 
 // `claude plugin list --json` prints every project's project-scope rows. Another project on the same
@@ -596,7 +527,7 @@ test('new items: the key comes from THIS project\'s rows, never another project\
     const listing = path.join(install, 'listing.json');
     fs.writeFileSync(listing, JSON.stringify([
         { id: 'alfred-code@envoydev', enabled: true, scope: 'project', projectPath: path.join(path.dirname(install), 'other-project') },
-        { id: 'alfred-code@claude-stack', enabled: true, scope: 'project', projectPath: install }, // legacy-name
+        { id: 'alfred-code@my-fork', enabled: true, scope: 'project', projectPath: install },
     ]));
     const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
     assert.strictEqual(code, 0, out);
@@ -604,32 +535,24 @@ test('new items: the key comes from THIS project\'s rows, never another project\
     assert.match(out, /^new: hook docs-session\tarrives\talfred-code$/m, out);
 });
 
-// I8 (R51): a 1.x GLOBAL install kept its stamp in the account dir, and the installer moves it into the
-// project only on the update this preflight runs BEFORE. Reading the project alone exited 'no stamp'
-// (2), and the command routed away before the migration could run. Only while the project has no stamp.
-test('a 1.x global install\'s account stamp is the baseline until the update moves it (I8)', () => {
+// I8 (R51): the compare base is the PROJECT's own stamp. A stamp in the account dir is no project's
+// install - with none in the project the run is the plain 'no stamp' exit (2), whatever the account holds.
+test('the project stamp is the compare base - an account-dir stamp never is (I8)', () => {
     const { snap, install, fixtureFile } = scaffold({ stamp: null, fixture: { files: [] } });
     fs.mkdirSync(path.join(install, '.claude', 'hooks'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'hooks', 'docs.js'), '');
     const acct = path.join(path.dirname(install), 'acct');
     fs.mkdirSync(acct, { recursive: true });
-    fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: aaa111\nversion: 1.3.0\nscope: global\n'); // legacy-name
+    fs.writeFileSync(path.join(acct, 'alfred-code.stamp'), 'sha: aaa111\nversion: 1.3.0\nscope: global\n');
     const env = { ...process.env, CLAUDE_CONFIG_DIR: acct };
     const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env);
-    assert.strictEqual(code, 0, out);
-    assert.match(out, /^version: 1\.3\.0 -> 0\.2\.70$/m, out);
-    assert.match(out, /^legacy-stamp: .*claude-stack\.stamp - a 1\.x global install; this update moves it into the project$/m, out); // legacy-name
+    assert.strictEqual(code, 2, out);
+    assert.match(out, /^no-stamp$/m, out);
 
-    // The project's own stamp, once it has one, wins - the account copy stays for other projects.
     fs.writeFileSync(path.join(install, '.claude', 'alfred-code.stamp'), 'sha: aaa111\nversion: 2.0.0\n');
     const own = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env);
+    assert.strictEqual(own.code, 0, own.out);
     assert.match(own.out, /^version: 2\.0\.0 -> 0\.2\.70$/m, own.out);
-    assert.doesNotMatch(own.out, /^legacy-stamp:/m);
-
-    // No account stamp either: still the plain 'no stamp' exit.
-    const bare = scaffold({ stamp: null, fixture: { files: [] } });
-    const none = run(['--snapshot', bare.snap, '--root', bare.install, '--fixture', bare.fixtureFile], { ...process.env, CLAUDE_CONFIG_DIR: path.join(path.dirname(bare.install), 'empty-acct') });
-    assert.strictEqual(none.code, 2, none.out);
 });
 
 // M4 (Task 16 review, R54): a switch-off that lives in settings.local.json - a local-scope install's
@@ -682,7 +605,7 @@ test('env-keys: the before-state is the file the run writes - settings.local.jso
 // 'no install record' let the default change under them silently. A tree with no stack signature stays a
 // fresh project with nothing to offer.
 test('data-move: an unstamped legacy install is offered the move; a tree with no stack signature is not', () => {
-    const legacyKey = { CLAUDE_STACK_DOCS_PATH: '.claude/docs' }; // legacy-name
+    const legacyKey = { ALFRED_CODE_DOCS_PATH: '.claude/docs' };
     const { snap, install, fixtureFile } = scaffold({ stamp: null, settings: { env: legacyKey } });
     fs.mkdirSync(path.join(install, '.claude', 'docs', 'architecture'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'docs', 'architecture', 'ARCHITECTURE.md'), '# arch\n');

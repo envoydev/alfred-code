@@ -124,15 +124,16 @@ reads the folder: `git check-ignore -q <docs-path>/project-capabilities/credenti
 Any other exit is a file git would commit - delete the file you just wrote, report it, and point the doc
 at an environment variable instead. Outside git there is nothing to commit it to; say so.
 
-Then two checks, both before the report:
+Then three checks, all before the report:
 
 ```bash
 grep -nE '(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z0-9_]*[:=][[:space:]]*[^[:space:]<]' "<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md" "<docs-path>/project-capabilities/credentials.local.env" | sed -E 's/((PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z0-9_]*)[:=].*/\1/'
 node .claude/hooks/docs.js lint
+node .claude/hooks/docs.js watch <one file DISCOVER cited>
 ```
 
 Name the template only when this run just wrote it - one the user already filled holds the values by design and is never read. The grep prints nothing - a hit (file, line and key, the `sed` cuts the value off the screen; an env line, a YAML `KEY: value` copied from a compose file and a lower-case `password:` key all count, a `<placeholder>` does not) is a value in the doc or the template: replace it with where it lives,
-and treat it as a pasted value (above). A `PROBLEM` line from the lint is fixed before the report.
+and treat it as a pasted value (above). A `PROBLEM` line from the lint is fixed before the report. The watch names the sections that file feeds - none named means a `watch.json` glob is wrong, fixed before the report.
 
 ### 4. RULE - write .claude/rules/alfred-project-run-book.md
 
@@ -149,6 +150,7 @@ Asked:        <each question asked with the answer's label, or `none - the repo 
 Unknown:      <the sections or lines still unknown, or `none`>
 Credentials:  <where each account's credentials live, by name only | template at <path>, ignored: yes | no login>
 Value check:  <no hit | <n> hit(s) replaced with where the value lives>
+Watch:        <the cited file> -> <the sections it names>
 Rule:         <created | regenerated> - .claude/rules/alfred-project-run-book.md, <n> bytes
 ```
 

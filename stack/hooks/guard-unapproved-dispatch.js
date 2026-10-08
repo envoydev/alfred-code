@@ -28,9 +28,7 @@
 // Blocked here regardless of any stamp; a broad multi-file sweep with no symbol question
 // in it still passes.
 const fs = require('fs');
-// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
-// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
-// project whose settings.json has not been migrated yet keeps resolving.
+// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 const path = require('path');
 
@@ -117,13 +115,11 @@ const GENERIC_SEATS = new Set(['general-purpose', 'claude', 'fork']);
 const SEARCH_SEATS = new Set(['Explore', 'general-purpose', 'claude', 'fork']);
 // A plugin agent is addressable ONLY as `<plugin>:<agent>` (measured, spike S1 run 4: the bare
 // name returns 'Agent type not found'), so from the release that ships the seats as plugins every
-// house dispatch arrives prefixed. Three spellings are therefore the same seat - bare, which is the
-// copy route and cursor-stack, `alfred-code[-<group>]:<seat>`, and a 1.x install's
-// `claude-stack[-<group>]:<seat>` (the marketplace KEY never migrates - docs/rebrand-evidence.md - // legacy-name
-// so a 1.x install's home names stay `claude-stack`-prefixed for the whole 2.x line). A FOREIGN // legacy-name
+// house dispatch arrives prefixed. Two spellings are therefore the same seat - bare, which is the
+// copy route and cursor-stack, and `alfred-code[-<group>]:<seat>`. A FOREIGN
 // plugin's `x-implementer` is not this flow's seat: it has no APPROVAL convention behind it, so
 // gating it would block a tool the user chose with a message about a flow that does not apply to it.
-const HOUSE_PREFIX = /^(?:alfred-code|claude-stack)(?:-[a-z0-9-]+)?:/; // legacy-name
+const HOUSE_PREFIX = /^alfred-code(?:-[a-z0-9-]+)?:/;
 const houseSeat = !seat.includes(':') ? seat : (HOUSE_PREFIX.test(seat) ? seat.slice(seat.indexOf(':') + 1) : null);
 const isImplementer = houseSeat !== null && /-implementer$/.test(houseSeat);
 // M9: in a repo never set up only a core implementer (`alfred-code:<stack>-implementer`) is judged - a bare
@@ -138,6 +134,7 @@ if (unsetRepo && !(isImplementer && seat.includes(':'))) process.exit(0);
 const caller = typeof payload.agent_type === 'string' ? payload.agent_type : '';
 const callerSeat = !caller.includes(':') ? caller : (HOUSE_PREFIX.test(caller) ? caller.slice(caller.indexOf(':') + 1) : '');
 if (/^(?:alfred-)?issue-diagnoser-(?:ci|runtime)$/.test(callerSeat) && houseSeat !== 'evidence-gatherer') {
+  global.BLOCK_DETAIL = { branch: 'diagnoser-pin', caller: callerSeat };
   process.stderr.write(
     `Blocked: ${caller} dispatched ${seat}. A diagnoser is read-only and dispatches only the evidence gatherer\n` +
       `(\`alfred-code:evidence-gatherer\` where the core plugin carries it, else \`evidence-gatherer\`), one gather task each.\n` +
@@ -160,28 +157,43 @@ const IDENT = [
   '[A-Za-z_$][\\w$]*\\(',
   '(?:[A-Z][a-z0-9]+|[a-z][a-z0-9]*)[A-Z][A-Za-z0-9]*(?![\\w$/-])',
 ].join('|');
-const SYMBOL_QUESTION = new RegExp(
-  [
-    'who calls\\b',
-    'call(?:ers|[- ]sites)\\s+(?:of|for)\\b',
-    '\\b(?:find|locate|get)\\s+(?:the\\s+)?(?:definition|declaration|implementation|signature|body)\\s+of\\b',
-    '\\bimplementations?\\s+of\\b',
-    '\\bsubclasses\\s+of\\b',
-    '\\b(?:find|locate)\\s+(?:the\\s+)?(?:class|interface|method|function|component|service|enum|record|struct)\\s+`?[A-Za-z_]',
-  ].join('|'),
-  'i',
-);
-// Case-SENSITIVE, unlike the shapes above: under the `i` flag every word reads as CamelCase.
+// Case-SENSITIVE, unlike the shapes below: under the `i` flag every word reads as CamelCase.
 const REFERENCE_QUESTION = new RegExp(`\\b(?:[Rr]eferences?\\s+[Tt]o|[Uu]sages?\\s+[Oo]f)\\s+(?:[Tt]he\\s+)?(?:${IDENT})`);
 // 'where are the env vars defined' and 'what type of database' are text questions, so these two carry the same identifier
 // test. The identifier may follow a leading capital of its own token (ISocketFactory reads as I + SocketFactory).
 const NAMED = `[\\w$.:]*?(?:${IDENT})`;
+// The caller and definition shapes carry the same test (audit 2026-10-08 row 39): 'find the definition of done in the
+// CONTRIBUTING docs', 'locate the component responsible for the page header' and 'list the call sites of the deprecated
+// logger' were denied as symbol hunts. The lead is matched without case; what follows it is read case-sensitively - a
+// NAMED identifier, or a backticked or capitalised name ('who calls Foo', 'find the class Order', 'implementations of
+// IRepository'); a lowercase word is prose.
+const SYMBOL_LEAD = new RegExp(
+  [
+    '\\bwho\\s+calls\\b',
+    '\\bcall(?:ers|[- ]sites)\\s+(?:of|for)\\b',
+    '\\b(?:find|locate|get)\\s+(?:the\\s+)?(?:definition|declaration|implementation|signature|body)\\s+of\\b',
+    '\\b(?:implementations?|subclasses)\\s+of\\b',
+    '\\b(?:find|locate)\\s+(?:the\\s+)?(?:class|interface|method|function|component|service|enum|record|struct)\\b',
+  ].join('|'),
+  'gi',
+);
+const NAMED_AFTER = new RegExp(`^\\s+(?:[Tt]he\\s+)?${NAMED}`);
+const TYPE_NAME_AFTER = /^\s+(?:[Tt]he\s+)?(?:named\s+|called\s+)?(?:`[A-Za-z_$][^`\n]*`|[A-Z][\w$]*)/;
+const symbolQuestion = (text) => {
+  for (const m of text.matchAll(SYMBOL_LEAD)) {
+    const rest = text.slice(m.index + m[0].length);
+    const name = rest.match(NAMED_AFTER) || rest.match(TYPE_NAME_AFTER);
+    if (name) return [m[0] + name[0]];
+  }
+  return null;
+};
 const WHERE_QUESTION = new RegExp(`\\b[Ww]here\\s+(?:is|are|Is|Are)\\s+(?:[Tt]he\\s+)?${NAMED}.{0,60}?\\b(?:defined|declared|implemented|instantiated|registered)\\b`);
 const TYPE_QUESTION = new RegExp(`\\b[Ww]hat\\s+type\\s+(?:(?:is|does|of|are|the|returns?|has|for)\\s+){1,2}${NAMED}`);
 if (SEARCH_SEATS.has(seat)) {
   const brief = `${input.prompt || ''}\n${input.description || ''}`;
-  const asked = brief.match(SYMBOL_QUESTION) || brief.match(REFERENCE_QUESTION) || brief.match(WHERE_QUESTION) || brief.match(TYPE_QUESTION);
+  const asked = symbolQuestion(brief) || brief.match(REFERENCE_QUESTION) || brief.match(WHERE_QUESTION) || brief.match(TYPE_QUESTION);
   if (asked) {
+    global.BLOCK_DETAIL = { branch: 'symbol-question', asked: asked[0].trim().slice(0, 80) };
     process.stderr.write(
       `Blocked: dispatch of ${seat} for a SYMBOL question ('${asked[0].trim()}').\n` +
         `A grep-shaped seat answers that by name-match, and name-matches lie; the built-in\n` +
@@ -212,7 +224,8 @@ if ((seat === 'Explore' || seat === 'Plan') && typeof input.prompt === 'string' 
 if (!isImplementer && !GENERIC_SEATS.has(seat)) {
   process.exit(0);
 }
-const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+// The payload's cwd before the hook's own, as the block ledger above reads it (audit 2026-10-08 row 39).
+const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
 const docsRoot = docsRootEnv();
 const gate = path.resolve(root, docsRoot, 'flow', 'APPROVAL');
 const MAX_STAMP_AGE_MS = 8 * 60 * 60 * 1000; // 8h - re-stamping is one Write; staleness shipped unapproved dispatches
@@ -245,6 +258,7 @@ try {
 const approved = /^(APPROVED|AUTO)\b/.test(first);
 if (isImplementer) {
   if (approved) process.exit(0);
+  global.BLOCK_DETAIL = { branch: stale ? 'implementer-stale-stamp' : 'implementer-unapproved' };
   process.stderr.write(
     (stale
       ? `Blocked: dispatch of ${seat} - the approval stamp at ${gate} is stale: older than 8h, or written before this session began, so it records another run's decision rather than this one's (measured: a 2h52m-old stamp from a closed session authorized five implementer dispatches).\n`
@@ -268,6 +282,7 @@ if (isImplementer) {
 if (!approved) {
   process.exit(0);
 }
+global.BLOCK_DETAIL = { branch: 'generic-while-stamped' };
 process.stderr.write(
   `Blocked: dispatch of ${seat} while a flow is active (${gate} is stamped).\n` +
     `A stamped run dispatches its NAMED domain seats - a generic seat carries none of the\n` +

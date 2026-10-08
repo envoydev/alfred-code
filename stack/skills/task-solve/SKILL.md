@@ -105,23 +105,11 @@ standard, whatever the file count.
 
 ## Full spec - design and audit as one step
 
-On `standard`, check the request before step 1. A FULL spec names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria). A request that misses any item, spans more than one stack, or touches an auth, secret or payment path (access, visibility, ownership and personal data count) keeps every gate below, and so does any doubt. `scripts/spec-check.js` reads the request for all five; state its verdict in one line, `Spec: <full|not full> - <path> - <its reason>`:
-
-```bash
-SPEC=.claude/skills/task-solve/scripts/spec-check.js
-[ -f "$SPEC" ] || SPEC=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/alfred-code/*; do
-  f="$d/stack/skills/task-solve/scripts/spec-check.js"
-  [ -f "$f" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
-done 2>/dev/null | sort -V | tail -1 | cut -f2)
-if [ -n "$SPEC" ]; then node "$SPEC" <<'REQUEST'
-<the user's request, verbatim>
-REQUEST
-else echo 'path: gated - spec-check not found'; fi
-```
+On `standard`, check the request before step 1. A FULL spec names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria). A request that misses any item, spans more than one stack, or touches an auth, secret or payment path (access, visibility, ownership and personal data count) keeps every gate below, and so does any doubt. `scripts/spec-check.js` reads the request for all five; state its verdict in one line, `Spec: <full|not full> - <path> - <its reason>`. Run it by the lookup in `references/full-spec.md` (the project copy, else the newest plugin-cache entry).
 
 Its `path: gated` is final. Its `path: merged` you may raise to gated, never lower.
 
-On `path: merged`, steps 1 and 2 are ONE step: the design and the plan audit both in this session (neither twin asks its mode), no stop between them. A gap the audit finds that the spec settles is fixed in the plan in the same step and named in the ask; a gap only the user can settle stamps the gaps and takes step 2's stop. Step 3's read comes first (`mechanics: read` in `Result:`), then ONE approval ask in place of step 3's:
+On `path: merged`, steps 1 and 2 are ONE step: the design and the plan audit both in this session (neither twin asks its mode), no stop between them. A gap the audit finds that the spec settles is fixed in the plan in the same step and named in the ask; a gap only the user can settle stamps the gaps and takes step 2's stop. Step 3's read and its `habits-execution-strategy` load come first (`mechanics: read` in `Result:`), then ONE approval ask in place of step 3's:
 
 ```ask
 Full spec - designed and audited in one step (<the Gated: verdict>). Build it as planned <in this session | through the seats>: <the mode-fit reason>.
@@ -147,8 +135,10 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    - <their words>` - never blank, never a faked pass. *Stop.*
 3. **APPROVE** - Read `references/step-mechanics.md` now - the mode-fit rule for this ask, the
    build bar, the step-4 reviewer-fit rule and step 6's doc-drift surfaces are its content, not
-   homework; this stop's `Result:` line carries `mechanics: read` as the receipt. Then present the
-   gated plan and put the gate through ONE question whose options each NAME the mode:
+   homework; this stop's `Result:` line carries `mechanics: read` as the receipt. Then load
+   `habits-execution-strategy` (the Skill tool); its `Execution:` line is the
+   mode-fit reason. Then present the gated plan and put the gate through ONE question whose
+   options each NAME the mode:
 
    ```ask
    The plan is gated. Build it <in this session | through the seats>: <the mode-fit reason>.
@@ -167,8 +157,8 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    - *session*: run `task-implement` - it marks, ticks and resumes each task in the plan file.
    - *agents*: fan the plan's task cards out to the matching `<stack>-implementer` seats, each
      dispatched exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries
-     it) - a flat fan-out, the main session the only orchestrator. Write the approval gate file first,
-     quoting this step's approval verbatim (the dispatch hook blocks an unstamped implementer), and
+     it) - a flat fan-out, the main session the only orchestrator. Write the approval gate file first - first line
+     `APPROVED <contract_version> - "<the step-3 answer, verbatim>"` (the dispatch hook blocks an unstamped implementer), and
      DELETE it when the fan-out completes, before the step-5 stop - a live stamp can authorize an
      unrelated dispatch for up to 8h. A red build/test routes per the
      repair-agent rules; tick the same plan file per task as reports land. MINT the run's contract

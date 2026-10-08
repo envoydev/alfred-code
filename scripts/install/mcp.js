@@ -556,6 +556,40 @@ function downconvertToolNames({ roots = [], bare = [], log = () => {} })
 // turned bare. Every server that route registers goes to THIS project's .mcp.json instead.
 const registrationScope = (routes, scope) => (scope === 'user' && !corePluginOn(routes) ? 'project' : scope);
 
+// The MCP scopes a registration lives at, narrowest first - where one name is registered at several, the narrowest
+// is the one Claude Code connects (code.claude.com/docs/en/mcp, 'Scope hierarchy and precedence').
+const MCP_SCOPES = ['local', 'project', 'user'];
+const broaderMcpScopes = (scope) => MCP_SCOPES.slice(MCP_SCOPES.indexOf(scope) + 1);
+
+// THE ADMIN'S MCP CONFIG (code.claude.com/docs/en/managed-mcp) - read-only to every run: never registered over,
+// removed or denied. `managed-mcp.json` at the system path takes EXCLUSIVE control - only its servers and the
+// managed `managedMcpServers` load, plugin servers included, and `claude mcp add` is refused - and
+// `managedMcpServers` in `managed-settings.json` (or a `managed-settings.d/*.json` drop-in) provides servers that
+// rank above every scope. Server-managed settings from the claude.ai console have no file here and are not seen.
+// `ALFRED_CODE_MANAGED_DIR` names another folder (a machine that keeps the files elsewhere, or a test).
+// Returns `{ dir, exclusive, names }` - `exclusive` the managed-mcp.json's presence, `names` every server it or
+// the managed settings provide.
+const MANAGED_DIRS = { darwin: '/Library/Application Support/ClaudeCode', win32: 'C:\\Program Files\\ClaudeCode' };
+function adminMcp({ env = process.env, platform = process.platform } = {})
+{
+    const set = env && env.ALFRED_CODE_MANAGED_DIR;
+    const dir = set || MANAGED_DIRS[platform] || '/etc/claude-code';
+    const read = (file) => { try { return parseJson(fs.readFileSync(file, 'utf8')); } catch { return null; } };
+    const keys = (map) => (map && typeof map === 'object' && !Array.isArray(map) ? Object.keys(map) : []);
+    const names = new Set();
+    const exclusiveFile = read(path.join(dir, 'managed-mcp.json'));
+    for (const name of keys(exclusiveFile && exclusiveFile.mcpServers)) names.add(name);
+    let dropIns = [];
+    try { dropIns = fs.readdirSync(path.join(dir, 'managed-settings.d')).filter((f) => f.endsWith('.json')).sort().map((f) => path.join(dir, 'managed-settings.d', f)); }
+    catch { /* no drop-in folder */ }
+    for (const file of [path.join(dir, 'managed-settings.json'), ...dropIns])
+    {
+        const data = read(file);
+        for (const name of keys(data && data.managedMcpServers)) names.add(name);
+    }
+    return { dir, exclusive: Boolean(exclusiveFile), names };
+}
+
 // A-M2 / A-M3: WHICH server a registration runs - the url it calls, or the package it launches - the
 // part of its shape that does not move with a pin, a flag, a path or the Windows `cmd /c` wrapper. A
 // registration of the stack's own shape is the stack's to remove; another under the same name is the
@@ -932,6 +966,6 @@ module.exports = {
     retiredMcps, dueRetired, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape, snapshotMcp, keepMcpOrder,
     playwrightDrop, downconvertToolNames, respellToolNames, bareServersIn, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive, mcpjsonSwitch, mcpjsonTrusted,
-    registrationScope, identityOf, exactStack, packageName, stackIdentities, registrationsAt, accountBackups, accountLoss, stackAuthored, shadowingRegistrations, ensurePlaywrightIgnore,
+    registrationScope, MCP_SCOPES, broaderMcpScopes, adminMcp, identityOf, exactStack, packageName, stackIdentities, registrationsAt, accountBackups, accountLoss, stackAuthored, shadowingRegistrations, ensurePlaywrightIgnore,
     managedMcp, removeManagedMcp,
 };

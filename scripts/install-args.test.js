@@ -417,8 +417,11 @@ test('install-args: --scope-of gives an optional item its own scope; the require
     assert.deepStrictEqual(b.scopeOf, { 'browser-chrome': 'user', 'browser-firefox': 'user', 'browser-msedge': 'user', 'browser-webkit': 'project' }, 'browser is every engine; a later engine line wins for its own');
     for (const item of ['alfred-code', 'alfred-navigation', 'alfred-memory', 'alfred-documentation', 'superpowers'])
         fails(['install', '--scope-of', `${item}=global`], /--scope-of: '.*' has no scope of its own - one of browser, .*the core and the alfred- servers follow --scope/);
-    for (const bad of ['claude-hud', 'claude-hud=local', 'claude-hud=', '=project'])
-        fails(['install', '--scope-of', bad], /--scope-of takes '<item>=<global\|project>'/);
+    const c = ok(['install', '--scope-of', 'claude-hud=local', '--scope-of', 'browser-chrome=Local']);
+    assert.deepStrictEqual(c.scopeOf, { 'claude-hud': 'local', 'browser-chrome': 'local' }, 'local is a scope of its own');
+    // managed is the admin's - no run installs there, so it is no answer.
+    for (const bad of ['claude-hud', 'claude-hud=managed', 'claude-hud=', '=project'])
+        fails(['install', '--scope-of', bad], /--scope-of takes '<item>=<global\|project\|local>'/);
     fails(['install', '--scope-of'], /--scope-of takes/);
     assert.ok(require('./install/args.js').FLAG_LIST.includes('--scope-of'));
 });

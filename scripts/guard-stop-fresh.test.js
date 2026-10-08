@@ -6,14 +6,13 @@
 // turn that mattered.
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
-require('./hook-test-env').isolateHookSuite();
+require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // audit 2026-10-08: its hooks' tmp state stays in a dir of its own
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-stop-fresh-'));
@@ -156,6 +155,18 @@ test('guard-stop-contract: a main-session close over its own live background wor
   const quoted = launchRows('toolu_gr1', 'Bash', { command: 'grep task-notification t.jsonl' },
     '<task-notification>\n<task-id>a1b2c3</task-id>\n<tool-use-id>toolu_ag1</tool-use-id>\n<status>completed</status>\n</task-notification>', { stdout: '' });
   assert.equal(closeOver('h4-quoted', [...live, ...quoted], RUNNING_CLOSE).status, 0, 'a quoted notice is no completion');
+});
+
+test('audit 2026-10-08: the Stop payload\'s background_tasks registry is read before the lagging transcript', () => {
+  // code.claude.com/docs/en/hooks 'Stop input': present when the task registry is reachable, empty when nothing is in flight
+  const over = (name, rows, tasks) => close(WAITING_CLOSE, { transcript_path: transcript(name, [...rows, assistantRow(`${name}-close`, WAITING_CLOSE)]), background_tasks: tasks });
+  assert.equal(over('bt-sub', fgBash, [{ id: 't1', type: 'subagent', status: 'running', description: 'review', agent_type: 'general-purpose' }]).status, 0,
+    'a running subagent the transcript has not caught up with');
+  assert.equal(over('bt-shell', fgBash, [{ id: 't2', type: 'shell', status: 'running', description: 'tests', command: 'npm test' }]).status, 0, 'a finite shell');
+  assert.equal(over('bt-server', fgBash, [{ id: 't3', type: 'shell', status: 'running', description: 'dev', command: 'npm run dev' }]).status, 2, 'a server never reports back');
+  assert.equal(over('bt-done', fgBash, [{ id: 't4', type: 'subagent', status: 'completed', description: 'review' }]).status, 2, 'a settled task is no live work');
+  assert.equal(over('bt-empty', [...fgBash, ...asyncAgent('toolu_bt5', 'b5')], []).status, 2, 'an empty registry outranks a launch the transcript still shows open');
+  assert.equal(over('bt-none', [...fgBash, ...asyncAgent('toolu_bt6', 'b6')], undefined).status, 0, 'with no registry the transcript decides, as before');
 });
 
 test('guard-stop-contract: the same closes with no live background work of their own still block (2.1.6 H4)', () => {
@@ -753,7 +764,7 @@ const promptSubmit = (prompt, tp, env) => {
 test('guard-answer-length: a verbatim-repeated prompt is an ambiguity signal, not a re-answer', () => {
   // Measured in three sessions of one day: the user re-sent an identical question 2-3 times,
   // escalating /model and /effort between them, before the model asked what was meant.
-  const q = 'do we need to update claude file according to claude stack?';
+  const q = 'do we need to update claude file according to alfred code?';
   const again = transcript('vr-again', [
     { type: 'user', message: { role: 'user', content: q } },
     assistantRow('v1', 'Here is a long answer about the file.'),

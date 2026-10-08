@@ -55,7 +55,7 @@ The safety playbook is `dotnet-migrate`; this is the wiring it leaves open.
 
 - `--project` = the migrations assembly (e.g. `Infrastructure`), `--startup-project` = the host (e.g. `Api`), `--context` when several `DbContext`s exist.
 - Migrations in a different assembly from where the context is registered: `UseNpgsql(cs, o => o.MigrationsAssembly("MyApp.Infrastructure"))`.
-- Apply inside an ExecutionStrategy (`GetPendingMigrationsAsync` -> `MigrateAsync`); prefer applying from a separate step - `dotnet-migrate`'s migrations bundle, or a dedicated migration-runner host that applies then exits - so the app never migrates on startup under load; the zero-downtime playbook is `dotnet-migrate`'s.
+- Apply inside an ExecutionStrategy (`GetPendingMigrationsAsync` -> `MigrateAsync`); where and when to apply is `dotnet-migrate`'s.
 
 ## Provider notes
 

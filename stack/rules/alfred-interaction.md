@@ -20,7 +20,7 @@ description: "House baseline - interaction: communication style, asking the user
 ## Asking the user
 
 - Ambiguous *goal* - the FIRST action is the `habits-clarify` Skill call, before the design or the first edit. Ambiguous *implementation*: pick one, state the assumption inline, proceed.
-- A blocking ask - a pick, an approval, an input the work cannot proceed without - goes through the AskUserQuestion tool: concrete options, the recommended one marked. The question text carries the recommendation and its one reason, never a contentless opener; free-form prose only when no options can be named. Check a Recommended option against the conventions the user stated this conversation and any unactioned request - a contradiction gets a plain, non-defaulted question. A dispatched seat returns the open question in its report instead.
+- A blocking ask - a pick, an approval, an input the work cannot proceed without - goes through the AskUserQuestion tool: concrete options, the recommended one marked. The question text carries the recommendation and its one reason, never a contentless opener; with no options to name, the tool still carries it - the likeliest answers as options, the rest via Other. Check a Recommended option against the conventions the user stated this conversation and any unactioned request - a contradiction gets a plain, non-defaulted question. A dispatched seat returns the open question in its report instead.
 - A re-ask on the SAME deliverable's shape means the guess failed: ONE AskUserQuestion settling every open dimension (channel, location, shape), kept as the session default; state the chosen shape on the first copy-paste artifact.
 - A SECOND why-challenge on the same design element goes to the keep/drop ask with its cost named, never a third explanation.
 
@@ -38,15 +38,13 @@ A design, plan or decision the user proposes gets an adversarial review - valida
 
 - No em-dashes - single dashes. No double quotes in prose - single quotes, an AskUserQuestion's question, labels and descriptions included (a PreToolUse deny hands a slip back corrected, code spans untouched). In JSON or code a string's delimiters stay double.
 - Never use or mention the user's name unless they ask.
-- No code comment flagging a deliberate simplification - its ceiling goes in the report as a `where | limit | revisit when` row, filed under the architecture docs' Known ceilings.
 
 ## Planning and execution
 
 - Default for coding: apply, then summarize in 1-3 sentences. 'just do it' = no summary; 'walk me through' / 'plan it' = explain or plan first, no edits.
 - A written plan file only when the user asks for a plan, the work spans sessions, or a design flow writes it as its handoff - then the FIRST action is the `habits-plan-writing` Skill call, before the plan file is written. A single-session change runs on a todo list (measured: 6 of 12 pilot cells wrote and re-ticked a plan file after their last test).
 - Non-trivial code is written test-first - the FIRST action is the `habits-test-first` Skill call, before the first production edit.
-- A task of more than a few steps across more than one file or subtask - the FIRST action is the `habits-execution-strategy` Skill call, before the first edit. Defaults, also in a resumed session: one agent; independent tool calls batched; cheap checks per batch, the heavy suite once at the end; a CI-parity run before a push where the project has one.
-- A mechanical change across 10+ files: confirm the scope list, no plan. No planning at all for typos, one-line fixes, formatting, dep bumps, a single-file rename.
+- Every task settles how it runs before its first edit - route, mode, model. A small task settles it inline, no Skill call, and gets no plan: a typo, a one-line fix, formatting, a dep bump, a single-file rename, or a mechanical change across 10+ files once the user confirms its scope list. Any other task of more than a few steps across more than one file or subtask, one spanning stacks or touching auth, a migration or a public contract, or one that would dispatch a seat - the FIRST action is the `habits-execution-strategy` Skill call, before the first edit. Defaults, also in a resumed session: a direct edit on the session's model; one agent; independent tool calls batched; cheap checks per batch, the heavy suite once at the end; a CI-parity run before a push where the project has one.
 - Code fails - the FIRST action is the `habits-root-cause` Skill call, before the next fix lands.
 - Several FIRST actions due at once (two habit pointers, or one beside a convention rule's attach) load in the same call - one message of Skill calls, before the act any of them guards.
 - Inherited code: its conventions win over these rules unless broken or unsafe.

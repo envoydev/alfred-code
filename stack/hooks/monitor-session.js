@@ -134,8 +134,7 @@ if (require.main === module)
   const event = payload.hook_event_name;
   if (event !== 'PostToolUse' && event !== 'UserPromptSubmit') process.exit(0);
 
-  // ALFRED_CODE_DOCS_PATH is the name; envOf also answers CLAUDE_STACK_DOCS_PATH (pre-2.0.0) and // legacy-name
-  // CLAUDE_DOCS_PATH (pre-0.2.43).
+  // The docs root, ALFRED_CODE_DOCS_PATH.
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
   const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs');
   const sid = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_');
@@ -146,6 +145,9 @@ if (require.main === module)
   if (event === 'UserPromptSubmit')
   {
     try { fs.mkdirSync(path.dirname(logFile), { recursive: true }); fs.writeFileSync(logFile, ''); } catch { /* best-effort */ }
+    // State hygiene once a turn (hook-prelude.js sweepStale, audit 2026-10-08 S9): other sessions' logs and markers
+    // past 7 days go.
+    try { const pre = require('./hook-prelude.js'); if (typeof pre.sweepStale === 'function') pre.sweepStale(path.dirname(logFile), 'monitor-'); } catch { /* no prelude */ }
     process.exit(0);
   }
   // One append per call: a short line is written whole under O_APPEND, so parallel calls never lose a row; it

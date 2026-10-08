@@ -5,7 +5,7 @@ description: "Load when hardening or reviewing Angular web security - XSS, bypas
 
 # Angular / web frontend security
 
-Angular escapes interpolated values by output context by default, so the classic reflected XSS is closed out of the box. The vulnerabilities are where you leave that path, trust the client with something it should not hold, or reach a DOM sink Angular never saw. This is the client-side map; it pairs with the security review of a live diff (`/security-review`, which the pre-commit checkpoint runs on an auth, token or data-access change) and with the skill covering server-side .NET hardening, where the install has one. Treat every value that crossed a trust boundary - an API response, a route param, a deep link, a postMessage - as hostile until proven otherwise.
+Angular escapes interpolated values by output context by default, so the classic reflected XSS is closed out of the box. The vulnerabilities are where you leave that path, trust the client with something it should not hold, or reach a DOM sink Angular never saw. This is the client-side map. Treat every value that crossed a trust boundary - an API response, a route param, a deep link, a postMessage - as hostile until proven otherwise.
 
 ## When to use
 
@@ -84,4 +84,4 @@ this.router.navigateByUrl(
 
 ## Review output
 
-Report findings as `surface | risk | fix`, ordered by risk - e.g. `[innerHTML] fed through bypassSecurityTrustHtml | stored XSS runs in every viewer's session | bind the sanitized value and keep trust calls away from user-influenced input`. Findings on the server side route to the skill covering ASP.NET / .NET hardening (the OWASP-mapped server mitigations), on the native shell to the skill covering the Ionic / Capacitor native attack surface (Keychain storage, deep links, WebView lockdown) - name the route by what it covers, do not restate its content here; when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED for that stack.
+Report findings as `surface | risk | fix`, ordered by risk - e.g. `[innerHTML] fed through bypassSecurityTrustHtml | stored XSS runs in every viewer's session | bind the sanitized value and keep trust calls away from user-influenced input`. Findings on the server side route to the skill covering ASP.NET / .NET hardening (the OWASP-mapped server mitigations), on the native shell to the skill covering the Ionic / Capacitor native attack surface (Keychain storage, deep links, WebView lockdown) - name the route by what it covers, do not restate its content here; when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED for that stack. A fix you applied closes with its proof - the rebuilt bundle or served header, and the spec that now fails on the old code.

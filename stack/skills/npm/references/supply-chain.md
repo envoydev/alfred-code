@@ -63,7 +63,7 @@ Typosquats (`expresss`, `loadsh`): cooldown + behavioral scanning + reviewing ev
 
 ## Private proxy registry
 
-One controlled point all installs flow through - Verdaccio (self-hosted), Azure Artifacts (fits an Azure/.NET shop), GitHub Packages, Artifactory (enterprise). Buys: caching/offline resilience, confusion protection via scope mapping, one chokepoint for scanning + cooldown policy. Run it in pure proxy mode so upstream signatures pass through unchanged and still verify against the upstream key.
+One controlled point all installs flow through - Verdaccio (self-hosted), Azure Artifacts, GitHub Packages, Artifactory (enterprise). Buys: caching/offline resilience, confusion protection via scope mapping, one chokepoint for scanning + cooldown policy. Run it in pure proxy mode so upstream signatures pass through unchanged and still verify against the upstream key.
 
 ## SBOM and the EU CRA
 

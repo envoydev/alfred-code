@@ -6,8 +6,7 @@
 // The rule, whole (2.1.0):
 //   1. Every SEAT rides the CORE plugin, enabled in every install. A seat the selection did not pick
 //      is switched off per project by `permissions.deny: ["Agent(alfred-code:<seat>)"]` - spike S3
-//      measured the seat leave the listing and its description leave the bill (-434 tokens), and
-//      rebrand-evidence S6 measured the same under the alfred-code spelling.
+//      measured the seat leave the listing and its description leave the bill (-434 tokens).
 //   2. Every SKILL is LIBRARY: shipped in this repo, listed by no marketplace entry, copied into a
 //      project per pick by the installer.
 //
@@ -18,8 +17,7 @@
 // `paths:` line until a matching file is touched. A seat has its lever in the deny list, so it can
 // ride the plugin, and a seat's bare `skills:` preload resolves the project copy (plugin-migration
 // evidence S6). Before 2.1.0 the core carried the always closure instead (`formerCore` below), and
-// every other seat was a library copy too. The per-stack entries v1.2.0 shipped are frozen in
-// meta/retired-entries.json, which update migrates from; the marketplace no longer lists them (2.1.7).
+// every other seat was a library copy too.
 const fs = require('node:fs');
 const path = require('node:path');
 const { computeClosure } = require('./stack-select.js');
@@ -94,17 +92,6 @@ function costToday(stacks, options = {})
     return { chars, skills: closed.skills.length, agents: closed.agents.length };
 }
 
-// The per-stack entries 1.2.0 shipped, frozen when they retired: listed in the marketplace so an
-// installed one keeps working until update copies its picks into the project - dropped only on
-// evidence that no install still resolves through them (rebrand-evidence S25). The
-// file stays while the names are retired - it is the only record of what each entry carried; an
-// unreadable one reads as nothing retiring.
-function readRetiredEntries(repo = REPO)
-{
-    try { return JSON.parse(fs.readFileSync(path.join(repo, 'meta/retired-entries.json'), 'utf8')).entries || []; }
-    catch { return []; }
-}
-
 // The plugins a release took out of the stack, each with the marketplace it came from when that is
 // not the stack's own and the line that adds its server back (meta/retired-plugins.json). Unreadable
 // reads as nothing retiring.
@@ -114,4 +101,4 @@ function readRetiredPlugins(repo = REPO)
     catch { return []; }
 }
 
-module.exports = { placement, formerCore, costOf, costToday, descriptionChars, mergeSelections, readJson, readRetiredEntries, readRetiredPlugins, CORE, LIBRARY };
+module.exports = { placement, formerCore, costOf, costToday, descriptionChars, mergeSelections, readJson, readRetiredPlugins, CORE, LIBRARY };

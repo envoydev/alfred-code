@@ -22,7 +22,7 @@ A red check is not automatically a code bug. The highest-value call in CI triage
 
 - **Compile / restore.** A CS/NG/TS compile error is code - fix it. A restore red is usually NOT the code: a lockfile out of sync with the manifest - `NU1004` under `dotnet restore --locked-mode`, `npm ci` refusing a `package-lock.json` that no longer matches `package.json` - so a locked restore fails where a loose install would silently update; an unresolvable version set (npm `ERESOLVE` on a peer conflict, `ETARGET` when no version matches the range); a private feed the runner cannot reach or auth to (`NU1301` - the source, not the package); a package no configured source carries (`NU1101` - a wrong id or version, or a missing source); a rate-limited registry; or a stale cache key replaying an old package set. Fix the lockfile or the feed, not the code.
 - **Green locally, red only on the runner** (reach here first when your local run passed). Case-sensitivity - a Linux runner is case-sensitive, so an import whose casing differs from the file builds on mac/Windows and fails only in CI. A file present locally but never committed, so the clean checkout lacks it. A Debug-vs-Release gap (a Release-only analyzer, a DEBUG-conditional path). A missing CI-only secret or env var. Tool-version skew - `global.json` rollForward, `.nvmrc` / engines, the JDK or Xcode the runner image pins, a floating vs SHA-pinned action. The fix is the workflow or a pin, not the code.
-- **Quality gate.** The .NET gate is a build with warnings promoted to errors plus a formatter check; a red here is committed formatting drift or a newly-promoted analyzer, not a compile break. The fix is the code - and any instinct to silence the warning or downgrade the severity is the reward-hack to resist.
+- **Quality gate.** A quality gate is usually a build with warnings promoted to errors plus a formatter check (`dotnet format --verify-no-changes`, `prettier --check`, `eslint`); a red here is committed formatting drift or a newly-promoted analyzer, not a compile break. The fix is the code - and any instinct to silence the warning or downgrade the severity is the reward-hack to resist.
 - **Signing / release** (mobile). An expired distribution cert or provisioning profile, a rotated store API key, a non-incrementing build number, a keystore-secret decode failure, or native built off a stale bundle because the sync step was skipped. Pipeline config, not app code - route the fix through the skill covering mobile build, signing, and store submission; a project without one fixes it from its own pipeline definition.
 - **Workflow-config drift.** The YAML itself - a renamed job, a broken `needs:` or matrix leg, a wrong working-directory, a bumped action. A red check whose log shows the tool never ran is config; it routes back to you, never to a code fix.
 - **Infra flake** (name the non-determinism, never bare 'flaky'). Test-ordering or shared static state (passes isolated, fails in the full parallel run); real-clock or real-network timing (a real HTTP call, a real timer that needed fake time, an implicit wait); or infra (`exit 137` = OOM/SIGKILL, `exit 143` = SIGTERM/timeout, disk-full, a container-pull blip). Proof is a re-run with no code change passing (`gh run rerun --failed`).
@@ -50,10 +50,11 @@ Worked example - the failed step's first error line reads:
 error NU1301: Unable to load the service index for source https://pkgs.example.com/nuget/v3/index.json. Response status code does not indicate success: 401 (Unauthorized).
 ```
 
-The three-line verdict it produces:
+The four-line verdict it produces:
 
 ```text
 signature: restore - NU1301 against the private feed, 401
 call: environment - the runner's feed credential expired; the code and lockfile never changed
 route: fix the feed secret in the workflow, then re-run; no code fix
+proof: after the feed secret is rotated, `gh run rerun --failed` passes with no code change - NOT RUN until then
 ```

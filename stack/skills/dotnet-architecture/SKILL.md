@@ -1,6 +1,6 @@
 ---
 name: dotnet-architecture
-description: "Use when choosing or holding a .NET architecture - layering, slicing, module boundaries, drift - clean architecture, vertical slice, DDD, microservices."
+description: "Use when choosing or holding a .NET architecture - layering, slicing, DDD, microservices, where code belongs. Not for documenting or judging one."
 ---
 
 # dotnet-architecture (decision hub)
@@ -16,14 +16,22 @@ Decide the shape, then load the one style you chose. **Per-style depth lives in 
 ## When to use
 
 - Also fires on: where code belongs, service boundaries, modular monolith, bounded context.
-- Not for architecture tests (the architecture fitness-test skill) or SQL tuning (the database skills).
+- Not for architecture tests (the architecture fitness-test skill) or SQL tuning (the database skills), nor for documenting the current architecture or judging its tradeoffs (the architecture capture and assessment skills).
 
 ## Pick one, then commit
 
 - **One internal style per codebase (or per module).** Clean and vertical-slice side by side means neither - a reader can't predict where anything lives.
 - **In an established codebase the existing architecture wins.** Match it exactly; never introduce a 'better' second pattern.
 - **Greenfield is a deliberate choice.** Load one style reference and build to it.
-- **Record the choice where the project keeps decisions** - the style picked, the two alternatives rejected, and why - so the next reader inherits the reason and not just the folder layout. An architecture decision nobody wrote down is re-litigated at the next module.
+- **Record the choice where the project keeps decisions** - the style picked, the two alternatives rejected, and why - so the next reader inherits the reason and not just the folder layout. The record's shape:
+
+  ```text
+  Chose: <style>
+  Rejected: <a> (<why>), <b> (<why>)
+  Revisit when: <trigger>
+  ```
+
+  An architecture decision nobody wrote down is re-litigated at the next module.
 
 ## Decide on two axes (plus one additive)
 

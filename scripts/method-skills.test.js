@@ -235,6 +235,132 @@ test('the habit descriptions are triggers only - when, and what they are not for
     }
 });
 
+test('the solve and diagnose flows load the execution strategy before they decide how the work runs', () => {
+    const body = (n) => squash(read(`stack/skills/${n}/SKILL.md`));
+    const solve = body('task-solve');
+    const at = (text, needle) => text.indexOf(needle);
+    const load = 'load `habits-execution-strategy` (the Skill tool)';
+    assert.ok(at(solve, load) > at(solve, '3. **APPROVE**') && at(solve, load) < at(solve, 'The plan is gated.'), 'task-solve loads it before the step-3 mode ask');
+    assert.ok(at(solve, '`habits-execution-strategy` load come first') < at(solve, 'Full spec - designed and audited'), 'the merged approval loads it first too');
+    const cross = body('task-solve-cross');
+    assert.ok(at(cross, load) > -1 && at(cross, load) < at(cross, 'Size <size> across'), 'task-solve-cross loads it before its mode ask');
+    const diag = body('issue-diagnoser');
+    assert.ok(at(diag, load) > at(diag, '4b. PLAN TASKS') && at(diag, load) < at(diag, 'Then decompose the minimal change'), 'issue-diagnoser loads it before the fix cards');
+    assert.match(squash(read('stack/skills/task-solve/references/step-mechanics.md')), /`parallel seats` recommends agents/, 'the mode-fit rule follows the verdict');
+    const strategy = squash(read('stack/skills/habits-execution-strategy/SKILL.md'));
+    assert.doesNotMatch(strategy, /Not inside a stamped solve flow/, 'the flows are no longer excluded');
+    assert.match(strategy, /how the work runs, not only what it changes/, 'it reasons about how the work runs');
+    assert.match(strategy, /can these units run at the same time without losing quality\?/, 'it asks the parallel question');
+    assert.match(strategy, /\*\*parallel is the recommendation\*\*/, 'parallel is recommended when quality holds');
+    assert.match(strategy, /Execution: route <direct \| the flow offered> - mode <serial \| batched \| parallel seats: <n>> - model </, 'one verdict names route, mode and model');
+    for (const route of ['**Direct**', 'gated single-chat solve flow', 'cross-domain solve flow', 'diagnose flow', 'greenfield or framework-upgrade flows'])
+        assert.ok(strategy.includes(route), `the route list holds ${route}`);
+    assert.match(strategy, /never a silent switch/, 'a flow route is offered, never taken silently');
+    assert.match(strategy, /the effort cannot/, 'only the model is overridable per dispatch');
+    assert.match(strategy, /never below the pin on auth, a migration/, 'a risk path keeps the seat pin');
+    const always = squash(read('stack/rules/alfred-interaction.md'));
+    assert.match(always, /Every task settles how it runs before its first edit - route, mode, model\. A small task settles it inline, no Skill call/, 'every task decides how it runs');
+});
+
+test('audit 2026-10-08: the execution verdict stays out of plan files, small tasks get no plan, direct-route edits never dispatch', () => {
+    const strategy = squash(read('stack/skills/habits-execution-strategy/SKILL.md'));
+    // C7: a plan never carries the run (habits-plan-writing, task-design) - a flow's plan file included
+    assert.match(strategy, /never a plan file - a flow's plan file included: there the `Execution:` line rides the flow's mode ask/, 'the verdict rides the mode ask');
+    assert.doesNotMatch(strategy, /the flow's own plan or findings file/, 'no plan or findings file carries the verdict');
+    const diag = squash(read('stack/skills/issue-diagnoser/SKILL.md'));
+    assert.match(diag, /never written into the findings file/, 'the diagnoser states the verdict in its close');
+    // the direct route never dispatches an implementer: the guard needs a stamp only a flow writes
+    assert.match(strategy, /on the direct route the seats are read-only ones/, 'direct-route seats are read-only');
+    assert.match(strategy, /Edit seats are the house `<stack>-implementer`, inside a flow/, 'edit seats live inside a flow');
+    assert.match(strategy, /```ask This task fits <the flow>/, 'the route offer is an ask template');
+    assert.match(strategy, /Up to 3 at once by default, more only on the user's ask/, 'the fan-out cap matches the flows');
+    // C1: the 10+ file mechanical change is a small task with no plan, not a second rule beside the trigger
+    const rule = read('stack/rules/alfred-interaction.md');
+    assert.doesNotMatch(rule, /^- A mechanical change across 10\+ files: confirm the scope list, no plan\./m, 'the separate no-plan line is folded in');
+    assert.match(squash(rule), /A small task settles it inline, no Skill call, and gets no plan: a typo, a one-line fix, formatting, a dep bump, a single-file rename, or a mechanical change across 10\+ files once the user confirms its scope list\. Any other task/, 'one line holds both sides of the threshold');
+});
+
+// Audit 2026-10-08 C8 (BLOCKER 5): the diagnose flow loads the root-cause loop at its step 3 and
+// forbids every edit, so the loop's own scope cut must name that in-chat read-only run - otherwise
+// 'a single-chat run takes all seven' tells it to add a probe and write the fix.
+test('audit 2026-10-08: the root-cause loop cuts to steps 1-5 for the in-chat diagnose flow too', () => {
+    const rc = squash(read('stack/skills/habits-root-cause/SKILL.md'));
+    assert.ok(rc.includes('A read-only run - a diagnoser seat, or the gated diagnose flow in this chat - runs steps 1-5, adds no instrumentation to the code and writes no fix'),
+        'the read-only cut names the in-chat diagnose flow');
+    const diag = squash(read('stack/skills/issue-diagnoser/SKILL.md'));
+    assert.ok(diag.includes('the FIRST action of this step is the `habits-root-cause` Skill call'), 'the diagnose flow loads the loop');
+    assert.ok(diag.includes('Never write code, edit a file under test'), 'and forbids the edits a full loop makes');
+    // the design question at step 7 is a user ask, so it carries the ask tool's shape
+    assert.ok(rc.includes('in a chat, ONE AskUserQuestion with the redesign recommended; a seat returns it in its report'), 'step 7 asks through the tool');
+});
+
+// Audit 2026-10-08 C11 (BLOCKER 6): the walkthrough defers to the answer-length gate, so every trigger
+// phrase its description advertises must be one the gate's depth patterns lift - a phrase they do not
+// lift fires a walkthrough the gate then blocks past its hard cap.
+test('audit 2026-10-08: every phrase habits-explain-code advertises lifts the answer-length gate', () => {
+    const hook = read('stack/hooks/guard-answer-length.js');
+    const re = (name) =>
+    {
+        const m = new RegExp(`^const ${name} = /(.*)/(\\w*);$`, 'm').exec(hook);
+        assert.ok(m, `guard-answer-length.js still declares ${name}`);
+        return new RegExp(m[1], m[2]);
+    };
+    const depth = [re('DEPTH_RE'), re('DEPTH_RE_CYR')];
+    const text = read('stack/skills/habits-explain-code/SKILL.md');
+    const desc = (text.match(/^description:\s*"?(.*?)"?$/m) || [])[1] || '';
+    const phrases = [...desc.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    assert.ok(phrases.length >= 3, 'the description quotes its trigger phrases');
+    for (const p of phrases)
+        assert.ok(depth.some((r) => r.test(p)), `'${p}' fires the walkthrough but does not lift the answer-length gate`);
+    assert.ok(squash(text).includes('The answer-length gate decides, not this file'), 'the body still defers to the gate');
+});
+
+// Audit 2026-10-08, the commit checkpoint: C10 (the security rule names this skill as the home of a
+// test-only carve-out the skill excluded), the commit-consent ask (untemplated while a receipt needs an
+// `authorized:` or `answered:` line), and the discard section a skill that never fires on a discard paid
+// for on every commit - the guard's denial carries that whole route.
+test('audit 2026-10-08: the checkpoint carries the test-only carve-out, a templated commit ask, and no discard copy', () => {
+    const raw = read('stack/skills/habits-commit-checkpoint/SKILL.md');
+    const cp = squash(raw);
+    const rule = squash(read('stack/rules/alfred-security.md'));
+    const carve = "security review: skipped - test-only diff: <paths>";
+    assert.ok(rule.includes(`'${carve}'`), 'the security rule names the carve-out');
+    assert.ok(cp.includes('or when every path in the diff is a test file: verify that from the diff\'s file list') && cp.includes(`\`${carve}\``),
+        'the checkpoint, its named home, carries it');
+    const { lintAskTemplates } = require('./lint-skills.js');
+    assert.deepStrictEqual(lintAskTemplates([{ file: 'habits-commit-checkpoint', text: raw }]), []);
+    const commitAsk = raw.match(/^[ \t]*```ask[ \t]*\n[ \t]*Commit <[\s\S]*?^[ \t]*```/m);
+    assert.ok(commitAsk, 'the commit consent is an ask template');
+    // the git baseline: no commit until the user says so, and the diff shown for review first
+    assert.match(squash(read('stack/rules/alfred-git.md')), /Show the diff for review first/);
+    assert.match(commitAsk[0], /- 'Show the diff first \(Recommended\)'/, 'the recommended option is the git baseline\'s review-first');
+    assert.ok(cp.includes('a picked option is the receipt\'s `answered:` line'), 'a pick is the answered: line');
+    assert.ok(cp.includes('read `git log -1 --stat` back into the close'), 'the commit is read back');
+    assert.doesNotMatch(raw, /## Discarding uncommitted work/, 'the discard section is gone');
+    assert.match(read('stack/hooks/guard-catastrophic-rm.js'), /On 'Discard it', write the receipt \$\{receiptRel\}/, 'the denial carries the receipt route');
+    assert.ok(cp.includes('`<docs-path>/flow/STAGED-SCAN-ALLOW`'), 'the staged-scan receipt has a writer');
+    const discard = JSON.parse(read('meta/shared-rules.json')).rules['discard-allow-receipt'];
+    assert.ok(!discard.sites.some((s) => s.file.includes('habits-commit-checkpoint')), 'the registry no longer pins a checkpoint copy');
+});
+
+test('audit 2026-10-08: the habits record their evidence and carry no copy of an internal cause', () => {
+    // the worked bug example is what the model copies: no internal symbol in Problem or the repro steps
+    const bug = read('stack/skills/habits-create-ticket/references/bug.md').split('## Example')[1];
+    const problem = bug.slice(bug.indexOf('## Problem'), bug.indexOf('## Impact'));
+    assert.doesNotMatch(problem, /OrderSummaryService|formatAddress|address\.country/, 'Problem, Steps and Actual stay observable');
+    assert.match(bug.slice(bug.indexOf('## Impact')), /OrderSummaryService\.formatAddress/, 'the call chain stays in Impact');
+    assert.ok(squash(read('stack/skills/habits-create-ticket/SKILL.md')).includes('file it via the connector (Recommended) vs copy-paste only'));
+    assert.ok(squash(read('stack/skills/habits-test-first/SKILL.md')).includes('`red: <test> - <assertion line>`'), 'the red run leaves evidence');
+    assert.ok(squash(read('stack/skills/habits-done-gate/SKILL.md')).includes("at the close gate (a seat's per-task gate runs the scope its brief names)"), 'a seat runs its brief\'s scope');
+    const sw = squash(read('stack/skills/habits-skill-writing/SKILL.md'));
+    assert.ok(sw.includes('Across skills, a rule two skills both need is copied into each and the copies kept in sync'), 'S2: the cross-skill copy rule');
+    assert.ok(sw.includes('is billed: ONE AskUserQuestion first, the unbilled route recommended'), 'a billed replay asks through the tool');
+    const plan = squash(read('stack/skills/habits-plan-writing/SKILL.md'));
+    const rules = JSON.parse(read('meta/shared-rules.json')).rules;
+    for (const key of ['plan-approved-mode-shape', 'plan-approved-verbatim-shape'])
+        assert.ok(rules[key] && rules[key].sites.some((s) => s.file === 'stack/skills/habits-plan-writing/SKILL.md') && plan.includes(rules[key].sites[0].marker), `${key} pins the habit's copy`);
+});
+
 test('the inline task skills load their method skill through the Skill tool at the right point', () => {
     const body = (n) => squash(read(`stack/skills/${n}/SKILL.md`));
     const design = body('task-design');

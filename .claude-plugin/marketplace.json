@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Claude Code agent stack - skills, agents, rules, hooks, and MCP servers, installed and updated via the alfred-code plugin.",
-    "version": "2.2.2"
+    "version": "2.3.0"
   },
   "plugins": [
     {
       "name": "browser-chrome",
       "source": "./",
       "description": "The browser server (Playwright MCP) driving chrome, as a plugin: a real chrome browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/chrome, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
-      "version": "2.2.2",
+      "version": "2.3.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -36,7 +36,7 @@
       "name": "browser-msedge",
       "source": "./",
       "description": "The browser server (Playwright MCP) driving msedge, as a plugin: a real msedge browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/msedge, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
-      "version": "2.2.2",
+      "version": "2.3.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -59,7 +59,7 @@
       "name": "browser-firefox",
       "source": "./",
       "description": "The browser server (Playwright MCP) driving firefox, as a plugin: a real firefox browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/firefox, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
-      "version": "2.2.2",
+      "version": "2.3.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -82,7 +82,7 @@
       "name": "browser-webkit",
       "source": "./",
       "description": "The browser server (Playwright MCP) driving webkit, as a plugin: a real webkit browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/webkit, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
-      "version": "2.2.2",
+      "version": "2.3.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -105,7 +105,7 @@
       "name": "windows-desktop",
       "source": "./",
       "description": "The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (3.13) and refuses on another OS; PowerShell, Registry, Process, FileSystem stay off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE names another list (none = every tool).",
-      "version": "2.2.2",
+      "version": "2.3.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -137,7 +137,7 @@
       "name": "macos-desktop",
       "source": "./",
       "description": "The macOS desktop server (MacOS-MCP), as a plugin: drives native macOS apps through the Accessibility API (snapshot, click, type, shortcut). macOS only; it needs Accessibility and Screen Recording granted to the terminal or IDE running Claude Code and to the uv-managed Python it runs on. Started through a launcher that pins the Python (3.13) and refuses on another OS.",
-      "version": "2.2.2",
+      "version": "2.3.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -167,7 +167,7 @@
       "name": "alfred-navigation",
       "source": "./",
       "description": "The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Its per-project folder and home (<data root>/serena, .alfred by default) keep its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server's cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that places the data and pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).",
-      "version": "2.2.2",
+      "version": "2.3.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -197,7 +197,7 @@
       "name": "alfred-documentation",
       "source": "./",
       "description": "The documentation server (Context7), as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. Locked: every install carries it beside the core, so it can never be dropped.",
-      "version": "2.2.2",
+      "version": "2.3.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -217,7 +217,7 @@
       "name": "alfred-memory",
       "source": "./",
       "description": "The memory server (mcp-memory-service), as a plugin: the shared recall the stack reads at every session start - preferences, corrections, project facts and agent lessons, searchable by meaning. The database path is the install's level choice (global, scoped or project), so this one server starts through a launcher that reads the project's own settings.json - a plugin entry cannot expand a PROJECT env key (measured).",
-      "version": "2.2.2",
+      "version": "2.3.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -244,7 +244,7 @@
       "name": "alfred-code",
       "source": "./",
       "description": "The Claude Code stack, guided: setup installs it from scratch into a project, init bootstraps it once after the restart (services, memory, captures, AGENTS.md), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables; uninstall removes what the install ledger says the stack wrote, and nothing of the user's.",
-      "version": "2.2.2",
+      "version": "2.3.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -408,7 +408,8 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js\"",
-                "timeout": 10
+                "timeout": 10,
+                "async": true
               }
             ]
           }

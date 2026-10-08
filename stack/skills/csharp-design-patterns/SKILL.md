@@ -5,7 +5,7 @@ description: "Use when implementing, choosing or reviewing a GoF design pattern 
 
 # C# Design Patterns
 
-Guidance for selecting and implementing design patterns in modern C#/.NET. Content is structured after refactoring.guru (intent, applicability, pros and cons) and dofactory (.NET-optimized variants that use framework features instead of hand-rolled GoF structure).
+Guidance for selecting and implementing design patterns in modern C#/.NET.
 
 ## When to use
 
@@ -18,7 +18,7 @@ Guidance for selecting and implementing design patterns in modern C#/.NET. Conte
 2. **Prefer the .NET-native form.** Many GoF patterns are already built into the framework or the language. Hand-rolling the classic UML structure when the platform provides it is an anti-pattern. The reference files mark these as '.NET-native form'.
 3. **Modern C# changes the implementation.** Use DI containers, delegates, lambdas, generics, records, pattern matching, `IObservable<T>`, `IEnumerable<T>`/`yield`, and source generators where they replace boilerplate classes. Show the classic structure only when the user asks for it explicitly (e.g. for learning or interviews).
 4. **Always state the cost.** Every pattern adds indirection. When recommending one, name the tradeoff in one or two sentences (more types, harder navigation, runtime overhead, etc.).
-5. **Style comes from `csharp`, not from here.** All samples follow its conventions (primary constructors for dependency capture, properties before constructors, `sealed` by default). When generating real project code, load `csharp` alongside this skill; on any style conflict, `csharp` wins.
+5. **Style comes from `csharp`, not from here.** All samples follow its conventions. When generating real project code, load `csharp` alongside this skill; on any style conflict, `csharp` wins.
 
 ## Workflow
 
@@ -30,7 +30,7 @@ When the user asks for help with patterns:
     - `references/creational.md` - Factory Method, Abstract Factory, Builder, Prototype, Singleton
     - `references/structural.md` - Adapter, Bridge, Composite, Decorator, Facade, Flyweight, Proxy
     - `references/behavioral.md` - Chain of Responsibility, Command, Interpreter, Iterator, Mediator, Memento, Observer, State, Strategy, Template Method, Visitor
-4. Implement using the modern .NET form from the reference. Include the classic form only on request.
+4. Implement using the modern .NET form from the reference.
 5. State the tradeoff and, where relevant, the simpler alternative that was rejected.
 6. On WPF/MVVM, `ICommand` and `[RelayCommand]` specifics are the WPF conventions skill's where the install has one - implement the pattern here, take the command plumbing from there, and with no such skill installed follow the pattern's reference form and say so.
 7. Prove the sample compiles before calling it compilable: in a project, run `dotnet build` and quote its summary line; with no project to build in, label the sample 'not compiled' in the answer.

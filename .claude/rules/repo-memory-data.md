@@ -40,7 +40,7 @@ The memory levels and stores, where the docs root and the data root live, and th
   names one, and changing it re-points the server, never touching the database file. With no flag the level is the one
   the install records (`memory.recordedPath`): the copy route's `.mcp.json` registration, else the settings key; a settings
   file it cannot read is no answer - the account's local registration answers in its place, and with none the level is
-  `kept` on a project a stamp records (a 1.x account-dir stamp this update migrates counts; an unstamped legacy install
+  `kept` on a project a stamp records (an unstamped legacy install
   does not - measured, its `.mcp.json` registration answers first): no registration re-pointed, no key written, said before the first registration (matrix 2.1.5 F2); a fresh install takes the default
   instead, said first (review 2.1.6 M1). Claude's own memory is switched off only where the memory server takes its
   place - never on the copy route with a kept level (it registers none), and on the plugin route only where the launcher

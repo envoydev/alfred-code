@@ -15,7 +15,8 @@ no output.
 
 ## Hand off
 
-Gate the plan with `task-verify-plan` before building, build each task with
+Inside a calling flow, return to it - its stop owns what runs next. On its own, name the next
+steps in the close: gate the plan with `task-verify-plan` before building, build each task with
 `task-implement` under the stack skill (a task the build proves wrong comes back here only
 through that skill's user ask, never on its own), and review the built code with
 `task-verify-code` (`task-solve` drives this whole chain with a user gate between every

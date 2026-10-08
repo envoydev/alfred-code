@@ -25,7 +25,7 @@ const BIG = path.join(__dirname, 'lint-skills.js');
 // session this suite may run inside (an installed checkout exports ALFRED_CODE_* into every tool call).
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 for (const k of Object.keys(process.env))
-  if (/^(ALFRED_CODE_|CLAUDE_STACK_)/.test(k) || k === 'CLAUDE_DOCS_PATH' || k === 'CLAUDE_PLUGIN_ROOT' || k === 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE') delete process.env[k]; // legacy-name
+  if (/^ALFRED_CODE_/.test(k) || k === 'CLAUDE_PLUGIN_ROOT' || k === 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE') delete process.env[k];
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 
 const git = (dir, ...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });

@@ -6,7 +6,6 @@ require('./hook-test-env').isolateHookSuite();
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
-for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 const { repo, section } = require('./docs-fixture');
 
 let n = 0;
@@ -158,7 +157,7 @@ test('a status object from an older engine still produces the start block', () =
     fs.copyFileSync(path.join(HOOKS, 'docs-session.js'), path.join(dir, 'docs-session.js'));
     const out = require('node:child_process').spawnSync(process.execPath, [path.join(dir, 'docs-session.js')], {
       cwd: r.root, input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: sid() }), encoding: 'utf8',
-      env: { ...process.env, CLAUDE_PROJECT_DIR: r.root, ALFRED_CODE_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '', ALFRED_CODE_DOCS_VERSIONING: 'git' },
+      env: { ...process.env, CLAUDE_PROJECT_DIR: r.root, ALFRED_CODE_DOCS_PATH: '.claude/docs', ALFRED_CODE_DOCS_VERSIONING: 'git' },
     });
     assert.strictEqual(out.stderr, '', 'the older engine is not an error');
     assert.match(ctx(out), /Orders own refunds/, 'the session is still oriented');
@@ -364,6 +363,10 @@ test('shell reads are never held; shell writes are', () => {
     assert.ok(!denied(r.hook(pre('Bash', { command: 'grep -n Refund src/Api/Orders/Refund.cs 2>/dev/null' }, s))));
     assert.ok(!denied(r.hook(pre('Bash', { command: 'dotnet test tests/Api > run.log 2>&1' }, s))));
     assert.ok(denied(r.hook(pre('Bash', { command: "cat > src/Api/Orders/Refund.cs <<'EOF'\nclass Refund {}\nEOF" }, s))));
+    // Audit 2026-10-08 row 46: the Monitor tool runs its command under the shell route, and its writes are held too.
+    const m = sid();
+    assert.ok(denied(r.hook(pre('Monitor', { command: 'echo x > src/Api/Orders/Refund.cs' }, m))), 'a Monitor write is held');
+    assert.ok(!denied(r.hook(pre('Monitor', { command: 'tail -f run.log' }, m))), 'a Monitor watch is not');
   } finally { r.rm(); }
 });
 
@@ -519,7 +522,9 @@ test('a change to a watched file asks once, naming the section; a second stop is
 
 // Pilot 4 (b4-pilot-4-flow): all 8 flow cells ended on the docs reply ('docs ok'), so the last message a host reads
 // carried no task summary. The Stop ask's reply is the session's last message, so it asks for the docs line FOLLOWED
-// by the summary; a seat's SubagentStop ask keeps its own shape (pinned by the finished-agent test below).
+// by the summary. A seat's SubagentStop reply is its report to the caller, so that ask closes on keeping the report
+// whole (audit 2026-10-08 row 25: the 'docs ok' line alone dropped an implementer seat's status: lines; the
+// finished-agent test below pins it).
 test('the Stop ask keeps the task summary last: the docs line, then the summary in at most three lines', () => {
   const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
   try {
@@ -540,7 +545,10 @@ test('no hit, stop_hook_active, the ask switched off, or no watch.json: silent',
     assert.strictEqual(r.hook(stopEv(a)).stdout, '', 'routine change');
     const b = sid(); start(r, b);
     r.write('src/Api/Program.cs', 'y\n');
-    assert.strictEqual(r.hook(stopEv(b, true)).stdout, '', 'stop_hook_active');
+    // The Stop chain (audit 2026-10-08 S1): `stop_hook_active` is set after ANY Stop hook's block, so a continuation a
+    // sibling caused is judged (it never asked before) - and the ask still comes once per session.
+    assert.match(r.hook(stopEv(b, true)).stdout, /"decision":"block"/, 'a continuation a sibling Stop hook caused is judged');
+    assert.strictEqual(r.hook(stopEv(b, true)).stdout, '', 'its own continuation is silent');
     assert.strictEqual(r.hook(stopEv(b), { ALFRED_CODE_DOCS_ASK: '0' }).stdout, '', 'switched off');
     fs.rmSync(`${r.root}/.claude/docs/architecture/watch.json`);
     const c = sid(); start(r, c);
@@ -600,7 +608,7 @@ test('a finished agent is asked about the section documenting what it changed, q
     touchBy(r, s, 'a1');
     const body = JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout);
     assert.strictEqual(body.decision, 'block');
-    assert.match(body.reason, /^Docs check: you changed src\/Api\/Program\.cs\n\nOne section documents this file - 'orders', in \.claude\/docs\/architecture\/references\/patterns\.md:\n  "Refunds are ledgered before the payment call\."\n\nDoes your change still leave that true\?\n\n  Yes -> reply: docs ok\n  No  -> rewrite the section, then run\n {11}node \.claude\/hooks\/docs\.js set patterns#orders --expect [0-9a-f]{12}\n {9}and commit the doc with your code, so it travels with this branch\.$/);
+    assert.match(body.reason, /^Docs check: you changed src\/Api\/Program\.cs\n\nOne section documents this file - 'orders', in \.claude\/docs\/architecture\/references\/patterns\.md:\n  "Refunds are ledgered before the payment call\."\n\nDoes your change still leave that true\?\n\n  Yes -> reply: docs ok\n  No  -> rewrite the section, then run\n {11}node \.claude\/hooks\/docs\.js set patterns#orders --expect [0-9a-f]{12}\n {9}and commit the doc with your code, so it travels with this branch\.\n\nThis reply is what your caller receives: the docs line first, then your report as your brief asks for it -\nits status: and contract_version: lines, where it has them, unchanged\.$/);
     assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-update"/);
     assert.match(r.read(`.claude/docs/hook-blocks/${s}.jsonl`), /"event":"SubagentStop"/);
   } finally { r.rm(); }
@@ -766,14 +774,14 @@ test('local versioning says where the doc is stored instead of telling it to com
     r.hook(subStart(s, 'a1'));
     touchBy(r, s, 'a1', {});
     const reason = JSON.parse(r.hook(subStop(s, 'a1')).stdout).reason;
-    assert.match(reason, /\n {9}and it is stored for branch feat\/refunds only\. It moves into the\n {9}shared docs by itself once this branch is merged\. Nothing to commit\.$/);
+    assert.match(reason, /\n {9}and it is stored for branch feat\/refunds only\. It moves into the\n {9}shared docs by itself once this branch is merged\. Nothing to commit\.\n\nThis reply is what your caller receives/);
     assert.doesNotMatch(reason, /commit the doc with your code/);
     // On mainline the overlay is never written, so neither clause is true there.
     r.git('switch', '-q', 'develop');
     const t = sid();
     r.hook(subStart(t, 'a2'));
     wroteBy(r, t, 'a2', 'src/Api/Program.cs', 'app.UseCors();\napp.Run();\n', {});
-    assert.match(JSON.parse(r.hook(subStop(t, 'a2')).stdout).reason, /\n {9}and it lands in the shared docs at once\. Nothing to commit\.$/);
+    assert.match(JSON.parse(r.hook(subStop(t, 'a2')).stdout).reason, /\n {9}and it lands in the shared docs at once\. Nothing to commit\.\n\nThis reply is what your caller receives/);
   } finally { r.rm(); }
 });
 
@@ -805,7 +813,7 @@ test('an agent payload with no id is keyed on its type, and two sections read as
     assert.match(reason, /\n  'orders', in \.claude\/docs\/architecture\/references\/patterns\.md:\n    "Refunds are ledgered before the payment call\."\n/);
     assert.match(reason, /\n  'users', in \.claude\/docs\/architecture\/references\/patterns\.md:\n    "Users are soft-deleted\."\n/);
     assert.match(reason, /Do your changes still leave those true\?/);
-    assert.match(reason, /and commit the docs with your code, so they travel with this branch\.$/);
+    assert.match(reason, /and commit the docs with your code, so they travel with this branch\.\n\nThis reply is what your caller receives/);
   } finally { r.rm(); }
 });
 
@@ -1491,4 +1499,124 @@ test('a stranded-root sweep leaves the old root alone when it holds a doc, a tra
     assert.ok(live.exists('.claude/docs/flow/monitor-s1.jsonl'), 'the live root is never swept');
     assert.ok(!litter.exists('.claude/docs'), 'OS litter alone goes');
   } finally { for (const r of [doc, tracked, live, litter]) r.rm(); }
+});
+
+// ---- audit 2026-10-08: state, the porcelain cap, consult credit, the start-block cap, unattended rows, no watch ----
+
+// Row 19: a parallel PreToolUse call read a half-written state file as `{snapshot: null}` and saved that back, losing the
+// session's snapshot and its Stop ask. A reader landing mid-write now sees the previous state whole.
+test('a state write is whole or absent to a reader that lands mid-write', () => {
+  const { saveState, loadState } = require('../stack/hooks/docs-session.js');
+  const s = sid();
+  const file = require('node:path').join(require('node:os').tmpdir(), `docs-session-${s}.json`);
+  const real = fs.writeFileSync;
+  let seen = null;
+  try {
+    saveState(s, { snapshot: { head: 'before' } });
+    fs.writeFileSync = (p, data, ...rest) => { real(p, String(data).slice(0, 7)); seen = loadState(s); return real(p, data, ...rest); };
+    try { saveState(s, { snapshot: { head: 'after' } }); } finally { fs.writeFileSync = real; }
+    assert.deepStrictEqual(seen.snapshot, { head: 'before' }, 'the reader mid-write saw the previous state whole');
+    assert.deepStrictEqual(loadState(s).snapshot, { head: 'after' });
+    assert.ok(!fs.readdirSync(require('node:path').dirname(file)).some((f) => f.startsWith(`docs-session-${s}.json.`)), 'no temp file is left behind');
+  } finally { fs.writeFileSync = real; fs.rmSync(file, { force: true }); }
+});
+
+// Row 21: each round resolved every hit's next id before re-checking the cap, so 100 watch hits cost 100 section walks
+// (137 / 738 / 2,261ms at 1 / 30 / 100 hits) for the same three asks.
+test('the hit loop stops resolving at the cap: 100 watch hits cost three lookups, not 100', () => {
+  const { sectionRefs } = require('../stack/hooks/docs-session.js');
+  let calls = 0;
+  const docs = { askRef: (id) => { calls++; return { id }; }, protectedRef: () => null, notOwnedOf: () => [], unowned: () => [] };
+  const hits = Array.from({ length: 100 }, (_, i) => ({ kind: 'k', files: [`f${i}`], sections: [`p#s${i}`], domain: 'architecture' }));
+  const { asks } = sectionRefs(docs, hits, 3);
+  assert.deepStrictEqual(asks.map((a) => a.id), ['p#s0', 'p#s1', 'p#s2']);
+  assert.strictEqual(calls, 3);
+});
+
+// Row 20: past 2,000 dirty paths the cap took git's first 2,000, so untracked files sorting ahead of a new watched file
+// cost it its ask.
+test('a watched new file past 2,000 other untracked paths is still asked about', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  try {
+    const s = sid();
+    start(r, s);
+    for (let i = 0; i < 2100; i++) r.write(`a/f${String(i).padStart(4, '0')}.txt`, `${i}\n`);
+    r.write('src/New/Program.cs', 'app.Run();\n');
+    const out = r.hook(stopEv(s));
+    assert.match(out.stdout, /"decision":"block"/);
+    assert.match(JSON.parse(out.stdout).reason, /src\/New\/Program\.cs/);
+  } finally { r.rm(); }
+});
+
+// Row 42: a Glob of the docs folder, an `ls`, a Read of watch.json, an echoed show line and a show of a ref that does not
+// exist each unlocked the hold; none of them reads a section.
+test('a listing, a watch.json read, an echoed show and a show of a missing ref earn no consult credit', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  const refs = `${r.root}/.claude/docs/architecture/references`;
+  const write = (s) => r.hook(pre('Write', { file_path: 'src/Api/Orders/New.cs', content: 'x' }, s));
+  try {
+    const tries = [
+      ['Glob', { pattern: '**/*.md', path: refs }],
+      ['Bash', { command: `ls ${refs}` }],
+      ['Read', { file_path: `${r.root}/.claude/docs/architecture/watch.json` }],
+      ['Bash', { command: 'echo "next: node .claude/hooks/docs.js show patterns#orders"' }],
+      ['Bash', { command: 'node .claude/hooks/docs.js show patterns#nope' }],
+    ];
+    for (const [tool, input] of tries) {
+      const s = sid();
+      r.hook(pre(tool, input, s));
+      assert.ok(denied(write(s)), `${tool} ${JSON.stringify(input)} earned credit`);
+    }
+    const s = sid();
+    r.hook(pre('Bash', { command: `head -40 ${refs}/patterns.md` }, s));
+    assert.ok(!denied(write(s)), 'a shell read of a doc file still counts');
+  } finally { r.rm(); }
+});
+
+// Row 42: an 11,901-byte ORIENTATION.md pushed the start block past the harness's 10,000-character context cap, which
+// swaps it for a preview, so the where / show lines at its end were lost.
+test('the start block caps ORIENTATION.md at 4KB and keeps the read lines after it', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': `${'Orders own refunds. '.repeat(600)}\n` } });
+  try {
+    const text = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }));
+    assert.match(text, /ORIENTATION\.md continues past its 4KB cap/);
+    assert.match(text, /node \.claude\/hooks\/docs\.js show <file>#<id>/);
+    assert.ok(text.length < 10000, `${text.length} chars`);
+  } finally { r.rm(); }
+});
+
+// Row 42: the unattended skips went to docs-log.jsonl alone; every other asking hook writes a `mode: unattended` row the
+// block-rate tally reads.
+test('an unattended hold and an unattended Stop ask each write one mode: unattended row', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n', 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  const U = { ALFRED_CODE_UNATTENDED: '1' };
+  try {
+    const s = sid();
+    r.hook({ hook_event_name: 'SessionStart', session_id: s }, U);
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s), U)), 'never held unattended');
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    assert.strictEqual(r.hook(stopEv(s), U).stdout, '', 'never asked unattended');
+    const rows = r.read(`.claude/docs/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepStrictEqual(rows.map((x) => [x.mode, x.event, x.kind]), [['unattended', 'PreToolUse', 'docs hold'], ['unattended', 'Stop', 'docs finish ask']]);
+  } finally { r.rm(); }
+});
+
+// Row 42: Stop diffed the whole tree every turn (47-261ms) even when no domain watches anything, which can only end in no
+// hit. A git shim on PATH counts the calls.
+test('with no watch entry Stop never diffs the tree', { skip: process.platform === 'win32' && 'a sh shim on PATH' }, () => {
+  const path = require('node:path');
+  const real = require('node:child_process').execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': '{}' } });
+  const bin = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'git-shim-'));
+  const calls = path.join(bin, 'calls.log');
+  try {
+    fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\necho "$*" >> "${calls}"\nexec "${real}" "$@"\n`, { mode: 0o755 });
+    const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}` };
+    const s = sid();
+    r.hook({ hook_event_name: 'SessionStart', session_id: s }, env);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    fs.writeFileSync(calls, '');
+    assert.strictEqual(r.hook(stopEv(s), env).stdout, '');
+    assert.doesNotMatch(fs.readFileSync(calls, 'utf8'), /status --porcelain|diff --name-only/);
+  } finally { r.rm(); fs.rmSync(bin, { recursive: true, force: true }); }
 });

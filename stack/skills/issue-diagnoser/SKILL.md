@@ -1,6 +1,6 @@
 ---
 name: issue-diagnoser
-description: "Use to investigate a failure in this chat from any evidence - an error event, logs, red CI, a stack trace, a screenshot, 'what is causing this'. Read-only."
+description: "Use when a failure needs investigating - an error event, logs, red CI, a stack trace, 'what is causing this'. Not for the fix, which /task-solve owns."
 disable-model-invocation: true
 ---
 
@@ -110,8 +110,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    green-locally-red-on-the-runner, quality gate, signing, workflow drift, infra flake) for a
    red CI run. **Before writing 'none installed': re-read the skill list text once more end to end
    for a description match** - a catalogue present in that list and skipped is the measured failure
-   this line exists to catch (measured: a listing held the local-runtime catalogue and the findings
-   file still said 'none installed'). Only when that recheck comes back empty does this project have
+   this line exists to catch. Only when that recheck comes back empty does this project have
    no such catalogue - say so and proceed on the method alone. **A red pipeline is the one route that leaves this skill:** CI
    needs the `gh` log pull and the CI-versus-local environment delta, which is
    issue-diagnoser-ci's specialty - offer that dispatch as the recommended option at this
@@ -128,8 +127,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    and quote a bounded window. If it cannot be reproduced, say so with what you tried, and work
    from the evidence and the code. Append the digests' key lines to the findings file, stamp
    `Gathered:`, then stop - put 'continue to root cause?' through the AskUserQuestion tool per
-   'The stop contract' above (the stop hook already enforces the call; measured: one run skipped
-   this checkpoint and ran GATHER straight into ROOT CAUSE as a single 36-call stretch).
+   'The stop contract' above (the stop hook already enforces the call).
 3. **ROOT CAUSE** - the FIRST action of this step is the `habits-root-cause` Skill call,
    before the first hypothesis (skip it only when that skill is already in context): its
    hypothesis-and-test loop runs the whole step - hypotheses first, each one confirmed or killed
@@ -157,8 +155,12 @@ cycle in the same chat, even when an earlier cycle already loaded it.
      document: the observable, the evidence tier, the proven cause with its located symbol, the
      blast radius and who it affects, severity + priority, and what a fix would have to change.
      No task cards. This is the outcome when the fix is someone else's, or not now.
-   - **4b. PLAN TASKS** ('Plan the fix as tasks') - decompose the minimal change per cause into
-     independent tasks, each with a contract: the files it owns, what it must not touch, its
+   - **4b. PLAN TASKS** ('Plan the fix as tasks') - first load `habits-execution-strategy` (the Skill
+     tool) over the minimal change: how the fix runs, not only what it changes. Its `Execution:` line sets the cards' split -
+     units it found parallel-safe become separate cards, units that share a file or need another's
+     output stay one card or are ordered - and is stated beside the close's ask, never written into
+     the findings file (task-solve decides the build mode again on the gated plan).
+     Then decompose the minimal change per cause into tasks on that split, each with a contract: the files it owns, what it must not touch, its
      acceptance criterion, and the `log_points` the fix must leave behind at the seam that
      failed. Name the target stack per task. The cards go into the findings file under a
      `## Tasks` heading - the file is the handoff, not the chat. The build is the user's next
@@ -177,9 +179,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    the next phase - writing the report, building the tasks, reading the new logs - starts in a
    FRESH session resumed from that path, and this stop offers it as an option in its own words
    ('resume from `<findings path>` in a fresh session'). Recommend it once the chat has run for
-   hours or past that same trigger (measured: a 17h15m diagnosis chat carried
-   four auto-compactions, ~1.46M tokens dropped, while the findings file already held the history
-   it re-sent - no `Stop` gate catches it, since that session never closed).
+   hours or past that same trigger - no `Stop` gate catches a session that never closes.
    *Stop* - after 4b the close names the build as the user's own command:
 
    ```ask

@@ -28,6 +28,32 @@ function fixture()
     };
 }
 
+// Audit 2026-10-08 S8: a `--source <working tree>` install copied Finder / Explorer litter into the project and
+// into the stamp hash (release archives never carry it - the files are untracked). The copy and the hash both skip
+// the set the docs migration already skips, so litter never ships and never reads as a hand edit.
+test('OS litter is neither copied nor hashed - in the source or in the installed copy', () =>
+{
+    const f = fixture();
+    const clean = hashItem(path.join(f.src, 'stack/skills/demo'));
+    for (const litter of ['.DS_Store', 'Thumbs.db', 'desktop.ini'])
+    {
+        fs.writeFileSync(path.join(f.src, 'stack/skills/demo', litter), 'x');
+        fs.writeFileSync(path.join(f.src, 'stack/skills/demo/references', litter), 'y');
+    }
+    assert.equal(hashItem(path.join(f.src, 'stack/skills/demo')), clean, 'litter in the source does not change the hash');
+    const got = copyLibrary({ sourceDir: f.src, skillsDir: f.skillsDir, agentsDir: f.agentsDir, skills: ['demo'], stamped: null, log: () => {}, note: () => {} });
+    assert.equal(got.skills.demo, clean, 'the stamp records the clean hash');
+    for (const rel of ['.DS_Store', 'Thumbs.db', 'desktop.ini', 'references/.DS_Store'])
+        assert.ok(!fs.existsSync(path.join(f.skillsDir, 'demo', rel)), `${rel} is not copied`);
+    assert.ok(fs.existsSync(path.join(f.skillsDir, 'demo/references/a.md')), 'the real files are');
+    fs.writeFileSync(path.join(f.skillsDir, 'demo/.DS_Store'), 'z');
+    assert.equal(hashItem(path.join(f.skillsDir, 'demo')), clean, 'litter the OS drops into the copy is no drift');
+    const logs = [];
+    copyLibrary({ sourceDir: f.src, skillsDir: f.skillsDir, agentsDir: f.agentsDir, skills: ['demo'], stamped: got, log: (l) => logs.push(l), note: () => {} });
+    assert.deepEqual(logs, [], 'a re-run rewrites nothing');
+    fs.rmSync(f.root, { recursive: true, force: true });
+});
+
 test('copies picks and returns their hashes', () =>
 {
     const f = fixture();

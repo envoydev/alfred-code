@@ -1,6 +1,6 @@
 ---
 name: angular-material
-description: "Load when building UI with @angular/material or @angular/cdk - mat.theme, --mat-sys-* tokens, CDK overlay, virtual scroll. Not for general Angular CSS."
+description: "Load when building UI with @angular/material or @angular/cdk - 'add a Material dialog', mat.theme, --mat-sys-* tokens, CDK overlay. Not for general Angular CSS."
 ---
 
 # Angular Material and CDK
@@ -29,7 +29,7 @@ import { MatIconModule } from '@angular/material/icon';
   imports: [MatButtonModule, MatIconModule],
   // ...
 })
-export class ToolbarComponent {}
+export class Toolbar {}
 ```
 
 Do not create a shared module that re-exports every Material module and import that everywhere. The barrel is the single most common Angular Material mistake: it pulls dozens of components the component never touches into the dependency graph, defeats tree-shaking, and inflates the bundle. One import line per component the template actually uses - the cost of being explicit is a few lines; the payoff is a lean build.
@@ -76,8 +76,6 @@ When the system tokens are not enough and one component needs a specific change,
 
 Bind the overrides mixin or a `--mat-sys-*` system token - never a raw per-component custom property by hand. (v20 renamed those raw properties; the rename and its migration schematic are in `references/versions.md`.)
 
-Prove a theming change instead of eyeballing it: build the app (`ng build`, or the workspace's own build script) and confirm the Sass compiles with no unknown-mixin or undefined-variable error, then read the themed element's computed `--mat-sys-*` value in the browser and quote both results. A theme that compiles but resolves the wrong token is the failure this section exists to prevent.
-
 ## Reach for CDK primitives before hand-rolling
 
 The CDK packages the behaviors that are deceptively hard to get right - the edge cases, keyboard handling, and accessibility you would otherwise reimplement and ship with bugs. Prefer the primitive over a bespoke version every time:
@@ -103,4 +101,8 @@ expect(await select.getValueText()).toBe('Berlin');
 ```
 
 Harnesses (`MatSelectHarness`, `MatInputHarness`, `MatButtonHarness`, ...) are maintained by the Angular team and expose a stable, intent-level API - open the select, click the option, read the value - independent of the internal markup. Query the harness; never assert against `.mat-mdc-*` classes or the component's private DOM, because those tests shatter on the next Material release. The broader testing discipline (TestBed setup, fixtures, async handling) lives in `angular-testing`; this is only the Material-specific harness rule.
+
+## Close every Material change
+
+`build: <command> -> <result line>` - `ng build` or the workspace's own build script, the Sass compiling with no unknown-mixin or undefined-variable error. A theming change adds `token: --mat-sys-<name> = <computed value>`, read from the themed element in the browser: a theme that compiles but resolves the wrong token is the failure that line catches.
 

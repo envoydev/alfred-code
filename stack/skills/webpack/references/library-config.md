@@ -20,11 +20,11 @@ module.exports.createLibraryConfig = ({ packageDir, pkg }) => {
     mode: 'production',
     target: ['web', 'es2022'],
     entry: path.resolve(packageDir, 'src/index.ts'),
-    experiments: { outputModule: true },
     output: {
+      module: true, // webpack < 5.111 also needs experiments: { outputModule: true }
       path: path.resolve(packageDir, 'dist/esm'),
       filename: 'index.js',
-      library: { type: 'module' },
+      library: { type: 'modern-module' }, // 'module' when the consumer loads the file directly
       clean: true,
     },
     externalsType: 'module', // 'commonjs' for a CJS build
@@ -64,9 +64,9 @@ Config typing options: `defineConfig` (plain-JS autocomplete, runtime no-op - it
 
 | `output.library.type` | State | Use |
 |---|---|---|
-| `'module'` (+ `experiments.outputModule`) | experimental - test the published tarball | the primary ESM build |
+| `'modern-module'` (+ `output.module`) | 5.93.0+; an experiment before 5.111 - test the published tarball | the default ESM build - consumers that bundle the library can still tree-shake it |
+| `'module'` (+ `output.module`) | an experiment before 5.111 - test the published tarball | ESM for a consumer that loads the file directly (browser `<script type=module>`, Node) |
 | `'commonjs2'` | rock solid | the fallback, and the CJS side of a dual build |
-| `'modern-module'` | experimental | tree-shakeable ESM variant; preferred when consumers bundle the library |
 | `'umd'` | legacy | only for `<script>`/AMD consumers; no consumer tree-shaking |
 
 Dual builds run as a multi-compiler array (two factory calls with a format override; no cache sharing between them). Whether to dual-publish at all, the exports-map conditions ordering, and the dual-package hazard belong to the npm packaging and publishing skill where the install has one - webpack only produces the files.
@@ -79,4 +79,4 @@ Dual builds run as a multi-compiler array (two factory calls with a format overr
 
 ## Version floor notes (verified mid-2026; re-check at adoption)
 
-webpack 5.108.x / webpack-cli 7 / webpack-dev-middleware 8 (both Node >= 20.9); `tsconfig-paths-webpack-plugin` is obsolete (5.105+ resolves tsconfig `paths` natively); `experiments.topLevelAwait` stable since 5.83 and `experiments.layers` since 5.102 - drop those flags; webpack-cli 7 removed the programmatic API and renamed `--node-env` to `--config-node-env`.
+webpack 5.108.x / webpack-cli 7 / webpack-dev-middleware 8 (both Node >= 20.9); `tsconfig-paths-webpack-plugin` is obsolete (5.105+ resolves tsconfig `paths` natively); `experiments.topLevelAwait` stable since 5.83 and `experiments.layers` since 5.102 - drop those flags; `experiments.outputModule` removed in 5.111 - `output.module: true` works alone; webpack-cli 7 removed the programmatic API and renamed `--node-env` to `--config-node-env`.

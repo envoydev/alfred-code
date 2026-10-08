@@ -11,7 +11,7 @@
 // Both directions are pinned: a gate that also fires on the clean neighbour teaches a bypass.
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
-require('./hook-test-env').isolateHookSuite();
+require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // audit 2026-10-08: its hooks' tmp state stays in a dir of its own
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -23,8 +23,8 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-stop-method-'));
 process.on('exit', () => fs.rmSync(TMP, { recursive: true, force: true }));
 
 // A session's own settings env reaches this process; pin every switch the branches read.
-for (const k of ['ALFRED_CODE_DONE_GATE', 'CLAUDE_STACK_DONE_GATE', 'ALFRED_CODE_HOOKS_OFF', 'CLAUDE_STACK_HOOKS_OFF', // legacy-name
-    'ALFRED_CODE_DOCS_PATH', 'CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH', 'CLAUDE_PLUGIN_ROOT', 'ALFRED_CODE_ROTATE_ASK']) // legacy-name
+for (const k of ['ALFRED_CODE_DONE_GATE', 'ALFRED_CODE_HOOKS_OFF',
+    'ALFRED_CODE_DOCS_PATH', 'CLAUDE_PLUGIN_ROOT', 'ALFRED_CODE_ROTATE_ASK'])
     delete process.env[k];
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 

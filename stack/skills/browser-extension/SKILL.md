@@ -55,4 +55,12 @@ UI frameworks work in popup/options/side panel with one hard constraint: extensi
 
 Store policies, review realities (single-purpose rule, AMO's readable-source + bundled-dependency requirements, obfuscation bans), distribution modes, and monetization (no built-in store billing - your backend + a merchant-of-record, license token checked on load): `references/store-and-distribution.md`.
 
-Prove it before any done word: load the unpacked build, confirm the service worker registers with no error in its own console, send one message end to end and confirm the typed reply comes back, then quote both results. A manifest that parses is not an extension that runs, and the store review is the wrong place to discover the difference.
+A store upload (`wxt submit`, `web-ext sign`, a store API call) runs only after one AskUserQuestion naming the store and channel; CI wiring is not a submission:
+
+```ask
+Submit this build to <store> (<channel>)?
+- 'Build the zips only (Recommended)' - nothing leaves the machine; the upload stays its own reviewed step
+- 'Submit to <store>' - runs the upload for that store and channel
+```
+
+Prove it before any done word: load the unpacked build, confirm the service worker registers with no error in its own console, send one message end to end and confirm the typed reply comes back, then close with `sw: <registered | error line>` and `message: <request> -> <typed reply>`. A manifest that parses is not an extension that runs, and the store review is the wrong place to discover the difference.

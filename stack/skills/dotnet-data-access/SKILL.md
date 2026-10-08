@@ -33,7 +33,7 @@ Out of scope, by design: raw SQL / index / planner tuning -> the engine skill (P
 
 - N+1 comes from lazy-loading an association inside a loop, or querying per item. Fix by fetching in one query (eager fetch) or a single set query over the id list, not a call per id.
 - Multiple eager collection fetches cause a cartesian explosion (rows multiply). Prefer **projection** (below); otherwise split into multiple queries (EF `AsSplitQuery`, NH futures) - see the reference.
-- **Read the generated SQL, do not infer it.** Log or capture the statements for the changed read and quote the statement count: one query, not one per row. A fixed N+1 that was never counted is a claimed fix.
+- **Read the generated SQL, do not infer it.** Log or capture the statements for the changed read and quote the statement count: one query, not one per row. A fixed N+1 that was never counted is a claimed fix. For a write or bulk path, run the test that covers it and quote its result line.
 
 ## Projection and read models
 

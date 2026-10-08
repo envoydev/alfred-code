@@ -11,7 +11,6 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'check-turn-build.js');
 const { runChecks, groupRoots, commandFor, MAX_LINES } = require(HOOK);
@@ -20,7 +19,7 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const posix = process.platform !== 'win32';
 
 const BASE_ENV = { ...process.env };
-for (const k of ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_TURN_CHECK', 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE']) delete BASE_ENV[k];
+for (const k of ['ALFRED_CODE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_TURN_CHECK', 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE']) delete BASE_ENV[k];
 
 let seq = 0;
 function project()
@@ -29,7 +28,8 @@ function project()
     const log = path.join(root, 'spawned.log');
     const run = (payload, env = {}) => spawnSync(process.execPath, [HOOK], {
         input: typeof payload === 'string' ? payload : JSON.stringify({ session_id: 'sess', cwd: root, ...payload }),
-        encoding: 'utf8', env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_TURN_CHECK: '1', ...env },
+        // The Stop-chain marker (hook-prelude.js) lives in the project, so no case reads another's.
+        encoding: 'utf8', env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_TURN_CHECK: '1', ALFRED_CODE_HOOK_LOG_DIR: root, ...env },
     });
     const write = (rel) => run({ hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(root, rel), content: 'x' } });
     const list = path.join(root, '.alfred', 'docs', 'flow', 'turn-edits-sess');
@@ -124,6 +124,20 @@ test('turn-build: once per turn - the continuation Stop after a block passes, ev
     assert.ok(fs.existsSync(p.list), 'the fix-up edits are kept for the next turn');
 });
 
+// The Stop chain (audit 2026-10-08 S1): `stop_hook_active` is set after ANY Stop hook's block, so the fix-up edits of
+// a continuation a SIBLING caused (the stop contract held the close) are this turn's and get checked - once.
+test('turn-build: a continuation a sibling Stop hook caused is checked, and blocks at most once', { skip: !posix && 'stub binaries are shell scripts' }, () =>
+{
+    const p = project();
+    p.file('tsconfig.json', '{}');
+    p.tsc('.', 2);
+    p.write('src/a.ts');
+    assert.strictEqual(p.run({ hook_event_name: 'Stop', stop_hook_active: true }).status, 2, 'a sibling caused this continuation');
+    p.write('src/a.ts');
+    assert.strictEqual(p.run({ hook_event_name: 'Stop', stop_hook_active: true }).status, 0, 'never twice in one cycle');
+    assert.strictEqual(p.spawned().length, 1);
+});
+
 test('turn-build: a clean build, a turn with no source file, and a root with no compiler all pass', { skip: !posix && 'stub binaries are shell scripts' }, () =>
 {
     const clean = project();
@@ -177,6 +191,27 @@ test('turn-build: a C# file runs dotnet build --no-restore -v q on its nearest p
     assert.strictEqual(r.status, 2, r.stderr);
     assert.match(p.spawned()[0], /^dotnet build --no-restore -v q .*src\/Api\/Api\.csproj$/);
     assert.strictEqual((r.stderr.match(/error CS0103/g) || []).length, 1, 'the duplicate summary line was repeated');
+});
+
+// Audit 2026-10-08 row 45: a never-restored C# project failed `dotnet build --no-restore` with NETSDK1004 on every line
+// and blocked the turn - the check never restores, so that is no error of the turn's. A pass with a probe row.
+test('turn-build: a C# project never restored is a pass with a probe row, and a real error beside NETSDK1004 still blocks', { skip: !posix && 'stub binaries are shell scripts' }, () =>
+{
+    const p = project();
+    p.file('src/Api/Api.csproj', '<Project />');
+    const bin = path.join(p.root, 'bin-stub');
+    fs.mkdirSync(bin);
+    const stub = (extra) => fs.writeFileSync(path.join(bin, 'dotnet'), `#!/bin/sh\necho "dotnet $*" >> '${p.log}'\necho "/r/obj/x.targets(266,5): error NETSDK1004: Assets file '/r/src/Api/obj/project.assets.json' not found. Run a NuGet package restore to generate this file. [/r/src/Api/Api.csproj]"\n${extra}\necho 'Build FAILED.'\nexit 1\n`, { mode: 0o755 });
+    const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}` };
+    stub('');
+    p.write('src/Api/Controllers/A.cs');
+    const r = p.run({ hook_event_name: 'Stop' }, env);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const rows = fs.readFileSync(path.join(p.root, '.alfred', 'docs', 'hook-blocks', 'sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepStrictEqual(rows.map((x) => [x.mode, x.kind, x.detail.roots]), [['probe', 'not-restored', ['src/Api/Api.csproj']]]);
+    stub(`echo '/r/src/Api/A.cs(3,5): error CS0103: The name x does not exist [/r/src/Api/Api.csproj]'`);
+    p.write('src/Api/Controllers/A.cs');
+    assert.strictEqual(p.run({ hook_event_name: 'Stop' }, env).status, 2, 'a compile error beside it is still the turn\'s');
 });
 
 test('turn-build: runChecks - a timeout or a missing binary is a pass, and the budget is shared across roots', () =>

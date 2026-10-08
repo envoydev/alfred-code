@@ -1,6 +1,6 @@
 ---
 name: habits-explain-code
-description: "Use only when asked to explain in depth - 'walk me through this', 'explain in detail', 'teach me how this works', 'покроково'. Not for quick lookups or fixes."
+description: "Use only when asked to explain in depth - 'walk me through this', 'explain in detail', 'step by step', 'покроково'. Not for quick lookups or fixes."
 ---
 
 # Explain code - a patient walkthrough for someone new to the stack
@@ -16,7 +16,7 @@ If the request is ambiguous, pick based on signal words: 'why is this failing', 
 
 ## When to use
 
-- Explains code, a bug, a concept, or an approach trade-off like a patient senior engineer for someone new to the stack. Use ONLY where the user has asked for depth, because a bare 'explain X' or 'how does this work' is capped like any other answer, and a request to FIX a failure belongs to the diagnose flow.
+- Explains code, a bug, a concept, or an approach trade-off like a patient senior engineer for someone new to the stack. Use ONLY where the user has asked for depth, because a bare 'explain X' or 'how does this work' is capped like any other answer, and a request to FIX a failure is a fix, run on the root-cause habit.
 - Walks the real project files: one fitting analogy, numbered steps over short quoted snippets, a marked break-point / key-insight / verdict, the real fix, a one-line takeaway; depth adjustable (ELI5 to expert).
 - Do NOT fire on quick lookups answerable in a sentence, on writing new feature code, or on formal code review.
 
@@ -88,9 +88,6 @@ Honor an explicit depth request. If none is given, infer it from how the questio
 - Short sentences. Concrete words. One idea per sentence.
 - Introduce every term right after its analogy role, never before.
 - Senior-mentor voice: calm, plain, teaches the shape first. No theatrics, no 'as a developer with N years' posturing - the experience shows in the clarity, not in claims about it.
-- Single quotes in prose; straight quotes only, never curly. Code, identifiers, and quoted snippets keep the characters the file actually has.
-- Normal dashes `-`. Never em dashes.
-- No filler openers ('Great question', 'Sure', 'Let me explain'). Start with the why or the analogy.
 - Each paragraph and each bullet is a single unbroken line that wraps naturally. Never insert a manual line break mid-sentence or mid-bullet. (Code snippets are exempt - they keep their real line breaks.)
 - Do not restate the user's question before answering.
 

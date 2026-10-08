@@ -389,8 +389,7 @@ test('a code-quality capture started past the fresh-session trigger is offered a
     try
     {
         const env = { ...process.env };
-        for (const k of Object.keys(env)) if (/^(ALFRED_CODE_|CLAUDE_STACK_)/.test(k)) delete env[k]; // legacy-name
-        delete env.CLAUDE_DOCS_PATH;
+        for (const k of Object.keys(env)) if (k.startsWith('ALFRED_CODE_')) delete env[k];
         for (const [k, dir] of [['CLAUDE_CONFIG_DIR', 'acct'], ['CLAUDE_PROJECT_DIR', 'root'], ['ALFRED_CODE_HOOK_LOG_DIR', 'log']])
         {
             env[k] = path.join(tmp, dir);

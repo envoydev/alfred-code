@@ -1,6 +1,6 @@
 ---
 name: capture-first-look
-description: "Use when asked for a first look, quick orientation or starting map of a project with no architecture docs. Never over an existing capture."
+description: "Use when asked for a first look or starting map of a project with no architecture docs - writes a provisional ORIENTATION.md. Not over an existing capture."
 ---
 
 # Project First Look - a provisional orientation from the manifests
@@ -19,6 +19,7 @@ capture overwrites it.
 
 - Writes a provisional ORIENTATION.md - stack, modules, build / test / run commands, entry points - from one deterministic scan of the project's manifests, so a project with no architecture capture yet starts its sessions with a map.
 - Never over an existing capture, and not the architecture capture itself, which replaces this file.
+- Needs the stack's plugin cache, where the scan script ships: a copy-only install has no scan to run, so the run says so and stops.
 
 ## 1. Resolve the scan
 
@@ -28,7 +29,7 @@ project root:
 
 ```bash
 SCAN=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/*/*; do   # one glob: zsh aborts the loop when any named glob matches nothing
-  PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || [ "$PN" = claude-stack ] || continue   # legacy-name: a 1.x dir until orphaned
+  PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || continue
   f="$d/scripts/scan-evidence.js"
   [ -f "$f" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
@@ -59,6 +60,13 @@ node "<scan>" --orientation --root . --out "<docs-path>/architecture/ORIENTATION
 
 Run `node .claude/hooks/docs.js lint` once. A `PROBLEM ORIENTATION.md ...` line (a path the file names
 that does not exist) is reported as the scan's miss - never hand-edit the file to fix it; the next scan
-or the capture rewrites it whole. Then report in at most five lines: the file and its size, the stack
-row, the module count, the rows that came back `none declared`, and that the architecture capture
-replaces this file.
+or the capture rewrites it whole. Then report, one line per field:
+
+```
+File:         <docs-path>/architecture/ORIENTATION.md - <N> bytes (the `wrote` line)
+Stack:        <the stack row>
+Modules:      <n>
+Not declared: <the rows that came back `none declared`, or none>
+Lint:         <clean | the PROBLEM rows, reported as the scan's miss>
+Replaced by:  the architecture capture
+```

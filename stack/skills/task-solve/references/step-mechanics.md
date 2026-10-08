@@ -9,7 +9,8 @@ this cycle, not remembered from an earlier one.
 
 ## Mode fit - the step-3 approve ask
 
-Two build modes, the recommendation decided per plan, the reason in the option's description:
+Two build modes, the recommendation decided per plan by the `Execution:` verdict that
+`habits-execution-strategy` gave for it, the reason in the option's description:
 
 - **session** - `task-implement` runs the tasks in this chat. Fits when the tasks are few,
   serial, or one stack's.
@@ -18,7 +19,9 @@ Two build modes, the recommendation decided per plan, the reason in the option's
   can build in parallel (the measured multi-slice exception: built inline, such a plan cost a
   multiple of its dispatched build).
 
-A fixed default is not a recommendation. Agents mode exists only where subagent dispatch is
+The verdict maps straight to the mark: `parallel seats` recommends agents, `serial` or `batched`
+recommends session. A plan whose cards own their files and verify alone recommends agents - building
+it one card after another loses time and buys no quality. A fixed default is not a recommendation. Agents mode exists only where subagent dispatch is
 available; where it is not, the ask offers session only and says so.
 
 ## The APPROVAL stamp - writing it, and its lifetime
@@ -34,7 +37,9 @@ are in `SKILL.md`; these are the mechanics around them.
 - If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier,
   stop and put the choice through AskUserQuestion (retry the stamp, or run this stage inline)
   rather than retrying blind or dispatching around the gate.
-- **Lifetime.** The AUTO stamp lives until step 6's close deletes it. Step 4's
+- **Lifetime.** The AUTO stamp lives until step 6's close deletes it or the session ends - a
+  resumed session re-writes it only from the user's waiver words typed in THAT session, else the
+  next dispatch asks. Step 4's
   delete-when-fan-out-completes applies to per-plan APPROVED stamps, and a step-5 punch-list
   re-dispatch under AUTO rides the still-live waiver.
 

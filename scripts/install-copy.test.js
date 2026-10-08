@@ -258,23 +258,6 @@ test('removeDropped: deletes the copied skill, agent, rule and hook a --drop nam
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-// A 1.x settings file spells the root CLAUDE_STACK_DOCS_PATH until the settings layer's env pass // legacy-name
-// renames it - and the seed stamps the rule, migrates the docs domains and probes the docs
-// versioning BEFORE that pass. The 1.x spelling is the same root.
-test('install-copy: a 1.x CLAUDE_STACK_DOCS_PATH is the root the stamp writes', () => // legacy-name
-{
-    const { base } = fixture();
-    const rulesDir = path.join(base, '.claude', 'rules');
-    fs.mkdirSync(rulesDir, { recursive: true });
-    const file = path.join(rulesDir, 'alfred-docs-root.md');
-    fs.writeFileSync(file, rule('Docs live under `__DOCS_ROOT__/architecture`.'));
-    fs.writeFileSync(path.join(base, '.claude', 'settings.json'),
-        JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs/legacy' } })); // legacy-name
-    assert.strictEqual(require('./install/copy.js').resolveDocsRoot(base), 'docs/legacy');
-    stampDocsRoot(base, { log: () => {}, note: () => {} });
-    assert.ok(fs.readFileSync(file, 'utf8').includes('docs/legacy/architecture'));
-});
-
 // R98 / R99 (Task 18b fix round 2): the read-back lays the stack keys settings.local.json holds over
 // settings.json at every scope, but the docs root is not one of its readers - at project and user
 // scope the stamped rule names settings.json's root, the shared one, even where a local key shadows it.

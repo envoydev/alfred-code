@@ -1,6 +1,6 @@
 ---
 name: habits-adjust-agents-md
-description: "Use when an AGENTS.md is to be written, filled in or updated - an unfilled seeded one, a stale one, a part needing its own. Not for skills or rules."
+description: "Use when an AGENTS.md or CLAUDE.md is written or updated - an unfilled seeded one, a stale one, a part needing its own. Not for skills or rules."
 ---
 
 # Adjust AGENTS.md - create or improve a project's instruction file
@@ -93,8 +93,9 @@ two parts share stays in the root file.
 3. Delete the template's two comment blocks once the sections are in.
 4. Write each part's `<part>/AGENTS.md`.
 
-The write needs no second ask - the request to fill it is the ask - but the report names every file
-written with its line count.
+The write needs no second ask when the user asked for it; a run the user did not ask for shows the
+outline it would write and puts it through the step-5 AskUserQuestion first. Either way the report
+names every file written with its line count.
 
 ## 5. Improve - show before writing, never rewrite the project's prose
 

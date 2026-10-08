@@ -144,9 +144,9 @@ time - and a rule with no threshold never fires.
 
 ## Write mechanics
 
-**No write gate, no diff check, no stamp-triggered skip.** Every other capture in this stack asks before
-overwriting an existing doc, because that doc accretes content a person might still want. This one does not ask:
-it is recomputed from the map, the code and the decision log every time it runs, so there is nothing an overwrite
+**No diff check, no stamp-triggered skip - the run-start gate in SKILL.md is the only ask.** Every other capture
+in this stack asks before overwriting an existing doc, because that doc accretes content a person might still
+want. This one asks only whether to run at all: it is recomputed from the map, the code and the decision log every time it runs, so there is nothing an overwrite
 could destroy that a re-run would not reproduce anyway. REPLACE the file wholesale - Write over whatever was
 there (READ it first if it exists, so the Write is legal - an `rm` first is denied by the auto-mode classifier).
 

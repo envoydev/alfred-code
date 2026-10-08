@@ -38,13 +38,19 @@ if (require.main === module) {
 // Code build propagates PreToolUse into dispatched subagents, their internal Skill / MCP
 // calls are captured too - verify coverage against a known run before trusting a tally.
 
-// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
-// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
-// project whose settings.json has not been migrated yet keeps resolving.
+// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 
-const sw = String(envOf(process.env, 'INSTRUMENT') || '').toLowerCase();
-if (sw !== '1' && sw !== 'true') process.exit(0); // off unless explicitly switched on ("0"/"false"/unset = no-op)
+// `1` only, as the copy route's shell gate and environment.json read it: `true` switched this hook on where the copy
+// route's gate kept it off (audit 2026-10-08 row 29).
+if (String(envOf(process.env, 'INSTRUMENT') || '').trim() !== '1') process.exit(0); // off unless explicitly switched on
+
+// pinned copy of guard-secret-value.js SECRET_SHAPE, no g flag (shared-rules: credential-literal-shapes)
+const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/;
+// A dispatch description, a search pattern and a Bash description are the model's own text, and a token rode in them
+// verbatim (replayed: `ghp_...`, `sk-ant-...`). Masked on the whole text, then cut, so a cut never splits a token out
+// of its shape.
+const hint = (s, cap = 60) => String(s).replace(new RegExp(SECRET_SHAPE.source, 'g'), '[redacted]').slice(0, cap);
 
 let raw = '';
 process.stdin.on('data', (d) => (raw += d));
@@ -77,15 +83,15 @@ process.stdin.on('end', () => {
     // A dispatch row with no detail cannot say WHICH seat ran - 65 of 65 Agent rows in an audited
     // corpus carried `detail: null`, so the ledger could name the cost of dispatching and never the
     // seat. The seat type is the one field that makes those rows readable, and it is not sensitive.
-    else if (tool === 'Task' || tool === 'Agent') detail = input.subagent_type || input.subagentType || (input.description ? String(input.description).slice(0, 60) : null);
+    else if (tool === 'Task' || tool === 'Agent') detail = input.subagent_type || input.subagentType || (input.description ? hint(input.description) : null);
     else if (input.file_path) detail = path.basename(String(input.file_path));
-    else if (input.pattern) detail = String(input.pattern).slice(0, 60);
+    else if (input.pattern) detail = hint(input.pattern);
     // Bash `description` is the model's to write and it is often omitted (measured: 10 of 11 rows
     // in one session, so the whole session read as detail-blind). Fall back to the command's VERB -
     // the first token, plus a second one only when it is a bare subcommand (`git commit`, `npm
     // test`): no path, no flag, no argument, so nothing sensitive can ride along.
     else if (tool === 'Bash') {
-      if (input.description) detail = String(input.description).slice(0, 60);
+      if (input.description) detail = hint(input.description);
       else {
         const tok = String(input.command || '').trim().split(/\s+/).filter(Boolean);
         const verb = tok[0] && /^[A-Za-z][\w.-]*$/.test(tok[0]) ? tok[0] : null;
@@ -97,7 +103,8 @@ process.stdin.on('end', () => {
       ts: new Date().toISOString(),
       session: ev.session_id || null,
       tool,
-      detail,
+      // the skill slug, a seat type or a basename can carry a token as well, so every detail is masked once more
+      detail: detail == null ? null : hint(detail, 200),
       cwd: ev.cwd || null,
     };
     const dir = process.env.CLAUDE_PROJECT_DIR || ev.cwd || '.';

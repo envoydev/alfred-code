@@ -5,8 +5,7 @@
 //
 //   1. a handed `--source`  - a local checkout, the route every plugin command and the temp-project
 //      matrix take, because the command has already resolved the snapshot and passes it down;
-//   2. the PLUGIN CACHE     - `<config>/plugins/cache/<marketplace>/alfred-code/<version>/` (or a
-//      1.x install's `claude-stack/<version>/`, until the rename orphans it), which // legacy-name
+//   2. the PLUGIN CACHE     - `<config>/plugins/cache/<marketplace>/alfred-code/<version>/`, which
 //      is the whole repo, because every marketplace entry is sourced from the repo root. This is
 //      the common run and it downloads NOTHING. It is also, by construction, the revision the
 //      enabled plugins are running from, so the seed and the plugins can never be two releases;
@@ -21,7 +20,7 @@
 // would pay five download timeouts and report five failures for one root cause.
 const fs = require('node:fs');
 const path = require('node:path');
-const { BRAND, LEGACY } = require('./brand.js');
+const { BRAND } = require('./brand.js');
 
 // The one validity test every route shares: a directory counts as the stack only when it carries
 // BOTH trees, so an interrupted cache write is passed over rather than half-installed.
@@ -97,10 +96,8 @@ function readRevision(dir)
 // The newest valid entry across EVERY marketplace. A machine can have the stack cached under more
 // than one marketplace name, and the newest of them is the one the enabled plugins run from.
 //
-// Under either CORE name: a 1.x install cached it as `claude-stack`, and after the rename plus one // legacy-name
-// session the CLI marks that dir `.orphaned_at` but keeps its files, while the `alfred-code` dir
-// appears only once `plugin update` runs (docs/rebrand-evidence.md S3, S8). An orphaned dir is
-// never the snapshot - a stale 1.x copy would install the release this run is replacing.
+// An orphaned dir (the CLI marks one `.orphaned_at` but keeps its files) is never the snapshot - a
+// stale copy would install the release this run is replacing.
 function pluginCache(configDir)
 {
     const base = path.join(configDir, 'plugins', 'cache');
@@ -112,19 +109,16 @@ function pluginCache(configDir)
     for (const mkt of marketplaces)
     {
         if (!mkt.isDirectory()) continue;
-        for (const core of [BRAND.core, LEGACY.core])
+        const entryDir = path.join(base, mkt.name, BRAND.core);
+        let versions;
+        try { versions = fs.readdirSync(entryDir, { withFileTypes: true }); }
+        catch { continue; }
+        for (const v of versions)
         {
-            const entryDir = path.join(base, mkt.name, core);
-            let versions;
-            try { versions = fs.readdirSync(entryDir, { withFileTypes: true }); }
-            catch { continue; }
-            for (const v of versions)
-            {
-                if (!v.isDirectory()) continue;
-                const dir = path.join(entryDir, v.name);
-                if (!isValidSource(dir) || fs.existsSync(path.join(dir, '.orphaned_at'))) continue;
-                if (!best || compareVersions(v.name, bestVersion) > 0) { best = dir; bestVersion = v.name; }
-            }
+            if (!v.isDirectory()) continue;
+            const dir = path.join(entryDir, v.name);
+            if (!isValidSource(dir) || fs.existsSync(path.join(dir, '.orphaned_at'))) continue;
+            if (!best || compareVersions(v.name, bestVersion) > 0) { best = dir; bestVersion = v.name; }
         }
     }
     return best;

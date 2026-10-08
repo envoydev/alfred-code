@@ -5,8 +5,7 @@
 // used to compute by hand, in the model, in three more round trips:
 //
 //   - the migrations catalog's `detect` rules, EVALUATED here. They are purely declarative
-//     (file_exists / settings_env_key / settings_env_value / settings_env_prefix /
-//     settings_hook_wired) and there was no runner, so the command read all of
+//     (file_exists / settings_env_key / settings_env_value / settings_hook_wired) and there was no runner, so the command read all of
 //     meta/migrations.json into context - the maintainer `_comment` included - and hand-wrote
 //     probes for each entry. Measured: four API round trips and a catalog dump for what is a
 //     3-line existence check.
@@ -18,7 +17,6 @@
 // Output is the stamp-compare line contract, unchanged and first (so every existing branch
 // still reads), then:
 //
-//   legacy-stamp: <path> - ...             (only when the baseline is a 1.x global install's account stamp)
 //   changed: skills=<n> agents=<n> rules=<n> hooks=<n> template=<yes|no>
 //   validate: yes|no                        (the version delta spans more than one release)
 //   policy-rev: current|none|stale installed=<hash|none> snapshot=<hash|none>
@@ -82,7 +80,6 @@ function detects(entry, root, settings)
     if (d.file_exists) return fs.existsSync(path.resolve(root, d.file_exists));
     if (d.settings_env_key) return !!(settings && settings.env && Object.prototype.hasOwnProperty.call(settings.env, d.settings_env_key));
     if (d.settings_env_value) return !!(settings && settings.env && String(settings.env[d.settings_env_value.key]) === String(d.settings_env_value.equals));
-    if (d.settings_env_prefix) return !!(settings && settings.env && Object.keys(settings.env).some((k) => k.startsWith(d.settings_env_prefix)));
     if (d.settings_hook_wired)
     {
         const [file, matcher] = String(d.settings_hook_wired).split('::');
@@ -114,7 +111,6 @@ function migrationFields(e)
     if (Array.isArray(e.remove) && e.remove.length) out.push(['remove', e.remove.join(', ')]);
     if (e.unwire_settings_hook) out.push(['unwire', e.unwire_settings_hook]);
     if (e.rename_settings_env) out.push(['env-rename', `${e.rename_settings_env.from} -> ${e.rename_settings_env.to}`]);
-    if (e.rename_settings_env_prefix) out.push(['env-rename-prefix', `${e.rename_settings_env_prefix.from}* -> ${e.rename_settings_env_prefix.to}*`]);
     if (e.remove_settings_env) out.push(['env-remove', e.remove_settings_env.key]);
     if (e.clear_settings_env) out.push(['env-reset', `${e.clear_settings_env.key}: ${e.clear_settings_env.when_value} -> ${e.clear_settings_env.to}`]);
     return out;
@@ -256,16 +252,14 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
     let hasHooks = false;
     try { hasHooks = fs.readdirSync(hooksDir).some((f) => /^(guard-|docs-session|memory-session|instrument-).*\.js$/.test(f)); } catch { hasHooks = false; }
     // The walk's None held across a release: every hook the LAST release shipped is switched off.
-    // A 1.x settings file spells the switch-off CLAUDE_STACK_HOOKS_OFF until the installer's env pass // legacy-name
-    // renames it, which runs after this preflight.
-    const { hookDisabled, envOf } = require('../stack/hooks/hook-prelude.js');
-    const hooksOff = String(envOf(env, 'HOOKS_OFF') || '');
+    const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
+    const hooksOff = String(env.ALFRED_CODE_HOOKS_OFF || '');
     let shippedBefore = [];
     try { shippedBefore = ((/^shipped-hooks: (.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] || '').split(',').filter(Boolean); } catch { shippedBefore = []; }
     // The installer holds None only while the core that carries the hooks is enabled (it enables the
     // core regardless, and writes no hook none without it) - so the verdict holds it only then too.
     // Listed is enabled for the core: it is locked on, and the listing's flag can read false while
-    // it runs (brand.js rowOn, docs/rebrand-evidence.md S22). A 1.x hooks id says nothing on its own.
+    // it runs (brand.js rowOn, docs/plugin-cli-evidence.md S22).
     const coreOn = Boolean(listing && listing.some((r) => isCore(r.name) && rowOn(r)));
     const noneBefore = coreOn && shippedBefore.length > 0 && shippedBefore.every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: hooksOff }));
     const rows = classifyNew({
@@ -371,18 +365,11 @@ function main()
     // Global mode passes the ACCOUNT dir as the root, which holds the stamp and settings.json itself.
     // An account dir set through CLAUDE_CONFIG_DIR can have any name - it is recognised by holding the
     // stamp itself and no `.claude/` of its own.
-    // A 1.x install's stamp keeps its old name until this update rewrites it; either one counts.
     const accountDir = /^\.claude(-.+)?$/.test(path.basename(path.resolve(root)))
         || (!fs.existsSync(path.join(root, '.claude')) && Boolean(stampIn(root).read));
     const claudeDir = accountDir ? path.resolve(root) : path.join(root, '.claude');
-    // I8 (R51): a 1.x GLOBAL install's stamp is still in the account dir until the installer - which
-    // runs AFTER this - moves it into the project; while the project holds no stamp of its own, that
-    // account stamp is the baseline, or the first update exits 'no stamp' before it can migrate.
-    const { legacyAccountStamp, readStampScope } = require('./install/stamp.js');
-    const own = stampIn(claudeDir).read;
-    const acctEnv = arg('--config-dir') ? { ...process.env, CLAUDE_CONFIG_DIR: arg('--config-dir') } : process.env;
-    const legacy = !own && !accountDir && !arg('--stamp') ? legacyAccountStamp({ claudeDir, env: acctEnv }) : null;
-    const stampFile = arg('--stamp', own || legacy || stampIn(claudeDir).write);
+    const { readStampScope } = require('./install/stamp.js');
+    const stampFile = arg('--stamp', stampIn(claudeDir).read || stampIn(claudeDir).write);
     // M4 (R54): the file this run WRITES is the before-state and what the migrations act on -
     // settings.local.json when the stamp says local (settings.js settingsTarget). The new-item
     // classification reads the off-state the way Claude Code lays the two files: env key by key with
@@ -405,7 +392,6 @@ function main()
     const out = String(res.stdout || '').replace(/\n$/, '');
     if (out) console.log(out);
     if (res.stderr) process.stderr.write(res.stderr);
-    if (legacy) console.log(`legacy-stamp: ${legacy} - a 1.x global install; this update moves it into the project`);
 
     const lines = out ? out.split('\n') : [];
     const c = changedClasses(lines);

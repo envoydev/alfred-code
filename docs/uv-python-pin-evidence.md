@@ -1,5 +1,7 @@
 # uvx Python pin - evidence (2026-09-23)
 
+<!-- Re-spelled 2026-10-07: the stack's names read as it is named now; the measurements are unchanged. -->
+
 Why serena and memory start on a pinned Python, and why installs refresh before they read the
 plugin cache. Every number below was measured on 2026-09-23 with the command beside it.
 
@@ -14,7 +16,7 @@ with `--python cpython-3.13.13-windows-x86_64-none` installed serena in about 2.
 
 The first hand patch went into the cached plugin's `marketplace.json` and changed nothing. The
 entry Claude Code launches is read from the marketplace CLONE
-(`~/.claude/plugins/marketplaces/claude-stack/.claude-plugin/marketplace.json`), and
+(`~/.claude/plugins/marketplaces/envoydev/.claude-plugin/marketplace.json`), and
 `claude plugin marketplace update` overwrites that clone. A hand patch is lost on the next refresh
 either way, so the pin has to ship in the generated entry.
 

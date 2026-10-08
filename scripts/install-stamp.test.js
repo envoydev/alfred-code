@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, stampPath, stampFiles, migrateLegacyGlobal, readStampScope, validItemName, readLedger, valueHash, emptyLedger } = require('./install/stamp.js');
+const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, stampPath, stampFiles, readStampScope, validItemName, readLedger, valueHash, emptyLedger } = require('./install/stamp.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-stamp-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -474,225 +474,14 @@ test('install-stamp: stampPath is where writeStamp writes - the project, whateve
     assert.strictEqual(write(p).dest, want);
 });
 
-// 2.0.0: a 1.x install's stamp is `claude-stack.stamp`. It is READ until the first 2.0.0 run writes // legacy-name
-// `alfred-code.stamp`, and that run removes the old file, so the two can never disagree later.
-const OLD_STAMP = 'claude-stack.stamp'; // legacy-name
-
-test('install-stamp: writeStamp deletes the PROJECT 1.x stamp after writing the new one, at every scope - and never touches the account dir', () =>
-{
-    const p = project();
-    const acct = path.join(p.base, 'acct');
-    fs.mkdirSync(acct, { recursive: true });
-    for (const dir of [path.join(p.base, '.claude'), acct]) fs.writeFileSync(path.join(dir, OLD_STAMP), 'sha: abc\nversion: 1.3.0\n');
-    const dest = write(p, { scope: 'user', configDir: acct }).dest;
-    assert.strictEqual(dest, path.join(p.base, '.claude', 'alfred-code.stamp'));
-    assert.ok(fs.existsSync(dest), 'the new stamp was not written');
-    assert.ok(!fs.existsSync(path.join(p.base, '.claude', OLD_STAMP)), 'the project 1.x stamp is still beside the new one');
-    assert.ok(fs.existsSync(path.join(acct, OLD_STAMP)), 'writeStamp touched the account 1.x stamp - that is migrateLegacyGlobal\'s job, never this one\'s');
-});
-
-test('install-stamp: a run with no revision leaves the 1.x stamp where it is - it is still the only record', () =>
-{
-    const p = project();
-    const old = path.join(p.base, '.claude', OLD_STAMP);
-    fs.writeFileSync(old, 'sha: abc\nversion: 1.3.0\npicked-skills: csharp@claude-stack\n'); // legacy-name
-    assert.strictEqual(write(p, { source: null }).dest, null);
-    assert.ok(fs.existsSync(old));
-});
-
-// The order is the guarantee: the 1.x stamp goes only once the new one is on disk. A write that fails
-// (here a directory standing where the new stamp goes) must leave the 1.x stamp as the only record.
-test('install-stamp: a failed write of the new stamp leaves the 1.x stamp where it is', () =>
-{
-    const p = project();
-    const old = path.join(p.base, '.claude', OLD_STAMP);
-    fs.writeFileSync(old, 'sha: abc\nversion: 1.3.0\npicked-skills: csharp@claude-stack\n'); // legacy-name
-    fs.mkdirSync(path.join(p.base, '.claude', 'alfred-code.stamp'));
-    const r = write(p);
-    assert.strictEqual(r.dest, null, 'the write was reported as done');
-    assert.ok(fs.existsSync(old), 'the 1.x stamp was removed although the new one never landed');
-    assert.strictEqual(fs.readFileSync(old, 'utf8'), 'sha: abc\nversion: 1.3.0\npicked-skills: csharp@claude-stack\n'); // legacy-name
-});
-
-test('install-stamp: stampFiles reads the new stamp, else the 1.x one, from the PROJECT whatever scope/configDir is handed in', () =>
+test('install-stamp: stampFiles reads the stamp from the PROJECT whatever scope/configDir is handed in', () =>
 {
     const p = project();
     const acct = path.join(p.base, 'acct');
     const at = { scope: 'user', configDir: acct, projectRoot: p.base };
     assert.deepStrictEqual(stampFiles(at), { read: null, write: stampPath(at) });
-    fs.writeFileSync(path.join(p.base, '.claude', OLD_STAMP), 'sha: abc\npicked-skills: csharp@claude-stack\npicked-agents: \n'); // legacy-name
-    assert.strictEqual(stampFiles(at).read, path.join(p.base, '.claude', OLD_STAMP));
-    assert.deepStrictEqual(readPicked(stampFiles(at).read), { skills: ['csharp@claude-stack'], agents: [] }); // legacy-name
     write(p, { scope: 'user', configDir: acct });
     assert.strictEqual(stampFiles(at).read, stampPath(at));
-});
-
-// T16, R29: a 1.x GLOBAL install's stamp and skills sat in the account dir. migrateLegacyGlobal is
-// the one-time reader that copies both into the project on the first 2.x update.
-test('migrateLegacyGlobal: copies a 1.x account stamp and its skills into the project, leaving the account copies in place', () =>
-{
-    const p = project();
-    const acct = path.join(p.base, 'acct');
-    fs.mkdirSync(path.join(acct, 'skills', 'demo'), { recursive: true });
-    fs.writeFileSync(path.join(acct, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\n---\nbody\n');
-    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\n');
-    const logs = [];
-    const moved = migrateLegacyGlobal({ configDir: acct, projectRoot: p.base, log: (m) => logs.push(m) });
-    assert.strictEqual(moved, true);
-    // The project now carries the 1.x stamp under its OWN name - stampFiles' existing read-new-else-
-    // legacy logic finds it unchanged.
-    assert.strictEqual(fs.readFileSync(path.join(p.base, '.claude', OLD_STAMP), 'utf8'), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\n');
-    assert.strictEqual(fs.readFileSync(path.join(p.base, '.claude', 'skills', 'demo', 'SKILL.md'), 'utf8'), '---\nname: demo\n---\nbody\n');
-    // The account copies are LEFT IN PLACE - other projects on the same machine may still read them.
-    assert.ok(fs.existsSync(path.join(acct, OLD_STAMP)), 'the account stamp was deleted, not left for other projects');
-    assert.ok(fs.existsSync(path.join(acct, 'skills', 'demo', 'SKILL.md')), 'the account skill was deleted, not left for other projects');
-    assert.ok(logs.some((m) => /1 skill\(s\) were moved from/.test(m) && m.includes(acct)), logs.join(' | '));
-});
-
-test('migrateLegacyGlobal: nothing to migrate - no account stamp at all - is a silent no-op', () =>
-{
-    const p = project();
-    const acct = path.join(p.base, 'acct');
-    assert.strictEqual(migrateLegacyGlobal({ configDir: acct, projectRoot: p.base }), false);
-    assert.ok(!fs.existsSync(path.join(p.base, '.claude', OLD_STAMP)));
-});
-
-test('migrateLegacyGlobal: runs only ONCE - a project that already has its own stamp is left alone', () =>
-{
-    const p = project();
-    const acct = path.join(p.base, 'acct');
-    fs.mkdirSync(acct, { recursive: true });
-    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\n');
-    // A native run already wrote this project's own (new-name) stamp.
-    write(p);
-    const moved = migrateLegacyGlobal({ configDir: acct, projectRoot: p.base });
-    assert.strictEqual(moved, false, 'a project with its own stamp must never be overwritten by an unrelated account one');
-});
-
-test('migrateLegacyGlobal: an account stamp with no skills folder still migrates - zero skills, no crash', () =>
-{
-    const p = project();
-    const acct = path.join(p.base, 'acct');
-    fs.mkdirSync(acct, { recursive: true });
-    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\n');
-    assert.strictEqual(migrateLegacyGlobal({ configDir: acct, projectRoot: p.base }), true);
-    assert.ok(fs.existsSync(path.join(p.base, '.claude', OLD_STAMP)));
-    assert.ok(!fs.existsSync(path.join(p.base, '.claude', 'skills')));
-});
-
-// C1 (R47): the migration copies only the names THE STAMP RECORDS - never the whole account
-// skills/ tree, which also holds the user's own personal skills and (per code.claude.com/docs/en/
-// skills) the claude.ai-synced `synced/` folder.
-test('migrateLegacyGlobal (C1): an account personal skill not named in the stamp is never copied', () =>
-{
-    const p = project();
-    const acct = path.join(p.base, 'acct');
-    fs.mkdirSync(path.join(acct, 'skills', 'demo'), { recursive: true });
-    fs.writeFileSync(path.join(acct, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\n---\nbody\n');
-    fs.mkdirSync(path.join(acct, 'skills', 'my-personal-thing'), { recursive: true });
-    fs.writeFileSync(path.join(acct, 'skills', 'my-personal-thing', 'SKILL.md'), '---\nname: my-personal-thing\n---\nprivate\n');
-    fs.mkdirSync(path.join(acct, 'skills', 'synced'), { recursive: true });
-    fs.writeFileSync(path.join(acct, 'skills', 'synced', 'whatever.md'), 'claude.ai-synced content\n');
-    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\nlibrary-skills: \n');
-    const logs = [];
-    const moved = migrateLegacyGlobal({ configDir: acct, projectRoot: p.base, log: (m) => logs.push(m) });
-    assert.strictEqual(moved, true);
-    assert.ok(fs.existsSync(path.join(p.base, '.claude', 'skills', 'demo', 'SKILL.md')), 'the stamp-named skill was not copied');
-    assert.ok(!fs.existsSync(path.join(p.base, '.claude', 'skills', 'my-personal-thing')), 'a personal skill the stamp never named was copied into the project');
-    assert.ok(!fs.existsSync(path.join(p.base, '.claude', 'skills', 'synced')), 'the claude.ai-synced folder was copied into the project');
-    assert.ok(logs.some((m) => /1 skill\(s\) were moved/.test(m)), logs.join(' | '));
-});
-
-test('migrateLegacyGlobal (C1): a same-named project skill is left byte-identical, and the account copy is not force-copied over it', () =>
-{
-    const p = project();
-    // A project that has its OWN skill file already, but somehow no stamp yet (a partial earlier
-    // run) - the migration must never overwrite it.
-    fs.mkdirSync(path.join(p.base, '.claude', 'skills', 'demo'), { recursive: true });
-    fs.writeFileSync(path.join(p.base, '.claude', 'skills', 'demo', 'SKILL.md'), 'PROJECT VERSION - must survive\n');
-    const acct = path.join(p.base, 'acct');
-    fs.mkdirSync(path.join(acct, 'skills', 'demo'), { recursive: true });
-    fs.writeFileSync(path.join(acct, 'skills', 'demo', 'SKILL.md'), 'ACCOUNT VERSION - must never land here\n');
-    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\n');
-    const logs = [];
-    const moved = migrateLegacyGlobal({ configDir: acct, projectRoot: p.base, log: (m) => logs.push(m) });
-    assert.strictEqual(moved, true);
-    assert.strictEqual(fs.readFileSync(path.join(p.base, '.claude', 'skills', 'demo', 'SKILL.md'), 'utf8'), 'PROJECT VERSION - must survive\n');
-    assert.ok(logs.some((m) => /demo: already in the project/.test(m)), logs.join(' | '));
-});
-
-test('migrateLegacyGlobal (C1): a stamp-named directory the account no longer has is skipped, not crashed on', () =>
-{
-    const p = project();
-    const acct = path.join(p.base, 'acct');
-    fs.mkdirSync(acct, { recursive: true });
-    // The stamp names a skill the account skills/ folder does not actually contain any more.
-    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\npicked-skills: ghost\n');
-    const moved = migrateLegacyGlobal({ configDir: acct, projectRoot: p.base });
-    assert.strictEqual(moved, true);
-    assert.ok(!fs.existsSync(path.join(p.base, '.claude', 'skills', 'ghost')));
-});
-
-// I6 (R47): the disclosure names the override risk and the exact removal command for what was
-// actually migrated - never a wholesale wipe of the whole account skills dir.
-test('migrateLegacyGlobal (I6): the log names the override risk and a removal command scoped to the migrated names only', () =>
-{
-    const p = project();
-    const acct = path.join(p.base, 'acct');
-    fs.mkdirSync(path.join(acct, 'skills', 'demo'), { recursive: true });
-    fs.writeFileSync(path.join(acct, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\n---\nbody\n');
-    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\n');
-    const logs = [];
-    migrateLegacyGlobal({ configDir: acct, projectRoot: p.base, log: (m) => logs.push(m) });
-    const summary = logs.find((m) => /were moved from/.test(m));
-    assert.ok(summary, logs.join(' | '));
-    assert.match(summary, /OVERRIDE the migrated ones/);
-    assert.match(summary, /rm -rf/);
-    assert.ok(summary.includes(path.join(acct, 'skills', 'demo')), summary);
-});
-
-// M5 (Task 22 fix round 1): a RENAMED name's account copy overrides nothing - the project loads the new
-// name, so the old copy loads BESIDE it, under the old name, in every project. The line names it apart,
-// with a removal command of its own, and never files it under OVERRIDE.
-test('migrateLegacyGlobal (M5): a renamed account skill is named as loading BESIDE the new name, with its own rm', () =>
-{
-    // The old name comes from the map, never spelled here (the rename guard in install-renames.test.js).
-    const { renamed } = require('./install/manifest.js').loadManifest(path.join(__dirname, '..'));
-    const old = Object.keys(renamed.skills).find((k) => renamed.skills[k] === 'task-solve');
-    assert.ok(old, 'the map renames a skill to task-solve');
-    const run = (picks) =>
-    {
-        const p = project();
-        const acct = path.join(p.base, 'acct');
-        for (const n of picks)
-        {
-            fs.mkdirSync(path.join(acct, 'skills', n), { recursive: true });
-            fs.writeFileSync(path.join(acct, 'skills', n, 'SKILL.md'), `---\nname: ${n}\n---\nbody\n`);
-        }
-        fs.writeFileSync(path.join(acct, OLD_STAMP), `sha: abc\nversion: 1.3.0\npicked-skills: ${picks.join(',')}\n`);
-        const logs = [];
-        migrateLegacyGlobal({ configDir: acct, projectRoot: p.base, log: (m) => logs.push(m),
-            renamed });
-        const summary = logs.find((m) => /were moved from/.test(m));
-        assert.ok(summary, logs.join(' | '));
-        return { summary, dir: (n) => `'${path.join(acct, 'skills', n)}'` };
-    };
-
-    const both = run(['demo', old]);
-    const at = both.summary.indexOf('BESIDE');
-    assert.ok(at > 0, `the renamed copy is said to load BESIDE the new name: ${both.summary}`);
-    const over = both.summary.slice(0, at);
-    const beside = both.summary.slice(at);
-    assert.match(over, /OVERRIDE the migrated ones/);
-    assert.ok(over.includes(`rm -rf ${both.dir('demo')}`), over);
-    assert.ok(!over.includes(both.dir(old)), `the renamed copy is filed under OVERRIDE: ${over}`);
-    assert.ok(both.summary.includes(`${old} (now task-solve)`), both.summary);
-    assert.ok(beside.includes(`rm -rf ${both.dir(old)}`), beside);
-    assert.ok(!beside.includes(both.dir('demo')), beside);
-
-    const only = run([old]);
-    assert.doesNotMatch(only.summary, /OVERRIDE/, `a renamed copy alone overrides nothing: ${only.summary}`);
-    assert.ok(only.summary.includes(`BESIDE`) && only.summary.includes(`rm -rf ${only.dir(old)}`), only.summary);
 });
 
 // I3 (R47): the stamp's own `scope:` line, read back verbatim (the resolution of '' into that value
@@ -719,30 +508,6 @@ test('validItemName: rejects an empty name, .., ../.., ../plugins, an absolute p
         assert.strictEqual(validItemName(bad, dir), false, `'${bad}' must be rejected`);
     assert.strictEqual(validItemName('csharp', dir), true);
     assert.strictEqual(validItemName('dotnet-data-access', dir), true);
-});
-
-test('migrateLegacyGlobal (N1): a traversal name in the account stamp never reaches a copy or the printed rm -rf', () =>
-{
-    const p = project();
-    const acct = path.join(p.base, 'acct');
-    fs.mkdirSync(path.join(acct, 'skills', 'demo'), { recursive: true });
-    fs.writeFileSync(path.join(acct, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\n---\nbody\n');
-    // A stamp naming '..' and '../plugins' beside a real, legitimate pick - the exact probe the
-    // re-review ran: '..=h' would rm -rf the whole account skills dir, '../plugins@x' would copy the
-    // account's plugins/ tree into the project.
-    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\npicked-skills: demo,..,../plugins\n');
-    const logs = [];
-    const moved = migrateLegacyGlobal({ configDir: acct, projectRoot: p.base, log: (m) => logs.push(m) });
-    assert.strictEqual(moved, true);
-    assert.ok(fs.existsSync(path.join(p.base, '.claude', 'skills', 'demo', 'SKILL.md')), 'the legitimate pick was not copied');
-    assert.ok(!fs.existsSync(path.join(p.base, '.claude', 'skills', 'plugins')), 'a traversal name reached a copy');
-    const summary = logs.find((m) => /were moved from/.test(m));
-    assert.ok(summary, logs.join(' | '));
-    assert.strictEqual((summary.match(/rm -rf/g) || []).length, 1, 'only ONE rm -rf target (the legitimate pick) may appear');
-    assert.match(summary, /rm -rf '[^']*[/\\]skills[/\\]demo'\s*$/, `the single rm -rf target must be exactly the demo pick: ${summary}`);
-    const skipped = logs.filter((m) => /skill name skipped \(\d+ chars\)/.test(m));
-    assert.strictEqual(skipped.length, 2, 'both bad names must be skipped and logged, by length only');
-    assert.ok(skipped.every((m) => !m.includes('..') && !m.includes('plugins')), 'a bad name must never be echoed verbatim - length only');
 });
 
 // I1 (Task 18a review): 'initialised' is a line only /alfred-code:init writes (its memory step,
@@ -798,41 +563,6 @@ test('initialised: fresh is pending, the line is carried, a pre-line stamp reads
     assert.strictEqual(cli.stdout, 'installed\n');
 });
 
-// N1 (Task 18a re-review, R90): a 1.x GLOBAL install kept its stamp in the account dir, so the project
-// holds only a copied engine. Until its first update migrates the stamp, the state is its own -
-// `legacy-global` - and the router sends it to update, never to init (which would mark nothing).
-test('installState: a 1.x global install whose stamp is still in the account dir reads legacy-global (N1)', () => {
-    const stamp = require('./install/stamp.js');
-    const root = path.join(TMP, `legacy-${seq++}`);
-    const claude = path.join(root, '.claude');
-    const acct = path.join(root, 'acct');
-    fs.mkdirSync(path.join(claude, 'hooks'), { recursive: true });
-    fs.mkdirSync(acct, { recursive: true });
-    fs.writeFileSync(path.join(claude, 'hooks', 'docs.js'), '');
-    const env = { CLAUDE_CONFIG_DIR: acct };
-    assert.strictEqual(stamp.installState(root, env), 'installed', 'no account stamp - an ordinary pending install');
-    assert.strictEqual(stamp.legacyAccountStamp({ claudeDir: claude, env }), null);
-
-    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\nscope: global\n');
-    assert.strictEqual(stamp.installState(root, env), 'legacy-global');
-    assert.strictEqual(stamp.legacyAccountStamp({ claudeDir: claude, env }), path.join(acct, OLD_STAMP));
-
-    // Its own stamp - migrated by an update - wins over the account's, whatever that one says.
-    fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'version: 2.0.0\ninitialised: pending\n');
-    assert.strictEqual(stamp.installState(root, env), 'installed');
-    assert.strictEqual(stamp.legacyAccountStamp({ claudeDir: claude, env }), null);
-
-    // No record in the project at all: another project's global install is not this one's.
-    const bare = path.join(TMP, `legacy-bare-${seq++}`);
-    fs.mkdirSync(bare, { recursive: true });
-    assert.strictEqual(stamp.installState(bare, env), 'not-installed');
-
-    const { spawnSync } = require('node:child_process');
-    fs.rmSync(path.join(claude, 'alfred-code.stamp'));
-    const cli = spawnSync(process.execPath, [path.join(__dirname, 'install', 'stamp.js'), 'state', root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: acct } });
-    assert.strictEqual(cli.stdout, 'legacy-global\n', cli.stderr);
-});
-
 // A legacy COPY-route install that never wrote a stamp, and copied no `hooks/docs.js`, holds no install
 // record - so it read `not-installed`, setup took the fresh ladder and update sent it back to setup. Two
 // INDEPENDENT signatures of the stack make it `legacy-unstamped`, update's to take: the stack's hook files in
@@ -863,7 +593,7 @@ test('installState: an unstamped legacy copy-route install reads legacy-unstampe
     const { renamed } = require('./install/manifest.js').loadManifest(path.join(__dirname, '..'));
     const oldSkills = Object.keys(renamed.skills).slice(0, 3);
     const oldSeat = `${Object.keys(renamed.agents)[0]}.md`;
-    const legacyKey = { CLAUDE_STACK_DOCS_PATH: '.claude/docs' }; // legacy-name
+    const legacyKey = { ALFRED_CODE_DOCS_PATH: '.claude/docs' };
     const env = { CLAUDE_CONFIG_DIR: path.join(TMP, 'no-account') };
     const state = (root) => stamp.installState(root, env);
 
@@ -877,7 +607,7 @@ test('installState: an unstamped legacy copy-route install reads legacy-unstampe
     assert.strictEqual(state(legacyTree({ names: [...oldSkills, 'markdown-style', 'docs-as-code'], own: ['my-own-helper'], agents: [oldSeat], rules: ['alfred-security.md'] })), 'not-installed', 'skills, seats and rules are ONE signature');
     assert.strictEqual(state(legacyTree({ hooks: ['guard-catastrophic-rm.js', 'guard-read-whole-file.js'] })), 'not-installed');
     assert.strictEqual(state(legacyTree({ env: legacyKey })), 'not-installed');
-    // Any two are enough; the current prefix and the local file count as the old ones do.
+    // Any two are enough; the local settings file counts as the shared one does.
     assert.strictEqual(state(legacyTree({ hooks: ['guard-catastrophic-rm.js'], env: legacyKey })), 'legacy-unstamped');
     assert.strictEqual(state(legacyTree({ hooks: ['docs-session.js'], local: { ALFRED_CODE_HOOKS_OFF: 'x' } })), 'legacy-unstamped');
     assert.strictEqual(state(legacyTree({ names: oldSkills, env: legacyKey })), 'legacy-unstamped');
@@ -996,19 +726,19 @@ test('installState: a record in a folder between the launch folder and the git t
 });
 
 // M5 (Task 18b fix round 1): the scope validate passes to every installer call is read by the same
-// script as the state - the new stamp name or the 1.x one, a 1.x `global` read as `user`, anything else
-// (absent, hand-edited) as `project` - never a grep of one file name.
-test('installScope: the stamp\'s scope under either name, `global` as user, anything else as project (M5)', () => {
+// script as the state - a `global` line read as `user`, anything else (absent, hand-edited) as `project` -
+// never a grep of the file.
+test('installScope: the stamp\'s scope, `global` as user, anything else as project (M5)', () => {
     const stamp = require('./install/stamp.js');
     const { spawnSync } = require('node:child_process');
     const root = path.join(TMP, `scope-${seq++}`);
     const claude = path.join(root, '.claude');
     fs.mkdirSync(claude, { recursive: true });
     assert.strictEqual(stamp.installScope(root), 'project', 'no stamp at all');
-    fs.writeFileSync(path.join(claude, 'claude-stack.stamp'), 'version: 1.3.0\nscope: global\n'); // legacy-name
-    assert.strictEqual(stamp.installScope(root), 'user', 'a 1.x stamp under its old name');
+    fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'version: 1.3.0\nscope: global\n');
+    assert.strictEqual(stamp.installScope(root), 'user', 'a `global` line reads as user');
     fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'version: 2.0.0\nscope: local\n');
-    assert.strictEqual(stamp.installScope(root), 'local', 'the new name wins');
+    assert.strictEqual(stamp.installScope(root), 'local');
     fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'version: 2.0.0\nscope: ../bogus\n');
     assert.strictEqual(stamp.installScope(root), 'project', 'a value that is no scope');
     fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'version: 2.0.0\n');
@@ -1018,38 +748,32 @@ test('installScope: the stamp\'s scope under either name, `global` as user, anyt
     assert.strictEqual(cli.stdout, 'user\n', cli.stderr);
 });
 
-// A-I1 (final review A): a 1.x GLOBAL install the first update has not moved yet holds no stamp of its
-// own - only a copied engine - so installScope read `project`, and an update handed that scope installed
-// the core beside the live user-scope alias. It reads the account stamp now, by the SAME test the router's
-// `legacy-global` state uses - so a repo that was never set up, with the same account stamp, stays project.
-test('installScope: an unmigrated 1.x global install reads its account stamp\'s scope; a never-set-up repo stays project (A-I1)', () => {
+// A-I1 / N1: the state and the scope read the PROJECT's own record only. A stamp in the account dir is no
+// project's install - a project holding only a copied engine reads an ordinary pending install at project
+// scope beside it, and a repo never set up stays not-installed.
+test('installState / installScope: an account-dir stamp is never read as this project\'s (A-I1, N1)', () => {
     const stamp = require('./install/stamp.js');
     const { spawnSync } = require('node:child_process');
-    const root = path.join(TMP, `legacy-scope-${seq++}`);
+    const root = path.join(TMP, `acct-scope-${seq++}`);
     const claude = path.join(root, '.claude');
     const acct = path.join(root, 'acct');
     fs.mkdirSync(path.join(claude, 'hooks'), { recursive: true });
     fs.mkdirSync(acct, { recursive: true });
     fs.writeFileSync(path.join(claude, 'hooks', 'docs.js'), '');
-    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\nscope: global\n');
+    fs.writeFileSync(path.join(acct, 'alfred-code.stamp'), 'sha: abc\nversion: 1.3.0\nscope: global\n');
     const env = { CLAUDE_CONFIG_DIR: acct };
-    assert.strictEqual(stamp.installState(root, env), 'legacy-global');
-    assert.strictEqual(stamp.installScope(root, env), 'user', 'the account stamp\'s global, read as user');
-    assert.strictEqual(stamp.legacyGlobalStamp(root, env), path.join(acct, OLD_STAMP));
+    assert.strictEqual(stamp.installState(root, env), 'installed', 'a copied engine is an ordinary pending install');
+    assert.strictEqual(stamp.installScope(root, env), 'project', 'the account stamp\'s scope is not this project\'s');
     const cli = spawnSync(process.execPath, [path.join(__dirname, 'install', 'stamp.js'), 'scope', root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: acct } });
-    assert.strictEqual(cli.stdout, 'user\n', cli.stderr);
+    assert.strictEqual(cli.stdout, 'project\n', cli.stderr);
 
-    // Never set up: the same account stamp, no record here - not this project's install.
-    const bare = path.join(TMP, `legacy-scope-bare-${seq++}`);
+    const bare = path.join(TMP, `acct-scope-bare-${seq++}`);
     fs.mkdirSync(bare, { recursive: true });
     assert.strictEqual(stamp.installState(bare, env), 'not-installed');
     assert.strictEqual(stamp.installScope(bare, env), 'project');
-    assert.strictEqual(stamp.legacyGlobalStamp(bare, env), null);
 
-    // Migrated: the project's own stamp wins over the account's.
-    fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'version: 2.0.0\nscope: project\n');
-    assert.strictEqual(stamp.installScope(root, env), 'project');
-    assert.strictEqual(stamp.legacyGlobalStamp(root, env), null);
+    fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'version: 2.0.0\nscope: local\n');
+    assert.strictEqual(stamp.installScope(root, env), 'local', 'the project\'s own stamp is the one read');
 });
 // Matrix FAIL F-BOM (2.1.6): ONE reader for every JSON file a person may have edited. A leading BOM is stripped; a BOM
 // plus garbage is still unreadable, and stamp.js's own read of .mcp.json (installedAlways) sees the servers under a BOM.

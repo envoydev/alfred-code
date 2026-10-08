@@ -15,8 +15,8 @@ the published-type-surface section is the only TS-only part; a checked-JS projec
 `tsc --noEmit` in CI the same way. Framework surfaces have their own hubs: Angular and Ionic
 suites belong to the Angular testing skill, .NET to the .NET testing skill. Browser extensions
 share everything here for their chrome-free logic; the extension-specific seams - the mocked
-`chrome.*` API and Playwright persistent-context E2E - belong to the browser-extension skill, the
-one covering MV3 manifests and that seam.
+`chrome.*` API and Playwright persistent-context E2E - belong to the skill covering MV3
+extensions and that seam.
 
 ## When to use
 
@@ -26,8 +26,7 @@ Not for Angular/Ionic specs or .NET tests.
 
 ## Runner routing
 
-Use whichever the workspace already runs - `package.json` names it. The default-runner rule is
-the `javascript` skill's: **Vitest** for a new plain-TS/JS suite (ESM-first, Jest-compatible
+Use whichever the workspace already runs - `package.json` names it. **Vitest** for a new plain-TS/JS suite (ESM-first, Jest-compatible
 API), Jest only where the project already signals it (existing config/deps, a monorepo sibling
 on Jest), `node:test` the zero-dependency floor for small libraries. Detect, never install or
 migrate a runner inside a task; a migration is its own user-approved change.
@@ -51,7 +50,7 @@ migrate a runner inside a task; a migration is its own user-approved change.
   `memfs` where the workspace already uses it. `vi.stubEnv` over raw `process.env` writes - it is NOT
   restored per test on its own (`unstubEnvs` defaults to false), so set `unstubEnvs: true` in the
   Vitest config or call `vi.unstubAllEnvs()` in a `beforeEach`, or the stub bleeds into every later
-  test (verified against the Vitest docs, `config/unstubenvs` + `api/vi`, 2026-09-12);
+  test;
   child-process work goes behind an injected exec seam like any boundary.
 - **Published type surface** - `expectTypeOf`/`tsd` assertions only for types that ARE the
   product (a library's public generics, a message-contract union); app-internal types are
@@ -109,3 +108,13 @@ reviewing an existing suite (or running mutation testing), load this skill's own
 passes, and StrykerJS mutation testing. The catalog:
 assertion-free / always-true, coverage-touching, tautological, missing-await,
 swallowed-exception, disabled assertions.
+
+- A spec added for a fix is NAMED for the defect it pins - `it('keeps the discount when the
+  currency changes')`, not `it('works')` - and fails on the unfixed code before it passes, so a
+  later red names the regression it guards.
+- A self-review is never the check: re-reading your own change applies the assumptions that
+  wrote it, so it finds only what they already allow. The check is a run - the spec, the type
+  check - or a reviewer who did not write the change.
+
+Close with `specs: <command> -> <result line>` (and `types: tsc --noEmit -> <result line>` in a
+TS project).

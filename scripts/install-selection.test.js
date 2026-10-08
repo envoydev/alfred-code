@@ -257,12 +257,12 @@ const MANIFEST = loadManifest(ROOT_DIR);
 const ALL = { skills: true, hooks: true, mcps: true };
 const row = (id, extra = {}) => ({ name: id.split('@')[0], marketplace: id.split('@')[1] || '', scope: 'project', version: '1', enabled: true, ...extra });
 
-function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [], stampPicked, stampHooks = [], lastHooksRoute = null, stampEngines, marketplace, log } = {})
+function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [], stampPicked, stampHooks = [], lastHooksRoute = null, stampEngines, marketplace, seatsRoute, log } = {})
 {
     const claudeDir = target({ rules: ['alfred-security'], hooks });
     return sel.readBack({
         claudeDir, mcpServers: [], listing, settings, routes, manifest: MANIFEST, sourceDir: ROOT_DIR,
-        stampHooks, lastHooksRoute, always: {}, stampPicked, stampEngines, marketplace, log,
+        stampHooks, lastHooksRoute, always: {}, stampPicked, stampEngines, marketplace, seatsRoute, log,
     });
 }
 
@@ -271,7 +271,7 @@ function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [], s
 test('read-back: a healthy listing reads seats, hooks and MCP entries back, and answers both surfaces', () =>
 {
     const r = readBackCase({
-        listing: [row('alfred-code@envoydev'), row('claude-stack-aspnet@envoydev'), row('alfred-navigation@envoydev')],
+        listing: [row('alfred-code@envoydev'), row('alfred-navigation@envoydev')],
         settings: { permissions: { deny: ['Agent(alfred-code:security-auditor)'] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } },
     });
     assert.ok(r.lines.includes('agent evidence-gatherer') && !r.lines.includes('agent security-auditor'));
@@ -300,14 +300,14 @@ test('read-back: a plugin-route install with nothing on disk is still an install
     const bare = (listing) => sel.readBack({
         claudeDir: target({}), mcpServers: [], listing, settings: {}, routes: ALL, manifest: MANIFEST, sourceDir: ROOT_DIR, always: {},
     });
-    const project = bare([row('alfred-code@envoydev'), row('claude-stack-csharp@envoydev')]);
+    const project = bare([row('alfred-code@envoydev'), row('alfred-navigation@envoydev')]);
     assert.ok(project.installed, 'the project-scoped entries were not read as an install');
-    assert.ok(project.lines.includes('skill csharp') && project.lines.some((l) => l.startsWith('hook ')), project.lines.join(', '));
+    assert.ok(project.lines.includes('mcp alfred-navigation') && project.lines.some((l) => l.startsWith('hook ')), project.lines.join(', '));
     assert.ok(bare([row('alfred-code@envoydev', { scope: 'local' })]).installed, 'a local-scope entry is this project too');
     // An ACCOUNT-scope entry is every project's - reading it as this one's would install into a
     // project the stack never touched.
     assert.strictEqual(bare([row('alfred-code@envoydev', { scope: 'user' })]).installed, false);
-    assert.strictEqual(bare([row('claude-stack-csharp@envoydev', { enabled: false })]).installed, false, 'a parked entry is no install'); // legacy-name
+    assert.strictEqual(bare([row('alfred-navigation@envoydev', { enabled: false })]).installed, false, 'a parked entry is no install');
     // The core is locked on: its listing flag can read false for a moved project-scope core that runs (S22).
     assert.strictEqual(bare([row('alfred-code@envoydev', { enabled: false })]).installed, true, 'a listed core is an install whatever its flag');
     assert.strictEqual(bare([row('alfred-code@other-market')]).installed, false, 'another marketplace is not ours');
@@ -385,7 +385,7 @@ test('read-back: with the stamp\'s record, an engine it does not name is never r
     const dropped = readBackCase({ listing: [row('alfred-code@envoydev'), row('browser-chrome@envoydev')], stampEngines: [] });
     assert.deepStrictEqual(dropped.engines, []);
     assert.ok(!dropped.lines.includes('mcp browser'), dropped.lines.filter((l) => l.startsWith('mcp ')).join(','));
-    // No record (1.x, no stamp): the listing speaks, as before.
+    // No record (no stamp): the listing speaks, as before.
     assert.deepStrictEqual(readBackCase({ listing, stampEngines: null }).engines, ['chrome', 'firefox', 'webkit']);
 });
 
@@ -432,45 +432,15 @@ test('read-back: a malformed deny or env block reads as absent, never aborts the
     assert.ok(r.lines.includes('agent security-auditor'));
 });
 
-test('read-back: a skill the last install carried survives the release that retired its entry, as a pick', () =>
-{
-    const stampPicked = { skills: ['dotnet-web-backend@claude-stack-aspnet'], agents: [] };
-    const moved = readBackCase({ listing: [row('alfred-code@envoydev'), row('claude-stack-aspnet@envoydev')], stampPicked });
-    assert.ok(moved.lines.includes('skill dotnet-web-backend') && moved.closeFrom.includes('skill dotnet-web-backend'));
-    const gone = readBackCase({ listing: [row('alfred-code@envoydev')], stampPicked });
-    assert.ok(!gone.lines.includes('skill dotnet-web-backend'), 'its old home is uninstalled here - the user removed it');
-    const parked = readBackCase({ listing: [row('alfred-code@envoydev'), row('claude-stack-aspnet@envoydev', { enabled: false })], stampPicked });
-    assert.ok(!parked.lines.includes('skill dotnet-web-backend'), 'the user parked its entry');
-    const blind = readBackCase({ listing: [], stampPicked });
-    assert.ok(!blind.lines.includes('skill dotnet-web-backend'), 'no listing, no evidence of what is parked - the stamp is not read');
-});
-
-test('read-back: an enabled retired entry turns its stamp PICKS into picks, never what it merely carried', () =>
-{
-    const listing = [row('alfred-code@envoydev'), row('claude-stack-angular@envoydev')];
-    const stampPicked = { skills: ['angular-conventions@claude-stack-angular', 'angular-testing@claude-stack-angular'], agents: [] };
-    const r = readBackCase({ listing, stampPicked });
-    assert.ok(r.closeFrom.includes('skill angular-conventions') && r.closeFrom.includes('skill angular-testing'), r.closeFrom.join(','));
-    assert.ok(!r.closeFrom.includes('skill angular-styling'), 'carried by the entry, never picked');
-    // The selection itself is what the library copies: an unpicked item the entry carried stays out of
-    // it, not only out of the closure's input (the temp-project matrix copied it).
-    assert.ok(r.lines.includes('skill angular-conventions') && !r.lines.includes('skill angular-styling'), r.lines.filter((l) => /angular/.test(l)).join(','));
-    const legacy = readBackCase({ listing, stampPicked: null });
-    for (const s of ['angular-conventions', 'angular-security', 'angular-styling', 'angular-testing'])
-        assert.ok(legacy.closeFrom.includes(`skill ${s}`) && legacy.lines.includes(`skill ${s}`), `a stamp without picks adopts ${s}`);
-    const parked = readBackCase({ listing: [row('alfred-code@envoydev'), row('claude-stack-angular@envoydev', { enabled: false })], stampPicked });
-    assert.ok(!parked.closeFrom.some((l) => /^skill angular-/.test(l)), 'a parked retired entry carries nothing');
-});
-
 test('read-back: a stamp with no picked lines (an older install) takes what the enabled entries carry as picked', () =>
 {
-    const listing = [row('alfred-code@envoydev'), row('claude-stack-aspnet@envoydev')];
-    const legacy = readBackCase({ listing, stampPicked: null, settings: { permissions: { deny: ['Agent(alfred-code:security-auditor)'] } } });
-    assert.ok(legacy.closeFrom.includes('skill dotnet-web-backend') && legacy.closeFrom.includes('agent aspnet-implementer'), 'carried by an enabled entry');
-    assert.ok(!legacy.closeFrom.includes('agent security-auditor'), 'a denied seat is no pick');
-    const current = readBackCase({ listing, stampPicked: { skills: [], agents: [] } });
-    assert.ok(!current.closeFrom.includes('skill dotnet-web-backend'), 'a stamp that recorded its picks is the answer, even an empty one');
-    const blind = readBackCase({ listing: [], stampPicked: null });
+    const listing = [row('alfred-code@envoydev')];
+    const older = readBackCase({ listing, stampPicked: null, seatsRoute: 'plugin', settings: { permissions: { deny: ['Agent(alfred-code:security-auditor)'] } } });
+    assert.ok(older.closeFrom.includes('agent aspnet-implementer') && older.closeFrom.includes('agent evidence-gatherer'), 'carried by the enabled core');
+    assert.ok(!older.closeFrom.includes('agent security-auditor'), 'a denied seat is no pick');
+    const current = readBackCase({ listing, stampPicked: { skills: [], agents: [] }, seatsRoute: 'plugin' });
+    assert.ok(!current.closeFrom.includes('agent aspnet-implementer'), 'a stamp that recorded its picks is the answer, even an empty one');
+    const blind = readBackCase({ listing: [], stampPicked: null, seatsRoute: 'plugin' });
     assert.ok(!blind.closeFrom.some((l) => /^(skill|agent) /.test(l)), 'no listing - nothing to adopt');
 });
 
@@ -533,12 +503,13 @@ test('read-back: closeFrom is the picked set - disk and the stamp - never an ite
 test('closeLines: a requirement never switches back on a parked entry or a denied seat - it is left out and said so', () =>
 {
     const logs = [];
-    const out = sel.closeLines(['rule csharp-conventions'], { from: ['rule csharp-conventions'], graph: GRAPH, parked: ['claude-stack-csharp'], log: (m) => logs.push(m) });
-    assert.ok(!out.includes('skill csharp'), 'the parked entry\'s skill stayed out');
-    assert.ok(logs.some((l) => /required: skill csharp .*left out, its entry claude-stack-csharp is parked here/.test(l)), logs.join('\n'));
     const seats = computeClosure(GRAPH, { rules: ['dotnet-repair-agents'] }).agents;
+    const out = sel.closeLines(['rule dotnet-repair-agents'], { from: ['rule dotnet-repair-agents'], graph: GRAPH, parked: ['alfred-code'], log: (m) => logs.push(m) });
+    for (const a of seats) assert.ok(!out.includes(`agent ${a}`), `the parked core's seat ${a} stayed out`);
+    assert.ok(logs.some((l) => new RegExp(`required: agent ${seats[0]} .*left out, its entry alfred-code is parked here`).test(l)), logs.join('\n'));
+    assert.ok(out.includes('skill task-solve-cross'), 'a library skill has no entry to be parked');
     const denyLogs = [];
-    const out2 = sel.closeLines(['rule dotnet-repair-agents'], { from: ['rule dotnet-repair-agents'], graph: GRAPH, deny: [`Agent(claude-stack-dotnet:${seats[0]})`], log: (m) => denyLogs.push(m) });
+    const out2 = sel.closeLines(['rule dotnet-repair-agents'], { from: ['rule dotnet-repair-agents'], graph: GRAPH, deny: [`Agent(alfred-code-dotnet:${seats[0]})`], log: (m) => denyLogs.push(m) });
     assert.ok(!out2.includes(`agent ${seats[0]}`), 'the denied seat stayed out');
     assert.ok(denyLogs.some((l) => /left out, switched off in permissions.deny/.test(l)));
 });
@@ -551,15 +522,12 @@ test('read-back: after the walk\'s None, a hook a new release adds stays off too
     assert.deepStrictEqual(r.lines.filter((l) => l.startsWith('hook ')), ['hook none']);
     const some = readBackCase({ listing: [row('alfred-code@envoydev')], settings: { env: { ALFRED_CODE_HOOKS_OFF: before.slice(1).join(',') } }, stampHooks: before });
     assert.ok(some.lines.includes(`hook ${shipped[0]}`), 'only a full None holds - a partial switch-off lets a new hook arrive');
-    // A 1.x settings file still spells the switch-off CLAUDE_STACK_HOOKS_OFF: the same None. // legacy-name
-    const old = readBackCase({ listing: [row('alfred-code@envoydev')], settings: { env: { CLAUDE_STACK_HOOKS_OFF: before.join(',') } }, stampHooks: before }); // legacy-name
-    assert.deepStrictEqual(old.lines.filter((l) => l.startsWith('hook ')), ['hook none'], 'the 1.x spelling of the None');
 });
 
 // Review M3: a copy-route install whose user dropped EVERY hook has none on disk, and the read-back
 // took that for 'every hook' - the update copied and wired all of them back (measured at b825638 too).
 // Ruling R55: only the stamp's `hooks-route: copy` says the None was a choice. A leftover prelude is no
-// evidence - a 1.x plugin-route stint, or one before 2.0.0 pruned it, leaves it behind.
+// evidence - a plugin-route stint, or one before 2.0.0 pruned it, leaves it behind.
 test('read-back: a copy-route install that kept no hook reads back `hook none` only when its stamp says the copy route ran last', () =>
 {
     const shipped = [...new Set(MANIFEST.catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
@@ -588,7 +556,7 @@ test('read-back: a copy-route install that kept no hook reads back `hook none` o
 });
 
 // N4 (Task 18b fix round 2): R94 infers the last route as 'copy' from a stored switch, but only the
-// literal stamp line makes an EMPTY folder a None (R55). A 1.x copy install - the switch stored false,
+// literal stamp line makes an EMPTY folder a None (R55). An older copy install - the switch stored false,
 // no route line, no hook left on disk, nothing named off - reads as every hook on, never as `hook none`
 // with every guard silent.
 test('read-back: a stored copy-route switch under a stamp with no hooks route never makes an empty folder a None (R55, N4)', () =>
@@ -597,19 +565,18 @@ test('read-back: a stored copy-route switch under a stamp with no hooks route ne
     const core = row('alfred-code@envoydev');
     const hookLines = (r) => r.lines.filter((l) => l.startsWith('hook '));
     for (const routes of [{ hooks: false, skills: true, mcps: true }, { hooks: false, skills: false, mcps: false }])
-        for (const key of ['ALFRED_CODE_HOOKS_VIA_PLUGIN', 'CLAUDE_STACK_HOOKS_VIA_PLUGIN']) // legacy-name
-        {
-            const r = readBackCase({ listing: [core], routes, hooks: ['hook-prelude'], stampHooks: shipped, lastHooksRoute: null, settings: { env: { [key]: 'false' } } });
-            assert.deepStrictEqual(hookLines(r), [], `${key}=false, no route line: nothing stored is every hook, never a None`);
-            assert.strictEqual(r.answered.hooks, false);
-        }
+    {
+        const r = readBackCase({ listing: [core], routes, hooks: ['hook-prelude'], stampHooks: shipped, lastHooksRoute: null, settings: { env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' } } });
+        assert.deepStrictEqual(hookLines(r), [], 'ALFRED_CODE_HOOKS_VIA_PLUGIN=false, no route line: nothing stored is every hook, never a None');
+        assert.strictEqual(r.answered.hooks, false);
+    }
 });
 
 // m8 (fix round 5): stack hooks on disk under a stamp that says 'plugin' are a copy-route switch that
 // died part way - the plugin route prunes every copy - so they are set aside for the stored list.
 // m12 (Task 16b): on the mixed route and the full copy route alike.
 // R94 (Task 18b fix round 1): with NO `hooks-route:` line the last route is inferred. It was the copy
-// route when the stored hooks switch is false (either spelling) or the folder's stack hooks are wired as
+// route when the stored hooks switch is false or the folder's stack hooks are wired as
 // `.claude/hooks/<name>.js` - a copy route wires what it copies - and the disk is the record then.
 // Otherwise it was the plugin route, and the folder is set aside exactly as under a 'plugin' stamp.
 test('read-back: a partial hook folder is no pick unless the copy route made it - the stamp, else the stored switch or the wiring (R94)', () =>
@@ -636,11 +603,8 @@ test('read-back: a partial hook folder is no pick unless the copy route made it 
         const disk = partial.map((h) => `hook ${h}`).sort();
         const copyStamp = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute: 'copy' });
         assert.deepStrictEqual(hookLines(copyStamp), disk, `${route}, copy: the disk is the record`);
-        for (const key of ['ALFRED_CODE_HOOKS_VIA_PLUGIN', 'CLAUDE_STACK_HOOKS_VIA_PLUGIN']) // legacy-name
-        {
-            const switchOff = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute: null, settings: { env: { [key]: 'false' } } });
-            assert.deepStrictEqual(hookLines(switchOff), disk, `${route}, no line, ${key}=false stored: the copy route ran - the disk is the record`);
-        }
+        const switchOff = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute: null, settings: { env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' } } });
+        assert.deepStrictEqual(hookLines(switchOff), disk, `${route}, no line, ALFRED_CODE_HOOKS_VIA_PLUGIN=false stored: the copy route ran - the disk is the record`);
         const wired = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute: null, settings: { hooks: wiring(partial) } });
         assert.deepStrictEqual(hookLines(wired), disk, `${route}, no line, the folder wired as copies: the disk is the record`);
         const userWired = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute: null, settings: { hooks: wiring(['my-own-check']) } });
@@ -733,11 +697,15 @@ test('read-back: a switch onto the full copy route reads back what the core stil
 
 test('closeLines: what a LEFT-OUT item requires is not pulled in either', () =>
 {
-    const rule = GRAPH.rules['csharp-conventions'];
-    assert.ok(!rule.mcps.includes('documentation'), 'the fixture rule does not need context7 itself');
-    const out = sel.closeLines(['rule csharp-conventions'], { from: ['rule csharp-conventions'], graph: GRAPH, parked: ['claude-stack-csharp'] });
-    assert.ok(!out.includes('skill csharp'));
-    assert.ok(!out.includes('mcp alfred-documentation'), 'context7 came in only through the parked skill');
+    // A fixture graph: one seat the rule requires needs a server nothing else in the closure needs.
+    const seat = GRAPH.rules['dotnet-repair-agents'].agents[0];
+    const graph = { ...GRAPH, agents: { ...GRAPH.agents, [seat]: { ...GRAPH.agents[seat], mcps: ['alfred-documentation'] } } };
+    assert.ok(!computeClosure(GRAPH, { rules: ['dotnet-repair-agents'] }).mcps.includes('alfred-documentation'), 'the real closure does not need the server');
+    const from = { from: ['rule dotnet-repair-agents'], graph };
+    assert.ok(sel.closeLines(['rule dotnet-repair-agents'], from).includes('mcp alfred-documentation'), 'the fixture seat pulls the server in');
+    const out = sel.closeLines(['rule dotnet-repair-agents'], { ...from, deny: [`Agent(alfred-code:${seat})`] });
+    assert.ok(!out.includes(`agent ${seat}`));
+    assert.ok(!out.includes('mcp alfred-documentation'), 'the server came in only through the denied seat');
 });
 
 test('dropLines: --drop removes a line and keeps the hooks answer - dropping the last hook is `hook none`', () =>
@@ -760,7 +728,7 @@ test('planInventory: the inventory JSON - names per category, playwright folded,
             hooks: ['guard-read-whole-file.js::Read', 'guard-read-whole-file.js::Bash', 'docs-session.js'],
             mcps: ['browser-chrome|x', 'browser-firefox|y', 'alfred-navigation|z'], plugins: ['claude-hud@claude-plugins-official', 'csharp-lsp@claude-plugins-official'],
         },
-        listing: [row('claude-hud@claude-plugins-official', { scope: 'user' }), row('csharp-lsp@claude-plugins-official', { enabled: false }), row('claude-stack-devops@envoydev', { enabled: false }), row('superpowers@claude-plugins-official', { scope: 'user' })],
+        listing: [row('claude-hud@claude-plugins-official', { scope: 'user' }), row('csharp-lsp@claude-plugins-official', { enabled: false }), row('alfred-code-devops@envoydev', { enabled: false }), row('superpowers@claude-plugins-official', { scope: 'user' })],
         answered: { hooks: true, agents: false },
         pluginCatalog: ['superpowers', 'claude-hud', 'csharp-lsp'],
         leftOut: ['agent security-auditor'],
@@ -772,7 +740,7 @@ test('planInventory: the inventory JSON - names per category, playwright folded,
         'an enabled catalog plugin the selection never lists (an optional pick the user installed, R72) is kept all the same');
     assert.deepStrictEqual(inv.parked_plugins, ['csharp-lsp'], 'only CATALOG plugins parked here - the read-back would enable them');
     assert.deepStrictEqual(inv.left_out, ['agent security-auditor']);
-    assert.deepStrictEqual(inv.plugins_disabled, ['csharp-lsp', 'claude-stack-devops'], 'a parked stack entry is the same third state');
+    assert.deepStrictEqual(inv.plugins_disabled, ['csharp-lsp', 'alfred-code-devops'], 'a parked stack entry is the same third state');
     assert.deepStrictEqual(inv.answered, { hooks: true, agents: false });
     // 2.2.0: each installed optional item's scope, for the walk's move offer; a required one carries none.
     assert.deepStrictEqual(inv.scopes, { 'claude-hud': 'global', 'csharp-lsp': 'project' });
@@ -799,24 +767,28 @@ test('planInventory: a kept engine the user left off is no DISABLED plugin - an 
 test('droppedEntries: what the drop took out of the set, folded onto the listing, dependents first', () =>
 {
     const listing = [
-        row('claude-stack-aspnet@envoydev'), row('claude-stack-csharp@envoydev'),
-        row('claude-stack-devops@envoydev'), row('browser-chrome@envoydev'),
+        row('alfred-code-aspnet@envoydev'), row('alfred-code-csharp@envoydev'),
+        row('alfred-code-devops@envoydev'), row('browser-chrome@envoydev'),
         row('browser-firefox@envoydev', { enabled: false }),
     ];
-    const deps = { 'claude-stack-aspnet': ['claude-stack-csharp'], 'claude-stack-csharp': ['alfred-code'] };
+    const deps = { 'alfred-code-aspnet': ['alfred-code-csharp'], 'alfred-code-csharp': ['alfred-code'] };
     const got = sel.droppedEntries({
-        before: ['alfred-code', 'claude-stack-aspnet', 'claude-stack-csharp', 'browser', 'claude-stack-devops'],
-        after: ['alfred-code', 'claude-stack-devops'],
+        before: ['alfred-code', 'alfred-code-aspnet', 'alfred-code-csharp', 'browser', 'alfred-code-devops'],
+        after: ['alfred-code', 'alfred-code-devops'],
         listing, deps, marketplace: 'envoydev',
     });
-    assert.deepStrictEqual(got.map((r) => r.name), ['browser-chrome', 'claude-stack-aspnet', 'claude-stack-csharp'],
+    assert.deepStrictEqual(got.map((r) => r.name), ['alfred-code-aspnet', 'alfred-code-csharp', 'browser-chrome'],
         'aspnet before the csharp it depends on; the parked firefox browser is not touched; devops stays');
 });
 
 test('leftOut: every item a parked entry carries, and every stack seat the deny list names', () =>
 {
-    const got = sel.leftOut({ parked: ['claude-stack-devops'], deny: ['Agent(alfred-code:evidence-gatherer)', 'Agent(my-own-seat)', 'Bash(curl:*)'] });
-    assert.deepStrictEqual(got.sort(), ['agent devops-implementer', 'agent devops-solution-designer', 'agent devops-verifier', 'agent evidence-gatherer', 'skill devops'].sort());
+    const deny = ['Agent(alfred-code:evidence-gatherer)', 'Agent(alfred-code-x:security-auditor)', 'Agent(my-own-seat)', 'Bash(curl:*)'];
+    assert.deepStrictEqual(sel.leftOut({ parked: ['not-an-entry'], deny }).sort(), ['agent evidence-gatherer', 'agent security-auditor']);
+    const core = require('./plugin-placement.js').placement().plugins['alfred-code'];
+    assert.ok(core.agents.length > 0, 'the core carries the seats');
+    const want = [...core.skills.map((n) => `skill ${n}`), ...core.agents.map((n) => `agent ${n}`)];
+    assert.deepStrictEqual(sel.leftOut({ parked: ['alfred-code'], deny }).sort(), [...new Set(want)].sort(), 'a parked core leaves out every item it carries');
 });
 
 test('droppedEntries: the core and the locked servers are never queued', () =>
@@ -840,33 +812,23 @@ test('deriveFromDisk: a global install reads its skills from the account dir, th
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-// 2.0.0: a 1.x install keeps its marketplace KEY `claude-stack`, its listing may still name the core // legacy-name
-// and the hooks id by their 1.x names (the catalog refreshed, no session since - evidence S9), and
-// its stamp homes a core pick `@claude-stack`. The seed hands readBack the key it resolved; the rows // legacy-name
-// under it are the same install, and the picks carry through the first 2.0.0 update.
-const OLD = 'claude-stack'; // legacy-name
-
-test('read-back: a 1.x install - the old key, the core still named claude-stack - is the same install, and its stamp picks are kept', () => // legacy-name
+// A registered marketplace KEY never changes, so the core may be listed under any key. The seed hands
+// readBack the key it resolved; the rows under it are the same install, and its stamp picks are kept.
+test('read-back: an install under another marketplace key is the same install, and its stamp picks are kept', () =>
 {
-    const stampPicked = { skills: [`task-solve-cross@${OLD}`], agents: [`security-auditor@${OLD}`] };
-    // A 1.x settings file carries the 1.x key name until this update's env pass renames it.
-    const settings = { permissions: { deny: [`Agent(${OLD}:code-style-analyzer)`] }, env: { CLAUDE_STACK_HOOKS_OFF: 'guard-answer-length' } }; // legacy-name
-    const renamed = { ...settings, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } };
-    const now = readBackCase({ listing: [row('alfred-code@envoydev'), row('alfred-navigation@envoydev')], stampPicked, settings: renamed });
-    for (const listing of [
-        [row(`${OLD}@${OLD}`), row(`${OLD}-hooks@${OLD}`), row(`alfred-navigation@${OLD}`)],
-        [row(`alfred-code@${OLD}`), row(`alfred-navigation@${OLD}`)],
-        [row(`${OLD}@${OLD}`), row(`alfred-navigation@${OLD}`)],
-    ])
-    {
-        const r = readBackCase({ listing, stampPicked, settings, marketplace: OLD });
-        assert.deepStrictEqual(r.answered, { hooks: true, agents: true }, listing[0].name);
-        assert.ok(r.lines.includes('agent evidence-gatherer') && !r.lines.includes('agent code-style-analyzer'), 'the core seats, the 1.x deny honoured');
-        assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer-length'));
-        assert.ok(r.closeFrom.includes('skill task-solve-cross') && r.closeFrom.includes('agent security-auditor'), 'the 1.x stamp picks are kept');
-        assert.strictEqual(r.blind, false);
-        assert.deepStrictEqual(r.lines.slice().sort(), now.lines.slice().sort(), 'the same read-back as the renamed install');
-    }
+    const KEY = 'other-key';
+    const stampPicked = { skills: ['task-solve-cross@alfred-code'], agents: ['security-auditor@alfred-code'] };
+    const settings = { permissions: { deny: ['Agent(alfred-code:code-style-analyzer)'] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } };
+    const now = readBackCase({ listing: [row('alfred-code@envoydev'), row('alfred-navigation@envoydev')], stampPicked, settings });
+    const r = readBackCase({ listing: [row(`alfred-code@${KEY}`), row(`alfred-navigation@${KEY}`)], stampPicked, settings, marketplace: KEY });
+    assert.deepStrictEqual(r.answered, { hooks: true, agents: true });
+    assert.ok(r.lines.includes('agent evidence-gatherer') && !r.lines.includes('agent code-style-analyzer'), 'the core seats, the deny honoured');
+    assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer-length'));
+    assert.ok(r.closeFrom.includes('skill task-solve-cross') && r.closeFrom.includes('agent security-auditor'), 'the stamp picks are kept');
+    assert.strictEqual(r.blind, false);
+    assert.deepStrictEqual(r.lines.slice().sort(), now.lines.slice().sort(), 'the same read-back as under the default key');
+    const other = readBackCase({ listing: [row(`alfred-code@${KEY}`)], stampPicked, settings });
+    assert.ok(!other.lines.includes('agent evidence-gatherer') && !other.lines.includes('hook docs-session'), 'rows under a key the seed did not resolve are not read');
 });
 
 // R109: a plugin the stack once offered (superpowers) is no pick and no retirement - its line is
@@ -1006,10 +968,10 @@ test('read-back (2.1.0): a stamp missing its `seats-route:` line never reads a s
     assert.ok(!r.lines.includes('agent web-angular-verifier'), 'a library seat with no copy on disk was dropped by hand');
 });
 
-test('planInventory: scopes - global for a user row, project for a project or local one, project when at both, required items none', () =>
+test('planInventory: scopes - global for a user row, project and local as such, the narrowest when at several, required items none', () =>
 {
     const r = (name, scope, version = '1.0.0') => ({ name, marketplace: 'm', version, scope, enabled: true });
     const inv = sel.planInventory({ lists: {}, listing: [r('claude-hud', 'user'), r('claude-hud', 'project'), r('browser-webkit', 'local'), r('windows-desktop', 'user'),
         r('alfred-navigation', 'user'), r('alfred-code', 'user'), r('typescript-lsp', 'project', '')] });
-    assert.deepStrictEqual(inv.scopes, { 'claude-hud': 'project', 'browser-webkit': 'project', 'windows-desktop': 'global' }, 'a row with no version is not installed');
+    assert.deepStrictEqual(inv.scopes, { 'claude-hud': 'project', 'browser-webkit': 'local', 'windows-desktop': 'global' }, 'a row with no version is not installed');
 });

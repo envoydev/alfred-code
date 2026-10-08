@@ -1,6 +1,6 @@
 ---
 name: nx
-description: "Use when working in an Nx monorepo - nx.json, project.json, nx commands - to navigate the project graph and scope work with nx affected. Not for non-Nx repos."
+description: "Use when working in an Nx monorepo - nx.json, project.json, 'what does this change affect', 'test only what changed', nx generate. Not for non-Nx repos."
 ---
 
 # Nx Monorepo
@@ -43,7 +43,8 @@ Not for a monorepo without Nx (pnpm or npm workspaces, Turborepo).
 
 ## Scope every gate with `nx affected`
 - Run build, test, and lint over the affected set, not the whole tree: `nx affected -t build`,
-  `nx affected -t test`, `nx affected -t lint`, against a base with `--base=main`. This is the biggest
+  `nx affected -t test`, `nx affected -t lint`, against the workspace's `defaultBase` (nx.json), or
+  `--base=<branch>` when the change targets another branch. This is the biggest
   token and wall-clock win in a large monorepo - a change to one library tests only that library and
   its dependents, not every project.
 - Verification and CI gate on `nx affected`, not `nx run-many` over everything. `nx affected --graph`
@@ -66,7 +67,8 @@ or you pay for the wrong tool:
 - Generate with `nx generate`, using the plugin for the project's own framework (`nx list` shows the
   installed ones: `nx g @nx/js:lib`, or `nx g @nx/angular:library` in an Angular workspace) rather than
   hand-authoring boilerplate - the generator wires `project.json`, the path mapping, and tags correctly
-  and is far cheaper than emitting the files by hand.
+  and is far cheaper than emitting the files by hand. Preview first - `nx g <generator> <name> --dry-run`
+  lists the files it would write; then run it and close on `nx affected -t lint` with its result line.
 - Enforce module boundaries with tags: set `tags` on each project and turn on the
   `@nx/enforce-module-boundaries` ESLint rule so a forbidden cross-project import fails lint - the
   boundary is a build-failing rule, not a convention.
@@ -78,7 +80,7 @@ or you pay for the wrong tool:
   with the CLI above rather than passing `--no-minimal` to expose them) and prune tools with
   `--tools` globs so its schemas do not bloat every request; reserve it for Nx Cloud connectivity
   and running processes, not workspace analysis.
-- `npx nx configure-ai-agents` lays down the agent config once - guideline files (`CLAUDE.md` / `AGENTS.md`), Nx's own agent skills and the Nx MCP entry - so keep the MCP minimal afterward.
+- Never run `npx nx configure-ai-agents` yourself: it rewrites `CLAUDE.md` / `AGENTS.md` and adds third-party agent skills and an MCP entry. Name it to the user, who reviews what it writes before running it.
 
 ## Keep the output quiet
 - Nx output is context you pay for: run tasks with `--output-style=static` so the captured log is

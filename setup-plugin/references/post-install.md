@@ -59,7 +59,7 @@ claude plugin list
 ```
 
 Every stack plugin should read enabled for this project. One that does not is one command away -
-`claude plugin enable <name>` - and `/alfred-code:status` reports the same state per plugin any
+`claude plugin enable <name> --scope <this install's scope>` (always with the scope: the CLI's default for a plugin is `user`) - and `/alfred-code:status` reports the same state per plugin any
 time after that.
 
 ## 2. Git hygiene - keep the machine-local artifacts out of the repo

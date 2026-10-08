@@ -24,10 +24,7 @@ Three servers are locked into every install: the navigation server, the document
 - **Clarify before freezing, verify before closing.** Run `habits-clarify` (SKILL.md's clarify gate) before freezing a contract
   on genuinely ambiguous design; route the done gate (`habits-done-gate`) to the closing seat (the domain
   verifier or the integration reviewer). An optional workflow-skills plugin's DISPATCH skills, where the install
-  has one - a parallel-agents one, a subagent-driven one - are superseded here and are not a second route in: this skill is the single entry point for multi-agent work, the
-  capabilities rule says dispatch is explicit and never automatic, and the house dispatch guard denies a run
-  started any other way. So the phrasing that fires them ('two independent tasks', 'execute this plan in
-  parallel') lands on this skill, and their firing costs a denial and a retried turn.
+  has one - a parallel-agents one, a subagent-driven one - are superseded here and are not a second route in: the house flows are the entry points for multi-agent work, dispatch is explicit and never automatic, and the dispatch guard blocks an implementer that carries no approval stamp.
 - **Keep the shared instruction file sharp.** A flow that depends on a stale AGENTS.md pays for it in every seat
   that loads it. Where the install has the tool that audits and revises an instruction file from what a session
   learned, use it rather than letting each seat work around the drift; it is an opt-in, so a project without it

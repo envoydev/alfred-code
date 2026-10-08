@@ -71,7 +71,7 @@ The signature is now the spec - the status codes are visible at a glance and the
 
 Serialize DTOs, never domain entities or EF Core models. A `record` request and response type maps at the endpoint edge. Sending an entity over the wire leaks the persistence shape, drags lazy-loaded relations into the serializer, and couples the public contract to the schema.
 
-Bind the request to its own DTO too, not the domain entity. A `CreateTodoRequest` / `UpdateTodoRequest` record - distinct from the persisted model, with the validation attributes on it - is the contract in; the response DTO is the contract out. Binding straight onto an entity is mass-assignment: a caller can over-post a field the form never exposed - an owner id, an `IsAdmin` - and have it persisted. Let only mapped fields cross into domain logic.
+Bind the request to its own DTO too, not the domain entity. A `CreateTodoRequest` / `UpdateTodoRequest` record - distinct from the persisted model, validated by the endpoint filter - is the contract in; the response DTO is the contract out. Binding straight onto an entity is mass-assignment: a caller can over-post a field the form never exposed - an owner id, an `IsAdmin` - and have it persisted. Let only mapped fields cross into domain logic.
 
 ## Per-endpoint cross-cutting: IEndpointFilter
 
@@ -115,18 +115,17 @@ Tag every endpoint so the generated document and the test suite can address it: 
 
 ## File uploads
 
-Bind an upload with `IFormFile` (or `IFormFileCollection` for several). For a large upload, do not let the whole body buffer into memory - stream it with `MultipartReader` and copy section by section to the destination. Treat every upload as hostile:
-
-- **Cap the size in two places.** Kestrel's `MaxRequestBodySize` bounds the whole request; `FormOptions.MultipartBodyLengthLimit` bounds the multipart body. Set both - one without the other leaves a gap.
-- **Do not trust the declared type.** The `Content-Type` header and the file extension are attacker-controlled. Sniff the real type from the leading magic bytes / file signature and reject anything not on an allowlist.
-- **Do not trust the filename.** A supplied name like `../../etc/passwd` is a path-traversal attempt. Save under a server-generated name (`Guid.NewGuid()`), store the original separately if you need it for display, and never use it to build a path.
-- **Keep antiforgery on.** An upload is a form post, so `UseAntiforgery()` applies. Only `.DisableAntiforgery()` on an endpoint that is genuinely not cookie/CSRF-exposed (for instance a bearer-token API), and know why before you do.
-
-The error/`ProblemDetails` shape for a rejected upload stays with the HTTP error-handling skill; auth posture with the authentication skill.
+Bind an upload with `IFormFile` (or `IFormFileCollection` for several); stream a large body with `MultipartReader`, section by section, rather than buffering it into memory. Before shipping an upload endpoint, read `references/file-uploads.md` - size caps in two places, magic-byte sniffing, server-side names, antiforgery.
 
 ## Prove the endpoint
 
-A route that compiles is not a route that answers. Call it three ways before any done word and quote each result: a valid request returns the declared status and body shape; an invalid one returns the canonical 400 envelope; and a cancelled request stops the work rather than running on. An endpoint whose `CancellationToken` was never exercised is an endpoint that keeps working after the client has hung up.
+A route that compiles is not a route that answers. Before any done word, call it three ways:
+
+1. A valid request - quote the declared status and the body shape.
+2. An invalid request - quote the single canonical 400 envelope.
+3. A cancelled request - quote that the work stopped rather than running on.
+
+Report: the three quoted results. An endpoint whose `CancellationToken` was never exercised is an endpoint that keeps working after the client has hung up.
 
 ## Anti-patterns
 

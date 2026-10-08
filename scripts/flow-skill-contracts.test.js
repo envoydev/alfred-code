@@ -227,20 +227,23 @@ test('I29: task-solve\'s body is under 18,000 chars with its stops still templat
 // ---- I32 + I33: verify-code's receipt and example carry what its contract requires ---------------------------------
 test('I32: verify-code\'s COMMIT-GATE receipt adds the security row, pinned with the checkpoint', () =>
 {
+    // The receipt left SKILL.md for a reference the body reads when a commit is next (2026-10-08 audit, task-verify-code:74).
+    const receipt = 'stack/skills/task-verify-code/references/commit-gate-receipt.md';
     const marker = '`security:` naming each category checked and its verdict';
-    assert.ok(flat(read('stack/skills/task-verify-code/SKILL.md')).includes(marker));
+    assert.ok(flat(read(receipt)).includes(marker));
     const entry = shared()['commit-gate-security-row'];
     assert.ok(entry, 'pinned in shared-rules.json');
-    assert.deepStrictEqual(copiesOf(entry).sort(), ['stack/skills/habits-commit-checkpoint/SKILL.md', 'stack/skills/task-verify-code/SKILL.md']);
+    assert.deepStrictEqual(copiesOf(entry).sort(), ['stack/skills/habits-commit-checkpoint/SKILL.md', receipt]);
 });
 
-test('I33: verify-code\'s worked example opens with the five named fields, each filled', () =>
+test('I33: verify-code\'s worked example opens with the six named fields, each filled', () =>
 {
+    // Regression joined the five in the 2026-10-08 audit (task-verify-code:60): step 4's callers and vacuous-test checks.
     const example = read('stack/skills/task-verify-code/SKILL.md').split('## Example')[1] || '';
     const block = (example.match(/```text\n([\s\S]*?)```/) || [])[1] || '';
     const lines = block.split('\n').filter(Boolean);
-    assert.deepStrictEqual(lines.slice(0, 5).map((l) => l.split(':')[0]), ['Build', 'Live-probe', 'Findings', 'Probe code', 'Next run']);
-    for (const l of lines.slice(0, 5)) assert.doesNotMatch(l, /<[^>]+>/, `${l}: a value, not a placeholder`);
+    assert.deepStrictEqual(lines.slice(0, 6).map((l) => l.split(':')[0]), ['Build', 'Live-probe', 'Regression', 'Findings', 'Probe code', 'Next run']);
+    for (const l of lines.slice(0, 6)) assert.doesNotMatch(l, /<[^>]+>/, `${l}: a value, not a placeholder`);
 });
 
 // ---- I34 + I35: verify-plan's mode ask is a template, and its audit record names the five passes -------------------

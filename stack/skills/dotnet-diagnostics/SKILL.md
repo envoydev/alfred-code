@@ -23,7 +23,15 @@ A benchmark exists to earn or refute a change, not to decorate one. Before you t
 
 Whichever route you take, the output contract is the same and it carries evidence, never a claim:
 
-- A benchmark reports the BenchmarkDotNet summary rows for both variants - mean, allocated, ratio - copied from the run, plus the command that produced them. 'It is faster' with no table is not a result.
+- A benchmark reports the BenchmarkDotNet summary rows for both variants - mean, allocated, ratio - copied from the run, plus the command that produced them. 'It is faster' with no table is not a result. The shape:
+
+  ```text
+  dotnet run -c Release -- --filter '*SortBench*'
+  | Method | Mean     | Allocated | Ratio |
+  | Bubble | <copied> | <copied>  | 1.00  |
+  | Quick  | <copied> | <copied>  | <x>   |
+  ```
+
 - A dump reports the capture command, the file, and the first-look SOS output that supports the conclusion (`clrstack`, `dumpheap -stat`, `gcroot`). Name what you did NOT rule out.
 
 ## Capture where it reproduces

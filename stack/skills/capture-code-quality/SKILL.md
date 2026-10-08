@@ -1,6 +1,6 @@
 ---
 name: capture-code-quality
-description: "Use when asked to assess, audit or judge the code quality or which of the project's quality rules the code breaks. Deliberate only. Not for fixing findings."
+description: "Use when asked to assess, audit or judge the code quality or which project quality rules the code breaks. Deliberate only. Not for architecture or fixes."
 ---
 
 # Code Quality Capture - Judge the Code Against Its Rules (Deliberate)
@@ -9,9 +9,9 @@ You are the judgment seat for this run: you gather the project's quality rules, 
 
 - `<docs-path>/quality/CODE-ASSESSMENT.md` - the reasoned, tiered findings. The only file you write.
 
-**`quality/` carries no `watch.json` and is therefore not a docs domain at all** - the same standing as `quality/ASSESSMENT.md` beside it. The engine (`node .claude/hooks/docs.js`) never sections, versions or asks about it: findings are a function of the rules plus the code, recomputable on demand for whatever branch you are on. Read `references/doc-shape.md` before JUDGE - the rule sources, the findings gate, the count rule, the three buckets, the shape and the format budget are this skill's contract, not suggestions.
+**`quality/` carries no `watch.json`, so it is no docs domain - the doc is recomputed every run (`references/doc-shape.md` says why).** Read `references/doc-shape.md` before JUDGE - the rule sources, the findings gate, the count rule, the three buckets, the shape and the format budget are this skill's contract, not suggestions.
 
-**Reads decisions, never writes them - hard rule.** The decision log (`<docs-path>/decisions/`, or wherever the project keeps ADRs) and the choices the project AGENTS.md records are what gate question 4 reads; a candidate worth deciding rather than fixing is named as a Proposed decision in the doc and the report, for a person to accept by writing it themselves. `loop-quality`, which drives this skill across rounds, holds the same rule.
+**Reads decisions, never writes them - hard rule.** The decision log (`<docs-path>/decisions/`, or wherever the project keeps ADRs) and the choices the project AGENTS.md records are what gate question 4 reads; a candidate worth deciding rather than fixing is named as a Proposed decision in the doc and the report, for a person to accept by writing it themselves.
 
 **No first-run/update split, no zero-drift shortcut.** Every run reads fresh and writes fresh - a changed rule, an accepted decision or a shipped fix changes the answer even when the code did not.
 
@@ -24,6 +24,14 @@ You are the judgment seat for this run: you gather the project's quality rules, 
 - Not for fixing the findings (/loop-quality), the architecture (capture-architecture-quality), test coverage (the coverage capture), recording the code style (/capture-code-style), a security audit (/security-review or the security-auditor seat) or one diff (task-verify-code).
 
 ## Execution modes
+
+**Run gate - a run no calling flow started asks first.** The run dispatches seats and replaces CODE-ASSESSMENT.md, and a conversational 'is this code any good?' can match this skill. So unless the quality loop invoked this run, put this ask before GATHER (joined with the mode ask below where that fires, one AskUserQuestion call). No answer, no run.
+
+```ask
+Judge the code against its rules and replace CODE-ASSESSMENT.md?
+- 'Judge the code and replace CODE-ASSESSMENT.md (Recommended)' - a fresh, gated assessment, seats as picked in the mode ask
+- 'Answer from the existing CODE-ASSESSMENT.md only' - nothing dispatched, nothing written; with no CODE-ASSESSMENT.md yet the run stops here
+```
 
 DELEGATED vs INLINE keys on dispatch capability, not file presence. When dispatch is available, ask ONE question before GATHER, via AskUserQuestion - judge the modules via code-quality-analyzer seats (recommend it: the cheap seats absorb the reads), or in-session? - unless a calling flow (the quality loop) already picked the run's mode, which is inherited, never re-asked.
 
@@ -60,7 +68,7 @@ Treat every `F` line as a candidate, never a finding, until it clears `reference
 Where a finding is unclear or a module came back PARTIAL, dispatch code-quality-analyzer again on exactly that module and rule. Where two seats contradict each other on a CHECKABLE fact, settle it with the cheapest deterministic probe in-session first (`grep -c`, a navigation-server lookup, the stack's own command) and re-dispatch only for a judgment conflict no command settles. **Hard cap: 3 gather rounds.** Still unsettled after 3: write what is established, mark what is uncertain and what would settle it - never guess to fill an entry.
 
 ### 5. WRITE - <docs-path>/quality/CODE-ASSESSMENT.md, per references/doc-shape.md
-No write gate - REPLACE the file wholesale every run: READ it first if it exists so the Write is legal, then Write the fresh judgment over it, composed whole in-session and landed in one write. Write ONLY `<docs-path>/quality/CODE-ASSESSMENT.md` - never source, never the loops prompts, never the decision log. After the write, `wc -l` it against the ~300-line target and run the spill pass now if it is over.
+No diff check - once the run gate is answered, REPLACE the file wholesale every run: READ it first if it exists so the Write is legal, then Write the fresh judgment over it, composed whole in-session and landed in one write. Write ONLY `<docs-path>/quality/CODE-ASSESSMENT.md` - never source, never the loops prompts, never the decision log. After the write, `wc -l` it against the ~300-line target and run the spill pass now if it is over.
 
 ### 6. REPORT
 Confirm the file written (created vs refreshed), then lean: gather rounds used and whether the picture settled within the cap, the assessment's shape (per-bucket counts, the Must-fix tier and severity tallies, the per-rule counts, the top few fixes the quality loop should take first), the hand-offs counted by destination, any Proposed decisions, anything unverified and what would settle it. Then the receipt lines - one per field, UNCONDITIONAL:
@@ -72,6 +80,7 @@ Confirm the file written (created vs refreshed), then lean: gather rounds used a
 | `Decisions:` | the decision records step 1 actually opened, or `none found at <path looked>` |
 | `Findings gate:` | candidates considered, passed, routed to Worth knowing, folded into an existing entry, handed off, and rejected (naming the question each rejected one failed) |
 | `Write:` | created / refreshed, and the post-write line count against the ~300 target |
+| `Run gate:` | the answer verbatim, or `invoked by the quality loop` |
 | `Model:` | what the session is on NOW and the exact `/model` command for the USER to paste - `raised for this run - run /model <prior model> to drop back`, `already on Opus before this run started - nothing to reset` (only when you can point at the message that proves it), or `not on Opus - the judgment above ran on <model>` |
 
 No re-paste of the doc body - point to the file.

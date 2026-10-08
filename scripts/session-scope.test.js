@@ -13,7 +13,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k.startsWith('ALFRED_CODE_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // legacy-name
+for (const k of Object.keys(process.env)) if (k.startsWith('ALFRED_CODE_')) delete process.env[k];
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const DOCS = '.alfred/docs';
@@ -324,6 +324,26 @@ test('N1: a trivial commit the guard let through but git never made is not count
         assert.strictEqual(p.bash('retry', 'git add src/feat1.cs && git commit -m one').status, 0);
         assert.strictEqual(p.bash('retry', 'git add src/feat1.cs && git commit -m one').status, 0, 'a retry of the same commit on the same HEAD');
         assert.match(fs.readFileSync(path.join(p.dir, DOCS, 'flow', 'trivial-retry'), 'utf8'), /src\/feat1\.cs/, 'the ledger names what walked under the bar');
+    } finally { p.rm(); }
+});
+
+// Audit 2026-10-08 S9: a session's trivial ledger was never pruned; a new one sweeps the others past 7 days.
+test('a new trivial ledger sweeps other sessions\' ledgers past 7 days, and keeps a fresher one', () => {
+    const p = project();
+    try {
+        const flow = path.join(p.dir, DOCS, 'flow');
+        fs.mkdirSync(flow, { recursive: true });
+        const plant = (name, days) => { const f = path.join(flow, name); fs.writeFileSync(f, '{}\n'); const t = new Date(Date.now() - days * 86400000); fs.utimesSync(f, t, t); return f; };
+        const old = plant('trivial-gone', 8);
+        const fresh = plant('trivial-kept', 6);
+        const other = plant('COMMIT-GATE-old-note', 30);
+        p.hist('sweep');
+        p.write('src/feat1.cs', ten('f1'));
+        assert.strictEqual(p.bash('sweep', 'git add src/feat1.cs && git commit -m one').status, 0);
+        assert.ok(fs.existsSync(path.join(flow, 'trivial-sweep')), 'this session\'s ledger was written');
+        assert.ok(!fs.existsSync(old), 'eight days old is swept');
+        assert.ok(fs.existsSync(fresh), 'six days old is kept');
+        assert.ok(fs.existsSync(other), 'a file with another prefix is never touched');
     } finally { p.rm(); }
 });
 

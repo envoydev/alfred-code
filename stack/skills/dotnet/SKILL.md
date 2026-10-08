@@ -1,13 +1,13 @@
 ---
 name: dotnet
-description: "Load when starting or navigating any .NET / C# backend or desktop task - the router that maps the work area to one specialist skill. Not for non-.NET work."
+description: "Load when starting any .NET / C# backend or desktop task and unsure which specialist applies - maps the work area to its skill(s). Not for non-.NET work."
 ---
 
 # dotnet (skill router)
 
-**Availability - required vs optional.** The always-on spine of any .NET work is three skills: this router, `csharp` (every `.cs` file - every row below is in addition to it, never instead), and `dotnet-testing` (the moment a test is written or changed - tests are part of the done gate). Add exactly one surface hub for the app under build - `dotnet-web-backend` (ASP.NET Core), `dotnet-console-apps` + `dotnet-hosted-services` (worker / CLI / bot / daemon), `dotnet-hosted-services` + `dotnet-windows-service` (a Windows Service under the SCM), or `dotnet-wpf` / `dotnet-winforms` (desktop). Every other row below is an optional specialist, loaded only when its area is in play - never up front - and installed only where the project's stack or evidence shows that area: a row whose skill is not in your skill list means the area is absent here, not a broken pointer - work from this router and skip the row.
+**Availability - required vs optional.** The always-on spine of any .NET work is two rule-loaded skills - this router stays the index to open when the area is unclear: `csharp` (every `.cs` file - every row below is in addition to it, never instead), and `dotnet-testing` (the moment a test is written or changed - tests are part of the done gate). Add exactly one surface hub for the app under build - `dotnet-web-backend` (ASP.NET Core), `dotnet-console-apps` + `dotnet-hosted-services` (worker / CLI / bot / daemon), `dotnet-hosted-services` + `dotnet-windows-service` (a Windows Service under the SCM), or `dotnet-wpf` / `dotnet-winforms` (desktop). Every other row below is an optional specialist, loaded only when its area is in play - never up front - and installed only where the project's stack or evidence shows that area: a row whose skill is not in your skill list means the area is absent here, not a broken pointer - work from this router and skip the row.
 
-The single source-of-truth index mapping a concrete .NET work area - a construct, command, file, or task - to the one focused skill to load. It routes, it does not restate: load the named skill for the actual guidance. Pick by what you are about to do; if several rows match, load several.
+The single source-of-truth index mapping a concrete .NET work area - a construct, command, file, or task - to the one focused skill to load. It routes, it does not restate: load the named skill for the actual guidance. Pick by what you are about to do; if several rows match, load several. Name the row you matched and the skill you loaded in your next message.
 
 **The trigger is the artifact**, not 'am I doing .NET'. In a specific repo, that repo's `AGENTS.md` binds these rows to its own file names and folders.
 

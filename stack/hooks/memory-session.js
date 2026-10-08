@@ -4,10 +4,10 @@
 // wired - same split as docs.js/docs-session.js). Whenever a memory registration is found, the push
 // always names this project's own tag (even with nothing else to show - I5), so the model knows what
 // to save under, especially inside a git worktree, where that name is the MAIN checkout's, never the
-// worktree's own folder. Fully silent only when there is no registration to report at all: a
-// missing/locked/wrong-schema database, a Node below 22.13 (memory.js's own selectForSession already
-// degrades to an empty selection there), garbage stdin, or any other error - exit 0 throughout, since a
-// session start that cannot be enriched must never be a session start that fails.
+// worktree's own folder. A missing, locked or wrong-schema database, or a Node below 22.13 (memory.js's
+// own selectForSession degrades to an empty selection there), selects nothing, and the push is then the
+// tag and search lines alone. Fully silent only with no registration, garbage stdin, or any other error -
+// exit 0 throughout, since a session start that cannot be enriched must never be a session start that fails.
 'use strict';
 const os = require('os');
 

@@ -663,7 +663,8 @@ const switchRun = (rows) => seedRun(['install', 'update'], 'skill markdown-style
     inspect: (repo) => Object.keys(JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers || {}),
 });
 
-for (const key of ['envoydev', 'claude-stack']) // legacy-name
+// A marketplace registered under another key is read from the listing, never assumed.
+for (const key of ['envoydev', 'house-mirror'])
 {
     test(`seed update (full copy route, key ${key}): a plugin-route install switched to the copies disables the core and the locked three before any registration (R107)`, POSIX_ONLY, () =>
     {
@@ -682,57 +683,13 @@ for (const key of ['envoydev', 'claude-stack']) // legacy-name
     });
 }
 
-test('seed update (full copy route): a stack row already off is left alone, and one at another scope is named with its command, never disabled (R107)', POSIX_ONLY, () =>
+test('seed update (full copy route): a stack row already off is left alone; a BROADER row is switched off for this project alone, a narrower one named (R107, scope rule 5)', POSIX_ONLY, () =>
 {
-    const rows = STACK_ROWS('envoydev', { 'alfred-code': { enabled: false }, 'alfred-navigation': { enabled: false }, 'alfred-documentation': { enabled: false }, 'alfred-memory': { scope: 'user' } });
+    const rows = STACK_ROWS('envoydev', { 'alfred-code': { enabled: false }, 'alfred-navigation': { enabled: false }, 'alfred-documentation': { scope: 'local' }, 'alfred-memory': { scope: 'user' } });
     const { calls, out } = switchRun(rows);
-    assert.deepStrictEqual(calls.filter((c) => /^plugin disable /.test(c)), [], `a re-run disables nothing:\n${calls.join('\n')}`);
-    assert.match(out, /memory@envoydev is enabled at user scope, not this run's - .*claude plugin disable alfred-memory@envoydev --scope user/);
-});
-
-// R111 (Task 8a concern b): the stand-down named the 2.x core only. A 1.3.0 plugin-route install
-// updated straight onto the full copy route never gets the 1.x move (it runs on the plugin route), so
-// its 1.x ids - the old core and the old hooks id - stayed enabled at 1.3.0, and a session listed 21
-// of the old core's items beside the copies (the R22c probe). They are DISABLED, never uninstalled: a
-// later switch back to the plugin route finds the old core's row, and with it the key and scope, and
-// runs the 1.x move from there (the switch-back test below).
-const LEGACY_ROWS = (over = {}) => ['claude-stack', 'claude-stack-hooks', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'] // legacy-name
-    .map((n) => ({ id: `${n}@claude-stack`, version: '1.3.0', scope: 'project', enabled: true, ...(over[n] || {}) })); // legacy-name
-
-test('seed update (full copy route): a 1.3.0 plugin-route install switched straight to the copies has its 1.x ids disabled too, under the stack key only (R111)', POSIX_ONLY, () =>
-{
-    const rows = [...LEGACY_ROWS(),
-        { id: 'claude-stack-hooks@a-fork', version: '1.0.0', scope: 'project', enabled: true }, // legacy-name
-        { id: 'memory@claude-plugins-official', version: '1.0.0', scope: 'project', enabled: true }];
-    const { calls, out, result } = switchRun(rows);
-    const disables = calls.filter((c) => /^plugin disable /.test(c));
-    assert.deepStrictEqual([...disables].sort(), ['claude-stack', 'claude-stack-hooks', 'alfred-documentation', 'alfred-memory', 'alfred-navigation'] // legacy-name
-        .map((n) => `plugin disable ${n}@claude-stack --scope project`).sort(), `the stack's own rows only:\n${disables.join('\n')}\n${out}`); // legacy-name
-    assert.deepStrictEqual(calls.filter((c) => /^plugin (install|uninstall) (alfred-code|claude-stack)/.test(c)), [], 'disabled, never moved or removed on the copy route'); // legacy-name
-    const lastDisable = calls.map((c) => /^plugin disable /.test(c)).lastIndexOf(true);
-    assert.ok(calls.findIndex((c) => /^mcp add /.test(c)) > lastDisable, `a registration ran before the plugins were off:\n${calls.join('\n')}`);
-    assert.match(out, /plugin disabled \[project\]: claude-stack@claude-stack \(a 1\.x id/); // legacy-name
-    // 1.3.0 declares the old hooks id dependent on the old core, and the CLI refuses to disable a plugin an
-    // enabled one depends on - measured on 2.1.282, the P111 proof: the dependent goes first.
-    assert.ok(disables.indexOf('plugin disable claude-stack-hooks@claude-stack --scope project') < disables.indexOf('plugin disable claude-stack@claude-stack --scope project'), `the old core went before the id that depends on it:\n${disables.join('\n')}`); // legacy-name
-    for (const name of mcp.LOCKED) assert.ok(result.includes(name), `${name} missing from .mcp.json: ${result.join(',')}`);
-});
-
-test('seed update (plugin route): a copy-route install whose 1.x ids were disabled switches back through the 1.x move (R111)', POSIX_ONLY, () =>
-{
-    const rows = LEGACY_ROWS({ 'claude-stack': { enabled: false }, 'claude-stack-hooks': { enabled: false }, 'alfred-navigation': { enabled: false }, 'alfred-documentation': { enabled: false }, 'alfred-memory': { enabled: false } }); // legacy-name
-    const { calls, out } = seedRun(['install', 'update'], 'skill markdown-style\n', {
-        plugins: JSON.stringify(rows),
-        env: [COPY_ENV, {}],
-        args: [[], ['--installed-only']],
-        each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'claude-calls.log'), ''); return null; },
-    });
-    const moves = calls.filter((c) => /^plugin (install|uninstall|enable) /.test(c));
-    const at = (line) => moves.indexOf(line);
-    assert.ok(at('plugin install alfred-code@claude-stack --scope project -y') === 0, `the move installs the new core first:\n${moves.join('\n')}\n${out}`); // legacy-name
-    assert.ok(at('plugin uninstall claude-stack-hooks@claude-stack --scope project -y') > 0, moves.join('\n')); // legacy-name
-    assert.ok(at('plugin uninstall claude-stack@claude-stack --scope project -y') > at('plugin uninstall claude-stack-hooks@claude-stack --scope project -y'), moves.join('\n')); // legacy-name
-    for (const name of mcp.LOCKED) assert.ok(moves.includes(`plugin enable ${name}@claude-stack --scope project`), `${name} was not switched back on:\n${moves.join('\n')}`); // legacy-name
+    assert.deepStrictEqual(calls.filter((c) => /^plugin disable /.test(c)), ['plugin disable alfred-memory@envoydev --scope project'], `only the user-scope row, here only:\n${calls.join('\n')}`);
+    assert.match(out, /plugin disabled \[project\]: alfred-memory@envoydev \(the full copy route carries it as copies; this project only - the user-scope install stays on for every other project\)/);
+    assert.match(out, /documentation@envoydev is enabled at local scope, not this run's - .*claude plugin disable alfred-documentation@envoydev --scope local/);
 });
 
 // R116 matrix re-run: the full copy route disables a 2.x core (R107), and the plugin route never enabled
@@ -828,21 +785,6 @@ test('seed update --scope user (full copy route): the stand-down switches the us
     assert.strictEqual(back.stood, null);
 });
 
-// M3 (R132): a 1.2.0 plugin-route install updated straight onto the full copy route still has its
-// per-stack carriers, which declare the old core a dependency - and the CLI refuses to disable a plugin
-// an enabled one depends on (P111). The carriers are pruned first, then the stack's rows go off.
-test('seed update (full copy route): the retired carriers are pruned BEFORE the stand-down disables the core they depend on (M3)', POSIX_ONLY, () =>
-{
-    const carrier = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'retired-entries.json'), 'utf8'));
-    const name = (Array.isArray(carrier) ? carrier : carrier.entries || carrier.plugins)[0].name;
-    const rows = [...LEGACY_ROWS(), { id: `${name}@claude-stack`, version: '1.2.0', scope: 'project', enabled: true }]; // legacy-name
-    const { calls, out } = switchRun(rows);
-    const prune = calls.indexOf(`plugin uninstall ${name}@claude-stack --scope project -y`); // legacy-name
-    const disable = calls.indexOf('plugin disable claude-stack@claude-stack --scope project'); // legacy-name
-    assert.ok(prune >= 0, `the carrier was not pruned:\n${calls.join('\n')}\n${out}`);
-    assert.ok(disable > prune, `the old core was disabled before the carrier that depends on it went:\n${calls.join('\n')}`);
-});
-
 // M4 (R132): an unreadable `claude plugin list --json` reads as no rows, and the stand-down then did
 // nothing without a word - the core and the locked three, if enabled, ran beside the registrations.
 test('seed update (full copy route): an unreadable plugin listing is one loud line naming the stand-down it could not do, never an empty list acted on (M4)', POSIX_ONLY, () =>
@@ -910,7 +852,7 @@ test('seed update (full copy route): the settings file, not the listing flag, sa
 // and seats were never copied, and with the core off they loaded nowhere (a switched session listed 8
 // skills and no stack seat, a fresh copy-route install 26 skills and 8 seats). What the core carried
 // is read back the way the skills route reads it, and copied before it goes off - a denied seat excepted.
-for (const [key, rows] of [['envoydev', STACK_ROWS('envoydev')], ['claude-stack', LEGACY_ROWS()]]) // legacy-name
+for (const [key, rows] of [['envoydev', STACK_ROWS('envoydev')], ['house-mirror', STACK_ROWS('house-mirror')]])
 {
     test(`seed update (full copy route, key ${key}): what the enabled core carried is copied before the switch disables it, a denied seat left off (R116)`, POSIX_ONLY, () =>
     {
@@ -999,12 +941,16 @@ for (const [route, env] of [['MCP copy route', MCP_COPY_ENV], ['full copy route'
         });
         for (const e of ['chrome', 'firefox', 'webkit']) assert.ok(result.includes(`browser-${e}`), `browser-${e} not registered: ${result.join(',')}\n${out}`);
         const engineMoves = calls.filter((c) => /^plugin (install|uninstall|disable|enable) browser-/.test(c));
-        // R116: the row left off goes too - the stamp is then the one record the switch back reads.
-        assert.deepStrictEqual(engineMoves, ['chrome', 'webkit'].map((e) => `plugin uninstall browser-${e}@envoydev --scope project -y`), `${engineMoves.join('\n')}\n${out}`);
+        // R116: the row left off goes too - the stamp is then the one record the switch back reads. Scope rule 5: on the
+        // full copy route the user-scope row is switched off for this project alone; on the MCP copy route it is named.
+        const firefox = route === 'full copy route' ? ['plugin disable browser-firefox@envoydev --scope project'] : [];
+        assert.deepStrictEqual(engineMoves, ['plugin uninstall browser-chrome@envoydev --scope project -y', ...firefox, 'plugin uninstall browser-webkit@envoydev --scope project -y'], `${engineMoves.join('\n')}\n${out}`);
         const gone = calls.indexOf('plugin uninstall browser-chrome@envoydev --scope project -y');
         assert.ok(calls.findIndex((c) => /^mcp add .*browser-/.test(c)) > gone, `an engine was registered before its plugin went:\n${calls.join('\n')}`);
         assert.match(out, /plugin uninstalled \[project\]: browser-chrome@envoydev \(the copy route registers it in \.mcp\.json/);
-        assert.match(out, /browser-firefox@envoydev is enabled at user scope, not this run's - .*claude plugin uninstall browser-firefox@envoydev --scope user/);
+        assert.match(out, route === 'full copy route'
+            ? /!! plugin disabled \[project\]: browser-firefox@envoydev \(the copy route registers it in \.mcp\.json; this project only - the user-scope install stays on for every other project\)/
+            : /browser-firefox@envoydev is enabled at user scope, not this run's - .*to switch it off for this project alone: claude plugin disable browser-firefox@envoydev --scope project/);
         const stackDisables = calls.filter((c) => /^plugin disable (alfred-code|alfred-navigation|alfred-documentation|alfred-memory)@/.test(c));
         assert.strictEqual(stackDisables.length, route === 'full copy route' ? 4 : 0, `${stackDisables.join('\n')}`);
     });

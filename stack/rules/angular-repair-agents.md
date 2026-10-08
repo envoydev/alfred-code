@@ -7,7 +7,7 @@ paths: ["**/angular.json", "**/*.component.ts", "**/*.component.html", "**/*.spe
      build state has no glob; this soft router replaced the retired hard gate. -->
 
 A broken Angular build or red spec suite (Ionic/Capacitor included - ionic build wraps ng
-build) - delegating beats looping in-session; the run's session-or-agents pick, or the user's word, decides - absent both, offer the resolver through AskUserQuestion (resolver seat vs in-session fix, resolver recommended): fix-the-build goes to
+build) - delegating beats looping in-session; the run's session-or-agents pick, or the user's word, decides - absent both, offer the resolver through AskUserQuestion (resolver seat vs in-session fix, resolver recommended; an in-session pick starts at the `habits-root-cause` Skill call): fix-the-build goes to
 **`ng-build-error-resolver`**, make-the-tests-pass goes to **`angular-test-resolver`** once
 the build is green. The subagent absorbs the repeated build/test output and returns only a
 diagnosis.

@@ -2,7 +2,7 @@
 
 The 'what is valid' layer. Distilled from the Markdown Guide basic-syntax reference (https://www.markdownguide.org/basic-syntax/, CC BY-SA 4.0). For the 'what is good' layer, see `style-overlay.md`.
 
-A finding in this file is a **must-fix** - the construct is either invalid or so inconsistently rendered across processors that it counts as a bug. The skill cites the rule by its short name (e.g., `syntax/headings/atx-space-after`) so the architect can locate it here.
+A finding in this file is a **must-fix** (one entry, `syntax/lists/nested-indent-4`, is a should-fix and says so) - the construct is either invalid or so inconsistently rendered across processors that it counts as a bug. A fix made once this file is open for a dispute cites the rule by its short name (e.g., `syntax/headings/atx-space-after`) so the architect can locate it here.
 
 ## Contents
 

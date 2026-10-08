@@ -147,9 +147,7 @@ function respellPreloads(text, core)
 // scope settings.local.json is laid over settings.json (the N6 merge, `readBackSettings`), so a docs
 // path set only in the personal file is the root; at project and user scope only settings.json. The
 // scope defaults to the stamp's own `scope:` line, so a reader outside a run (library-check,
-// init-plan) resolves what the last install used. envOf reads the new key, then the 1.x
-// CLAUDE_STACK_DOCS_PATH spelling an update renames later in the same run, then the pre-0.2.43 // legacy-name
-// one. A malformed or absent file is not a failure - it means 'no value here', which is what the
+// init-plan) resolves what the last install used. A malformed or absent file is not a failure - it means 'no value here', which is what the
 // default is for.
 function resolveDocsRoot(projectRoot, scope)
 {

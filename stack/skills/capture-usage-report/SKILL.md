@@ -16,6 +16,9 @@ Run the audit from a FRESH session that names the target session id(s) - never f
 - It finds EVERY session transcript with a stack-skill run (or the SESSIONS named), runs the stack's analyze-usage.js over each, and writes a per-session report (tokens, tool calls, the efficiency scorecard, waste, protocol check, verdict) plus the raw data for a follow-up agent, and a cross-session SUMMARY.md when several sessions are audited.
 - Not for live session cost (claude-hud shows that), fixing the findings (route them to the owning skill), or benchmarking model choices.
 
+## Privacy rule
+The report body carries aggregates, tool names, token counts, and file PATHS only - never code or file contents. The raw-data copies exist for re-analysis and follow the `git check-ignore` consent test in step 4.
+
 ## Inputs
 
 ### SESSIONS - which of this project's sessions to audit
@@ -53,7 +56,7 @@ It ships in the stack's source repo, not in this project. LOOK BEFORE DOWNLOADIN
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/alfred-code.XXXXXX")   # the template names the dir: macOS mktemp -d alone ignores $TMPDIR
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 SRC=$(for d in "$CFG"/plugins/cache/*/*/*; do   # one glob: zsh aborts the loop when any named glob matches nothing
-  PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || [ "$PN" = claude-stack ] || continue   # legacy-name: a 1.x dir until orphaned
+  PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || continue
   [ -d "$d/stack/skills" ] && [ -d "$d/stack/agents" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
 echo "tmp: $TMP"
@@ -69,7 +72,7 @@ tar -xzf "<tmp>/stack.tar.gz" -C "<tmp>"
 git clone --depth 1 -b main https://github.com/envoydev/alfred-code "<tmp>/repo"
 ```
 
-This is `setup-plugin/references/source-protocol.md`'s own lookup order - the entries are keyed by VERSION and the newest valid one wins, so a new release is picked up the moment the plugin updates. Run these as SEPARATE simple commands, not a piped one-liner - the harness's auto-mode classifier blocks the compound verbatim. Then Read `references/run-mechanics.md` now - the batch shape (a loop in a file, never a pipe on the command line), every analyzer flag, and the ledger test live there, and the report's Environment rows carry the receipt `Mechanics: read`. The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `<tmp>` at the end of the run, on every exit path - success, failure, or abort.
+The cache entries are keyed by VERSION and the newest valid one wins, so a new release is picked up the moment the plugin updates. Run these as SEPARATE simple commands, not a piped one-liner - the harness's auto-mode classifier blocks the compound verbatim. Then Read `references/run-mechanics.md` now - the batch shape (a loop in a file, never a pipe on the command line), every analyzer flag, and the ledger test live there, and the report's Environment rows carry the receipt `Mechanics: read`. The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `<tmp>` at the end of the run, on every exit path - success, failure, or abort.
 
 ### 3. RUN it
 The directory rollup once, to confirm which sessions matter; then per audited session the full report, the `--json` dump and the `--report-md` skeleton (machine-written tables plus the FILL IN judgment sections), with `--docs-root <root>` on every per-session call when `ALFRED_CODE_DOCS_PATH` names a non-default root - the exact calls are in the mechanics reference.
@@ -97,21 +100,7 @@ Raw transcripts would land in <docs-path>/usage-report/, a folder git can commit
 
 Without the copy the bundle holds the report and the `--json` dumps only, and its Environment rows say `raw transcripts: not copied - <the check's exit>`.
 
-`report-usage.md` = the skeleton plus your judgment. The machine sections (Environment, Tokens, Subagent dispatches, Skills, Generated docs, MCP, Inventory vs use, Tools, Efficiency scorecard, Context spikes, Hook-log join - whichever the run emits) stay as printed; `Inventory vs use` is the complement of the consumption tables - what this install HAS against what the session touched, with the unused names collapsed per layer - so a non-use finding cites that section's own row instead of the stack's full catalog, and its source line says whether the denominator came from this project's `.claude` or from the catalog (a directory run resolves the installed set per session and prints `installed K of M, used N`, so 'never used in this collection' is one command over the collection root); you add the Environment rows only you know, insert ONE authored section - `## Per skill run` - between the machine tables and Waste analysis, and fill the skeleton's FIVE FILL IN sections (Guard blocks, Waste analysis, Protocol check, Efficiency verdict, Verdict). `references/diagnosis-discipline.md` owns what each of those sections must carry and the checks every row passes before it is written - one section there per section here, in this order. The sections, one line each:
-
-**## Environment** - append the rows the analyzer cannot know: OS, project stack(s), analyzer snapshot revision, which session file covers which skill run, and the `Mechanics: read` and `Discipline: read` receipts. Models, wall-clock, the Claude Code version and the whole `## Session vintage` block (the install the session loaded, and per skill run whether the body it loaded differs from the current source) arrive machine-written - leave them, and check every 'the session broke rule X' claim against them.
-
-**## Per skill run** (one subsection per SKILLS entry found) - tokens and tool-call counts cited from the tables, whether the run PRODUCED anything, the top 10 most expensive tool RESULTS, the context-growth spikes and their causes, skill/plugin attribution with the main and subagent split, and the dispatch picture, mode-aware.
-
-**## Guard blocks** - a required fill, not a section to pass through: the skeleton's *'EITHER no guard fired OR the ledger was never written - say which, do not infer'* line is a QUESTION addressed to you, answered from the step-3 ledger test's own output in one of the reference's three shapes.
-
-**## Waste analysis** - the specific places token use was disproportionate, each with evidence, ranked by tokens wasted.
-
-**## Protocol check** - for each skill, did the run follow its own protocol? Judge against that skill's own SKILL.md steps and cite turns, never assume. The SHAPE is a table - one row per NUMBERED STEP plus one per hard clause: `step | PASS / VIOLATED / NOT VISIBLE | the turn (timestamp) that settles it` - and its scope is the SESSION, not the skill windows.
-
-**## Efficiency verdict** - two lines, both mandatory, built from the scorecard rows: the TOKEN VERDICT (delivered / cost / avoidable share as a measured number, never an adjective - a session that spent heavily and delivered is a PASS, say so) and the EFFECTIVENESS line (did the work land, how many corrections, how many green claims had no check behind them, how many stops went unheld).
-
-**## Verdict** - one table: skill | worked as intended (y/n) | biggest strength | biggest waste source | one concrete suggestion.
+`report-usage.md` = the skeleton plus your judgment. The machine sections (Environment, Tokens, Subagent dispatches, Skills, Generated docs, MCP, Inventory vs use, Tools, Efficiency scorecard, Context spikes, Hook-log join - whichever the run emits) stay as printed; `Inventory vs use` is the complement of the consumption tables - what this install HAS against what the session touched, with the unused names collapsed per layer - so a non-use finding cites that section's own row instead of the stack's full catalog, and its source line says whether the denominator came from this project's `.claude` or from the catalog (a directory run resolves the installed set per session and prints `installed K of M, used N`, so 'never used in this collection' is one command over the collection root); then fill the skeleton's FIVE FILL IN sections (Guard blocks, Waste analysis, Protocol check, Efficiency verdict, Verdict), insert ONE authored `## Per skill run` (one subsection per SKILLS entry found) between the machine tables and Waste analysis, and append the Environment rows only you know (OS, project stack(s), analyzer snapshot revision, which session file covers which skill run, the `Mechanics: read` and `Discipline: read` receipts) - the Models, wall-clock, Claude Code version and `## Session vintage` rows arrive machine-written. `references/diagnosis-discipline.md` defines each section and the checks every row passes before it is written - one section there per section here, in this order.
 
 Then append the full-report analyzer outputs verbatim at the end of the doc (they contain only counts, tool names, and paths - no code).
 
@@ -129,9 +118,6 @@ When this run audited more than one session, or bundles from prior runs already 
 - The scorecard across sessions: one row per practice with the collection's totals and their denominators (cache misses and the tokens they re-cached, compaction re-reads, build-dir reads, scoped against whole-suite runs, checked commits, green claims with no check, correction streaks beside the short-after-long count, long answers, heavy seats) - these are the numbers a hook or rule change is read from after a week, so they are copied from the `--json` dumps, never re-derived - closing with ONE line: does this stack, in this project, waste tokens, and where.
 
 Then `rm -rf "<tmp>"`.
-
-## Privacy rule
-The report body carries aggregates, tool names, token counts, and file PATHS only - never code or file contents. The raw-data copies exist for re-analysis and follow the `git check-ignore` consent test above.
 
 ## Don't game it
 Numbers come from the analyzer's output, never estimated from memory - a claim without an analyzer line behind it does not go in the report. A protocol-check verdict cites the transcript turn that proves it. If the ledger was absent, the identity attribution is marked unavailable rather than inferred. Suggest - once, briefly - that a re-run with the `instrument-tool-usage` hook active (it ships with the rest; `ALFRED_CODE_INSTRUMENT=1`, and it must not be named in `ALFRED_CODE_HOOKS_OFF`) would add the `--hook-log` join next time; do not block on it.

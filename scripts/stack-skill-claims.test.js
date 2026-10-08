@@ -77,7 +77,10 @@ test('C2: csharp member ordering is a review rule, and the build is not its proo
 // C3 - CS8019 is a hidden diagnostic: WarningsAsErrors cannot promote it.
 test('C3: the hygiene wave promotes IDE0005 with its three prerequisites, never CS8019', () =>
 {
-    const wave = squash(section(read('stack/skills/dotnet-code-quality/SKILL.md'), 'Legacy backlog: promote in batches, never all at once'));
+    // 2026-10-08 audit: the waves moved to a reference the body section cites (a verifier preloads the body).
+    const body = section(read('stack/skills/dotnet-code-quality/SKILL.md'), 'Legacy backlog: promote in batches, never all at once');
+    assert.ok(body.includes('`references/legacy-backlog.md`'), 'the body section cites the waves reference');
+    const wave = squash(read('stack/skills/dotnet-code-quality/references/legacy-backlog.md'));
     assert.doesNotMatch(wave, /Add `CS8019/);
     assert.match(wave, /Add `IDE0005;CS0219;CS0168` to `WarningsAsErrors`/);
     for (const prereq of ['`EnforceCodeStyleInBuild=true`', '`GenerateDocumentationFile=true`', '`dotnet_diagnostic.IDE0005.severity = warning`'])
@@ -196,7 +199,7 @@ test('I42: the npm baseline lists install-script dependencies and rebuilds the v
     assert.match(text, /"hasInstallScript": true/);
     assert.match(text, /npm rebuild <name> --ignore-scripts=false/);
     assert.match(text, /build and test/);
-    assert.match(text, /already has an `\.npmrc`.*AskUserQuestion/);
+    assert.match(text, /propose it through ONE AskUserQuestion.*merged into an existing `\.npmrc`, never an overwrite/);
 });
 
 // I43 - PgBouncer 1.21+ tracks protocol-level prepared statements in transaction mode.

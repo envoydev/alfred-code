@@ -42,14 +42,10 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
   commit FAILS the release job (2.1.5 M27; only a manual run with `replace_tag` moves it). Never commit feature work to `main`; keep `main`
   the GitHub default branch. Lint + test workflows gate every push and PR.
 - **Public repo.** No private project names or absolute local paths in tracked files.
-- **The 1.x name is retired, never reused.** Its spellings (`CLAUDE_STACK_*`, the older <!-- legacy-name -->
-  `CLAUDE_DOCS_PATH`, `claude-stack.stamp`, the marketplace key, the plugin cache dir, <!-- legacy-name -->
-  `Agent(claude-stack:<seat>)`) are READ for the whole 2.x line by legacy readers; the new spelling <!-- legacy-name -->
-  wins when both exist. Lint check 57 fails on any other 1.x spelling in a tracked file: a reader's
-  line carries the word `legacy-name` in a comment (`<!-- legacy-name -->` in markdown, `//` or `#`
-  in code), and only history (`docs/*-evidence.md`, `meta/migrations.json`,
-  `meta/retired-entries.json`), the marketplace's generated `plugins[]` and the retired entry names
-  pass unmarked. Anything NEW is `alfred-code` / `ALFRED_CODE_` from day one.
+- **The 1.x name is gone, never reused.** Every install moved onto `alfred-code` (the user's ruling of
+  2026-10-07), so no reader of the old spellings is left - not the env prefix, the stamp, the marketplace
+  key, the plugin cache dir nor the seat-deny spelling. Lint check 57 fails on any of them in any tracked
+  file, history included, with no marker or exemption. Everything is `alfred-code` / `ALFRED_CODE_`.
 - **The repo root is a plugin source, so twelve names are RESERVED there.** Every marketplace entry
   shares this root as its `source` and lists the paths it ships, but a shared root is auto-discovered
   whatever an entry lists (measured, spike S9c in `docs/plugin-migration-evidence.md`): a root

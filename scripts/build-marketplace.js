@@ -9,7 +9,7 @@
 //
 // The live .claude-plugin/marketplace.json is NOT touched by --write, which only regenerates
 // meta/plugin-entries.json; --write-marketplace is the Phase 3 transcription that applies those
-// entries - plus the two 1.x aliases, minus the per-stack entries retired in 1.3.0 - to the live file, leaving
+// entries to the live file, leaving
 // the MCP entries and the marketplace metadata alone.
 //
 //   node scripts/build-marketplace.js --write-marketplace   apply the entries to the live file
@@ -28,10 +28,9 @@
 // there is no separate hooks entry, so a project that has the core has the guards.
 const fs = require('node:fs');
 const path = require('node:path');
-const { placement, readRetiredEntries, CORE } = require('./plugin-placement.js');
-const { timeoutFor } = require('./install/settings.js');
+const { placement, CORE } = require('./plugin-placement.js');
+const { timeoutFor, asyncFor } = require('./install/settings.js');
 const { loadManifest } = require('./install/manifest.js');
-const { LEGACY } = require('./install/brand.js');
 const { HOOK_PROFILES } = require('../stack/hooks/hook-prelude.js');
 const { wiringRows } = require('../stack/hooks/shell-guards.js');
 const fileGuards = require('../stack/hooks/file-guards.js');
@@ -152,19 +151,6 @@ function buildEntries(options = {})
     return [coreEntry({ ...options, placement: place, version, author })];
 }
 
-// The per-stack entries retired in 1.3.0 are NOT listed (2.1.7, the user's ruling of 2026-10-06: the Discover tab
-// showed 20 'RETIRED in 1.3.0' rows nobody can use). Three releases and a major past their retirement, update
-// migrates an install still holding one from meta/retired-entries.json alone - its picks copied, the entry
-// uninstalled - so the listing carried nothing an update needs. An applied marketplace drops every such name.
-const unlistedRetired = (repo) => readRetiredEntries(repo).map((e) => e.name);
-
-// THE RETIRED IDS, UNLISTED (2.2.1, the user's ruling of 2026-10-06: every install that resolved through one was
-// updated). The two 1.x ids and the renamed MCP ids were listed as RETIRED aliases through 2.2.0 so a straggler kept
-// loading (an id a catalog drops stops loading in every project still enabled on it, S25); from 2.2.1 the live file
-// drops each. An install still holding one migrates the same way as before - update installs the successor and
-// uninstalls the old id (install/plugins.js migrateLegacy / migrateRenamed) - it only no longer loads until it does.
-const UNLISTED_ALIASES = [LEGACY.core, LEGACY.hooks]; // legacy-name
-
 function serialize(entries)
 {
     return JSON.stringify({
@@ -184,7 +170,7 @@ const FOLDED_ENTRIES = ['alfred-code-hooks'];
 // except a RETIRED or FOLDED name the entries no longer carry: it would keep a dead entry installable.
 function applyToMarketplace(mkt, entries, { retired = [] } = {})
 {
-    const gone = new Set([...retired, ...FOLDED_ENTRIES, ...UNLISTED_ALIASES, ...unlistedRetired()]);
+    const gone = new Set([...retired, ...FOLDED_ENTRIES]);
     const kept = (mkt.plugins || []).filter(p => !entries.some(e => e.name === p.name) && !gone.has(p.name));
     mkt.plugins = kept.concat(entries);
     return mkt;
@@ -247,7 +233,10 @@ function hooksBlock(wirings)
             group = w.matcher === undefined ? { hooks: [] } : { matcher: w.matcher, hooks: [] };
             list.push(group);
         }
-        group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: timeoutFor(w.file, w.event) });
+        // A side-effect hook runs async, off the call's path (settings.js asyncFor). Its env gate stays inside the hook:
+        // the copy route's `[ ... ] ||` shell test fails under PowerShell, the shell form's runner where Git Bash is
+        // absent (code.claude.com/docs/en/hooks, 'Exec form and shell form'), and every other plugin hook runs there.
+        group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: timeoutFor(w.file, w.event), ...(asyncFor(w.file) ? { async: true } : {}) });
     }
     return block;
 }
@@ -537,4 +526,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { buildEntries, coreEntry, unlistedRetired, UNLISTED_ALIASES, serialize, applyToMarketplace, applyMcpPlugins, mcpPlugins, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE, PINS_FILE };
+module.exports = { buildEntries, coreEntry, serialize, applyToMarketplace, applyMcpPlugins, mcpPlugins, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE, PINS_FILE };

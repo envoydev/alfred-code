@@ -27,7 +27,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { parseJson } = require('./json-file.js');
 const { stackSeat } = require('../derive-state.js');
-const { BRAND, LEGACY } = require('./brand.js');
+const { BRAND } = require('./brand.js');
 const { valueHash } = require('./stamp.js');
 const shellGuards = require('../../stack/hooks/shell-guards.js');
 const fileGuards = require('../../stack/hooks/file-guards.js');
@@ -47,6 +47,12 @@ const HOOK_TIMEOUT = 10;
 const HOOK_TIMEOUTS = { 'check-turn-build.js': { Stop: 60 }, [`${shellGuards.SELF}.js`]: { PreToolUse: HOOK_TIMEOUT * shellGuards.GUARDS.length },
     [`${fileGuards.SELF}.js`]: { PreToolUse: HOOK_TIMEOUT * fileGuards.GUARDS.length } };
 const timeoutFor = (file, event) => (HOOK_TIMEOUTS[file] || {})[event] || HOOK_TIMEOUT;
+// A hook whose only work is a side effect - the tool-usage log - runs with `async: true`: the call never waits on its
+// node spawn (23.9ms on every tool call, audit 2026-10-08 row 28), and an async hook can neither block nor decide
+// (code.claude.com/docs/en/hooks, 'Run hooks in the background'). The plugin entry's generator reads the same set.
+const ASYNC_HOOKS = new Set(['instrument-tool-usage.js']);
+const asyncFor = (file) => ASYNC_HOOKS.has(file);
+const hookEntry = (command, timeout, file) => ({ type: 'command', command, timeout, ...(asyncFor(file) ? { async: true } : {}) });
 // The `attribution` keys the seed writes when absent (code.claude.com settings reference).
 const ATTRIBUTION_OFF = [['commit', ''], ['pr', ''], ['sessionUrl', false]];
 // Every settings path the stack seeds, with its seed value - the ledger records them and a scope move takes them along.
@@ -108,7 +114,11 @@ function wireHooks(data, specs, retiredHooks)
     for (const [event, entries] of every())
         for (const entry of entries)
             for (const h of entry.hooks || [])
+            {
                 if (ours.has(h.command) && h.timeout !== timeoutFor(fileOf(h.command), event)) { h.timeout = timeoutFor(fileOf(h.command), event); changed = true; }
+                // ...and the async flag onto a side-effect hook an earlier install wired blocking.
+                if (ours.has(h.command) && asyncFor(fileOf(h.command)) && h.async !== true) { h.async = true; changed = true; }
+            }
 
     // Prune OUR hook file from a PreToolUse matcher this version no longer wires. Keyed on the
     // SELECTED specs, so a hook the user de-selected keeps its entries - that is configure's job.
@@ -161,7 +171,7 @@ function wireHooks(data, specs, retiredHooks)
             const already = list.some((e) => (e.matcher || '') === eventMatcher
                 && (e.hooks || []).some((h) => h.command === command));
             if (already) continue;
-            const entry = { hooks: [{ type: 'command', command, timeout: timeoutFor(fileOf(command), event) }] };
+            const entry = { hooks: [hookEntry(command, timeoutFor(fileOf(command), event), fileOf(command))] };
             if (eventMatcher) entry.matcher = eventMatcher;
             list.push(entry);
             changed = true;
@@ -172,7 +182,7 @@ function wireHooks(data, specs, retiredHooks)
         // on the command alone dropped the second (measured - no install carried the Bash matcher).
         const have = new Set(list.flatMap((e) => (e.hooks || []).map((h) => `${e.matcher || ''}\u0000${h.command}`)));
         if (have.has(`${matcher}\u0000${command}`)) continue;
-        list.push({ matcher, hooks: [{ type: 'command', command, timeout: timeoutFor(fileOf(command), 'PreToolUse') }] });
+        list.push({ matcher, hooks: [hookEntry(command, timeoutFor(fileOf(command), 'PreToolUse'), fileOf(command))] });
         changed = true;
     }
 
@@ -198,14 +208,11 @@ function renameEnv(env, migrations, log, label = 'settings.json')
     };
     // 1. RENAMES - value first, then drop the old key.
     for (const [oldKey, newKey] of migrations.renames || []) if (oldKey in env) move(oldKey, newKey);
-    // 1b. PREFIX RENAMES - after the exact ones, so a chain of renames finishes in one run.
-    for (const [from, to] of migrations.prefixRenames || [])
-        for (const oldKey of Object.keys(env).filter((k) => k.startsWith(from))) move(oldKey, to + oldKey.slice(from.length));
     return changed;
 }
 
-// The env keys the stack owns, under either name - what R99 reads from and writes to settings.local.json.
-const isStackKey = (key) => /^(ALFRED_CODE_|CLAUDE_STACK_)/.test(key) || key === 'CLAUDE_DOCS_PATH'; // legacy-name
+// The env keys the stack owns - what R99 reads from and writes to settings.local.json.
+const isStackKey = (key) => key.startsWith('ALFRED_CODE_');
 
 // C8 (R100, R101): keys that hold a value of THIS machine - the memory database's absolute path. At
 // every scope they live in settings.local.json, never in the committed settings.json.
@@ -434,8 +441,7 @@ function unwireIds(data, ids)
 function renamedFrom(key, value, before, migrations)
 {
     if (key in before) return null;
-    const olds = (migrations.renames || []).filter(([, n]) => n === key).map(([o]) => o)
-        .concat((migrations.prefixRenames || []).filter(([, to]) => key.startsWith(to)).map(([from, to]) => from + key.slice(to.length)));
+    const olds = (migrations.renames || []).filter(([, n]) => n === key).map(([o]) => o);
     return olds.find((old) => old in before && before[old] === value) || null;
 }
 
@@ -473,7 +479,7 @@ function ledgerEnv({ name, env, before, prior, release, seedsOf, written, userOw
 function writeSettings(opts)
 {
     const {
-        file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [], retiredEntries = [], liveEntries = null,
+        file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [],
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], mcpjsonDisable = [], mcpjsonEnable = [], catalog = [], migrations = {},
         docsVersioning, docsPath = null, dataPath = null, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
@@ -512,38 +518,11 @@ function writeSettings(opts)
     // clears what an older install seeded. A project's own entry is never touched.
     for (const rule of [...deny]) if (retiredDeny.includes(rule))
     { deny.splice(deny.indexOf(rule), 1); changed = true; log(`  ${label}: dropped retired deny entry ${rule}`); }
-    // A seat denied through a per-stack entry retired in 1.3.0 is the user's off-state - a picked
-    // rule's closure would copy the seat back without it - so it gains the core spelling, which every
-    // later run reads as off; picking the seat again clears both (derive-state's allow list). The old
-    // spelling goes only once that entry is uninstalled: Claude Code matches the exact home name, so
-    // while the entry still loads (another scope, a refused uninstall, a listing this run could not
-    // read) it is the spelling that keeps the seat off. `liveEntries` absent = cannot say = kept.
-    //
-    // The 1.x CORE is one more row: 2.0.0 renamed it, so `Agent(claude-stack:<seat>)` is re-spelled // legacy-name
-    // too, keeping the settings in one spelling. Its old spelling stays only while the listing still
-    // shows the old core (a rename no session has taken yet); a listing that cannot say does not
-    // keep it, because every session from 2.0.0 on runs the renamed core, and the new spelling is the
-    // one that blocks it (docs/rebrand-evidence.md S6).
-    const live = (home) => (liveEntries || (home === LEGACY.core ? [] : retiredEntries)).includes(home);
-    const homes = [...retiredEntries, LEGACY.core];
-    // I1 (fix round 1): both passes below also run over settings.local.json's deny list - a seat the
+    // I1 (fix round 1): the pass below also runs over settings.local.json's deny list - a seat the
     // user switched off for themselves is re-spelled THERE, never moved into the shared file.
     const respellSeats = (list, lab) =>
     {
         let touched = false;
-        for (const entry of [...list])
-        {
-            const m = /^Agent\(([a-z0-9-]+):([A-Za-z0-9_-]+)\)$/.exec(entry);
-            if (!m || !homes.includes(m[1])) continue;
-            const core = `Agent(${BRAND.core}:${seatNow(m[2])})`;
-            const why = m[1] === LEGACY.core ? 'the core was renamed' : 'its entry retired';
-            if (!list.includes(core)) { list.push(core); touched = true; log(`  ${lab}: ${entry} also denied as ${core} (${why})`); }
-            if (live(m[1])) continue;
-            list.splice(list.indexOf(entry), 1);
-            touched = true;
-            log(`  ${lab}: ${entry} dropped - ${m[1] === LEGACY.core ? 'the old core name loads nowhere now' : 'its entry is uninstalled'}, ${core} keeps the seat off`);
-        }
-
         // A renamed seat's core deny is re-spelled in place, so the user's switch-off holds under the new
         // name; the read-back already read it that way (selection.js renameDeny).
         for (const entry of [...list])
@@ -586,14 +565,10 @@ function writeSettings(opts)
     // it was; an --installed-only refresh passes the lists it READ BACK from this array, so it
     // writes the same seat state it found. A seat's OTHER stack spellings go either way: a release
     // that moved the seat to another entry left an entry addressing nothing.
-    // A deny leaves the spelling of a retired entry (or the 1.x core) that still loads here: Claude Code
-    // matches the exact home name, so that spelling is what keeps the seat off while the entry loads
-    // (the respell pass above); an allow clears every spelling.
-    const liveSpelling = (entry) => { const m = /^Agent\(([a-z0-9-]+):/.exec(entry); return Boolean(m && homes.includes(m[1]) && live(m[1])); };
     const dropSeat = (rule, keep) =>
     {
         const seat = stackSeat(rule);
-        for (const entry of [...deny]) if (entry !== keep && seat && stackSeat(entry) === seat && !(keep && liveSpelling(entry)))
+        for (const entry of [...deny]) if (entry !== keep && seat && stackSeat(entry) === seat)
         { deny.splice(deny.indexOf(entry), 1); changed = true; log(entry === rule ? `  ${label}: agent allowed again ${entry}` : `  ${label}: agent entry dropped ${entry} (the seat's old spelling)`); }
     };
     for (const rule of agentDeny)
@@ -824,6 +799,49 @@ function writeSettings(opts)
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
     return { written: true, refused: false, createdLocal: createdLocalFile, managed };
+}
+
+// Rule: a narrower scope switches off an MCP server registered at a BROADER one for itself alone. MCP has no
+// per-scope disable command, so the entry is a `deniedMcpServers` `{ serverName }` row in this scope's own
+// settings file (settings.local.json at local scope, settings.json at project scope) - the denylist merges from
+// every settings scope and blocks the name here only (code.claude.com/docs/en/managed-mcp, 'How a server is
+// evaluated'). `add` and `lift` are names; only an entry naming exactly `{ serverName: <name> }` is lifted, so a
+// row of the user's own shape stays. Returns `{ added, lifted }` as written, or null when the file could not be
+// read or its list is not a list (said once, nothing changed).
+function applyMcpDeny({ file, add = [], lift = [], log = () => {}, note = () => {} })
+{
+    if (!add.length && !lift.length) return { added: [], lifted: [] };
+    const label = path.basename(file);
+    let data;
+    try { ({ data } = readSettings(file)); }
+    catch (err) { note(`${err.message} - no deniedMcpServers entry was written there`); return null; }
+    const had = data.deniedMcpServers;
+    if (had !== undefined && !Array.isArray(had)) { note(`${label}: deniedMcpServers is not a list - left as it is, and no MCP server is switched off through it`); return null; }
+    const list = had || [];
+    const ours = (row, name) => plain(row) && Object.keys(row).length === 1 && row.serverName === name;
+    const added = [];
+    const lifted = [];
+    for (const name of lift)
+    {
+        const at = list.findIndex((row) => ours(row, name));
+        if (at < 0) continue;
+        list.splice(at, 1);
+        lifted.push(name);
+        log(`  ${label}: deniedMcpServers - ${name} (picked again)`);
+    }
+    let grew = false;
+    for (const name of add)
+    {
+        if (!list.some((row) => ours(row, name))) { list.push({ serverName: name }); grew = true; log(`  ${label}: deniedMcpServers + ${name} (dropped here - its broader-scope registration stays for everyone else)`); }
+        added.push(name);
+    }
+    // A re-run that finds every entry in place writes nothing.
+    if (!grew && !lifted.length) return { added, lifted };
+    if (list.length) data.deniedMcpServers = list;
+    else delete data.deniedMcpServers;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    return { added, lifted };
 }
 
 // T16/R47 (I1): the ONE place that decides which file THIS run's own settings writes go to - a
@@ -1107,4 +1125,4 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
         log(`  kept at user scope: ${keptOff.join(', ')} - the user-scope core stays loaded for this account, so these keep what you switched off here off; remove them once it is uninstalled`);
 }
 
-module.exports = { removeManagedSettings, isStackKey, writeSettings, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };
+module.exports = { removeManagedSettings, isStackKey, writeSettings, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor };

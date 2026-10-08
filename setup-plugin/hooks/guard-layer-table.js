@@ -26,7 +26,7 @@
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unreadable.
 //
 // STACK HOOK GATES (2.1.5 M4) - the core's hook-prelude.js, reached from the plugin root (the core entry ships
-// the whole repo). The csv opt-out, `hook_profile: minimal`, the 1.x alias and a Cursor payload all stand it down
+// the whole repo). The csv opt-out, `hook_profile: minimal` and a Cursor payload all stand it down
 // like any non-protective hook; GATE 4 is skipped (`setUp: false`), since it serves the setup walk before any
 // install record exists - and such a repo is written nothing (R54), so the block row waits for an installed one.
 const fs = require('fs');

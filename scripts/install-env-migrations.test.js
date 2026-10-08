@@ -12,49 +12,38 @@ const REAL = require(path.join(__dirname, '..', 'meta', 'migrations.json'));
 test('every settings-env migration in the real file reaches applyEnv', () =>
 {
     const m = envMigrations(REAL);
-    assert.deepEqual(m.renames, [['CLAUDE_DOCS_PATH', 'CLAUDE_STACK_DOCS_PATH']]); // legacy-name
-    assert.deepEqual(m.prefixRenames, [['CLAUDE_STACK_', 'ALFRED_CODE_']]); // legacy-name
-    // the retired/reseed key text is mapped through the prefix rename, since applyEnv's 1b pass
-    // already moved any CLAUDE_STACK_* key by the time the retirement/reseed steps run. // legacy-name
+    assert.deepEqual(Object.keys(m).sort(), ['renames', 'reseed', 'retired']);
+    assert.deepEqual(m.renames, []);
     assert.ok(m.retired.some(([k]) => k === 'ALFRED_CODE_FRESH_SESSION_PCT'));
+    assert.ok(m.retired.some(([k]) => k === 'ALFRED_CODE_CONTEXT_WINDOW'));
     assert.ok(m.reseed.some(([k]) => k === 'ALFRED_CODE_FRESH_SESSION_DEFAULT'));
 });
 
 test('an old install is migrated by the real file', () =>
 {
-    const env = { CLAUDE_DOCS_PATH: 'docs', CLAUDE_STACK_FRESH_SESSION_PCT: '60', CLAUDE_STACK_FRESH_SESSION_DEFAULT: '250000' }; // legacy-name
+    const env = { ALFRED_CODE_DOCS_PATH: 'docs', ALFRED_CODE_FRESH_SESSION_PCT: '60', ALFRED_CODE_FRESH_SESSION_DEFAULT: '250000', ALFRED_CODE_MONITOR: 'log', OTHER: 'x' };
     applyEnv(env, { catalog: [], migrations: envMigrations(REAL), log: () => {} });
     assert.equal(env.ALFRED_CODE_DOCS_PATH, 'docs');
-    assert.ok(!('CLAUDE_DOCS_PATH' in env));
-    assert.ok(!('CLAUDE_STACK_DOCS_PATH' in env)); // legacy-name
-    assert.ok(!('CLAUDE_STACK_FRESH_SESSION_PCT' in env)); // legacy-name
     assert.ok(!('ALFRED_CODE_FRESH_SESSION_PCT' in env));
     assert.equal(env.ALFRED_CODE_FRESH_SESSION_DEFAULT, '180000');
-    assert.ok(!('CLAUDE_STACK_FRESH_SESSION_DEFAULT' in env)); // legacy-name
+    assert.equal(env.ALFRED_CODE_MONITOR, 'log', 'a key no migration names is left alone');
+    assert.equal(env.OTHER, 'x');
 });
 
-test('envMigrations maps a CLAUDE_STACK_ retirement/reseed target through the prefix rename', () => // legacy-name
+test('envMigrations translates each entry kind into its flat list', () =>
 {
     const file = { migrations: [
-        { remove_settings_env: { key: 'CLAUDE_STACK_FOO' } }, // legacy-name
-        { clear_settings_env: { key: 'CLAUDE_STACK_BAR', when_value: 'x', to: 'y' } }, // legacy-name
-        { rename_settings_env_prefix: { from: 'CLAUDE_STACK_', to: 'ALFRED_CODE_' } } // legacy-name
+        { rename_settings_env: { from: 'ALFRED_CODE_OLD', to: 'ALFRED_CODE_NEW' } },
+        { remove_settings_env: { key: 'ALFRED_CODE_FOO' } },
+        { remove_settings_env: { key: 'ALFRED_CODE_BAZ', when_value: '1' } },
+        { clear_settings_env: { key: 'ALFRED_CODE_BAR', when_value: 'x', to: 'y' } },
+        { id: 'file-only', remove: ['a.js'] }
     ] };
     const m = envMigrations(file);
-    assert.deepEqual(m.prefixRenames, [['CLAUDE_STACK_', 'ALFRED_CODE_']]); // legacy-name
-    assert.deepEqual(m.retired, [['ALFRED_CODE_FOO', null]]);
+    assert.deepEqual(m.renames, [['ALFRED_CODE_OLD', 'ALFRED_CODE_NEW']]);
+    assert.deepEqual(m.retired, [['ALFRED_CODE_FOO', null], ['ALFRED_CODE_BAZ', '1']]);
     assert.deepEqual(m.reseed, [['ALFRED_CODE_BAR', 'x', 'y']]);
-});
-
-test('the prefix rename moves every old setting, after the exact renames', () =>
-{
-    const env = { CLAUDE_DOCS_PATH: 'docs', CLAUDE_STACK_MONITOR: 'log', ALFRED_CODE_HISTORY: '0', CLAUDE_STACK_HISTORY: '1', OTHER: 'x' }; // legacy-name
-    applyEnv(env, { catalog: [], migrations: envMigrations(REAL), log: () => {} });
-    assert.equal(env.ALFRED_CODE_DOCS_PATH, 'docs');
-    assert.equal(env.ALFRED_CODE_MONITOR, 'log');
-    assert.equal(env.ALFRED_CODE_HISTORY, '0', 'a value already under the new name is never overwritten');
-    assert.deepEqual(Object.keys(env).filter((k) => k.startsWith('CLAUDE_')), []);
-    assert.equal(env.OTHER, 'x');
+    assert.deepEqual(envMigrations(null), { renames: [], retired: [], reseed: [] });
 });
 
 test('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE is dropped only while it still holds the old stack seed', () =>

@@ -33,11 +33,7 @@ stops at a question never reaches the apply step that would update it. They reme
 version from before (`running=` / `$Was`) - the one this session loaded, whatever the cache now
 holds. No `claude` CLI, or no stack row: nothing to update, and the pick runs as it always did.
 
-**A 1.x install keeps its key and its old ids**, which 2.0.0 lists as retired aliases carrying the
-2.0.0 core, so a refresh plus `plugin update` of every row lands 2.0.0 in the cache under the old
-name, and the seed moves the install across (docs/rebrand-evidence.md S20-S22). That is why both
-keys are refreshed, and why the 1.x dir `cache/<key>/claude-stack/<version>` counts until the CLI <!-- legacy-name -->
-marks it `.orphaned_at` - an orphaned dir is never taken (S3).
+A cache dir the CLI marked `.orphaned_at` is never taken.
 
 Pick the NEWEST valid version directory across marketplaces - the directory names ARE the release
 versions the CLI writes, so they sort as versions - and count a directory only when it carries both
@@ -65,23 +61,23 @@ RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 TD="${TMPDIR:-/tmp}"; TD="${TD%/}"   # a sandboxed command writes only under $TMPDIR (and the project)
 MARK="$TD/alfred-code-run.$(printf '%s' "$RUN_ROOT" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' "$RUN_ROOT" | git hash-object --stdin | cut -c1-12).path"
 if [ -f "$MARK" ] && [ -d "$(cat "$MARK")/repo" ]; then
-  TMP=$(cat "$MARK"); echo "REUSING TMP=$TMP seed=${ALFRED_CODE_SEED:-${CLAUDE_STACK_SEED:-node}}"   # a valid marker from an earlier call; legacy-name: the 1.x setting too
+  TMP=$(cat "$MARK"); echo "REUSING TMP=$TMP seed=${ALFRED_CODE_SEED:-node}"   # a valid marker from an earlier call
 else
 REPO_URL=https://github.com/envoydev/alfred-code
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 TMP=$(mktemp -d "$TD/alfred-code.XXXXXX")   # the template names the dir: macOS mktemp -d alone ignores $TMPDIR
 WAS=""        # LATEST first: only `plugin update` lands a newer cache entry, and the newest entry IS the snapshot
-MKT=""        # the marketplace key the core is listed under - a 1.x install keeps its own
+MKT=""        # the marketplace key the core is listed under
 if command -v claude >/dev/null 2>&1; then
-  for K in envoydev claude-stack; do claude plugin marketplace update "$K" >/dev/null 2>&1; done   # legacy-name: a 1.x install keeps its key
+  claude plugin marketplace update envoydev >/dev/null 2>&1
   # every stack entry installed for THIS project or the account, this project's rows first: "<scope> <id> <version>", each by its own id
-  ROWS=$(claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const fs=require("fs"),R=p=>{try{return fs.realpathSync(p)}catch{return require("path").resolve(p)}},here=R(process.cwd());let a=JSON.parse(s);a=(Array.isArray(a)?a:a.installed||[]).filter(x=>/@(envoydev|claude-stack)$/.test(x.id||"")&&x.scope&&(!x.projectPath||R(x.projectPath)===here));a.sort((x,y)=>(y.projectPath?1:0)-(x.projectPath?1:0));for(const x of a)console.log(x.scope+" "+x.id+" "+x.version)}catch{}})')   # legacy-name
-  WAS=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{n=$3;exit} $2~/^claude-stack@/&&o==""{o=$3} END{print (n!=""?n:o)}')   # legacy-name
-  MKT=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{sub(/^[^@]*@/,"",$2);n=$2;exit} $2~/^claude-stack@/&&o==""{sub(/^[^@]*@/,"",$2);o=$2} END{print (n!=""?n:o)}')   # legacy-name
+  ROWS=$(claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const fs=require("fs"),R=p=>{try{return fs.realpathSync(p)}catch{return require("path").resolve(p)}},here=R(process.cwd());let a=JSON.parse(s);a=(Array.isArray(a)?a:a.installed||[]).filter(x=>/@envoydev$/.test(x.id||"")&&x.scope&&(!x.projectPath||R(x.projectPath)===here));a.sort((x,y)=>(y.projectPath?1:0)-(x.projectPath?1:0));for(const x of a)console.log(x.scope+" "+x.id+" "+x.version)}catch{}})')
+  WAS=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{print $3;exit}')
+  MKT=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{sub(/^[^@]*@/,"",$2);print $2;exit}')
   printf '%s\n' "$ROWS" | while read -r SCOPE ID _; do [ -n "$ID" ] && claude plugin update "$ID" --scope "$SCOPE" -y </dev/null >/dev/null 2>&1; done
 fi
 SRC=$(for d in "$CFG"/plugins/cache/*/*/*; do   # one glob: zsh aborts the whole loop when any named glob matches nothing
-  PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || [ "$PN" = claude-stack ] || continue   # legacy-name: newest valid entry, any marketplace, a 1.x dir until orphaned
+  PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || continue   # newest valid entry, any marketplace
   [ -d "$d/stack/skills" ] && [ -d "$d/stack/agents" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
 if [ -n "$SRC" ]; then
@@ -91,7 +87,7 @@ else
   mkdir -p "$TMP/repo" && tar -xzf "$TMP/alfred-code.tar.gz" -C "$TMP/repo"
 fi
 VER=$(sed -n 's/^version: //p' "$TMP/repo/RELEASE-SOURCE" 2>/dev/null | head -1)
-printf '%s\n' "$TMP" > "$MARK"; echo "RESOLVED TMP=$TMP ${VER:-?} seed=${ALFRED_CODE_SEED:-${CLAUDE_STACK_SEED:-node}} running=${WAS:-?} key=${MKT:-?}"   # legacy-name
+printf '%s\n' "$TMP" > "$MARK"; echo "RESOLVED TMP=$TMP ${VER:-?} seed=${ALFRED_CODE_SEED:-node} running=${WAS:-?} key=${MKT:-?}"
 fi
 ```
 
@@ -117,43 +113,38 @@ New-Item -ItemType Directory -Path $TMP -Force | Out-Null
 $RepoUrl = 'https://github.com/envoydev/alfred-code'
 $ConfigDir = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME '.claude' }
 $Was = ''     # LATEST first: only `plugin update` lands a newer cache entry, and the newest entry IS the snapshot
-$Key = ''     # the marketplace key the core is listed under - a 1.x install keeps its own
-$Seed = if ($env:ALFRED_CODE_SEED) { $env:ALFRED_CODE_SEED } elseif ($env:CLAUDE_STACK_SEED) { $env:CLAUDE_STACK_SEED } else { 'node' }   # legacy-name
+$Key = ''     # the marketplace key the core is listed under
+$Seed = if ($env:ALFRED_CODE_SEED) { $env:ALFRED_CODE_SEED } else { 'node' }
 if (Get-Command claude -ErrorAction SilentlyContinue) {
-  foreach ($k in 'envoydev', 'claude-stack') { claude plugin marketplace update $k *> $null }   # legacy-name: a 1.x install keeps its key
+  claude plugin marketplace update envoydev *> $null
   $list = try { claude plugin list --json 2>$null | Out-String | ConvertFrom-Json } catch { $null }
   # PSObject, never `$list.installed`: over a bare array that is one $null per row - truthy, and no rows
   if ($list -and ($list.PSObject.Properties.Name -contains 'installed')) { $list = $list.installed }
   # every stack entry installed for THIS project or the account, this project's rows first
   $Here = (Get-Item -LiteralPath (Get-Location).Path).FullName
-  $rows = @($list | Where-Object { "$($_.id)" -match '@(envoydev|claude-stack)$' -and $_.scope -and (-not $_.projectPath -or [System.IO.Path]::GetFullPath("$($_.projectPath)").TrimEnd('\', '/') -eq $Here.TrimEnd('\', '/')) })   # legacy-name
+  $rows = @($list | Where-Object { "$($_.id)" -match '@envoydev$' -and $_.scope -and (-not $_.projectPath -or [System.IO.Path]::GetFullPath("$($_.projectPath)").TrimEnd('\', '/') -eq $Here.TrimEnd('\', '/')) })
   $rows = @(@($rows | Where-Object { $_.projectPath }) + @($rows | Where-Object { -not $_.projectPath }))
-  $Old = ''; $OldKey = ''
   foreach ($r in $rows) {
-    $id = "$($r.id)"   # each row by its own id - a 1.x one lands 2.0.0 under its old name
-    if ($id -like 'alfred-code@*') { if (-not $Was) { $Was = $r.version; $Key = ($id -split '@')[1] } }
-    elseif ($id -like 'claude-stack@*' -and -not $Old) { $Old = $r.version; $OldKey = ($id -split '@')[1] }   # legacy-name
+    $id = "$($r.id)"   # each row by its own id
+    if ($id -like 'alfred-code@*' -and -not $Was) { $Was = $r.version; $Key = ($id -split '@')[1] }
     claude plugin update $id --scope $r.scope -y *> $null
   }
-  if (-not $Was) { $Was = $Old; $Key = $OldKey }
 }
 $Src = ''
 $BestVer = $null
 $Base = Join-Path $ConfigDir 'plugins/cache'
 if (Test-Path -LiteralPath $Base -PathType Container) {
   foreach ($mkt in (Get-ChildItem -LiteralPath $Base -Directory -ErrorAction SilentlyContinue)) {
-    foreach ($core in 'alfred-code', 'claude-stack') {   # legacy-name: a 1.x dir counts until the rename orphans it
-      $entry = Join-Path $mkt.FullName $core
-      if (-not (Test-Path -LiteralPath $entry -PathType Container)) { continue }
-      foreach ($d in (Get-ChildItem -LiteralPath $entry -Directory -ErrorAction SilentlyContinue)) {
-        if (-not (Test-Path -LiteralPath (Join-Path $d.FullName 'stack/skills'))) { continue }
-        if (-not (Test-Path -LiteralPath (Join-Path $d.FullName 'stack/agents'))) { continue }
-        if (Test-Path -LiteralPath (Join-Path $d.FullName '.orphaned_at')) { continue }
-        $v = $null
-        [void][System.Version]::TryParse(($d.Name -replace '[^0-9.].*$', ''), [ref]$v)
-        if (-not $Src -or ($v -and $BestVer -and $v -gt $BestVer) -or ($v -and -not $BestVer)) {
-          $Src = $d.FullName; $BestVer = $v
-        }
+    $entry = Join-Path $mkt.FullName 'alfred-code'
+    if (-not (Test-Path -LiteralPath $entry -PathType Container)) { continue }
+    foreach ($d in (Get-ChildItem -LiteralPath $entry -Directory -ErrorAction SilentlyContinue)) {
+      if (-not (Test-Path -LiteralPath (Join-Path $d.FullName 'stack/skills'))) { continue }
+      if (-not (Test-Path -LiteralPath (Join-Path $d.FullName 'stack/agents'))) { continue }
+      if (Test-Path -LiteralPath (Join-Path $d.FullName '.orphaned_at')) { continue }
+      $v = $null
+      [void][System.Version]::TryParse(($d.Name -replace '[^0-9.].*$', ''), [ref]$v)
+      if (-not $Src -or ($v -and $BestVer -and $v -gt $BestVer) -or ($v -and -not $BestVer)) {
+        $Src = $d.FullName; $BestVer = $v
       }
     }
   }
@@ -280,10 +271,10 @@ takes the NEWEST valid entry, so a stale dir is never the source. When the listi
 ONE version dir, say so in ONE close-out line - the count and the keeper - and say that Claude Code
 clears the rest itself.
 And if an update ever does NOT change the running content (a same-version re-release - the trap
-every release now avoids by bumping), the hard reset is `claude plugin uninstall alfred-code`
-then `claude plugin install alfred-code@<key>`, which rebuilds the cache from the
-marketplace - `<key>` is the resolve line's `key=`, the key the core is listed under (a 1.x
-install keeps its own; an account with only that key has no `envoydev` to install from).
+every release now avoids by bumping), the hard reset is `claude plugin uninstall alfred-code@<key> --scope <scope>`
+then `claude plugin install alfred-code@<key> --scope <scope>`, which rebuilds the cache from the
+marketplace - `<key>` is the resolve line's `key=`, the key the core is listed under, and `<scope>` the
+one the core is installed at (never `managed`, the admin's; without `--scope` the CLI picks `user`).
 
 ## Narrate, don't trace
 
@@ -357,10 +348,9 @@ roughly 882k tokens between them. So:
 
 **ONE seed, one command on every OS:** `node "$TMP/repo/scripts/install/alfred-code.js" <install|update|uninstall>
 [flags]`, with the Unix flag spellings everywhere (`--scope`, `--selection`) because there is one
-program now and not two. A resolve line reporting `seed=shell` - `ALFRED_CODE_SEED=shell`, or a
-1.x `CLAUDE_STACK_SEED=shell`, in the environment this session started in - is refused: the frozen <!-- legacy-name -->
-twins name the 1.x marketplace and entries a 2.0.0 registration cannot resolve, so print
-`the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop, the <!-- legacy-name -->
+program now and not two. A resolve line reporting `seed=shell` - `ALFRED_CODE_SEED=shell` in the
+environment this session started in - is refused: the frozen twins are gone, so print
+`the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop, the
 same line the seed itself prints and exits 1 on. Never hand the Node seed a PowerShell spelling: a
 `-Scope` is an unknown flag, and it refuses before the run writes anything.
 

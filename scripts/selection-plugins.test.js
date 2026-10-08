@@ -59,20 +59,10 @@ test('itemsOf round-trips: the core items re-select the core and copy nothing', 
 });
 
 test('itemsOf ignores a name no placement knows, and accepts the @marketplace spelling', () => {
-    const a = itemsOf(['claude-stack-wpf@envoydev', 'claude-stack-hooks', 'not-a-plugin']); // legacy-name
-    const b = itemsOf(['claude-stack-wpf']);
-    assert.deepStrictEqual(a, b, 'the 1.x hooks alias and an unknown name carry no skills or agents');
-});
-
-// status reads what a not-yet-removed per-stack entry carries through --items, while the user is
-// deciding whether to run the update that removes it - an empty answer under-reports that install.
-test('itemsOf reads a retired per-stack entry from its frozen 1.2.0 contents', () => {
-    const { readRetiredEntries } = require('./plugin-placement.js');
-    const angular = readRetiredEntries().find((e) => e.name === 'claude-stack-angular');
-    const got = itemsOf(['claude-stack-angular@envoydev']);
-    assert.deepStrictEqual(got.skills, [...angular.skills].sort());
-    assert.deepStrictEqual(got.agents, [...angular.agents].sort());
-    assert.ok(got.skills.length > 0);
+    const a = itemsOf([`${CORE}@envoydev`, 'alfred-code-hooks', 'not-a-plugin']);
+    const b = itemsOf([CORE]);
+    assert.deepStrictEqual(a, b, 'a hooks entry and an unknown name carry no skills or agents');
+    assert.deepStrictEqual(itemsOf(['alfred-code-angular@envoydev', 'not-a-plugin']), { skills: [], agents: [] });
 });
 
 test('readSelection takes only skill and agent lines, and strips a .md suffix', () => {

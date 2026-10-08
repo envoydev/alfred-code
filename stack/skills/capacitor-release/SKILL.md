@@ -37,17 +37,17 @@ The mechanics - certificate + provisioning-profile setup, App Store Connect API 
 
 ## OTA / live updates - the native-binary boundary
 This is the load-bearing rule of the whole pipeline: **a live update ships the web layer only**. HTML, CSS, JavaScript, and bundled web assets can go over-the-air with no store review. Anything that touches the native binary - adding or upgrading a Capacitor plugin, changing a native dependency, editing native config or native code - requires a fresh store submission. Push web-layer fixes over-the-air for speed; cut a native release when, and only when, the binary actually changed.
-- Use the capawesome live-update plugin (`@capawesome/capacitor-live-update`). Ionic Appflow's live updates are sunsetting (end of 2027), so do not start new work on it - capawesome is the recommended path, with the official live-update mechanism as the alternative.
+- Use the capawesome live-update plugin (`@capawesome/capacitor-live-update`). Ionic Appflow's live updates are sunsetting (end of 2027), so do not start new work on them.
 - Gate OTA bundles to the native versions they are compatible with. An OTA bundle built against a newer plugin set must not land on an older binary that lacks it - a web bundle expecting a native capability the installed binary does not have is a white-screen in production. Bind each live-update channel to a native version range.
 - Serve the live-update channel over HTTPS with a signed or checksum-verified bundle, so a substituted bundle cannot land.
 - Run both layers together: a live-update channel for rapid web iteration, plus an app-update check that nudges users to the store when a native release is required.
 - Publishing an OTA bundle IS a release: it reaches installed devices with no review in between, so it runs only under a step-0 answer that authorized an upload, and a first publish to a channel is asked again.
 
-## Versioning - one source, four sinks, kept in sync
-Two numbers, and they mean different things on every platform - keep them straight and keep them synced:
-- **Marketing version** (the human-facing `1.4.0`): iOS `MARKETING_VERSION` / `CFBundleShortVersionString`, Android `versionName`, web `package.json` `version`.
-- **Build number** (the monotonic integer the stores order by, must increase every upload): iOS `CFBundleVersion`, Android `versionCode`.
-- The failure this section prevents is drift: a marketing version that disagrees across iOS, Android, and web, or a build number a store rejects as already-used. Bump from one source of truth in the release script - hand-editing the pbxproj and `build.gradle` separately is how they desync. A small CLI (capver, capacitor-set-version) or a Fastlane lane that writes all sinks from the `package.json` version keeps them in lockstep; the build number is the thing CI auto-increments per upload.
+## Versioning and symbols - one source, one build number
+- Bump the marketing version and the build number from one source of truth - the `package.json` version, written to every platform sink by the release script, never the pbxproj and `build.gradle` edited separately. The build number CI auto-increments must rise on every upload.
+- Upload the iOS dSYM and the web sourcemaps for every store or TestFlight build, gated on that same build number - a symbol file that does not match the uploaded build is useless.
+
+The sinks per platform, the sync tools and the symbol-upload mechanics are `references/versioning-and-symbols.md`; read it before writing a version bump or a symbol-upload step.
 
 ## CI/CD shape
 - Recommend **Fastlane** as the release engine even when GitHub Actions is the trigger: its `match` (signing), `gym`/`build_app` (archive), `pilot`/`deliver` (App Store), and `supply` (Play) lanes encode the steps once and run identically on a laptop and a runner. A bare Actions workflow ends up re-implementing the same steps in YAML - let Fastlane own the release logic and let Actions own the trigger and the secrets. The lane shape:
@@ -67,7 +67,7 @@ end
 
 platform :android do
   lane :release do
-    gradle(task: 'bundle', build_type: 'Release')
+    gradle(task: 'bundle', build_type: 'Release', project_dir: 'android/')
     supply(track: 'internal')   # -> Play internal track first
   end
 end
@@ -75,11 +75,6 @@ end
 - Running a lane is an upload, laptop or runner alike: `pilot` publishes to TestFlight and `supply` to a Play track. Run either only under the step-0 answer that authorized it, and never a production track from here.
 - Secrets are injected, never committed: the App Store Connect API `.p8` (base64 in a secret), the Android upload keystore (base64) plus its passwords, the match passphrase / repo token. Decode into the runner at job start, use, and let the ephemeral runner discard them. A keystore, a `.p8`, or a signing password in the repo is a release-blocking leak.
 - Build the matrix off the boundary above: a web-only change runs a lint/test/OTA-publish lane; a native change runs the full archive-sign-upload lane. Don't cut a store binary for a CSS fix.
-
-## Crash + symbol upload is a release step
-- iOS: upload the **dSYM** for every store/TestFlight build so crash reports symbolicate - automate it in the CI lane (Sentry's sentry-cli, Crashlytics upload-symbols, or Fastlane) rather than pulling it from App Store Connect by hand after a crash arrives. An unsymbolicated production crash is a wasted release.
-- Web layer: upload the **sourcemaps** for the same build to your error tracker so an OTA-shipped JS error maps back to real source - then keep the maps out of the shipped bundle.
-- Treat both as part of the release, gated on the same build number, not an afterthought - a symbol file that does not match the uploaded build is useless.
 
 ## Output contract - what a release run reports
 

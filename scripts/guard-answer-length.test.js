@@ -4,14 +4,14 @@
 // exemption that must stay silent.
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
-require('./hook-test-env').isolateHookSuite();
+require('./hook-test-env').isolateHookSuite({ ownTmp: true }); // audit 2026-10-08: its hooks' tmp state stays in a dir of its own
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-for (const k of Object.keys(process.env)) if (/^(?:ALFRED_CODE|CLAUDE_STACK)_/.test(k) || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: the session's own stack env, in either spelling, never decides a case - legacy-name
+for (const k of Object.keys(process.env)) if (k.startsWith('ALFRED_CODE_')) delete process.env[k]; // C19: the session's own stack env never decides a case
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-answer-length.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'answer-length-'));
@@ -103,7 +103,25 @@ test('Stop leaves a normal short answer alone', () => {
 
 test('Stop never loops: a continuation we caused passes untouched', () => {
     const p = transcript('loop', 'did the build pass?', [{ type: 'text', text: WALL }]);
-    assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: p, stop_hook_active: true }).status, 0);
+    const session_id = `loop-${process.pid}-${Date.now()}`;
+    assert.strictEqual(run({ hook_event_name: 'Stop', session_id, transcript_path: p }).status, 2, 'the first Stop holds');
+    assert.strictEqual(run({ hook_event_name: 'Stop', session_id, transcript_path: p, stop_hook_active: true }).status, 0);
+});
+
+// The Stop chain (audit 2026-10-08 S1): `stop_hook_active` is set after ANY Stop hook's block, so the wall of text a
+// sibling's continuation re-sends (the stop contract held the close) is judged - it passed unjudged before.
+test('Stop judges a continuation a sibling Stop hook caused, then blocks it at most once', () => {
+    const p = transcript('sibling', 'did the build pass?', [{ type: 'text', text: WALL }]);
+    const session_id = `sibling-${process.pid}-${Date.now()}`;
+    assert.strictEqual(run({ hook_event_name: 'Stop', session_id, transcript_path: p, stop_hook_active: true }).status, 2, 'a sibling caused this continuation');
+    assert.strictEqual(run({ hook_event_name: 'Stop', session_id, transcript_path: p, stop_hook_active: true }).status, 0, 'never twice in one cycle');
+    assert.strictEqual(run({ hook_event_name: 'Stop', session_id, transcript_path: p }).status, 2, 'a new cycle judges afresh');
+});
+
+// Audit 2026-10-08 row 31: with no transcript path at all the length half has no user row to rule depth out, the same
+// fail-open an unreadable transcript gets - it blocked with no depth check before.
+test('Stop with no transcript path leaves the length half fail-open', () => {
+    assert.strictEqual(run({ hook_event_name: 'Stop', session_id: `nopath-${process.pid}`, last_assistant_message: WALL }).status, 0);
 });
 
 test('Stop skips a turn that ended on a tool call', () => {
@@ -186,7 +204,7 @@ test('the em-dash ban is enforced on the same prose the cap reads', () => {
         last_assistant_message: text,
     });
     assert.strictEqual(stop(SHORT).status, 0, 'a clean short answer passes');
-    const one = stop('Done — the build is green.');
+    const one = stop('Done \u2014 the build is green.');
     assert.strictEqual(one.status, 2, 'an em-dash in prose is blocked');
     assert.match(one.stderr, /single dashes/, 'the denial names the rule');
     assert.match(one.stderr, /replaced by a single dash/, '... and asks for the same answer, not a shorter one');
@@ -203,6 +221,9 @@ test('the em-dash ban is enforced on the same prose the cap reads', () => {
     assert.strictEqual(both.status, 2, 'over the cap and carrying an em-dash');
     assert.match(both.stderr, /also uses 1 em-dash/, 'the length denial carries the voice fix');
     assert.match(both.stderr, /characters of prose/, '... and still names the length');
+    // audit 2026-10-08: one dash class with the stop contract's ask deny (hook-prelude.js HOUSE_DASH)
+    assert.strictEqual(stop('Done \u2013 the build is green.').status, 2, 'an en-dash, which the ask deny already read');
+    assert.strictEqual(stop('Done \u2015 the build is green.').status, 2, 'the horizontal bar');
 });
 
 // The interaction rule's 're-ask on the SAME deliverable -> ONE format AskUserQuestion' shipped as

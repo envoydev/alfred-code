@@ -25,7 +25,7 @@ Load when authoring or restructuring any .md (README, ADR, runbook, how-to, desi
 
 The two-layer rule set (syntax canon = valid, portable Markdown from the Markdown Guide; style overlay = opinionated house form from Google's style guide) plus the review procedure.
 
-Markdown form only - not prose clarity (that is Vale) or spelling (codespell / hunspell).
+Markdown form only - not prose clarity (that is Vale), spelling (codespell / hunspell) or another markup (AsciiDoc, reStructuredText, org-mode, MDX - each has its own canonical rules).
 
 ## How to run a review
 
@@ -35,13 +35,15 @@ Two passes, syntax before style. The reviewer reads a syntax violation different
 
 ### Pass 1 - syntax (must-fix)
 
-Run `markdownlint` first when it is available - the mechanical checks (heading style, list markers, blank lines around blocks, fence style) are its job, and each hit maps onto a canon rule; then walk the file top to bottom for what a linter cannot see. Syntax violations are bugs (invalid or non-portable Markdown: setext where ATX is expected, unfenced code block, missing blank line around a block element, `)` instead of `.` in an ordered list, missing space after `#`), not judgment calls - **fix them directly in one Edit pass**. No approval gate; the diff is self-explaining and each fix cites its rule by short name (e.g. `syntax/headings/atx-space-after`).
+Run `markdownlint` first when it is available - the mechanical checks (heading style, list markers, blank lines around blocks, fence style) are its job, and each hit maps onto a canon rule; then walk the file top to bottom for what a linter cannot see. Syntax violations are bugs (invalid or non-portable Markdown: setext where ATX is expected, unfenced code block, missing blank line around a block element, `)` instead of `.` in an ordered list, missing space after `#`), not judgment calls - **fix them directly in one Edit pass**. No approval gate; the diff is self-explaining and each fix cites the quick-reference row it breaks (e.g. 'syntax: Headings'), and a reference short name only when that file was opened for a dispute.
 
 ### Pass 2 - style (should-fix)
 
 Re-walk for style-overlay violations. These are opinionated. **Apply the clear wins directly** - fenced blocks with a language tag, single H1 as the title, informative link text (never 'here'), no trailing whitespace, product-name capitalization. **Batch the genuine judgment calls** - a table of contents on a borderline-length doc, table-vs-list, reference-vs-inline links, heading-uniqueness prefixes - into one short list, each with a recommendation, and move. Do not gate each finding on a reply.
 
 Defer to the project on any conflict with a local convention (e.g. a repo standardized on `_underscore_` emphasis) - note the conflict, defer, move on. No audit markers or `[reviewed]` stamps in the file; the diff is the audit trail.
+
+**Close.** Re-run `markdownlint` on every file you edited and quote its summary line (no output is the pass - say so); without it installed, say the syntax pass was by eye and mark it UNVERIFIED.
 
 ## The two layers - quick reference
 
@@ -89,40 +91,26 @@ Full canon with examples and known-broken edge cases: `references/syntax-canon.m
 
 Full overlay with rationales: `references/style-overlay.md`.
 
-## What this skill does NOT cover
-
-Markdown **form** only - heading style, list indentation, code-fence language tags, link syntax, line length, and the rest of the two rule sets above. It does not cover:
-
-- **Whether a doc should exist, or where it belongs** - that is a content / architecture decision, not a form review. Style review assumes the doc earned its place.
-- **Prose-level enforcement** - terminology consistency, inclusive-language substitutions, banned phrases, voice / tense / mood. Reach for [Vale](https://vale.sh) (a prose linter that runs configurable style packs over Markdown). It composes with this skill: this skill fixes the Markdown form, Vale enforces prose terminology.
-- **Spelling and grammar** - use `codespell` / `hunspell` / `LanguageTool` in addition, not instead.
-- **AsciiDoc / reStructuredText / org-mode / MDX** - Markdown only; other markup has its own canonical rules (e.g. `asciidoctor --safe-mode`).
-
 ## Hard limits
 
-- Never invent rules. Every finding cites a rule from `references/syntax-canon.md` or `references/style-overlay.md`.
+- Never invent rules. Every finding cites a rule - a quick-reference row, or the reference entry when one was opened.
 
 ## Examples
 
 <example>
 <user_query>Is `===` under a heading line valid Markdown?</user_query>
 <response>
-Yes - that is setext-style H1, valid Markdown. But the style overlay (and Google's guide) prefer ATX (`# Heading`): setext is annoying to maintain, cannot express H3 or below, and obscures the level when scanning. Recommendation: replace `===` with a single `#` - a syntax-equivalent rewrite. Point me at the file and I will apply it.
+Yes - that is setext-style H1, valid Markdown. But the style overlay (and Google's guide) prefer ATX (`# Heading`): setext is annoying to maintain, cannot express H3 or below, and obscures the level when scanning. Recommendation: replace `===` with a single `#` - a syntax-equivalent rewrite.
 </response>
 </example>
 
 <example>
 <user_query>Lint this README - the formatting is messy.</user_query>
 <response>
-Running the two-pass review. Pass 1 fixes syntax bugs (fences, blank lines, ATX headings, list markers) directly. Pass 2 applies the clear style wins and flags any judgment calls (TOC, table-vs-list) as a short list. Send the path.
+Reviewing `./README.md` - the only README in the tree (several would go through one AskUserQuestion, the root one marked Recommended). Pass 1 fixes syntax bugs (fences, blank lines, ATX headings, list markers) directly. Pass 2 applies the clear style wins and flags any judgment calls (TOC, table-vs-list) as a short list.
 </response>
 </example>
 
 ## Attribution
 
-The two layers are distilled from publicly available style references - load-bearing rules only, not verbatim reproduction:
-
-- **Syntax canon** - the Markdown Guide basic-syntax reference (<https://www.markdownguide.org/basic-syntax/>), CC BY-SA 4.0.
-- **Style overlay** - Google's developer-documentation Markdown style guide (<https://google.github.io/styleguide/docguide/style.html>), from `google/styleguide`, Apache License 2.0.
-
-When the user needs the original text, link out - do not paste long excerpts.
+Distilled from the Markdown Guide (CC BY-SA 4.0) and Google's Markdown style guide (Apache 2.0); link out, never paste long excerpts.

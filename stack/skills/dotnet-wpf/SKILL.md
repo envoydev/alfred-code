@@ -50,7 +50,7 @@ Compose the app through the .NET generic host, not hand-rolled service location 
 
 ## Pairing with a Windows Service
 
-A WPF desktop is often the front for a Windows Service companion. The service half is not WPF code - the worker model is the hosted-worker skill's (BackgroundService lifecycle, graceful shutdown) and the SCM layer the Windows Service skill's (`AddWindowsService`, start/stop budgets, install and recovery); load those for that process where the install has them, and without them the service half is a plain generic-host worker with `AddWindowsService()`. WPF's own side of the pairing is the boundary: the two processes share only a contract - a named pipe, a local socket, a file or database, an IPC channel - never a UI thread or a `Dispatcher`, and a service-pushed update crosses in as data and marshals onto the UI thread like any other off-thread work.
+A companion Windows Service is a separate generic-host process (the hosted-worker and Windows Service skills own it, where installed); the two share only a contract - a pipe, socket, file or database - and a service-pushed update marshals onto the UI thread like any off-thread work.
 
 ## Naming and pairing
 
@@ -127,8 +127,7 @@ private async Task LoadOrdersAsync(CancellationToken token)
 }
 ```
 - An uncaught fault in a command's `Task` rethrows on the UI thread by default - catch inside the command and surface the
-  failure through an injected `IDialogService` or an error property, never let it reach the dispatcher. The throw-vs-return baseline and the async rules (`ConfigureAwait`, no blocking) are
-  the `csharp` skill's; they apply unchanged here.
+  failure through an injected `IDialogService` or an error property, never let it reach the dispatcher.
 - `AsyncRelayCommand` has two fault models - pick one deliberately. The default awaits and rethrows on the UI `SynchronizationContext`, so a try/catch inside the command sees the fault; setting `FlowExceptionsToTaskScheduler` instead routes it to `TaskScheduler.UnobservedTaskException`. Prefer the default and catch locally so the failure reaches the user through your dialog or error surface; reach for the flow option only when a deliberate global handler owns it.
 
 ## The interaction layer - what code-behind still owns
@@ -157,6 +156,8 @@ the composition rule, and the `BinaryFormatter` migration bridge.
   walking `VisualTreeHelper` from code-behind.
 - WPF binds with `{Binding}`. Compiled bindings (`x:Bind`) are a UWP/WinUI feature that WPF does not
   have - do not reach for it. Set `x:DataType` only where a tooling analyzer you use consumes it.
+
+Prove a XAML or ViewModel change with `dotnet build` and quote the summary line - an `MC####` error is a markup-compile failure, not a C# one.
 
 ## Dependency and attached properties, weak events, validation
 
@@ -189,8 +190,7 @@ with no UI host - that is the return on holding the MVVM line. Assert change not
 subscribing to `PropertyChanged` and checking the fired property name; test a command by calling
 `Execute(...)` and asserting state or a mocked side effect, with `CanExecute(...)` asserted
 separately. Inject every collaborator (`INavigationService`, `IDialogService`, repositories) so the
-test substitutes them - a ViewModel never does `new Window().Show()`. Framework, fakes and assertion
-mechanics are the `dotnet-testing` skill's. The check is the test run itself: a ViewModel test that needs a `Dispatcher`
+test substitutes them - a ViewModel never does `new Window().Show()`. The check is the test run itself: a ViewModel test that needs a `Dispatcher`
 to pass is the failure - it proves the View-knows-ViewModel line was crossed - so quote the run and the first failure
 rather than asserting the layering holds.
 

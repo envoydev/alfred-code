@@ -54,9 +54,7 @@ if (require.main === module) {
   // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
   if (off) process.exit(0);
 }
-// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
-// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
-// project whose settings.json has not been migrated yet keeps resolving.
+// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 
 // Keys whose value is a credential - the SAME string as meta/environment.json `secret_key_pattern`
@@ -95,7 +93,7 @@ const TEMPLATE_VALUE = /^(?:your[-_]|<[^>]+>$|changeme|x{3,}$|\.\.\.$|todo|repla
 // least one underscore, no lower case, nothing else in it. Measured: this stack's OWN catalogs are
 // lists of variable names under a field literally called `key`, so `meta/environment.json`
 // (`env.0.key` = `ALFRED_CODE_DOCS_PATH`) and `meta/migrations.json`
-// (`detect.settings_env_key` = `CLAUDE_DOCS_PATH`) were read as credential files - on the Read
+// (`detect.settings_env_key` = `ALFRED_CODE_FRESH_SESSION_PCT`) were read as credential files - on the Read
 // route a block, and on the shell route something worse: every `key` in the file the guided walks
 // run on came back as `<set (N chars)>`. A SHAPE match still wins, so an all-caps credential like
 // an AWS `AKIA...` id (no underscore anyway) is judged on its shape, not excused as a name. The
@@ -683,10 +681,14 @@ function resolveFile(token) {
 // filesystem reports a real one), reads as absent. While any entry is live the credential-literal
 // check is relaxed too - the value the user chose to expose may be placed into a file. The default
 // stays the redacted view: a model improvising a presence check is still the measured incident.
+// Where the call names its session, the receipt is that session's only through a `session: <id>` line naming
+// it: time alone let a second session open on the same project honour the first one's answer, and a `*` lifted
+// the literal check there too (audit 2026-10-08). A reader with no session id keeps the time rule.
 const MAX_RECEIPT_AGE_MS = 8 * 60 * 60 * 1000;
 const realOf = (p) => { try { return fs.realpathSync(p); } catch { return pathMod.resolve(p); } };
-function readReceipt(root, transcriptPath) {
-  const r = { path: pathMod.resolve(root, docsRootEnv(), 'flow', 'SECRET-READ-ALLOW'), stale: false, all: false, files: new Set(), names: new Set(), live: false };
+const sessionIdOf = (v) => (typeof v === 'string' && /^[\w.-]{1,128}$/.test(v) ? v : '');
+function readReceipt(root, transcriptPath, sessionId) {
+  const r = { path: pathMod.resolve(root, docsRootEnv(), 'flow', 'SECRET-READ-ALLOW'), stale: false, all: false, files: new Set(), names: new Set(), live: false, session: sessionIdOf(sessionId) };
   try {
     const st = fs.statSync(r.path);
     let sessionStartMs = 0;
@@ -694,12 +696,14 @@ function readReceipt(root, transcriptPath) {
       const t = fs.statSync(String(transcriptPath || ''));
       sessionStartMs = t.birthtimeMs && t.birthtimeMs !== t.ctimeMs ? t.birthtimeMs : 0;
     } catch { sessionStartMs = 0; }
-    if (Date.now() - st.mtimeMs > MAX_RECEIPT_AGE_MS || (sessionStartMs && st.mtimeMs < sessionStartMs)) {
+    const lines = Date.now() - st.mtimeMs > MAX_RECEIPT_AGE_MS || (sessionStartMs && st.mtimeMs < sessionStartMs) ? null
+      : fs.readFileSync(r.path, 'utf8').split(LINES).map((l) => l.trim());
+    const sessions = (lines || []).map((l) => l.match(/^session:\s*(\S+)$/)).filter(Boolean).map((m) => m[1]);
+    if (!lines || (r.session && !sessions.includes(r.session))) {
       r.stale = true;
     } else {
-      for (const rawLine of fs.readFileSync(r.path, 'utf8').split(LINES)) {
-        const e = rawLine.trim();
-        if (!e || e.startsWith('#')) continue;
+      for (const e of lines) {
+        if (!e || e.startsWith('#') || /^session:/.test(e)) continue;
         if (e === '*') r.all = true;
         else if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(e)) r.names.add(e);
         else {
@@ -719,9 +723,9 @@ const askLine = (r) =>
   'If the VALUE itself is what the user needs - shown to them, or placed where a blind copy (jq ... > file, cp, sed -i) ' +
   'cannot reach - do not decide for them: end this turn with ONE AskUserQuestion carrying, in this order, ' +
   "'Presence only (Recommended)', 'Show or use the value this session - it enters the transcript permanently', 'Drop it'. " +
-  `On the second answer write the receipt ${r.path} with the file path, the variable NAME, or \`*\` (everything, this session) ` +
-  'on its own line, then retry; it is honoured for this session only, under 8h' +
-  (r.stale ? ' - the receipt there now is stale (older than 8h, or written before this session began), so rewrite it only on a fresh answer' : '') + '.';
+  `On the second answer write the receipt ${r.path}: ${r.session ? `the line \`session: ${r.session}\`` : 'a `session: <id>` line naming this session (`$CLAUDE_CODE_SESSION_ID` in its shell)'}, ` +
+  'then the file path, the variable NAME, or `*` (everything, this session), each on its own line, then retry; it is honoured for this session only, under 8h' +
+  (r.stale ? ' - the receipt there now is stale (older than 8h, written before this session began, or naming another session), so rewrite it only on a fresh answer' : '') + '.';
 // A note the rewritten call prints as its first line, so the model reads what happened and the route
 // to the value in the same tool result - nothing is fed back through a denial.
 const noteLine = (what, r) => `# credential guard: ${what} A value never enters the chat. ${askLine(r)}`;
@@ -978,7 +982,7 @@ if (process.argv[2] === '--redacted') {
   const fileArg = String(process.argv[3] || '');
   const filtered = process.argv[4] === '--note-to-stderr';
   const file = nativePath(fileArg.replace(/^~(?=\/|$)/, HOME));
-  const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || process.cwd(), null);
+  const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || process.cwd(), null, process.env.CLAUDE_CODE_SESSION_ID);
   let text = null;
   let out = '';
   try {
@@ -1025,7 +1029,7 @@ if (process.argv[2] === '--redacted') {
 // `--note-to-stderr` is the filtered form (`--redacted-env --note-to-stderr | grep KEY`), as for a file.
 if (process.argv[2] === '--redacted-env') {
   const filtered = process.argv[3] === '--note-to-stderr';
-  const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || process.cwd(), null);
+  const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || process.cwd(), null, process.env.CLAUDE_CODE_SESSION_ID);
   const lines = [];
   let masked = 0;
   for (const k of Object.keys(process.env).sort()) {
@@ -1041,7 +1045,8 @@ if (process.argv[2] === '--redacted-env') {
 
 // The line masker the stream redactor below runs, and the shell route's git probe runs over the same text. One
 // per stream: it carries the file a diff section is about (from its header) and whether it is inside a PEM
-// private key. Masked: a credential-shaped key's value in a JSON pair, a dotenv line or a YAML pair - in a config
+// private key. Masked: a credential-shaped key's value in a JSON pair, a dotenv line, a YAML pair or an INI /
+// properties / .npmrc pair - in a config
 // file the diff header names, or anywhere when no header was seen (`git show HEAD:<file>`) - a URL's password
 // everywhere, a connection string's `Password=` in config files, a known credential SHAPE anywhere, and every
 // line between a PEM private key's BEGIN and END. A diff's own prefix (`+`, `-`, ` `, `< `, `> `) stays. A
@@ -1054,6 +1059,7 @@ function lineRedactor(grep = false) {
   const JSON_PAIR = /("((?:[^"\\]|\\.)*)"\s*:\s*")((?:[^"\\]|\\.)*)"/g;
   const YAML_PAIR = /^(\s*(?:-\s+)?)(:?[A-Za-z_][\w.-]*|"[^"]*"|'[^']*')(\s*:\s+)(['"]?)([^\s'"#][^#]*?)\4(\s*(?:#.*)?)$/;
   const YAML_ENV_ITEM = /^(\s*-\s+)([A-Za-z_][\w.-]*)=(.*)$/;
+  const INI_STREAM_PAIR = /^(\s*)([A-Za-z_][\w.-]*|\/\/[^=\s]+)(\s*=\s*)(.*?)\s*$/;
   const NONE = new Set();
   let file = null;
   let kind = null;
@@ -1110,6 +1116,12 @@ function lineRedactor(grep = false) {
       if (y && maskable(unquote(y[2]).replace(/^:/, ''), y[5])) out = `${y[1]}${y[2]}${y[3]}${y[4]}${mask(y[5])}${y[4]}${y[6]}`;
       const e = out.match(YAML_ENV_ITEM);
       if (e && maskable(e[2], unquote(e[3]))) out = `${e[1]}${e[2]}=${mask(unquote(e[3]))}`;
+      // an INI / properties / .npmrc pair the passes above never read - a dotted, dashed or registry-path key
+      // (`spring.datasource.password=`, `client-secret = `, `//registry.npmjs.org/:_authToken=`): `git diff` and
+      // `git show HEAD:.npmrc` printed them raw, the probe judging them clean (audit 2026-10-08, replayed). `=` only,
+      // so a search's `path:12:` prefix is never read as a key.
+      const i = !d && !y && !e && kind !== 'hcl' && kind !== 'xml' && out.match(INI_STREAM_PAIR);
+      if (i && maskable(i[2], unquote(i[4]))) out = `${i[1]}${i[2]}${i[3]}${mask(unquote(i[4]))}`;
       out = kind === 'hcl' ? maskQuotedEmbedded(out, mask) : maskEmbedded(out, mask);
     } else {
       out = out.replace(EMBEDDED_URL, (all, head, val) => (holdsCredential('password', val) ? head + mask(val) : all));
@@ -1167,7 +1179,7 @@ if (process.argv[2] === '--redact-stdin') {
   rest += decoder.end();
   if (rest) write(1, red.line(rest));
   if (red.masked()) {
-    const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || process.cwd(), null);
+    const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || process.cwd(), null, process.env.CLAUDE_CODE_SESSION_ID);
     write(2, noteLine(`${red.masked()} credential value(s) in this output shown as <set (N chars)>, everything else as printed.`, receipt) + '\n');
   }
   process.exit(0);
@@ -1179,6 +1191,9 @@ try {
   process.exit(0); // unparseable stdin - don't block
 }
 if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/null - nothing to judge
+// A cwd that is not a path is no anchor: the probes handed `cwd: 5` to spawnSync, which threw, and a throwing guard
+// fails open in the dispatcher - the dump it was judging ran (audit 2026-10-08).
+if (payload.cwd != null && (typeof payload.cwd !== 'string' || !payload.cwd)) delete payload.cwd;
 
 // --- block telemetry (shared by every guard hook; keep the copies identical) ------------
 // A block costs a whole turn - the stderr goes back to the model and the work is re-done - so a
@@ -1237,7 +1252,7 @@ function rewriteRow(detail) {
 }
 
 const input = payload.tool_input || {};
-const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), payload.transcript_path);
+const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), payload.transcript_path, payload.session_id);
 const receiptLive = receipt.live;
 const allowAll = receipt.all;
 const allowedNames = receipt.names;
@@ -2544,6 +2559,26 @@ function gitPrintsContent(stage) {
 // read switched off (`--no-ext-diff`, `--no-textconv`, `core.fsmonitor=false`). What it cannot run as written -
 // a word the shell would expand, config given on the command line, a flag that writes (`--output`) - or a run
 // that fails, times out or overflows, counts as a leak, so that stage is piped unprobed: the safe side.
+// Declarations, like the probes: judgeShell calls them from above these lines.
+// At most four probes per call, 3s each: past them a stage is piped unprobed (the safe side), so a command of many slow
+// reads stays inside the dispatcher's budget - a timed-out PreToolUse command hook lets the call run with no verdict.
+function takeProbe() { if (takeProbe.left === undefined) takeProbe.left = 4; return takeProbe.left-- > 0; }
+function probeCwd() { return (payload && typeof payload.cwd === 'string' && payload.cwd) || process.env.CLAUDE_PROJECT_DIR || process.cwd(); }
+// A `filter.<driver>.clean` / `.process` in the repository's own config runs inside a working-tree diff; such a stage is
+// piped unprobed rather than run before approval. Read once per git spelling (`-C`, `--git-dir` kept); a read that
+// cannot run counts as configured.
+function localFilterConfigured(pre) {
+  const key = pre.join('\0');
+  localFilterConfigured.seen = localFilterConfigured.seen || new Map();
+  if (localFilterConfigured.seen.has(key)) return localFilterConfigured.seen.get(key);
+  const r = require('child_process').spawnSync('git', [...pre, 'config', '--local', '--get-regexp', '^filter\\.'], {
+    cwd: probeCwd(), timeout: 3000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+  });
+  // exit 1 is 'no such key', and outside a repository (128) there is no local config to hold one
+  const on = !!r.error || String(r.stdout || '').trim() !== '';
+  localFilterConfigured.seen.set(key, on);
+  return on;
+}
 function gitOutputLeaks(stage) {
   const raw = shellTokens(stage.replace(PREFIX_WORDS, '').trim());
   if (raw.some((t) => !/^'[^']*'$/.test(t) && (/[$`*?[{\\]/.test(t) || /^~/.test(t)))) return true;
@@ -2558,10 +2593,13 @@ function gitOutputLeaks(stage) {
   if (w[i] === 'cat-file' && w.some((a) => /^--(?:textconv|filters)$/.test(a))) return true; // runs a repository's own driver
   // a remote or config read takes none of the diff flags, and `remote show` asks the network unless told `-n`
   const plain = w[i] === 'cat-file' || w[i] === 'remote' || w[i] === 'config';
+  // a clean filter the repository configures runs inside a working-tree diff - a command, before any approval
+  if (!plain && localFilterConfigured(w.slice(1, i))) return true;
+  if (!takeProbe()) return true;
   const tail = w[i] === 'remote' && w[at] === 'show' && !w.includes('-n') ? [w[at], '-n', ...w.slice(at + 1)] : w.slice(at);
   const argv = ['-c', 'core.fsmonitor=false', ...w.slice(1, at), ...(plain ? [] : ['--no-ext-diff', '--no-textconv', '--no-color']), ...tail];
   const r = require('child_process').spawnSync('git', argv, {
-    cwd: (payload && payload.cwd) || process.env.CLAUDE_PROJECT_DIR || process.cwd(), timeout: 3000, maxBuffer: 8 * 1024 * 1024,
+    cwd: probeCwd(), timeout: 3000, maxBuffer: 8 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_PAGER: 'cat', PAGER: 'cat' },
   });
   // Exit 1 is `diff --no-index`'s 'the files differ', with the diff on stdout.
@@ -2597,8 +2635,12 @@ function walkLeaks(stage) {
   // fd redirections that stay on the terminal or go nowhere are the shell's, not grep's arguments
   const args = w.slice(1).filter((a, k, all) => !/^(?:&|\d*)>+(?:&\d+|\/dev\/null)?$/.test(a) && !(all[k - 1] && /^(?:&|\d*)>+$/.test(all[k - 1])));
   if (args.some((a) => /^--(?:pre|hostname-bin)(?:=|$)/.test(a))) return true;
+  // A path-qualified verb (`./tools/grep`, `bin/rg`) is whatever script sits there, and this probe runs before the
+  // permission prompt - so it is never spawned; the stage is piped unprobed (audit 2026-10-08: a repo script ran).
+  if (/[\\/]/.test(w[0])) return true;
+  if (!takeProbe()) return true;
   const r = require('child_process').spawnSync(w[0], args, {
-    cwd: (payload && payload.cwd) || process.env.CLAUDE_PROJECT_DIR || process.cwd(), timeout: 3000, maxBuffer: 8 * 1024 * 1024,
+    cwd: probeCwd(), timeout: 3000, maxBuffer: 8 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, RIPGREP_CONFIG_PATH: '' },
   });
   if (r.error || (r.status !== 0 && r.status !== 1 && !r.stdout.length)) return true;
@@ -2886,34 +2928,55 @@ if (payload.tool_name === 'Read') {
 }
 
 // The first credential file a content-mode Grep over `root` would print a line of: a file the (glob / type) filters let the
-// search reach, whose text the pattern matches and whose CONTENT holds a credential. Depth-first in name order, so the same tree
-// gives the same answer; a tree past WALK_FILES files or WALK_BYTES bytes is left unjudged. Hidden and git-ignored files are
+// search reach, whose text the pattern matches and whose CONTENT holds a credential. Breadth-first in name order, so the same
+// tree gives the same answer and a shallow `.env` is read before a deep dependency tree; the folders a dependency manager or a
+// build fills (`.venv`, `vendor`, `target`, ...) are walked last, never skipped. A tree past WALK_FILES files the filters let
+// through, WALK_BYTES bytes or WALK_ENTRIES entries seen is left unjudged - the count was taken before the filters, so 4,000
+// files of a `.venv` ended the walk before a credential file past it (audit 2026-10-08). Hidden and git-ignored files are
 // walked too (the search may reach them), and `.git` / `node_modules` are not.
 const WALK_FILES = 4000;
 const WALK_BYTES = 32 * 1024 * 1024;
+const WALK_ENTRIES = 100000;
+const WALK_LAST = /^(?:\.venv|venv|\.tox|\.nox|__pycache__|vendor|target|dist|build|out|bin|obj|\.next|\.nuxt|\.gradle|\.terraform|Pods|bower_components|\.cache|site-packages)$/;
 const GREP_TYPES = { js: 'js|mjs|cjs|jsx', ts: 'ts|tsx|mts|cts', py: 'py|pyi', yaml: 'ya?ml', md: 'md|markdown|mdx', cs: 'cs|csx', json: 'jsonc?|json5', sh: 'sh|bash|zsh', rust: 'rs', java: 'java', go: 'go' };
+// The Grep tool's pattern is ripgrep's syntax. What JavaScript reads differently is translated - a leading inline flag
+// group (`(?i)`, `(?s)`, `(?m)`) and the anchors `\A` / `\z` (a line's ends, the input's in multiline mode; JavaScript
+// read `\z` as a literal `z`) - and a pattern that still does not compile matches every line: the file is then judged by
+// its content alone, never passed unjudged (`(?i)api_token` passed, audit 2026-10-08).
+function grepRegex(pattern, tool) {
+  let src = String(pattern || '');
+  let flags = `m${tool['-i'] ? 'i' : ''}${tool.multiline ? 's' : ''}`;
+  const lead = src.match(/^\(\?([imsx]+)\)/);
+  if (lead && !lead[1].includes('x')) { src = src.slice(lead[0].length); for (const f of lead[1]) if (!flags.includes(f)) flags += f; }
+  const [start, end] = tool.multiline ? ['(?<![\\s\\S])', '(?![\\s\\S])'] : ['^', '$'];
+  src = src.replace(/(^|[^\\])((?:\\\\)*)\\A/g, (all, a, b) => a + b + start).replace(/(^|[^\\])((?:\\\\)*)\\z/g, (all, a, b) => a + b + end);
+  try { return new RegExp(src, flags); } catch { return { test: () => true }; }
+}
 function walkCredentialFile(root, tool) {
-  let re;
-  try { re = new RegExp(String(tool.pattern || ''), `m${tool['-i'] ? 'i' : ''}${tool.multiline ? 's' : ''}`); } catch { return null; }
+  const re = grepRegex(tool.pattern, tool);
   const glob = typeof tool.glob === 'string' && tool.glob && !tool.glob.startsWith('!') ? tool.glob : '';
   const globRes = glob ? expandBraces(glob).map((g) => new RegExp('^' + g.replace(/[.+^$()|\\]/g, '\\$&').replace(/\*\*\//g, '(?:.*/)?').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]') + '$')) : [];
   const typeRe = typeof tool.type === 'string' && tool.type ? new RegExp(`\\.(?:${GREP_TYPES[tool.type] || tool.type.replace(/\W/g, '')})$`, 'i') : null;
-  const stack = [root];
+  const queue = [root];
+  const later = [];
   let files = 0;
   let bytes = 0;
-  while (stack.length) {
-    const dir = stack.pop();
+  let seen = 0;
+  for (let q = 0; q < queue.length || later.length; q++) {
+    if (q >= queue.length) { queue.push(...later.splice(0)); }
+    const dir = queue[q];
     let entries;
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
-    entries.sort((x, y) => (x.name < y.name ? 1 : x.name > y.name ? -1 : 0)); // popped back into name order
+    entries.sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
     for (const e of entries) {
+      if (++seen > WALK_ENTRIES) return null;
       const full = pathMod.join(dir, e.name);
-      if (e.isDirectory()) { if (e.name !== '.git' && e.name !== 'node_modules') stack.push(full); continue; }
+      if (e.isDirectory()) { if (e.name !== '.git' && e.name !== 'node_modules') (WALK_LAST.test(e.name) ? later : queue).push(full); continue; }
       if (!e.isFile()) continue;
-      if (++files > WALK_FILES) return null;
       if (typeRe && !typeRe.test(e.name)) continue;
       const rel = pathMod.relative(root, full).split(pathMod.sep).join('/');
       if (globRes.length && !globRes.some((g) => g.test(glob.includes('/') ? rel : e.name))) continue;
+      if (++files > WALK_FILES) return null;
       let size;
       try { size = fs.statSync(full).size; } catch { continue; }
       if (size > MAX_BYTES) continue;

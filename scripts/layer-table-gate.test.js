@@ -3,7 +3,10 @@
 // answered 'I do not see any table'. The plugin hook denies that ask - both directions pinned here.
 const test = require('node:test');
 // 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
-require('./hook-test-env').isolateHookSuite();
+// The hook writes its block row under CLAUDE_PROJECT_DIR || cwd: every spawn runs in the suite's own project, or the
+// rows land in the checkout's real ledger (audit 2026-10-08: 494 nosession.jsonl rows were this suite's).
+const { project } = require('./hook-test-env').isolateHookSuite();
+const inProject = (env = {}) => ({ cwd: project, env: { ...process.env, CLAUDE_PROJECT_DIR: project, ...env } });
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -23,7 +26,7 @@ const ask = { questions: [{ question: 'Keep as shown?', header: 'Agents', multiS
 function run(rows, input = ask) {
   const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
   fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
-  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'AskUserQuestion', tool_input: input, transcript_path: p }), encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'AskUserQuestion', tool_input: input, transcript_path: p }), encoding: 'utf8', ...inProject() });
   return { status: r.status, stderr: r.stderr };
 }
 
@@ -137,9 +140,9 @@ test('an ask with no table call in the transcript is untouched', () => {
 });
 
 test('fail-open on a missing transcript or garbage payload', () => {
-  const r = spawnSync(process.execPath, [HOOK], { input: 'not json', encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [HOOK], { input: 'not json', encoding: 'utf8', ...inProject() });
   assert.strictEqual(r.status, 0);
-  const r2 = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'AskUserQuestion', transcript_path: path.join(TMP, 'nope.jsonl') }), encoding: 'utf8' });
+  const r2 = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'AskUserQuestion', transcript_path: path.join(TMP, 'nope.jsonl') }), encoding: 'utf8', ...inProject() });
   assert.strictEqual(r2.status, 0);
 });
 
@@ -161,13 +164,13 @@ const write = (rows) => {
 const payloadFor = (p) => JSON.stringify({ tool_name: 'AskUserQuestion', tool_input: ask, transcript_path: p, tool_use_id: OWN });
 const runWith = (rows, env = {}) => {
   const t0 = Date.now();
-  const r = spawnSync(process.execPath, [HOOK], { input: payloadFor(write(rows)), encoding: 'utf8', env: { ...process.env, ...env } });
+  const r = spawnSync(process.execPath, [HOOK], { input: payloadFor(write(rows)), encoding: 'utf8', ...inProject(env) });
   return { status: r.status, stderr: r.stderr, ms: Date.now() - t0 };
 };
 
 test('a paste in the ask own message that lands after the hook starts passes', async () => {
   const p = write(base());
-  const child = spawn(process.execPath, [HOOK], { env: { ...process.env, ALFRED_CODE_LAYER_GATE_WAIT_MS: '3000' } });
+  const child = spawn(process.execPath, [HOOK], inProject({ ALFRED_CODE_LAYER_GATE_WAIT_MS: '3000' }));
   child.stdin.end(payloadFor(p));
   setTimeout(() => fs.appendFileSync(p, own(footer).map((r) => JSON.stringify(r)).join('\n') + '\n'), 300);
   const status = await new Promise((res) => child.on('close', res));

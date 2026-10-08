@@ -32,18 +32,26 @@ const fs = require('fs');
 // way.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let unattended = () => false;
+// The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
+let stopHeld = (input) => !!(input && input.stop_hook_active);
+let markHeld = () => {};
+let contractHeld = () => false;
+let houseDash = /[\u2014\u2013\u2015]/; // hook-prelude.js HOUSE_DASH, the one dash class
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     unattended = prelude.unattended || unattended;
+    houseDash = prelude.HOUSE_DASH || houseDash;
+    if (prelude.stopHeldThisCycle) {
+      stopHeld = (input) => prelude.stopHeldThisCycle('guard-answer-length', input);
+      markHeld = (input) => prelude.markStopHeld('guard-answer-length', input);
+      contractHeld = (input, sinceMs) => prelude.stopHeldBy('guard-stop-contract', input, sinceMs);
+    }
     if (prelude.standDown('guard-answer-length')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
-// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
-// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
-// project whose settings.json has not been migrated yet keeps resolving (the installers rename the
-// key in place on the next install/update).
+// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 let payload;
 try {
@@ -400,7 +408,10 @@ if (payload.hook_event_name === 'SessionStart') {
 // saw - measured in the A/B, where the rewrite dropped the verification line. A row older than
 // this turn's typed prompt is an earlier turn's, however recent: two minutes alone read the previous
 // turn's block as this one's. Best-effort in every direction: an unreadable ledger means no yield.
+// The stop contract's own Stop-chain marker is read first (hook-prelude.js stopHeldBy): on a continuation it is on
+// disk before this hook runs, where the ledger row of a parallel first Stop may not be yet.
 function stopContractBlockedThisTurn(turnStartMs) {
+  if (contractHeld(payload, turnStartMs)) return true;
   try {
     const path = require('path');
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
@@ -420,13 +431,16 @@ function stopContractBlockedThisTurn(turnStartMs) {
 }
 
 if (payload.hook_event_name === 'Stop') {
-  if (payload.stop_hook_active) process.exit(0); // continuation we caused - one block per turn
+  // Only a continuation THIS hook caused stands down; one a sibling Stop hook caused is judged once more, and this
+  // hook still blocks at most once per cycle (hook-prelude.js, the Stop chain - audit 2026-10-08 S1).
+  if (stopHeld(payload)) process.exit(0);
   let last;
   let user;
   let userTs = NaN;
   // An unreadable transcript leaves the LENGTH half fail-open (no user row, so depth cannot be ruled
   // out), never the em-dash half: that reads last_assistant_message, which the payload carries anyway.
-  let transcriptRead = true;
+  // No transcript path at all is the same case - tailLines() then reads nothing and throws nothing.
+  let transcriptRead = typeof payload.transcript_path === 'string' && payload.transcript_path !== '';
   try {
     ({ assistant: last, user, userTs } = lastMessages());
   } catch {
@@ -449,10 +463,12 @@ if (payload.hook_event_name === 'Stop') {
   // one, 4 in another, 2 each in two more - with the budget text carrying that clause loaded THREE
   // times in the same transcript, so this is not a placement problem: the rule was injected every
   // turn and enforced on no surface. The Stop branch already holds the turn's prose, so it is one
-  // more pass over text this hook has read anyway. Only the em-dash and its horizontal-bar twin are
-  // checked - the same injection's 'single quotes in prose' clause is not, because a double quote
-  // legitimately names a string value and the false positives would cost a turn each.
-  const DASHES = /[\u2014\u2015]/g;
+  // more pass over text this hook has read anyway. Only the dashes are checked - the em-dash, its
+  // horizontal-bar twin and the en-dash, the one class the stop contract's ask deny reads too
+  // (hook-prelude.js HOUSE_DASH; the two disagreed, audit 2026-10-08) - and the same injection's
+  // 'single quotes in prose' clause is not, because a double quote legitimately names a string value
+  // and the false positives would cost a turn each.
+  const DASHES = new RegExp(houseDash.source, 'g');
   const dashes = (body.match(DASHES) || []).length;
   let overLength = transcriptRead && body.length > HARD_CAP;
   if (!overLength && !dashes) process.exit(0);
@@ -501,6 +517,7 @@ if (payload.hook_event_name === 'Stop') {
           `the edit. If another hook blocked this same turn and asks for something else, do that and\n` +
           `fix the dashes inside the turn it asks for - never drop the fix because two hooks spoke.`),
     );
+    markHeld(payload);
     process.exit(2);
   }
 
@@ -516,11 +533,12 @@ if (payload.hook_event_name === 'Stop') {
     `every sentence about your own process. Do NOT apologize, do NOT explain the trim, and do NOT\n` +
     `append the short version to the long one - write the short answer alone. If the detail is\n` +
     `genuinely needed, say one line offering it instead of delivering it.\n` +
-    (stopContractBlockedThisTurn()
+    (stopContractBlockedThisTurn(userTs)
       ? `guard-stop-contract.js blocked this same turn too: do what IT asks, and write that turn at\n` +
         `budget. Its instruction wins on everything else.`
       : ''),
   );
+  markHeld(payload);
   process.exit(2);
 }
 

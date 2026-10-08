@@ -19,7 +19,7 @@ The language-level call - when to throw versus when to return - is `csharp`. Thi
 - Not for non-HTTP code - the C# baseline's exception and Result rules cover that.
 
 ## Model expected failures as return values
-- An application or domain operation that can fail in a foreseeable way returns its outcome instead of throwing. Two shapes both work - `csharp` owns the shape call (it prefers a domain-specific result when the failure modes are known); pick one per codebase and stay with it:
+- An application or domain operation that can fail in a foreseeable way returns its outcome instead of throwing. Two shapes both work - pick one per codebase and stay with it:
   - a `Result<T>` holding either a value or one-or-more errors (`IsSuccess`, `Value`, `Errors`);
   - a closed union - `abstract record Error(string Code, string Message);` with `sealed record NotFound(...) : Error` and friends - resolved by a `switch` expression.
 - Throwing to signal an ordinary outcome (not found, invalid input, conflict) is the thing to avoid: it is slower on the failure path, it hides the failure from the method signature, and it pushes a `try`/`catch` to every call site.
@@ -50,7 +50,7 @@ A `Result<T>` carries either the value or one such `Error`; the handler ends wit
 - Every non-2xx response is a `ProblemDetails`, or a `ValidationProblemDetails` for field-level errors - `type`, `title`, `status`, `detail`, `instance`, and an `errors` map where relevant. No bespoke `{ error: ... }` envelope, anywhere.
 - Register `AddProblemDetails()` (.NET 7+) so framework-generated failures (binding 400s, 404s, 415s) emerge in the same shape as the ones you write. In its customization callback, attach a `traceId` extension so a client-side error can be traced back to the logs - the trace/correlation source itself is the ASP.NET Core cross-cutting hub's.
 - Emit from handlers with `TypedResults.Problem(...)` and `TypedResults.ValidationProblem(errors)`; never assemble the JSON by hand.
-- This contract is transport-shared: a controller-based API reuses the same `AddProblemDetails()`, the same global `IExceptionHandler`, and the same FluentValidation filter - it emits via the `ControllerBase.Problem(...)`/`ValidationProblem(...)` helpers instead of `TypedResults`, but the envelope and the handler are identical. Do not re-shape errors per transport.
+- This contract is transport-shared: a controller-based API reuses the same `AddProblemDetails()`, the same global `IExceptionHandler`, and the same FluentValidation filter, attached to the actions with `app.MapControllers().AddEndpointFilter(...)` (an endpoint filter runs on controller actions too; there it resolves the `IValidator<T>` for each bound argument's type rather than taking one `TRequest`) - it emits via the `ControllerBase.Problem(...)`/`ValidationProblem(...)` helpers instead of `TypedResults`, but the envelope and the handler are identical. Do not re-shape errors per transport.
 
 ## One global handler for the unexpected
 - **.NET 8+ (preferred):** implement `IExceptionHandler.TryHandleAsync`, register with `AddExceptionHandler<T>()` next to `AddProblemDetails()`, and switch it on with `app.UseExceptionHandler()`. Register several handlers in order if you want known-exception-to-status mapping ahead of a final catch-all.
@@ -84,6 +84,26 @@ app.UseExceptionHandler();
 
 ## Validate at the edge
 - Validate the request before the handler body runs, inside an `IEndpointFilter` (`ValidationFilter<TRequest>`) that short-circuits with `TypedResults.ValidationProblem(...)` on failure - this is the filter the minimal-API surface attaches to its route groups. FluentValidation is the default; fall back to built-in data annotations / `ModelState` only for trivial DTOs.
+
+```csharp
+public sealed class ValidationFilter<TRequest>(IValidator<TRequest> validator) : IEndpointFilter
+{
+    public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext ctx, EndpointFilterDelegate next)
+    {
+        var request = ctx.Arguments.OfType<TRequest>().First();
+        var result = await validator.ValidateAsync(request, ctx.HttpContext.RequestAborted);
+        if (!result.IsValid)
+        {
+            return TypedResults.ValidationProblem(result.ToDictionary()); // ToDictionary(): FluentValidation 11.1+
+        }
+
+        return await next(ctx);
+    }
+}
+
+// todos.MapPost("/", Create).AddEndpointFilter<ValidationFilter<CreateTodoRequest>>();
+```
+
 - A validation failure is an expected failure - it returns from the filter and never reaches the global exception handler.
 
 ## Prove it

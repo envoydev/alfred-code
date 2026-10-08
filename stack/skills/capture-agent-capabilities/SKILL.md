@@ -31,7 +31,7 @@ call is its own shell, so a variable set here is gone by the next). Run all of i
 ```bash
 CAPS=.claude/skills/capture-agent-capabilities/scripts/capabilities-inventory.js
 [ -f "$CAPS" ] || CAPS=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/*/*; do   # one glob: zsh aborts the loop when any named glob matches nothing
-  PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || [ "$PN" = claude-stack ] || continue   # legacy-name: a 1.x dir until orphaned
+  PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || continue
   f="$d/stack/skills/capture-agent-capabilities/scripts/capabilities-inventory.js"
   [ -f "$f" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
@@ -75,8 +75,8 @@ node "<caps>" --body <DOCS ROOT>/flow/capabilities-body.md
 
 Delete that file once the verdict is spent - after the rule is written, or on `identical`.
 
-- `COMPARE: identical` - do NOT write. Report `rule unchanged - <N> bytes, not rewritten`, and go
-  to step 3's report. An identical rewrite pays a delete plus a full write, and the next session
+- `COMPARE: identical` - do NOT write. Report `rule unchanged - <N> bytes, not rewritten`, and skip
+  to step 4's report - there is nothing to verify. An identical rewrite pays a delete plus a full write, and the next session
   pays the changed mtime.
 - `COMPARE: differs` - write the composed body over the rule in ONE call, the whole file. No
   in-place Edit, no `sed -i`, no partial upsert: an edit keeps stale policy wording the skill has
@@ -131,8 +131,6 @@ addressable only as `<plugin>:<seat>`, and a bare name returns 'Agent type not f
 
 The usage-policy section is the house skill/agent policy's ONE home - it ships verbatim from this skill (a policy wording change lands here and reaches projects on their next re-run). Copy the `<!-- policy-rev: ... -->` line with it, unchanged: it is a content stamp over the block, recomputed by the stack's own lint whenever the policy text moves, and it is the ONLY way to tell a project carrying a current copy from one carrying a two-release-old one. `/alfred-code:validate` compares a project's stamp against the snapshot's. Like every generated `alfred-project-*.md` rule it stays out of the installer's catalog, so `/alfred-code:update` cannot overwrite it.
 
-The 1.x project-capabilities skill (this one's old name, not the run-book capture) wrote `.claude/rules/baseline-project-capabilities.md`, and before 2.1.6 this rule was `.claude/rules/baseline-project-agent-capabilities.md` (the update moves it; a run that finds it beside the new file means both exist): when either legacy rule exists, delete it in the same run - this rule supersedes it, and nothing else ever prunes generated rules.
-
 ### 3. VERIFY - after the write, before the report
 
 ```bash
@@ -168,3 +166,7 @@ Then the prose, short - four things, each its own line so none of them is skimme
 The rule lists what the inventory proved, nothing else - no capability assumed from the house defaults, no row for a server or skill the project dropped, and an unreadable source reported as unreadable (the script prints it that way) rather than filled from memory.
 
 A thin `.claude/agents` is not by itself a broken install: the core carries the seats (every skill is a copy under `.claude/skills`), so when a layer comes from plugins the script prints `SOURCE: PLUGIN-COVERED` and reports the UNION - what the enabled plugins carry plus whatever is copied locally. Stop and say so only when it printed neither a local nor a plugin source.
+
+## Old installs
+
+The 1.x project-capabilities skill (this one's old name, not the run-book capture) left `.claude/rules/baseline-project-capabilities.md`; this rule supersedes it - delete it in the same run.

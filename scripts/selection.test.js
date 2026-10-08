@@ -1,5 +1,5 @@
 'use strict';
-// Phase 7b (R33) deleted the frozen scripts/os/claude-stack.{sh,ps1} twins: this file used to drive // legacy-name
+// Phase 7b (R33) deleted the frozen shell twins (.sh, .ps1): this file used to drive
 // them directly (--print-plan / --installed-only selection filtering, hook adoption on update, the
 // empty-.claude guard, a Hidden .claude tree under pwsh) as a real subprocess for both. That logic is
 // unit-tested against the Node seed's own selection module in install-selection.test.js (filter, plan,
@@ -78,23 +78,15 @@ test('environment catalog: a renamed key is declared on both sides', () =>
 {
     const cat = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'environment.json'), 'utf8'));
     const migrations = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'migrations.json'), 'utf8'));
-    const { envMigrations } = require('./install/env-migrations.js');
-    // a history rename's `to` text is CLAUDE_STACK_* (history keeps its words); the prefix rename // legacy-name
-    // moves it on again to ALFRED_CODE_*, which is the spelling the live catalog owns now.
-    const { prefixRenames } = envMigrations(migrations);
-    const currentKey = (key) =>
-    {
-        for (const [from, to] of prefixRenames)
-            if (key.startsWith(from)) return to + key.slice(from.length);
-        return key;
-    };
     const renames = migrations.migrations.filter(m => m.rename_settings_env);
-    assert.ok(renames.length >= 1, 'the docs-root rename is catalogued');
     for (const m of renames)
     {
-        const row = cat.env.find(r => r.key === currentKey(m.rename_settings_env.to));
+        const row = cat.env.find(r => r.key === m.rename_settings_env.to);
         assert.ok(row, `${m.id} renames into a key the catalog owns`);
         assert.strictEqual(row.renamed_from, m.rename_settings_env.from, `${row.key} records the old spelling validate looks for`);
         assert.strictEqual(m.detect.settings_env_key, m.rename_settings_env.from, `${m.id} detects the key it renames`);
     }
+    // the other side: a catalog row naming an old spelling has the rename that moves it
+    for (const row of cat.env.filter(r => r.renamed_from))
+        assert.ok(renames.some(m => m.rename_settings_env.to === row.key && m.rename_settings_env.from === row.renamed_from), `${row.key} names renamed_from with no rename entry`);
 });

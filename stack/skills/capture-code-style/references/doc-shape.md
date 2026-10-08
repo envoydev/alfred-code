@@ -97,18 +97,15 @@ Same mechanics as every non-protected domain, restated so a re-run never has to 
 `<docs-path>/code-style/` and `references/` only when absent; a re-run reconciles the existing file in
 place rather than starting a parallel doc.
 
-**On mainline, or without git, MERGE writes the file directly** (Write, same REPLACE-wholesale rule as
-the generated rule in step 4: read what exists first, so the write is legal). **On a feature branch
-under local/overlay versioning, MERGE lands each changed section through
-`node .claude/hooks/docs.js set CODE-STYLE#<id>`** instead of writing the file - the engine puts it in
-that branch's overlay under `.branches/`, `docs.js set` stamps the section itself
-(`<!-- captured: -->`), and the section folds into mainline by itself at the first mainline session
-after the branch merges. **The capture does not check which mode is active** - `docs.js status` names
-it, but MERGE calls `set` unconditionally and the engine decides where the text lands; a mode check in
-this skill would be a second, driftable copy of a decision the engine already owns. Proven against the
-real engine on a temp fixture: a section written with `docs.js set` on a feature branch left the
-mainline `CODE-STYLE.md` untouched and was readable through `docs.js show` from that branch; the
-mainline file only changes once that branch is promoted or merged.
+- **A first capture** writes `CODE-STYLE.md` and `watch.json` whole (Write; read a stamp-less file
+  that already sits there first, so the Write is legal) - `docs.js set` refuses a file that does not
+  exist yet.
+- **A re-run** lands each changed section through
+  `node .claude/hooks/docs.js set CODE-STYLE#<id> <textfile>`: the engine writes it in place
+  on mainline, without git or under git versioning, and into this branch's overlay otherwise - the
+  capture never decides which. Sections nobody changed are not rewritten. Each section `set` writes
+  carries its own `captured:` stamp; where it wrote in place, also edit the top `Captured:` line to
+  this run's.
 
 **Verify the shape before it ships.** `docs.js lint` is the arbiter of whether a `watch.json` is valid -
 run it against a temp fixture holding this shape before trusting it; a documented shape that lints red

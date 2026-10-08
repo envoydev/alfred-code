@@ -125,9 +125,9 @@ line names the file and each key.
 ## Write mechanics
 
 - **A first capture** writes `PROJECT-CAPABILITIES.md` and `watch.json` whole (Write), creating the
-  folder when absent.
+  folder when absent - `docs.js set` refuses a file that does not exist yet.
 - **A refresh** lands each changed section through
   `node .claude/hooks/docs.js set PROJECT-CAPABILITIES#<id> <textfile>`: the engine writes it in place
-  on mainline or under git versioning, and into this branch's overlay otherwise - the capture never
-  decides which. Sections nobody changed are not rewritten. Each section `set` writes carries its own
+  on mainline, without git or under git versioning, and into this branch's overlay otherwise - the
+  capture never decides which. Sections nobody changed are not rewritten. Each section `set` writes carries its own
   `captured:` stamp; where it wrote in place, also edit the top `Captured:` line to this run's.

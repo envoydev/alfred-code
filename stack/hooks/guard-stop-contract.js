@@ -41,17 +41,24 @@ const fs = require('fs');
 // this hook running.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let unattended = () => false;
+// The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
+let stopHeld = (input) => !!(input && input.stop_hook_active);
+let markHeld = () => {};
+let houseDash = /[\u2014\u2013\u2015]/; // hook-prelude.js HOUSE_DASH, the one dash class
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     unattended = prelude.unattended || unattended;
+    houseDash = prelude.HOUSE_DASH || houseDash;
+    if (prelude.stopHeldThisCycle) {
+      stopHeld = (input) => prelude.stopHeldThisCycle('guard-stop-contract', input);
+      markHeld = (input) => prelude.markStopHeld('guard-stop-contract', input);
+    }
     if (prelude.standDown('guard-stop-contract')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
-// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
-// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
-// project whose settings.json has not been migrated yet keeps resolving.
+// The docs root env value, ALFRED_CODE_DOCS_PATH (hook-prelude.js envOf).
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 let payload;
 try {
@@ -78,6 +85,8 @@ if (cursorOff) process.exit(0);
   process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
   const exit = process.exit.bind(process);
   process.exit = (code) => {
+    // A Stop this hook holds is marked, so its own continuation stands down and a sibling's is judged (S1).
+    if (code === 2 && payload.hook_event_name === 'Stop') markHeld(payload);
     if (code === 2) {
       try {
         const fs = require('fs');
@@ -419,7 +428,24 @@ const NEVER_ENDS_RE = /\b(?:dev|serve|server|start|watch|preview)\b|--(?:watch|r
 const FINITE_RE = /\b(?:tests?|build|lint|typecheck|tsc|check|checks|install|restore|ci|migrate|deploy|publish|pack|compile|e2e|coverage|bench|seed|sync|clone|fetch|pull|download|upload|sleep|wait|make|cargo|mvn|gradle|pytest|jest|vitest|mocha|playwright)\b/;
 const NEVER_ENDS_EXTRA_RE = /\s-w\b|--watch\w*|\bng\s+test\b(?![^;&|]*--watch=false)|\blogs?\s+-f\b|port-forward|\bngrok\b|runserver/;
 const MONITOR_END_RE = /\bMonitor (?:expired|stopped|ended|exited)\b|\bexpired after\b/i;
+// The harness's own task registry is read before the transcript, which lags the turn: a Stop payload's `background_tasks`
+// (code.claude.com/docs/en/hooks, 'Stop input': present when the registry is reachable, empty when nothing is in flight;
+// at SubagentStop it is the PARENT's, so it is read at Stop only - audit 2026-10-08). A subagent, workflow, teammate, cloud
+// session, MCP task or monitor ends and reports; a shell counts on the same terms as above, never a server or watcher.
+// null: no registry in the payload.
+const SETTLED_STATUS = /^(?:completed?|done|failed|killed|stopped|cancell?ed|error|finished)$/i;
+function registeredWork() {
+  if (payload.hook_event_name !== 'Stop' || !Array.isArray(payload.background_tasks)) return null;
+  return payload.background_tasks.some((t) => {
+    if (!t || typeof t !== 'object' || SETTLED_STATUS.test(String(t.status || ''))) return false;
+    const type = String(t.type || '').toLowerCase();
+    if (type === 'shell') { const c = String(t.command || ''); return !NEVER_ENDS_RE.test(c) && !NEVER_ENDS_EXTRA_RE.test(c) && FINITE_RE.test(c); }
+    return /^(?:subagent|workflow|teammate|cloud session|mcp task|monitor)$/.test(type);
+  });
+}
 function liveBackgroundWork() {
+  const reg = registeredWork();
+  if (reg !== null) return reg;
   const p = payload.transcript_path;
   if (!p) return null;
   let text;
@@ -660,49 +686,11 @@ function askJustAnswered() {
   }
 }
 
-// Did an AskUserQuestion THIS turn (since the last typed prompt) put the fresh-session choice, and get answered?
-// Measured (8b5dcb1a): a capture skill's own gate asked 'Fresh session (Recommended) / Continue here', the user
-// answered, and the fresh-session block on the close forced an identical second ask. The choice is made either
-// way - 'Continue here' included. A Stop hook's own feedback row is no typed prompt: the re-ask it demands sits
-// after it in the same turn. Fail-open like askJustAnswered.
-const FRESH_ASK_RE = new RegExp(FRESH_PHRASE, 'i');
+// Did an AskUserQuestion THIS turn put the fresh-session choice, and get answered? One home, fresh-session.js, shared
+// with guard-fresh-session-start.js (audit 2026-10-08: the phase Skill call after an answered stop ask was denied with
+// the same question). The stand-in of an install without the engine answers no.
 function freshAskAnsweredThisTurn() {
-  try {
-    const p = payload.transcript_path;
-    if (!p) return false;
-    const size = fs.statSync(p).size;
-    const start = Math.max(0, size - 512 * 1024);
-    const fd = fs.openSync(p, 'r');
-    const buf = Buffer.alloc(size - start);
-    fs.readSync(fd, buf, 0, buf.length, start);
-    fs.closeSync(fd);
-    const lines = buf.toString('utf8').split('\n');
-    const answered = new Set();
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (!lines[i].trim()) continue;
-      let o;
-      try { o = JSON.parse(lines[i]); } catch { continue; }
-      if (!o || !o.message) continue;
-      const c = o.message.content;
-      if (o.type === 'user') {
-        if (Array.isArray(c)) {
-          for (const b of c) {
-            if (b && b.type === 'tool_result' && /^Your questions have been answered:/.test(typeof b.content === 'string' ? b.content
-              : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('') : '')) answered.add(b.tool_use_id);
-          }
-        }
-        if (isTypedTurn(o) && !(typeof c === 'string' && /^Stop hook feedback:/.test(c))) return false;
-        continue;
-      }
-      if (o.type !== 'assistant' || !Array.isArray(c)) continue;
-      for (const b of c) {
-        if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && answered.has(b.id) && FRESH_ASK_RE.test(JSON.stringify(b.input || {}))) return true;
-      }
-    }
-    return false;
-  } catch {
-    return false;
-  }
+  return typeof fresh.freshAskAnsweredThisTurn === 'function' ? fresh.freshAskAnsweredThisTurn() : false;
 }
 
 // --- credential exposure ------------------------------------------------------------------
@@ -779,7 +767,8 @@ const secretInSession = () => secretExposure() !== null;
 // The secret guard's receipt is the user's CONSENT to a value being in this transcript - the remote
 // user who asked to see it, or to have it placed where a blind copy cannot reach. A shape that
 // entered under a live receipt is not re-asked for rotation every turn; the receipt is read with
-// the same session scope the guard applies (under 8h, this session's own transcript). Its path is
+// the same session scope the guard applies (under 8h, this session's own transcript, and a
+// `session: <id>` line naming it when the payload carries a session id). Its path is
 // pinned in shared-rules.json with the guard's.
 function secretReadAllowed() {
   try {
@@ -793,7 +782,11 @@ function secretReadAllowed() {
       sessionStartMs = t.birthtimeMs && t.birthtimeMs !== t.ctimeMs ? t.birthtimeMs : 0;
     } catch { sessionStartMs = 0; }
     if (Date.now() - st.mtimeMs > 8 * 60 * 60 * 1000 || (sessionStartMs && st.mtimeMs < sessionStartMs)) return false;
-    return fs.readFileSync(receipt, 'utf8').split(/\r?\n/).some((l) => l.trim() && !l.trim().startsWith('#'));
+    const lines = fs.readFileSync(receipt, 'utf8').split(/\r?\n/).map((l) => l.trim());
+    // the guard's session binding: a call naming its session reads the receipt only through a `session: <id>` line
+    const sid = typeof payload.session_id === 'string' && /^[\w.-]{1,128}$/.test(payload.session_id) ? payload.session_id : '';
+    if (sid && !lines.some((l) => { const m = l.match(/^session:\s*(\S+)$/); return m && m[1] === sid; })) return false;
+    return lines.some((l) => l && !l.startsWith('#') && !/^session:/.test(l));
   } catch {
     return false; // absent or unreadable - no consent recorded
   }
@@ -1266,7 +1259,18 @@ function noTestRule(root) {
 }
 
 if (payload.hook_event_name === 'Stop') {
-  if (payload.stop_hook_active) process.exit(0); // continuation we caused - never loop
+  // State hygiene, once a Stop (hook-prelude.js sweepStale, audit 2026-10-08 S9): this hook's markers and the Stop-chain
+  // markers past 7 days go, and its log keeps its newest 256KB past 1MB.
+  try {
+    const pre = require('./hook-prelude.js');
+    const logDir = envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir();
+    if (typeof pre.sweepStale === 'function') { pre.sweepStale(logDir, 'guard-stop-'); pre.sweepStale(logDir, 'alfred-stop-held-'); pre.capLog(require('path').join(logDir, 'guard-stop-contract.log')); }
+  } catch { /* no prelude: nothing swept */ }
+  // Only a continuation THIS hook caused stands down; one a sibling Stop hook caused is judged once more, and this
+  // hook still blocks at most once per cycle (hook-prelude.js, the Stop chain - audit 2026-10-08 S1).
+  if (stopHeld(payload)) process.exit(0);
+  // The probes below count per TURN, and a continuation is the same turn - they read only the turn's own Stop.
+  const continuation = !!payload.stop_hook_active;
   // The harness sends the turn's final text as `last_assistant_message` (Stop / SubagentStop) and
   // documents the transcript as written ASYNCHRONOUSLY - it can lag the in-memory turn, which is
   // how a live decision stop reads as the previous turn's clean close. The field wins; the
@@ -1338,7 +1342,7 @@ if (payload.hook_event_name === 'Stop') {
   // close's continuation arrives with stop_hook_active, so a probe placed after one never ran.
   // Everything it reads sits inside one try, so nothing it does can skip the branches below.
   try {
-    const claim = envOf(process.env, 'DONE_GATE') !== '0' ? doneClaim(prose) : null;
+    const claim = !continuation && envOf(process.env, 'DONE_GATE') !== '0' ? doneClaim(prose) : null;
     const work = claim ? turnWork() : null;
     const outcome = !work ? null : work.lastEdit ? 'unrun' : work.lastKept && work.lastRun ? 'ran' : null;
     const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
@@ -1359,7 +1363,7 @@ if (payload.hook_event_name === 'Stop') {
   // marker writes one row per turn. The phrase is read first, so a close without one reads no
   // transcript. It sits before every holding branch for the done gate's reason.
   try {
-    const phrase = rationalization(prose);
+    const phrase = continuation ? null : rationalization(prose);
     const work = phrase ? turnWork() : null;
     const evidence = !work ? null : work.red.length ? 'red' : work.skipped.length ? 'skipped' : work.skipEdit ? 'skip-edit' : null;
     const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
@@ -1400,7 +1404,7 @@ if (payload.hook_event_name === 'Stop') {
       'the run states it as a closing bullet, the user reads it and does not act (19m, 1h40m,\n' +
       'and one that quit 2m02s later with the token still live). A pasted or printed secret\n' +
       'CANNOT be unsent - it is in the transcript on disk and in every later request - so the\n' +
-      'only open question is whether it gets rotated. End this turn with ONE AskUserQuestion:\n' +
+      'only open question is whether it gets rotated. Per alfred-security.md, end this turn with ONE AskUserQuestion:\n' +
       "'Rotate it now (Recommended)' and 'Acknowledge and defer'. Name the credential by its KEY\n" +
       'and its shape only - never repeat the value, and never pass it to a tool.\n' +
       'This ask comes once: answered, it covers every credential already in this session, and only\n' +
@@ -1483,7 +1487,7 @@ if (payload.hook_event_name === 'Stop') {
     process.stderr.write(
       'This turn reports the step done and leaves the next action pending, stated as a fact\n' +
       'rather than asked. Measured across four projects: that close draws a literal "are you\n' +
-      'finished?" from the user 2-22 minutes later. Put the pending decision (continue or stop,\n' +
+      'finished?" from the user 2-22 minutes later. Per alfred-interaction.md, put the pending decision (continue or stop,\n' +
       'which deliverable next) through ONE AskUserQuestion call with the options you already\n' +
       'have in mind, recommended one marked. An uncommitted diff is held for the user\'s review:\n' +
       'a commit waits for their own word (alfred-git.md), so it is never the recommended\n' +
@@ -1520,7 +1524,8 @@ if (payload.hook_event_name === 'Stop') {
     '(recommended one marked). ' + freshLine +
     'If the turn truly holds no decision -\n' +
     'the question was rhetorical or informational - restate the close WITHOUT question\n' +
-    'phrasing and stop.',
+    'phrasing and stop. If AskUserQuestion is not available in this session, keep the\n' +
+    'plain-text options and stop - the flows\' own no-tool exit.',
   );
   process.exit(2);
 }
@@ -1605,11 +1610,14 @@ if (payload.tool_name === 'AskUserQuestion') {
     // back unchanged by the fix - rewriting it corrupted the snippet the corrected ask carried.
     const CODE_SPAN = /```[\s\S]*?```|`[^`\n]*`/g;
     const proseText = askText.replace(CODE_SPAN, (m) => ' '.repeat(m.length));
+    // One dash class with the answer-length Stop block (hook-prelude.js HOUSE_DASH), and a curly double quote is a
+    // double quote too - U+201C / U+201D passed the `"` test (audit 2026-10-08).
+    const DASH = houseDash.source;
     const voice = [];
-    if (/[\u2014\u2013]/.test(proseText)) voice.push('an em- or en-dash (use a single dash)');
-    if (/"/.test(proseText)) voice.push('a double quote (use single quotes)');
+    if (new RegExp(DASH).test(proseText)) voice.push('an em- or en-dash (use a single dash)');
+    if (/["\u201c\u201d]/.test(proseText)) voice.push('a double quote (use single quotes)');
     if (voice.length) {
-      const fixProse = (t) => String(t).replace(/\s*[\u2014\u2013]\s*/g, ' - ').replace(/"/g, "'");
+      const fixProse = (t) => String(t).replace(new RegExp(`\\s*${DASH}\\s*`, 'g'), ' - ').replace(/["\u201c\u201d]/g, "'");
       const fix = (t) => String(t).split(/(```[\s\S]*?```|`[^`\n]*`)/).map((s, i) => (i % 2 ? s : fixProse(s))).join('');
       const fixed = (((payload.tool_input || {}).questions) || []).map((q) => (q && typeof q === 'object' ? {
         ...q,
@@ -1619,8 +1627,15 @@ if (payload.tool_name === 'AskUserQuestion') {
       } : q));
       const key = require('crypto').createHash('sha1').update(askText).digest('hex').slice(0, 16);
       const marker = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-askvoice-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}-${key}.denied`;
+      // Once per ask text: a marker that cannot be written where HOOK_LOG_DIR points is written under the temp dir, and
+      // one that cannot be written at all denies nothing - a missing log dir denied the same ask on every re-send.
       let first = true;
-      try { fs.writeFileSync(marker, '', { flag: 'wx' }); } catch (e) { if (e && e.code === 'EEXIST') first = false; }
+      try { fs.writeFileSync(marker, '', { flag: 'wx' }); } catch (e) {
+        if (e && e.code === 'EEXIST') first = false;
+        else {
+          try { fs.writeFileSync(require('path').join(require('os').tmpdir(), require('path').basename(marker)), '', { flag: 'wx' }); } catch { first = false; }
+        }
+      }
       if (first) {
         global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]) };
         process.stderr.write(`Blocked: this AskUserQuestion's own text carries ${voice.join(' and ')}. The house voice `

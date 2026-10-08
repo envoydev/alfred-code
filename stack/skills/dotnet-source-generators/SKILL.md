@@ -1,6 +1,6 @@
 ---
 name: dotnet-source-generators
-description: "Use when writing a Roslyn source generator - IIncrementalGenerator, GeneratedRegex, LoggerMessage - or weighing codegen against reflection. Not for plain code."
+description: "Use when writing a Roslyn source generator - IIncrementalGenerator, GeneratedRegex, LoggerMessage - or weighing codegen against reflection. Not for analyzers."
 ---
 
 # .NET source generators
@@ -17,7 +17,7 @@ A source generator is a compiler plugin: it runs during the build, reads the cod
 
 Most teams never need to write a generator. The .NET BCL ships several, and each replaces a reflection-heavy pattern with generated, trim-friendly code. Reach for these before authoring anything:
 
-- **`[GeneratedRegex]`** - a `partial` method returning `Regex`, compiled at build time. Use it over `new Regex(pattern)` for any pattern that lives in source. The generated `Regex` skips the interpreter and the static-cache lookup, and the pattern is validated at build, not on first call.
+- **`[GeneratedRegex]`** - a `partial` method returning `Regex`, compiled at build time. Use it over `new Regex(pattern)` for any pattern that lives in source. The generated `Regex` skips the interpreter and the static-cache lookup, and the pattern is validated at build, not on first call: `[GeneratedRegex(@"^\d{4}-\d{2}-\d{2}$")] private static partial Regex IsoDate();`
 - **`[LoggerMessage]`** - a `partial` logging method that emits the `ILogger` call with zero boxing and no message-template parsing at runtime. Use it for hot or structured log paths instead of `logger.LogInformation("...", a, b)`.
 - **The `System.Text.Json` context** - a `partial class : JsonSerializerContext` annotated with `[JsonSerializable(typeof(T))]`, passed to serialize/deserialize. This removes the reflection metadata walk and is what makes JSON work under Native AOT and trimming.
 

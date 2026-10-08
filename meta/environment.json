@@ -18,7 +18,6 @@
         ".claude/docs"
       ],
       "ask": false,
-      "renamed_from": "CLAUDE_DOCS_PATH",
       "what": "the generated-docs root every capture, loop and hook writes under. The installer writes it as `<data root>/docs` (ALFRED_CODE_DATA_PATH, `.alfred/docs` by default) and moves it with the data root; set it by hand only to keep the docs somewhere of your own, such as a committed `docs` shared with the team - a value you set is never moved. Outside `.claude/`, where Claude Code prompts for every write and no allow rule lifts it. The root carries its own `.gitignore`, shaped by ALFRED_CODE_DOCS_VERSIONING: `local` keeps it machine-local, `git` commits the docs and keeps only the hooks' machine state out.",
       "validate": {
         "type": "relative-path"

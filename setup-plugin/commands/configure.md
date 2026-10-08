@@ -78,13 +78,11 @@ comparable banner by banner; the content varies, the skeleton never does.
 ## 1. Install status - find it, inventory it, diff it
 
 - **Find the install.** `node "$TMP/repo/scripts/install/stamp.js" state .` prints one word (two for a worktree), read
-  from the install records the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp`, a <!-- legacy-name -->
+  from the install records the hooks read (`alfred-code.stamp`, a
   copied `hooks/docs.js`) in this repo, its git top level or a worktree's main checkout - never
   from `.claude/skills` or `.claude/agents`, which a plugin-route install may not have.
   `not-installed` -> stop and route to the sibling `/alfred-code:setup` command; there is nothing
-  to configure yet. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:configure from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here. `legacy-global` (a 1.x global install whose stamp is still in the account dir)
-  -> stop and route to `/alfred-code:update`, which moves it into the project; configure runs after
-  it. `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to `/alfred-code:update`,
+  to configure yet. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:configure from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here. `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to `/alfred-code:update`,
   which reads its picks off disk and writes the stamp; configure runs after it. `installed` / `initialised` -> go on. Every scope keeps the stamp, the library copies and the
   settings in the project's `.claude/`, so there is one mode.
 - **Inventory the installed set through the installer's own read-back** - never by hand, from disk
@@ -119,9 +117,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   `node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json"
   --out "$TMP/found.json"` - so the walk's tables can label what the project provably uses
   (`--found`).
-- **Report what changed since the install.** `.claude/alfred-code.stamp` (a 1.x install has
-  `claude-stack.stamp` until its first 2.0.0 update, which `stamp-compare.js` reads <!-- legacy-name -->
-  when the new one is absent) records the commit every artifact of the current install was copied from - the stack versions
+- **Report what changed since the install.** `.claude/alfred-code.stamp` records the commit every artifact of the current install was copied from - the stack versions
   the INSTALL, not the file. Use it to tell the user what an update would actually bring, BEFORE
   they choose:
 
@@ -380,8 +376,8 @@ lands the same revision step 1 previewed. One fixed capture form, always - `2>&1
 "$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
 written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--browser-enabled <csv|none>] [--scope-of <item>=<global|project>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] [--rename-claude-md] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
-- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--browser-enabled <csv|none>] [--scope-of <item>=<global|project|local>]... [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] [--rename-claude-md] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. One `--scope-of` per optional item the walk's last ask moved (`references/walk.md`, 'Where each optional item installs'), plus one per newly added item made global - none for 'Keep each where it is': an update keeps every item where it lives, and this flag is the one way one moves. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED` set to `shell`). The frozen OS twin is gone, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new
   value in one line. A value changed at step 9 is already in the file, and the installer never re-seeds a
@@ -418,18 +414,26 @@ items had just been refreshed). On the Node seed a `--drop` is applied BY the in
 - a drop something kept REQUIRES logs `--drop <line> not applied - something kept requires it`,
   after the `required:` line naming what needs it, and a drop of an always-on rule, skill or server
   logs `not applied - locked` - report both as kept, with that reason;
-- a stack entry enabled at a DIFFERENT scope than this run's is never disabled: the log names it and
-  the command, for the user to run if nothing else needs it.
+- a stack entry enabled at a BROADER scope than this run's (user under a project or local run, project
+  under a local one) is switched off for this scope alone - `plugin disabled [<run scope>]: <entry> (... this
+  project only ...)`, an override every other project and teammate does not see; the broader row stays. A
+  NARROWER row (local under a project run) outranks anything this run writes, and a `managed` row is the
+  admin's - each is named, never switched;
+- on the MCP copy route, a dropped server the stack still has registered at a BROADER scope is denied for
+  this scope alone: `deniedMcpServers + <name>` in this scope's settings file (`settings.local.json` at local
+  scope, else `settings.json`), recorded in the stamp's `mcp-denied:` line and lifted when it is picked again;
+- nothing is ever installed to, removed from or switched at `managed` scope - an update is the one call
+  that scope takes.
 
 It does NOT uninstall a plugin, and on the copy MCP route it does not unregister a server.
 **Fixed order, three blocks:** (1) the installer run, summarized in ONE line (what landed, the
 stamp action) - never paste its output, and take the counts from the line that states them:
 `grep -E 'installed/refreshed this run' "$TMP/install.log"` (a `tail -20` of a 243-line log misses
 it, which is how the wrong post-check above was written); (2) removals - what the drops did, from
-`grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|plugin moved|plugin move failed|scope, not this run|removed \(dropped\)|overwriting a hand-edited copy' "$TMP/install.log"` (a `plugin moved` line is a scope move the walk asked for, reported as one: `<item>: <old> -> <new>`, the `!!` one with the line it names) - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out,
+`grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|plugin moved|plugin move failed|scope, not this run|narrower than this run|managed scope|deniedMcpServers|removed \(dropped\)|overwriting a hand-edited copy' "$TMP/install.log"` (a `plugin moved` line is a scope move the walk asked for, reported as one: `<item>: <old> -> <new>`, the `!!` one with the line it names) - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out,
 one line per item, never deleted a second time by hand; then each removal the installer does not
-make, with its command shown before running it: `claude mcp remove <name>` for an MCP on the copy
-route (browser = every `browser-<engine>` server);
+make, with its command shown before running it: `claude mcp remove <name> -s <the scope it is registered at>` for an MCP on the copy
+route (browser = every `browser-<engine>` server) - always with its scope, since the CLI's default (`local`) differs from the plugin one (`user`);
 `claude plugin uninstall <name> --scope <the scope step 1's inventory carries for it>` for a plugin -
 and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
 it for every project'), since account-wide and project-local are different consents and the wrong

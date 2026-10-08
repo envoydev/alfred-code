@@ -1,6 +1,6 @@
 ---
 name: architecture-analyzer
-description: "Use only as a read-only architecture data-gatherer for one module or topic, dispatched by the architecture capture and scoping passes: purpose, public surface, dependencies, patterns and smells, tied to located symbols. Do NOT use to map the whole project, diagnose bugs or edit."
+description: "Use only as a read-only gatherer for one module or topic, dispatched by the architecture capture and scoping passes: purpose, public surface, dependencies, patterns and smells, tied to located symbols. Do NOT use for rule-based findings (code-quality-analyzer), the whole project, bugs or edits."
 tools: mcp__plugin_alfred-navigation_alfred-navigation__find_symbol, mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols, mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview, mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_alfred-memory_alfred-memory__memory_search, mcp__plugin_alfred-memory_alfred-memory__memory_list, LSP, Read, Bash, Grep, Glob
 model: sonnet
 effort: medium

@@ -56,10 +56,11 @@ The trap: a cached page is re-shown without re-running `ngOnInit`, so per-visit 
 Pair a per-visit subscription with a leave/destroy split so it stops when the page is hidden but re-arms on return:
 
 ```typescript
+readonly data = signal<FeedData | undefined>(undefined);
 private leave$ = new Subject<void>();
 
 ionViewWillEnter() {
-  this.feed$.pipe(takeUntil(this.leave$)).subscribe(d => (this.data = d));
+  this.feed$.pipe(takeUntil(this.leave$)).subscribe((d) => this.data.set(d));
 }
 ionViewWillLeave() { this.leave$.next(); }  // unsubscribe on hide; re-subscribes next enter
 ```
