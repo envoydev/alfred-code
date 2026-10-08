@@ -138,3 +138,80 @@ test('loop-test-coverage: the runner default is the house testing skill\'s, and 
     assert.ok(block, 'a fenced RESUME BLOCK');
     for (const field of ['Invocation:', 'rounds consumed', 'Read first:', '## Resume', 'Remaining weak points, tier order']) assert.ok(block.includes(field), `the block carries ${field}`);
 });
+
+// ---- the single-chat twins, the greenfield build and the upgrade flow ----------------------------------------
+// MATERIAL task-implement:60 (invocation map): a shared contract is a marked ask that names the manual-only flow to the USER.
+test('task-implement: a surfaced shared contract is ONE marked ask naming /task-solve-cross as the user\'s command', () => {
+    const text = flat(skill('task-implement'));
+    assert.doesNotMatch(text, /stop - that is `task-solve-cross` territory/, 'the bare stop is gone');
+    assert.match(text, /stop the task and put it through ONE AskUserQuestion - 'Hand it to the cross-domain flow \(Recommended\)' \(name `\/task-solve-cross` as the user's command; this build stops here\) \/ 'Keep it in this plan as a scoped change' \/ 'Stop the build'/);
+    assert.match(text, /BLOCKED_CONTRACT_CHANGE discipline the dispatched seats follow/);
+});
+
+// MATERIAL task-implement:34 (C13): the fifth-red ask offers the resolver seat; no parenthetical says the skill never uses one.
+test('C13: task-implement\'s fifth-red ask stands alone, with no see-also into the cross-domain flow', () => {
+    const text = flat(skill('task-implement'));
+    assert.doesNotMatch(text, /To offload a large, noisy fix loop/);
+    assert.doesNotMatch(text, /this single-chat skill stays inline/);
+});
+
+// MATERIAL task-implement:21,26,34,35,59 + MINOR :64: every ask marks one option first.
+test('task-implement: the mode, approval, fifth-red, FAILED, scope and reviewer asks each mark one option', () => {
+    const text = flat(skill('task-implement'));
+    assert.match(text, /ask ONE question before building, via AskUserQuestion - this chat, or the implementer seats\? - one option marked `\(Recommended\)` and listed first, the one the `habits-execution-strategy` verdict picks/);
+    assert.match(text, /ONE approval AskUserQuestion before task 1 - 'Approve - build task 1 \(Recommended\)' \/ 'Changes needed'/);
+    assert.match(text, /after the FIFTH red run of one task's gate the next act is ONE AskUserQuestion - 'Keep fixing inline' \/ 'Hand it to a resolver seat' \/ 'Stop', one marked `\(Recommended\)` and listed first: 'Keep fixing inline' when the last red run changed, else the resolver seat \(or 'Stop' where the project installed none\) - never a sixth run/);
+    assert.match(text, /ONE AskUserQuestion - 'Stop and report \(Recommended\)' \/ 'Continue inline' \/ 'Resolver seat' \/ 'Revert' - before any further run or edit/);
+    assert.match(text, /'Leave it for later \(Recommended\)' \/ 'Add it to the plan'/);
+    assert.match(text, /'Defer \(Recommended\)' \/ 'Fix now, ad hoc' \/ 'Open a new cycle'/);
+    assert.match(text, /the reviewer through ONE AskUserQuestion unless a calling flow already chose it - 'task-verify-code in-session \(Recommended\)' \([^)]*\) \/ 'The `<stack>-verifier` seat'/);
+    assert.doesNotMatch(text, /your choice of reviewer:/, 'no unasked reviewer pick');
+    assert.deepStrictEqual(registryFindings('mode-ask-at-start'), []);
+});
+
+// MINOR task-implement:66: the ceilings procedure is a close-time reference; the rule stays in the body.
+test('task-implement: Known ceilings keeps its rule in the body and its docs.js procedure in a reference', () => {
+    const b = flat(skill('task-implement'));
+    assert.match(b, /File every deliberate simplification this build made as a `where \| limit \| revisit when` row - never a code comment - before the close: Read `references\/known-ceilings\.md`/);
+    assert.doesNotMatch(b, /docs\.js show architecture/, 'the procedure left the body');
+    const ref = flat(read('stack/skills/task-implement/references/known-ceilings.md'));
+    assert.match(ref, /docs\.js set architecture\/ARCHITECTURE\.md#known-ceilings --expect <that hash>/);
+    assert.ok(copiesOf(shared()['known-ceilings-filing']).includes('stack/skills/task-implement/references/known-ceilings.md'));
+    assert.deepStrictEqual(registryFindings('known-ceilings-filing'), []);
+});
+
+// MATERIAL task-build-from-scratch:23 + MINOR :29, :31: the pick, the mode and each slice's plan are marked asks.
+test('task-build-from-scratch: the architecture pick, the mode ask and each slice\'s plan approval mark one option', () => {
+    const text = flat(skill('task-build-from-scratch'));
+    assert.match(text, /one option per architecture, its stack and one-line tradeoff as the description, exactly one marked `\(Recommended\)` and listed first with the reason that decides it/);
+    assert.match(text, /ask ONE question before the first slice, via AskUserQuestion - build in the current session, or dispatch the stack seats\? - one option marked `\(Recommended\)` per the `habits-execution-strategy` verdict - then hold the answer/);
+    assert.match(text, /Each slice's designer plan goes through ONE AskUserQuestion before its first implementer - 'Approve and build \(Recommended\)' \/ 'Changes needed' - and the stamp below quotes the answer\./);
+    assert.deepStrictEqual(registryFindings('mode-ask-at-start'), []);
+});
+
+// MINOR task-design:12, :86, write-and-hand-off.md:18, evidence.md:14.
+test('task-design: a marked mode ask, the mode left to the build step, a flow-aware hand-off and no stale evidence row', () => {
+    const text = flat(skill('task-design'));
+    assert.match(text, /ask ONE question before designing, via AskUserQuestion - this chat, or the designer seat\? - one option marked `\(Recommended\)` and listed first: this chat, unless the user asked for isolation - and hold the answer/);
+    assert.doesNotMatch(text, /belongs to `task-solve`'s mode ask/);
+    assert.match(text, /The execution mode is the build step's ask, never the plan's\./);
+    const hand = flat(read('stack/skills/task-design/references/write-and-hand-off.md'));
+    assert.match(hand, /Inside a calling flow, return to it - its stop owns what runs next\. On its own, name the next steps in the close: gate the plan with `task-verify-plan` before building/);
+    assert.doesNotMatch(read('stack/skills/task-design/references/evidence.md'), /Strip the format skill's banner/);
+});
+
+// MINOR task-verify-plan:20, :44.
+test('task-verify-plan: the upgrade flow is named to the user, and the seat boundary carries no ownership attribution', () => {
+    const text = flat(skill('task-verify-plan'));
+    assert.doesNotMatch(text, /`task-solve-cross` and its trio protocol own that call/);
+    assert.match(text, /\(the inherited-mode dispatch applies only to this skill's own single-chat chain\)/);
+    assert.doesNotMatch(text, /the staged upgrade flow \(`task-version-upgrade`\)/);
+    assert.match(text, /that is the staged upgrade flow, with a green gate after every stage, not a feature plan - name `\/task-version-upgrade` to the user as their command\./);
+});
+
+// MINOR task-version-upgrade:64: a plan contradicted mid-run is a marked ask.
+test('task-version-upgrade: a hard stop puts re-plan, roll back or stop through ONE marked ask', () => {
+    const text = flat(skill('task-version-upgrade'));
+    assert.doesNotMatch(text, /stop and re-plan, never push through/);
+    assert.match(text, /stop and put it through ONE AskUserQuestion - 'Re-plan from this stage \(Recommended\)' \/ 'Roll back to the last stage's rollback point' \/ 'Stop here' - never push through or skip a stage gate\./);
+});

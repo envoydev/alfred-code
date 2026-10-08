@@ -17,7 +17,7 @@ Audit this plan in this chat or through the <stack>-verifier seat? This chat: th
 - 'Dispatch the <stack>-verifier seat' - the same passes in an isolated subagent, on its frontmatter model
 ```
 
-A mode the run already picked is inherited, never re-asked - with ONE boundary: the cross-task orchestrator's plan gate always runs the five passes in-session whatever the run mode, because the plan is already in that session's context and its protocol says so (`task-solve-cross` and its trio protocol own that call; the inherited-mode dispatch applies to this skill's own single-chat chain).
+A mode the run already picked is inherited, never re-asked - with ONE boundary: the cross-task orchestrator's plan gate always runs the five passes in-session whatever the run mode, because the plan is already in that session's context and its protocol says so (the inherited-mode dispatch applies only to this skill's own single-chat chain).
 
 ## When to use / not
 
@@ -41,7 +41,7 @@ Before reading the plan, load `habits-plan-writing` (the Skill tool) - the shape
    the most expensive defect class in the corpus - two repairs measured in millions of tokens,
    written up in `references/evidence.md`, both from a name that was asserted rather than looked up.
 4. **Edges + safety.** Boundary, empty, and error cases are named, not assumed. Any auth / migration-order / data-loss / concurrency surface is called out WITH its safeguard. Silence on a safety-critical edge is a finding.
-5. **Soundness.** A plan that is really a BREAKING version event - a framework or runtime major, an EOL, a load-bearing package's breaking major - is a finding of its own before anything else is judged: that is the staged upgrade flow (`task-version-upgrade`), with a green gate after every stage, not a feature plan. Otherwise: the approach matches the repo's existing architecture (match it, never introduce a second), dependencies are ordered, and it is the smallest plan that meets the requirement - and its seams pass the design rules `task-design` decides against: a task boundary that splits one axis of change across two tasks, an interface with one implementation and no credible second, a pattern with no trigger yet in the code, a task whose failure exits name no `log_points` (a silent failure designed in) - each a finding against the PLAN, with the breakage named, never a letter of SOLID alone.
+5. **Soundness.** A plan that is really a BREAKING version event - a framework or runtime major, an EOL, a load-bearing package's breaking major - is a finding of its own before anything else is judged: that is the staged upgrade flow, with a green gate after every stage, not a feature plan - name `/task-version-upgrade` to the user as their command. Otherwise: the approach matches the repo's existing architecture (match it, never introduce a second), dependencies are ordered, and it is the smallest plan that meets the requirement - and its seams pass the design rules `task-design` decides against: a task boundary that splits one axis of change across two tasks, an interface with one implementation and no credible second, a pattern with no trigger yet in the code, a task whose failure exits name no `log_points` (a silent failure designed in) - each a finding against the PLAN, with the breakage named, never a letter of SOLID alone.
 
 ## Output
 

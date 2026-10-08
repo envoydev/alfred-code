@@ -763,14 +763,14 @@
       ]
     },
     "known-ceilings-filing": {
-      "_note": "The close step that files the ceilings rows through docs.js set - the orchestrator's close-out and the in-chat implementer's finish each carry it, because either can close a build alone.",
+      "_note": "The close step that files the ceilings rows through docs.js set - the orchestrator's close-out and the in-chat implementer's finish each carry it, because either can close a build alone. Both live in a close-time reference the body reads at its finish (the implementer's moved out of SKILL.md in the 2026-10-08 audit).",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/close-out.md",
         "marker": "then pipe the whole section - `## Known ceilings`, a `<!-- covers: -->` line naming every row's file, the table with the new rows appended - into `docs.js set architecture/ARCHITECTURE.md#known-ceilings --expect <that hash>`"
       },
       "sites": [
         {
-          "file": "stack/skills/task-implement/SKILL.md",
+          "file": "stack/skills/task-implement/references/known-ceilings.md",
           "marker": "then pipe the whole section - `## Known ceilings`, a `<!-- covers: -->` line naming every row's file, the table with the new rows appended - into `docs.js set architecture/ARCHITECTURE.md#known-ceilings --expect <that hash>`"
         }
       ]
