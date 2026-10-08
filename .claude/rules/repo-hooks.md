@@ -402,7 +402,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     ALREADY exists (eslint, prettier, stylelint, biome, `.editorconfig`, a ruleset) is blocked, and in
     tsconfig / MSBuild files only a change to the strictness keys (compared as key=value pairs, so any
     other edit passes). Creating a config passes; the shell routes are the in-place edit, redirect, `tee`,
-    `rm`, `mv` and a `cp` onto it. 'Allow' is honoured through `<docs-path>/flow/CONFIG-EDIT-ALLOW` (a
+    `rm`, `mv` and a `cp` onto it, read through `scanShell` (a wrapper, a carried script, a `cd`'s anchor) and then the
+    guard's own segment parser. Audit 2026-10-08: the ignore files (`.eslintignore`, `.prettierignore`,
+    `.stylelintignore`) are whole-file configs; a commented-out setting is no setting (JSONC comments string-aware, XML
+    comments, an unterminated start running to the end); an MSBuild property's attributes are part of its pair
+    (`Condition="false"`); an Edit is judged on the whole file it leaves; a shell write that replaces or removes a keyed
+    file holding a strictness key blocks; PowerShell's backslash is a separator; and paths compare as real paths.
+    'Allow' is honoured through `<docs-path>/flow/CONFIG-EDIT-ALLOW` (a
     file, its basename or `*`); `ALFRED_CODE_CONFIG_PROTECT=0` turns it off. A lockfile, a migration, the central
     package file and a solution file are a recorded DECLINE (2.1.5 M13, in its header): legitimate work edits each, and
     whether a migration was applied lives in a database no hook reads.

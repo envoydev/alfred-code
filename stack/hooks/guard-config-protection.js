@@ -8,8 +8,8 @@
 // warning and nullable properties) - there a change that leaves those lines as they were passes.
 // 'Allow' is honoured through <docs-path>/flow/CONFIG-EDIT-ALLOW (one path per line as the project
 // spells it, a bare file name, or `*`; this session's own, under 8h).
-// ALFRED_CODE_CONFIG_PROTECT=0 switches the gate off. The shell route is a segment parser, not a
-// full parse: a write it cannot see passes, and the block rate is read before it is widened.
+// ALFRED_CODE_CONFIG_PROTECT=0 switches the gate off. The shell route reads the writes through shell-writes.js's
+// scanShell (wrappers, carried scripts, a cd's anchor), then its own segment parser for the PowerShell verbs.
 // Declined (2.1.5 M13), on the record so the gap is a choice: a lockfile (package-lock.json, yarn.lock,
 // packages.lock.json), a migration, the central package file (Directory.Packages.props) and a solution file
 // (.sln). None is a CHECK a change weakens, and legitimate work edits each - a dependency bump, a new project, a
@@ -45,23 +45,42 @@ const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 let nativePath = (p) => String(p);
 try { ({ nativePath } = require(path.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
 
-// Whole-file protection: the file IS the check.
+// Whole-file protection: the file IS the check - and so is a linter's or formatter's ignore file, whose one new line
+// takes a path out of the check (audit 2026-10-08).
 const WHOLE_FILE = [
   /^\.editorconfig$/, /^\.globalconfig$/, /\.ruleset$/, /^stylecop\.json$/,
   /^\.eslintrc(\.(js|cjs|mjs|json|ya?ml))?$/, /^eslint\.config\.[cm]?[jt]s$/,
   /^\.prettierrc(\.(js|cjs|mjs|json|ya?ml|toml))?$/, /^prettier\.config\.[cm]?[jt]s$/,
   /^biome\.jsonc?$/, /^\.stylelintrc(\.(js|cjs|json|ya?ml))?$/, /^stylelint\.config\.[cm]?js$/,
+  /^\.(eslint|prettier|stylelint)ignore$/,
 ];
+// A JSONC comment ends where the text says, never inside a string: a `"https://..."` value is no `//` comment.
+function stripJsonComments(s) {
+  let out = '';
+  for (let i = 0, n = s.length; i < n;) {
+    if (s[i] === '"') { let j = i + 1; while (j < n && s[j] !== '"') j += s[j] === '\\' ? 2 : 1; out += s.slice(i, j + 1); i = j + 1; }
+    else if (s[i] === '/' && s[i + 1] === '/') { while (i < n && s[i] !== '\n') i += 1; }
+    else if (s[i] === '/' && s[i + 1] === '*') { const e = s.indexOf('*/', i + 2); i = e < 0 ? n : e + 2; }
+    else { out += s[i]; i += 1; }
+  }
+  return out;
+}
 // Keyed protection: the file is ordinary project config, only its strictness SETTINGS are the check.
 // Compared as key=value pairs, never as lines: a one-line tsconfig puts every key on the line an
-// unrelated `paths` edit rewrites.
+// unrelated `paths` edit rewrites. A COMMENTED-OUT setting is no setting (`// "strict": true` and an XML-commented
+// `TreatWarningsAsErrors` passed), and an MSBuild property's attributes are part of it (`Condition="false"` switched
+// it off and passed) - audit 2026-10-08. An unterminated comment start comments out the rest of the text.
 const KEYED = [
-  { file: /^tsconfig(\..+)?\.json$/, pair: /"(strict\w*|noImplicit\w+|noUnused\w+|noUncheckedIndexedAccess|exactOptionalPropertyTypes|skipLibCheck)"\s*:\s*("[^"]*"|[^,}\s]+)/g },
-  { file: /^(Directory\.Build\.(props|targets)|.+\.(cs|fs|vb)proj)$/, pair: /<(TreatWarningsAsErrors|WarningsAsErrors|WarningsNotAsErrors|WarningLevel|NoWarn|Nullable|AnalysisLevel|AnalysisMode|EnforceCodeStyleInBuild)\b[^>]*>([^<]*)<\/\1\s*>/g },
+  { file: /^tsconfig(\..+)?\.json$/, strip: stripJsonComments,
+    pair: /"(strict\w*|alwaysStrict|noImplicit\w+|noUnused\w+|noUncheckedIndexedAccess|noFallthroughCasesInSwitch|noPropertyAccessFromIndexSignature|exactOptionalPropertyTypes|useUnknownInCatchVariables|allowUnreachableCode|allowUnusedLabels|skipLibCheck)"\s*:\s*("[^"]*"|[^,}\s]+)/g,
+    key: (m) => `${m[1]}=${m[2].trim()}` },
+  { file: /^(Directory\.Build\.(props|targets)|.+\.(cs|fs|vb)proj)$/, strip: (s) => s.replace(/<!--[\s\S]*?(?:-->|$)/g, ' '),
+    pair: /<(TreatWarningsAsErrors|WarningsAsErrors|WarningsNotAsErrors|WarningLevel|NoWarn|Nullable|AnalysisLevel|AnalysisMode|EnforceCodeStyleInBuild)\b([^>]*)>([^<]*)<\/\1\s*>/g,
+    key: (m) => `${m[1]}${m[2].trim() ? `[${m[2].trim().replace(/\s+/g, ' ')}]` : ''}=${m[3].trim()}` },
 ];
-const KEY_WORDS = /strict|noImplicit|noUnused|noUnchecked|exactOptional|skipLibCheck|NoWarn|WarningsAsErrors|WarningsNotAsErrors|WarningLevel|Nullable|AnalysisLevel|AnalysisMode|EnforceCodeStyle/;
+const KEY_WORDS = /strict|noImplicit|noUnused|noUnchecked|noFallthrough|noPropertyAccess|allowUnreachable|allowUnused|useUnknownInCatch|exactOptional|skipLibCheck|NoWarn|WarningsAsErrors|WarningsNotAsErrors|WarningLevel|Nullable|AnalysisLevel|AnalysisMode|EnforceCodeStyle/;
 const WHOLE_WHY = 'it is a lint / format / analyzer config';
-const keyPairs = (text, re) => [...String(text || '').matchAll(re)].map((m) => `${m[1]}=${m[2].trim()}`).sort().join('\n');
+const keyPairs = (text, keyed) => [...keyed.strip(String(text || '')).matchAll(keyed.pair)].map(keyed.key).sort().join('\n');
 const unq = (s) => String(s).replace(/^["']|["']$/g, '');
 
 let payload;
@@ -129,12 +148,23 @@ function judgeFileTool() {
   if (WHOLE_FILE.some((re) => re.test(base))) return { abs, why: WHOLE_WHY };
   const keyed = KEYED.find((k) => k.file.test(base));
   if (!keyed) return null;
-  const edits = Array.isArray(ti.edits) ? ti.edits : [{ old_string: ti.old_string, new_string: ti.new_string }];
+  const edits = Array.isArray(ti.edits) ? ti.edits : [{ old_string: ti.old_string, new_string: ti.new_string, replace_all: ti.replace_all }];
   const whole = typeof ti.content === 'string';
-  let before;
-  try { before = whole ? fs.readFileSync(abs, 'utf8') : edits.map((e) => (e && e.old_string) || '').join('\n'); } catch { return null; }
-  const after = whole ? ti.content : edits.map((e) => (e && e.new_string) || '').join('\n');
-  return keyPairs(before, keyed.pair) === keyPairs(after, keyed.pair) ? null : { abs, why: 'the change touches a strictness / warning setting' };
+  let text;
+  try { text = fs.readFileSync(abs, 'utf8'); } catch { return null; }
+  // An edit is judged on the WHOLE file it leaves: a fragment can cut a setting in half (`<TreatWarningsAsErrors>` ->
+  // `<TreatWarningsAsErrors Condition="false">` names no closing tag, so neither side read a pair - audit 2026-10-08).
+  // An old_string the file does not hold falls back to the fragments, the edit Claude Code will refuse anyway.
+  let applied = whole ? ti.content : text;
+  for (const e of whole ? [] : edits) {
+    const o = e && typeof e.old_string === 'string' ? e.old_string : '';
+    if (!o || !applied.includes(o)) { applied = null; break; }
+    const n = e && typeof e.new_string === 'string' ? e.new_string : '';
+    applied = e.replace_all ? applied.split(o).join(n) : applied.replace(o, () => n);
+  }
+  const before = applied !== null ? text : edits.map((e) => (e && e.old_string) || '').join('\n');
+  const after = applied !== null ? applied : edits.map((e) => (e && e.new_string) || '').join('\n');
+  return keyPairs(before, keyed) === keyPairs(after, keyed) ? null : { abs, why: 'the change touches a strictness / warning setting' };
 }
 
 const WRITE_VERB = new Set(['tee', 'rm', 'mv', 'truncate', 'set-content', 'add-content', 'out-file', 'clear-content', 'remove-item', 'move-item']);
@@ -156,8 +186,45 @@ function segments(command) {
   out.push(text.slice(from));
   return out;
 }
+// The shared reader first (audit 2026-10-08): the segment parser below missed a write behind a wrapper (`echo x |
+// sudo tee .eslintrc.json`), in a carried script (`bash -c 'rm .eslintrc.json'`) and after a `cd` (`cd sub && rm
+// ../.eslintrc.json`); scanShell reads all three the way the cross-project guard does. A keyed file written any way
+// but an in-place edit is REPLACED or removed whole (`echo '{}' > tsconfig.json`), which weakens the check whenever
+// the file holds a strictness setting - it passed unless the command named a key.
+function judgeScan(command) {
+  let scan;
+  try { scan = shell.scanShell(command, { cwd: CWD }); } catch { return null; }
+  const norm = (t) => nativePath(shell.unquote(t));
+  for (const t of scan.targets) {
+    const raw = scan.expandVars(String(t.raw || ''));
+    if (!raw || shell.isVar(raw)) continue;
+    const base = path.basename(raw);
+    const whole = WHOLE_FILE.some((re) => re.test(base));
+    const keyed = KEYED.find((k) => k.file.test(base));
+    if (!whole && !keyed) continue;
+    const anchor = shell.anchorAt(scan.cds, t.index, CWD, norm);
+    if (anchor === null && !path.isAbsolute(nativePath(raw))) continue; // relative from an unknown anchor
+    const abs = path.resolve(anchor || CWD, nativePath(raw));
+    if (!fs.existsSync(abs)) continue;
+    if (whole) return { abs, why: WHOLE_WHY };
+    if (t.what === 'an in-place edit' || t.verb === 'interpreter') {
+      if (KEY_WORDS.test(command)) return { abs, why: 'the command names a strictness / warning setting' };
+      continue;
+    }
+    let text = '';
+    try { text = fs.readFileSync(abs, 'utf8'); } catch { text = ''; }
+    if (keyPairs(text, keyed)) return { abs, why: 'the command replaces or removes a file holding strictness / warning settings' };
+  }
+  return null;
+}
 function judgeShell() {
-  const command = String((payload.tool_input || {}).command || '');
+  let command = String((payload.tool_input || {}).command || '');
+  // PowerShell's path separator is the backslash (its escape is the backtick): `.\.eslintrc.json` kept it and named
+  // no config on a POSIX host (audit 2026-10-08).
+  if (/^PowerShell$/i.test(String(payload.tool_name || ''))) command = command.replace(/\\/g, '/');
+  return judgeScan(command) || judgeSegments(command);
+}
+function judgeSegments(command) {
   for (const seg of segments(command)) {
     const toks = (seg.trim().match(/"[^"]*"|'[^']*'|\S+/g) || []);
     const verb = unq(toks[0] || '').toLowerCase();
@@ -185,7 +252,9 @@ function judgeShell() {
 const hit = shell && shell.isShellTool(payload.tool_name) ? judgeShell() : judgeFileTool();
 if (!hit) process.exit(0);
 
-const rel = path.relative(ROOT, hit.abs).split(path.sep).join('/');
+// Both sides as REAL paths: the same file spelled through a symlinked root read as outside and passed (audit 2026-10-08).
+const real = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
+const rel = path.relative(real(ROOT), real(hit.abs)).split(path.sep).join('/');
 if (rel.startsWith('..') || path.isAbsolute(rel)) process.exit(0); // outside the project - the cross-project guard owns it
 
 const receipt = path.resolve(ROOT, docsRootEnv(), 'flow', 'CONFIG-EDIT-ALLOW');

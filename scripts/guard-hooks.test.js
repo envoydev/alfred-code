@@ -3648,6 +3648,44 @@ test('guard-config-protection: a heredoc body or a quoted message naming a confi
   });
 });
 
+test('guard-config-protection: comments, MSBuild attributes, wrappers, carried scripts and whole-file replaces (audit 2026-10-08)', () => {
+  const H = 'guard-config-protection.js';
+  const { root, at } = cfgProject('cfg-audit-');
+  const edit = (file, old_string, new_string) => run(H, { tool_name: 'Edit', cwd: root, tool_input: { file_path: file, old_string, new_string } });
+  const write = (file, content) => run(H, { tool_name: 'Write', cwd: root, tool_input: { file_path: file, content } });
+  const sh = (command, tool = 'Bash', cwd = root) => run(H, { tool_name: tool, cwd, tool_input: { command } });
+  withProject(root, {}, () => {
+    const ts = at('tsconfig.json', '{\n  "$schema": "https://json.schemastore.org/tsconfig",\n  "compilerOptions": {\n    "strict": true,\n    "paths": {}\n  }\n}\n');
+    assert.strictEqual(edit(ts, '"strict": true', '// "strict": true'), 2, 'commenting a strictness key out removes it');
+    assert.strictEqual(edit(ts, '"strict": true', '/* "strict": true */'), 2, '... in a block comment too');
+    assert.strictEqual(write(ts, '{"$schema":"https://json.schemastore.org/tsconfig","compilerOptions":{"strict":false}}'), 2, 'a URL is no comment start');
+    assert.strictEqual(edit(ts, '"paths": {}', '"paths": {} // the app aliases'), 0, 'a comment beside an unrelated key is open');
+    assert.strictEqual(edit(ts, '"paths": {}', '"paths": {}, "noFallthroughCasesInSwitch": false'), 2, 'a tsconfig key the list lacked');
+    const proj = at('src/App/App.csproj', '<Project><PropertyGroup><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup></Project>');
+    assert.strictEqual(edit(proj, '<TreatWarningsAsErrors>', '<TreatWarningsAsErrors Condition="false">'), 2, 'a Condition switches it off');
+    assert.strictEqual(edit(proj, '<TreatWarningsAsErrors>true</TreatWarningsAsErrors>', '<!-- <TreatWarningsAsErrors>true</TreatWarningsAsErrors> -->'), 2, 'an XML comment removes it');
+    at('.eslintrc.json', '{}');
+    at('.eslintignore', 'dist/\n');
+    fs.mkdirSync(path.join(root, 'sub'), { recursive: true });
+    assert.strictEqual(sh("echo '{}' | sudo tee .eslintrc.json"), 2, 'tee behind sudo');
+    assert.strictEqual(sh("bash -c 'rm .eslintrc.json'"), 2, 'a carried script');
+    assert.strictEqual(sh('cd sub && rm ../.eslintrc.json'), 2, 'after a cd');
+    assert.strictEqual(sh("echo '{}' > tsconfig.json"), 2, 'a whole-file replace of a keyed file holding a strictness key');
+    assert.strictEqual(sh('echo src/ >> .eslintignore'), 2, 'an ignore file takes a path out of the check');
+    assert.strictEqual(sh('Set-Content -Path .\\.eslintrc.json -Value "{}"', 'PowerShell'), 2, 'PowerShell .\\ on a POSIX host');
+    assert.strictEqual(sh("echo '{}' > other.json && cat tsconfig.json"), 0, 'a read of the keyed file passes');
+    const plain = at('tsconfig.build.json', '{ "extends": "./tsconfig.json" }');
+    assert.strictEqual(sh(`echo '{}' > ${path.basename(plain)}`), 0, 'replacing a keyed file that holds no strictness key passes');
+    assert.strictEqual(run(H, { tool_name: 'Monitor', cwd: root, tool_input: { command: 'rm .eslintrc.json' } }), 2, 'Monitor');
+    assert.strictEqual(run(H, { tool_name: 'NotebookEdit', cwd: root, tool_input: { notebook_path: path.join(root, '.eslintrc.json'), new_source: '{}' } }), 2, 'NotebookEdit');
+    // The same file through the real path of a symlinked root is inside the project.
+    const link = `${root}-link`;
+    fs.symlinkSync(root, link);
+    try { assert.strictEqual(withProject(link, {}, () => write(path.join(root, '.eslintrc.json'), '{"x":1}')), 2, 'a realpath spelling is inside'); }
+    finally { fs.unlinkSync(link); }
+  });
+});
+
 test('guard-config-protection: the denial routes a wanted change through ONE ask and the receipt', () => {
   const { root, at } = cfgProject('cfg-msg-');
   const file = at('.editorconfig', 'root = true');
