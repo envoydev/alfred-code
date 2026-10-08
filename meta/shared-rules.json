@@ -3570,16 +3570,12 @@
       ]
     },
     "cross-write-allow-receipt": {
-      "_note": "The cross-project write guard's block ends in ONE AskUserQuestion (task card - recommended / allow that tree for this session / drop), and the 'allow' answer is honoured through a receipt at <docs-path>/flow/CROSS-WRITE-ALLOW - one root per line, this session's own, under 8h, a root containing the project dropped. The hook owns the path (it resolves and reads the file); the docs-root rule and the habits-commit-checkpoint skill, which describe the ask, name the same path. A rename in one place leaves the model writing a receipt the guard never reads.",
+      "_note": "The cross-project write guard's block ends in ONE AskUserQuestion (task card - recommended / allow that tree for this session / drop), and the 'allow' answer is honoured through a receipt at <docs-path>/flow/CROSS-WRITE-ALLOW - one root per line, this session's own, under 8h, a root containing the project dropped. The hook owns the path (it resolves and reads the file); the docs-root rule and the repo hook notes name the same path (the habits-commit-checkpoint copy went in the 2026-10-08 audit - the guard's denial carries the ask and the receipt at the moment of need). A rename in one place leaves the model writing a receipt the guard never reads.",
       "owner": {
         "file": "stack/hooks/guard-cross-project-write.js",
         "marker": "'flow', 'CROSS-WRITE-ALLOW'"
       },
       "sites": [
-        {
-          "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
-          "marker": "`<docs-path>/flow/CROSS-WRITE-ALLOW` receipt"
-        },
         {
           "file": "stack/rules/alfred-docs-root.md",
           "marker": "`<docs-path>/flow/CROSS-WRITE-ALLOW` receipt"
@@ -3992,6 +3988,32 @@
         {
           "file": "stack/skills/task-design/SKILL.md",
           "marker": "a design flow writes it as its handoff"
+        }
+      ]
+    },
+    "plan-approved-mode-shape": {
+      "_note": "The plan file's `Approved:` line, first shape: the gated solve flow stamps it from its approval ask with the mode picked. The flow owns it; the plan-writing habit restates both shapes for whoever reads or resumes a plan (audit 2026-10-08 D12).",
+      "owner": {
+        "file": "stack/skills/task-solve/SKILL.md",
+        "marker": "`Approved: <date> - mode <session|agents>`"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/habits-plan-writing/SKILL.md",
+          "marker": "`Approved: <date> - mode <session|agents>`"
+        }
+      ]
+    },
+    "plan-approved-verbatim-shape": {
+      "_note": "The plan file's `Approved:` line, second shape: the build skill run on its own stamps the user's words verbatim from its one approval ask. The build skill owns it; the plan-writing habit restates it (audit 2026-10-08 D12).",
+      "owner": {
+        "file": "stack/skills/task-implement/SKILL.md",
+        "marker": "`Approved: <date> - \"<the user's words, verbatim>\"`"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/habits-plan-writing/SKILL.md",
+          "marker": "`Approved: <date> - \"<the user's words, verbatim>\"`"
         }
       ]
     },
@@ -5491,14 +5513,14 @@
       ]
     },
     "discard-allow-receipt": {
-      "_note": "The DISCARD-ALLOW receipt is the escape from guard-catastrophic-rm.js's denial: the guard READS it, and something has to WRITE it or a user who answers 'discard it' is blocked again and the action is silently substituted with a stash (measured once). The writer is habits-commit-checkpoint, beside the CROSS-WRITE-ALLOW writer it already owns - a receipt written a few times a year does not belong in an always-on rule. Same shape as CROSS-WRITE-ALLOW: one path per line or `*`, this session's own, under 8h.",
+      "_note": "The DISCARD-ALLOW receipt is the escape from guard-catastrophic-rm.js's denial: the guard READS it, and its denial carries the whole route - the three-option ask, the receipt path and spelling, the retry - at the moment of need ('no prose copy to consult'). The habits-commit-checkpoint copy went in the 2026-10-08 audit: that skill never fires on a discard, so it was paid on every commit for a receipt written a few times a year. The repo hook notes name the same path, pinned here so a rename in the hook re-syncs them.",
       "owner": {
         "file": "stack/hooks/guard-catastrophic-rm.js",
         "marker": "path.resolve(root, docsRootEnv(), 'flow', 'DISCARD-ALLOW')"
       },
       "sites": [
         {
-          "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
+          "file": ".claude/rules/repo-hooks.md",
           "marker": "`<docs-path>/flow/DISCARD-ALLOW`"
         }
       ]

@@ -315,6 +315,52 @@ test('audit 2026-10-08: every phrase habits-explain-code advertises lifts the an
     assert.ok(squash(text).includes('The answer-length gate decides, not this file'), 'the body still defers to the gate');
 });
 
+// Audit 2026-10-08, the commit checkpoint: C10 (the security rule names this skill as the home of a
+// test-only carve-out the skill excluded), the commit-consent ask (untemplated while a receipt needs an
+// `authorized:` or `answered:` line), and the discard section a skill that never fires on a discard paid
+// for on every commit - the guard's denial carries that whole route.
+test('audit 2026-10-08: the checkpoint carries the test-only carve-out, a templated commit ask, and no discard copy', () => {
+    const raw = read('stack/skills/habits-commit-checkpoint/SKILL.md');
+    const cp = squash(raw);
+    const rule = squash(read('stack/rules/alfred-security.md'));
+    const carve = "security review: skipped - test-only diff: <paths>";
+    assert.ok(rule.includes(`'${carve}'`), 'the security rule names the carve-out');
+    assert.ok(cp.includes('or when every path in the diff is a test file: verify that from the diff\'s file list') && cp.includes(`\`${carve}\``),
+        'the checkpoint, its named home, carries it');
+    const { lintAskTemplates } = require('./lint-skills.js');
+    assert.deepStrictEqual(lintAskTemplates([{ file: 'habits-commit-checkpoint', text: raw }]), []);
+    const commitAsk = raw.match(/^[ \t]*```ask[ \t]*\n[ \t]*Commit <[\s\S]*?^[ \t]*```/m);
+    assert.ok(commitAsk, 'the commit consent is an ask template');
+    // the git baseline: no commit until the user says so, and the diff shown for review first
+    assert.match(squash(read('stack/rules/alfred-git.md')), /Show the diff for review first/);
+    assert.match(commitAsk[0], /- 'Show the diff first \(Recommended\)'/, 'the recommended option is the git baseline\'s review-first');
+    assert.ok(cp.includes('a picked option is the receipt\'s `answered:` line'), 'a pick is the answered: line');
+    assert.ok(cp.includes('read `git log -1 --stat` back into the close'), 'the commit is read back');
+    assert.doesNotMatch(raw, /## Discarding uncommitted work/, 'the discard section is gone');
+    assert.match(read('stack/hooks/guard-catastrophic-rm.js'), /On 'Discard it', write the receipt \$\{receiptRel\}/, 'the denial carries the receipt route');
+    assert.ok(cp.includes('`<docs-path>/flow/STAGED-SCAN-ALLOW`'), 'the staged-scan receipt has a writer');
+    const discard = JSON.parse(read('meta/shared-rules.json')).rules['discard-allow-receipt'];
+    assert.ok(!discard.sites.some((s) => s.file.includes('habits-commit-checkpoint')), 'the registry no longer pins a checkpoint copy');
+});
+
+test('audit 2026-10-08: the habits record their evidence and carry no copy of an internal cause', () => {
+    // the worked bug example is what the model copies: no internal symbol in Problem or the repro steps
+    const bug = read('stack/skills/habits-create-ticket/references/bug.md').split('## Example')[1];
+    const problem = bug.slice(bug.indexOf('## Problem'), bug.indexOf('## Impact'));
+    assert.doesNotMatch(problem, /OrderSummaryService|formatAddress|address\.country/, 'Problem, Steps and Actual stay observable');
+    assert.match(bug.slice(bug.indexOf('## Impact')), /OrderSummaryService\.formatAddress/, 'the call chain stays in Impact');
+    assert.ok(squash(read('stack/skills/habits-create-ticket/SKILL.md')).includes('file it via the connector (Recommended) vs copy-paste only'));
+    assert.ok(squash(read('stack/skills/habits-test-first/SKILL.md')).includes('`red: <test> - <assertion line>`'), 'the red run leaves evidence');
+    assert.ok(squash(read('stack/skills/habits-done-gate/SKILL.md')).includes("at the close gate (a seat's per-task gate runs the scope its brief names)"), 'a seat runs its brief\'s scope');
+    const sw = squash(read('stack/skills/habits-skill-writing/SKILL.md'));
+    assert.ok(sw.includes('Across skills, a rule two skills both need is copied into each and the copies kept in sync'), 'S2: the cross-skill copy rule');
+    assert.ok(sw.includes('is billed: ONE AskUserQuestion first, the unbilled route recommended'), 'a billed replay asks through the tool');
+    const plan = squash(read('stack/skills/habits-plan-writing/SKILL.md'));
+    const rules = JSON.parse(read('meta/shared-rules.json')).rules;
+    for (const key of ['plan-approved-mode-shape', 'plan-approved-verbatim-shape'])
+        assert.ok(rules[key] && rules[key].sites.some((s) => s.file === 'stack/skills/habits-plan-writing/SKILL.md') && plan.includes(rules[key].sites[0].marker), `${key} pins the habit's copy`);
+});
+
 test('the inline task skills load their method skill through the Skill tool at the right point', () => {
     const body = (n) => squash(read(`stack/skills/${n}/SKILL.md`));
     const design = body('task-design');

@@ -31,7 +31,20 @@ On any non-trivial diff, before committing or presenting, in order:
 3. **Security review** when the diff touches auth, crypto, secrets, payment or data-access paths
    (`alfred-security.md` owns the trigger) - the security half below.
 4. **Done gate.** Satisfy the Definition-of-done gate.
-5. **Receipt.** Write the receipt below, then commit, then clear it.
+5. **Ask.** No commit words from the user this conversation: name the paths (the scope derived fresh,
+   as the git baseline spells it) and anything still owed, then put ONE AskUserQuestion; a picked
+   option is the receipt's `answered:` line. Words the user already typed for THIS commit skip it -
+   they are the `authorized:` line.
+
+   ```ask
+   Commit <N files - the session's own paths> on <branch>? <VERIFIED phrase | still owed: <gate>>.
+   - 'Show the diff first (Recommended)' - print the stat and the diff, then ask again; nothing is committed yet
+   - 'Commit now' - stage exactly the named paths and commit them under the receipt
+   - 'Hold' - nothing is committed and no receipt is written
+   ```
+
+6. **Receipt.** Write the receipt below, then commit, read `git log -1 --stat` back into the close,
+   then clear it.
 
 Findings caught here land in the same commit; found later they become fixup noise or shipped
 defects.
@@ -68,7 +81,9 @@ either. Reach for it only when the whole branch really is the review scope and t
 
 The checkpoint exemption above skips this half only when the gate that cleared the diff carried a
 security pass - the integration-reviewer gate does, the quality loop's does not, so a loop diff on
-these paths still runs the review before `VERIFIED`.
+these paths still runs the review before `VERIFIED` - or when every path in the diff is a test file:
+verify that from the diff's file list and name it in the close (`security review: skipped - test-only
+diff: <paths>`).
 
 ## The receipt
 
@@ -119,23 +134,15 @@ earlier small ones count. Clear the file once the commit lands - after the
 LAST commit when one receipt covers a reviewed batch - a leftover receipt is the stale-stamp failure
 the hook's 2h age cap exists for.
 
-A commit in a second tree this session may write (the cross-project guard's own allowance, for a
-tree the project owns) gets its own receipt in THAT tree's docs root, written and cleared the same
-way. A sibling repo is never committed, branched, pushed or PR'd from here - its change is a task
-card under `<docs-path>/cross-project-tasks/`, and it is never OFFERED as an option in an ask of
-the run's own making. The one place it IS offered is the guard's own denial - 'Allow writes into
-<root> for this session', never the recommended option - and only because that answer is
-honoured: it writes the `<docs-path>/flow/CROSS-WRITE-ALLOW` receipt (one root per line; this
-session's own, under 8h) that the guard reads before it judges.
+The same hook runs a staged-diff scan first - a conflict marker, a debugger, a focused test, a
+credential-shaped literal or a hidden character on an added line. That is a fact check this receipt
+never opens: remove the hit and stage again, or, on the user's 'Commit it as is' in the denial's own
+ask, write the `<docs-path>/flow/STAGED-SCAN-ALLOW` receipt it names.
 
-## Discarding uncommitted work
-
-The same receipt shape. `git checkout --` / `restore` / `reset --hard` / `clean -f` over a DIRTY
-path is blocked, and the denial's three-option ask (keep, recommended / discard / narrow to one
-file) is the user's to answer - never yours. Only after they answer 'Discard it', never
-pre-emptively, write `<docs-path>/flow/DISCARD-ALLOW` - one path per line spelled exactly as the
-blocked command spells them, or a single `*` for everything; this session's own, under 8h - and
-then retry the SAME command.
+A commit in a second tree the cross-project guard allows gets its own receipt in THAT tree's docs
+root, written and cleared the same way. A sibling repo is never committed, branched, pushed or PR'd
+from here, and never OFFERED as an option in an ask of the run's own making - its change is a task
+card under `<docs-path>/cross-project-tasks/`.
 
 ## Publishing - push and PR merge
 
@@ -157,7 +164,8 @@ in here, so it is required and never counted against the working tree.
    ```
 
 2. Write the receipt as its own call.
-3. Publish, then clear the receipt.
+3. Publish, read `git status -sb` back into the close (the branch level with its upstream), then
+   clear the receipt.
 
 `guard-ungated-commit` enforces this half too. A push that publishes nothing - a dry run, or a
 branch already level with its upstream - is never gated, and a repo whose remote is already gated

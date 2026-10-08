@@ -1,6 +1,6 @@
 ---
 name: habits-clarify
-description: "Use before designing a feature or change that can be read more than one way - 'make it better', 'add support for X'. Not for build choices, which the plan owns."
+description: "Use before designing a change that can be read more than one way - 'make it better', 'add support for X'. Not for build choices, which a plan records."
 ---
 
 # Clarify - one reading of the ask before any design

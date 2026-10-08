@@ -1,6 +1,6 @@
 ---
 name: habits-plan-writing
-description: "Use when writing, stamping, resuming or reading a plan file under the docs root's plans folder. Not for the design, which task-design owns."
+description: "Use when writing, stamping, resuming or reading a plan file - 'write a plan', 'write it up as a plan'. Not for the design, which task-design owns."
 ---
 
 # Plan writing - the file a design hands to the build

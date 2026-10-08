@@ -46,7 +46,7 @@ Use the template in the type's reference file. Write in clear, professional Engl
 
 - **Language**: Always output in English, regardless of input language.
 - **Tracker dialect**: Output Markdown by default - it pastes natively into GitHub, GitLab, and YouTrack, Jira Cloud converts it on paste, and Azure DevOps renders it once the large-text field is switched to Markdown. If the user names a specific tracker, adapt to its conventions (e.g. drop the `[Area]` title prefix when the tracker has a Component field that carries it).
-- **Filing**: if an issue-tracker MCP is connected (e.g. Atlassian), offer it after presenting the ticket via AskUserQuestion - file it via the connector vs copy-paste only (plain-text options where the harness lacks the tool); title and description map 1:1. Never file without explicit confirmation.
+- **Filing**: if an issue-tracker MCP is connected (e.g. Atlassian), offer it after presenting the ticket via AskUserQuestion - file it via the connector (Recommended) vs copy-paste only (plain-text options where the harness lacks the tool); title and description map 1:1. Never file without explicit confirmation.
 - **Tone**: Neutral and factual. No emotional language, no blame.
 - **Assumptions**: If the description is vague, make reasonable assumptions and note them briefly - in the Problem section for bugs, the Notes section otherwise.
 - **Two readers - QA and the developer**: the ticket describes the problem and the behaviour wanted in words a tester who has never opened the code can follow - what happens today, in which situation, and what should happen instead. Spend the length there, not on internals.
@@ -59,4 +59,3 @@ Use the template in the type's reference file. Write in clear, professional Engl
   - Do not hard-wrap prose - one paragraph is one line (full width); let the tracker wrap it.
   - Wrap identifiers, methods, paths, expressions, and error strings in inline code with backticks.
   - Avoid nested code fences and Markdown tables in the body; for a trace, call chain, or log excerpt use a bullet list (`- file:line - code`) under a plain lead-in line, annotating the key line inline (e.g. `← null deref`). The one sanctioned table is the task Baseline/Target metrics block (see `references/task.md`).
-  - Use a normal dash `-`, never an em dash.

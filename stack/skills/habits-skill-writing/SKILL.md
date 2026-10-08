@@ -68,7 +68,9 @@ every message whether it fires or not.
 ## One home per piece
 
 - Every rule, step and fact lives in one file; anything else that needs it points there. A second
-  copy drifts, and within a release the two disagree.
+  copy drifts, and within a release the two disagree. Across skills, a rule two skills both need is
+  copied into each and the copies kept in sync - a pointer into another skill's folder breaks
+  wherever that skill is not installed.
 - Name another skill only where it is guaranteed to sit beside the citer - preloaded by the same
   seat, shipped in the same package, or part of the always-installed set. Anywhere else, describe
   what it covers ('the skill covering the ORM, where the project has one'), so an absent skill costs
@@ -123,7 +125,8 @@ to a discipline.
 Where the project keeps a step grader - fixtures replayed at explicit, plain and adverse prompt
 levels, a before arm compared with an after arm (a skill-comply harness) - add the new skill's steps
 to it, and ship only when the after arm is no worse on any step. A replay through a nested session
-is billed: the user says go first.
+is billed: ONE AskUserQuestion first, the unbilled route recommended (a dry run that prints the
+commands, or a grade of a transcript already on disk).
 
 An edit to an existing skill is proven the same way. A change nobody saw alter a run is not known
 to help.
@@ -132,6 +135,6 @@ to help.
 
 - A skill shipped with no run seen failing without it.
 - A description that retells the steps, runs past 160 characters, or opens on anything but its trigger.
-- The same rule restated in a second file.
+- The same rule restated in a second file with nothing keeping the copies in sync.
 - A skill named by a citer it is not guaranteed beside.
 - A table in the body that only one step reads.

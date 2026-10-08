@@ -23,7 +23,8 @@ fail, and that it fails for the behavior it names.
 2. **Watch it fail for the expected reason.** Run it and read the failure. It counts as red only
    when it compiled, RAN and failed on the assertion the behavior names - a compile error, a missing
    fixture, an import typo or a skipped test is not red: fix that and run again. A test that passes
-   before the code exists tests nothing: fix the test, never the expectation.
+   before the code exists tests nothing: fix the test, never the expectation. Quote the failing
+   assertion line in the reply or the seat report - `red: <test> - <assertion line>`.
 3. **Write the minimal code that passes.** Only what the test demands - no option, branch or
    abstraction a test does not ask for yet.
 4. **See it green.** Run it again with its neighbours (the file, or the project's scoped test

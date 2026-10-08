@@ -60,7 +60,7 @@ Relevant call chain (from <source>):
 ```
 ## Problem
 
-The order detail page (`/orders/:id`) throws an unhandled null-reference error for orders with no shipping address. It originates in `OrderSummaryService.formatAddress`, where `address` is null/empty when `address.country` is read while building the summary view model.
+The order detail page (`/orders/:id`) fails to load for orders with no shipping address - the page shows an error instead of the order summary.
 
 Observed on production, OrderId 88213. Log Id: 7c2f1a90-... (2026-06-13T20:11:17Z).
 
@@ -68,10 +68,10 @@ Observed on production, OrderId 88213. Log Id: 7c2f1a90-... (2026-06-13T20:11:17
 
 1. Open an order that has no shipping address (e.g. a digital-only order), such as OrderId 88213.
 2. Navigate to Orders -> Order Detail (`/orders/88213`).
-3. The page builds the summary and calls `OrderSummaryService.formatAddress(order.shippingAddress)`.
+3. The page shows an error instead of the summary.
 
 **Expected:** The summary renders; a missing shipping address is handled gracefully (omitted or shown as '-') without throwing.
-**Actual:** A null-reference error is thrown because `address` is null, breaking the order-summary pipeline.
+**Actual:** The page shows a null-reference error and no order summary.
 
 ## Impact
 

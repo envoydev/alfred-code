@@ -30,8 +30,8 @@ close all run on this one gate.
 3. **Scoped while iterating, the full suite once.** While iterating on a failure, run the ONE
    failing test, file or project - the SCOPED test command this project's AGENTS.md records beside
    the full-suite one (a single project, a test filter, a spec path). The whole suite runs once, at
-   the gate, and its output is the summary line - the analyzer's test-run row counts scoped against
-   whole-suite runs per session.
+   the close gate (a seat's per-task gate runs the scope its brief names), and its output is the
+   summary line.
 4. **Honest, or not at all.** Fix the cause - never suppress a warning, weaken a test, or stub code
    to go green.
 5. **Report the edges.** Say what changed and what deliberately did not. Cannot run it? Say so,
