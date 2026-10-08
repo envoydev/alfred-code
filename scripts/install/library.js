@@ -11,9 +11,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+// Finder / Explorer litter a working-tree source can hold (release archives never do - it is untracked): never
+// copied into a project and never hashed, so it neither ships nor reads as a hand edit (audit 2026-10-08 S8).
+const { OS_LITTER } = require('./docs.js');
 
 // Every file under `p` as [relative path, content], sorted by path so the hash is stable across
-// platforms and directory orders; one entry for a file; null when absent.
+// platforms and directory orders, OS litter left out; one entry for a file; null when absent.
 function files(p)
 {
     let stat;
@@ -24,6 +27,7 @@ function files(p)
     {
         for (const e of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)))
         {
+            if (OS_LITTER.has(e.name)) continue;
             const r = rel ? `${rel}/${e.name}` : e.name;
             if (e.isDirectory()) walk(path.join(dir, e.name), r);
             else out.push([r, fs.readFileSync(path.join(dir, e.name))]);
@@ -89,7 +93,7 @@ function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], a
         fs.rmSync(item.dst, { recursive: true, force: true });
         fs.mkdirSync(path.dirname(item.dst), { recursive: true });
         if (body) fs.writeFileSync(item.dst, body);
-        else fs.cpSync(item.src, item.dst, { recursive: true });
+        else fs.cpSync(item.src, item.dst, { recursive: true, filter: (from) => !OS_LITTER.has(path.basename(from)) });
         out[item.kind][item.name] = hashItem(item.dst);
         log(`${item.label} [library]: ${item.name}`);
     }
