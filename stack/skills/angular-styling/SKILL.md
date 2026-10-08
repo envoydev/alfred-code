@@ -48,10 +48,7 @@ If a third-party component gives you none of these, a global rule scoped under a
 
 ## Ionic surfaces are real shadow DOM - the ways out change
 
-`ion-*` components are web components with genuine shadow DOM, not Angular's emulated encapsulation, so on them the model above inverts:
-
-- Way out #2 - a global rule targeting a class inside the component - **silently does nothing**: real shadow DOM blocks inbound global styles, and nothing errors. Style an Ionic component only through what it publishes: its CSS custom properties (per-component ones like `--background`, and the `--ion-*` theme variables) and its `::part()` selectors - both cross the shadow boundary by design. Which parts and variables a component exposes is its Ionic docs page; fetch it live rather than guessing.
-- Keep the app's own token system for your own components, but know that `ion-*` components read only Ionic's variables - route theme values into `--ion-*` tokens or they never reach the UI kit. Dark mode on Ionic surfaces is the Ionic dark palette and its ion-palette-dark class strategy, owned by the skill covering the Ionic/Capacitor layer - not a hand-rolled `[data-theme]` re-bind, and with no such skill installed use the Ionic palette class rather than inventing a parallel theme.
+On `ion-*` components a global rule silently does nothing - style them only through their CSS variables and `::part()`: `references/ionic-shadow-dom.md`.
 
 ## Design tokens as CSS custom properties
 
@@ -79,8 +76,11 @@ The house default is **scoped component SCSS plus the CSS-custom-property token 
 ## Accessibility-affecting styling
 
 - **Focus must always be visible.** Never blanket `outline: none`. Style focus with `:focus-visible` so a visible ring shows for keyboard users without flashing on every mouse click, and make it meet contrast against its background. If you remove the default outline, replace it in the same rule.
-- **Respect the prefers-reduced-motion media feature.** Wrap non-essential transitions and animations so they are reduced or removed under `@media (prefers-reduced-motion: reduce)`. This includes route View Transitions (`withViewTransitions()`, from `angular-conventions`): disable or soften the `::view-transition-*` animations under the query rather than shipping motion to users who opted out.
+- **Respect the prefers-reduced-motion media feature.** Wrap non-essential transitions and animations so they are reduced or removed under `@media (prefers-reduced-motion: reduce)`. This includes route View Transitions (`withViewTransitions()`): disable or soften the `::view-transition-*` animations under the query rather than shipping motion to users who opted out.
 - **Meet contrast.** Text clears WCAG AA - 4.5:1 normal, 3:1 large; do not encode a foreground/background pair that fails it. Non-text UI (focus rings, control borders) needs 3:1.
 - **Do not convey state by color alone** in CSS - pair a color change with an icon, weight, underline, or text so it survives color-blindness and forced-colors mode.
-- **Prove it, do not eyeball it.** Read the computed contrast ratio of the foreground/background pair you changed and quote it against the 4.5:1 / 3:1 bar. Then run the workspace's stylelint and quote its exit line. A CSS change with no measured ratio and no lint result is unverified, however careful the diff looks.
 - **The rest of WCAG 2.2 AA** - 24px pointer targets, focus never hidden under a sticky bar, no keyboard trap, no redundant entry, drag alternatives - is `references/accessibility.md`, numbered by criterion. Load it before shipping a new screen, a sticky header or footer, an overlay, or a dense toolbar.
+
+## Close every stylesheet change
+
+Prove it, do not eyeball it: close with `stylelint: <command> -> <exit line>` and, where a color pair changed, `contrast: <fg>/<bg> = <ratio> vs 4.5:1` (3:1 for large text and non-text UI), the ratio read from the computed colors. A CSS change with no lint line is unverified, however careful the diff looks.

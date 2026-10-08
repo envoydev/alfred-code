@@ -46,11 +46,15 @@ const description = (name) => (/^description:\s*"(.*)"\s*$/m.exec(skill(name)) |
 
 // BLOCKER 4: the pre-commit checkpoint runs its own scoped review of the diff; `/security-review` is the unbounded
 // route it reaches for only when the whole branch is the scope. No stack skill may say the checkpoint runs it.
-test('B4: dotnet-security no longer says the pre-commit checkpoint runs /security-review', () =>
+test('B4: no stack skill says the pre-commit checkpoint runs /security-review', () =>
 {
-    for (const [rel, text] of skillDocs('dotnet-security'))
-        assert.doesNotMatch(squash(text), /`\/security-review`, which the pre-commit checkpoint runs/, `${rel} says the checkpoint runs /security-review`);
+    for (const dir of fs.readdirSync(SKILLS))
+    {
+        for (const [rel, text] of skillDocs(dir))
+            assert.doesNotMatch(squash(text), /`\/security-review`, which the pre-commit checkpoint runs/, `${rel} says the checkpoint runs /security-review`);
+    }
     assert.match(squash(skill('dotnet-security')), /pairs with the pre-commit security review of the live diff/);
+    assert.match(squash(skill('angular-security')), /This is the client-side map\./);
 });
 
 // BLOCKER 7: .NET 10 obsoletes Form.OnClosing / OnClosed and their events (WFDEV004); under warnings-as-errors the
@@ -66,6 +70,19 @@ test('B7: dotnet-winforms detaches in OnFormClosed, never the obsolete OnClosed'
         if (/detach in `OnFormClosed` \(a Form\) or `Dispose`/.test(flat)) named++;
     }
     assert.strictEqual(named, 2, 'the body and the disposal reference both detach in OnFormClosed');
+});
+
+// BLOCKER 8: the reward-hacking table told every Angular change to use fakeAsync, which the Vitest runner (the CLI
+// default) cannot run without the zone patch; angular-testing owns runner routing.
+// https://angular.dev/guide/testing/migrating-to-vitest
+test('B8: Angular fake time follows the runner - fakeAsync under Karma/Jest, vi.useFakeTimers() under Vitest', () =>
+{
+    const table = squash(skill('angular-conventions', 'references/reward-hacking.md'));
+    assert.doesNotMatch(table, /`fakeAsync` with an honest `tick`/);
+    assert.match(table, /honest fake time for the runner \(`fakeAsync` \+ `tick` under Karma\/Jest, `vi\.useFakeTimers\(\)` under Vitest\)/);
+    const timing = squash(section(skill('angular-testing'), 'Timing and async'));
+    assert.match(timing, /`zone\.js\/plugins\/vitest-patch`/);
+    assert.match(timing, /`vi\.useFakeTimers\(\)` \+ `vi\.advanceTimersByTime\(\)`/);
 });
 
 // MATERIAL csharp:116 - the async baseline is stated in the preloaded body, not two reference hops away.
@@ -135,6 +152,111 @@ test('M dotnet-hosted-services: one-line ownership preamble, lifecycle hooks in 
     assert.match(intro, /stops at the host boundary \(what lies past it: When to use\)/);
 });
 
+// MATERIAL angular-conventions:76 - the forms reference is reachable from the body, not only through another reference;
+// :3 the change-detection reference keeps only what the body lacks.
+test('M angular-conventions: forms-validation is cited by the body, the signal rule lives once', () =>
+{
+    assert.match(squash(skill('angular-conventions')), /Before building any non-trivial form, Read `references\/forms-validation\.md`/);
+    const cd = squash(skill('angular-conventions', 'references/change-detection-and-signals.md'));
+    assert.doesNotMatch(cd, /Any state a `computed` or an `effect` reads must itself be a `signal`/);
+    assert.match(cd, /readonly filter = signal\(''\);/);
+    assert.match(cd, /must call `event\.animationComplete\(\)`/);
+});
+
+// MATERIAL ionic navigation-and-lifecycle.md:59-62 - a plain field set from a subscription never repaints an OnPush page.
+test('M ionic: the per-visit subscription writes a signal, and the seam reference stops restating the body', () =>
+{
+    const nav = skill('ionic', 'references/navigation-and-lifecycle.md');
+    assert.doesNotMatch(nav, /this\.data = d\)/);
+    assert.match(nav, /readonly data = signal<FeedData \| undefined>\(undefined\);/);
+    assert.match(nav, /subscribe\(\(d\) => this\.data\.set\(d\)\)/);
+    const seam = squash(skill('ionic', 'references/native-seam.md'));
+    assert.doesNotMatch(seam, /Call a plugin only through a typed Angular service/);
+    assert.doesNotMatch(seam, /Every native call needs a defined web path/);
+});
+
+// MATERIAL ionic-security:3 - the listing names the near-miss boundary; MINOR :30 - a custom-scheme link puts its first
+// segment in the host, so the allowlist reads host + pathname for any scheme but https (checked with Node's WHATWG URL).
+test('M ionic-security: boundary in the description, custom-scheme links parse to a routable path', () =>
+{
+    assert.match(description('ionic-security'), /Not for web-only Angular\.$/);
+    const text = skill('ionic-security');
+    assert.doesNotMatch(text, /const path = new URL\(url\)\.pathname;/);
+    assert.match(text, /const path = u\.protocol === 'https:' \? u\.pathname : `\/\$\{u\.host\}\$\{u\.pathname\}`;/);
+});
+
+// MATERIAL npm:38 - the baseline is gated whether or not an .npmrc exists, and lands as numbered steps.
+test('M npm: the baseline is its own asked change, landed in seven numbered steps', () =>
+{
+    const text = squash(section(skill('npm'), 'Non-negotiables (any repo that has a package.json)'));
+    assert.doesNotMatch(text, /A repo that already has an `\.npmrc` gets the baseline lines/);
+    assert.match(text, /3\. Adding the baseline is its own change: when the task did not ask for it, propose it through ONE AskUserQuestion/);
+    assert.match(text, /7\. Close on the project's build and test run with their result lines quoted/);
+});
+
+// MATERIAL nx:81 (conflict C16) - configure-ai-agents rewrites the instruction files this stack seeds.
+test('M nx: configure-ai-agents is the user\'s to run, and affected follows defaultBase', () =>
+{
+    const text = squash(skill('nx'));
+    assert.match(text, /Never run `npx nx configure-ai-agents` yourself/);
+    assert.doesNotMatch(text, /against a base with `--base=main`/);
+    assert.match(text, /against the workspace's `defaultBase` \(nx\.json\)/);
+    assert.match(text, /`nx g <generator> <name> --dry-run`/);
+});
+
+// MATERIAL typescript-style.md:122-147 - the reference maps the body's rules to lint rules instead of restating them.
+test('M typescript: the style reference maps rules to lint, the body owns the principle', () =>
+{
+    const ref = squash(skill('typescript', 'references/typescript-style.md'));
+    assert.doesNotMatch(ref, /Use `unknown` for values of genuinely unknown type/);
+    assert.doesNotMatch(ref, /Prefer `undefined` for 'absent' in TS code/);
+    assert.match(ref, /no-explicit-any - 'error' in `recommended` and `strict`/);
+    assert.match(ref, /unless the framework layer prescribes its own injection function, which wins/);
+    assert.match(squash(skill('typescript')), /`interface` for object shapes \(the typescript-eslint consistent-type-definitions default\)/);
+});
+
+// MINOR webpack:32-33 - one ESM default. Currency: experiments.outputModule is removed from 5.111 and output.module works
+// alone. https://webpack.js.org/configuration/experiments/ , https://webpack.js.org/configuration/output/
+test('m webpack: modern-module is the default ESM library type, and output.module carries it', () =>
+{
+    const text = squash(skill('webpack'));
+    assert.doesNotMatch(text, /and it is still experimental/);
+    assert.match(text, /Default to `output\.library\.type: 'modern-module'`/);
+    assert.match(text, /from 5\.111 the experiment is removed and `output\.module` works alone/);
+    const ref = skill('webpack', 'references/library-config.md');
+    assert.doesNotMatch(ref, /^\s*experiments: \{ outputModule: true \},/m);
+    assert.match(ref, /library: \{ type: 'modern-module' \}/);
+    assert.match(ref, /^\s*module: true,/m);
+});
+
+// MINOR capacitor-release:70 - fastlane's gradle action runs in project_dir, default '.', and a Capacitor Gradle project
+// lives in android/. https://docs.fastlane.tools/actions/gradle/
+test('m capacitor-release: the Android lane names project_dir, and no unnamed official OTA path', () =>
+{
+    const text = skill('capacitor-release');
+    assert.match(text, /gradle\(task: 'bundle', build_type: 'Release', project_dir: 'android\/'\)/);
+    assert.doesNotMatch(text, /the official live-update mechanism as the alternative/);
+});
+
+// MINOR (D2 gap) ts-js-testing - the defect-named spec and self-review rules ride with the plain TS/JS hub too.
+test('m ts-js-testing: carries the defect-named spec rule, the self-review rule and a templated close', () =>
+{
+    const text = squash(skill('ts-js-testing'));
+    assert.match(text, /fails on the unfixed code before it passes/);
+    assert.match(text, /A self-review is never the check/);
+    assert.match(text, /Close with `specs: <command> -> <result line>`/);
+    assert.doesNotMatch(text, /verified against the Vitest docs/);
+    assert.doesNotMatch(text, /The default-runner rule is the `javascript` skill's/);
+});
+
+// MINOR javascript async-patterns.md:15/:21 - no .NET aside, and no reliance on a lint a plain-JS project lacks.
+test('m javascript: the async reference is generic and names where the floating-promise lint exists', () =>
+{
+    const ref = squash(skill('javascript', 'references/async-patterns.md'));
+    assert.doesNotMatch(ref, /CancellationToken/);
+    assert.match(ref, /`no-floating-promises` where the project type-checks, otherwise review every un-awaited call/);
+});
+
 // Situational detail moved out of a preloaded or rule-forced body into a reference the body cites.
 const MOVED = [
     ['dotnet-code-quality', 'references/legacy-backlog.md', 'Never `CS8019`, a hidden diagnostic'],
@@ -148,6 +270,11 @@ const MOVED = [
     ['dotnet-authentication', 'references/oidc-and-api-keys.md', 'AddOpenIdConnect'],
     ['csharp', 'references/csharp-style.md', 'dotnet_style_allow_multiple_blank_lines_experimental'],
     ['csharp', 'references/dependency-injection.md', '`appsettings.{Environment}.json`'],
+    ['angular-conventions', 'references/rxjs.md', 'shareReplay({ bufferSize: 1, refCount: true })'],
+    ['angular-styling', 'references/ionic-shadow-dom.md', 'ion-palette-dark'],
+    ['capacitor-release', 'references/versioning-and-symbols.md', 'capacitor-set-version'],
+    ['ionic', 'references/native-seam.md', "'Which OS?' -> `Capacitor.getPlatform()`"],
+    ['typescript', 'references/typescript-style.md', 'Hold on TS 6 if you depend on the programmatic compiler API'],
 ];
 test('moves: each moved block lives in its reference, not the body, and the body cites the reference', () =>
 {

@@ -1,6 +1,6 @@
 ---
 name: webpack
-description: "Use when working on a webpack config, a library bundle, or a tree-shaking, ESM-output or 'failed to resolve as fully specified' failure. Not for Vite or Rollup."
+description: "Use when working on a webpack config, a library bundle, a slow or stale-cache build, or a tree-shaking or 'fully specified' failure. Not for Vite or Rollup."
 ---
 
 # Webpack 5 - library builds that stay fast and correct
@@ -29,8 +29,7 @@ Not for Vite/Rollup projects, Angular CLI builds (the Angular framework-conventi
 
 ## Output for libraries
 
-- **ESM output is the primary target, and it is still experimental.** `output.library.type: 'module'` needs `experiments.outputModule` and carries sharp edges around ESM externals and splitChunks - so the tilde pin above is not optional here, and the output is proven against real consumers (below) before it is trusted.
-- **Prefer the `'modern-module'` library type where the consumer bundles you.** `output.library.type: 'modern-module'` (webpack 5.93.0+, same `experiments.outputModule` requirement, no `output.library.name`) emits ES Modules the consumer's own bundler can still tree-shake, where plain `module` output hands it a finished bundle. Verified against the webpack output docs, 2026-09-12.
+- **ESM output is the primary target.** Default to `output.library.type: 'modern-module'` (webpack 5.93.0+, no `output.library.name`) for a library a bundler consumes - the output stays analysable, so the consumer's tree shaking still drops the exports it never imports; plain `'module'` only for a consumer that loads the file directly (browser `<script type=module>`, Node). Both need `output.module: true`. Before webpack 5.111 that also takes `experiments.outputModule: true` - an experiment, so the tilde pin above applies; from 5.111 the experiment is removed and `output.module` works alone. ESM externals and splitChunks still carry sharp edges, so the output is proven against real consumers (below) before it is trusted.
 - **Fall back to `commonjs2`** (boring, solid) when consumers break on either module type - a working CJS publish beats an ESM one nobody can import.
 - **A second CJS build** goes in a multi-compiler array only when a real CJS consumer exists - the exports-map shape and the dual-vs-ESM-only decision belong to the npm packaging and publishing skill, where the install has one.
 - **Ship real source maps**: `devtool: 'source-map'`, or `hidden-source-map` where they exist only for error reporting.
@@ -47,4 +46,4 @@ Webpack exiting 0 says nothing about what the consumer gets. In order, each step
 
 ## Structure and speed
 
-One shared, typed config-factory package (`defineConfig`, 5.108+ - a typing identity function, zero runtime behavior) that every package consumes - read `references/library-config.md` for the full factory example and the transpiler tradeoffs before writing that package. Instrument before optimizing - `--profile --json` into Statoscope or bundle-analyzer, a size budget failing CI; `references/caching-and-speed.md` carries the profiling toolbox and the cache-invalidation pitfalls (the `buildDependencies: { config: [__filename] }` rule, monorepo `managedPaths` exclusion for workspace packages, env vars folded into `cache.version`) - read it when a build is slow or a cache is serving stale output.
+One shared, typed config-factory package (`defineConfig` - a typing identity function, zero runtime behavior) that every package consumes - read `references/library-config.md` for the full factory example and the transpiler tradeoffs before writing that package. Instrument before optimizing - `--profile --json` into Statoscope or bundle-analyzer, a size budget failing CI; `references/caching-and-speed.md` carries the profiling toolbox and the cache-invalidation pitfalls (the `buildDependencies: { config: [__filename] }` rule, monorepo `managedPaths` exclusion for workspace packages, env vars folded into `cache.version`) - read it when a build is slow or a cache is serving stale output.

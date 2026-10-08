@@ -101,7 +101,7 @@ test('M109: angular-testing tags the v20 signal-test APIs and gives the v17-19 f
 {
     const text = squash(skill('angular-testing'));
     assert.match(text, /`TestBed\.tick\(\)` \(v20\+/);
-    assert.match(text, /`TestBed\.flushEffects\(\)` on v17-19/);
+    assert.match(text, /On v17-19: `TestBed\.flushEffects\(\)`/);
     assert.match(text, /`inputBinding\(\)` \/ `outputBinding\(\)` \/ `twoWayBinding\(\)` on `createComponent` \(v20\+/);
 });
 

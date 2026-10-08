@@ -45,10 +45,10 @@ Karma, `jest.fn()` under Jest, `vi.fn()` under Vitest - and do not mix them.
   the signal/computed values; never reach into private writable signals from a test.
 - **Pipes / directives / guards** - pure pipes as plain functions; directives and guards through
   a minimal host component or `TestBed.runInInjectionContext`.
-- **Signals** - read them directly and flush effects with `TestBed.tick()` (v20+;
-  `TestBed.flushEffects()` on v17-19); wire inputs and outputs through `inputBinding()` /
-  `outputBinding()` / `twoWayBinding()` on `createComponent` (v20+; on v17-19 set inputs with
-  `setInput` below and subscribe to the output) rather than reaching into the instance. Under zoneless, an error thrown in an event listener
+- **Signals** - read them directly and flush effects with `TestBed.tick()` (v20+); wire inputs
+  and outputs through `inputBinding()` / `outputBinding()` / `twoWayBinding()` on
+  `createComponent` (v20+) rather than reaching into the instance. On v17-19:
+  `TestBed.flushEffects()`; set inputs with `setInput` below and subscribe to the output. Under zoneless, an error thrown in an event listener
   surfaces to the error handler instead of being swallowed - expect some previously-silent
   specs to start failing honestly. An input set AFTER creation goes through
   `fixture.componentRef.setInput('name', value)`, then `fixture.detectChanges()` - a signal
@@ -62,7 +62,7 @@ Karma, `jest.fn()` under Jest, `vi.fn()` under Vitest - and do not mix them.
 
 ## Timing and async
 
-`fakeAsync` + `tick()` for timer/debounce logic under Karma or Jest (Zone.js - Angular's docs say the fakeAsync family cannot be used under the Vitest runner; there, `vi.useFakeTimers()` + `vi.advanceTimersByTime()`); `await fixture.whenStable()` for real promises;
+`fakeAsync` + `tick()` for timer/debounce logic under Karma or Jest (Zone.js - under the Vitest runner the fakeAsync family runs only with the `zone.js/plugins/vitest-patch` polyfill and Angular's docs steer away from it; there, `vi.useFakeTimers()` + `vi.advanceTimersByTime()`); `await fixture.whenStable()` for real promises;
 never a raw `setTimeout` wait in a spec. A spec that passes only with an arbitrary sleep is a
 bug in the spec.
 
@@ -113,7 +113,8 @@ traffic; no assertion-free or coverage-padding specs, no `expect(true)`.
   later red names the regression it guards.
 - A self-review is never the check: re-reading your own change applies the assumptions that
   wrote it, so it finds only what they already allow. The check is a run - the spec, the build -
-  or a reviewer who did not write the change.
+  or a reviewer who did not write the change. Close with `specs: <command> -> <result line>` for
+  every spec you wrote or changed.
 
 When reviewing an existing suite (or running mutation testing), load this skill's own
 `references/suite-audit.md` - the false-confidence catalog, the assertion-depth and mock-usage

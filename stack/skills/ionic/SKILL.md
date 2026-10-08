@@ -49,11 +49,7 @@ Do NOT load for plain web Angular with no native shell.
 - Ionic's own virtual-scroll component was removed in v7 - for long lists use Angular CDK virtual scroll (`CdkVirtualScrollViewport` with `*cdkVirtualFor`) inside `IonContent`: set `[scrollY]="false"` on the `IonContent` and add the ion-content-scroll-host class to the viewport so Ionic's pull-to-refresh and infinite scroll keep working. CDK handles fixed-height rows well; variable-height rows can jank.
 
 ## Platform detection - pick the right check for the question
-Three different questions, three different calls - don't conflate them:
-- 'Is there a native bridge at all?' -> `Capacitor.isNativePlatform()` (true on iOS and Android, false in a browser / PWA). This is the gate for any code that calls a native plugin path.
-- 'Which OS?' -> `Capacitor.getPlatform()` returns `'ios' | 'android' | 'web'`. Branch on it only for genuinely platform-specific behavior (a status-bar inset, an iOS-only API), never as a substitute for the native check above.
-- 'What can the app do right now?' -> Ionic's `Platform` service: `platform.is('ios' | 'mobile' | 'pwa' | 'desktop' | 'capacitor')` plus `platform.ready()`. Prefer `Platform` inside Angular components because it injects cleanly and is mockable in tests; reserve the static `Capacitor.*` calls for plain functions and services with no injection context.
-- Resolve platform once in a typed service and expose signals, rather than calling `getPlatform()` ad hoc across the tree.
+Gate native calls on `Capacitor.isNativePlatform()`, branch the OS with `Capacitor.getPlatform()`, read capabilities through Ionic's `Platform` in components - which call answers which question is `references/native-seam.md`.
 
 ## Capacitor lifecycle
 - Plugin lifecycle is asymmetric: register listeners (`App.addListener('appStateChange', ...)`, `'backButton'`, `'appUrlOpen'`, `'resume'`, `'pause'`) once at app start, capture the returned handle, and remove it on teardown - a leaked native listener survives the Angular component that created it. Wrap registration in an app-level service whose `ngOnDestroy` (or `DestroyRef`) calls `removeAllListeners()`.

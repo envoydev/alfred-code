@@ -10,4 +10,4 @@ The Angular-specific shortcut table the skill body cites. Reject each in review,
 | `$any()` or `CUSTOM_ELEMENTS_SCHEMA`/`NO_ERRORS_SCHEMA` to mute a template error | import the declarable, fix the binding type |
 | Raising an `angular.json` budget or padding `allowedCommonJsDependencies` to clear a threshold | shrink the bundle honestly - defer, lazy-load, drop the dependency (`performance-budgets.md`) |
 | Package downgrade to dodge a peer conflict | resolve the conflict at the current version |
-| Real time, real HTTP, or `tick(99999)` to mask flaky async | fix the async handling - `fakeAsync` with an honest `tick`, the HTTP testing controller |
+| Real time, real HTTP, or `tick(99999)` to mask flaky async | fix the async handling - honest fake time for the runner (`fakeAsync` + `tick` under Karma/Jest, `vi.useFakeTimers()` under Vitest), the HTTP testing controller |

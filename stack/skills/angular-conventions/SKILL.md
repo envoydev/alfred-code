@@ -11,7 +11,7 @@ Load with it:
 
 - The house TypeScript skill, beside this one - the language underneath (strict types, modules, async, error handling, lint and format); everything here is purely Angular.
 - Material and the CDK, and the Ionic/Capacitor layer, are each their own skill - match them from your skill list by what they cover, and skip any this project did not install.
-- Only your workspace's version delta (`references/v22.md`, `v21.md`, `v20.md`, `v19.md`: stable versus experimental, spellings and deprecations, the Node.js/TypeScript floor); on v17/v18 there is none and this file alone governs.
+- Only your workspace's version delta (`references/v22.md`, `references/v21.md`, `references/v20.md`, `references/v19.md`: stable versus experimental, spellings and deprecations, the Node.js/TypeScript floor); on v17/v18 there is none and this file alone governs.
 - For any API surface not pinned down here, reach for the `alfred-documentation` MCP rather than memory - and never by grepping `node_modules` bundles.
 
 The measurements behind these rules are `references/evidence.md` - an audit appendix, not a run-time load.
@@ -44,12 +44,7 @@ The default is the smallest thing that holds the state: local signal -> signal s
 Server data (a fetched list, a record by id) is never copied into a signal service or a store - it stays in an async read primitive that owns loading, error and freshness, and a mutation invalidates then refetches. Which primitive (`httpResource` / `resource` / `rxResource` for one screen, TanStack Query's Angular adapter once a server cache is shared and mutated) is `references/state-tiers.md` - load it before wiring any server read.
 
 ## RxJS only where a stream earns it
-- Observables are for genuine streams: HTTP responses, debounced input, event buses across components. Never wrap a plain synchronous value in an observable.
-- At a template-only boundary, convert with `toSignal` so the view consumes a signal and you avoid the async pipe's subscription bookkeeping.
-- Always tear down. Inside a component use `takeUntilDestroyed` (v16+) or the `DestroyRef` it reads from; a manual `Subject` plus `takeUntil` is only acceptable in a class with no injection context.
-- Never nest a `subscribe` inside another `subscribe`. Flatten with the higher-order operator whose semantics you actually want - `switchMap` to cancel the previous, `concatMap` to queue, `mergeMap` to run in parallel, `exhaustMap` to ignore while busy - and say why in review when it is not obvious.
-- Keep `map` pure. Side effects belong in `tap`.
-- Cache a shared stream with `shareReplay({ bufferSize: 1, refCount: true })` so late subscribers get the last value and the source unsubscribes when the audience empties.
+- Observables only for genuine streams (HTTP responses, debounced input, cross-component events), never around a plain synchronous value; `toSignal` at a template-only boundary; tear down with `takeUntilDestroyed`; never nest `subscribe`. The flattening operator by semantics, pure `map`, and the `shareReplay` config are `references/rxjs.md` - read it before writing or reviewing a pipe.
 
 ## Change detection is always OnPush
 - `ChangeDetectionStrategy.OnPush` on every component in new code - explicit below v22, the framework default from v22 (which renamed the old `Default` strategy `Eager` and deprecated the old name). An eagerly-checked component is a bug unless a library's own docs require it - then keep it on `Eager` (`Default` below v22) and cite the requirement inline.
@@ -73,7 +68,7 @@ Web targets only - a Capacitor WebView has no server render, so skip this in an 
 - Depend on an interface or an injection token, not a concrete class, so a feature can be tested and re-provided without editing its consumers.
 
 ## HTTP, routing, and forms
-Read `references/http-routing-forms.md` before adding an HTTP call or interceptor, a route or resolver, or a form, or reviewing a change that does: endpoint config, functional interceptors, typed reactive forms versus Signal Forms, lazy routes, route-param input binding, resolvers (never in an Ionic app), and the validation layer.
+Read `references/http-routing-forms.md` before adding an HTTP call or interceptor, a route or resolver, or a form, or reviewing a change that does: endpoint config, functional interceptors, typed reactive forms versus Signal Forms, lazy routes, route-param input binding, resolvers (never in an Ionic app), and the validation layer. Before building any non-trivial form, Read `references/forms-validation.md` - validator strategy, the one error surface, Signal Forms pitfalls.
 
 ## Accessibility
 - Every interactive element is reachable by keyboard and shows a visible focus indicator.
@@ -83,7 +78,7 @@ Read `references/http-routing-forms.md` before adding an HTTP call or intercepto
 
 On greenfield or visual work, load `references/design-quality.md` before the first screen goes in (type scale, spacing rhythm, color, motion, per-state rules), unless you are reproducing a fixed design or Figma handoff faithfully. It owns the *taste*; the mechanism is the styling skill's (CSS, tokens, responsive) and, where the project uses Material, the theming skill's.
 ## Feature boundaries
-- Features may depend on `shared/` and `core/` but never on one another. No import from `features/billing` reaches into `features/orders`. (How barrels and deep imports are policed is `typescript`.)
+- Features may depend on `shared/` and `core/` but never on one another. No import from `features/billing` reaches into `features/orders`.
 - Anything two features must share crosses through a service in `core/` or a state store, never a direct component reference.
 
 ## Performance budgets
@@ -92,7 +87,7 @@ Web/PWA target only: read `references/performance-budgets.md` before a productio
 ## Testing
 - Test practice is `angular-testing`'s - load it before writing, changing, or reviewing tests; this skill keeps only the convention below.
 - Bake automated accessibility checks into component specs - a11y is a convention gate here, not just a test technique. The matcher package follows the workspace's runner (`angular-testing` owns runner routing): `jest-axe` on Jest, `vitest-axe` on Vitest, raw `axe-core` (`axe.run` on the fixture element) under Karma/Jasmine - never mandate a matcher the installed runner cannot load.
-- Before calling an Angular change done, run the workspace build and the specs covering the files you touched, and quote both result lines. A build that was never run is not a green build.
+- Close every Angular change with three lines - `build: <command> -> <result line>`, `specs: <command> -> <result line>` (the specs covering the files you touched) and `reward-hack scan: clean` or the rows of `references/reward-hacking.md` it hit; a missing line reads as not run.
 
 ## Banned patterns
 - No `setTimeout` poked in to coax change detection into noticing a change - it only 'works' because zone.js patches timers to trigger a render, so it papers over a broken signal/input flow and silently stops working under zoneless. Fix the flow instead.

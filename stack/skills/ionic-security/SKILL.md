@@ -1,11 +1,11 @@
 ---
 name: ionic-security
-description: "Load when hardening or reviewing the security of an Ionic or Capacitor feature - 'is it safe to store the token like this', 'lock the app behind Face ID'."
+description: "Load when hardening or reviewing Ionic/Capacitor security - 'is it safe to store the token like this', 'lock the app behind Face ID'. Not for web-only Angular."
 ---
 
 # Ionic / Capacitor mobile security
 
-An Ionic app is an Angular app running in a native WebView with a bridge to native code. It inherits **every** web risk (see the skill covering Angular web hardening - XSS, CSP, token storage, CSRF) **plus** a native attack surface the browser does not have: on-device storage an attacker with the device can read, deep links other apps can fire, native permissions, and the WebView container itself. This is the native map. Assume the device may be lost, rooted, or shared, and that another app on it is hostile.
+An Ionic app is an Angular app running in a native WebView with a bridge to native code. It inherits **every** web risk **plus** a native attack surface the browser does not have: on-device storage an attacker with the device can read, deep links other apps can fire, native permissions, and the WebView container itself. This is the native map. Assume the device may be lost, rooted, or shared, and that another app on it is hostile.
 
 ## When to use
 
@@ -27,7 +27,8 @@ Do NOT load for non-security work.
 
 ```typescript
 App.addListener('appUrlOpen', ({ url }) => {
-  const path = new URL(url).pathname;   // parse - never route the raw string
+  const u = new URL(url);   // parse - never route the raw string
+  const path = u.protocol === 'https:' ? u.pathname : `/${u.host}${u.pathname}`;   // myapp://orders/42 puts 'orders' in host
   const allowed = /^\/(orders|profile)(\/[\w-]+)?$/.test(path);
   this.zone.run(() => this.router.navigateByUrl(allowed ? path : '/home'));
 });

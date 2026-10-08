@@ -31,11 +31,11 @@ Loaded from the `npm` skill when wiring CI installs, configuring update bots, ch
 | Yarn Berry v4 | fast PnP, but toolchain-compat complexity | only if the whole stack supports PnP |
 | Bun 1.3 | fastest installs (vendor-cited 10-30x cold; treat as approximate), residual Node-compat edges | raw solo-project speed |
 
-The rule that outranks the choice: **one package manager per repo, pinned via `packageManager`** - mixed lockfiles are the real hazard. Corepack is not bundled from Node 25+ (`packageManager` is still respected): install the manager explicitly via a setup step, Volta, or the base image.
+Corepack is not bundled from Node 25+ (`packageManager` is still respected): install the manager explicitly via a setup step, Volta, or the base image.
 
 ## Monorepo tooling
 
-npm workspaces suffice for a handful of packages sharing a lockfile - they have no task orchestration, caching, or affected-graph analysis, and a real monorepo on bare workspaces with manual dependency tracking is technical debt. Default: **pnpm workspaces + Turborepo** (one config file, remote caching). Graduate to **Nx** for affected-graph CI, code generation, boundary enforcement, or polyglot repos (first-party .NET/Maven plugins exist - relevant for a C# shop). Roughly: past ~100 packages or affected-graph needs, Nx. Switching costs are real - pick one, standardize, don't migrate mid-flight.
+npm workspaces suffice for a handful of packages sharing a lockfile - they have no task orchestration, caching, or affected-graph analysis, and a real monorepo on bare workspaces with manual dependency tracking is technical debt. Default: **pnpm workspaces + Turborepo** (one config file, remote caching). Graduate to **Nx** for affected-graph CI, code generation, boundary enforcement, or polyglot repos (first-party .NET/Maven plugins exist). Roughly: past ~100 packages or affected-graph needs, Nx. Switching costs are real - pick one, standardize, don't migrate mid-flight.
 
 ## Node targeting
 

@@ -11,6 +11,7 @@ links, offline-first sync - have their own shapes in `native-features.md`.
 - Wrapping - the typed-service contract
 - Permissions - check, explain, request, handle the no
 - Native-vs-web fallbacks - degrade, never crash
+- Platform detection - pick the right check for the question
 - Testing the native seams
 
 ## Capacitor plugins - sourcing
@@ -29,10 +30,8 @@ per release; the durable sourcing and typed-wrapping policy is here.
 
 ## Wrapping - the typed-service contract
 
-- Call a plugin only through a typed Angular service - never the plugin API scattered across
-  components. The service is the single owner of the whole native seam: the permission check, the
-  web-fallback branch, the listener lifecycle, and error mapping (a denied permission or missing
-  capability is a `Result` the UI renders, not an unhandled throw).
+The one-typed-service rule is `SKILL.md`'s (The native seam).
+
 - The cross-cutting native features nearly every production app hits - push notifications, deep
   links / universal links, offline-first sync - are each built as one of these services; their house
   shapes (token lifecycle, URL-to-route mapping, queue-and-drain) live in `native-features.md`.
@@ -48,9 +47,18 @@ Run the full cycle, in order, for any permission-gated API (camera, geolocation,
 
 ## Native-vs-web fallbacks - degrade, never crash
 
-- Every native call needs a defined web path so the PWA and `ionic serve` dev build still run.
-- Three fallback shapes, in order of preference: (1) a real web implementation when the plugin ships web support (Capacitor's official plugins mostly do - Camera falls back to file input, Preferences to localStorage); (2) a degraded-but-functional stand-in (share via the Web Share API, or copy-link when even that is absent); (3) an explicit, typed 'unavailable' result the UI can render as a disabled affordance. Prefer the highest one the plugin and target support - a silent no-op is the one outcome to avoid, because it looks like a bug.
+The every-call-has-a-web-path rule is `SKILL.md`'s. The three shapes, with examples, in order of preference:
+
+- (1) a real web implementation when the plugin ships web support (Capacitor's official plugins mostly do - Camera falls back to file input, Preferences to localStorage); (2) a degraded-but-functional stand-in (share via the Web Share API, or copy-link when even that is absent); (3) an explicit, typed 'unavailable' result the UI can render as a disabled affordance. Prefer the highest one the plugin and target support.
 - Feature-detect, don't assume: gate on `Capacitor.isPluginAvailable('Camera')` and the platform, not on a try/catch that swallows everything.
+
+## Platform detection - pick the right check for the question
+
+Three different questions, three different calls - don't conflate them:
+- 'Is there a native bridge at all?' -> `Capacitor.isNativePlatform()` (true on iOS and Android, false in a browser / PWA). This is the gate for any code that calls a native plugin path.
+- 'Which OS?' -> `Capacitor.getPlatform()` returns `'ios' | 'android' | 'web'`. Branch on it only for genuinely platform-specific behavior (a status-bar inset, an iOS-only API), never as a substitute for the native check above.
+- 'What can the app do right now?' -> Ionic's `Platform` service: `platform.is('ios' | 'mobile' | 'pwa' | 'desktop' | 'capacitor')` plus `platform.ready()`. Prefer `Platform` inside Angular components because it injects cleanly and is mockable in tests; reserve the static `Capacitor.*` calls for plain functions and services with no injection context.
+- Resolve platform once in a typed service and expose signals, rather than calling `getPlatform()` ad hoc across the tree.
 
 ## Testing the native seams
 

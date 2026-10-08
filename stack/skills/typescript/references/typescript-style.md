@@ -120,9 +120,9 @@ Enforce with the `@typescript-eslint/naming-convention` rule (feature-frozen but
 - Minority position: Matt Pocock (Total TypeScript) recommends the opposite - 'I would recommend you use type by default. It is a little more flexible and a little less surprising.' This is a legitimate stance, but the majority and the tooling default is `interface`. Pick one per codebase and enforce it.
 
 ## any vs unknown
-- Ban `any`. `recommended` and `strict` set no-explicit-any to 'error'.
-- Use `unknown` for values of genuinely unknown type, then narrow with type guards.
-- The strict-type-checked config catches unsafe `any` flows via no-unsafe-assignment, no-unsafe-call, no-unsafe-member-access, and no-unsafe-return.
+The rule is `SKILL.md`'s (Don't lie to the compiler); the lint that enforces it:
+- no-explicit-any - 'error' in `recommended` and `strict`.
+- no-unsafe-assignment, no-unsafe-call, no-unsafe-member-access, no-unsafe-return - 'error' in strict-type-checked, catching unsafe `any` flows.
 
 ## Type inference vs explicit annotations
 - Let inference handle local variables and simple initializers - do not write `const count: number = 0`. The stylistic no-inferrable-types rule flags redundant annotations.
@@ -130,10 +130,7 @@ Enforce with the `@typescript-eslint/naming-convention` rule (feature-frozen but
 - Annotate return types on exported/module-boundary functions. The explicit-module-boundary-types rule enforces this; it documents public APIs and prevents accidental return-type drift.
 
 ## readonly and immutability
-- Mark never-reassigned properties `readonly`.
-- Use `readonly T[]` / `ReadonlyArray<T>` for arrays you do not mutate.
-- Use `as const` for literal constants and tuples.
-- Know the core utility types: `Readonly<T>`, `Partial<T>`, `Required<T>`, `Pick<T,K>`, `Omit<T,K>`, `Record<K,V>`, `ReturnType<T>`, `Parameters<T>`, `Awaited<T>`. Compose these rather than hand-rolling.
+The rule is `SKILL.md`'s (`readonly` by default); no preset enforces it. prefer-readonly (type-checked, opt-in) flags a private member never reassigned outside the constructor.
 
 ## Array and type syntax (stylistic defaults)
 - The array-type rule defaults to 'array' -> prefer `T[]` over `Array<T>`. Use `Array<T>` only for complex element types where brackets hurt readability.
@@ -141,10 +138,9 @@ Enforce with the `@typescript-eslint/naming-convention` rule (feature-frozen but
 - consistent-type-imports is NOT in any preset - add it manually to enforce `import type { Foo }` for type-only imports (helps bundlers strip types).
 
 ## null / undefined handling
-- Prefer `undefined` for 'absent' in TS code; reserve `null` for external APIs/JSON that use it.
-- With `strictNullChecks`, model optionality explicitly (`foo?: string` or `string | undefined`).
-- Use optional chaining `?.` and nullish coalescing `??` (not `||`, which trips on `0`/`''`). The prefer-optional-chain and prefer-nullish-coalescing rules live in stylistic-type-checked.
-- Avoid non-null assertions (`!`). `strict` sets no-non-null-assertion to 'error'. If you must assert, comment why.
+The rules are `SKILL.md`'s (Model absence on purpose; no non-null assertion without a reason); the lint that enforces them:
+- prefer-optional-chain and prefer-nullish-coalescing - in stylistic-type-checked (`??` over `||`, which trips on `0` / `''`).
+- no-non-null-assertion - 'error' in `strict`.
 
 ## Functions
 - Use `function` declarations for top-level named functions (hoisting, cleaner stack traces); arrow functions for callbacks, closures, and class fields where lexical `this` matters.
@@ -156,7 +152,7 @@ Enforce with the `@typescript-eslint/naming-convention` rule (feature-frozen but
 - Use `readonly` for injected/constructor-set fields that do not change.
 - Member ordering: enforce with the `@typescript-eslint/member-ordering` rule - static fields, instance fields, constructor, then methods; public before protected before private within each group.
 - Use the `override` keyword (`noImplicitOverride` enforces it).
-- Prefer parameter properties (`constructor(private readonly svc: Svc)`) for concise DI.
+- Prefer parameter properties (`constructor(private readonly svc: Svc)`) for concise constructor DI - unless the framework layer prescribes its own injection function, which wins.
 
 ## Imports / exports
 - Prefer named exports over default exports (better refactoring, consistent names, better tree-shaking).
@@ -249,3 +245,6 @@ function pageSize(cfg: { size?: number }): number {
 - The `strict` / strict-type-checked rulesets can change in minor typescript-eslint releases - pin versions.
 - array-type and consistent-type-definitions are the two most commonly disabled stylistic rules; decide as a team whether you want `T[]`/`interface` enforced.
 - The `I`-prefix and type-by-default debates are genuine community splits, not settled facts.
+- **The mental model under the type rules:** a type is a set of values. Assignability is 'is a subset of'; `extends` and intersection shrink the set; `never` is the empty set and `unknown` the set of everything. That is why a `never` default proves exhaustiveness and why `unknown` is the safe top type to narrow down from.
+- **Library-grade type work** - conditional types with `infer`, mapped types, template-literal types - is worth it behind a published API surface, verified with `tsc --noEmit`. It is not worth it when a plain type or a utility type already says the shape. Type-level cleverness is a cost; spend it only where the surface is wide enough to repay it.
+- **TypeScript 7 (the Go-native rewrite):** same type system and syntax, roughly 10x faster type-checking - but its stability state moves fast, so verify the CURRENT release status and your toolchain's support (editor LSP, programmatic API) via the documentation server at adoption time rather than trusting recall. Adopt it first where risk is lowest and the win immediate: `tsc --noEmit` in CI. Hold on TS 6 if you depend on the programmatic compiler API (ts-morph, custom transformers, some framework template type-checkers) until the stable 7.x API ships. Transpilation stays on esbuild/SWC/Vite regardless - they strip types without checking; only `tsc --noEmit` is type safety.

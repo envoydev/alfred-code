@@ -199,7 +199,7 @@ test('I42: the npm baseline lists install-script dependencies and rebuilds the v
     assert.match(text, /"hasInstallScript": true/);
     assert.match(text, /npm rebuild <name> --ignore-scripts=false/);
     assert.match(text, /build and test/);
-    assert.match(text, /already has an `\.npmrc`.*AskUserQuestion/);
+    assert.match(text, /propose it through ONE AskUserQuestion.*merged into an existing `\.npmrc`, never an overwrite/);
 });
 
 // I43 - PgBouncer 1.21+ tracks protocol-level prepared statements in transaction mode.

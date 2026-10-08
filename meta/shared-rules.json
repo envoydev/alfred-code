@@ -1076,6 +1076,19 @@
         }
       ]
     },
+    "device-e2e-suite": {
+      "_note": "Real-device E2E belongs to a device suite, never a jsdom unit spec, and a flow with no such suite is reported UNVERIFIED. The Ionic native-seam reference owns it; the Angular testing hub restates it because the Ionic layer may be absent (2026-10-08 audit, D15).",
+      "owner": {
+        "file": "stack/skills/ionic/references/native-seam.md",
+        "marker": "device E2E suite (Appium or WebdriverIO against a device or simulator"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/angular-testing/SKILL.md",
+          "marker": "device E2E suite (Appium or WebdriverIO against a device or simulator"
+        }
+      ]
+    },
     "testing-suite-audit-lenses": {
       "_note": "The false-confidence lens catalog owned by dotnet-testing references/suite-audit.md; the two TS-side hubs restate the lens list alongside their own vendored suite-audit copies (testing-suite-audit-method).",
       "owner": {
@@ -2890,7 +2903,7 @@
       ]
     },
     "plain-ts-js-vitest-default": {
-      "_note": "Vitest is the house default runner for a NEW plain-TS/JS suite - owned by the javascript skill; ts-js-testing's runner routing attributes and applies it.",
+      "_note": "Vitest is the house default runner for a NEW plain-TS/JS suite - owned by the javascript skill; ts-js-testing's runner routing applies it.",
       "owner": {
         "file": "stack/skills/javascript/SKILL.md",
         "marker": "Default test runner for plain JS/TS projects"
@@ -6193,7 +6206,7 @@
       ]
     },
     "fix-test-named-for-defect": {
-      "_note": "A test added for a fix is named for the defect it pins and fails on the unfixed code first - dotnet-testing owns it, angular-testing carries the spec-shaped copy.",
+      "_note": "A test added for a fix is named for the defect it pins and fails on the unfixed code first - dotnet-testing owns it, angular-testing and ts-js-testing carry the spec-shaped copy (ts-js-testing since the 2026-10-08 audit, D2).",
       "owner": {
         "file": "stack/skills/dotnet-testing/SKILL.md",
         "marker": "fails on the unfixed code before it passes"
@@ -6202,11 +6215,15 @@
         {
           "file": "stack/skills/angular-testing/SKILL.md",
           "marker": "fails on the unfixed code before it passes"
+        },
+        {
+          "file": "stack/skills/ts-js-testing/SKILL.md",
+          "marker": "fails on the unfixed code before it passes"
         }
       ]
     },
     "self-review-is-not-the-check": {
-      "_note": "Re-reading your own change is not verification; the check is a run or a reviewer who did not write it - dotnet-testing owns it, angular-testing carries the copy.",
+      "_note": "Re-reading your own change is not verification; the check is a run or a reviewer who did not write it - dotnet-testing owns it, angular-testing and ts-js-testing carry the copy (ts-js-testing since the 2026-10-08 audit, D2).",
       "owner": {
         "file": "stack/skills/dotnet-testing/SKILL.md",
         "marker": "A self-review is never the check"
@@ -6214,6 +6231,10 @@
       "sites": [
         {
           "file": "stack/skills/angular-testing/SKILL.md",
+          "marker": "A self-review is never the check"
+        },
+        {
+          "file": "stack/skills/ts-js-testing/SKILL.md",
           "marker": "A self-review is never the check"
         }
       ]
