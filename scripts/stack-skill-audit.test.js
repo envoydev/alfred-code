@@ -48,7 +48,8 @@ const description = (name) => (/^description:\s*"(.*)"\s*$/m.exec(skill(name)) |
 // route it reaches for only when the whole branch is the scope. No stack skill may say the checkpoint runs it.
 test('B4: no stack skill says the pre-commit checkpoint runs /security-review', () =>
 {
-    for (const dir of fs.readdirSync(SKILLS))
+    // directories only - a checkout carries OS litter (.DS_Store) beside the skills
+    for (const dir of fs.readdirSync(SKILLS, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name))
     {
         for (const [rel, text] of skillDocs(dir))
             assert.doesNotMatch(squash(text), /`\/security-review`, which the pre-commit checkpoint runs/, `${rel} says the checkpoint runs /security-review`);
