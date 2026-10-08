@@ -300,16 +300,26 @@ function namedDbPath(projectRoot, { home = os.homedir(), configDir } = {}) {
 // worktree checkout, so its parent is the main repo's own directory in both cases. A bare repo (or any
 // layout where the common dir does not end in '.git') falls back to `--show-toplevel`, then to
 // projectRoot itself.
+// One lookup per directory per process, 1.5s per git call: levelOfPath and projectName each asked it on every
+// SessionStart, two git spawns at 5s each - a worst case of 20s against the hook's 10s, which lost the whole injection
+// (audit 2026-10-08 row 43). A timed-out lookup falls through to the next answer, never past it.
+const MAIN_CHECKOUT_GIT_MS = 1500;
+const mainCheckoutSeen = new Map();
 function mainCheckoutRoot(projectRoot) {
-  try {
-    const common = execFileSync('git', ['-C', projectRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim();
-    if (common && path.basename(common) === '.git') return path.dirname(common);
-  } catch {}
-  try {
-    const top = execFileSync('git', ['-C', projectRoot, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim();
-    if (top) return top;
-  } catch {}
-  return projectRoot;
+  if (mainCheckoutSeen.has(projectRoot)) return mainCheckoutSeen.get(projectRoot);
+  const answer = (() => {
+    try {
+      const common = execFileSync('git', ['-C', projectRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: MAIN_CHECKOUT_GIT_MS }).trim();
+      if (common && path.basename(common) === '.git') return path.dirname(common);
+    } catch {}
+    try {
+      const top = execFileSync('git', ['-C', projectRoot, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: MAIN_CHECKOUT_GIT_MS }).trim();
+      if (top) return top;
+    } catch {}
+    return projectRoot;
+  })();
+  mainCheckoutSeen.set(projectRoot, answer);
+  return answer;
 }
 
 // THE PROJECT A LAUNCH DIRECTORY BELONGS TO (review 2.1.6 re-verify 3 S2 / S3, re-verify 4 T1 / T2). A server Claude Code

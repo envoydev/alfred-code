@@ -499,9 +499,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     newest first within each - nothing is deleted. `node
     .claude/hooks/memory.js level [projectRoot]` is the same engine's CLI, read by `validate` and
     `status` (`<level> <dbPath>` - then `unreadable <file>` per settings file it skipped - or `refused <file>` when a
-    settings file cannot be read and no other names the database, or `none`). Fail-open: a missing database, a locked file, or
-    `node:sqlite` unavailable on this Node injects nothing, and never logs - a silent SessionStart
-    is never reported as a failure. The CLI also moves memories between databases: `export [project]
+    settings file cannot be read and no other names the database, or `none`). Fail-open: with a registration, a missing
+    database, a locked file, or `node:sqlite` unavailable on this Node selects nothing and injects only the project tag
+    and the search line (I5); with no registration it injects nothing; it never logs - a silent SessionStart is never
+    reported as a failure. The main checkout is looked up once per start, 1.5s per git call (audit 2026-10-08: two
+    lookups at 5s each could pass the 10s timeout and lose the injection). The CLI also moves memories between databases: `export [project]
     [--all] [--db <file>]` writes the live rows as JSONL straight from the file (a read failure exits
     1), and `import <file.jsonl>` stores them THROUGH the service (real embeddings), skipping a line
     whose content hash (the service's own) is already live. Both imports, this one and init's notes

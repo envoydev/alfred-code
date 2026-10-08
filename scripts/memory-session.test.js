@@ -309,3 +309,22 @@ test('a 500-row database resolves in well under 1s', { skip: skipNoSqlite }, () 
     assert.match(r.stdout, /^\{"hookSpecificOutput"/);
   } finally { p.rm(); }
 });
+
+// Audit 2026-10-08 row 43: levelOfPath and projectName each looked the main checkout up - two git spawns at 5s each,
+// asked twice per SessionStart, a 20s worst case against the 10s timeout. One lookup now, 1.5s per git call. A git shim
+// on PATH counts the calls.
+test('a SessionStart looks the main checkout up once, at 1.5s per git call', { skip: process.platform === 'win32' && 'a sh shim on PATH' }, () => {
+  const p = fixtureProject({});
+  const real = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+  const bin = tmpDir('memory-git-shim-');
+  const calls = path.join(bin, 'calls.log');
+  try {
+    fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\necho "$*" >> "${calls}"\nexec "${real}" "$@"\n`, { mode: 0o755 });
+    const r = p.hook({ hook_event_name: 'SessionStart', session_id: 'mc', cwd: p.root }, { PATH: `${bin}${path.delimiter}${process.env.PATH}` });
+    assert.strictEqual(r.status, 0);
+    assert.match(r.stdout, /This project's memory tag: project:/, 'the tag line is still injected');
+    const lookups = fs.readFileSync(calls, 'utf8').split('\n').filter((l) => /rev-parse --path-format=absolute --git-common-dir/.test(l));
+    assert.strictEqual(lookups.length, 1, fs.readFileSync(calls, 'utf8'));
+  } finally { p.rm(); rmDir(bin); }
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'memory.js'), 'utf8'), /const MAIN_CHECKOUT_GIT_MS = 1500;/);
+});
