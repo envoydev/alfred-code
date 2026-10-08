@@ -438,6 +438,32 @@ const gateIn = (dir, command, env = {}) => runIn('guard-ungated-commit.js', { to
 }).status;
 const forty = () => Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n');
 
+// Audit 2026-10-08 S9: the stop contract's markers and log, the fresh-session offers and the read guard's session files
+// were never pruned. Each hook sweeps its own prefix past 7 days when it writes its state.
+test('the stop contract, the fresh-session offer and the read guard sweep their own state past 7 days', () => {
+  const logDir = fs.mkdtempSync(path.join(TMP, 'sweep-logs-'));
+  const plant = (dir, name, days, body = 'x') => { const f = path.join(dir, name); fs.writeFileSync(f, body); const t = new Date(Date.now() - days * 86400000); fs.utimesSync(f, t, t); return f; };
+  const env = { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir } };
+  const stopOld = plant(logDir, 'guard-stop-askvoice-old-x', 8);
+  const chainOld = plant(logDir, 'alfred-stop-held-guard-x-Stop-old-main', 8);
+  const stopFresh = plant(logDir, 'guard-stop-rotate-new-x.logged', 6);
+  const log = path.join(logDir, 'guard-stop-contract.log');
+  fs.writeFileSync(log, Array.from({ length: 60000 }, (_, i) => `2026-10-01T00:00:00Z row ${i}`).join('\n') + '\n');
+  assert.equal(runIn('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'sweep', last_assistant_message: 'Done.', stop_hook_active: false }, env).status, 0);
+  assert.ok(!fs.existsSync(stopOld) && !fs.existsSync(chainOld), 'the stop contract swept its markers and the chain markers');
+  assert.ok(fs.existsSync(stopFresh), 'a six-day marker is kept');
+  assert.ok(fs.statSync(log).size <= 256 * 1024, `the log was capped (${fs.statSync(log).size} bytes)`);
+  const freshOld = plant(logDir, 'guard-fresh-size-old.offered', 8, '100 1');
+  const tp = transcript('sweep-fresh', ctxRows('sweep-fresh', 450000));
+  assert.equal(runIn('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'loop-quality' }, transcript_path: tp }, env).status, 2, 'the offer is made');
+  assert.ok(!fs.existsSync(freshOld), 'writing an offer swept an offer past 7 days');
+  // the hook's temp dir is this suite's own (isolateHookSuite ownTmp), the parent of TMP
+  const readOld = plant(os.tmpdir(), 'guard-read-gone.json', 8, '{}');
+  const readFresh = plant(os.tmpdir(), 'guard-read-kept.json', 6, '{}');
+  assert.equal(run('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: BIG, offset: 1, limit: 10 }, session_id: 'sweep-read' }), 0);
+  assert.ok(!fs.existsSync(readOld) && fs.existsSync(readFresh), 'the read guard swept its own session files past 7 days');
+});
+
 test('guard-read-whole-file: the Read matcher gates whole-file shapes and the cumulative cap', () => {
   const read = (input, session_id) => run('guard-read-whole-file.js', { tool_name: 'Read', tool_input: input, session_id });
   assert.equal(read({ file_path: BIG }), 2, 'no offset/limit');

@@ -99,6 +99,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   Claude Code's 8-consecutive-continuation cap the outer guard - and an unwritable marker dir stands a continuation
   down, the old reading. The stop contract's per-turn probes skip a continuation (the same turn), and its SubagentStop
   hold keeps the plain flag beside its own once-marker (`guard-hooks.test.js`: never held again, marker or not).
+  STATE HYGIENE (audit 2026-10-08 S9): a hook that writes per-session state sweeps its own prefix's files untouched for 7
+  days, once per process inside 50ms (`hook-prelude.js` `sweepStale`, the docs-session sweep's pattern) - the stop
+  contract at each Stop (`guard-stop-*`, the `alfred-stop-held-*` chain markers, and its log capped to the newest 256KB
+  past 1MB, `capLog`), the fresh-session hook when it writes an offer (`guard-fresh-*`), the read guard when it logs a
+  range (`guard-read-*`), the monitor at each prompt (`<docs>/flow/monitor-*`) and the commit guard when it writes its
+  trivial ledger (`<docs>/flow/trivial-*`).
   A denial that needs the user's decision ends in ONE AskUserQuestion, and an 'allow' answer is
   honoured through a `<docs-path>/flow/*-ALLOW` receipt (this session's own, under 8h).
   - `guard-protected-force-push.js` - blocks force-push to protected branches. It reads the command through

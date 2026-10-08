@@ -2447,6 +2447,9 @@ try { fileKey = fs.realpathSync(fileKey); } catch { /* as resolved */ }
 const rangeLog = sessionStateFile().replace(/\.json$/, '-ranges.jsonl');
 const rowId = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 try { fs.appendFileSync(rangeLog, JSON.stringify({ f: fileKey, a: offset, b: end, id: rowId }) + '\n'); } catch { /* best-effort */ }
+// State hygiene when this guard writes its state (hook-prelude.js sweepStale, audit 2026-10-08 S9): its session files
+// past 7 days go.
+try { const pre = require('./hook-prelude.js'); if (typeof pre.sweepStale === 'function') pre.sweepStale(os.tmpdir(), 'guard-read-'); } catch { /* no prelude */ }
 const mergeIn = (merged, a, b) => {
   const out = merged.concat([[a, b]]).sort((x, y) => x[0] - y[0]);
   const m = [];

@@ -327,6 +327,26 @@ test('N1: a trivial commit the guard let through but git never made is not count
     } finally { p.rm(); }
 });
 
+// Audit 2026-10-08 S9: a session's trivial ledger was never pruned; a new one sweeps the others past 7 days.
+test('a new trivial ledger sweeps other sessions\' ledgers past 7 days, and keeps a fresher one', () => {
+    const p = project();
+    try {
+        const flow = path.join(p.dir, DOCS, 'flow');
+        fs.mkdirSync(flow, { recursive: true });
+        const plant = (name, days) => { const f = path.join(flow, name); fs.writeFileSync(f, '{}\n'); const t = new Date(Date.now() - days * 86400000); fs.utimesSync(f, t, t); return f; };
+        const old = plant('trivial-gone', 8);
+        const fresh = plant('trivial-kept', 6);
+        const other = plant('COMMIT-GATE-old-note', 30);
+        p.hist('sweep');
+        p.write('src/feat1.cs', ten('f1'));
+        assert.strictEqual(p.bash('sweep', 'git add src/feat1.cs && git commit -m one').status, 0);
+        assert.ok(fs.existsSync(path.join(flow, 'trivial-sweep')), 'this session\'s ledger was written');
+        assert.ok(!fs.existsSync(old), 'eight days old is swept');
+        assert.ok(fs.existsSync(fresh), 'six days old is kept');
+        assert.ok(fs.existsSync(other), 'a file with another prefix is never touched');
+    } finally { p.rm(); }
+});
+
 // 2.1.6 re-verify 2 R2-M4: the ledger kept a row while the HEAD it was made on stayed an ancestor, so rewritten history
 // left the bar - an amend loop built a 43-line commit 14 lines at a time, a rebase dropped every row after the first -
 // and it wrote a row per trivial PASS, so failed attempts counted twice and a receipt-covered commit counted at all.

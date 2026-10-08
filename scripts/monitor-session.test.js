@@ -235,3 +235,19 @@ test('monitor: parallel calls lose no count - each judges the order the log reco
     await Promise.all(Array.from({ length: 24 }, (_, i) => fire({ tool_name: 'Write', tool_input: { file_path: `f${i}.ts`, content: 'x' } })));
     assert.deepStrictEqual(s.rows().map((r) => r.kind), ['repeat', 'scope'], '24 parallel writes of distinct files: exactly one scope note');
 });
+
+// Audit 2026-10-08 S9: the turn logs were never pruned; a new turn sweeps other sessions' past 7 days.
+test('monitor: a new turn sweeps other sessions\' logs past 7 days, and keeps a fresher one', () =>
+{
+    const s = session();
+    const flow = path.dirname(s.stateFile);
+    fs.mkdirSync(flow, { recursive: true });
+    const plant = (name, days) => { const f = path.join(flow, name); fs.writeFileSync(f, ''); const t = new Date(Date.now() - days * 86400000); fs.utimesSync(f, t, t); return f; };
+    const old = plant('monitor-gone.jsonl', 8);
+    const fresh = plant('monitor-kept.jsonl', 6);
+    const other = plant('APPROVAL', 30);
+    s.prompt();
+    assert.ok(!fs.existsSync(old), 'eight days old is swept');
+    assert.ok(fs.existsSync(fresh) && fs.existsSync(other), 'six days old, and a file with another prefix, are kept');
+    assert.ok(fs.existsSync(s.stateFile), 'this session\'s own log was written');
+});

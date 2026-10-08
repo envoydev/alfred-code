@@ -145,6 +145,9 @@ if (require.main === module)
   if (event === 'UserPromptSubmit')
   {
     try { fs.mkdirSync(path.dirname(logFile), { recursive: true }); fs.writeFileSync(logFile, ''); } catch { /* best-effort */ }
+    // State hygiene once a turn (hook-prelude.js sweepStale, audit 2026-10-08 S9): other sessions' logs and markers
+    // past 7 days go.
+    try { const pre = require('./hook-prelude.js'); if (typeof pre.sweepStale === 'function') pre.sweepStale(path.dirname(logFile), 'monitor-'); } catch { /* no prelude */ }
     process.exit(0);
   }
   // One append per call: a short line is written whole under O_APPEND, so parallel calls never lose a row; it

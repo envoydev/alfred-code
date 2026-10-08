@@ -1060,6 +1060,7 @@ function pinnedStart() {
     const head = git('rev-parse HEAD');
     fs.mkdirSync(path.dirname(trivialLedger()), { recursive: true });
     fs.appendFileSync(trivialLedger(), `${JSON.stringify({ start: head })}\n`);
+    sweepLedgers();
     return head;
   } catch { return ''; }
 }
@@ -1103,6 +1104,12 @@ function recordTrivial(set) {
     fs.mkdirSync(path.dirname(trivialLedger()), { recursive: true });
     fs.appendFileSync(trivialLedger(), `${JSON.stringify(row)}\n`);
   } catch { /* an unwritable ledger only loosens the next commit's bar to this one */ }
+  sweepLedgers();
+}
+// When this guard writes its ledger, other sessions' ledgers past 7 days go (hook-prelude.js sweepStale, audit
+// 2026-10-08 S9) - the bar reads only this session's.
+function sweepLedgers() {
+  try { const pre = require('./hook-prelude.js'); if (typeof pre.sweepStale === 'function') pre.sweepStale(path.dirname(trivialLedger()), 'trivial-'); } catch { /* no prelude */ }
 }
 let barSetCache;
 function barSet() {

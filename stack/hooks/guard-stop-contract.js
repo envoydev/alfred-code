@@ -1259,6 +1259,13 @@ function noTestRule(root) {
 }
 
 if (payload.hook_event_name === 'Stop') {
+  // State hygiene, once a Stop (hook-prelude.js sweepStale, audit 2026-10-08 S9): this hook's markers and the Stop-chain
+  // markers past 7 days go, and its log keeps its newest 256KB past 1MB.
+  try {
+    const pre = require('./hook-prelude.js');
+    const logDir = envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir();
+    if (typeof pre.sweepStale === 'function') { pre.sweepStale(logDir, 'guard-stop-'); pre.sweepStale(logDir, 'alfred-stop-held-'); pre.capLog(require('path').join(logDir, 'guard-stop-contract.log')); }
+  } catch { /* no prelude: nothing swept */ }
   // Only a continuation THIS hook caused stands down; one a sibling Stop hook caused is judged once more, and this
   // hook still blocks at most once per cycle (hook-prelude.js, the Stop chain - audit 2026-10-08 S1).
   if (stopHeld(payload)) process.exit(0);

@@ -672,3 +672,35 @@ test('stop chain: own continuation stands down, a sibling one is judged, a fresh
             'where no marker can be written a continuation stands down - judging again could block again');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// Audit 2026-10-08 S9: the hooks' per-session state was never pruned.
+test('sweepStale removes only its prefix\'s files past 7 days, once per dir and prefix; capLog keeps the newest lines', () =>
+{
+    const { sweepStale, capLog, STALE_MS } = require(PRELUDE);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-sweep-'));
+    try
+    {
+        const now = Date.now();
+        const plant = (name, ageMs) => { const f = path.join(dir, name); fs.writeFileSync(f, 'x'); const t = new Date(now - ageMs); fs.utimesSync(f, t, t); return f; };
+        const under = plant('guard-x-under', STALE_MS - 60000);
+        const at = plant('guard-x-at', STALE_MS);
+        const over = plant('guard-x-over', STALE_MS + 60000);
+        const foreign = plant('other-over', STALE_MS * 3);
+        fs.mkdirSync(path.join(dir, 'guard-x-folder'));
+        const atMs = fs.statSync(at).mtimeMs;
+        assert.strictEqual(sweepStale(dir, 'guard-x-', { now: atMs + STALE_MS }), 1);
+        assert.ok(fs.existsSync(under) && fs.existsSync(at), 'under and exactly at the cutoff are kept');
+        assert.ok(!fs.existsSync(over), 'past it is swept');
+        assert.ok(fs.existsSync(foreign) && fs.existsSync(path.join(dir, 'guard-x-folder')), 'another prefix and a folder are never touched');
+        plant('guard-x-later', STALE_MS * 2);
+        assert.strictEqual(sweepStale(dir, 'guard-x-'), 0, 'once per dir and prefix in a process');
+        assert.strictEqual(sweepStale(path.join(dir, 'gone'), 'guard-x-'), 0, 'a missing dir is no error');
+        const log = path.join(dir, 'a.log');
+        fs.writeFileSync(log, Array.from({ length: 2000 }, (_, i) => `row ${i}`).join('\n') + '\n');
+        assert.strictEqual(capLog(log, 4096, 1024), true);
+        const kept = fs.readFileSync(log, 'utf8');
+        assert.ok(kept.length <= 1024 && kept.endsWith('row 1999\n') && /^row \d+\n/.test(kept), 'the newest lines, cut at a line start');
+        assert.strictEqual(capLog(log, 4096, 1024), false, 'a log under the cap is left alone');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

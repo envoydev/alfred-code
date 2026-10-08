@@ -512,6 +512,14 @@ function sizeOfferAnswered() {
 }
 function recordSizeOffer(ctx) {
   try { fs.writeFileSync(sizeOfferFile(), `${ctx} ${fresh.transcriptSize()}`); } catch { /* never let state break the gate */ }
+  sweepOffers();
+}
+// State hygiene when an offer is written (hook-prelude.js sweepStale, audit 2026-10-08 S9): offers past 7 days go.
+function sweepOffers() {
+  try {
+    const pre = require('./hook-prelude.js');
+    if (typeof pre.sweepStale === 'function') pre.sweepStale(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), 'guard-fresh-');
+  } catch { /* no prelude: nothing swept */ }
 }
 
 // A SUBAGENT's Skill call (the payload carries agent_id) is a phase of work its parent dispatched:
@@ -545,6 +553,7 @@ if (unattended(payload)) {
 }
 if (chained) {
   try { fs.writeFileSync(chainedOfferFile(), new Date().toISOString()); } catch { /* never let state break the gate */ }
+  sweepOffers();
 }
 // Written on BOTH routes. The slash route injects rather than denies, but it is the same offer to
 // the same user about the same number, so answering it there must silence the Skill route too.

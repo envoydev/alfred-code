@@ -360,6 +360,56 @@ function markStopHeld(hook, input, env)
     try { fs.writeFileSync(stopMarkerFile(hook, input, env), new Date().toISOString()); } catch { /* stopHeldThisCycle stands down where this cannot write */ }
 }
 
+// STATE HYGIENE (audit 2026-10-08 S9). The hooks' per-session state - the stop contract's markers and log, the
+// fresh-session offers, the read guard's range logs, the Stop-chain markers above, `<docs>/flow/monitor-*` and
+// `trivial-*` - was never pruned. sweepStale removes the FILES in `dir` named with `prefix` and untouched for 7 days,
+// once per (dir, prefix) per process, inside a 50ms budget of its own (the docs-session sweep's pattern: a bounded,
+// fail-silent pass a hook makes when it writes its own state). A file exactly at the cutoff is kept.
+const STALE_MS = 7 * 24 * 3600 * 1000;
+const STALE_BUDGET_MS = 50;
+const sweptStale = new Set();
+function sweepStale(dir, prefix, { now = Date.now(), maxAgeMs = STALE_MS } = {})
+{
+    const key = `${dir}\u0000${prefix}`;
+    if (!dir || !prefix || sweptStale.has(key)) return 0;
+    sweptStale.add(key);
+    const deadline = Date.now() + STALE_BUDGET_MS;
+    let removed = 0;
+    try
+    {
+        for (const name of fs.readdirSync(dir))
+        {
+            if (!name.startsWith(prefix)) continue;
+            if (Date.now() > deadline) break;
+            const file = path.join(dir, name);
+            try
+            {
+                const st = fs.lstatSync(file);
+                if (st.isFile() && now - st.mtimeMs > maxAgeMs) { fs.rmSync(file, { force: true }); removed++; }
+            }
+            catch { /* gone or unreadable - the next sweep */ }
+        }
+    }
+    catch { /* no dir */ }
+    return removed;
+}
+// An append-only log past `maxBytes` keeps its newest `keepBytes`, cut at a line start.
+function capLog(file, maxBytes = 1024 * 1024, keepBytes = 256 * 1024)
+{
+    try
+    {
+        const size = fs.statSync(file).size;
+        if (size <= maxBytes) return false;
+        const fd = fs.openSync(file, 'r');
+        const buf = Buffer.alloc(Math.min(keepBytes, size));
+        try { fs.readSync(fd, buf, 0, buf.length, size - buf.length); } finally { fs.closeSync(fd); }
+        const nl = buf.indexOf(0x0a);
+        fs.writeFileSync(file, nl >= 0 ? buf.subarray(nl + 1) : buf);
+        return true;
+    }
+    catch { return false; }
+}
+
 // Did `hook` (another Stop blocker) hold this cycle, at or after `sinceMs` (this turn's typed prompt)? Read-only - the
 // answer-length hook's yield to the stop contract. The two run in parallel on a turn's first Stop, so a false there
 // only drops the yield line; on a continuation the sibling's marker is on disk.
@@ -412,4 +462,4 @@ function scanBudget(limits = {})
 // the stop contract's ask deny and the answer-length Stop block, which disagreed ([\u2014\u2013] vs [\u2014\u2015], audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS };
+module.exports = { HOUSE_DASH, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, capLog, STALE_MS };
