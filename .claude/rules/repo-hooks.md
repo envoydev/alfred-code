@@ -268,7 +268,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     run or a branch level with upstream is never gated; `ALFRED_CODE_PUSH_GATE=0` turns the push half off. 'Level' is
     read BEFORE the command runs, so a history mover (commit, merge, cherry-pick, am, rebase, revert, pull, reset) or an
     unreadable git call chained ahead of the push counts as ahead (audit 2026-10-08: `git commit -am x && git push`
-    published ungated).
+    published ungated). So does a push of anything but the current branch, `HEAD` or `@` under its own name (`origin
+    feature`, `feature:main`, a tag, a delete) or of a set (`--all`, `--tags`, `--mirror`, `--follow-tags`), and a
+    first push's scope reads the commits no remote holds. A PUSH-GATE written before this session began is absent
+    (the transcript's birthtime, the dispatch guard's APPROVAL rule); a `WAIVED` quote must waive the review in the
+    user's own words (skip, without the review, just push - a bare 'commit it' is no waiver, an option label this run
+    wrote is no user's words); `head:` is the first sha word on its line; the act a denial echoes is capped at 200
+    characters with a URL credential masked, and the publish denial names `habits-commit-checkpoint`.
     Both are judged in the repo git runs in (the shell's cwd, a leading `cd`, `-C`) - a worktree is its own.
     A PUSH-GATE receipt spanning more than one MANIFEST-owning directory needs a `scope:` line naming
     what the probe actually ran (a plain top-level folder is no project, so an ordinary repo never asks).

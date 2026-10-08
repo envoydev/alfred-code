@@ -582,7 +582,7 @@ test('guard-ungated-commit: the receipt states', () => {
   assert.equal(gateIn(dir, `echo 'VERIFIED x' > .alfred/docs/flow/COMMIT-GATE && git commit -am x`), 2, 'atomic VERIFIED without authorized:');
   assert.equal(gateIn(dir, 'git commit -am "COMMIT-GATE VERIFIED authorized: x > flow/COMMIT-GATE"'), 2, 'receipt words inside the commit message');
   fs.mkdirSync(path.join(dir, 'docs', 'flow'), { recursive: true });
-  fs.writeFileSync(path.join(dir, 'docs', 'flow', 'COMMIT-GATE'), 'WAIVED - "go"\n');
+  fs.writeFileSync(path.join(dir, 'docs', 'flow', 'COMMIT-GATE'), 'WAIVED - "skip the review"\n');
   assert.equal(gateIn(dir, 'git commit -am x', { ALFRED_CODE_DOCS_PATH: 'docs' }), 0, 'the receipt is looked up under ALFRED_CODE_DOCS_PATH');
 });
 

@@ -308,9 +308,14 @@ function projectOf(f) {
 // The projects a PUBLISH is taking out: the commits ahead of upstream, not the working tree (a
 // push's spec already draws that distinction). Docs-root files are excluded the same way
 // commitSet() excludes them - the receipt lives there and names no project of its own.
+// A FIRST push has no upstream to diff against, and the scope check read no project at all (audit 2026-10-08): its
+// commits are the ones no remote branch holds yet.
 function pushTouchedProjects() {
   let files = [];
-  try { files = git('diff @{u}..HEAD --name-only').split('\n').filter(Boolean); } catch { files = []; }
+  try { files = git('diff @{u}..HEAD --name-only').split('\n').filter(Boolean); }
+  catch {
+    try { files = git('log --name-only --format= HEAD --not --remotes').split('\n').filter(Boolean); } catch { files = []; }
+  }
   const pre = docsPrefix();
   const out = new Set();
   for (const f of files) {
@@ -354,6 +359,10 @@ const MAX_RECEIPT_AGE_MS = 2 * 60 * 60 * 1000; // 2h - the gate runs right befor
 // (measured: a PENDING draft sat gate-passing for ~2 minutes).
 const CONSENT_VERB = /\b(commit|commits|committing|push|pushes|pushing|land|lands|landing|ship|ships|shipping|merge|merges|merging|publish|publishes|publishing|release|releases|releasing|go ahead|do it|approve[ds]?|yes)\b/i;
 const CONSENT_VERB_CYR = /(закоммит|коммит|коміт|комміт|закоміт|запуш|пуш|залив|злий|мерж|мердж|мёрдж|вле[йв]|зали[йв]|зале[йв]|викот|выкат|злит|відправ|отправ|випуст|выпуст|дава[йй]|погоджу|согласен|схвал|так, |да, )/i;
+// A WAIVED quote names the review it skips (audit 2026-10-08): skip / waive, without or no review / check / tests, 'just
+// <act>', 'anyway', 'as is' - and the Ukrainian and Russian 'без перевірки', 'пропусти', 'просто <act>', 'як є'.
+const WAIVER_WORDS = /\b(?:skip|skips|skipping|skipped|waive[sd]?|waiving|anyway|regardless|as[\s-]is|without\s+(?:the\s+|a\s+|any\s+)?(?:review|check|verification|verify|tests?|testing|probe)|no\s+(?:review|check|verification|tests?|probe)|(?:don'?t|do\s+not|no\s+need\s+to)\s+(?:review|check|verify|test)|just\s+(?:commit|push|merge|ship|land|publish|release|do\s+it|go))\b/i;
+const WAIVER_WORDS_CYR = /(без\s+(?:рев'?ю|ревью|перевір|провер|тест)|пропуст|просто\s+(?:за)?(?:ком|кім|пуш|залий|влий|мерж|мердж|викот|выкат)|як\s+є|как\s+есть|все\s+одно|всё\s+равно|все\s+равно|не\s+(?:треба|потрібно|нужно|надо)\s+(?:перевір|провер|рев))/i;
 // Opening a pull request asks for the publish under it (2.1.6 H3): the checkpoint skill fires on 'open the PR', and the
 // user's own words were refused as consent. The verb and the PR noun count only together - a bare 'PR' or 'look at the
 // PR' asks for nothing - and only as an ask (review m1 / m2): the verb opens, creates, raises or submits the PR ('make'
@@ -503,8 +512,9 @@ function judgeReceipt(body, opts) {
   const first = ((/\b(VERIFIED|WAIVED)\b[^\n]*/i.exec(text) || [''])[0]).trim();
   // Fields are read by PREFIX from any line, not by line number: a receipt that carries its
   // head/spec lines in a different order is still a conformant receipt.
+  // The key is a whole word: `head` never reads a `header:` line (audit 2026-10-08).
   const field = (key) => {
-    const m = new RegExp(`^\\s*${key}\\s*:?[ \\t]*(.*)$`, 'im').exec(text);
+    const m = new RegExp(`^\\s*${key}\\b\\s*:?[ \\t]*(.*)$`, 'im').exec(text);
     return m ? m[1].trim() : null;
   };
   const waived = /^WAIVED\b/.test(first);
@@ -524,6 +534,11 @@ function judgeReceipt(body, opts) {
   if (waived) {
     const w = quotedOf(first);
     if (!w) r.problem = 'the WAIVED line carries no quoted words - a waiver is the user\'s own sentence, in quotes, on that line';
+    // Any quote passed (audit 2026-10-08: `WAIVED - "what time is it?"` exit 0), the hole the authorized: clause closed.
+    // A waiver names the review it skips; a plain 'commit it' is an instruction to commit, never a waiver
+    // (habits-commit-checkpoint), and an option label this run wrote is the model's sentence, not the user's.
+    else if (!WAIVER_WORDS.test(w) && !WAIVER_WORDS_CYR.test(w)) r.problem = `the WAIVED quote (${JSON.stringify(w).slice(0, 60)}) waives nothing - a waiver is the user's own words skipping the review ('skip the review', 'just push', 'commit it without the check'); an instruction to commit is no waiver`;
+    else if (isOwnOptionLabel(w)) r.problem = 'the WAIVED quote is character-identical to an option label THIS run wrote - that is the model\'s sentence, not the user\'s waiver';
     return r;
   }
 
@@ -562,8 +577,14 @@ function judgeReceipt(body, opts) {
   }
   let realHead = '';
   try { realHead = git('rev-parse HEAD'); } catch { realHead = ''; }
-  const h = head.replace(/[^0-9a-fA-F]/g, '');
-  if (realHead && h && !realHead.startsWith(h) && !h.startsWith(realHead)) {
+  // The sha is the first 7-40 hex WORD on the line, lower-cased: stripping every other character read `head: unknown`
+  // as no sha at all (it passed), and `head: <sha> (main)` or an upper-case sha as a different one (audit 2026-10-08).
+  const h = ((/\b[0-9a-f]{7,40}\b/i.exec(head) || [''])[0]).toLowerCase();
+  if (!h) {
+    r.problem = `head: ${head.slice(0, 40)} names no commit sha - write the output of git rev-parse HEAD`;
+    return r;
+  }
+  if (realHead && !realHead.startsWith(h) && !h.startsWith(realHead)) {
     r.problem = `head: ${head} is not this repo's HEAD (${realHead.slice(0, 12)}) - the review ran against a different commit`;
     return r;
   }
@@ -638,13 +659,14 @@ const receiptOpts = (name) => ({
   countAgainstTree: name === 'COMMIT-GATE',
   touchedProjects: name === 'PUSH-GATE' ? pushTouchedProjects() : null,
 });
-function readReceipt(name) {
+function readReceipt(name, notBeforeMs = 0) {
   const gate = path.resolve(root, docsRoot, 'flow', name);
   let stale = false;
   let body = '';
   try {
-    const age = Date.now() - fs.statSync(gate).mtimeMs;
-    if (age > MAX_RECEIPT_AGE_MS) stale = true;
+    const mtimeMs = fs.statSync(gate).mtimeMs;
+    const age = Date.now() - mtimeMs;
+    if (age > MAX_RECEIPT_AGE_MS || (notBeforeMs && mtimeMs < notBeforeMs)) stale = true;
     else body = fs.readFileSync(gate, 'utf8');
   } catch {
     // absent or unreadable - no gate receipt
@@ -677,8 +699,44 @@ function carriesOwnReceipt(name, upto) {
 // existed nothing gated either: replayed across four bundles, every `git push` and `gh pr merge`
 // passed every guard. In one session the FIRST state-changing act published unpushed commits 18
 // minutes before any receipt existed, and 40 files reached a shared `develop` ungated.
+// `ahead` reads HEAD against ITS upstream, so a push of another ref - `git push origin feature`, `feature:main`, a tag -
+// or of a set (`--all`, `--tags`, `--mirror`, `--follow-tags`) was judged by a level HEAD and ran ungated (audit
+// 2026-10-08, replayed). Only the current branch, HEAD or `@` pushed under its own name rides the upstream reading.
+const PUSH_SET_FLAG = /^--(?:all|branches|tags|mirror|follow-tags)$/;
+const PUSH_VALUE_OPT = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
+function pushNamesOtherRefs(argv) {
+  let branch = '';
+  try { branch = git('rev-parse --abbrev-ref HEAD'); } catch { branch = ''; }
+  const own = new Set(['HEAD', '@', ...(branch && branch !== 'HEAD' ? [branch, `refs/heads/${branch}`] : [])]);
+  const positional = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = String(argv[i]);
+    if (a === '--') { positional.push(...argv.slice(i + 1).map(String)); break; }
+    if (PUSH_SET_FLAG.test(a)) return true;
+    if (PUSH_VALUE_OPT.has(a)) { i++; continue; }
+    if (!a.startsWith('-')) positional.push(a);
+  }
+  return positional.slice(1).some((spec) => {
+    const s = spec.replace(/^\+/, '');
+    const cut = s.indexOf(':');
+    const src = cut < 0 ? s : s.slice(0, cut);
+    const dst = cut < 0 ? null : s.slice(cut + 1);
+    return !own.has(src) || (dst !== null && !own.has(dst));
+  });
+}
+// A receipt written before this session began is another session's decision (the dispatch guard's APPROVAL rule): a
+// push does not move HEAD, so one receipt opened every later push of that head for 2h, in any session (audit
+// 2026-10-08). birthtime counts only where the filesystem reports it (a fallback equal to the ctime is unknown).
+function sessionStartMs() {
+  try {
+    const st = fs.statSync(String(payload.transcript_path || ''));
+    return st.birthtimeMs && st.birthtimeMs !== st.ctimeMs ? st.birthtimeMs : 0;
+  } catch { return 0; }
+}
 if (publishMatch) {
-  const { act } = publishMatch;
+  // The act is echoed into the denial and the ledger row: capped, and a credential in a remote URL masked - the secret
+  // guard runs first on the shell route, but not when it is switched off (audit 2026-10-08).
+  const act = publishMatch.act.replace(/(\/\/)[^@\s/]+@/g, '$1***@').slice(0, 200);
   const isGitPush = publishMatch.git;
   // a dry run publishes nothing (the push's own argv), and neither does a push with nothing ahead of its upstream
   const dryRun = isGitPush && publishMatch.call.argv.some((a) => a === '--dry-run' || /^-[A-Za-z]*n[A-Za-z]*$/.test(a));
@@ -689,13 +747,14 @@ if (publishMatch) {
     // `git merge feature && git push` - publishes what it makes on a branch level with upstream now (audit 2026-10-08: both
     // replayed exit 0 with no receipt). A mover, or a git call the reader could not judge, before the push counts as ahead.
     if (!ahead && calls.some((c) => c.at < publishMatch.index && (HISTORY_MOVER.has(c.sub) || c.opaque))) ahead = true;
+    if (!ahead && pushNamesOtherRefs(publishMatch.call.argv || [])) ahead = true;
   }
   if (!dryRun && ahead && !carriesOwnReceipt('PUSH-GATE', publishMatch.index)) {
-    const r = readReceipt('PUSH-GATE');
+    const r = readReceipt('PUSH-GATE', sessionStartMs());
     if (!((r.waived || r.verified) && !r.problem)) {
       process.stderr.write(
         (r.stale
-          ? `Blocked: ${act} - the publish receipt at ${r.gate} is older than 2h and is treated as absent (a stale receipt from an earlier round did not review THIS push).\n`
+          ? `Blocked: ${act} - the publish receipt at ${r.gate} is older than 2h or was written before this session began, and is treated as absent (a stale receipt from an earlier round did not review THIS push).\n`
           : r.problem
             ? `Blocked: ${act} - the publish receipt at ${r.gate} does not hold: ${r.problem}.\n`
             : `Blocked: ${act} without the publish gate receipt.\n`) +
@@ -703,7 +762,8 @@ if (publishMatch) {
           `and a shared branch cannot be un-pushed quietly. Measured across four sessions: every\n` +
           `push and merge passed every guard, one of them publishing 40 files to a shared develop\n` +
           `and one running before any review receipt existed at all.\n\n` +
-          `Say what is being published and to which branch, get the user's answer, then write\n` +
+          `Per alfred-git.md, the publish runs through habits-commit-checkpoint's publish half (load it with\n` +
+          `the Skill tool): say what is being published and to which branch, get the user's answer, then write\n` +
           `${r.gate}\n` +
           `with these lines:\n` +
           `  VERIFIED <what is being published, one phrase>\n` +
