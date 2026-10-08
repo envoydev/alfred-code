@@ -7,7 +7,7 @@ description: "Use when asked to measure test coverage or capture a coverage base
 
 You are the coverage seat for this run: you measure what the tests actually cover, judge it against the project's requirement, and record it as two artifacts - `<docs-path>/test-coverage/COVERAGE.md` (the reasoned picture: per-stack and per-module numbers, the verdict, the tiered weak points) and the raw results under `<docs-path>/test-coverage/raw/` (the machine-readable files the numbers came from). Coverage lives OUTSIDE the build flows: no seat gate runs it and no dispatch brief may carry it - a seat babysitting an instrumented run pays to idle on the wait - so this capture is the one place the instrumented suite runs, on the user's cadence, exactly like the architecture capture. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
-This is capture only: it measures, judges, and documents - it fixes nothing, writes no test, and never picks or installs a runner. Working the weak points is `loop-test-coverage`, which runs this capture as its ANALYZE step and routes fixes by tier.
+This is capture only: it measures, judges, and documents - it fixes nothing, writes no test, and never picks or installs a runner. Working the weak points is the coverage loop's job (`/loop-test-coverage`), not this capture's.
 
 ## When to use
 
@@ -20,6 +20,14 @@ Two halves, split differently:
 
 - **Measurement is ALWAYS in this session** - every mode, every platform. The instrumented run is a slow gate; it never goes into any dispatch brief.
 - **Analysis on the FIRST capture** (no existing doc / no stamp) - when dispatch is available, ask ONE question before the fan-out, via AskUserQuestion - analyze via test-coverage-analyzer seats (recommend it: the read-only seats absorb the raw-output reads), or in-session? - unless a calling flow (the coverage loop) already picked the run's mode, which is inherited, never re-asked. When the first capture's other mandatory asks fire (the % bar; a suite that cannot run - Docker down for Testcontainers, a red baseline - may add a run-it-or-record-unmeasured decision), the mode question joins the SAME AskUserQuestion call as one batched ask - a separately-scheduled mode question is the one that gets dropped. DELEGATED: fan out the read-only test-coverage-analyzer agent, one per measured surface, each dispatch carrying that surface's raw-results path, the suite location, and the requirement; it returns a structured digest (per-module numbers, uncovered hot spots, weak-point candidates, test-quality smells) and this session reasons over the digests - the judgment and the writing NEVER leave here. INLINE (chosen - or forced, no question asked: a Cursor session): the same analysis yourself, locating testability facts with the navigation server, bounded.
+- **Run gate on an UPDATE no calling flow started.** Where COVERAGE.md exists and the coverage loop did not invoke this run, put this ask before MEASURE - every instrumented suite runs and the doc is rewritten, so a conversational 'what is our coverage?' never starts that alone. No answer, no run.
+
+  ```ask
+  Re-measure every surface and reconcile COVERAGE.md?
+  - 'Re-measure and reconcile COVERAGE.md (Recommended)' - each surface's suite runs once, its raw files are replaced
+  - 'Report from the existing COVERAGE.md only' - nothing runs, nothing is written
+  ```
+
 - **Analysis on an UPDATE is INLINE** (doc + stamp exist) - compare this run's fresh numbers against the doc's previous per-module table and deep-read only where they moved; unchanged modules keep their recorded weak points. Dispatch the agent for a surface whose picture shifted broadly - that surface is a first capture again - or whenever the USER explicitly asks for agents: their ask always wins over the inline default.
 
 ## The run
@@ -51,11 +59,23 @@ Fan out test-coverage-analyzer per surface, exactly as the roster spells it (`al
 Write `<docs-path>/test-coverage/COVERAGE.md` and the raw files per `references/doc-shape.md` - Read it before the write: the stamp, the required tables, the reconcile rules, the `## Resume` section and the one-write rule are that file. Create the folders only when absent; write ONLY under `<docs-path>/test-coverage/` - never source, never a test, never another doc.
 
 ### 6. REPORT
-Confirm the files written (created vs refreshed), then lean: the per-surface verdicts, the weak-point tally by tier, the top few gaps `loop-test-coverage` should take first, and anything unmeasured with what would settle it. Add a `Leftovers:` line - what the instrumented runs started and still have up (a Docker container or compose stack, a seeded test database, a background process), or `none`; anything listed gets tear-down-vs-keep through AskUserQuestion in the same close, teardown recommended - the named line is what makes the check happen, and what the run did not start is never touched. Point to the files - no re-paste of the doc body.
+`wc -l` COVERAGE.md after the write; a missing `## Resume` section is fixed before the report. Then the close, one line per field:
+
+```
+Doc:         <created | refreshed> - <docs-path>/test-coverage/COVERAGE.md, <n> lines
+Raw:         <surface>: <the files under raw/<stack>/>
+Verdicts:    <surface | line % | bar | MET, BELOW or UNMEASURED>, one per surface
+Weak points: small <n>, substantial <n>, structural <n> - the top few gaps named first
+Unmeasured:  <surface - the failing command and what would settle it, or none>
+Leftovers:   <what the instrumented runs started and still have up, or none>
+Run gate:    <the answer verbatim | a first capture | invoked by the coverage loop>
+```
+
+Fill a `Leftovers:` line - what the instrumented runs started and still have up (a Docker container or compose stack, a seeded test database, a background process), or `none`; anything listed gets tear-down-vs-keep through AskUserQuestion in the same close, teardown recommended - the named line is what makes the check happen, and what the run did not start is never touched. Point to the files - no re-paste of the doc body.
 
 ## Example
 
-One .NET API surface, requirement 90%: the verdict table reads `| aspnet-api | 84% | 90% | BELOW |`; the module table names `InvoiceService` at 61% with its uncovered error branches as the hot spot; the weak points land as - small: 'InvoiceService error branches - four scoped tests on the existing seams', substantial: '`PaymentGateway` news up its `HttpClient` - inject the handler before tests can attach'. That ordering is exactly what `loop-test-coverage` takes first.
+One .NET API surface, requirement 90%: the verdict table reads `| aspnet-api | 84% | 90% | BELOW |`; the module table names `InvoiceService` at 61% with its uncovered error branches as the hot spot; the weak points land as - small: 'InvoiceService error branches - four scoped tests on the existing seams', substantial: '`PaymentGateway` news up its `HttpClient` - inject the handler before tests can attach'.
 
 One Angular surface, same requirement: the detection ladder finds the coverage flag on the workspace's own test builder rather than a config file, so MEASURE runs the suite once with it and keeps the raw output; the verdict table reads `| web-app | 71% | 90% | BELOW |`, the module table names the checkout feature's effect handlers as the hot spot, and the weak points land as - small: 'checkout effects - error and cancel paths untested on the existing harness', substantial: 'the feature component builds its own HTTP client - move it behind the injected service before tests can stub it'. A plain TS library surface reads the same way with the runner the workspace already declares.
 

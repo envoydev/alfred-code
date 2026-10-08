@@ -11,7 +11,7 @@ You drive the deliberate capture of a project's ACTUAL code style and make it se
 1. `<docs-path>/code-style/CODE-STYLE.md` - the merged style doc, a docs domain like every other: one file, a `##` section per language (not one file per language - a section's own `covers:` glob already routes a language's change to it), `references/` for anything too long for a section, and a `watch.json` naming which globs ask whether a language's section still holds. It captures how this codebase really writes each of its languages (config-enforced rules + the idioms a linter cannot encode), divergence from the house convention skills flagged. It opens with the `Captured: <branch>@<short-sha>, <date>` lifecycle stamp (`+dirty` on an uncommitted tree) - the docs-root rule (`.claude/rules/alfred-docs-root.md`) owns what readers make of it. `references/doc-shape.md` is the section format and write mechanics, including how a change lands on a branch - read it before MERGE.
 2. `.claude/rules/project-code-style.md` - a generated path-scoped rule carrying the condensed style core, its `paths:` globs built from the exact extensions the analysis observed. The rules channel delivers it mechanically wherever a matching file is touched - main session and dispatched subagents alike (a PreToolUse hook's injected context never reaches subagent tool calls, which is why this is a rule and not a hook). The full doc stays the deep reference; the rule is the always-delivered essence.
 
-The per-language configs (`.editorconfig`, eslint/prettier, `tsconfig`, the SQL linter rules) stay the enforced source of truth; the doc records what they encode and what they cannot. Code style is NOT architecture - structure, boundaries, and patterns live in `<docs-path>/architecture/`, owned by the capture-architecture skill. Never fold one into the other.
+The per-language configs (`.editorconfig`, eslint/prettier, `tsconfig`, the SQL linter rules) stay the enforced source of truth; the doc records what they encode and what they cannot. Code style is NOT architecture - structure, boundaries, and patterns live in `<docs-path>/architecture/`. Never fold one into the other.
 
 ## When to use
 
@@ -43,19 +43,17 @@ Build the extension union from the agents' **Language + extensions** sections ON
 2. `__STYLE_CORE__` -> the condensed essence of the merge: each language's Enforced + Idioms as tight bullets (keep 'uncertain'/'inconsistent' markers), plus the cross-cutting idioms. Aim small - this text is injected into every session that touches matching code; detail beyond what a writer needs on the spot belongs in the doc, not the rule.
 3. `__DOC_PATH__` -> the SAME resolved docs root the doc was just written under, baked as a literal (a rule is static text - it cannot resolve env at load; the next capture re-bakes it if the root moved).
 
-Regenerate on every run - the rule is derived output, cheap to rebuild, and rebuilding from the same reports as the doc is what keeps the two in sync. Never hand-reconcile it. Wholesale is mechanical, and it is a REPLACE, never a delete: READ the existing rule first (it is short), then Write the fresh one over it. The read is what makes the Write legal; an `rm` first is denied by the auto-mode classifier, which costs exactly the blocked round trip the delete was meant to save. Nothing in the old copy is preserved. Verify after writing: frontmatter parses, every glob came from an observed extension, the doc pointer names an existing file.
+Regenerate on every run - the rule is derived output, cheap to rebuild, and rebuilding from the same reports as the doc is what keeps the two in sync. Never hand-reconcile it. Wholesale is mechanical, and it is a REPLACE, never a delete: READ the existing rule first (it is short), then Write the fresh one over it. The read is what makes the Write legal; an `rm` first is denied by the auto-mode classifier, which costs exactly the blocked round trip the delete was meant to save. Nothing in the old copy is preserved. Then check both files: `node .claude/hooks/docs.js lint code-style` (fix every PROBLEM row; where the docs hook is deselected, say so instead), `grep -c '^paths:' .claude/rules/project-code-style.md` prints 1 with every glob's extension in DETECT's list, and `test -e` on the `__DOC_PATH__` value the rule baked in.
 
 This generated rule is per-project output, deliberately NOT in the stack's RULES set - no installer ledger records this generated rule, so `/alfred-code:update` never touches it.
 
-### 5. RETIRE - remove the legacy hook, if present
-Earlier captures generated `.claude/hooks/inject-code-style.js` + a `settings.json` PreToolUse entry. The rule replaces it (one home per piece - both together would double-inject in main sessions). If the hook file exists: delete it, then parse `.claude/settings.json`, remove the PreToolUse entry whose command references `inject-code-style.js`, and rewrite - never regex-edit JSON, never touch the entries the stack installer wired. Nothing to retire on a clean project: skip silently.
-
-### 6. REPORT
+### 5. REPORT
 A literal line template, not prose to remember - the close is filled in, field by field, one line each (a table where a field lists several items, since the answer-length hook blocks a wall of prose and tables are exempt):
 
 ```
 Doc:         <created | refreshed> - <docs-path>/code-style/CODE-STYLE.md, sections <the ones touched>
 Rule:        <created | regenerated> - .claude/rules/project-code-style.md, globs <the observed extensions>
+Verify:      <lint clean | N fixed>, rule globs <n> - all observed, doc pointer resolves
 Languages:   <the families DETECT found> via <code-style-analyzer seats | in-session>
 Divergences: <each divergence from a house convention skill, or `none`>
 Legacy hook: <retired | none found>
@@ -66,3 +64,7 @@ Every value comes from the step that produced it - the extension union from the 
 
 ## Don't game it
 The doc records the style the code actually follows, not an aspiration - the agents' rules bind the merge too: every idiom names observed code, splits stay 'inconsistent', absent conventions stay absent. The rule's globs and core are derived, not designed - extensions and idioms come from the reports, and the verify step in RULE runs against the real generated file, not the template.
+
+## Old installs
+
+Earlier captures generated `.claude/hooks/inject-code-style.js` + a `settings.json` PreToolUse entry. The rule replaces it (one home per piece - both together would double-inject in main sessions). Every run checks before REPORT: if the hook file exists, delete it, then parse `.claude/settings.json`, remove the PreToolUse entry whose command references `inject-code-style.js`, and rewrite - never regex-edit JSON, never touch the entries the stack installer wired. Nothing to retire on a clean project: skip silently. The REPORT's `Legacy hook:` line records which.

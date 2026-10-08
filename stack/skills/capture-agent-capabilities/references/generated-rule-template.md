@@ -1,6 +1,6 @@
 # Generated rule - fill rules for the inventory sections, plus the house MCP routing map
 
-Read at step 2 GENERATE, before the rule body is composed. The SHAPE of the generated rule
+Read at step 2 COMPOSE, before the rule body is composed. The SHAPE of the generated rule
 (frontmatter, `Captured:` line, the stamped usage policy, the four inventory headings) is the copy
 target in SKILL.md; this file says how each inventory section is FILLED. Every character written
 into the generated rule is paid by every session and every subagent of the project - keep the rows
@@ -10,8 +10,8 @@ lean.
 One line per detected `disable-model-invocation` skill: `/name - <first clause, max 120 chars>`.
 The row is a ROUTER, not the skill's documentation - the skill's own description is loaded anyway.
 House first sentences run 460-588 chars, so 'the first sentence' is not the cap; the first CLAUSE
-at 120 chars is. The inventory step marks the one model-invocable-by-design exception - list it
-with this set, marked as such.
+at 120 chars is. The inventory marks the model-invocable-by-design captures - list them with this set, marked as
+such.
 
 ## Subagent seats
 One line: the installed seat names, comma-separated - dispatch is explicit only (@agent-, an

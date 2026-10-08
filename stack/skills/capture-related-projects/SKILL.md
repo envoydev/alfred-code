@@ -9,11 +9,17 @@ disable-model-invocation: true
 You drive the deliberate capture of a project's related repositories, and you own both tiers of the house related-projects model:
 
 1. `.claude/rules/alfred-project-related-context.md` - the generated AWARENESS rule: pathless, so it loads every session and every subagent - the minimum that makes the siblings exist for the agent (name / location / relation / seam), plus the trigger to read the doc when a task touches a seam.
-2. `<docs-path>/related-projects/RELATED-PROJECTS.md` - the on-demand ORIENTATION doc: the full entries including `first_read` and the evidence behind each relation and seam, read when actually working near a seam. Its folder `<docs-path>/related-projects/` is a docs domain holding ONLY this doc, its `references/` and its `watch.json` - this capture is the sole author, and nothing else belongs there. Every OTHER doc tied to a sibling repo - a cross-repo plan, a change request, an issue note, a sibling's run recipe - is filed instead in the plain folder `<docs-path>/related-context/`, by any session that produces one; that folder carries no `watch.json` of its own, so the docs engine never lists, sections or asks about anything filed in it. A location outside the docs root takes the user's explicit approval first, per the docs-root baseline.
+2. `<docs-path>/related-projects/RELATED-PROJECTS.md` - the on-demand ORIENTATION doc: the full entries including `first_read` and the evidence behind each relation and seam, read when actually working near a seam. Its folder `<docs-path>/related-projects/` is a docs domain holding ONLY this doc, its `references/` and its `watch.json` - this capture is the sole author. Nothing else belongs in that folder - other sibling-repo docs go where the docs-root baseline files them. A location outside the docs root takes the user's explicit approval first, per the docs-root baseline.
 
 Both are generated files; a re-run refreshes both in place. The rule's name is deliberately NOT in the stack installer's catalog (and never may be - a copy would overwrite the generated one) and no installer ledger records either file, so `/alfred-code:update` never touches them. Whether git carries the doc follows `node .claude/hooks/docs.js status`, never a default: `mode: git` - committed and versioned per branch, so it ships with the repo; `mode: overlay` - kept out of git, so a fresh clone re-runs the capture. The rule ships only where the project commits `.claude/rules/`.
 
-**Args-driven, never a scan.** The user names the related projects - local paths or git URLs, optionally with a relation hint each (`../backend`, `git@github.com:org/shared-contracts.git provides-to`). In-repo sub-projects are siblings too: `./server`, `./client` in a monorepo are valid locations, and their entries give task-solve-cross the dependency direction for producer-first ordering. No args: ask for them via AskUserQuestion (free text via Other - never options scraped from a filesystem scan; a plain-text ask where the harness lacks the tool) and stop. Do not guess at siblings from the filesystem.
+**Args-driven, never a scan.** The user names the related projects - local paths or git URLs, optionally with a relation hint each (`../backend`, `git@github.com:org/shared-contracts.git provides-to`). In-repo sub-projects are siblings too: `./server`, `./client` in a monorepo are valid locations, and their entries carry the dependency direction a cross-domain build orders by. No args: put this ask (free text via Other - never options scraped from a filesystem scan; a plain-text ask where the harness lacks the tool), and run on the locations typed. Do not guess at siblings from the filesystem.
+
+```ask
+Which related projects should this capture map? Type local paths or git URLs via Other, each with an optional relation hint.
+- 'I will type them via Other (Recommended)' - the run continues with the locations you type
+- 'Stop - nothing to capture' - nothing is written
+```
 
 ## When to use
 
@@ -30,7 +36,7 @@ DELEGATED vs INLINE keys on dispatch capability, not file presence. When dispatc
 ## The run
 
 ### 0. MODE - the one ask
-Resolve the Execution modes question above NOW, via AskUserQuestion, before anything else in this run - the ask is a numbered step because a preamble-only ask gets skipped straight past to the fan-out (measured: one run dispatched 4 seats with zero asks). One exception: a bare invocation with no args fires the no-args ask ('Args-driven, never a scan' above) INSTEAD and stops - there is nothing to pick a mode for yet; when both questions are open they join the same AskUserQuestion call.
+Resolve the Execution modes question above NOW, via AskUserQuestion, before anything else in this run - the ask is a numbered step because a preamble-only ask gets skipped straight past to the fan-out (measured: one run dispatched 4 seats with zero asks). One exception: a bare invocation with no args fires the no-args ask ('Args-driven, never a scan' above) first - there is nothing to pick a mode for until it is answered, and 'Stop' ends the run; when both questions are open they join the same AskUserQuestion call.
 
 ### 1. VALIDATE - the arg list
 For each location: a path must exist (relative resolved from the project root), a URL must look like a git remote. An invalid location is reported and skipped, never silently dropped. Note each relation hint - it travels to the agent as a prior, not a verdict.
@@ -46,11 +52,9 @@ deliberately EMPTY: a sibling repo's characterization is not falsified by a chan
 glob exists whose match should ask whether an entry still holds; the empty file states that intent in
 the repo rather than leaving it to memory. Nothing here is `notOwned` either - this capture is the sole
 author of `RELATED-PROJECTS.md`, so an ordinary write (or an ordinary `docs.js set` on a branch) is
-always allowed, unlike `decisions/`.
+always allowed, unlike `decisions/`. Before the write, check for the legacy layout (`## Old installs`).
 
-Legacy layout: a `PROJECT-RELATED-CONTEXT.md` sitting loose at the docs root itself (the pre-folder
-home) is MOVED into `related-projects/` as `RELATED-PROJECTS.md` and reconciled there - never left
-behind as a stale twin. Consolidate into one doc - apply the `markdown-style` skill so it reads as a
+Consolidate into one doc - apply the `markdown-style` skill so it reads as a
 quick reference. Shape:
 
 1. The `Captured: <branch>@<short-sha>, <date>` lifecycle stamp, then one opening line - what the doc is: the durable orientation detail for cross-repo work; the always-loaded awareness minimum lives in the generated rule; dynamic findings go to the shared `alfred-memory` MCP instead, tagged with the sibling's own name, never here. Stamp nuance for THIS doc: the entries describe the SIBLING repos as read on that date - the date is the staleness signal (siblings drift on their own), while this repo's branch matters little; re-running the capture for a sibling upserts its entry, which is this doc's whole update path.
@@ -80,7 +84,17 @@ Create `.claude/rules/` when absent. The rule is regenerate-only: entries come f
 **Re-run is an upsert, keyed by `location`, in BOTH files.** A sibling passed this run: its entry (and doc note) rewritten from the fresh report. An existing entry whose location was NOT passed: kept exactly as-is (removal is a manual edit - report which entries you left untouched so stale ones are visible). Both files converge; they never accumulate duplicates, and their entry sets never drift apart - the same run writes both.
 
 ### 5. REPORT
-Verify before reporting: the generated rule's frontmatter parses and carries no `paths:` key, and every `first_read` path in the doc resolves in the sibling it names - a first_read never lists a doc that was not verified to exist. Then confirm both artifacts (rule created/refreshed + entry count; doc created/refreshed + entries rewritten vs kept; any location skipped as invalid or UNVERIFIED). State where each landed - the doc by the `mode:` line `node .claude/hooks/docs.js status` prints (`git`: committed with the repo; `overlay`: kept on this machine). No re-paste of either body - point to the files.
+Check before reporting: `node .claude/hooks/docs.js lint related-projects` (fix every PROBLEM row), `grep -c '^paths:' .claude/rules/alfred-project-related-context.md` prints 0, and `test -e <sibling>/<first_read>` for every `first_read` path - a first_read never lists a doc that was not verified to exist. Then the close, one line per field:
+
+```
+Rule:       <created | refreshed> - .claude/rules/alfred-project-related-context.md, <n> entries, no paths key
+Doc:        <created | refreshed> - <docs-path>/related-projects/RELATED-PROJECTS.md, rewritten <names>, kept <names>
+Skipped:    <invalid or UNVERIFIED locations, or none>
+first_read: <n> of <n> verified
+Landed:     <git | overlay> - the mode line of `node .claude/hooks/docs.js status`
+```
+
+No re-paste of either body - point to the files.
 
 ## Handing work to a sibling project
 
@@ -90,3 +104,9 @@ owns, Read `references/sibling-handoff.md` and write the card as it says.
 
 ## Don't game it
 Every entry is grounded in the agent's located evidence or carries its UNVERIFIED marker into both tiers - a relation is never smoothed over, a hint never overrides contradicting evidence silently (the contradiction is reported), a first_read never lists a doc that was not verified to exist. Unreachable siblings stay in both files as UNVERIFIED entries, not silently dropped - the reader deserves to know a seam exists even when it could not be read.
+
+## Old installs
+
+Legacy layout: a `PROJECT-RELATED-CONTEXT.md` sitting loose at the docs root itself (the pre-folder
+home) is MOVED into `related-projects/` as `RELATED-PROJECTS.md` and reconciled there - never left
+behind as a stale twin.

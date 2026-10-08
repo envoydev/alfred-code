@@ -2145,7 +2145,7 @@
       ]
     },
     "generated-docs-root-placement": {
-      "_note": "Every assistant-created doc lands under <docs-path>; the sibling-repo orientation doc lives in the related-projects/ domain, every OTHER sibling-repo doc (cross-repo plans/change requests/issue notes/run recipes) in the plain related-context/ folder, and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; restated in the related-context skill's folder-ownership statement. The capabilities rule template carried a copy until the 2026-09-29 audit (I24): both are always-on in the same session, so the copy was pure rent.",
+      "_note": "Every assistant-created doc lands under <docs-path>; the sibling-repo orientation doc lives in the related-projects/ domain, every OTHER sibling-repo doc (cross-repo plans/change requests/issue notes/run recipes) in the plain related-context/ folder, and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; the related-projects capture restates only the outside-root approval (its related-context/ copy went in the 2026-10-08 audit - the always-on baseline carries it). The capabilities rule template carried a copy until the 2026-09-29 audit (I24): both are always-on in the same session, so the copy was pure rent.",
       "owner": {
         "file": "stack/rules/alfred-docs-root.md",
         "marker": "only on the user's asked-first approval"

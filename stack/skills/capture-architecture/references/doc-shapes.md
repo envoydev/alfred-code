@@ -69,6 +69,8 @@ Derive the entries from the capture, never from a template: composition roots an
 
 The docs hook's engine owns branch versions (step 1): never write a branch delta file. Committed docs change on the branch and merge with it. Ignored docs on a feature branch change through `docs.js set`; the next session on mainline after the branch merges folds them in by itself.
 
+**The write-pass count on the overlay route** (`docs.js status` says `mode: overlay` on a feature branch): the doc is not written as a file at all, so ONE `docs.js set` per changed section IS the composed write and counts as pass one however many sections it takes; only a second sweep over the same sections is pass two. State it that way on the `Write passes:` line ('1 (overlay, 12 sections)').
+
 ### Diagrams and format
 
 Load `docs-as-code` before writing - its Mermaid ground rules govern the core-map flowchart and any deep-dive

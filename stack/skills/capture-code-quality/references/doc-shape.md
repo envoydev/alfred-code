@@ -128,7 +128,7 @@ This doc is read at intake by every quality-loop round, so its weight is paid ag
 
 ## Write mechanics
 
-**No write gate, no diff check, no stamp-triggered skip.** The doc is recomputed from the rules, the
+**No diff check, no stamp-triggered skip - the run-start gate in SKILL.md is the only ask.** The doc is recomputed from the rules, the
 code and the decision log every run, so an overwrite destroys nothing a re-run would not reproduce.
 REPLACE the file wholesale - READ it first if it exists, so the Write is legal (an `rm` first is denied
 by the auto-mode classifier).
