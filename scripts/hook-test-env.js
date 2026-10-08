@@ -7,7 +7,7 @@
 // One call at the top of each hook suite, after `require('node:test')` and before any env value is set or
 // copied: every inherited stack key, the entrypoint, the plugin root and profile and the project dir go, a
 // fresh project dir comes back for the suite's own spawns, and the suite FAILS if anything it ran wrote under
-// os.tmpdir()'s own docs root while it ran.
+// os.tmpdir()'s own docs root, or into the checkout's own hook-blocks ledger, while it ran.
 'use strict';
 const fs = require('node:fs');
 const os = require('node:os');
@@ -16,8 +16,11 @@ const path = require('node:path');
 const STACK_KEY = /^ALFRED_CODE_/;
 const SESSION_KEYS = ['CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_PLUGIN_ROOT', 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE', 'CLAUDE_PROJECT_DIR'];
 
-// The docs roots a hook falls back to under a project dir of os.tmpdir(): the default and the old one.
-const strayRoots = () => ['.alfred', '.claude'].map((d) => path.join(os.tmpdir(), d, 'docs'));
+// The docs roots a hook falls back to under a project dir of os.tmpdir(): the default and the old one - plus the
+// RUNNER's own ledger: a hook spawned with no project dir and no cwd writes its block row under process.cwd(), the
+// checkout itself (audit 2026-10-08: layer-table-gate.test.js left 494 rows in the repo's nosession.jsonl unseen).
+// Only the ledger folder is watched there, never the whole docs root, which a person edits while a suite runs.
+const strayRoots = () => [...['.alfred', '.claude'].map((d) => path.join(os.tmpdir(), d, 'docs')), path.join(process.cwd(), '.alfred', 'docs', 'hook-blocks')];
 
 // Every file under the stray roots written at or after `since` (ms), as paths.
 function strayWrites(since)
@@ -56,7 +59,7 @@ function isolateHookSuite()
     {
         fs.rmSync(project, { recursive: true, force: true });
         const stray = strayWrites(since);
-        if (stray.length) throw new Error(`this suite wrote under os.tmpdir()'s own docs root - a hook ran with the temp dir as its project: ${stray.join(', ')}`);
+        if (stray.length) throw new Error(`this suite wrote under os.tmpdir()'s own docs root or the checkout's ledger - a hook ran with the temp dir or the runner's cwd as its project: ${stray.join(', ')}`);
     });
     return { project };
 }
