@@ -417,8 +417,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   - `guard-cross-project-write.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route) - a write outside
     the project root is blocked (file tools and shell routes: redirection, `tee`, in-place `sed`/`perl`,
     `cp`/`mv` destination, `rm`/`mkdir`/`chmod`, `git -C <other>` mutating, `cd <other>` then a write);
-    the change goes to a task card under `<docs-path>/cross-project-tasks/`. Reading stays open. Session
-    scratch, `~/.claude` / `~/.claude-<space>` and `/dev` stay writable; paths compared as REAL paths in their on-disk
+    the change goes to a task card under `<docs-path>/cross-project-tasks/`. Reading stays open. A shell path is
+    anchored at the payload's `cwd` (the Bash tool's persisted cwd, as the rm and config guards read it; a missing,
+    relative or vanished one is the project root), a file-tool path at the project root (audit 2026-10-08). Session
+    scratch (the harness root `/tmp/claude-<uid>` listed on its own, so a project kept under `/tmp` still reaches it),
+    `~/.claude` / `~/.claude-<space>`, a relocated `CLAUDE_CONFIG_DIR` and `/dev` stay writable; paths compared as REAL paths in their on-disk
     letter case (the native realpath, and on win32 a case-folded compare as well - M9); a Git Bash mount path (`/c/...`,
     `/cygdrive/c/...`) is translated first (`shell-writes.js` `nativePath`, the one home every path-resolving guard
     requires - 2.1.5 M8). 'Allow' is honoured through the

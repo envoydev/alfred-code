@@ -1735,6 +1735,43 @@ test('guard-cross-project-write: the session\'s own scratch and the account dir 
   assert.equal(w(path.join(path.dirname(repoRoot), 'some-other-repo', 'src', 'a.ts')), 2, 'a real sibling repo is still blocked');
 });
 
+// Audit 2026-10-08 row 23: the shell runs in the Bash tool's persisted cwd (`payload.cwd`), and the guard anchored every
+// shell path at the project root - a false block one way, a write into a sibling checkout let through the other.
+test('guard-cross-project-write: a shell path is anchored at the payload cwd, both ways (audit 2026-10-08)', () => {
+  const sub = path.join(XP_ROOT, 'sub');
+  fs.mkdirSync(sub, { recursive: true });
+  const at = (cwd, command, tool = 'Bash') => xp({ tool_name: tool, cwd, tool_input: { command } });
+  assert.equal(at(sub, 'echo hi > ../x.txt'), 0, 'up one from a subfolder is still the project');
+  assert.equal(at(sub, 'echo hi > x.txt'), 0, 'and a bare file there is too');
+  assert.equal(at(XP_OTHER, 'echo hi > x.txt'), 2, 'a bare file from a sibling checkout lands in it');
+  assert.equal(at(XP_OTHER, 'git commit -qm x'), 2, 'and so does a git write there');
+  assert.equal(at(XP_OTHER, 'echo hi > x.txt', 'Monitor'), 2, 'on the Monitor route as well');
+  assert.equal(at(XP_OTHER, `echo hi > ${path.join(XP_ROOT, 'x.txt')}`), 0, 'an absolute path into the project passes from anywhere');
+  assert.equal(at(path.join(XP_ROOT, 'gone'), 'echo hi > ../../x.txt'), 2, 'a cwd that is gone reads as the project root');
+  assert.equal(at('relative/dir', 'echo hi > x.txt'), 0, 'and so does a relative one');
+  assert.equal(xp({ tool_name: 'Write', cwd: XP_OTHER, tool_input: { file_path: 'src/a.ts' } }), 0, 'a file tool keeps the project root');
+});
+
+// Audit 2026-10-08 row 37: a relocated account dir holds the harness's memory writes, and a project under /tmp dropped
+// /tmp - and with it the harness scratch root - by the containment rule.
+test('guard-cross-project-write: a relocated CLAUDE_CONFIG_DIR and the harness scratch root stay writable (audit 2026-10-08)', (t) => {
+  const cfg = fs.mkdtempSync(path.join(TMP, 'xw-cfg-'));
+  const run = (root, payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ...env } }).status;
+  const w = (f) => ({ tool_name: 'Write', tool_input: { file_path: f } });
+  assert.equal(run(XP_ROOT, w(path.join(cfg, 'projects', 'p', 'memory', 'm.md')), { CLAUDE_CONFIG_DIR: cfg }), 0, 'the relocated account dir');
+  assert.equal(run(XP_ROOT, w(path.join(cfg, 'projects', 'p', 'memory', 'm.md')), { CLAUDE_CONFIG_DIR: '' }), 2, 'unset, it is a sibling like any other');
+  assert.equal(run(XP_ROOT, w(path.join(XP_OTHER, 'a.ts')), { CLAUDE_CONFIG_DIR: cfg }), 2, 'and a real sibling stays blocked');
+  if (process.platform === 'win32') return t.skip('no /tmp/claude-<uid> on Windows');
+  let proj = null;
+  try { proj = fs.mkdtempSync('/tmp/xw-proj-'); } catch { return t.skip('/tmp is not writable here'); }
+  try {
+    const scratch = `/tmp/claude-${process.getuid()}/s/scratchpad/notes.md`;
+    assert.equal(run(proj, w(scratch)), 0, 'a project under /tmp still writes the harness scratch');
+    assert.equal(run(proj, w('/tmp/xw-other/a.ts')), 2, 'while a sibling under /tmp stays blocked');
+  } finally { fs.rmSync(proj, { recursive: true, force: true }); }
+});
+
 test('guard-cross-project-write: the session cleaning its own scratch is not a cross-project write', () => {
   // Every shape here was replayed as a false positive against a real session's own scratch.
   // in-project on purpose: the defect was the TOKENIZER, which split `"$SP"/run*.log` into two

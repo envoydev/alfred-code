@@ -188,10 +188,16 @@ const expandTilde = (p) => (p === '~' || p.startsWith('~/') || (process.platform
 // dir, a deploy checkout). Each resolves with realish, not real: an allowance for a tree not created yet
 // resolves through its existing ancestor exactly as a target does - real() kept a missing path as written, so an
 // 8.3 short name or a link never met its target (measured on windows-latest).
+// A relocated account dir (CLAUDE_CONFIG_DIR outside ~/.claude*) holds the same memory writes, and the harness's own
+// scratch root (/tmp/claude-<uid>) is listed on its own so a project kept under /tmp, which drops /tmp itself by the
+// containment rule below, can still write it (audit 2026-10-08 row 37).
+const UID = typeof process.getuid === 'function' ? process.getuid() : null;
 const allowRoots = [
   os.tmpdir(), '/tmp', '/private/tmp', '/var/folders', '/dev',
+  ...(UID != null ? [`/tmp/claude-${UID}`, `/private/tmp/claude-${UID}`] : []),
   envOf(process.env, 'HOOK_LOG_DIR'),
   ...(HOME ? [path.join(HOME, '.claude')] : []),
+  process.env.CLAUDE_CONFIG_DIR || '',
   ...(envOf(process.env, 'ALLOW_WRITE_OUTSIDE') || '').split(path.delimiter).map((s) => s.trim()),
 ].filter(Boolean).map(expandTilde).map(realish);
 
@@ -248,9 +254,15 @@ function allowed(target) {
 
   return false;
 }
-// Resolve the way the session sees it: the hook subprocess's cwd is not the Bash tool's
-// persisted cwd, so a relative path is anchored to the project root first (same anchor the
-// sibling guards use). A relative path that stays inside the root is the normal case and passes.
+// Resolve the way the session sees it: the hook subprocess's cwd is not the Bash tool's persisted cwd, which the payload
+// carries as `cwd` - so a shell path is anchored there (SHELL_CWD, the anchor the rm and config guards use), and a
+// file-tool path, which the tools take absolute, at the project root. From `proj/sub`, `echo hi > ../x.txt` lands in
+// the project and was blocked; from a sibling checkout `echo hi > x.txt` lands outside and passed (audit 2026-10-08
+// row 23). A cwd that is missing, relative or gone is the project root, as before.
+const SHELL_CWD = (() => {
+  const c = typeof payload.cwd === 'string' && payload.cwd ? nativePath(payload.cwd) : '';
+  return c && path.isAbsolute(c) && fs.existsSync(c) ? real(c) : ROOT;
+})();
 function resolveTarget(p, base) {
   const n = nativePath(p);
   if (path.isAbsolute(n)) return n;
@@ -421,9 +433,9 @@ let shell;
 try { shell = require(path.join(__dirname, 'shell-writes.js')); } catch { process.exit(0); }
 if (!shell.isShellTool(tool)) process.exit(0);
 const rawCommand = String(input.command || '');
-// A script FILE a shell runs is read from disk against the project root, and a git alias is expanded to what it runs
+// A script FILE a shell runs is read from disk against the shell's cwd, and a git alias is expanded to what it runs
 // (2.1.6 re-verify 2 R2-M5, R2-m1); an alias that cannot be read is not judged, like an unexpanded variable.
-const scan = shell.scanShell(rawCommand, { cwd: ROOT, aliases: true });
+const scan = shell.scanShell(rawCommand, { cwd: SHELL_CWD, aliases: true });
 const command = scan.command;
 if (!command.trim()) process.exit(0);
 if (PROBE_SHELL.test(command)) forkProbe('a shell mutation', command.slice(0, 160));
@@ -431,7 +443,7 @@ if (PROBE_SHELL.test(command)) forkProbe('a shell mutation', command.slice(0, 16
 const { isVar } = shell;
 // One normaliser per run: shell.anchorAt caches its compiled anchor by this function, so a fresh closure per write recompiled it each time.
 const anchorNorm = (t) => nativePath(expandTilde(shell.unquote(t)));
-const anchorAt = (index) => shell.anchorAt(scan.cds, index, ROOT, anchorNorm);
+const anchorAt = (index) => shell.anchorAt(scan.cds, index, SHELL_CWD, anchorNorm);
 // Judge one path token found at `index` in the command: only a token that can land out of tree
 // is resolved at all - an explicitly out-of-tree spelling (absolute, ~-rooted, reaching up with
 // `..`), or any relative path once a `cd` has moved the anchor. A bare relative path with the
