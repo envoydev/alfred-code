@@ -201,7 +201,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (`w /dev/stdout`), runs a command (`e`) or sits in a `-f` file; then it is judged, and blocked. A filtering
     read (`grep`, `jq .path`, `head`) keeps its filter over the view. A recursive search (`grep -rn`, `rg`) is probed as argv
     like the git branch (3s / 8MB) and piped through `--redact-stdin --grep` only when its output carries a credential, a clean
-    one runs as written; the Grep TOOL cannot be piped, so a tree hit is blocked. `git remote -v` / `get-url` / `show` and
+    one runs as written; the Grep TOOL cannot be piped, so a tree hit is blocked. A path-qualified verb (`./tools/grep`,
+    `bin/rg`) is never spawned - the probe runs before the permission prompt, so it would run whatever script sits there
+    (audit 2026-10-08, replayed) - and is piped unprobed. `git remote -v` / `get-url` / `show` and
     `git config --list` / `--get` are probed the same way (a tokened URL is masked; a config write is never probed). A print
     piped into a login that reads stdin (`--password-stdin`, `--with-token`) is a use, `${NAME:+word}` prints no value, a
     `{...process.env}` spread is no dump, and a command whose stdout IS a token (`gh auth token`, `op read`, a keychain `-w`)
@@ -251,7 +253,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     then the implementer gate - and no block row is written (M9, `standDown(..., { setUp: false })`).
   - `guard-ungated-commit.js` (PreToolUse, the shell route) - blocks a non-trivial `git commit` without the
     `<docs-path>/flow/COMMIT-GATE` receipt, and `git push` / `gh pr merge` without `PUSH-GATE`. A dry
-    run or a branch level with upstream is never gated; `ALFRED_CODE_PUSH_GATE=0` turns the push half off.
+    run or a branch level with upstream is never gated; `ALFRED_CODE_PUSH_GATE=0` turns the push half off. 'Level' is
+    read BEFORE the command runs, so a history mover (commit, merge, cherry-pick, am, rebase, revert, pull, reset) or an
+    unreadable git call chained ahead of the push counts as ahead (audit 2026-10-08: `git commit -am x && git push`
+    published ungated).
     Both are judged in the repo git runs in (the shell's cwd, a leading `cd`, `-C`) - a worktree is its own.
     A PUSH-GATE receipt spanning more than one MANIFEST-owning directory needs a `scope:` line naming
     what the probe actually ran (a plain top-level folder is no project, so an ordinary repo never asks).

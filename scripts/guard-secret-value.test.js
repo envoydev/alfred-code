@@ -1882,6 +1882,25 @@ test('F1: a recursive search that would print a credential line is piped through
   }
 });
 
+test('audit 2026-10-08: the walk probe never runs a path-qualified search verb - a repo script named grep or rg stays unrun', { skip: process.platform === 'win32' && 'sh script fixture' }, () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'walk-script-'));
+  fs.mkdirSync(path.join(dir, 'tools'));
+  const marker = path.join(dir, 'RAN');
+  for (const name of ['grep', 'rg']) {
+    const f = path.join(dir, 'tools', name);
+    fs.writeFileSync(f, `#!/bin/sh\necho ran >> "${marker}"\n`);
+    fs.chmodSync(f, 0o755);
+  }
+  fs.mkdirSync(path.join(dir, 'src'));
+  fs.writeFileSync(path.join(dir, 'src', 'app.js'), 'const x = 1;\n');
+  const v = (c) => verdict(at(dir, c));
+  for (const c of ['./tools/grep -rn x .', 'tools/rg -n x', 'tools/grep -r x src']) {
+    assert.equal(v(c), REWRITE, `${c} is piped unprobed - the safe side`);
+    assert.ok(!fs.existsSync(marker), `${c} ran the repo script before any permission prompt`);
+  }
+  assert.equal(v('grep -rn no_such_word_anywhere src'), 0, 'a bare verb is still probed and a clean walk runs as written');
+});
+
 test('F2: a git command that prints a remote URL is piped through the redactor, and a config WRITE is never probed', { skip: process.platform === 'win32' && 'posix git fixture' }, () => {
   const repo = fs.mkdtempSync(path.join(TMP, 'git-remote-'));
   const git = (...a) => spawnSync('git', ['-C', repo, ...a], { encoding: 'utf8' });

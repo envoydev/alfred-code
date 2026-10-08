@@ -105,6 +105,22 @@ test('guard-ungated-commit: a push whose diff spans two projects needs a scope: 
   assert.equal(gateIn(dir, 'git push'), 0, 'a workspace-scope probe passes whatever the diff touches');
 });
 
+test('audit 2026-10-08: a commit, merge or reset chained before a push on a level branch still needs the publish receipt', () => {
+  const { dir, git } = pushRepo();
+  assert.equal(gateIn(dir, 'git push'), 0, 'control: a push with nothing ahead of its upstream publishes nothing');
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'seed\nnext\n');
+  const chained = gateFull(dir, 'git commit -am x && git push');
+  assert.equal(chained.status, 2, `the commit runs first, so the push publishes it - exit ${chained.status}: ${chained.stderr}`);
+  assert.match(chained.stderr, /publish gate receipt|PUSH-GATE/, 'blocked by the publish half');
+  git('checkout', '-q', '-b', 'feature'); fs.writeFileSync(path.join(dir, 'b.txt'), 'b\n'); git('add', '-A'); git('commit', '-qm', 'feat'); git('checkout', '-q', 'main');
+  for (const c of ['git merge feature && git push', 'git pull && git push', 'git cherry-pick feature; git push', 'git reset --hard feature && git push']) {
+    const r = gateFull(dir, c);
+    assert.equal(r.status, 2, `${c} - exit ${r.status}`);
+  }
+  assert.equal(gateIn(dir, 'git status && git push'), 0, 'a read before the push moves nothing');
+  assert.equal(gateIn(dir, 'git push && git merge feature'), 0, 'a mover AFTER the push is not what it publishes');
+});
+
 test('guard-ungated-commit: plain top-level folders are not projects - only a folder with its own manifest is', () => {
   const { dir, git } = pushRepo();
   // An ordinary repo: two top-level folders, no manifest of their own. A push spanning them is

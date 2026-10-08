@@ -2595,6 +2595,9 @@ function walkLeaks(stage) {
   // fd redirections that stay on the terminal or go nowhere are the shell's, not grep's arguments
   const args = w.slice(1).filter((a, k, all) => !/^(?:&|\d*)>+(?:&\d+|\/dev\/null)?$/.test(a) && !(all[k - 1] && /^(?:&|\d*)>+$/.test(all[k - 1])));
   if (args.some((a) => /^--(?:pre|hostname-bin)(?:=|$)/.test(a))) return true;
+  // A path-qualified verb (`./tools/grep`, `bin/rg`) is whatever script sits there, and this probe runs before the
+  // permission prompt - so it is never spawned; the stage is piped unprobed (audit 2026-10-08: a repo script ran).
+  if (/[\\/]/.test(w[0])) return true;
   const r = require('child_process').spawnSync(w[0], args, {
     cwd: (payload && payload.cwd) || process.env.CLAUDE_PROJECT_DIR || process.cwd(), timeout: 3000, maxBuffer: 8 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, RIPGREP_CONFIG_PATH: '' },

@@ -168,6 +168,7 @@ const PUSH_GATE_ON = envOf(process.env, 'PUSH_GATE') !== '0';
 // report write was denied for quoting a merge command. `--dry-run` / `-n` publishes nothing, and neither does a push
 // with nothing ahead of its upstream.
 let publishMatch = null;
+const HISTORY_MOVER = new Set(['commit', 'merge', 'cherry-pick', 'am', 'rebase', 'revert', 'pull', 'reset']);
 if (PUSH_GATE_ON) {
   const push = calls.find((c) => c.sub === 'push');
   const merge = push || !parsed ? null : sw.commandWords(null, parsed).find((w) => w.name === 'gh' && w.argv[0] === 'pr' && w.argv[1] === 'merge');
@@ -684,6 +685,10 @@ if (publishMatch) {
   let ahead = true;
   if (isGitPush) {
     try { ahead = git('log @{u}..HEAD --oneline').length > 0; } catch { ahead = true; } // no upstream = a new branch, which publishes
+    // `ahead` is read BEFORE the command runs, so a history mover chained ahead of the push - `git commit -am x && git push`,
+    // `git merge feature && git push` - publishes what it makes on a branch level with upstream now (audit 2026-10-08: both
+    // replayed exit 0 with no receipt). A mover, or a git call the reader could not judge, before the push counts as ahead.
+    if (!ahead && calls.some((c) => c.at < publishMatch.index && (HISTORY_MOVER.has(c.sub) || c.opaque))) ahead = true;
   }
   if (!dryRun && ahead && !carriesOwnReceipt('PUSH-GATE', publishMatch.index)) {
     const r = readReceipt('PUSH-GATE');
