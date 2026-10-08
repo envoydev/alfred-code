@@ -47,6 +47,12 @@ const HOOK_TIMEOUT = 10;
 const HOOK_TIMEOUTS = { 'check-turn-build.js': { Stop: 60 }, [`${shellGuards.SELF}.js`]: { PreToolUse: HOOK_TIMEOUT * shellGuards.GUARDS.length },
     [`${fileGuards.SELF}.js`]: { PreToolUse: HOOK_TIMEOUT * fileGuards.GUARDS.length } };
 const timeoutFor = (file, event) => (HOOK_TIMEOUTS[file] || {})[event] || HOOK_TIMEOUT;
+// A hook whose only work is a side effect - the tool-usage log - runs with `async: true`: the call never waits on its
+// node spawn (23.9ms on every tool call, audit 2026-10-08 row 28), and an async hook can neither block nor decide
+// (code.claude.com/docs/en/hooks, 'Run hooks in the background'). The plugin entry's generator reads the same set.
+const ASYNC_HOOKS = new Set(['instrument-tool-usage.js']);
+const asyncFor = (file) => ASYNC_HOOKS.has(file);
+const hookEntry = (command, timeout, file) => ({ type: 'command', command, timeout, ...(asyncFor(file) ? { async: true } : {}) });
 // The `attribution` keys the seed writes when absent (code.claude.com settings reference).
 const ATTRIBUTION_OFF = [['commit', ''], ['pr', ''], ['sessionUrl', false]];
 // Every settings path the stack seeds, with its seed value - the ledger records them and a scope move takes them along.
@@ -108,7 +114,11 @@ function wireHooks(data, specs, retiredHooks)
     for (const [event, entries] of every())
         for (const entry of entries)
             for (const h of entry.hooks || [])
+            {
                 if (ours.has(h.command) && h.timeout !== timeoutFor(fileOf(h.command), event)) { h.timeout = timeoutFor(fileOf(h.command), event); changed = true; }
+                // ...and the async flag onto a side-effect hook an earlier install wired blocking.
+                if (ours.has(h.command) && asyncFor(fileOf(h.command)) && h.async !== true) { h.async = true; changed = true; }
+            }
 
     // Prune OUR hook file from a PreToolUse matcher this version no longer wires. Keyed on the
     // SELECTED specs, so a hook the user de-selected keeps its entries - that is configure's job.
@@ -161,7 +171,7 @@ function wireHooks(data, specs, retiredHooks)
             const already = list.some((e) => (e.matcher || '') === eventMatcher
                 && (e.hooks || []).some((h) => h.command === command));
             if (already) continue;
-            const entry = { hooks: [{ type: 'command', command, timeout: timeoutFor(fileOf(command), event) }] };
+            const entry = { hooks: [hookEntry(command, timeoutFor(fileOf(command), event), fileOf(command))] };
             if (eventMatcher) entry.matcher = eventMatcher;
             list.push(entry);
             changed = true;
@@ -172,7 +182,7 @@ function wireHooks(data, specs, retiredHooks)
         // on the command alone dropped the second (measured - no install carried the Bash matcher).
         const have = new Set(list.flatMap((e) => (e.hooks || []).map((h) => `${e.matcher || ''}\u0000${h.command}`)));
         if (have.has(`${matcher}\u0000${command}`)) continue;
-        list.push({ matcher, hooks: [{ type: 'command', command, timeout: timeoutFor(fileOf(command), 'PreToolUse') }] });
+        list.push({ matcher, hooks: [hookEntry(command, timeoutFor(fileOf(command), 'PreToolUse'), fileOf(command))] });
         changed = true;
     }
 
@@ -1115,4 +1125,4 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
         log(`  kept at user scope: ${keptOff.join(', ')} - the user-scope core stays loaded for this account, so these keep what you switched off here off; remove them once it is uninstalled`);
 }
 
-module.exports = { removeManagedSettings, isStackKey, writeSettings, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };
+module.exports = { removeManagedSettings, isStackKey, writeSettings, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor };

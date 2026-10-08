@@ -172,6 +172,24 @@ test('settings-writer: an @Event matcher wires a lifecycle event, with its own m
         'without the matcher the entry fires on every session start');
 });
 
+// Audit 2026-10-08 row 28: the tool-usage log is a side effect only, so it runs async - the call never waits on its spawn.
+test('settings-writer: the instrument hook alone is wired async, an older blocking entry is backfilled, and a re-run changes nothing', () =>
+{
+    const inst = hookCommand('instrument-tool-usage.js', '').command;
+    const file = settingsFile({ hooks: { PreToolUse: [{ matcher: '.*', hooks: [{ type: 'command', command: inst, timeout: 10 }] }] } });
+    const specs = [HOOK('instrument-tool-usage.js', '.*'), HOOK('a.js', 'Bash')];
+    const { data } = write(file, { hookSpecs: specs });
+    const hooks = data.hooks.PreToolUse.flatMap((e) => e.hooks);
+    assert.strictEqual(hooks.filter((h) => h.command === inst).length, 1, 'one entry, not a second beside the old one');
+    assert.strictEqual(hooks.find((h) => h.command === inst).async, true, 'the older blocking entry is backfilled');
+    assert.ok(!('async' in hooks.find((h) => h.command !== inst)), 'a guard is never async - it must be able to block');
+    const fresh = write(settingsFile({}), { hookSpecs: specs }).data.hooks.PreToolUse.flatMap((e) => e.hooks);
+    assert.strictEqual(fresh.find((h) => h.command === inst).async, true, 'a fresh install wires it async');
+    const before = fs.readFileSync(file, 'utf8');
+    assert.strictEqual(write(file, { hookSpecs: specs }).result.written, false, 'a re-run changes nothing');
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), before);
+});
+
 test('settings-writer: the write is IDEMPOTENT - a second run changes nothing', () =>
 {
     const file = settingsFile({});

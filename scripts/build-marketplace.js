@@ -29,7 +29,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { placement, CORE } = require('./plugin-placement.js');
-const { timeoutFor } = require('./install/settings.js');
+const { timeoutFor, asyncFor } = require('./install/settings.js');
 const { loadManifest } = require('./install/manifest.js');
 const { HOOK_PROFILES } = require('../stack/hooks/hook-prelude.js');
 const { wiringRows } = require('../stack/hooks/shell-guards.js');
@@ -233,7 +233,10 @@ function hooksBlock(wirings)
             group = w.matcher === undefined ? { hooks: [] } : { matcher: w.matcher, hooks: [] };
             list.push(group);
         }
-        group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: timeoutFor(w.file, w.event) });
+        // A side-effect hook runs async, off the call's path (settings.js asyncFor). Its env gate stays inside the hook:
+        // the copy route's `[ ... ] ||` shell test fails under PowerShell, the shell form's runner where Git Bash is
+        // absent (code.claude.com/docs/en/hooks, 'Exec form and shell form'), and every other plugin hook runs there.
+        group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: timeoutFor(w.file, w.event), ...(asyncFor(w.file) ? { async: true } : {}) });
     }
     return block;
 }

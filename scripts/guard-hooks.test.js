@@ -1442,9 +1442,11 @@ test('instrument-tool-usage: off by default, one JSONL row per call when switche
   const inst = (payload, env) => runIn('instrument-tool-usage.js', payload, { env: { ...process.env, ALFRED_CODE_INSTRUMENT_LOG: log, ...env } }).status;
   assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '0' }), 0);
   assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '' }), 0);
+  // `1` only (audit 2026-10-08 row 29): the copy route's shell gate and environment.json read `true` as off
+  assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: 'true' }), 0);
   assert.equal(fs.existsSync(log), false, 'nothing is written while the switch is off');
   assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1', cwd: '/x' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
-  assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat secret', description: 'run tests' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: 'true' }), 0);
+  assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat secret', description: 'run tests' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', tool_input: {}, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   // a dispatch row names the SEAT (65 of 65 Agent rows were detail-blind), and a Bash call whose
   // description the model omitted falls back to the VERB - never a path or an argument
@@ -1462,6 +1464,24 @@ test('instrument-tool-usage: off by default, one JSONL row per call when switche
   assert.equal(inst({ tool_name: 'Grep', tool_input: { pattern: 'x' }, session_id: 'sid/../up' },
     { ALFRED_CODE_INSTRUMENT: '1', ALFRED_CODE_INSTRUMENT_LOG: '', CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: 'docs' }), 0);
   assert.deepEqual(fs.readdirSync(path.join(root, 'docs', 'tools-usage')), ['sid..up.jsonl'], 'default ledger under the docs root, session id sanitized');
+});
+
+// Audit 2026-10-08 row 29: a dispatch description, a search pattern and a Bash description are the model's own text, and
+// a token rode in them verbatim.
+test('instrument-tool-usage: a credential in a description or a pattern is masked before it is logged', () => {
+  const log = path.join(TMP, 'ledger-masked.jsonl');
+  const inst = (tool_name, tool_input) => runIn('instrument-tool-usage.js', { tool_name, tool_input, session_id: 's2' },
+    { env: { ...process.env, ALFRED_CODE_INSTRUMENT: '1', ALFRED_CODE_INSTRUMENT_LOG: log } }).status;
+  const gh = `ghp_${'a1B2'.repeat(9)}`;
+  const ant = `sk-ant-api03-${'x9Y8'.repeat(6)}`;
+  assert.equal(inst('Agent', { description: `push with ${gh}`, prompt: 'x' }), 0);
+  assert.equal(inst('Grep', { pattern: `token=${ant}` }), 0);
+  // the token sits across the 60-character cut: masked on the whole text first, so no fragment survives the cut
+  assert.equal(inst('Bash', { command: 'true', description: `${'d'.repeat(50)} ${gh}` }), 0);
+  const text = fs.readFileSync(log, 'utf8');
+  const rows = text.trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepEqual(rows.map((r) => r.detail), ['push with [redacted]', 'token=[redacted]', `${'d'.repeat(50)} [redacted`]);
+  assert.doesNotMatch(text, /ghp_|sk-ant/);
 });
 
 test('guard-unapproved-dispatch: a symbol question never goes to a grep-shaped seat', () => {

@@ -6083,7 +6083,7 @@
       ]
     },
     "credential-literal-shapes": {
-      "_note": "guard-secret-value.js judges a credential by these shapes; scripts/audit-install.js scans an install's own config files for the same ones. The hook is copied into projects and cannot require repo tooling, so scripts/credential-shapes.js holds a copy - a shape added to the hook and not the copy is a credential the install audit silently misses. The stop contract copies it to redact what it logs, and memory.js to redact what the session start injects.",
+      "_note": "guard-secret-value.js judges a credential by these shapes; scripts/audit-install.js scans an install's own config files for the same ones. The hook is copied into projects and cannot require repo tooling, so scripts/credential-shapes.js holds a copy - a shape added to the hook and not the copy is a credential the install audit silently misses. The stop contract copies it to redact what it logs, memory.js to redact what the session start injects, and instrument-tool-usage.js to mask its detail hints.",
       "owner": {
         "file": "stack/hooks/guard-secret-value.js",
         "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
@@ -6107,6 +6107,10 @@
         },
         {
           "file": "stack/hooks/guard-stop-contract.js",
+          "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
+        },
+        {
+          "file": "stack/hooks/instrument-tool-usage.js",
           "marker": "const SECRET_SHAPE = /\\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})/;"
         }
       ]

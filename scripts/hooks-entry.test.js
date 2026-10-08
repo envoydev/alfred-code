@@ -43,6 +43,16 @@ test('a bare matcher is a PreToolUse wiring; an @ prefix names its own event', (
 // script ('Exec form and shell form', code.claude.com/docs/en/hooks: 'the node plus script-path
 // pattern works on every platform'). A bare script path needs the exec bit and a shebang the
 // platform honours: five hooks were committed 100644, and Windows runs neither.
+// Audit 2026-10-08 row 28: the plugin route spawned the tool-usage log on every tool call and waited on it; it runs async
+// now (code.claude.com/docs/en/hooks, 'Run hooks in the background'), and nothing that must block or decide does.
+test('only the tool-usage log runs async, so every guard can still block', () => {
+    const all = Object.values(block).flat().flatMap((b) => b.hooks);
+    const async = all.filter((h) => h.async === true).map((h) => h.command);
+    assert.deepStrictEqual(async, ['node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js"']);
+    const core = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8'));
+    assert.match(JSON.stringify(core), /instrument-tool-usage\.js\\"","timeout":10,"async":true/, 'the generated entry carries it');
+});
+
 test('the block is a valid plugin hooks object: node launcher, timeout 10 (60 and 80 for the two declared exceptions), plugin-root paths', () => {
     for (const [event, blocks] of Object.entries(block))
     {
