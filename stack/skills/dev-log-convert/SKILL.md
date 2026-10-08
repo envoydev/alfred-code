@@ -7,7 +7,7 @@ You will receive text (Ukrainian, English, or mixed) describing work done during
 
 ## When to use
 
-Converts a day's raw work notes (Ukrainian, English, or mixed) into a structured, past-tense English work log - ticket IDs normalized, time totalled, tasks grouped by project or prefix across one or more days. Fires only on the exact keyword 'dev-log'.
+Converts a day's raw work notes (Ukrainian, English, or mixed) into a structured, past-tense English work log - ticket IDs normalized, time totalled, tasks grouped by project or prefix across one or more days. Fires only on the exact keyword 'dev-log'. A request to log work read off the repo still starts from 'dev-log'.
 
 Do not use it for general note-taking, meeting minutes, commit messages, or status updates, which are not this format.
 
@@ -83,19 +83,29 @@ Total time: <sum across all groups>.
 - Ticket ID comes first on each task line, then time in brackets, then dash, then summary.
 
 **Time**
-- STOP AND ASK (AskUserQuestion) before drafting any dated log whenever the input gives only a
-  total or an estimate that the output shape must SPLIT per day or per task - decide this FIRST,
-  before normalizing any other time value, and never invent the split. This clause has already
-  failed once loaded in context (measured: an unasked 8h/8h/5h+3h/8h split cost four correction
-  round-trips; separately, a 12h estimate loaded 39s earlier was still collapsed into an unasked
-  9h/2h/1h split) - reading it is not doing it, so treat a total/estimate in the input as a hard
-  stop, not a note to remember. A task with no time given at all simply takes
-  `(time not specified)` - the placeholder covers a missing figure, the ask covers an invented split.
+- STOP AND ASK before drafting any dated log whenever the input gives only a total or an estimate
+  that the output shape must SPLIT per day or per task - decide this FIRST, before normalizing any
+  other time value, and never invent the split. Reading this clause has not been enough before, so a
+  total or estimate in the input is a hard stop, not a note to remember:
+
+  ```ask
+  The notes give a total but the log needs per-day times - how should I split it?
+  - 'I will give the split (Recommended)' - the log never invents per-day or per-task time
+  - 'One line per day, time not specified' - keeps the days, leaves the hours to you
+  ```
+
+  A task with no time given at all simply takes `(time not specified)` - the placeholder covers a
+  missing figure, the ask covers an invented split.
 - Normalize time to `h` for hours and `m` for minutes (e.g. `2h`, `30m`, `1h 30m`).
 - Accept Ukrainian variants in input: `г`, `год`, `гг`, `хв`, `хвил` - treat as hours/minutes accordingly.
 - Accept decimal hours in input and convert: `0.25h` → `15m`, `0.5h` → `30m`, `0.75h` → `45m`, `1.25h` → `1h 15m`, `2.5h` → `2h 30m`.
-- If time is not provided for a task, write `(time not specified)`.
-- Multi-ticket day granularity: one entry per ticket is not a safe default - mirror the granularity of the user's prior day-entries in the same log, and where no precedent exists, ask via AskUserQuestion (measured: a two-ticket day drafted per-ticket was rejected for merged wording).
+- Multi-ticket day granularity: one entry per ticket is not a safe default - mirror the granularity of the user's prior day-entries in the same log, and where no precedent exists, ask:
+
+  ```ask
+  Several tickets fall on one day - how should the log list them?
+  - 'Merge related tickets into one line (Recommended)' - the wording a per-ticket draft was corrected to before
+  - 'One line per ticket' - each ticket keeps its own time and summary
+  ```
 - Self-check before output: write the drafted task lines of each day to a file inside the session's own scratch directory (never the project tree, never outside it), then run them through this skill's bundled `total-time.js` - resolved from the skill's own folder, never from the session's working directory, where a bare `scripts/` path misses it or runs the project's own file (Node.js built-ins only, nothing to install; run from the project root):
 
   ```bash
@@ -112,7 +122,24 @@ Total time: <sum across all groups>.
 - Merge or group similar items so each day has only the key tasks.
 - If the same ticket appears multiple times in one day, keep separate lines if they represent different work blocks or branches; otherwise merge them and sum the time.
 - Pure non-work entries that aren't a ticket and aren't a recurring item (lunch, coffee break): omit entirely. Private life is not in the log.
-- Before drafting the first day, read `references/edge-cases.md` - the completion signals, the implicit-investigation sentence, and the edge cases (relative dates, a ticket spanning days, a day off, a time mismatch). They fire on the shape of the input, so a run that skips them drafts the wrong shape and gets corrected.
+
+**Per-input-shape rules** - they fire on the shape of the input, not on every run; apply each before drafting the first day.
+
+- Completion signals:
+  - Context says a task was tested or verified but not yet merged: append `Testing.` - only if the summary does not already mention testing or verification.
+  - Context says a task is fully done and merged: append `Testing. Merged changes.` - only if the summary does not already mention those actions.
+  - Other markers where the input clearly signals the state: `In progress.`, `Created merge request.`, `Code review.` - never invented.
+  - Never append a signal that duplicates what the summary already says.
+- Implicit investigation:
+  - A task completed within the day (a fix applied or a feature fully implemented in that single day) with no mention of investigation, analysis or research opens with `Investigated <brief topic>.` before the fix sentence - a same-day fix began with finding the cause, and the log credits it.
+  - Not when the task runs across several days, the summary already opens with an investigation verb, or the input mentions investigation or analysis.
+- Edge cases:
+  - Relative dates (`today`, `yesterday`, `сьогодні`, `вчора`): resolve to absolute `dd.mm.yyyy` from today's date (Mon-Sun, no weekend skip).
+  - Same ticket over several days: a separate line under each day with that day's time only - never summed across days.
+  - A ticket's FIRST day-entry in a split (no earlier entry for it anywhere in this log) opens with a start verb (`Started`, `Investigated`, `Worked on`), never `Continued` - `Continued` is only for a later day of the same split.
+  - A day with no work (vacation, sick leave, public holiday): the day header, then a single line `Off (<reason>).`, no `Total time`.
+  - A task with no action verb: prefix `Worked on` (English) or `Працював над` (Ukrainian).
+  - Time mismatch (bullets sum to a different total than the input states): trust the bullets and recompute `Total time` from them - never echo the input's total.
 
 **Multiple days**
 - If input contains multiple days, output each day as a separate section in the same response.
@@ -122,31 +149,25 @@ Total time: <sum across all groups>.
 ## When the raw material is a repo, not notes
 
 Some runs arrive with no notes - 'write the log for what I did this week', or an effort estimate -
-and the work has to be read off the repository. Three rules, each from a measured miss:
+and the work has to be read off the repository. Three rules:
 
 - **The opening survey is ONE capped pass, run as a single literal command block before any
-  per-file diff** - prose order gets reordered, a command block does not (measured: a run read 5
-  per-file diffs before its first `git status`/`git stash list`, despite the skill's own 'come
-  first' text already loaded):
+  per-file diff** - prose order gets reordered, a command block does not:
   ```
   git status --short
   git stash list
   git branch --show-current
   git diff <base>...HEAD --stat
   ```
-  A full diff is read per file off that `--stat`, never as one uncapped dump. Measured: two
-  uncapped `git diff HEAD` calls cost 10.3k tokens for an estimate a capped survey answered for
-  ~4.3k in a sibling session, same repo, same task shape. `git stash list` is part of this survey
-  for the same reason: a change analysis and effort estimate built from the diff and working tree
-  alone was WRONG on scope until the user asked about the stash, and the recovery diffs cost ~9.8k.
+  A full diff is read per file off that `--stat`, never as one uncapped dump. `git stash list` is
+  in the survey because an estimate built from the diff and the working tree alone misses stashed
+  scope.
 - **The ticket id, when the notes name none, comes from that survey's `git branch --show-current`
   output or a commit trailer (`git log -1 --format=%s`) - never from comment or code text inside
-  the diff.** Measured: a delivered log and commit message cited an id that occurred only on lines
-  the diff REMOVED, while the real id sat one command away in the branch name.
+  the diff**, where an id on a REMOVED line can pass for the real one.
 - **A SECOND correction on the same axis is an ask, not a third redraft.** When two consecutive
   free-text corrections land on one axis - granularity, the time split, wording - stop regenerating
   and put that axis through ONE AskUserQuestion carrying the options the two corrections imply.
-  Measured: two corrections on one axis were each answered with a fresh regeneration.
 
 ## Style guidance
 

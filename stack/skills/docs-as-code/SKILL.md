@@ -1,6 +1,6 @@
 ---
 name: docs-as-code
-description: "Load before writing or reviewing a Mermaid sequence, ER or C4 diagram, an ADR or decision-log entry, or a diagram-tool choice. Not for the architecture capture."
+description: "Load before writing or reviewing a Mermaid sequence, ER or C4 diagram, an ADR or decision-log entry. Not for the committed architecture map (its own capture)."
 ---
 
 # Docs as Code - documentation artifacts as versioned text
@@ -32,14 +32,16 @@ Branching business logic is a flowchart, not a sequence diagram; static structur
 sequence. When a diagram and an ADR both apply (a decision that changed structure), write both -
 the ADR names the why, the diagram shows the outcome, each links the other.
 
-## Mermaid ground rules (both diagram types)
+## Mermaid ground rules (every Mermaid diagram)
 
 - Fence with the language id exactly `mermaid` - renders natively on GitHub, GitLab, Azure
   DevOps, and the VS Code preview, no plugins. Standalone diagrams are `.mmd` files.
 - Renderers lag the library (GitLab and wiki plugins run older majors). Before relying on newer
-  syntax: (1) preview on mermaid.live, (2) render on the actual target platform, (3) quote the
-  result of that render - or say plainly that it was not rendered. A diagram that has only ever
-  been previewed is UNVERIFIED on the platform it ships to.
+  syntax: (1) parse it locally with the Mermaid CLI where the project can run it
+  (`npx -p @mermaid-js/mermaid-cli mmdc -i <file>.mmd -o <tmp>/out.svg` - confirm the package and
+  flags through the documentation server first) and quote what it printed, (2) render on the actual
+  target platform when you can, (3) otherwise say plainly that it was not rendered. A diagram that
+  has only ever been parsed or previewed is UNVERIFIED on the platform it ships to.
 - Never hardcode a theme in an init directive - it breaks the reader's dark/light mode on GitHub.
   Prefer YAML frontmatter (`title:` + `config:`) over the deprecated init directive.
 - Accessibility: `accTitle:` + `accDescr:` inside the diagram, plus one plain-text sentence in
