@@ -165,15 +165,15 @@ const NAMED = `[\\w$.:]*?(?:${IDENT})`;
 // The caller and definition shapes carry the same test (audit 2026-10-08 row 39): 'find the definition of done in the
 // CONTRIBUTING docs', 'locate the component responsible for the page header' and 'list the call sites of the deprecated
 // logger' were denied as symbol hunts. The lead is matched without case; what follows it is read case-sensitively - a
-// NAMED identifier, or after a type shape ('find the class Order', 'implementations of IRepository') a backticked or
-// capitalised name.
+// NAMED identifier, or a backticked or capitalised name ('who calls Foo', 'find the class Order', 'implementations of
+// IRepository'); a lowercase word is prose.
 const SYMBOL_LEAD = new RegExp(
   [
     '\\bwho\\s+calls\\b',
     '\\bcall(?:ers|[- ]sites)\\s+(?:of|for)\\b',
     '\\b(?:find|locate|get)\\s+(?:the\\s+)?(?:definition|declaration|implementation|signature|body)\\s+of\\b',
-    '\\b(?<type>implementations?|subclasses)\\s+of\\b',
-    '\\b(?:find|locate)\\s+(?:the\\s+)?(?<kind>class|interface|method|function|component|service|enum|record|struct)\\b',
+    '\\b(?:implementations?|subclasses)\\s+of\\b',
+    '\\b(?:find|locate)\\s+(?:the\\s+)?(?:class|interface|method|function|component|service|enum|record|struct)\\b',
   ].join('|'),
   'gi',
 );
@@ -182,7 +182,7 @@ const TYPE_NAME_AFTER = /^\s+(?:[Tt]he\s+)?(?:named\s+|called\s+)?(?:`[A-Za-z_$]
 const symbolQuestion = (text) => {
   for (const m of text.matchAll(SYMBOL_LEAD)) {
     const rest = text.slice(m.index + m[0].length);
-    const name = rest.match(NAMED_AFTER) || (m.groups && (m.groups.kind || m.groups.type) ? rest.match(TYPE_NAME_AFTER) : null);
+    const name = rest.match(NAMED_AFTER) || rest.match(TYPE_NAME_AFTER);
     if (name) return [m[0] + name[0]];
   }
   return null;

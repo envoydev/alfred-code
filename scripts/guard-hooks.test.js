@@ -1610,8 +1610,9 @@ test('guard-unapproved-dispatch: the caller and definition shapes need a code na
   assert.equal(disp('Explore', 'all implementations of IRepository'), 2, 'implementations of an interface');
   assert.equal(disp('Explore', 'subclasses of the BaseController'), 2, 'subclasses of a CamelCase type');
   assert.equal(disp('Explore', 'find the class Order'), 2, 'a kind word before a capitalised name');
+  assert.equal(disp('Explore', 'who calls Foo'), 2, 'a capitalised name after any shape');
   const rows = () => fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'disp-branch.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-  assert.deepStrictEqual(rows().at(-1).detail, { branch: 'symbol-question', asked: 'find the class Order' });
+  assert.deepStrictEqual(rows().at(-1).detail, { branch: 'symbol-question', asked: 'who calls Foo' });
   assert.equal(disp('alfred-code:aspnet-implementer', 'build it'), 2);
   assert.equal(rows().at(-1).detail.branch, 'implementer-unapproved');
   assert.equal(disp('alfred-code:aspnet-implementer', 'build it', { agent_type: 'alfred-code:issue-diagnoser-ci' }), 2);
