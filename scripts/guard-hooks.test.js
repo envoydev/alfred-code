@@ -190,6 +190,17 @@ test('guard-stop-contract: a credential shape in a tool result demands the rotat
   fs.mkdirSync(path.dirname(receipt), { recursive: true });
   fs.writeFileSync(receipt, '*\n');
   assert.equal(stop().status, 0, 'the consented exposure is not re-asked');
+  // audit 2026-10-08: a Stop naming its session reads the receipt only through a `session:` line naming it
+  const stopAs = (sid) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp, session_id: sid },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' } });
+  assert.equal(stopAs('s1').status, 2, 'a receipt naming no session is no consent for a session');
+  fs.writeFileSync(receipt, 'session: s2\n*\n');
+  assert.equal(stopAs('s1').status, 2, 'another session\'s receipt is no consent');
+  fs.writeFileSync(receipt, 'session: s1\n*\n');
+  assert.equal(stopAs('s1').status, 0, 'this session\'s receipt is');
+  fs.writeFileSync(receipt, 'session: s1\n');
+  assert.equal(stopAs('s1').status, 2, 'a session line alone allows nothing');
+  fs.writeFileSync(receipt, '*\n');
   const old = (Date.now() - 9 * 3600 * 1000) / 1000; fs.utimesSync(receipt, old, old);
   assert.equal(stop().status, 2, 'a stale receipt is no consent');
 });

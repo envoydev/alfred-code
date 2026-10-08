@@ -197,10 +197,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     Read tool and a credential literal stay blocked. The comparison verbs (`diff`, `sdiff`, `cmp`, `comm`, `rev`)
     are judged like `cat` (I2). A git command that prints file content (`git diff`, `git show`, `git log -p`,
     `git stash show -p`) is PROBED - the same read run as argv, no shell, 3s / 8MB, external diff, textconv and
-    fsmonitor off - and only when its output would carry a credential, or it cannot be probed (a word the shell
+    fsmonitor off, at most four probes per call - and only when its output would carry a credential, or it cannot be probed (a word the shell
     expands, `-c` config, `--output`, a `cd` or a changing step before it - the probe runs before the command, so
-    `git add -N . && git diff HEAD` would read the tree without the new file - a failed run), gets `| node <guard> --redact-stdin` where
-    it stands: a stream mode masking a credential key's value (JSON, dotenv, YAML) in a config file the diff header
+    `git add -N . && git diff HEAD` would read the tree without the new file - a failed run, a fifth probe, a repository-local
+    `filter.*` config that a working-tree diff would run; audit 2026-10-08), gets `| node <guard> --redact-stdin` where
+    it stands: a stream mode masking a credential key's value (JSON, dotenv, YAML, an INI / properties / `.npmrc` pair) in a config file the diff header
     names, a URL password, a credential shape and a PEM body line by line, the note on stderr. A clean diff runs
     as written - an unconditional pipe would make every read-only `git diff` ask permission. Summary forms and
     `--quiet` / `--exit-code` are left alone (a pipe replaces git's exit status - `git diff --exit-code` prints
@@ -220,7 +221,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (`w /dev/stdout`), runs a command (`e`) or sits in a `-f` file; then it is judged, and blocked. A filtering
     read (`grep`, `jq .path`, `head`) keeps its filter over the view. A recursive search (`grep -rn`, `rg`) is probed as argv
     like the git branch (3s / 8MB) and piped through `--redact-stdin --grep` only when its output carries a credential, a clean
-    one runs as written; the Grep TOOL cannot be piped, so a tree hit is blocked. A path-qualified verb (`./tools/grep`,
+    one runs as written; the Grep TOOL cannot be piped, so a tree hit is blocked - its pattern read as ripgrep writes it (a
+    leading `(?i)`, `\A` / `\z`; one JavaScript cannot compile matches every line), its walk breadth-first with dependency
+    folders (`.venv`, `vendor`, `target`, ...) last, and unjudged past 4,000 files its filters let through, 32MB or 100,000
+    entries (a stated ceiling). A path-qualified verb (`./tools/grep`,
     `bin/rg`) is never spawned - the probe runs before the permission prompt, so it would run whatever script sits there
     (audit 2026-10-08, replayed) - and is piped unprobed. `git remote -v` / `get-url` / `show` and
     `git config --list` / `--get` are probed the same way (a tokened URL is masked; a config write is never probed). A print
@@ -253,7 +257,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     private key count as credentials whatever the key. `--presence <file> [KEY ...]` is the sanctioned
     one-key read (a KEY spelled `A.B.C`, `A:B:C` or `A__B__C` reads a nested JSON key; with no KEY it lists at
     most 200 string leaves plus a count, a credential-shaped key name masked); the guard ships only
-    in the plugin, so every denial and view names it by its absolute path. 'Show' is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt. The
+    in the plugin, so every denial and view names it by its absolute path. 'Show' is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt - where the call names its session, only with a `session: <id>` line naming it, the stop contract's rotation read included (audit 2026-10-08: time alone opened it to a second session on the project). The
     name rule is what catches a credential a `$(...)` COMPUTES (`gh auth token`, a keychain or vault read),
     so a stack snippet never assigns a credential-shaped name (the source-protocol snippet's marketplace key
     is `MKT`; as `KEY` it was blocked twice in pilot 2). A rewrite is no block but is counted: one `mode: rewrite` row

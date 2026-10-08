@@ -786,7 +786,8 @@ const secretInSession = () => secretExposure() !== null;
 // The secret guard's receipt is the user's CONSENT to a value being in this transcript - the remote
 // user who asked to see it, or to have it placed where a blind copy cannot reach. A shape that
 // entered under a live receipt is not re-asked for rotation every turn; the receipt is read with
-// the same session scope the guard applies (under 8h, this session's own transcript). Its path is
+// the same session scope the guard applies (under 8h, this session's own transcript, and a
+// `session: <id>` line naming it when the payload carries a session id). Its path is
 // pinned in shared-rules.json with the guard's.
 function secretReadAllowed() {
   try {
@@ -800,7 +801,11 @@ function secretReadAllowed() {
       sessionStartMs = t.birthtimeMs && t.birthtimeMs !== t.ctimeMs ? t.birthtimeMs : 0;
     } catch { sessionStartMs = 0; }
     if (Date.now() - st.mtimeMs > 8 * 60 * 60 * 1000 || (sessionStartMs && st.mtimeMs < sessionStartMs)) return false;
-    return fs.readFileSync(receipt, 'utf8').split(/\r?\n/).some((l) => l.trim() && !l.trim().startsWith('#'));
+    const lines = fs.readFileSync(receipt, 'utf8').split(/\r?\n/).map((l) => l.trim());
+    // the guard's session binding: a call naming its session reads the receipt only through a `session: <id>` line
+    const sid = typeof payload.session_id === 'string' && /^[\w.-]{1,128}$/.test(payload.session_id) ? payload.session_id : '';
+    if (sid && !lines.some((l) => { const m = l.match(/^session:\s*(\S+)$/); return m && m[1] === sid; })) return false;
+    return lines.some((l) => l && !l.startsWith('#') && !/^session:/.test(l));
   } catch {
     return false; // absent or unreadable - no consent recorded
   }
