@@ -1937,19 +1937,36 @@
       ]
     },
     "loop-close-commit-ask": {
-      "_note": "The loop close-out commit decision goes through AskUserQuestion (commit now / hold), never a prose 'your call' bullet - verbatim in both tiered loops because either installs alone.",
+      "_note": "The loop close-out commit decision goes through AskUserQuestion - Hold recommended and listed first, a picked commit running habits-commit-checkpoint whole (the flows' close template; the commit guard blocks a commit with no receipt) - never a prose 'your call' bullet. Verbatim in all three loops because each installs alone.",
       "owner": {
         "file": "stack/skills/loop-architecture-quality/SKILL.md",
-        "marker": "never a prose 'your call' bullet"
+        "marker": "'Hold - review the diff first (Recommended)' / 'Commit now', which runs `habits-commit-checkpoint` whole - never a prose 'your call' bullet"
       },
       "sites": [
         {
           "file": "stack/skills/loop-test-coverage/SKILL.md",
-          "marker": "never a prose 'your call' bullet"
+          "marker": "'Hold - review the diff first (Recommended)' / 'Commit now', which runs `habits-commit-checkpoint` whole - never a prose 'your call' bullet"
         },
         {
           "file": "stack/skills/loop-quality/SKILL.md",
-          "marker": "never a prose 'your call' bullet"
+          "marker": "'Hold - review the diff first (Recommended)' / 'Commit now', which runs `habits-commit-checkpoint` whole - never a prose 'your call' bullet"
+        }
+      ]
+    },
+    "loop-blocked-capture-retry": {
+      "_note": "A capture Skill call the fresh-session guard blocks is answered through one marked ask, and a 'continue' answer re-issues the same call - the guard records the offer and passes the retry until the context grows 1.5x past it (scripts/guard-hooks.test.js 'the size offer is answerable'). Replaces 'never retry a blocked call - read the capture's SKILL.md instead' (2026-10-08 audit C5), verbatim in all three loops.",
+      "owner": {
+        "file": "stack/skills/loop-architecture-quality/SKILL.md",
+        "marker": "is the gate working, not a fault: put the choice through AskUserQuestion - 'Resume in a fresh session (Recommended)', ending this turn with the RESUME BLOCK / 'Continue here' - and on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/loop-quality/SKILL.md",
+          "marker": "is the gate working, not a fault: put the choice through AskUserQuestion - 'Resume in a fresh session (Recommended)', ending this turn with the RESUME BLOCK / 'Continue here' - and on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it"
+        },
+        {
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "marker": "is the gate working, not a fault: put the choice through AskUserQuestion - 'Resume in a fresh session (Recommended)', ending this turn with the RESUME BLOCK / 'Continue here' - and on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it"
         }
       ]
     },

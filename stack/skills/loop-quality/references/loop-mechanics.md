@@ -68,5 +68,6 @@ and the answer-length hook blocks a wall of prose; tables are exempt.
 - **Mechanics** - `loop-mechanics.md: read`, then `bootstrap.md: <yes|n/a>` - the receipt that this file was read this step (`bootstrap.md: yes` when the run seeded the loops folder, else `n/a`).
 
 Then the two closing asks the body mandates, both through AskUserQuestion and never a prose bullet: the
-commit decision (commit now / hold) when work is uncommitted and no round is queued, and tear-down-vs-keep
+commit decision ('Hold - review the diff first (Recommended)' / 'Commit now', which runs
+`habits-commit-checkpoint` whole) when work is uncommitted and no round is queued, and tear-down-vs-keep
 for anything the round started and still has up.

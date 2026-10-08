@@ -49,4 +49,4 @@ One line per field, a table where a field lists several items - the close is an 
 - **Next actions** - when Deferred items are blocked on the operator (a live walk, a log grab, a replay), a ranked what-to-do list ships IN this report, not on request.
 - **Mechanics** - `loop-mechanics.md: read` - the receipt that this file was read this step.
 
-Then the two closing asks the body mandates, both through AskUserQuestion and never a prose bullet: the commit decision (commit now / hold) when work is uncommitted and no round is queued, and tear-down-vs-keep for anything the round started and still has up.
+Then the two closing asks the body mandates, both through AskUserQuestion and never a prose bullet: the commit decision ('Hold - review the diff first (Recommended)' / 'Commit now', which runs `habits-commit-checkpoint` whole) when work is uncommitted and no round is queued, and tear-down-vs-keep for anything the round started and still has up.
