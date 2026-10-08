@@ -271,9 +271,10 @@ takes the NEWEST valid entry, so a stale dir is never the source. When the listi
 ONE version dir, say so in ONE close-out line - the count and the keeper - and say that Claude Code
 clears the rest itself.
 And if an update ever does NOT change the running content (a same-version re-release - the trap
-every release now avoids by bumping), the hard reset is `claude plugin uninstall alfred-code`
-then `claude plugin install alfred-code@<key>`, which rebuilds the cache from the
-marketplace - `<key>` is the resolve line's `key=`, the key the core is listed under.
+every release now avoids by bumping), the hard reset is `claude plugin uninstall alfred-code@<key> --scope <scope>`
+then `claude plugin install alfred-code@<key> --scope <scope>`, which rebuilds the cache from the
+marketplace - `<key>` is the resolve line's `key=`, the key the core is listed under, and `<scope>` the
+one the core is installed at (never `managed`, the admin's; without `--scope` the CLI picks `user`).
 
 ## Narrate, don't trace
 

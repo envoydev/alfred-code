@@ -81,7 +81,8 @@ function removePlugins({ rows = [], market, scope, thirdParty = [], cli, log = (
         const spec = `${r.name}@${r.marketplace}`;
         const at = r.scope || scope;
         if (at === scope && scope !== 'user') { if (!left.includes(spec)) left.push(spec); continue; }
-        if (at === 'user') log(`  ${spec} is installed at user scope - every project on this account loads it, so it is not removed here: claude plugin uninstall ${spec} --scope user (or, for this project only: claude plugin disable ${spec} --scope project)`);
+        if (at === 'managed') log(`  ${spec} is installed at managed scope - your organization's managed settings own it, so it is not removed here; only an admin removes it`);
+        else if (at === 'user') log(`  ${spec} is installed at user scope - every project on this account loads it, so it is not removed here: claude plugin uninstall ${spec} --scope user (or, for this project only: claude plugin disable ${spec} --scope project)`);
         else log(`  ${spec} is installed at ${at} scope, not this install's - not removed here: claude plugin uninstall ${spec} --scope ${at}`);
     }
     for (let pass = 0; pass < ours.length && left.length; pass++)
@@ -97,7 +98,9 @@ function removePlugins({ rows = [], market, scope, thirdParty = [], cli, log = (
     }
     for (const spec of left) note(`plugin uninstall failed: ${spec} - remove it by hand: claude plugin uninstall ${spec} --scope ${scope}`);
     for (const r of rows.filter((x) => thirdParty.includes(`${x.name}@${x.marketplace}`) && x.version))
-        log(`  ${r.name}@${r.marketplace} (a third-party pick) is not removed - it may be in use on its own; if not: claude plugin uninstall ${r.name}@${r.marketplace} --scope ${r.scope || scope}`);
+        log(r.scope === 'managed'
+            ? `  ${r.name}@${r.marketplace} (a third-party pick) is installed at managed scope - your organization's managed settings own it; only an admin removes it`
+            : `  ${r.name}@${r.marketplace} (a third-party pick) is not removed - it may be in use on its own; if not: claude plugin uninstall ${r.name}@${r.marketplace} --scope ${r.scope || scope}`);
     return { left };
 }
 

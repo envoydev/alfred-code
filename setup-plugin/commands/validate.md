@@ -278,7 +278,7 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   a signal is a `no-evidence:` advisory, never a removal.
   Every name in `plugins_disabled` gets its own **DISABLED** row in the plugins table - reason
   `installed but disabled for this project` - and its accept action is `claude plugin enable
-  <name>`, never an install and never an uninstall. A DISABLED plugin the user leaves alone is a
+  <name> --scope <the install's scope>`, never an install and never an uninstall. A DISABLED plugin the user leaves alone is a
   deliberate choice and is not re-raised in the close.
 - **`alfred-memory` joins `alfred-navigation` and `alfred-documentation`** as an always-required MCP (`alfred-memory.md` locks
   it in the same way `alfred-navigation.md` locks the navigation server) - MISSING when the project carries no
@@ -464,8 +464,8 @@ advisory. Name each item's idle cost and off lever honestly, per layer:
 agents and manual `/`-skills cost nothing installed (explicit dispatch only - say so, so working
 machinery is not pruned for phantom savings); an auto-firing skill costs its description line per
 session (lever: remove, or accept it); an MCP costs its server launch + tools every session
-(lever: `claude mcp remove`, cheap to re-add via configure); a plugin can be switched off in place
-(`claude plugin disable <name>`). Act on a lever only on an explicit user request in this run -
+(lever: `claude mcp remove <name> -s <its scope>`, cheap to re-add via configure); a plugin can be switched off in place
+(`claude plugin disable <name> --scope <the install's scope>` - from a narrower scope it switches a broader row off there alone). Act on a lever only on an explicit user request in this run -
 dormancy alone is never a removal argument.
 
 ## 11. Apply - the same paths setup/configure use
@@ -510,9 +510,9 @@ profile), output to `$TMP/select.out` - then:
   nothing kept needs any more is disabled. Report them from `grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|scope, not this run|removed \(dropped\)|overwriting a hand-edited copy' "$TMP/install.log"` - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out: `skill <name> stays loaded` is a core
   skill, which the core plugin goes on carrying - report it as carried, never as removed; `--drop
   <line> not applied` is an item something kept requires, or an always-on rule or server (`locked`) -
-  report it as kept, with the reason; a stack entry enabled at another scope is never disabled, the
-  log names the command for the user. Two removals the installer never makes, each with its command shown first:
-  `claude mcp remove <name>` for an MCP on the copy route (browser = every
+  report it as kept, with the reason; a stack entry enabled at a broader scope is switched off for this
+  scope alone, a narrower or managed one is named, never switched. Two removals the installer never makes, each with its command shown first:
+  `claude mcp remove <name> -s <its scope>` for an MCP on the copy route (browser = every
   `browser-<engine>` server), and
   `claude plugin uninstall <name> --scope <the scope step 1 recorded for it>` (2.2.0: no plugin rides
   beside the core any more - claude-hud is a pick like the LSP pair). The removal ask that proposed it

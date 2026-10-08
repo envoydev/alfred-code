@@ -968,10 +968,10 @@ test('read-back (2.1.0): a stamp missing its `seats-route:` line never reads a s
     assert.ok(!r.lines.includes('agent web-angular-verifier'), 'a library seat with no copy on disk was dropped by hand');
 });
 
-test('planInventory: scopes - global for a user row, project for a project or local one, project when at both, required items none', () =>
+test('planInventory: scopes - global for a user row, project and local as such, the narrowest when at several, required items none', () =>
 {
     const r = (name, scope, version = '1.0.0') => ({ name, marketplace: 'm', version, scope, enabled: true });
     const inv = sel.planInventory({ lists: {}, listing: [r('claude-hud', 'user'), r('claude-hud', 'project'), r('browser-webkit', 'local'), r('windows-desktop', 'user'),
         r('alfred-navigation', 'user'), r('alfred-code', 'user'), r('typescript-lsp', 'project', '')] });
-    assert.deepStrictEqual(inv.scopes, { 'claude-hud': 'project', 'browser-webkit': 'project', 'windows-desktop': 'global' }, 'a row with no version is not installed');
+    assert.deepStrictEqual(inv.scopes, { 'claude-hud': 'project', 'browser-webkit': 'local', 'windows-desktop': 'global' }, 'a row with no version is not installed');
 });

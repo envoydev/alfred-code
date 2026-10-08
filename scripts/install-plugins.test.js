@@ -2364,9 +2364,22 @@ test('moveScoped: a failed install removes nothing; a row already at the target 
     assert.deepStrictEqual(P.moveScoped({ plugins: ['claude-hud@claude-hud'], rows: [hudRow('user')], scope: 'project', scopes: { 'claude-hud': 'project' }, cli: failing, note: (m) => notes.push(m) }), []);
     assert.deepStrictEqual(failing.matching(/uninstall/), [], 'the old row keeps serving');
     assert.ok(notes.some((m) => /plugin move failed: claude-hud@claude-hud - it stays at user scope; .*claude plugin install claude-hud@claude-hud --scope project, then claude plugin uninstall claude-hud@claude-hud --scope user/.test(m)), notes.join('\n'));
+    // Scope rule 3: a row already at the target moves nothing, and a BROADER row at another scope stays, named.
     const both = cli();
-    P.moveScoped({ plugins: ['claude-hud@claude-hud'], rows: [hudRow('user'), hudRow('project')], scope: 'project', scopes: { 'claude-hud': 'project' }, cli: both });
-    assert.deepStrictEqual(both.calls, ['plugin uninstall claude-hud@claude-hud --scope user -y']);
+    const bothLogs = [];
+    P.moveScoped({ plugins: ['claude-hud@claude-hud'], rows: [hudRow('user'), hudRow('project')], scope: 'project', scopes: { 'claude-hud': 'project' }, cli: both, log: (m) => bothLogs.push(m) });
+    assert.deepStrictEqual(both.calls, []);
+    assert.ok(bothLogs.some((m) => /claude-hud@claude-hud is installed at user scope too - kept for the projects that use it/.test(m)), bothLogs.join('\n'));
+    // The row this project loads moves; one narrower than the target goes too (it would outrank it), a broader one stays.
+    const three = cli();
+    P.moveScoped({ plugins: ['claude-hud@claude-hud'], rows: [hudRow('user'), hudRow('project'), hudRow('local')], scope: 'project', scopes: { 'claude-hud': 'project' }, cli: three });
+    assert.deepStrictEqual(three.calls, ['plugin uninstall claude-hud@claude-hud --scope local -y']);
+    const toLocal = cli();
+    P.moveScoped({ plugins: ['claude-hud@claude-hud'], rows: [hudRow('user'), hudRow('project')], scope: 'project', scopes: { 'claude-hud': 'local' }, cli: toLocal });
+    assert.deepStrictEqual(toLocal.calls, ['plugin install claude-hud@claude-hud --scope local -y', 'plugin uninstall claude-hud@claude-hud --scope project -y']);
+    const toUser = cli();
+    P.moveScoped({ plugins: ['claude-hud@claude-hud'], rows: [hudRow('project'), hudRow('local')], scope: 'project', scopes: { 'claude-hud': 'user' }, cli: toUser });
+    assert.deepStrictEqual(toUser.calls, ['plugin install claude-hud@claude-hud --scope user -y', 'plugin uninstall claude-hud@claude-hud --scope local -y', 'plugin uninstall claude-hud@claude-hud --scope project -y']);
     const engine = cli();
     P.moveScoped({ plugins: ['browser-firefox@envoydev'], rows: [{ name: 'browser-firefox', marketplace: 'envoydev', version: '2.1.8', scope: 'user', enabled: false }],
         scope: 'project', scopes: { 'browser-firefox': 'project' }, engines: ['browser-firefox@envoydev'], cli: engine });

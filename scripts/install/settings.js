@@ -791,6 +791,49 @@ function writeSettings(opts)
     return { written: true, refused: false, createdLocal: createdLocalFile, managed };
 }
 
+// Rule: a narrower scope switches off an MCP server registered at a BROADER one for itself alone. MCP has no
+// per-scope disable command, so the entry is a `deniedMcpServers` `{ serverName }` row in this scope's own
+// settings file (settings.local.json at local scope, settings.json at project scope) - the denylist merges from
+// every settings scope and blocks the name here only (code.claude.com/docs/en/managed-mcp, 'How a server is
+// evaluated'). `add` and `lift` are names; only an entry naming exactly `{ serverName: <name> }` is lifted, so a
+// row of the user's own shape stays. Returns `{ added, lifted }` as written, or null when the file could not be
+// read or its list is not a list (said once, nothing changed).
+function applyMcpDeny({ file, add = [], lift = [], log = () => {}, note = () => {} })
+{
+    if (!add.length && !lift.length) return { added: [], lifted: [] };
+    const label = path.basename(file);
+    let data;
+    try { ({ data } = readSettings(file)); }
+    catch (err) { note(`${err.message} - no deniedMcpServers entry was written there`); return null; }
+    const had = data.deniedMcpServers;
+    if (had !== undefined && !Array.isArray(had)) { note(`${label}: deniedMcpServers is not a list - left as it is, and no MCP server is switched off through it`); return null; }
+    const list = had || [];
+    const ours = (row, name) => plain(row) && Object.keys(row).length === 1 && row.serverName === name;
+    const added = [];
+    const lifted = [];
+    for (const name of lift)
+    {
+        const at = list.findIndex((row) => ours(row, name));
+        if (at < 0) continue;
+        list.splice(at, 1);
+        lifted.push(name);
+        log(`  ${label}: deniedMcpServers - ${name} (picked again)`);
+    }
+    let grew = false;
+    for (const name of add)
+    {
+        if (!list.some((row) => ours(row, name))) { list.push({ serverName: name }); grew = true; log(`  ${label}: deniedMcpServers + ${name} (dropped here - its broader-scope registration stays for everyone else)`); }
+        added.push(name);
+    }
+    // A re-run that finds every entry in place writes nothing.
+    if (!grew && !lifted.length) return { added, lifted };
+    if (list.length) data.deniedMcpServers = list;
+    else delete data.deniedMcpServers;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    return { added, lifted };
+}
+
 // T16/R47 (I1): the ONE place that decides which file THIS run's own settings writes go to - a
 // `local`-scope install's stack settings (and, per R47, its `autoMemoryEnabled` switch-off) are
 // machine-personal, so they go to settings.local.json; every other scope keeps the shared file. Every
@@ -1072,4 +1115,4 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
         log(`  kept at user scope: ${keptOff.join(', ')} - the user-scope core stays loaded for this account, so these keep what you switched off here off; remove them once it is uninstalled`);
 }
 
-module.exports = { removeManagedSettings, isStackKey, writeSettings, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };
+module.exports = { removeManagedSettings, isStackKey, writeSettings, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };

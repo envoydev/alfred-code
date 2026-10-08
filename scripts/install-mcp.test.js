@@ -683,12 +683,13 @@ for (const key of ['envoydev', 'house-mirror'])
     });
 }
 
-test('seed update (full copy route): a stack row already off is left alone, and one at another scope is named with its command, never disabled (R107)', POSIX_ONLY, () =>
+test('seed update (full copy route): a stack row already off is left alone; a BROADER row is switched off for this project alone, a narrower one named (R107, scope rule 5)', POSIX_ONLY, () =>
 {
-    const rows = STACK_ROWS('envoydev', { 'alfred-code': { enabled: false }, 'alfred-navigation': { enabled: false }, 'alfred-documentation': { enabled: false }, 'alfred-memory': { scope: 'user' } });
+    const rows = STACK_ROWS('envoydev', { 'alfred-code': { enabled: false }, 'alfred-navigation': { enabled: false }, 'alfred-documentation': { scope: 'local' }, 'alfred-memory': { scope: 'user' } });
     const { calls, out } = switchRun(rows);
-    assert.deepStrictEqual(calls.filter((c) => /^plugin disable /.test(c)), [], `a re-run disables nothing:\n${calls.join('\n')}`);
-    assert.match(out, /memory@envoydev is enabled at user scope, not this run's - .*claude plugin disable alfred-memory@envoydev --scope user/);
+    assert.deepStrictEqual(calls.filter((c) => /^plugin disable /.test(c)), ['plugin disable alfred-memory@envoydev --scope project'], `only the user-scope row, here only:\n${calls.join('\n')}`);
+    assert.match(out, /plugin disabled \[project\]: alfred-memory@envoydev \(the full copy route carries it as copies; this project only - the user-scope install stays on for every other project\)/);
+    assert.match(out, /documentation@envoydev is enabled at local scope, not this run's - .*claude plugin disable alfred-documentation@envoydev --scope local/);
 });
 
 // R116 matrix re-run: the full copy route disables a 2.x core (R107), and the plugin route never enabled
@@ -940,12 +941,16 @@ for (const [route, env] of [['MCP copy route', MCP_COPY_ENV], ['full copy route'
         });
         for (const e of ['chrome', 'firefox', 'webkit']) assert.ok(result.includes(`browser-${e}`), `browser-${e} not registered: ${result.join(',')}\n${out}`);
         const engineMoves = calls.filter((c) => /^plugin (install|uninstall|disable|enable) browser-/.test(c));
-        // R116: the row left off goes too - the stamp is then the one record the switch back reads.
-        assert.deepStrictEqual(engineMoves, ['chrome', 'webkit'].map((e) => `plugin uninstall browser-${e}@envoydev --scope project -y`), `${engineMoves.join('\n')}\n${out}`);
+        // R116: the row left off goes too - the stamp is then the one record the switch back reads. Scope rule 5: on the
+        // full copy route the user-scope row is switched off for this project alone; on the MCP copy route it is named.
+        const firefox = route === 'full copy route' ? ['plugin disable browser-firefox@envoydev --scope project'] : [];
+        assert.deepStrictEqual(engineMoves, ['plugin uninstall browser-chrome@envoydev --scope project -y', ...firefox, 'plugin uninstall browser-webkit@envoydev --scope project -y'], `${engineMoves.join('\n')}\n${out}`);
         const gone = calls.indexOf('plugin uninstall browser-chrome@envoydev --scope project -y');
         assert.ok(calls.findIndex((c) => /^mcp add .*browser-/.test(c)) > gone, `an engine was registered before its plugin went:\n${calls.join('\n')}`);
         assert.match(out, /plugin uninstalled \[project\]: browser-chrome@envoydev \(the copy route registers it in \.mcp\.json/);
-        assert.match(out, /browser-firefox@envoydev is enabled at user scope, not this run's - .*claude plugin uninstall browser-firefox@envoydev --scope user/);
+        assert.match(out, route === 'full copy route'
+            ? /!! plugin disabled \[project\]: browser-firefox@envoydev \(the copy route registers it in \.mcp\.json; this project only - the user-scope install stays on for every other project\)/
+            : /browser-firefox@envoydev is enabled at user scope, not this run's - .*to switch it off for this project alone: claude plugin disable browser-firefox@envoydev --scope project/);
         const stackDisables = calls.filter((c) => /^plugin disable (alfred-code|alfred-navigation|alfred-documentation|alfred-memory)@/.test(c));
         assert.strictEqual(stackDisables.length, route === 'full copy route' ? 4 : 0, `${stackDisables.join('\n')}`);
     });

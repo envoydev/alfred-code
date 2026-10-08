@@ -55,10 +55,11 @@ const REMOVED = new Map([
 ]);
 
 // 2.2.0: the OPTIONAL items, each installed at its own scope - global (the CLI's `user`, every project on the
-// account) or this project (the run's own scope; `project` when the run is a user-scope one). The required ones -
-// the core and the three alfred- servers - follow --scope. `browser` names every engine at once.
+// account), this project (the run's own scope; `project` when the run is a user-scope one) or local (this checkout
+// alone). Never managed: no run installs there. The required ones - the core and the three alfred- servers -
+// follow --scope. `browser` names every engine at once.
 const SCOPED_ITEMS = [...PW_ENGINES.map((e) => `browser-${e}`), 'windows-desktop', 'macos-desktop', 'typescript-lsp', 'csharp-lsp', 'claude-hud'];
-const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project)$/;
+const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 
 const ALIASES = new Map([['--playwright-browsers', '--browsers'], ['--playwright-enabled', '--browser-enabled'], ['--docs-move', '--data-move']]);
 
@@ -106,16 +107,16 @@ function parseArgs(argv)
             continue;
         }
 
-        // Repeatable: `--scope-of <item>=<global|project>`, one optional item's own scope.
+        // Repeatable: `--scope-of <item>=<global|project|local>`, one optional item's own scope.
         if (name === '--scope-of')
         {
             const value = lower(eq > -1 && name !== arg ? arg.slice(eq + 1) : argv[++i]).trim();
             const m = SCOPE_OF.exec(value);
-            if (!m) fail(`--scope-of takes '<item>=<global|project>' (got '${value}')`);
+            if (!m) fail(`--scope-of takes '<item>=<global|project|local>' (got '${value}')`);
             const items = m[1] === 'browser' ? PW_ENGINES.map((e) => `browser-${e}`) : [m[1]];
             if (!items.every((n) => SCOPED_ITEMS.includes(n)))
                 fail(`--scope-of: '${m[1]}' has no scope of its own - one of browser, ${SCOPED_ITEMS.join(', ')}; the core and the alfred- servers follow --scope`);
-            for (const n of items) out.scopeOf[n] = m[2] === 'project' ? 'project' : 'user';
+            for (const n of items) out.scopeOf[n] = m[2] === 'project' || m[2] === 'local' ? m[2] : 'user';
             continue;
         }
 

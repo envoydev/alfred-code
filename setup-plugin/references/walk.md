@@ -394,8 +394,9 @@ DELTA takes the two layer questions above (add, drop) like every layer.
 **Where each optional item installs - the last ask of the walk.** The core and the three `alfred-` servers
 follow the run's scope. Every OTHER kept item - each kept browser engine (`browser-<engine>`), a kept desktop
 server, a kept LSP, `claude-hud` - goes where the user chooses, item by item: `project` (this project only,
-the default for every one) or `global` (every project on this account loads it). Nothing kept that is
-optional: ask nothing. FRESH has no install, so every item starts at `project`:
+the default for every one), `global` (every project on this account loads it) or `local` (this checkout only,
+never shared through the repo). Never `managed`: that scope is the admin's, and no run installs there. Nothing
+kept that is optional: ask nothing. FRESH has no install, so every item starts at `project`:
 
 ```ask
 Where do the <n> optional picks install? <names>. This project only, unless you make one global.
@@ -405,8 +406,9 @@ Where do the <n> optional picks install? <names>. This project only, unless you 
 ```
 
 DELTA reads where each installed one lives now - `jq -c '.scopes' "$TMP/installed.json"` prints
-`{"<item>": "global" | "project"}` - names it in the question, and keeps it there by default; a newly
-added item starts at `project`:
+`{"<item>": "global" | "project" | "local" | "managed"}`, the narrowest row where an item sits at several (the one
+this project loads) - names it in the question, and keeps it there by default; a newly added item starts at
+`project`. A `managed` item is the admin's: name it, never offer it a move:
 
 ```ask
 Keep the optional picks where they are? <item: global | project, one clause each>.
@@ -415,12 +417,14 @@ Keep the optional picks where they are? <item: global | project, one clause each
 - 'All in this project' - every global one moves here; your other projects lose it
 ```
 
-'Pick ...' opens ONE call of multi-select questions (up to 4 per question, each option one item, its
-description naming the scope it would get). Pass every answer that is not the item's current place as
-`--scope-of <item>=<global|project>` (`--scope-of browser=<...>` covers every engine at once): FRESH
-passes each `global` one, DELTA each move - the installer installs the item at the new scope first, then
-removes it at the old, and says a move off `global` loud (every other project loses it, with the line that
-puts it back). An unchanged answer passes nothing. On the full copy route (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`)
+'Pick ...' opens ONE call of multi-select questions, one per target scope the items are not already at
+('Make global', 'Keep in this project', 'This checkout only (local)' - up to 4 options per question, each option
+one item, its description naming its scope now); an item ticked under two targets is asked once more. Pass
+every answer that is not the item's current place as `--scope-of <item>=<global|project|local>`
+(`--scope-of browser=<...>` covers every engine at once): FRESH passes each `global` or `local` one, DELTA
+each move - the installer installs the item at the new scope first, then removes it at the old one alone
+(a row at a third scope stays), and says a move off `global` loud (every other project loses it, with the
+line that puts it back). An unchanged answer passes nothing. On the full copy route (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`)
 the engines and desktop servers are `.mcp.json` / `claude mcp add` registrations at the run's scope - their
 answer does not apply there; say so in one line and ask only the plugins.
 

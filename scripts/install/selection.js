@@ -783,17 +783,21 @@ function planInventory({ lists, listing = [], answered, pluginCatalog = [], left
 }
 
 // 2.2.0: where each installed OPTIONAL item lives now (args.js SCOPED_ITEMS) - `global` for a user-scope row, every
-// project on the account, `project` for this project's own (project or local) - so the walk shows it and offers the
-// move as `--scope-of <item>=<global|project>`. An item at both reads `project`: this project's row is the one it loads.
+// project on the account, `project` and `local` for this project's own, `managed` for the admin's (shown, never
+// moved) - so the walk shows it and offers the move as `--scope-of <item>=<global|project|local>`. An item at
+// several reads its narrowest: that row is the one this project loads.
 function itemScopes(listing = [])
 {
     const { SCOPED_ITEMS } = require('./args.js');
+    const { scopeRank } = require('./plugins.js');
+    const label = (scope) => (scope === 'user' ? 'global' : scope === 'local' || scope === 'managed' ? scope : 'project');
+    const rank = (scope) => scopeRank(scope === 'global' ? 'user' : scope);
     const out = {};
     for (const r of listing)
     {
         if (!SCOPED_ITEMS.includes(r.name) || !r.version) continue;
-        const here = r.scope === 'user' ? 'global' : 'project';
-        if (out[r.name] !== 'project') out[r.name] = here;
+        const here = label(r.scope);
+        if (!out[r.name] || rank(here) < rank(out[r.name])) out[r.name] = here;
     }
     return out;
 }
@@ -840,5 +844,5 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 
 module.exports = {
     addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, respellRenamed, respellRosterSeats, respellDocsRoot, generatedRules, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
-    adoptHooks, adoptAlways, readBack, planInventory, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, FORMER_PLUGINS,
+    adoptHooks, adoptAlways, readBack, planInventory, itemScopes, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, FORMER_PLUGINS,
 };
