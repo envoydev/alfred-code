@@ -1075,6 +1075,43 @@ test('guard-catastrophic-rm: the PowerShell spellings and the Windows roots', ()
   assert.equal(bash('guard-catastrophic-rm.js', 'rm -rf \\*'), 0, 'a backslash-escaped star is a file named *, not a glob');
 });
 
+test('guard-catastrophic-rm: PowerShell .\\ and ..\\ are the cwd and its parent; Monitor runs the same shell (audit 2026-10-08)', () => {
+  for (const c of ['Remove-Item -Recurse -Force .\\', 'Remove-Item -Recurse -Force .\\*', 'Remove-Item -Recurse -Force ..\\', 'ri -Recurse ..\\*'])
+    assert.equal(pwsh('guard-catastrophic-rm.js', c), 2, `must block: ${c}`);
+  for (const c of ['Remove-Item -Recurse -Force .\\build', 'Remove-Item -Recurse -Force ..\\other\\out'])
+    assert.equal(pwsh('guard-catastrophic-rm.js', c), 0, `must allow: ${c}`);
+  assert.equal(run('guard-catastrophic-rm.js', { tool_name: 'Monitor', tool_input: { command: 'rm -rf ~' } }), 2, 'Monitor');
+});
+
+test('guard-catastrophic-rm: past the judged-call cap a clean, a stash clear and unread git text are still read (audit 2026-10-08)', () => {
+  const { SCAN_LIMITS } = require(path.join(HOOKS, 'hook-prelude.js'));
+  const dir = cleanRepo();
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  fs.writeFileSync(path.join(dir, 'seed.txt'), 'stashed\n'); git('stash', '-q');
+  fs.writeFileSync(path.join(dir, 'untracked.txt'), 'only copy\n');
+  const rm = (c) => runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command: c }, cwd: dir }, { cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+  const filler = Array.from({ length: SCAN_LIMITS.gitJudged }, () => 'git restore --staged seed.txt').join('\n');
+  assert.equal(rm(`${filler}\ngit status`).status, 0, 'control: the tracked tree is clean and nothing destructive follows');
+  const clean = rm(`${filler}\ngit clean -fd`);
+  assert.equal(clean.status, 2, 'git clean past the cap deletes the untracked file - it passed before');
+  assert.match(clean.stderr, /untracked\.txt/);
+  assert.equal(rm(`${filler}\ngit stash clear`).status, 2, 'git stash clear past the cap destroys the stash - it passed before');
+  assert.equal(rm('git clean -fd').status, 2, 'control: the same clean alone');
+  // A subcommand xargs supplies is text the reader cannot read: judged as a whole-tree discard where the shell runs.
+  fs.writeFileSync(path.join(dir, 'seed.txt'), 'dirty\n');
+  assert.equal(rm('echo checkout -- seed.txt | xargs git').status, 2, 'an xargs-fed git call on a dirty tree');
+  git('checkout', '--', 'seed.txt');
+  assert.equal(rm('echo status | xargs git').status, 0, 'and on a clean tree nothing is lost');
+});
+
+test('guard-catastrophic-rm: an unscoped marketplace remove is blocked by path and inside bash -c (audit 2026-10-08)', () => {
+  const rm = (c) => bash('guard-catastrophic-rm.js', c);
+  for (const c of ['/usr/local/bin/claude plugin marketplace remove foo', "bash -c 'claude plugin marketplace remove foo'", 'sh -c "claude plugin marketplace rm foo"'])
+    assert.equal(rm(c), 2, `must block: ${c}`);
+  for (const c of ["bash -c 'claude plugin marketplace remove foo --scope user'", 'echo "claude plugin marketplace remove foo"', '/usr/local/bin/claude plugin marketplace list'])
+    assert.equal(rm(c), 0, `must allow: ${c}`);
+});
+
 test('guard-catastrophic-rm: a literal find delete and a piped Remove-Item are judged by the rm target set (2.1.5 M1)', () => {
   // The literal form is flat tokens: `find <start> ... -delete` / `-exec rm` deletes what it walks, so its
   // start points are the targets. A filter test narrows the delete to what matches, like `-Include`.

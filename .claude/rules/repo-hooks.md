@@ -117,14 +117,19 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     EVERY git call in the command, read from its argv by `gitText` (the same wrappers, bodies, scripts and aliases as the
     force-push guard; only the nine verbs that can lose work spawn git, and past `SCAN_LIMITS.gitJudged` the rest of a command reads
     as one whole-tree discard, so N `git add` calls cost no git and the count never lets a discard through - seam M3, m4;
-    PowerShell's paths reach the reader with backslash and backtick swapped): a
+    each call past the cap is also read by its own plan from its argv when that plan is a clean, a stash, a reflog or an
+    object loss (one read per directory and kind, at most 16, past them an unread loss), and text the reader could not
+    read (`unreadAt`) is a whole-tree discard where the shell runs - audit 2026-10-08;
+    PowerShell's paths reach the reader with backslash and backtick swapped, and its rm targets with every backslash
+    read as `/` - `.\`, `..\`): a
     path `checkout` / `restore` of the working tree / `reset --hard` / a forced `checkout` or `switch` only
     when the PATHSPEC it names is dirty (judged where git runs: cwd, a leading `cd`, `-C`; `status -z`, so
     a non-ASCII name reads as written; an untracked file counts only when the target tracks it, `-` being
     the previous branch), `clean -f` by its own `-n` dry run (ignored files included), plus
     `stash drop` / `stash clear` / `reflog expire` / `prune` / a `gc` given a prune date or a `-c gc.*Expire`
     by what they destroy; one block names every loss. PowerShell `Remove-Item -Recurse`
-    counts. A `claude plugin marketplace remove|rm` with no `--scope` is denied (2.1.7): the CLI then removes the
+    counts. A `claude plugin marketplace remove|rm` with no `--scope` - the binary by its path or inside `bash -c` too -
+    is denied (2.1.7): the CLI then removes the
     declaration from every scope and uninstalls every plugin installed from it, in every project. A SQL `DROP` or `dotnet ef database drop` writes a log-only probe row. A 'discard it' answer
     is honoured via `<docs-path>/flow/DISCARD-ALLOW` (paths, `stash@{N}`, or `*`).
   - `guard-read-whole-file.js` (PreToolUse `Read` + the shell route) - blocks whole-file dumps (also through the
