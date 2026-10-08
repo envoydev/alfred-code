@@ -1545,6 +1545,44 @@ test('guard-unapproved-dispatch: what-type and where-defined sweeps over plain w
   assert.equal(disp('Explore', 'where are `AddSocketServices` and its friends registered'), 2, 'where are a backticked name registered');
 });
 
+// Audit 2026-10-08 row 39: the caller and definition shapes carried no identifier test, the class I5 already paid for;
+// the APPROVAL root skipped `payload.cwd`; and the block rows did not say which branch fired.
+test('guard-unapproved-dispatch: the caller and definition shapes need a code name, and every block names its branch', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
+  const disp = (seat, prompt, extra = {}) => runIn('guard-unapproved-dispatch.js',
+    { tool_name: 'Agent', session_id: 'disp-branch', tool_input: { subagent_type: seat, prompt }, ...extra }, { env }).status;
+  // the replayed false positives - plain words after the shape
+  assert.equal(disp('Explore', 'find the definition of done in the CONTRIBUTING docs'), 0, 'definition of a plain word');
+  assert.equal(disp('Explore', 'locate the component responsible for the page header'), 0, 'a kind word before prose');
+  assert.equal(disp('Explore', 'list the call sites of the deprecated logger'), 0, 'call sites of plain words');
+  assert.equal(disp('Explore', 'who calls the nightly job and when'), 0, 'who calls plain words');
+  // a real symbol hunt in each shape still blocks
+  assert.equal(disp('Explore', 'find the definition of `parseRef`'), 2, 'definition of a backticked name');
+  assert.equal(disp('Explore', 'list the call sites of OrderService.Refund'), 2, 'call sites of a member');
+  assert.equal(disp('Explore', 'who calls loadManifest( from the installer'), 2, 'who calls a call');
+  assert.equal(disp('Explore', 'all implementations of IRepository'), 2, 'implementations of an interface');
+  assert.equal(disp('Explore', 'subclasses of the BaseController'), 2, 'subclasses of a CamelCase type');
+  assert.equal(disp('Explore', 'find the class Order'), 2, 'a kind word before a capitalised name');
+  const rows = () => fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'disp-branch.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepStrictEqual(rows().at(-1).detail, { branch: 'symbol-question', asked: 'find the class Order' });
+  assert.equal(disp('alfred-code:aspnet-implementer', 'build it'), 2);
+  assert.equal(rows().at(-1).detail.branch, 'implementer-unapproved');
+  assert.equal(disp('alfred-code:aspnet-implementer', 'build it', { agent_type: 'alfred-code:issue-diagnoser-ci' }), 2);
+  assert.equal(rows().at(-1).detail.branch, 'diagnoser-pin');
+  // the stamp is read where the session runs when no project dir is set
+  const cwdRoot = fs.mkdtempSync(path.join(TMP, 'proj-cwd-'));
+  fs.mkdirSync(path.join(cwdRoot, '.alfred', 'docs', 'flow'), { recursive: true });
+  fs.writeFileSync(path.join(cwdRoot, '.alfred', 'docs', 'flow', 'APPROVAL'), 'APPROVED plan-1 - "go"\n');
+  const noDir = { ...process.env, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
+  delete noDir.CLAUDE_PROJECT_DIR;
+  const stamped = (seat) => runIn('guard-unapproved-dispatch.js',
+    { tool_name: 'Agent', cwd: cwdRoot, session_id: 'disp-cwd', tool_input: { subagent_type: seat, prompt: 'build it' } }, { env: noDir }).status;
+  assert.equal(stamped('alfred-code:aspnet-implementer'), 0, 'the payload cwd holds the approval');
+  assert.equal(stamped('general-purpose'), 2, 'and the stamp gates a generic seat there');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(cwdRoot, '.alfred', 'docs', 'hook-blocks', 'disp-cwd.jsonl'), 'utf8').trim()).detail.branch, 'generic-while-stamped');
+});
+
 // The built-in Explore and Plan load none of the project's rules, so alfred-security's untrusted-content
 // sentence never reached them - Explore holding Bash and WebFetch. Their dispatch is answered with the
 // sentence appended to the brief, never denied; every other seat, and a denied dispatch, is untouched.

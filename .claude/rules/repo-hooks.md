@@ -281,8 +281,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     blocks a generic `general-purpose`/`claude` dispatch while that stamp is live (stamps older than 8h
     or the session are absent), and blocks an `Explore`/generic dispatch asking a SYMBOL question ('reference to' /
     'usages of' count only before a code identifier - backticked, CamelCase, `name(`, `A.B` / `A::B` - never a
-    kebab-case or file-shaped token, and 'where is X defined' / 'what type' need one too: I5, a text sweep for a skill name was the week's one block). An
-    `Explore` / `Plan` brief gets the untrusted-content sentence appended (`updatedInput`, never a deny).
+    kebab-case or file-shaped token, and 'where is X defined' / 'what type' need one too: I5, a text sweep for a skill name was the week's one block;
+    so do the caller and definition shapes - 'who calls', 'call sites of', 'definition of', and the type shapes
+    'implementations of', 'subclasses of', 'find the class', which also take a capitalised name - audit 2026-10-08). An
+    `Explore` / `Plan` brief gets the untrusted-content sentence appended (`updatedInput`, never a deny). The APPROVAL
+    root is `CLAUDE_PROJECT_DIR`, else the payload's `cwd`, as its ledger reads it, and every block row names its branch
+    (`symbol-question`, `diagnoser-pin`, `implementer-unapproved` / `-stale-stamp`, `generic-while-stamped`).
     A diagnoser CALLER (the payload's `agent_type`, bare or house-prefixed) dispatches only `evidence-gatherer` -
     a subagent's `Agent(<type>)` list is ignored, so the grant alone let it start a writing seat (2.1.5 M48).
     In a repo never set up only an `alfred-code:`-spelled implementer target is judged - the diagnoser pin,
