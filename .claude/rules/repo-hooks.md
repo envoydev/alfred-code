@@ -77,8 +77,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   `wiringRows`): each guard runs in-process with its own gates and ledger row (its `global.BLOCK_DETAIL` cleared before and after it), every block reason
   reaches the model, a throwing guard fails open alone - except that a PROTECTIVE guard's exit 2 (force-push, rm,
   secret) is answered at once, since the guards run one after another and a later one stalling past the budget would
-  drop it (a timed-out PreToolUse hook's output is discarded and the call is not run, answered with a timeout error
-  instead of the block reason - code.claude.com/docs/en/agent-sdk/hooks, 'Hook timeout', v2.1.210 on; 2.1.5 M2 - every
+  drop it (a timed-out `command` hook's output is discarded and, on PreToolUse, the call CONTINUES through the normal
+  permission flow with every verdict dropped - code.claude.com/docs/en/hooks, 'Timeouts': 'don't count on a stalled
+  hook to act as a gate'; the agent-sdk page's deny-on-timeout is the SDK callback family, not these; 2.1.5 M2 - every
   git call in the docs engine carries a 5s timeout),
   and the protective ones run first (`RUN_ORDER`; the messages keep the manifest's order).
   The five guards with a file-tool row ride ONE hook the same way, `file-guards.js` (2.1.5 M3: a Read or a Write paid
@@ -87,6 +88,17 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   guard run first and its exit 2 answered at once; instrumentation stays its own `.*` row. Both still launch in shell form (below).
   Every guard appends one row per BLOCK to `<docs-path>/hook-blocks/<session>.jsonl`
   (`analyze-usage.js --hook-blocks` tallies it) - the block RATE is what says a gate earns its keep.
+  THE STOP CHAIN (hooks audit 2026-10-08 S1): four hooks can block a `Stop` - the stop contract, answer length,
+  docs-session and the turn build check - and `stop_hook_active` is true after ANY of them blocked ('true when Claude
+  Code is already continuing as a result of a stop hook', code.claude.com/docs/en/hooks), so a hook that stood down on
+  the flag alone never judged the close rewritten after a sibling's block. Each marks its own block (`hook-prelude.js`
+  `markStopHeld`, a file under `ALFRED_CODE_HOOK_LOG_DIR` or the temp dir) and stands down on a continuation only when
+  IT held this cycle (`stopHeldThisCycle`); a Stop with the flag false opens a new cycle and clears the marker. So
+  every blocker judges each rewritten close and blocks at most ONCE per cycle - at most four continuations, in no fixed
+  order (the four run in parallel; answer length yields its wording to the stop contract's marker or ledger row), with
+  Claude Code's 8-consecutive-continuation cap the outer guard - and an unwritable marker dir stands a continuation
+  down, the old reading. The stop contract's per-turn probes skip a continuation (the same turn), and its SubagentStop
+  hold keeps the plain flag beside its own once-marker (`guard-hooks.test.js`: never held again, marker or not).
   A denial that needs the user's decision ends in ONE AskUserQuestion, and an 'allow' answer is
   honoured through a `<docs-path>/flow/*-ALLOW` receipt (this session's own, under 8h).
   - `guard-protected-force-push.js` - blocks force-push to protected branches. It reads the command through
@@ -403,7 +415,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     sessions, never setting it). The PostToolUse half
     lists the turn's written paths in `<docs-path>/flow/turn-edits-<session>`; at `Stop` it runs ONE scoped
     check per nearest root - the project's own `tsc --noEmit -p` for TypeScript, `dotnet build --no-restore
-    -v q` for C# - and hands the first 20 error lines back as a block, once per turn (the continuation Stop
+    -v q` for C# - and hands the first 20 error lines back as a block, once per turn (its own continuation Stop
     passes). A missing compiler or a timeout is a pass.
   - `guard-answer-length.js` (`UserPromptSubmit` + `Stop`) - injects the answer budget every turn; the
     Stop half blocks prose past 1800 chars when the user asked for no depth, and blocks an em-dash in
@@ -443,6 +455,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     answers (credential shapes scrubbed, 300 chars each, 60 kept); at `SessionStart` it injects the last
     three records of the SAME branch in at most 600 chars, framed as history, never instructions, and
     prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off.
+  - Formatter after an edit: DECLINED (hooks audit 2026-10-08, coverage map) - no measured incident; formatting is
+    the project's lint and the verifier's job, and a PostToolUse formatter rewrites files under the model between its
+    own edits, so the next `old_string` misses.
   The guided walk's hooks layer makes them selectable, the whole catalog recommended (a selection with
   no `hook` lines keeps every hook on; setup's None emits `hook none` through `stack-select.js
   --hooks-answered`, setup only, which switches every hook off).

@@ -25,12 +25,19 @@ const path = require('path');
 // of crashing.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let unattended = () => false;
+// The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
+let stopHeld = (input) => !!(input && input.stop_hook_active);
+let markHeld = () => {};
 if (require.main === module) {
   let off = false;
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     unattended = prelude.unattended || unattended;
+    if (prelude.stopHeldThisCycle) {
+      stopHeld = (input) => prelude.stopHeldThisCycle('docs-session', input);
+      markHeld = (input) => prelude.markStopHeld('docs-session', input);
+    }
     off = prelude.standDown('docs-session');
   } catch { /* an install without the prelude runs the hook unchanged */ }
   // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
@@ -819,7 +826,9 @@ function finishAsk(docs, files, asks, warnings = [], closing = []) {
 // The same check for work done outside any subagent - and the only cover skills have, since a skill has no end
 // event of its own and its work lands here.
 function stop(input, root, docs, state) {
-  if (envOf(process.env, 'DOCS_ASK') === '0' || input.stop_hook_active || state.asked || !state.snapshot) return;
+  // Once per session (state.asked); a continuation a SIBLING Stop hook caused is judged, since what it rewrote is this
+  // session's change too (hook-prelude.js, the Stop chain - audit 2026-10-08 S1).
+  if (envOf(process.env, 'DOCS_ASK') === '0' || stopHeld(input) || state.asked || !state.snapshot) return;
   if (typeof docs.askRef !== 'function') return;
   let changed;
   let hits = [];
@@ -851,6 +860,7 @@ function stop(input, root, docs, state) {
   const reason = finishAsk(docs, files, asks, warnings, SUMMARY_LAST);
   log(root, input, { event: 'ask-update', sections: asks.map((r) => r.id), warnings: warnings.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
   blockRow(root, input, reason);
+  markHeld(input);
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
 }
 

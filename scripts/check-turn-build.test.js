@@ -28,7 +28,8 @@ function project()
     const log = path.join(root, 'spawned.log');
     const run = (payload, env = {}) => spawnSync(process.execPath, [HOOK], {
         input: typeof payload === 'string' ? payload : JSON.stringify({ session_id: 'sess', cwd: root, ...payload }),
-        encoding: 'utf8', env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_TURN_CHECK: '1', ...env },
+        // The Stop-chain marker (hook-prelude.js) lives in the project, so no case reads another's.
+        encoding: 'utf8', env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_TURN_CHECK: '1', ALFRED_CODE_HOOK_LOG_DIR: root, ...env },
     });
     const write = (rel) => run({ hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(root, rel), content: 'x' } });
     const list = path.join(root, '.alfred', 'docs', 'flow', 'turn-edits-sess');
@@ -121,6 +122,20 @@ test('turn-build: once per turn - the continuation Stop after a block passes, ev
     assert.strictEqual(p.run({ hook_event_name: 'Stop', stop_hook_active: true }).status, 0);
     assert.strictEqual(p.spawned().length, 1, 'the continuation ran a second check');
     assert.ok(fs.existsSync(p.list), 'the fix-up edits are kept for the next turn');
+});
+
+// The Stop chain (audit 2026-10-08 S1): `stop_hook_active` is set after ANY Stop hook's block, so the fix-up edits of
+// a continuation a SIBLING caused (the stop contract held the close) are this turn's and get checked - once.
+test('turn-build: a continuation a sibling Stop hook caused is checked, and blocks at most once', { skip: !posix && 'stub binaries are shell scripts' }, () =>
+{
+    const p = project();
+    p.file('tsconfig.json', '{}');
+    p.tsc('.', 2);
+    p.write('src/a.ts');
+    assert.strictEqual(p.run({ hook_event_name: 'Stop', stop_hook_active: true }).status, 2, 'a sibling caused this continuation');
+    p.write('src/a.ts');
+    assert.strictEqual(p.run({ hook_event_name: 'Stop', stop_hook_active: true }).status, 0, 'never twice in one cycle');
+    assert.strictEqual(p.spawned().length, 1);
 });
 
 test('turn-build: a clean build, a turn with no source file, and a root with no compiler all pass', { skip: !posix && 'stub binaries are shell scripts' }, () =>

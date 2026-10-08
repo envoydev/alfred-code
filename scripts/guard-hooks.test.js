@@ -1261,7 +1261,13 @@ test('guard-stop-contract: prose offers, tool-call ends, continuations and unrea
   assert.equal(stop(transcript('p1', [assistantRow('a', 'Patch is ready. Say the word and I will push it.')])), 2, "'say the word'");
   assert.equal(stop(transcript('p2', [assistantRow('a', 'All green. Want me to open the PR?')])), 2, "'want me to'");
   assert.equal(stop(transcript('p3', [{ type: 'assistant', message: { id: 'b', content: [{ type: 'text', text: 'Want me to push?' }, { type: 'tool_use', id: 't', name: 'Bash', input: {} }] } }])), 0, 'ended on a tool call');
-  assert.equal(stop(transcript('p4', [assistantRow('a', 'Want me to push?')]), { stop_hook_active: true }), 0, 'a continuation we caused');
+  // The Stop chain (audit 2026-10-08 S1): `stop_hook_active` is set after ANY Stop hook's block, so only a
+  // continuation THIS hook caused stands down - the one a sibling caused (answer length, the build check) is judged.
+  const own = { session_id: `p4-${process.pid}-${Date.now()}` };
+  assert.equal(stop(transcript('p4', [assistantRow('a', 'Want me to push?')]), own), 2, 'the first Stop holds');
+  assert.equal(stop(transcript('p4', [assistantRow('a', 'Want me to push?')]), { ...own, stop_hook_active: true }), 0, 'a continuation we caused');
+  assert.equal(stop(transcript('p4s', [assistantRow('a', 'Build fixed. Should I commit?')]), { session_id: `p4s-${process.pid}-${Date.now()}`, stop_hook_active: true }), 2,
+    "a continuation a sibling Stop hook caused is judged - the rewritten close 'Build fixed. Should I commit?' passed before");
   assert.equal(stop(path.join(TMP, 'absent-stop.jsonl')), 0, 'missing transcript');
   assert.equal(stop(transcript('p5', [{ type: 'assistant', message: { id: 'c', content: [{ type: 'thinking', thinking: 'hm' }] } }])), 0, 'no text at all');
   assert.equal(stop(transcript('p6', [assistantRow('a', 'Is it safe? Yes - the guard fails closed.')])), 0, 'a question answered in the same breath');
@@ -1924,7 +1930,11 @@ test('guard-cross-project-write: space account dirs, ~ in the allowance, and unr
   const repoRoot = path.join(__dirname, '..');
   const inRepo = (payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
     { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: LEDGER, ...env } }).status;
-  if (home) {
+  // An isolated runner points HOME inside os.tmpdir(), where every path is session scratch the guard allows - the
+  // 'outside HOME' cases below then cannot block, so they run only on a real home (audit 2026-10-08: 55/56 isolated).
+  const tmpReal = fs.realpathSync(os.tmpdir());
+  const homeInTmp = !!home && (() => { try { const h = fs.realpathSync(home); return h === tmpReal || h.startsWith(tmpReal + path.sep); } catch { return false; } })();
+  if (home && !homeInTmp) {
     // A --space install keeps its memory under ~/.claude-<space>; the old check disabled that
     // allowance for every project living under HOME, i.e. every real project (reproduced).
     assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(home, '.claude-work', 'projects', 'p', 'memory', 'm.md') } }), 0, 'a space account dir');

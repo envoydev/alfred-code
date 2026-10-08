@@ -648,3 +648,27 @@ test('a git repo at the home directory is no top for checkoutsOf (seam m3)', () 
         fs.rmSync(home, { recursive: true, force: true });
     }
 });
+
+// The Stop chain (audit 2026-10-08 S1): a Stop blocker stands down on a continuation only when IT held this cycle, a
+// fresh Stop clears its marker, and where no marker can be written a continuation stands down - the old reading.
+test('stop chain: own continuation stands down, a sibling one is judged, a fresh Stop opens a new cycle', () => {
+    const { stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile } = require(PRELUDE);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stop-chain-'));
+    const env = { ALFRED_CODE_HOOK_LOG_DIR: dir };
+    try {
+        const first = { hook_event_name: 'Stop', session_id: 's1', stop_hook_active: false };
+        const cont = { ...first, stop_hook_active: true };
+        assert.strictEqual(stopHeldThisCycle('guard-a', first, env), false, 'a fresh Stop is judged');
+        assert.strictEqual(stopHeldThisCycle('guard-a', cont, env), false, 'a continuation a sibling caused is judged');
+        markStopHeld('guard-a', cont, env);
+        assert.strictEqual(stopHeldThisCycle('guard-a', cont, env), true, 'its own continuation stands down');
+        assert.strictEqual(stopHeldThisCycle('guard-b', cont, env), false, 'a marker is per hook');
+        assert.strictEqual(stopHeldThisCycle('guard-a', { ...cont, session_id: 's2' }, env), false, 'and per session');
+        assert.strictEqual(stopHeldBy('guard-a', cont, Date.now() - 60000, env), true, 'a sibling reads it');
+        assert.strictEqual(stopHeldBy('guard-a', cont, Date.now() + 60000, env), false, 'a marker older than the turn is another turn');
+        assert.strictEqual(stopHeldThisCycle('guard-a', first, env), false, 'a fresh Stop opens a new cycle');
+        assert.ok(!fs.existsSync(stopMarkerFile('guard-a', cont, env)), '... and clears the marker');
+        assert.strictEqual(stopHeldThisCycle('guard-a', cont, { ALFRED_CODE_HOOK_LOG_DIR: path.join(dir, 'missing', 'dir') }), true,
+            'where no marker can be written a continuation stands down - judging again could block again');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

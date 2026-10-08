@@ -539,7 +539,10 @@ test('no hit, stop_hook_active, the ask switched off, or no watch.json: silent',
     assert.strictEqual(r.hook(stopEv(a)).stdout, '', 'routine change');
     const b = sid(); start(r, b);
     r.write('src/Api/Program.cs', 'y\n');
-    assert.strictEqual(r.hook(stopEv(b, true)).stdout, '', 'stop_hook_active');
+    // The Stop chain (audit 2026-10-08 S1): `stop_hook_active` is set after ANY Stop hook's block, so a continuation a
+    // sibling caused is judged (it never asked before) - and the ask still comes once per session.
+    assert.match(r.hook(stopEv(b, true)).stdout, /"decision":"block"/, 'a continuation a sibling Stop hook caused is judged');
+    assert.strictEqual(r.hook(stopEv(b, true)).stdout, '', 'its own continuation is silent');
     assert.strictEqual(r.hook(stopEv(b), { ALFRED_CODE_DOCS_ASK: '0' }).stdout, '', 'switched off');
     fs.rmSync(`${r.root}/.claude/docs/architecture/watch.json`);
     const c = sid(); start(r, c);

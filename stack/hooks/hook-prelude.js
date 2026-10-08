@@ -321,6 +321,58 @@ function standDown(hook, env, argv, { setUp = true } = {})
     catch { return false; }
 }
 
+// THE STOP CHAIN (hooks audit 2026-10-08, S1). Four hooks can block a Stop (the stop contract, answer length,
+// docs-session, the turn build check), and `stop_hook_active` is true whenever Claude Code continues because ANY of
+// them blocked ('true when Claude Code is already continuing as a result of a stop hook' - code.claude.com/docs/en/
+// hooks, Stop input). A blocker that stood down on the flag alone never judged the close rewritten after a SIBLING's
+// block ('Build fixed. Should I commit?' passed the stop contract). So each blocker marks its own block
+// (markStopHeld) and stands down on a continuation only when IT held this cycle (stopHeldThisCycle): every blocker
+// judges each rewritten close once more and blocks at most ONCE per cycle, so four blockers make at most four
+// continuations - never a loop - with Claude Code's 8-consecutive-continuation cap the outer guard. A Stop with the
+// flag false opens a new cycle and clears the hook's marker. Where a marker could not be written (an unwritable dir)
+// a continuation stands down, the old reading - judging again there could block again.
+function stopMarkerFile(hook, input, env)
+{
+    const dir = envOf(env || process.env, 'HOOK_LOG_DIR') || os.tmpdir();
+    const part = (s) => String(s || '').replace(/[^\w.-]/g, '_').slice(-80);
+    return path.join(dir, `alfred-stop-held-${baseName(hook)}-${part(input.hook_event_name)}-${part(input.session_id || 'nosession')}-${part(input.agent_id || 'main')}`);
+}
+
+function stopHeldThisCycle(hook, input, env)
+{
+    if (!input || typeof input !== 'object' || !input.stop_hook_active)
+    {
+        try { if (input && typeof input === 'object') fs.rmSync(stopMarkerFile(hook, input, env), { force: true }); } catch { /* the next block rewrites it */ }
+        return false;
+    }
+    try
+    {
+        const file = stopMarkerFile(hook, input, env);
+        if (fs.existsSync(file)) return true;
+        fs.accessSync(path.dirname(file), fs.constants.W_OK);
+        return false;
+    }
+    catch { return true; }
+}
+
+function markStopHeld(hook, input, env)
+{
+    try { fs.writeFileSync(stopMarkerFile(hook, input, env), new Date().toISOString()); } catch { /* stopHeldThisCycle stands down where this cannot write */ }
+}
+
+// Did `hook` (another Stop blocker) hold this cycle, at or after `sinceMs` (this turn's typed prompt)? Read-only - the
+// answer-length hook's yield to the stop contract. The two run in parallel on a turn's first Stop, so a false there
+// only drops the yield line; on a continuation the sibling's marker is on disk.
+function stopHeldBy(hook, input, sinceMs, env)
+{
+    try
+    {
+        const st = fs.statSync(stopMarkerFile(hook, input, env));
+        return !Number.isFinite(sinceMs) || st.mtimeMs >= sinceMs;
+    }
+    catch { return false; }
+}
+
 // THE SCAN BUDGET - how much a guard reads before it stops and judges the rest UNREAD, the one home every guard reads
 // (2.1.6 re-verify 3 R3-M3, R3-m4). A shell command a guard judges can carry scripts it reads from disk, git aliases it
 // expands, and scripts nested in scripts. Two limits bound it, both counts of WORK, never elapsed time - a verdict must
@@ -356,4 +408,4 @@ function scanBudget(limits = {})
     };
 }
 
-module.exports = { hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, envOf, scanBudget, SCAN_LIMITS };
+module.exports = { hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS };

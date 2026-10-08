@@ -103,7 +103,25 @@ test('Stop leaves a normal short answer alone', () => {
 
 test('Stop never loops: a continuation we caused passes untouched', () => {
     const p = transcript('loop', 'did the build pass?', [{ type: 'text', text: WALL }]);
-    assert.strictEqual(run({ hook_event_name: 'Stop', transcript_path: p, stop_hook_active: true }).status, 0);
+    const session_id = `loop-${process.pid}-${Date.now()}`;
+    assert.strictEqual(run({ hook_event_name: 'Stop', session_id, transcript_path: p }).status, 2, 'the first Stop holds');
+    assert.strictEqual(run({ hook_event_name: 'Stop', session_id, transcript_path: p, stop_hook_active: true }).status, 0);
+});
+
+// The Stop chain (audit 2026-10-08 S1): `stop_hook_active` is set after ANY Stop hook's block, so the wall of text a
+// sibling's continuation re-sends (the stop contract held the close) is judged - it passed unjudged before.
+test('Stop judges a continuation a sibling Stop hook caused, then blocks it at most once', () => {
+    const p = transcript('sibling', 'did the build pass?', [{ type: 'text', text: WALL }]);
+    const session_id = `sibling-${process.pid}-${Date.now()}`;
+    assert.strictEqual(run({ hook_event_name: 'Stop', session_id, transcript_path: p, stop_hook_active: true }).status, 2, 'a sibling caused this continuation');
+    assert.strictEqual(run({ hook_event_name: 'Stop', session_id, transcript_path: p, stop_hook_active: true }).status, 0, 'never twice in one cycle');
+    assert.strictEqual(run({ hook_event_name: 'Stop', session_id, transcript_path: p }).status, 2, 'a new cycle judges afresh');
+});
+
+// Audit 2026-10-08 row 31: with no transcript path at all the length half has no user row to rule depth out, the same
+// fail-open an unreadable transcript gets - it blocked with no depth check before.
+test('Stop with no transcript path leaves the length half fail-open', () => {
+    assert.strictEqual(run({ hook_event_name: 'Stop', session_id: `nopath-${process.pid}`, last_assistant_message: WALL }).status, 0);
 });
 
 test('Stop skips a turn that ended on a tool call', () => {

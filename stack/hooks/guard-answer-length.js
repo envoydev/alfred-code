@@ -32,11 +32,20 @@ const fs = require('fs');
 // way.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let unattended = () => false;
+// The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
+let stopHeld = (input) => !!(input && input.stop_hook_active);
+let markHeld = () => {};
+let contractHeld = () => false;
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     unattended = prelude.unattended || unattended;
+    if (prelude.stopHeldThisCycle) {
+      stopHeld = (input) => prelude.stopHeldThisCycle('guard-answer-length', input);
+      markHeld = (input) => prelude.markStopHeld('guard-answer-length', input);
+      contractHeld = (input, sinceMs) => prelude.stopHeldBy('guard-stop-contract', input, sinceMs);
+    }
     if (prelude.standDown('guard-answer-length')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
@@ -397,7 +406,10 @@ if (payload.hook_event_name === 'SessionStart') {
 // saw - measured in the A/B, where the rewrite dropped the verification line. A row older than
 // this turn's typed prompt is an earlier turn's, however recent: two minutes alone read the previous
 // turn's block as this one's. Best-effort in every direction: an unreadable ledger means no yield.
+// The stop contract's own Stop-chain marker is read first (hook-prelude.js stopHeldBy): on a continuation it is on
+// disk before this hook runs, where the ledger row of a parallel first Stop may not be yet.
 function stopContractBlockedThisTurn(turnStartMs) {
+  if (contractHeld(payload, turnStartMs)) return true;
   try {
     const path = require('path');
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
@@ -417,13 +429,16 @@ function stopContractBlockedThisTurn(turnStartMs) {
 }
 
 if (payload.hook_event_name === 'Stop') {
-  if (payload.stop_hook_active) process.exit(0); // continuation we caused - one block per turn
+  // Only a continuation THIS hook caused stands down; one a sibling Stop hook caused is judged once more, and this
+  // hook still blocks at most once per cycle (hook-prelude.js, the Stop chain - audit 2026-10-08 S1).
+  if (stopHeld(payload)) process.exit(0);
   let last;
   let user;
   let userTs = NaN;
   // An unreadable transcript leaves the LENGTH half fail-open (no user row, so depth cannot be ruled
   // out), never the em-dash half: that reads last_assistant_message, which the payload carries anyway.
-  let transcriptRead = true;
+  // No transcript path at all is the same case - tailLines() then reads nothing and throws nothing.
+  let transcriptRead = typeof payload.transcript_path === 'string' && payload.transcript_path !== '';
   try {
     ({ assistant: last, user, userTs } = lastMessages());
   } catch {
@@ -498,6 +513,7 @@ if (payload.hook_event_name === 'Stop') {
           `the edit. If another hook blocked this same turn and asks for something else, do that and\n` +
           `fix the dashes inside the turn it asks for - never drop the fix because two hooks spoke.`),
     );
+    markHeld(payload);
     process.exit(2);
   }
 
@@ -513,11 +529,12 @@ if (payload.hook_event_name === 'Stop') {
     `every sentence about your own process. Do NOT apologize, do NOT explain the trim, and do NOT\n` +
     `append the short version to the long one - write the short answer alone. If the detail is\n` +
     `genuinely needed, say one line offering it instead of delivering it.\n` +
-    (stopContractBlockedThisTurn()
+    (stopContractBlockedThisTurn(userTs)
       ? `guard-stop-contract.js blocked this same turn too: do what IT asks, and write that turn at\n` +
         `budget. Its instruction wins on everything else.`
       : ''),
   );
+  markHeld(payload);
   process.exit(2);
 }
 

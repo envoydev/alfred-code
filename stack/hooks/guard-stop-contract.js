@@ -41,11 +41,18 @@ const fs = require('fs');
 // this hook running.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let unattended = () => false;
+// The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
+let stopHeld = (input) => !!(input && input.stop_hook_active);
+let markHeld = () => {};
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     unattended = prelude.unattended || unattended;
+    if (prelude.stopHeldThisCycle) {
+      stopHeld = (input) => prelude.stopHeldThisCycle('guard-stop-contract', input);
+      markHeld = (input) => prelude.markStopHeld('guard-stop-contract', input);
+    }
     if (prelude.standDown('guard-stop-contract')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
@@ -76,6 +83,8 @@ if (cursorOff) process.exit(0);
   process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
   const exit = process.exit.bind(process);
   process.exit = (code) => {
+    // A Stop this hook holds is marked, so its own continuation stands down and a sibling's is judged (S1).
+    if (code === 2 && payload.hook_event_name === 'Stop') markHeld(payload);
     if (code === 2) {
       try {
         const fs = require('fs');
@@ -1264,7 +1273,11 @@ function noTestRule(root) {
 }
 
 if (payload.hook_event_name === 'Stop') {
-  if (payload.stop_hook_active) process.exit(0); // continuation we caused - never loop
+  // Only a continuation THIS hook caused stands down; one a sibling Stop hook caused is judged once more, and this
+  // hook still blocks at most once per cycle (hook-prelude.js, the Stop chain - audit 2026-10-08 S1).
+  if (stopHeld(payload)) process.exit(0);
+  // The probes below count per TURN, and a continuation is the same turn - they read only the turn's own Stop.
+  const continuation = !!payload.stop_hook_active;
   // The harness sends the turn's final text as `last_assistant_message` (Stop / SubagentStop) and
   // documents the transcript as written ASYNCHRONOUSLY - it can lag the in-memory turn, which is
   // how a live decision stop reads as the previous turn's clean close. The field wins; the
@@ -1336,7 +1349,7 @@ if (payload.hook_event_name === 'Stop') {
   // close's continuation arrives with stop_hook_active, so a probe placed after one never ran.
   // Everything it reads sits inside one try, so nothing it does can skip the branches below.
   try {
-    const claim = envOf(process.env, 'DONE_GATE') !== '0' ? doneClaim(prose) : null;
+    const claim = !continuation && envOf(process.env, 'DONE_GATE') !== '0' ? doneClaim(prose) : null;
     const work = claim ? turnWork() : null;
     const outcome = !work ? null : work.lastEdit ? 'unrun' : work.lastKept && work.lastRun ? 'ran' : null;
     const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
@@ -1357,7 +1370,7 @@ if (payload.hook_event_name === 'Stop') {
   // marker writes one row per turn. The phrase is read first, so a close without one reads no
   // transcript. It sits before every holding branch for the done gate's reason.
   try {
-    const phrase = rationalization(prose);
+    const phrase = continuation ? null : rationalization(prose);
     const work = phrase ? turnWork() : null;
     const evidence = !work ? null : work.red.length ? 'red' : work.skipped.length ? 'skipped' : work.skipEdit ? 'skip-edit' : null;
     const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);

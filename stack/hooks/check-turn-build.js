@@ -7,7 +7,7 @@
 //   Stop         when that list holds source files, runs ONE check per nearest root - `tsc --noEmit -p
 //                <tsconfig>` (the project's own node_modules/.bin/tsc) for TypeScript, `dotnet build
 //                --no-restore -v q <csproj>` for C# - and hands the first 20 error lines back as a
-//                Stop block. Once per turn: the continuation Stop after a block (stop_hook_active)
+//                Stop block. Once per turn: the continuation Stop after ITS OWN block (the Stop chain)
 //                passes, and its fix-up edits wait in the list for the next turn's check.
 // A missing compiler, a timeout or anything unreadable is a pass: this hook reports errors, it never
 // guesses them. It carries its OWN declared timeout (60s, install/settings.js HOOK_TIMEOUTS) - the one
@@ -111,10 +111,18 @@ if (require.main === module)
   // skewed copy (a newer hook beside an older/missing engine) must still orient, not crash.
   let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
   let switchOn = (suffix) => String(envOf(process.env, suffix) || '').trim() === '1';
+  // The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
+  let stopHeld = (input) => !!(input && input.stop_hook_active);
+  let markHeld = () => {};
   try
   {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
+    if (prelude.stopHeldThisCycle)
+    {
+      stopHeld = (input) => prelude.stopHeldThisCycle('check-turn-build', input);
+      markHeld = (input) => prelude.markStopHeld('check-turn-build', input);
+    }
     // the hook profile applies here: strict reads the seeded 0 as on
     if (typeof prelude.switchOn === 'function') switchOn = (suffix) => prelude.switchOn(suffix);
     if (prelude.standDown('check-turn-build')) process.exit(0);
@@ -150,9 +158,10 @@ if (require.main === module)
     process.exit(0);
   }
   if (event !== 'Stop') process.exit(0);
-  // The continuation after a block - ours or another Stop hook's - is not a new turn: pass, and keep
-  // what it wrote for the next turn's check.
-  if (payload.stop_hook_active) process.exit(0);
+  // The continuation after OUR block passes, and keeps what it wrote for the next turn's check - once per turn. One a
+  // sibling Stop hook caused is checked: its fix-up edits are this turn's (hook-prelude.js, the Stop chain - audit
+  // 2026-10-08 S1).
+  if (stopHeld(payload)) process.exit(0);
 
   let files = [];
   try { files = [...new Set(fs.readFileSync(list, 'utf8').split('\n').map((l) => l.trim()).filter((l) => path.isAbsolute(l)))]; }
@@ -183,5 +192,6 @@ if (require.main === module)
     'Fix them, or say plainly why they stand, before ending the turn. The check runs once per turn;\n' +
     'ALFRED_CODE_TURN_CHECK=0 in the settings.json env switches it off.\n',
   );
+  markHeld(payload);
   process.exit(2);
 }
