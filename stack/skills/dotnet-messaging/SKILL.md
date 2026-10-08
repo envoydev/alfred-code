@@ -19,7 +19,7 @@ Floor is .NET 8 / C# 12. What this skill does NOT cover: in-memory reactive stre
 
 Default to Wolverine. Its core is MIT open-core, and it folds the in-process mediator and the out-of-process message bus into one programming model, so a handler that today runs inline can be moved onto a queue by changing routing, not code. The outbox, sagas, scheduled messages, and convention-discovered handlers are all in the box.
 
-MassTransit is mature and well-documented but is no longer OSS-first, so reach for it only with a deliberate, paid-for reason - an existing licensed estate, a transport only it supports. New code starts on Wolverine. Before quoting a licence term or an end-of-maintenance date to anyone, read `references/library-licensing.md` and re-check it: those terms move, and a stale one is a commercial decision made on bad information.
+MassTransit is mature and well-documented but is no longer OSS-first, so reach for it only with a deliberate, paid-for reason - an existing licensed estate, a transport only it supports. New code starts on Wolverine. Before quoting a licence term or an end-of-maintenance date to anyone, read `references/library-licensing.md` and re-check it: those terms move, and a stale one is a commercial decision made on bad information. In an existing MassTransit estate, keep it - the outbox, idempotency, retry and contract rules below apply unchanged through its own APIs; fetch those through the documentation server rather than porting the Wolverine samples.
 
 ```csharp
 builder.Host.UseWolverine(opts =>
@@ -104,4 +104,9 @@ public static class OrderPlacedHandler
 
 ## Prove the consumer is idempotent
 
-At-least-once delivery means the second copy is not hypothetical. Deliver the same message twice - re-publish it, or replay it from the dead-letter queue - and assert one effect: one row, one email, one balance change. Quote the count. A consumer whose duplicate has never been delivered in a test is a consumer nobody has proved idempotent, whatever the deduplication code says.
+At-least-once delivery means the second copy is not hypothetical.
+
+1. Deliver the same message twice - re-publish it, or replay it from the dead-letter queue.
+2. Assert one effect: one row, one email, one balance change.
+
+Report: the effect count after two deliveries. A consumer whose duplicate has never been delivered in a test is a consumer nobody has proved idempotent, whatever the deduplication code says.

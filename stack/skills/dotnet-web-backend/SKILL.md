@@ -48,16 +48,7 @@ builder.Services.AddHttpClient<IOrdersClient, OrdersClient>(c =>
     });
 ```
 
-Prefer the standard handler over a hand-rolled pipeline; the ordering of its strategies is the part that is easy to get subtly wrong. For a non-HTTP call - a database command, a broker publish - there is no handler to hang off, so build a Polly v8 `ResiliencePipeline` directly and invoke through it:
-
-```csharp
-var pipeline = new ResiliencePipelineBuilder()
-    .AddRetry(new RetryStrategyOptions { MaxRetryAttempts = 3, BackoffType = DelayBackoffType.Exponential })
-    .AddTimeout(TimeSpan.FromSeconds(10))
-    .Build();
-
-await pipeline.ExecuteAsync(async ct => await broker.PublishAsync(message, ct), ct);
-```
+Prefer the standard handler over a hand-rolled pipeline; the ordering of its strategies is the part that is easy to get subtly wrong. For a non-HTTP call - a database command, a broker publish - build a Polly v8 `ResiliencePipeline` directly: `references/resilience.md`.
 
 One caution: do not stack a per-attempt resilience timeout on top of a client request timeout that is shorter - the outer one cancels mid-retry and the policy never gets to do its job. Let the resilience handler own the timing.
 
@@ -74,7 +65,7 @@ One caution: do not stack a per-attempt resilience timeout on top of a client re
 
 Three signals, one destination. Wire all of it to OTLP and let the collector or backend fan it out per environment - that keeps the app code identical from laptop to production.
 
-- **Logging:** structured throughout, via Serilog or `Microsoft.Extensions.Logging` with a structured sink; the template-not-interpolation convention is `csharp`'s - this file owns where the logs go.
+- **Logging:** structured throughout, via Serilog or `Microsoft.Extensions.Logging` with a structured sink; message templates, never interpolation.
 - **Tracing and metrics:** OpenTelemetry on any service that runs in production, exporting to OTLP. The standard wiring is one builder chain:
 
 ```csharp
@@ -104,7 +95,7 @@ That covers the wiring this skill owns - registering the providers, the auto-ins
 
 If the service runs under Aspire, ServiceDefaults is the composition point that registers exactly this OpenTelemetry, health-check, and resilience setup in one call - this skill decides *what* goes in, and the skill covering Aspire orchestration owns *where* it is assembled - without one, register the same three in `Program.cs` yourself.
 
-- **Mask secrets before they reach a sink:** the no-secrets-in-logs convention is `csharp`'s; this file only adds the sink stake - a structured sink is queryable and long-retained, so a secret logged once is leaked for as long as the logs live.
+- **Mask secrets before they reach a sink:** a structured sink is queryable and long-retained, so a secret logged once is leaked for as long as the logs live.
 
 ## Caching
 
@@ -123,7 +114,15 @@ builder.Services.AddOptions<SmtpSettings>()
 
 `.ValidateOnStart()` is the load-bearing call - without it validation runs lazily on first access, which defeats the point. Simple rules go on the class as data-annotation attributes. Anything an attribute cannot express, the choice between `IOptions` / `IOptionsSnapshot` / `IOptionsMonitor`, and the anti-patterns are `references/options.md` - read it before binding a section whose value changes at runtime.
 
-Prove it once: blank a required setting, start the service, and quote the startup failure naming the section; restore it, start clean, and quote the health-check response. Validation that has never been seen to fail is validation nobody has wired.
+Validation that has never been seen to fail is validation nobody has wired.
+
+## Prove the baseline
+
+1. Blank a required setting, start the service, and quote the startup failure naming the section.
+2. Restore it, start clean, and quote each health-check endpoint you mapped.
+3. Make one outbound call through the typed client and quote the trace id the log line carries.
+
+Report: the three quoted results.
 
 ## Tooling
 
@@ -136,7 +135,7 @@ This skill is the cross-cutting baseline; load the focused companion for the *ho
 
 **Availability** - the rows below name specialists installed only where the project's stack or evidence shows the area; a row whose skill is not in your skill list means the area is absent here - work from this hub and skip the row.
 
-Default a new HTTP surface to minimal APIs: one default per repo, a controller slice only where the decision section names the reason. That decision - when controllers earn their place - is owned by the controller-based Web API skill.
+Default a new HTTP surface to minimal APIs: one default per repo, a controller slice only for a reason the controller-based Web API skill's decision names. That decision - when controllers earn their place - is owned by the controller-based Web API skill.
 
 - Endpoint mechanics (MapGroup, TypedResults, filters, binding, uploads) -> `dotnet-minimal-api`
 - Controller-based Web API ([ApiController], attribute routing, action filters) -> `dotnet-mvc-controllers`
@@ -148,4 +147,4 @@ Default a new HTTP surface to minimal APIs: one default per repo, a controller s
 - Broker messaging / outbox / sagas -> `dotnet-messaging`
 - Per-layer tests -> `dotnet-testing`
 
-Errors (`dotnet-web-error-handling`), the OpenAPI document (`dotnet-openapi`), deep manual OpenTelemetry (`references/observability.md`), and Aspire (`dotnet-aspire`) are routed where they arise in the sections above. The full index of every .NET specialist skill is the `dotnet` router.
+Errors (`dotnet-web-error-handling`), the OpenAPI document (`dotnet-openapi`), deep manual OpenTelemetry (`references/observability.md`), and Aspire (`dotnet-aspire`) are routed where they arise in the sections above.

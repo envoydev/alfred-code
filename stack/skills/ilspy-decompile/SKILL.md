@@ -5,7 +5,7 @@ description: "Use to decompile a .NET .dll or NuGet package with ilspycmd - 'wha
 
 # ilspy-decompile
 
-Decompile a compiled assembly when you need the real implementation - a framework internal, a NuGet package you have no source for, or the exact behavior of a method before you upgrade across it. For source you already have, navigate with the navigation server / the LSP instead; this is only for compiled `.dll` you cannot open otherwise.
+Decompile a compiled assembly when you need the real implementation - a framework internal, a NuGet package you have no source for, or the exact behavior of a method before you upgrade across it. For source you already have, navigate with the navigation server / the LSP instead; this is only for compiled `.dll` you cannot open otherwise. An API signature is the documentation server's question; decompile only for implementation behavior.
 
 ## When to use
 
@@ -52,7 +52,7 @@ ilspycmd -il MyLibrary.dll                   # raw IL
 
 Workflow: identify what you want to understand, locate the assembly, decompile the one type (`-t`) rather than the whole thing.
 
-Confirm the output before you reason from it: a `-t` run that prints only a namespace and an empty type body means the assembly is ReadyToRun, trimmed, or a reference assembly - the implementation is not in that file. Re-run against a non-trimmed build, or the runtime `.dll` rather than the ref, before quoting anything as the real behavior.
+Confirm the output before you reason from it: a `-t` run that prints only a namespace and an empty type body means the assembly is ReadyToRun, trimmed, or a reference assembly - the implementation is not in that file. Re-run against a non-trimmed build, or the runtime `.dll` rather than the ref, before quoting anything as the real behavior. Report the assembly path and package version, the command, and the decompiled member quoted - never a paraphrase alone.
 
 ## Modern-build caveats
 

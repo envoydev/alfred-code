@@ -1,6 +1,6 @@
 ---
 name: dotnet-cryptography
-description: "Use when encrypting, hashing, signing or deriving keys in .NET - System.Security.Cryptography, AES-GCM, RSA, Argon2id. Not for TLS, sign-in or secret storage."
+description: "Use when encrypting, hashing passwords, signing or deriving keys in .NET - AES-GCM, RSA, PBKDF2, Argon2id. Not for TLS, sign-in or secret storage."
 ---
 
 # .NET cryptography
@@ -59,8 +59,6 @@ aes.Encrypt(nonce, plaintext, ciphertext, tag, associatedData);
 // persist nonce + ciphertext + tag together; Decrypt throws on any tamper
 ```
 
-Prove it in two lines before any done word: encrypt then decrypt and quote the round-trip result, then flip one ciphertext byte, decrypt again and quote the exception. A decrypt that succeeds on the tampered bytes means the tag is not being checked, which is the whole point of GCM gone.
-
 Do not reach for raw `Aes` in CBC/ECB mode. **ECB is never acceptable** - it reveals structure in the plaintext. Plain CBC is unauthenticated and invites padding-oracle attacks; only if a fixed external format forces CBC, apply encrypt-then-MAC with an independent HMAC key and verify the MAC (constant-time) before decrypting. GCM exists precisely so you never have to hand-roll that.
 
 ## Asymmetric
@@ -75,6 +73,13 @@ Reach for asymmetric crypto only when you actually need two parties or a public/
 ## Post-quantum (.NET 10+, optional)
 
 .NET 10 introduces the NIST PQC primitives - `MLKem` (key encapsulation), `MLDsa`, and `SlhDsa` (signatures) - over platform crypto (Windows 11 / Windows Server 2025 with the PQC update, or OpenSSL 3.5+). They are **not on the .NET 8 floor**, so treat them as opt-in: gate every call on the type's static `IsSupported`, keep a classical fallback, and check via the documentation server which of the three still carry the SYSLIB5006 experimental mark in your target release before you take the dependency. The migration-ready move today is hybrid - pair a classical primitive with a PQC one so a future break in either still leaves you covered.
+
+## Prove it
+
+Before any done word, run the checks for each primitive you touched and quote each result:
+
+1. AES-GCM: encrypt then decrypt and quote the round trip; flip one ciphertext byte, decrypt again and quote the exception. A decrypt that succeeds on the tampered bytes means the tag is not being checked, which is the whole point of GCM gone.
+2. Password hash: derive with the stored parameters and quote a match for the right password and a mismatch for a wrong one.
 
 ## Dead algorithms - do not use
 

@@ -44,4 +44,6 @@ A worker has no Kestrel, so the web hub's observability wiring does not apply. C
 
 ## Bounding and parallelizing the lifecycle
 
+`IHostedLifecycleService` (.NET 8+, so on the floor) adds four finer hooks - `StartingAsync`/`StartedAsync`/`StoppingAsync`/`StoppedAsync` - that bracket the ordinary `StartAsync`/`StopAsync`. The full order is StartingAsync -> StartAsync -> StartedAsync, then StoppingAsync -> StopAsync -> StoppedAsync. Implement it (often on a `BackgroundService` subclass) only when you genuinely need to run code *before all* services start or *after all* have stopped - a pre-flight check, a post-shutdown flush. Most workers need none of it.
+
 `HostOptions` bounds and parallelizes the lifecycle beyond `ShutdownTimeout`. On the .NET 8 floor it exposes `StartupTimeout` - the mirror of `ShutdownTimeout`, bounding total start time - and `ServicesStartConcurrently`/`ServicesStopConcurrently`, which start and stop hosted services in parallel instead of the default sequential registration order. Reach for the concurrent options only when several services each have a slow `StartAsync`/`StopAsync` and the serial sum stalls the host; parallel start drops the ordering guarantee, so leave them off otherwise.

@@ -85,7 +85,7 @@ app.MapDefaultEndpoints();
 
 What goes *inside* each of those - which spans to record, what the readiness probe checks, how aggressive the retry policy is - is the ASP.NET Core cross-cutting baseline skill's call where the install has one, not this skill's. ServiceDefaults is the place those decisions get registered, not where they get made.
 
-Pair the registration with `MapDefaultEndpoints()`, which maps the health endpoints. Keep the liveness-versus-readiness distinction: liveness answers is the process alive, readiness answers can it serve traffic yet (dependencies reachable, warmup done). Map the readiness probe only in environments where an orchestrator will poll it.
+Pair the registration with `MapDefaultEndpoints()`, which maps the health endpoints the web hub defines.
 
 ## Service discovery and configuration
 
@@ -97,7 +97,15 @@ Pair the registration with `MapDefaultEndpoints()`, which maps the health endpoi
 
 A local run launches the dashboard automatically, consuming the same OTLP ServiceDefaults already exports - use it for cross-service traces, health flips, and per-process environment and console output instead of standing up Seq, Jaeger or Grafana for the inner loop. Development tool only; never a production observability backend.
 
-Prove the graph before calling the wiring done: `dotnet run` the AppHost, confirm every resource reaches Running in the dashboard and that each service resolved its injected connection string, and quote both. A topology that compiles but never starts is the failure this skill exists to prevent.
+## Prove the graph
+
+Before calling the wiring done:
+
+1. `dotnet run` the AppHost.
+2. Quote every resource reaching Running in the dashboard.
+3. Quote one service's injected connection-string key resolving.
+
+A topology that compiles but never starts is the failure this skill exists to prevent.
 
 ## Testing the orchestrated app
 

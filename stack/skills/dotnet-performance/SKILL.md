@@ -18,7 +18,7 @@ Two performance-aware design calls that are cheap to get right up front and expe
 
 ## Measure first
 
-Do not optimize on a hunch. A performance change is only earned by a measurement: a BenchmarkDotNet microbenchmark for a hot path, a profiler or dump for a live regression, allocation counts under load. Reach for `dotnet-diagnostics` before you tune. Most 'slow' code is a bad query or an N+1, not a struct-vs-class problem - profile before you touch a type, because optimizing the wrong layer buys nothing and costs readability.
+Do not optimize on a hunch - a change is earned by a measurement, and taking one is `dotnet-diagnostics`'s job; come back here once the number says the type or the format is the cost.
 
 ## When allocation and memory layout matter (type design)
 

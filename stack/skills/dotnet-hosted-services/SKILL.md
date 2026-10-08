@@ -1,11 +1,11 @@
 ---
 name: dotnet-hosted-services
-description: "Use when writing a worker service, BackgroundService or IHostedService, a periodic job, or a bot or daemon host. Not for HTTP or broker contracts."
+description: "Use when writing a worker service, BackgroundService or IHostedService, a periodic job, or a bot or daemon host. Not for bot SDKs, HTTP or broker contracts."
 ---
 
 # .NET hosted services - background work on the generic host
 
-This skill owns the host a long-running task runs inside: how the work is registered, which base type to derive from, what happens when it throws, how it reaches a scoped dependency, how it loops, and how it stops cleanly. It stops at the host boundary. When the work is *driven by a broker* - a queue consumer, an outbox relay, a saga - the delivery contract, idempotency, and retry policy are the broker-messaging skill's (where installed); this skill only owns the host process those consumers happen to live in. The HTTP service around an in-process background task is the web hub skill's (the ASP.NET Core cross-cutting baseline). The general concurrency mechanics - awaiting without deadlock, cancellation threading, `SemaphoreSlim` / `Interlocked`, `Channel<T>` basics, bounded parallelism - are the `csharp` language baseline's; what the worker loop adds on top of them is in the trap section below. Floor is .NET 8 / C# 12; anything newer is marked optional.
+This skill owns the host a long-running task runs inside - registration, base type, failure, scoped dependencies, looping, clean stop - and stops at the host boundary (what lies past it: When to use). Floor is .NET 8 / C# 12; anything newer is marked optional.
 
 ## When to use
 
@@ -45,7 +45,7 @@ A worker that runs under the Windows Service Control Manager is the same worker 
 
 - **`BackgroundService`** is the default. It is the abstract base for a long-running task: override one method, `ExecuteAsync(CancellationToken)`, and the framework calls it on start and signals the token on stop. Reach for it for essentially all continuous or looping work.
 - **`IHostedService`** directly - implementing `StartAsync`/`StopAsync` yourself - only when there is no long-running loop: a one-shot startup action, registering and unregistering a resource, a fire-and-configure step. A common mistake is to do real work *inside* `StartAsync`; that method must return quickly, because the host awaits every service's `StartAsync` in sequence before the app is considered started. Block there and you stall startup. Long work goes in `ExecuteAsync`, which the host does not await.
-- **`IHostedLifecycleService`** (.NET 8+, so on the floor) adds four finer hooks - `StartingAsync`/`StartedAsync`/`StoppingAsync`/`StoppedAsync` - that bracket the ordinary `StartAsync`/`StopAsync`. The full order is StartingAsync -> StartAsync -> StartedAsync, then StoppingAsync -> StopAsync -> StoppedAsync. Implement it (often on a `BackgroundService` subclass) only when you genuinely need to run code *before all* services start or *after all* have stopped - a pre-flight check, a post-shutdown flush. Most workers need none of it.
+- **`IHostedLifecycleService`** - only to run code before all services start or after all stop; the hook order is `references/deployment-and-observability.md`.
 
 ## The ExecuteAsync unobserved-exception trap
 
@@ -138,7 +138,10 @@ Shutdown is cooperative - the host signals, your code must respond. Honor the si
 
 The contract is simple: cancel propagates in, the work drains within the timeout, the host exits. Code that does not observe the token is the reason a shutdown hangs.
 
-Verify it, do not assume it: stop the host and confirm the loop exits before `ShutdownTimeout` elapses - quote the elapsed time and the exit code. A hang here is the stopping token not being observed. The remaining `HostOptions` lifecycle knobs (`StartupTimeout`, `ServicesStartConcurrently`/`ServicesStopConcurrently`) are `references/deployment-and-observability.md`.
+Prove it:
+
+1. `dotnet build` - quote the summary line.
+2. Run, stop with Ctrl+C / SIGTERM, and quote the elapsed stop time and the exit code - a stop past `ShutdownTimeout` is the stopping token not observed. The remaining `HostOptions` lifecycle knobs (`StartupTimeout`, `ServicesStartConcurrently`/`ServicesStopConcurrently`) are `references/deployment-and-observability.md`.
 
 ## Queue-backed work with Channels
 

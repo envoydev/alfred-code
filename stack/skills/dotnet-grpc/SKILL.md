@@ -1,6 +1,6 @@
 ---
 name: dotnet-grpc
-description: "Use when defining, implementing or calling a gRPC service in .NET, or weighing gRPC against REST. Not for plain REST or minimal APIs."
+description: "Use when defining, implementing or calling a gRPC service or .proto contract in .NET, or weighing gRPC against REST. Not for plain REST or minimal APIs."
 ---
 
 # .NET gRPC

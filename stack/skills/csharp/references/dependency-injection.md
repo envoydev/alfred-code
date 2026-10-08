@@ -107,6 +107,8 @@ services.AddOptions<EmailOptions>()
     .ValidateOnStart();
 ```
 
+Configuration layers in this order, each later layer overriding the earlier ones: `appsettings.json` (defaults) -> `appsettings.{Environment}.json` -> environment variables -> command-line args.
+
 Services then inject `IOptions<EmailOptions>` (singleton config) - the snapshot/monitor variants and custom `IValidateOptions<T>` are the ASP.NET Core web hub skill's, where installed.
 
 ## The shapes at a glance

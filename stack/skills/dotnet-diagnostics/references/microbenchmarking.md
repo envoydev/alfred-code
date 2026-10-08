@@ -2,6 +2,13 @@
 
 The BenchmarkDotNet nucleus - a Release console project, one benchmark method, reading the table, comparing two implementations. Whether to benchmark at all (measure-first) lives in `SKILL.md`; the design choices a result justifies live in `dotnet-performance`.
 
+## Contents
+
+- Project setup
+- Writing a benchmark
+- Running and reading results
+- Comparing two implementations
+
 ## Project setup
 
 Benchmarks run in their own console project, never in a test project or the app - the harness needs a Release build with its own optimizations and a stable entry point.
@@ -88,11 +95,23 @@ public class SortBenchmark
     public void Setup() => _data = Enumerable.Range(0, 1000).Reverse().ToArray();
 
     [Benchmark(Baseline = true)]
-    public void Bubble() => Sorting.Bubble((int[])_data.Clone());
+    public int[] Bubble()
+    {
+        var a = (int[])_data.Clone();
+        Sorting.Bubble(a);
+        return a;
+    }
 
     [Benchmark]
-    public void Quick() => Sorting.Quick((int[])_data.Clone());
+    public int[] Quick()
+    {
+        var a = (int[])_data.Clone();
+        Sorting.Quick(a);
+        return a;
+    }
 }
 ```
+
+Both cases pay the clone, so the Ratio understates the gap - add a clone-only baseline when the gap matters.
 
 Prefer this side-by-side form whenever both versions compile together - it controls for environmental variance that separate runs cannot. To compare the same code across runtimes, mark no method baseline; pass `--runtimes net8.0 net9.0` (first listed is the baseline) with the plural `<TargetFrameworks>` set. To compare against a version you have already changed past, build and save the old output first (`dotnet build -o ./baseline`) and reference the saved DLL from a second job.

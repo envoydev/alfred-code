@@ -14,6 +14,8 @@ C# 12 while treating **.NET Framework 4.8 as a supported-but-frozen maintenance 
 serviced, but no new WinForms features land there. The conventions below are the same whichever
 runtime you are on; the version-specific mechanics live in the references.
 
+A `*.Designer.cs` belongs to the designer: change it through the designer or in its own generated shape - no logic, nothing it cannot round-trip; initialization that touches controls goes after `InitializeComponent()`.
+
 **Read `references/winforms-style.md` before naming a control or handler, hand-editing a `*.Designer.cs`, or touching a user-facing string** - it owns control/event-handler naming, the designer-file round-trip rules, and the resx localization discipline. This SKILL.md owns the architecture (MVP passive view, DI-resolvable forms, disposal, high-DPI, virtual-mode grids); the C# naming baseline is the `csharp` skill. Above these general conventions, a project's own `.editorconfig` and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority - follow the project where it diverges.
 
 **Load the version reference for the concrete mechanics:**
@@ -118,17 +120,14 @@ nameTextBox.DataBindings.Add(
   `BindingSource` when a dynamically created form tears down.
 - Validate with an `ErrorProvider` driven off the `Validating` event, or implement
   `INotifyDataErrorInfo` on the model so errors surface through binding. Do not trust UI-enforced
-  constraints as the only validation - the boundary rule is the `dotnet-security` skill's.
+  constraints as the only validation.
 
 ## Secrets and the desktop trust boundary
 
-A desktop app cannot keep a secret from the user running it - the process can recover any credential
-it is able to use, whatever the runtime - so prefer removing high-value credentials from the client
-entirely (broker them through a service or token endpoint) over any local-storage scheme. For the
-fields that genuinely must live on the box, Windows DPAPI (`ProtectedData`, `CurrentUser` scope, never
-`LocalMachine`) is the local-protection floor; the per-runtime `ProtectedData` mechanics (in-box on
-4.8, a package on modern .NET) are in the references. The input-validation boundary and general secret
-handling are the `dotnet-security` skill's.
+A desktop app cannot keep a secret from the user running it, so never ship a high-value credential in
+the client - broker it through a service or token endpoint. For a field that must live on the box,
+DPAPI `CurrentUser` (never `LocalMachine`) is the local floor; the per-runtime `ProtectedData`
+mechanics are in the version reference.
 
 ## Disposal is the failure surface - manage it deliberately
 
@@ -136,7 +135,8 @@ Undisposed resources are the dominant WinForms defect, in two families: managed 
 and native GDI / USER handle leaks. What an ordinary edit has to get right:
 
 - **Unsubscribe when a shorter-lived object subscribed to a longer-lived one** - detach in
-  `OnClosed` / `Dispose`. A parent-to-child handler needs no detach; their lifetimes are tied.
+  `OnFormClosed` (a Form) or `Dispose` - `OnClosed` / `Closed` are obsolete from .NET 10 (WFDEV004).
+  A parent-to-child handler needs no detach; their lifetimes are tied.
 - **Wrap every `System.Drawing` object you create in `using`** - `Pen`, `Brush`, `Font`, `Graphics`,
   `Bitmap`, `Icon`, `Region` each hold a native handle from a bounded per-process quota, and
   exhausting it throws or paints windows with missing content.
@@ -151,8 +151,14 @@ the per-case rules (which system objects are cached and must NOT be disposed, th
 per-cell font trap, where automatic container disposal stops) and the flat-handle-count acceptance
 bar that gates a ship or a migration.
 
-Before any done word on a UI change: build the app, open and close the affected form twenty times, and quote the GDI and USER
-handle counts from Task Manager at the start and the end. A count that keeps climbing is the leak, whatever the code review said.
+Before any done word on a UI change:
+
+1. `dotnet build` - quote the summary line.
+2. Open and close the affected form twenty times and quote the GDI and USER object counts at the start and the end -
+   drive it through the MCP that controls a native desktop app where the install has one; with no desktop session, put
+   the twenty-cycle check to the user through AskUserQuestion and mark it UNVERIFIED until answered.
+
+A count that keeps climbing is the leak, whatever the code review said.
 
 ## Performance: batch, virtualize, bind
 
@@ -163,8 +169,7 @@ handle counts from Task Manager at the start and the end. A count that keeps cli
 - **Populate a grid through `DataSource`, not row-by-row `Rows.Add`** - unbound population is
   dramatically slower for large sets.
 - For large datasets set `VirtualMode = true` on `DataGridView` / `ListView` and serve cells on
-  demand, so only visible rows materialize. General perf and type-design guidance is the
-  `dotnet-performance` skill's.
+  demand, so only visible rows materialize.
 
 ## High-DPI: PerMonitorV2 is the target
 
@@ -185,8 +190,7 @@ build property on modern .NET) - see the references.
   deterministic, no UI thread. This is the return on keeping code-behind thin.
 - UI end-to-end automation rides Windows UI Automation; **FlaUI** is the modern choice and keeps to
   smoke and critical-path coverage only. Do not adopt WinAppDriver fresh (see
-  **references/net-framework-48.md** for why). Test framework and structure are the `dotnet-testing`
-  skill's. How the FlaUI tests are built - the UIA2 backend, locator priority, one page object per
+  **references/net-framework-48.md** for why). How the FlaUI tests are built - the UIA2 backend, locator priority, one page object per
   form, explicit waits, the CI job - is **references/ui-automation.md**.
 
 ## Forbidden in a presenter or ViewModel

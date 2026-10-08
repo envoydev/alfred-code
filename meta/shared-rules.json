@@ -1418,6 +1418,19 @@
         }
       ]
     },
+    "bot-worker-io-floors": {
+      "_note": "The 24/7 I/O floors a bot host needs when the hosted-worker skill is absent - one pooled HttpClient over SocketsHttpHandler, backoff with jitter on reconnect, 429 / Retry-After, a persisted idempotency key. The hosted-services skill's I/O reference owns them; the console-apps skill restates them in one sentence for an install without it (2026-10-08 audit), so a change to one floor changes both.",
+      "owner": {
+        "file": "stack/skills/dotnet-hosted-services/references/resilience-and-io.md",
+        "marker": "A singleton `HttpClient` over a `SocketsHttpHandler` with `PooledConnectionLifetime`"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-console-apps/SKILL.md",
+          "marker": "one `HttpClient` over a `SocketsHttpHandler` with `PooledConnectionLifetime`, never `new HttpClient()` per call"
+        }
+      ]
+    },
     "dotnet10-executeasync-thread": {
       "_note": "The .NET 10 ExecuteAsync-on-background-thread fact - hosted-services owns the full note, windows-service carries the surface-specific one-liner.",
       "owner": {
@@ -5970,16 +5983,16 @@
       "_note": "A skill that prescribes an edit guard-config-protection.js blocks names the gate: a change to a strictness key in an existing tsconfig or MSBuild file, or any edit to an existing .editorconfig, needs the user's allowance - asked with the count the change surfaces, never routed around. typescript was the precedent (owner); dotnet-project-setup (Nullable) and dotnet-code-quality (the WarningsAsErrors waves) restate it with their own keys. 2.1.4 audit I44.",
       "owner": {
         "file": "stack/skills/typescript/SKILL.md",
-        "marker": "until the user allows it. Ask for that allowance with the error count the flag surfaces, and never route around the block"
+        "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the error count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
       },
       "sites": [
         {
           "file": "stack/skills/dotnet-project-setup/SKILL.md",
-          "marker": "until the user allows it. Ask for that allowance with the warning count the flag surfaces, and never route around the block"
+          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
         },
         {
           "file": "stack/skills/dotnet-code-quality/SKILL.md",
-          "marker": "until the user allows it. Ask for that allowance with the warning count the wave surfaces, and never route around the block"
+          "marker": "until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the wave surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path"
         }
       ]
     },

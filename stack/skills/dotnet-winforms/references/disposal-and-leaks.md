@@ -22,7 +22,8 @@ short-lived child forms or controls that should have been collected.
 - You do **not** need to detach a child control's handler from its parent - their lifetimes are tied
   and they die together.
 - You **do** need to unsubscribe when a shorter-lived object subscribed to a longer-lived one -
-  detach in `OnClosed` / `Dispose`.
+  detach in `OnFormClosed` (a Form) or `Dispose` - `OnClosed` / `Closed` are obsolete from .NET 10
+  (WFDEV004), and `OnFormClosed` exists on 4.8 too, so one form serves both runtimes.
 - Weak-event patterns and messenger/event-aggregator abstractions are a safety net, not a substitute
   for correct lifetime management - a still-subscribed handler can run on a logically dead object.
 

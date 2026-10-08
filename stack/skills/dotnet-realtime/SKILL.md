@@ -109,4 +109,7 @@ Running more than one server instance? A message sent from server A never reache
 
 ## Prove the push
 
-Connect two clients, send to a group holding both, and quote what each received. Then drop one connection, reconnect it, send again and quote the result - a client that stops receiving after a reconnect is the group membership that was never re-added, and it is invisible to any test with one client.
+1. Connect two clients, send to a group holding both, and quote what each received.
+2. Drop one connection, reconnect it, send again and quote the result.
+
+Report: both receipts, then the post-reconnect receipt. A client that stops receiving after a reconnect is the group membership that was never re-added, and it is invisible to any test with one client.

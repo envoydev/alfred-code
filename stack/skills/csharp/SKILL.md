@@ -13,8 +13,6 @@ C# style, structure, and runtime conventions in one place: how code is shaped (n
 
 **Floor: .NET 8 / C# 12.** Every rule below assumes at least this target - `TimeProvider`, `UnsafeAccessorAttribute`, the static argument throw-helpers, and the C# 12 collection expressions / primary constructors are all in. Where a convention names a newer feature (C# 13 `System.Threading.Lock`, the C# 14 `field` keyword), it flags the version inline; treat those as opt-in once the project's target moves up.
 
-Specialized concerns (concurrency, performance / memory layout, design patterns, serialization, DI registration, config binding, DDD, architecture, packaging) route through the .NET router skill where the install has it: load the focused skill it names, and with no router match work from the skills already loaded.
-
 ## When to use
 
 - Before creating or editing any `.cs` file - writing, reviewing, or refactoring C#; do not lean on recalled
@@ -46,7 +44,7 @@ Casing, prefixes, and the `Async` suffix live in `references/csharp-style.md` - 
 
 Order: private constants/statics, private readonly, private fields, protected/public properties, constructors, public/protected/private methods. Public properties before the constructor.
 
-No SDK analyzer or `.editorconfig` rule enforces this order - it is a review rule, checked by reading the diff. StyleCop is no stand-in: its SA1201 puts constructors before properties and SA1202 puts public members before private, so adding that pack flags this order rather than holding it.
+No SDK analyzer or `.editorconfig` rule enforces this order - it is a review rule, checked by reading the diff. StyleCop's SA1201 / SA1202 order members differently, so that pack is no stand-in (`references/csharp-style.md` section 2).
 
 ## Constructor parameter ordering
 
@@ -54,7 +52,7 @@ Private readonly fields, constructor parameters (primary constructors included) 
 
 ## Blank lines
 
-Consecutive blank lines are the formatter's, or IDE2000 (experimental: `dotnet_style_allow_multiple_blank_lines_experimental = false`). The non-mechanical rule, which no analyzer checks: one blank line before control-transfer statements (`return`, `throw`, `break`, etc.) when preceded by another statement - so the exit visually separates from preceding logic.
+Consecutive blank lines are the formatter's (`references/csharp-style.md` section 2). The non-mechanical rule, which no analyzer checks: one blank line before control-transfer statements (`return`, `throw`, `break`, etc.) when preceded by another statement - so the exit visually separates from preceding logic.
 
 ## Methods
 - Max 20 lines per method body - a longer body is doing more than one thing and resists review. Refactor if exceeded.
@@ -97,7 +95,7 @@ Performance concerns (readonly structs, `Span<T>` / `ArrayPool<T>`, collection c
 - No `dynamic` - use `object` + pattern matching or a typed interface.
 - No top-level statements outside `Program.cs`.
 
-Routing note: when a convention here drives a package change - adding, removing, or swapping one (e.g. dropping a banned mapper, replacing Newtonsoft with System.Text.Json) - the install itself belongs to the skill covering .NET solution and package setup, where the install has it; either way use the `dotnet` CLI, never hand-edit `Directory.Packages.props`.
+A package add, remove or swap goes through the .NET CLI (`dotnet add package` / `dotnet remove package`) - never hand-edit `Directory.Packages.props`; the solution and package setup skill owns the install, where installed.
 
 ## Documentation
 - Public and protected members carry XML docs: `<summary>`, `<param>` and `<typeparam>` for each, `<returns>` for non-void, `<exception>` for contract exceptions, `<inheritdoc/>` on overrides. Whether and how they are written (one line per tag, the shortest accurate phrase, no ticket ids) is the house code-comments skill's, and the project's own convention wins.
@@ -113,6 +111,8 @@ Routing note: when a convention here drives a package change - adding, removing,
 - Never call `DateTime.Now` for measurements - use `Stopwatch`.
 
 ## Async, disposal, and JSON
+Never block on async code (`.Result`, `.Wait()`, `.GetAwaiter().GetResult()`) and no `async void` outside event handlers - the first deadlocks under a sync context, the second crashes the process on a fault.
+
 Read `references/runtime-behavior.md` before writing async or cancellation code, a type that owns a resource, or `System.Text.Json` configuration: it carries the house additions to the async baseline, the dispose rules and the JSON defaults. When the change is genuinely concurrent rather than merely async - deadlock avoidance, cancellation threading, `SemaphoreSlim` / `Interlocked`, `Channel<T>`, bounded parallelism - open `references/concurrency.md` instead.
 
 ## Exception handling and Result pattern
@@ -133,8 +133,7 @@ Read `references/runtime-behavior.md` before writing async or cancellation code,
 
 ## Secrets and configuration sources
 - Where secrets live (dev vs prod placement) is the skill covering .NET application-security hardening (OWASP-mapped mitigations, secret placement); without it, keep every secret out of source, config files and logs. Hashing / encryption primitives route via the .NET router to the cryptography-primitives skill, where installed.
-- Configuration layering: `appsettings.json` (defaults) -> `appsettings.{Environment}.json` -> environment variables -> command-line args. Later layers override earlier.
-- Typed options and startup validation (`IOptions<T>` family, `ValidateOnStart`, `IValidateOptions<T>`) belong to the web hub skill - the ASP.NET Core cross-cutting baseline - where the install has it; the DI-side binding shape is `references/dependency-injection.md`, and without the web hub that is the whole rule.
+- Typed options and startup validation (`IOptions<T>` family, `ValidateOnStart`, `IValidateOptions<T>`) belong to the web hub skill - the ASP.NET Core cross-cutting baseline - where the install has it; the DI-side binding shape and the configuration layer order are `references/dependency-injection.md`, and without the web hub that is the whole rule.
 
 ## LINQ
 Method-vs-query syntax choice, chain wrapping, multiple-enumeration, and terminal-operator intent are authoritative in `references/csharp-style.md`. House additions:
@@ -149,4 +148,7 @@ Method-vs-query syntax choice, chain wrapping, multiple-enumeration, and termina
 
 ## Prove it
 
-Before any done word on a `.cs` change, run `dotnet build` and quote its summary line - no new warning or error is what shows the analyzer-backed rules held (style included, with `EnforceCodeStyleInBuild` on); re-reading the diff is no substitute for that build. The rules no analyzer backs - member ordering and the file, method and parameter caps - are checked by reading the diff, and the close says so.
+Before any done word on a `.cs` change:
+
+1. `dotnet build` - quote the summary line. No new warning or error is what shows the analyzer-backed rules held (style included, with `EnforceCodeStyleInBuild` on); a new warning or error ID is the finding, and re-reading the diff is no substitute for that build.
+2. Check the rules no analyzer backs - member ordering and the file, method and parameter caps - by reading the diff, and say in the close that you did.

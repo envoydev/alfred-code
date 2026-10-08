@@ -40,9 +40,8 @@ MySolution/
 
 - Production code under `src/`, one project per library or deployable; tests mirror it under `tests/`, one test project per source project.
 - A setting that must hold for every project -> `Directory.Build.props`, never copy-pasted per csproj.
-- A package version -> `Directory.Packages.props`, never inline in a csproj (see the reference).
+- A package version -> `Directory.Packages.props`, never inline in a csproj. Add or remove a package with `dotnet add package <name>` / `dotnet remove package <name>` (`dotnet package add` / `remove` on the .NET 10 SDK) - under central management it writes both files in sync; never hand-add (pinning, `PrivateAssets`, `VersionOverride`: the reference).
 - A pinned CLI tool -> `.config/dotnet-tools.json` (see the reference).
-- Anything CI or pipeline (`.github/workflows`) -> the CI-and-deploy skill, not here.
 
 ## Solution file - .slnx
 
@@ -88,7 +87,7 @@ After `dotnet sln migrate`, check then ask - never delete first:
 
 ## Directory.Build.props - configure every project once
 
-Placed at the solution root, MSBuild auto-imports it into every project below. Keep it to the language baseline, reusable target-framework properties, and genuinely project-wide global usings. The boundary: analyzer and warnings-as-errors props go to `dotnet-code-quality`; package metadata, packaging, and SourceLink go to the CI-and-deploy skill - not here.
+Placed at the solution root, MSBuild auto-imports it into every project below. Keep it to the language baseline, reusable target-framework properties, and genuinely project-wide global usings. The boundary: analyzer and warnings-as-errors props go to `dotnet-code-quality`.
 
 ```xml
 <Project>
@@ -122,7 +121,9 @@ A csproj then references the shared property instead of hard-coding the framewor
 
 A nested `Directory.Build.props` in a subfolder overrides the root one and must `<Import>` it to keep both - keep a single file at the root unless you have a concrete reason to split.
 
-Where the house config-protection guard runs, it blocks any change to `Nullable` (or a warning key such as `TreatWarningsAsErrors` or `NoWarn`) in a Directory.Build.props or csproj that already exists - a tightening included - until the user allows it. Ask for that allowance with the warning count the flag surfaces, and never route around the block; a new Directory.Build.props takes the baseline from the start.
+Prove it: `dotnet restore` and `dotnet build` - quote both summary lines.
+
+Where the house config-protection guard runs, it blocks any change to `Nullable` (or a warning key such as `TreatWarningsAsErrors` or `NoWarn`) in a Directory.Build.props or csproj that already exists - a tightening included - until the user allows it. Ask for that allowance through ONE AskUserQuestion with the warning count the flag surfaces, and never route around the block; on Allow, the guard's receipt `<docs-path>/flow/CONFIG-EDIT-ALLOW` takes the file's path and the same edit is retried; a new Directory.Build.props takes the baseline from the start.
 
 ## global.json - pin the SDK
 
@@ -148,4 +149,4 @@ Pin the SDK so every machine and CI runner builds with the same toolchain. Proje
 | `latestMinor` | highest minor within the same major |
 | `latestMajor` | highest SDK installed on the machine |
 
-Recommend `latestFeature` - pins the toolchain for reproducible builds, yet won't fail on a box that only has a slightly newer patch. In CI, point setup-dotnet at the file with `global-json-file: global.json` (the CI-and-deploy skill owns the workflow).
+Recommend `latestFeature` - pins the toolchain for reproducible builds, yet won't fail on a box that only has a slightly newer patch. In CI, point setup-dotnet at the file with `global-json-file: global.json`.
