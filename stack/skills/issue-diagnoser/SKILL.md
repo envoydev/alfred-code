@@ -157,8 +157,12 @@ cycle in the same chat, even when an earlier cycle already loaded it.
      document: the observable, the evidence tier, the proven cause with its located symbol, the
      blast radius and who it affects, severity + priority, and what a fix would have to change.
      No task cards. This is the outcome when the fix is someone else's, or not now.
-   - **4b. PLAN TASKS** ('Plan the fix as tasks') - decompose the minimal change per cause into
-     independent tasks, each with a contract: the files it owns, what it must not touch, its
+   - **4b. PLAN TASKS** ('Plan the fix as tasks') - first load `habits-execution-strategy` (the Skill
+     tool) over the minimal change: how the fix runs, not only what it changes. Its `Execution:` line sets the cards' split -
+     units it found parallel-safe become separate cards, units that share a file or need another's
+     output stay one card or are ordered - and is stated beside the close's ask, never written into
+     the findings file (task-solve decides the build mode again on the gated plan).
+     Then decompose the minimal change per cause into independent tasks, each with a contract: the files it owns, what it must not touch, its
      acceptance criterion, and the `log_points` the fix must leave behind at the seam that
      failed. Name the target stack per task. The cards go into the findings file under a
      `## Tasks` heading - the file is the handoff, not the chat. The build is the user's next

@@ -9,7 +9,8 @@ this cycle, not remembered from an earlier one.
 
 ## Mode fit - the step-3 approve ask
 
-Two build modes, the recommendation decided per plan, the reason in the option's description:
+Two build modes, the recommendation decided per plan by the `Execution:` verdict that
+`habits-execution-strategy` gave for it, the reason in the option's description:
 
 - **session** - `task-implement` runs the tasks in this chat. Fits when the tasks are few,
   serial, or one stack's.
@@ -18,7 +19,9 @@ Two build modes, the recommendation decided per plan, the reason in the option's
   can build in parallel (the measured multi-slice exception: built inline, such a plan cost a
   multiple of its dispatched build).
 
-A fixed default is not a recommendation. Agents mode exists only where subagent dispatch is
+The verdict maps straight to the mark: `parallel seats` recommends agents, `serial` or `batched`
+recommends session. A plan whose cards own their files and verify alone recommends agents - building
+it one card after another loses time and buys no quality. A fixed default is not a recommendation. Agents mode exists only where subagent dispatch is
 available; where it is not, the ask offers session only and says so.
 
 ## The APPROVAL stamp - writing it, and its lifetime

@@ -235,6 +235,51 @@ test('the habit descriptions are triggers only - when, and what they are not for
     }
 });
 
+test('the solve and diagnose flows load the execution strategy before they decide how the work runs', () => {
+    const body = (n) => squash(read(`stack/skills/${n}/SKILL.md`));
+    const solve = body('task-solve');
+    const at = (text, needle) => text.indexOf(needle);
+    const load = 'load `habits-execution-strategy` (the Skill tool)';
+    assert.ok(at(solve, load) > at(solve, '3. **APPROVE**') && at(solve, load) < at(solve, 'The plan is gated.'), 'task-solve loads it before the step-3 mode ask');
+    assert.ok(at(solve, '`habits-execution-strategy` load come first') < at(solve, 'Full spec - designed and audited'), 'the merged approval loads it first too');
+    const cross = body('task-solve-cross');
+    assert.ok(at(cross, load) > -1 && at(cross, load) < at(cross, 'Size <size> across'), 'task-solve-cross loads it before its mode ask');
+    const diag = body('issue-diagnoser');
+    assert.ok(at(diag, load) > at(diag, '4b. PLAN TASKS') && at(diag, load) < at(diag, 'Then decompose the minimal change'), 'issue-diagnoser loads it before the fix cards');
+    assert.match(squash(read('stack/skills/task-solve/references/step-mechanics.md')), /`parallel seats` recommends agents/, 'the mode-fit rule follows the verdict');
+    const strategy = squash(read('stack/skills/habits-execution-strategy/SKILL.md'));
+    assert.doesNotMatch(strategy, /Not inside a stamped solve flow/, 'the flows are no longer excluded');
+    assert.match(strategy, /how the work runs, not only what it changes/, 'it reasons about how the work runs');
+    assert.match(strategy, /can these units run at the same time without losing quality\?/, 'it asks the parallel question');
+    assert.match(strategy, /\*\*parallel is the recommendation\*\*/, 'parallel is recommended when quality holds');
+    assert.match(strategy, /Execution: route <direct \| the flow offered> - mode <serial \| batched \| parallel seats: <n>> - model </, 'one verdict names route, mode and model');
+    for (const route of ['**Direct**', 'gated single-chat solve flow', 'cross-domain solve flow', 'diagnose flow', 'greenfield or framework-upgrade flows'])
+        assert.ok(strategy.includes(route), `the route list holds ${route}`);
+    assert.match(strategy, /never a silent switch/, 'a flow route is offered, never taken silently');
+    assert.match(strategy, /the effort cannot/, 'only the model is overridable per dispatch');
+    assert.match(strategy, /never below the pin on auth, a migration/, 'a risk path keeps the seat pin');
+    const always = squash(read('stack/rules/alfred-interaction.md'));
+    assert.match(always, /Every task settles how it runs before its first edit - route, mode, model\. A small task settles it inline, no Skill call/, 'every task decides how it runs');
+});
+
+test('audit 2026-10-08: the execution verdict stays out of plan files, small tasks get no plan, direct-route edits never dispatch', () => {
+    const strategy = squash(read('stack/skills/habits-execution-strategy/SKILL.md'));
+    // C7: a plan never carries the run (habits-plan-writing, task-design) - a flow's plan file included
+    assert.match(strategy, /never a plan file - a flow's plan file included: there the `Execution:` line rides the flow's mode ask/, 'the verdict rides the mode ask');
+    assert.doesNotMatch(strategy, /the flow's own plan or findings file/, 'no plan or findings file carries the verdict');
+    const diag = squash(read('stack/skills/issue-diagnoser/SKILL.md'));
+    assert.match(diag, /never written into the findings file/, 'the diagnoser states the verdict in its close');
+    // the direct route never dispatches an implementer: the guard needs a stamp only a flow writes
+    assert.match(strategy, /on the direct route the seats are read-only ones/, 'direct-route seats are read-only');
+    assert.match(strategy, /Edit seats are the house `<stack>-implementer`, inside a flow/, 'edit seats live inside a flow');
+    assert.match(strategy, /```ask This task fits <the flow>/, 'the route offer is an ask template');
+    assert.match(strategy, /Up to 3 at once by default, more only on the user's ask/, 'the fan-out cap matches the flows');
+    // C1: the 10+ file mechanical change is a small task with no plan, not a second rule beside the trigger
+    const rule = read('stack/rules/alfred-interaction.md');
+    assert.doesNotMatch(rule, /^- A mechanical change across 10\+ files: confirm the scope list, no plan\./m, 'the separate no-plan line is folded in');
+    assert.match(squash(rule), /A small task settles it inline, no Skill call, and gets no plan: a typo, a one-line fix, formatting, a dep bump, a single-file rename, or a mechanical change across 10\+ files once the user confirms its scope list\. Any other task/, 'one line holds both sides of the threshold');
+});
+
 test('the inline task skills load their method skill through the Skill tool at the right point', () => {
     const body = (n) => squash(read(`stack/skills/${n}/SKILL.md`));
     const design = body('task-design');

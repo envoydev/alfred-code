@@ -121,7 +121,7 @@ else echo 'path: gated - spec-check not found'; fi
 
 Its `path: gated` is final. Its `path: merged` you may raise to gated, never lower.
 
-On `path: merged`, steps 1 and 2 are ONE step: the design and the plan audit both in this session (neither twin asks its mode), no stop between them. A gap the audit finds that the spec settles is fixed in the plan in the same step and named in the ask; a gap only the user can settle stamps the gaps and takes step 2's stop. Step 3's read comes first (`mechanics: read` in `Result:`), then ONE approval ask in place of step 3's:
+On `path: merged`, steps 1 and 2 are ONE step: the design and the plan audit both in this session (neither twin asks its mode), no stop between them. A gap the audit finds that the spec settles is fixed in the plan in the same step and named in the ask; a gap only the user can settle stamps the gaps and takes step 2's stop. Step 3's read and its `habits-execution-strategy` load come first (`mechanics: read` in `Result:`), then ONE approval ask in place of step 3's:
 
 ```ask
 Full spec - designed and audited in one step (<the Gated: verdict>). Build it as planned <in this session | through the seats>: <the mode-fit reason>.
@@ -147,8 +147,10 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    - <their words>` - never blank, never a faked pass. *Stop.*
 3. **APPROVE** - Read `references/step-mechanics.md` now - the mode-fit rule for this ask, the
    build bar, the step-4 reviewer-fit rule and step 6's doc-drift surfaces are its content, not
-   homework; this stop's `Result:` line carries `mechanics: read` as the receipt. Then present the
-   gated plan and put the gate through ONE question whose options each NAME the mode:
+   homework; this stop's `Result:` line carries `mechanics: read` as the receipt. Then load
+   `habits-execution-strategy` (the Skill tool); its `Execution:` line is the
+   mode-fit reason. Then present the gated plan and put the gate through ONE question whose
+   options each NAME the mode:
 
    ```ask
    The plan is gated. Build it <in this session | through the seats>: <the mode-fit reason>.

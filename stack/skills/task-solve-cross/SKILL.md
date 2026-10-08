@@ -56,7 +56,7 @@ standard, whatever the file count.
 
 ## Execution modes - the user picks: session or agents
 
-When dispatch is available, the scoping verdict IS the mode ask - one atomic step, not a verdict followed by a decision you make: the message that states the verdict fires AskUserQuestion and ENDS THE TURN; where the tool is absent the same message ends with plain-text options. Every ask this skill fires marks exactly one option `(Recommended)`, listed first, the reason in its description - an ask with no mark is malformed, rebuild it.
+Before the verdict, load `habits-execution-strategy` (the Skill tool) - how the work runs - and carry its `Execution:` line as the ask's reason: `parallel seats` marks the seats option, unless a guardrail in `references/execution-modes.md` or the fresh-session trigger below outranks it, and says so. When dispatch is available, the scoping verdict IS the mode ask - one atomic step, not a verdict followed by a decision you make: the message that states the verdict fires AskUserQuestion and ENDS THE TURN; where the tool is absent the same message ends with plain-text options. Every ask this skill fires marks exactly one option `(Recommended)`, listed first, the reason in its description - an ask with no mark is malformed, rebuild it.
 
 ```ask
 Size <size> across <domains>. Run it <in this session | through the seats>: <the smallest safe mode's reason>.

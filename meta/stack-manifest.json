@@ -149,7 +149,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "habits-execution-strategy",
-      "note": "execution strategy (2026-09-30, from the user's Execution Strategy Module, adapted): a short inline plan, one agent by default, batched calls, subagents only for independent sizeable contract-backed tracks, three check tiers (per batch, once after the change, CI parity before a push); pointed at by alfred-interaction, defers to a stamped solve flow, never preloaded by a seat (the dispatcher decides the split)"
+      "note": "execution strategy (2026-09-30, from the user's Execution Strategy Module, adapted): a short inline plan, one agent by default, batched calls, subagents only for independent sizeable contract-backed tracks, three check tiers (per batch, once after the change, CI parity before a push); pointed at by alfred-interaction, run by task-solve before step 3's mode ask, task-solve-cross before its mode ask and issue-diagnoser at 4b (2026-10-08: its Execution verdict names route, mode and model and sets the recommended mode; parallel whenever quality holds; every smaller task settles the same three inline from alfred-interaction), never preloaded by a seat (the dispatcher decides the split)"
     },
     {
       "repo": "envoydev/alfred-code",
