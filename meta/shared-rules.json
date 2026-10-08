@@ -1456,6 +1456,47 @@
         }
       ]
     },
+    "fan-out-cap": {
+      "_note": "Implementer fan-out runs at most 3 seats at once by default, more only on the user's ask - every site that dispatches implementers in parallel states the cap in its own words. The vendored trio protocol once said 'all in parallel ... expose all of it' against the owner's cap (2026-10-08 audit BLOCKER 1), so each phrasing is pinned here.",
+      "owner": {
+        "file": "stack/skills/task-solve-cross/references/execution-modes.md",
+        "marker": "fan-out is capped at 3 implementers at once by default, more only on the user's ask"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
+          "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
+        },
+        {
+          "file": "stack/skills/loop-architecture-quality/references/domain-trio-protocol.md",
+          "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
+        },
+        {
+          "file": "stack/skills/loop-quality/references/domain-trio-protocol.md",
+          "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
+        },
+        {
+          "file": "stack/skills/loop-test-coverage/references/domain-trio-protocol.md",
+          "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
+        },
+        {
+          "file": "stack/skills/task-build-from-scratch/references/domain-trio-protocol.md",
+          "marker": "up to 3 at once (more only on the user's ask), queueing the rest as seats return"
+        },
+        {
+          "file": "stack/skills/task-solve/references/step-mechanics.md",
+          "marker": "`<stack>-implementer` seat, up to 3 at once"
+        },
+        {
+          "file": "stack/skills/task-implement/SKILL.md",
+          "marker": "up to 3 at once, each on its frontmatter model"
+        },
+        {
+          "file": "stack/skills/loop-test-coverage/SKILL.md",
+          "marker": "up to 3 at once, routes a red build/test"
+        }
+      ]
+    },
     "fresh-session-at-boundaries": {
       "_note": "The long-run session-cost guidance: a loop's round/stage boundary is a fresh-session resume point with the reconciled doc as the handoff, because measured session analysis shows carried-forward conversation (not tool output) dominates cost. Restated in each loop.",
       "owner": {
