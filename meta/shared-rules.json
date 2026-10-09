@@ -5092,7 +5092,7 @@
       ]
     },
     "skill-model-pin-turn-scoped": {
-      "_note": "A skill-level `model` pin applies only for the rest of the TURN in which the skill activates and is never saved to settings - so a deliberate capture that must run on one model says so and lets the user set it, rather than trusting the frontmatter to hold across the walk. The earlier reading of this - 'the pin is not reliably honored' - was wrong about the mechanism and is retired; the pin works, its SCOPE is the turn. As of 2026-09-12 NO shipped skill carries a `model` or `effort` pin at all: a turn-scoped pin cannot hold across a multi-turn capture, and the pins live only on agents, where they cover the whole subagent run. Since 2026-10-09 the three judging captures and their two loops run on the session model and ask for no switch (a measured capture A/B: Sonnet at xhigh matched Opus at the same cost); the version-upgrade and greenfield flows still ask for Opus at run start, unmeasured.",
+      "_note": "A skill-level `model` pin applies only for the rest of the TURN in which the skill activates and is never saved to settings - so a deliberate capture that must run on one model says so and lets the user set it, rather than trusting the frontmatter to hold across the walk. The earlier reading of this - 'the pin is not reliably honored' - was wrong about the mechanism and is retired; the pin works, its SCOPE is the turn. As of 2026-09-12 NO shipped skill carries a `model` or `effort` pin at all: a turn-scoped pin cannot hold across a multi-turn capture, and the pins live only on agents, where they cover the whole subagent run. Since 2026-10-09 the three judging captures, their two loops and the version-upgrade and greenfield flows run on the session model and ask for no switch - measured in docs/model-ab-evidence.md: Sonnet at xhigh matched Opus at the same cost or less.",
       "owner": {
         "file": "stack/skills/capture-architecture/SKILL.md",
         "marker": "a skill-level pin lasts only for the turn it activates in"
@@ -5104,11 +5104,11 @@
         },
         {
           "file": "stack/skills/task-version-upgrade/SKILL.md",
-          "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
+          "marker": "a skill-level pin lasts only for the turn it activates in"
         },
         {
           "file": "stack/skills/task-build-from-scratch/SKILL.md",
-          "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
+          "marker": "a skill-level pin lasts only for the turn it activates in"
         },
         {
           "file": "stack/skills/capture-code-quality/SKILL.md",

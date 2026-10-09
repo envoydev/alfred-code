@@ -67,7 +67,7 @@ test('the flows load their method skills by name, at the step that needs them', 
 
     assert.match(squash(read('stack/skills/task-solve/SKILL.md')), /1\. \*\*DESIGN\*\* - run `task-design`, with `habits-clarify` loaded first/);
     assert.match(squash(read('stack/skills/task-solve-cross/SKILL.md')), /## Clarify before you design \(feature family\) Before you scope a feature or dispatch any designer, load `habits-clarify`/);
-    assert.match(squash(read('stack/skills/task-build-from-scratch/SKILL.md')), /### 1\. DESIGN - in-session, on Opus Load `habits-clarify` first/);
+    assert.match(squash(read('stack/skills/task-build-from-scratch/SKILL.md')), /### 1\. DESIGN - in-session Load `habits-clarify` first/);
 });
 
 test('the clarify discipline and the plan format each have one home', () => {
@@ -377,9 +377,9 @@ test('the inline task skills load their method skill through the Skill tool at t
 
 test('skills S5: the judging captures and their loops run on the session model and ask for no switch to Opus (A/B 2026-10-09)', () => {
     const body = (n) => squash(read(`stack/skills/${n}/SKILL.md`));
-    for (const n of ['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'loop-architecture-quality', 'loop-quality']) {
+    for (const n of ['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'loop-architecture-quality', 'loop-quality', 'task-version-upgrade', 'task-build-from-scratch']) {
         const text = body(n);
-        assert.doesNotMatch(text, /Opus with `\/model`|not on Opus|switch to `\/model` Opus/, `${n} still asks for Opus`);
+        assert.doesNotMatch(text, /Opus with `\/model`|not on Opus|switch to `\/model` Opus|on Opus \(checked|in-session, on Opus/, `${n} still asks for Opus`);
         assert.match(text, /no `model` pin/i, `${n} keeps the no-pin reason`);
     }
     for (const n of ['capture-architecture-quality', 'capture-code-quality'])
