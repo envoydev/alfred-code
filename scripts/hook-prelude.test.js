@@ -732,3 +732,46 @@ test('sweepStale removes only its prefix\'s files past 7 days, once per dir and 
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// 2026-10-10: Node writes a pipe ASYNCHRONOUSLY on macOS, and process.exit() dropped what the pipe had not taken -
+// 8,192 bytes reached the reader on Node 22.16, 65,536 on 22.23 - so the secret guard's rewrite of a 100 KB command
+// arrived unparseable and the call ran unredacted. The prelude makes both streams blocking as it loads.
+test('blockingStdio: a process that loads the prelude, or carries its pinned inline copy, gets every byte through a pipe before process.exit', () =>
+{
+    const write = 'process.stdout.write("x".repeat(300000)); process.stderr.write("y".repeat(300000)); process.exit(0);';
+    const inline = require('../meta/shared-rules.json').rules['blocking-stdio'].owner.marker;
+    for (const [name, pre] of [['prelude', `require(${JSON.stringify(PRELUDE)});`], ['inline copy', `${inline}\nblockingStdio();`]])
+    {
+        const r = spawnSync(process.execPath, ['-e', pre + write], { encoding: 'utf8', maxBuffer: 1 << 24 });
+        assert.deepStrictEqual([r.status, r.stdout.length, r.stderr.length], [0, 300000, 300000], name);
+    }
+});
+
+// The sweep that keeps it so: every file that writes and then calls process.exit blocks first - a hook by loading
+// the prelude, any other entry by calling blockingStdio(). A launcher hands its stdio to a long-lived server, a
+// fixture is a test's fake server, and the sandbox's exits are its stub's source text.
+test('blockingStdio: every entry that writes and calls process.exit makes stdio blocking first', () =>
+{
+    const ROOT = path.join(__dirname, '..');
+    const exempt = (rel) => /\.test\.js$/.test(rel) || /^stack\/mcp\//.test(rel) || /^scripts\/fixtures\//.test(rel)
+        || rel === 'scripts/seed-sandbox.js' || rel === 'stack/hooks/hook-prelude.js';
+    const files = [];
+    const walk = (dir) =>
+    {
+        for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }))
+        {
+            const rel = `${dir}/${e.name}`;
+            if (e.isDirectory()) { if (e.name !== 'node_modules') walk(rel); }
+            else if (e.name.endsWith('.js') && !exempt(rel)) files.push(rel);
+        }
+    };
+    for (const dir of ['scripts', 'stack', 'setup-plugin']) walk(dir);
+    const missing = files.filter((rel) =>
+    {
+        const code = fs.readFileSync(path.join(ROOT, rel), 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+        if (!/process\.exit\(/.test(code) || !/process\.std(?:out|err)\.write|console\.(?:log|error)/.test(code)) return false;
+        return !/blockingStdio\(\)/.test(code) && !/require\((?:'\.\/hook-prelude\.js'|PRELUDE)\)/.test(code);
+    });
+    assert.ok(files.length > 50, `the sweep found ${files.length} files`);
+    assert.deepStrictEqual(missing, []);
+});

@@ -2679,6 +2679,7 @@ const npxInstall = (ctx, engine) => ctx.rt.capture('npx', ['-y', '-p', `@playwri
 
 if (require.main === module)
 {
+    require('../../stack/hooks/hook-prelude.js').blockingStdio();
     process.exitCode = main(process.argv.slice(2), process.env, {
         out: (s) => process.stdout.write(s),
         err: (s) => process.stderr.write(s),

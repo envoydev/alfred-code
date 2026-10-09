@@ -223,6 +223,7 @@ module.exports = { plan, render, probes, browsersDir, CAPTURES, unattended, isUn
 
 if (require.main === module)
 {
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
     const argv = process.argv.slice(2);
     const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
     if (argv.includes('--mode')) { console.log(`unattended: ${isUnattended() ? 'on' : 'off'}`); process.exit(0); }

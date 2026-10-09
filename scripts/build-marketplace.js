@@ -522,6 +522,7 @@ function main(argv)
 
 if (require.main === module)
 {
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
     try { process.exit(main(process.argv.slice(2))); }
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }

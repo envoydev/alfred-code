@@ -475,4 +475,8 @@ function main(argv, { env = process.env, out = (s) => process.stdout.write(s) } 
 
 module.exports = { SHAPES, LAUNCHER, fill, classify, expected, sourceLabel, gitBash, nodeOnPath, hudInstall, resolveConfigDir, planHud, applyHud, parseArgs, main };
 
-if (require.main === module) process.exit(main(process.argv.slice(2)));
+if (require.main === module)
+{
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
+    process.exit(main(process.argv.slice(2)));
+}

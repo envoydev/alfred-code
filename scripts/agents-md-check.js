@@ -508,5 +508,9 @@ function listMain(root, targets, { out, err, template = null })
     return 0;
 }
 
-if (require.main === module) process.exit(main(process.argv.slice(2)));
+if (require.main === module)
+{
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
+    process.exit(main(process.argv.slice(2)));
+}
 module.exports = { checkText, findFiles, main, stripComments };

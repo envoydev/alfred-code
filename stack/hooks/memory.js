@@ -1373,7 +1373,19 @@ module.exports = {
   modelCached, warmModel, MODEL_MARKER, WARM_TIMEOUT_MS,
 };
 
+// stdout and stderr block, so a pipe gets every byte before process.exit (macOS writes a pipe async) - the
+// prelude's blockingStdio, inline because this engine ships without the prelude beside it on one route (blocking-stdio in meta/shared-rules.json).
+function blockingStdio(streams = [process.stdout, process.stderr])
+{
+    for (const s of streams)
+    {
+        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }
+        catch { /* a stream that cannot block keeps Node's default */ }
+    }
+}
+
 if (require.main === module) {
+  blockingStdio();
   const [, , cmd, ...args] = process.argv;
   try {
     if (cmd === 'level') {

@@ -57,6 +57,24 @@ const os = require('node:os');
 const homeDir = () => { try { return os.homedir() || process.env.HOME || ''; } catch { return process.env.HOME || ''; } };
 const path = require('node:path');
 
+// STDOUT AND STDERR BLOCK. Node writes a pipe ASYNCHRONOUSLY on macOS, and process.exit() drops whatever the
+// pipe has not taken yet: measured 2026-10-10, the secret guard's rewrite of a 100 KB command reached its reader
+// as the first 65,536 bytes on Node 22.16 and 22.23 alike (8,192 on 22.16 for a smaller write), unparseable - so
+// the harness ran the call unredacted. Every hook and CLI here exits through process.exit, so the streams are
+// made blocking before the first write, as Node already makes a terminal: a write returns once the pipe holds
+// it. A file and a Linux pipe are synchronous anyway. `_handle.setBlocking` is libuv's uv_stream_set_blocking,
+// the call the set-blocking package makes; a stream without it keeps Node's default. Every hook loads this
+// file first, so loading it is the call; a CLI makes it in its main block.
+function blockingStdio(streams = [process.stdout, process.stderr])
+{
+    for (const s of streams)
+    {
+        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }
+        catch { /* a stream that cannot block keeps Node's default */ }
+    }
+}
+blockingStdio();
+
 // The wiring the installers write, in both spellings that shipped: quoted (current) and bare
 // (through 0.2.4x). Only a `$CLAUDE_PROJECT_DIR/.claude/hooks/<file>` command counts - a user
 // running their own copy of a same-named hook from their own path is NOT this hook's twin, and the
@@ -471,4 +489,4 @@ function scanBudget(limits = {})
 // the stop contract's ask deny and the answer-length Stop block, which disagreed ([\u2014\u2013] vs [\u2014\u2015], audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };

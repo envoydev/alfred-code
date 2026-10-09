@@ -40,6 +40,18 @@ function format(mins) {
   return `${m}m`;
 }
 
+// stdout and stderr block, so a pipe gets every byte before process.exit (macOS writes a pipe async) - the
+// prelude's blockingStdio, inline because a skill copy has no prelude beside it (blocking-stdio in meta/shared-rules.json).
+function blockingStdio(streams = [process.stdout, process.stderr])
+{
+    for (const s of streams)
+    {
+        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }
+        catch { /* a stream that cannot block keeps Node's default */ }
+    }
+}
+blockingStdio();
+
 let raw = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { raw += c; });

@@ -339,5 +339,9 @@ async function main(argv, deps = {})
     return refused ? 1 : 0;
 }
 
-if (require.main === module) main(process.argv.slice(2)).then((rc) => process.exit(rc), (err) => { console.error(err); process.exit(1); });
+if (require.main === module)
+{
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
+    main(process.argv.slice(2)).then((rc) => process.exit(rc), (err) => { console.error(err); process.exit(1); });
+}
 module.exports = { PACKAGES, readPins, main, newestFor, admits, serenaGate, zipEntries, listTools, UPSTREAM_LINE, TOOL_SERVERS };

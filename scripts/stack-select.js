@@ -846,4 +846,8 @@ function main(argv)
 
 module.exports = { computeClosure, gateMcps, gateRecs, normalizeInventory, evaluatePrereqs, detectEnvironment, onPath, browserCandidates, browsersOption, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
 
-if (require.main === module) main(process.argv.slice(2));
+if (require.main === module)
+{
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
+    main(process.argv.slice(2));
+}

@@ -658,6 +658,7 @@ async function main(argv)
 
 if (require.main === module)
 {
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
     main(process.argv.slice(2)).then(code => process.exit(code), err => { console.error(`alfred-gate: ${err.message || err}`); process.exit(2); });
 }
 

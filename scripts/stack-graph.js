@@ -284,6 +284,7 @@ module.exports = { buildStackGraph, serialize, GRAPH_FILE, readCommitted, plugin
 
 if (require.main === module)
 {
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
     const out = serialize(buildStackGraph());
     if (process.argv.includes('--write'))
     {

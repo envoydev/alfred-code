@@ -419,6 +419,7 @@ module.exports = { MEMORY_DIR, MEMORY_SERVERS, memoryServerOf, pathForLevel, lev
 
 if (require.main === module)
 {
+    require('../../stack/hooks/hook-prelude.js').blockingStdio();
     const argv = process.argv.slice(2);
     if (argv[0] !== 'init') { console.error(USAGE); process.exit(2); }
     const { which, runNode } = require('./runtime.js');

@@ -430,4 +430,8 @@ function main(argv)
 
 module.exports = { scan, matchesPackage, basenameMatches, majorOf, findVersionConflicts, orientation, PROVISIONAL, SIGNAL_KINDS };
 
-if (require.main === module) main(process.argv.slice(2));
+if (require.main === module)
+{
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
+    main(process.argv.slice(2));
+}

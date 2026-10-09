@@ -794,6 +794,10 @@ function main(argv)
     return 2;
 }
 
-if (require.main === module) process.exitCode = main(process.argv.slice(2));
+if (require.main === module)
+{
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
+    process.exitCode = main(process.argv.slice(2));
+}
 
 module.exports = { parseTranscript, grade, formatGrade, compareArms, formatCompare, checkExpectation, loadExpectation, listSkills, replayPlan, formatPlan, canonical, matches, main, LEVELS, EXPECT_DIR };

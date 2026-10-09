@@ -3187,5 +3187,6 @@ module.exports = {
 
 if (require.main === module)
 {
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
     main();
 }

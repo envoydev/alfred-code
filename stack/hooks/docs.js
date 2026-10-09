@@ -1887,6 +1887,18 @@ module.exports = {
 };
 if (require.main !== module) return;
 
+// stdout and stderr block, so a pipe gets every byte before process.exit (macOS writes a pipe async) - the
+// prelude's blockingStdio, inline because this engine ships without the prelude beside it on one route (blocking-stdio in meta/shared-rules.json).
+function blockingStdio(streams = [process.stdout, process.stderr])
+{
+    for (const s of streams)
+    {
+        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }
+        catch { /* a stream that cannot block keeps Node's default */ }
+    }
+}
+blockingStdio();
+
 const cmd = process.argv[2];
 const args = process.argv.slice(3);
 // Under the docs root, beside hook-blocks/ and tools-usage/: every other ledger in this stack lives there, and

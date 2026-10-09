@@ -2169,3 +2169,13 @@ test('guard-secret-value: a field named exactly `key` counts only with a credent
   assert.equal(read(w('api.json', JSON.stringify({ apiKey: 'abc123' }))), 2, 'apiKey');
   assert.equal(read(w('secret.env', 'SECRET_KEY=abc123\n')), 2, 'SECRET_KEY');
 });
+
+// 2026-10-10: the rewrite of a command past the pipe buffer reached the harness cut at 65,536 bytes (8,192 on Node
+// 22.16) on macOS - unparseable, so the original call ran and printed the file raw. The prelude's blockingStdio.
+test('guard-secret-value: the rewrite of a 100 KB command reaches the harness whole', () => {
+  const f = fixtures();
+  const tail = 'x'.repeat(100000);
+  const out = rewritten(`cat ${f.dotenv}; echo ${tail}`);
+  assert.ok(out, 'the rewrite parsed');
+  assert.ok(out.includes('--redacted') && out.endsWith(`echo ${tail}`), `rewritten whole: ${String(out).slice(0, 120)}...`);
+});

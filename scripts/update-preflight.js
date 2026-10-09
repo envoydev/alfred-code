@@ -443,4 +443,5 @@ function main()
     process.exit(typeof res.status === 'number' ? res.status : 3);
 }
 
+require('../stack/hooks/hook-prelude.js').blockingStdio();
 main();

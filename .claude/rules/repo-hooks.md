@@ -99,6 +99,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   Claude Code's 8-consecutive-continuation cap the outer guard - and an unwritable marker dir stands a continuation
   down, the old reading. The stop contract's per-turn probes skip a continuation (the same turn), and its SubagentStop
   hold keeps the plain flag beside its own once-marker (`guard-hooks.test.js`: never held again, marker or not).
+  STDIO BLOCKS (2026-10-10): Node writes a pipe async on macOS and `process.exit()` drops what the pipe has not taken,
+  so a decision past 64KB (8KB on Node 22.16) reached the harness cut off - the secret guard's rewrite of a 100KB
+  command arrived unparseable and the call ran raw. Loading `hook-prelude.js` makes stdout and stderr blocking
+  (`blockingStdio`, libuv's `setBlocking`); every other entry that writes and exits calls it in its main block, the
+  self-contained ones through a pinned inline copy (`blocking-stdio` in `meta/shared-rules.json`), and a sweep in
+  `hook-prelude.test.js` fails an entry that does neither. Launchers under `stack/mcp/` are exempt: they hand stdio to a server.
   STATE HYGIENE (audit 2026-10-08 S9): a hook that writes per-session state sweeps its own prefix's files untouched for 7
   days, inside 50ms, at most once a day per dir and prefix (`hook-prelude.js` `sweepStale`, the docs-session sweep's pattern; a
   `.alfred-sweep-<prefix>` stamp gates it, since listing a 52,840-entry temp dir twice cost 78ms of every Stop) - the stop

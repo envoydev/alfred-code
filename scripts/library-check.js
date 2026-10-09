@@ -170,5 +170,9 @@ function main(argv)
     return findings ? 1 : 0;
 }
 
-if (require.main === module) process.exit(main(process.argv.slice(2)));
+if (require.main === module)
+{
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
+    process.exit(main(process.argv.slice(2)));
+}
 module.exports = { check };

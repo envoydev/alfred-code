@@ -214,8 +214,20 @@ async function main(cfgPath)
     return result.ok ? 0 : 1;
 }
 
+// stdout and stderr block, so a pipe gets every byte before process.exit (macOS writes a pipe async) - the
+// prelude's blockingStdio, inline because a leg runs with only install/runtime.js beside it (blocking-stdio in meta/shared-rules.json).
+function blockingStdio(streams = [process.stdout, process.stderr])
+{
+    for (const s of streams)
+    {
+        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }
+        catch { /* a stream that cannot block keeps Node's default */ }
+    }
+}
+
 if (require.main === module)
 {
+    blockingStdio();
     const cfgPath = process.argv[2];
     if (!cfgPath) { console.error('usage: gate-leg.js <config.json>'); process.exit(2); }
     main(cfgPath).then(code => process.exit(code), err => { console.error(err); process.exit(1); });

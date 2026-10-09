@@ -3785,4 +3785,7 @@ async function runAnalysis() {
 // Run only as a COMMAND. Required as a module (the tests, which need to reach hookJoinStats),
 // it must define its functions and do nothing else - otherwise the require prints the usage
 // line and exits 1 before a single assertion runs.
-if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
+if (require.main === module) {
+  require('../stack/hooks/hook-prelude.js').blockingStdio();
+  main().catch((e) => { console.error(e.message); process.exit(1); });
+}

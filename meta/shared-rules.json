@@ -6659,6 +6659,43 @@
           "marker": "exactly as the roster spells it"
         }
       ]
+    },
+    "blocking-stdio": {
+      "_note": "hook-prelude.js blockingStdio makes stdout and stderr blocking, so a pipe gets every byte before process.exit - Node writes a pipe async on macOS, and a hook decision or CLI report past the pipe buffer reached its reader cut off (2026-10-10: the secret guard rewrite of a 100 KB command arrived as 65,536 bytes and ran unredacted). Every hook loads the prelude; a CLI beside it calls it in its main block. The two engines that ship without the prelude on one route, the three skill scripts a skill copy carries alone and the gate leg (copied to a VM with only install/runtime.js) each carry this byte-identical copy. A change to it is eight edits, not one.",
+      "owner": {
+        "file": "stack/hooks/hook-prelude.js",
+        "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+      },
+      "sites": [
+        {
+          "file": "stack/hooks/docs.js",
+          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+        },
+        {
+          "file": "stack/hooks/memory.js",
+          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+        },
+        {
+          "file": "stack/skills/capture-agent-capabilities/scripts/capabilities-inventory.js",
+          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+        },
+        {
+          "file": "stack/skills/task-solve/scripts/spec-check.js",
+          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+        },
+        {
+          "file": "stack/skills/task-solve-cross/scripts/spec-check.js",
+          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+        },
+        {
+          "file": "stack/skills/dev-log-convert/scripts/total-time.js",
+          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+        },
+        {
+          "file": "scripts/gate-leg.js",
+          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+        }
+      ]
     }
   }
 }

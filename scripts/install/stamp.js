@@ -688,6 +688,7 @@ module.exports = {
 // install used, one word.
 if (require.main === module)
 {
+    require('../../stack/hooks/hook-prelude.js').blockingStdio();
     const [cmd, root] = process.argv.slice(2);
     const at = path.resolve(root || '.');
     if (cmd === 'scope') { console.log(installScope(at)); process.exit(0); }

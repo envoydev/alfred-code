@@ -90,6 +90,7 @@ function build(out, { repo = REPO } = {})
 
 if (require.main === module)
 {
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
     const out = process.argv[2];
     if (!out) { console.error('usage: build-eval-bundle.js <out>'); process.exit(1); }
     try { console.log(JSON.stringify(build(path.resolve(out)))); }

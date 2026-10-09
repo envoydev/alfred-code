@@ -92,7 +92,19 @@ function report(r) {
 
 module.exports = { classify, report };
 
+// stdout and stderr block, so a pipe gets every byte before process.exit (macOS writes a pipe async) - the
+// prelude's blockingStdio, inline because a skill copy has no prelude beside it (blocking-stdio in meta/shared-rules.json).
+function blockingStdio(streams = [process.stdout, process.stderr])
+{
+    for (const s of streams)
+    {
+        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }
+        catch { /* a stream that cannot block keeps Node's default */ }
+    }
+}
+
 if (require.main === module) {
+    blockingStdio();
     let text;
     try { text = fs.readFileSync(process.argv[2] || 0, 'utf8'); }
     catch (e) { process.stderr.write(`spec-check: cannot read ${process.argv[2] || 'stdin'} - ${e.code || e.message}\n`); process.exit(2); }

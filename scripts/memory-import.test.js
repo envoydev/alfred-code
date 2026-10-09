@@ -552,13 +552,14 @@ test('C1: the importer runs from a git-archive snapshot with no node_modules (re
 {
     const snap = mkTmp('memimport-snapshot-');
     // Extract the committed tree (git archive HEAD) - the exact shape a release download has: no
-    // node_modules anywhere. Then overwrite the importer, the memory engine it stores through (and
-    // the fake server) with THIS working tree's copy, since HEAD may predate the change under test.
+    // node_modules anywhere. Then overwrite the importer, the memory engine it stores through, the
+    // prelude (and the fake server) with THIS working tree's copy, since HEAD may predate the change under test.
     execFileSync('git', ['archive', 'HEAD', '-o', path.join(snap, 'archive.tar')], { cwd: ROOT });
     execFileSync('tar', ['-xf', path.join(snap, 'archive.tar'), '-C', snap]);
     fs.rmSync(path.join(snap, 'archive.tar'));
     fs.copyFileSync(SCRIPT, path.join(snap, 'scripts', 'memory-import.js'));
     fs.copyFileSync(path.join(ROOT, 'stack', 'hooks', 'memory.js'), path.join(snap, 'stack', 'hooks', 'memory.js'));
+    fs.copyFileSync(path.join(ROOT, 'stack', 'hooks', 'hook-prelude.js'), path.join(snap, 'stack', 'hooks', 'hook-prelude.js'));
     fs.copyFileSync(FAKE_SERVER, path.join(snap, 'scripts', 'fixtures', 'fake-memory-server.js'));
     assert.ok(!fs.existsSync(path.join(snap, 'node_modules')), 'the archive snapshot must carry no node_modules');
 
