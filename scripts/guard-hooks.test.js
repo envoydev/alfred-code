@@ -1839,6 +1839,13 @@ test('guard-cross-project-write: a shell path is anchored at the payload cwd, bo
 
 // Audit 2026-10-08 row 37: a relocated account dir holds the harness's memory writes, and a project under /tmp dropped
 // /tmp - and with it the harness scratch root - by the containment rule.
+// The fork-liveness probe is retired (2026-10-09, the user's ruling after its rows were read): no transcript head read
+// on a mutating call, no `mode: probe` row.
+test('guard-cross-project-write: the retired fork-liveness probe reads no transcript head and writes no probe row', () => {
+  const src = fs.readFileSync(path.join(HOOKS, 'guard-cross-project-write.js'), 'utf8');
+  assert.doesNotMatch(src, /forkProbe|fork-liveness|FORK_LIVE_MS|FORK_HEAD_BYTES|mode: 'probe'/, 'no probe code is left in the hook');
+});
+
 test('guard-cross-project-write: a relocated CLAUDE_CONFIG_DIR and the harness scratch root stay writable (audit 2026-10-08)', (t) => {
   const cfg = fs.mkdtempSync(path.join(TMP, 'xw-cfg-'));
   const run = (root, payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
@@ -3542,59 +3549,6 @@ test('guard-stop-contract: a credential the USER pasted demands the rotate ask t
     assert.match(blocked.stderr, /pasted into the chat/, 'and the denial names the route it came in by');
     assert.ok(!blocked.stderr.includes(shape), 'the value itself is never repeated back');
     assert.equal(stop(clean).status, 0, 'a turn with no credential shape is untouched');
-});
-
-// --- guard-cross-project-write: the fork-liveness probe (log-only) ---------
-// A backgrounded turn continues under a NEW session id whose transcript opens as a copy of the
-// parent's rows while the user keeps talking to the other copy. Measured once: five test cycles,
-// five WINWORD kills and an edit collision, 15 minutes after the foreground's user said stop. The
-// probe writes a row and denies nothing; the week's rows decide whether a denial follows.
-test('guard-cross-project-write: the fork-liveness probe logs a mutating call beside a live sibling of the same lineage, and denies nothing', () => {
-  const dir = fs.mkdtempSync(path.join(TMP, 'forks-'));
-  const docs = fs.mkdtempSync(path.join(TMP, 'forkdocs-'));
-  const ids = {
-    parent: '11111111-1111-4111-8111-111111111111',
-    own: '22222222-2222-4222-8222-222222222222',
-    sib: '33333333-3333-4333-8333-333333333333',
-    other: '44444444-4444-4444-8444-444444444444',
-  };
-  // the measured shape: a copied row keeps the ORIGINAL id under session_id while sessionId is
-  // rewritten to the fork's own (387 of 1,093 rows in one fork carried a parent's session_id)
-  const row = (own, origin, text) => JSON.stringify({ type: 'user', sessionId: own, session_id: origin, message: { role: 'user', content: text } }) + '\n';
-  // this session is a FORK: its transcript opens with the parent's rows
-  fs.writeFileSync(path.join(dir, ids.own + '.jsonl'), row(ids.own, ids.parent, 'summary') + row(ids.own, ids.own, 'continue'));
-  // a sibling fork of the same parent, touched now - the foreground the user is talking to
-  fs.writeFileSync(path.join(dir, ids.sib + '.jsonl'), row(ids.sib, ids.parent, 'summary') + row(ids.sib, ids.sib, 'stop'));
-  // an unrelated session touched now - not this lineage, never a probe hit
-  fs.writeFileSync(path.join(dir, ids.other + '.jsonl'), row(ids.other, ids.other, 'hello'));
-  const probe = (payload, sid) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
-    input: JSON.stringify({ ...payload, transcript_path: path.join(dir, sid + '.jsonl'), session_id: sid }),
-    encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_DOCS_PATH: docs, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
-  }).status;
-  const ledger = (sid) => {
-    const p = path.join(docs, 'hook-blocks', sid + '.jsonl');
-    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
-  };
-  assert.equal(probe({ tool_name: 'Edit', tool_input: { file_path: path.join(XP_ROOT, 'a.cs') } }, ids.own), 0, 'the probe never denies');
-  let rows = ledger(ids.own);
-  assert.equal(rows.length, 1, 'one probe row for the edit');
-  assert.equal(rows[0].mode, 'probe');
-  assert.equal(rows[0].kind, 'fork-liveness');
-  assert.equal(rows[0].detail.live[0].id, ids.sib, 'the live sibling of the same lineage is named');
-  assert.equal(rows[0].detail.live[0].relation, 'sibling');
-  assert.equal(probe({ tool_name: 'Bash', tool_input: { command: 'dotnet test ./tests' } }, ids.own), 0);
-  assert.equal(probe({ tool_name: 'Bash', tool_input: { command: 'git status --short' } }, ids.own), 0);
-  rows = ledger(ids.own);
-  assert.equal(rows.length, 2, 'a test run is a mutation; a git status is not');
-  // the unrelated session edits freely: it is nobody's fork
-  assert.equal(probe({ tool_name: 'Edit', tool_input: { file_path: path.join(XP_ROOT, 'a.cs') } }, ids.other), 0);
-  assert.equal(ledger(ids.other).length, 0, 'no lineage, no row');
-  // a sibling gone quiet (older than the liveness window) is not live
-  const old = new Date(Date.now() - 5 * 60 * 1000);
-  fs.utimesSync(path.join(dir, ids.sib + '.jsonl'), old, old);
-  assert.equal(probe({ tool_name: 'Edit', tool_input: { file_path: path.join(XP_ROOT, 'b.cs') } }, ids.own), 0);
-  assert.equal(ledger(ids.own).length, 2, 'a quiet sibling is not live');
 });
 
 // ---------------------------------------------------------------------------

@@ -437,7 +437,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `/cygdrive/c/...`) is translated first (`shell-writes.js` `nativePath`, the one home every path-resolving guard
     requires - 2.1.5 M8). 'Allow' is honoured through the
     `<docs-path>/flow/CROSS-WRITE-ALLOW` receipt; `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` opens a second
-    tree permanently. Also carries the log-only fork-liveness PROBE (`mode: probe` rows, denies nothing).
+    tree permanently. The log-only fork-liveness probe is retired (2026-10-09, the user's ruling after its rows were read:
+    56 probe rows over two weeks in three projects, none naming a collision; the per-call head reads cost 12-22ms).
   - `guard-config-protection.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route) - a
     check is never made green by weakening the check: a change to a lint / format / analyzer config that
     ALREADY exists (eslint, prettier, stylelint, biome, `.editorconfig`, a ruleset) is blocked, and in

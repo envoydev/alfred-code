@@ -347,71 +347,6 @@ function block(what, shown, abs = shown) {
   process.exit(2);
 }
 
-// --- fork-liveness PROBE - log-only, denies nothing ------------------------------------------
-// A backgrounded turn continues under a NEW session id whose transcript opens as a copy of the
-// parent's rows, and the user keeps talking to the OTHER copy. Measured once: the background copy
-// ran five test cycles, killed the user's Word five times and edited the same method as the
-// foreground for 15 minutes after the foreground's user had said stop - 10.44M cache-read, one
-// edit collision. This branch appends a `mode: probe` row to the hook-blocks ledger whenever a
-// mutating call runs while another session of the SAME LINEAGE - an ancestor whose id this
-// transcript carries, or a sibling whose transcript carries one of those ids - touched its own
-// transcript within FORK_LIVE_MS. A copied row carries the id twice - `sessionId` rewritten to the
-// fork's own, `session_id` keeping the original (measured: 387 of 1,093 rows in one fork carried a
-// parent's id, none by the camel-case key) - so both keys are read. The rows are read for a week
-// before any denial is built on them: a backgrounded turn has no user to end a denial in an ask,
-// and two deliberate sessions from one fork point would be held. Head-only reads keep it at a few
-// ms per call; the head is 1MB because a fork's first rows can be the parent's whole compaction
-// summary (measured: the first foreign id sat past 64KB in one fork).
-const FORK_LIVE_MS = 60 * 1000;
-const FORK_HEAD_BYTES = 1024 * 1024;
-const SESSION_ID_RE = /"session_?[iI]d":"([0-9a-f]{8}-[0-9a-f-]{27})"/g;
-const PROBE_SHELL = /\b(?:taskkill|pkill|killall|kill)\b|\b(?:dotnet|npm|pnpm|yarn|cargo|mvn|gradle|make|pytest|go)\s+(?:test|build|run)\b|\bgit\s+(?:-c\s+\S+\s+)*(?:checkout|restore|reset|clean|stash|commit|push|merge|rebase|cherry-pick|revert)\b|(?:^|[\s;&|(])(?:rm|mv|cp|mkdir|rmdir|touch|chmod|tee)\b|\bsed\s+(?:-[a-zA-Z]*i|--in-place)/;
-function forkProbe(what, shown) {
-  try {
-    const tp = String(payload.transcript_path || '');
-    const own = String(payload.session_id || '');
-    if (!tp || !own || !fs.existsSync(tp)) return;
-    const dir = path.dirname(tp);
-    const head = (p) => {
-      const fd = fs.openSync(p, 'r');
-      const b = Buffer.alloc(FORK_HEAD_BYTES);
-      const n = fs.readSync(fd, b, 0, b.length, 0);
-      fs.closeSync(fd);
-      return b.toString('utf8', 0, n);
-    };
-    const idsIn = (text) => { const s = new Set(); for (const m of text.matchAll(SESSION_ID_RE)) s.add(m[1]); return s; };
-    const now = Date.now();
-    const ancestors = [...idsIn(head(tp))].filter((id) => id !== own);
-    if (!ancestors.length) return;   // not a fork - nothing shares this conversation
-    const lineage = new Set([own, ...ancestors]);
-    const live = [];
-    for (const f of fs.readdirSync(dir)) {
-      if (!f.endsWith('.jsonl') || f === path.basename(tp)) continue;
-      const p = path.join(dir, f);
-      let age;
-      try { age = now - fs.statSync(p).mtimeMs; } catch { continue; }
-      if (age > FORK_LIVE_MS) continue;
-      const id = f.slice(0, -6);
-      const related = ancestors.includes(id) ? 'ancestor'
-        : [...idsIn(head(p))].some((x) => lineage.has(x)) ? 'sibling' : null;
-      if (related) live.push({ id, relation: related, ageMs: Math.round(age) });
-    }
-    if (!live.length) return;
-    const dirOut = path.resolve(root, docsRootEnv(), 'hook-blocks');
-    fs.mkdirSync(dirOut, { recursive: true });
-    fs.appendFileSync(path.join(dirOut, own + '.jsonl'), JSON.stringify({
-      ts: new Date().toISOString(),
-      hook: path.basename(__filename),
-      event: payload.hook_event_name || payload.tool_name || '',
-      tool: payload.tool_name || '',
-      mode: 'probe',
-      kind: 'fork-liveness',
-      reason: 'probe: ' + what + ' while a live ' + live[0].relation + ' session of this conversation (' + live[0].id + ', ' + live[0].ageMs + 'ms ago) - logged, not denied',
-      detail: { what: String(shown).slice(0, 200), live },
-    }) + '\n');
-  } catch { /* a probe never changes a verdict and never throws */ }
-}
-
 const input = payload.tool_input || {};
 const tool = payload.tool_name;
 
@@ -419,7 +354,6 @@ if (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit' || tool === 'Not
   const target = input.file_path || input.notebook_path;
   if (!target) process.exit(0);
   const abs = resolveTarget(String(target));
-  forkProbe(tool + ' of a file', target);
   if (!allowed(abs)) block(`${tool} of a file`, String(target), abs);
   process.exit(0);
 }
@@ -438,7 +372,6 @@ const rawCommand = String(input.command || '');
 const scan = shell.scanShell(rawCommand, { cwd: SHELL_CWD, aliases: true });
 const command = scan.command;
 if (!command.trim()) process.exit(0);
-if (PROBE_SHELL.test(command)) forkProbe('a shell mutation', command.slice(0, 160));
 
 const { isVar } = shell;
 // One normaliser per run: shell.anchorAt caches its compiled anchor by this function, so a fresh closure per write recompiled it each time.
