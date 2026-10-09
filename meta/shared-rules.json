@@ -3995,12 +3995,12 @@
       "_note": "What loads the execution-strategy habit: the always-on interaction line binds the load, the skill's When to use restates the same trigger in house skill shape. A trigger widened in one home and not the other mis-fires the load (2026-10-08 rules audit D2, F8).",
       "owner": {
         "file": "stack/rules/alfred-interaction.md",
-        "marker": "one spanning stacks or touching auth, a migration or a public contract, or one that would dispatch a seat"
+        "marker": "one spanning stacks or touching auth, a migration or a public contract, or one that would fan work out to seats"
       },
       "sites": [
         {
           "file": "stack/skills/habits-execution-strategy/SKILL.md",
-          "marker": "spans stacks, touches auth, a migration or a public contract, or would dispatch a seat"
+          "marker": "spans stacks, touches auth, a migration or a public contract, or would fan work out to seats"
         }
       ]
     },

@@ -277,6 +277,9 @@ test('audit 2026-10-08: the execution verdict stays out of plan files, small tas
     // C1: the 10+ file mechanical change is a small task with no plan, not a second rule beside the trigger
     const rule = read('stack/rules/alfred-interaction.md');
     assert.doesNotMatch(rule, /^- A mechanical change across 10\+ files: confirm the scope list, no plan\./m, 'the separate no-plan line is folded in');
+    // F14 (user ruling 2026-10-09): a single resolver hand-off is no fan-out, so it does not load the skill
+    assert.match(squash(rule), /or one that would fan work out to seats - the FIRST action is the `habits-execution-strategy` Skill call/, 'the trigger is a fan-out, not any dispatch');
+    assert.doesNotMatch(rule + strategy, /would dispatch a seat/, 'no copy keeps the wider trigger');
     assert.match(squash(rule), /A small task settles it inline, no Skill call, and gets no plan: a typo, a one-line fix, formatting, a dep bump, a single-file rename, or a mechanical change across 10\+ files once the user confirms its scope list\. Any other task/, 'one line holds both sides of the threshold');
 });
 

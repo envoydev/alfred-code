@@ -16,7 +16,7 @@ tune on what the project measures, not a law.
 
 ## When to use
 
-- Fires before the first edit of a task that needs more than a few steps across more than one file or subtask, spans stacks, touches auth, a migration or a public contract, or would dispatch a seat. A small task settles route, mode and model inline from the always-on line (a direct edit, one agent, batched calls, the session's model) - no load.
+- Fires before the first edit of a task that needs more than a few steps across more than one file or subtask, spans stacks, touches auth, a migration or a public contract, or would fan work out to seats. A small task settles route, mode and model inline from the always-on line (a direct edit, one agent, batched calls, the session's model) - no load.
 - It decides the route, the mode, the model and the check tiers. Test-first (`habits-test-first`) still runs inside each track, and this skill never replaces it.
 - Inside a solve or diagnose flow, the flow calls it before its build-mode ask or its fix task cards. The route is then the flow, so it supplies the mode and the model in the `Execution:` verdict and the option it recommends; the flow keeps the plan file, the approval gate, the dispatch and the seats, and the user's answer still decides.
 
