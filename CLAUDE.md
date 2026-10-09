@@ -40,7 +40,9 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
   `setup-plugin/.claude-plugin/plugin.json`. Bump it (plus `marketplace.json` metadata and `package.json`; lint enforces
   equality) on `develop` with any release-worthy change - a merge that reuses a version whose tag names another
   commit FAILS the release job (2.1.5 M27; only a manual run with `replace_tag` moves it). Never commit feature work to `main`; keep `main`
-  the GitHub default branch. Lint + test workflows gate every push and PR.
+  the GitHub default branch. Lint + test workflows gate every push and PR; `npm run gate` runs both here
+  first, on the committed tree, on macOS, Linux (Docker) and Windows (a Parallels VM) in parallel, and the
+  pre-push hook runs it on every push (`node scripts/gate.js --install-hook`; skip one with `--no-verify`).
 - **Public repo.** No private project names or absolute local paths in tracked files.
 - **The 1.x name is gone, never reused.** Every install moved onto `alfred-code` (the user's ruling of
   2026-10-07), so no reader of the old spellings is left - not the env prefix, the stamp, the marketplace

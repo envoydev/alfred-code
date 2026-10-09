@@ -28,6 +28,7 @@
     "lint": "node scripts/lint-skills.js",
     "graph": "node scripts/stack-graph.js --write",
     "test": "node --test",
+    "gate": "node scripts/gate.js",
     "test:memory": "node scripts/memory-usage.eval.js",
     "corpus": "node scripts/corpus-replay.js",
     "marketplace": "node scripts/build-marketplace.js --write && node scripts/build-marketplace.js --write-marketplace && node scripts/build-marketplace.js --mcp-entries",
