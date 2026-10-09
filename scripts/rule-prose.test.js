@@ -250,3 +250,11 @@ test('rules F12 + F13: the commit header and the memory verify clause are each s
     const memory = injected('alfred-memory');
     assert.strictEqual((memory.match(/verified before use/g) || []).length, 1, memory);
 });
+
+test('agents F03: a seat whose tools: list names a locked server\'s tools calls them directly - live probe 2026-10-09', () =>
+{
+    const clause = 'A seat whose `tools:` list names them has them loaded already - it calls them directly, with no ToolSearch.';
+    for (const name of ['alfred-navigation', 'alfred-memory'])
+        assert.ok(injected(name).includes(clause), name);
+    assert.ok(injected('alfred-quality-gates').includes('then the query (a seat whose `tools:` list names them calls them directly)'));
+});
