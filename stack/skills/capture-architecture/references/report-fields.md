@@ -21,19 +21,18 @@ are exempt), so the receipts must survive that cap rather than be re-answered aw
 | `Write gate:` | the answer to the pre-write AskUserQuestion, verbatim - or the reason the run skipped the ask (`first capture - no doc to replace`, `zero drift - nothing written`) | the ask before the first byte |
 | `Write passes:` | what step 5's precondition allows: `ARCHITECTURE.md 1` on a clean run, `2` where the budget spill fired, `1 (overlay, N sections)` on the overlay route where the doc is written section by section through `docs.js set`, and the honest number plus one line on what was still being verified where a third pass happened - plus the `docs.js status` line quoted right after the first write, the proof no code-claim probe ran later | the verification-first precondition |
 | `Rule:` | the awareness rule's measured byte count from `wc -c` | the 300-byte budget check |
-| `Model:` | see below | the run-start model check |
+| `Model:` | see below | which model the judgment ran on |
 
 ## The `Model:` line
 
 It states what the session is on NOW and what the USER should do about it - never a claim about how it got
 there, and never an assertion that a reset happened. You cannot change it yourself: `/model` is a user command
-with no assistant-invokable equivalent, so the line ends in the exact command to paste. Three shapes, pick the
-true one:
+with no assistant-invokable equivalent, so a raised run's line ends in the exact command to paste. Two shapes,
+pick the true one:
 
-- `raised for this run - run /model <the model this session was on before> to drop back`
-- `already on Opus before this run started - nothing to reset` - allowed only when you can point at the message
-  that proves it, since a new-session default says nothing about a session already running
-- `not on Opus - the judgment above ran on <model>`
+- `<model> - the judgment above ran on it` - the default: the capture asks for no switch
+- `raised for this run - run /model <the model this session was on before> to drop back` - allowed only when
+  you can point at the message in this session that shows the user switched for this run
 
 ## The RESUME BLOCK
 

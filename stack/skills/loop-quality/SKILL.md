@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 You drive a deliberate loop that improves a project's code against its own rules: each round the code-quality capture judges the code and recomputes `<docs-path>/quality/CODE-ASSESSMENT.md`, you work its fixable findings by tier, and you loop until they are resolved or the loop plateaus. The assessment is never yours to write or prune - the capture recomputes it fresh every round. It runs only when a user invokes it (`/loop-quality`), never automatically; the architecture counterpart is `loop-architecture-quality`. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
-Best run in Claude Code, where you can dispatch the analysis and build seats and edit files across rounds. On a large codebase, scope it - point TARGET at one module or subtree per run. This skill carries NO `model` pin (the judgment runs in-session, in the capture): set the session to Opus with `/model` for the run and switch back at the final report. The run-start mode ask carries the check: when the session is not on Opus, the ask says so - the switch happens before any judgment is spent.
+Best run in Claude Code, where you can dispatch the analysis and build seats and edit files across rounds. On a large codebase, scope it - point TARGET at one module or subtree per run. This skill carries NO `model` pin and asks for no model switch: the judgment runs in-session, on the session's model, in the capture.
 
 ## When to use
 

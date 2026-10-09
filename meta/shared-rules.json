@@ -5092,15 +5092,15 @@
       ]
     },
     "skill-model-pin-turn-scoped": {
-      "_note": "A skill-level `model` pin applies only for the rest of the TURN in which the skill activates and is never saved to settings - so a deliberate capture that must run on one model says so and lets the user set it, rather than trusting the frontmatter to hold across the walk. The earlier reading of this - 'the pin is not reliably honored' - was wrong about the mechanism and is retired; the pin works, its SCOPE is the turn. As of 2026-09-12 NO shipped skill carries a `model` or `effort` pin at all: a turn-scoped pin cannot hold across a multi-turn capture, so the four capture skills ask the user to set the session model instead, and the pins live only on agents, where they cover the whole subagent run.",
+      "_note": "A skill-level `model` pin applies only for the rest of the TURN in which the skill activates and is never saved to settings - so a deliberate capture that must run on one model says so and lets the user set it, rather than trusting the frontmatter to hold across the walk. The earlier reading of this - 'the pin is not reliably honored' - was wrong about the mechanism and is retired; the pin works, its SCOPE is the turn. As of 2026-09-12 NO shipped skill carries a `model` or `effort` pin at all: a turn-scoped pin cannot hold across a multi-turn capture, and the pins live only on agents, where they cover the whole subagent run. Since 2026-10-09 the three judging captures and their two loops run on the session model and ask for no switch (a measured capture A/B: Sonnet at xhigh matched Opus at the same cost); the version-upgrade and greenfield flows still ask for Opus at run start, unmeasured.",
       "owner": {
         "file": "stack/skills/capture-architecture/SKILL.md",
-        "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
+        "marker": "a skill-level pin lasts only for the turn it activates in"
       },
       "sites": [
         {
           "file": "stack/skills/loop-architecture-quality/SKILL.md",
-          "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
+          "marker": "a skill-level pin lasts only for the turn it activates in"
         },
         {
           "file": "stack/skills/task-version-upgrade/SKILL.md",
@@ -5116,7 +5116,7 @@
         },
         {
           "file": "stack/skills/capture-architecture-quality/SKILL.md",
-          "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
+          "marker": "a skill-level pin lasts only for the turn it activates in"
         }
       ]
     },
@@ -6244,7 +6244,7 @@
       ]
     },
     "capture-expensive-seat-reads": {
-      "_note": "The three deliberate captures that judge in-session (architecture map, architecture pros/cons, code quality) all tell the Opus seat it never reads the codebase wholesale - the analyzer seats absorb the reads. Owned by the architecture capture; restated in the two quality captures because each runs alone.",
+      "_note": "The three deliberate captures that judge in-session (architecture map, architecture pros/cons, code quality) all tell the in-session judge it never reads the codebase wholesale - the analyzer seats absorb the reads. Owned by the architecture capture; restated in the two quality captures because each runs alone.",
       "owner": {
         "file": "stack/skills/capture-architecture/SKILL.md",
         "marker": "You are the expensive seat: never read the codebase wholesale yourself"
@@ -6278,19 +6278,19 @@
       ]
     },
     "capture-model-report-line": {
-      "_note": "The capture report states the model the judgment ran on, and a run that started on Opus says there was nothing to reset. Owned by the architecture-quality capture; restated in the code-quality capture and the architecture capture's report-fields reference.",
+      "_note": "The capture report states the model the judgment ran on, and a run the user raised for this capture ends in the /model command to drop back. Owned by the architecture-quality capture; restated in the code-quality capture and the architecture capture's report-fields reference.",
       "owner": {
         "file": "stack/skills/capture-architecture-quality/SKILL.md",
-        "marker": "already on Opus before this run started - nothing to reset"
+        "marker": "the judgment above ran on it"
       },
       "sites": [
         {
           "file": "stack/skills/capture-code-quality/SKILL.md",
-          "marker": "already on Opus before this run started - nothing to reset"
+          "marker": "the judgment above ran on it"
         },
         {
           "file": "stack/skills/capture-architecture/references/report-fields.md",
-          "marker": "already on Opus before this run started - nothing to reset"
+          "marker": "the judgment above ran on it"
         }
       ]
     },

@@ -374,3 +374,18 @@ test('the inline task skills load their method skill through the Skill tool at t
     assert.match(verify, /Before the verdict is stamped, load `habits-done-gate` \(the Skill tool\)/, 'verify-code loads the done gate');
     assert.match(verify, /only on a build and suite run this session/, 'a pass needs a run this session');
 });
+
+test('skills S5: the judging captures and their loops run on the session model and ask for no switch to Opus (A/B 2026-10-09)', () => {
+    const body = (n) => squash(read(`stack/skills/${n}/SKILL.md`));
+    for (const n of ['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'loop-architecture-quality', 'loop-quality']) {
+        const text = body(n);
+        assert.doesNotMatch(text, /Opus with `\/model`|not on Opus|switch to `\/model` Opus/, `${n} still asks for Opus`);
+        assert.match(text, /no `model` pin/i, `${n} keeps the no-pin reason`);
+    }
+    for (const n of ['capture-architecture-quality', 'capture-code-quality'])
+        assert.match(body(n), /`<model> - the judgment above ran on it`, or `raised for this run - run \/model <prior model> to drop back`/, `${n}: the Model: row`);
+    const fields = squash(read('stack/skills/capture-architecture/references/report-fields.md'));
+    assert.match(fields, /Two shapes, pick the true one: - `<model> - the judgment above ran on it`/);
+    assert.doesNotMatch(fields, /already on Opus|not on Opus/);
+    assert.match(squash(read('stack/skills/capture-architecture/references/evidence.md')), /\*\*no switch to Opus is asked for\*\* - measured 2026-10-09/);
+});
