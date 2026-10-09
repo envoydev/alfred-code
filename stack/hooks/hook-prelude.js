@@ -365,14 +365,23 @@ function markStopHeld(hook, input, env)
 // `trivial-*` - was never pruned. sweepStale removes the FILES in `dir` named with `prefix` and untouched for 7 days,
 // once per (dir, prefix) per process, inside a 50ms budget of its own (the docs-session sweep's pattern: a bounded,
 // fail-silent pass a hook makes when it writes its own state). A file exactly at the cutoff is kept.
+// The pass runs at most once a DAY per (dir, prefix) across processes: a stamp beside the state records the last one,
+// so a hook call pays one stat, not a listing of the temp dir. Measured 2026-10-09: the two listings a Stop made of a
+// 52,840-entry macOS temp dir were 78ms of a 136ms hook (47ms with the stamp), and the budget never bounded the listing.
 const STALE_MS = 7 * 24 * 3600 * 1000;
 const STALE_BUDGET_MS = 50;
+const SWEEP_EVERY_MS = 24 * 3600 * 1000;
 const sweptStale = new Set();
-function sweepStale(dir, prefix, { now = Date.now(), maxAgeMs = STALE_MS } = {})
+const sweepStamp = (dir, prefix) => path.join(dir, `.alfred-sweep-${String(prefix).replace(/[^\w-]/g, '_')}`);
+function sweepStale(dir, prefix, { now = Date.now(), maxAgeMs = STALE_MS, everyMs = SWEEP_EVERY_MS } = {})
 {
     const key = `${dir}\u0000${prefix}`;
     if (!dir || !prefix || sweptStale.has(key)) return 0;
     sweptStale.add(key);
+    const stamp = sweepStamp(dir, prefix);
+    try { if (now - fs.statSync(stamp).mtimeMs < everyMs) return 0; } catch { /* no stamp yet - this call sweeps */ }
+    // Claimed before the pass, so parallel hooks do not all list the dir; a dir that takes no stamp holds none of our state.
+    try { fs.writeFileSync(stamp, ''); const t = new Date(now); fs.utimesSync(stamp, t, t); } catch { return 0; }
     const deadline = Date.now() + STALE_BUDGET_MS;
     let removed = 0;
     try
@@ -462,4 +471,4 @@ function scanBudget(limits = {})
 // the stop contract's ask deny and the answer-length Stop block, which disagreed ([\u2014\u2013] vs [\u2014\u2015], audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, capLog, STALE_MS };
+module.exports = { HOUSE_DASH, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };

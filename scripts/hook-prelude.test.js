@@ -673,6 +673,33 @@ test('stop chain: own continuation stands down, a sibling one is judged, a fresh
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// 2026-10-09: the sweep listed the whole temp dir on every hook call - 78ms of a 136ms Stop over a 52,840-entry temp
+// dir. A stamp beside the state gates the pass to once a day per dir and prefix, across processes.
+test('sweepStale lists the dir at most once a day per prefix across processes - a stamp gates it', () =>
+{
+    const fresh = () => { delete require.cache[require.resolve(PRELUDE)]; return require(PRELUDE); };
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-stamp-'));
+    try
+    {
+        const { STALE_MS, SWEEP_EVERY_MS, sweepStamp } = fresh();
+        const now = Date.now();
+        const plant = (name) => { const f = path.join(dir, name); fs.writeFileSync(f, 'x'); const t = new Date(now - STALE_MS * 2); fs.utimesSync(f, t, t); return f; };
+        const first = plant('guard-y-one');
+        assert.strictEqual(fresh().sweepStale(dir, 'guard-y-', { now }), 1, 'no stamp yet: the first process sweeps');
+        const stamp = sweepStamp(dir, 'guard-y-');
+        assert.ok(fs.existsSync(stamp) && !path.basename(stamp).startsWith('guard-y-'), 'the stamp is written, outside the prefix it sweeps');
+        assert.ok(!fs.existsSync(first));
+        const second = plant('guard-y-two');
+        assert.strictEqual(fresh().sweepStale(dir, 'guard-y-', { now: now + SWEEP_EVERY_MS - 60000 }), 0, 'a new process within the day pays one stat');
+        assert.ok(fs.existsSync(second), '... and lists nothing');
+        assert.strictEqual(fresh().sweepStale(dir, 'guard-z-', { now }), 0, 'another prefix keeps its own stamp (nothing of its own here)');
+        assert.ok(fs.existsSync(sweepStamp(dir, 'guard-z-')));
+        assert.strictEqual(fresh().sweepStale(dir, 'guard-y-', { now: now + SWEEP_EVERY_MS }), 1, 'a day on, the next process sweeps again');
+        assert.ok(!fs.existsSync(second));
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); fresh(); }
+});
+
 // Audit 2026-10-08 S9: the hooks' per-session state was never pruned.
 test('sweepStale removes only its prefix\'s files past 7 days, once per dir and prefix; capLog keeps the newest lines', () =>
 {
@@ -695,6 +722,7 @@ test('sweepStale removes only its prefix\'s files past 7 days, once per dir and 
         plant('guard-x-later', STALE_MS * 2);
         assert.strictEqual(sweepStale(dir, 'guard-x-'), 0, 'once per dir and prefix in a process');
         assert.strictEqual(sweepStale(path.join(dir, 'gone'), 'guard-x-'), 0, 'a missing dir is no error');
+        assert.ok(!fs.existsSync(path.join(dir, 'gone')), '... and a missing dir is never created for the stamp');
         const log = path.join(dir, 'a.log');
         fs.writeFileSync(log, Array.from({ length: 2000 }, (_, i) => `row ${i}`).join('\n') + '\n');
         assert.strictEqual(capLog(log, 4096, 1024), true);

@@ -100,7 +100,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   down, the old reading. The stop contract's per-turn probes skip a continuation (the same turn), and its SubagentStop
   hold keeps the plain flag beside its own once-marker (`guard-hooks.test.js`: never held again, marker or not).
   STATE HYGIENE (audit 2026-10-08 S9): a hook that writes per-session state sweeps its own prefix's files untouched for 7
-  days, once per process inside 50ms (`hook-prelude.js` `sweepStale`, the docs-session sweep's pattern) - the stop
+  days, inside 50ms, at most once a day per dir and prefix (`hook-prelude.js` `sweepStale`, the docs-session sweep's pattern; a
+  `.alfred-sweep-<prefix>` stamp gates it, since listing a 52,840-entry temp dir twice cost 78ms of every Stop) - the stop
   contract at each Stop (`guard-stop-*`, the `alfred-stop-held-*` chain markers, and its log capped to the newest 256KB
   past 1MB, `capLog`), the fresh-session hook when it writes an offer (`guard-fresh-*`), the read guard when it logs a
   range (`guard-read-*`), the monitor at each prompt (`<docs>/flow/monitor-*`) and the commit guard when it writes its
