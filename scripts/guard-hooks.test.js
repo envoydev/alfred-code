@@ -1955,7 +1955,9 @@ test('guard-cross-project-write: a script file a shell runs is read as its comma
   for (const command of [`bash ${rel}/fix.sh`, `sh ./${rel}/fix.sh`, `zsh -e ${rel}/fix.sh arg`, `bash -o pipefail ${rel}/fix.sh`,
     `. ${rel}/fix.sh`, `source ${rel}/fix.sh`, `cat ${rel}/fix.sh | sh`, `sh < ${rel}/fix.sh`, `./${rel}/fix.sh`, `${rel}/bare`,
     `cd ${rel} && bash fix.sh`, `bash ${dir}/fix.sh`, `sh ${rel}/cd.sh`, `bash ${rel}/nested.sh`,
-    `cat > ${rel}/new.sh <<'EOF'\ntouch ${XP_OTHER}/g\nEOF\nbash ${rel}/new.sh`, `printf 'touch ${XP_OTHER}/g\\n' > ${rel}/p.sh && sh ${rel}/p.sh`]) {
+    // printf's format is spelled with forward slashes: a backslash path there is printf's own escapes (`\a` in
+    // C:\alfred-..., `\n` in C:\Users\nick), so the script printf writes - and the guard reads - names another path
+    `cat > ${rel}/new.sh <<'EOF'\ntouch ${XP_OTHER}/g\nEOF\nbash ${rel}/new.sh`, `printf 'touch ${XP_OTHER.split(path.sep).join('/')}/g\\n' > ${rel}/p.sh && sh ${rel}/p.sh`]) {
     if (xpBash(command) !== 2) wrong.push(`passed: ${command}`);
   }
   for (const command of [`bash ${rel}/ok.sh`, `./${rel}/ok.sh`, `bash -n ${rel}/fix.sh`, `bash ${rel}/missing.sh`, `cat ${rel}/fix.sh`,
