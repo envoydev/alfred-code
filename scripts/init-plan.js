@@ -164,7 +164,7 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
     const agents = new Set(inv.agents || []);
     const off = new Set(inv.left_out || []);
     const docs = resolveDocsRoot(root).replace(/[\\/]+$/, '');
-    const rel = (p) => (path.relative(root, p).startsWith('..') ? p : path.relative(root, p).split(path.sep).join('/'));
+    const rel = (p) => shownPath(root, p);
     const captures = CAPTURES.map(({ skill, seat, output }) =>
     {
         if (!skills.has(skill) || off.has(`skill ${skill}`)) return { skill, state: 'skip', detail: 'the skill is not installed' };
@@ -209,7 +209,17 @@ function unattended({ machine, captures })
     return lines;
 }
 
-module.exports = { plan, render, probes, browsersDir, CAPTURES, unattended, isUnattended, DESTRUCTIVE_MACHINE };
+// How the plan prints a path: project-relative inside the project, absolute outside it, and forward slashes
+// either way - init reads the plan through Bash, where a backslash is an escape. Outside used to keep the native
+// separators; windows-2025 CI never showed it, because its checkout is on D: and its temp on C:, and a relative
+// path across drives comes back absolute, which took the forward-slash branch. One drive printed `C:\...`.
+function shownPath(root, p, pth = path)
+{
+    const r = pth.relative(root, p);
+    return (r.startsWith('..') || pth.isAbsolute(r) ? p : r).split(pth.sep).join('/');
+}
+
+module.exports = { plan, render, probes, browsersDir, CAPTURES, unattended, isUnattended, DESTRUCTIVE_MACHINE, shownPath };
 
 if (require.main === module)
 {

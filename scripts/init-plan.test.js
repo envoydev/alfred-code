@@ -235,6 +235,19 @@ test('machine: no playwright kept, no engine lines; the engine is found under PL
     assert.match(lineOf(lines, /playwright firefox/), / - missing: /);
 });
 
+test('a plan path is project-relative inside, absolute outside, and forward-slashed on one drive or two', () =>
+{
+    const { shownPath } = require('./init-plan.js');
+    const w = path.win32;
+    assert.strictEqual(shownPath('C:\\t\\proj', 'C:\\t\\proj\\notes\\ai\\A.md', w), 'notes/ai/A.md');
+    // one drive - a real Windows machine: this printed C:\a\repo\... before
+    assert.strictEqual(shownPath('C:\\t\\proj', 'C:\\a\\repo\\stack\\x\\SKILL.md', w), 'C:/a/repo/stack/x/SKILL.md');
+    // two drives - the CI runner: relative() answers an absolute path
+    assert.strictEqual(shownPath('C:\\t\\proj', 'D:\\a\\repo\\stack\\x\\SKILL.md', w), 'D:/a/repo/stack/x/SKILL.md');
+    assert.strictEqual(shownPath('/t/proj', '/a/repo/stack/x/SKILL.md', path.posix), '/a/repo/stack/x/SKILL.md');
+    assert.strictEqual(shownPath('/t/proj', '/t/proj/.claude/skills/x/SKILL.md', path.posix), '.claude/skills/x/SKILL.md');
+});
+
 test('captures: the fixed order; run, done and skip each say why; the library copy wins over the plugin\'s', () =>
 {
     const root = project({ settings: { env: { ALFRED_CODE_DOCS_PATH: 'notes/ai' } } });
