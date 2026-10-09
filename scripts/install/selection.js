@@ -667,6 +667,44 @@ function respellRosterSeats({ projectRoot, core, seats = [], log = () => {}, not
     return changed;
 }
 
+// THE ROUTE'S TOOL SPELLING AND THE BROWSER'S OUTPUT DIR. A capture never re-runs by itself, so a rule written
+// before 2.1.0 still names what the project had then: the copy route's bare `mcp__<server>__` and the browser's
+// single `.playwright/output/` (2026-10-10: a project's screenshots landed in `.playwright/output/` at its root,
+// because its rule told the model to prefix a filename with it). Two things in the generated rules follow this run:
+// - a server in `plugin` (one this run serves as a plugin, with no `.mcp.json` registration of its name) takes the
+//   plugin spelling `mcp__plugin_<server>_<server>__` - the bare one names no tool, so the row's first call loads
+//   nothing. The reverse, plugin to bare for a registration, is the copy route's downconvert.
+// - in a `browser-<engine>` row, each backticked `.../output/` dir takes `outputs[engine]`, the dir a capture names now.
+function respellMcpRows({ projectRoot, plugin = [], outputs = {}, log = () => {}, note = () => {} })
+{
+    const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const toolRe = plugin.length ? new RegExp(`(?<![A-Za-z0-9_])mcp__(${plugin.map(escape).join('|')})__`, 'g') : null;
+    const rowRe = /^\s*[-*]\s+`browser-([A-Za-z0-9_-]+)`/;
+    const dirRe = /`(?:[A-Za-z0-9_.-]+\/)+output\/`/g;
+    let total = 0;
+    for (const file of generatedRules(projectRoot))
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        let tools = 0;
+        let dirs = 0;
+        const out = (toolRe ? text.replace(toolRe, (full, server) => { tools += 1; return `mcp__plugin_${server}_${server}__`; }) : text)
+            .split('\n').map((line) =>
+            {
+                const want = outputs[(rowRe.exec(line) || [])[1]];
+                return want ? line.replace(dirRe, (dir) => (dir === `\`${want}\`` ? dir : (dirs += 1, `\`${want}\``))) : line;
+            }).join('\n');
+        if (out === text) continue;
+        const name = path.basename(file);
+        try { fs.writeFileSync(file, out); }
+        catch (err) { note(`.claude/rules/${name} names ${tools + dirs} stale MCP tool name(s) or browser output dir(s) and could not be re-spelled (${err.message}) - re-run /capture-agent-capabilities`); continue; }
+        total += tools + dirs;
+        if (tools) log(`  route: ${name} - ${tools} MCP tool name(s) re-spelled to the plugin spelling (mcp__plugin_<server>_<server>__) their servers answer to`);
+        if (dirs) log(`  browser: ${name} - ${dirs} output dir(s) re-stamped to the engine's dir under the data root`);
+    }
+    return total;
+}
+
 // `--add`: the items the user said yes to (update's new-item ask, configure's add), on top of the
 // read-back. Duplicates are dropped; each real addition is logged.
 function addLines(lines, add = [], log = () => {})
@@ -843,6 +881,6 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 }
 
 module.exports = {
-    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, respellRenamed, respellRosterSeats, respellDocsRoot, generatedRules, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, respellRenamed, respellRosterSeats, respellMcpRows, respellDocsRoot, generatedRules, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, itemScopes, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, FORMER_PLUGINS,
 };

@@ -147,7 +147,12 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     go on every route by the stack's own shape (the user's own server under an old name is kept), the
     approval lists follow, the read-back and selection lines read old names under the new ones, and
     the generated project files are re-spelled (`selection.respellRenamed`; a seeded AGENTS.md / CLAUDE.md only while the ledger
-    still holds it at its hash - the user's own is named, never rewritten). The old flags
+    still holds it at its hash - the user's own is named, never rewritten). A capture never re-runs by itself, so
+    each update also re-spells the generated rules' routing rows to the route this run serves (`selection.respellMcpRows`):
+    a bare `mcp__<server>__` of a server on the plugin route with no registration of its name takes the plugin
+    spelling (the copy route's downconvert is the reverse), and a `browser-<engine>` row's backticked `.../output/`
+    dir takes `<data root>/browser/<engine>/output/`, the dir a fresh capture names (2026-10-10: a pre-2.1.0 rule
+    kept a project writing screenshots to the repo root's `.playwright/output/`). The old flags
     (`--playwright-browsers`, `--playwright-enabled`) and stamp lines (`playwright-browsers:`,
     `playwright-enabled:`) are read for one release.
 

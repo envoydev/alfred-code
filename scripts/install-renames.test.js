@@ -323,6 +323,77 @@ test('respellRenamed (I2): no CLAUDE.md and no rules folder is nothing to do', (
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// A rule captured on the copy route before 2.1.0, as a project kept it through the renames: every server bare, the
+// browser's single `.playwright/output/`. Its screenshots landed at the repo root's `.playwright/output/` (2026-10-10).
+const STALE_ROWS = [
+    '## MCP routing',
+    `- \`alfred-memory\` - first call: \`ToolSearch select:\` plus the \`${bareTool('alfred-memory', '*')}\` names`,
+    `- \`browser-chrome\` - Screenshots: omit \`filename\` (auto-names land in the registered output dir, \`.playwright/output/\`), or prefix an explicit name with \`.playwright/output/\`. first call: \`ToolSearch select:${bareTool('browser-chrome', 'browser_snapshot')},${bareTool('browser-chrome', 'browser_evaluate')}\``,
+    `- \`browser-firefox\` - auto-names land in \`.playwright/firefox/output/\`. first call: \`ToolSearch select:${bareTool('browser-firefox', 'browser_snapshot')}\``,
+    `- \`my-server\` - writes to \`.playwright/output/\`; \`${bareTool('my-server', 'run')}\` and \`${pluginTool('alfred-navigation', 'find_symbol')}\` stay`,
+    '',
+].join('\n');
+const FRESH_ROWS = [
+    '## MCP routing',
+    `- \`alfred-memory\` - first call: \`ToolSearch select:\` plus the \`${pluginTool('alfred-memory', '*')}\` names`,
+    `- \`browser-chrome\` - Screenshots: omit \`filename\` (auto-names land in the registered output dir, \`.alfred/browser/chrome/output/\`), or prefix an explicit name with \`.alfred/browser/chrome/output/\`. first call: \`ToolSearch select:${pluginTool('browser-chrome', 'browser_snapshot')},${pluginTool('browser-chrome', 'browser_evaluate')}\``,
+    `- \`browser-firefox\` - auto-names land in \`.alfred/browser/firefox/output/\`. first call: \`ToolSearch select:${bareTool('browser-firefox', 'browser_snapshot')}\``,
+    `- \`my-server\` - writes to \`.playwright/output/\`; \`${bareTool('my-server', 'run')}\` and \`${pluginTool('alfred-navigation', 'find_symbol')}\` stay`,
+    '',
+].join('\n');
+const OUTPUTS = { chrome: '.alfred/browser/chrome/output/', firefox: '.alfred/browser/firefox/output/' };
+
+test('respellMcpRows: a plugin server\'s bare tool names take the plugin spelling, a browser row its engine\'s output dir under the data root, and a second run changes nothing', () =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-rows-'));
+    try
+    {
+        const rule = '.claude/rules/alfred-project-agent-capabilities.md';
+        write(dir, rule, STALE_ROWS);
+        write(dir, '.claude/rules/my-browser-notes.md', STALE_ROWS);
+        const logs = [];
+        // browser-firefox is registered bare (a copy-route pick or the project's own .mcp.json row): its names stay.
+        const run = () => selection.respellMcpRows({ projectRoot: dir, plugin: ['alfred-memory', 'browser-chrome', 'alfred-navigation'], outputs: OUTPUTS, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        assert.strictEqual(run(), 6);
+        assert.strictEqual(fs.readFileSync(path.join(dir, rule), 'utf8'), FRESH_ROWS);
+        assert.deepStrictEqual(logs, [
+            '  route: alfred-project-agent-capabilities.md - 3 MCP tool name(s) re-spelled to the plugin spelling (mcp__plugin_<server>_<server>__) their servers answer to',
+            '  browser: alfred-project-agent-capabilities.md - 3 output dir(s) re-stamped to the engine\'s dir under the data root',
+        ]);
+        assert.strictEqual(fs.readFileSync(path.join(dir, '.claude/rules/my-browser-notes.md'), 'utf8'), STALE_ROWS, 'a rule of the project\'s own is never rewritten');
+        logs.length = 0;
+        assert.strictEqual(run(), 0);
+        assert.strictEqual(fs.readFileSync(path.join(dir, rule), 'utf8'), FRESH_ROWS, 'a second run changes nothing');
+        assert.deepStrictEqual(logs, []);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('respellMcpRows: nothing on the plugin route and no kept engine is nothing to do; no rules folder, an unreadable rule and CRLF lines are handled', POSIX_ONLY, () =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-rows-'));
+    try
+    {
+        assert.strictEqual(selection.respellMcpRows({ projectRoot: dir, plugin: ['alfred-memory'], outputs: OUTPUTS, log: (m) => assert.fail(m), note: (m) => assert.fail(m) }), 0, 'no rules folder');
+        const rule = '.claude/rules/alfred-project-agent-capabilities.md';
+        write(dir, rule, STALE_ROWS);
+        assert.strictEqual(selection.respellMcpRows({ projectRoot: dir, log: (m) => assert.fail(m), note: (m) => assert.fail(m) }), 0);
+        assert.strictEqual(fs.readFileSync(path.join(dir, rule), 'utf8'), STALE_ROWS);
+        write(dir, rule, STALE_ROWS.split('\n').join('\r\n'));
+        selection.respellMcpRows({ projectRoot: dir, plugin: ['alfred-memory', 'browser-chrome', 'alfred-navigation'], outputs: OUTPUTS, log: () => {}, note: (m) => assert.fail(m) });
+        assert.strictEqual(fs.readFileSync(path.join(dir, rule), 'utf8'), FRESH_ROWS.split('\n').join('\r\n'), 'a CRLF rule keeps its line ends');
+        write(dir, rule, STALE_ROWS);
+        fs.chmodSync(path.join(dir, rule), 0o444);
+        const notes = [];
+        if (process.getuid && process.getuid() !== 0)
+        {
+            assert.strictEqual(selection.respellMcpRows({ projectRoot: dir, plugin: ['browser-chrome'], outputs: OUTPUTS, log: (m) => assert.fail(m), note: (m) => notes.push(m) }), 0);
+            assert.match(notes.join('\n'), /alfred-project-agent-capabilities\.md names \d+ stale MCP tool name\(s\) or browser output dir\(s\) and could not be re-spelled .* re-run \/capture-agent-capabilities/);
+        }
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // ---------- the writer ----------
 
 test('settings writer: a renamed seat deny is re-spelled in the file, a skillOverrides key moves to the new name, the user\'s own entries stay', () =>

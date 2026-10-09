@@ -917,6 +917,15 @@ function runLayers(ctx)
     });
     if (plugins.corePluginOn(ctx.routes))
         selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, seats: placement().plugins[CORE].agents, log: ctx.log, note: ctx.note });
+    // A registration of the name answers the bare spelling, the stack's own (bareNames) or the project's in .mcp.json.
+    const servers = (readJson(ctx.mcpFile) || {}).mcpServers;
+    const registered = new Set([...bareNames(ctx), ...(servers && typeof servers === 'object' && !Array.isArray(servers) ? Object.keys(servers) : [])]);
+    selection.respellMcpRows({
+        projectRoot: ctx.projectRoot,
+        plugin: ctx.lists.mcps.map((e) => String(e).split('|')[0]).filter((name) => !registered.has(name)),
+        outputs: Object.fromEntries(pwEngines(ctx).map((e) => [e, `${dataRoot.targetOf(`browser-${e}`, ctx.dataInfo.root)}/output/`])),
+        log: ctx.log, note: ctx.note,
+    });
     dataRootLayer(ctx, docsPath);
     seeds.playwrightDownloads({
         browsers: pwEngines(ctx),

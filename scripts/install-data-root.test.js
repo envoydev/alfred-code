@@ -388,6 +388,42 @@ test('M11 a data move re-stamps every generated rule that names the docs root - 
     assert.strictEqual(twoZero.result.rules['my-own-rule.md'], MINE('.claude/docs'));
 });
 
+// A capabilities rule captured on the copy route before 2.1.0 names every server bare and the browser's single
+// `.playwright/output/`, and a capture never re-runs by itself: the model kept writing screenshots to the repo root's
+// `.playwright/output/` (2026-10-10). An update re-spells the routing rows to the route this run serves and the browser
+// row to the engine's dir under the data root - the plugin route here, the copy route and a custom root below.
+const tool = (server, name, plugin) => (plugin ? `mcp__plugin_${server}_${server}__${name}` : `mcp_${'_'}${server}__${name}`);
+const CAPS = 'alfred-project-agent-capabilities.md';
+const capsRule = (out, plugin) => [
+    '---', 'description: generated', '---', '', '## MCP routing',
+    `- \`alfred-navigation\` - first call: \`ToolSearch select:${tool('alfred-navigation', 'find_symbol', plugin)}\``,
+    `- \`browser-chrome\` - auto-names land in \`${out}\`, or prefix an explicit name with \`${out}\`. first call: \`ToolSearch select:${tool('browser-chrome', 'browser_snapshot', plugin)}\``,
+    '',
+].join('\n');
+const capsOf = (repo) => read(path.join(repo, '.claude', 'rules', CAPS));
+
+test('a stale capabilities rule: an update re-spells its tool names to the route served and the browser output dir under the data root; a re-run is quiet', POSIX_ONLY, () =>
+{
+    const stale = (repo, i) => { if (i === 0) put(path.join(repo, '.claude', 'rules', CAPS), capsRule('.playwright/output/', false)); return capsOf(repo); };
+    const plugin = seedRun(['install', 'update', 'update'], SELECTION, {
+        prepare: prep, args: [['--scope', 'project', '--browsers', 'chrome'], UPDATE, UPDATE], each: stale, inspect: (repo) => ({ caps: capsOf(repo) }),
+    });
+    assert.strictEqual(plugin.result.caps, capsRule('.alfred/browser/chrome/output/', true), plugin.outs[1]);
+    assert.match(plugin.outs[1], /route: alfred-project-agent-capabilities\.md - 2 MCP tool name\(s\) re-spelled to the plugin spelling/, plugin.outs[1]);
+    assert.match(plugin.outs[1], /browser: alfred-project-agent-capabilities\.md - 2 output dir\(s\) re-stamped/);
+    assert.strictEqual(plugin.steps[2], plugin.steps[1], 'a re-run rewrote the rule');
+    assert.doesNotMatch(plugin.outs[2], /route: |browser: alfred-project/);
+
+    // The copy route registers every server bare: the names stay bare, the browser row follows a custom root.
+    const copyRoute = seedRun(['install', 'update', 'update'], SELECTION, {
+        env: COPY_ENV, prepare: prep, args: [['--scope', 'project', '--browsers', 'chrome'], [...UPDATE, '--data-path', '.data', '--data-move', 'move'], UPDATE],
+        each: stale, inspect: (repo) => ({ caps: capsOf(repo) }),
+    });
+    assert.strictEqual(copyRoute.result.caps, capsRule('.data/browser/chrome/output/', false), copyRoute.outs[1]);
+    assert.doesNotMatch(copyRoute.outs[1], /route: alfred-project/);
+    assert.strictEqual(copyRoute.steps[2], copyRoute.steps[1], 'a re-run rewrote the rule');
+});
+
 // I1: the root's .gitignore re-includes itself - with `/*` alone it ignored its own file, so it never reached a
 // teammate's clone, where the launchers then wrote cookies and serena's home with nothing ignoring them.
 test('I1 fresh install: the data root\'s .gitignore is itself tracked, and still keeps the machine state out', POSIX_ONLY, () =>
