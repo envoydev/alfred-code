@@ -1,8 +1,8 @@
 # Generated rule - fill rules for the inventory sections, plus the house MCP routing map
 
-Read at step 2 COMPOSE, before the rule body is composed. The SHAPE of the generated rule
-(frontmatter, `Captured:` line, the stamped usage policy, the four inventory headings) is the copy
-target in SKILL.md; this file says how each inventory section is FILLED. Every character written
+The fill rules `scripts/capabilities-inventory.js --write` implements - read it to audit a row, never on a
+normal run. The SHAPE of the generated rule (frontmatter, `Captured:` line, the stamped usage policy, the
+four inventory headings) is the copy target in SKILL.md; this file says how each inventory section is FILLED. Every character written
 into the generated rule is paid by every session and every subagent of the project - keep the rows
 lean.
 
@@ -30,7 +30,7 @@ to load it describes a capability the session cannot reach - naming a server is 
 and the `first call:` line is the row's load-bearing half. Copy each one VERBATIM.
 
 `scripts/capabilities-inventory.js` prints these rows already filled, one per server and one for
-the locked servers present - its `MCP ROUTING rows` block is the paste source, and `--verify` fails
+the locked servers present - its `MCP ROUTING rows` block is what `--write` puts in the rule, and `--verify` fails
 the rule when a row reached it without a `first call:` or with a slot left unfilled. The map below is
 what the script reads; `<server>` in a row is substituted with the server's name (`browser` ships as
 one plugin, and one server, per kept browser), and `<data root>`, `<engine>` and `<docs-path>` with

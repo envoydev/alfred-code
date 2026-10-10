@@ -463,7 +463,7 @@ test('report: the docs root is resolved and printed, so `<docs-path>` is never l
     const { out } = run([], { cwd: root });
     assert.match(out, /DOCS ROOT: docs\/ai\s+\(from ALFRED_CODE_DOCS_PATH in \.claude\/settings\.json env\)/);
     assert.match(out, /CAPTURED:\s+\d{4}-\d{2}-\d{2} from 0\.2\.79@abcdef1/);
-    assert.match(out, /COMPARE:\s+no --body yet/);
+    assert.match(out, /COMPARE:\s+no verdict yet/);
 });
 
 // Every update rewrites the stamp, a no-op one included: a newer stamp alone read as drift after each update, and
@@ -584,15 +584,127 @@ test('--verify: a rule built from plugin-provided rows passes', { skip: posixOnl
 // tool, which print mode refused ('you haven't granted it yet'); it recovered through a heredoc and
 // emitted the body twice. The body goes under the docs root's flow/ folder instead - inside the project,
 // where acceptEdits lets the Write land, and out of git through the docs root's own .gitignore.
-test('report: the composed body is written under <docs root>/flow/, and the skill says the same path', { skip: posixOnly }, () =>
+// Audit 2026-10-10 (C06, session b91d6135): the read-template, compose, compare and write turns copied the script's own
+// lines by hand - ~281k of 467k context tokens - and the report hand-summed three MCP figures into one. --write does it
+// all from the skill's copy target, and the report's Inventory line is printed ready-made.
+test('report: the plain inventory writes nothing and points at --write; the skill runs --write and composes nothing', { skip: posixOnly }, () =>
 {
     const root = project('body-path');
-    assert.match(run([], { cwd: root }).out, /COMPARE:\s+no --body yet - compose the rule body, write it to \`\.alfred\/docs\/flow\/capabilities-body\.md\`/);
-    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/ai' } }), -100);
-    assert.match(run([], { cwd: root }).out, /write it to \`docs\/ai\/flow\/capabilities-body\.md\`/, 'the resolved root, not the default');
+    const before = fs.readFileSync(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), 'utf8');
+    assert.match(run([], { cwd: root }).out, /COMPARE:\s+no verdict yet - `--write` composes the rule from these lines/);
+    assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), 'utf8'), before, 'the plain run writes nothing');
     const skill = fs.readFileSync(SKILL_MD, 'utf8');
-    assert.match(skill, /\/flow\/capabilities-body\.md/, 'the skill names the same file');
-    assert.doesNotMatch(skill, /Write the composed body to a scratch file/, 'no free choice of a temp dir');
+    assert.match(skill, /node "\$CAPS" --write\n```/, 'the resolve block runs the whole capture');
+    assert.doesNotMatch(skill, /compose the\s+WHOLE body in-session/, 'no in-session compose');
+    assert.doesNotMatch(skill, /capabilities-body\.md/, 'no hand-composed body file');
+    assert.doesNotMatch(skill, /delete it in the same run\./, 'the legacy rule is the script\'s to remove');
+});
+
+const RULE = (root) => path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md');
+const reportLines = (out) => Object.fromEntries(out.split('\n').filter((l) => /^(Rule|Verify|Inventory|Drift): {2,}/.test(l)).map((l) => [l.split(':')[0], l.replace(/^\w+:\s+/, '')]));
+
+test('--write: a first capture composes the rule from the copy target, verifies it and prints the report lines', { skip: posixOnly }, () =>
+{
+    const root = project('write-first', { rule: false });
+    const plain = run([], { cwd: root }).out;
+    const r = run(['--write'], { cwd: root });
+    assert.strictEqual(r.status, 0, r.out);
+    const rule = fs.readFileSync(RULE(root), 'utf8');
+    assert.match(r.out, /COMPARE:\s+differs - no rule yet, WRITTEN \.claude\/rules\/alfred-project-agent-capabilities\.md \(\d+ bytes\)/);
+    assert.match(r.out, /VERIFY:\s+PASS/);
+    assert.doesNotMatch(rule, /<the script's|<docs-path>|<data root>/, 'every slot filled');
+    assert.match(rule, /^Captured: \d{4}-\d{2}-\d{2} from 0\.2\.79@abcdef1$/m);
+    assert.ok(rule.includes(policyFrom(fs.readFileSync(SKILL_MD, 'utf8'), '.alfred/docs')), 'the policy block, stamp included, verbatim');
+    assert.match(rule, /^## Orchestration skills.*\n\/capture-agent-capabilities - Does a thing$/m, 'the printed orchestration row');
+    assert.match(rule, /^## Subagent seats\naspnet-implementer, aspnet-verifier, security-auditor$/m, 'the printed SEATS line');
+    for (const row of routingRows(plain)) assert.ok(rule.includes(row), `the printed routing row: ${row.slice(0, 60)}`);
+    assert.doesNotMatch(rule, /^## Plugins/m, 'the CLI is absent, so no Plugins section');
+    const rep = reportLines(r.out);
+    assert.match(rep.Rule, /^created - \d+ bytes$/);
+    assert.strictEqual(rep.Verify, 'PASS');
+    assert.strictEqual(rep.Inventory, 'skills 2 / seats 3 / rules 2 / MCP 4 (4 in .mcp.json + 0 from plugins; live list unavailable) / plugins CLI absent');
+    assert.strictEqual(rep.Drift, 'first capture - no rule before this run');
+
+    // A re-run over the rule it wrote is identical, and leaves the file alone - its mtime included.
+    touch(RULE(root), 0);
+    const again = run(['--write'], { cwd: root });
+    assert.match(again.out, /COMPARE:\s+identical - not rewritten/);
+    assert.match(reportLines(again.out).Rule, /^unchanged, not rewritten - \d+ bytes$/);
+    assert.strictEqual(reportLines(again.out).Verify, 'not run - nothing written');
+    assert.strictEqual(fs.statSync(RULE(root)).mtimeMs, (BASE + 0) * 1000, 'not rewritten');
+    assert.strictEqual(fs.readFileSync(RULE(root), 'utf8'), rule);
+});
+
+test('--write: with the CLI, the Plugins section and the plugin counts come off the printed lines', { skip: posixOnly }, () =>
+{
+    const root = project('write-cli', { rule: false });
+    const bin = stubCli(path.join(TMP, 'write-cli-bin'), {
+        mcp: 'context7: https://mcp.context7.com/mcp (HTTP) - ✔ Connected',
+        plugins: JSON.stringify([{ id: 'superpowers@x', enabled: true }, { id: 'claude-hud@y', enabled: false }]),
+    });
+    const r = run(['--write'], { cwd: root, bin });
+    assert.strictEqual(r.status, 0, r.out);
+    assert.match(fs.readFileSync(RULE(root), 'utf8'), /^## Plugins\nclaude-hud \(disabled\), superpowers \(enabled\)\n$/m);
+    assert.strictEqual(reportLines(r.out).Inventory, 'skills 2 / seats 3 / rules 2 / MCP 4 (4 in .mcp.json + 0 from plugins; 1 live) / plugins 2');
+});
+
+test('--write: an empty precheck writes only under --refresh; drift writes and names the changed sections', { skip: posixOnly }, () =>
+{
+    const root = project('write-refresh');
+    const stub = fs.readFileSync(RULE(root), 'utf8');
+    const held = run(['--write'], { cwd: root });
+    assert.match(held.out, /PRECHECK:\s+empty/);
+    assert.match(held.out, /COMPARE:\s+differs \(sections changed: .*## Subagent seats.*\) - NOT WRITTEN: the precheck is empty/);
+    assert.strictEqual(fs.readFileSync(RULE(root), 'utf8'), stub, 'nothing written without --refresh');
+    assert.match(reportLines(held.out).Rule, /\(precheck empty\)$/);
+    assert.strictEqual(reportLines(held.out).Drift, 'none - PRECHECK empty');
+
+    const refreshed = run(['--write', '--refresh'], { cwd: root });
+    assert.match(refreshed.out, /COMPARE:\s+differs - WRITTEN .*the whole file .*sections changed: /);
+    assert.match(reportLines(refreshed.out).Rule, /^refreshed - \d+ bytes$/);
+    assert.strictEqual(reportLines(refreshed.out).Drift, 'none in the tree - a --refresh run');
+    assert.strictEqual(refreshed.status, 0, refreshed.out);
+
+    // A seat added after the capture is drift: written without --refresh.
+    touch(RULE(root), 0);
+    write(path.join(root, '.claude', 'agents', 'data-verifier.md'), '---\nname: data-verifier\n---\n', 500);
+    const drift = run(['--write'], { cwd: root });
+    assert.match(drift.out, /COMPARE:\s+differs - WRITTEN .*sections changed: ## Subagent seats$/m);
+    assert.match(reportLines(drift.out).Drift, /^1 file\(s\): \.claude\/agents\/data-verifier\.md$/);
+    assert.match(fs.readFileSync(RULE(root), 'utf8'), /^aspnet-implementer, aspnet-verifier, data-verifier, security-auditor$/m);
+});
+
+test('--write: the legacy 1.x rule is removed in the same run, and no source is a refusal that writes nothing', { skip: posixOnly }, () =>
+{
+    const root = project('write-legacy', { rule: false });
+    const legacy = write(path.join(root, '.claude', 'rules', 'baseline-project-capabilities.md'), '# old\n', -100);
+    const r = run(['--write'], { cwd: root });
+    assert.match(r.out, /LEGACY:\s+removed \.claude\/rules\/baseline-project-capabilities\.md/);
+    assert.ok(!fs.existsSync(legacy));
+    assert.doesNotMatch(run(['--write'], { cwd: root }).out, /LEGACY:/, 'nothing to remove, no line');
+
+    const empty = project('write-nothing');
+    const stub = fs.readFileSync(RULE(empty), 'utf8');
+    fs.rmSync(path.join(empty, '.claude', 'skills'), { recursive: true, force: true });
+    fs.rmSync(path.join(empty, '.claude', 'agents'), { recursive: true, force: true });
+    const refused = run(['--write', '--refresh'], { cwd: empty });
+    assert.strictEqual(refused.status, 1);
+    assert.match(refused.out, /WRITE:\s+refused - no local skills or seats/);
+    assert.strictEqual(fs.readFileSync(RULE(empty), 'utf8'), stub, 'a good rule is never replaced by an empty one');
+});
+
+test('--write: a copy target with a slot the script does not fill writes nothing', { skip: posixOnly }, () =>
+{
+    // The script reads the SKILL.md beside it, so a copied skill dir with an extra slot stands in for a broken release.
+    const dir = path.join(TMP, 'broken-skill');
+    fs.cpSync(path.dirname(SKILL_MD), dir, { recursive: true });
+    const md = path.join(dir, 'SKILL.md');
+    fs.writeFileSync(md, fs.readFileSync(md, 'utf8').replace('## MCP routing\n', '## MCP routing\n<the script\'s NEW slot>\n'));
+    const root = project('write-broken', { rule: false });
+    const r = spawnSync(process.execPath, [path.join(dir, 'scripts', 'capabilities-inventory.js'), '--write'], { cwd: root, encoding: 'utf8', env: { PATH: path.join(TMP, 'empty-bin'), HOME: TMP } });
+    assert.strictEqual(r.status, 1);
+    assert.match(r.stdout, /COMPOSE:\s+FAIL - the copy target holds a slot this script does not fill: <the script's NEW slot>/);
+    assert.ok(!fs.existsSync(RULE(root)), 'nothing written');
 });
 
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));

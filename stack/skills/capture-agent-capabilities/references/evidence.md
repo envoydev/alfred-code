@@ -22,6 +22,10 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 ## 3. COMPOSE and COMPARE
 - **COMPOSE the whole body, then compare - the write is always the whole file** - measured: an upsert run silently missed a new usage-policy bullet.
 - **Identical? Do not write.** - measured: two projects and four runs produced a byte-for-byte identical rule (one pair 7,582 bytes, zero delta) and each still paid a delete plus a full write, and the next session paid the changed mtime.
+- **The script composes, compares and writes - the model only reports** - audit 2026-10-10, session b91d6135: the
+  read-template, compose, compare and write turns copied the script's own rows and the policy block by hand, ~281k of
+  467k context tokens (60%) and ~$0.19 of $0.74 (26%), and the hand-run legacy `ls` probe was the run's one error.
+  The same session hand-summed the three MCP figures into `MCP 6`, so the `Inventory:` line is printed ready-made.
 - **Do NOT `rm` it first** - measured on the sibling architecture capture, which had the same instruction: the auto-mode classifier denied the delete, which cost exactly the blocked round trip the delete was meant to save.
 
 ## Usage policy (the stamped block)

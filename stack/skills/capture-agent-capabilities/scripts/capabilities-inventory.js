@@ -1,14 +1,17 @@
 #!/usr/bin/env node
-// capabilities-inventory.js - the whole mechanical half of /capture-agent-capabilities in ONE node
-// pass: the precheck, the full inventory with a printed COUNT per layer (skills, seats, rules, MCP,
-// plugins), the LIVE `claude mcp list`, the paste-ready MCP routing rows, the compare verdict that
-// authorizes the write, and the post-write --verify. Node built-ins only - no install, no network,
-// and no per-skill fork (the shell loop it replaces measured 4m13s on Git Bash).
+// capabilities-inventory.js - the whole of /capture-agent-capabilities in ONE node pass: the precheck,
+// the full inventory with a printed COUNT per layer (skills, seats, rules, MCP, plugins), the LIVE
+// `claude mcp list`, the MCP routing rows, and with --write the rule composed from the skill's copy
+// target, the compare, the write on differs, the legacy rule's removal, the post-write verify and the
+// report lines. Node built-ins only - no install, no network, and no per-skill fork (the shell loop it
+// replaces measured 4m13s on Git Bash).
 //
 // Usage, from the project root:
-//   node .claude/skills/capture-agent-capabilities/scripts/capabilities-inventory.js
-//   node .../capabilities-inventory.js --body <composed-rule-file|->     the compare verdict
+//   node .claude/skills/capture-agent-capabilities/scripts/capabilities-inventory.js --write [--refresh]
+//   node .../capabilities-inventory.js                                  the inventory alone, nothing written
+//   node .../capabilities-inventory.js --body <composed-rule-file|->     the compare verdict for a hand-composed body
 //   node .../capabilities-inventory.js --verify <rule-file>             exits 1 on failure
+//   --refresh         write over an empty precheck (the user asked, or the plugin state moved)
 //   --project <dir>   the project root (default: the current directory)
 //
 // Every line it prints is a report field. A claim with no printed line behind it is not one.
@@ -22,6 +25,8 @@ const { spawnSync } = require('node:child_process');
 const SKILL_DIR = path.resolve(__dirname, '..');
 const TEMPLATE_REL = 'references/generated-rule-template.md';
 const RULE_REL = '.claude/rules/alfred-project-agent-capabilities.md';
+// The 1.x project-capabilities skill's output, superseded by this rule and removed by the run that writes it.
+const LEGACY_RULE_REL = '.claude/rules/baseline-project-capabilities.md';
 // The orchestration skills that carry NO `disable-model-invocation` by design, so the architecture, code-quality
 // and coverage loops can invoke them - they belong with the slash-only set in the rule, marked as the exception.
 const MODEL_INVOCABLE_BY_DESIGN = new Set(['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'capture-test-coverage']);
@@ -629,9 +634,12 @@ function mcpRowsOf(text)
 
 // ---------------------------------------------------------------- the three modes
 
-function report(projectRoot)
+// The inventory every mode prints, and the facts --write composes the rule from - one pass, so the rule carries
+// exactly the rows the block printed.
+function inventory(projectRoot)
 {
     const out = [];
+    const facts = {};
     const say = (label, value) => out.push(`${(`${label}:`).padEnd(11)}${value}`);
     const sub = (line) => out.push(`  ${line}`);
 
@@ -646,7 +654,11 @@ function report(projectRoot)
     out.push('=== capture-agent-capabilities - inventory (one node pass, no per-skill fork) ===');
     say('PROJECT', projectRoot);
     say('DOCS ROOT', `${docs.value}  (from ${docs.from}) - every \`<docs-path>\` in the template is this literal`);
-    say('CAPTURED', `${today()} from ${stamp || 'no stamp'}`);
+    facts.captured = `${today()} from ${stamp || 'no stamp'}`;
+    facts.docs = docs.value;
+    facts.rulePath = rulePath;
+    facts.ruleText = ruleText;
+    say('CAPTURED', facts.captured);
     say('TEMPLATE', `${TEMPLATE_REL} - ${map.size} routing rows read`);
 
     const liveRev = policyBlock(ruleText).rev;
@@ -655,6 +667,7 @@ function report(projectRoot)
         : `${RULE_REL} - ${Buffer.byteLength(ruleText)} bytes, policy-rev ${liveRev || 'none'} (skill: ${skillPolicy.rev || 'none'}${liveRev && skillPolicy.rev ? (liveRev === skillPolicy.rev ? ', current' : ', STALE - the stamped policy moved') : ''})`);
 
     const pre = precheck(projectRoot, rulePath);
+    facts.pre = pre;
     if (pre.first) say('PRECHECK', 'FIRST - no rule yet, capture everything');
     else if (pre.hits.length === 0) say('PRECHECK', `empty - 0 files newer than the rule (Captured: ${pre.captured}${pre.stampSame ? `; a stamp rewrite at the same revision ${pre.stampSame} is not drift` : ''}). Say so in one line and STOP, unless the user asked for a refresh or the machine-global plugin state is what changed.`);
     else
@@ -685,18 +698,23 @@ function report(projectRoot)
         say('SOURCE', `PLUGIN-COVERED - ${plug.from.length} enabled plugin(s) carry ${plug.skills.length} skill(s) and ${plug.seats.length} seat(s), beside ${localCount.skills} skill(s) and ${localCount.seats} seat(s) copied under .claude/: ${plug.from.join(', ')}`);
     }
     else if (localCount.skills === 0 || localCount.seats === 0)
+    {
+        facts.noSource = true;
         say('SOURCE', `no local .claude/skills or .claude/agents${pluginProbe.ok ? ' and no enabled plugin carries them' : ' and the CLI is absent, so a plugin source cannot be read'} - say so and STOP rather than generate an empty rule over a good one`);
+    }
 
     const orchestration = skills.filter((s) => s.slashOnly || s.byDesign);
     say('SKILLS', `${skills.length} total, ${orchestration.length} orchestration (${orchestration.filter((s) => s.byDesign).length} model-invocable-by-design)`);
-    for (const s of orchestration) sub(`/${s.name} - ${s.clause}${s.byDesign ? ' (model-invocable-by-design)' : ''}`);
+    facts.orchestrationRows = orchestration.map((s) => `/${s.name} - ${s.clause}${s.byDesign ? ' (model-invocable-by-design)' : ''}`);
+    for (const row of facts.orchestrationRows) sub(row);
     for (const s of skills.filter((s) => s.unreadable)) sub(`UNREADABLE ${s.name}: ${s.unreadable} - report it as unreadable, never fill it from memory`);
 
     const denied = deniedSeats(projectRoot);
     const offSeats = seats.filter((s) => denied.has(s));
     seats = seats.filter((s) => !denied.has(s));
     say('SEATS', `${seats.length} total${offSeats.length ? ` (${offSeats.length} denied in permissions.deny, left out)` : ''}`);
-    sub(seats.join(', ') || 'none');
+    facts.seatsLine = seats.join(', ') || 'none';
+    sub(facts.seatsLine);
     const fams = seatFamilies(seats);
     sub(`seat families (${fams.length}): ${fams.join(', ') || 'none'}`);
 
@@ -730,21 +748,127 @@ function report(projectRoot)
     for (const r of liveRows) if (!registered.includes(r.name) && !pluginLive.has(r.name)) sub(`${r.name.padEnd(20)} -           live: ${r.state}  (reaches the session from the account or the harness, not .mcp.json)`);
     sub(`MCP ROUTING rows - paste verbatim, one per registered or plugin-provided server (data root ${slots.dataRoot}):`);
     const servers = [...registered.map((name) => ({ name })), ...provided.map((s) => ({ name: s.server, plugin: s.plugin }))];
-    for (const row of routingRowsFor(servers, map, slots)) sub(row);
+    facts.routingRows = routingRowsFor(servers, map, slots);
+    for (const row of facts.routingRows) sub(row);
 
+    facts.pluginsLine = null;
     if (!pluginProbe.ok) say('PLUGINS', `${pluginProbe.reason} - OMIT the Plugins section from the rule rather than guess`);
     else
     {
         say('PLUGINS', `${pluginRows.length} after dedupe (state only - \`claude plugin list\` is machine-global, so it never says WHY)`);
-        sub(pluginRows.map((p) => `${p.name} (${p.state})`).join(', ') || 'none');
+        facts.pluginsLine = pluginRows.map((p) => `${p.name} (${p.state})`).join(', ') || 'none';
+        sub(facts.pluginsLine);
     }
+    // The report's Inventory line, ready-made: MCP is every server that reaches the session through a registration
+    // or an enabled plugin (one routing target each), the other two figures beside it (audit 2026-10-10, session
+    // b91d6135: three printed figures, one hand-summed `MCP 6`).
+    facts.inventoryLine = `skills ${skills.length} / seats ${seats.length} / rules ${rules.length} / MCP ${registered.length + provided.length} (${registered.length} in .mcp.json + ${provided.length} from plugins; ${live.ok ? `${liveRows.length} live` : 'live list unavailable'}) / plugins ${pluginProbe.ok ? pluginRows.length : 'CLI absent'}`;
+    say('INVENTORY', facts.inventoryLine);
+    return { out, say, facts };
+}
 
-    // Inside the project, so a Write lands under print mode's acceptEdits too (a temp dir outside it was
-    // refused in pilot 2); the docs root's own .gitignore keeps flow/ out of git.
-    const body = `${String(docs.value).replace(/[\\/]+$/, '')}/flow/capabilities-body.md`;
-    say('COMPARE', `no --body yet - compose the rule body, write it to \`${body}\`, then re-run with \`--body ${body}\`; that verdict is what authorizes the write, and the file is deleted once it is spent`);
+function report(projectRoot)
+{
+    const { out, say } = inventory(projectRoot);
+    say('COMPARE', 'no verdict yet - `--write` composes the rule from these lines, compares it, writes only on differs and verifies what it wrote');
     console.log(out.join('\n'));
     return 0;
+}
+
+// ---------------------------------------------------------------- --write: compose, compare, write, verify
+
+// The copy target in SKILL.md is the ONE home of the rule's shape; --write fills its slots from the inventory's own
+// lines, so no row, count or sentence passes through the model (audit 2026-10-10, session b91d6135: the read-template,
+// compose, compare and write turns copied script lines by hand for ~60% of the run's context tokens).
+function copyTarget(skillText)
+{
+    const lines = (skillText || '').split(/\r?\n/);
+    const marker = lines.findIndex((l) => /COPY TARGET/.test(l));
+    const open = marker === -1 ? -1 : lines.findIndex((l, i) => i > marker && /^```markdown\s*$/.test(l));
+    const close = open === -1 ? -1 : lines.findIndex((l, i) => i > open && /^```\s*$/.test(l));
+    return close === -1 ? null : lines.slice(open + 1, close).join('\n');
+}
+
+function composeRule(template, facts)
+{
+    const fill = (text, re, value) => text.replace(re, () => value);
+    let text = fill(template, /^Captured: <[^>\n]*>$/m, `Captured: ${facts.captured}`);
+    text = fill(text, /^<the script's `\/name - clause` rows[^\n]*>$/m, facts.orchestrationRows.join('\n') || 'none');
+    // The seats slot runs over two lines and names `<plugin>:<seat>` inside it, so it ends at the first `>` closing a line.
+    text = fill(text, /^<the script's SEATS name line[\s\S]*?>$/m, facts.seatsLine);
+    text = fill(text, /^<the script's `MCP ROUTING rows` block[^\n]*>$/m, facts.routingRows.join('\n') || 'none');
+    text = facts.pluginsLine === null
+        ? fill(text, /\n*^## Plugins\n<the script's PLUGINS name line[^\n]*>$/m, '')
+        : fill(text, /^<the script's PLUGINS name line[^\n]*>$/m, facts.pluginsLine);
+    text = text.split('<docs-path>').join(facts.docs);
+    const left = /^<the script's[^\n]*/m.exec(text);
+    return { text: normalize(`${text}\n`), left: left ? left[0] : null };
+}
+
+function writeRule(projectRoot, refresh)
+{
+    const { out, say, facts } = inventory(projectRoot);
+    const pre = facts.pre;
+    const drift = pre.first ? 'first capture - no rule before this run'
+        : pre.hits.length ? `${pre.hits.length} file(s): ${pre.hits.slice(0, 3).map((h) => h.path).join(', ')}${pre.hits.length > 3 ? ` and ${pre.hits.length - 3} more` : ''}`
+            : refresh ? 'none in the tree - a --refresh run' : 'none - PRECHECK empty';
+    const finish = (rule, verified, code) =>
+    {
+        out.push('REPORT - copy these four lines as they stand, then add Live from and Flags:');
+        out.push(`Rule:       ${rule}`, `Verify:     ${verified}`, `Inventory:  ${facts.inventoryLine}`, `Drift:      ${drift}`);
+        console.log(out.join('\n'));
+        return code;
+    };
+    if (facts.noSource)
+    {
+        say('WRITE', 'refused - no local skills or seats and no plugin carrying them; the rule is left as it is. Say so and STOP.');
+        return finish('not written - no inventory source', 'not run - nothing written', 1);
+    }
+    const template = copyTarget(readText(path.join(SKILL_DIR, 'SKILL.md')));
+    const body = template === null ? null : composeRule(template, facts);
+    if (body === null || body.left)
+    {
+        say('COMPOSE', `FAIL - ${body === null ? 'no COPY TARGET block in the skill\'s SKILL.md' : `the copy target holds a slot this script does not fill: ${body.left.slice(0, 80)}`}; nothing written - a stack defect, report it, never hand-write the rule`);
+        return finish('not written - COMPOSE failed', 'not run - nothing written', 1);
+    }
+    const live = facts.ruleText;
+    const bytes = Buffer.byteLength(body.text);
+    if (live !== null && withoutCaptured(normalize(live)) === withoutCaptured(body.text))
+    {
+        say('COMPARE', `identical - not rewritten (${Buffer.byteLength(live)} bytes)`);
+        removeLegacy(projectRoot, say);
+        return finish(`unchanged, not rewritten - ${Buffer.byteLength(live)} bytes`, 'not run - nothing written', 0);
+    }
+    const changed = live === null ? '' : sectionsChanged(live, body.text);
+    if (live !== null && !pre.first && pre.hits.length === 0 && !refresh)
+    {
+        say('COMPARE', `differs (sections changed: ${changed}) - NOT WRITTEN: the precheck is empty, so only the machine-global plugin state or the skill's own copy target moved. Re-run with \`--write --refresh\` when the user asked for a refresh or that is the plugin state`);
+        return finish(`unchanged, not rewritten - ${Buffer.byteLength(live)} bytes (precheck empty)`, 'not run - nothing written', 0);
+    }
+    fs.mkdirSync(path.dirname(facts.rulePath), { recursive: true });
+    fs.writeFileSync(facts.rulePath, body.text);
+    say('COMPARE', live === null ? `differs - no rule yet, WRITTEN ${RULE_REL} (${bytes} bytes)`
+        : `differs - WRITTEN ${RULE_REL}, the whole file (live ${Buffer.byteLength(live)} bytes, now ${bytes}); sections changed: ${changed}`);
+    removeLegacy(projectRoot, say);
+    console.log(out.splice(0).join('\n'));
+    const result = {};
+    const code = verify(projectRoot, facts.rulePath, result);
+    return finish(`${live === null ? 'created' : 'refreshed'} - ${bytes} bytes`, result.verdict, code);
+}
+
+function sectionsChanged(live, composed)
+{
+    const a = sectionsOf(withoutCaptured(normalize(live)));
+    const b = sectionsOf(withoutCaptured(composed));
+    return [...new Set([...a.keys(), ...b.keys()])].filter((k) => a.get(k) !== b.get(k)).join(' | ') || '(whitespace only)';
+}
+
+function removeLegacy(projectRoot, say)
+{
+    const legacy = path.join(projectRoot, LEGACY_RULE_REL);
+    if (!statOf(legacy)) return;
+    try { fs.rmSync(legacy); say('LEGACY', `removed ${LEGACY_RULE_REL} - this rule supersedes it`); }
+    catch (err) { say('LEGACY', `${LEGACY_RULE_REL} is still there - ${err.code || err.message}; name it in the report`); }
 }
 
 function compare(projectRoot, bodyArg)
@@ -767,15 +891,12 @@ function compare(projectRoot, bodyArg)
         console.log(`COMPARE:   identical - DO NOT WRITE (${Buffer.byteLength(live)} bytes). Report \`rule unchanged - ${Buffer.byteLength(live)} bytes, not rewritten\`.`);
         return 0;
     }
-    const a = sectionsOf(withoutCaptured(normalize(live)));
-    const b = sectionsOf(withoutCaptured(composed));
-    const changed = [...new Set([...a.keys(), ...b.keys()])].filter((k) => a.get(k) !== b.get(k));
     console.log(`COMPARE:   differs - WRITE ${RULE_REL} in ONE call, whole file (live ${Buffer.byteLength(live)} bytes, composed ${Buffer.byteLength(composed)} bytes)`);
-    console.log(`  sections changed: ${changed.join(' | ') || '(whitespace only)'}`);
+    console.log(`  sections changed: ${sectionsChanged(live, composed)}`);
     return 0;
 }
 
-function verify(projectRoot, ruleArg)
+function verify(projectRoot, ruleArg, result = {})
 {
     const rulePath = path.resolve(ruleArg);
     const text = readText(rulePath);
@@ -790,6 +911,7 @@ function verify(projectRoot, ruleArg)
     {
         console.log('file:          FAIL - absent or empty');
         console.log('VERIFY:        FAIL (1 check)');
+        result.verdict = 'FAIL (1 check) - the rule file is absent or empty';
         return 1;
     }
 
@@ -824,7 +946,8 @@ function verify(projectRoot, ruleArg)
             : bad.length ? `${bad.length} of ${rows.length} carry no 'first call:' - ${bad.map((r) => (/^- `([^`]+)`/.exec(r) || [, r.slice(0, 40)])[1]).join(', ')}`
                 : `${rows.length} of ${rows.length} carry their 'first call:' line`);
 
-    console.log(`VERIFY:        ${fails.length ? `FAIL (${fails.length} check(s): ${fails.join(', ')})` : 'PASS'}`);
+    result.verdict = fails.length ? `FAIL (${fails.length} check(s): ${fails.join(', ')})` : 'PASS';
+    console.log(`VERIFY:        ${result.verdict}`);
     return fails.length ? 1 : 0;
 }
 
@@ -844,6 +967,7 @@ function main()
     const bodyArg = argOf('--body');
     if (process.argv.includes('--body') && !bodyArg) { console.log('--body needs a file path (or `-` for stdin)'); return 2; }
     if (bodyArg) return compare(projectRoot, bodyArg);
+    if (process.argv.includes('--write')) return writeRule(projectRoot, process.argv.includes('--refresh'));
     return report(projectRoot);
 }
 

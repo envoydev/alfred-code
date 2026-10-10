@@ -353,7 +353,7 @@ test('the capabilities script resolves to the NEWEST cached entry', () => {
             const newest = versions[versions.length - 1].replace(/\./g, '\\.');
             const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, 'acct') };
             // The capabilities block with its last line - the run - swapped for a print.
-            const caps = bodySnippet('stack/skills/capture-agent-capabilities/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS"\n```/);
+            const caps = bodySnippet('stack/skills/capture-agent-capabilities/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS" --write\n```/);
             assert.match(execFileSync('bash', ['-c', `${caps}printf %s "$CAPS"`], { cwd: home, env, encoding: 'utf8' }),
                 new RegExp(`/${newest}/stack/skills/capture-agent-capabilities/scripts/capabilities-inventory\\.js$`), `capabilities: not the newest of ${versions}`);
         }
@@ -482,7 +482,7 @@ test("the protocol's PowerShell snippet reads a core cached under another key, s
 
 test('the three body snippets read a core cached under any key, and never an orphaned one', () => {
     const snippets = {
-        capabilities: [bodySnippet('stack/skills/capture-agent-capabilities/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS"\n```/) + 'printf %s "$CAPS"', '/stack/skills/capture-agent-capabilities/scripts/capabilities-inventory.js'],
+        capabilities: [bodySnippet('stack/skills/capture-agent-capabilities/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS" --write\n```/) + 'printf %s "$CAPS"', '/stack/skills/capture-agent-capabilities/scripts/capabilities-inventory.js'],
         firstLook: [bodySnippet('stack/skills/capture-first-look/SKILL.md', /```bash\n(SCAN=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SCAN"', '/scripts/scan-evidence.js'],
         usage: [bodySnippet('stack/skills/capture-usage-report/SKILL.md', /```bash\n(TMP=\$\(mktemp -d "\$\{TMPDIR:-\/tmp\}\/alfred-code\.XXXXXX"\)[^\n]*\nCFG=[\s\S]*?cut -f2\))\n/) + '\nrm -rf "$TMP"; printf %s "$SRC"', ''],
     };
