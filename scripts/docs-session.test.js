@@ -1620,3 +1620,27 @@ test('with no watch entry Stop never diffs the tree', { skip: process.platform =
     assert.doesNotMatch(fs.readFileSync(calls, 'utf8'), /status --porcelain|diff --name-only/);
   } finally { r.rm(); fs.rmSync(bin, { recursive: true, force: true }); }
 });
+
+// audit 2026-10-10 (84eedb4b, T4 cross-track): a plan stamped Completed: is a record - new scope opens a new plan file.
+test('a write to a plan stamped Completed: is denied unless it changes only stamp lines', () => {
+  const PLAN = '# Plan: csv export\nGated: 2026-10-09\nApproved: 2026-10-09 - build inline\nCompleted: 2026-10-09\n\n## Tasks\n- [x] Task 1 - export\n';
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/plans/csv-export.md', PLAN);
+    r.write('.claude/docs/plans/open.md', '# Plan: open\nGated: 2026-10-10\n\n## Tasks\n- [ ] Task 1\n');
+    const s = sid();
+    const edit = (o, nw, file = 'csv-export.md') => r.hook(pre('Edit', { file_path: `${r.root}/.claude/docs/plans/${file}`, old_string: o, new_string: nw }, s));
+    const add = edit('- [x] Task 1 - export\n', '- [x] Task 1 - export\n- [ ] Task 2 - the form fixes\n');
+    assert.ok(denied(add), 'new scope appended to the stamped plan');
+    assert.match(JSON.parse(add.stdout).hookSpecificOutput.permissionDecisionReason, /stamped Completed: .*NEW plan file.*ungated: <why>/s);
+    assert.ok(!denied(edit('Completed: 2026-10-09\n', 'Completed: 2026-10-09 - Conformance: sound\n')), 'a stamp line may change');
+    assert.ok(!denied(edit('- [ ] Task 1\n', '- [x] Task 1\n', 'open.md')), 'an open plan is edited freely');
+    assert.ok(denied(r.hook(pre('Write', { file_path: `${r.root}/.claude/docs/plans/csv-export.md`, content: `${PLAN}- [ ] Task 2\n` }, s))), 'a Write that adds a task');
+    assert.ok(!denied(r.hook(pre('Write', { file_path: `${r.root}/.claude/docs/plans/next-cycle.md`, content: '# Plan: next\n' }, s))), 'a NEW plan file');
+    assert.ok(denied(r.hook(pre('MultiEdit', { file_path: `${r.root}/.claude/docs/plans/csv-export.md`, edits: [{ old_string: 'Gated: 2026-10-09', new_string: 'Gated: 2026-10-10' }, { old_string: '## Tasks', new_string: '## Tasks\n- [ ] Task 0' }] }, s))), 'one non-stamp edit in a MultiEdit');
+    assert.ok(denied(r.hook(pre('Bash', { command: 'echo "- [ ] Task 2" >> .claude/docs/plans/csv-export.md' }, s))), 'a shell append');
+    assert.ok(!denied(r.hook(pre('Bash', { command: 'grep -c Task .claude/docs/plans/csv-export.md' }, s))), 'a read');
+    const rows = r.read(`.claude/docs/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
+    assert.ok(rows.length >= 4 && rows.every((x) => /stamped Completed/.test(x.reason)), 'one block row per denial');
+  } finally { r.rm(); }
+});

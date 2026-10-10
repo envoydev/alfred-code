@@ -267,6 +267,8 @@ function main() {
   if (cursorOff) return;
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   process.env.CLAUDE_PROJECT_DIR = root;
+  // before the domain gate: a plan file lives under the docs root whether or not a domain does
+  if (event === 'PreToolUse' && stampedPlanWrite(input, root)) return;
   if (event === 'SessionStart') {
     const stranded = sweepStrandedRoot(root);
     if (stranded !== null) log(root, input, { event: 'stranded-root', from: LEGACY_DOCS_ROOT, files: stranded });
@@ -728,6 +730,57 @@ function blockRow(root, input, reason) {
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(path.join(dir, `${String(input.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'docs-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', reason: String(reason).split('\n')[0].slice(0, 200) })}\n`);
   } catch {}
+}
+
+// A plan stamped `Completed:` is a record (task-solve's CLOSE): new scope after it opens a NEW plan file, or runs under a
+// stated `ungated: <why>`. Four form fixes were written into a stamped plan and counted as that cycle's files (audit
+// 2026-10-10, session 84eedb4b). A write to `<docs-path>/plans/<name>.md` carrying a Completed stamp is denied unless
+// every line it adds or removes is a stamp line (Gated / Approved / Conformance / Completed / Status / Deviations /
+// Result) - an Edit by its strings, a Write against the file on disk, a shell write always (its change cannot be read).
+const STAMP_LINE = /^\s*(?:[>*-]\s*)*\**\s*(?:Gated|Approved|Conformance|Completed|Status|Deviations|Result)\b/i;
+const COMPLETED_STAMP = /^\s*(?:[>*-]\s*)*\**\s*Completed\**\s*:/im;
+function stampedPlanWrite(input, root) {
+  const name = input.tool_name || '';
+  const t = input.tool_input || {};
+  const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
+  const plansDir = real(path.resolve(root, docsRootEnv(), 'plans'));
+  const isPlan = (abs) => /\.md$/i.test(abs) && real(path.dirname(abs)) === plansDir;
+  const textOf = (abs) => { try { return fs.readFileSync(abs, 'utf8'); } catch { return null; } };
+  const lineCounts = (str) => { const m = new Map(); for (const l of String(str || '').split(/\r?\n/)) m.set(l, (m.get(l) || 0) + 1); return m; };
+  const onlyStamps = (before, after) => {
+    const a = lineCounts(before);
+    const b = lineCounts(after);
+    const moved = (x, y) => [...x].every(([l, n]) => (y.get(l) || 0) >= n || !l.trim() || STAMP_LINE.test(l));
+    return moved(a, b) && moved(b, a);
+  };
+  let hit = null;
+  if (/^(?:Edit|Write|MultiEdit)$/.test(name) && typeof t.file_path === 'string' && t.file_path) {
+    const abs = path.resolve(root, t.file_path);
+    const text = isPlan(abs) ? textOf(abs) : null;
+    if (text != null && COMPLETED_STAMP.test(text)) {
+      const edits = name === 'Edit' ? [t] : name === 'MultiEdit' ? (Array.isArray(t.edits) ? t.edits : []) : null;
+      const ok = edits ? edits.every((e) => e && onlyStamps(e.old_string, e.new_string)) : onlyStamps(text, t.content);
+      if (!ok) hit = abs;
+    }
+  } else if (isShellTool(name) && typeof t.command === 'string') {
+    const base = typeof input.cwd === 'string' && input.cwd ? input.cwd : root;
+    for (const w of writeTargets(t.command)) {
+      if (w === UNKNOWN_SOURCE_WRITE) continue;
+      const abs = path.resolve(base, w.replace(/^['"]|['"]$/g, ''));
+      const text = isPlan(abs) ? textOf(abs) : null;
+      if (text != null && COMPLETED_STAMP.test(text)) { hit = abs; break; }
+    }
+  }
+  if (!hit) return false;
+  const rel = toPosix(path.relative(root, hit));
+  const reason = `Blocked: ${rel} is stamped Completed: - a stamped plan is the record of a closed cycle, never appended to.\n`
+    + 'New scope after Completed: is a NEW cycle in a NEW plan file (task-solve from step 1), or work stated to run outside\n'
+    + 'the cycle in one `ungated: <why>` line. Only a stamp line (Gated, Approved, Conformance, Completed, Status, Deviations)\n'
+    + 'may change in this file, through the Edit tool.';
+  log(root, input, { event: 'stamped-plan', target: rel });
+  blockRow(root, input, reason);
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
+  return true;
 }
 
 function preToolUse(input, root, docs, state) {

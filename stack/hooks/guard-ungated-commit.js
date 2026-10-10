@@ -492,10 +492,14 @@ function consentIn(text, gate) {
 const TRANSCRIPT_SCAN_MAX = 64 * 1024 * 1024;
 const SKILL_RAN_RE = /"name"\s*:\s*"Skill"|<command-name>\/(?:[\w-]+:)?(?:(?:alfred|project)-[\w-]+|(?:capture|habits|issue|loop|task)-[\w-]+)<\/command-name>/;
 const normQuote = (t) => String(t).replace(/\s*\(recommended\)\s*$/i, '').replace(/\s+/g, ' ').trim().toLowerCase();
+// A review the checkpoint names: the house verify skills and loops, /security-review, or a verifier / reviewer seat.
+const REVIEW_SKILL = /(?:^|:)(?:(?:project-|task-)?verify-(?:code|plan)|quality-loop|(?:alfred-)?loop-(?:quality|architecture-quality|test-coverage)|security-review)$/i;
+const REVIEW_SEAT = /verifier|reviewer/i;
 let _scan;
 function transcriptScan() {
   if (_scan) return _scan;
-  _scan = { skillRan: false, labels: new Set(), typed: [] };
+  // reviews: when each review started (ms); answers: each AskUserQuestion answer, its labels and when it landed.
+  _scan = { skillRan: false, labels: new Set(), typed: [], reviews: [], answers: [] };
   const tp = payload.transcript_path;
   if (!tp) return _scan;
   let fd;
@@ -506,8 +510,27 @@ function transcriptScan() {
     let carry = pos > 0 ? null : '';
     const CHUNK = 4 * 1024 * 1024;
     const buf = Buffer.alloc(CHUNK);
+    const tsOf = (row) => { const t = Date.parse(row && row.timestamp); return Number.isFinite(t) ? t : 0; };
     const onLine = (line) => {
       if (!_scan.skillRan && SKILL_RAN_RE.test(line)) _scan.skillRan = true;
+      if (line.length < 1024 * 1024 && (/"name"\s*:\s*"(?:Skill|Agent|Task)"/.test(line) || line.includes('"answers"'))) {
+        let row = null;
+        try { row = JSON.parse(line); } catch { row = null; }
+        const c = row && row.message && row.message.content;
+        if (row && row.type === 'assistant' && Array.isArray(c)) {
+          for (const b of c) {
+            if (!b || b.type !== 'tool_use' || !b.input) continue;
+            const named = b.name === 'Skill' ? String(b.input.skill || b.input.command || '') : /^(?:Agent|Task)$/.test(b.name) ? String(b.input.subagent_type || '') : '';
+            if (named && (b.name === 'Skill' ? REVIEW_SKILL.test(named.trim()) : REVIEW_SEAT.test(named))) _scan.reviews.push(tsOf(row));
+          }
+        }
+        const answers = row && row.toolUseResult && row.toolUseResult.answers;
+        if (answers && typeof answers === 'object') {
+          const labels = [];
+          for (const a of Object.values(answers)) for (const one of [a, ...String(a).split(/,\s*/)]) if (normQuote(one)) labels.push(normQuote(one));
+          if (labels.length) _scan.answers.push({ ts: tsOf(row), labels, text: Object.values(answers).map(String).join(', ') });
+        }
+      }
       if (line.includes('"label"')) {
         for (const m of line.matchAll(/"label"\s*:\s*"((?:[^"\\]|\\.)*)"/g)) {
           let lbl;
@@ -525,6 +548,9 @@ function transcriptScan() {
         const text = typeof c === 'string' ? c
           : Array.isArray(c) ? c.filter((p) => p && p.type === 'text').map((p) => p.text).join('\n') : '';
         if (text && !/^\s*<(?:command-name|local-command|bash-|task-notification)/.test(text)) _scan.typed.push(normQuote(text));
+        // a review the user TYPED as a slash command is a review run too
+        const typedSkill = /<command-name>\/?([\w:-]+)<\/command-name>/.exec(text);
+        if (typedSkill && REVIEW_SKILL.test(typedSkill[1])) _scan.reviews.push(tsOf(row));
       }
     };
     while (pos < size) {
@@ -556,6 +582,22 @@ function isOwnOptionLabel(span) {
   if (!s.labels.has(want)) return false;
   return !s.typed.some((t) => t.includes(want));
 }
+// The session's latest ask answer, for a denial that names what the receipt should carry: a receipt quoted the user's
+// typo ('commit and oush to develop') while the picked option sat in the transcript (audit 2026-10-10, session bda299a8).
+function answerHint() {
+  const a = transcriptScan().answers;
+  if (!a.length) return '';
+  const last = a[a.length - 1].text.replace(/\s+/g, ' ').trim().slice(0, 80);
+  return ` - this session's latest ask was answered "${last}"; a picked option is written \`answered: ${last}\``;
+}
+// When the latest answer carrying `label` landed, or 0 when no answer carries it.
+function answeredAt(label) {
+  const want = normQuote(String(label).replace(/^option\s+\d+\s*/i, '').replace(/["'\u201c\u2018\u201d\u2019]/g, ''));
+  let at = 0;
+  for (const a of transcriptScan().answers) if (a.ts > at && a.labels.includes(want)) at = a.ts;
+  return at;
+}
+
 // Did a Skill run in THIS session? The tool-usage ledger (instrument-tool-usage.js, when switched on) records every
 // Skill row under the session id, so it answers first; the whole-session transcript scan answers otherwise. A skill
 // the user TYPED writes no Skill call, only the harness's `<command-name>` row, and it is as much a run of that
@@ -675,16 +717,25 @@ function judgeReceipt(body, opts) {
         : 'commit verb left standing (commit, land, or a publish that takes the commit with it)';
       r.problem = authorized.length > CONSENT_QUOTE_CAP
         ? `the authorized: quote runs past ${CONSENT_QUOTE_CAP} characters - a consent is the user's own answer, quoted; this is no answer`
-        : `the authorized: quote (${JSON.stringify(authorized).slice(0, 60)}) carries no ${verbs} - a negation, a stop, a deferral or 'myself' in its clause refuses the verb; it records the user saying something, not the user asking for THIS act`;
+        : `the authorized: quote (${JSON.stringify(authorized).slice(0, 60)}) carries no ${verbs} - a negation, a stop, a deferral or 'myself' in its clause refuses the verb; it records the user saying something, not the user asking for THIS act${answerHint()}`;
       return r;
     }
     if (isOwnOptionLabel(authorized)) {
-      r.problem = 'the authorized: quote is character-identical to an option label THIS run wrote - that is the model\'s sentence, not the user\'s. Consent given by picking an option is spelled `answered: <the chosen label>` instead';
+      r.problem = `the authorized: quote is character-identical to an option label THIS run wrote - that is the model's sentence, not the user's. Consent given by picking an option is spelled \`answered: <the chosen label>\` instead${answerHint()}`;
       return r;
     }
   } else if (answered) {
     if (!answered.replace(/^option\s+\d+\s*/i, '').replace(/["'“‘”’]/g, '').trim()) {
-      r.problem = 'the answered: line names no option';
+      r.problem = `the answered: line names no option${answerHint()}`;
+      return r;
+    }
+    // The ask must come AFTER a review: a commit ask answered before any review ran consented on 'suite and format pass'
+    // alone, the review then running behind the answer (audit 2026-10-10, session a3d497f8). Judged only when the answer
+    // and a review are both in the transcript; a review that ran before the answer passes, a re-review after it too.
+    const at = answeredAt(answered);
+    const reviews = transcriptScan().reviews.filter((t) => t > 0);
+    if (at && reviews.length && Math.min(...reviews) > at) {
+      r.problem = `the answered: ask (${answered.slice(0, 60)}) was answered before any review ran in this session - the commit ask comes after the review and names anything still owed; ask again now that the review has run`;
       return r;
     }
   } else {
@@ -751,6 +802,46 @@ function judgeReceipt(body, opts) {
     if (!fmtWaived && (!fmt || !/\bclean\b/i.test(fmt))) {
       r.problem = `${fmt ? `format: ${fmt.slice(0, 60)} carries no clean verdict` : 'no format: line'} - a commit receipt records the formatter CHECK run over every staged file, \`format: <the check command> - clean over <N> staged files\` (a project with no formatter: \`format: none configured - clean over <N> staged files\`; the user's own waiver: \`format: skipped - "<their words>"\`)`;
       return r;
+    }
+    // The review's verdict travels with the receipt: two sessions' reviews closed in prose and no Findings field reached
+    // the user (audit 2026-10-10, sessions 349e4825, a3d497f8). `findings: <count by severity | none>`, or the user's
+    // quoted waiver, the format: rule.
+    const fnd = field('findings');
+    const fndQuote = quotedOf(fnd);
+    const fndWaived = fndQuote && (WAIVER_WORDS.test(fndQuote) || WAIVER_WORDS_CYR.test(fndQuote)) && !isOwnOptionLabel(fndQuote);
+    // a findings line that says the review was skipped is a waiver, and a waiver is the user's quoted words
+    if (!fndWaived && (!(fnd && fnd.replace(/[-:\s]/g, '')) || /\b(?:skip(?:s|ped)?|waived?|not\s+run)\b/i.test(fnd))) {
+      r.problem = `${fnd && fnd.replace(/[-:\s]/g, '') ? `findings: ${fnd.slice(0, 60)} skips the review with no quoted waiver` : 'no findings: line'} - a commit receipt carries the review's Findings field, copied: \`findings: <a count by severity, or none>\` (the user's own waiver: \`findings: skipped - "<their words>"\`)`;
+      return r;
+    }
+    // The security half covers what the commit takes in: a receipt claimed a review over the full 11-file diff while the
+    // security diff read 4 (audit 2026-10-10, session 390aebcb). `security: ... - over <N> files` is held to the set.
+    const secOver = /\bover\s+(\d+)\s*files?\b/i.exec(field('security') || '');
+    if (secOver) {
+      let actual = 0;
+      try { actual = commitSet().count; } catch { actual = 0; }
+      if (actual && Number(secOver[1]) < actual) {
+        r.problem = `security: covered ${secOver[1]} file(s) but this commit takes in ${actual} - the security half reads the FULL change set, untracked files included`;
+        return r;
+      }
+    }
+    // A staged file changed AFTER the receipt was written: the review never saw that version - a fix delta committed
+    // under the review it was meant to get again (audit 2026-10-10, session f450ea64). The receipt's own write time is
+    // the review's latest moment; 2s of clock slack.
+    if (opts.receiptMtimeMs) {
+      const later = [];
+      try {
+        const set = commitSet();
+        for (const f of [...set.tracked.keys(), ...set.untracked]) {
+          let m = 0;
+          try { m = fs.statSync(path.resolve(set.top || gitTop || root, f)).mtimeMs; } catch { continue; }
+          if (m > opts.receiptMtimeMs + 2000) later.push(f);
+        }
+      } catch { /* unreadable: nothing judged */ }
+      if (later.length) {
+        r.problem = `${later.slice(0, 3).join(', ')}${later.length > 3 ? ` and ${later.length - 3} more` : ''} changed after this receipt was written - the review never saw that version; review the delta again (the same reviewer) and rewrite the receipt`;
+        return r;
+      }
     }
   }
   // The probe's SCOPE (push only - opts.touchedProjects is set only for PUSH-GATE): a receipt
@@ -1490,6 +1581,7 @@ process.stderr.write(
     `  spec: <N files - the set the review covered>\n` +
     `  live-probe: <what you actually ran, or NOT RUN - <reason>>\n` +
     `  format: <the formatter CHECK command run over the staged files> - clean over <N> staged files\n` +
+    `  findings: <the review's Findings field - a count by severity, or none>\n` +
     `The VERIFIED line proves the review ran; the authorized line proves the user asked for the\n` +
     `commit, and its quote must carry a commit verb and must not be an option label this run\n` +
     `wrote (measured: a self-written VERIFIED receipt passed this gate on a commit no user\n` +

@@ -58,7 +58,8 @@ function pushRepo() {
   return { dir, git };
 }
 // The commit receipt's formatter line (audit 2026-10-10 C18): every COMMIT-GATE fixture carries it.
-const FMT = 'format: npx prettier --check - clean over 3 staged files';
+const FMT_LINE = 'format: npx prettier --check - clean over 3 staged files';
+const FMT = `${FMT_LINE}\nfindings: none`;
 const headOf = (dir) => spawnSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
 
 // The conformant PUSH-GATE body, and the pieces each case overrides.
@@ -1043,7 +1044,8 @@ const commitReceipt = (head, over = {}) => [
   `head: ${head}`,
   over.spec || 'spec: 3 files',
   'live-probe: NOT RUN - fixture',
-  over.format === null ? null : (over.format || FMT),
+  over.format === null ? null : (over.format || FMT_LINE),
+  over.findings === null ? null : (over.findings || 'findings: none'),
 ].filter((l) => l != null).join('\n') + '\n';
 const gateWith = (dir, command, extra = {}, env = {}) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command }, ...extra }, {
   env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ...env }, cwd: dir,
@@ -1160,4 +1162,84 @@ test('audit 2026-10-10 C17: the scope survey never resets an index holding stage
   assert.match(r.stderr, /git diff HEAD --stat; git ls-files --others --exclude-standard/, 'names the index-free survey');
   assert.equal(gateIn(dir, 'git add -N . && git diff HEAD --stat; git reset -q -- b.txt'), 0, 'a reset of named paths leaves the rest staged');
   assert.equal(gateIn(dir, 'git diff HEAD --stat; git ls-files --others --exclude-standard'), 0, 'the index-free survey');
+});
+
+// ---------------------------------------------------------------------------------------------
+// audit 2026-10-10 (T4 cross-track: C30, C17, C18): the receipt's findings: line, its security count, a review older than
+// the staged files, an ask answered before the review, and the denial naming the picked option
+// ---------------------------------------------------------------------------------------------
+test('audit 2026-10-10 C30: a commit receipt carries the review\'s findings: line', () => {
+  const dir = scratchRepo();
+  const head = headOf(dir);
+  const at = (findings) => { writeReceipt(dir, 'COMMIT-GATE', commitReceipt(head, { first: 'VERIFIED the checkpoint', findings })); return gateFull(dir, 'git commit -am x'); };
+  const none = at(null);
+  assert.equal(none.status, 2, 'no findings: line');
+  assert.match(none.stderr, /no findings: line - a commit receipt carries the review's Findings field/);
+  assert.equal(at('findings:').status, 2, 'an empty findings: line');
+  assert.equal(at('findings: none').status, 0);
+  assert.equal(at('findings: 0 BLOCKER, 0 MATERIAL, 2 MINOR').status, 0, 'a count by severity');
+  assert.equal(at('findings: skipped - "skip the review, just commit"').status, 0, 'the user\'s quoted waiver');
+  assert.equal(at('findings: skipped - "what time is it?"').status, 2, 'a quote that waives nothing');
+  assert.equal(at('findings: none\nreviewer-note: an unknown line').status, 0, 'an unknown line is never refused');
+});
+
+test('audit 2026-10-10 C18: security: over <N> files is held to what the commit takes in', () => {
+  const dir = scratchRepo();
+  const head = headOf(dir);
+  const at = (sec) => {
+    writeReceipt(dir, 'COMMIT-GATE', commitReceipt(head, { first: 'VERIFIED the checkpoint and the security review', spec: `spec: 3 files\n${sec}` }));
+    return gateFull(dir, 'git add -A && git commit -m x');
+  };
+  const short = at('security: auth ok, secrets ok - over 1 files');
+  assert.equal(short.status, 2, 'the security half read 1 of 3 files');
+  assert.match(short.stderr, /security: covered 1 file\(s\) but this commit takes in 3/);
+  assert.equal(at('security: auth ok, secrets ok - over 3 files').status, 0);
+  assert.equal(at('security: auth ok, secrets ok').status, 0, 'no count: not compared');
+});
+
+test('audit 2026-10-10 C17: a receipt written before a staged file last changed does not cover it', () => {
+  const dir = scratchRepo();
+  const head = headOf(dir);
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(head, { first: 'VERIFIED the checkpoint' }));
+  const receipt = path.join(dir, '.alfred', 'docs', 'flow', 'COMMIT-GATE');
+  const past = new Date(Date.now() - 60 * 1000);
+  fs.utimesSync(receipt, past, past);
+  const r = gateFull(dir, 'git commit -am x');
+  assert.equal(r.status, 2, 'a.txt changed after the receipt');
+  assert.match(r.stderr, /a\.txt changed after this receipt was written - the review never saw that version/);
+  fs.utimesSync(receipt, new Date(), new Date());
+  assert.equal(gateIn(dir, 'git commit -am x'), 0, 'a receipt written after the last edit');
+  // inside the clock slack
+  const now = Date.now();
+  fs.utimesSync(receipt, new Date(now - 1000), new Date(now - 1000));
+  fs.utimesSync(path.join(dir, 'a.txt'), new Date(now), new Date(now));
+  assert.equal(gateIn(dir, 'git commit -am x'), 0, 'one second apart is within the 2s slack');
+});
+
+test('audit 2026-10-10 C17: an answered: ask that came before every review is no consent to the reviewed commit', () => {
+  const dir = scratchRepo();
+  const answer = (ts) => ({ type: 'user', timestamp: ts, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'Your questions have been answered' }] }, toolUseResult: { answers: { 'Commit the fix now?': 'Commit (Recommended)' } } });
+  const review = (ts) => ({ type: 'assistant', timestamp: ts, message: { content: [{ type: 'tool_use', id: 's1', name: 'Skill', input: { skill: 'task-verify-code' } }] } });
+  const early = writeTranscript(dir, 'ask-first', [answer('2026-10-10T09:17:02Z'), review('2026-10-10T09:25:41Z')]);
+  const late = writeTranscript(dir, 'review-first', [review('2026-10-10T09:10:00Z'), answer('2026-10-10T09:17:02Z')]);
+  const seat = writeTranscript(dir, 'seat-first', [{ type: 'assistant', timestamp: '2026-10-10T09:10:00Z', message: { content: [{ type: 'tool_use', id: 'a1', name: 'Agent', input: { subagent_type: 'alfred-code:aspnet-verifier', prompt: 'x' } }] } }, answer('2026-10-10T09:17:02Z')]);
+  const noReview = writeTranscript(dir, 'no-review', [answer('2026-10-10T09:17:02Z')]);
+  writeReceipt(dir, 'COMMIT-GATE', commitReceipt(headOf(dir), { first: 'VERIFIED the checkpoint', auth: 'answered: Commit (Recommended)' }));
+  const r = gateWith(dir, 'git commit -am x', { transcript_path: early });
+  assert.equal(r.status, 2, 'the ask was answered before the review ran (a3d497f8)');
+  assert.match(r.stderr, /was answered before any review ran in this session/);
+  assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: late }).status, 0, 'review, then the ask');
+  assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: seat }).status, 0, 'a verifier seat counts as the review');
+  assert.equal(gateWith(dir, 'git commit -am x', { transcript_path: noReview }).status, 0, 'no review in the transcript: not judged');
+});
+
+test('audit 2026-10-10 C17: a refused consent quote names the option the user picked', () => {
+  const { dir, git } = pushRepo();
+  fs.writeFileSync(path.join(dir, 'b.txt'), forty()); git('add', '-A'); git('commit', '-qm', 'b');
+  // the transcript first: a PUSH-GATE written before the session began is absent
+  const tp = writeTranscript(dir, 'picked', [{ type: 'user', timestamp: '2026-10-10T14:52:00Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'u1', content: 'answered' }] }, toolUseResult: { answers: { 'Publish now?': 'Publish (Recommended)' } } }]);
+  writeReceipt(dir, 'PUSH-GATE', pushReceipt(headOf(dir), { auth: 'authorized: "commit and oush to develop"' }));
+  const r = gateWith(dir, 'git push', { transcript_path: tp });
+  assert.equal(r.status, 2, 'a typo carries no publish verb (bda299a8)');
+  assert.match(r.stderr, /this session's latest ask was answered "Publish \(Recommended\)"; a picked option is written `answered: Publish \(Recommended\)`/);
 });

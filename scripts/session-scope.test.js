@@ -151,7 +151,7 @@ test('the receipt\'s spec count and the trivial-diff bar leave the pre-existing 
         p.start('s7');
         p.write('src/a.cs', forty);
         const head = p.git('rev-parse', 'HEAD').stdout.trim();
-        p.flow('COMMIT-GATE', ['VERIFIED the rounding fix', 'authorized: "commit it"', `head: ${head}`, 'spec: 1 file - src/a.cs', 'live-probe: NOT RUN - test', 'format: npx prettier --check - clean over 1 staged file'].join('\n') + '\n');
+        p.flow('COMMIT-GATE', ['VERIFIED the rounding fix', 'authorized: "commit it"', `head: ${head}`, 'spec: 1 file - src/a.cs', 'live-probe: NOT RUN - test', 'format: npx prettier --check - clean over 1 staged file', 'findings: none'].join('\n') + '\n');
         // 2.1.6 H2: the count is what the commit takes in, so the sweep that takes the harness files in is the case -
         // the user allowed it, and they still are not the change
         p.flow('UNTRACKED-ALLOW', '*\n');
@@ -293,7 +293,7 @@ test('the cumulative bar ignores a start the branch no longer holds, and a commi
 // already reviewed, and ones a pull brought in - so a typo after a reviewed feature, or a one-liner after a pull,
 // needed a full receipt. The bar now sums only the commits the guard itself let through as trivial this session (its
 // ledger, <docs-path>/flow/trivial-<session>), plus this commit.
-const receiptFor = (p, files) => p.flow('COMMIT-GATE', ['VERIFIED the feature', 'authorized: "commit it"', `head: ${p.head()}`, `spec: ${files} files`, 'live-probe: NOT RUN - fixture', 'format: npx prettier --check - clean over the staged files'].join('\n') + '\n');
+const receiptFor = (p, files) => p.flow('COMMIT-GATE', ['VERIFIED the feature', 'authorized: "commit it"', `head: ${p.head()}`, `spec: ${files} files`, 'live-probe: NOT RUN - fixture', 'format: npx prettier --check - clean over the staged files', 'findings: none'].join('\n') + '\n');
 test('N1: a typo after a reviewed feature is trivial - a receipt-covered commit adds nothing to the bar', () => {
     const p = project();
     try {
