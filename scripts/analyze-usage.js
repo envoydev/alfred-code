@@ -173,13 +173,20 @@ const BUILD_DIR_RE = /(?:^|[\/\\])(?:node_modules|bin|obj|dist|coverage|TestResu
 // The first file a dump verb names - the same read routed through the shell.
 // The shell route: Bash, PowerShell and Monitor (shell-writes.js SHELL_TOOLS - Monitor runs its command under Bash's rules; 2.1.5 final review R8).
 const isShellTool = (name) => name === 'Bash' || name === 'PowerShell' || name === 'Monitor';
+// A pipe's `| tail -40` or `| head -n +5` names no file: the option itself was taken as the path, and one compaction
+// re-read row printed '7 file(s)' for 1 (audit 2026-10-10, 516e653d: `-30`, `-20`, `-40` keyed as files). An option
+// value may be signed, and a capture that is still an option is no target - the next reading verb is tried.
 function shellReadTarget(cmd) {
-  const m = /(?:^|[;&|(]\s*)(?:cat|head|tail|less|more|bat)\s+(?:-[\w-]+(?:\s+\d+)?\s+)*["']?([^\s"'|;&<>)]+)/.exec(cmd)
-    || /(?:^|[;&|(]\s*)sed\s+-n\s+(?:-e\s+)?["']?[\d,$p;]+["']?\s+["']?([^\s"'|;&<>)]+)/.exec(cmd);
-  if (!m) return null;
-  const p = m[1];
-  if (p.includes('$') || /[*?\[]/.test(p) || p === '-') return null;
-  return p;
+  const res = [/(?:^|[;&|(]\s*)(?:cat|head|tail|less|more|bat)\s+(?:-[\w-]+(?:\s+[+-]?\d+)?\s+)*["']?([^\s"'|;&<>)]+)/g,
+    /(?:^|[;&|(]\s*)sed\s+-n\s+(?:-e\s+)?["']?[\d,$p;]+["']?\s+["']?([^\s"'|;&<>)]+)/g];
+  for (const re of res) {
+    for (const m of String(cmd).matchAll(re)) {
+      const p = m[1];
+      if (/^[-+]/.test(p) || p.includes('$') || /[*?\[]/.test(p)) continue;
+      return p;
+    }
+  }
+  return null;
 }
 // A CHECK is something that returns a pass/fail the session can read: a test run, a build, a lint,
 // a CI status read. A test run is SCOPED when it names one project, one file, one filter.
@@ -2145,9 +2152,12 @@ async function analyzeTranscript(file, window) {
           if (readTarget) {
             info.readTarget = readTarget;
             if (BUILD_DIR_RE.test(readTarget)) info.buildDir = true;
+            // One file, one key: a relative shell read and an absolute Read of it are the same file (516e653d keyed
+            // OrderCompletionHandler.cs twice), resolved against the call's own cwd.
+            const key = resolveAt(typeof o.cwd === 'string' && o.cwd ? String(o.cwd).replace(/\\/g, '/') : null, readTarget) || readTarget;
             const cur = s.efficiency.compactionRereads[s.efficiency.compactionRereads.length - 1];
-            if (cur && cur.before.has(readTarget) && !cur.seen.has(readTarget)) { cur.seen.add(readTarget); info.reread = true; }
-            readPaths.add(readTarget);
+            if (cur && cur.before.has(key) && !cur.seen.has(key)) { cur.seen.add(key); info.reread = true; }
+            readPaths.add(key);
           }
           // A copied fork prefix is the parent's navigation, counted in the parent's transcript.
           if (!foreign) {

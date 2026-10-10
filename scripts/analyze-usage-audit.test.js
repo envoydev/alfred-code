@@ -359,6 +359,27 @@ test('C07: --check-report fails a TOKEN VERDICT that states no avoidable <N> of 
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// C07 (516e653d): the compaction re-read row counted 7 files for 1 - a pipe's `| tail -40` keyed `-40` as a file, and
+// a relative shell read and an absolute Read of one file keyed apart.
+test('C07: a pipe option is no read target, and one file read by two spellings is one re-read', () => {
+  const dir = tmp();
+  try {
+    const cwd = '/work/app';
+    const at = (row) => ({ ...row, cwd });
+    const rows = [
+      at(asst('m1', T(0), [tool('r1', 'Read', { file_path: '/work/app/src/Handler.cs' }), sh('s1', 'grep -n Foo src/x.cs | tail -40'), sh('s2', 'ls -la | head -n +5')])),
+      res(T(1), 'r1', 'a'.repeat(400)), res(T(1), 's1', 'x'), res(T(1), 's2', 'y'),
+      { type: 'system', timestamp: T(2), compactMetadata: { trigger: 'auto' } },
+      { type: 'user', timestamp: T(2), isCompactSummary: true, message: { content: 'summary' } },
+      at(asst('m2', T(3), [sh('s3', 'sed -n 1,40p src/Handler.cs'), sh('s4', 'grep -n Bar src/y.cs | tail -20'), sh('s5', 'npm test 2>&1 | tail -30')])),
+      res(T(4), 's3', 'b'.repeat(300)), res(T(4), 's4', 'z'), res(T(4), 's5', 'ok'),
+    ];
+    const { main } = run([write(dir, rows)]);
+    assert.deepStrictEqual(main.efficiency.compactionRereads.map((c) => [c.files, c.chars]), [[1, 300]], 'Handler.cs once, by its relative spelling; no `-N` option is a file');
+    assert.ok(!Object.keys(main.fileTouches).some((k) => /^[-+]\d/.test(k)), `no option keyed as a file: ${Object.keys(main.fileTouches)}`);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // C05: a commit that opens its own line of a multi-line call (390aebcb, 49cb4b82, f6c591fa: 'git commits 0' over a
 // receipted commit). A heredoc message naming the commit verb still counts nothing.
 test('C05: a git commit or gh pr merge on a later line of a multi-line call counts; a heredoc body never does', () => {
