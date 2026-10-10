@@ -12,6 +12,8 @@ const os = require('node:os');
 const path = require('node:path');
 
 const SCRIPT = process.env.ANALYZE_USAGE_SCRIPT || path.join(__dirname, 'analyze-usage.js');
+// C07 spawns the instrumentation hook: the suite takes the containment helper every hook suite carries.
+require('./hook-test-env').isolateHookSuite();
 
 const line = (o) => JSON.stringify(o) + '\n';
 const usage = (input, cc, cr, out) => ({ input_tokens: input, cache_creation_input_tokens: cc, cache_read_input_tokens: cr, output_tokens: out });
@@ -263,6 +265,54 @@ test('C06: scoped and pre-rename roster names join their uses, preloads follow t
     const out = text([file]);
     assert.match(out, /standing inventory ~30\.0k tok\/msg/);
     assert.match(out, /of which ~5\.0k is the session's own first prompt .* the install's floor is ~25\.0k/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C07: the tool ledger. A row gains the call's own `tool_use_id` (and the subagent's `agent_id`) - added fields only,
+// every existing one unchanged - and the analyzer joins by that id first, then tool + time, then the detail a row names
+// between its call and the call's result. Old rows (no id) still join. The calls of one batched message run after it
+// finishes streaming: 31 of one session's calls read UNJOINED beside their own rows (bc2fa83e).
+test('C07: the ledger row carries tool_use_id and agent_id, and the join reads id, then time, then detail', () => {
+  const dir = tmp();
+  try {
+    const hook = path.join(__dirname, '..', 'stack', 'hooks', 'instrument-tool-usage.js');
+    const log = path.join(dir, 'ledger-hook.jsonl');
+    const env = { ...process.env, ALFRED_CODE_INSTRUMENT: '1', ALFRED_CODE_INSTRUMENT_LOG: log };
+    const fire = (payload) => require('node:child_process').spawnSync(process.execPath, [hook], { input: JSON.stringify(payload), encoding: 'utf8', env }).status;
+    assert.strictEqual(fire({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1', cwd: '/x', tool_use_id: 'toolu_1', agent_id: 'ag1' }), 0);
+    assert.strictEqual(fire({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1' }), 0);
+    const hrows = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepStrictEqual(Object.keys(hrows[0]), ['ts', 'session', 'tool', 'detail', 'cwd', 'tool_use_id', 'agent_id'], 'the five pinned fields first, unchanged, then the two added');
+    assert.deepStrictEqual([hrows[0].tool_use_id, hrows[0].agent_id, hrows[0].detail], ['toolu_1', 'ag1', 'c.ts']);
+    assert.deepStrictEqual([hrows[1].tool_use_id, hrows[1].agent_id], [null, null], 'a payload without them writes null');
+
+    // one batched message: three Edits streamed at T(0), run 8-9s later; a Bash call 1.0s late with its description
+    const ms = (sec, frac) => `2026-07-15T07:00:${String(sec).padStart(2, '0')}.${frac}Z`;
+    const rows = [
+      asst('m1', ms(0, '100'), [tool('e1', 'Edit', { file_path: '/p/a.ts', old_string: 'a', new_string: 'b' }), tool('e2', 'Edit', { file_path: '/p/b.ts', old_string: 'a', new_string: 'b' }), tool('e3', 'Edit', { file_path: '/p/c.ts', old_string: 'a', new_string: 'b' })]),
+      res(ms(9, '500'), 'e1', 'ok'), res(ms(9, '600'), 'e2', 'ok'), res(ms(9, '700'), 'e3', 'ok'),
+      asst('m2', ms(20, '000'), [sh('b1', 'ls docs', { description: 'Check for legacy rule files' })]),
+      res(ms(21, '500'), 'b1', 'x'),
+      asst('m3', ms(30, '000'), [sh('b2', 'git status', { description: 'Show status' })]),
+      res(ms(30, '600'), 'b2', 'x'),
+      asst('m4', ms(40, '000'), [tool('g1', 'Grep', { pattern: 'needle' })]),
+      res(ms(40, '300'), 'g1', 'x'),
+    ];
+    const file = write(dir, rows);
+    const ledger = path.join(dir, 'tools-usage.jsonl');
+    fs.writeFileSync(ledger, [
+      { ts: ms(8, '200'), session: 's', tool: 'Edit', detail: 'a.ts', cwd: '/p', tool_use_id: 'e1', agent_id: null },   // new row: by id
+      { ts: ms(8, '900'), session: 's', tool: 'Edit', detail: 'b.ts', cwd: '/p', tool_use_id: 'e2', agent_id: null },
+      { ts: ms(9, '100'), session: 's', tool: 'Edit', detail: 'c.ts', cwd: '/p' },                                       // old row, 9s late: by detail
+      { ts: ms(21, '100'), session: 's', tool: 'Bash', detail: 'Check for legacy rule files', cwd: '/p' },               // old row, 1.0s late: by detail
+      { ts: ms(30, '200'), session: 's', tool: 'Bash', detail: 'Show status', cwd: '/p' },                               // old row, close: by time
+      { ts: ms(41, '900'), session: 's', tool: 'Grep', detail: 'other', cwd: '/p' },                                     // names another call: orphan
+    ].map(line).join(''));
+    const cov = run([file, '--hook-log', ledger]).hookLog.coverage;
+    assert.deepStrictEqual([cov.matchedById, cov.matchedByTime, cov.matchedByDetail, cov.matchedCalls], [2, 1, 2, 5]);
+    assert.deepStrictEqual(cov.unmatchedCalls.map((c) => c.tool), ['Grep'], 'a row naming another detail past the result stays apart');
+    assert.strictEqual(cov.unmatchedRowCount, 1);
+    assert.match(text([file, '--hook-log', ledger]), /joined: 5 call\(s\) - 2 by tool_use_id, 1 by tool \+ timestamp within 750ms, 2 by detail/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

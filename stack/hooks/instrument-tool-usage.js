@@ -106,6 +106,12 @@ process.stdin.on('end', () => {
       // the skill slug, a seat type or a basename can carry a token as well, so every detail is masked once more
       detail: detail == null ? null : hint(detail, 200),
       cwd: ev.cwd || null,
+      // ADDED fields only (the row's pinned contract): the call's own id, so a reader joins a row to its call instead of
+      // guessing by tool and time - a batched message runs its calls after it finishes streaming, 0.8-12s past their
+      // timestamps (audit 2026-10-10 C07: 31 calls of one session read UNJOINED beside their own 30 rows) - and the
+      // subagent the call ran in, null in the main session.
+      tool_use_id: ev.tool_use_id || null,
+      agent_id: ev.agent_id || null,
     };
     const dir = process.env.CLAUDE_PROJECT_DIR || ev.cwd || '.';
     // one ledger per session/agent id - the filename matches the transcript's id for the --hook-log join

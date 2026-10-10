@@ -1800,16 +1800,17 @@ test('hook join: two ledger rows equally close to one call leave it UNJOINED, ne
   const file = fixture(dir, [bash('t1', 'echo one'), result('t1')]);
   const ledger = path.join(dir, 'tools-usage.jsonl');
   fs.writeFileSync(ledger, [
-    line({ ts: '2026-07-15T06:59:59.900Z', tool: 'Bash', detail: 'a' }),
-    line({ ts: '2026-07-15T07:00:00.100Z', tool: 'Bash', detail: 'b' }),
+    // both rows name the call's own detail (`echo one`, the verb fallback), so neither time nor detail tells them apart
+    line({ ts: '2026-07-15T06:59:59.900Z', tool: 'Bash', detail: 'echo one' }),
+    line({ ts: '2026-07-15T07:00:00.100Z', tool: 'Bash', detail: 'echo one' }),
   ].join(''));
   const cov = run([file, '--hook-log', ledger]).hookLog.coverage;
-  assert.strictEqual(cov.matchedCalls, 0, 'the ledger carries no tool_use_id, so neither row wins');
+  assert.strictEqual(cov.matchedCalls, 0, 'the rows carry no tool_use_id, so neither row wins');
   assert.strictEqual(cov.ambiguousCalls, 1);
   assert.strictEqual(cov.unmatchedCalls[0].ambiguous, true);
   const md = execFileSync('node', [SCRIPT, file, '--hook-log', ledger, '--report-md'], { encoding: 'utf8' });
   assert.match(md, /UNJOINED/);
-  assert.match(md, /no `tool_use_id`/);
+  assert.match(md, /no row carrying its `tool_use_id`/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
