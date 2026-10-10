@@ -407,3 +407,114 @@ test('guard-cross-project-write: an allowance for a tree not created yet resolve
   assert.equal(write(path.join(base, 'Not', 'Yet', 'b.ts')), 0, 'spelled through the link or not');
   assert.equal(write(path.join(base, 'Other', 'c.ts')), 2, 'and a sibling of the allowed tree is still outside');
 });
+
+// ---------------------------------------------------------------------------------------------
+// audit 2026-10-10 C11: the range cap is one rule per actor and file version on both routes
+// ---------------------------------------------------------------------------------------------
+const linesOf = (n, ext = 'ts') => Array.from({ length: n }, (_, i) => (ext === 'html' ? `<div>${i}</div>` : `const v${i} = ${i};`)).join('\n') + '\n';
+const capDir = () => fs.mkdtempSync(path.join(TMP, 'cap-'));
+const readAt = (file, offset, limit, session_id, agent_id) => run(READ, { tool_name: 'Read', tool_input: { file_path: file, offset, limit }, session_id, ...(agent_id ? { agent_id } : {}) }, { cwd: path.dirname(file) });
+const shellAt = (dir, command, session_id, agent_id) => run(READ, { tool_name: 'Bash', tool_input: { command }, session_id, cwd: dir, ...(agent_id ? { agent_id } : {}) }, { cwd: dir });
+
+test('audit 2026-10-10 C11: a seat\'s ranges are its own - the parent\'s rows never block its first read', () => {
+  const dir = capDir(); const f = path.join(dir, 'InviteHandlers.ts'); fs.writeFileSync(f, linesOf(369));
+  const s = sid();
+  assert.equal(readAt(f, 1, 130, s).status, 0, 'the main session reads 35%');
+  assert.equal(readAt(f, 150, 190, s, 'aced94b8').status, 0, 'the seat\'s first read, 51% alone, passes (3ce6b036 was blocked at 87%)');
+  assert.equal(readAt(f, 1, 60, s, 'aced94b8').status, 2, 'the seat\'s OWN second range past 60% still blocks');
+  assert.equal(readAt(f, 200, 100, s).status, 2, 'and the main session\'s own past 60% too');
+});
+
+test('audit 2026-10-10 C11: rows read before an edit do not count against the edited file', () => {
+  const dir = capDir(); const f = path.join(dir, 'projects-list.page.ts'); fs.writeFileSync(f, linesOf(734));
+  const s = sid();
+  for (const [o, l] of [[1, 100], [101, 100], [681, 21]]) assert.equal(readAt(f, o, l, s).status, 0, `range ${o}+${l} of the 734-line version`);
+  fs.writeFileSync(f, linesOf(395)); const t = Date.now() / 1000 + 5; fs.utimesSync(f, t, t);
+  assert.equal(readAt(f, 301, 60, s).status, 0, 'a 15% read of the edited 395-line file is not blocked by the old version\'s rows (e499fc94)');
+  assert.equal(readAt(f, 1, 200, s).status, 2, 'the new version\'s own rows still reach the cap');
+});
+
+test('audit 2026-10-10 C11: shell spans join the Read tool\'s range cap', () => {
+  const dir = capDir(); const f = path.join(dir, 'server-messages.ts'); fs.writeFileSync(f, linesOf(326));
+  const s = sid();
+  assert.equal(readAt(f, 1, 98, s).status, 0, 'Read 1-98 (30%)');
+  assert.equal(readAt(f, 130, 197, s).status, 2, 'Read 130-326 blocked (90%)');
+  assert.equal(shellAt(dir, 'sed -n 99,250p server-messages.ts', s).status, 2, 'the sed span of the same file now blocks too: 77% (c5000cb1)');
+  assert.equal(shellAt(dir, "awk 'NR>=110 && NR<=245' server-messages.ts", s).status, 2, 'and an awk NR span (c6142301)');
+  assert.equal(shellAt(dir, 'tail -n 150 server-messages.ts', s).status, 2, 'and a tail');
+  assert.equal(shellAt(dir, 'sed -n 99,120p server-messages.ts | grep -n foo', s).status, 0, 'a span into a filter prints nothing whole');
+  assert.equal(shellAt(dir, 'sed -n 99,120p server-messages.ts', s).status, 0, 'a span inside the cap passes (37%)');
+  // a fresh session reading through the shell alone hits the same cap
+  const s2 = sid();
+  assert.equal(shellAt(dir, 'sed -n 1,150p server-messages.ts', s2).status, 0, 'sed 1-150 (46%)');
+  const second = shellAt(dir, 'sed -n 151,260p server-messages.ts', s2);
+  assert.equal(second.status, 2, 'sed 151-260 makes 80%');
+  assert.match(second.stderr, /at most 60%/, 'the denial states the cap');
+});
+
+test('audit 2026-10-10 C11: a markup template\'s denial names grep, never the symbol overview', () => {
+  const dir = capDir(); const f = path.join(dir, 'project-detail.page.html'); fs.writeFileSync(f, linesOf(326, 'html'));
+  const r = readAt(f, undefined, undefined, sid());
+  assert.equal(r.status, 2, 'the whole read still blocks');
+  assert.match(r.stderr, /grep -n/, 'the remedy is grep then a range');
+  assert.doesNotMatch(r.stderr, /get_symbols_overview/, 'no navigation call that cannot index markup (81264f0d)');
+  assert.match(r.stderr, /at most 60%/, 'the whole-file denial states the cap, never halves (7491ab75)');
+  assert.doesNotMatch(r.stderr, /HALF the file/);
+});
+
+test('audit 2026-10-10 C11: an inverted grep prints the file minus its matches - judged like cat', () => {
+  const dir = capDir(); fs.writeFileSync(path.join(dir, 'order-detail.page.ts'), linesOf(235)); fs.writeFileSync(path.join(dir, 'small.ts'), linesOf(50));
+  assert.equal(shellAt(dir, 'grep -v "^import" order-detail.page.ts', sid()).status, 2, 'grep -v over a 235-line source (0498718d)');
+  assert.equal(shellAt(dir, 'cat order-detail.page.ts | grep -v "^import"', sid()).status, 2, 'and a cat piped into one');
+  assert.equal(shellAt(dir, 'grep -vc "^import" order-detail.page.ts', sid()).status, 0, 'a count prints none of it');
+  assert.equal(shellAt(dir, 'grep -v "^import" small.ts', sid()).status, 0, 'a small file is under the threshold');
+  assert.equal(shellAt(dir, 'grep -n "^import" order-detail.page.ts', sid()).status, 0, 'a plain grep prints its matches only');
+});
+
+test('audit 2026-10-10 C11: a loop over a few small literal files is sized per file, not called a sweep', () => {
+  const dir = capDir(); const sub = path.join(dir, 'Notifications'); fs.mkdirSync(sub);
+  for (const n of ['A', 'B', 'C', 'D']) fs.writeFileSync(path.join(sub, `${n}.cs`), linesOf(40));
+  const cards = path.join(dir, 'cards'); fs.mkdirSync(cards);
+  fs.writeFileSync(path.join(cards, 'one.md'), '# one\n' + 'text\n'.repeat(40)); fs.writeFileSync(path.join(cards, 'two.md'), '# two\n' + 'text\n'.repeat(40));
+  assert.equal(shellAt(dir, 'for f in Notifications/*.cs; do echo "== $f"; cat "$f"; done', sid()).status, 0, 'four 40-line files, 160 lines in all (49cb4b82)');
+  assert.equal(shellAt(dir, 'for f in cards/one.md cards/two.md; do cat "$f"; done', sid()).status, 0, 'two named task cards (fbfc2de4)');
+  fs.writeFileSync(path.join(sub, 'E.cs'), linesOf(120));
+  assert.equal(shellAt(dir, 'for f in Notifications/*.cs; do cat "$f"; done', sid()).status, 2, 'past THRESHOLD lines in all it is the sweep');
+  assert.equal(shellAt(dir, 'for f in src/**/*.cs; do cat "$f"; done', sid()).status, 2, 'a recursive glob cannot be sized');
+  assert.equal(shellAt(dir, 'for d in Notifications; do cat ${d}/A.cs; done', sid()).status, 2, 'a path built on the variable is not sized per file');
+});
+
+test('audit 2026-10-10 C11: a file the working tree adds completes past the cap; a changed one names its diff', () => {
+  const dir = capDir();
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  git('init', '-q'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 't');
+  fs.writeFileSync(path.join(dir, 'Old.cs'), linesOf(300)); git('add', '-A'); git('commit', '-qm', 'seed');
+  fs.writeFileSync(path.join(dir, 'AdminPlanLimitsTests.cs'), linesOf(251));
+  const s = sid();
+  assert.equal(readAt(path.join(dir, 'AdminPlanLimitsTests.cs'), 1, 126, s).status, 0, 'first half of a NEW file');
+  assert.equal(readAt(path.join(dir, 'AdminPlanLimitsTests.cs'), 127, 125, s).status, 0, 'its second half - under review whole (05c925e9)');
+  fs.appendFileSync(path.join(dir, 'Old.cs'), 'const changed = 1;\n');
+  assert.equal(readAt(path.join(dir, 'Old.cs'), 1, 150, s).status, 0, 'half of a changed file');
+  const r = readAt(path.join(dir, 'Old.cs'), 151, 151, s);
+  assert.equal(r.status, 2, 'a changed tracked file keeps the cap');
+  assert.match(r.stderr, /git diff HEAD -- 'Old\.cs'|git diff HEAD -- '.*Old\.cs'/, 'and names its diff as the review route');
+});
+
+test('audit 2026-10-10 C11: a plan under the docs root reads whole; a missing relative path prints nothing', () => {
+  const dir = capDir();
+  const plans = path.join(dir, '.alfred', 'docs', 'plans'); fs.mkdirSync(plans, { recursive: true });
+  fs.writeFileSync(path.join(plans, 'plan.md'), '# plan\n' + 'x'.repeat(70 * 1024) + '\n');
+  fs.writeFileSync(path.join(dir, 'notes.md'), '# notes\n' + 'x'.repeat(70 * 1024) + '\n');
+  const envd = { ...process.env, ALFRED_CODE_DOCS_PATH: '.alfred/docs', CLAUDE_PROJECT_DIR: dir };
+  const rd = (p) => run(READ, { tool_name: 'Read', tool_input: { file_path: p }, session_id: sid() }, { cwd: dir, env: envd }).status;
+  assert.equal(rd('.alfred/docs/plans/plan.md'), 0, 'the plan, 70KB, is the seat\'s mandated input');
+  assert.equal(rd('notes.md'), 2, 'any other 70KB file still blocks');
+  assert.equal(shellAt(dir, 'cat -n src/PlanLimits/AdminPlanLimitsEndpoints.cs 2>/dev/null || find src -name x', sid()).status, 0, 'a wrong path has nothing to dump (f24eb967)');
+});
+
+test('audit 2026-10-10 C11/C13: the rule notice reads no redirect inside quotes and no target outside the project', () => {
+  const s = sid();
+  assert.equal(announce(`perl -0pi -e 's/see > <name>.spec.ts/x/' notes.md`, s), '', 'a > inside the perl script is text (f10cb06a)');
+  assert.equal(announce(`cat > ${path.join(TMP, 'scratch', 'emitter.mjs')} <<'EOF'\nx\nEOF`, sid()), '', 'a scratch file outside the project (8f44a003)');
+  assert.match(announce('printf x > src/app/tool.mjs', sid()), /javascript-conventions\.md/, 'an in-project write still announces');
+});

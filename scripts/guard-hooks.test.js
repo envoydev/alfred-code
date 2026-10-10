@@ -489,7 +489,12 @@ test('guard-read-whole-file: runtime dumps, file redirects, multi-file cats and 
   assert.equal(bash('guard-read-whole-file.js', `cat ${BIG} 2>&1`), 2, 'an fd redirect still prints');
   assert.equal(bash('guard-read-whole-file.js', `cat ${SMALL} ${BIG}`), 2, 'every file of a multi-file cat is sized');
   const rel = (payload, cwd) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', ...payload }, { cwd, env: noRoot }).status;
-  assert.equal(rel({ tool_input: { command: 'cat scripts/lint-skills.js' } }, TMP), 2, 'a relative path that resolves nowhere fails CLOSED');
+  // audit 2026-10-10 C11: nothing at any anchor is nothing to dump (a wrong path, a file the command creates first) - only
+  // a cd the guard cannot follow leaves the anchor unknown, and that still fails CLOSED
+  assert.equal(rel({ tool_input: { command: 'cat scripts/lint-skills.js' } }, TMP), 0, 'a relative path with no file at any anchor prints nothing');
+  const unknown = runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command: 'cd "$X" && cat scripts/lint-skills.js' } }, { cwd: TMP, env: noRoot });
+  assert.equal(unknown.status, 2, 'after a cd the guard cannot follow, a relative path that resolves nowhere fails CLOSED');
+  assert.match(unknown.stderr, /no file at .* - and this\n?|no file at /, 'the denial says there is no file at the anchors it tried');
   assert.equal(rel({ tool_input: { command: 'cat scripts/lint-skills.js' }, cwd: REPO }, TMP), 2, 'anchored on the session cwd it is sized - and blocked');
   assert.equal(rel({ tool_input: { command: 'cat stack/hooks/instrument-tool-usage.js' }, cwd: REPO }, TMP), 0, 'anchored and small - passes');
 });
@@ -2541,7 +2546,8 @@ test('guard-read-whole-file: a shell touch names the convention rule the file to
   const blocked = call(`cat ${BIG.replace(/\.js$/, '.js')}`, s2);
   assert.equal(blocked.status, 2, 'a whole-file dump of a large .js file is still blocked');
   assert.equal(ctxOf(blocked), '', 'and announces nothing');
-  assert.match(ctxOf(call(`cp x.js ${BIG}`, s2)), /javascript-conventions\.md/, 'the next allowed write still gets it');
+  // (an in-project target: a write outside the project is governed by no rule of its own - audit 2026-10-10 C13)
+  assert.match(ctxOf(call('cp x.js lib/out.js', s2)), /javascript-conventions\.md/, 'the next allowed write still gets it');
   // The Angular row is the twin of angular-conventions.md's `paths:`, and that rule matches
   // `**/src/app/**/*.ts` because the Angular style guide now recommends suffix-less names. Matching
   // only the .component/.service/... suffixes announced a `src/app/user-profile.ts` write as

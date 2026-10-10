@@ -164,6 +164,48 @@ const resolveLineCount = (raw) => {
   }
   return { lc: 0, resolved: false };
 };
+// The path a possibly-relative target names on disk, anchored the same way, or null when nothing is there.
+const resolvedPath = (raw) => {
+  const p = nativePath(raw);
+  for (const abs of pathMod.isAbsolute(p) ? [p] : anchorDirs.map((d) => pathMod.join(d, p))) if (fs.existsSync(abs)) return abs;
+  return null;
+};
+// Set by the shell matcher when the command cd's somewhere it cannot follow (a variable, `-`): a relative target that
+// resolves nowhere may then sit under that unknown directory.
+let unfollowedCd = false;
+// A loop's `in` list the guard can size: literal paths, and globs in ONE directory (no `**`, no glob in a folder name),
+// with no substitution or variable. True when every file it names together prints no more than one cat the size gate
+// lets through - at most THRESHOLD lines and BIG_BYTES bytes in all - so the loop is no sweep: a loop over four small
+// files, and one over two named task cards, were denied and the next calls cat the same files whole (audit
+// 2026-10-10, sessions 49cb4b82 and fbfc2de4).
+function smallLiteralLoop(list) {
+  if (/[$`(<]/.test(list)) return false;
+  const words = shellWordsOf(list.replace(/[;\s]+$/, "")).filter(Boolean);
+  if (!words.length) return false;
+  const files = [];
+  for (const w of words) {
+    const p = nativePath(w);
+    if (!/[*?[]/.test(p)) { const at = resolvedPath(p); if (at) files.push(at); else if (unfollowedCd) return false; continue; }
+    const dir = pathMod.dirname(p); const base = pathMod.basename(p);
+    if (/[*?[]/.test(dir) || base.includes('**')) return false;
+    const dirAbs = pathMod.isAbsolute(dir) ? dir : anchorDirs.map((d) => pathMod.join(d, dir)).find((d) => fs.existsSync(d));
+    if (!dirAbs) return false; // a folder the guard cannot find cannot be sized
+    const re = new RegExp(`^${base.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]')}$`);
+    let names = [];
+    try { names = fs.readdirSync(dirAbs); } catch { return false; }
+    for (const n of names) if (re.test(n) && !n.startsWith('.')) files.push(pathMod.join(dirAbs, n));
+  }
+  let lines = 0; let bytes = 0;
+  for (const f of files) {
+    let st;
+    try { st = fs.statSync(f); } catch { continue; }
+    if (!st.isFile()) continue;
+    bytes += st.size;
+    lines += lineCountOf(f);
+    if (lines > THRESHOLD || bytes > BIG_BYTES) return false;
+  }
+  return true;
+}
 // The trees the installers seed into the navigation server's OWN `ignored_paths` (its project.yml): the data
 // root (ALFRED_CODE_DATA_PATH, default .alfred - serena's own home, the browser profiles, the docs), `.claude`,
 // and the 2.0.0 `.serena` / `.playwright`. It cannot index them, so naming its tools for a path under one of them
@@ -184,7 +226,13 @@ const underDataRoot = (p) =>
 // the denial itself, where the model is already looking for what to do instead.
 const LOAD_SERENA = `  ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview,mcp__plugin_alfred-navigation_alfred-navigation__find_symbol,mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols\n`
   + `  (a seat whose tools: list names them has them loaded already - call them directly)\n`;
-const serenaHint = (p) => (SERENA_IGNORED.test(String(p)) || underDataRoot(p)
+// A markup template has no symbols the navigation server indexes: get_symbols_overview on a 326-line Angular template
+// was the remedy a denial named, and the session read the lines through `sed -n` instead (audit 2026-10-10, 81264f0d).
+const MARKUP_EXT = /\.(?:html|razor|cshtml|xaml)$/i;
+const serenaHint = (p) => (MARKUP_EXT.test(String(p))
+  ? `A markup template has no symbols to navigate - locate inside it instead:\n`
+    + `  grep -n '<element, binding or text you need>' '${p}'   ->  then Read with offset+limit on the lines it names.`
+  : SERENA_IGNORED.test(String(p)) || underDataRoot(p)
   ? `The navigation server cannot locate anything here: the installers seed the data root (\`${dataRootEnv()}\`), \`.claude\` and the old \`.serena\` / \`.playwright\` into\n`
     + `its own ignored_paths, so this tree is not indexed. Locate inside the file instead:\n`
     + `  grep -n '<pattern>' '${p}'   ->  then Read with offset+limit on the lines it names.`
@@ -1586,6 +1634,81 @@ function heredocBounded(line, at) {
 // One per-session state file, shared by the cumulative read cap and the convention-rule announcer.
 const sessionStateFile = () => pathMod.join(os.tmpdir(), `guard-read-${(payload.session_id || 'nosession').replace(/[^\w-]/g, '')}.json`);
 
+// ---- the cumulative range cap, ONE rule for the Read tool and the shell's literal spans ---------------------------
+// Merge this range into the coverage of the file; past CAP of its lines the remainder goes through the navigation
+// server - two half-splits reconstructing the file are the whole-file read in two calls (measured). The ranges are ROWS
+// appended to a per-session log before the verdict, never a read-merge-write of one object, which four parallel Reads
+// of a file's quarters each passed against an empty state (8 of 10 trials, audit 2026-10-08). Each check replays the log
+// up to its own row in append order, every earlier row judged by this same rule, so a row past the cap counts nothing
+// and the last of a parallel batch sees the rows before it. The file is keyed by its real path (`./big.ts` reset the
+// coverage `big.ts` had). Audit 2026-10-10 C11: a row counts only for the SAME actor (the main session, or one seat by
+// its agent id - a seat's first read was blocked on its parent's and its siblings' rows, sessions 7491ab75, e499fc94,
+// 3ce6b036) and the SAME file version (mtime and line count - rows read before an edit, one past the new EOF, blocked a
+// 15% read at 90%), and a shell span (`sed -n a,bp`, `head`, `tail`, `awk 'NR>=a && NR<=b'`) is a row like a Read's:
+// the cap was per route, and `sed -n` / `awk NR` read the rest of a file the Read half had just refused (c5000cb1,
+// c6142301, 0498718d, 81264f0d).
+const CAP = 0.6;
+const actorKey = String(payload.agent_id || 'main');
+const fileVersion = (abs, lineCount) => { try { return `${Math.floor(fs.statSync(abs).mtimeMs)}:${lineCount}`; } catch { return `?:${lineCount}`; } };
+// The file's state in the working tree: 'new' (untracked or added), 'changed', or '' (clean, or no repo).
+const treeState = (abs) => {
+  try {
+    const out = require('child_process').execFileSync('git', ['status', '--porcelain', '--', pathMod.basename(abs)],
+      { cwd: pathMod.dirname(abs), timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    const code = out.slice(0, 2);
+    return !out ? '' : code === '??' || code[0] === 'A' ? 'new' : 'changed';
+  } catch { return ''; }
+};
+function rangeCap(abs, shown, lineCount, a, b) {
+  let fileKey = abs;
+  try { fileKey = fs.realpathSync(abs); } catch { /* as resolved */ }
+  const ver = fileVersion(fileKey, lineCount);
+  const rangeLog = sessionStateFile().replace(/\.json$/, '-ranges.jsonl');
+  const rowId = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try { fs.appendFileSync(rangeLog, JSON.stringify({ f: fileKey, a, b, id: rowId, ag: actorKey, v: ver }) + '\n'); } catch { /* best-effort */ }
+  // State hygiene when this guard writes its state (hook-prelude.js sweepStale, audit 2026-10-08 S9): its session files
+  // past 7 days go.
+  try { const pre = require('./hook-prelude.js'); if (typeof pre.sweepStale === 'function') pre.sweepStale(os.tmpdir(), 'guard-read-'); } catch { /* no prelude */ }
+  const mergeIn = (merged, x, y) => {
+    const out = merged.concat([[x, y]]).sort((p, q) => p[0] - q[0]);
+    const m = [];
+    for (const iv of out) { const last = m[m.length - 1]; if (last && iv[0] <= last[1] + 1) last[1] = Math.max(last[1], iv[1]); else m.push([iv[0], iv[1]]); }
+    return m;
+  };
+  const coverOf = (m) => m.reduce((n, [x, y]) => n + (y - x + 1), 0);
+  let merged = [];
+  let mine = false;
+  try {
+    for (const line of fs.readFileSync(rangeLog, 'utf8').split('\n')) {
+      let row;
+      try { row = JSON.parse(line); } catch { continue; }
+      // a row written before 2026-10-10 carries no actor or version: the main session's, of this version
+      if (!row || row.f !== fileKey || (row.ag || 'main') !== actorKey || (row.v && row.v !== ver)) continue;
+      const next = mergeIn(merged, row.a, Math.min(row.b, lineCount));
+      if (row.id === rowId) { merged = next; mine = true; break; }
+      if (coverOf(next) <= lineCount * CAP) merged = next; // an earlier row past the cap was blocked: it read nothing
+    }
+  } catch { /* no log - this range alone */ }
+  if (!mine) merged = mergeIn(merged, a, b);
+  const covered = coverOf(merged);
+  if (covered <= lineCount * CAP) return;
+  // A file the working tree ADDS is under review whole - a verifier seat left half of a new 251-line test file unread
+  // behind this cap (audit 2026-10-10, session 05c925e9) - so its ranges complete it. A changed file names its diff.
+  const state = treeState(fileKey);
+  if (state === 'new') return;
+  global.BLOCK_DETAIL = { branch: 'range-cap', covered: Math.round((100 * covered) / lineCount) };
+  process.stderr.write(
+    `Blocked: ranged reads of ${shown} now cover ${Math.round((100 * covered) / lineCount)}% of its ${lineCount} lines in this ${actorKey === 'main' ? 'session' : 'seat'} -\n` +
+      `ranges of one file may cover at most ${Math.round(CAP * 100)}% of it, on the Read tool and the shell's sed -n / head / tail / awk NR\n` +
+      `alike: reconstructing a large file from splits is the whole-file read the guard exists to stop\n` +
+      `(measured: 2-3-call splits rebuilt 7 blocked files in one run). Read the located symbol's range, never halves.\n` +
+      (state === 'changed' ? `Reviewing this change? Its diff is the review route: git diff HEAD -- '${shown}'\n` : '') +
+      `A file with nothing to locate (a data table, a message map): grep -n '<the key you need>' '${shown}', then that range.\n` +
+      `For the remainder:\n` + serenaHint(shown),
+  );
+  process.exit(2);
+}
+
 // The nine path-scoped convention rules attach on a FILE-TOOL touch and on nothing else. Under a
 // Bash-first working mode they therefore never attach at all: measured with a control for the first
 // time, 19 Bash calls naming `.cs` files produced 0 attachments, while the session's single
@@ -1647,8 +1770,13 @@ function writeTargets(text) {
     if (v && !v.startsWith('-') && !SED_SCRIPT_ARG.test(v) && !out.includes(v)) out.push(v);
   };
   const words = (s) => shellWordsOf(s).forEach(add);
+  // A `>` inside a quoted span is text - a sed or perl script argument, a `<name>.spec.ts` placeholder in a quoted
+  // `perl -e` - never a redirect (audit 2026-10-10, session f10cb06a: the notice named typescript-conventions.md off one).
+  let quoted = [];
+  try { quoted = require(pathMod.join(__dirname, 'shell-writes.js')).quotedSpans(text); } catch { quoted = []; }
+  const inQuotes = (i) => quoted.some(([a, b]) => i >= a && i < b);
   // stdout into a path. A leading fd (`2>`, `&>`) and an fd target (`>&2`) are not a file write.
-  for (const m of text.matchAll(/(?:^|[^>&\d])1?>>?\s*(?!&)("[^"]*"|'[^']*'|[^\s;|&()<>]+)/g)) add(m[1]);
+  for (const m of text.matchAll(/(?:^|[^>&\d])1?>>?\s*(?!&)("[^"]*"|'[^']*'|[^\s;|&()<>]+)/g)) if (!inQuotes(m.index + m[0].indexOf('>'))) add(m[1]);
   for (const m of text.matchAll(new RegExp(`\\btee\\b(${RUN})`, 'g'))) words(m[1]);
   for (const m of text.matchAll(new RegExp(`\\b(?:sed|perl)\\b((?=${RUN}\\s-[A-Za-z]*i\\b)${RUN})`, 'g'))) words(m[1]);
   for (const m of text.matchAll(new RegExp(`\\b(?:cp|mv|install|rsync)\\b(${RUN})`, 'g'))) {
@@ -1689,10 +1817,21 @@ const ruleInstalled = (rule) => {
 const escapeRe = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const UNGOVERNED_MD = new RegExp(
   `(?:^|[\\s"'=])(?:\\./)?(?:\\.claude|${escapeRe(docsRootEnv().replace(/^\.\//, '').replace(/\/+$/, ''))})/`);
-function announceRules(text) {
+function announceRules(text, extra = []) {
   const docsRel = docsRootEnv().replace(/^\.\//, '').replace(/\/+$/, '');
   const ungoverned = (t) => UNGOVERNED_MD.test(` ${t}`) || t.includes('.claude/') || t.includes(`${docsRel}/`);
-  const targets = writeTargets(String(text));
+  // A write outside the project - the session scratchpad, a temp folder - is governed by no rule of this project's
+  // (audit 2026-10-10, session 8f44a003: a heredoc into the scratchpad drew javascript-conventions.md).
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || '';
+  const real = (p) => { try { return fs.realpathSync(p); } catch { return p; } };
+  const roots = root ? [...new Set([pathMod.resolve(root), real(pathMod.resolve(root))])] : [];
+  const inProject = (t) => {
+    if (!roots.length || isVar(t)) return true;
+    const abs = pathMod.resolve(anchorDirs[0] || root, nativePath(t));
+    const absReal = pathMod.join(real(pathMod.dirname(abs)), pathMod.basename(abs));
+    return [abs, absReal].some((a) => roots.some((r) => a === r || a.startsWith(r + pathMod.sep)));
+  };
+  const targets = [...writeTargets(String(text)), ...extra].filter(inProject);
   if (!targets.length) return;
   const hit = [];
   for (const t of targets) for (const [re, rule] of CONVENTION_RULES)
@@ -1914,9 +2053,12 @@ function wholeFiles(seg, command, hseg = seg) {
     if (verb === 'sqlite3') { for (const m of stage.matchAll(/\breadfile\s*\(\s*(?:'([^']*)'|"([^"]*)")/gi)) files([m[1] !== undefined ? m[1] : m[2]]); continue; }
     if (/^(?:e|f)?grep$|^rg$/.test(verb)) {
       const o = parse(args, verb === 'rg' ? 'efmABCtTgMj' : 'efmABCdD', /^--(?:regexp|file|max-count|after-context|before-context|context|glob|type|type-not)$/);
-      if (o.has('-c', '-l', '-L', '-q', '-o', '-m', '-v', '-f', '--count', '--files-with-matches', '--files-without-match', '--quiet', '--only-matching', '--max-count', '--invert-match', '--file')) continue;
+      if (o.has('-c', '-l', '-L', '-q', '-o', '-m', '-f', '--count', '--files-with-matches', '--files-without-match', '--quiet', '--only-matching', '--max-count', '--file')) continue;
       const given = o.vals.filter(([n]) => n === '-e' || n === '--regexp').map(([, w]) => w || '');
       const pats = given.length ? given : o.ops.slice(0, 1);
+      // An INVERTED grep prints the file minus its matches - `grep -v '^import' page.ts` printed whole in-project sources
+      // after 39 Read denials (audit 2026-10-10, session 0498718d, 4.68M re-sent): judged by line count like `cat`.
+      if (o.has('-v', '--invert-match')) { files([...(given.length ? o.ops : o.ops.slice(1)), ...stdin]); continue; }
       // basic regex (plain grep, no -E / -P): `|` is a literal and `\|` the alternation
       const bre = verb === 'grep' && !o.has('-E', '-P', '--extended-regexp', '--perl-regexp');
       if (pats.length && pats.map((p) => (bre ? p.replace(/\\\||\|/g, (m) => (m === '|' ? 'x' : '|')) : p)).every(emptyPat)) files([...(given.length ? o.ops : o.ops.slice(1)), ...stdin]);
@@ -1989,9 +2131,12 @@ function headTailSpan(words) {
   if (bytes) { const b = parseInt(n, 10); return (lc) => (b > BIG_BYTES ? lc : 0); }
   const v = parseInt(n.replace(/^[+-]/, ''), 10);
   if (!Number.isFinite(v)) return null;
-  if (verb === 'tail' && n.startsWith('+')) return (lc) => Math.max(0, lc - v + 1);
-  if (verb === 'head' && n.startsWith('-')) return (lc) => Math.max(0, lc - v);
-  return (lc) => Math.min(v, lc);
+  // `.range(lc)` - the lines it prints of a file, as an interval the range cap logs (audit 2026-10-10 C11)
+  const ranged = (fn, range) => Object.assign(fn, { range });
+  if (verb === 'tail' && n.startsWith('+')) return ranged((lc) => Math.max(0, lc - v + 1), (lc) => [Math.max(1, v), lc]);
+  if (verb === 'head' && n.startsWith('-')) return ranged((lc) => Math.max(0, lc - v), (lc) => [1, Math.max(1, lc - v)]);
+  return verb === 'head' ? ranged((lc) => Math.min(v, lc), (lc) => [1, Math.min(v, lc)])
+    : ranged((lc) => Math.min(v, lc), (lc) => [Math.max(1, lc - v + 1), lc]);
 }
 // What a segment's later stages let through of what its first stages print: null when a filter bounds it (the exemption it
 // always had), else the lines printed as a function of a file's line count - every later filter an identity (wholeFiles'
@@ -2025,7 +2170,8 @@ function spanFiles(seg, fseg) {
     const k = commandIndex(words);
     const own = words.slice(k);
     const verb = String(own[0] || '').replace(/^.*[\\/]/, '').toLowerCase();
-    const valued = verb === 'head' || verb === 'tail' ? /^(?:-n|-c|--lines|--bytes)$/ : /^(?:-e|--expression|-f|--file|-l|--line-length)$/;
+    const awk = /^[gmn]?awk$/.test(verb);
+    const valued = verb === 'head' || verb === 'tail' ? /^(?:-n|-c|--lines|--bytes)$/ : awk ? /^(?:-f|-v|-F|--file|--assign|--field-separator)$/ : /^(?:-e|--expression|-f|--file|-l|--line-length)$/;
     const ops = [];
     for (let i = 1; i < own.length; i++) {
       if (/^#/.test(own[i])) break; // a comment ends the words the command runs
@@ -2036,13 +2182,25 @@ function spanFiles(seg, fseg) {
       ops.push(w);
     }
     const span = headTailSpan(own);
-    if (span && ops.length) { for (const f of ops) out.push({ f, printed: span }); continue; }
+    if (span && ops.length) { for (const f of ops) out.push({ f, printed: span, range: span.range }); continue; }
+    const lines = (a, b) => ({ printed: (lc) => Math.max(0, Math.min(b, lc) - a + 1), range: (lc) => [a, Math.min(b, lc)] });
     if ((verb === 'sed' || verb === 'gsed') && own.some((w) => /^-[a-zA-Z]*n[a-zA-Z]*$/.test(w)) && !own.some((w) => /^-[a-zA-Z]*i/.test(w) || /^--in-place/.test(w))) {
       const script = (ops[0] || '').replace(/\s+/g, '');
       const m = script.match(/^(\d+),(\d+|\$)p$/);
       if (m) {
         const a = +m[1]; const b = m[2] === '$' ? Infinity : +m[2];
-        for (const f of ops.slice(1)) out.push({ f, printed: (lc) => Math.max(0, Math.min(b, lc) - a + 1) });
+        for (const f of ops.slice(1)) out.push({ f, ...lines(a, b) });
+      }
+    }
+    // `awk 'NR>=a && NR<=b' f` (with or without `{print}`), `awk 'NR==a,NR==b' f` and an open `awk 'NR>=a' f`: a literal
+    // line span like sed's - it read the rest of a file the cap had refused (audit 2026-10-10, c6142301, 0498718d).
+    if (awk && !own.some((w) => /^-(?:f|-file)$/.test(w))) {
+      const script = (ops[0] || '').replace(/\s+/g, '').replace(/\{print(?:\$0)?;?\}$/, '');
+      const m = script.match(/^NR(>=|>)(\d+)(?:&&NR(<=|<)(\d+))?$/) || script.match(/^NR==(\d+),NR==(\d+)$/);
+      if (m) {
+        const [a, b] = m.length === 3 ? [+m[1], +m[2]]
+          : [m[1] === '>' ? +m[2] + 1 : +m[2], m[4] === undefined ? Infinity : m[3] === '<' ? +m[4] - 1 : +m[4]];
+        if (a <= b) for (const f of ops.slice(1)) out.push({ f, ...lines(a, b) });
       }
     }
   }
@@ -2072,7 +2230,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
   // the run from each one (review M3 of 2.1.6). Only the targets are read, never a position.
   for (const c of command.replace(/\n\s*/g, '\n').matchAll(CD_RE)) {
     const target = expandWith(assigns, c[1].replace(/^["']|["']$/g, ''));
-    if (target === '-' || isVar(target)) continue;
+    if (target === '-' || isVar(target)) { unfollowedCd = true; continue; }
     const abs = pathMod.isAbsolute(nativePath(target)) ? nativePath(target) : pathMod.join(anchorDirs[0] || process.cwd(), target);
     if (!anchorDirs.includes(abs)) anchorDirs.push(abs);
   }
@@ -2129,7 +2287,10 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
         const from = bodyFrom + c.index + c[0].length;
         const stop = masked.slice(from, bodyTo).search(/[;&|<>)\n]/);
         const operand = command.slice(from, stop < 0 ? bodyTo : from + stop).trim();
-        if (new RegExp(`\\$\\{?${m[1]}\\b`).test(operand) && (SWEEP_EXT_ANY.test(list) || SWEEP_EXT_ANY.test(operand)))
+        // sized per file only when cat reads the variable itself (`cat "$f"`), never a path built on it (`${d}/SKILL.md`)
+        const bare = new RegExp(`^(?:-\\w+\\s+)*["']?\\$(?:\\{${m[1]}\\}|${m[1]}\\b)["']?$`).test(operand);
+        if (new RegExp(`\\$\\{?${m[1]}\\b`).test(operand) && (SWEEP_EXT_ANY.test(list) || SWEEP_EXT_ANY.test(operand))
+          && !(bare && smallLiteralLoop(list)))
           return { var: m[1], operand: operand.slice(0, 120) };
       }
     }
@@ -2169,7 +2330,7 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     if (!lit || !gatedIn(lit)) return false;
     if (isVar(lit)) return true;
     const { lc, resolved } = resolveLineCount(expandWith(assigns, lit));
-    return !resolved || lc > THRESHOLD;
+    return (!resolved && unfollowedCd) || lc > THRESHOLD;
   };
   const RT_READ_LITS = new RegExp(RT_READ_LIT.source, 'g');
   const readsHeavy = (script) => [...String(script).matchAll(RT_READ_LITS)].some((r) => heavyRead(r[1] || r[2]));
@@ -2294,9 +2455,13 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
       process.exit(2);
     }
     const entries = files.map((f) => ({ f, printed: (lc) => lc })).concat(spanFiles(seg, fseg));
-    for (const { f: rawF, printed } of entries) {
+    // A literal span (`sed -n a,bp`, head, tail, `awk NR`) that reaches the terminal as it is joins the Read tool's range
+    // cap - judged after the file's other checks, so a span they block never counts as read (audit 2026-10-10 C11).
+    const capSpans = [];
+    for (const { f: rawF, printed, range } of entries) {
     const f = expandWith(assigns, rawF);
     const shown = (lc) => pipeSpan.printed(printed(lc));
+    if (range && !isVar(f) && !/[*?[]/.test(f) && GATED_EXT.test(f) && shown(1e9) === printed(1e9)) capSpans.push({ f, range });
     if (shown(1e9) <= THRESHOLD) continue; // a span that never prints past the threshold is the targeted read
     // A target still carrying an unexpanded variable is unknowable - the sibling guard's rule:
     // judge nothing rather than deny on a guess. This failed CLOSED before, and half the denials
@@ -2330,12 +2495,14 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
     }
     const { lc, resolved } = resolveLineCount(f);
     if (!resolved) {
-      // A dump-shaped command on a gated file whose size we cannot check fails CLOSED -
-      // an unresolvable relative path was exactly how whole-file dumps slipped past this
-      // matcher. Re-run with an absolute path (or read the located range via the navigation server).
+      // Nothing at any anchor: a wrong path, or a file this command creates first - there is nothing on disk to dump,
+      // as for an absolute path to a missing file (audit 2026-10-10: a heredoc that wrote a file and then cat it, and a
+      // `cat <wrong path> || find ...`, were both blocked as 'relative path did not resolve', c6142301, f24eb967).
+      // Only a cd this guard cannot follow (`cd $DIR`, `cd -`) leaves the anchor unknown, and that fails CLOSED.
+      if (!unfollowedCd) continue;
       process.stderr.write(
-        `Blocked: cannot size ${f} (relative path did not resolve against the project root or session cwd).\n` +
-        `A whole-file cat/sed of a source file must be size-checked - use an absolute path,\n` +
+        `Blocked: cannot size ${f} - no file at ${anchorDirs.map((d) => pathMod.join(d, nativePath(f))).slice(0, 3).join(' or ')}, and this\n` +
+        `command cd's somewhere the guard cannot follow first. Check the path; spell the target as an absolute path,\n` +
         `or locate the symbol first:\n` + serenaHint(f),
       );
       process.exit(2);
@@ -2351,6 +2518,13 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
       );
       process.exit(2);
     }
+    }
+    for (const { f, range } of capSpans) {
+      const at = resolvedPath(f);
+      const lc = at ? lineCountOf(at) : 0;
+      if (lc <= THRESHOLD) continue;
+      const [a, b] = range(lc);
+      if (b >= a) rangeCap(at, f, lc, a, b);
     }
   }
   } catch (err) {
@@ -2385,7 +2559,12 @@ if (!GATED_EXT.test(path)) {
   // token cost'), where 60KB of text is about 15,000. Both were blocked, and the issue-diagnoser's screenshot Read with
   // them (audit 2026-10-08).
   const whole = (input.offset ?? 0) <= 1 && input.limit == null && input.pages == null && !RENDERED_IMAGE.test(path);
-  if (size > BIG_BYTES && whole) {
+  // A plan under the docs root's plans/ is a seat's MANDATED input, read whole by design: a verifier denied its 65KB
+  // plan read it back through two ranges at once, so the block bought a round trip and nothing else (audit 2026-10-10,
+  // session 05c925e9).
+  const docsRel = docsRootEnv().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+  const planFile = /\.md$/i.test(path) && String(path).replace(/\\/g, '/').includes(`${docsRel}/plans/`);
+  if (size > BIG_BYTES && whole && !planFile) {
     // A grep remedy needs LINES. This branch judges size, not language, so it also catches the 93KB
     // PNG and the one-line minified bundle, where `grep -n` and an offset+limit Read both answer
     // nothing (measured: 2 wasted calls on an image). Sniff the first bytes and prescribe PAGING there.
@@ -2423,61 +2602,21 @@ const wholeShape = (input.offset ?? 0) <= 1 && (input.limit == null || input.lim
 // A head window genuinely smaller than the file is targeted; a limit that spans
 // the whole file (limit: 2000 from the top) is a whole-file Read wearing a range.
 if (wholeShape) {
+  const state = treeState(pathMod.resolve(anchorDirs[0] || process.cwd(), path));
   process.stderr.write(
     `Blocked: whole-file Read of ${path} (${lineCount} lines).\n` +
       `Per alfred-navigation.md, Read is for code you've ALREADY located - never to find a symbol.\n` +
       `A limit that covers the whole file is still a whole-file Read - and so is\n` +
       `offset 1 with limit = the file's line count (measured: that exact retry got\n` +
-      `blocked twice in a row). Read HALF the file or less per range.\n` + serenaHint(path),
+      `blocked twice in a row). Ranged reads of one file may cover at most ${Math.round(CAP * 100)}% of it per session -\n` +
+      `read the located symbol's range, never halves (a second half is blocked next).\n` +
+      (state === 'changed' ? `Reviewing this change? Its diff is the review route: git diff HEAD -- '${path}'\n` : '') +
+      serenaHint(path),
   );
   process.exit(2);
 }
 
-// Cumulative cap: merge this range into the per-session interval set for the file; if the
-// merged coverage would exceed ~60% of the file, the remainder goes through the navigation server - two
-// half-splits reconstructing the file are the whole-file read in two calls (measured).
-// The ranges are ROWS appended to a per-session log, one per Read, before the verdict - never a read-merge-write of one
-// object, which four parallel Reads of a file's quarters each passed against an empty state (8 of 10 trials, audit
-// 2026-10-08). Each Read replays the log up to its own row in append order, every earlier row judged by this same rule,
-// so a row past the cap counts nothing and the last of a parallel batch sees the rows before it. The file is keyed by
-// its real path: `./big.ts` reset the coverage `big.ts` had.
-const CAP = 0.6;
+// Cumulative cap: one rule with the shell's literal spans (rangeCap, above).
 const end = Math.min(lineCount, offset + (input.limit != null ? input.limit : lineCount) - 1);
-let fileKey = pathMod.resolve(anchorDirs[0] || process.cwd(), path);
-try { fileKey = fs.realpathSync(fileKey); } catch { /* as resolved */ }
-const rangeLog = sessionStateFile().replace(/\.json$/, '-ranges.jsonl');
-const rowId = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-try { fs.appendFileSync(rangeLog, JSON.stringify({ f: fileKey, a: offset, b: end, id: rowId }) + '\n'); } catch { /* best-effort */ }
-// State hygiene when this guard writes its state (hook-prelude.js sweepStale, audit 2026-10-08 S9): its session files
-// past 7 days go.
-try { const pre = require('./hook-prelude.js'); if (typeof pre.sweepStale === 'function') pre.sweepStale(os.tmpdir(), 'guard-read-'); } catch { /* no prelude */ }
-const mergeIn = (merged, a, b) => {
-  const out = merged.concat([[a, b]]).sort((x, y) => x[0] - y[0]);
-  const m = [];
-  for (const iv of out) { const last = m[m.length - 1]; if (last && iv[0] <= last[1] + 1) last[1] = Math.max(last[1], iv[1]); else m.push([iv[0], iv[1]]); }
-  return m;
-};
-const coverOf = (m) => m.reduce((n, [a, b]) => n + (b - a + 1), 0);
-let merged = [];
-let mine = false;
-try {
-  for (const line of fs.readFileSync(rangeLog, 'utf8').split('\n')) {
-    let row;
-    try { row = JSON.parse(line); } catch { continue; }
-    if (!row || row.f !== fileKey) continue;
-    const next = mergeIn(merged, row.a, row.b);
-    if (row.id === rowId) { merged = next; mine = true; break; }
-    if (coverOf(next) <= lineCount * CAP) merged = next; // an earlier row past the cap was blocked: it read nothing
-  }
-} catch { /* no log - this range alone */ }
-if (!mine) merged = mergeIn(merged, offset, end);
-const covered = coverOf(merged);
-if (covered > lineCount * CAP) {
-  process.stderr.write(
-    `Blocked: ranged Reads of ${path} now cover ${Math.round((100 * covered) / lineCount)}% of its ${lineCount} lines this session -\n` +
-      `reconstructing a large file from half-splits is the whole-file read the guard exists to stop\n` +
-      `(measured: 2-3-call splits rebuilt 7 blocked files in one run). For the remainder:\n` + serenaHint(path),
-  );
-  process.exit(2);
-}
+rangeCap(pathMod.resolve(anchorDirs[0] || process.cwd(), path), path, lineCount, offset, end);
 process.exit(0);

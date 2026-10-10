@@ -195,6 +195,15 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     visual tokens, are sent, never its bytes: platform.claude.com/docs/en/build-with-claude/vision) and a PDF Read naming
     `pages` pass the size test, extensions match in any case, and the 60% range cap is a per-session log of ranges
     appended before each verdict and replayed in order, keyed by real path, so parallel Reads cannot each pass it.
+    Audit 2026-10-10 C11: a row counts only for its own actor (the main session, or a seat by `agent_id`) and file
+    version (mtime and line count); the shell's literal spans (`sed -n a,bp`, `head`, `tail`, `awk 'NR>=a && NR<=b'`)
+    printed to the terminal are rows on the same log; a file the working tree ADDS completes past the cap, and a
+    changed one's denial names `git diff HEAD -- <file>`; an inverted grep (`grep -v`, or a pipe into one) prints the
+    file minus its matches and is judged like `cat`; a loop whose `cat` reads its variable over literal paths or a
+    one-folder glob is sized per file (no sweep while all of them print at most THRESHOLD lines and BIG_BYTES); a
+    relative target with no file at any anchor prints nothing unless a `cd` the guard cannot follow came first; a
+    `.md` under the docs root's `plans/` reads whole; a markup template's denial names `grep -n`, never the symbol
+    overview; and the convention-rule notice reads no `>` inside quotes and no write target outside the project.
     Every denial on a file the navigation server indexes carries the
     `ToolSearch select:` line that loads the navigation server's tools (a size denial on another extension and a tree it
     never indexes name grep instead). Its convention-rule announcement
