@@ -267,7 +267,15 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     folders (`.venv`, `vendor`, `target`, ...) last, and unjudged past 4,000 files its filters let through, 32MB or 100,000
     entries (a stated ceiling). A path-qualified verb (`./tools/grep`,
     `bin/rg`) is never spawned - the probe runs before the permission prompt, so it would run whatever script sits there
-    (audit 2026-10-08, replayed) - and is piped unprobed. `git remote -v` / `get-url` / `show` and
+    (audit 2026-10-08, replayed) - and is piped unprobed. Audit 2026-10-10 (C12): a word's inner quotes count
+    (`--include='*.cs'` is probed), `l` / `c` / `q` anywhere in a flag cluster prints no line, the `--grep` pipe exits 1 on
+    empty input (grep's status), a walk rewrite's row says `walk-stage`, and a pattern naming password / secret / token /
+    api key adds `--literals` (every quoted literal on a matched line masked but an email, a path or a dotted name). A
+    runtime's code is no shell: a string in it, or any word of a heredoc body, is globbed only when the code calls a glob
+    (`/**` in a JSDoc named a credential file 7 times), and `/**` globs `/`. `T=$(<reader>)` whose `$T` only reaches
+    another command's arguments (no print verb, runtime, `curl -v` or `set -x`) prints nothing; a grep over a credential
+    file and others searches the others as written (`-H --label`); a loop's `cat "$f"` becomes `--redacted "$f"` with the
+    loop and every other step kept; `--presence` prints `KEY=empty (present, no value)` for `''` / `null`. `git remote -v` / `get-url` / `show` and
     `git config --list` / `--get` are probed the same way (a tokened URL is masked; a config write is never probed). A print
     piped into a login that reads stdin (`--password-stdin`, `--with-token`) is a use, `${NAME:+word}` prints no value, a
     `{...process.env}` spread is no dump, and a command whose stdout IS a token (`gh auth token`, `op read`, a keychain `-w`)
@@ -302,7 +310,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     name rule is what catches a credential a `$(...)` COMPUTES (`gh auth token`, a keychain or vault read),
     so a stack snippet never assigns a credential-shaped name (the source-protocol snippet's marketplace key
     is `MKT`; as `KEY` it was blocked twice in pilot 2). A rewrite is no block but is counted: one `mode: rewrite` row
-    (tool, branch - `file`, `env`, `env-stage`, `git-stage`, `variable` - and a file's basename, never the value), which
+    (tool, branch - `file`, `env`, `env-stage`, `git-stage`, `walk-stage`, `variable` - and a file's basename, never the value), which
     the block rate skips like the probe rows (2.1.5 M17).
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch (bare or
     `alfred-code:`-prefixed; a foreign plugin's is not the flow's seat) without the `<docs-path>/flow/APPROVAL` gate file (written on explicit approval or an AUTO waiver),

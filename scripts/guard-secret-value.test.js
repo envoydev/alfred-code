@@ -405,7 +405,7 @@ test('guard-secret-value --presence: reports set (N chars) or absent, never a va
   assert.doesNotMatch(r.stdout + r.stderr, new RegExp(FAKE_TOKEN));
   assert.equal(presence(f.secret).stdout, 'SENTRY_SLUG=set (4 chars)\nSENTRY_ACCESS_TOKEN=set (40 chars)\n', 'no keys: every env key, in file order');
   assert.equal(presence(f.dotenv, 'API_KEY', 'DB_HOST').stdout, 'API_KEY=set (6 chars)\nDB_HOST=set (9 chars)\n', 'dotenv');
-  assert.equal(presence(f.emptyDotenv, 'API_KEY').stdout, 'API_KEY=absent\n', 'an empty value is absent');
+  assert.equal(presence(f.emptyDotenv, 'API_KEY').stdout, 'API_KEY=empty (present, no value)\n', 'an empty value is present with no value, never absent (audit 2026-10-10, session f24eb967)');
   assert.equal(presence(f.mcp, 'CONTEXT7_API_KEY').stdout, 'CONTEXT7_API_KEY=absent\n', 'no env block and no top-level key');
   const missing = presence(path.join(f.dir, 'nope.json'), 'SENTRY_SLUG');
   assert.equal(missing.status, 0);
@@ -1880,7 +1880,7 @@ test('F1: a recursive search that would print a credential line is piped through
   fs.mkdirSync(path.join(dir, 'src'));
   fs.writeFileSync(path.join(dir, 'src', 'app.js'), 'const API_KEY_NAME = 1;\n');
   const v = (c) => verdict(at(dir, c));
-  assert.equal(updatedCommand(at(dir, 'grep -rn API_KEY .')), `grep -rn API_KEY . | ${REDACT_GREP}`, 'the walk reaches .env, so it is piped');
+  assert.equal(updatedCommand(at(dir, 'grep -rn API_KEY .')), `grep -rn API_KEY . | ${REDACT_GREP} --literals`, 'the walk reaches .env, so it is piped - masking quoted literals too, since the pattern names a key');
   assert.equal(v('grep -rn password cred'), REWRITE, 'a yaml credential under a named directory');
   assert.equal(v('rg -n password cred'), REWRITE, 'ripgrep walks too');
   assert.equal(v('grep -rn API_KEY src'), 0, 'a directory whose matches carry no credential runs as written');
@@ -2178,4 +2178,98 @@ test('guard-secret-value: the rewrite of a 100 KB command reaches the harness wh
   const out = rewritten(`cat ${f.dotenv}; echo ${tail}`);
   assert.ok(out, 'the rewrite parsed');
   assert.ok(out.includes('--redacted') && out.endsWith(`echo ${tail}`), `rewritten whole: ${String(out).slice(0, 120)}...`);
+});
+
+// ---- audit 2026-10-10 C12: the credential guard's false positives and lossy rewrites -----------------------------------
+function c12Project() {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'c12-')));
+  fs.writeFileSync(path.join(dir, '.sentryclirc'), `[auth]\ntoken=${FAKE_TOKEN}\n`);
+  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: FAKE_TOKEN, DOCS_ROOT: '.alfred' } }, null, 2));
+  fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ env: { DOCS_ROOT: 'docs-local' } }, null, 2));
+  fs.writeFileSync(path.join(dir, 'login.json'), JSON.stringify({ accessToken: FAKE_TOKEN }));
+  fs.mkdirSync(path.join(dir, 'src'));
+  fs.writeFileSync(path.join(dir, 'src', 'a.ts'), '/** doc */\nexport const a = 1;\n');
+  fs.writeFileSync(path.join(dir, 'src', 'Base.cs'), 'await LoginAsync("demo@example.com", "Hunter2Demo!", ct);\n');
+  return dir;
+}
+
+test('audit 2026-10-10 C12: a runtime heredoc body never globs - a JSDoc `/**` or a backticked `**` names no credential file', () => {
+  const dir = c12Project();
+  const v = (c) => verdict(at(dir, c));
+  // the replayed shapes: a python edit whose strings carry `/**`, `*/` and a backticked `**` (7fae0c39, adaa2ef3, f450ea64,
+  // 9a4ef375, bda299a8) - each was blocked as a credential WRITE naming .sentryclirc
+  assert.equal(v("python3 -I - <<'PY'\nnew='''  /** x */\nopen(p,'w').write(new)\nPY"), 0, 'a JSDoc opener in a triple-quoted string');
+  assert.equal(v("python3 - <<'PY'\np='docs/x.md'\ns='use `**` for bold and \\'/**\\' globs'\nopen(p,'w').write(s)\nPY"), 0, 'a backticked ** and a quoted /**');
+  assert.equal(v("python3 - <<'PY'\np='src/a.ts'\nnew='''/**\n * the client's view, the server's view\n */'''\nopen(p,'w').write(new)\nPY"), 0, 'apostrophes in a JSDoc block');
+  assert.equal(v('node -e "const s = \'/** doc */\'; require(\'fs\').writeFileSync(\'src/a.ts\', s)"'), 0, 'an inline runtime string');
+  // what still counts: the file named, a glob the code itself expands, a shell glob
+  assert.equal(v("python3 - <<'PY'\nprint(open('.sentryclirc').read())\nPY"), REWRITE, 'the file named in the body');
+  assert.equal(v("python3 - <<'PY'\nimport glob\nfor f in glob.glob('.sentry*'): print(open(f).read())\nPY"), REWRITE, 'a glob the code expands');
+  assert.equal(v('cat .sentry*'), REWRITE, 'a shell glob');
+  assert.equal(v("python3 - <<'PY'\ns=open('.sentryclirc').read()\nopen('.sentryclirc','w').write(s)\nPY"), 2, 'a write naming the file still blocks');
+});
+
+test('audit 2026-10-10 C12: --presence tells a key written with no value from a missing key', () => {
+  const dir = c12Project();
+  const f = path.join(dir, 'appsettings.json');
+  fs.writeFileSync(f, JSON.stringify({ Jwt: { Key: '' }, Firebase: { ProjectId: null, Type: 'service_account' } }));
+  assert.equal(presence(f, 'Jwt.Key', 'Firebase.ProjectId', 'Firebase.Type', 'Firebase.Missing').stdout,
+    'Jwt.Key=empty (present, no value)\nFirebase.ProjectId=empty (present, no value)\nFirebase.Type=set (15 chars)\nFirebase.Missing=absent\n');
+});
+
+test('audit 2026-10-10 C12: a credential a variable holds and a request header uses is no print', () => {
+  const dir = c12Project();
+  const v = (c) => verdict(at(dir, c));
+  const reader = 'T=$(python3 -c "import json;print(json.load(open(\'login.json\'))[\'accessToken\'])")';
+  assert.equal(v(`${reader}; curl -s -H "Authorization: Bearer $T" https://example.test/api`), 0, 'held, then used in a header (ca65b406)');
+  assert.equal(v(`${reader}; gh api user -H "Authorization: token $T"`), 0, 'held, then a flag to gh');
+  assert.notEqual(v(`${reader}; echo $T`), 0, 'held, then printed');
+  assert.notEqual(v(`${reader}; curl -v -H "Authorization: Bearer $T" https://example.test/api`), 0, 'curl -v prints the header');
+  assert.notEqual(v(`set -x; ${reader}; curl -s -H "Authorization: Bearer $T" https://example.test/api`), 0, 'a trace prints the expansion');
+  assert.notEqual(v(`${reader}; python3 -c "import sys;print(sys.argv[1])" "$T"`), 0, 'handed to a runtime');
+  assert.notEqual(v('T=$(cat login.json >&2); curl -s https://example.test/api'), 0, 'the reader prints to stderr');
+});
+
+test('audit 2026-10-10 C12: a grep over a credential file and others searches each, the credential one through its view', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = c12Project();
+  const out = updatedCommand(at(dir, "grep -n 'DOCS_ROOT' settings.json settings.local.json"));
+  assert.ok(out && out.includes('--redacted') && out.includes('--label="settings.json"') && out.includes('settings.local.json'), String(out));
+  const r = spawnSync('sh', ['-c', out], { cwd: dir, encoding: 'utf8' });
+  assert.match(r.stdout, /^settings\.json:\d+:.*\.alfred/m, 'the credential file, through its view, with its name');
+  assert.match(r.stdout, /^settings\.local\.json:\d+:.*docs-local/m, 'the other file, as written (65abb00a)');
+  assert.ok(!r.stdout.includes(FAKE_TOKEN));
+  // a second credential file among the others keeps the whole view
+  assert.ok(!String(updatedCommand(at(dir, 'grep -n token settings.json .sentryclirc'))).includes('--label'), 'two credential files');
+});
+
+test('audit 2026-10-10 C12: a loop over files is viewed file by file and its other steps run, the env scan included', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = c12Project();
+  const out = updatedCommand(at(dir, 'for f in settings.json settings.local.json; do echo "== $f"; cat "$f"; done; env | grep -i compact'));
+  assert.ok(out && /^for f in settings\.json settings\.local\.json; do echo "== \$f"; node "[^"]+" --redacted "\$f"; done; node "[^"]+" --redacted-env --note-to-stderr \| grep -i compact$/.test(out), String(out));
+  const r = spawnSync('sh', ['-c', out], { cwd: dir, encoding: 'utf8', env: { ...process.env, COMPACT_PROBE: 'on' } });
+  assert.match(r.stdout, /== settings\.local\.json[\s\S]*docs-local/, 'the second file is printed too (7491ab75)');
+  assert.match(r.stdout, /COMPACT_PROBE=on/, 'the env scan ran');
+  assert.ok(!r.stdout.includes(FAKE_TOKEN));
+});
+
+test('audit 2026-10-10 C12: a search that names a credential masks quoted literals on its lines; the walk pipe keeps grep status and label', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = c12Project();
+  const out = updatedCommand(at(dir, "grep -rn -i 'password\\|LoginAsync' src"));
+  assert.ok(out && out.endsWith('--redact-stdin --grep --literals'), String(out));
+  const r = spawnSync('sh', ['-c', out], { cwd: dir, encoding: 'utf8' });
+  assert.ok(!r.stdout.includes('Hunter2Demo!') && r.stdout.includes('demo@example.com'), `the positional password is masked, the email kept (81264f0d):\n${r.stdout}`);
+  // a quoted glob in a flag is no shell expansion, and l / c / q anywhere in a cluster prints no line (a3d497f8, db6c1ae1)
+  assert.equal(verdict(at(dir, "grep -rn --include='*.ts' doc src")), 0, 'probed clean, so run as written');
+  assert.equal(verdict(at(dir, 'grep -rli token .')), 0, 'names only');
+  assert.equal(verdict(at(dir, 'grep -rlin token .')), 0, 'names only');
+  // an empty search through the pipe exits 1 like grep (db6c1ae1)
+  const empty = updatedCommand(at(dir, 'D=src; grep -rn ZZZ_NOT_THERE $D; echo "rc=$?"'));
+  assert.ok(empty && empty.includes('--redact-stdin --grep'), String(empty));
+  assert.match(spawnSync('sh', ['-c', empty], { cwd: dir, encoding: 'utf8' }).stdout, /rc=1/);
+  // a walk rewrite is counted as a walk, never as git (f6c591fa, 81264f0d, b35afe70, a3d497f8)
+  const ledger = path.join(TMP, `ledger-c12-${Date.now()}`);
+  const w = run({ tool_name: 'Bash', tool_input: { command: 'grep -rn token .' }, session_id: 'suite', cwd: dir }, { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_DOCS_PATH: ledger });
+  assert.ok(updatedCommand(w));
+  const rows = fs.readFileSync(path.join(ledger, 'hook-blocks', 'suite.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepStrictEqual(rows.map((x) => x.detail.branch), ['walk-stage']);
 });
