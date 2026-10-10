@@ -785,7 +785,7 @@
       "file": "guard-stop-contract.js",
       "matcher": "AskUserQuestion",
       "event": "",
-      "note": "PreToolUse AskUserQuestion: DENY once per ask text an ask whose own text breaks the house voice (an em- or en-dash, a double quote), carrying the corrected strings; INJECT the judgement notes, which land beside the user's answer and are worded for it - stale scope (an option naming repo/remote/job state with no fresh read this turn: verify before acting, re-ask if it moved), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for the next ask, a live credential. Presence only"
+      "note": "PreToolUse AskUserQuestion: DENY once per ask text an ask whose own shape is wrong - its house voice (an em- or en-dash, a double quote), a fresh-session option quoting no number near the measured carry (both carrying the corrected strings), an option telling the user to type into Other, a single-select question without exactly one (Recommended), a new cycle's first ask with no fresh option; INJECT the judgement notes, which land beside the user's answer and are worded for it - stale scope (an option naming repo/remote/job state with no fresh read this turn: verify before acting, re-ask if it moved), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for the next ask, a live credential. Presence only"
     },
     {
       "file": "guard-stop-contract.js",
@@ -821,7 +821,19 @@
       "file": "guard-fresh-session-start.js",
       "matcher": "@PreCompact",
       "event": "",
-      "note": "before a compaction, write <docs-path>/flow/COMPACT-STATE - the live plan, the open flow stamps with their ages, the files this session wrote - with no model call; the compact SessionStart points at it"
+      "note": "before a compaction, write <docs-path>/flow/COMPACT-STATE - the live plan, the active flow and its body path, the open flow stamps with their ages, the files this session wrote - with no model call; the compact SessionStart points at it"
+    },
+    {
+      "file": "guard-fresh-session-start.js",
+      "matcher": "Write|Edit|MultiEdit|NotebookEdit|Agent|Task",
+      "event": "",
+      "note": "the post-compaction hold: after an automatic compaction the first changing call is denied once with the measured carry and cold floor until an AskUserQuestion is answered or the turn names a single short step - released when a resume would recover too little, when nobody is at the terminal (a live AUTO waiver included) or after two denials; with no hold pending the hook exits on one file check"
+    },
+    {
+      "file": "guard-fresh-session-start.js",
+      "matcher": "Bash|PowerShell|Monitor",
+      "event": "",
+      "note": "the post-compaction hold on the shell route - a shell command after an automatic compaction is a change like an edit (see the row above)"
     },
     {
       "file": "guard-config-protection.js",

@@ -44,7 +44,7 @@ test('I2: CLAUDE.md states the comparison verbs and the probed git redactor', ()
 test('I3: the ask wiring is no longer described as injection-only, never denying', () => {
   const text = claude();
   assert.doesNotMatch(text, /INJECTION-ONLY, never denying: PreToolUse `AskUserQuestion`/);
-  assert.match(text, /the one DENY is the ask's own house voice/);
+  assert.match(text, /the one DENY, once per ask text, is the ask's own SHAPE - its house voice/);
   const note = manifestRows().find((r) => r.file === 'guard-stop-contract.js' && r.matcher === 'AskUserQuestion').note;
   assert.doesNotMatch(note, /never denies|INJECT context into the ask being built/);
   assert.match(note, /DENY once per ask text/);

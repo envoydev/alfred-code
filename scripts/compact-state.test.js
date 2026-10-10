@@ -173,3 +173,136 @@ test('compact-state: ALFRED_CODE_HOOKS_OFF naming the hook writes nothing', () =
     p.run({ hook_event_name: 'PreCompact', trigger: 'auto' }, { ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start' });
     assert.ok(!fs.existsSync(p.state));
 });
+
+// ---- audit 2026-10-10 C08 / C09 / C26: the active flow, the measured compaction point, the post-compaction hold ----
+const userRow = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+const usageRow = (id, usage, text = 'ok') => ({ type: 'assistant', message: { id, model: 'claude-opus-5-5', content: [{ type: 'text', text }], usage } });
+const boundary = (trigger, preTokens) => ({ type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', compactMetadata: { trigger, preTokens } });
+const startText = (r) => JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+
+test('compact-state: a slash flow is named with its body path, and the compact start says to read it again (6ed392a5)', () =>
+{
+    const p = project();
+    const skill = path.join(p.root, '.claude', 'skills', 'task-solve');
+    fs.mkdirSync(skill, { recursive: true });
+    fs.writeFileSync(path.join(skill, 'SKILL.md'), '---\nname: task-solve\n---\nbody\n');
+    const tp = p.transcript([userRow('<command-name>/task-solve</command-name>'), usageRow('a1', { cache_read_input_tokens: 900 })]);
+    p.run({ hook_event_name: 'PreCompact', trigger: 'auto', transcript_path: tp });
+    const text = fs.readFileSync(p.state, 'utf8');
+    assert.match(text, /^active flow: \/task-solve \(slash command - its body is not re-attached after a compaction\)$/m);
+    assert.match(text, /^flow body: .*\/\.claude\/skills\/task-solve\/SKILL\.md$/m);
+    const start = startText(p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }));
+    assert.match(start, /\/task-solve, typed as a slash command, so its body was NOT carried through the compaction - Read .*SKILL\.md again/);
+    // a Skill-tool run's body IS re-attached by the harness - named, never re-read
+    const q = project();
+    const tq = q.transcript([userRow('go'), toolUse('Skill', { skill: 'task-solve' })]);
+    q.run({ hook_event_name: 'PreCompact', trigger: 'auto', transcript_path: tq });
+    assert.match(fs.readFileSync(q.state, 'utf8'), /^active flow: \/task-solve \(Skill call/m);
+    assert.doesNotMatch(startText(q.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tq })), /typed as a slash command/);
+    // a marker quoted in a tool result is no run
+    const r = project();
+    const tr = r.transcript([{ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: '<command-name>/task-solve</command-name>' }] } }]);
+    r.run({ hook_event_name: 'PreCompact', trigger: 'auto', transcript_path: tr });
+    assert.match(fs.readFileSync(r.state, 'utf8'), /^active flow: none found$/m);
+});
+
+test('compact-state: an automatic compaction records its context, and the trigger is held under it (C08)', () =>
+{
+    const p = project();
+    const fresh = require('../stack/hooks/fresh-session.js');
+    const tp = p.transcript([usageRow('f', { cache_creation_input_tokens: 90000 }), usageRow('a', { cache_read_input_tokens: 316849 })]);
+    p.run({ hook_event_name: 'PreCompact', trigger: 'manual', transcript_path: tp });
+    assert.ok(!fs.existsSync(path.join(p.flow, 'compact-points.json')), 'a /compact the user typed is no ceiling reached');
+    p.run({ hook_event_name: 'PreCompact', trigger: 'auto', transcript_path: tp });
+    fs.appendFileSync(tp, JSON.stringify(boundary('auto', 317321)) + '\n');   // the harness writes the boundary after PreCompact
+    p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp });
+    const rows = JSON.parse(fs.readFileSync(path.join(p.flow, 'compact-points.json'), 'utf8'));
+    assert.deepStrictEqual(rows.map((r) => [r.model, r.tokens]), [['claude-opus-5-5', 316849], ['claude-opus-5-5', 317321]]);
+    assert.doesNotMatch(fs.readFileSync(p.state, 'utf8'), /compact-points/, 'the record is no flow stamp');
+    // the engine reads it: the 1M tier's 400k trigger is held at 90% of the lowest point, 285,164 (requires the model
+    // row - claude-opus-5-5 is 1M in model-windows.json)
+    const saved = { ...process.env };
+    try
+    {
+        process.env.CLAUDE_PROJECT_DIR = p.root;
+        process.env.CLAUDE_CONFIG_DIR = BASE_ENV.CLAUDE_CONFIG_DIR;
+        delete process.env.ALFRED_CODE_FRESH_SESSION_1M;
+        delete process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
+        delete process.env.CLAUDE_CODE_AUTOCOMPACT_WINDOW;
+        fresh.use({ transcript_path: tp, cwd: p.root });
+        assert.strictEqual(fresh.ctxThreshold(), 285164);
+        fs.writeFileSync(path.join(p.flow, 'compact-points.json'), JSON.stringify([{ at: new Date().toISOString(), model: 'claude-sonnet-5', tokens: 120000 }]));
+        fresh.use({ transcript_path: tp, cwd: p.root });
+        assert.strictEqual(fresh.ctxThreshold(), 400000, "another model's point is not this model's");
+        fs.writeFileSync(path.join(p.flow, 'compact-points.json'), '{not json');
+        fresh.use({ transcript_path: tp, cwd: p.root });
+        assert.strictEqual(fresh.ctxThreshold(), 400000, 'a garbage record reads as none');
+        // the documented auto-compact window lowers the window it is judged in: 500k is neither tier - the DEFAULT 300k
+        process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = '500000';
+        fresh.use({ transcript_path: tp, cwd: p.root });
+        assert.strictEqual(fresh.knownWindow(), 500000);
+        assert.strictEqual(fresh.ctxThreshold(), 300000);
+        delete process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
+        const set = (file, json) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(json)); };
+        set(path.join(p.root, '.claude', 'settings.json'), { modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 200000 } }, autoCompactWindow: 600000 });
+        fresh.use({ transcript_path: tp, cwd: p.root });
+        assert.strictEqual(fresh.knownWindow(), 200000, "a model's own entry wins over the file's top-level key");
+        set(path.join(p.root, '.claude', 'settings.json'), { autoCompactWindow: 'auto' });
+        set(path.join(BASE_ENV.CLAUDE_CONFIG_DIR, 'settings.json'), { autoCompactWindow: 500000 });
+        fresh.use({ transcript_path: tp, cwd: p.root });
+        assert.strictEqual(fresh.knownWindow(), 1000000, "'auto' is no window, and the USER file's top-level key does not reach Opus 5.5 (settings-reference)");
+        set(path.join(BASE_ENV.CLAUDE_CONFIG_DIR, 'settings.json'), {});
+    }
+    finally { process.env = saved; }
+});
+
+test('compact-state: the first change after an automatic compaction is held once, with both numbers (C09)', () =>
+{
+    const log = fs.mkdtempSync(path.join(TMP, 'hold-'));
+    const env = { ALFRED_CODE_HOOK_LOG_DIR: log };
+    const rows = [usageRow('f', { cache_creation_input_tokens: 40000 }), usageRow('a', { cache_read_input_tokens: 316000 }), boundary('auto', 317000),
+        { type: 'user', isCompactSummary: true, message: { role: 'user', content: 'summary ... Continue the conversation from where it left off without asking the user any further questions.' } }];
+    const after = (tp, row) => fs.appendFileSync(tp, JSON.stringify(row) + '\n');
+    const call = (p, tp, tool, extra = {}) => p.run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: {}, transcript_path: tp, ...extra }, env).status;
+    const p = project();
+    const tp = p.transcript(rows);
+    assert.match(startText(p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }, env)),
+        /without asking the user any further questions' - that is the harness's default line, and this hook supersedes it/);
+    after(tp, usageRow('b', { cache_read_input_tokens: 120000 }));
+    assert.strictEqual(call(p, tp, 'Read'), 0, 'a read is never held');
+    assert.strictEqual(call(p, tp, 'Edit', { agent_id: 'seat-1' }), 0, "a seat's call is the parent's work in flight");
+    const held = p.run({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {}, transcript_path: tp }, env);
+    assert.strictEqual(held.status, 2, 'the first edit is held');
+    assert.match(held.stderr, /~120k tokens per message/, 'the measured post-compaction carry');
+    assert.match(held.stderr, /~40k, this session's own first message/, 'and the cold floor');
+    assert.strictEqual(call(p, tp, 'Bash'), 2, 'still held - no ask yet');
+    assert.strictEqual(call(p, tp, 'Edit'), 0, 'two denials, then it gives way - never a loop');
+    const q = project();
+    const tq = q.transcript(rows);
+    q.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tq }, env);
+    after(tq, usageRow('b', { cache_read_input_tokens: 120000 }));
+    after(tq, { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'q', content: 'Your questions have been answered: "Fresh?"="Continue here"' }] } });
+    assert.strictEqual(call(q, tq, 'Write'), 0, 'an answered ask releases it');
+    const s = project();
+    const ts = s.transcript(rows);
+    s.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: ts }, env);
+    after(ts, usageRow('b', { cache_read_input_tokens: 120000 }, 'Single short step: rename the one test.'));
+    assert.strictEqual(call(s, ts, 'Edit'), 0, 'the stated exemption releases it');
+    const w = project();
+    const tw = w.transcript([usageRow('f', { cache_creation_input_tokens: 90000 }), boundary('auto', 317000)]);
+    w.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tw }, env);
+    after(tw, usageRow('b', { cache_read_input_tokens: 120000 }));
+    assert.strictEqual(call(w, tw, 'Edit'), 0, 'a carry mostly the cold floor (758ce661: 120k over 90k) is no hold');
+    const m = project();
+    const tm = m.transcript([usageRow('f', { cache_creation_input_tokens: 40000 }), boundary('manual', 200000)]);
+    m.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tm }, env);
+    after(tm, usageRow('b', { cache_read_input_tokens: 120000 }));
+    assert.strictEqual(call(m, tm, 'Edit'), 0, 'a /compact the user typed is no hold');
+    const a = project();
+    const ta = a.transcript(rows);
+    fs.mkdirSync(a.flow, { recursive: true });
+    fs.writeFileSync(path.join(a.flow, 'APPROVAL'), 'AUTO - "run it overnight"\n');
+    a.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: ta }, env);
+    after(ta, usageRow('b', { cache_read_input_tokens: 120000 }));
+    assert.strictEqual(call(a, ta, 'Edit'), 0, 'a live AUTO waiver holds nothing');
+});

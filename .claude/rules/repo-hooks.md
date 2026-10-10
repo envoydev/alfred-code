@@ -33,7 +33,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   implementer gate, M9. Known ceiling: such a repo still lists all 44 core seats, 12,532 characters of
   descriptions in every session's first call where 2.0.0 listed 9, since no deny is written into a repo the
   stack never touched - revisit when a plugin's agents can be scoped per project); and a Cursor host, judged from the PAYLOAD alone (`cursor_version`, or a camelCase event name - never Cursor's environment variables, which a `claude` session in its terminal inherits): Cursor loads Claude hooks by default and turns a Stop block into an unbounded follow-up, so only the rm, secret, force-push and desktop exec guards run there and every other hook stands down silently, no ledger row. Each non-protective hook makes the call itself, `cursorStandDown(payload, __filename)`, right after parsing its own payload (no stdin is read or patched by the prelude; a test fails a hook file that lacks it). All fail open. Beside the gates,
-  `unattended(input)` says nobody is at the terminal - `ALFRED_CODE_UNATTENDED=1`; else
+  `unattended(input)` says nobody is at the terminal - `ALFRED_CODE_UNATTENDED=1`; a live AUTO waiver of this session
+  (`<docs-path>/flow/APPROVAL` opening `AUTO`, under 8h and not older than the transcript - the dispatch guard's
+  stamp, `autoStampLive`; audit 2026-10-10); else
   `CLAUDE_CODE_ENTRYPOINT` when set (the 2.1.283 CLI sets `sdk-cli` in print mode, rewriting an inherited
   `cli`, and keeps an SDK launch's `sdk-ts` / `sdk-py`, which stay interactive); else the transcript's newest
   row carrying an `entrypoint` (`sdk-cli` for `claude -p`, `cli` interactive; bookkeeping rows carry none). A
@@ -418,11 +420,17 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     consent; a question, a negation or the PR's description / template / page is not (H3).
   - `guard-stop-contract.js` (`Stop` + `SubagentStop`; PreToolUse `AskUserQuestion` - its notes INJECTED, and a
     PreToolUse note lands beside the tool result, which for an ask is the user's ANSWER, so each is worded for that
-    moment ('the ask just answered ... verify, re-ask if it moved'); the one DENY is the ask's own house voice (an
+    moment ('the ask just answered ... verify, re-ask if it moved'); the one DENY, once per ask text, is the ask's own SHAPE - its house voice (an
     em- or en-dash or a horizontal bar - `hook-prelude.js` `HOUSE_DASH`, the answer-length block's class too - or a straight or
     curly double quote; audit 2026-10-08) outside a backticked span or fenced block, which it neither judges nor rewrites
     (R5: a string's delimiters in code stay double), once per ask text (a marker the log dir cannot hold goes under the temp
-    dir, so a missing dir never re-denies), carrying the corrected strings (I3);
+    dir, so a missing dir never re-denies), carrying the corrected strings (I3); a fresh-session option quoting no number
+    within 20% of the measured carry (both numbers appended to its description); and, with no mechanical fix, an option
+    telling the user to type into Other, a single-select question without exactly one '(Recommended)', and a new cycle's
+    first ask with no fresh option after a typed prompt followed this session's plan `Completed:` stamp (once per stamp;
+    audit 2026-10-10 C08 / C09 / C26). The solve-task FLOW STOP FIELDS note reads the whole transcript once per session
+    for the flow's marker (`guard-stop-flow-*` keeps how far it read), and accepts a field opening a sentence inside a
+    one-line question; under a live AUTO waiver a solve-task done close without the three fields is held once at `Stop`;
     LOG-ONLY: `PostToolUse` + `PostToolUseFailure` on the shell tools) - blocks a turn ending on a decision-shaped question in prose (the quality
     loop's mode and stage-close asks worded as statements included), or a 'done, next step pending' close - unless every pending item the close states is a WAIT ('still running',
     'waiting on', 'awaiting') on work this session launched that is still out and ENDS (an async Agent, one a SendMessage
@@ -463,11 +471,17 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `ALFRED_CODE_FRESH_SESSION_200K` (default 150000), `_1M` (400000), `_DEFAULT` (300000, any other or
     unreadable window); `0` switches that case off; seeded absent-only. The window comes from ONE table (the session
     model's row in the shipped `model-windows.json`, else `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW`, seeded 300000; no id
-    suffix, carry or compaction is read), never declared. A key matches its id, a dated snapshot, a Bedrock version, the `[1m]` suffix and a provider prefix, never a point release: `claude-opus-5-5` took `claude-opus-5`'s row until every model got its own (2.1.5 M6, which added Opus 4.5 and Sonnet 4.5 at 200K). A trigger at or above its window is clamped
+    suffix or carry is read), never declared - only LOWERED by two measured facts (audit 2026-10-10 C08): the install's
+    documented auto-compact window (`CLAUDE_CODE_AUTO_COMPACT_WINDOW`, else the highest settings file naming one - its
+    `modelSettings` entry for the model first; the USER file's top-level `autoCompactWindow` does not reach Opus 5.5 and
+    later, per the settings reference) and 90% of the lowest automatic compaction this project recorded for the model
+    (`<docs-path>/flow/compact-points.json`, 30 days). A context read stops at a `compact_boundary` row (unknown until
+    the next model call), and the model id read widens to 8MB and takes the harness's `model` attachment row. A key matches its id, a dated snapshot, a Bedrock version, the `[1m]` suffix and a provider prefix, never a point release: `claude-opus-5-5` took `claude-opus-5`'s row until every model got its own (2.1.5 M6, which added Opus 4.5 and Sonnet 4.5 at 200K). A trigger at or above its window is clamped
     inside it, and `_DEFAULT` must stay below the smallest window it can land on. The offer fires only
     when a resume recovers something (carry minus the session's first-message floor >= 40% of carry),
     re-arms at 1.5x growth, and never mid-response. A long-idle or long-span session takes the same
-    offer under the window (`ALFRED_CODE_FRESH_SESSION_AFTER_HOURS`, default 2, unseeded, `0` off).
+    offer under the window (`ALFRED_CODE_FRESH_SESSION_AFTER_HOURS`, default 2, unseeded, `0` off). The offer waits
+    while work this session launched is still out (it said 'the work in this turn is finished' 3s after a verifier left).
   - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
     `disable-model-invocation` skill (read from its frontmatter - the personal copy first, then the project's, then the
     running plugin's own root, then the plugin caches newest version first, the order Claude Code resolves a name in, M10; the user's slash turn is untouched;
@@ -483,11 +497,19 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     PreToolUse `Skill` BLOCKS; `UserPromptExpansion` INJECTS for slash-invoked runs (2.1.5 M14: the event fires on a
     typed command and names it in `command_name`, the typed prompt settling a plugin command's namespace; its matcher, a
     regex with no colon, lists the orchestration commands, so no ordinary prompt spawns it; never blocks - a blocked
-    expansion shows its reason to the user only); `SessionStart` matcher `compact` injects the ask plus two lines: answer in
+    expansion shows its reason to the user only; the chained offer is spent only once an ask is answered after it, so a
+    double-submitted command re-injects on the live branch); `SessionStart` matcher `compact` - an AUTOMATIC compaction
+    only, a typed `/compact` gets just the two lines below - names the summary's 'continue without asking' line as
+    superseded and leaves a one-shot HOLD (`guard-fresh-compact-*`): the first changing call after it (`Write` / `Edit` /
+    `MultiEdit` / `NotebookEdit` / `Agent` / `Task`, the shell route, a `Skill`) is denied with this session's measured
+    carry and cold floor until an ask is answered or the turn writes 'single short step', released with no deny when a
+    resume would recover too little, nobody is at the terminal, a seat made the call or it has denied twice (audit
+    2026-10-10 C09: the injection alone lost to the summary line in six sessions), plus two lines: answer in
     the language of the user's prompts (unless a loaded skill sets it), and re-read a live plan file's header first. `PreCompact` writes
-    `<docs-path>/flow/COMPACT-STATE` first (the live plan, the open flow stamps with their ages, the
-    files this session wrote, no model call), and the compact start points at it - even with every
-    fresh-session offer off.
+    `<docs-path>/flow/COMPACT-STATE` first (the live plan, the newest orchestration run with its route and SKILL.md path,
+    the open flow stamps with their ages, the files this session wrote, no model call) and records an automatic
+    compaction's context in `compact-points.json`; the compact start points at the state file - and, for a SLASH run,
+    says to re-read its body, which the harness re-attaches only for a Skill call - even with every fresh-session offer off.
   - `guard-cross-project-write.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route) - a write outside
     the project root is blocked (file tools and shell routes: redirection, `tee`, in-place `sed`/`perl`,
     `cp`/`mv` destination, `rm`/`mkdir`/`chmod`, `git -C <other>` mutating, `cd <other>` then a write);

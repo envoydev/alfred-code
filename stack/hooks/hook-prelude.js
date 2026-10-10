@@ -279,12 +279,52 @@ function transcriptEntrypoint(file)
     return null;
 }
 
+// A live AUTO waiver is nobody at the terminal too (audit 2026-10-10 C08 / C09). The user's 'take every recommended
+// option' is written to <docs>/flow/APPROVAL with an `AUTO - "<their words>"` first line, and the dispatch guard reads
+// it as consent for THIS session only: under 8h old and not written before the session's transcript was born (a
+// birthtime equal to the ctime is a filesystem's fallback, unknown - the age cap still holds). While it is live a
+// person-directed ask has nobody to answer it - measured: a fresh-session Stop block demanding an ask while three
+// seats ran under AUTO (9a4ef375), and a post-compaction 'ask the user' that a literal follower would have ended an
+// overnight run on (c6142301). The project root is the env's or the payload's own cwd, never this process's cwd.
+const AUTO_STAMP_MAX_MS = 8 * 60 * 60 * 1000;
+function autoStampLive(input, env)
+{
+    try
+    {
+        const source = env || process.env;
+        const payload = input && typeof input === 'object' ? input : {};
+        const root = source.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' ? payload.cwd : '');
+        if (!root) return false;
+        const gate = path.resolve(root, envOf(source, 'DOCS_PATH') || '.alfred/docs', 'flow', 'APPROVAL');
+        const stamp = fs.statSync(gate);
+        if (!stamp.isFile() || Date.now() - stamp.mtimeMs > AUTO_STAMP_MAX_MS) return false;
+        if (typeof payload.transcript_path === 'string' && payload.transcript_path)
+        {
+            try
+            {
+                const t = fs.statSync(payload.transcript_path);
+                const born = t.birthtimeMs && t.birthtimeMs !== t.ctimeMs ? t.birthtimeMs : 0;
+                if (born && stamp.mtimeMs < born) return false;
+            }
+            catch { /* no transcript - the age cap decides */ }
+        }
+        const fd = fs.openSync(gate, 'r');
+        const head = Buffer.alloc(512);
+        let n = 0;
+        try { n = fs.readSync(fd, head, 0, head.length, 0); }
+        finally { fs.closeSync(fd); }
+        return /^\s*AUTO\b/.test(head.toString('utf8', 0, n).split('\n')[0]);
+    }
+    catch { return false; }
+}
+
 function unattended(input, env)
 {
     try
     {
         const source = env || process.env;
         if (String(source.ALFRED_CODE_UNATTENDED || '').trim() === '1') return true;
+        if (autoStampLive(input, source)) return true;
         // The CLI's own answer first (review A, M8): 2.1.283 sets CLAUDE_CODE_ENTRYPOINT to sdk-cli in print mode,
         // rewriting an inherited cli, and keeps an SDK launch's own value - one read, no torn row, and right for a
         // resumed session before its first new row. Set to anything, it decides; unset, the transcript does.
@@ -489,4 +529,4 @@ function scanBudget(limits = {})
 // the stop contract's ask deny and the answer-length Stop block, which disagreed ([\u2014\u2013] vs [\u2014\u2015], audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };

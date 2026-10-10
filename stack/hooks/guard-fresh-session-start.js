@@ -112,7 +112,22 @@ const UNATTENDED_SKIP = 'skip: nobody is at the terminal - logged, not offered';
 
 const EVENT = payload.hook_event_name || '';
 const IS_SKILL_CALL = payload.tool_name === 'Skill';
-if (!IS_SKILL_CALL && EVENT !== 'UserPromptExpansion' && EVENT !== 'SessionStart' && EVENT !== 'PreCompact') process.exit(0);
+// THE POST-COMPACTION HOLD (audit 2026-10-10 C09). The compact start below only INJECTS - SessionStart cannot block -
+// and the injection lost to the harness's own summary line, 'Continue the conversation from where it left off without
+// asking the user any further questions', every time it was measured: six sessions went straight on (7fae0c39 ignored
+// it three times in one 80-minute turn, ~11.8M cache-read; adaa2ef3 built on for 101 messages). So the compact start
+// leaves a one-shot marker, and the first call that CHANGES something after it - an edit, a shell command, a dispatch,
+// a phase Skill call - is denied once with the measured numbers, until an AskUserQuestion is answered or the turn says
+// the rest is a single short step. Reads (Read, Grep, Glob) pass: the plan header is read first.
+const HOLD_TOOL_RE = /^(?:Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Monitor|Agent|Task|Skill)$/;
+const IS_HOLD_CALL = HOLD_TOOL_RE.test(String(payload.tool_name || '')) && (EVENT === 'PreToolUse' || !EVENT);
+function compactHoldFile() {
+  const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+  return nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-compact-${key}.hold`);
+}
+// The common case - no hold pending - leaves before anything else is read.
+if (IS_HOLD_CALL && !IS_SKILL_CALL && !fs.existsSync(compactHoldFile())) process.exit(0);
+if (!IS_SKILL_CALL && !IS_HOLD_CALL && EVENT !== 'UserPromptExpansion' && EVENT !== 'SessionStart' && EVENT !== 'PreCompact') process.exit(0);
 
 // The fresh-session arithmetic lives in fresh-session.js beside this hook, shared with
 // guard-stop-contract.js. An update from an older install can run this hook before that file
@@ -128,6 +143,68 @@ try { fresh = require(require('path').join(__dirname, 'fresh-session.js')); } ca
 }
 fresh.use(payload);
 const { FRESH_OFF, ctxThreshold, worthResuming } = fresh;
+
+// The hold itself. Released - never denied again - once an ask was answered after the compaction, the turn wrote the
+// single-short-step line, a resume would recover too little (the engine's own worthResuming - audit 2026-10-10 C26,
+// 758ce661: 120k carry over a 90k floor, the unconditional ask cost two turns), nobody is at the terminal (a live
+// AUTO waiver included), or it has denied twice; a hold past 12h is stale. A seat's call is the parent's work in
+// flight, never held. One `compact-hold` row records how it ended.
+const SHORT_STEP_RE = /\b(?:single|one) short step\b/i;
+function shortStepSince(from) {
+  try {
+    const p = payload.transcript_path;
+    const size = fs.statSync(p).size;
+    const start = Math.max(from, size - 8 * 1024 * 1024, 0);
+    if (start >= size) return false;
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (!SHORT_STEP_RE.test(line)) continue;
+      try {
+        const o = JSON.parse(line);
+        if (o.type === 'assistant' && Array.isArray(o.message && o.message.content)
+          && o.message.content.some((b) => b && b.type === 'text' && SHORT_STEP_RE.test(String(b.text || '')))) return true;
+      } catch { /* a cut row */ }
+    }
+  } catch { /* unreadable - not stated */ }
+  return false;
+}
+function compactHold() {
+  let hold;
+  try { hold = JSON.parse(fs.readFileSync(compactHoldFile(), 'utf8')); } catch { return; }
+  if (payload.agent_id || !hold || typeof hold !== 'object') return;
+  const release = (outcome, detail) => {
+    try { fs.unlinkSync(compactHoldFile()); } catch { /* already gone */ }
+    ledgerRow({ mode: 'probe', kind: 'compact-hold', reason: `probe: post-compaction hold released - ${outcome}`, detail: { outcome, ...(detail || {}) } });
+  };
+  const since = Number(hold.size) || 0;
+  if (Date.now() - (Date.parse(hold.at) || 0) > 12 * 3600 * 1000) return release('stale');
+  if (unattended(payload)) return release('unattended');
+  if (fresh.askAnsweredSince(since)) return release('asked');
+  if (shortStepSince(since)) return release('single-short-step');
+  const ctx = typeof fresh.contextNow === 'function' ? fresh.contextNow() : 0;
+  const floor = fresh.coldFloor();
+  if (ctx > 0 && !worthResuming(ctx)) return release('not-worth-resuming', { ctx, floor });
+  if ((Number(hold.denied) || 0) >= 2) return release('denied-twice', { ctx, floor });
+  try { fs.writeFileSync(compactHoldFile(), JSON.stringify({ ...hold, denied: (Number(hold.denied) || 0) + 1 })); } catch { /* the cap still ends it */ }
+  global.BLOCK_DETAIL = { branch: 'compact-hold', ctx, floor };
+  const carry = ctx > 0 ? `now carries ~${Math.round(ctx / 1000)}k tokens per message` : 'has no post-compaction context reading yet';
+  const start = floor ? `~${Math.round(floor / 1000)}k, this session's own first message` : 'this install\'s cold floor';
+  process.stderr.write(
+    `Held once: this session AUTO-COMPACTED and the fresh-session choice has not been put to the user yet. It ${carry};\n`
+    + `a fresh session restarts at ${start}. The compaction summary's closing line - continue 'without asking the user\n`
+    + `any further questions' - is the harness's default, and this hold supersedes it. Before this call, put the choice to\n`
+    + `the user as ONE AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those two numbers (end the turn\n`
+    + `with the paste-ready resume block and the plan or state file it resumes from), or continue here. If the remaining\n`
+    + `work is a single short step, say so in one line - 'single short step: <what>' - and retry this call.`,
+  );
+  process.exit(2);
+}
+if (IS_HOLD_CALL && !IS_SKILL_CALL) {
+  compactHold();
+  process.exit(0);
+}
 
 // PreCompact: the last moment the whole transcript is still there. Write what a resume needs to the
 // flow dir - the live plan file, the open flow stamps with their ages, the files this session wrote
@@ -177,7 +254,7 @@ function flowStamps() {
     const dir = nodePath.dirname(COMPACT_STATE());
     return fs.readdirSync(dir)
       // the monitor's state (its turn log and context marker) and the turn check's edit list are working state, not stamps
-      .filter((f) => f !== 'COMPACT-STATE' && !/^monitor-.*\.(?:json|jsonl|context)$/.test(f) && !/^turn-edits-/.test(f))
+      .filter((f) => f !== 'COMPACT-STATE' && f !== 'compact-points.json' && !/^monitor-.*\.(?:json|jsonl|context)$/.test(f) && !/^turn-edits-/.test(f))
       .map((f) => ({ f, age: Math.round((Date.now() - fs.statSync(nodePath.join(dir, f)).mtimeMs) / 60000) }))
       .sort((a, b) => a.f.localeCompare(b.f));
   } catch { return []; }
@@ -193,39 +270,6 @@ function sessionWrites() {
     }
   } catch { /* no tmpdir */ }
   return [...out];
-}
-if (EVENT === 'PreCompact') {
-  try {
-    const plan = livePlan();
-    const stamps = flowStamps();
-    const wrote = sessionWrites();
-    const lines = [
-      '# COMPACT-STATE - written by guard-fresh-session-start.js at PreCompact, no model call. Read it before re-orienting.',
-      `session: ${payload.session_id || ''}`,
-      `written: ${new Date().toISOString()}`,
-      `trigger: ${payload.trigger || ''}`,
-      `live plan: ${plan || 'none found'}`,
-      stamps.length ? 'flow stamps:' : 'flow stamps: none',
-      ...stamps.map((s) => `  ${s.f} - ${s.age} min old`),
-      `files written this session (${wrote.length})${wrote.length ? ':' : ''}`,
-      ...wrote.slice(0, FILES_SHOWN).map((w) => `  ${w}`),
-      ...(wrote.length > FILES_SHOWN ? [`  ... and ${wrote.length - FILES_SHOWN} more`] : []),
-    ];
-    fs.mkdirSync(nodePath.dirname(COMPACT_STATE()), { recursive: true });
-    fs.writeFileSync(COMPACT_STATE(), lines.join('\n') + '\n');
-  } catch { /* a snapshot that cannot be written never stands in the compaction's way */ }
-  process.exit(0);
-}
-// The pointer the compact start carries: only to a snapshot of THIS session, written within the hour.
-function compactPointer() {
-  try {
-    const file = COMPACT_STATE();
-    if (Date.now() - fs.statSync(file).mtimeMs > 60 * 60 * 1000) return '';
-    const mine = fs.readFileSync(file, 'utf8').split('\n').includes(`session: ${payload.session_id || ''}`);
-    if (!mine || !payload.session_id) return '';
-    const rel = nodePath.relative(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), file).split(nodePath.sep).join('/');
-    return `The PreCompact hook saved what this session had open at ${rel} - the live plan, the flow stamps with their ages, the files it wrote. Read it before anything else.`;
-  } catch { return ''; }
 }
 
 // The deliberate entry points: each one opens a multi-phase run with its own state file, so a
@@ -305,6 +349,124 @@ function skillHeads(root, skill) {
   return out;
 }
 
+// The newest orchestration run this session started, and how: a SLASH command's body arrives once, as the expansion,
+// and is not re-attached after a compaction (the harness's `invoked_skills` attachment carries Skill-TOOL bodies only),
+// so a slash flow resumed from the summary alone - audit 2026-10-10 C09, 6ed392a5: the close ask dropped the
+// template's 'Commit now' option and both verbatim close lines, then a clarify, a re-ask and a typed redo. The whole
+// transcript is read in chunks (PreCompact is rare and the run's marker sits at its head).
+function activeFlow() {
+  try {
+    const p = payload.transcript_path;
+    const size = fs.statSync(p).size;
+    const fd = fs.openSync(p, 'r');
+    let found = null;
+    try {
+      const CHUNK = 4 * 1024 * 1024;
+      let carry = '';
+      for (let at = 0; at < size; at += CHUNK) {
+        const buf = Buffer.alloc(Math.min(CHUNK, size - at));
+        fs.readSync(fd, buf, 0, buf.length, at);
+        const lines = (carry + buf.toString('utf8')).split('\n');
+        carry = at + buf.length < size ? lines.pop() : '';
+        for (const line of lines) {
+          if (line.includes('<command-name>') && line.includes('"type":"user"') && !line.includes('"tool_result"') && isHumanTurn(line)) {
+            const c = (JSON.parse(line).message || {}).content;
+            const text = typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (x && x.type === 'text' && x.text) || '').join('\n') : '';
+            const m = /<command-name>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-name>/.exec(text);
+            if (m && isOrchestration(m[1])) found = { name: m[1], route: 'slash' };
+          } else if (line.includes('"Skill"') && line.includes('"tool_use"') && line.includes('"type":"assistant"')) {
+            try {
+              for (const b of JSON.parse(line).message.content || []) {
+                const n = b && b.type === 'tool_use' && b.name === 'Skill' ? String((b.input || {}).skill || (b.input || {}).name || '') : '';
+                if (n && isOrchestration(n)) found = { name: n, route: 'skill' };
+              }
+            } catch { /* a cut row */ }
+          }
+        }
+      }
+    } finally { fs.closeSync(fd); }
+    if (!found) return null;
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    found.body = skillHeads(root, found.name).find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) || null;
+    return found;
+  } catch { return null; }
+}
+// The context this compaction happened at, kept per project for the fresh-session trigger (fresh-session.js
+// observedCompaction - audit 2026-10-10 C08). PreCompact carries no token count (code.claude.com/docs/en/hooks), so it
+// records the last real model call's context; the compact start below adds the boundary row's own `preTokens`.
+function recordCompaction(tokens) {
+  if (typeof fresh.recordCompactPoint === 'function' && tokens) fresh.recordCompactPoint(tokens, fresh.sessionModelId());
+}
+function boundaryPreTokens() {
+  try {
+    const p = payload.transcript_path;
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - 4 * 1024 * 1024);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
+    const lines = buf.toString('utf8').split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i].includes('"compact_boundary"')) continue;
+      try {
+        const o = JSON.parse(lines[i]);
+        if (o.subtype === 'compact_boundary') return o.compactMetadata || {};
+      } catch { /* a cut row */ }
+    }
+  } catch { /* unreadable */ }
+  return null;
+}
+if (EVENT === 'PreCompact') {
+  try {
+    if (String(payload.trigger || '') === 'auto') {
+      const u = lastUsage();
+      if (u) recordCompaction((u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0));
+    }
+  } catch { /* the snapshot below still runs */ }
+  try {
+    const plan = livePlan();
+    const stamps = flowStamps();
+    const wrote = sessionWrites();
+    const flow = activeFlow();
+    const lines = [
+      '# COMPACT-STATE - written by guard-fresh-session-start.js at PreCompact, no model call. Read it before re-orienting.',
+      `session: ${payload.session_id || ''}`,
+      `written: ${new Date().toISOString()}`,
+      `trigger: ${payload.trigger || ''}`,
+      `live plan: ${plan || 'none found'}`,
+      flow ? `active flow: /${flow.name} (${flow.route === 'slash' ? 'slash command - its body is not re-attached after a compaction' : 'Skill call - the harness re-attaches its body'})` : 'active flow: none found',
+      ...(flow && flow.body ? [`flow body: ${flow.body.split(nodePath.sep).join('/')}`] : []),
+      stamps.length ? 'flow stamps:' : 'flow stamps: none',
+      ...stamps.map((s) => `  ${s.f} - ${s.age} min old`),
+      `files written this session (${wrote.length})${wrote.length ? ':' : ''}`,
+      ...wrote.slice(0, FILES_SHOWN).map((w) => `  ${w}`),
+      ...(wrote.length > FILES_SHOWN ? [`  ... and ${wrote.length - FILES_SHOWN} more`] : []),
+    ];
+    fs.mkdirSync(nodePath.dirname(COMPACT_STATE()), { recursive: true });
+    fs.writeFileSync(COMPACT_STATE(), lines.join('\n') + '\n');
+  } catch { /* a snapshot that cannot be written never stands in the compaction's way */ }
+  process.exit(0);
+}
+// The pointer the compact start carries: only to a snapshot of THIS session, written within the hour - plus, when the
+// session's newest run was a SLASH flow, the line that puts its body back before the next step.
+function compactPointer() {
+  try {
+    const file = COMPACT_STATE();
+    if (Date.now() - fs.statSync(file).mtimeMs > 60 * 60 * 1000) return '';
+    const state = fs.readFileSync(file, 'utf8').split('\n');
+    if (!payload.session_id || !state.includes(`session: ${payload.session_id}`)) return '';
+    const rel = nodePath.relative(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), file).split(nodePath.sep).join('/');
+    const flow = (state.find((l) => /^active flow: \/\S+ \(slash command/.test(l)) || '').match(/^active flow: (\/\S+)/);
+    const body = (state.find((l) => l.startsWith('flow body: ')) || '').slice('flow body: '.length).trim();
+    const flowLine = flow
+      ? ` This session's run is ${flow[1]}, typed as a slash command, so its body was NOT carried through the compaction - `
+        + (body ? `Read ${body} again before its next step` : `re-read its SKILL.md before its next step`)
+        + ' (its stop asks and close lines are templates the summary does not keep).'
+      : '';
+    return `The PreCompact hook saved what this session had open at ${rel} - the live plan, the active flow, the flow stamps with their ages, the files it wrote. Read it before anything else.${flowLine}`;
+  } catch { return ''; }
+}
+
 if (IS_SKILL_CALL && skill) {
   try {
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
@@ -330,6 +492,8 @@ if (IS_SKILL_CALL && skill) {
     }
   } catch { /* no such skill on disk, or unreadable - not this guard's business */ }
 }
+// A phase Skill call after a compaction is a change like any other (the post-compaction hold above).
+if (IS_SKILL_CALL) compactHold();
 
 if (EVENT !== 'SessionStart' && !isOrchestration(skill)) process.exit(0);
 
@@ -338,30 +502,46 @@ if (EVENT !== 'SessionStart' && !isOrchestration(skill)) process.exit(0);
 if (EVENT === 'SessionStart') {
   if (String(payload.source || '') !== 'compact') process.exit(0);
   const pointer = compactPointer();
+  const boundary = boundaryPreTokens();
+  // The boundary row's own measurement of where the harness compacted (fresh-session.js observedCompaction).
+  if (boundary && boundary.trigger === 'auto' && boundary.preTokens) recordCompaction(boundary.preTokens);
   // Nobody at the terminal (hook-prelude.js unattended) has nobody to ask: the pointer, never the offer - and the
-  // skipped offer leaves its row (review A, M3).
+  // skipped offer leaves its row (review A, M3). A compaction the USER asked for (`/compact`) is no ceiling reached.
   const quiet = !FRESH_OFF && unattended(payload);
   if (quiet) ledgerRow({ mode: 'unattended', kind: 'compact-offer', reason: UNATTENDED_SKIP });
-  if (FRESH_OFF || quiet) {
-    if (pointer) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: pointer } }));
+  const manual = !!boundary && boundary.trigger === 'manual';
+  const after = 'Two more things for the moment after a compaction. The summary above is the harness' + String.fromCharCode(39) + 's own ' +
+    'and it is in English: keep answering in the language of the user' + String.fromCharCode(39) + 's own prompts, unless a loaded skill sets the answer language (measured: ' +
+    'two sessions switched to English right after compacting). And when a plan or state file is ' +
+    'live, re-read its HEADER first - it holds the anchors and the next step - before re-orienting ' +
+    'from the code (measured: a resume grepped the tree and read a 10k-char source range before ' +
+    'opening the plan whose header already named the ranges).' + (pointer ? ` ${pointer}` : '');
+  if (FRESH_OFF || quiet || manual) {
+    const text = manual ? after : pointer;
+    if (text) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: text } }));
     process.exit(0);
   }
+  // The one-shot hold the first changing call meets (compactHold, above), keyed by the transcript's size now: an ask
+  // answered past it releases it.
+  try {
+    fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0 }));
+    sweepOffers();
+  } catch { /* no hold - the injection below still goes out */ }
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'SessionStart',
       additionalContext:
         'This session just AUTO-COMPACTED, which means it reached the point where the harness compacts ' +
-        'and the harness - not the user - decided what to drop. ' +
-        'Before continuing, put the choice to the user as ONE AskUserQuestion: resume in a fresh ' +
-        'session (recommended - end this turn with the paste-ready invocation and the state file ' +
-        'or plan file it resumes from), or continue here on the summary with the cost stated. If ' +
-        'the remaining work is a single short step, say so and just finish it instead of asking. ' +
-        'Two more things for the moment after a compaction. The summary above is the harness' + String.fromCharCode(39) + 's own ' +
-        'and it is in English: keep answering in the language of the user' + String.fromCharCode(39) + 's own prompts, unless a loaded skill sets the answer language (measured: ' +
-        'two sessions switched to English right after compacting). And when a plan or state file is ' +
-        'live, re-read its HEADER first - it holds the anchors and the next step - before re-orienting ' +
-        'from the code (measured: a resume grepped the tree and read a 10k-char source range before ' +
-        'opening the plan whose header already named the ranges).' + (pointer ? ` ${pointer}` : ''),
+        'and the harness - not the user - decided what to drop. The summary closes by telling you to continue ' +
+        String.fromCharCode(39) + 'without asking the user any further questions' + String.fromCharCode(39) + ' - that is the harness' + String.fromCharCode(39) + 's ' +
+        'default line, and this hook supersedes it. Your first change after the compaction (an edit, a shell command, a ' +
+        'dispatch) is checked against this session' + String.fromCharCode(39) + 's measured context and its own first message: when a ' +
+        'fresh session would recover a real share, the change is held and the hold names both numbers for ONE ' +
+        'AskUserQuestion - resume in a fresh session (recommended - end this turn with the paste-ready invocation and ' +
+        'the state file or plan file it resumes from), or continue here on the summary; when it would recover too ' +
+        'little the change goes through and you continue here. Never put the choice without those two numbers. If ' +
+        'the remaining work is a single short step, say so in one line (' + String.fromCharCode(39) + 'single short step: <what>' + String.fromCharCode(39) + ') and just finish it. ' +
+        after,
     },
   }));
   process.exit(0);
@@ -381,6 +561,8 @@ function lastUsage(tail = 512 * 1024) {
     fs.closeSync(fd);
     let usage = null;
     for (const line of buf.toString('utf8').split('\n')) {
+      // the usage above a compaction boundary is the pre-compaction context (audit 2026-10-10 C08)
+      if (line.includes('"compact_boundary"') && /"subtype"\s*:\s*"compact_boundary"/.test(line)) { usage = null; continue; }
       if (!line.includes('"assistant"')) continue;
       try {
         const o = JSON.parse(line);
@@ -482,6 +664,16 @@ function chainedOfferFile() {
   const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
   return `${envOf(process.env, 'HOOK_LOG_DIR') || os.tmpdir()}/guard-fresh-chained-${key}.offered`;
 }
+// The chained offer is SPENT only once an ask was answered after it, like the size offer: the file records the
+// transcript's size when it was injected (`size <n>`). Written at injection alone, an offer injected on a prompt the
+// client double-submitted landed on the abandoned branch and silenced the live one (audit 2026-10-10 C09, ca65b406:
+// 53 messages on cycle 1's history, ~9.3M of 35.1M cache-read). A file from before this line carries no size: spent.
+function chainedOfferSpent() {
+  let text;
+  try { text = fs.readFileSync(chainedOfferFile(), 'utf8'); } catch { return false; }
+  const m = /^size (\d+)/.exec(text.trim());
+  return !m || fresh.askAnsweredSince(parseInt(m[1], 10));
+}
 // The SIZE offer's re-arm. The denial mandates an AskUserQuestion whose second answer is 'run it
 // here anyway with the cost stated' - and until 0.2.74 nothing honoured that answer: no receipt, no
 // state, no re-arm, so the retry re-blocked on the identical call and the route the guard itself
@@ -543,7 +735,7 @@ const overSize = !FRESH_OFF && FRESH_AT !== null && ctx > FRESH_AT && worthResum
 // The chained trigger judges only a run the user TYPED (the slash route); a Skill call is a phase
 // of a run already in flight, and the size trigger still covers that route.
 const chained = EVENT === 'UserPromptExpansion' && !FRESH_OFF && !overSize && worthResuming(ctx)
-  && !fs.existsSync(chainedOfferFile()) && priorOrchestrationRun();
+  && !chainedOfferSpent() && priorOrchestrationRun();
 if (!overSize && !chained) process.exit(0);
 // Nobody at the terminal (hook-prelude.js unattended) has nobody to offer it to: one row, and no offer state is
 // spent, so a person resuming the session later is still offered it (review A, M3).
@@ -552,7 +744,7 @@ if (unattended(payload)) {
   process.exit(0);
 }
 if (chained) {
-  try { fs.writeFileSync(chainedOfferFile(), new Date().toISOString()); } catch { /* never let state break the gate */ }
+  try { fs.writeFileSync(chainedOfferFile(), `size ${fresh.transcriptSize()} ${new Date().toISOString()}`); } catch { /* never let state break the gate */ }
   sweepOffers();
 }
 // Written on BOTH routes. The slash route injects rather than denies, but it is the same offer to
@@ -563,6 +755,9 @@ const why = chained
   ? `is a deliberate orchestration run and this session has ALREADY run one - every turn of the\n`
     + `new run re-sends the finished run's whole history (measured: four flows chained with no\n`
     + `/clear boundary drove 199.1k tokens per message for under 30k of actual tool output).`
+    // the session's own number, as the size variant states it - an ask that said 'size unmeasured' two seconds after the
+    // size variant had quoted ~404k (audit 2026-10-10 C09, c6142301)
+    + (ctx > 0 ? `\nThis session already carries ~${Math.round(ctx / 1000)}k tokens per message.` : '')
   : `is a deliberate orchestration run and this session already carries ~${Math.round(ctx / 1000)}k tokens\n`
     + `per message of another run's history - every turn of the new run re-sends all of it\n`
     + `(measured: the same step cost 260k/message chained vs 134k fresh).`;

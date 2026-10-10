@@ -149,6 +149,38 @@ test('monitor: the context note fires at 80% of the fresh-session trigger, once 
     assert.strictEqual(at.rows().length, 1, 'the context note fired twice in one session');
 });
 
+test('monitor: right after a compaction the context note reads neither the stale carry nor the wrong tier (audit 2026-10-10 C08)', () =>
+{
+    // 758ce661 / adaa2ef3 / 7fae0c39: 0.4-0.6MB of re-attached rows pushed every assistant row out of the 512KB model
+    // read (window -> DEFAULT tier) while the usage read returned the PRE-compaction carry - '176% of 180000' noted at a
+    // real 120k, and the once-per-session note spent.
+    const s = session();
+    const tp = path.join(s.root, 't.jsonl');
+    const asst = (id, usage) => JSON.stringify({ type: 'assistant', message: { id, model: 'claude-opus-5-5', content: [{ type: 'text', text: 'ok' }], usage } });
+    const attach = (kb, i) => JSON.stringify({ type: 'attachment', attachment: { type: 'invoked_skills', content: 'x'.repeat(kb * 1024) }, n: i });
+    fs.writeFileSync(tp, [asst('f', { cache_creation_input_tokens: 40000 }), asst('a', { cache_read_input_tokens: 316849 }),
+        JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto', preTokens: 317321 } }),
+        ...[0, 1, 2, 3, 4].map((i) => attach(120, i)),
+        JSON.stringify({ type: 'attachment', attachment: { type: 'model', identity: { modelId: 'claude-opus-5-5' } } })].join('\n') + '\n');
+    s.call('Read', { file_path: 'a' }, { transcript_path: tp });
+    assert.strictEqual(s.rows().length, 0, 'no usage row since the compaction - the context is unknown, nothing noted');
+    const fresh = require('../stack/hooks/fresh-session.js');
+    const saved = { ...process.env };
+    try
+    {
+        process.env.CLAUDE_CONFIG_DIR = BASE_ENV.CLAUDE_CONFIG_DIR;
+        process.env.CLAUDE_PROJECT_DIR = s.root;
+        delete process.env.ALFRED_CODE_FRESH_SESSION_1M;
+        fresh.use({ transcript_path: tp, cwd: s.root });
+        assert.strictEqual(fresh.sessionModelId(), 'claude-opus-5-5', 'the model attachment row answers past the re-attached rows');
+        assert.strictEqual(fresh.knownWindow(), 1000000);
+        assert.strictEqual(fresh.contextNow(), 0, 'the pre-compaction usage is never read across the boundary');
+        fs.appendFileSync(tp, asst('b', { cache_read_input_tokens: 120127 }) + '\n');
+        assert.strictEqual(fresh.contextNow(), 120127, 'the first post-compaction row is read');
+    }
+    finally { process.env = saved; }
+});
+
 test('monitor: a subagent never takes the context note, and a switched-off trigger gives none', () =>
 {
     const sub = session();

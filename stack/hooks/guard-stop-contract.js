@@ -41,6 +41,7 @@ const fs = require('fs');
 // this hook running.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let unattended = () => false;
+let autoLive = () => false;   // hook-prelude.js autoStampLive - a live AUTO waiver of this session
 // The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
 let stopHeld = (input) => !!(input && input.stop_hook_active);
 let markHeld = () => {};
@@ -50,6 +51,7 @@ if (require.main === module) {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     unattended = prelude.unattended || unattended;
+    autoLive = prelude.autoStampLive || autoLive;
     houseDash = prelude.HOUSE_DASH || houseDash;
     if (prelude.stopHeldThisCycle) {
       stopHeld = (input) => prelude.stopHeldThisCycle('guard-stop-contract', input);
@@ -631,6 +633,9 @@ function lastAssistantMessage(tail = 512 * 1024) {
     // API error) carries zero usage and would read a hot session as empty.
     let contextUsage = null;
     for (const line of lines) {
+      // A compaction boundary drops the context read so far: the usage above it is the pre-compaction context
+      // (audit 2026-10-10 C08) - unknown until the next real model call lands.
+      if (line.includes('"compact_boundary"') && /"subtype"\s*:\s*"compact_boundary"/.test(line)) { contextUsage = null; continue; }
       if (!line.includes('"assistant"')) continue;
       try {
         const o = JSON.parse(line);
@@ -1459,6 +1464,19 @@ if (payload.hook_event_name === 'Stop') {
     );
     process.exit(2);
   }
+  // Under a live AUTO waiver a solve-task run asks nothing, so the ask branch's FLOW STOP FIELDS check never runs and a
+  // waived close went out with none of Result / Progress / Leftovers, its headline contradicting its own leftovers (audit
+  // 2026-10-10 C09, c6142301). The fields are the MODEL's to write - no person is asked - so this one holds a done close
+  // even with nobody at the terminal, once per Stop cycle (the chain marker).
+  if (!continuation && autoLive(payload) && (DONE_RE.test(closeWhole) || DONE_RE_CYR.test(closeWhole) || /\b(?:built|verified|implemented|pushed|merged|shipped)\b/i.test(closeWhole))
+    && !fieldsStamped(prose) && solveTaskCycle()) {
+    blockDetail('auto-fields', 'solve-task close under AUTO without Result / Progress / Leftovers');
+    process.stderr.write('This solve-task close went out under the AUTO waiver without its THREE named fields. A waived stop still\n'
+      + 'prints them, because the morning reader has nothing else: restate the close with `Result:` (one line plus the\n'
+      + 'artifact path), `Progress:` (<N> of <M> steps) and `Leftovers:` (what this run started and did not finish, or\n'
+      + '`none`) - and a headline that agrees with the leftovers. Nothing else changes.');
+    process.exit(2);
+  }
   // Every branch below asks a PERSON something - a decision, a pending step, a fresh session - and
   // with nobody at the terminal (hook-prelude.js unattended) the block only buys another turn. The
   // probes above still log, and so does the credential branch - its row is the record of the exposure.
@@ -1492,6 +1510,13 @@ if (payload.hook_event_name === 'Stop') {
     const since = lastBlockCtx();
     if (since && ctx < since * REOFFER_GROWTH) {
       breadcrumb(`Stop: fresh-session offer skipped, ctx ${ctx} has not grown ${REOFFER_GROWTH}x since ${since}`);
+      process.exit(0);
+    }
+    // 'The work in this turn is finished' is false while a seat this session dispatched is still out: the offer went out
+    // 3s after a verifier launched, the resume was picked and the seat was killed and re-dispatched (audit 2026-10-10
+    // C09, bba03dad). Deferred, not spent - the next clean close after the work ends makes it.
+    if (liveBackgroundWork() === true) {
+      breadcrumb('Stop: fresh-session offer deferred, work this session launched is still running');
       process.exit(0);
     }
     recordBlockCtx(ctx);
@@ -1662,20 +1687,70 @@ if (payload.tool_name === 'AskUserQuestion') {
     const DASH = houseDash.source;
     const voice = [];
     if (new RegExp(DASH).test(proseText)) voice.push('an em- or en-dash (use a single dash)');
-    if (/["\u201c\u201d]/.test(proseText)) voice.push('a double quote (use single quotes)');
-    if (voice.length) {
-      const fixProse = (t) => String(t).replace(new RegExp(`\\s*${DASH}\\s*`, 'g'), ' - ').replace(/["\u201c\u201d]/g, "'");
+    if (/["“”]/.test(proseText)) voice.push('a double quote (use single quotes)');
+    const questions = (((payload.tool_input || {}).questions) || []);
+    // 7. FRESH-SESSION NUMBERS. An option to resume fresh is the user's cost decision, and the flows' contract is the two
+    // ABSOLUTE numbers - this session's carry and a fresh start's floor. The note route (3) lands after the answer, so
+    // an ask that carried the option with no number, or with a stale one, went out as written: 3h46m idle with neither
+    // number (audit 2026-10-10 C09, 516e653d), '~192k' quoted 74 minutes after it was measured while the carry was
+    // 284.5k (e6a68237). Mechanical, so it is fixed here: the fresh option whose question quotes no number within 20%
+    // of the measured carry gets both numbers appended to its description.
+    const FRESH_OPT_RE = /\b(?:fresh session|new session|fresh chat)\b/i;
+    const isFreshOpt = (o) => o && typeof o === 'object' && FRESH_OPT_RE.test(`${o.label || ''} ${o.description || ''}`);
+    let numbers = null;
+    if (!FRESH_OFF && questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt))) {
+      const u = (() => { const l = lastAssistantMessage(); return (l && l.contextUsage) || null; })();
+      const ctxNow = u ? (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) : 0;
+      const quotes = (t) => [...String(t).matchAll(/(\d{2,4}(?:\.\d+)?)\s?k\b/gi)].map((m) => parseFloat(m[1]) * 1000)
+        .concat([...String(t).matchAll(/\b(\d{1,3}(?:,\d{3})+|\d{5,7})\s*tokens?\b/gi)].map((m) => parseInt(m[1].replace(/,/g, ''), 10)));
+      const near = (n) => Math.abs(n - ctxNow) <= ctxNow * 0.2;
+      const stale = questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt)
+        && !quotes([q.question, ...q.options.map((o) => `${(o && o.label) || ''} ${(o && o.description) || ''}`)].join(' ')).some(near));
+      if (ctxNow > 0 && stale) numbers = { ctx: ctxNow, floor: coldFloor() };
+    }
+    // 8. TYPE IT INTO OTHER. A picked option returns only its LABEL (observed 3 of 3, audit 2026-10-10 C26, ecea6d56:
+    // 'Paste ids in Other (Recommended)' came back as the bare label three times, and the ids belonged to a customer
+    // nobody could reach). A typed value is asked in plain prose that ends the turn.
+    const OTHER_RE = /\b(?:in|into|via|through|using) (?:the )?['‘’]?Other\b|\btype (?:it|them|\w+) (?:in|into)\b[^.]{0,20}\bOther\b/;
+    const typeIntoOther = questions.some((q) => q && Array.isArray(q.options) && q.options.some((o) => o && OTHER_RE.test(`${o.label || ''} ${o.description || ''}`)));
+    // 9. THE RECOMMENDED MARK (alfred-interaction.md: 'the recommended one marked'). A single-select question with
+    // options and none marked '(Recommended)', or more than one, went out in 2 of 11 questions of one session (C26,
+    // bda299a8), and the mark goes on the FIRST option (lint check 61's rule for the ask templates). Denied once: a
+    // contradiction the rule asks to put WITHOUT a default is re-sent unchanged and passes.
+    const unmarked = questions.filter((q) => {
+      if (!q || q.multiSelect || !Array.isArray(q.options) || q.options.length < 2) return false;
+      const marks = q.options.map((o, i) => (o && /\(Recommended\)/i.test(String(o.label || '')) ? i : -1)).filter((i) => i >= 0);
+      return marks.length !== 1 || marks[0] !== 0;
+    }).length;
+    // 10. A NEW CYCLE IN A FINISHED CYCLE'S CHAT. task-solve: a cycle starting after a finished one in the same session
+    // recommends the fresh-session hand-off in its first ask - prose, slipped in bda299a8 (C08, ~2.0M avoidable). A
+    // typed prompt after this session's plan was stamped `Completed:`, then an ask with no fresh option and a carry a
+    // resume would recover, is that ask.
+    let newCycle = null;
+    if (!FRESH_OFF && !questions.some((q) => q && Array.isArray(q.options) && q.options.some(isFreshOpt))) {
+      const fs2 = flowState();
+      if (fs2.flow && fs2.completed !== null && fs2.typedAfter) {
+        const u = (() => { const l = lastAssistantMessage(); return (l && l.contextUsage) || null; })();
+        const ctxNow = u ? (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0) : 0;
+        if (!ctxNow || worthResuming(ctxNow)) newCycle = { ctx: ctxNow, floor: coldFloor(), at: fs2.completed };
+      }
+    }
+    if (voice.length || numbers || typeIntoOther || unmarked || newCycle) {
+      const fixProse = (t) => (voice.length ? String(t).replace(new RegExp(`\\s*${DASH}\\s*`, 'g'), ' - ').replace(/["“”]/g, "'") : String(t));
       const fix = (t) => String(t).split(/(```[\s\S]*?```|`[^`\n]*`)/).map((s, i) => (i % 2 ? s : fixProse(s))).join('');
-      const fixed = (((payload.tool_input || {}).questions) || []).map((q) => (q && typeof q === 'object' ? {
+      const k = (n) => `~${Math.round(n / 1000)}k`;
+      const numberLine = numbers ? ` Measured now: ${k(numbers.ctx)} tokens per message in this session; a fresh one starts at ${numbers.floor ? k(numbers.floor) : 'this install\'s cold floor'}.` : '';
+      const fixed = questions.map((q) => (q && typeof q === 'object' ? {
         ...q,
         ...(q.question !== undefined ? { question: fix(q.question) } : {}),
         ...(q.header !== undefined ? { header: fix(q.header) } : {}),
-        ...(Array.isArray(q.options) ? { options: q.options.map((o) => (o && typeof o === 'object' ? { ...o, label: fix(o.label || ''), description: fix(o.description || '') } : o)) } : {}),
+        ...(Array.isArray(q.options) ? { options: q.options.map((o) => (o && typeof o === 'object' ? { ...o, label: fix(o.label || ''), description: fix(o.description || '') + (numbers && isFreshOpt(o) ? numberLine : '') } : o)) } : {}),
       } : q));
       const key = require('crypto').createHash('sha1').update(askText).digest('hex').slice(0, 16);
       const marker = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-askvoice-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}-${key}.denied`;
       // Once per ask text: a marker that cannot be written where HOOK_LOG_DIR points is written under the temp dir, and
       // one that cannot be written at all denies nothing - a missing log dir denied the same ask on every re-send.
+      // The new-cycle reason also holds once per Completed stamp, so a re-worded ask is not denied for it again.
       let first = true;
       try { fs.writeFileSync(marker, '', { flag: 'wx' }); } catch (e) {
         if (e && e.code === 'EEXIST') first = false;
@@ -1683,15 +1758,27 @@ if (payload.tool_name === 'AskUserQuestion') {
           try { fs.writeFileSync(require('path').join(require('os').tmpdir(), require('path').basename(marker)), '', { flag: 'wx' }); } catch { first = false; }
         }
       }
-      if (first) {
-        global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]) };
-        process.stderr.write(`Blocked: this AskUserQuestion's own text carries ${voice.join(' and ')}. The house voice `
-          + `(alfred-interaction.md) covers an ask's question, header, labels and descriptions, and the user reads them `
-          + `as written. Re-send the SAME ask with these questions - only the dashes and quotes changed:\n`
-          + `${JSON.stringify(fixed, null, 1)}\n`);
+      if (newCycle) {
+        try { fs.writeFileSync(`${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-newcycle-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}-${newCycle.at}.denied`, '', { flag: 'wx' }); }
+        catch { newCycle = null; }
+      }
+      const mechanical = voice.length || numbers;
+      if (first && (mechanical || typeIntoOther || unmarked || newCycle)) {
+        const reasons = [...voice];
+        if (numbers) reasons.push(`a fresh-session option with no measured number (this session carries ${k(numbers.ctx)} per message now)`);
+        if (typeIntoOther) reasons.push('an option that tells the user to type into Other');
+        if (unmarked) reasons.push(`${unmarked} question(s) without exactly one option marked '(Recommended)', listed first`);
+        if (newCycle) reasons.push('no fresh-session option, while this ask opens new work after this session already finished a solve-task cycle');
+        global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, newCycle: !!newCycle };
+        process.stderr.write(`Blocked: this AskUserQuestion carries ${reasons.join('; ')}.`
+          + (voice.length ? ` The house voice (alfred-interaction.md) covers an ask's question, header, labels and descriptions, and the user reads them as written.` : '')
+          + (typeIntoOther ? ` A picked option returns only its LABEL - a value the user must type goes in plain prose that ends the turn, and the ask carries what they can PICK ('I have them' / 'Someone else owns them' / 'Defer').` : '')
+          + (unmarked ? ` Mark the recommended option '(Recommended)' and list it first - or, for a contradiction you want answered with no default, re-send the question unchanged.` : '')
+          + (newCycle ? ` A new cycle after a finished one recommends the fresh-session hand-off first: add 'Resume in a fresh session (Recommended)' quoting ${newCycle.ctx ? `${k(newCycle.ctx)} per message here` : 'this session\'s carry'} and ${newCycle.floor ? `${k(newCycle.floor)} for a fresh start` : 'the fresh start\'s floor'} - or, if this ask still belongs to the finished cycle, re-send it unchanged.` : '')
+          + (mechanical ? ` Re-send the ask with these questions - only ${[voice.length ? 'the dashes and quotes' : '', numbers ? 'the fresh option\'s numbers' : ''].filter(Boolean).join(' and ')} changed:\n${JSON.stringify(fixed, null, 1)}\n` : '\n'));
         process.exit(2);
       }
-      notes.push(`The ask just sent carried ${voice.join(' and ')} after its first denial. Keep the house voice `
+      if (voice.length) notes.push(`The ask just sent carried ${voice.join(' and ')} after its first denial. Keep the house voice `
         + `(alfred-interaction.md) in every later ask: single dashes, single quotes.`);
     }
 
@@ -1738,7 +1825,9 @@ if (payload.tool_name === 'AskUserQuestion') {
         const why = overCtx
           ? `is past this window's fresh-session trigger (${at === null ? 'off' : Math.round(at / 1000) + 'k'})`
           : `has been open ${Math.max(clock.spanH, clock.gapH).toFixed(1)}h`;
-        notes.push(`This session carries ~${Math.round(ctx / 1000)}k tokens per message, ${why}, and every `
+        // The moment is part of the number: an ask quoted a 74-minute-old '~192k' while the carry was 284.5k (C09, e6a68237).
+        notes.push(`This session carries ~${Math.round(ctx / 1000)}k tokens per message (measured at this ask, `
+          + `${new Date().toISOString().slice(11, 16)} UTC - quote a later ask's own number, never this one), ${why}, and every `
           + `further turn re-sends all of it. A fresh session restarts at `
           + `${floor ? `~${Math.round(floor / 1000)}k - this session's own first message` : 'this install\'s cold floor, 87-134k across the audited projects'}. `
           + `The ask just answered offered no fresh session: if the work goes on, put an option to resume in a `
@@ -1761,9 +1850,7 @@ if (payload.tool_name === 'AskUserQuestion') {
     // what the sessions that did comply actually wrote - and so does a field opening a sentence inside a one-line
     // question (audit 2026-10-10, session 516e653d: 5 of 5 compliant asks wrote 'Result: ... Progress: ...' inline).
     if (solveTaskCycle()) {
-      const field = (name) => new RegExp(`(?:^|\\n|[.;!?)]\\s+|\\s[-|]\\s+)\\s*(?:[-*+]\\s*)?\\**${name}\\**\\s*:`, 'i');
-      const stamped = (t) => field('Result').test(t) && field('Progress').test(t) && field('Leftovers').test(t);
-      if (!stamped(turnText) && !stamped(askText)) {
+      if (!fieldsStamped(turnText) && !fieldsStamped(askText)) {
         notes.push('The ask just answered was a stop in a solve-task cycle, and it went out without its THREE '
           + 'named fields - `Result:` (one line plus the artifact path), `Progress:` (<N> of <M> steps), '
           + '`Leftovers:` (what this run started and did not finish, or `none`). State them in your next '
@@ -1860,60 +1947,94 @@ function turnProseBeforeAsk() {
   }
 }
 
+// The three stop fields a solve-task stop names: Result / Progress / Leftovers - at a line start, bold or bulleted, or
+// opening a sentence inside a one-line question (audit 2026-10-10 C01, 516e653d: 5 of 5 compliant asks wrote them inline).
+function fieldsStamped(t) {
+  const field = (name) => new RegExp(`(?:^|\\n|[.;!?)]\\s+|\\s[-|]\\s+)\\s*(?:[-*+]\\s*)?\\**${name}\\**\\s*:`, 'i');
+  return field('Result').test(t) && field('Progress').test(t) && field('Leftovers').test(t);
+}
+
 // Is this ask a stop inside a solve-task cycle? The transcript-local proof: the flow was invoked in this session, by
 // its slash marker in a typed user row or as a Skill call. A session that never ran the flow is never asked for the
 // flow's stamp. The marker sits at the transcript's HEAD - a slash cycle's first stop arrives 0.5-3MB after it (session
 // start attachments alone reach 450KB) - so the 256KB tail this read until 2.3.0 judged 0 of N stops in every long
 // cycle (audit 2026-10-10 C01: 17 sessions, e.g. 0 of 12 in 0d070bcc, 0 of 11 in 7491ab75). The whole transcript is
-// read ONCE and the answer kept per session (a `guard-stop-flow-*` file, swept with the hook's other state): a hit is
-// final, a miss records how far it read, so the next ask reads only the rows appended since.
-// (Built in the function, not a top-level const: the ask branch above runs before a const this far down exists.)
-function flowRunIn(text) {
-  const FLOW_MARK_RE = /<command-name>\s*\/?(?:[a-z0-9-]+:)?(?:alfred-)?task-solve(?:-cross)?\s*<\/command-name>|"skill"\s*:\s*"[^"]*task-solve(?:-cross)?"/g;
-  for (let m; (m = FLOW_MARK_RE.exec(text));) {
-    const line = text.slice(text.lastIndexOf('\n', m.index) + 1, (text.indexOf('\n', m.index) + 1 || text.length + 1) - 1);
-    // A marker quoted in a tool result (a `sed` over a test file, a transcript dump) is not a run.
-    if (m[0].startsWith('<') ? /"type"\s*:\s*"user"/.test(line) && !line.includes('"tool_result"')
-      : /"type"\s*:\s*"assistant"/.test(line) && line.includes('"tool_use"')) return true;
-  }
-  return false;
-}
+// read ONCE and the answer kept per session (a `guard-stop-flow-*` file, swept with the hook's other state): the scan
+// records how far it read, so the next ask reads only the rows appended since. The same pass keeps where the newest
+// plan `Completed:` stamp was written and whether a typed prompt followed it - a NEW cycle opened in a chat that
+// already finished one (audit 2026-10-10 C08, bda299a8: cycle 2's first ask carried no fresh-session option and its
+// design ran in-chat at 362-384k, ~2.0M avoidable; the user took the resume the moment it was offered).
+// (Every pattern is built in a function, not a top-level const: the ask branch above runs before a const this far
+// down exists.)
 function flowStateFile() {
   const key = String(payload.transcript_path || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
   return `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-flow-${key}`;
 }
-function solveTaskCycle() {
+function flowLine(line, at, state) {
+  const FLOW_MARK_RE = /<command-name>\s*\/?(?:[a-z0-9-]+:)?(?:alfred-)?task-solve(?:-cross)?\s*<\/command-name>|"skill"\s*:\s*"[^"]*task-solve(?:-cross)?"/;
+  const isUser = /"type"\s*:\s*"user"/.test(line);
+  const isAssistant = !isUser && /"type"\s*:\s*"assistant"/.test(line);
+  const m = FLOW_MARK_RE.exec(line);
+  // A marker quoted in a tool result (a `sed` over a test file, a transcript dump) is not a run.
+  if (m && (m[0].startsWith('<') ? isUser && !line.includes('"tool_result"') : isAssistant && line.includes('"tool_use"'))) state.flow = true;
+  if (isAssistant && line.includes('Completed:') && line.includes('plans/') && line.includes('"tool_use"')) {
+    try {
+      for (const b of JSON.parse(line).message.content || []) {
+        if (!b || b.type !== 'tool_use') continue;
+        const input = b.input || {};
+        const target = String(input.file_path || input.notebook_path || input.command || '');
+        const body = [input.content, input.new_string, input.command, ...(Array.isArray(input.edits) ? input.edits.map((e) => e && e.new_string) : [])].join('\n');
+        if (/plans\//.test(target) && /(?:^|\n)\s*[-*]?\s*\**Completed:/.test(body)) { state.completed = at; state.typedAfter = false; }
+      }
+    } catch { /* a cut row */ }
+  } else if (isUser && state.completed !== null && !line.includes('"tool_result"')) {
+    try {
+      const o = JSON.parse(line);
+      if (o.message && isTypedTurn(o) && !o.isCompactSummary
+        && !/^\s*(?:<(?:local-command-stdout|local-command-caveat|task-notification)>|Stop hook feedback:)/.test(rowText(o))) state.typedAfter = true;
+    } catch { /* a cut row */ }
+  }
+}
+function flowState() {
+  const none = { flow: false, completed: null, typedAfter: false };
   try {
     const p = payload.transcript_path;
-    if (!p) return false;
+    if (!p) return none;
     const size = fs.statSync(p).size;
-    let from = 0;
+    let state = { v: 2, upTo: 0, ...none };
     try {
-      const kept = fs.readFileSync(flowStateFile(), 'utf8').trim();
-      if (kept === 'hit') return true;
-      const n = parseInt(kept.replace(/^miss\s+/, ''), 10);
-      if (n > 0 && n <= size) from = n;   // a shorter file is another transcript under the same name - read it whole
-    } catch { /* no state yet */ }
+      const kept = JSON.parse(fs.readFileSync(flowStateFile(), 'utf8'));
+      // a shorter file is another transcript under the same name - read it whole
+      if (kept && kept.v === 2 && kept.upTo > 0 && kept.upTo <= size) state = kept;
+    } catch { /* no state yet, or the old one-word format - read it all */ }
     const fd = fs.openSync(p, 'r');
-    let hit = false;
-    let upTo = from;
     try {
       const CHUNK = 4 * 1024 * 1024;
-      let carry = '';
-      for (let at = from; at < size && !hit; at += CHUNK) {
+      let at = state.upTo;
+      let carry = Buffer.alloc(0);
+      while (at < size) {
         const buf = Buffer.alloc(Math.min(CHUNK, size - at));
         fs.readSync(fd, buf, 0, buf.length, at);
-        const text = carry + buf.toString('utf8');
-        hit = flowRunIn(text);
-        carry = text.slice(text.lastIndexOf('\n') + 1);   // a row cut by the chunk is read again whole with the next one
-        upTo = at + buf.length - Buffer.byteLength(carry);
+        const whole = Buffer.concat([carry, buf]);
+        const start = at - carry.length;
+        let from = 0;
+        for (let nl = whole.indexOf(10); nl >= 0; nl = whole.indexOf(10, from)) {
+          flowLine(whole.toString('utf8', from, nl), start + from, state);
+          from = nl + 1;
+        }
+        carry = whole.subarray(from);   // a row cut by the chunk is read whole with the next one
+        at += buf.length;
+        state.upTo = at - carry.length;
       }
     } finally { fs.closeSync(fd); }
-    try { fs.writeFileSync(flowStateFile(), hit ? 'hit' : `miss ${Math.max(from, upTo)}`); } catch { /* the next ask reads it all again */ }
-    return hit;
+    try { fs.writeFileSync(flowStateFile(), JSON.stringify(state)); } catch { /* the next ask reads it all again */ }
+    return state;
   } catch {
-    return false;
+    return none;
   }
+}
+function solveTaskCycle() {
+  return flowState().flow;
 }
 
 // Did a repository/remote state read run since the last typed user turn? The ask's scope has to be

@@ -349,6 +349,11 @@
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/shell-guards.js\"",
                 "timeout": 80
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
               }
             ]
           },
@@ -374,6 +379,16 @@
           },
           {
             "matcher": "Skill",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Write|Edit|MultiEdit|NotebookEdit|Agent|Task",
             "hooks": [
               {
                 "type": "command",

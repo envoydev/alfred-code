@@ -591,6 +591,56 @@ test('guard-stop-contract: a fresh-session ask answered this turn is not asked a
     answer('t7', 'Continue here')), 0, "the hook's own feedback row is no typed prompt");
 });
 
+test('guard-stop-contract: the fresh-session offer waits while work this session launched is out (audit 2026-10-10 C09)', () => {
+  // bba03dad: the offer said 'the work in this turn is finished' 3s after a verifier launched; the resume was picked,
+  // the seat killed after one message and re-dispatched later.
+  const tp = transcript('bg-defer', ctxRows('bg-defer', 500000, 'The review seat is out; the build itself is complete.'));
+  const stop = (tasks) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp, background_tasks: tasks }, { env: logEnv() }).status;
+  assert.equal(stop([{ id: 'a1', type: 'subagent', status: 'running', description: 'verify' }]), 0, 'a running seat defers the offer');
+  assert.equal(stop([]), 2, 'an empty registry makes it');
+});
+
+test('guard-stop-contract: an ask that sends the user to type into Other, or marks no recommendation, is sent back once (audit 2026-10-10 C26)', () => {
+  const tp = transcript('ask-c26', [assistantRow('c26', 'ok', { cache_read_input_tokens: 900 })]);
+  // ecea6d56: 'Paste ids in Other (Recommended)' returned only its label three times
+  const other = [{ question: 'The staging Google client ids?', options: [{ label: 'Paste ids in Other (Recommended)', description: 'Type both ids in the Other field' }, { label: 'Defer', description: 'later' }] }];
+  const env = logEnv();
+  const r = askIn(tp, other, env);
+  assert.equal(r.status, 2, 'denied once');
+  assert.match(r.stderr, /returns only its LABEL/);
+  assert.equal(askIn(tp, other, env).status, 0, 're-sent, it passes - never a loop');
+  // bda299a8: two questions with no (Recommended) option
+  const bare = [{ question: 'What should a Manager see?', options: [{ label: 'Hidden entirely', description: 'x' }, { label: 'Read-only', description: 'y' }] }];
+  const u = askIn(tp, bare);
+  assert.equal(u.status, 2);
+  assert.match(u.stderr, /without exactly one option marked '\(Recommended\)'/);
+  assert.equal(askIn(tp, [{ ...bare[0], multiSelect: true }]).status, 0, 'a multi-select question takes no single recommendation');
+  assert.equal(askIn(tp, [{ question: 'Which file?', options: [{ label: 'a.js', description: 'x' }] }]).status, 0, 'one option is nothing to rank');
+  assert.equal(askIn(tp, [{ question: 'Go?', options: [{ label: 'Yes (recommended)', description: 'x' }, { label: 'No', description: 'y' }] }]).status, 0, 'the mark in any case');
+  const second = askIn(tp, [{ question: 'Ship?', options: [{ label: 'Hold', description: 'x' }, { label: 'Ship (Recommended)', description: 'y' }] }]);
+  assert.equal(second.status, 2, 'the marked option goes first');
+  assert.match(second.stderr, /listed first/);
+});
+
+test('guard-stop-contract: a new cycle after a finished one is sent back once without the fresh option (audit 2026-10-10 C08)', () => {
+  // bda299a8: cycle 2's first ask, typed after cycle 1's plan was stamped Completed:, carried no fresh-session option.
+  const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',
+    input: { file_path: '/p/.alfred/docs/plans/2026-10-08-x.md', old_string: 'Approved:', new_string: 'Approved: yes\nCompleted: 2026-10-08' } }] } };
+  const base = [{ type: 'user', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } },
+    assistantRow('f', 'first', { cache_creation_input_tokens: 40000 }), completed];
+  const next = { type: 'user', message: { role: 'user', content: 'now the manager view' } };
+  const hot = assistantRow('h', 'Result: design done. Progress: 1 of 6 steps. Leftovers: none.', { cache_read_input_tokens: 362000 });
+  const q = [{ question: 'Result: design done. Progress: 1 of 6 steps. Leftovers: none. Build it?', options: [{ label: 'Build (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }];
+  const env = logEnv();
+  const r = askIn(transcript('nc-new', [...base, next, hot]), q, env);
+  assert.equal(r.status, 2, 'the new cycle\'s first ask is sent back');
+  assert.match(r.stderr, /Resume in a fresh session \(Recommended\)' quoting ~362k per message here and ~40k for a fresh start/);
+  assert.equal(askIn(transcript('nc-new', [...base, next, hot]), [{ ...q[0], question: `${q[0].question} Now?` }], env).status, 0, 'once per Completed stamp');
+  assert.equal(askIn(transcript('nc-close', [...base, hot]), q, logEnv()).status, 0, 'the finished cycle\'s own close ask, before any new prompt, is left alone');
+  const withFresh = [{ ...q[0], options: [{ label: 'Resume in a fresh session (Recommended)', description: '~362k here, ~40k fresh' }, { label: 'Build here', description: 'x' }] }];
+  assert.equal(askIn(transcript('nc-fresh', [...base, next, hot]), withFresh, logEnv()).status, 0, 'an ask carrying the option passes');
+});
+
 // ---------------------------------------------------------------------------------------------
 // 4. stop-denial-stale-150k - the denial printed a number that was not this session's trigger
 // ---------------------------------------------------------------------------------------------
@@ -612,7 +662,7 @@ const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.addi
 const askIn = (tp, questions, env) => runIn('guard-stop-contract.js',
   { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: tp, tool_input: { questions } },
   { env: env || logEnv() });
-const oneQ = [{ question: 'Which next?', options: [{ label: 'Continue', description: 'carry on here' }, { label: 'Stop', description: 'hold' }] }];
+const oneQ = [{ question: 'Which next?', options: [{ label: 'Continue (Recommended)', description: 'carry on here' }, { label: 'Stop', description: 'hold' }] }];
 const ts = (h) => new Date(Date.UTC(2026, 8, 20, h, 0, 0)).toISOString();
 
 test('guard-stop-contract: the fresh-session note carries the two absolute numbers, not a ratio', () => {

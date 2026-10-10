@@ -100,6 +100,52 @@ test('unattended: CLAUDE_CODE_ENTRYPOINT decides first, the transcript only when
     assert.strictEqual(unattended({ transcript_path: t.interactive }, { CLAUDE_CODE_ENTRYPOINT: 'cli', ALFRED_CODE_UNATTENDED: '1' }), true, 'the launch switch still wins');
 });
 
+test('unattended: a live AUTO waiver of this session is nobody at the terminal (audit 2026-10-10 C08/C09)', () =>
+{
+    // 9a4ef375: a fresh-session Stop block demanded an ask while three seats ran under AUTO; c6142301: the
+    // post-compaction 'ask the user' would have ended an overnight AUTO run. The stamp is the dispatch guard's.
+    const root = fs.mkdtempSync(path.join(TMP, 'auto-'));
+    const flow = path.join(root, '.alfred', 'docs', 'flow');
+    fs.mkdirSync(flow, { recursive: true });
+    const t = transcripts();
+    const env = { CLAUDE_PROJECT_DIR: root };
+    // the session began before its AUTO stamp was written (a stamp older than the transcript is another session's)
+    const cycle = file([{ type: 'user', entrypoint: 'cli', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } }, ...convo('cli')]);
+    assert.strictEqual(unattended({ transcript_path: t.interactive }, env), false, 'no stamp - a person');
+    fs.writeFileSync(path.join(flow, 'APPROVAL'), 'APPROVED - "go"\n');
+    assert.strictEqual(unattended({ transcript_path: t.interactive }, env), false, 'an APPROVED stamp keeps the asks');
+    fs.writeFileSync(path.join(flow, 'APPROVAL'), 'AUTO - "run it overnight, take every recommendation"\n');
+    assert.strictEqual(unattended({ transcript_path: t.interactive }, env), true, 'a live AUTO stamp of this session');
+    assert.strictEqual(unattended({ transcript_path: t.interactive, cwd: root }, {}), true, 'the payload cwd finds it with no project env');
+    assert.strictEqual(unattended({ transcript_path: t.interactive }, {}), false, 'no root at all - never this process cwd');
+    const old = (Date.now() - 9 * 3600 * 1000) / 1000;
+    fs.utimesSync(path.join(flow, 'APPROVAL'), old, old);
+    assert.strictEqual(unattended({ transcript_path: t.interactive }, env), false, 'a stamp past 8h is no waiver');
+    fs.utimesSync(path.join(flow, 'APPROVAL'), Date.now() / 1000, Date.now() / 1000);
+    assert.strictEqual(unattended({ transcript_path: t.interactive }, { ...env, ALFRED_CODE_DOCS_PATH: 'elsewhere' }), false, 'the docs root setting is honoured');
+    fs.writeFileSync(path.join(flow, 'APPROVAL'), '');
+    assert.strictEqual(unattended({ transcript_path: t.interactive }, env), false, 'an empty stamp is no waiver');
+    fs.rmSync(path.join(flow, 'APPROVAL'));
+    fs.mkdirSync(path.join(flow, 'APPROVAL'));
+    assert.strictEqual(unattended({ transcript_path: t.interactive }, env), false, 'a directory named APPROVAL is no stamp');
+    // through the stop contract's real entry: a status close while seats run under AUTO is logged, not held
+    fs.rmSync(path.join(flow, 'APPROVAL'), { recursive: true });
+    const close = 'T25 done. The next steps wait on T7 and T26.';
+    const stop = () => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'auto-s', cwd: root, transcript_path: t.interactive, last_assistant_message: close }, { CLAUDE_PROJECT_DIR: root });
+    assert.strictEqual(stop().status, 2, 'a person at the terminal is asked');
+    fs.writeFileSync(path.join(flow, 'APPROVAL'), 'AUTO - "take every recommendation"\n');
+    assert.strictEqual(stop().status, 0, 'under a live AUTO waiver the close stands');
+    const rows = fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'auto-s.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.ok(rows.some((r) => r.mode === 'unattended' && r.kind === 'done-close'), 'and one unattended row records it');
+    // c6142301: under AUTO a solve-task run asks nothing, so its close is where the three fields are held
+    const closeOn = (text, extra = {}) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: `auto-f${++n}`, cwd: root, transcript_path: cycle, last_assistant_message: text, ...extra }, { CLAUDE_PROJECT_DIR: root }).status;
+    assert.strictEqual(closeOn('All seven cards are built and verified.'), 2, 'a waived close with no fields is held once');
+    assert.strictEqual(closeOn('All seven cards are built.\nResult: 7 cards - docs/plans/x.md\nProgress: 6 of 6 steps\nLeftovers: card 7 item 3'), 0, 'the fields clear it');
+    assert.strictEqual(closeOn('All seven cards are built and verified.', { stop_hook_active: true }), 0, 'a continuation is not judged again');
+    assert.strictEqual(run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'auto-plain', cwd: root, transcript_path: t.interactive, last_assistant_message: 'All built.' }, { CLAUDE_PROJECT_DIR: root }).status, 0,
+        'an AUTO session that never ran the flow is not asked for its fields');
+});
+
 test('guard-answer-length: the env route quiets the Stop block with no transcript at all, and cli keeps it', () =>
 {
     const dash = 'Fixed it \u2014 the build is green.';

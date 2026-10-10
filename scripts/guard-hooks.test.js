@@ -1379,10 +1379,18 @@ test('guard-stop-contract: the AskUserQuestion branch injects its notes, and den
     { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir } });
   const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
 
-  const deep = ask(hot, [{ question: 'Which next?', options: [{ label: 'Continue', description: 'x' }, { label: 'Stop', description: 'y' }] }]);
+  const deep = ask(hot, [{ question: 'Which next?', options: [{ label: 'Continue (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }]);
   assert.equal(deep.status, 0, 'no fresh option, deep into a 1M session - it injects, it does not deny');
   assert.match(ctxOf(deep), /resume in a fresh session/i, 'the fresh-session offer reaches a flow whose every stop is a tool call');
-  assert.equal(ask(hot, [{ question: 'Continue or resume in a fresh session?', options: [{ label: 'Fresh session', description: 'resume' }] }]).status, 0);
+  assert.equal(ask(hot, [{ question: 'Continue or resume in a fresh session?', options: [{ label: 'Fresh session', description: 'resume - ~900k per message here' }] }]).status, 0);
+  // audit 2026-10-10 C09: a fresh option quoting no measured number is denied once, its description carrying both numbers
+  const bare = [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }] }];
+  const numbered = ask(hot, bare);
+  assert.equal(numbered.status, 2, 'a numberless fresh option is sent back once');
+  assert.match(numbered.stderr, /start clean Measured now: ~900k tokens per message in this session/, 'with the measured carry appended to its description');
+  assert.equal(ask(hot, bare).status, 0, 'the same ask re-sent passes - never a loop');
+  assert.equal(ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: '~150k here vs ~90k fresh' }, { label: 'Continue', description: 'here' }] }]).status, 2,
+    'a stale number - 150k quoted while the carry is 900k - is sent back too');
   assert.doesNotMatch(ctxOf(ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session', description: 'start clean' }] }])), /offered no fresh session/i,
     'an ask that already offers it is not told to offer it');
 
@@ -3449,7 +3457,14 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     const offered = slash(second, env);
     assert.match(offered, /ALREADY run one/, 'the offer names the reason - the prior run, not the size');
     assert.match(offered, /fresh session/, 'and carries the same offer the size trigger does');
-    // ONCE per session: the user has answered, so the retry must go through.
+    // c6142301 (audit 2026-10-10 C09): the chained variant dropped the measured carry, so the ask said 'size unmeasured'
+    assert.match(offered, /already carries ~60k tokens per message/, 'and the session\'s own carry');
+    // Spent only once ANSWERED (audit 2026-10-10 C09, ca65b406): a double-submitted command put the offer on the
+    // abandoned branch, and the live branch's re-expansion found it spent - so an unanswered offer is made again ...
+    assert.match(slash(second, env), /ALREADY run one/, 'an offer nobody answered is made again on the next expansion');
+    // ... and once the user has answered, the retry goes through.
+    fs.appendFileSync(second, JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'ask-fresh',
+      content: 'Your questions have been answered: "Start the loop in a fresh session?"="Run it here anyway"' }] } }) + '\n');
     assert.equal(slash(second, env), '', 'an answered offer is not asked again');
     // UserPromptExpansion fires as the command expands, so the typed prompt's own row may not be on disk
     // yet: the command being judged IS the human turn after the prior run's answer (2.1.5 M14).
