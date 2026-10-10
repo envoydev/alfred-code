@@ -506,6 +506,29 @@ test('C07: the instructions attachment is the floor breakdown, flags a rule load
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// C07 (e499fc94): cost-state sums every model the session billed, seats included; subtracting the main transcript alone
+// named a 66.5M 'untranscribed' gap where main + seats left 17.6M.
+test('C07: the untranscribed gap subtracts the seats\' transcripts, and none is named when they cover the bill', () => {
+  const dir = tmp();
+  try {
+    const cost = (cr) => ({ type: 'cost-state', sessionId: 'x', modelUsage: { 'claude-sonnet-5': { inputTokens: 1, outputTokens: 1, cacheReadInputTokens: cr, cacheCreationInputTokens: 0 } } });
+    const seat = (cr) => {
+      const sub = path.join(dir, 'session', 'subagents');
+      fs.mkdirSync(sub, { recursive: true });
+      fs.writeFileSync(path.join(sub, 'agent-s1.meta.json'), JSON.stringify({ agentType: 'demo-seat' }));
+      fs.writeFileSync(path.join(sub, 'agent-s1.jsonl'), line({ ...asst('s1', T(2), [{ type: 'text', text: 'ok' }]), message: { id: 's1', model: 'claude-sonnet-5', usage: usage(1, 0, cr, 5), content: [{ type: 'text', text: 'ok' }] } }));
+    };
+    const main = (cr) => write(dir, [human(T(0), 'go'), { ...asst('m1', T(1), [{ type: 'text', text: 'ok' }]), message: { id: 'm1', model: 'claude-sonnet-5', usage: usage(1, 0, 1000, 5), content: [{ type: 'text', text: 'ok' }] } }, cost(cr)]);
+    seat(6000);
+    const file = main(10000);
+    const j = run([file]).main;
+    assert.deepStrictEqual(j.untranscribed, { cacheRead: 3000, contexts: 3, seatsCacheRead: 6000 }, '10,000 billed less 1,000 main and 6,000 seats');
+    assert.match(text([file]), /untranscribed calls: cost-state cache-read 10\.0k vs transcript 1\.0k \+ seats 6\.0k - gap 3\.0k/);
+    const covered = main(7000);
+    assert.strictEqual(run([covered]).main.untranscribed, undefined, 'main + seats cover the bill: no gap is named');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // C05: a commit that opens its own line of a multi-line call (390aebcb, 49cb4b82, f6c591fa: 'git commits 0' over a
 // receipted commit). A heredoc message naming the commit verb still counts nothing.
 test('C05: a git commit or gh pr merge on a later line of a multi-line call counts; a heredoc body never does', () => {

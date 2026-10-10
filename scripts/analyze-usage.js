@@ -2754,6 +2754,17 @@ function summarizeCauses(pending, imageTok = 0) {
     .map(([label, tok]) => (tok == null ? `${label} (pixels, not measured on a re-cache)` : `${label} (~${fmt(tok)} tok${label.startsWith('image×') ? ', from the context growth' : ''})`)).join(', ');
 }
 
+// cost-state sums every model the session billed, its seats included, so the main transcript alone is the wrong
+// subtrahend: one session printed a 66.5M 'untranscribed' gap where main + seats left 17.6M (audit 2026-10-10,
+// e499fc94). The seats' transcripts are subtracted before the remainder is named untranscribed.
+function reconcileUntranscribed(main, agents) {
+  if (!main.costState) return;
+  const seats = agents.reduce((n, a) => n + ((a.stats && a.stats.total && a.stats.total.cacheRead) || 0), 0);
+  const gap = main.costState.cacheRead - main.total.cacheRead - seats;
+  if (gap <= 0) { delete main.untranscribed; return; }
+  main.untranscribed = { cacheRead: gap, contexts: main.peakCtx ? Math.round((10 * gap) / main.peakCtx) / 10 : null, ...(seats ? { seatsCacheRead: seats } : {}) };
+}
+
 // ---------- subagents (the session's <id>/subagents/ directory) ----------
 
 async function analyzeSubagents(sessionFile, window) {
@@ -3588,7 +3599,7 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
     if (il) console.log(il);
   }
   if (main.totalCostUSD != null) console.log(`billed $${Number(main.totalCostUSD).toFixed(2)} (cost-state)`);
-  if (main.untranscribed) console.log('untranscribed calls: cost-state cache-read ' + fmt(main.costState.cacheRead) + ' vs transcript ' + fmt(main.total.cacheRead) + ' - gap ' + fmt(main.untranscribed.cacheRead) + (main.untranscribed.contexts != null ? ' (~' + main.untranscribed.contexts + 'x the peak context)' : '') + ': the harness' + String.fromCharCode(39) + 's post-turn recap call(s) are billed and written to no transcript row - the bundle reconciles to its bill only with this line');
+  if (main.untranscribed) console.log('untranscribed calls: cost-state cache-read ' + fmt(main.costState.cacheRead) + ' vs transcript ' + fmt(main.total.cacheRead) + (main.untranscribed.seatsCacheRead ? ' + seats ' + fmt(main.untranscribed.seatsCacheRead) : '') + ' - gap ' + fmt(main.untranscribed.cacheRead) + (main.untranscribed.contexts != null ? ' (~' + main.untranscribed.contexts + 'x the peak context)' : '') + ': the harness' + String.fromCharCode(39) + 's post-turn recap call(s) are billed and written to no transcript row - the bundle reconciles to its bill only with this line');
   if (main.forkPrefix && main.forkPrefix.msgs) console.log('fork prefix: ' + main.forkPrefix.msgs + ' msgs / ' + fmt(main.forkPrefix.cacheRead) + ' cache-read / ' + main.forkPrefix.toolCalls + ' tool calls carry another session' + String.fromCharCode(39) + 's id (' + main.forkPrefix.sessionIds.join(', ') + ') - a copied prefix of that transcript, counted there; this file' + String.fromCharCode(39) + 's own tail is ' + (main.total.msgs - main.forkPrefix.msgs) + ' msgs / ' + fmt(main.total.cacheRead - main.forkPrefix.cacheRead) + ' cache-read, and the ledger cross-check is judged over that tail only');
   if (main.stopHookBlocks) console.log(`Stop-hook denials ${main.stopHookBlocks} - these arrive as meta user TEXT, not tool results, so they are absent from the hook-blk column below`);
   if (main.harnessDenials) console.log(`Harness denials ${main.harnessDenials} - read as a block (auto-mode classifier, a foreground sleep, a tool-schema failure) but no stack hook ran: excluded from hook-blk, never charge a guard for them`);
@@ -3852,7 +3863,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
     if (il) extraFacts.push(`- **Interrupts** ${il.replace(/^user interrupts /, '')}`);
   }
   if (main.totalCostUSD != null) extraFacts.push(`- **Billed** $${Number(main.totalCostUSD).toFixed(2)} (\`cost-state\`).`);
-  if (main.untranscribed) extraFacts.push('- **Untranscribed calls** cost-state cache-read ' + fmt(main.costState.cacheRead) + ' vs transcript ' + fmt(main.total.cacheRead) + ' - gap ' + fmt(main.untranscribed.cacheRead) + (main.untranscribed.contexts != null ? ' (~' + main.untranscribed.contexts + 'x the peak context)' : '') + ': the harness' + String.fromCharCode(39) + 's post-turn recap call(s) are billed and written to no transcript row.');
+  if (main.untranscribed) extraFacts.push('- **Untranscribed calls** cost-state cache-read ' + fmt(main.costState.cacheRead) + ' vs transcript ' + fmt(main.total.cacheRead) + (main.untranscribed.seatsCacheRead ? ' + seats ' + fmt(main.untranscribed.seatsCacheRead) : '') + ' - gap ' + fmt(main.untranscribed.cacheRead) + (main.untranscribed.contexts != null ? ' (~' + main.untranscribed.contexts + 'x the peak context)' : '') + ': the harness' + String.fromCharCode(39) + 's post-turn recap call(s) are billed and written to no transcript row.');
   if (main.forkPrefix && main.forkPrefix.msgs) extraFacts.push('- **Fork prefix** ' + main.forkPrefix.msgs + ' msgs / ' + fmt(main.forkPrefix.cacheRead) + ' cache-read / ' + main.forkPrefix.toolCalls + ' tool calls carry another session' + String.fromCharCode(39) + 's id (' + main.forkPrefix.sessionIds.join(', ') + ') - a copied prefix, counted under that transcript; this file' + String.fromCharCode(39) + 's own tail is ' + (main.total.msgs - main.forkPrefix.msgs) + ' msgs / ' + fmt(main.total.cacheRead - main.forkPrefix.cacheRead) + ' cache-read.');
   if (main.stopHookBlocks) extraFacts.push(`- **Stop-hook denials** ${main.stopHookBlocks} - meta user TEXT, not tool results, so absent from the \`hook-blk\` column.`);
   if (main.harnessDenials) extraFacts.push(`- **Harness denials** ${main.harnessDenials} - the auto-mode classifier, a foreground \`sleep\`, or a tool-schema failure. They read as a block and no stack hook ran: excluded from \`hook-blk\`, and never charged to a guard.`);
@@ -4357,6 +4368,7 @@ async function runAnalysis() {
       }
       const s = await analyzeTranscript(f, window);
       const agents = await analyzeSubagents(f, window);
+      reconcileUntranscribed(s, agents);
       addSessionUse(acc, s, agents, inventoryDir);
       const at = newTally();
       for (const a of agents) mergeTally(at, a.stats.total);
@@ -4396,6 +4408,7 @@ async function runAnalysis() {
 
   const mainStats = await analyzeTranscript(target, window);
   const agents = await analyzeSubagents(target, window);
+  reconcileUntranscribed(mainStats, agents);
   const hookLog = hookFile ? await analyzeHookLog(hookFile) : null;
   // ONE ledger read, handed to every emitter. --report-md and --json used to drop it entirely,
   // so the bundle reports that quote the markdown - the ones the sweeps actually read - carried no
