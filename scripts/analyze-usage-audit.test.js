@@ -529,6 +529,30 @@ test('C07: the untranscribed gap subtracts the seats\' transcripts, and none is 
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// C23: docs-session's first-change hold opens 'Docs not read yet', carries neither 'Blocked' nor 'Do NOT retry', and
+// landed in the TOOLS errors column and no denials-by-hook row (81264f0d, a3d497f8, c5000cb1, f24eb967).
+test('C23: a result opening with the harness PreToolUse hook-error prefix is a hook block, joined to its ledger row', () => {
+  const dir = tmp();
+  try {
+    const sid = '22222222-3333-4444-8555-666666666666';
+    const rows = [
+      human(T(0), 'write it'),
+      asst('m1', T(1), [tool('w1', 'Write', { file_path: '/p/src/a.ts', content: 'x' }), sh('b1', 'false', { description: 'Fail on purpose' })]),
+      res(T(2), 'w1', 'PreToolUse:Write hook error: Docs not read yet in this session. Read the section first.', true),
+      res(T(2), 'b1', 'Exit code 1', true),
+    ];
+    const file = write(dir, rows, `${sid}.jsonl`);
+    const blocks = path.join(dir, 'hook-blocks');
+    fs.mkdirSync(blocks);
+    fs.writeFileSync(path.join(blocks, `${sid}.jsonl`), line({ ts: T(2), hook: 'docs-session.js', event: 'PreToolUse', tool: 'Write', reason: 'docs not read' }));
+    const { main } = run([file, '--hook-blocks', blocks]);
+    assert.deepStrictEqual([main.toolCalls.Write.hookBlocks, main.toolCalls.Write.errors], [1, 0], 'a hold, not an error');
+    assert.strictEqual(main.toolCalls.Bash.errors, 1, 'a plain failure is still an error');
+    assert.strictEqual(main.denialsByHook['(unattributed)'], 1);
+    assert.match(text([file, '--hook-blocks', blocks]), /joined by ledger timestamp \(within \d+ms\): docs-session\.js×1/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // C05: a commit that opens its own line of a multi-line call (390aebcb, 49cb4b82, f6c591fa: 'git commits 0' over a
 // receipted commit). A heredoc message naming the commit verb still counts nothing.
 test('C05: a git commit or gh pr merge on a later line of a multi-line call counts; a heredoc body never does', () => {

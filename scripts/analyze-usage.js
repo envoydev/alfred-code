@@ -2561,7 +2561,10 @@ async function analyzeTranscript(file, window) {
           /denied by the Claude Code auto mode classifier/i.test(text) ||
           /\bInputValidationError\b/.test(text) ||          // a tool-schema failure, never a PreToolUse event
           /Blocked: sleep\b/.test(text);                    // the Bash tool's own foreground-sleep block
-        const readsAsBlock = c.is_error && (/\bBlocked\b/.test(text) || /\bDo NOT retry\b/i.test(text));
+        // The harness's own prefix for a PreToolUse denial names the event whatever the guard wrote: docs-session's hold
+        // opens 'Docs not read yet' and landed in the errors column, in no denials-by-hook row (audit 2026-10-10 C23:
+        // 81264f0d, a3d497f8, c5000cb1, f24eb967). Its ledger row names the hook (joinUnattributedDenials).
+        const readsAsBlock = c.is_error && (/\bBlocked\b/.test(text) || /\bDo NOT retry\b/i.test(text) || /^\s*(?:\[[^\]]*\]\s*)?PreToolUse:\w+ hook error:/.test(text));
         const isHookBlock = readsAsBlock && !harnessDenial;
         if (isHookBlock) attributeDenial(text, o.timestamp);
         else if (readsAsBlock) s.harnessDenials = (s.harnessDenials || 0) + 1;  // reads as a block, is the harness's
