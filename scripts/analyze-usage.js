@@ -643,6 +643,10 @@ const skillBodyOf = (text) => String(text || '')
   .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
   .replace(/^Base directory for this skill:.*\r?\n/, '')
   .trim();
+// The copy a session LOADED: the harness appends the run's arguments as `\n\nARGUMENTS: ...` after the body, and a
+// heading in them (a pasted brief) read as a section the source lacks (audit 2026-10-10, ca65b406: a false 'DIFFERS -
+// same sections, -4977 chars' for task-solve). No stack body spells that line, so the first one ends the body.
+const loadedBodyOf = (text) => skillBodyOf(String(text || '').replace(/\n\nARGUMENTS: [\s\S]*$/, ''));
 const headingFingerprint = (text) => String(text || '').split('\n')
   .filter((l) => /^#{1,6}\s/.test(l)).map((l) => l.trim().replace(/\s+/g, ' ')).join(' | ');
 
@@ -805,7 +809,14 @@ function loadPluginLayers(claudeDir) {
   return out;
 }
 
-function resolveInventory(explicitDir, cwd, sessionLastTs) {
+// A stamp written between the session's first and last rows: the session's own update (or one beside it) wrote it,
+// so rows before it ran on the prior install (audit 2026-10-10, 229e2715: a mid-session update read as 'installed
+// before this session ran'). Compared as instants - a stamp carries no milliseconds, a transcript row does.
+function installedDuring(installed, firstTs, lastTs) {
+  const [i, a, b] = [Date.parse(installed), Date.parse(firstTs), Date.parse(lastTs)];
+  return Number.isFinite(i) && Number.isFinite(a) && Number.isFinite(b) && a < i && i <= b;
+}
+function resolveInventory(explicitDir, cwd, sessionLastTs, sessionFirstTs) {
   const tryDir = (d, kind, why) => {
     if (!d) return null;
     const plug = loadPluginLayers(d);
@@ -837,6 +848,8 @@ function resolveInventory(explicitDir, cwd, sessionLastTs) {
       if (stamp && stamp.installed && sessionLastTs && stamp.installed > sessionLastTs) {
         inv.drifted = true;
         inv.why = `project ${d} - INSTALLED ${stamp.installed} (v${stamp.version || '?'}), AFTER this session's last row ${sessionLastTs}: read at analysis time, not the set the session had`;
+      } else if (stamp && installedDuring(stamp.installed, sessionFirstTs, sessionLastTs)) {
+        inv.why = `project ${d} (the transcript's own cwd) - INSTALLED DURING this session at ${stamp.installed} (v${stamp.version || '?'}): rows before it ran on the prior install`;
       } else if (!stamp) {
         inv.why = `project ${d} (the transcript's own cwd; no alfred-code.stamp - install vintage unknown, the directory is read at ANALYSIS time)`;
       } else {
@@ -1043,8 +1056,16 @@ function buildVintage(inv, main) {
   const bySkill = new Map((inv.skills || []).map((s) => [s.name, s]));
   const rows = [];
   const loaded = main.loadedSkillBodies || {};
+  // A name the session ran under a scope or an older release's spelling is looked up as the install keys it now
+  // (audit 2026-10-10, e499fc94: three pre-rename skills read 'current source unreachable' beside their renamed files).
+  const sourceOf = (name) => {
+    const hits = [name, String(name).split(':').pop(), houseBare(name)].map((n) => bySkill.get(n)).filter(Boolean);
+    return hits.find((e) => e.file) || hits[0];
+  };
   for (const [name, l] of Object.entries(loaded)) {
-    const entry = bySkill.get(name) || bySkill.get(String(name).split(':').pop());
+    // `/init`, `/review` - a harness prompt command expands like a plugin command; only a stack item is graded.
+    if (l.via === 'command' && !sourceOf(name) && !name.includes(':')) continue;
+    const entry = sourceOf(name);
     const file = entry && entry.file ? entry.file : null;
     const body = file ? skillBodyOf(readHead(file)) : '';
     const cur = body ? { chars: body.length, headings: headingFingerprint(body) } : null;
@@ -1053,7 +1074,7 @@ function buildVintage(inv, main) {
       : cur.headings !== l.headings ? 'DIFFERS - the current source has different sections'
         : Math.abs(delta) > Math.max(64, Math.round(0.01 * l.chars)) ? `DIFFERS - same sections, ${delta > 0 ? '+' : ''}${delta} chars in the current source`
           : 'same';
-    rows.push({ name, how: l.via === 'slash' ? 'slash command' : 'Skill call', loadedChars: l.chars, currentChars: cur ? cur.chars : null, file, verdict, ts: l.ts });
+    rows.push({ name, how: l.via === 'slash' || l.via === 'command' ? 'slash command' : 'Skill call', loadedChars: l.chars, currentChars: cur ? cur.chars : null, file, verdict, ts: l.ts });
   }
   // A run whose body never reached the transcript is NOT a match - say so rather than comparing
   // against a source nothing proves the session saw.
@@ -1063,8 +1084,8 @@ function buildVintage(inv, main) {
     const how = main.skillInvocations && main.skillInvocations[name] ? 'Skill call' : 'slash command';
     // `/clear`, `/model`, `/exit` are the harness's own commands, not a skill body anything could
     // be graded against - the same discriminator the SKILLS rows use.
-    if (how === 'slash command' && !bySkill.has(name) && !name.includes(':')) continue;
-    rows.push({ name, how, loadedChars: null, currentChars: null, file: (bySkill.get(name) || {}).file || null, verdict: 'body not captured - this transcript carries no loaded copy, so no comparison is possible', ts: null });
+    if (how === 'slash command' && !sourceOf(name) && !name.includes(':')) continue;
+    rows.push({ name, how, loadedChars: null, currentChars: null, file: (sourceOf(name) || {}).file || null, verdict: 'body not captured - this transcript carries no loaded copy, so no comparison is possible', ts: null });
   }
   rows.sort((a, b) => String(a.name).localeCompare(String(b.name)));
   return { stamp: inv.stamp || null, drifted: !!inv.drifted, inventoryWhy: inv.why, rows };
@@ -1075,10 +1096,10 @@ function buildVintage(inv, main) {
 // two sessions sharing a cwd can have been offered different sets.
 function inventoryFor(acc, inventoryDir, main) {
   const cwd = main.cwd;
-  const key = `${inventoryDir || ''}|${cwd || ''}|${main.lastTs || ''}`;
+  const key = `${inventoryDir || ''}|${cwd || ''}|${main.firstTs || ''}|${main.lastTs || ''}`;
   let hit = acc.invCache.get(key);
   if (!hit) {
-    const inv = resolveInventory(inventoryDir, cwd, main.lastTs);
+    const inv = resolveInventory(inventoryDir, cwd, main.lastTs, main.firstTs);
     hit = { inv, mcp: loadMcpInventory(inv) };
     acc.invCache.set(key, hit);
   }
@@ -1680,6 +1701,8 @@ async function analyzeTranscript(file, window) {
                                    // ask-side skill and reported as its cost)
   let lastToolName = null;         // attributes isMeta skill-body injections to spike causes
   let slashPending = null;         // { name } - a slash command whose expansion row has not arrived yet
+  const skillCallIds = new Map();  // Skill tool_use id -> skill: its body arrives as an isMeta row naming that id
+  let lastSkillResult = null;      // the Skill call whose result came last, for a body row that names no id
   let prevAssistantNoTool = null;  // ts of an end_turn assistant msg with no tool_use
   s.gitCommits = 0; s.prMerges = 0; s.clearTs = null; s.ccVersion = null;
   s.unheldStopCandidates = [];     // { stopTs, userTs } - free-text user turn right after a
@@ -1749,9 +1772,9 @@ async function analyzeTranscript(file, window) {
           // broke rule X' claim can be checked against - today's SKILL.md is a different document.
           for (const sk of Array.isArray(at.skills) ? at.skills : []) {
             if (!sk || !sk.name) continue;
-            const body = skillBodyOf(sk.content);
+            const body = loadedBodyOf(sk.content);
             if (!body) continue;
-            s.loadedSkillBodies[sk.name] = { chars: body.length, headings: headingFingerprint(body), path: sk.path || null, ts: o.timestamp || null };
+            s.loadedSkillBodies[sk.name] = { chars: body.length, headings: headingFingerprint(body), path: sk.path || null, ts: o.timestamp || null, via: (s.loadedSkillBodies[sk.name] || {}).via };
           }
         }
         // A hook's run is on record when the row names its command: `hook_success`, the error and
@@ -1872,19 +1895,44 @@ async function analyzeTranscript(file, window) {
     // A slash run's body is the isMeta row the expansion writes right after the command (`Base directory for this
     // skill: ...`), never an `invoked_skills` attachment - and a manual-only skill is in no roster, so without it the
     // run read as a harness command (11b595da: 'No skill or slash-command run', 'used 0 of 72').
-    if (slashPending && o.type === 'user' && o.message) {
+    // A Skill CALL's body is the same isMeta row, written after the call's result and naming the call in
+    // `sourceToolUseID` - read only from `invoked_skills` (a compaction's copy), 12 of 14 vintage rows of an
+    // uncompacted session said 'body not captured' over a body the transcript held (audit 2026-10-10 C04).
+    const metaText = (o.type === 'user' && o.isMeta && o.message) ? (() => {
       const c = o.message.content;
-      const txt = Array.isArray(c) ? c.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : '';
+      return typeof c === 'string' ? c : Array.isArray(c) ? c.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : '';
+    })() : '';
+    const callSkill = metaText && /^Base directory for this skill:/.test(metaText)
+      ? (o.sourceToolUseID ? skillCallIds.get(o.sourceToolUseID) : (!slashPending && lastSkillResult)) || null
+      : null;
+    if (callSkill) {
+      const body = loadedBodyOf(metaText);
+      const dir = (/^Base directory for this skill:\s*(.*)/.exec(metaText) || [])[1] || null;
+      if (body) s.loadedSkillBodies[callSkill] = { chars: body.length, headings: headingFingerprint(body), path: dir && dir.trim(), ts: o.timestamp || null, via: 'skill' };
+      lastSkillResult = null;
+    } else if (slashPending && o.type === 'user' && o.message) {
+      const c = o.message.content;
+      const txt = Array.isArray(c) ? c.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : typeof c === 'string' ? c : '';
       if (o.isMeta && /^Base directory for this skill:/.test(txt)) {
-        const body = skillBodyOf(txt);
+        const body = loadedBodyOf(txt);
         const dir = (/^Base directory for this skill:\s*(.*)/.exec(txt) || [])[1] || null;
         if (body) {
           s.loadedSkillBodies[slashPending.name] = { chars: body.length, headings: headingFingerprint(body), path: dir && dir.trim(), ts: o.timestamp || null, via: 'slash' };
           s.slashSkillRuns[slashPending.name] = true;
         }
         slashPending = null;
+      } else if (o.isMeta && !o.isCompactSummary && txt.trim() && !/^\s*</.test(txt)) {
+        // A COMMAND's expansion carries no `Base directory` line: `/alfred-code:update` loaded 63,950 chars as one isMeta
+        // row and the vintage said no copy existed (audit 2026-10-10, 229e2715). The harness's own rows open with a tag.
+        const body = loadedBodyOf(txt);
+        if (body) s.loadedSkillBodies[slashPending.name] = { chars: body.length, headings: headingFingerprint(body), path: null, ts: o.timestamp || null, via: 'command' };
+        slashPending = null;
       } else if (!o.isMeta && !raw.includes('<command-name>')) slashPending = null;
     } else if (o.type === 'assistant') slashPending = null;
+    if (o.type === 'assistant') lastSkillResult = null;
+    if (o.type === 'user' && o.message && Array.isArray(o.message.content)) {
+      for (const b of o.message.content) if (b && b.type === 'tool_result' && skillCallIds.has(b.tool_use_id)) lastSkillResult = skillCallIds.get(b.tool_use_id);
+    }
     if (o.type === 'user' && o.message && raw.includes('<command-name>')) {
       const own = typeof o.message.content === 'string' ? o.message.content
         : Array.isArray(o.message.content) ? o.message.content.filter((c) => c.type === 'text').map((c) => c.text || '').join('\n') : '';
@@ -2051,6 +2099,7 @@ async function analyzeTranscript(file, window) {
         }
         if (c.name === 'Skill' && c.input && c.input.skill) {
           info.skill = c.input.skill;
+          skillCallIds.set(c.id, c.input.skill);
           const sk = s.skillInvocations[c.input.skill] || (s.skillInvocations[c.input.skill] = { calls: 0, injectedChars: 0, firstTs: o.timestamp || null });
           sk.calls += 1;
           if (activeInvoke && activeInvoke.skill !== c.input.skill && activeInvoke.msgs <= 5 && !askSinceInvoke) {
@@ -3500,7 +3549,8 @@ function vintageMarkdown(invUse, main, out) {
   const st = v && v.stamp;
   if (st) {
     const when = st.installed || '?';
-    const rel = st.installed && main.lastTs ? (st.installed > main.lastTs ? 'INSTALLED AFTER this session - what is on disk was never what this session loaded' : 'installed before this session ran') : 'install date unknown';
+    const rel = st.installed && main.lastTs ? (st.installed > main.lastTs ? 'INSTALLED AFTER this session - what is on disk was never what this session loaded'
+      : installedDuring(st.installed, main.firstTs, main.lastTs) ? `INSTALLED DURING this session at ${st.installed} - rows before it ran on the prior install` : 'installed before this session ran') : 'install date unknown';
     out.push(`| Stack install | v${st.version || '?'} (${st.sha ? st.sha.slice(0, 12) : 'sha unknown'}), stamped ${when} - ${rel} |`);
   } else {
     out.push('| Stack install | no `alfred-code.stamp` reachable - the install version this session loaded is UNKNOWN, do not assume today\'s |');
