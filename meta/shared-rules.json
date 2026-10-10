@@ -3868,19 +3868,6 @@
         }
       ]
     },
-    "add-n-reset-chained": {
-      "_note": "`git add -N .` makes untracked files visible to a diff, and the `git reset -q` that undoes it belongs in the SAME Bash call. Stated as a parenthetical 'then reset' it was ignored in 3 of 4 audited sessions, leaving intent-to-add entries in the index for whatever ran next. Both always-on rules that ask for the full change set carry the chained spelling.",
-      "owner": {
-        "file": "stack/rules/alfred-git.md",
-        "marker": "git add -N . && git diff HEAD --stat; git reset -q"
-      },
-      "sites": [
-        {
-          "file": "stack/rules/alfred-security.md",
-          "marker": "git add -N . && git diff HEAD; git reset -q"
-        }
-      ]
-    },
     "plugin-uninstall-scope": {
       "_note": "A plugin uninstall is scope-addressed: the inventory carries each plugin's scope, the removal ask names it, and the command passes --scope. Restated in both walks that remove plugins (measured: a removal ask naming no scope led to an account-wide uninstall the user read as project-local).",
       "owner": {

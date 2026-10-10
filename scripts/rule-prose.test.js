@@ -349,3 +349,35 @@ test('C13: a splice is for a mechanical rename, and every implementer routes sou
         assert.ok(at > 0 && lines[at - 1].startsWith('- You usually share ONE working tree'), `${seat}: the bullet follows the shared-tree bullet`);
     }
 });
+
+// ------------------------------------------------------------------ audit 2026-10-10 C17
+
+// f24eb967: the scope survey `git add -N . && git diff HEAD --stat; git reset -q` unstaged the session's own `git rm`
+// deletions, so the commit took 1 of 3 files. The survey the rule names is RUN here, over a staged deletion, a staged
+// edit and an untracked file: the index must come out as it went in, and the untracked file must be listed.
+test('C17: the commit-ask scope survey lists untracked files and leaves the index as it found it', { skip: process.platform === 'win32' && 'runs the survey through sh' }, () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const os = require('node:os');
+    const survey = (/derived FRESH - `([^`]+)`/.exec(injected('alfred-git')) || [])[1];
+    assert.ok(survey, 'the rule names its survey command');
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'c17-survey-'));
+    try
+    {
+        const git = (...a) => execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', ...a], { cwd: repo, encoding: 'utf8' });
+        git('init', '-q');
+        for (const f of ['a.md', 'b.md', 'c.md']) fs.writeFileSync(path.join(repo, f), `${f}\n`);
+        git('add', '.');
+        git('commit', '-qm', 'base');
+        git('rm', '-q', 'a.md', 'b.md');
+        fs.writeFileSync(path.join(repo, 'c.md'), 'changed\n');
+        git('add', 'c.md');
+        fs.writeFileSync(path.join(repo, 'new.md'), 'new\n');
+        const staged = git('diff', '--cached', '--name-status');
+        const out = execFileSync('sh', ['-c', survey], { cwd: repo, encoding: 'utf8' });
+        assert.strictEqual(git('diff', '--cached', '--name-status'), staged, 'the survey moved the index');
+        assert.match(out, /^new\.md$/m, 'the untracked file is listed');
+        assert.match(out, /a\.md/, 'the staged deletion is in the survey');
+    }
+    finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
