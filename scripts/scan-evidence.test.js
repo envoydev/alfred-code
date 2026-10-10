@@ -347,3 +347,55 @@ test('--orientation --out writes the file, refreshes a provisional one, and neve
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+// Audit 2026-10-10 (session f10cb06a): inside git the scan walked ignored tool caches - mutation-test sandboxes, a CLI
+// build cache, a browser profile - into the map as packages and an MV2 extension, and read no Nx target, so an Nx
+// workspace whose CI ran 14 steps printed 'none declared' for build, test, run and entry points.
+const NX = {
+    '.gitignore': '.stryker-tmp/\n.angular/\n',
+    'package.json': JSON.stringify({ devDependencies: { nx: '^21.0.0', '@angular/core': '^20.0.0', typescript: '~5.8.0' } }),
+    'package-lock.json': '{}\n',
+    'nx.json': JSON.stringify({ targetDefaults: { build: { cache: true } } }),
+    'apps/shop/project.json': JSON.stringify({ name: 'shop', projectType: 'application', targets: {
+        build: { executor: '@angular/build:application', options: { browser: 'apps/shop/src/main.ts' } }, serve: { executor: '@angular/build:dev-server' }, test: { executor: '@nx/jest:jest' } } }),
+    'apps/shop/src/main.ts': 'bootstrapApplication(App);\n',
+    'libs/ui/project.json': JSON.stringify({ name: 'ui', projectType: 'library', targets: { test: { executor: '@nx/jest:jest' }, lint: { executor: '@nx/eslint:lint' } } }),
+    '.stryker-tmp/sandbox-a1/package.json': JSON.stringify({ scripts: { build: 'ng build' }, dependencies: { '@angular/core': '^20.0.0' } }),
+    '.stryker-tmp/sandbox-a1/.playwright/chrome/Models/1.0/manifest.json': JSON.stringify({ manifest_version: 2, name: 'x' }),
+    '.angular/cache/20/shop/vite/deps/package.json': JSON.stringify({ type: 'module' }),
+};
+
+test('--orientation inside git reads only what git keeps (tracked plus untracked it does not ignore)', () =>
+{
+    const root = tree(NX);
+    try
+    {
+        execFileSync('git', ['init', '-q', '-b', 'develop'], { cwd: root });
+        const md = orient(root).stdout;
+        assert.doesNotMatch(md, /stryker-tmp|\.angular\/cache|browser extension/, `an ignored cache is no module:\n${md}`);
+        assert.match(md, /\| Modules \| [^\n]*`\.` \(package\)/, 'the untracked, unignored root package stays');
+        const found = scan(root);
+        assert.ok(Object.values(found).every((layer) => Object.values(layer).every((hit) => !/stryker-tmp|\.angular/.test(hit))), JSON.stringify(found));
+        fs.rmSync(path.join(root, '.git'), { recursive: true, force: true });
+        assert.match(orient(root).stdout, /stryker-tmp/, 'outside git the walk is the folder walk it was');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('--orientation on an Nx workspace: each project.json\'s declared targets and build entry, run through the package manager', () =>
+{
+    const root = tree(Object.fromEntries(Object.entries(NX).filter(([rel]) => !/^\.(stryker-tmp|angular)\//.test(rel))));
+    try
+    {
+        const md = orient(root).stdout;
+        assert.match(md, /\| Stack \| [^\n]*Nx workspace \(2 projects\)/);
+        for (const m of ['`apps/shop` (nx application)', '`libs/ui` (nx library)']) assert.ok(md.includes(m), `${m} in\n${md}`);
+        assert.match(md, /\| Build \| `npx nx build shop` \|/);
+        assert.match(md, /\| Test \| `npx nx run-many -t test`; `npx nx test shop`; `npx nx test ui` \|/);
+        assert.match(md, /\| Run \| `npx nx serve shop` \|/);
+        assert.match(md, /\| Entry points \| `apps\/shop\/src\/main\.ts` \|/);
+        fs.rmSync(path.join(root, 'nx.json'));
+        assert.doesNotMatch(orient(root).stdout, /nx build|nx application/, 'a project.json with no nx.json is no Nx workspace - never guessed');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
