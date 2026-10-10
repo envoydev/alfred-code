@@ -213,15 +213,19 @@ test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and ALFRED
   const shape = 'ghp_' + 'B'.repeat(24); // fake by construction
   const leak = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: `TOKEN=${shape}` }] } };
   const answered = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't2', content: 'Your questions have been answered: "A GitHub token (ghp_ shape) entered this session through a tool result. Rotate it now?"="Acknowledge and defer"' }] } };
-  // pushes the answer out of askJustAnswered's 8KB tail, so the once-per-exposure rule is what is judged
-  const filler = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't3', content: 'x'.repeat(9000) }] } };
+  // four tool calls after the answer, so it is no longer 'just answered' (askJustAnswered counts calls - audit
+  // 2026-10-10 C01) and the once-per-exposure rule is what is judged
+  const filler = [1, 2, 3, 4].flatMap((n) => [
+    { type: 'assistant', message: { id: `f${n}`, content: [{ type: 'tool_use', id: `tf${n}`, name: 'Bash', input: { command: 'ls' } }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `tf${n}`, content: 'x'.repeat(2000) }] } },
+  ]);
   const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
   const stop = (name, rows, extra = {}) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: transcript(name, rows) }, { env: { ...env, ...extra } });
   assert.equal(stop('r1', [leak, assistantRow('a1', 'Wired the token as asked; tests green.')]).status, 2, 'the first exposure asks');
-  const quiet = stop('r2', [leak, answered, filler, assistantRow('a2', 'Deferred as you chose. Remember to rotate the token when you get to it; the rest is done.')]);
+  const quiet = stop('r2', [leak, answered, ...filler, assistantRow('a2', 'Deferred as you chose. Remember to rotate the token when you get to it; the rest is done.')]);
   assert.equal(quiet.status, 0, 'an answered rotate ask covers the exposure - even a later close that names rotation');
   const second = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't4', content: `OTHER=${'ghp_' + 'C'.repeat(24)}` }] } };
-  const again = stop('r3', [leak, answered, filler, second, assistantRow('a3', 'Copied the second token as asked; done.')]);
+  const again = stop('r3', [leak, answered, ...filler, second, assistantRow('a3', 'Copied the second token as asked; done.')]);
   assert.equal(again.status, 2, 'a NEW exposure after the answer asks again');
   assert.match(again.stderr, /once/, 'and says the ask comes once');
   assert.match(again.stderr, /ALFRED_CODE_ROTATE_ASK=0/, 'and names the switch');
@@ -244,17 +248,21 @@ test('guard-stop-contract: any ask answered after the rotate-ask block covers th
   const freeText = answer('t2', 'Your questions have been answered: "The GitHub token showed up in a tool result. What should happen to it?"="leave it, test token". You can now continue with these answers in mind.');
   const declined = answer('t2', 'The user declined to answer the questions.');
   const unrelated = answer('t0', 'Your questions have been answered: "Build it now?"="Yes (Recommended)"');
-  const filler = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't3', content: 'x'.repeat(9000) }] } };
+  // four tool calls: past askJustAnswered's bound (audit 2026-10-10 C01), so the answer-after-block rule decides
+  const filler = [1, 2, 3, 4].flatMap((n) => [
+    { type: 'assistant', message: { id: `f${n}`, content: [{ type: 'tool_use', id: `tf${n}`, name: 'Bash', input: { command: 'ls' } }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `tf${n}`, content: 'x'.repeat(2000) }] } },
+  ]);
   const readSource = answer('t5', `grep hit: '${head.split('\n')[0]}' in guard-stop-contract.js`);
   const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
   const stop = (name, rows) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: transcript(name, rows) }, { env }).status;
   const close = assistantRow('m3', 'Left the token as you said; the rest is done.');
   const verdicts = {
-    'free-text answer after the block': stop('m3a', [leak, ...block, freeText, filler, close]),
-    'declined after the block': stop('m3b', [leak, ...block, declined, filler, close]),
-    'answer BEFORE the block': stop('m3c', [leak, unrelated, filler, ...block, filler, close]),
-    'the block text read from source, then an unrelated answer': stop('m3d', [leak, readSource, unrelated, filler, close]),
-    'a new exposure after the answer': stop('m3e', [leak, ...block, freeText, filler, answer('t4', `OTHER=${'ghp_' + 'E'.repeat(24)}`), close]),
+    'free-text answer after the block': stop('m3a', [leak, ...block, freeText, ...filler, close]),
+    'declined after the block': stop('m3b', [leak, ...block, declined, ...filler, close]),
+    'answer BEFORE the block': stop('m3c', [leak, unrelated, ...filler, ...block, ...filler, close]),
+    'the block text read from source, then an unrelated answer': stop('m3d', [leak, readSource, unrelated, ...filler, close]),
+    'a new exposure after the answer': stop('m3e', [leak, ...block, freeText, ...filler, answer('t4', `OTHER=${'ghp_' + 'E'.repeat(24)}`), close]),
   };
   assert.deepEqual(verdicts, {
     'free-text answer after the block': 0,

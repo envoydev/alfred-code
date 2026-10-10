@@ -703,6 +703,71 @@ test('guard-stop-contract: a solve-task stop is reminded of its three named fiel
   assert.equal(ctxOf(askIn(notACycle, oneQ)), '', 'an ordinary session is never asked for a flow stamp it does not run');
 });
 
+test('guard-stop-contract: a solve-task stop MBs after its slash marker is still a cycle stop (audit 2026-10-10 C01)', () => {
+  // 17 sessions: the marker sat at the transcript's head and the first stop 0.5-3MB later, past the 256KB tail
+  // solveTaskCycle() read - 0 of N stops carried the fields and the note never fired (0 of 12 in 0d070bcc).
+  const pad = (n) => Array.from({ length: n }, (_, i) => ({ type: 'user', message: { role: 'user',
+    content: [{ type: 'tool_result', tool_use_id: `p${i}`, content: 'x'.repeat(100 * 1024) }] } }));
+  const marker = { type: 'user', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } };
+  const far = transcript('sf-far', [marker, ...pad(9), assistantRow('far', 'Design done, the plan is written.', { cache_read_input_tokens: 900 })]);
+  assert.ok(fs.statSync(far).size > 900 * 1024, 'the marker sits ~900KB behind the ask');
+  assert.match(ctxOf(askIn(far, oneQ)), /THREE named fields/, 'a stop far past the marker is still reminded');
+  const env = logEnv();
+  assert.match(ctxOf(askIn(far, oneQ, env)), /THREE named fields/, '... and again from the kept answer');
+  // A marker only QUOTED in a tool result (a sed over a test file, a transcript dump) is no run.
+  const quoted = transcript('sf-quoted', [
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'q1', content: 'fixture: <command-name>/task-solve</command-name>' }] } },
+    assistantRow('q', 'Read the fixture.', { cache_read_input_tokens: 900 }),
+  ]);
+  assert.equal(ctxOf(askIn(quoted, oneQ)), '', 'a quoted marker is not a cycle');
+  // The kept answer reads only what was appended: a miss, then the flow typed later in the same session, is a cycle.
+  const grows = transcript('sf-grows', [{ type: 'user', message: { role: 'user', content: 'fix the test' } }, assistantRow('g1', 'Fixed.', { cache_read_input_tokens: 900 })]);
+  const genv = logEnv();
+  assert.equal(ctxOf(askIn(grows, oneQ, genv)), '', 'no flow yet');
+  fs.appendFileSync(grows, [marker, ...pad(3), assistantRow('g2', 'Design done.', { cache_read_input_tokens: 900 })].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  assert.match(ctxOf(askIn(grows, oneQ, genv)), /THREE named fields/, 'the appended marker is found past the recorded miss');
+  // The fields written INLINE in a one-line question (session 516e653d, 5 of 5 compliant asks) satisfy the contract.
+  const inline = [{ question: 'Result: design done - docs/plans/x.md. Progress: 1 of 6 steps. Leftovers: none. Continue to the plan audit?',
+    options: [{ label: 'Continue (Recommended)', description: 'run the gate' }, { label: 'Stop', description: 'hold' }] }];
+  assert.equal(ctxOf(askIn(far, inline)), '', 'inline fields after a sentence boundary count');
+});
+
+test('guard-stop-contract: an answer a few calls back is still just answered, in either wording (audit 2026-10-10 C01)', () => {
+  const answer = (id, text) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: text }] } });
+  const ask = (id) => ({ type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions: oneQ } }], usage: { cache_read_input_tokens: 900 } } });
+  const call = (id, out) => [
+    { type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'Bash', input: { command: 'docker desktop stop' } }], usage: { cache_read_input_tokens: 900 } } },
+    answer(id, out),
+  ];
+  const stopOn = (tp, text) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp, last_assistant_message: text }, { env: logEnv() });
+  const closeText = 'Docker has quit. The diff stays as you chose - say the word when you want it committed.';
+  // bc2fa83e: one Bash call (7.6KB of rows) put the answer past the 8KB tail and the restating close was blocked.
+  const oneCall = transcript('aj-one', [
+    { type: 'user', message: { role: 'user', content: 'finish the feature' } }, ask('a1'),
+    answer('a1', 'Your questions have been answered: "Commit now?"="Hold - review the diff first". You can now continue.'),
+    ...call('b1', 'exit=0\n' + 'y'.repeat(12 * 1024)),
+  ]);
+  assert.equal(stopOn(oneCall, closeText).status, 0, 'one call after the answer is still just answered');
+  // 4f1c2ebb: a free-text answer is worded 'The user answered:' - its acknowledgement was blocked 4s later.
+  const freeText = transcript('aj-free', [
+    { type: 'user', message: { role: 'user', content: 'go on' } }, ask('a2'),
+    answer('a2', 'The user answered: "Sign in as the customer?"="Disable automode". Read the answers carefully.'),
+  ]);
+  assert.equal(stopOn(freeText, closeText).status, 0, 'a free-text answer counts');
+  // ... and a decision put in prose after real work since the answer is a new decision, judged as before.
+  const worked = transcript('aj-worked', [
+    { type: 'user', message: { role: 'user', content: 'finish the feature' } }, ask('a3'),
+    answer('a3', 'Your questions have been answered: "Next?"="Build it"'),
+    ...call('c1', 'ok'), ...call('c2', 'ok'), ...call('c3', 'ok'), ...call('c4', 'ok'),
+  ]);
+  assert.equal(stopOn(worked, closeText).status, 2, 'four calls after the answer, the prose decision is held');
+  const newTurn = transcript('aj-turn', [
+    ask('a4'), answer('a4', 'Your questions have been answered: "Next?"="Build it"'),
+    { type: 'user', message: { role: 'user', content: 'and now the docs' } },
+  ]);
+  assert.equal(stopOn(newTurn, closeText).status, 2, 'an answer from before the typed prompt is not this turn\'s');
+});
+
 // ---------------------------------------------------------------------------------------------
 // 8. fresh-session-abandoned-run - a typed-then-abandoned slash command is not a finished run
 // ---------------------------------------------------------------------------------------------

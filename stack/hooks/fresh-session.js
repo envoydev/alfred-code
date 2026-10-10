@@ -244,6 +244,9 @@ function isTypedTurn(o) {
 // 'Resume in a fresh session', and after 'Implement' the phase Skill call was denied with the same question. The
 // choice is made either way - 'Continue here' included. A Stop hook's own feedback row is no typed prompt. Fail-open.
 const FRESH_ASK_RE = /(?:fresh session|new session|fresh chat)/i;
+// Both answer wordings: a picked option, and a free-text one ('The user answered:' - 7 of 12 answers in audit
+// 2026-10-10 session 4f1c2ebb, whose 4-second acknowledgement the Stop branch then blocked).
+const ANSWERED_RE = /^\s*(?:Your questions have been answered:|The user answered:)/;
 function freshAskAnsweredThisTurn() {
   try {
     const lines = transcriptText().split('\n');
@@ -257,7 +260,7 @@ function freshAskAnsweredThisTurn() {
       if (o.type === 'user') {
         if (Array.isArray(c)) {
           for (const b of c) {
-            if (b && b.type === 'tool_result' && /^Your questions have been answered:/.test(typeof b.content === 'string' ? b.content
+            if (b && b.type === 'tool_result' && ANSWERED_RE.test(typeof b.content === 'string' ? b.content
               : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('') : '')) answered.add(b.tool_use_id);
           }
         }
@@ -276,7 +279,7 @@ function freshAskAnsweredThisTurn() {
 }
 // Was any ask answered (or declined) in the transcript past byte `from` - the size an offer recorded?
 function askAnsweredSince(from) {
-  return /Your questions have been answered:|The user (?:declined|chose not) to answer/i.test(transcriptText(from, 8 * 1024 * 1024));
+  return /Your questions have been answered:|The user answered:|The user (?:declined|chose not) to answer/i.test(transcriptText(from, 8 * 1024 * 1024));
 }
 
 module.exports = {

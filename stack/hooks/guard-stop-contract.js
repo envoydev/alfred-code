@@ -668,19 +668,66 @@ function lastAssistantMessage(tail = 512 * 1024) {
 //      re-ask REVERSED that choice;
 //   3. after an ask is declined with 'clarify' the harness itself instructs prose - and this hook
 //      blocked it, deadlocking the turn (0 steps executed, 532.0k wasted, a manual redo 2h26m later).
-// Judged over the tail's last 8KB and deliberately fail-OPEN: for a gate with a measured
-// false-positive problem, missing one real block is far cheaper than manufacturing another.
+// Deliberately fail-OPEN: for a gate with a measured false-positive problem, missing one real block is far cheaper
+// than manufacturing another. 'Just' is counted in CALLS, never bytes (audit 2026-10-10, session bc2fa83e: one Bash
+// call between the answer and the close pushed the answer ~10.6KB back, past the 8KB tail this read, and a close
+// restating a decision answered 4.4s earlier was blocked): rows are walked back from the newest, an answer with at
+// most JUST_ANSWERED_CALLS tool calls after it counts, and the turn's typed prompt ends the walk. Both answer
+// wordings count - a picked option ('Your questions have been answered:') and a free-text one ('The user answered:',
+// 7 of 12 answers in session 4f1c2ebb, whose acknowledgement was blocked 4s after it).
+const JUST_ANSWERED_CALLS = 3;
+const ANSWER_RESULT_RE = /^\s*(?:Your questions have been answered:|The user answered:|The user (?:declined|chose not) to answer)|\btool use was rejected\b/i;
+function resultText(b) {
+  const c = b && b.content;
+  return typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (x && x.text) || '').join('') : '';
+}
+function rowText(o) {
+  const c = o && o.message && o.message.content;
+  return typeof c === 'string' ? c : Array.isArray(c) ? c.map((b) => (b && b.type === 'text' && b.text) || '').join('\n') : '';
+}
+// The transcript's rows, NEWEST first, from a 256KB tail widened once to 8MB when the walk has not settled. Each pass
+// takes a fresh visitor from `start()`; a visitor returns undefined to keep walking and anything else to answer.
+function walkBack(start, fallback) {
+  const p = payload.transcript_path;
+  if (!p) return fallback;
+  const size = fs.statSync(p).size;
+  for (const span of [256 * 1024, 8 * 1024 * 1024]) {
+    const from = Math.max(0, size - span);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - from);
+    try { fs.readSync(fd, buf, 0, buf.length, from); } finally { fs.closeSync(fd); }
+    const lines = buf.toString('utf8').split('\n');
+    if (from > 0) lines.shift();   // cut mid-row
+    const visit = start();
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i].trim()) continue;
+      let o;
+      try { o = JSON.parse(lines[i]); } catch { continue; }
+      const v = visit(o);
+      if (v !== undefined) return v;
+    }
+    if (from === 0) break;
+  }
+  return fallback;
+}
 function askJustAnswered() {
   try {
-    const p = payload.transcript_path;
-    if (!p) return false;
-    const size = fs.statSync(p).size;
-    const start = Math.max(0, size - 8 * 1024);
-    const fd = fs.openSync(p, 'r');
-    const buf = Buffer.alloc(size - start);
-    fs.readSync(fd, buf, 0, buf.length, start);
-    fs.closeSync(fd);
-    return /Your questions have been answered:|The user (declined|chose not) to answer|tool use was rejected/i.test(buf.toString('utf8'));
+    return walkBack(() => {
+      let calls = 0;
+      return (o) => {
+        if (!o || !o.message) return undefined;
+        const c = o.message.content;
+        if (o.type === 'assistant') {
+          if (Array.isArray(c)) calls += c.filter((b) => b && b.type === 'tool_use').length;
+          return calls > JUST_ANSWERED_CALLS ? false : undefined;
+        }
+        if (o.type !== 'user') return undefined;
+        if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && ANSWER_RESULT_RE.test(resultText(b)))) return true;
+        // a Stop hook's own feedback row is the harness speaking, not the user's next turn
+        if (isTypedTurn(o) && !/^\s*Stop hook feedback:/.test(rowText(o))) return false;
+        return undefined;
+      };
+    }, false);
   } catch {
     return false;
   }
@@ -801,13 +848,13 @@ function secretReadAllowed() {
 // ALFRED_CODE_ROTATE_ASK=0 in the settings.json env turns the branch off for a user who accepts
 // the exposure - the value is in the transcript either way, so that is theirs to decide.
 const ROTATE_ASK_ON = envOf(process.env, 'ROTATE_ASK') !== '0';
-const ROTATE_ANSWER_RE = /Your questions have been answered:[^\n]*?(rotat|revok|acknowledge and defer)/i;
+const ROTATE_ANSWER_RE = /(?:Your questions have been answered|The user answered):[^\n]*?(rotat|revok|acknowledge and defer)/i;
 // ANY answered or declined ask after this hook's own rotate-ask block is the answer to it (review of pilot 4, M3): a
 // free-text 'Other' ('leave it, test token') or a question worded without 'rotate' matched nothing above, so the ask
 // came back every turn. The block is the harness's hook-feedback row carrying ROTATE_ASK_HEAD - never a tool result,
 // which is how the model reading this file would carry it.
 const ROTATE_ASK_HEAD = 'A credential appears to have entered this session';
-const ANY_ANSWER_RE = /"(?:content|text)"\s*:\s*"(?:Your questions have been answered:|The user (?:declined|chose not) to answer)/;
+const ANY_ANSWER_RE = /"(?:content|text)"\s*:\s*"(?:Your questions have been answered:|The user answered:|The user (?:declined|chose not) to answer)/;
 const isRotateBlock = (line) => line.includes(ROTATE_ASK_HEAD) && !line.includes('"tool_result"') && /Stop hook feedback|"stop_hook_summary"/.test(line);
 function rotateAskAnswered() {
   try {
@@ -1711,9 +1758,10 @@ if (payload.tool_name === 'AskUserQuestion') {
     }
 
     // 6. FLOW STOP FIELDS: a solve-task stop names three fields before its ask. Bold counts - it is
-    // what the sessions that did comply actually wrote.
+    // what the sessions that did comply actually wrote - and so does a field opening a sentence inside a one-line
+    // question (audit 2026-10-10, session 516e653d: 5 of 5 compliant asks wrote 'Result: ... Progress: ...' inline).
     if (solveTaskCycle()) {
-      const field = (name) => new RegExp(`(^|\\n)\\s*(?:[-*+]\\s*)?\\**${name}:`, 'i');
+      const field = (name) => new RegExp(`(?:^|\\n|[.;!?)]\\s+|\\s[-|]\\s+)\\s*(?:[-*+]\\s*)?\\**${name}\\**\\s*:`, 'i');
       const stamped = (t) => field('Result').test(t) && field('Progress').test(t) && field('Leftovers').test(t);
       if (!stamped(turnText) && !stamped(askText)) {
         notes.push('The ask just answered was a stop in a solve-task cycle, and it went out without its THREE '
@@ -1812,20 +1860,57 @@ function turnProseBeforeAsk() {
   }
 }
 
-// Is this ask a stop inside a solve-task cycle? The cheap, transcript-local proof: the flow was
-// invoked in this session, by its slash marker or as a Skill call. A session that never ran the
-// flow is never asked for the flow's stamp.
+// Is this ask a stop inside a solve-task cycle? The transcript-local proof: the flow was invoked in this session, by
+// its slash marker in a typed user row or as a Skill call. A session that never ran the flow is never asked for the
+// flow's stamp. The marker sits at the transcript's HEAD - a slash cycle's first stop arrives 0.5-3MB after it (session
+// start attachments alone reach 450KB) - so the 256KB tail this read until 2.3.0 judged 0 of N stops in every long
+// cycle (audit 2026-10-10 C01: 17 sessions, e.g. 0 of 12 in 0d070bcc, 0 of 11 in 7491ab75). The whole transcript is
+// read ONCE and the answer kept per session (a `guard-stop-flow-*` file, swept with the hook's other state): a hit is
+// final, a miss records how far it read, so the next ask reads only the rows appended since.
+// (Built in the function, not a top-level const: the ask branch above runs before a const this far down exists.)
+function flowRunIn(text) {
+  const FLOW_MARK_RE = /<command-name>\s*\/?(?:[a-z0-9-]+:)?(?:alfred-)?task-solve(?:-cross)?\s*<\/command-name>|"skill"\s*:\s*"[^"]*task-solve(?:-cross)?"/g;
+  for (let m; (m = FLOW_MARK_RE.exec(text));) {
+    const line = text.slice(text.lastIndexOf('\n', m.index) + 1, (text.indexOf('\n', m.index) + 1 || text.length + 1) - 1);
+    // A marker quoted in a tool result (a `sed` over a test file, a transcript dump) is not a run.
+    if (m[0].startsWith('<') ? /"type"\s*:\s*"user"/.test(line) && !line.includes('"tool_result"')
+      : /"type"\s*:\s*"assistant"/.test(line) && line.includes('"tool_use"')) return true;
+  }
+  return false;
+}
+function flowStateFile() {
+  const key = String(payload.transcript_path || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+  return `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-flow-${key}`;
+}
 function solveTaskCycle() {
   try {
     const p = payload.transcript_path;
     if (!p) return false;
     const size = fs.statSync(p).size;
-    const start = Math.max(0, size - 256 * 1024);
+    let from = 0;
+    try {
+      const kept = fs.readFileSync(flowStateFile(), 'utf8').trim();
+      if (kept === 'hit') return true;
+      const n = parseInt(kept.replace(/^miss\s+/, ''), 10);
+      if (n > 0 && n <= size) from = n;   // a shorter file is another transcript under the same name - read it whole
+    } catch { /* no state yet */ }
     const fd = fs.openSync(p, 'r');
-    const buf = Buffer.alloc(size - start);
-    fs.readSync(fd, buf, 0, buf.length, start);
-    fs.closeSync(fd);
-    return /<command-name>\s*\/?(?:[a-z0-9-]+:)?(?:alfred-)?task-solve(-cross)?\s*<\/command-name>|"skill"\s*:\s*"[^"]*task-solve(-cross)?/.test(buf.toString('utf8'));
+    let hit = false;
+    let upTo = from;
+    try {
+      const CHUNK = 4 * 1024 * 1024;
+      let carry = '';
+      for (let at = from; at < size && !hit; at += CHUNK) {
+        const buf = Buffer.alloc(Math.min(CHUNK, size - at));
+        fs.readSync(fd, buf, 0, buf.length, at);
+        const text = carry + buf.toString('utf8');
+        hit = flowRunIn(text);
+        carry = text.slice(text.lastIndexOf('\n') + 1);   // a row cut by the chunk is read again whole with the next one
+        upTo = at + buf.length - Buffer.byteLength(carry);
+      }
+    } finally { fs.closeSync(fd); }
+    try { fs.writeFileSync(flowStateFile(), hit ? 'hit' : `miss ${Math.max(from, upTo)}`); } catch { /* the next ask reads it all again */ }
+    return hit;
   } catch {
     return false;
   }
