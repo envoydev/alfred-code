@@ -450,7 +450,9 @@ test('I3 update: a pending move whose target already holds the data clears - no 
     const restart = (text) =>
     {
         const file = path.join(require('node:os').tmpdir(), `i3-log-${process.pid}-${Math.random().toString(36).slice(2)}.log`);
-        fs.writeFileSync(file, text.replace(/mcps=\d+/g, 'mcps=0'));   // the plugin refresh's own restart is not the data move's
+        // The plugin refresh's own restart is not the data move's: the stub CLI lists nothing and removes anything, so its
+        // install and prune lines (which the preflight reads as session changes since audit 2026-10-10 C29) are dropped.
+        fs.writeFileSync(file, text.split('\n').filter((l) => !/^==>\s+(?:!! )?(?:mcp |plugin |renamed: plugin )/.test(l)).join('\n'));
         try { return execFileSync(process.execPath, [path.join(__dirname, 'update-preflight.js'), '--log', file], { encoding: 'utf8' }); }
         finally { fs.rmSync(file, { force: true }); }
     };
