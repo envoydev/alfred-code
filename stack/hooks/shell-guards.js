@@ -277,6 +277,212 @@ function combine(results)
     return out(0, { ...hso, ...context });
 }
 
+// ---- the dispatcher's own checks (audit 2026-10-10) ---------------------------------------------
+// Four habits the rules state and no guard held, judged once here on the shell route - never per guard - and only where
+// the stack runs its non-protective hooks (hook-prelude.js standDown: the csv, `minimal`, a repo never set up, a Cursor
+// payload):
+//   - zsh (the Bash tool runs the user's $SHELL) aborts the WHOLE command on a bare glob it cannot match and on a bare
+//     word opening with `=` (`=====` looks up a command `====`); a tool-owned glob (`--include=*.ts`, `-name *.md`) and
+//     a `=word` are quoted before any guard reads the command, so every guard judges what runs (sessions 7491ab75: 25
+//     aborted steps; 0498718d: 44; 458953b8, f10cb06a, db6c1ae1: `echo =====`). A brace list after `--include=` is
+//     expanded the way the shell would have, one quoted word per alternative.
+//   - a FOREGROUND `until` / `while` loop that sleeps holds the turn and every queued message until it ends (516e653d:
+//     a question waited 6m58s; 3b53e0e8: a sentinel that never matched ran the full 600s): blocked, naming
+//     run_in_background and the Monitor tool. A `while read` loop reads input and is no poll; a `timeout <= 120` bounds it.
+//   - an unaddressed `sed -i` `s///` whose pattern matches more than one line of its file gets a note naming the lines
+//     (49cb4b82: both task cards flipped).
+//   - a recursive grep for a code identifier in the main session writes one `mode: probe` row, the rate a nudge would
+//     be weighed on (bc2fa83e: 16 grep-then-read against 1 symbol call).
+function ownChecks(stdin)
+{
+    const out = { stdin, results: [] };
+    let payload;
+    try { payload = JSON.parse(stdin.toString('utf8')); }
+    catch { return out; }
+    if (!payload || typeof payload !== 'object') return out;
+    const tool = String(payload.tool_name || '');
+    const input = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
+    const command = typeof input.command === 'string' ? input.command : '';
+    if (!command || !/^(?:Bash|Monitor)$/.test(tool)) return out;
+    let prelude = null;
+    try { prelude = require('./hook-prelude.js'); }
+    catch { prelude = null; }
+    try { if (prelude && (prelude.standDown(SELF) || prelude.cursorStandDown(payload, __filename))) return out; }
+    catch { /* gates unreadable: judged */ }
+    let sw;
+    try { sw = require('./shell-writes.js'); }
+    catch { return out; }
+    const envOf = prelude && prelude.envOf ? prelude.envOf : (env, k) => env[`ALFRED_CODE_${k}`];
+    const root = process.env.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' && payload.cwd) || process.cwd();
+    const cwd = typeof payload.cwd === 'string' && payload.cwd ? payload.cwd : root;
+    const row = (fields) =>
+    {
+        try
+        {
+            if (prelude && prelude.neverSetUp && prelude.neverSetUp()) return;
+            const dir = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs', 'hook-blocks');
+            fs.mkdirSync(dir, { recursive: true });
+            fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
+                ts: new Date().toISOString(), hook: `${SELF}.js`, event: payload.hook_event_name || '', tool, ...fields,
+            }) + '\n');
+        }
+        catch { /* telemetry never changes a verdict */ }
+    };
+    let masked = command;
+    try { masked = sw.blankComments(sw.blankHeredocs(command)); }
+    catch { masked = command; }
+    let spans = [];
+    try { spans = sw.quotedSpans(masked); }
+    catch { spans = []; }
+    const quoted = (i) => spans.some(([a, b]) => i >= a && i < b);
+
+    // -- the poll loop (Bash only: a Monitor command IS the background watch) --
+    const LOOP = /(?:^|[\s;&|({]|\bthen\b|\bdo\b|\belse\b)(?:until|while)\s+(?!(?:IFS=\S*\s+)?read\b)[\s\S]*?\bdo\b[\s\S]*?\bsleep\s+[\d.]+[smh]?\b[\s\S]*?\bdone\b/;
+    let words = [];
+    try { words = sw.commandWords(command); }
+    catch { words = []; }
+    const bounded = words.some((w) => w.name === 'timeout' && Number(String(w.argv.find((a) => !a.startsWith('-')) || '').replace(/s$/, '')) <= 120);
+    const chars = masked.split('');
+    for (const [a, b] of spans) for (let i = a; i < b && i < chars.length; i++) if (chars[i] !== '\n') chars[i] = ' ';
+    const blankQuotes = chars.join('');
+    // the lazy spans are linear only while the text is: a command past 50,000 characters is not judged for a loop
+    const loopIn = (t) => t.length <= 50000 && /\bsleep\b/.test(t) && /\bdone\b/.test(t) && LOOP.test(t);
+    const shellScript = words.filter((w) => /^(?:ba|z|da|k)?sh$/.test(w.name)).map((w) => w.argv[w.argv.indexOf('-c') + 1] || '').filter(Boolean);
+    if (tool === 'Bash' && input.run_in_background !== true && !bounded && (loopIn(blankQuotes) || shellScript.some(loopIn)))
+    {
+        const text = 'Blocked: a FOREGROUND `until` / `while` loop that sleeps - nothing ran. It holds this turn, and every message the\n'
+            + 'user queues, until the condition is met or the tool times out (measured: a question waited 6m58s behind one; a\n'
+            + 'sentinel that never matched ran the full 600s). Wait in the background instead:\n'
+            + '  - the same command with `run_in_background: true` - its exit re-invokes you, and you keep working meanwhile;\n'
+            + '  - or the `Monitor` tool on the condition or the log line (deferred: `ToolSearch select:Monitor` first).\n'
+            + 'A short wait you must hold for can run bounded: `timeout 60 <the loop>`.';
+        row({ reason: firstLine(text).slice(0, 200), detail: { branch: 'poll-loop' } });
+        out.results.push({ guard: `${SELF}.js`, code: 2, stdout: '', stderr: text });
+    }
+
+    // -- the zsh traps: quote what zsh would expand and abort on --
+    const shell = path.basename(String(process.env.SHELL || ''));
+    const edits = [];
+    if (shell === 'zsh')
+    {
+        const tests = [];
+        // `[[ ... ]]` and `(( ... ))` read their own operators: `==` there is no command lookup, and quoting it breaks them
+        for (const m of masked.matchAll(/\[\[[\s\S]*?\]\]|\(\([\s\S]*?\)\)/g)) if (!quoted(m.index)) tests.push([m.index, m.index + m[0].length]);
+        const inTest = (i) => tests.some(([a, b]) => i >= a && i < b);
+        const END = '(?=$|[\\s;|&()<>])';
+        const BARE = "[^\\s;|&()<>'\"`\\\\$]*";
+        const braces = (v) => { const g = /\{([^{}]*,[^{}]*)\}/.exec(v); return g ? g[1].split(',').flatMap((alt) => braces(v.slice(0, g.index) + alt + v.slice(g.index + g[0].length))) : [v]; };
+        for (const m of masked.matchAll(new RegExp(`(^|[\\s;|&(])(--(?:include|exclude|exclude-dir)=)(${BARE}[*?[]${BARE})${END}`, 'g')))
+        {
+            const at = m.index + m[1].length;
+            if (quoted(at) || inTest(at)) continue;
+            edits.push([at, at + m[2].length + m[3].length, braces(m[3]).map((v) => `${m[2]}'${v}'`).join(' ')]);
+        }
+        for (const m of masked.matchAll(new RegExp(`(^|[\\s;|&(])(-(?:i?name|i?path|i?wholename))(\\s+)(${BARE}[*?[]${BARE})${END}`, 'g')))
+        {
+            const at = m.index + m[1].length + m[2].length + m[3].length;
+            if (quoted(at) || inTest(at) || m[4].includes('{')) continue;
+            edits.push([at, at + m[4].length, `'${m[4]}'`]);
+        }
+        for (const m of masked.matchAll(new RegExp(`(^|[\\s;|&(])(=${BARE})${END}`, 'g')))
+        {
+            const at = m.index + m[1].length;
+            if (m[2].length < 2 || quoted(at) || inTest(at)) continue;
+            edits.push([at, at + m[2].length, `'${m[2]}'`]);
+        }
+    }
+    if (edits.length)
+    {
+        let fixed = command;
+        for (const [a, b, rep] of edits.sort((x, y) => y[0] - x[0])) fixed = fixed.slice(0, a) + rep + fixed.slice(b);
+        row({ mode: 'rewrite', reason: 'rewrite: zsh-quote', detail: { branch: 'zsh-quote', fixes: edits.length } });
+        const next = { ...payload, tool_input: { ...input, command: fixed } };
+        out.stdin = Buffer.from(JSON.stringify(next));
+        out.results.push({ guard: `${SELF}.js`, code: 0, stderr: '', stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: { ...input, command: fixed } } }) });
+    }
+
+    // -- an unaddressed sed -i s/// over several lines --
+    const notes = [];
+    for (const w of words)
+    {
+        if (w.name !== 'sed' || !w.argv.some((a) => /^(?:-[A-Za-z]*i|--in-place)/.test(a)) || notes.length) continue;
+        const scripts = [];
+        const files = [];
+        let ere = false;
+        let scriptFile = false;
+        const explicit = w.argv.some((a) => a === '-e' || a === '--expression');
+        for (let k = 0; k < w.argv.length; k++)
+        {
+            const a = w.argv[k];
+            if (a === '-e' || a === '--expression') { scripts.push(w.argv[++k] || ''); continue; }
+            if (a === '-i' && w.argv[k + 1] === '') { k++; continue; }
+            if (/^(?:-f|--file)$/.test(a)) { scriptFile = true; break; }
+            if (/^-[A-Za-z]*[Er]/.test(a)) ere = true;
+            if (a.startsWith('-')) continue;
+            if (!explicit && !scripts.length) scripts.push(a); else files.push(a);
+        }
+        if (scriptFile || files.length > 4) continue;
+        for (const script of scripts)
+        {
+            for (const cmd of script.split(/[;\n]/).map((x) => x.trim()))
+            {
+                const s = /^s(.)((?:(?!\1)[^\\]|\\.)*)\1((?:(?!\1)[^\\]|\\.)*)\1([gIi0-9]*)$/.exec(cmd);
+                if (!s || !s[2]) continue;
+                let re;
+                try
+                {
+                    const src = ere ? s[2] : s[2].replace(/\\([(){}+?|])|([(){}+?|])/g, (all, esc, lit) => (esc ? esc : `\\${lit}`));
+                    re = new RegExp(src, /[Ii]/.test(s[4]) ? 'i' : '');
+                }
+                catch { continue; }
+                for (const f of files)
+                {
+                    let text = '';
+                    try
+                    {
+                        const abs = path.resolve(cwd, f);
+                        if (fs.statSync(abs).size > 2 * 1024 * 1024) continue;
+                        text = fs.readFileSync(abs, 'utf8');
+                    }
+                    catch { continue; }
+                    const lines = text.split('\n').map((l, i) => (re.test(l) ? i + 1 : 0)).filter(Boolean);
+                    if (lines.length > 1)
+                    {
+                        notes.push(`sed -i: \`${cmd.slice(0, 60)}\` has no address and its pattern matches ${lines.length} lines of ${f} (line${lines.length > 1 ? 's' : ''} ${lines.slice(0, 6).join(', ')}${lines.length > 6 ? ', ...' : ''}) - every one changes. If one line was meant, address it (\`${lines[0]}s/.../.../\`) or anchor the pattern on text only that line holds.`);
+                        break;
+                    }
+                }
+                if (notes.length) break;
+            }
+            if (notes.length) break;
+        }
+    }
+    if (notes.length)
+    {
+        row({ mode: 'probe', reason: 'probe: sed-multi-match', detail: { branch: 'sed-multi-match' } });
+        out.results.push({ guard: `${SELF}.js`, code: 0, stderr: '', stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: notes.join('\n') } }) });
+    }
+
+    // -- a name-match symbol grep in the main session (log only) --
+    if (!payload.agent_id)
+    {
+        for (const w of words)
+        {
+            if (!/^(?:grep|egrep|fgrep|rg)$/.test(w.name)) continue;
+            if (w.name !== 'rg' && !w.argv.some((a) => /^-[A-Za-z]*[rR]|^--recursive$/.test(a))) continue;
+            const e = w.argv.indexOf('-e');
+            const pattern = e >= 0 ? w.argv[e + 1] || '' : w.argv.find((a) => !a.startsWith('-')) || '';
+            const ident = pattern.replace(/\\[b<>]/g, '');
+            if (/^[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+$/.test(ident) || /^[A-Za-z_]\w{2,}\\?\($/.test(ident))
+            {
+                row({ mode: 'probe', reason: 'probe: symbol-grep', detail: { branch: 'symbol-grep', pattern: pattern.slice(0, 40) } });
+                break;
+            }
+        }
+    }
+    return out;
+}
+
 // ---- the hook -----------------------------------------------------------------------------------
 function main()
 {
@@ -288,9 +494,14 @@ function main()
     let stdin;
     try { stdin = fs.readFileSync(0); }
     catch { stdin = Buffer.alloc(0); }
+    // the dispatcher's own checks first: a zsh fix hands every guard the command that will run
+    let own = { stdin, results: [] };
+    try { own = ownChecks(stdin); }
+    catch { /* never breaks the guards */ }
+    stdin = own.stdin;
     const named = process.argv.slice(2).filter((a) => GUARDS.includes(a));
     const guards = named.length ? RUN_ORDER.filter((g) => named.includes(g)) : RUN_ORDER;
-    const results = [];
+    const results = [...own.results];
     for (const g of guards)
     {
         const r = runGuard(path.join(__dirname, `${g}.js`), stdin);
@@ -309,5 +520,5 @@ function main()
     if (!pending) process.exit(verdict.code);
 }
 
-module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, wiringRows, runGuard, combine, parseOut };
+module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, wiringRows, runGuard, combine, parseOut, ownChecks };
 if (require.main === module) main();

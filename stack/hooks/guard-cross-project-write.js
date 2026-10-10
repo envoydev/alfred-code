@@ -441,4 +441,28 @@ for (const u of unread) {
   );
   process.exit(2);
 }
+
+// LOG-ONLY: an interpreter script writing a source file of THIS project - the shell route around Edit / Write, which the
+// edit hooks never see (audit 2026-10-10: 0498718d's 14 seats made 116 python heredoc writes against 5 Edit / Write calls;
+// 349e4825 12 against 2). One `mode: probe` row per command, the rate a notice would be decided on; never a verdict.
+const SOURCE_EXT = /\.(?:cs|csx|fs|vb|ts|tsx|mts|cts|js|jsx|mjs|cjs|py|rb|go|rs|java|kt|kts|swift|php|vue|svelte|html?|s?css|less|xaml|razor|cshtml|sql|sh|ps1|json|ya?ml|xml|csproj|props|targets)$/i;
+const interp = scan.targets.filter((t) => t.verb === 'interpreter');
+const own = interp.filter((t) => t.unknown || (SOURCE_EXT.test(String(t.raw)) && (() => {
+  const raw = scan.expandVars(String(t.raw));
+  if (isVar(raw)) return false;
+  const base = anchorAt(t.index);
+  const abs = resolveTarget(nativePath(expandTilde(raw)), base || ROOT);
+  return inside(abs, ROOT);
+})()));
+if (own.length) {
+  try {
+    const dir = path.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks');
+    fs.mkdirSync(dir, { recursive: true });
+    const exts = [...new Set(own.filter((t) => !t.unknown).map((t) => (String(t.raw).match(/\.[^./]+$/) || [''])[0].toLowerCase()))];
+    fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
+      ts: new Date().toISOString(), hook: path.basename(__filename), event: payload.hook_event_name || '', tool,
+      mode: 'probe', reason: 'probe: interpreter-write', detail: { branch: 'interpreter-write', files: own.length, unknown: own.some((t) => t.unknown), exts, agent: payload.agent_id ? 'seat' : 'main' },
+    }) + '\n');
+  } catch { /* a probe never changes the verdict */ }
+}
 process.exit(0);

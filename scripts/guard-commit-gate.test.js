@@ -328,7 +328,7 @@ test('guard-ungated-commit: a bare `git add -N` with no chained reset is blocked
   const dir = scratchRepo();
   const blocked = gateFull(dir, 'git add -N .');
   assert.equal(blocked.status, 2, 'add -N alone leaves intent-to-add entries open');
-  assert.match(blocked.stderr, /git reset -q/, 'names the remedy shape alfred-git.md:9 gives');
+  assert.match(blocked.stderr, /git diff HEAD --stat; git ls-files -o --exclude-standard/, 'names the index-free survey alfred-git.md:9 gives (f24eb967)');
 
   assert.equal(gateIn(dir, 'git add -N . && git diff HEAD --stat; git reset -q'), 0,
     'the reset chained in the SAME call is the conformant scope-survey shape');
@@ -342,7 +342,7 @@ test('guard-ungated-commit: a bare `git add -N` with no chained reset is blocked
 
   const withCommit = gateFull(dir, 'git add -N . && git commit -am wip');
   assert.equal(withCommit.status, 2, 'the add -N check fires before the commit gate is even reached');
-  assert.match(withCommit.stderr, /git reset -q/);
+  assert.match(withCommit.stderr, /git ls-files -o --exclude-standard/);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -1159,9 +1159,9 @@ test('audit 2026-10-10 C17: the scope survey never resets an index holding stage
   spawnSync('git', ['-C', dir, 'add', 'a.txt']);
   const r = gateFull(dir, 'git add -N . && git diff HEAD --stat; git reset -q');
   assert.equal(r.status, 2, 'a bare reset would unstage a.txt');
-  assert.match(r.stderr, /git diff HEAD --stat; git ls-files --others --exclude-standard/, 'names the index-free survey');
+  assert.match(r.stderr, /git diff HEAD --stat; git ls-files -o --exclude-standard/, 'names the index-free survey');
   assert.equal(gateIn(dir, 'git add -N . && git diff HEAD --stat; git reset -q -- b.txt'), 0, 'a reset of named paths leaves the rest staged');
-  assert.equal(gateIn(dir, 'git diff HEAD --stat; git ls-files --others --exclude-standard'), 0, 'the index-free survey');
+  assert.equal(gateIn(dir, 'git diff HEAD --stat; git ls-files -o --exclude-standard'), 0, 'the index-free survey');
 });
 
 // ---------------------------------------------------------------------------------------------

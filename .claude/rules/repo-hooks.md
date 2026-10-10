@@ -88,6 +88,16 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   hook to act as a gate'; the agent-sdk page's deny-on-timeout is the SDK callback family, not these; 2.1.5 M2 - every
   git call in the docs engine carries a 5s timeout),
   and the protective ones run first (`RUN_ORDER`; the messages keep the manifest's order).
+  The dispatcher makes four checks of its OWN before any guard (`ownChecks`, audit 2026-10-10 C14 / C25), where the
+  stack's non-protective hooks run (`standDown`, `cursorStandDown`): under zsh (`$SHELL`) a tool-owned glob
+  (`--include=` / `--exclude=` / `--exclude-dir=`, `-name` / `-path` and their `i` forms, a brace list expanded one
+  word per alternative) and a bare word opening with `=` (`=====`, a `==` outside `[[ ]]` / `(( ))`) are single-quoted
+  and every guard judges the fixed command (`updatedInput`, a guard's own rewrite of it wins; zsh aborts the whole
+  command on either - 44 aborted scans in one session); a FOREGROUND `until` / `while` loop that sleeps on Bash is
+  blocked, naming `run_in_background` and the Monitor tool (a `while read` loop, a `timeout` of 120s or less and a
+  background run pass); an unaddressed `sed -i` `s///` whose pattern matches more than one line of its file gets an
+  `additionalContext` note naming the lines; and a recursive grep for a code identifier (CamelCase, a call) in the
+  main session writes one `mode: probe` row. Each writes its row under `shell-guards.js`.
   The five guards with a file-tool row ride ONE hook the same way, `file-guards.js` (2.1.5 M3: a Read or a Write paid
   three node processes): the read guard, the secret guard, the config and cross-project guards and docs-session, each
   run only for the tools its own manifest row names (its `GUARDS` table, held to the manifest by a test), the secret
@@ -215,7 +225,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     never indexes name grep instead). Its convention-rule announcement
     names only a rule in the project's own `.claude/rules` - a plugin-launched hook's sibling `rules/` is
     the whole catalog (it named `winforms-conventions.md` to a project without it, the 2026-09-26 pilot); with no rules
-    directory anywhere it cannot tell and names the rule (a recorded choice, pinned in `guard-read-write.test.js`).
+    directory anywhere it cannot tell and names the rule (a recorded choice, pinned in `guard-read-write.test.js`); a
+    target is resolved where the shell stands after a `cd` (`cd /tmp && cat > x.ts` names no rule - audit 2026-10-10).
   - `guard-secret-value.js` (PreToolUse `Read` + `Grep` + the shell route) - credentials are read for PRESENCE, never
     value. Judged by file CONTENT (a JSON, dotenv, INI - `~/.aws/credentials`, `~/.pypirc`, a `[section]` file,
     `~/.npmrc` - netrc or URL-per-line (`~/.git-credentials`) file holding a `secret_key_pattern` key with a live
@@ -324,6 +335,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `Explore` / `Plan` brief gets the untrusted-content sentence appended (`updatedInput`, never a deny). The APPROVAL
     root is `CLAUDE_PROJECT_DIR`, else the payload's `cwd`, as its ledger reads it, and every block row names its branch
     (`symbol-question`, `diagnoser-pin`, `implementer-unapproved` / `-stale-stamp`, `generic-while-stamped`).
+    LOG-ONLY (audit 2026-10-10): the main session's FIRST dispatch with no `Execution: route ...` line and no
+    habits-execution-strategy load before it in the transcript's newest 8MB writes one `mode: probe` row,
+    `no-execution-verdict`.
     A diagnoser CALLER (the payload's `agent_type`, bare or house-prefixed) dispatches only `evidence-gatherer` -
     a subagent's `Agent(<type>)` list is ignored, so the grant alone let it start a writing seat (2.1.5 M48).
     In a repo never set up only an `alfred-code:`-spelled implementer target is judged - the diagnoser pin,
@@ -351,7 +365,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     An unknown receipt line is never refused. A verify-skill VERIFIED line needs a Skill run in THIS session, read from the tool-usage ledger
     and then the whole transcript (newest 64MB) - a 256KB tail refused three sessions whose review sat further back.
     A `git add -N .` survey chained to a bare `git reset -q` blocks while the index holds staged work (the reset
-    would unstage it); the denial names `git diff HEAD --stat; git ls-files --others --exclude-standard`. The act a
+    would unstage it); the denial names `git diff HEAD --stat; git ls-files -o --exclude-standard`. The act a
     denial echoes is capped at 200 characters with a URL credential masked, and the publish denial names `habits-commit-checkpoint`.
     Both are judged in the repo git runs in (the shell's cwd, a leading `cd`, `-C`) - a worktree is its own.
     A PUSH-GATE receipt spanning more than one MANIFEST-owning directory needs a `scope:` line naming
@@ -482,6 +496,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `<docs-path>/flow/CROSS-WRITE-ALLOW` receipt; `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` opens a second
     tree permanently. The log-only fork-liveness probe is retired (2026-10-09, the user's ruling after its rows were read:
     56 probe rows over two weeks in three projects, none naming a collision; the per-call head reads cost 12-22ms).
+    LOG-ONLY (audit 2026-10-10): an interpreter script writing an in-project source file (a `python3 - <<` splice, a
+    computed path) writes one `mode: probe` row per command, `interpreter-write`, the rate a notice would be decided on.
   - `guard-config-protection.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route) - a
     check is never made green by weakening the check: a change to a lint / format / analyzer config that
     ALREADY exists (eslint, prettier, stylelint, biome, `.editorconfig`, a ruleset) is blocked, and in

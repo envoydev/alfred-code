@@ -180,8 +180,9 @@ if (PUSH_GATE_ON) {
 }
 
 // --- add -N without a chained reset -------------------------------------------------------
-// alfred-git.md:9 mandates the scope survey as ONE Bash call with the reset chained on the
-// end: `git add -N . && git diff HEAD --stat; git reset -q`. A bare `git add -N .` left its
+// alfred-git.md:9 derives the scope with a survey that never moves the index (`git diff HEAD --stat; git ls-files -o
+// --exclude-standard`): the older `git add -N . && ...; git reset -q` unstaged a session's own `git rm` deletions (audit
+// 2026-10-10, session f24eb967). A bare `git add -N .` left its
 // intent-to-add entries open across 6 more Bash calls in one measured session, ending in an
 // 8-call fsck/dangling-blob forensic chase and an unrequested re-stage that flipped a partially
 // staged file to fully staged. Independent of commit/push - it fires on its own. Scoped to the
@@ -189,7 +190,7 @@ if (PUSH_GATE_ON) {
 // is a deliberate staging move with one file's entry to clear, not the survey this rule is about.
 const addN = calls.find((c) => c.sub === 'add' && c.argv.some((a) => a === '-N' || a === '--intent-to-add')
   && c.argv.every((a) => a.startsWith('-') || a === '.'));
-const INDEX_FREE_SURVEY = 'git diff HEAD --stat; git ls-files --others --exclude-standard';
+const INDEX_FREE_SURVEY = 'git diff HEAD --stat; git ls-files -o --exclude-standard';
 if (addN && !calls.some((c) => c.sub === 'reset')) {
   process.stderr.write(
     `Blocked: ${actText(addN)} with no git reset in the same call - intent-to-add entries stay\n` +
@@ -198,7 +199,7 @@ if (addN && !calls.some((c) => c.sub === 'reset')) {
     `file to fully staged). Survey the scope without touching the index - the tracked diff, then the\n` +
     `untracked files:\n` +
     `  ${INDEX_FREE_SURVEY}\n` +
-    `or chain the reset onto the SAME call: git add -N . && git diff HEAD --stat; git reset -q`,
+    `(alfred-git.md's survey - a reset after -N would unstage work already staged).`,
   );
   process.exit(2);
 }

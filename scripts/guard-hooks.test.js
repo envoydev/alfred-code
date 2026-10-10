@@ -1853,7 +1853,9 @@ test('guard-cross-project-write: a shell path is anchored at the payload cwd, bo
 // on a mutating call, no `mode: probe` row.
 test('guard-cross-project-write: the retired fork-liveness probe reads no transcript head and writes no probe row', () => {
   const src = fs.readFileSync(path.join(HOOKS, 'guard-cross-project-write.js'), 'utf8');
-  assert.doesNotMatch(src, /forkProbe|fork-liveness|FORK_LIVE_MS|FORK_HEAD_BYTES|mode: 'probe'/, 'no probe code is left in the hook');
+  assert.doesNotMatch(src, /forkProbe|fork-liveness|FORK_LIVE_MS|FORK_HEAD_BYTES/, 'no fork probe code is left in the hook');
+  // the one probe it writes now is the interpreter-write count (audit 2026-10-10)
+  assert.deepStrictEqual([...src.matchAll(/reason: 'probe: ([\w-]+)'/g)].map((m) => m[1]), ['interpreter-write']);
 });
 
 test('guard-cross-project-write: a relocated CLAUDE_CONFIG_DIR and the harness scratch root stay writable (audit 2026-10-08)', (t) => {
@@ -4187,4 +4189,47 @@ test('guard-desktop-exec: the csv opt-out switches it off, and garbage input nev
   assert.equal(off.status, 0);
   assert.equal(spawnSync(process.execPath, [path.join(HOOKS, 'guard-desktop-exec.js')], { input: 'not json', encoding: 'utf8' }).status, 0);
   assert.equal(desktopRun(root, WIN_APP[0], null).status, 0, 'no tool_input');
+});
+
+// audit 2026-10-10 (0498718d, 349e4825 - T5 cross-track): an interpreter script writing a source file of this project is
+// the shell route around Edit / Write - one log-only probe row per command, never a verdict.
+test('guard-cross-project-write: an interpreter write to an in-project source file writes one probe row and passes', () => {
+  const ledger = fs.mkdtempSync(path.join(os.tmpdir(), 'xp-probe-'));
+  const runP = (command, agent) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'xp-probe', ...(agent ? { agent_id: agent } : {}) }),
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
+  });
+  const rows = () => { try { return fs.readFileSync(path.join(ledger, 'hook-blocks', 'xp-probe.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
+  try {
+    assert.strictEqual(runP("python3 - <<'EOF'\np='src/a.cs'\ns=open(p).read()\nopen(p,'w').write(s)\nEOF").status, 0);
+    assert.strictEqual(runP("python3 - <<'EOF'\nfrom pathlib import Path\nfor f in files: Path(f).write_text('x')\nEOF", 'seat-1').status, 0);
+    assert.strictEqual(runP("python3 - <<'EOF'\nopen('notes.txt','w').write('x')\nEOF").status, 0, 'not a source file');
+    assert.strictEqual(runP('echo x > src/b.cs').status, 0, 'a redirect is no interpreter write');
+    assert.deepStrictEqual(rows().map((r) => [r.mode, r.detail.branch, r.detail.files, r.detail.unknown, r.detail.agent]),
+      [['probe', 'interpreter-write', 1, false, 'main'], ['probe', 'interpreter-write', 1, true, 'seat']]);
+  } finally { fs.rmSync(ledger, { recursive: true, force: true }); }
+});
+
+// audit 2026-10-10 (f24eb967 - T5 cross-track): the main session's first dispatch with no execution verdict before it is
+// counted, never judged.
+test('guard-unapproved-dispatch: a first dispatch with no Execution: verdict writes one probe row and passes', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'exec-probe-'));
+  fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\n');
+  const ledger = path.join(root, 'ledger');
+  const tp = (name, rows) => { const f = path.join(root, `${name}.jsonl`); fs.writeFileSync(f, rows.map((r) => JSON.stringify(r)).join('\n') + '\n'); return f; };
+  const dispatch = (id) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Agent', input: { subagent_type: 'Explore', prompt: 'map the folders' } }] } });
+  const go = (transcript, extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-unapproved-dispatch.js')], {
+    input: JSON.stringify({ tool_name: 'Agent', tool_input: { subagent_type: 'Explore', prompt: 'map the folders' }, session_id: 'exec', tool_use_id: 'toolu_now', transcript_path: transcript, ...extra }),
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: ledger },
+  });
+  const rows = () => { try { return fs.readFileSync(path.join(ledger, 'hook-blocks', 'exec.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
+  try {
+    assert.strictEqual(go(tp('bare', [{ type: 'user', message: { role: 'user', content: 'audit the docs' } }, dispatch('toolu_now')])).status, 0, 'the Explore brief still passes');
+    go(tp('with-verdict', [{ type: 'assistant', message: { content: [{ type: 'text', text: 'Execution: route direct - mode parallel seats: 3 - model session - x' }] } }, dispatch('toolu_now')]));
+    go(tp('with-skill', [{ type: 'assistant', message: { content: [{ type: 'tool_use', id: 's1', name: 'Skill', input: { skill: 'alfred-code:habits-execution-strategy' } }] } }]));
+    go(tp('second', [dispatch('toolu_before'), dispatch('toolu_now')]));
+    go(tp('seat', []), { agent_id: 'seat-1' });
+    assert.deepStrictEqual(rows().map((r) => [r.mode, r.detail.branch]), [['probe', 'no-execution-verdict']], 'only the bare first dispatch');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

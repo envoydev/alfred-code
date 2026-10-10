@@ -520,4 +520,11 @@ test('audit 2026-10-10 C11/C13: the rule notice reads no redirect inside quotes 
   // the interpreter splice the navigation rule sanctions: a bound name, then open(p, 'w') (81264f0d, 4f1c2ebb)
   assert.match(announce("python3 - <<'EOF'\np='libs/ui/src/lib/card.ts'\ns=open(p).read()\nopen(p,'w').write(s)\nEOF", sid()), /typescript-conventions\.md/,
     'a python heredoc edit of a .ts file names the TypeScript rule');
+  // a target is resolved after the cd before it, and a read-only sed names no write (49cb4b82, T5 cross-track)
+  const away = path.join(TMP, 'away');
+  fs.mkdirSync(away, { recursive: true });
+  assert.equal(announce(`cd ${away} && cat > scratch.ts <<'EOF'\nx\nEOF`, sid()), '', 'a write after a cd out of the project');
+  assert.equal(announce(`cd ${away} && printf x > tool.mjs`, sid()), '', 'a redirect after a cd out of the project');
+  assert.match(announce('cd src && printf x > app/tool.mjs', sid()), /javascript-conventions\.md/, 'a cd inside the project still announces');
+  assert.equal(announce("sed -n '1,20p' src/app/tool.mjs | grep -i x", sid()), '', 'sed -n reads');
 });

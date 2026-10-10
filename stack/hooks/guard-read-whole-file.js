@@ -1817,7 +1817,7 @@ const ruleInstalled = (rule) => {
 const escapeRe = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const UNGOVERNED_MD = new RegExp(
   `(?:^|[\\s"'=])(?:\\./)?(?:\\.claude|${escapeRe(docsRootEnv().replace(/^\.\//, '').replace(/\/+$/, ''))})/`);
-function announceRules(text, extra = []) {
+function announceRules(text, extra = [], cds = []) {
   const docsRel = docsRootEnv().replace(/^\.\//, '').replace(/\/+$/, '');
   const ungoverned = (t) => UNGOVERNED_MD.test(` ${t}`) || t.includes('.claude/') || t.includes(`${docsRel}/`);
   // A write outside the project - the session scratchpad, a temp folder - is governed by no rule of this project's
@@ -1825,13 +1825,23 @@ function announceRules(text, extra = []) {
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || '';
   const real = (p) => { try { return fs.realpathSync(p); } catch { return p; } };
   const roots = root ? [...new Set([pathMod.resolve(root), real(pathMod.resolve(root))])] : [];
-  const inProject = (t) => {
+  // A target is resolved where the shell stands when it is written: after `cd /tmp && cat > x.ts` the write is in /tmp,
+  // never the project (audit 2026-10-10, session 49cb4b82). `cds` are shell-writes.js's, indexed into the same text.
+  const cdBefore = (at) => {
+    let d = null;
+    for (const c of cds) if (at >= 0 && c.index < at) d = c[1] || c[0];
+    return d && d !== '-' && !String(d).includes('$') ? d : null;
+  };
+  const inProject = (t, at = -1) => {
     if (!roots.length || isVar(t)) return true;
-    const abs = pathMod.resolve(anchorDirs[0] || root, nativePath(t));
+    const cd = cdBefore(at);
+    const base = cd ? pathMod.resolve(anchorDirs[0] || root, nativePath(cd)) : (anchorDirs[0] || root);
+    const abs = pathMod.resolve(base, nativePath(t));
     const absReal = pathMod.join(real(pathMod.dirname(abs)), pathMod.basename(abs));
     return [abs, absReal].some((a) => roots.some((r) => a === r || a.startsWith(r + pathMod.sep)));
   };
-  const targets = [...writeTargets(String(text)), ...extra].filter(inProject);
+  const targets = [...writeTargets(String(text)).map((t) => [t, String(text).indexOf(t)]), ...extra.map((e) => (Array.isArray(e) ? e : [e, -1]))]
+    .filter(([t, at]) => inProject(t, at)).map(([t]) => t);
   if (!targets.length) return;
   const hit = [];
   for (const t of targets) for (const [re, rule] of CONVENTION_RULES)
@@ -2222,11 +2232,13 @@ if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.comm
   // `open(p, 'w')` in a `python3 - <<'EOF'` splice - audit 2026-10-10, session 81264f0d: 14 such edits drew no notice).
   try {
     let extra = [];
+    let cds = [];
     if (shellWrites) {
       const scan = shellWrites.scanShell(String((payload.tool_input || {}).command || ''), {});
-      extra = scan.targets.filter((t) => !t.unknown).map((t) => scan.expandVars(String(t.raw || ''))).filter((t) => t && !isVar(t));
+      extra = scan.targets.filter((t) => !t.unknown).map((t) => [scan.expandVars(String(t.raw || '')), t.index]).filter(([t]) => t && !isVar(t));
+      cds = scan.cds || [];
     }
-    announceRules(stripHeredocsOf(String((payload.tool_input || {}).command || '')), extra);
+    announceRules(stripHeredocsOf(String((payload.tool_input || {}).command || '')), extra, cds);
   } catch { /* an injection never breaks the gate */ }
   try {
   // A heredoc body is DATA, not shell: a plan or checklist that merely DESCRIBES a dangerous
