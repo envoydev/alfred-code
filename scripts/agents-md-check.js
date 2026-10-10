@@ -16,6 +16,8 @@
 //   placeholder - a `__NAME__` placeholder the template seeds is still there
 //   todo        - a TODO left in the live text
 //   template    - a live line still carries the template's own authoring text
+//   rule        - the `## Rules` list names a rule `.claude/rules/` does not hold; or, once it names a rule
+//                 the install copies, a rule file there it neither names nor covers with a glob (`alfred-*`)
 //
 // Only the LIVE text is read: HTML comments are stripped from what Claude loads, so they are stripped
 // here too, line numbers kept. With no --file it checks the root and .claude/ AGENTS.md and CLAUDE.md and
@@ -98,6 +100,8 @@ const WHY = {
     placeholder: "the template's placeholder was never filled",
     todo: 'a TODO left in the live text',
     template: "still the template's own authoring text - replace it with this project's",
+    rule: 'named in the Rules list, but .claude/rules/ holds no such file',
+    ruleUnnamed: 'installed in .claude/rules/, but the Rules list neither names it nor covers it with a glob',
 };
 
 const posix = (p) => p.split(path.sep).join('/');
@@ -375,6 +379,31 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
         ? `does not exist - the docs root is \`${docsNow}\` now, where \`${docsNow}/${target.slice(LEGACY_DOCS.length)}\` does`
         : WHY.path);
 
+    // The `## Rules` list against `.claude/rules/` (usage audit 2026-10-10, 65abb00a: an improve pass missed an unlisted
+    // rule and twice called the table stale, both against the folder it never compared). A named rule file the folder
+    // lacks is a `rule` row whatever git ignores; a GENERATED name (`alfred-project-*`, `project-*`) waits for its
+    // capture, as the template seeds them first. Unnamed files count only once the list ENUMERATES - names a rule the
+    // install copies - since the template covers the rest by pattern (`alfred-*`, 'the other path-scoped rules').
+    const RULES_DIR = path.join(root, '.claude', 'rules');
+    const hasRules = (() => { try { return fs.statSync(RULES_DIR).isDirectory(); } catch { return false; } })();
+    const generatedRule = (stem) => /^(alfred-)?project-/.test(stem);
+    const globRe = (g) => new RegExp(`^${g.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
+    let rules = null;
+    // A span in the Rules list: true when it was a rule name this check answered, so the path check skips it.
+    const ruleSpan = (text, n, col) =>
+    {
+        const t = text.trim();
+        // `.claude/rules/<name>.md`, a bare rule-shaped `<name>.md` (lowercase, hyphenated - never a `README.md`), or a glob.
+        const m = /^\.claude\/rules\/([A-Za-z0-9_.*-]+)\.md$/.exec(t) || /^([a-z0-9*]+(?:-[a-z0-9*]+)+)\.md$/.exec(t)
+            || (/^[A-Za-z0-9_-]*\*[A-Za-z0-9_*-]*$/.test(t) ? [t, t] : null);
+        if (!m) return false;
+        if (m[1].includes('*')) { rules.globs.push(globRe(m[1])); return true; }
+        rules.named.add(m[1]);
+        if (!hasRules || generatedRule(m[1]) || isFile(path.join(RULES_DIR, `${m[1]}.md`))) return false;
+        add(n, col, 'rule', `${m[1]}.md`);
+        return true;
+    };
+
     let fence = null;
     let heading = '';
     let heredoc = null;
@@ -401,8 +430,13 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
             continue;
         }
         if (opener) { fence = { mark: opener[1], lang: opener[2].toLowerCase() }; continue; }
-        const h = /^\s{0,3}#{1,6}\s+(.*)$/.exec(line);
-        if (h) heading = h[1];
+        const h = /^\s{0,3}(#{1,6})\s+(.*)$/.exec(line);
+        if (h)
+        {
+            heading = h[2];
+            if (h[1].length === 2 && /^Rules\b/i.test(heading)) rules = { line: n, named: new Set(), globs: [], open: true };
+            else if (h[1].length <= 2 && rules) rules.open = false;
+        }
 
         const spans = spansOf(line);
         // A code span MENTIONS a placeholder or a TODO (`__DOCS_ROOT__` is stamped by the installer);
@@ -413,6 +447,7 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
 
         for (const span of spans)
         {
+            if (rules && rules.open && ruleSpan(span.text, n, span.col)) continue;
             // A dot-token written onto a word (appsettings`.local`) is that word's suffix.
             const suffix = span.text.trim().startsWith('.') && /[\w*]/.test(line[span.col - 1] || '');
             const p = suffix ? null : pathOf(span.text, docs);
@@ -435,6 +470,17 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
         }
     }
     if (template) checkTemplateText();
+    if (rules && hasRules && [...rules.named].some((s) => !generatedRule(s) && isFile(path.join(RULES_DIR, `${s}.md`))))
+    {
+        let files = [];
+        try { files = fs.readdirSync(RULES_DIR).filter((f) => f.endsWith('.md') && isFile(path.join(RULES_DIR, f))).sort(); }
+        catch { files = []; }
+        for (const f of files)
+        {
+            const stem = f.slice(0, -3);
+            if (!rules.named.has(stem) && !rules.globs.some((re) => re.test(stem))) add(rules.line, 0, 'rule', `.claude/rules/${f}`, WHY.ruleUnnamed);
+        }
+    }
     if (unfilledSeed(text, template === null ? readTemplate() : template)) add(1, -1, 'template', 'the template', 'never filled: only its H1 and ## Rules are live');
     const kept = new Set(normalize(text).split('\n').map((l, k) => (KEEP_MARKER.test(l) ? k + 1 : 0)).filter(Boolean));
     return findings.filter((f) => !kept.has(f.line)).sort((a, b) => a.line - b.line || a.col - b.col).map(({ col, ...f }) => f);

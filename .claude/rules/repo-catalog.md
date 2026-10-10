@@ -41,8 +41,9 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   every change shown first, a separate part getting its own `<part>/AGENTS.md`) - `/alfred-code:init`,
   `update` and `configure` follow it inline; and `scripts/agents-md-check.js` (AGENTS.md and any CLAUDE.md the project keeps) is the verdict it closes
   on: every named path exists, every command's program resolves on PATH or in the project, no
-  placeholder, `TODO` or template text is left, and an installer seed still unfilled is named
-  (`--list` marks it). Validate runs the check for drift. Its rows are heuristic (measured 2026-09-26
+  placeholder, `TODO` or template text is left, the `## Rules` list matches `.claude/rules/` (a `rule` row: a named
+  rule with no file, or - once the list enumerates the install's rules - a file it neither names nor globs; usage audit
+  2026-10-10), and an installer seed still unfilled is named (`--list` marks it). Validate runs the check for drift. Its rows are heuristic (measured 2026-09-26
   over four real projects: 39 rows with 1 true, 7 rows once the shapes behind the rest were fixed), so
   no ask marks a check-driven fix recommended - the skill offers each one and the user picks; a stale path whose new
   target the run confirmed on disk is a verified fix, not a check row, and joins the recommended option (usage audit

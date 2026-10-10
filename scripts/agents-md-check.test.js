@@ -143,6 +143,26 @@ test('C24: a backticked dependency name is a package, and a line marked keep rai
     assert.deepStrictEqual(kinds(run(root, 'Name a client `x.api.ts`. <!-- keep -->\nAnd `y.api.ts`.')), ['1 path x.api.ts', '2 path y.api.ts'], 'only the exact marker, only its own line');
 });
 
+// Usage audit 2026-10-10, 65abb00a (T4 cross-track): an improve pass never compared the Rules list with
+// `.claude/rules/` - it missed the unlisted skill-authoring rule and twice called the table stale, wrongly.
+test('rule: the Rules list against .claude/rules - a named rule with no file, and an enumerating list\'s unnamed file', () =>
+{
+    const root = tree({ '.claude/rules/alfred-git.md': 'x', '.claude/rules/alfred-memory.md': 'x', '.claude/rules/skill-authoring.md': 'x',
+        '.claude/rules/angular-conventions.md': 'x', 'docs/README.md': 'x' });
+    // Everything git ignores, as in a project that ignores .claude/: the rule rows hold all the same.
+    const check = (text) => kinds(checkText({ root, file: 'AGENTS.md', text, template: TEMPLATE, locate: onPath([]), isIgnored: () => true }));
+    const table = (rows) => ['# App', '', '## Rules', '', '| Rule | What |', '|---|---|', ...rows.map((r) => `| \`${r}\` | x |`), '', '## Other', '', '`skill-authoring.md` here is not the list.'].join('\n');
+    assert.deepStrictEqual(check(table(['.claude/rules/alfred-git.md', '.claude/rules/alfred-memory.md', '.claude/rules/angular-conventions.md', '.claude/rules/baseline-git.md'])),
+        ['3 rule .claude/rules/skill-authoring.md', '10 rule baseline-git.md'], 'the unlisted file on the heading, the named one with no file on its line');
+    assert.deepStrictEqual(check(table(['alfred-*', '.claude/rules/angular-conventions.md', 'skill-authoring.md'])), [], 'a glob covers, a bare rule name counts');
+    assert.deepStrictEqual(check(['# App', '', '## Rules', '', 'Every `alfred-*` file loads each session; `.claude/rules/alfred-project-run-book.md` once captured; see `docs/README.md`.'].join('\n')), [],
+        'a list naming only the generated rules and a pattern does not enumerate, and a generated name waits for its capture');
+    assert.deepStrictEqual(check(table(['.claude/rules/alfred-git.md']).replace('## Rules', '## Rules <!-- agents-md-check: keep -->')), [], 'a kept heading silences the unnamed rows');
+    const bare = tree({ 'docs/x.md': 'x' });
+    assert.deepStrictEqual(kinds(checkText({ root: bare, file: 'AGENTS.md', text: table(['.claude/rules/alfred-git.md']), template: TEMPLATE, locate: onPath([]), isIgnored: () => false })),
+        ['7 path .claude/rules/alfred-git.md'], 'no .claude/rules/ at all: the path check answers as before');
+});
+
 // I1 (final review of the rename): read over four real consuming projects the check gave 39 rows and 1 was
 // true. The five shapes below are what the other 38 were made of - each fixture is synthetic.
 test('I1a: a .NET part folder named <Company>.<Part> answers for the part: `Bot/Program.cs` is `src/Acme.Bot/Program.cs`', () =>
