@@ -114,7 +114,9 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   `project-*` ones are `alfred-*` (`alfred-git`, `alfred-project-run-book`, ...), and `baseline-*` names live only in
   `retired.rules`, `renamed.rules`, the migration code and its tests, and the `docs/*-evidence.md` history. An update over
   an older install prunes the seven old library copies by the `retired` list (the existing policy: by name, hand-edited
-  or not, one `rule pruned (retired upstream)` line each) and writes the new ones; the disk read-back maps a leftover old
+  or not, one `rule pruned (retired upstream)` line each) and writes the new ones - an old copy the stamp holds no hash
+  for goes only when its successor is recorded and its text is one the stack shipped (`scripts/install/retired-rules.js`,
+  audit 2026-10-10 C10), so an edited one stays; the disk read-back maps a leftover old
   name to the new one through `renamed.rules` (`selection.renameLines`), so no `not found in the stack source` note. The four generated files
   (`agent-capabilities`, `related-context`, `architecture`, `run-book`) are MOVED with their content kept
   (`selection.moveGeneratedRules`, before the docs-root re-stamp) because their captures never re-run by themselves - a

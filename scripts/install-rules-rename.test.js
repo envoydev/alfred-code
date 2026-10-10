@@ -155,6 +155,85 @@ for (const [label, unstamp] of [['a garbled library-rules line', (t) => t.replac
     });
 }
 
+// audit 2026-10-10 C10: a 0.2.x / 1.x install updated by 2.2.0 or 2.2.1 kept its seven baseline-* copies unjudged and the
+// stamp that run wrote records the alfred-* rules, so the opening-line claim above (no rule recorded) never ran again and
+// both sets loaded on every message (34,059 chars). The copies are real shipped texts (scripts/fixtures/retired-rules.js -
+// three of the seven, whose history holds a text free of the retired 1.x name).
+const SHIPPED_OLD = require('./fixtures/retired-rules.js');
+const { shippedText } = require('./install/retired-rules.js');
+
+function make220(repo, { edit = [], crlf = [], unrecord = [] } = {})
+{
+    for (const [name, text] of Object.entries(SHIPPED_OLD))
+    {
+        const n = name.replace(/^baseline-/, '');
+        let t = crlf.includes(n) ? text.replace(/\n/g, '\r\n') : text;
+        if (edit.includes(n)) t += 'a hand edit\n';
+        fs.writeFileSync(path.join(rulesOf(repo), `${name}.md`), t);
+    }
+    if (!unrecord.length) return;
+    const text = fs.readFileSync(stampOf(repo), 'utf8');
+    const kept = Object.entries(stampRules(repo)).filter(([name]) => !unrecord.map((n) => `alfred-${n}`).includes(name));
+    fs.writeFileSync(stampOf(repo), text.replace(/^library-rules: .*$/m, `library-rules: ${kept.map(([n, h]) => `${n}=${h}`).join(',')}`));
+}
+
+test('retired-rules.js knows a shipped old text, line endings aside, and nothing else', () =>
+{
+    for (const [name, text] of Object.entries(SHIPPED_OLD))
+    {
+        assert.ok(shippedText(name, text), `${name}: a shipped text is not known`);
+        assert.ok(shippedText(name, text.replace(/\n/g, '\r\n')), `${name}: a CRLF copy is not known`);
+        assert.ok(!shippedText(name, `${text}a hand edit\n`), `${name}: an edited copy reads as shipped`);
+    }
+    assert.ok(!shippedText('baseline-mine', 'x'), 'a name with no shipped text');
+    assert.ok(!shippedText('baseline-git', null), 'an unreadable copy');
+});
+
+for (const scope of ['project', 'user', 'local'])
+{
+    test(`a 2.2.0-shaped stamp (${scope} scope): records the alfred-* rules, the shipped baseline-* copies beside them are pruned (audit C10)`, POSIX_ONLY, () =>
+    {
+        const { result: r, outs } = seedRun(['install', 'update'], SEL, {
+            args: [['--scope', scope], UPDATE(scope)], each: (repo, i) => (i === 0 ? make220(repo) : null), inspect: snap,
+        });
+        for (const name of Object.keys(SHIPPED_OLD))
+        {
+            assert.ok(!(`${name}.md` in r.files), `${name}.md survived: ${outs[1]}`);
+            assert.match(outs[1], new RegExp(`rule pruned \\(retired upstream\\): ${name}\\.md`));
+        }
+        for (const n of SHIPPED) assert.ok(`alfred-${n}.md` in r.files && `alfred-${n}` in r.stamp, `alfred-${n} lost`);
+        assert.deepStrictEqual(Object.keys(r.stamp).filter((f) => /^baseline-/.test(f)), []);
+    });
+}
+
+test('a 2.2.0-shaped stamp: an edited old copy stays and is named, a CRLF one goes, and a re-run changes nothing', POSIX_ONLY, () =>
+{
+    const { result: r, outs, steps } = seedRun(['install', 'update', 'update'], SEL, {
+        args: [[], UPDATE(), UPDATE()], inspect: snap,
+        each: (repo, i) =>
+        {
+            if (i === 0) make220(repo, { edit: ['git'], crlf: ['memory'] });
+            return snap(repo).files;
+        },
+    });
+    assert.match(r.files['baseline-git.md'], /a hand edit\n$/, 'the edited copy was deleted or changed');
+    assert.match(outs[1], /!! rule kept: baseline-git\.md.*yours/, `no kept line: ${outs[1]}`);
+    assert.ok(!('baseline-memory.md' in r.files), 'a CRLF copy of a shipped text survived');
+    assert.ok(!('baseline-quality-gates.md' in r.files), 'an unedited copy survived');
+    assert.deepStrictEqual(steps[2], steps[1], 'the re-run changed the rules folder');
+    assert.ok(!/rule pruned/.test(outs[2]), `the re-run pruned again: ${outs[2]}`);
+});
+
+test('a stamp that records rules but not the old copy\'s successor: the copy stays, named', POSIX_ONLY, () =>
+{
+    const { result: r, outs } = seedRun(['install', 'update'], SEL, {
+        args: [[], UPDATE()], inspect: snap, each: (repo, i) => (i === 0 ? make220(repo, { unrecord: ['quality-gates'] }) : null),
+    });
+    assert.strictEqual(r.files['baseline-quality-gates.md'], SHIPPED_OLD['baseline-quality-gates']);
+    assert.match(outs[1], /!! rule kept: baseline-quality-gates\.md.*yours/, outs[1]);
+    assert.ok(!('baseline-git.md' in r.files), 'a copy whose successor is recorded survived');
+});
+
 // installer:F4 - a rule copy goes through the same claim test a skill does: a same-named file the stamp does not record is the
 // project's own unless its opening line is the shipped rule's (an older copy of the stack's).
 test('a project\'s own rule under a shipped name is kept and named, never overwritten; an older stack copy still updates (audit F4)', POSIX_ONLY, () =>

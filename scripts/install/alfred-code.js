@@ -39,6 +39,7 @@ const seeds = require('./seeds.js');
 const pinsLayer = require('./pins.js');
 const stampLayer = require('./stamp.js');
 const library = require('./library.js');
+const { shippedText } = require('./retired-rules.js');
 const uninstallLayer = require('./uninstall.js');
 const runtime = require('./runtime.js');
 const { readJson } = require('./json-file.js');
@@ -1260,16 +1261,13 @@ function retiredKeep(ctx, kind, dir)
     const picked = stampLayer.readPicked(ctx.stampFile) || { agents: [] };
     const names = stackNames(ctx.manifest);
     const bare = (n) => n.replace(/\.md$/, '');
-    // A stamp that records rules already judged every name it lacks (a run since 2.0.0 kept an edited copy as the
-    // user's and dropped it from the record), so only one that records none - pre-2.0.0, or garbled - is claimed.
-    const rulesRecorded = Object.keys(lib.rules || {}).length > 0;
     return (name) =>
     {
         const held = kind === 'hook' ? ctx.ledger && ctx.ledger.files && ctx.ledger.files[`hooks/${name}`] : (lib[`${kind}s`] || {})[bare(name)];
         if (held) return library.hashItem(path.join(dir, name)) === held ? false : 'edited since the stack wrote it, so it is yours - merge what you need, then remove it by hand';
         const claimed = kind === 'skill' ? skillClaim(ctx)(name)
             : kind === 'agent' ? picked.agents.some((e) => e.split('@')[0] === bare(name)) || stackOwnName(names, 'agents', bare(name))
-                : !rulesRecorded && renamedRuleClaim(ctx, dir, bare(name));
+                : renamedRuleClaim(ctx, dir, bare(name), lib.rules || {});
         return claimed ? false : 'the stamp does not record it, so it is yours - remove it by hand if it is the stack\'s';
     };
 }
@@ -1320,14 +1318,26 @@ const ruleClaim = (ctx) => (name) =>
     const ours = ruleOpening(path.join(ctx.source.dir, 'stack', 'rules', `${name}.md`));
     return Boolean(ours) && ruleOpening(path.join(ctx.claudeDir, 'rules', `${name}.md`)) === ours;
 };
-// A retired rule under a stamp that records no rule hash (a 0.2.x or 1.x stamp predates library-rules) is the stack's when it was
-// RENAMED and opens with its successor's first line: the 2.1.x baseline-* copies each open with their alfred-* heading.
-// A retired name with no successor stays the user's - nothing shipped is left to compare it with.
-function renamedRuleClaim(ctx, dir, name)
+// A RENAMED rule's old copy the stamp holds no hash for. Under a stamp that records no rule (a 0.2.x or 1.x stamp predates
+// library-rules, or a garbled line) it is the stack's when it opens with its successor's first line: the baseline-* copies
+// each open with their alfred-* heading. Under one that records rules it is the stack's only when the stamp records its
+// SUCCESSOR and the copy is, byte for byte, a text the stack shipped under the old name (retired-rules.js): a 2.2.0 or
+// 2.2.1 run kept all seven unjudged and recorded the alfred-* names (audit 2026-10-10 C10, 34,059 chars on every
+// message), while a copy an earlier run kept as edited differs from every shipped text and stays. A retired name with no
+// successor stays the user's - nothing shipped is left to compare it with.
+function renamedRuleClaim(ctx, dir, name, recorded)
 {
     const next = ((ctx.manifest.renamed || {}).rules || {})[name];
-    const ours = next && ruleOpening(path.join(ctx.source.dir, 'stack', 'rules', `${next}.md`));
-    return Boolean(ours) && ruleOpening(path.join(dir, `${name}.md`)) === ours;
+    if (!next) return false;
+    const file = path.join(dir, `${name}.md`);
+    if (Object.keys(recorded).length) return Object.hasOwn(recorded, next) && shippedText(name, readText(file));
+    const ours = ruleOpening(path.join(ctx.source.dir, 'stack', 'rules', `${next}.md`));
+    return Boolean(ours) && ruleOpening(file) === ours;
+}
+function readText(file)
+{
+    try { return fs.readFileSync(file, 'utf8'); }
+    catch { return null; }
 }
 function withoutForeign(picked, foreign)
 {
