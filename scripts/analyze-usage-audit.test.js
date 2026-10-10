@@ -451,6 +451,29 @@ test('C07: image results are counted per tool and measured from the context grow
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// C07 (b35afe70): a reference skill loaded after the flow's own clarify ask took the flow's attribution - 148 of 180
+// messages charged to a plugin reference, 11 to the flow whose cycle was the whole session.
+test('C07: a reference skill loaded while a flow cycle is open folds into it; another flow skill opens its own phase', () => {
+  const dir = tmp();
+  try {
+    const stamped = (id, ts, skill, content) => ({ ...asst(id, ts, content), attributionSkill: skill });
+    const rows = [human(T(0), '/task-solve the brief'), stamped('m0', T(1), null, [tool('k1', 'Skill', { skill: 'task-solve' })]), res(T(2), 'k1', 'ok')];
+    for (let i = 0; i < 7; i += 1) rows.push(stamped(`a${i}`, T(3 + i), 'task-solve', [{ type: 'text', text: 'working' }]));
+    rows.push(stamped('q1', T(11), 'task-solve', [tool('ask', 'AskUserQuestion', { questions: [] })]), res(T(12), 'ask', 'B'));
+    rows.push(stamped('m1', T(13), 'task-solve', [tool('k2', 'Skill', { skill: 'figma:figma-use' })]), res(T(14), 'k2', 'ok'));
+    for (let i = 0; i < 6; i += 1) rows.push(stamped(`f${i}`, T(15 + i), 'figma:figma-use', [{ type: 'text', text: 'designing' }]));
+    rows.push(stamped('q2', T(22), 'figma:figma-use', [tool('ask2', 'AskUserQuestion', { questions: [] })]), res(T(23), 'ask2', 'go'));
+    rows.push(stamped('m2', T(24), 'figma:figma-use', [tool('k3', 'Skill', { skill: 'alfred-code:task-verify-plan' })]), res(T(25), 'k3', 'ok'));
+    for (let i = 0; i < 3; i += 1) rows.push(stamped(`v${i}`, T(26 + i), 'alfred-code:task-verify-plan', [{ type: 'text', text: 'checking' }]));
+    const { main } = run([write(dir, rows)]);
+    assert.strictEqual(main.companionOf['figma:figma-use'], 'task-solve', 'the reference serves the open flow');
+    assert.strictEqual(main.companionOf['alfred-code:task-verify-plan'], undefined, 'a flow phase after an ask is its own phase');
+    assert.strictEqual(main.skillAttribution['figma:figma-use'], undefined, "the reference's messages are the flow's");
+    assert.ok(main.skillAttribution['task-solve'].msgs >= 15, `task-solve carries its cycle: ${JSON.stringify(main.skillAttribution)}`);
+    assert.strictEqual(main.skillAttribution['alfred-code:task-verify-plan'].msgs, 3);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // C05: a commit that opens its own line of a multi-line call (390aebcb, 49cb4b82, f6c591fa: 'git commits 0' over a
 // receipted commit). A heredoc message naming the commit verb still counts nothing.
 test('C05: a git commit or gh pr merge on a later line of a multi-line call counts; a heredoc body never does', () => {

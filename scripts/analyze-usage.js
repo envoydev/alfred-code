@@ -67,6 +67,9 @@ const fmt = (n) => {
 };
 const approxTok = (chars) => Math.round(chars / 4);
 const ACTIVITY_ROW_TYPES = new Set(['user', 'assistant', 'system', 'attachment']);
+// The stack's orchestration flows and their phases (guard-fresh-session-start.js ORCHESTRATION, skills half): a Skill
+// call of one of these opens a phase; any other skill loaded while one is open serves it.
+const FLOW_SKILL_RE = /^(?:task-(?:solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|loop-[a-z-]+|capture-[a-z-]+|issue-diagnoser)$/;
 const idleTailLine = (main) => (main.idleTail ? `idle tail ${dur(Date.parse(main.idleTail.to) - Date.parse(main.idleTail.from))} after the last turn, to a \`${main.idleTail.rowType || '?'}\` row at ${main.idleTail.to} - not session time` : '');
 // The part of the floor that is the session's own opening prompt, when the floor is the first message (a later,
 // smaller message - after a compaction - carries no such prompt). Null when it is not, or is under 1k tokens.
@@ -2225,7 +2228,11 @@ async function analyzeTranscript(file, window) {
           skillCallIds.set(c.id, c.input.skill);
           const sk = s.skillInvocations[c.input.skill] || (s.skillInvocations[c.input.skill] = { calls: 0, injectedChars: 0, firstTs: o.timestamp || null });
           sk.calls += 1;
-          if (activeInvoke && activeInvoke.skill !== c.input.skill && activeInvoke.msgs <= 5 && !askSinceInvoke) {
+          // While a FLOW skill's cycle is open, a reference skill loaded for it - after the flow's own clarify ask, many
+          // messages in - serves that cycle; only another flow skill opens a phase of its own (audit 2026-10-10,
+          // b35afe70: a plugin reference loaded after the design step's ask took 148 of 180 msgs from task-solve).
+          const flowOpen = activeInvoke && FLOW_SKILL_RE.test(houseBare(activeInvoke.skill)) && !FLOW_SKILL_RE.test(houseBare(c.input.skill));
+          if (activeInvoke && activeInvoke.skill !== c.input.skill && (flowOpen || (activeInvoke.msgs <= 5 && !askSinceInvoke))) {
             if (!companionOf[c.input.skill]) companionOf[c.input.skill] = activeInvoke.skill;
           } else {
             activeInvoke = { skill: c.input.skill, msgs: 0 };
