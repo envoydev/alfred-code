@@ -406,3 +406,16 @@ test('an answer typed into an ask is logged, a correction in it counts, a path i
     assert.deepStrictEqual(off.rows.map((r) => r.kind), ['ask-answer-typed'], 'the nudge switch off keeps the typed row only');
     assert.strictEqual(run({ hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion', tool_response: 'garbage' }).status, 0);
 });
+
+// Audit 2026-10-10 C25, 758ce661: the 780-char budget rode a background gate's completion notice (~195 tokens carried on
+// every later message). A harness task notice is no user turn.
+test('a task notice arriving as a prompt gets no budget and no correction row', () => {
+    const sid = 'notice-1';
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: sid,
+        prompt: '<task-notification>\n<task-id>b1</task-id>\n<status>failed</status>\n<summary>no, the gate is wrong</summary>\n</task-notification>' }),
+        encoding: 'utf8', env: { ...process.env } });
+    assert.strictEqual(r.status, 0);
+    assert.strictEqual(r.stdout, '', 'nothing injected');
+    assert.deepStrictEqual(correctionRows(sid), [], 'no row');
+    assert.match(prompted('next step please').ctx, /3 sentences/, 'a typed prompt still gets the budget');
+});

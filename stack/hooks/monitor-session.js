@@ -30,8 +30,16 @@ function rowFor(payload, id)
   const tool = String(payload.tool_name || '');
   const input = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
   const actor = String(payload.agent_id || 'main');
-  const hash = crypto.createHash('sha1').update(JSON.stringify(input)).digest('hex').slice(0, 12);
   const target = input.file_path || input.notebook_path;
+  // A READ of a file is a new input when the file changed under it (audit 2026-10-10 C25, 758ce661: five Reads of a
+  // screenshot a shell command re-shot before each read drew the repeat note) - its mtime and size join the key.
+  let stamp = '';
+  if (tool === 'Read' && target)
+  {
+    try { const st = fs.statSync(path.resolve(String(payload.cwd || '.'), String(target))); stamp = `|${st.mtimeMs}:${st.size}`; }
+    catch { /* a vanished file keys on its input alone */ }
+  }
+  const hash = crypto.createHash('sha1').update(JSON.stringify(input) + stamp).digest('hex').slice(0, 12);
   const file = WRITE_TOOLS.has(tool) && target ? path.resolve(String(payload.cwd || '.'), String(target)) : '';
   return { id, a: actor, t: tool, k: `${actor}|${tool}|${hash}`, f: file };
 }
@@ -133,6 +141,9 @@ if (require.main === module)
   if (cursorOff) process.exit(0);
   const event = payload.hook_event_name;
   if (event !== 'PostToolUse' && event !== 'UserPromptSubmit') process.exit(0);
+  // A harness task notice arrives as a prompt but opens no turn: the turn log it would empty is still the turn's
+  // (audit 2026-10-10 C25, 758ce661: a background gate's completion notice reset the count mid-turn).
+  if (event === 'UserPromptSubmit' && /^\s*<task-notification>/.test(String(payload.prompt || ''))) process.exit(0);
 
   // The docs root, ALFRED_CODE_DOCS_PATH.
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();

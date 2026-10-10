@@ -584,7 +584,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   - `monitor-session.js` (`PostToolUse` on every tool + `UserPromptSubmit`) - a live monitor that never
     denies: one actor running the same tool with the same input 5 times in a turn, more than 20 distinct files
     written in a turn, the context at 80% of the fresh-session trigger (read from `fresh-session.js`, once per
-    session). Each call appends its own row to the turn's log (`<docs-path>/flow/monitor-<session>.jsonl`, emptied at a
+    session). A Read's input includes the file's mtime and size, so a file regenerated between reads is a new input, and a
+    harness `<task-notification>` prompt opens no turn - the same exit in the answer-length hook (audit 2026-10-10 C25).
+    Each call appends its own row to the turn's log (`<docs-path>/flow/monitor-<session>.jsonl`, emptied at a
     prompt) and counts the rows up to it, so parallel calls lose no count (2.1.5 M15); the context note is claimed by an
     exclusive marker. Each note is one `mode: monitor` row in the hook-blocks ledger; `ALFRED_CODE_MONITOR` is seeded
     `log` (rows only, the observation week), `inject` hands the note back as `additionalContext`, `0` is off.

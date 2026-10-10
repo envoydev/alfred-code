@@ -283,3 +283,27 @@ test('monitor: a new turn sweeps other sessions\' logs past 7 days, and keeps a 
     assert.ok(fs.existsSync(fresh) && fs.existsSync(other), 'six days old, and a file with another prefix, are kept');
     assert.ok(fs.existsSync(s.stateFile), 'this session\'s own log was written');
 });
+
+// Audit 2026-10-10 C25, 758ce661: five Reads of one screenshot, re-shot by a shell command before each, drew the repeat
+// note; and a background gate's completion notice, arriving as a prompt, emptied the turn log mid-turn.
+test('monitor: a Read of a file that changed between reads is a new input, and a task notice opens no turn', () =>
+{
+    const s = session();
+    const shot = path.join(s.root, 'shot.jpg');
+    for (let i = 0; i < 5; i++)
+    {
+        fs.writeFileSync(shot, 'x'.repeat(10 + i));
+        fs.utimesSync(shot, new Date(), new Date(Date.now() + i * 1000));
+        s.call('Read', { file_path: shot });
+    }
+    assert.strictEqual(s.rows().length, 0, 'a regenerated file read five times is five inputs');
+    const same = path.join(s.root, 'same.js');
+    fs.writeFileSync(same, 'const a = 1;\n');
+    for (let i = 0; i < 5; i++) s.call('Read', { file_path: same });
+    assert.strictEqual(s.rows().filter((r) => r.kind === 'repeat').length, 1, 'an unchanged file read five times is still a repeat');
+    const t = session();
+    for (let i = 0; i < 3; i++) t.call('Bash', { command: 'git status' });
+    t.hook({ hook_event_name: 'UserPromptSubmit', prompt: '<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>' });
+    for (let i = 0; i < 2; i++) t.call('Bash', { command: 'git status' });
+    assert.strictEqual(t.rows().filter((r) => r.kind === 'repeat').length, 1, 'the notice did not empty the turn log');
+});

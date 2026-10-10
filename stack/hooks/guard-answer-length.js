@@ -417,6 +417,9 @@ if (payload.hook_event_name === 'PostToolUse' && payload.tool_name === 'AskUserQ
 }
 
 if (payload.hook_event_name === 'UserPromptSubmit') {
+  // A harness task notice is no user turn: no budget, no correction test (audit 2026-10-10 C25, 758ce661: the 780-char
+  // budget rode a background gate's completion notice, ~195 tokens carried on every later message).
+  if (/^\s*<task-notification>/.test(String(payload.prompt || ''))) process.exit(0);
   const repeat =repeatsLastPrompt(payload.prompt) ? ' VERBATIM RE-ASK: this prompt is identical to ' +
     'the previous one. The last answer missed - do not re-answer it longer or from a different angle. ' +
     'Ask ONE AskUserQuestion about the goal, with the readings you are choosing between as options ' +
