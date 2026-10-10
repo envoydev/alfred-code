@@ -483,3 +483,32 @@ test('I3 update: a pending move whose target already holds the data clears - no 
     assert.doesNotMatch(outs[3], /!! .*\.serena/, 'a later run names the clash, never as a warning again');
     assert.strictEqual(r.serenaIgnored, true, 'the re-created .serena is untracked noise a git add -A would take in');
 });
+
+// The orientation doc's pre-folder home, loose at the docs root (a 0.2.x capture, carried to .alfred/docs/ by the
+// data move): an update moves it into related-projects/ and re-points the generated rule that names it.
+test('an update moves the loose orientation doc into related-projects/ and re-points its rule; a re-run is quiet', POSIX_ONLY, () =>
+{
+    const RULE = (p) => `---\ndescription: generated\n---\n\nThe evidence lives in the committed \`${p}\`.\n`;
+    const files = (repo) => ({
+        loose: read(path.join(repo, '.alfred', 'docs', 'PROJECT-RELATED-CONTEXT.md')),
+        doc: read(path.join(repo, '.alfred', 'docs', 'related-projects', 'RELATED-PROJECTS.md')),
+        watch: read(path.join(repo, '.alfred', 'docs', 'related-projects', 'watch.json')),
+        rule: read(path.join(repo, '.claude', 'rules', 'alfred-project-related-context.md')),
+    });
+    const r = seedRun(['install', 'update', 'update'], SELECTION, {
+        prepare: prep, args: [['--scope', 'project', '--browsers', 'chrome'], UPDATE, UPDATE],
+        each: (repo, i) =>
+        {
+            if (i === 0)
+            {
+                put(path.join(repo, '.alfred', 'docs', 'PROJECT-RELATED-CONTEXT.md'), '# Related projects\n');
+                put(path.join(repo, '.claude', 'rules', 'alfred-project-related-context.md'), RULE('.alfred/docs/PROJECT-RELATED-CONTEXT.md'));
+            }
+            return files(repo);
+        },
+    });
+    assert.deepStrictEqual(r.steps[1], { loose: null, doc: '# Related projects\n', watch: '{}\n', rule: RULE('.alfred/docs/related-projects/RELATED-PROJECTS.md') }, r.outs[1]);
+    assert.match(r.outs[1], /docs migration: \.claude\/rules\/alfred-project-related-context\.md - 1 path\(s\) re-pointed/);
+    assert.deepStrictEqual(r.steps[2], r.steps[1], 'a re-run changed something');
+    assert.doesNotMatch(r.outs[2], /docs migration/);
+});

@@ -120,16 +120,22 @@ function switchOnDomain(dir, doc, { log = () => {} } = {})
     return true;
 }
 
-// The three moves, and the two switch-ons. related-context/ keeps every sibling-repo working paper
-// exactly where it is - only the orientation doc that capture wrote moves out of it.
+// The moves, and the two switch-ons. related-context/ keeps every sibling-repo working paper
+// exactly where it is - only the orientation doc that capture wrote moves out of it. The orientation
+// doc's pre-folder home, loose at the root, moves too: its capture moves it on its next run, and a
+// capture never re-runs by itself (2026-10-10: a 0.2.x project carried it loose to .alfred/docs/
+// through the data move). The folder form is listed first, so it wins when both exist.
 const DOCS_MIGRATIONS = [
     ['PROJECT-CODE-STYLE.md', 'code-style/CODE-STYLE.md', 'code style'],
     ['architecture/ASSESSMENT.md', 'quality/ASSESSMENT.md', 'architecture quality'],
     ['related-context/PROJECT-RELATED-CONTEXT.md', 'related-projects/RELATED-PROJECTS.md', 'related projects'],
+    ['PROJECT-RELATED-CONTEXT.md', 'related-projects/RELATED-PROJECTS.md', 'related projects'],
 ];
 const DOCS_SWITCH_ON = [['code-style', 'CODE-STYLE.md'], ['related-projects', 'RELATED-PROJECTS.md']];
 
-function migrateDocsDomains({ projectRoot, docsPath, log = () => {} })
+// `rules` are the generated rules (selection.generatedRules), `instructions` the project's own AGENTS.md /
+// CLAUDE.md files to name - see repointDocs.
+function migrateDocsDomains({ projectRoot, docsPath, rules = [], instructions = [], log = () => {} })
 {
     const base = path.join(projectRoot, String(docsPath || '').replace(/\/+$/, ''));
     const moved = [];
@@ -138,7 +144,48 @@ function migrateDocsDomains({ projectRoot, docsPath, log = () => {} })
     const switched = [];
     for (const [dir, doc] of DOCS_SWITCH_ON)
         if (switchOnDomain(path.join(base, dir), doc, { log })) switched.push(dir);
-    return { moved, switched };
+    const repointed = repointDocs({ projectRoot, docsPath, base, rules, instructions, log });
+    return { moved, switched, repointed };
+}
+
+// A pointer rule names its doc by the literal path (a rule cannot resolve one at load), so a moved doc left the
+// always-on rule sending the model to a file that is gone, and the model wrote the old path back. Each generated
+// rule naming `<docs>/<old>` takes `<docs>/<new>` whenever the doc sits at its new home and not its old one - so a
+// move an earlier run made heals too. The project's own instruction file is named, never rewritten (the split
+// selection.respellRenamed keeps). Returns the rule files rewritten.
+function repointDocs({ projectRoot, docsPath, base, rules = [], instructions = [], log = () => {} })
+{
+    const root = String(docsPath || '').replace(/\\/g, '/').replace(/\/+$/, '');
+    if (!root) return [];
+    const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const done = DOCS_MIGRATIONS
+        .filter(([from, to]) => !fs.existsSync(path.join(base, from)) && fs.existsSync(path.join(base, to)))
+        .map(([from, to]) => [`${root}/${from}`, `${root}/${to}`]);
+    if (!done.length) return [];
+    const pairs = Object.fromEntries(done);
+    const re = new RegExp(`(?<![A-Za-z0-9_./-])(${done.map(([o]) => escape(o)).join('|')})(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, 'g');
+    const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
+    const out = [];
+    for (const file of rules)
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        let n = 0;
+        const next = text.replace(re, (old) => { n += 1; return pairs[old]; });
+        if (!n) continue;
+        try { fs.writeFileSync(file, next); }
+        catch (err) { log(`  !! docs migration: ${rel(file)} names ${n} moved doc path(s) and could not be re-pointed (${err.message}) - re-run its capture`); continue; }
+        out.push(rel(file));
+        log(`  docs migration: ${rel(file)} - ${n} path(s) re-pointed to the moved doc`);
+    }
+    for (const file of instructions)
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        const hits = [...new Set([...text.matchAll(re)].map((m) => m[1]))];
+        for (const old of hits) log(`  !! ${rel(file)} is yours and names ${old}, which moved to ${pairs[old]} - re-point it by hand`);
+    }
+    return out;
 }
 
 // THE ROOT'S OWN .gitignore. The old default sat under `.claude/`, which a project's own `.claude/*`

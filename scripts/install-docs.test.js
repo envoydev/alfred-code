@@ -176,7 +176,7 @@ test('migration: a second run moves nothing and switches nothing on', () =>
     const root = project({ files: { '.claude/docs/PROJECT-CODE-STYLE.md': '# s\n' } });
     docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs' });
     const again = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs' });
-    assert.deepStrictEqual(again, { moved: [], switched: [] });
+    assert.deepStrictEqual(again, { moved: [], switched: [], repointed: [] });
 });
 
 test('migration: a doc that already carries section ids is switched on WITHOUT the lint note', () =>
@@ -191,5 +191,68 @@ test('migration: a doc that already carries section ids is switched on WITHOUT t
 test('migration: an absent docs root is nothing to do, never a crash', () =>
 {
     assert.deepStrictEqual(docs.migrateDocsDomains({ projectRoot: path.join(TMP, 'nope'), docsPath: '.claude/docs' }),
-        { moved: [], switched: [] });
+        { moved: [], switched: [], repointed: [] });
+});
+
+// 2026-10-10: a 0.2.x project kept the orientation doc loose at the docs root - its pre-folder home - and the data
+// move carried it to .alfred/docs/ that way; only its capture moved it, and a capture never re-runs by itself. Its
+// always-on pointer rule and the project's AGENTS.md named the loose path, so a bare move would leave them dangling.
+const RC_RULE = (p) => `---\ndescription: generated\n---\n\nEverything past awareness lives in the committed \`${p}\`; read it when a task touches a seam.\n`;
+const rulesOf = (root) => require('./install/selection.js').generatedRules(root);
+const instructionsOf = (root) => require('./install/selection.js').instructionFiles(root);
+
+test('migration: the orientation doc loose at the docs root moves into related-projects/, its pointer rule follows, the project\'s AGENTS.md is named, and a re-run is quiet', () =>
+{
+    const root = project({ files: {
+        '.alfred/docs/PROJECT-RELATED-CONTEXT.md': '# Related projects\n\n## sample-app\n',
+        '.alfred/docs/related-context/2026-09-27-handoff.md': '# a sibling paper\n',
+        '.claude/rules/alfred-project-related-context.md': RC_RULE('.alfred/docs/PROJECT-RELATED-CONTEXT.md'),
+        '.claude/rules/my-notes.md': RC_RULE('.alfred/docs/PROJECT-RELATED-CONTEXT.md'),
+        '.claude/AGENTS.md': 'See `.alfred/docs/PROJECT-RELATED-CONTEXT.md`.\n',
+    } });
+    const logs = [];
+    const run = () => docs.migrateDocsDomains({ projectRoot: root, docsPath: '.alfred/docs', rules: rulesOf(root), instructions: instructionsOf(root), log: (m) => logs.push(m) });
+    const out = run();
+    const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
+    assert.deepStrictEqual(out, { moved: ['related-projects/RELATED-PROJECTS.md'], switched: ['related-projects'], repointed: ['.claude/rules/alfred-project-related-context.md'] });
+    assert.strictEqual(read('.alfred/docs/related-projects/RELATED-PROJECTS.md'), '# Related projects\n\n## sample-app\n');
+    assert.ok(!fs.existsSync(path.join(root, '.alfred/docs/PROJECT-RELATED-CONTEXT.md')));
+    assert.strictEqual(read('.alfred/docs/related-context/2026-09-27-handoff.md'), '# a sibling paper\n', 'a sibling paper stays');
+    assert.strictEqual(read('.claude/rules/alfred-project-related-context.md'), RC_RULE('.alfred/docs/related-projects/RELATED-PROJECTS.md'));
+    assert.strictEqual(read('.claude/rules/my-notes.md'), RC_RULE('.alfred/docs/PROJECT-RELATED-CONTEXT.md'), 'a rule of the project\'s own is never rewritten');
+    assert.strictEqual(read('.claude/AGENTS.md'), 'See `.alfred/docs/PROJECT-RELATED-CONTEXT.md`.\n', 'the project\'s AGENTS.md is named, never rewritten');
+    assert.ok(logs.includes('  !! .claude/AGENTS.md is yours and names .alfred/docs/PROJECT-RELATED-CONTEXT.md, which moved to .alfred/docs/related-projects/RELATED-PROJECTS.md - re-point it by hand'), logs.join(' | '));
+    assert.ok(logs.includes('  docs migration: .claude/rules/alfred-project-related-context.md - 1 path(s) re-pointed to the moved doc'), logs.join(' | '));
+    logs.length = 0;
+    assert.deepStrictEqual(run(), { moved: [], switched: [], repointed: [] });
+    assert.ok(logs.every((m) => m.startsWith('  !! .claude/AGENTS.md')), `a re-run said more than the AGENTS.md reminder: ${logs.join(' | ')}`);
+});
+
+test('migration: both homes present - the folder form wins, the loose one stays and the rule naming it is left', () =>
+{
+    const root = project({ files: {
+        '.alfred/docs/PROJECT-RELATED-CONTEXT.md': '# loose\n',
+        '.alfred/docs/related-context/PROJECT-RELATED-CONTEXT.md': '# folder\n',
+        '.claude/rules/alfred-project-related-context.md': RC_RULE('.alfred/docs/PROJECT-RELATED-CONTEXT.md'),
+    } });
+    const logs = [];
+    const out = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.alfred/docs', rules: rulesOf(root), log: (m) => logs.push(m) });
+    assert.deepStrictEqual(out.moved, ['related-projects/RELATED-PROJECTS.md']);
+    assert.strictEqual(fs.readFileSync(path.join(root, '.alfred/docs/related-projects/RELATED-PROJECTS.md'), 'utf8'), '# folder\n');
+    assert.strictEqual(fs.readFileSync(path.join(root, '.alfred/docs/PROJECT-RELATED-CONTEXT.md'), 'utf8'), '# loose\n');
+    assert.ok(logs.some((m) => /PROJECT-RELATED-CONTEXT\.md left in place, nothing overwritten/.test(m)), logs.join(' | '));
+    assert.strictEqual(fs.readFileSync(path.join(root, '.claude/rules/alfred-project-related-context.md'), 'utf8'), RC_RULE('.alfred/docs/PROJECT-RELATED-CONTEXT.md'), 'the loose file still exists, so its pointer is not dangling');
+});
+
+test('migration: a move an earlier run made without re-pointing heals - the code-style rule follows; a path inside a longer one is no hit', () =>
+{
+    const style = (p) => `---\npaths:\n  - "**/*.ts"\n---\n# Project code style (generated)\n\nFull capture: \`${p}\`.\n`;
+    const root = project({ files: {
+        '.claude/docs/code-style/CODE-STYLE.md': '## naming <!-- id: s1 -->\n',
+        '.claude/rules/project-code-style.md': style('.claude/docs/PROJECT-CODE-STYLE.md') + 'Old copy: `.claude/docs/PROJECT-CODE-STYLE.md.bak`, `x/.claude/docs/PROJECT-CODE-STYLE.md`.\n',
+    } });
+    const out = docs.migrateDocsDomains({ projectRoot: root, docsPath: '.claude/docs/', rules: rulesOf(root) });
+    assert.deepStrictEqual(out.repointed, ['.claude/rules/project-code-style.md']);
+    assert.strictEqual(fs.readFileSync(path.join(root, '.claude/rules/project-code-style.md'), 'utf8'),
+        style('.claude/docs/code-style/CODE-STYLE.md') + 'Old copy: `.claude/docs/PROJECT-CODE-STYLE.md.bak`, `x/.claude/docs/PROJECT-CODE-STYLE.md`.\n');
 });

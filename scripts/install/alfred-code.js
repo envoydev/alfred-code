@@ -875,7 +875,7 @@ function runLayers(ctx)
     installHooksAndRules(ctx);
     importMemory(ctx);
     const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
-    docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log });
+    docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log });
     // The root states its own versioning to git (docs.ensureDocsIgnore) - after the settings pass, so
     // it reads the decision this run just wrote.
     try

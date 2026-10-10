@@ -168,6 +168,10 @@ The memory levels and stores, where the docs root and the data root live, and th
   `credentials.local.env` template the capture writes empty and gitignores in its own folder - never
   as a value. The findings (`quality/ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the
   two `*-quality` captures) are the opposite of durable - recomputed fresh every run, so
-  `quality/` carries no `watch.json` and is no docs domain. Navigation-server memory (`<feature>/<contract_version>/<seat>`, each `/` a
+  `quality/` carries no `watch.json` and is no docs domain. A doc an older capture left at a former home moves on
+  update (`docs.migrateDocsDomains`, absent-only: `PROJECT-CODE-STYLE.md`, `architecture/ASSESSMENT.md`, and the
+  orientation doc from `related-context/` or loose at the root, its pre-folder home), and each generated rule naming
+  the old path is re-pointed whenever the doc sits only at its new home - the project's own AGENTS.md / CLAUDE.md is
+  named, never rewritten (2026-10-10: a moved doc would leave the always-on pointer dangling). Navigation-server memory (`<feature>/<contract_version>/<seat>`, each `/` a
   folder serena's `list_memories` `topic` filters by - 2.1.6; never the `memory` MCP) is the EPHEMERAL inter-seat bus; anything that must survive a fresh clone
   belongs in the committed docs.

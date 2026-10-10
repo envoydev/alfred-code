@@ -512,6 +512,10 @@ function mcpRespellPairs(renamedMcps = {}, engines = [])
     return out;
 }
 
+// The instruction files a project may hold - a seed of the stack's only while its ledger row still matches, else the
+// project's own.
+const instructionFiles = (projectRoot) => ['AGENTS.md', '.claude/AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md'].map((r) => path.join(projectRoot, ...r.split('/')));
+
 // The rules a capture GENERATED into the project (`alfred-project-*`, `project-code-style`) - never a
 // catalog rule, never one of the project's own.
 function generatedRules(projectRoot)
@@ -597,7 +601,7 @@ function respellRenamed({ projectRoot, renamed, engines = [], owned = () => fals
     const toolOlds = mcpOlds.filter((o) => o.startsWith('mcp__'));
     const toolRe = toolOlds.length ? new RegExp(toolOlds.map(escape).join('|'), 'g') : null;
     const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
-    const instructions = ['AGENTS.md', '.claude/AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md'].map((r) => path.join(projectRoot, ...r.split('/')));
+    const instructions = instructionFiles(projectRoot);
     let total = 0;
     for (const file of [...instructions, ...generatedRules(projectRoot)])
     {
@@ -881,6 +885,6 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 }
 
 module.exports = {
-    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, respellRenamed, respellRosterSeats, respellMcpRows, respellDocsRoot, generatedRules, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, respellRenamed, respellRosterSeats, respellMcpRows, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, itemScopes, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, FORMER_PLUGINS,
 };
