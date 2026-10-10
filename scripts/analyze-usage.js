@@ -66,6 +66,8 @@ const fmt = (n) => {
   return String(Math.round(n));
 };
 const approxTok = (chars) => Math.round(chars / 4);
+const ACTIVITY_ROW_TYPES = new Set(['user', 'assistant', 'system', 'attachment']);
+const idleTailLine = (main) => (main.idleTail ? `idle tail ${dur(Date.parse(main.idleTail.to) - Date.parse(main.idleTail.from))} after the last turn, to a \`${main.idleTail.rowType || '?'}\` row at ${main.idleTail.to} - not session time` : '');
 // The part of the floor that is the session's own opening prompt, when the floor is the first message (a later,
 // smaller message - after a compaction - carries no such prompt). Null when it is not, or is under 1k tokens.
 function floorPromptTok(main) {
@@ -1897,7 +1899,14 @@ async function analyzeTranscript(file, window) {
     }
     if (STYLE_RULE_MARKERS.some((m) => raw.includes(m))) s.styleRuleAttaches++;
     if (STYLE_INJECT_MARKERS.some((m) => raw.includes(m))) s.styleInjections++;
-    if (o.timestamp) { if (!s.firstTs) s.firstTs = o.timestamp; s.lastTs = o.timestamp; }
+    // The session's window is its ACTIVITY - a user, assistant, system or attachment row. A queued `/clear` 3h41m after
+    // the last turn (a `queue-operation` row) stretched 'Session 5h 17m' and read the ledger as covering ~30% of it
+    // (audit 2026-10-10, bc2fa83e); such a tail is kept apart and printed as idle.
+    if (o.timestamp) {
+      if (!s.anyFirstTs) s.anyFirstTs = o.timestamp;
+      if (!s.anyLastTs || o.timestamp >= s.anyLastTs) { s.anyLastTs = o.timestamp; s.anyLastType = o.type || null; }
+      if (ACTIVITY_ROW_TYPES.has(o.type)) { if (!s.firstTs) s.firstTs = o.timestamp; s.lastTs = o.timestamp; }
+    }
     if (!s.ccVersion && o.version) s.ccVersion = o.version;
     // TWO records name the model, and they can DISAGREE: `cost-state.modelUsage` keys off the id
     // the billing rows carry, while the session's own reminder names the id it was STARTED on
@@ -2648,6 +2657,9 @@ async function analyzeTranscript(file, window) {
   // Sets do not survive JSON.stringify - the --json dump is the report's own input.
   s.availableSkills = s.availableSkills ? [...s.availableSkills].sort() : null;
   s.availableAgents = s.availableAgents ? [...s.availableAgents].sort() : null;
+  if (!s.firstTs) { s.firstTs = s.anyFirstTs || null; s.lastTs = s.anyLastTs || null; }
+  if (s.lastTs && s.anyLastTs && Date.parse(s.anyLastTs) > Date.parse(s.lastTs)) s.idleTail = { from: s.lastTs, to: s.anyLastTs, rowType: s.anyLastType };
+  delete s.anyFirstTs; delete s.anyLastTs; delete s.anyLastType;
   s.compactions = compactMeta > 0 ? compactMeta : compactSummary;
   s.efficiency.compactionRereads = s.efficiency.compactionRereads.map((c) => ({ ts: c.ts, candidates: c.before.size, files: c.files, chars: c.chars }));
   // The bill sees calls the transcript never records - the harness's post-turn recap is one - so
@@ -3478,6 +3490,7 @@ function printInventoryBlock(invUse) {
 function printReport(main, agents, hookLog, window, blockLedger, invUse) {
   const span = main.firstTs && main.lastTs ? new Date(main.lastTs) - new Date(main.firstTs) : null;
   console.log(`Session ${path.basename(main.file, '.jsonl')}  ${main.firstTs || '?'} → ${main.lastTs || '?'} (${dur(span)})${main.ccVersion ? `  Claude Code ${main.ccVersion}` : ''}`);
+  if (main.idleTail) console.log(`  ${idleTailLine(main).replace(/`/g, '')}`);
   if (main.clearTs && main.clearTs > main.firstTs) {
     console.log(`  active window since last /clear: ${main.clearTs} → ${main.lastTs} (${dur(new Date(main.lastTs) - new Date(main.clearTs))}) - use this, not the raw span, for duration claims`);
   }
@@ -3782,7 +3795,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
 
   out.push('## Environment', '');
   out.push('| | |', '|---|---|');
-  out.push(`| Session window | ${main.firstTs || '?'} → ${main.lastTs || '?'} (${dur(span)}) |`);
+  out.push(`| Session window | ${main.firstTs || '?'} → ${main.lastTs || '?'} (${dur(span)})${main.idleTail ? `; ${idleTailLine(main)}` : ''} |`);
   if (main.clearTs && main.clearTs > main.firstTs) {
     out.push(`| Active window (since last /clear) | ${main.clearTs} → ${main.lastTs} (${dur(new Date(main.lastTs) - new Date(main.clearTs))}) - use this, not the raw span, for duration claims |`);
   }

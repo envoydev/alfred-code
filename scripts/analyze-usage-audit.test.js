@@ -402,6 +402,31 @@ test('C07: a queued human prompt is a user turn; a queued task notification is n
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// C07 (bc2fa83e): a queued `/clear` 3h41m after the last turn stretched the session to 5h 17m and the ledger's
+// coverage to ~30%.
+test('C07: the session window ends at the last activity row, and a queue-operation tail is printed as idle', () => {
+  const dir = tmp();
+  try {
+    const rows = [
+      human(T(0), 'go'),
+      asst('m1', T(1), [sh('b1', 'ls', { description: 'List' })]),
+      res(T(2), 'b1', 'x'),
+      said('m2', T(3), 'done'),
+      { type: 'system', subtype: 'away_summary', timestamp: T(5) },
+      { type: 'queue-operation', operation: 'enqueue', timestamp: '2026-07-15T10:41:00.000Z', content: '/clear' },
+      { type: 'queue-operation', operation: 'dequeue', timestamp: '2026-07-15T10:41:00.100Z' },
+    ];
+    const file = write(dir, rows);
+    const { main } = run([file]);
+    assert.deepStrictEqual([main.firstTs, main.lastTs], [T(0), T(5)]);
+    assert.deepStrictEqual(main.idleTail, { from: T(5), to: '2026-07-15T10:41:00.100Z', rowType: 'queue-operation' });
+    const out = text([file]);
+    assert.match(out, /→ 2026-07-15T07:00:05\.000Z \(0m\)/);
+    assert.match(out, /idle tail 3h 41m after the last turn, to a queue-operation row/);
+    assert.match(text([file, '--report-md']), /\| Session window \| .*; idle tail .* to a `queue-operation` row .* - not session time \|/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // C05: a commit that opens its own line of a multi-line call (390aebcb, 49cb4b82, f6c591fa: 'git commits 0' over a
 // receipted commit). A heredoc message naming the commit verb still counts nothing.
 test('C05: a git commit or gh pr merge on a later line of a multi-line call counts; a heredoc body never does', () => {
