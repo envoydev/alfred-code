@@ -308,3 +308,18 @@ test('C23: the docs-root rule names the ignore-honouring grep and the two search
 {
     assert.match(injected('alfred-docs-root'), /Search the root with `docs\.js` or `\/usr\/bin\/grep -r`, never a bare `grep -r`: the Bash tool's `grep` honours `\.gitignore`/);
 });
+
+// ------------------------------------------------------------------ audit 2026-10-10 C29
+
+// 229e2715: the restart verdict needs the release the session loaded; its step 6 ran the AGENTS.md compare as a
+// `## ` heading diff, never the check. 0cdb0c1d: 'a fresh session' beside a separate restart row let /clear satisfy it.
+test('C29: update passes the running plugin root, runs the AGENTS.md check itself, and folds the capture into the restart', () =>
+{
+    const update = squash(read('setup-plugin/commands/update.md'));
+    assert.match(update, /update-preflight\.js" --log "\$TMP\/install\.log" --hooks <step 2's changed: hooks=N> --running "\$\{CLAUDE_PLUGIN_ROOT\}"/);
+    const six = update.slice(update.indexOf('## 6. Reconcile'), update.indexOf('## 7. Post-check'));
+    const check = six.indexOf('agents-md-check.js" --root .');
+    assert.ok(check >= 0 && check < six.indexOf('habits-adjust-agents-md/SKILL.md'), 'the check runs before the skill read');
+    assert.match(update, /When step 3's `--log` call printed `restart: yes`, the RESTART is row one/);
+    assert.match(update, /Under a restart row the note reads 'run it in the session the restart opens' instead/);
+});

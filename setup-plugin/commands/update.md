@@ -458,11 +458,13 @@ The RESTART row and any fail-soft `!!` are not judged from that dump - they are 
 breath, by the script that already prints `changed:`:
 
 ```bash
-node "$TMP/repo/scripts/update-preflight.js" --log "$TMP/install.log" --hooks <step 2's changed: hooks=N>
+node "$TMP/repo/scripts/update-preflight.js" --log "$TMP/install.log" --hooks <step 2's changed: hooks=N> --running "${CLAUDE_PLUGIN_ROOT}"
 ```
 
 Paste `restart: yes|no` and every `warn: <line>` it prints verbatim - step 7 below reads them, not
-the raw grep.
+the raw grep. `--running` is the release this session loaded: a session already on the snapshot's release
+runs its plugin-route hooks, so the hook delta owes no restart there; the summary's `mcps=` is the
+selection's size and never counts (measured: `restart: yes` on an update that changed nothing loaded).
 
 Presence, never the value - the line above already carries the installer's own `KEY=` presence
 output on most runs. Run this ONLY when that grep returned no `KEY=` line, and paste its lines
@@ -557,7 +559,15 @@ never regex, never touching other wiring). A migration's `then` line goes in the
 as a next step - run nothing on the user's behalf.
 
 ## 6. Reconcile the project's AGENTS.md
-Read `$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` and follow it inline with
+Run the check first and paste its output - its rows (a named path that no longer exists, a command that does
+not resolve, the template's own text still live) are this step's facts, whatever the reading below finds:
+
+```bash
+node "$TMP/repo/scripts/agents-md-check.js" --root .
+```
+
+Then read `$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` - the whole body, never a heading
+diff (measured: a run that skipped it and diffed the `## ` headings left every improve-mode check unrun) - and follow it inline with
 `<stack>` = the `$TMP/repo` path, pasted as a literal, exactly as the sibling `configure` command's step 13: its improve mode adds the
 sections the template gained and OFFERS a fix for what its check reports (never in the recommended
 option - a check row is heuristic, applied only when the user picks it), this run's own part is the rules
@@ -679,7 +689,7 @@ follow-ups that are the USER's to run - restart for an MCP change, `/capture-age
 (when installed and the step-2 gate above fires), a manual-only capture whose output is stale, the
 Navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
-matters. **When this run re-registered an MCP or replaced a hook file, the RESTART is row one** - with
+matters. **When step 3's `--log` call printed `restart: yes`, the RESTART is row one** - with
 `claude mcp list` named beside it as the one command that confirms the servers actually connected
 (a registration is not a connection: measured, two stdio servers timed out at 30s and the session
 ran without them with nothing reporting it) -
@@ -689,7 +699,10 @@ a run that replaced two guard hooks and re-registered all four servers listed th
 and the user ran that first) ('`/capture-agent-capabilities` - the update refreshed 12 skill files, so the generated
 rule's stamped sentences are stale'). A follow-up that is itself a deliberate run - any of the
 captures, a loop - carries a fresh-session note beside it: 'run it in a fresh session; started
-here it re-sends this walk's history on every one of its turns'. The guard cannot help with this
+here it re-sends this walk's history on every one of its turns'. Under a restart row the note reads 'run it
+in the session the restart opens' instead - one action, not two the user can order wrongly (measured: a
+card naming 'a fresh session' beside a separate restart row had `/clear` satisfy it, the capture start
+before the restart, and the user abandon it and run it again after restarting). The guard cannot help with this
 one - a scripted update ends far below its trigger by design - and measured, two deliberate runs
 chained in one session cost about twice what the second cost run fresh. No AskUserQuestion over them - and read that narrowly:
 **it forbids an ask about the FOLLOW-UPS, nothing else.** The step-3 adoption ask for an added

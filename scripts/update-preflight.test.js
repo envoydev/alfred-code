@@ -204,7 +204,7 @@ test('policy-rev: an install still holding the pre-2.1.6 file name is read, not 
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: current$/m);
 });
 
-test('--log mode: restart yes on mcps=<n> above 0 in the installer log, and names each !! line', () => {
+test('--log mode: restart yes on a repaired registration in the installer log, and names each !! line', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-log-'));
     const log = path.join(dir, 'install.log');
     fs.writeFileSync(log, [
@@ -234,6 +234,50 @@ test('--log mode: restart no and no warn lines on a clean, MCP-less, hook-less r
     const { out } = run(['--log', log]);
     assert.match(out, /^restart: no$/m);
     assert.doesNotMatch(out, /^warn: /m);
+});
+
+// audit 2026-10-10, session 229e2715: `restart: yes` on an update that changed nothing the session holds. The summary's
+// `mcps=<n>` is the selection's size, printed on every run (measured 3 on the plugin route and on the MCP copy route
+// alike), and the delta's `--hooks 3` counted although the stamp read `hooks-route: plugin` and the session already ran
+// that release's hooks from the plugin cache.
+const SNAP_VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version;
+function logCase(lines, { route = 'plugin', running = SNAP_VERSION } = {})
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-log-'));
+    const log = path.join(dir, 'install.log');
+    fs.writeFileSync(log, ['==>   installed/refreshed this run - skills=31, plugins=0, mcps=3, hooks=18, agents=0, rules=9', ...lines].join('\n'));
+    fs.mkdirSync(path.join(dir, 'project', '.claude'), { recursive: true });
+    if (route) fs.writeFileSync(path.join(dir, 'project', '.claude', 'alfred-code.stamp'), `version: ${SNAP_VERSION}\nhooks-route: ${route}\n`);
+    const plugin = path.join(dir, 'cache', 'alfred-code', String(running));
+    if (running) { fs.mkdirSync(path.join(plugin, 'setup-plugin', '.claude-plugin'), { recursive: true }); fs.writeFileSync(path.join(plugin, 'setup-plugin', '.claude-plugin', 'plugin.json'), JSON.stringify({ version: running })); }
+    return (extra = []) => (/^restart: (yes|no)$/m.exec(run(['--log', log, '--root', path.join(dir, 'project'), ...(running ? ['--running', plugin] : []), ...extra]).out) || [])[1];
+}
+
+test('--log mode: the summary\'s selection count alone is no restart', () => {
+    assert.strictEqual(logCase([])(), 'no', 'mcps=3 is the selection, not a registration');
+    assert.strictEqual(logCase(['==>   plugin alfred-code: 2.2.2 (already newest)', '==> plugin update [project]: alfred-code@envoydev'])(), 'no');
+});
+
+test('--log mode: every line that changed what the session loaded is a restart', () => {
+    for (const line of [
+        '==> mcp [project]: alfred-navigation', '==>   mcp repaired: alfred-memory (local scope)', '==>   mcp pruned: browser',
+        '==>   mcp removed: browser-chrome (.mcp.json)', '==> mcp refreshed [user]: alfred-memory (this release\'s shape)',
+        '==> plugin install [project]: alfred-navigation@envoydev', '==> plugin enable [project]: alfred-memory@envoydev (installed but disabled)',
+        '==>   !! plugin disabled [local]: browser-chrome@envoydev (the copy route registers it)', '==> plugin uninstalled [project]: typescript-lsp@claude-plugins-official (no longer picked)',
+        '==> plugin moved [local -> project]: claude-hud@claude-hud', '==>   plugin pruned (retired upstream) [project]: ponytail@ponytail',
+        '==>   renamed: plugin navigation@envoydev -> alfred-navigation@envoydev [project]', '==>   plugin alfred-navigation: 2.2.1 -> 2.2.2',
+        '==>   plugin claude-hud: 0.0.9 (installed this run)',
+    ]) assert.strictEqual(logCase([line])(), 'yes', line);
+});
+
+test('--log mode: a hook delta owes a restart only where the session does not already run those hooks', () => {
+    assert.strictEqual(logCase([])(['--hooks', '3']), 'no', 'plugin route, the session on the snapshot\'s release: the new hooks are live');
+    assert.strictEqual(logCase([], { running: '0.0.1' })(['--hooks', '3']), 'yes', 'the session loaded another release');
+    assert.strictEqual(logCase([], { running: '0.0.1' })(), 'yes', 'another release: its commands and server plugins are older too');
+    assert.strictEqual(logCase([], { route: 'copy' })(['--hooks', '3']), 'yes', 'the copy route\'s hooks are copies, not the plugin\'s');
+    assert.strictEqual(logCase([], { route: null })(['--hooks', '3']), 'yes', 'no stamp: the route is unknown');
+    assert.strictEqual(logCase([], { running: null })(['--hooks', '3']), 'yes', 'no --running: the session\'s release is unknown');
+    assert.strictEqual(logCase([])(['--hooks', '0']), 'no');
 });
 
 test('a FIRED migration carries everything the caller acts on, so the catalog is never opened', () => {

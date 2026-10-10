@@ -48,8 +48,9 @@
 // form - and prints the RESTART/'!!' facts the update close-out used to judge from a raw grep
 // dump in the model, one of two report rows the update.md BLOCKER measured missing 1-in-4/1-in-5:
 //
-//   restart: yes|no                         (mcps=<n> above 0 in the log, --hooks <n> above 0, or a
-//                                           moved docs root)
+//   restart: yes|no                         (a registration or plugin this run changed, a session on
+//                                           another release of the stack's plugins, --hooks <n> above 0
+//                                           unless those hooks are already live, or a moved docs root)
 //   warn: <line>                            (one per '!!' fail-soft line; none printed if none)
 const fs = require('node:fs');
 const path = require('node:path');
@@ -305,6 +306,23 @@ function policyRevLine(root, snapshot)
 
 // `--log` postcheck mode: the RESTART/'!!' facts read from the installer's own log, after it
 // runs - no --snapshot needed, so this never re-hits the compare API.
+//
+// A session holds what it loaded at its start, so a restart is owed only for what this run CHANGED under it (audit
+// 2026-10-10, session 229e2715). The summary's `mcps=<n>` is the selection's size, printed on every run, so it said
+// restart on every update; a line that changed a registration or a plugin is the signal - the plugin route carries the
+// servers. `--running "${CLAUDE_PLUGIN_ROOT}"` names the release the session loaded: another release than this
+// snapshot's means its hooks, commands and server plugins are all older, and the same release means the hooks a
+// plugin-route stamp names are already live, so step 2's `--hooks` delta owes nothing.
+const SESSION_CHANGED = [
+    /(?:^|\s)mcp \[(?:project|local|user)\]: /m, // a copy-route registration
+    /(?:^|\s)mcp (?:repaired|pruned|removed): /m,
+    /(?:^|\s)mcp refreshed \[/m,
+    /(?:^|\s)plugin (?:install|enable|enabled|disabled|uninstalled|moved) \[/m,
+    /(?:^|\s)plugin pruned \(/m,
+    /(?:^|\s)renamed: plugin /m,
+    /(?:^|\s)plugin [A-Za-z0-9_.-]+: (?:\S+ -> \S+$|.*\(installed this run\))/m,
+];
+
 function runLogMode(logFile)
 {
     const hooks = Number(arg('--hooks', '0')) || 0;
@@ -312,12 +330,18 @@ function runLogMode(logFile)
     try { text = fs.readFileSync(logFile, 'utf8'); } catch { text = ''; }
     const warnLines = text.split('\n').filter(l => l.includes('!!'));
     for (const l of warnLines) console.log(`warn: ${l.trim()}`);
-    const m = /mcps=(\d+)/.exec(text);
-    const mcps = m ? Number(m[1]) : 0;
+    const changed = SESSION_CHANGED.some((re) => re.test(text));
+    const { versionTag } = require('./install/source.js');
+    const running = arg('--running') ? versionTag(arg('--running')) : '';
+    const snapshot = versionTag(path.join(__dirname, '..'));
+    const otherRelease = Boolean(running && snapshot && running !== snapshot);
+    const root = arg('--root', '.');
+    const stamp = arg('--stamp', stampIn(path.join(root, '.claude')).read || stampIn(root).read);
+    const hooksLive = Boolean(running) && running === snapshot && require('./install/stamp.js').readHooksRoute(stamp) === 'plugin';
     // A moved docs root: the session's loaded alfred-docs-root rule still names the old one. A data move
     // a server's launcher makes at its next start waits for that start.
     const docsMoved = /docs root: moved /.test(text) || /^==> data root: .* (moved now|waiting for a server's next start)/m.test(text);
-    console.log(`restart: ${(mcps > 0 || hooks > 0 || docsMoved) ? 'yes' : 'no'}`);
+    console.log(`restart: ${(changed || otherRelease || (hooks > 0 && !hooksLive) || docsMoved) ? 'yes' : 'no'}`);
 }
 
 // The data move, from the rules the installer applies (docs.dataOffer): the docs plan over the same
@@ -358,7 +382,7 @@ function main()
     const offerOnly = process.argv.includes('--offers');
     if (!snapshot && !offerOnly)
     {
-        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --offers [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --log <installer-log> [--hooks <n>]');
+        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --offers [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --log <installer-log> [--hooks <n>] [--running <the session\'s plugin root>] [--root <install root>] [--stamp <stamp-file>]');
         process.exit(1);
     }
     const root = arg('--root', '.');
