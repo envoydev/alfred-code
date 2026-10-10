@@ -946,7 +946,8 @@ test('seed install --selection and update --add: a line naming an old item insta
 // No surface may name an old identifier: a cite resolves to nothing, a preload loads nothing, and a
 // dispatch of an old seat finds no agent. The old names are allowed only where they are the record
 // of the rename - the manifest's retired lists and renamed map, this migration test, the history
-// docs, and update.md's upgrade table, each row of which must be the map's own pair. The names come
+// docs, the byte-for-byte shipped texts the rule-rename prune is tested on (scripts/fixtures/retired-rules.js),
+// and update.md's upgrade table, each row of which must be the map's own pair. The names come
 // from the map, so this scan cannot drift from it; the manifest itself is the positive control.
 test('no surface names an old skill or seat outside the rename\'s own homes', () =>
 {
@@ -961,7 +962,7 @@ test('no surface names an old skill or seat outside the rename\'s own homes', ()
     const scanFile = (full) =>
     {
         const rel = path.relative(ROOT, full).split(path.sep).join('/');
-        if (/^docs\/[^/]*-evidence\.md$/.test(rel) || rel === 'docs/ecc-comparison-2026-09-20.md' || rel === 'scripts/install-renames.test.js') return;
+        if (/^docs\/[^/]*-evidence\.md$/.test(rel) || rel === 'docs/ecc-comparison-2026-09-20.md' || rel === 'scripts/install-renames.test.js' || rel === 'scripts/fixtures/retired-rules.js') return;
         const buf = fs.readFileSync(full);
         if (buf.includes(0)) return;
         let text = buf.toString('utf8');
