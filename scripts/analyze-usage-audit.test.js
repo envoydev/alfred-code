@@ -97,3 +97,22 @@ test('C02: reading the log a backgrounded check wrote is that check\'s result - 
     assert.strictEqual(e.checkLogReads, 1);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// C05: a commit that opens its own line of a multi-line call (390aebcb, 49cb4b82, f6c591fa: 'git commits 0' over a
+// receipted commit). A heredoc message naming the commit verb still counts nothing.
+test('C05: a git commit or gh pr merge on a later line of a multi-line call counts; a heredoc body never does', () => {
+  const dir = tmp();
+  try {
+    const rows = [
+      asst('m1', T(0), [sh('c1', "cd /work/repo\ngit add src/a.ts src/b.ts\ngit commit -q -F - <<'EOF'\nfix: one\n\ngit commit -m inside-the-message\nEOF\necho \"commit=$?\"")]),
+      res(T(1), 'c1', 'commit=0'),
+      asst('m2', T(2), [sh('c2', 'cd /work/repo\ngh pr merge 12 --squash')]),
+      res(T(3), 'c2', 'merged'),
+    ];
+    const file = write(dir, rows);
+    const { main } = run([file]);
+    assert.strictEqual(main.gitCommits, 1);
+    assert.strictEqual(main.prMerges, 1);
+    assert.match(text([file]), /git commits 1 \(\+1 pr-merge\)/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

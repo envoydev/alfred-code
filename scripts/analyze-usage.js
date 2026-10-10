@@ -2011,8 +2011,10 @@ async function analyzeTranscript(file, window) {
             lastCheckSeq = toolSeq; turnHadCheck = true;
             s.efficiency.checkLogReads = (s.efficiency.checkLogReads || 0) + 1;
           }
-          const commits = (cmdCode.match(/(?:^|[;&|(]\s*)git\s+(?:-[\w-]+(?:[= ]\S+)?\s+)*commit\b/g) || []).length;
-          const merges = (cmdCode.match(/(?:^|[;&|(]\s*)gh\s+pr\s+merge\b/g) || []).length;
+          // A newline opens a command as `;` does: `cd <repo>` / `git add ...` / `git commit -F - <<'EOF'` on three lines
+          // counted 0 and printed 'git commits 0' over a receipted commit (audit 2026-10-10 C05: 390aebcb, 49cb4b82, f6c591fa).
+          const commits = (cmdCode.match(/(?:^|[;&|(\n]\s*)git\s+(?:-[\w-]+(?:[= ]\S+)?\s+)*commit\b/g) || []).length;
+          const merges = (cmdCode.match(/(?:^|[;&|(\n]\s*)gh\s+pr\s+merge\b/g) || []).length;
           if (commits || merges) pendingGitActs.set(c.id, { commits, merges, checked: lastCheckSeq >= 0 && toolSeq - lastCheckSeq <= CHECK_WINDOW, ts: o.timestamp || null });
           // Doc traffic routed through Bash (heredocs, printf >, rm -f) is real doc I/O the
           // Write/Edit-only counter missed - a receipt written+cleared via Bash showed
