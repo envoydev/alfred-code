@@ -70,9 +70,10 @@ Every fact a section states comes from a file that states it, in this order:
    the docs hook already pushes its orientation into every session, so sections 1 and 6 point at it
    and keep only what it lacks.
 3. **Setup** - the SDK pins (`global.json`, `.nvmrc`, `engines`, `<TargetFramework>`), the compose
-   file or container package a test run needs, and the env var NAMES a test reads (`.env.example`,
-   `appsettings.*.json`, the test fixtures) - names only; a credential is read for presence, never
-   its value.
+   file or container package a test run needs, and the env var NAMES a test reads (`appsettings.*.json`,
+   the test fixtures, a CI workflow's `env:` block) - names only; a credential is read for presence,
+   never its value. Every `.env*` file, `.env.example` included, sits behind the install's secret-file
+   read deny: a probe of one is refused, and with it the whole batched call it rode in.
 4. **Commands** - the CI workflow's steps are the commands known to work; the manifests' scripts are
    the rest. Beside the full-suite test command, the scoped one (one project, a filter, a spec path).
 5. **Key files** - the entry points the scan printed and the configs that decide behaviour, one line
@@ -101,8 +102,13 @@ names every file written with its line count.
 
 1. Run the check first (step 7's command): its rows are the stale lines.
 2. Read each listed file whole - they are small - against the outline, and note the sections it lacks
-   that step 3 has facts for (Setup and Key files most often).
-3. Draft two kinds of change, nothing else:
+   that step 3 has facts for (Setup and Key files most often). Hold its Rules list against
+   `.claude/rules/` too: a rule file it does not name, or a named rule with no file, is a drift row
+   the check does not print - list both directions before saying anything about the table.
+3. Draft three kinds of change, nothing else:
+   - **a verified fix** - a stale path whose new target this run confirmed on disk (a listing, a
+     read, `git log --follow`), or a Rules-list row step 2 matched against `.claude/rules/` - fact,
+     not heuristic;
    - **a fix per check row** - only the flagged token changes: the path it moved to (the navigation
      server's symbol lookup, or `git log --follow --name-status -- <old path>`), the command the
      manifest or CI now runs. A path that is simply gone comes out of its line, the rule around it
@@ -115,12 +121,24 @@ names every file written with its line count.
    The project's own wording, order and sections are never reworded, reordered or deleted beyond that,
    and a line the project wrote is never extended - an addition goes on a line of its own.
 4. Show every change before writing: per file, a `diff` block and one line saying why it helps a
-   future session. Then one AskUserQuestion - apply the additions (recommended), apply the additions
-   and the check fixes, apply some (named via Other), or skip. A check fix is never in the recommended
-   option: the check is heuristic, and a row can be correct text it could not resolve, so the user
-   reads each one and picks - with only check fixes drafted, no option is marked recommended. A
-   dispatched seat has no user channel: it returns the diffs in its report instead.
-5. Apply exactly the answer.
+   future session. Then ONE AskUserQuestion:
+
+   ```ask
+   Apply these changes to <the files>? <N> additions and <N> verified fixes rest on facts read this run; <N> check fixes are heuristic - read each diff above.
+   - 'Apply the additions and verified fixes (Recommended)' - every line backed by a fact or a target confirmed on disk
+   - 'Also apply the check fixes' - the heuristic rows too, each one read first
+   - 'Apply some - name them in Other' - only the changes you list
+   - 'Skip' - nothing is written
+   ```
+
+   An unverified check fix is never in the recommended option: the check is heuristic, and a row can
+   be correct text it could not resolve, so the user reads each one and picks - with only check fixes
+   drafted, 'Skip' takes the mark, listed first. A dispatched seat has no user channel: it returns the
+   diffs in its report instead.
+5. Before the write, `git ls-files <file>`: an untracked target (git-ignored, or never added) has no
+   diff to review and no history to restore - edit it with the harness's own edit tool (its history
+   rewinds) or copy it to the scratchpad first, never an in-place shell rewrite, and the report says
+   which. Then apply exactly the answer.
 
 ## 6. What never goes in
 
@@ -146,4 +164,5 @@ node "<stack>/scripts/agents-md-check.js" --root .
 ## 8. Report
 
 The mode, each file written or changed (lines before and after), the check's last output line quoted,
-and every row left with its reason. Nothing is committed - the user reviews the diff.
+and every row left with its reason. Nothing is committed - the user reviews the diff, or for an
+untracked file the backup or the edit history step 5 named.

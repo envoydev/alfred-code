@@ -84,6 +84,11 @@ ones (Mode, below). When one holds, those units run in order; the rest may still
   a mechanical task whose correctness shows on the diff AND an independent verifier re-runs its
   gates; never below the pin on auth, a migration, concurrency, security, a shared contract seam or
   unclear legacy code. The heaviest model is for design and hard root cause, not routine edits.
+- **A seat type with no pin** (a general-purpose or explore subagent) runs on the session's model
+  unless the dispatch names one - the heaviest model, when the session runs on it. Name its model in
+  the verdict: the lighter one for read-only search, inventory and classification; the session's only
+  when the unit needs its reasoning (measured: read-only fan-outs inherited the heaviest model, $5.68
+  and $21.76 where the lighter one prices the same tokens far lower).
 - Inside the cross-domain solve flow its model-routing reference (the role table, the escalation
   column, the designer's per-task model) wins; outside it, these lines are the whole rule.
 
@@ -123,7 +128,7 @@ proceed without waiting unless a stop below applies.
 - **One agent, batched calls** - the check passes and the units are small. Reads, searches and commands that do not depend on each other go in the same turn; a call whose input is another's result waits.
 - **Parallel seats** - the check passes for two or more units that are each sizeable (about ten tool calls, or a wide read that would flood this context) and whose shared contracts already exist in code. Up to 3 at once by default, more only on the user's ask. Never for a handful of calls (those are batched), never to re-check your own work.
 
-Edit seats are the house `<stack>-implementer`, inside a flow (Route, above); read-only seats run on any route. The dispatch guard blocks a generic dispatch while a flow stamp is live. Seats that edit files in one directory each get a separate worktree where the platform offers one. With no dispatch available, run the tracks inline in order.
+Edit seats are the house `<stack>-implementer`, inside a flow (Route, above); read-only seats run on any route. The dispatch guard blocks a generic dispatch while a flow stamp is live. Seats that edit files in one directory each get a separate worktree where the platform offers one - and only when every contract they build on is COMMITTED: a worktree branches from HEAD, so seats that need this session's uncommitted plan, keys or files build in the shared tree, one owner per file. With no dispatch available, run the tracks inline in order.
 
 ## A fan-out, in three steps
 
@@ -156,6 +161,8 @@ One line on the route, mode and model and why, what changed, each tier's command
 
 ## Signs it was skipped
 
+- This skill loaded and no `Execution:` line after it - no plan, no mode, no close with the tiers.
+- A seat type with no pin dispatched with no model named.
 - Seats dispatched for work a few tool calls would have finished.
 - Independent, separately verifiable units built one after another with no `Execution:` line saying why.
 - A flow's mode ask whose recommendation names no execution verdict.

@@ -86,13 +86,14 @@ ask, 'has this cycle crossed the trigger?' - if yes and no fresh-session option 
 **Autonomy waiver (AUTO).** When the user explicitly asks for a no-stops run ('run all
 recommended without asking me'), never self-authorize silently - write `<docs-path>/flow/APPROVAL`
 with first line `AUTO - "<their words, verbatim>"`, say in one line that stops are waived under it, and take each stop's recommended option; the
-pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - the fresh-session resume recommended - and AUTO starts after its answer. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. `references/step-mechanics.md` holds the rest: the write routes, a refused write, and the AUTO stamp's lifetime across steps 4-6.
+pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - the fresh-session resume recommended - and AUTO starts after its answer. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. `references/step-mechanics.md` holds the rest.
 
 ## Size first
 
 State the size in ONE line before anything else - `Size: <trivial|small|standard|cross> - <the
-signal that decided it>` - then run only that row's steps; it rides the first stop's `Result:` line,
-`Spec:` beside it. The size can be raised mid-run, never lowered.
+signal that decided it>`, never below the `size floor:` the full-spec check prints (run it first, on
+every size) - then run only that row's steps; it rides the first stop's `Result:`, `Spec:` beside it.
+The size can be raised mid-run, never lowered.
 
 | Size | Signals | Steps that run |
 |---|---|---|
@@ -106,7 +107,7 @@ standard, whatever the file count.
 
 ## Full spec - design and audit as one step
 
-On `standard`, check the request before step 1. A FULL spec names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria). A request that misses any item, spans more than one stack, or touches an auth, secret or payment path (access, visibility, ownership and personal data count) keeps every gate below, and so does any doubt. `scripts/spec-check.js` reads the request for all five; state its verdict in one line, `Spec: <full|not full> - <path> - <its reason>`. Run it by the lookup in `references/full-spec.md`.
+On `standard`, the same check decides this step. A FULL spec names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria). A request that misses any item, spans more than one stack, or touches an auth, secret or payment path (access, visibility, ownership and personal data count) keeps every gate below, and so does any doubt. `scripts/spec-check.js` reads the request for all five; state its verdict in one line, `Spec: <full|not full> - <path> - <its reason>`. Run it by the lookup in `references/full-spec.md`.
 
 Its `path: gated` is final. Its `path: merged` you may raise to gated, never lower.
 

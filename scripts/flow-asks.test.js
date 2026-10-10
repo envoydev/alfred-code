@@ -77,10 +77,10 @@ test('A4: check 61 counts each flow skill\'s templates in SKILL.md itself, so re
 });
 
 test('A4: the three flow skills each carry ask templates, and every one passes check 61', () => {
-    assert.deepStrictEqual([...ASK_FLOW_SKILLS].sort(), ['issue-diagnoser', 'task-solve', 'task-solve-cross']);
+    assert.deepStrictEqual([...ASK_FLOW_SKILLS].sort(), ['habits-adjust-agents-md', 'issue-diagnoser', 'task-solve', 'task-solve-cross']);
     for (const name of ASK_FLOW_SKILLS) {
         const found = asks(skillText(name));
-        assert.ok(found.length >= 2, `${name}: ${found.length} ask template(s)`);
+        assert.ok(found.length >= (name === 'habits-adjust-agents-md' ? 1 : 2), `${name}: ${found.length} ask template(s)`);
         for (const a of found) assert.strictEqual(a.options.filter((o) => /\(Recommended\)$/.test(o)).length, 1, `${name}: ${a.question}`);
     }
 });
@@ -124,7 +124,7 @@ test('A5: the build bar - a model change never leaves its task without its migra
 // Pilot 3: the gate changed the plan in 1 of 4 feature cells, and the steps before the build cost $0.95-1.65 a cell.
 test('full spec: the solve flow states the checklist, runs the check script and pins the merged ask', () => {
     const { ASK_FLOW_TEMPLATES } = require('./lint-skills.js');
-    assert.deepStrictEqual(ASK_FLOW_TEMPLATES, { 'task-solve': 8, 'task-solve-cross': 5, 'issue-diagnoser': 4 });
+    assert.deepStrictEqual(ASK_FLOW_TEMPLATES, { 'task-solve': 8, 'task-solve-cross': 5, 'issue-diagnoser': 4, 'habits-adjust-agents-md': 1 });
     for (const name of ['task-solve', 'task-solve-cross']) {
         const core = fs.readFileSync(path.join(SKILLS, name, 'SKILL.md'), 'utf8');
         assert.match(core, /scripts\/spec-check\.js/, `${name}: the check is a script, not a judgment`);

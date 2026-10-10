@@ -44,7 +44,9 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   placeholder, `TODO` or template text is left, and an installer seed still unfilled is named
   (`--list` marks it). Validate runs the check for drift. Its rows are heuristic (measured 2026-09-26
   over four real projects: 39 rows with 1 true, 7 rows once the shapes behind the rest were fixed), so
-  no ask marks a check-driven fix recommended - the skill offers each one and the user picks.
+  no ask marks a check-driven fix recommended - the skill offers each one and the user picks; a stale path whose new
+  target the run confirmed on disk is a verified fix, not a check row, and joins the recommended option (usage audit
+  2026-10-10).
 
 - `stack/agents/` - 44 subagents, all in the core plugin (2.1.0), each one the selection did not pick
   denied as `Agent(alfred-code:<seat>)` (a seat whose preloaded skills were not copied is never picked);

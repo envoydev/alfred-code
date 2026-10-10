@@ -49,5 +49,7 @@ real code starts over at step 1.
 
 - Production code written before any test for it exists.
 - A new test whose first run was green.
+- A 'red' claimed over a run that never compiled or ran - 'Test suite failed to run', a compiler
+  error, zero tests executed - instead of the assertion line step 2 quotes.
 - A test edited until it passes, instead of the code.
 - 'Tested manually' standing in for a test the harness could run.

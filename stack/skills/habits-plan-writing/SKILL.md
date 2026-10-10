@@ -24,6 +24,7 @@ One file per scope at `<docs-path>/plans/<feature>.md`. A new scope after `Compl
 
 Oriented: <architecture sections read, symbol calls made, house skills loaded> | none - <reason>
 Asked: "<the user's words, verbatim>"
+Build: <the gate commands as the project runs them - build, tests, lint; the final gate's affected-set command>
 Resume: next task 1
 
 ## Fit

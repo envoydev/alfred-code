@@ -4,7 +4,7 @@ The measured anecdotes behind this skill's rules, kept out of the run-time body 
 for them. Audit material: read it to learn WHY a rule is shaped the way it is, never to run the skill.
 
 ## Intro and inputs
-- **Run the audit from a FRESH session** - measured: an in-session run at ~620k accumulated context paid six 529-retry re-sends (629k cache-write for 11 messages) for a report a fresh session produces from ~20k.
+- **Run the audit from a FRESH session** - measured: an in-session run at ~620k accumulated context paid six 529-retry re-sends (629k cache-write for 11 messages) for a report a fresh session produces from its cold floor. The floor is the install's own: a fixed '~20k' quoted in an ask (usage audit 2026-10-10, session 516e653d) stood where the stop hook measured ~87.2k, so the body quotes the measured figure or says it is unmeasured.
 - **The batch is BOUNDED at 12 bundles per run** - measured: two runs took 45 and 53 bundles in one chat for 42.1M and 78.2M cache-read and 2 and 4 forced compactions, because the biggest scope was the one marked Recommended.
 
 ## Step 1 - FIND

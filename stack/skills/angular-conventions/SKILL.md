@@ -85,7 +85,7 @@ On greenfield or visual work, load `references/design-quality.md` before the fir
 Web/PWA target only: read `references/performance-budgets.md` before a production release, a change to the `angular.json` budgets, or a change that grows the initial bundle, or reviewing one.
 
 ## Testing
-- Test practice is `angular-testing`'s - load it before writing, changing, or reviewing tests; this skill keeps only the convention below.
+- **Writing, changing or reviewing a `*.spec.ts` file: call the Skill tool for `angular-testing` in the same action, or state it is already loaded this session** - test practice is its, and this skill keeps only the convention below; a companion named only in flowing prose goes unacted (measured: 3 to 16 spec edits per session in 8 sessions with it never loaded).
 - Bake automated accessibility checks into component specs - a11y is a convention gate here, not just a test technique. The matcher package follows the workspace's runner (`angular-testing` owns runner routing): `jest-axe` on Jest, `vitest-axe` on Vitest, raw `axe-core` (`axe.run` on the fixture element) under Karma/Jasmine - never mandate a matcher the installed runner cannot load.
 - Close every Angular change with three lines - `build: <command> -> <result line>`, `specs: <command> -> <result line>` (the specs covering the files you touched) and `reward-hack scan: clean` or the rows of `references/reward-hacking.md` it hit; a missing line reads as not run.
 

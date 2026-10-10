@@ -90,7 +90,7 @@ test('C20 close receipts (390aebcb#8 3ce6b036#2 49cb4b82#6 a1fa1b2b#3 f24eb967#9
     const t = skill('task-solve');
     assert.match(t, /The close stop's `Result:` line carries the receipts - `Completed <date>, memories purged: <names\|none>`/);
     assert.doesNotMatch(t, /print one line with it - `Completed - the next scope starts a NEW plan file, not this one`/);
-    assert.match(t, /it rides the first stop's `Result:` line, `Spec:` beside it/);
+    assert.match(t, /it rides the first stop's `Result:`, `Spec:` beside it/);
     assert.match(t, /this stop's `Result:` line carries `mechanics: read` as the receipt/);
 });
 
@@ -224,6 +224,65 @@ test('C30 349e4825#5 a3d497f8#8: the commit receipt carries the review\'s Findin
     const block = (checkpoint().match(/```\nVERIFIED <what was reviewed, one phrase>\n([\s\S]*?)```/) || [])[1] || '';
     assert.match(block, /^findings: <the review's Findings field, copied - a count by severity, or none>$/m);
     assert.match(flat(read('stack/skills/task-verify-code/references/commit-gate-receipt.md')), /`findings: <this review's Findings field, copied>`/);
+});
+
+// ---- C21 (strategy half) / C30 (build half) / C27 / C22 / C02 / C24 / C16 / C20 size floor ------------------------
+test('C21 bba03dad#10 0498718d#16 f450ea64#8 349e4825#6: a pinless seat type gets a named model, worktrees need committed contracts', () => {
+    const t = skill('habits-execution-strategy');
+    assert.match(t, /\*\*A seat type with no pin\*\* \(a general-purpose or explore subagent\) runs on the session's model unless the dispatch names one/);
+    assert.match(t, /Name its model in the verdict: the lighter one for read-only search, inventory and classification/);
+    assert.match(t, /only when every contract they build on is COMMITTED: a worktree branches from HEAD/);
+    assert.match(t, /This skill loaded and no `Execution:` line after it/);
+});
+
+test('C30 84eedb4b#2 adaa2ef3#6 758ce661#5: the build gates run the Build set and the affected suite, and the task gate carries its rule', () => {
+    const t = skill('task-implement');
+    assert.match(t, /the plan header's `Build:` command set where it has one, scoped to the touched projects and never a subset of it/);
+    assert.match(t, /run the full suite once - the workspace's affected set \(`nx affected -t test lint build` in an Nx workspace\), else every touched project plus the projects that depend on it, never a hand-picked list - quoting the command in the report and in any verifier brief/);
+    assert.doesNotMatch(t, /loaded before the first task closes/);
+    assert.match(t, /the per-task completion gate is `habits-done-gate`'s rule, carried here so no load stands between it and the tick/);
+    assert.match(read('stack/skills/habits-plan-writing/SKILL.md'), /^Build: <the gate commands as the project runs them/m);
+});
+
+test('C27 516e653d#5: the usage report quotes the measured cold floor, never a fixed ~20k', () => {
+    const t = skill('capture-usage-report');
+    assert.doesNotMatch(t, /produces from ~20k\./);
+    assert.match(t, /quote the floor the stop hook measured for this install, or say it is unmeasured, never a fixed figure/);
+});
+
+test('C22 3b53e0e8#6 4f1c2ebb#6 758ce661#6 (skill half): a spec touch loads angular-testing in the same action', () => {
+    assert.match(skill('angular-conventions'), /\*\*Writing, changing or reviewing a `\*\.spec\.ts` file: call the Skill tool for `angular-testing` in the same action, or state it is already loaded this session\*\*/);
+});
+
+test('C02 adaa2ef3#5: the nx skill fires on running targets and says how to filter their output', () => {
+    const d = (read('stack/skills/nx/SKILL.md').match(/^description:\s*"(.*)"\s*$/m) || [])[1];
+    assert.match(d, /running nx test\/lint\/build/);
+    assert.ok(d.length <= 160, `${d.length} chars`);
+    assert.match(skill('nx'), /strip the codes first \(`sed 's\/\\x1b\\\[\[0-9;\]\*m\/\/g'`\) and grep with `-a`/);
+});
+
+test('C24 65abb00a#4 65abb00a#5 f10cb06a#3 f10cb06a#4 + C16 65abb00a#2: the AGENTS.md improve ask is a marked template, verified fixes join it', () => {
+    const text = read('stack/skills/habits-adjust-agents-md/SKILL.md');
+    const t = flat(text);
+    const ask = asks(text)[0];
+    assert.ok(ask, 'step 5.4 is an ask template');
+    assert.strictEqual(ask.options[0], 'Apply the additions and verified fixes (Recommended)');
+    assert.match(t, /\*\*a verified fix\*\* - a stale path whose new target this run confirmed on disk/);
+    assert.match(t, /Hold its Rules list against `\.claude\/rules\/` too: a rule file it does not name, or a named rule with no file/);
+    assert.match(t, /Every `\.env\*` file, `\.env\.example` included, sits behind the install's secret-file read deny/);
+    assert.doesNotMatch(t, /env var NAMES a test reads \(`\.env\.example`/);
+    assert.match(t, /Before the write, `git ls-files <file>`: an untracked target \(git-ignored, or never added\) has no diff to review and no history to restore/);
+    const { ASK_FLOW_TEMPLATES } = require('./lint-skills.js');
+    assert.strictEqual(ASK_FLOW_TEMPLATES['habits-adjust-agents-md'], 1, 'pinned, so the ask cannot drop back to prose');
+});
+
+test('C16 7fae0c39#5 (skill half): a red over a run that never compiled is a sign the cycle was skipped', () => {
+    assert.match(skill('habits-test-first'), /A 'red' claimed over a run that never compiled or ran - 'Test suite failed to run', a compiler error, zero tests executed/);
+});
+
+test('C20 458953b8#4: the Size line never goes below the full-spec check\'s size floor', () => {
+    assert.match(skill('task-solve'), /never below the `size floor:` the full-spec check prints \(run it first, on every size\)/);
+    assert.match(flat(read('stack/skills/task-solve/references/full-spec.md')), /its `size floor:` line is the lowest size the `Size:` line may state/);
 });
 
 test('C08 a6a24815#5: the done gate and the in-chat review run the project\'s format check', () => {

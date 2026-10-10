@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 You audit what alfred-code skill runs in this project actually cost: find the session transcripts, run the stack's offline analyzer over them, and write one report per session with the raw data next to it, so a later agent can re-analyze without re-collecting. The question every bundle answers is whether Claude Code with the stack is EFFICIENT in this project - in tokens (what the session paid against what it delivered) and in effectiveness (did the work land, how many corrections it took, how many claims had a check behind them) - so the analyzer prints an efficiency scorecard per session and the report carries an authored efficiency verdict built from it. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
-Run the audit from a FRESH session that names the target session id(s) - never from the tail of the session being audited. The work is offline (a node script plus report writing) and needs none of the audited chat's context, and an in-session run re-sends its whole accumulated context on every message for a report a fresh session produces from ~20k.
+Run the audit from a FRESH session that names the target session id(s) - never from the tail of the session being audited. The work is offline (a node script plus report writing) and needs none of the audited chat's context, and an in-session run re-sends its whole accumulated context on every message for a report a fresh session produces from its cold floor - quote the floor the stop hook measured for this install, or say it is unmeasured, never a fixed figure (a fixed '~20k' was quoted where the measured floor was ~87k).
 
 ## When to use
 

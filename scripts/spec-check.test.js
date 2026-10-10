@@ -145,7 +145,7 @@ test('the CLI prints one line per item and the path last, from stdin or a file',
   const r = run(FULL_API);
   assert.strictEqual(r.status, 0, r.stderr);
   const lines = r.stdout.trim().split('\n');
-  assert.deepStrictEqual(lines.map((l) => l.split(':')[0]), ['surface', 'behaviour', 'verified', 'stacks', 'security', 'spec', 'path']);
+  assert.deepStrictEqual(lines.map((l) => l.split(':')[0]), ['surface', 'behaviour', 'verified', 'stacks', 'security', 'size floor', 'spec', 'path']);
   assert.match(r.stdout, /^path: merged$/m);
   const g = run(VAGUE);
   assert.match(g.stdout, /^spec: not full - no surface named/m);
@@ -155,6 +155,32 @@ test('the CLI prints one line per item and the path last, from stdin or a file',
   assert.match(empty.stdout, /^path: gated$/m, 'no request text is never a full spec');
   const missing = run('', [path.join(__dirname, 'no-such-request.txt')]);
   assert.notStrictEqual(missing.status, 0, 'an unreadable file is an error, never an empty request read as a verdict');
+});
+
+// Usage audit 2026-10-10 (C20, session 458953b8): a run sized itself small at 4 named files, one a vendored
+// cross-repo contract, against the row capped at 3 files with no public contract. The script states the floor the
+// request proves; the Size line may raise it, never go below it.
+test('the size floor: named files, a contract, input parsing, a security path and a second stack raise it to standard, never to cross', () => {
+  const floor = (text) => classify(text).sizeFloor;
+  assert.strictEqual(floor('Fix the label in src/app/a.component.ts, src/app/a.component.html, contracts/vendored/notices.ts and src/app/a.component.spec.ts.'), 'standard', 'the measured case: 4 files, one a vendored contract');
+  assert.match(classify('Touch src/a.ts, src/b.ts, src/c.ts and src/d.ts').sizeReason, /4 files named/, 'over 3 files alone is standard');
+  assert.strictEqual(floor('Touch src/a.ts, src/b.ts, src/c.ts and src/d.ts'), 'standard');
+  // Boundaries on the file count: 1 trivial, 2 and 3 small, 4 standard.
+  assert.strictEqual(floor('Fix the typo in README.md'), 'trivial');
+  assert.strictEqual(floor('Rename the variable in src/a.ts and src/b.ts'), 'small');
+  assert.strictEqual(floor('Rename it in src/a.ts, src/b.ts and src/c.ts'), 'small');
+  assert.strictEqual(floor('Add request validation to the create-order handler'), 'standard', 'input parsing is on the floor');
+  assert.strictEqual(floor(AUTH_CHANGE), 'standard', 'a security path is on the floor');
+  assert.strictEqual(floor(FULL_DATA), 'standard', 'a migration is a contract');
+  assert.strictEqual(floor(MULTI_STACK), 'standard', 'two stacks floor at standard - the stack read is by words, so cross is the Size line\'s call');
+  assert.match(classify(MULTI_STACK).sizeReason, /2 stacks named \(backend, web\) - cross only when both change/);
+  assert.strictEqual(floor('Make src/app/orders.service.ts call GET /orders and show the date'), 'standard', 'a web change naming the endpoint it calls never floors at cross');
+  for (const text of ['', 'Fix the typo in README.md', MULTI_STACK, AUTH_CHANGE]) assert.notStrictEqual(floor(text), 'cross');
+  // A path named twice counts once; a Windows separator is a path; a framework's name is no file.
+  assert.strictEqual(classify('Edit src/a.ts, then src/a.ts again, and src\\b.ts').paths.length, 2);
+  assert.deepStrictEqual(classify('Upgrade Node.js and Vue.js in the docs').paths, []);
+  assert.strictEqual(floor(''), 'trivial', 'no request text names nothing - the model raises it on what it reads');
+  assert.match(run('Fix the typo in README.md').stdout, /^size floor: trivial - 1 file\(s\) named, no contract, security or parsing signal \(the Size line may raise it, never go below it\)$/m);
 });
 
 // The cross-task orchestrator runs the same check on its single-chat path. Every skill is a library copy in its

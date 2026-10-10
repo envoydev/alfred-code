@@ -1,6 +1,7 @@
 # Full spec - the check script's lookup
 
-Read on `standard`, before step 1, to run the full-spec check. The lookup reads this skill's own
+Read first, on every size, to run the full-spec check - its `size floor:` line is the lowest size the
+`Size:` line may state, and on `standard` its `spec:` and `path:` lines decide the merged path. The lookup reads this skill's own
 copy of the script (`scripts/spec-check.js`): the project copy first, else the newest plugin-cache
 entry that has it. The block prints nothing but the check's lines - one per item, the path last:
 
