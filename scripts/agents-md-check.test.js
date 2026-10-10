@@ -116,6 +116,33 @@ test('a missing path git ignores is a local file the setup creates, never a find
     assert.deepStrictEqual(kinds(run(root, 'Copy `.envrc` to `.env`.', { ignored: ['.env'] })), ['1 path .envrc']);
 });
 
+// audit 2026-10-10 C24: the old-root `.claude/docs/...` pointers sit in a folder git ignores, so every one passed (13 dead
+// pointers, 0 rows); a package named like a file and a row the user kept were re-asked on every validate.
+test('C24: a stale docs pointer is a row whatever git ignores, and a moved one names the new root', () =>
+{
+    const root = tree({ '.claude/rules/': '', '.alfred/docs/architecture/ARCHITECTURE.md': '# a', 'src/Api/': '' });
+    const ignoredAll = ['.claude/docs/architecture/ARCHITECTURE.md', '.claude/docs/quality/GONE.md', '.alfred/docs/architecture/NOPE.md',
+        '.alfred/docs/code-style/CODE-STYLE.md', '.claude/rules/alfred-project-run-book.md', 'src/Api/appsettings.Development.json', '.env'];
+    const check = (text) => checkText({ root, file: 'AGENTS.md', text, template: TEMPLATE, locate: onPath([]), isIgnored: (rel) => ignoredAll.includes(rel), docsRoot: '.alfred/docs' });
+    const rows = check('Map `.claude/docs/architecture/ARCHITECTURE.md`, `.alfred/docs/architecture/NOPE.md`.');
+    assert.deepStrictEqual(kinds(rows), ['1 path .claude/docs/architecture/ARCHITECTURE.md', '1 path .alfred/docs/architecture/NOPE.md']);
+    assert.match(rows[0].why, /the docs root is `\.alfred\/docs` now, where `\.alfred\/docs\/architecture\/ARCHITECTURE\.md` does/);
+    assert.strictEqual(rows[1].why, 'does not exist');
+    assert.deepStrictEqual(check('Local: `src/Api/appsettings.Development.json` and `.env`.'), [], 'a local file the setup creates stays quiet');
+    assert.deepStrictEqual(check('Not yet captured: `.alfred/docs/code-style/CODE-STYLE.md`, `.claude/rules/alfred-project-run-book.md`, `.claude/docs/quality/GONE.md`.'), [],
+        'a domain no capture wrote, a generated rule and a legacy path with no twin stay quiet where git ignores them');
+});
+
+test('C24: a backticked dependency name is a package, and a line marked keep raises no row', () =>
+{
+    const root = tree({ 'package.json': JSON.stringify({ dependencies: { 'driver.js': '^1.6.0' } }) });
+    assert.deepStrictEqual(run(root, 'Tours use `driver.js`.'), []);
+    assert.deepStrictEqual(kinds(run(root, 'Tours use `shepherd.js`.')), ['1 path shepherd.js']);
+    assert.deepStrictEqual(run(root, 'Name a client `x.api.ts`. <!-- agents-md-check: keep -->'), []);
+    assert.deepStrictEqual(kinds(run(root, 'Name a client `x.api.ts`.')), ['1 path x.api.ts']);
+    assert.deepStrictEqual(kinds(run(root, 'Name a client `x.api.ts`. <!-- keep -->\nAnd `y.api.ts`.')), ['1 path x.api.ts', '2 path y.api.ts'], 'only the exact marker, only its own line');
+});
+
 // I1 (final review of the rename): read over four real consuming projects the check gave 39 rows and 1 was
 // true. The five shapes below are what the other 38 were made of - each fixture is synthetic.
 test('I1a: a .NET part folder named <Company>.<Part> answers for the part: `Bot/Program.cs` is `src/Acme.Bot/Program.cs`', () =>

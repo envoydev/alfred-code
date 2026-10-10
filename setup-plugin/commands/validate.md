@@ -618,7 +618,9 @@ recommended - the check is heuristic, and a row can be correct text it could not
 under a prefixed name, a program a script installs), so each row is the user's read: 'Review them with
 `/habits-adjust-agents-md`' (its improve mode shows every change before writing) or 'Leave them'.
 Never edit an instruction file from this command; a `command` row on a program only another OS runs is the
-user's call, not a fix.
+user's call, not a fix. A left row comes back on the next run; a line the user keeps for good carries
+`<!-- agents-md-check: keep -->` at its end (the skill's improve mode writes it on the user's word), and
+the check raises no row on it again.
 
 Then the Stop build check advisory, from this project's session transcripts and its done-gate probe
 rows:

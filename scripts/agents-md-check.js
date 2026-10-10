@@ -191,6 +191,27 @@ function localPrograms(root, tree)
     return found;
 }
 
+// Every package name the project's package.json files depend on: a backticked `driver.js` is that package,
+// not a file (audit 2026-10-10 C24).
+function dependencyNames(root, tree)
+{
+    const names = new Set();
+    for (const rel of tree.files)
+    {
+        if (rel.split('/').pop() !== 'package.json') continue;
+        let pkg;
+        try { pkg = parseJson(fs.readFileSync(path.join(root, rel), 'utf8')); } catch { continue; }
+        if (!pkg || typeof pkg !== 'object') continue;
+        for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'])
+            for (const dep of Object.keys(pkg[field] || {})) names.add(dep);
+    }
+    return names;
+}
+
+// A line the user kept on purpose carries this marker in a comment, and no row is raised on it again -
+// validate re-asked the same kept rows every run (audit 2026-10-10 C24).
+const KEEP_MARKER = /<!--\s*agents-md-check:\s*keep\s*-->/;
+
 // True when the clause holding columns [from, to) of `prose` denies what it names.
 function denied(prose, from, to)
 {
@@ -320,9 +341,13 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
     };
 
     // A path counts when it exists from a base the file reads from, when it is unanchored and some path
-    // in the project ends with it, or when git ignores it (a local file the setup creates - `.env`, a
-    // build output). `anchored` - `./x`, `../x`, a resolved `<docs-path>/x`, an @import - is read from
-    // its bases only.
+    // in the project ends with it, when it is a package the project depends on (`driver.js`), or when git
+    // ignores it (a local file the setup creates - `.env`, `appsettings.Development.json`, a build output) -
+    // except a STALE docs pointer, ignored or not: one under the legacy `.claude/docs/` whose twin sits under
+    // the configured root (a docs move), or one under the configured root whose folder exists (a capture
+    // ran, the file is not there). Audit 2026-10-10 C24: 13 dead `.claude/docs/...` pointers drew 0 rows. A
+    // domain no capture has written yet stays quiet. `anchored` - `./x`, `../x`, a resolved `<docs-path>/x`,
+    // an @import - is read from its bases only.
     const pathMissing = (p, bases, { anchored = false } = {}) =>
     {
         const target = p.replace(/^\?/, '');
@@ -330,9 +355,25 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
         if (candidates.some(exists)) return false;
         if (!anchored && !/^\.{1,2}\//.test(target) && somewhere(target)) return false;
         if (p.startsWith('?') && !bases.some((b) => exists(path.join(b, target.split('/')[0])))) return false;   // `origin/main`, `application/json`
+        if (!anchored && !target.includes('/') && dependency(target)) return false;
         const rels = candidates.map((c) => posix(path.relative(root, c))).filter((r) => r && !r.startsWith('..'));
-        return !rels.some((r) => ignored(r));
+        return !rels.some((r) => ignored(r) && !staleDoc(r));
     };
+    const LEGACY_DOCS = '.claude/docs/';
+    const docsNow = docs.replace(/^\.\//, '').replace(/\/+$/, '');
+    const movedTwin = (rel) => rel.startsWith(LEGACY_DOCS) && `${docsNow}/` !== LEGACY_DOCS && exists(path.join(root, docsNow, rel.slice(LEGACY_DOCS.length)));
+    const staleDoc = (rel) => movedTwin(rel) || (rel.startsWith(`${docsNow}/`) && exists(path.dirname(path.join(root, rel))));
+    let deps = null;
+    const dependency = (name) =>
+    {
+        tree = tree || projectIndex(root);
+        deps = deps || dependencyNames(root, tree);
+        return deps.has(name);
+    };
+    // A path under the legacy docs root whose twin under the configured one exists: name the move.
+    const movedWhy = (target) => (movedTwin(target)
+        ? `does not exist - the docs root is \`${docsNow}\` now, where \`${docsNow}/${target.slice(LEGACY_DOCS.length)}\` does`
+        : WHY.path);
 
     let fence = null;
     let heading = '';
@@ -376,7 +417,7 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
             const suffix = span.text.trim().startsWith('.') && /[\w*]/.test(line[span.col - 1] || '');
             const p = suffix ? null : pathOf(span.text, docs);
             if (p && !denied(prose, span.col, span.col + span.text.length + 2) && pathMissing(p.path, [base, root], { anchored: p.anchored }))
-                add(n, span.col, 'path', p.path.replace(/^\?/, ''));
+                add(n, span.col, 'path', p.path.replace(/^\?/, ''), movedWhy(p.path.replace(/^\?/, '')));
             if (COMMAND_HEADING.test(heading) && /\s/.test(span.text.trim()))
                 for (const program of programsOf(span.text)) checkProgram(program, n, span.col);
         }
@@ -395,7 +436,8 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
     }
     if (template) checkTemplateText();
     if (unfilledSeed(text, template === null ? readTemplate() : template)) add(1, -1, 'template', 'the template', 'never filled: only its H1 and ## Rules are live');
-    return findings.sort((a, b) => a.line - b.line || a.col - b.col).map(({ col, ...f }) => f);
+    const kept = new Set(normalize(text).split('\n').map((l, k) => (KEEP_MARKER.test(l) ? k + 1 : 0)).filter(Boolean));
+    return findings.filter((f) => !kept.has(f.line)).sort((a, b) => a.line - b.line || a.col - b.col).map(({ col, ...f }) => f);
 
     function checkProgram(program, line, col)
     {
