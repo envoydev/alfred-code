@@ -620,6 +620,51 @@ test('guard-stop-contract: an ask that sends the user to type into Other, or mar
   const second = askIn(tp, [{ question: 'Ship?', options: [{ label: 'Hold', description: 'x' }, { label: 'Ship (Recommended)', description: 'y' }] }]);
   assert.equal(second.status, 2, 'the marked option goes first');
   assert.match(second.stderr, /listed first/);
+  // f450ea64 (T5 cross-track): a question that already says why none is recommended is the no-default case stated
+  assert.equal(askIn(tp, [{ ...bare[0], question: 'What should a Manager see? No option is recommended: the two rules contradict.' }]).status, 0,
+    'a question saying why none is recommended passes at once');
+  assert.equal(askIn(tp, [{ question: 'Ship? None is recommended.', options: [{ label: 'Hold (Recommended)', description: 'x' }, { label: 'Ship (Recommended)', description: 'y' }] }]).status, 2,
+    'two marks are still denied');
+});
+
+test('guard-stop-contract: a solve-task stop that owes a receipt is told which one (audit 2026-10-10, T4 cross-track)', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const marker = typed('<command-name>/task-solve</command-name>');
+  const fields = 'Result: spec at docs/plans/x.md. Progress: 1 of 6 steps. Leftovers: none.';
+  const note = (name, rows, q) => {
+    const r = askIn(transcript(name, rows), q);
+    assert.equal(r.status, 0, `${name}: a receipt is a note, never a deny`);
+    try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; }
+  };
+  const goOn = [{ question: 'Next?', options: [{ label: 'Go on (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }];
+  const answered = (id) => [{ type: 'assistant', message: { id: `q-${id}`, content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions: goOn } }] } },
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'Your questions have been answered: "Next?"="Go on (Recommended)". You can now continue.' }] } }];
+  // 3b53e0e8: the first stop went out with no Size line
+  assert.match(note('rc-first', [marker, assistantRow('a', fields)], goOn), /`Size: /);
+  assert.equal(note('rc-first-ok', [marker, assistantRow('a', `Size: standard - two modules. ${fields}`)], goOn), '');
+  assert.doesNotMatch(note('rc-later', [marker, ...answered('u1'), assistantRow('a', fields)], goOn), /Size/, 'a later stop owes no Size');
+  const handOff = [{ question: 'A cycle already closed here. Where?', options: [{ label: 'Resume in a fresh session (Recommended)', description: '~90k here, ~40k fresh' }, { label: 'Continue here', description: 'x' }] }];
+  assert.doesNotMatch(note('rc-handoff', [marker, assistantRow('a', fields, { cache_read_input_tokens: 90000 })], handOff), /Size/, 'the opening hand-off is no stop');
+  // e499fc94: the step-3 approval with no `mechanics: read`
+  const approve = [{ question: 'The plan is gated. Build it in this session: one chat fits.', options: [
+    { label: 'Approve - build in this session (Recommended)', description: 'x' }, { label: 'Approve - dispatch the agent seats', description: 'y' },
+    { label: 'Not yet - changes needed', description: 'z' }] }];
+  assert.match(note('rc-approve', [marker, ...answered('u2'), assistantRow('a', fields)], approve), /mechanics: read/);
+  assert.equal(note('rc-approve-ok', [marker, ...answered('u3'), assistantRow('a', fields.replace('spec at', 'mechanics: read; plan at'))], approve), '');
+  // 390aebcb, 3ce6b036, 49cb4b82: the close with no `memories purged:`
+  const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',
+    input: { file_path: '/p/.alfred/docs/plans/2026-10-08-x.md', old_string: 'Approved:', new_string: 'Approved: yes\nCompleted: 2026-10-08' } }] } };
+  assert.match(note('rc-close', [marker, ...answered('u4'), completed, assistantRow('a', fields)], goOn), /memories purged/);
+  assert.equal(note('rc-close-ok', [marker, ...answered('u5'), completed,
+    assistantRow('a', 'Result: Completed 2026-10-08, memories purged: none. Progress: 6 of 6 steps. Leftovers: none.')], goOn), '');
+  assert.doesNotMatch(note('rc-after-close', [marker, ...answered('u6'), completed, ...answered('u7'), assistantRow('a', fields)], goOn), /memories purged/,
+    'an ask after the close was answered is no close');
+  // a6a24815: the cross close report with no `ceilings:`
+  const cross = typed('<command-name>/task-solve-cross</command-name>');
+  const report = `${fields}\nmode: agents | contract: n/a\nlanes: api - endpoints - SIGNED_OFF\nfinal gate: PASS\npending: none\nleftovers: none\nmemories purged: none`;
+  assert.match(note('rc-cross', [cross, ...answered('u8'), assistantRow('a', report)], goOn), /ceilings:/);
+  assert.equal(note('rc-cross-ok', [cross, ...answered('u9'), assistantRow('a', `${report}\nceilings: none`)], goOn), '');
+  assert.equal(note('rc-noflow', [typed('fix the typo'), assistantRow('a', 'hello')], approve), '', 'a session that never ran the flow owes nothing');
 });
 
 test('guard-stop-contract: a new cycle after a finished one is sent back once without the fresh option (audit 2026-10-10 C08)', () => {
@@ -733,11 +778,12 @@ test('guard-stop-contract: a solve-task stop is reminded of its three named fiel
   ]);
   assert.match(ctxOf(askIn(cycle('sf-bare', 'Task 2 landed, tests green.'), oneQ)), /Result:.*Progress:.*Leftovers:/s,
     'a solve-task stop with no fields anywhere is reminded');
+  // (the first stop also owes its `Size:` receipt - audit 2026-10-10, T4 cross-track)
   assert.equal(ctxOf(askIn(cycle('sf-fields',
-    'Result:    task 2 landed - docs/plans/csv.md\nProgress:  4 of 6 steps\nLeftovers: none'), oneQ)), '',
+    'Size: small - one module\nResult:    task 2 landed - docs/plans/csv.md\nProgress:  4 of 6 steps\nLeftovers: none'), oneQ)), '',
     'the stamped fields clear it');
   assert.equal(ctxOf(askIn(cycle('sf-bold',
-    '**Result:** task 2 landed\n**Progress:** 4 of 6 steps\n**Leftovers:** none'), oneQ)), '',
+    '**Size:** small - one module\n**Result:** task 2 landed\n**Progress:** 4 of 6 steps\n**Leftovers:** none'), oneQ)), '',
     'the markdown-bold variant 5 of 13 sessions actually wrote satisfies the format');
   // M7 (Task 22 fix round 1): on the plugin route the slash command is recorded with its plugin prefix.
   const prefixed = transcript('sf-plugin', [
@@ -777,7 +823,7 @@ test('guard-stop-contract: a solve-task stop MBs after its slash marker is still
   fs.appendFileSync(grows, [marker, ...pad(3), assistantRow('g2', 'Design done.', { cache_read_input_tokens: 900 })].map((r) => JSON.stringify(r)).join('\n') + '\n');
   assert.match(ctxOf(askIn(grows, oneQ, genv)), /THREE named fields/, 'the appended marker is found past the recorded miss');
   // The fields written INLINE in a one-line question (session 516e653d, 5 of 5 compliant asks) satisfy the contract.
-  const inline = [{ question: 'Result: design done - docs/plans/x.md. Progress: 1 of 6 steps. Leftovers: none. Continue to the plan audit?',
+  const inline = [{ question: 'Size: standard - two modules. Result: design done - docs/plans/x.md. Progress: 1 of 6 steps. Leftovers: none. Continue to the plan audit?',
     options: [{ label: 'Continue (Recommended)', description: 'run the gate' }, { label: 'Stop', description: 'hold' }] }];
   assert.equal(ctxOf(askIn(far, inline)), '', 'inline fields after a sentence boundary count');
 });

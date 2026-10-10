@@ -39,7 +39,7 @@ test('corpus-replay: identical payloads are replayed once', () => {
   const dir = corpus([toolRow('Bash', { command: 'git status' }), toolRow('Bash', { command: 'git status' })]);
   const { err } = run(dir, '--extract-only');
   assert.match(err, /tool_use 2\b/, 'both blocks are extracted');
-  assert.match(err, /unique replay jobs: 7\b/, 'but dedupe leaves one job per Bash route');
+  assert.match(err, /unique replay jobs: 8\b/, 'but dedupe leaves one job per Bash route (the post-compaction hold is the eighth, audit 2026-10-10 C09)');
 });
 
 test('corpus-replay: a payload the guard must block is counted as fired', () => {

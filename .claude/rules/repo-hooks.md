@@ -426,11 +426,16 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (R5: a string's delimiters in code stay double), once per ask text (a marker the log dir cannot hold goes under the temp
     dir, so a missing dir never re-denies), carrying the corrected strings (I3); a fresh-session option quoting no number
     within 20% of the measured carry (both numbers appended to its description); and, with no mechanical fix, an option
-    telling the user to type into Other, a single-select question without exactly one '(Recommended)', and a new cycle's
+    telling the user to type into Other, a single-select question without exactly one '(Recommended)' listed first (an
+    unmarked one whose text says why none is recommended passes), and a new cycle's
     first ask with no fresh option after a typed prompt followed this session's plan `Completed:` stamp (once per stamp;
     audit 2026-10-10 C08 / C09 / C26). The solve-task FLOW STOP FIELDS note reads the whole transcript once per session
     for the flow's marker (`guard-stop-flow-*` keeps how far it read), and accepts a field opening a sentence inside a
-    one-line question; under a live AUTO waiver a solve-task done close without the three fields is held once at `Stop`;
+    one-line question; the same read places the stop, so the note also names a RECEIPT the stop owes and left out - `Size:`
+    at a cycle's first stop (no ask answered since its marker or its new-scope prompt, an opening fresh hand-off excepted),
+    `mechanics: read` at the approval (an 'Approve' option), `memories purged:` at the close (no ask answered since the
+    `Completed:` stamp, or the cross close report) and `ceilings:` in the cross close report (audit 2026-10-10, T4
+    cross-track); under a live AUTO waiver a solve-task done close without the three fields is held once at `Stop`;
     LOG-ONLY: `PostToolUse` + `PostToolUseFailure` on the shell tools) - blocks a turn ending on a decision-shaped question in prose (the quality
     loop's mode and stage-close asks worded as statements included), or a 'done, next step pending' close - unless every pending item the close states is a WAIT ('still running',
     'waiting on', 'awaiting') on work this session launched that is still out and ENDS (an async Agent, one a SendMessage
@@ -453,7 +458,18 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     finished. A fork, subagent or worker is work that ends; a `queue-operation` row that only QUEUED a task notice
     (`enqueue`) has not ended it - the delivered one does; 'remains' is pending only in its pending forms ('still remains',
     'remains to be done'), so 'only sentry remains' is a status; and the fresh-session branch passes a close whose turn
-    already ANSWERED an ask carrying the fresh-session choice (2.1.7, a consuming project's session audit). Credential branch: asks for rotation ONCE per exposure (`ALFRED_CODE_ROTATE_ASK=0` off; any ask
+    already ANSWERED an ask carrying the fresh-session choice (2.1.7, a consuming project's session audit). Audit
+    2026-10-10 C15 widened both halves from measured misses, each replayed over the bundles' turn-ending closes: the
+    offer shapes ('Say 'commit' when ...', 'I can X if you want', 'If you want ..., I can', 'I can X next, or',
+    'My recommendation is to ... Otherwise'), `pushed` as done, a 'Not run:' label, 'never ran', 'still open', an open
+    item, 'put off' and 'still building' as pending; a prose-ask block whose close also names pending work loses the
+    restate escape, and the done-close escape says a deferred item either side owes goes in the ask. A 'nothing pending
+    on my side' line naming the user's own run is no exit; under live work the mandated 'uncommitted for your review'
+    line and a step gated on the running work ('once the agent is done') are status, a resumed seat's 'its sign-off' is
+    a wait, 'your allow' is a hand-back, and a `gh run watch` ends. An answer to the user's own question listing only a
+    third party's or deferred items passes, and so does the close after a fresh-session ask answered this turn. The
+    ask branch's typed-turn count follows the live `parentUuid` chain, and its stale-scope note counts `push` only in a
+    git shape. A tool-ended transcript read retries once after 300ms (`no-tail` probe row). Credential branch: asks for rotation ONCE per exposure (`ALFRED_CODE_ROTATE_ASK=0` off; any ask
     answered or declined after its block is the answer, a free-text 'Other' included), judged
     on what the model was SENT - a tool result's `message`, never the CLI's stored `toolUseResult` copy (an
     Edit's `originalFile` held a JWT the secret guard had kept out of context, pilot 3).
@@ -464,9 +480,17 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     with the skill load, the project's test markers and any instruction line against running tests
     (`ALFRED_CODE_DONE_GATE=0` off) - and the first red build or test run of a streak writes one
     `root-cause` row (one streak per actor) that `analyze-usage.js --hook-blocks` resolves against the
-    transcript: the skill loaded before the next fix, in context, after it, or MISSED. A close dismissing a
+    transcript: the skill loaded before the next fix, in context, after it, or MISSED. A run is red only on the RUNNER's
+    verdict (a failing count, `not ok N`, Nx's 'Failed tasks:'), so a failed exit with none - a broken loop, a grep behind
+    the run - is no streak; a red run that never compiled carries `compiled: false`, a background suite is judged at the
+    shell read of its `.output` file (`background: true`), and a compiled red under habits-test-first whose actor edited
+    only test files since its last run is a `test-first-red` row that opens no streak (audit 2026-10-10 C16: every MISSED
+    row in nine sessions was a planned red). A close dismissing a
     failure ('pre-existing', 'unrelated to my change', 'flaky', 'skipping tests for now') in a turn with a red
-    run, a skipped test or an added skip marker writes one `rationalization` row per turn.
+    run, a skipped test or an added skip marker writes one `rationalization` row per turn. Two flow probes, the same
+    log-only footing (audit 2026-10-10, T4 cross-track): a turn that loaded habits-execution-strategy with no `Execution:`
+    line after it writes one `execution-line` row, and a source edit under a new prompt after this session's plan
+    `Completed:` stamp, with no new plan file, one `post-close-edit` row per stamp.
     Fresh-session offer on a clean close past the window's ABSOLUTE trigger:
     `ALFRED_CODE_FRESH_SESSION_200K` (default 150000), `_1M` (400000), `_DEFAULT` (300000, any other or
     unreadable window); `0` switches that case off; seeded absent-only. The window comes from ONE table (the session
@@ -574,13 +598,16 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     -v q` for C# - and hands the first 20 error lines back as a block, once per turn (its own continuation Stop
     passes). A missing compiler or a timeout is a pass, and so is a C# project never restored (every error line
     `NETSDK1004`, which `--no-restore` cannot get past), written as one `mode: probe` row (audit 2026-10-08).
-  - `guard-answer-length.js` (`UserPromptSubmit` + `Stop`) - injects the answer budget every turn; the
+  - `guard-answer-length.js` (`UserPromptSubmit` + `Stop` + `PostToolUse` `AskUserQuestion`) - injects the answer budget every turn; the
     Stop half blocks prose past 1800 chars when the user asked for no depth, and blocks an em-dash (en-dash and horizontal
     bar too, `HOUSE_DASH`) in prose at any length. After the third consecutive short correction following a long answer it injects
     the format ask (injection only). A correction turn (short, after an answer, carrying a correction marker -
     the test the analyzer shares, `correction-turn-test`) writes one `correction` probe row;
     `ALFRED_CODE_CORRECTION_NUDGE` is seeded `log`, `inject` adds the memory-save line with the `ToolSearch select:`
-    line that loads the deferred `memory_store` (M11), `0` is off.
+    line that loads the deferred `memory_store` (M11) - the line names a project fact the correction states as a
+    `reference` memory beside the `user_correction` (audit 2026-10-10, T5 cross-track) - `0` is off. Its `PostToolUse` `AskUserQuestion` half reads an
+    answer typed into an ask (matching no offered label): one `ask-answer-typed` probe row, the same correction test and
+    row over a short one, and a note to open a path it names and restate what it changes (audit 2026-10-10 C15 / C07).
   - `instrument-tool-usage.js` - wired env-gated: skipped unless `ALFRED_CODE_INSTRUMENT` (seeded "0")
     is exactly "1". It runs `async: true` on both routes (`settings.js asyncFor`, the one async hook - a log never
     blocks or decides, so no call waits on its spawn; code.claude.com/docs/en/hooks, 'Run hooks in the background').

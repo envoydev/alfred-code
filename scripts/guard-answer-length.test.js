@@ -357,10 +357,52 @@ test('ALFRED_CODE_CORRECTION_NUDGE: log writes the row only, inject adds the sav
     assert.match(inject.ctx, LINE);
     // The memory tools are DEFERRED (alfred-memory.md): naming one is not having it, so the line carries its loader (2.1.5 M11).
     assert.match(inject.ctx, /ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store\b/, 'the save line loads the deferred tool');
+    // 84eedb4b (audit 2026-10-10, T5 cross-track): a stated project fact rode a correction and was never stored
+    assert.match(inject.ctx, /a project fact it states \(a branch, an environment, a version pairing\) as a reference memory/, 'the save line names the fact type too');
     assert.doesNotMatch(prompted('how much time is left?', { env: { ALFRED_CODE_CORRECTION_NUDGE: 'inject' } }).ctx, LINE, 'no correction, no line');
     for (const off of ['0', 'off']) {
         const o = prompted('no, shorter', { env: { ALFRED_CODE_CORRECTION_NUDGE: off } });
         assert.deepStrictEqual(o.rows, [], `${off} writes no row`);
         assert.doesNotMatch(o.ctx, LINE);
     }
+});
+
+// Audit 2026-10-10 C15 / C07: an answer TYPED into an ask (its Other field) is the user speaking, but it arrives as a
+// tool result - the prompt-time correction test never saw it (4f1c2ebb, 8f44a003) and an answer naming a folder was
+// never opened (69dbed46).
+let askSeq = 0;
+function answered(answers, { questions, env, text } = {}) {
+    const sid = `ask-${++askSeq}`;
+    const qs = questions || [{ question: 'Run the demo login?', options: [{ label: 'Scripted login (Recommended)' }, { label: 'Skip it' }] }];
+    const tool_response = text !== undefined ? text : { questions: qs, answers };
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion', session_id: sid,
+        tool_input: { questions: qs }, tool_response }), encoding: 'utf8', env: { ...process.env, ...(env || {}) } });
+    assert.strictEqual(r.status, 0, 'the typed-answer probe never blocks');
+    const ctx = r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '';
+    return { rows: ledgerRows(sid), ctx };
+}
+test('an answer typed into an ask is logged, a correction in it counts, a path in it is opened first (audit 2026-10-10 C15)', () => {
+    const picked = answered({ 'Run the demo login?': 'Scripted login (Recommended)' });
+    assert.deepStrictEqual(picked.rows, [], 'a picked label is no typed answer');
+    assert.strictEqual(picked.ctx, '');
+    const corr = answered({ 'Run the demo login?': 'Why you bother me with that, log in yourself right now!' });
+    assert.deepStrictEqual(corr.rows.map((r) => r.kind), ['ask-answer-typed', 'correction'], 'the correction test reads the typed answer');
+    assert.strictEqual(corr.rows[1].detail.via, 'ask-answer');
+    assert.strictEqual(corr.ctx, '', 'log mode injects nothing');
+    const inj = answered({ 'Run the demo login?': 'no, do not script it' }, { env: { ALFRED_CODE_CORRECTION_NUDGE: 'inject' } });
+    assert.match(inj.ctx, /CORRECTION: the answer typed into the ask reads as a correction/);
+    const fact = answered({ 'Run the demo login?': 'Already logged in; if http://127.0.0.1:9030/login shows a loading bar, wait until it loads.' });
+    assert.deepStrictEqual(fact.rows.map((r) => r.kind), ['ask-answer-typed'], 'a project fact is logged, never a correction');
+    assert.strictEqual(fact.ctx, '', 'a URL is no path to open');
+    const dir = answered({ 'Where does the card go?': 'It is on ../sibling-app/.claude/docs/cross-project-tasks folder' },
+        { questions: [{ question: 'Where does the card go?', options: [{ label: 'Here (Recommended)' }, { label: 'Later' }] }] });
+    assert.match(dir.ctx, /names a path \(\.\.\/sibling-app\/\.claude\/docs\/cross-project-tasks\)\. Open it before acting/);
+    assert.strictEqual(dir.rows[0].detail.path, true);
+    const multi = answered({ 'Which?': 'A, B' }, { questions: [{ question: 'Which?', multiSelect: true, options: [{ label: 'A' }, { label: 'B' }] }] });
+    assert.deepStrictEqual(multi.rows, [], 'a multi-select pick of offered labels is no typed answer');
+    const textForm = answered(null, { text: 'The user answered: "Run the demo login?"="no, wrong account". Read the answers carefully.' });
+    assert.deepStrictEqual(textForm.rows.map((r) => r.kind), ['ask-answer-typed', 'correction'], 'the text form of the result is read too');
+    const off = answered({ 'Run the demo login?': 'no, wrong account' }, { env: { ALFRED_CODE_CORRECTION_NUDGE: '0' } });
+    assert.deepStrictEqual(off.rows.map((r) => r.kind), ['ask-answer-typed'], 'the nudge switch off keeps the typed row only');
+    assert.strictEqual(run({ hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion', tool_response: 'garbage' }).status, 0);
 });
