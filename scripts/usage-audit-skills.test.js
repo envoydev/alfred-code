@@ -268,7 +268,10 @@ test('C24 65abb00a#4 65abb00a#5 f10cb06a#3 f10cb06a#4 + C16 65abb00a#2: the AGEN
     assert.ok(ask, 'step 5.4 is an ask template');
     assert.strictEqual(ask.options[0], 'Apply the additions and verified fixes (Recommended)');
     assert.match(t, /\*\*a verified fix\*\* - a stale path whose new target this run confirmed on disk/);
-    assert.match(t, /Hold its Rules list against `\.claude\/rules\/` too: a rule file it does not name, or a named rule with no file/);
+    // 65abb00a#1: the check now prints the Rules drift itself (scripts/agents-md-check.js `rule` rows, both directions).
+    assert.match(t, /a named rule with no file and a rule file the list does not name are both `rule` rows/);
+    // f10cb06a#2: a row the user keeps for good is silenced by the check's own marker, written on their word.
+    assert.match(t, /end it with `<!-- agents-md-check: keep -->` - the check then raises no row on it/);
     assert.match(t, /Every `\.env\*` file, `\.env\.example` included, sits behind the install's secret-file read deny/);
     assert.doesNotMatch(t, /env var NAMES a test reads \(`\.env\.example`/);
     assert.match(t, /Before the write, `git ls-files <file>`: an untracked target \(git-ignored, or never added\) has no diff to review and no history to restore/);

@@ -102,9 +102,9 @@ names every file written with its line count.
 
 1. Run the check first (step 7's command): its rows are the stale lines.
 2. Read each listed file whole - they are small - against the outline, and note the sections it lacks
-   that step 3 has facts for (Setup and Key files most often). Hold its Rules list against
-   `.claude/rules/` too: a rule file it does not name, or a named rule with no file, is a drift row
-   the check does not print - list both directions before saying anything about the table.
+   that step 3 has facts for (Setup and Key files most often). Its Rules list is held against
+   `.claude/rules/` by the check: a named rule with no file and a rule file the list does not name
+   are both `rule` rows - read them in both directions before saying anything about the table.
 3. Draft three kinds of change, nothing else:
    - **a verified fix** - a stale path whose new target this run confirmed on disk (a listing, a
      read, `git log --follow`), or a Rules-list row step 2 matched against `.claude/rules/` - fact,
@@ -158,7 +158,9 @@ node "<stack>/scripts/agents-md-check.js" --root .
 ```
 
 - A row on a line this run wrote is this run's bug: fix it and run the check again.
-- A row on a line the user kept (declined in step 5) stays, named in the report.
+- A row on a line the user kept (declined in step 5) stays, named in the report. When the user says
+  the line is right as written for good, end it with `<!-- agents-md-check: keep -->` - the check
+  then raises no row on it, so the next run does not ask again.
 - A `command` row on a program only another OS runs (a PowerShell-only step on macOS) stays, named.
 
 ## 8. Report
