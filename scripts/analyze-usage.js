@@ -2880,7 +2880,7 @@ function computeAggregates(main, agents) {
 // carried a sibling session's denial). The session being analyzed names its own file, so a
 // directory is narrowed to `<session-id>.jsonl` and, when that is absent, to nothing at all: an
 // empty tally is the truth, a neighbour's rows are not. Pass the file directly to bypass this.
-function readBlockLedger(target, sessionId) {
+function readBlockLedger(target, sessionId, transcript) {
   // `given` separates 'no ledger passed' from 'a ledger with no row for this session' - the second
   // is a measured zero, the first is no measurement at all.
   const out = { rows: 0, byHook: {}, firstTs: null, lastTs: null, rowTs: [], given: !!target };
@@ -2888,8 +2888,14 @@ function readBlockLedger(target, sessionId) {
   let files = [];
   try {
     if (fs.statSync(target).isDirectory()) {
-      const own = sessionId ? path.join(target, `${sessionId}.jsonl`) : null;
-      files = own && fs.existsSync(own) ? [own] : [];
+      // The docs root's `hook-blocks/` folder names a ledger `<sid>.jsonl`; a session bundle keeps it beside the transcript
+      // as `hook-blocks-<sid>.jsonl`. Reading only the first gave a bundle folder a silent measured zero (audit
+      // 2026-10-10, 05c925e9: '0 whole-file denial(s)' over a ledger holding 4) - now neither found says so.
+      // In a bundle `<sid>.jsonl` is the transcript itself, never its ledger.
+      const self = transcript ? path.resolve(transcript) : null;
+      const own = sessionId ? [`hook-blocks-${sessionId}.jsonl`, `${sessionId}.jsonl`].map((n) => path.join(target, n)).find((f) => fs.existsSync(f) && path.resolve(f) !== self) : null;
+      files = own ? [own] : [];
+      if (!own) { out.given = false; out.missing = `no ledger file for ${sessionId || 'this session'} in ${target}`; }
     } else {
       files = [target];
     }
@@ -2993,7 +2999,7 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
   const newest = findSessionFiles(sessionsDir).filter((f) => !exclude.has(path.basename(f, '.jsonl')))
     .map((f) => ({ f, at: fs.statSync(f).mtimeMs })).sort((a, b) => b.at - a.at).slice(0, TURN_CHECK_WINDOW).map((x) => x.f);
   const doneGate = newDoneGate();
-  for (const f of newest) for (const d of readBlockLedger(blockDir, path.basename(f, '.jsonl')).doneGateRows || []) tallyDoneGate(doneGate, d, () => false);
+  for (const f of newest) for (const d of readBlockLedger(blockDir, path.basename(f, '.jsonl'), f).doneGateRows || []) tallyDoneGate(doneGate, d, () => false);
   const unchecked = doneGate.skillLoaded + doneGate.inContext + doneGate.missed;
   // minimal switches the build check off whatever TURN_CHECK says, so the key it would advise does nothing
   const advise = !on && profile !== 'minimal' && unchecked >= TURN_CHECK_THRESHOLD;
@@ -3411,7 +3417,7 @@ function efficiencyRows(main, agg, blockLedger) {
     // permission route, so it is the fallback and says so.
     const denials = blockLedger && blockLedger.given
       ? `${(blockLedger.byHook[WHOLE_FILE_HOOK] || { blocks: 0 }).blocks} whole-file denial(s) (hook-block ledger)`
-      : `${agg.wholeFileBracket || 0} whole-file denial(s) (transcript bracket - pass --hook-blocks for the ledger)`;
+      : `${agg.wholeFileBracket || 0} whole-file denial(s) (transcript bracket - ${blockLedger && blockLedger.missing ? `${blockLedger.missing}` : 'pass --hook-blocks for the ledger'})`;
     rows.push({ practice: 'navigation', measured: `${n.located} of ${n.reads} source-file read(s) had a locate step in the ${NAV_WINDOW} calls before${n.reads ? ` (${Math.round((100 * n.located) / n.reads)}%)` : ''}; symbol tools ${n.symbolCalls} call(s) against ${n.grepLocated} grep-then-read sequence(s); ${denials}`, tests: 'alfred-navigation, main and seats: locate with serena or the LSP, then read the range - a read with no locate step before it reads to FIND something, a grep-then-read answers a symbol question by name-match, and every whole-file denial is a round trip lost' });
   }
   {
@@ -3622,6 +3628,7 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
     }
     console.log(`  ${blockLedger.rows} block(s) total - review each distinct reason on its own; two reasons naming two files are two causes.`);
   }
+  if (blockLedger && blockLedger.missing) console.log(`\nHOOK BLOCKS: ${blockLedger.missing} (looked for <sid>.jsonl and hook-blocks-<sid>.jsonl) - no measurement, never a zero`);
   if (blockLedger && blockLedger.doneGate) console.log('\n' + doneGateLine(blockLedger.doneGate));
   if (blockLedger && blockLedger.rootCause) console.log((blockLedger.doneGate ? '' : '\n') + rootCauseLine(blockLedger.rootCause));
   if (blockLedger && blockLedger.correction) console.log((blockLedger.doneGate || blockLedger.rootCause ? '' : '\n') + correctionLine(blockLedger.correction));
@@ -3936,6 +3943,8 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
       }
     }
     out.push('', `${blockLedger.rows} block(s) total.`, '');
+  } else if (blockLedger && blockLedger.missing) {
+    out.push(`_${blockLedger.missing} (looked for \`<sid>.jsonl\` and \`hook-blocks-<sid>.jsonl\`) - no measurement, never a zero. Pass the ledger file itself._`, '');
   } else {
     out.push('_No ledger rows. That means EITHER no guard fired OR the ledger was never written - say which, do not infer. The transcript alone records which TOOL was denied, never which hook._', '');
     out.push('_This is a QUESTION to answer here, in one line, from the ledger test you ran: `no guard fired` (the ledger path was absent AND the Tools table shows no `hook-blk`), or `ledger absent` (there ARE hook-blk denials and the hook that fired is unavailable). Shipped unanswered, verbatim, in audited bundles._', '');
@@ -4211,7 +4220,7 @@ async function runAnalysis() {
     const probeSum = blockDir ? { doneGate: newDoneGate(), rootCause: newRootCause(), correction: newCorrection(), rationalization: newRationalization() } : null;
     for (const f of files) {
       if (probeSum) {
-        const led = finishProbes(readBlockLedger(blockDir, path.basename(f, '.jsonl')), f);
+        const led = finishProbes(readBlockLedger(blockDir, path.basename(f, '.jsonl'), f), f);
         for (const [k, sum] of Object.entries(probeSum)) if (led[k]) for (const n of Object.keys(sum)) sum[n] += led[k][n];
       }
       const s = await analyzeTranscript(f, window);
@@ -4259,7 +4268,7 @@ async function runAnalysis() {
   // ONE ledger read, handed to every emitter. --report-md and --json used to drop it entirely,
   // so the bundle reports that quote the markdown - the ones the sweeps actually read - carried no
   // guard-block section at all (7 confirmations), while the terminal report had it.
-  const blockLedger = finishProbes(readBlockLedger(blockDir, path.basename(target, '.jsonl')), target);
+  const blockLedger = finishProbes(readBlockLedger(blockDir, path.basename(target, '.jsonl'), target), target);
   const invAcc = newInventoryUse(loadPlugins(pluginsFile));
   addSessionUse(invAcc, mainStats, agents, inventoryDir);
   const invUse = finishInventoryUse(invAcc);

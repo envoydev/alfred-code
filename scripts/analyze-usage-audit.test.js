@@ -316,6 +316,28 @@ test('C07: the ledger row carries tool_use_id and agent_id, and the join reads i
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// C07 (05c925e9): a session bundle keeps its block ledger as `hook-blocks-<sid>.jsonl` beside the transcript; passing
+// the bundle folder read nothing and printed a measured '0 whole-file denial(s)'.
+test('C07: --hook-blocks on a bundle folder reads hook-blocks-<sid>.jsonl, and a folder with no ledger says so', () => {
+  const dir = tmp();
+  try {
+    const sid = '11111111-2222-4333-8444-555555555555';
+    const file = write(dir, [asst('m1', T(0), [tool('r1', 'Read', { file_path: '/p/Big.cs' })]), res(T(1), 'r1', 'Blocked: whole-file Read', true)], `${sid}.jsonl`);
+    fs.writeFileSync(path.join(dir, `hook-blocks-${sid}.jsonl`), line({ ts: T(0), hook: 'guard-read-whole-file.js', event: 'PreToolUse', tool: 'Read', reason: 'whole-file Read of Big.cs' }));
+    const j = run([file, '--hook-blocks', dir]).hookBlocks;
+    assert.deepStrictEqual([j.rows, j.given], [1, true]);
+    assert.match(text([file, '--hook-blocks', dir]), /1 whole-file denial\(s\) \(hook-block ledger\)/);
+    const empty = fs.mkdtempSync(path.join(dir, 'none-'));
+    const k = run([file, '--hook-blocks', empty]).hookBlocks;
+    assert.deepStrictEqual([k.rows, k.given], [0, false], 'no file read is no measurement');
+    assert.match(k.missing, /^no ledger file for 11111111-2222-4333-8444-555555555555 in /);
+    const out = text([file, '--hook-blocks', empty]);
+    assert.match(out, /whole-file denial\(s\) \(transcript bracket - no ledger file for /);
+    assert.match(out, /HOOK BLOCKS: no ledger file for .* - no measurement, never a zero/);
+    assert.match(text([file, '--hook-blocks', empty, '--report-md']), /_no ledger file for .* - no measurement, never a zero\. Pass the ledger file itself\._/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // C05: a commit that opens its own line of a multi-line call (390aebcb, 49cb4b82, f6c591fa: 'git commits 0' over a
 // receipted commit). A heredoc message naming the commit verb still counts nothing.
 test('C05: a git commit or gh pr merge on a later line of a multi-line call counts; a heredoc body never does', () => {
