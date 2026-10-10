@@ -76,9 +76,10 @@ test('M32 the verifiers, the integration reviewer and the solve flow spell the n
         assert.doesNotMatch(text, /\(`get_symbols_overview` \/ `find_symbol`\)/, f);
         assert.match(text, /reopen it through the navigation server \(`mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview` \/ `mcp__plugin_alfred-navigation_alfred-navigation__find_symbol`\)/, f);
     }
-    const solve = read('stack/skills/task-solve/SKILL.md');
-    assert.doesNotMatch(solve, /`write_memory\(/);
-    assert.match(solve, /`mcp__plugin_alfred-navigation_alfred-navigation__write_memory\('<feature>\/<contract_version>\/<seat>\/<task>'/);
+    // The agents-mode dispatch rules moved to the step mechanics (usage audit 2026-10-10: the body sits at its cap).
+    for (const f of ['stack/skills/task-solve/SKILL.md', 'stack/skills/task-solve/references/step-mechanics.md'])
+        assert.doesNotMatch(read(f), /`write_memory\(/, f);
+    assert.match(read('stack/skills/task-solve/references/step-mechanics.md'), /`mcp__plugin_alfred-navigation_alfred-navigation__write_memory\('<feature>\/<contract_version>\/<seat>\/<task>'/);
 });
 
 // M39: serena 1.7.0's list_memories(topic) lists the FOLDER <memories>/<topic>/ and nothing else
@@ -125,9 +126,12 @@ test('M39 the handoff notes are named as topic folders the server can filter', (
     const reuse = read('stack/skills/task-solve-cross/references/capability-reuse.md');
     assert.doesNotMatch(reuse, /prefix-matches/);
     assert.match(reuse, /`list_memories` with `topic: '<feature>\/<contract_version>'`/);
+    // Usage audit 2026-10-10 (C20): the cycle note was a second cursor nobody kept fresh - the plan's Resume line
+    // is the one cursor now, and the server holds only the seats' folder-named hand-offs.
     const solve = read('stack/skills/task-solve/SKILL.md');
-    assert.match(solve, /`write_memory` named `<feature>\/cycle`/);
-    assert.match(solve, /cycle note 'csv-export\/cycle'/);
+    assert.doesNotMatch(solve, /`write_memory` named `<feature>\/cycle`/);
+    assert.match(solve, /\(`<feature>\/<contract_version>\/<seat>\/<task>`\), never a second cursor/);
+    assert.match(solve, /Resume: step 4 BUILD - mode session - next task 2/);
     assert.match(read('stack/skills/loop-quality/references/delegated-mode.md'), /named `<feature>\/<contract_version>\/<seat>\/<task>`/);
 });
 

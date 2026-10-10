@@ -45,6 +45,7 @@ Resume: next task 1
 ## Decisions
 
 - <the choice> - precedent: <file:symbol or named rule> | no precedent - <reason>
+- <a change to what the user sees that Asked: does not name> - asked: <the user's answer>
 ```
 
 ## The task card
@@ -63,15 +64,19 @@ Resume: next task 1
 The design writes the header, the fit, the cards at `status: TODO` and the ledger. The rest is
 stamped later by the flow that owns it, never pre-filled:
 
-- `Gated: <verdict>` from the plan review, then ONE `Approved:` line under the header, in either of
+- The plan review's eight-field block, its `Gated: <verdict>` line last, then ONE `Approved:` line under the header, in either of
   two shapes: `Approved: <date> - mode <session|agents>` from `task-solve`'s approval ask, or
   `Approved: <date> - "<the user's words, verbatim>"` when `task-implement` runs on its own.
 - Each card's status: `IN_PROGRESS` before its code; `DONE (<the acceptance command's quoted
   result>)` after its gate; `IN_PROGRESS` plus `needs: <the run>` while a run it depends on has not
   happened; `FAILED` plus the ask.
 - The `Resume:` line, rewritten after every task tick (next task plus any mid-task state) - never
-  more than one task stale.
+  more than one task stale. Inside the solve flow it is the one cursor and leads with the step and
+  the modes (`Resume: step 4 BUILD - mode session - next task 2`), rewritten at every stop too.
 - `Completed: <date>` with the per-task evidence table, which closes the file.
+
+A prior plan consulted as a format reference is read scoped - the header plus one task entry, never the
+whole file, and never another ticket's plan in place of this shape.
 
 ## What a plan never carries
 

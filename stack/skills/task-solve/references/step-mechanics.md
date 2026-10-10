@@ -1,11 +1,23 @@
 # Solve Task - step mechanics
 
 Read by `task-solve` at step 3 APPROVE, before the approve ask is built; complete on its own.
-Five rules live here, each applied at the step named: the mode-fit rule (step 3), the APPROVAL
-stamp's write mechanics and lifetime (step 3 onward), the build bar (step 4), the reviewer-fit
-rule (the step-4 stop) and the doc-drift surface list (step 6). The
+The rules here are each applied at the step named: the mode-fit rule (step 3), the APPROVAL
+stamp's write mechanics and lifetime (step 3 onward), the agents-mode dispatch rules and the build
+bar (step 4), the reviewer-fit rule (the step-4 stop), and the purge, the sibling hand-off and the
+doc-drift surface list (step 6). The
 step-3 stop's `Result:` line carries `mechanics: read` - the line that proves this file was loaded
 this cycle, not remembered from an earlier one.
+
+## Contents
+
+- Mode fit - the step-3 approve ask
+- The APPROVAL stamp - writing it, and its lifetime
+- Agents-mode dispatch - step 4
+- The build bar - both modes
+- Reviewer fit - the step-4 stop's recommendation
+- The step-6 memory purge
+- The sibling hand-off - step 6
+- Doc-drift surfaces - the step-6 close line
 
 ## Mode fit - the step-3 approve ask
 
@@ -43,6 +55,32 @@ are in `SKILL.md`; these are the mechanics around them.
   delete-when-fan-out-completes applies to per-plan APPROVED stamps, and a step-5 punch-list
   re-dispatch under AUTO rides the still-live waiver.
 
+## Agents-mode dispatch - step 4
+
+Each task card goes to its stack's `<stack>-implementer` seat, dispatched exactly as the roster
+spells it (`alfred-code:<seat>` where the core plugin carries it) - a flat fan-out with the main
+session the only orchestrator:
+
+- **The stamp first.** Write the approval gate file first - first line `APPROVED <contract_version> - "<the step-3 answer, verbatim>"`
+  (the dispatch hook blocks an unstamped implementer) - and DELETE it when the fan-out completes,
+  before the step-5 stop: a live stamp can authorize an unrelated dispatch for up to 8h.
+- **The contract version.** MINT it - `<the plan's Approved: date>-<plan slug>` - and put it in EVERY
+  dispatch prompt verbatim, with the seat's memory-handoff line:
+  `mcp__plugin_alfred-navigation_alfred-navigation__write_memory('<feature>/<contract_version>/<seat>/<task>', ...)`.
+- **The card's docs anchors ride the brief** - the `docs.js where <file>` section ids the design
+  read for the card's files - so the seat reads those sections instead of re-orienting or skipping
+  it (measured: 0 docs reads in 18 of 18 seat transcripts whose briefs named none).
+- **No isolation.** Dispatch into the shared tree, never a separate worktree: the seats build on the
+  plan, keys and files this cycle has not committed, which a worktree cut from HEAD does not hold
+  (measured: a worktree seat stopped and re-dispatched).
+- **No `model:` override.** The seat's frontmatter pin is its model; a dispatch names one only when
+  the user did. An execution method the user named (a subagent-driven one) sets the ORDER of the
+  dispatches, never the seat type or its model (measured: 19 of 19 dispatches overridden).
+- **Fast seat gates.** Each seat's green gate stays fast - build + fast tests, never integration
+  replays or another minutes-long run; the slow full run happens once, in this session, at the
+  step-5 review / step-6 done-gate. A red build/test routes per the repair-agent rules; tick the
+  same plan file per task as reports land.
+
 ## The build bar - both modes
 
 Both modes build to the bar `task-implement` and every `<stack>-implementer` seat carry - the
@@ -68,8 +106,20 @@ this flow. The user can inspect the diff themselves at this stop before answerin
 
 **The purge is counted, not claimed.** At close, from the project root: `node -e "const fs=require('fs');const f=process.argv[1];let n=0;function walk(d,rel){let es=[];try{es=fs.readdirSync(d,{withFileTypes:true})}catch(e){return}for(const e of es){const r=rel?rel+'/'+e.name:e.name;if(e.isDirectory())walk(d+'/'+e.name,r);else if(e.name.endsWith('.md')){if(r.startsWith(f+'/'))n++;else if(r.startsWith(f+'__'))n++}}}walk((process.env.ALFRED_CODE_DATA_PATH||'.alfred')+'/serena/memories','');walk('.serena/memories','');console.log(n)" <feature>` with the feature's slug - it counts what is left of the feature's navigation-server notes (the `<feature>/` folder, the cycle note included, and a pre-2.1.6 run's flat `<feature>__*` notes), in node so no `find` first on PATH decides it. Above zero the close is not done - delete the rest, then count again.
 
+## The sibling hand-off - step 6
+
+A change a sibling repo must follow is written as a task card under
+`<docs-path>/cross-project-tasks/` (the cross-project write guard blocks the sibling's tree), or a
+navigation-server note, after reading the sibling's actual source. The close then prints it beside
+the card as ONE fenced markdown block ready to paste into the sibling's session - first line
+`Open in: <the sibling's root>`, then the card's text - so nobody has to ask for it inline (measured:
+the 12th 'write it here as markdown' ask in one project, each a full-context turn). A reply drafted for
+another session waits for the commit / publish answer, so every id it quotes is final.
+
 ## Doc-drift surfaces - the step-6 close line
 
 An architecture-critical surface, any one of which earns the close report's one-line pointer to
 the architecture capture: a schema / EF migration, a new module or project, a moved boundary or
 dependency direction, a changed cross-stack seam or eventing contract, a new external dependency.
+Such a change names `/capture-architecture` (diff-scoped, cheap); substantial code + tests with the
+coverage doc absent or stamped before the change names `/capture-test-coverage`.

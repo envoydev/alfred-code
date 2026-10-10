@@ -377,8 +377,9 @@ test('solve resumes by the feature topic and closes on the counted purge', () =>
     const solve = flat(skill('task-solve'));
     assert.match(solve, /\*\*On invocation, resume before starting:\*\* `list_memories` with `topic: '<feature>'`/);
     assert.doesNotMatch(solve, /Delete or archive the cycle note/);
-    assert.match(solve, /`mcp__plugin_alfred-navigation_alfred-navigation__delete_memory` each note under `topic: '<feature>'` \(cycle and seat notes\) plus a pre-2\.1\.6 run's flat `<feature>__\*`/);
-    assert.match(solve, /in the close report, then the purge count \(`references\/step-mechanics\.md`\)/);
+    assert.match(solve, /`mcp__plugin_alfred-navigation_alfred-navigation__delete_memory` each note under `topic: '<feature>'` plus a pre-2\.1\.6 run's flat `<feature>__\*` - then the purge count \(`references\/step-mechanics\.md`\)/);
+    // Usage audit 2026-10-10 (C20): the receipt rides the close stop's Result field, where the stop check reads.
+    assert.match(solve, /The close stop's `Result:` line carries the receipts - `Completed <date>, memories purged: <names\|none>`/);
     const line = (text) => (/The purge is counted, not claimed\.\*\* At close, from the project root: `([^`]+)`/.exec(text) || [])[1];
     const own = line(flat(read('stack/skills/task-solve/references/step-mechanics.md')));
     assert.ok(own, 'the step mechanics carry the purge count line');

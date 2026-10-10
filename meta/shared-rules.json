@@ -21,7 +21,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/task-solve/SKILL.md",
+          "file": "stack/skills/task-solve/references/step-mechanics.md",
           "marker": "never integration replays or another minutes-long run; the slow full run happens once, in this session"
         },
         {
@@ -6644,6 +6644,10 @@
         },
         {
           "file": "stack/skills/task-solve/SKILL.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
+          "file": "stack/skills/task-solve/references/step-mechanics.md",
           "marker": "exactly as the roster spells it"
         },
         {

@@ -227,7 +227,8 @@ test('task-solve: the AUTO stamp ends with the session; a resumed session re-wri
 
 // MINOR task-solve:172: the agents-mode stamp's first line is given, not learned from a bounce.
 test('task-solve: the agents-mode approval stamp names its first line', () => {
-    assert.match(flat(skill('task-solve')), /Write the approval gate file first - first line `APPROVED <contract_version> - "<the step-3 answer, verbatim>"`/);
+    // Usage audit 2026-10-10: the agents-mode dispatch rules live in the step mechanics, read at step 3.
+    assert.match(flat(read('stack/skills/task-solve/references/step-mechanics.md')), /Write the approval gate file first - first line `APPROVED <contract_version> - "<the step-3 answer, verbatim>"`/);
     assert.deepStrictEqual(registryFindings('approval-gate-stamp'), []);
 });
 
