@@ -338,6 +338,27 @@ test('C07: --hook-blocks on a bundle folder reads hook-blocks-<sid>.jsonl, and a
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// C07 (229e2715, b35afe70): `--check-report` printed clean over a TOKEN VERDICT whose avoidable share was a word.
+test('C07: --check-report fails a TOKEN VERDICT that states no avoidable <N> of <M> with a percent', () => {
+  const dir = tmp();
+  try {
+    const report = (verdict) => {
+      const f = path.join(dir, 'report-usage.md');
+      fs.writeFileSync(f, ['# Stack usage report', '', '## Tokens (deduped per API message)', '', '| scope | cache-read | avoidable |', '|---|---|---|',
+        '| main session | 40.2M | 672k |', '| share | 1.7% | |', '', '## Verdict', '', verdict, ''].join('\n'));
+      try { return { status: 0, out: execFileSync('node', [SCRIPT, '--check-report', f], { encoding: 'utf8' }) }; } catch (e) { return { status: e.status, out: String(e.stdout) }; }
+    };
+    const vague = report('- **TOKEN VERDICT**: delivered a fix / cost 40.2M / avoidable: the resume reads, small. PASS.');
+    assert.strictEqual(vague.status, 1);
+    assert.match(vague.out, /TOKEN VERDICT without a share +line 12 - needs 'avoidable <N> of <M> tok, <P>%'/);
+    const none = report('- **TOKEN VERDICT: PASS (small spend, delivered).** Delivered a fix / cost 40.2M');
+    assert.strictEqual(none.status, 1, 'a verdict with no avoidable clause at all fails too');
+    const measured = report('- **TOKEN VERDICT**: delivered a fix / cost 40.2M / avoidable 672k of 40.2M tok, 1.7%. PASS.');
+    assert.strictEqual(measured.status, 0, measured.out);
+    assert.match(measured.out, /clean - .*the TOKEN VERDICT states its avoidable share/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // C05: a commit that opens its own line of a multi-line call (390aebcb, 49cb4b82, f6c591fa: 'git commits 0' over a
 // receipted commit). A heredoc message naming the commit verb still counts nothing.
 test('C05: a git commit or gh pr merge on a later line of a multi-line call counts; a heredoc body never does', () => {

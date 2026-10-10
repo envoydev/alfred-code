@@ -4077,8 +4077,19 @@ function checkReport(file) {
       }
     });
   }
-  return { file, rows: judgment, badLocators, transcript, transcriptLines };
+  // The skeleton's TOKEN VERDICT asks for `avoidable <N of M tok, P%>`, a measured share; a verdict that says 'small' or
+  // 'none' with no number printed clean (audit 2026-10-10, 229e2715 and b35afe70: the measured share was 1.7%).
+  const verdicts = [];
+  lines.forEach((line, i) => {
+    if (!/TOKEN VERDICT/.test(line) || /^\s*[_>]/.test(line)) return;
+    const after = (/\bavoidable\b([\s\S]*)$/i.exec(line) || [])[1];
+    const share = after != null && AVOIDABLE_SHARE_RE.test(after) && /\d(?:[\d.,]*)\s*%/.test(after);
+    if (!share) verdicts.push({ line: i + 1, text: line.trim().replace(/\s+/g, ' ').slice(0, 120) });
+  });
+  return { file, rows: judgment, badLocators, verdicts, transcript, transcriptLines };
 }
+// `<N> of <M>`: two measured amounts, each a number with an optional unit (`~4.8M of 16.5M`, `672k of 40.2M tok`).
+const AVOIDABLE_SHARE_RE = /~?\$?\d[\d.,]*\s*[kKmMbB]?\s*(?:tok(?:ens)?\s*)?of\s+~?\$?\d[\d.,]*/;
 
 function printCheckReport(res) {
   console.log(`CHECK-REPORT ${res.file}`);
@@ -4088,9 +4099,10 @@ function printCheckReport(res) {
     for (const r of res.rows) console.log(`  ${pad(r.section.slice(0, 28), 28)} ${pad(r.line, 6)} ${pad(r.tok, 10)} ${r.text}`);
   }
   for (const b of res.badLocators) console.log(`  locator out of range  line ${b.line}  ${b.locator} - the transcript has ${res.transcriptLines} rows: ${b.text}`);
-  const n = res.rows.length + res.badLocators.length;
-  if (!n) { console.log('  clean - every number in a judgment section traces to a machine row of this report or carries a resolvable L<n>'); return 0; }
-  console.log(`  ${n} unsourced number(s) - each must quote a machine table row of THIS report or carry an L<n> locator that resolves. The run is not done while this prints a row.`);
+  for (const v of res.verdicts || []) console.log(`  TOKEN VERDICT without a share  line ${v.line} - needs 'avoidable <N> of <M> tok, <P>%' from the rows above: ${v.text}`);
+  const n = res.rows.length + res.badLocators.length + (res.verdicts || []).length;
+  if (!n) { console.log('  clean - every number in a judgment section traces to a machine row of this report or carries a resolvable L<n>, and the TOKEN VERDICT states its avoidable share'); return 0; }
+  console.log(`  ${n} finding(s) - each number must quote a machine table row of THIS report or carry an L<n> locator that resolves, and the TOKEN VERDICT must state 'avoidable <N> of <M> tok, <P>%'. The run is not done while this prints a row.`);
   return 1;
 }
 
