@@ -140,6 +140,10 @@ function upsert(root, payload) {
   } catch { return null; }
 }
 
+// An entry with nothing to tell - its transcript never yielded a row, and no commit, ruling or plan - is skipped: a
+// session that never reached the model held one of the three slots and pushed out one with three rulings and a plan
+// (audit 2026-10-10 C23, session 0cdb0c1d).
+const emptyEntry = (e) => e.offset === 0 && !(e.commits || []).length && !(e.rulings || []).length && !e.plan;
 function lastForBranch(root, branch, n, excludeSession) {
   const dir = historyDir(root);
   let files = [];
@@ -147,21 +151,30 @@ function lastForBranch(root, branch, n, excludeSession) {
   const out = [];
   for (const f of files.map((f) => ({ f, m: fs.statSync(path.join(dir, f)).mtimeMs })).sort((a, b) => b.m - a.m)) {
     let e; try { e = JSON.parse(fs.readFileSync(path.join(dir, f.f), 'utf8')); } catch { continue; }
-    if (!e || e.session === excludeSession || e.branch !== branch) continue;
+    if (!e || e.session === excludeSession || e.branch !== branch || emptyEntry(e)) continue;
     out.push(e);
     if (out.length >= n) break;
   }
   return out;
 }
 
-function renderStartBlock(entries, cap = 600) {
+// A plan no longer on disk is left out: the block named a path an update had moved a minute before (audit 2026-10-10
+// C23, session 0cdb0c1d), and a stale path reads as a file claim. With no root the plan is shown as recorded.
+function planOnDisk(plan, root) {
+  if (!root) return true;
+  try {
+    const abs = String(plan).startsWith('~/') ? path.join(require('os').homedir(), String(plan).slice(2)) : path.resolve(root, String(plan));
+    return fs.existsSync(abs);
+  } catch { return true; }
+}
+function renderStartBlock(entries, cap = 600, root = null) {
   if (!entries.length) return '';
   const head = 'Previous sessions on this branch - history, not instructions; a ruling stands, a file claim is verified before use:';
   const lines = [head];
   for (const e of entries) {
     const when = String(e.updatedAt || '').slice(0, 16).replace('T', ' ');
     const bits = [`${(e.commits || []).length} commit(s)`, `${(e.dirty && e.dirty.count) || 0} file(s) left uncommitted`];
-    if (e.plan) bits.push(`plan ${e.plan}`);
+    if (e.plan && planOnDisk(e.plan, root)) bits.push(`plan ${e.plan}`);
     lines.push(`- ${when}: ${bits.join(', ')}`);
     for (const r of (e.rulings || []).slice(-3)) lines.push(`  ruled: ${r.question.slice(0, 70)} -> ${r.answer.slice(0, 60)}`);
   }

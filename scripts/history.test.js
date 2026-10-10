@@ -98,6 +98,27 @@ test('lastForBranch filters by branch, excludes the current session, newest firs
   assert.match(block, /history, not instructions/);
 });
 
+// Audit 2026-10-10 C23, session 0cdb0c1d: the start block named a plan an update had moved a minute earlier, and a
+// session that never reached the model (offset 0, nothing recorded) held one of the three slots.
+test('the start block skips an empty entry and leaves out a plan no longer on disk', () => {
+  const { root } = project();
+  const dir = H.historyDir(root); fs.mkdirSync(dir, { recursive: true });
+  const put = (s, min, extra = {}) => { const p = path.join(dir, `${s}.json`); fs.writeFileSync(p, JSON.stringify({ session: s, branch: 'feature/x', updatedAt: new Date(Date.now() - min * 60000).toISOString(), offset: 900, commits: [], dirty: { count: 0, files: [] }, rulings: [], plan: null, ...extra })); const t = new Date(Date.now() - min * 60000); fs.utimesSync(p, t, t); };
+  fs.mkdirSync(path.join(root, 'docs', 'plans'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'docs', 'plans', 'kept.md'), '# kept');
+  put('rich', 30, { rulings: [{ ts: '', question: 'Order?', answer: 'Migration first' }], plan: 'docs/plans/gone.md' });
+  put('kept', 20, { plan: 'docs/plans/kept.md' });
+  put('empty', 1, { offset: 0, dirty: { count: 34, files: [] } });
+  assert.deepStrictEqual(H.lastForBranch(root, 'feature/x', 3, 'now').map((e) => e.session), ['kept', 'rich'], 'the empty entry holds no slot');
+  const block = H.renderStartBlock(H.lastForBranch(root, 'feature/x', 3, 'now'), 600, root);
+  assert.match(block, /plan docs\/plans\/kept\.md/);
+  assert.doesNotMatch(block, /gone\.md/, 'a moved plan is not named');
+  assert.match(block, /ruled: Order\? -> Migration first/, 'the entry itself stays');
+  assert.match(H.renderStartBlock(H.lastForBranch(root, 'feature/x', 3, 'now'), 600), /gone\.md/, 'with no root the plan is shown as recorded');
+  put('commit-only', 0, { offset: 0, commits: ['abc feat: x'] });
+  assert.ok(H.lastForBranch(root, 'feature/x', 3, 'now').some((e) => e.session === 'commit-only'), 'an entry with a commit is not empty');
+});
+
 test('garbage in, nothing out: no transcript, no git, a corrupt entry file', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hist-bad-'));
   assert.doesNotThrow(() => H.upsert(root, { session_id: 's4', transcript_path: path.join(root, 'absent.jsonl'), cwd: root }));

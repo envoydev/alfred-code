@@ -648,8 +648,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     directory) and the user's AskUserQuestion answers (credential shapes scrubbed, 300 chars each, 60 kept); its git
     calls run lock-free (`GIT_OPTIONAL_LOCKS=0`) at 1.5s each, so five stay inside the 10s timeout (audit 2026-10-08);
     at `SessionStart` it injects the last
-    three records of the SAME branch in at most 600 chars, framed as history, never instructions, and
-    prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off.
+    three records of the SAME branch in at most 600 chars, framed as history, never instructions - a record that read no
+    transcript row and holds no commit, ruling or plan takes no slot, and a plan no longer on disk is left out (audit
+    2026-10-10 C23) - and prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off.
   - Formatter after an edit: DECLINED (hooks audit 2026-10-08, coverage map) - no measured incident; formatting is
     the project's lint and the verifier's job, and a PostToolUse formatter rewrites files under the model between its
     own edits, so the next `old_string` misses.
