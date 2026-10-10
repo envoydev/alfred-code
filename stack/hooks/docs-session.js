@@ -650,9 +650,14 @@ function projectWrites(command) {
   }
   return out;
 }
+// An interpreter write through a computed path is UNKNOWN_SOURCE_WRITE; a `$NAME` target is expanded from the same
+// command's assignment, and one still holding a `$` names no file - it filled COMPACT-STATE's 'files written' with
+// `$S/demo.pw` and `$G` (audit 2026-10-10, sessions 68da4b6b, 758ce661).
 function writeTargets(command) {
   if (!shellReader) return [];
-  const out = shellReader.scanShell(String(command), {}).targets.map((t) => t.raw).filter((t) => t && !t.startsWith('/dev/null'));
+  const scan = shellReader.scanShell(String(command), {});
+  const out = scan.targets.map((t) => (t.unknown ? UNKNOWN_SOURCE_WRITE : scan.expandVars(String(t.raw || ''))))
+    .filter((t) => t && !t.startsWith('/dev/null') && (t === UNKNOWN_SOURCE_WRITE || !t.includes('$')));
   return [...new Set([...out, ...projectWrites(command)])];
 }
 const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.relative(root, path.resolve(root, p.replace(/^['"]|['"]$/g, ''))))).filter((p) => p && !p.startsWith('..')))];

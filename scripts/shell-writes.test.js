@@ -278,3 +278,44 @@ test('dequote: a bare Windows path on win32 keeps its backslashes - bash escapes
   assert.strictEqual(shell.dequote('C:\\a\\$HOME', 'win32'), 'C:a$HOME', 'an expansion inside keeps the shell reading');
   assert.strictEqual(shell.dequote('plain\\ space', 'win32'), 'plain space', 'a word that is no Windows path is bash\'s');
 });
+
+// audit 2026-10-10 C13: what a shell write names, read the way the shell and the runtime run it
+test('audit 2026-10-10 C13: an interpreter write through a bound name, a computed path and the shell spellings that are no path', () => {
+  const targets = (c, cwd) => shell.scanShell(c, cwd ? { cwd } : {}).targets.map((t) => (t.unknown ? '<unknown>' : t.raw));
+  // python's `p = '<literal>'` then `open(p, 'w')`, node's `const f = '...'` then writeFileSync(f): the literal
+  assert.deepStrictEqual(targets("python3 - <<'EOF'\np='libs/ui/src/lib/x.ts'\ns=open(p).read()\nopen(p,'w').write(s.replace('a','b'))\nEOF"), ['libs/ui/src/lib/x.ts']);
+  assert.deepStrictEqual(targets("node -e \"const f='src/a.js'; require('fs').writeFileSync(f, 'x')\""), ['src/a.js']);
+  assert.deepStrictEqual(targets("python3 - <<'EOF'\np='apps/a.ts'\nPath(p).write_text('x')\nEOF"), ['apps/a.ts']);
+  // a path the script computes is still a write - one unknown row
+  assert.deepStrictEqual(targets("python3 - <<'EOF'\nfor p in files:\n  open(p,'w').write('x')\nEOF"), ['<unknown>']);
+  assert.deepStrictEqual(targets("python3 - <<'EOF'\nopen(f'{root}/a.ts','w').write('x')\nEOF"), ['<unknown>']);
+  assert.ok(shell.isVar(shell.UNKNOWN_WRITE), 'the unknown row is spelled as a variable, so a guard that skips $NAME skips it');
+  // a read is no write
+  assert.deepStrictEqual(targets("python3 - <<'EOF'\np='a.ts'\nprint(open(p).read().count('x'))\nEOF"), []);
+  // sed scripts with another delimiter and an address's text command are scripts, not paths
+  assert.deepStrictEqual(targets("sed -i '' 's#a#b#g' src/a.ts"), ['src/a.ts']);
+  assert.deepStrictEqual(targets("sed -i '' 's|a|b|' src/a.ts"), ['src/a.ts']);
+  assert.deepStrictEqual(targets("sed -i '' '/^Build waves/a\\\n X' plan.md"), ['plan.md'], 'a\\ with the text on the next line (0498718d)');
+  assert.deepStrictEqual(targets("sed -i '' '/^    \"order_not_in_process\": /a\\    \"x\": 1,' apps/consumer/public/i18n/en.json"), ['apps/consumer/public/i18n/en.json'], 'one-line a\\ (fbfc2de4)');
+  assert.deepStrictEqual(targets("sed -i '' '3i\\\nnew line' f.txt"), ['f.txt']);
+  assert.deepStrictEqual(targets("sed -i '' 's/a/b/' /tmp/s.a.b.ts"), ['/tmp/s.a.b.ts'], 'a dotted file name stays a path');
+  assert.deepStrictEqual(targets("sed -i '' 's/x/y/' /tmp/a"), ['/tmp/a'], 'a one-letter file stays a path');
+  // chmod's mode and chown's owner are no path
+  assert.deepStrictEqual(targets('chmod +x pw.sh'), ['pw.sh'], '758ce661');
+  assert.deepStrictEqual(targets('chmod -R 755 dist'), ['dist']);
+  assert.deepStrictEqual(targets('chmod u+x,g-w a b'), ['a', 'b']);
+  assert.deepStrictEqual(targets('chmod --reference=a.sh b.sh'), ['b.sh']);
+  assert.deepStrictEqual(targets('chown me:staff f'), ['f']);
+  // an array assignment is no subshell running the file (bba03dad)
+  const dir = fs.mkdtempSync(path.join(TMP, 'arr-'));
+  fs.writeFileSync(path.join(dir, 'checklist.md'), 'build > out.txt\nrm -rf /\n');
+  assert.deepStrictEqual(targets('LIVE=(checklist.md); echo ok', dir), [], 'NAME=(file) is an array');
+  assert.deepStrictEqual(targets('arr+=(a "b c)" d); (cd x && rm -f y)', dir), ['y'], 'a quoted ) inside it, then a real subshell');
+});
+
+test('audit 2026-10-10 C13: a git tag listing reads; a new or deleted tag writes', () => {
+  const writes = (c) => shell.scanShell(c, {}).gitWrites.length;
+  for (const c of [`${G} tag --contains abc123`, `${G} tag -l 'v*'`, `${G} tag --points-at HEAD`, `${G} tag --merged main`, `${G} tag -n5`, `${G} tag`, `${G} tag --sort=-creatordate`])
+    assert.equal(writes(c), 0, c);
+  for (const c of [`${G} tag v1.2.3`, `${G} tag -a v1 -m x`, `${G} tag -d v1`, `${G} tag --delete v1 --contains x`]) assert.equal(writes(c), 1, c);
+});

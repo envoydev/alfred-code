@@ -2218,7 +2218,16 @@ try { shellWrites = require(pathMod.join(__dirname, 'shell-writes.js')); } catch
 if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.command === 'string') {
   // Runs FIRST and on EVERY Bash call, not just the dump verbs: a grep, a build and a test run all
   // name the files whose conventions the session needs, and none of them reaches the checks below.
-  try { announceRules(stripHeredocsOf(String((payload.tool_input || {}).command || ''))); } catch { /* an injection never breaks the gate */ }
+  // ... plus the write targets shell-writes.js reads, an interpreter script's own writes among them (`p = '<file>'` then
+  // `open(p, 'w')` in a `python3 - <<'EOF'` splice - audit 2026-10-10, session 81264f0d: 14 such edits drew no notice).
+  try {
+    let extra = [];
+    if (shellWrites) {
+      const scan = shellWrites.scanShell(String((payload.tool_input || {}).command || ''), {});
+      extra = scan.targets.filter((t) => !t.unknown).map((t) => scan.expandVars(String(t.raw || ''))).filter((t) => t && !isVar(t));
+    }
+    announceRules(stripHeredocsOf(String((payload.tool_input || {}).command || '')), extra);
+  } catch { /* an injection never breaks the gate */ }
   try {
   // A heredoc body is DATA, not shell: a plan or checklist that merely DESCRIBES a dangerous
   // command is inert text, and matching it blocks a document write for its own prose (reproduced).

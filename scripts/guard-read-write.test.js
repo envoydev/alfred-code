@@ -517,4 +517,7 @@ test('audit 2026-10-10 C11/C13: the rule notice reads no redirect inside quotes 
   assert.equal(announce(`perl -0pi -e 's/see > <name>.spec.ts/x/' notes.md`, s), '', 'a > inside the perl script is text (f10cb06a)');
   assert.equal(announce(`cat > ${path.join(TMP, 'scratch', 'emitter.mjs')} <<'EOF'\nx\nEOF`, sid()), '', 'a scratch file outside the project (8f44a003)');
   assert.match(announce('printf x > src/app/tool.mjs', sid()), /javascript-conventions\.md/, 'an in-project write still announces');
+  // the interpreter splice the navigation rule sanctions: a bound name, then open(p, 'w') (81264f0d, 4f1c2ebb)
+  assert.match(announce("python3 - <<'EOF'\np='libs/ui/src/lib/card.ts'\ns=open(p).read()\nopen(p,'w').write(s)\nEOF", sid()), /typescript-conventions\.md/,
+    'a python heredoc edit of a .ts file names the TypeScript rule');
 });

@@ -54,7 +54,13 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   a redirection or name itself with `-t`, a subshell's `cd` ends with it and `popd` returns, and a runtime's script
   (`node -e`, `python3 - <<`) is read only when the runtime is the command it is fed to - `cat > run-node.txt <<` is
   text - and read whole, quote-aware (the review's corpus plus the runtime and carried-script shapes,
-  `scripts/fixtures/cross-write-corpus.json`, replayed in guard-hooks.test.js). It is the ONE home of shell text
+  `scripts/fixtures/cross-write-corpus.json`, replayed in guard-hooks.test.js). Audit 2026-10-10 C13: a runtime's write
+  through a NAME takes every literal the script binds it to (`p = '<file>'` then `open(p, 'w')`, `writeFileSync(f, ...)`,
+  `Path(p).write_text`), and one through a computed path is one `unknown` target spelled `$UNKNOWN_INTERPRETER_WRITE`
+  (guards skip it as an unexpanded variable; docs-session maps it to its first source root); a sed `s` with another
+  delimiter (`s#a#b#`, `s|a|b|`) and an address's `a\` / `i\` / `c\` text are scripts, chmod's mode and chown's owner
+  are no path, `NAME=( ... )` is an array assignment and never a subshell, and a `git tag` listing (`--contains`,
+  `--points-at`, `--merged`, `-l`, `-n`) is a read. It is the ONE home of shell text
   carried into a shell (`carriedScripts`, re-verify N4, re-verify 2 R2-M5 / R2-m2): `sh -c` (long options and `-o
   <name>` before the `-c`), `eval`, a heredoc, a here-string, `< file`, an `echo` / `printf` (its format cycled over its
   arguments) / `cat <file>` stage piped in past any `tee`, and a script FILE a shell runs (`bash x.sh`, `. x.sh`,

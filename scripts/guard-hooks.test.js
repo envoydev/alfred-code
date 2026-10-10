@@ -460,6 +460,9 @@ test('the stop contract, the fresh-session offer and the read guard sweep their 
   // the hook's temp dir is this suite's own (isolateHookSuite ownTmp), the parent of TMP
   const readOld = plant(os.tmpdir(), 'guard-read-gone.json', 8, '{}');
   const readFresh = plant(os.tmpdir(), 'guard-read-kept.json', 6, '{}');
+  // the sweep runs once a day per dir: an earlier case's shell span already logged a range (audit 2026-10-10 C11) and
+  // stamped today's sweep, so the stamp goes first
+  fs.rmSync(path.join(os.tmpdir(), '.alfred-sweep-guard-read-'), { force: true });
   assert.equal(run('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: BIG, offset: 1, limit: 10 }, session_id: 'sweep-read' }), 0);
   assert.ok(!fs.existsSync(readOld) && fs.existsSync(readFresh), 'the read guard swept its own session files past 7 days');
 });

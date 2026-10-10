@@ -337,7 +337,12 @@ const SED_SCRIPT = /^\/(?=[^/]*[\^$*+?\[\]\\.])[^/]*\/[a-zA-Z]*$/;
 // read that way. This form covers them, and it is applied ONLY to the sed/perl route: on the
 // rm/chmod route those same tokens really are paths. The trailing command letter set is kept to
 // the address commands (`d p q =`) so `/etc/passwd` and `/tmp/file.txt` still read as paths.
-const SED_SCRIPT_ARG = /^(?:\/(?:[^/\\]|\\.)*\/(?:,\/(?:[^/\\]|\\.)*\/)?[dpq=]|(?:\$|\d+)(?:,(?:\$|\d+))?[dpq=]|[sy]\/(?:[^/\\]|\\.)*\/(?:[^/\\]|\\.)*\/[a-zA-Z0-9]*)$/;
+// Audit 2026-10-10 C13: a substitution with another delimiter (`s#a#b#g`, `s|a|b|`) and an address's text command
+// (`/^Build waves/a\ X`, `3i\ line`, `$a text`) are scripts too - read as paths, they blocked in-project edits as
+// cross-project writes (0498718d, fbfc2de4) and filled COMPACT-STATE with sed scripts (68da4b6b). The other delimiters
+// are the ones scripts use; a `.`, `-` or `_` stays out, so `s.a.b.ts` is still a file.
+const SED_ADDR = String.raw`(?:\/(?:[^/\\]|\\.)*\/|\$|\d+)(?:,(?:\/(?:[^/\\]|\\.)*\/|\$|\d+))?`;
+const SED_SCRIPT_ARG = new RegExp(String.raw`^(?:${SED_ADDR}[dpq=]|[sy]([/#|:,@!~+%^;])(?:(?!\1)[^\\]|\\.)*\1(?:(?!\1)[^\\]|\\.)*\1[a-zA-Z0-9]*|(?:${SED_ADDR})?[aic](?:\\|\s)[\s\S]*)$`);
 
 // A `\`-newline continues the command on the next line: joined (to blanks of the same length) before any rule reads
 // it, so `cp -r build \` + newline + `<outside>` is one command, as the shell runs it (2.1.6 review M3). An escaped
@@ -514,7 +519,23 @@ function parseShell(command, opts = {}) {
       ctx.stage++;
       continue;
     }
-    if (c === '(') { endWord(i); open('(', i, 1); continue; }
+    if (c === '(') {
+      // `NAME=( ... )` / `NAME+=( ... )` is an ARRAY assignment, never a subshell: `LIVE=(<file>.md)` ran the file as a
+      // script and blocked a read-only scan as a write to '/' (audit 2026-10-10, session bba03dad).
+      if (wStart >= 0 && /^[A-Za-z_]\w*\+?=$/.test(command.slice(wStart, i))) {
+        let lvl = 0; let j = i; let q = sp;
+        for (; j < n; j++) {
+          while (q < spans.length && spans[q][0] < j) q++;
+          if (q < spans.length && spans[q][0] === j) { j = Math.max(j, spans[q][1] - 1); q++; continue; }
+          if (command[j] === '\\') { j++; continue; }
+          if (command[j] === '(') lvl++;
+          else if (command[j] === ')' && --lvl === 0) break;
+        }
+        i = Math.min(j, n - 1);
+        continue;
+      }
+      endWord(i); open('(', i, 1); continue;
+    }
     if (c === ')') {
       if (stack.length) { close(i); continue; }
       endWord(i); endElem(i, i + 1); // a `case` arm's `)`: a command starts after it
@@ -879,7 +900,12 @@ function gitMutates(sub, argv) {
     case 'push': case 'pull': case 'apply': case 'am': case 'cherry-pick': case 'clean': case 'rm': case 'mv':
       return true;
     case 'stash': return !GIT_READ_STASH.has(argv[0]);
-    case 'tag': return argv.length > 0 && !/^(?:-l|--list|-n)$/.test(argv[0]) && argv.some((a) => !a.startsWith('-'));
+    // a listing (`--contains <sha>`, `--points-at`, `--merged`, `-l`, `-n<N>`, a `--sort`) reads; a delete, or a new name, writes
+    // (audit 2026-10-10, session bba03dad: `git tag --contains <sha>` blocked a read-only seat)
+    case 'tag':
+      if (argv.some((a) => /^(?:-d|--delete)$/.test(a))) return true;
+      if (argv.some((a) => /^(?:-l|--list|-n\d*|--(?:no-)?contains(?:=.*)?|--points-at(?:=.*)?|--(?:no-)?merged(?:=.*)?|--sort(?:=.*)?|--column(?:=.*)?|--format(?:=.*)?|-v|--verify)$/.test(a))) return false;
+      return argv.length > 0 && argv.some((a) => !a.startsWith('-'));
     case 'branch': return argv.length > 0 && /^-[dDm]/.test(argv[0]);
     default: return false;
   }
@@ -932,8 +958,17 @@ function writesOf(cmd, c, out) {
     // in-place edits: every path argument, not just the last - `sed -i 's/a/b/' ../other/f x`
     for (const a of c.argv) if (plain(a) && !SED_SCRIPT.test(a) && !SED_SCRIPT_ARG.test(a)) push(a, 'an in-place edit');
   } else if (FS_CHANGE.has(name)) {
-    // every argument counts: `rm -f a ../other/b`, `chmod +x ../other/x`
-    for (const a of c.argv) if (plain(a) && !SED_SCRIPT.test(a)) push(a, 'a filesystem change');
+    // every argument counts: `rm -f a ../other/b`, `chmod +x ../other/x` - but chmod's MODE and chown's OWNER are the
+    // first operand, never a path (`+x`, `755`, `u+x,g-w`, `user:group`), unless --reference names the file to copy
+    // them from (audit 2026-10-10, session 758ce661: COMPACT-STATE listed '+x' as a file written)
+    let skip = (name === 'chmod' || name === 'chown') && !c.argv.some((a) => a.startsWith('--reference'));
+    for (const a of c.argv) {
+      // `chmod -x f` / `chmod -w f`: a mode spelled like a flag
+      if (skip && name === 'chmod' && /^-[rwxXst]+$/.test(a)) { skip = false; continue; }
+      if (!plain(a) || SED_SCRIPT.test(a)) continue;
+      if (skip) { skip = false; continue; }
+      push(a, 'a filesystem change');
+    }
   } else if (COPY_VERBS.has(name)) {
     const args = c.argv;
     // the destination ends the argument list; with `-t <dir>` / `--target-directory` it is named first (review M3)
@@ -1074,13 +1109,20 @@ const DESTRUCTIVE = 'write_text|write_bytes|unlink|mkdir|rmdir|rename|replace|to
 // a write verb whose FIRST argument is the path
 const WRITE_CALL = new RegExp(String.raw`\b(?:writeFileSync|appendFileSync|createWriteStream|writeFile|appendFile|unlinkSync|unlink|rmSync|rmdirSync|rmdir|mkdirSync|mkdir|makedirs|removedirs|renameSync|rename|copyFileSync|copyfile|copy2|truncateSync|truncate|chmodSync|chmod|remove|rmtree|move|touch)\s*\(\s*${LIT}`, 'g');
 // `open(path, 'w')` - a bare `open(path)` is a READ; the mode is read as one quoted word, then tested
-const OPEN_CALL = new RegExp(String.raw`\b(?:open|fopen)\s*\(\s*${LIT}\s*,\s*(["'])([^"'\n]*)\3`, 'g');
+const OPEN_CALL = new RegExp(String.raw`\b(?:open|fopen)\s*\(\s*(?:[fFrRbBuU]{1,2}(?=["']))?${LIT}\s*,\s*(["'])([^"'\n]*)\3`, 'g');
 // pathlib, chained: `Path('…').write_text(…)`
 const PATH_CALL = new RegExp(String.raw`\bPath\s*\(\s*${LIT}\s*\)\s*\.\s*(?:${DESTRUCTIVE})\b`, 'g');
 // `f = Path('…')` … `f.unlink()` - the literal and the destructive call are statements apart, so the binding is
 // followed by NAME; every receiver of a destructive call is collected once, then each binding is looked up in it.
 const PATH_BIND = /(\w+)\s*=\s*(?:pathlib\.)?Path\s*\(\s*(["'])([^"'\n]+)\2/g;
 const DESTROYED = new RegExp(String.raw`(\w+)\s*\.\s*(?:${DESTRUCTIVE})\b`, 'g');
+// A string bound to a name (`p = '...'`, `const f = "..."`), and the write calls that take a NAME as their path.
+const STR_BIND = /(?:^|[\s;{(,])(?:(?:const|let|var)\s+)?([A-Za-z_$][\w$]*)\s*=\s*(["'])([^"'\n]+)\2\s*(?=[;,)\n]|$)/gm;
+const OPEN_NAME = /\b(?:open|fopen)\s*\(\s*([A-Za-z_$][\w$]*)\s*,\s*(?:mode\s*=\s*)?(["'])([^"'\n]*)\2/g;
+const WRITE_NAME = /\b(?:writeFileSync|appendFileSync|createWriteStream|writeFile|appendFile)\s*\(\s*([A-Za-z_$][\w$]*)\s*[,)]/g;
+const PATH_NAME_CALL = new RegExp(String.raw`\bPath\s*\(\s*([A-Za-z_$][\w$]*)\s*\)\s*\.\s*(?:write_text|write_bytes)\b`, 'g');
+// The target a script's computed write reports: a variable spelling, so a guard that cannot judge `$NAME` skips it.
+const UNKNOWN_WRITE = '$UNKNOWN_INTERPRETER_WRITE';
 function interpreterTargets(raw, P, heredocs) {
   const scripts = [];
   const runtimes = [];
@@ -1101,8 +1143,18 @@ function interpreterTargets(raw, P, heredocs) {
     }
   }
   const out = [];
+  // A write whose path the script computes (a loop variable, a parameter, an f-string) is still a write: one row per
+  // script, `unknown`, spelled as a variable so every guard that skips an unexpanded `$NAME` skips it and the docs hook
+  // maps it to its first source root (audit 2026-10-10 C13: 34 heredoc edits in 4f1c2ebb, 16 in 68da4b6b, 155 of 183 seat
+  // edits in 9a4ef375 registered no write at all).
+  const unknown = new Set();
+  const computed = (index) => {
+    if (unknown.has(index)) return;
+    unknown.add(index);
+    out.push({ raw: UNKNOWN_WRITE, index, what: 'an interpreter write', verb: 'interpreter', unknown: true });
+  };
   const literal = (p, index) => {
-    if (/[${]/.test(p)) return; // interpolated - the path is computed, don't guess
+    if (/[${]/.test(p)) { computed(index); return; } // interpolated - the path is computed, don't guess it
     out.push({ raw: p, index, what: 'an interpreter write', verb: 'interpreter' });
   };
   for (const { body, index } of scripts) {
@@ -1111,6 +1163,14 @@ function interpreterTargets(raw, P, heredocs) {
     for (const m of body.matchAll(PATH_CALL)) literal(m[2], index);
     const destroyed = new Set([...body.matchAll(DESTROYED)].map((d) => d[1]));
     for (const b of body.matchAll(PATH_BIND)) if (destroyed.has(b[1])) literal(b[3], index);
+    // `p = '<literal>'` ... `open(p, 'w')` / `writeFileSync(f, ...)` / `Path(p).write_text(...)`: the name resolves to every
+    // literal the script binds it to (81264f0d: 14 such edits to 13 files reached no rule and no docs gate)
+    const bound = new Map();
+    for (const b of body.matchAll(STR_BIND)) { if (!bound.has(b[1])) bound.set(b[1], []); bound.get(b[1]).push(b[3]); }
+    const byName = (name, index) => { const lits = bound.get(name); if (lits) for (const l of lits) literal(l, index); else computed(index); };
+    for (const m of body.matchAll(OPEN_NAME)) if (/[wax+]/.test(m[3])) byName(m[1], index);
+    for (const m of body.matchAll(WRITE_NAME)) byName(m[1], index);
+    for (const m of body.matchAll(PATH_NAME_CALL)) byName(m[1], index);
   }
   return out;
 }
@@ -2116,4 +2176,4 @@ function enclosingEnd(P, at, closesOf) {
 }
 
 module.exports = { scanShell, carriedScripts, expandGitAliases, gitCalls, commandWords, parseShell, newRun, anchorAt, anchorer, blankHeredocs, heredocsOf, heredocBody, heredocVerbatim, heredocSubstitutions, commandIndex, groupsAsCuts, gitText, WRAPPERS, RUN_TOOLS,
-  blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir };
+  blankComments, joinContinuations, quotedSpans, shellWords, dequote, unquote, isVar, gitMutates, SHELL_TOOLS, isShellTool, MOUNT_RE, nativePath, homeDir, UNKNOWN_WRITE };
