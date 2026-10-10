@@ -510,6 +510,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     the open flow stamps with their ages, the files this session wrote, no model call) and records an automatic
     compaction's context in `compact-points.json`; the compact start points at the state file - and, for a SLASH run,
     says to re-read its body, which the harness re-attaches only for a Skill call - even with every fresh-session offer off.
+    `UserPromptSubmit` carries only the idle-gap offer: the prompt that ends a gap past the clock route's
+    `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` since the last reply injects the ask once per gap (`guard-fresh-idle-*`), with
+    the carry and cold floor, when a resume recovers enough - never for a task notice, a seat, a carry past a compaction
+    or nobody at the terminal (audit 2026-10-10 C09: a next-day resume ran 14 messages at 289.9k unoffered).
   - `guard-cross-project-write.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route) - a write outside
     the project root is blocked (file tools and shell routes: redirection, `tee`, in-place `sed`/`perl`,
     `cp`/`mv` destination, `rm`/`mkdir`/`chmod`, `git -C <other>` mutating, `cd <other>` then a write);

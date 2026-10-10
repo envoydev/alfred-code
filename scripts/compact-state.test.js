@@ -306,3 +306,43 @@ test('compact-state: the first change after an automatic compaction is held once
     after(ta, usageRow('b', { cache_read_input_tokens: 120000 }));
     assert.strictEqual(call(a, ta, 'Edit'), 0, 'a live AUTO waiver holds nothing');
 });
+
+test('compact-state: the prompt ending an idle gap past the clock hours is offered a fresh session once (C09, ca65b406)', () =>
+{
+    const log = fs.mkdtempSync(path.join(TMP, 'idle-'));
+    const env = { ALFRED_CODE_HOOK_LOG_DIR: log };
+    const ago = (h) => new Date(Date.now() - h * 3600000).toISOString();
+    const at = (row, h) => ({ ...row, timestamp: ago(h) });
+    // ca65b406: 19h02m idle, then a prompt at 289.9k over a 77.6k floor
+    const rows = (h, carry = 289900) => [at(usageRow('f', { cache_creation_input_tokens: 77600 }), h + 1), at(usageRow('l', { cache_read_input_tokens: carry }), h)];
+    const prompt = (p, tp, extra = {}, more = {}) => p.run({ hook_event_name: 'UserPromptSubmit', prompt: 'next card', transcript_path: tp, ...extra }, { ...env, ...more });
+    const p = project();
+    const tp = p.transcript(rows(19));
+    const r = prompt(p, tp);
+    assert.strictEqual(r.status, 0);
+    const text = startText(r);
+    assert.match(text, /sat idle 19\.0h since its last reply/);
+    assert.match(text, /~290k tokens of context/);
+    assert.match(text, /~78k, this session's own first message/);
+    assert.match(text, /Resume in a fresh session \(Recommended\)/);
+    assert.strictEqual(prompt(p, tp).stdout, '', 'once per gap - the next prompt of the same gap is not offered again');
+    const ledger = fs.readdirSync(log, { recursive: true }).filter((f) => String(f).endsWith('.jsonl')).map((f) => fs.readFileSync(path.join(log, String(f)), 'utf8')).join('')
+        + (fs.existsSync(path.join(p.root, '.alfred', 'docs', 'hook-blocks')) ? fs.readdirSync(path.join(p.root, '.alfred', 'docs', 'hook-blocks')).map((f) => fs.readFileSync(path.join(p.root, '.alfred', 'docs', 'hook-blocks', f), 'utf8')).join('') : '');
+    assert.match(ledger, /"kind":"idle-gap-offer"/, 'one probe row records it');
+    const q = project();
+    assert.strictEqual(prompt(q, q.transcript(rows(1.9))).stdout, '', 'under the 2h knob: no offer');
+    assert.match(prompt(q, q.transcript(rows(2.1))).stdout, /sat idle 2\.1h/, 'over it: the offer');
+    const off = project();
+    assert.strictEqual(prompt(off, off.transcript(rows(19)), {}, { ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }).stdout, '', '0 switches the route off');
+    const w = project();
+    assert.strictEqual(prompt(w, w.transcript(rows(19, 100000))).stdout, '', 'a carry mostly the cold floor is no offer');
+    const n = project();
+    assert.strictEqual(prompt(n, n.transcript(rows(19)), { prompt: '<task-notification><task-id>b1</task-id></task-notification>' }).stdout, '', 'a harness notice is no return');
+    const s = project();
+    assert.strictEqual(prompt(s, s.transcript(rows(19)), { agent_id: 'seat-1' }).stdout, '', 'a seat has no user');
+    const c = project();
+    assert.strictEqual(prompt(c, c.transcript([...rows(19), boundary('auto', 300000)])).stdout, '', 'the context past a compaction is unknown');
+    const u = project();
+    assert.strictEqual(prompt(u, u.transcript(rows(19)), {}, { ALFRED_CODE_UNATTENDED: '1' }).stdout, '', 'nobody at the terminal: no offer');
+    assert.strictEqual(project().run('garbage', env).status, 0, 'garbage stdin never blocks');
+});

@@ -22,6 +22,9 @@
 // sessions, one of which NAMED the fresh-session need in its own text ('a fresh session is the
 // right home for a loop like this') and then ran the loop anyway, to 380k tokens per message.
 // Same step run fresh in the next session cost 134k. This is that rule mechanized.
+//   UserPromptSubmit        - only the idle-gap offer (audit 2026-10-10 C09): the prompt ending a gap past the
+//                             clock route's hours injects the offer once per gap. It runs beside the two other
+//                             prompt hooks, in parallel, and reads one 1MB tail; it never judges a command.
 //
 // The incoming skill must be one of the orchestration entry points below - everything else passes -
 // and then EITHER trigger is enough: the session's context is already past the threshold, or - on
@@ -127,7 +130,7 @@ function compactHoldFile() {
 }
 // The common case - no hold pending - leaves before anything else is read.
 if (IS_HOLD_CALL && !IS_SKILL_CALL && !fs.existsSync(compactHoldFile())) process.exit(0);
-if (!IS_SKILL_CALL && !IS_HOLD_CALL && EVENT !== 'UserPromptExpansion' && EVENT !== 'SessionStart' && EVENT !== 'PreCompact') process.exit(0);
+if (!IS_SKILL_CALL && !IS_HOLD_CALL && !['UserPromptExpansion', 'UserPromptSubmit', 'SessionStart', 'PreCompact'].includes(EVENT)) process.exit(0);
 
 // The fresh-session arithmetic lives in fresh-session.js beside this hook, shared with
 // guard-stop-contract.js. An update from an older install can run this hook before that file
@@ -203,6 +206,78 @@ function compactHold() {
 }
 if (IS_HOLD_CALL && !IS_SKILL_CALL) {
   compactHold();
+  process.exit(0);
+}
+
+// THE IDLE-GAP ROUTE (audit 2026-10-10 C09, ca65b406): a next-day prompt after 19h02m idle re-cached 262.7k and ran 14
+// messages at 289.9k with no fresh-session offer - the clock route lives only in the stop contract's AskUserQuestion
+// note, and that resume asked nothing. So the prompt that ENDS a gap of `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` (the
+// clock route's own knob: default 2, `0` off) since the last reply injects the offer, once per gap, when a resume
+// recovers enough of the carry (worthResuming) - a cold cache is the cheapest moment to go fresh. A harness notice is no
+// return, a seat has no user, and nobody at the terminal gets one row instead.
+function lastReply() {
+  try {
+    const p = payload.transcript_path;
+    if (!p) return null;
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - 1024 * 1024);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
+    let last = null;
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (line.includes('"compact_boundary"') && /"subtype"\s*:\s*"compact_boundary"/.test(line)) { if (last) last.usage = null; continue; }
+      if (!line.includes('"assistant"')) continue;
+      try {
+        const o = JSON.parse(line);
+        if (o.type !== 'assistant' || !o.message || o.message.model === '<synthetic>') continue;
+        const at = Date.parse(o.timestamp || '');
+        if (!Number.isNaN(at)) last = { at, usage: o.message.usage || (last && last.usage) || null };
+      } catch { /* the window's cut first line */ }
+    }
+    return last;
+  } catch { return null; }
+}
+function idleGapOffer() {
+  if (payload.agent_id || FRESH_OFF) return;
+  const n = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS'));
+  const hours = Number.isNaN(n) || n < 0 ? 2 : n;
+  if (!(hours > 0)) return;
+  if (/^\s*<(?:task-notification|local-command-stdout|local-command-caveat)>/.test(String(payload.prompt || ''))) return;
+  const last = lastReply();
+  if (!last || !last.usage) return;
+  const gapH = (Date.now() - last.at) / 3600000;
+  if (gapH < hours) return;
+  const u = last.usage;
+  const ctx = (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
+  if (!(ctx > 0) || !worthResuming(ctx)) return;
+  const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
+  const marker = nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-idle-${key}.offered`);
+  try { if (fs.readFileSync(marker, 'utf8').trim() === String(last.at)) return; } catch { /* not offered for this gap */ }
+  const floor = fresh.coldFloor();
+  const detail = { gapH: Math.round(gapH * 10) / 10, ctx, floor };
+  if (unattended(payload)) {
+    ledgerRow({ mode: 'unattended', kind: 'idle-gap-offer', reason: UNATTENDED_SKIP, detail });
+    return;
+  }
+  try { fs.writeFileSync(marker, String(last.at)); } catch { /* a lost marker offers twice at most */ }
+  sweepOffers();
+  ledgerRow({ mode: 'probe', kind: 'idle-gap-offer', reason: 'probe: the fresh-session offer injected at a prompt after an idle gap', detail });
+  const start = floor ? `~${Math.round(floor / 1000)}k, this session's own first message` : 'this install\'s cold floor';
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'UserPromptSubmit',
+      additionalContext: `This session sat idle ${gapH.toFixed(1)}h since its last reply, so its prompt cache is cold: this `
+        + `message re-writes all ~${Math.round(ctx / 1000)}k tokens of context, and every later turn re-sends them. A fresh `
+        + `session restarts at ${start}. If this prompt starts or continues work, first put the choice to the user as ONE `
+        + `AskUserQuestion: 'Resume in a fresh session (Recommended)' quoting those two numbers (end the turn with the `
+        + `paste-ready resume block and the plan or state file it resumes from), or continue here. A question answered from `
+        + `what is already in context needs no ask.`,
+    },
+  }));
+}
+if (EVENT === 'UserPromptSubmit') {
+  idleGapOffer();
   process.exit(0);
 }
 
