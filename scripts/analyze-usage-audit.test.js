@@ -33,6 +33,11 @@ function write(dir, rows, name = 'session.jsonl') {
 }
 const run = (args) => JSON.parse(execFileSync('node', [SCRIPT, ...args, '--json'], { encoding: 'utf8' }));
 const text = (args) => execFileSync('node', [SCRIPT, ...args], { encoding: 'utf8' });
+// A pre-rename skill name comes from the manifest's rename map (an old name spelled here would trip the rename guard).
+const OLD_SOLVE = (() => {
+  const { renamed } = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
+  return Object.keys(renamed.skills).find((o) => renamed.skills[o] === 'task-solve' && /^project-/.test(o));
+})();
 
 // C02 - Nx check forms. The shapes are the ones 18 audited Nx sessions ran (`nx test <p> --testFile`,
 // `run-many -t a,b,c -p <p>`, `affected -t test`, `nx build <p>`, `-t lint test --projects=a,b`), each scored
@@ -191,8 +196,8 @@ test('C04: vintage reads Skill-call and command bodies from their meta rows, pas
       asst('m1', T(1), [tool('k1', 'Skill', { skill: 'habit-x' })]),
       res(T(2), 'k1', 'Launching skill: habit-x'),
       meta(T(2), `Base directory for this skill: ${claude}/skills/habit-x\n\n# Habit\n\nstep one\n`, { sourceToolUseID: 'k1' }),
-      asst('m2', T(3), [tool('k2', 'Skill', { skill: 'alfred-code:project-solve-task', args: 'brief' })]),
-      res(T(4), 'k2', 'Launching skill: alfred-code:project-solve-task'),
+      asst('m2', T(3), [tool('k2', 'Skill', { skill: `alfred-code:${OLD_SOLVE}`, args: 'brief' })]),
+      res(T(4), 'k2', `Launching skill: alfred-code:${OLD_SOLVE}`),
       meta(T(4), `Base directory for this skill: ${claude}/skills/task-solve\n\n# Solve\n\n## Step one\n\ndo it\n\nARGUMENTS: # pasted brief\n\n## its own heading\n\n${'x'.repeat(4000)}`, { sourceToolUseID: 'k2' }),
       said('m3', T(5), 'ok'),
       cmd(T(10), 'alfred-code:update'),
@@ -208,7 +213,7 @@ test('C04: vintage reads Skill-call and command bodies from their meta rows, pas
     const row = (n) => vin.rows.find((r) => r.name === n) || {};
     assert.strictEqual(row('habit-x').how, 'Skill call');
     assert.strictEqual(row('habit-x').verdict, 'DIFFERS - the current source has different sections', 'the loaded body is compared, not reported absent');
-    assert.strictEqual(row('alfred-code:project-solve-task').verdict, 'same', 'the pre-rename name finds task-solve, and the ARGUMENTS block is not the body');
+    assert.strictEqual(row(`alfred-code:${OLD_SOLVE}`).verdict, 'same', 'the pre-rename name finds task-solve, and the ARGUMENTS block is not the body');
     assert.match(row('alfred-code:update').verdict, /current source unreachable/, "a plugin command's expansion is its loaded body");
     assert.strictEqual(row('alfred-code:update').how, 'slash command');
     assert.ok(!vin.rows.some((r) => r.name === 'init' || r.name === 'model'), "the harness's own commands carry no stack body");
@@ -236,9 +241,9 @@ test('C06: scoped and pre-rename roster names join their uses, preloads follow t
     const rows = [
       { ...human(T(0), '/task-solve the brief'), cwd: root },
       { type: 'user', timestamp: T(0), cwd: root, isMeta: true, message: { content: [{ type: 'text', text: '# Solve\n' + 'x'.repeat(20000) }] } },
-      { type: 'attachment', timestamp: T(0), attachment: { type: 'skill_listing', isInitial: true, names: ['alfred-code:project-solve-task', 'demo-preload'], content: '' } },
+      { type: 'attachment', timestamp: T(0), attachment: { type: 'skill_listing', isInitial: true, names: [`alfred-code:${OLD_SOLVE}`, 'demo-preload'], content: '' } },
       { type: 'attachment', timestamp: T(0), attachment: { type: 'agent_listing_delta', isInitial: true, addedTypes: ['alfred-code:demo-verifier'], removedTypes: [], addedLines: [] } },
-      big('m1', T(1), 30000, [tool('k1', 'Skill', { skill: 'alfred-code:project-solve-task' })]),
+      big('m1', T(1), 30000, [tool('k1', 'Skill', { skill: `alfred-code:${OLD_SOLVE}` })]),
       res(T(2), 'k1', 'Launching skill'),
       big('m2', T(3), 31000, [tool('a1', 'Agent', { subagent_type: 'alfred-code:demo-verifier', description: 'verify', prompt: 'check it' })]),
       res(T(4), 'a1', 'verified'),
@@ -259,7 +264,7 @@ test('C06: scoped and pre-rename roster names join their uses, preloads follow t
     assert.strictEqual(row(inventory.agents, 'demo-verifier').used, 'yes', 'the dispatched seat joins its roster row');
     assert.strictEqual(row(inventory.agents, 'alfred-code:demo-verifier'), undefined, 'no scoped twin left unused');
     assert.strictEqual(row(inventory.skills, 'task-solve').used, 'yes', 'the pre-rename roster name joins the run');
-    assert.strictEqual(row(inventory.skills, 'project-solve-task'), undefined, 'no pre-rename twin left unused');
+    assert.strictEqual(row(inventory.skills, OLD_SOLVE), undefined, 'no pre-rename twin left unused');
     assert.deepStrictEqual(row(inventory.skills, 'demo-preload').how, ['preloaded via alfred-code:demo-verifier x1', 'preloaded via alfred-code:other-seat x1'],
       "a frontmatter preload follows the dispatch, and a seat's own preload row is a preload, never a slash command");
     const out = text([file]);

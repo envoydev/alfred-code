@@ -931,7 +931,7 @@ function applySessionRoster(inv, main) {
   const out = { ...inv };
   const from = [];
   // The roster spells a plugin item with its scope (`alfred-code:aspnet-verifier`) or under an older release's name
-  // (`project-solve-task`), while every use is keyed through houseBare - so a dispatched seat read unused beside its own
+  // (a pre-2.2.0 spelling), while every use is keyed through houseBare - so a dispatched seat read unused beside its own
   // 'observed' row, and its preloads read as slash commands (audit 2026-10-10 C06: 9a4ef375, bc2fa83e, 69dbed46).
   // Both sides go through the one function, once.
   const canon = (names) => [...new Set([...names].map(houseBare))];
