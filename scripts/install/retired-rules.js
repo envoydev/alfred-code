@@ -1,7 +1,7 @@
 'use strict';
 // THE TEXTS THE STACK SHIPPED under each renamed rule's old name - the seven `baseline-*` rules that 2.1.6 renamed to
 // `alfred-*`. Each list holds the first 16 hex of the sha256 of every version any commit held (CRLF read as LF), and for
-// the docs-root rule also that text stamped with each default root (`.claude/docs`, `.alfred/docs`), as an install wrote
+// the docs-root rule also that text stamped with each default root (the legacy one and today's), as an install wrote
 // it. Frozen: a retired name never gets new text. A leftover copy that hashes to one is the stack's, unedited, and goes;
 // any other text is a user's edit and stays (`retiredKeep` in alfred-code.js, audit 2026-10-10 C10).
 const crypto = require('node:crypto');

@@ -888,7 +888,7 @@ function runLayers(ctx)
     // After the root's .gitignore names the new folder, so a raw transcript copy never lands unignored.
     try { docs.migrateUsageReport({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
     catch (err) { ctx.note(`the usage report folder could not be renamed under ${docsPath} (${err.message}) - it stays as alfred-code-usage-report/`); }
-    try { docs.migratePlans({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
+    try { docs.migratePlans({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log }); }
     catch (err) { ctx.note(`the folders under ${docsPath}/superpowers could not be moved up (${err.message}) - move each one to ${docsPath}/ by hand`); }
     if (args.action === 'install') ctx.stackAgentsMd = seeds.seedAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
     // An update moves the seed an earlier release wrote as .claude/CLAUDE.md - only while it is still unedited.
@@ -2419,10 +2419,23 @@ function managedFiles(ctx)
     // No ledger to read (an older stamp): an AGENTS.md still byte for byte the seed is the stack's.
     const agentsMd = path.join(ctx.claudeDir, 'AGENTS.md');
     if (!(ctx.ledger && ctx.ledger.files) && !out['AGENTS.md'] && fs.existsSync(agentsMd)
-        && fs.readFileSync(agentsMd, 'utf8') === seeds.agentsMdBody({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir })) put('AGENTS.md', agentsMd);
+        && readOrNull(agentsMd) === seeds.agentsMdBody({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir })) put('AGENTS.md', agentsMd);
+    // A recorded file this run cannot read holds no evidence either way, so its row stands as the last run recorded it -
+    // the settings rule (an unreadable file keeps its rows); hashing it threw and failed the whole run at its last step.
     for (const [rel, h] of Object.entries((ctx.ledger && ctx.ledger.files) || {}))
-        if (!out[rel] && (library.hashItem(ledgerPath(ctx, rel)) === h || (ctx.respelledSeeds && ctx.respelledSeeds.has(rel)))) out[rel] = library.hashItem(ledgerPath(ctx, rel));
+    {
+        if (out[rel]) continue;
+        let now;
+        try { now = library.hashItem(ledgerPath(ctx, rel)); }
+        catch { out[rel] = h; continue; }
+        if (now === h || (ctx.respelledSeeds && ctx.respelledSeeds.has(rel))) out[rel] = now;
+    }
     return out;
+}
+function readOrNull(file)
+{
+    try { return fs.readFileSync(file, 'utf8'); }
+    catch { return null; }
 }
 
 const ledgerPath = (ctx, rel) => (rel.startsWith('skills/') ? path.join(ctx.skillsDir, rel.slice(7)) : path.join(ctx.claudeDir, ...rel.split('/')));

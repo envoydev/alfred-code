@@ -343,7 +343,7 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
     // A path counts when it exists from a base the file reads from, when it is unanchored and some path
     // in the project ends with it, when it is a package the project depends on (`driver.js`), or when git
     // ignores it (a local file the setup creates - `.env`, `appsettings.Development.json`, a build output) -
-    // except a STALE docs pointer, ignored or not: one under the legacy `.claude/docs/` whose twin sits under
+    // except a STALE docs pointer, ignored or not: one under the legacy docs root whose twin sits under
     // the configured root (a docs move), or one under the configured root whose folder exists (a capture
     // ran, the file is not there). Audit 2026-10-10 C24: 13 dead `.claude/docs/...` pointers drew 0 rows. A
     // domain no capture has written yet stays quiet. `anchored` - `./x`, `../x`, a resolved `<docs-path>/x`,
@@ -359,7 +359,7 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
         const rels = candidates.map((c) => posix(path.relative(root, c))).filter((r) => r && !r.startsWith('..'));
         return !rels.some((r) => ignored(r) && !staleDoc(r));
     };
-    const LEGACY_DOCS = '.claude/docs/';
+    const LEGACY_DOCS = `${require('./install/docs.js').LEGACY_DOCS_ROOT}/`;
     const docsNow = docs.replace(/^\.\//, '').replace(/\/+$/, '');
     const movedTwin = (rel) => rel.startsWith(LEGACY_DOCS) && `${docsNow}/` !== LEGACY_DOCS && exists(path.join(root, docsNow, rel.slice(LEGACY_DOCS.length)));
     const staleDoc = (rel) => movedTwin(rel) || (rel.startsWith(`${docsNow}/`) && exists(path.dirname(path.join(root, rel))));
