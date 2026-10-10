@@ -307,9 +307,15 @@ function migrateUsageReport({ projectRoot, docsPath, log = () => {} })
 // root lacks it; a clash stays at the old name, named, never overwritten. `superpowers/` goes once only OS litter is
 // left. Returns { <entry>: 'moved' | 'merged' | 'kept' }, empty when there is no such folder.
 const OS_LITTER = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
-function migratePlans({ projectRoot, docsPath, log = () => {} })
+function migratePlans({ projectRoot, docsPath, rules = [], instructions = [], log = () => {} })
 {
     const base = path.resolve(projectRoot, String(docsPath || ''));
+    const results = movePlans(base, log);
+    repointSuperpowers({ projectRoot, docsPath, base, rules, instructions, log });
+    return results;
+}
+function movePlans(base, log)
+{
     const old = path.join(base, 'superpowers');
     let entries;
     try { entries = fs.readdirSync(old, { withFileTypes: true }); }
@@ -341,6 +347,42 @@ function migratePlans({ projectRoot, docsPath, log = () => {} })
     }
     catch { /* a clash keeps it */ }
     return results;
+}
+
+// The superpowers/ move's re-point, the repointDocs way (audit 2026-10-10 C23: a project's AGENTS.md still named
+// `.alfred/docs/superpowers/` after the 2.2.2 move, and only the model's own grep found it). A mention of
+// `<docs>/superpowers/<entry>` is stale once the entry sits at the docs root and not under superpowers/ - so a move an
+// earlier run made heals too. A generated rule is rewritten; the project's own instruction file is named, never
+// rewritten. Returns the rule files rewritten.
+function repointSuperpowers({ projectRoot, docsPath, base, rules = [], instructions = [], log = () => {} })
+{
+    const root = String(docsPath || '').replace(/\\/g, '/').replace(/\/+$/, '');
+    if (!root) return [];
+    const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?<![A-Za-z0-9_./-])${escape(root)}/superpowers/([A-Za-z0-9][A-Za-z0-9._-]*)`, 'g');
+    const stale = (entry) => !fs.existsSync(path.join(base, 'superpowers', entry)) && fs.existsSync(path.join(base, entry));
+    const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
+    const out = [];
+    for (const file of rules)
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        let n = 0;
+        const next = text.replace(re, (whole, entry) => (stale(entry) ? (n += 1, `${root}/${entry}`) : whole));
+        if (!n) continue;
+        try { fs.writeFileSync(file, next); }
+        catch (err) { log(`  !! docs migration (superpowers): ${rel(file)} names ${n} moved path(s) and could not be re-pointed (${err.message}) - re-run its capture`); continue; }
+        out.push(rel(file));
+        log(`  docs migration (superpowers): ${rel(file)} - ${n} path(s) re-pointed to the docs root`);
+    }
+    for (const file of instructions)
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        const hits = [...new Set([...text.matchAll(re)].filter((m) => stale(m[1])).map((m) => m[1]))];
+        for (const entry of hits) log(`  !! ${rel(file)} is yours and names ${root}/superpowers/${entry}, which moved to ${root}/${entry} - re-point it by hand`);
+    }
+    return out;
 }
 
 // 'written' | 'current' | 'replaced' | 'kept' (the project's own file) | 'outside' (the root is not in

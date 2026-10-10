@@ -256,3 +256,42 @@ test('migration: a move an earlier run made without re-pointing heals - the code
     assert.strictEqual(fs.readFileSync(path.join(root, '.claude/rules/project-code-style.md'), 'utf8'),
         style('.claude/docs/code-style/CODE-STYLE.md') + 'Old copy: `.claude/docs/PROJECT-CODE-STYLE.md.bak`, `x/.claude/docs/PROJECT-CODE-STYLE.md`.\n');
 });
+
+// audit 2026-10-10 C23: the 2.2.2 superpowers/ move re-pointed no instruction file - a project's AGENTS.md still named
+// `.alfred/docs/superpowers/plans/` and only the model's own grep found it.
+test('migration: the superpowers/ move names the project\'s AGENTS.md lines, re-points a generated rule, heals an earlier move, and a re-run is quiet', () =>
+{
+    const root = project({ files: {
+        '.alfred/docs/superpowers/plans/a.md': '# a\n',
+        '.alfred/docs/superpowers/specs/s.md': '# s\n',
+        '.alfred/docs/plans/old.md': '# kept\n',
+        '.claude/rules/alfred-project-architecture.md': 'Plans: `.alfred/docs/superpowers/plans/`.\n',
+        '.claude/AGENTS.md': 'Plans live under `.alfred/docs/superpowers/plans/`\nand `.alfred/docs/superpowers/specs/`; superpowers plans/specs.\nNot ours: `x/.alfred/docs/superpowers/plans/`.\n',
+    } });
+    const logs = [];
+    const run = () => docs.migratePlans({ projectRoot: root, docsPath: '.alfred/docs', rules: rulesOf(root), instructions: instructionsOf(root), log: (m) => logs.push(m) });
+    assert.deepStrictEqual(run(), { plans: 'merged', specs: 'moved' });
+    const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
+    assert.strictEqual(read('.claude/rules/alfred-project-architecture.md'), 'Plans: `.alfred/docs/plans/`.\n');
+    assert.match(read('.claude/AGENTS.md'), /superpowers\/plans/, 'the project\'s AGENTS.md is named, never rewritten');
+    for (const entry of ['plans', 'specs'])
+        assert.ok(logs.includes(`  !! .claude/AGENTS.md is yours and names .alfred/docs/superpowers/${entry}, which moved to .alfred/docs/${entry} - re-point it by hand`), logs.join(' | '));
+    assert.ok(logs.includes('  docs migration (superpowers): .claude/rules/alfred-project-architecture.md - 1 path(s) re-pointed to the docs root'), logs.join(' | '));
+    logs.length = 0;
+    assert.deepStrictEqual(run(), {}, 'a re-run moves nothing');
+    assert.ok(logs.every((m) => m.startsWith('  !! .claude/AGENTS.md')) && logs.length === 2, `a re-run said more than the AGENTS.md reminder: ${logs.join(' | ')}`);
+});
+
+test('migration: a superpowers/ entry still there (a clash kept it) is no stale mention; no docs root is nothing', () =>
+{
+    const root = project({ files: {
+        '.alfred/docs/superpowers/plans/a.md': '# old a\n',
+        '.alfred/docs/plans/a.md': '# new a\n',
+        '.claude/AGENTS.md': 'Plans: `.alfred/docs/superpowers/plans/`.\n',
+    } });
+    const logs = [];
+    docs.migratePlans({ projectRoot: root, docsPath: '.alfred/docs', rules: rulesOf(root), instructions: instructionsOf(root), log: (m) => logs.push(m) });
+    assert.ok(fs.existsSync(path.join(root, '.alfred/docs/superpowers/plans/a.md')), 'the clash stays');
+    assert.ok(!logs.some((m) => /AGENTS\.md is yours/.test(m)), `a path that still exists was named stale: ${logs.join(' | ')}`);
+    assert.deepStrictEqual(docs.migratePlans({ projectRoot: root, docsPath: '', instructions: instructionsOf(root) }), {});
+});

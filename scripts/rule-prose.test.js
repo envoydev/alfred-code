@@ -299,3 +299,12 @@ test('C22: Angular specs route to angular-testing, EF migrations attach the SQL 
     assert.ok(carve >= 0 && carve < md.indexOf('the FIRST action after this rule attaches'), 'the carve-out comes before the first action');
     assert.match(md, /A plan, flow note or capture under `<docs-path>`[^:]*a `\.md` you only READ take no load/);
 });
+
+// ------------------------------------------------------------------ audit 2026-10-10 C23
+
+// The Bash tool's `grep` is a shell function running ugrep with `--ignore-files`; a `local` docs root's own
+// .gitignore is `*`, so a recursive grep over it printed nothing (bba03dad, three dead calls, ~0.92M).
+test('C23: the docs-root rule names the ignore-honouring grep and the two searches that see the root', () =>
+{
+    assert.match(injected('alfred-docs-root'), /Search the root with `docs\.js` or `\/usr\/bin\/grep -r`, never a bare `grep -r`: the Bash tool's `grep` honours `\.gitignore`/);
+});
