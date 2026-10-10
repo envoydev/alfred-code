@@ -224,6 +224,152 @@
         }
       ]
     },
+    "seat-start-docs-anchors": {
+      "_note": "A seat's START orientation reads the docs sections its brief names as the card's anchors (task-solve's brief carries each card's `docs.js where` ids), and the whole ARCHITECTURE.md / CODE-STYLE.md only without them - measured (usage audit 2026-10-10, e499fc94): 0 docs reads in 18 of 18 seat transcripts under the unconditional clause. Byte-identical across the 24 seats that carry it.",
+      "owner": {
+        "file": "stack/agents/aspnet-implementer.md",
+        "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/integration-reviewer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/issue-diagnoser-ci.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/issue-diagnoser-runtime.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/security-auditor.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/web-angular-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/windows-service-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        }
+      ]
+    },
+    "verifier-format-check": {
+      "_note": "A verifier runs the project's own format check beside the build and tests and quotes it - measured (usage audit 2026-10-10, a6a24815): 'lint + typecheck green' stood over 2 prettier-dirty specs the project's CI fails on, caught on the verifier's second pass and costing a third. Byte-identical tail of each verifier's check 1.",
+      "owner": {
+        "file": "stack/agents/aspnet-verifier.md",
+        "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        }
+      ]
+    },
     "orient-docs-durable-truth": {
       "_note": "Committed docs are the durable truth, the navigation-server note only the transient handoff.",
       "owner": {

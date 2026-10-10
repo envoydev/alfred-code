@@ -409,3 +409,21 @@ test('C25 / C31 / C07: one background command needs no Monitor, a red run is log
     assert.match(gates, /A red test or build run is captured once to a scratch log \(`<cmd> > <scratch>\/run\.log 2>&1; tail -n 60 <scratch>\/run\.log`\); every later look greps that log, never a re-run\./);
     assert.match(gates, /A verdict that something is complete against a reference \(parity with another app, everything a spec lists\) leads with what its evidence covers/);
 });
+
+// ------------------------------------------------------------------ audit 2026-10-10, T4 cross-track (seats)
+
+// e499fc94: 0 docs reads in 18 of 18 seat transcripts under an unconditional START clause; the brief now carries the
+// card's docs anchors. a6a24815: 'lint + typecheck green' over 2 prettier-dirty specs the project's CI fails on.
+test('T4 cross-track: every seat\'s START reads the brief\'s docs anchors first, and every verifier runs the format check', () =>
+{
+    const agents = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).filter((f) => f.endsWith('.md')).map((f) => `stack/agents/${f}`);
+    const start = registry()['seat-start-docs-anchors'];
+    const orienting = agents.filter((f) => read(f).includes('Orient from the project docs at START'));
+    assert.strictEqual(orienting.length, 24);
+    assert.deepStrictEqual(homes(start).map((h) => h.file).sort(), orienting.sort(), 'every orienting seat reads the anchors first');
+    assert.ok(!orienting.some((f) => read(f).includes('Orient from the project docs at START - `<docs-path>')), 'no unconditional clause is left');
+    const format = registry()['verifier-format-check'];
+    assert.deepStrictEqual(homes(format).map((h) => h.file).sort(), agents.filter((f) => f.endsWith('-verifier.md')).sort());
+    for (const f of agents.filter((a) => a.endsWith('-verifier.md')))
+        assert.ok(read(f).split('\n').some((l) => /^1\. /.test(l) && l.includes(format.owner.marker)), `${f}: the format check rides check 1`);
+});
