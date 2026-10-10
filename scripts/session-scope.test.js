@@ -68,6 +68,41 @@ test('the record is written once per HEAD: a resume or compact start never adds 
     } finally { p.rm(); }
 });
 
+// audit 2026-10-10 C09 (session c6142301): the session moved HEAD, then a compact start snapshotted the new HEAD and
+// listed 7 of the session's own new files as pre-existing - the commit guard would have blocked their git add.
+test('audit 2026-10-10 C09: a compact or resume start after the session moved HEAD takes no snapshot; its own files stay its change', () => {
+    const p = project();
+    try {
+        p.write('harness/one.txt', 'h\n');
+        p.start('moved');
+        const first = p.record();
+        p.git('checkout', '-qb', 'other'); p.write('src/b.cs', 'b\n'); p.git('add', 'src/b.cs'); p.git('commit', '-qm', 'b');
+        p.write('src/mine.cs', forty); p.write('src/mine2.cs', forty);
+        for (const source of ['compact', 'resume']) {
+            const again = p.start('moved', source);
+            assert.strictEqual(fs.existsSync(p.record()), false, `${source}: no snapshot of a HEAD the session moved`);
+            assert.match(again.stdout, /1 path was untracked when this change started/, `${source}: the first record is named again`);
+            assert.ok(again.stdout.includes(path.basename(first)), source);
+        }
+        const sweep = p.bash('moved', 'git add -A');
+        assert.strictEqual(sweep.status, 2);
+        assert.match(sweep.stderr, /  harness\/one\.txt/);
+        assert.doesNotMatch(sweep.stderr, /mine/, 'the session\'s own files are its change');
+        assert.strictEqual(p.bash('moved', 'git add src/').status, 0);
+        // another session started at the moved HEAD snapshots it - and the first session still reads its own record
+        p.start('fresh');
+        assert.deepStrictEqual(fs.readFileSync(p.record(), 'utf8').split('\n').filter(Boolean).sort(), ['harness/one.txt', 'src/mine.cs', 'src/mine2.cs']);
+        assert.doesNotMatch(p.bash('moved', 'git add -A').stderr, /mine/, 'the session pointer wins over the HEAD record');
+        assert.match(p.bash('fresh', 'git add -A').stderr, /src\/mine\.cs/, 'the new session reads its own');
+        // a start with no session id, or a compact with no pointer, falls back to the HEAD record and never writes one
+        fs.rmSync(path.join(p.dir, DOCS, 'flow', 'untracked-session-moved'));
+        p.git('checkout', '-q', '-'); p.write('src/three.cs', 'c\n');
+        p.dropRecords();
+        assert.strictEqual(p.start('moved', 'compact').stdout, '', 'no pointer, no record: quiet');
+        assert.strictEqual(fs.existsSync(p.record()), false, 'and nothing is written');
+    } finally { p.rm(); }
+});
+
 test('outside a git repo SessionStart records nothing and stays quiet', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'session-scope-nogit-'));
     try {

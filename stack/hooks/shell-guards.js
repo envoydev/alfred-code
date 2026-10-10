@@ -395,7 +395,8 @@ function ownChecks(stdin)
     {
         let fixed = command;
         for (const [a, b, rep] of edits.sort((x, y) => y[0] - x[0])) fixed = fixed.slice(0, a) + rep + fixed.slice(b);
-        row({ mode: 'rewrite', reason: 'rewrite: zsh-quote', detail: { branch: 'zsh-quote', fixes: edits.length } });
+        const pm = typeof payload.permission_mode === 'string' && payload.permission_mode ? { permissionMode: payload.permission_mode } : {};
+        row({ mode: 'rewrite', reason: 'rewrite: zsh-quote', detail: { branch: 'zsh-quote', fixes: edits.length, ...pm } });
         const next = { ...payload, tool_input: { ...input, command: fixed } };
         out.stdin = Buffer.from(JSON.stringify(next));
         out.results.push({ guard: `${SELF}.js`, code: 0, stderr: '', stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: { ...input, command: fixed } } }) });

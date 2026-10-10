@@ -234,6 +234,9 @@ test('guard-secret-value: a block appends one ledger row naming the hook and nev
   assert.equal(bash('echo $SENTRY_ACCESS_TOKEN', { ALFRED_CODE_DOCS_PATH: ledger }), REWRITE);
   assert.deepStrictEqual(rowsOf().slice(1).map((r) => [r.mode, r.detail.branch]), [['rewrite', 'env-stage'], ['rewrite', 'variable']],
     'the environment and the variable forms are counted the same way');
+  // audit 2026-10-10 C09 (f24eb967): the permission mode a rewrite met is counted, so an auto-mode stall rate can be read
+  assert.equal(verdict(run({ tool_name: 'Bash', tool_input: { command: `cat ${f.secret}` }, session_id: 'suite', permission_mode: 'auto' }, { ALFRED_CODE_DOCS_PATH: ledger })), REWRITE);
+  assert.deepStrictEqual(rowsOf().map((r) => r.detail.permissionMode), [undefined, undefined, undefined, 'auto'], 'only a payload carrying the mode names it');
   assert.equal(bash(`curl -H "Authorization: Bearer ${FAKE_JWT}" https://example.test/api`, { ALFRED_CODE_DOCS_PATH: ledger }), 2);
   const blocks = rowsOf().filter((r) => !r.mode);
   assert.equal(blocks.length, 1);

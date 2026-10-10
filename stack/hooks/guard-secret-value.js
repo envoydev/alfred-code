@@ -1258,8 +1258,12 @@ if (payload.cwd != null && (typeof payload.cwd !== 'string' || !payload.cwd)) de
 // the block rate alone never said how often the model reaches for a value. A `mode` row, which the analyzer
 // reads as a probe and never as a block; tool, branch and a file's BASENAME only - never the value. A repo never
 // set up gets none (R54), like a block. Best-effort - a lost row is a lost measurement, never a changed verdict.
+// The payload's `permission_mode` rides along (audit 2026-10-10 C09): an auto-mode classifier once gave a rewritten
+// call no verdict and stalled it 80s, 1 of 89 rewrites in that session - the row counts how often a rewrite meets
+// auto mode before any denial-in-auto trades every such rewrite for a retried turn.
 function rewriteRow(detail) {
   if (unsetRepo) return;
+  if (typeof payload.permission_mode === 'string' && payload.permission_mode) detail = { ...detail, permissionMode: payload.permission_mode };
   try {
     const dir = pathMod.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });

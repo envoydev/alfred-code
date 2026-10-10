@@ -667,6 +667,9 @@ test('audit 2026-10-10 C14: under zsh a tool-owned glob and a bare =word are quo
     assert.equal(own(dir, c, ZSH).command, null, `left as written: ${c}`);
   assert.equal(own(dir, 'grep -n --include=*.ts foo a.txt', { env: { SHELL: '/bin/bash' } }).command, null, 'bash leaves an unmatched glob as written');
   assert.ok(rowsIn(dir).some((r) => r.mode === 'rewrite' && r.detail.branch === 'zsh-quote'), 'each rewrite is one rewrite row');
+  // audit 2026-10-10 C09: the permission mode a rewrite met is counted
+  run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'echo =====' }, session_id: 'own', cwd: dir, permission_mode: 'auto' }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, SHELL: '/bin/zsh' } });
+  assert.equal(rowsIn(dir).filter((r) => r.detail && r.detail.branch === 'zsh-quote').pop().detail.permissionMode, 'auto');
   // the guards judge the fixed command: the commit gate still blocks an unreceipted commit, and nothing else changes
   assert.equal(own(dir, 'echo ===== && git commit -am x', ZSH).status, 2, 'a block wins over the quoting');
 });

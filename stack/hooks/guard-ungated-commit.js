@@ -283,10 +283,18 @@ const docsPrefix = () => {
 // git add that would sweep it in is blocked below. The record for this HEAD first; a commit made since the session
 // started has none yet, so the newest record stands - a path it lists that is still untracked is still not the change,
 // and one it lists that got committed no longer matters. No record at all - an older install, no SessionStart - is an
-// empty set.
+// empty set. Before either: the record this session's first start used, named in `untracked-session-<sid>` (audit
+// 2026-10-10 C09), so a HEAD the session moved never hands it another session's snapshot.
 let preExistingCache;
 function preExistingRecord() {
   const dir = path.resolve(root, docsRootEnv(), 'flow');
+  const sid = String((payload && payload.session_id) || '').replace(/[^\w.-]/g, '_');
+  if (sid) {
+    try {
+      const named = path.basename(fs.readFileSync(path.join(dir, `untracked-session-${sid}`), 'utf8').trim());
+      if (named.startsWith('untracked-at-start-') && fs.existsSync(path.join(dir, named))) return path.join(dir, named);
+    } catch { /* no pointer - an older start */ }
+  }
   let head = '';
   try { head = git('rev-parse --verify -q HEAD'); } catch { head = ''; }
   const own = path.join(dir, `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);

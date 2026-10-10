@@ -305,7 +305,11 @@ function main() {
 // fresh snapshot. guard-ungated-commit.js reads the same key: out of the receipt's count, and a git add that would
 // sweep one in is blocked unless the user names it. Root-relative, spelled as git lists them with core.quotePath=false,
 // at most UNTRACKED_CAP paths (past it a path reads as the change's own), and a record past SWEEP_MS goes when the
-// next one is written.
+// next one is written. Only a session's FIRST start (`source` startup, clear, or none) may take a snapshot, and it
+// names the record it used in `untracked-session-<sid>`: a compact or resume start reuses that record and never
+// snapshots, since a HEAD the session itself moved has no record yet and a snapshot then lists the session's own new
+// files as pre-existing (audit 2026-10-10 C09, session c6142301: 7 of its own files, and the commit guard would have
+// blocked their git add). guard-ungated-commit.js reads the session's pointer first.
 const UNTRACKED_CAP = 20000;
 
 // A docs move (`--data-move move`) can leave the old default behind holding hook state: the move's own tool call
@@ -354,10 +358,23 @@ function recordUntracked(input, root) {
   let file;
   let list;
   try {
-    let head = '';
-    try { head = require('child_process').execFileSync('git', ['rev-parse', '--verify', '-q', 'HEAD'], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { /* no commit yet, or no repo - ls-files below tells them apart */ }
-    file = path.resolve(root, docsRootEnv(), 'flow', `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
+    const flow = path.resolve(root, docsRootEnv(), 'flow');
+    const sid = String(input.session_id || '').replace(/[^\w.-]/g, '_');
+    const pointer = sid ? path.join(flow, `untracked-session-${sid}`) : '';
+    const later = input.source === 'compact' || input.source === 'resume';
+    if (later && pointer) {
+      try {
+        const named = path.basename(fs.readFileSync(pointer, 'utf8').trim());
+        if (named.startsWith('untracked-at-start-') && fs.existsSync(path.join(flow, named))) file = path.join(flow, named);
+      } catch { /* no pointer - an older start, or none */ }
+    }
+    if (!file) {
+      let head = '';
+      try { head = require('child_process').execFileSync('git', ['rev-parse', '--verify', '-q', 'HEAD'], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { /* no commit yet, or no repo - ls-files below tells them apart */ }
+      file = path.join(flow, `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
+    }
     if (fs.existsSync(file)) list = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
+    else if (later) return '';
     else {
       const out = require('child_process').execFileSync('git', ['-c', 'core.quotePath=false', 'ls-files', '--others', '--exclude-standard', '-z'],
         { cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).toString('utf8');
@@ -368,6 +385,7 @@ function recordUntracked(input, root) {
       fs.writeFileSync(file, list.map((f) => `${f}\n`).join(''));
       sweepRecords(path.dirname(file));
     }
+    if (pointer && !later) fs.writeFileSync(pointer, `${path.basename(file)}\n`);
   } catch { return ''; }
   if (!list.length) return '';
   const rel = toPosix(path.relative(root, file));
@@ -376,7 +394,7 @@ function recordUntracked(input, root) {
 function sweepRecords(dir, now = Date.now()) {
   try {
     for (const f of fs.readdirSync(dir)) {
-      if (!f.startsWith('untracked-at-start-')) continue;
+      if (!f.startsWith('untracked-at-start-') && !f.startsWith('untracked-session-')) continue;
       const full = path.join(dir, f);
       if (now - fs.statSync(full).mtimeMs > SWEEP_MS) fs.rmSync(full, { force: true });
     }
