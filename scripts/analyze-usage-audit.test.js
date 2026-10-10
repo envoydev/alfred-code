@@ -427,6 +427,30 @@ test('C07: the session window ends at the last activity row, and a queue-operati
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// C07 (b35afe70): 70 screenshot results read as 'Read ~933' and a spike cause '~2 tok' - an image is billed as pixels,
+// and its cost is the context growth of the turn that carried it.
+test('C07: image results are counted per tool and measured from the context growth of their turn', () => {
+  const dir = tmp();
+  try {
+    const img = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'A'.repeat(4000) } };
+    const at = (id, ts, cr, content) => ({ ...asst(id, ts, content), message: { id, model: 'claude-sonnet-5', usage: usage(1, 0, cr, 100), content } });
+    const rows = [
+      human(T(0), 'check the screens'),
+      at('m1', T(1), 10000, [tool('r1', 'Read', { file_path: '/p/a.png' }), tool('r2', 'Read', { file_path: '/p/b.png' })]),
+      { type: 'user', timestamp: T(2), message: { content: [{ type: 'tool_result', tool_use_id: 'r1', content: [img] }, { type: 'tool_result', tool_use_id: 'r2', content: [img] }] } },
+      // the next context grew 2,100: 100 of the previous answer's output, the rest the two images
+      at('m2', T(3), 12100, [{ type: 'text', text: 'Both screens match.' }]),
+    ];
+    const file = write(dir, rows);
+    const { main } = run([file]);
+    assert.deepStrictEqual([main.imageResults, main.imageTok, main.imagesMeasured, main.toolCalls.Read.images], [2, 1999, 2, 2], "2,100 growth less 100 of output and 1 of the empty text parts");
+    const out = text([file]);
+    assert.match(out, /images 2 in tool results \(Read 2\) ~2\.0k tok, from the context growth of the turns that carried 2 of them/);
+    assert.match(out, /after: image×2 \(~2\.0k tok, from the context growth\)/);
+    assert.match(text([file, '--report-md']), /> images 2 in tool results \(Read 2\) ~2\.0k tok/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // C05: a commit that opens its own line of a multi-line call (390aebcb, 49cb4b82, f6c591fa: 'git commits 0' over a
 // receipted commit). A heredoc message naming the commit verb still counts nothing.
 test('C05: a git commit or gh pr merge on a later line of a multi-line call counts; a heredoc body never does', () => {

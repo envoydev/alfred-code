@@ -1678,6 +1678,7 @@ async function analyzeTranscript(file, window) {
     if (!m && ts) (s.unattributedDenials = s.unattributedDenials || []).push(ts);
   };
   let prevCtx = null;
+  let prevMsgReg = null;           // the previous API message's folded usage - its output is in the next context too
   let pending = [];               // tool results since the previous counted assistant msg
   // One real compaction emits TWO lines (a system compactMetadata + a user isCompactSummary,
   // ms apart) - counting both doubled the number in four audited bundles. Count boundaries;
@@ -2110,8 +2111,19 @@ async function analyzeTranscript(file, window) {
             prevCache = { cr, cc };
             afterCompaction = false;
           }
+          // An image result is billed as pixels, never as its base64 text: what it cost is the context growth of the turn
+          // that carried it, net of the text results and the previous answer's output (audit 2026-10-10, b35afe70: 70
+          // screenshots read as 'Read ~933' and a spike cause '~2 tok', where the growth said ~64k).
+          const imgN = pending.reduce((n, p) => n + (p.images || 0), 0);
+          let imgTok = 0;
+          if (imgN && prevCtx != null && ctx - prevCtx > 0) {
+            const textTok = approxTok(pending.reduce((n, p) => n + p.chars, 0));
+            imgTok = Math.max(0, ctx - prevCtx - textTok - (prevMsgReg ? prevMsgReg.u.out : 0));
+            // a copied fork prefix is the parent's bill: its spike still names the cause, the total does not take it
+            if (!foreign) { s.imageTok = (s.imageTok || 0) + imgTok; s.imagesMeasured = (s.imagesMeasured || 0) + imgN; }
+          }
           if (prevCtx != null && ctx - prevCtx > 0) {
-            s.spikes.push({ ts: o.timestamp, delta: ctx - prevCtx, ctx, causes: summarizeCauses(pending) });
+            s.spikes.push({ ts: o.timestamp, delta: ctx - prevCtx, ctx, causes: summarizeCauses(pending, imgTok) });
           } else if (prevCtx != null && (m.usage.cache_creation_input_tokens || 0) > 20000) {
             // Right after a compaction the context DROPS, so a re-cache of the rebuilt prompt has a
             // negative delta and never entered the accumulator - 279,885 tokens, 17.2% of one
@@ -2121,12 +2133,12 @@ async function analyzeTranscript(file, window) {
               delta: m.usage.cache_creation_input_tokens || 0,
               ctx,
               kind: 'cache-write',
-              causes: summarizeCauses(pending) || 'prompt re-cached after a context reset',
+              causes: summarizeCauses(pending, null) || 'prompt re-cached after a context reset',
             });
           }
           s.spikes.sort((a, b) => b.delta - a.delta);
           if (s.spikes.length > 5) s.spikes.length = 5;
-          prevCtx = ctx; pending = [];
+          prevCtx = ctx; pending = []; prevMsgReg = r;
         }
         r.u.in = Math.max(r.u.in, m.usage.input_tokens || 0);
         r.u.cc = Math.max(r.u.cc, m.usage.cache_creation_input_tokens || 0);
@@ -2477,7 +2489,8 @@ async function analyzeTranscript(file, window) {
         const info = toolById.get(c.tool_use_id);
         const ix = callIdxById.get(c.tool_use_id);
         if (ix && o.timestamp && !ix.resultTs) ix.resultTs = o.timestamp;
-        pending.push({ name: info ? info.name : '?', chars });
+        pending.push({ name: info ? info.name : '?', chars, images: imgs });
+        if (imgs && info && s.toolCalls[info.name]) s.toolCalls[info.name].images = (s.toolCalls[info.name].images || 0) + imgs;
         if (!info) continue;
         // The biggest individual results, joined to what the call asked for. Kept sorted and
         // capped, so this costs nothing on a long session.
@@ -2673,14 +2686,32 @@ async function analyzeTranscript(file, window) {
   return s;
 }
 
-function summarizeCauses(pending) {
+// Image results across main and seats: the count, which tool carried them, and what the context growth of their turns
+// measured - one line both renderers print under the TOOLS table.
+function imageLine(main, agents) {
+  const srcs = [main, ...agents.map((a) => a.stats)];
+  const n = srcs.reduce((k, x) => k + (x.imageResults || 0), 0);
+  if (!n) return null;
+  const tok = srcs.reduce((k, x) => k + (x.imageTok || 0), 0);
+  const measured = srcs.reduce((k, x) => k + (x.imagesMeasured || 0), 0);
   const by = {};
+  for (const x of srcs) for (const [name, t] of Object.entries(x.toolCalls || {})) if (t.images) by[name] = (by[name] || 0) + t.images;
+  const per = Object.entries(by).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ');
+  return `images ${n} in tool results (${per}) ~${fmt(tok)} tok, from the context growth of the turns that carried ${measured} of them - never counted as text in the results column`;
+}
+function summarizeCauses(pending, imageTok = 0) {
+  const by = {};
+  let images = 0;
   for (const p of pending) {
     const e = by[p.name] || (by[p.name] = { n: 0, chars: 0 });
     e.n += 1; e.chars += p.chars;
+    images += p.images || 0;
   }
-  return Object.entries(by).sort((a, b) => b[1].chars - a[1].chars).slice(0, 3)
-    .map(([name, e]) => `${name}×${e.n} (~${fmt(approxTok(e.chars))} tok)`).join(', ');
+  const rows = Object.entries(by).map(([name, e]) => [`${name}×${e.n}`, approxTok(e.chars)]);
+  // imageTok null: the growth was not this turn's (a re-cache after a context reset), so the images carry no figure
+  if (images) rows.push([`image×${images}`, imageTok]);
+  return rows.sort((a, b) => (b[1] || 0) - (a[1] || 0)).slice(0, 3)
+    .map(([label, tok]) => (tok == null ? `${label} (pixels, not measured on a re-cache)` : `${label} (~${fmt(tok)} tok${label.startsWith('image×') ? ', from the context growth' : ''})`)).join(', ');
 }
 
 // ---------- subagents (the session's <id>/subagents/ directory) ----------
@@ -3625,6 +3656,8 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
     }
     const rmv = Object.values(agg.tools).reduce((n, t) => n + (t.rmVerifyTails || 0), 0);
     if (rmv) console.log(`  ${rmv} shell call(s) ended on an ls/test verifying an rm - the non-zero exit there is the removal CONFIRMED, so they are not in the errors column`);
+    const img = imageLine(main, agents);
+    if (img) console.log(`  ${img}`);
   }
   {
     const errs = Object.entries(agg.tools).filter(([, t]) => (t.errorTs || []).length);
@@ -3905,6 +3938,8 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
     }
     const rmv = Object.values(agg.tools).reduce((n, t) => n + (t.rmVerifyTails || 0), 0);
     if (rmv) out.push('', `> ${rmv} shell call(s) ended on an \`ls\`/\`test\` verifying an \`rm\` - the non-zero exit there is the removal CONFIRMED, so they are not counted in the errors column.`);
+    const img = imageLine(main, agents);
+    if (img) out.push('', `> ${img}.`);
   }
   out.push('');
   {
