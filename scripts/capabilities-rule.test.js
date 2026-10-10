@@ -200,6 +200,23 @@ test('I21: the always-on surface skips manual-only descriptions and prices the g
     assert.equal(s.total, s.rules + s.agents + s.skills + s.generated);
 });
 
+// Audit 2026-10-10 C28 (session 8f44a003): the dispatcher lists each seat with its '(Tools: ...)' suffix - 33,635
+// of the listing's 45,027 chars - and check 33 measured none of it.
+test('C28: the always-on surface measures each seat\'s listed tools suffix and prints it beside the capped parts', () =>
+{
+    const { alwaysOnSurface, alwaysOnParts } = require('./always-on-surface.js');
+    const base = path.join(TMP, 'surface-tools');
+    write(path.join(base, 'rules', 'r.md'), 'R\n');
+    write(path.join(base, 'agents', 'inline.md'), '---\nname: inline\ndescription: "d"\ntools: Read, Bash\n---\n');
+    write(path.join(base, 'agents', 'listed.md'), '---\nname: listed\ndescription: "d"\ntools:\n  - Read\n  - "Grep"\n---\n');
+    write(path.join(base, 'agents', 'none.md'), '---\nname: none\ndescription: "d"\n---\n');
+    fs.mkdirSync(path.join(base, 'skills'), { recursive: true });
+    const s = alwaysOnSurface({ rulesDir: path.join(base, 'rules'), agentsDir: path.join(base, 'agents'), skillsDir: path.join(base, 'skills'), capabilitiesDir: path.join(base, 'caps') });
+    assert.equal(s.agentTools, ' (Tools: Read, Bash)'.length + ' (Tools: Read, Grep)'.length + ' (Tools: *)'.length, 'inline, a YAML list joined, and none as *');
+    assert.equal(s.total, s.rules + s.agents + s.skills + s.generated, 'outside the cap until the seats\' grants narrow');
+    assert.match(alwaysOnParts(s), new RegExp(`\\(not counted: agent tools lists ${s.agentTools}, listed beside each description\\)$`));
+});
+
 test('I21: the lint comment no longer claims ~10% headroom, and CLAUDE.md states what check 33 counts', () =>
 {
     const lint = read('scripts/lint-skills.js');
