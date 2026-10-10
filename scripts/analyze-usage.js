@@ -472,6 +472,105 @@ function docRelPath(filePath) {
   }
   return null;
 }
+// A docs path that belongs to ANOTHER project: one that climbs out of the cwd (`../<sibling>/.alfred/docs/...`), or an
+// absolute one whose project folder is neither the session's cwd, an ancestor of it (a worktree under the project
+// still reads its own project's docs) nor under it (a worktree or package the session reached by `cd`).
+function foreignDocPath(p, cwd) {
+  const norm = String(p).replace(/\\/g, '/');
+  if (!/^(?:\/|[A-Za-z]:\/)/.test(norm)) return path.posix.normalize(norm).startsWith('../');
+  if (!cwd) return false;
+  let owner = null;
+  for (const pre of docsPrefixes) { const i = norm.indexOf(pre.startsWith('/') ? pre : `/${pre}`); if (i >= 0) { owner = norm.slice(0, i); break; } }
+  if (owner == null) return false;
+  const c = String(cwd).replace(/\\/g, '/').replace(/\/+$/, '');
+  const fold = (x) => (/^[A-Za-z]:\//.test(x) ? x.toLowerCase() : x);
+  const [a, b] = [fold(c), fold(owner)];
+  return !(a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`));
+}
+// The command word of one segment, past the same env assignments, keywords and wrappers the check classifier strips.
+function segmentHead(seg) {
+  let s = String(seg);
+  for (let i = 0; i < 16; i += 1) {
+    const m = HEAD_PREFIX_RE.exec(s);
+    if (!m || !m[0]) break;
+    s = s.slice(m[0].length);
+  }
+  return s;
+}
+const DOC_PROBE_HEAD_RE = /^(?:test|\[\[?|ls|stat|realpath|readlink|du|file|dirname|basename)(?=\s|$)/;
+const IN_PLACE_HEAD_RE = /^(?:g?sed\s+(?:\S+\s+)*?(?:-[a-zA-Z]*i\S*|--in-place\S*)(?=\s|$)|perl\s+(?:\S+\s+)*?-[a-zA-Z0-9]*i[a-zA-Z0-9]*(?=\s|$)|ruby\s+(?:\S+\s+)*?-[a-zA-Z]*i\S*(?=\s|$))/;
+const DOC_READ_VERB = '(?:cat|head|tail|sed|awk|grep|egrep|rg|less|more|bat|nl|wc|diff|jq|python3?|node)';
+// `for p in <paths>; do [ -e "$p" ] ...; done` names each path and reads none: a loop whose body never hands its
+// variable to a reading verb is a probe list.
+function loopOnlyProbes(seg, cmd) {
+  const m = /^\s*for\s+([A-Za-z_]\w*)\s+in\s/.exec(seg);
+  if (!m) return false;
+  const at = String(cmd).indexOf(seg);
+  const rest = at >= 0 ? String(cmd).slice(at + seg.length) : String(cmd);
+  const body = (/\bdo\b([\s\S]*?)\bdone\b/.exec(rest) || [])[1] || '';
+  const v = m[1];
+  return !new RegExp(`\\b${DOC_READ_VERB}\\b[^;&|\\n]*\\$\\{?${v}\\b`).test(body);
+}
+// A runtime handed a doc path as an argument, with a script that reads its argv and writes a file.
+const RUNTIME_HEAD_RE = /^(?:python[\d.]*|node|perl|ruby|deno|bun)(?=\s|$)/;
+const ARGV_READ_RE = /\bsys\.argv\b|\bprocess\.argv\b|\bARGV\b|\$ARGV\b/;
+const SCRIPT_WRITE_RE = /\bopen\([^)]*,\s*(?:mode\s*=\s*)?["'][wa]\+?b?["']|\.write_(?:text|bytes)\(|\bwriteFileSync\(|\bFile\.write\(|\bopen\s*\(\s*my\s+\$\w+\s*,\s*["']>/;
+// `node <path>/docs.js <verb> ...` at a command word.
+const DOCS_JS_HEAD_RE = /^node\s+["']?(?:\S*[/\\])?docs\.js["']?\s+(show|toc|set|where)(?=\s|$)/;
+// A tool result as the text the model read: a string, or the text blocks of a block array.
+function plainResult(c) {
+  if (!c) return '';
+  if (typeof c.content === 'string') return c.content;
+  if (Array.isArray(c.content)) return c.content.filter((b) => b && b.type === 'text').map((b) => String(b.text || '')).join('\n');
+  return '';
+}
+// A read whose result says the file - or a folder above it, down to the docs root - is not there read nothing:
+// `ls .alfred/docs/<dir>/ 2>&1; grep ... <dir>/<doc>.md 2>/dev/null` names only the missing folder (audit 2026-10-10,
+// 49cb4b82).
+function missingInResult(text, p) {
+  if (!text || !p) return false;
+  const parts = String(p).replace(/\\/g, '/').split('/');
+  const rootDepth = parts.findIndex((x, i) => docsPrefixes.some((pre) => parts.slice(0, i + 1).join('/').endsWith(pre.replace(/\/+$/, ''))));
+  for (let n = parts.length; n > Math.max(rootDepth, 0); n -= 1) {
+    const esc = parts.slice(0, n).join('/').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const tail = n < parts.length ? '/?' : '';
+    if (new RegExp(`${esc}${tail}['"\`]?:?\\s*(?:No such file|not found|does not exist)|(?:cannot access|cannot open|can't open|No such file or directory:?)\\s*['"\`]?${esc}${tail}['"\`]?(?![\\w./-])`, 'i').test(text)) return true;
+  }
+  return false;
+}
+// A path as seen from where a segment runs: an absolute one as written, a relative one joined to the anchor (a
+// POSIX or a drive-letter cwd). With no anchor, or a `cd` the analyzer cannot follow (`~`, `-`), there is none.
+function resolveAt(anchor, p) {
+  const q = String(p).replace(/\\/g, '/');
+  if (/^(?:\/|[A-Za-z]:\/)/.test(q)) return q;
+  if (!anchor || /^[~-]/.test(q)) return null;
+  if (/^[A-Za-z]:\//.test(anchor)) return path.win32.resolve(anchor, q).replace(/\\/g, '/');
+  return anchor.startsWith('/') ? path.posix.resolve(anchor, q) : null;
+}
+// What a docs.js call read or wrote, from its own output: `show` / `toc` print `<docs path>.md line N` (or a branch
+// version's path) above each section, `set` prints `wrote <ref> into <path>` or `wrote <path> (base kept ...)`, and
+// `where` lists the covering sections - one orientation lookup row. A show of a ref that resolves to nothing prints no
+// path and counts nothing, as docs-session.js reads it.
+const DOCS_WHERE_ROW = '(docs.js where - section lookup)';
+function docsJsTouches(text, verbs) {
+  const out = [];
+  const seen = new Set();
+  const rel = (p) => docRelPath(`/${String(p).replace(/^\.?\//, '')}`) || docRelPath(p);
+  if (verbs.has('show') || verbs.has('toc')) {
+    for (const m of String(text).matchAll(/(?:^|\n)\s*(\S+\.md) (?:line \d+|\(this branch)/g)) {
+      const r = rel(m[1]);
+      if (r && !seen.has(`r:${r}`)) { seen.add(`r:${r}`); out.push([r, 'bashReads']); }
+    }
+  }
+  if (verbs.has('set')) {
+    for (const m of String(text).matchAll(/\bwrote \S+ into (\S+\.md)|\bwrote (\S+\.md) \(base kept/g)) {
+      const r = rel(m[1] || m[2]);
+      if (r && !seen.has(`w:${r}`)) { seen.add(`w:${r}`); out.push([r, 'bashWrites']); }
+    }
+  }
+  if (verbs.has('where') && /^\S+#\S+ - /m.test(String(text))) out.push([DOCS_WHERE_ROW, 'bashReads']);
+  return out;
+}
 
 // ---------- installed inventory: what the project HAS, against what a session USED ----------
 // The report measured consumption and never its complement: a 79-skill install could show three
@@ -1470,6 +1569,7 @@ async function analyzeTranscript(file, window) {
   const toolById = new Map();
   // doc writes seen in a Bash command, tallied only once the result shows it executed
   const pendingDocTouch = new Map();     // tool_use id -> { name, skill }
+  const pendingDocsJs = new Map();       // tool_use id -> Set of docs.js verbs the call ran (show, toc, set, where)
   const pendingGitActs = new Map();      // tool_use id -> { commits, merges } - released on a non-error result
   const promptParents = new Set();       // parentUuid of a counted user turn - siblings are the same turn
   // The ["…/hooks/<file>.js"] bracket is an ATTRIBUTION signal, never the test for a denial: the
@@ -1895,7 +1995,7 @@ async function analyzeTranscript(file, window) {
         const t = s.toolCalls[c.name] || (s.toolCalls[c.name] = { calls: 0, resultChars: 0, errors: 0, firstTs: o.timestamp || null });
         t.calls += 1;
         if (c.input && typeof c.input.file_path === 'string') {
-          const rel = docRelPath(c.input.file_path);
+          const rel = foreignDocPath(c.input.file_path, s.cwd) ? null : docRelPath(c.input.file_path);
           if (rel) {
             const d = s.docTouches[rel] || (s.docTouches[rel] = { reads: 0, writes: 0 });
             if (c.name === 'Read') d.reads += 1;
@@ -2032,13 +2132,30 @@ async function analyzeTranscript(file, window) {
             const roots = bashDocRoots();
             const rootAlt = roots.map((r) => r.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
             const docPathRe = new RegExp(`(?:^|[\\s"'\`=(])((?:[^\\s"'\`;|&)]*/)?(?:${rootAlt})[^\\s"'\`;|&)]+)`, 'g');
-            for (const seg of cmdShell.split(/&&|\|\||;|\n/)) {
+            // The command's own bindings are read as the literals they stand for: `P=<plan>; cat > $P` wrote the
+            // session's one plan and the table never listed it (audit 2026-10-10, b35afe70).
+            const docShell = expandBound(cmdShell, bindings);
+            const docStr = expandBound(cmdStr, bindings);
+            // Where each segment runs: the row's cwd, moved by a literal `cd` - so `cd <parent>` then
+            // `<sibling>/.alfred/docs/...` is the sibling's doc (audit 2026-10-10, 49cb4b82).
+            let anchor = typeof o.cwd === 'string' && o.cwd ? String(o.cwd).replace(/\\/g, '/') : null;
+            for (const seg of docShell.split(/&&|\|\||;|\n/)) {
+              const head = segmentHead(seg);
+              const cd = /^cd\s+(["']?)([^\s"'$`]+)\1\s*$/.exec(head.trim());
+              if (cd) { anchor = resolveAt(anchor, cd[2]); continue; }
+              // An existence test names a path and reads none of it: `[ -e "$p" ]`, `test -f`, `ls`, and a `for` list
+              // feeding only such tests (audit 2026-10-10, f10cb06a: seven docs scored a read by one existence loop).
+              const probe = DOC_PROBE_HEAD_RE.test(head) || loopOnlyProbes(seg, docShell);
+              // An in-place edit is a write, never a read (`sed -i '' 's/.../' <plan>`, `perl -0pi -e ...`).
+              const inPlace = IN_PLACE_HEAD_RE.test(head);
               for (const pm of seg.matchAll(docPathRe)) {
                 const p = pm[1].replace(/[/:,.]+$/, ''); // a trailing separator is punctuation, not the name
                 if (p.includes('$')) continue; // unexpanded variable - not a literal doc path
                 if (/[*?\[]/.test(p)) continue; // a GLOB names no one document
                 const hit = roots.find((r) => p.includes(r));
                 if (!hit) continue;
+                // Another project's docs are not this project's (audit 2026-10-10, 49cb4b82: `../<sibling>/...` cards).
+                if (foreignDocPath(resolveAt(anchor, p) || p, s.cwd)) continue;
                 const rel = p.slice(p.indexOf(hit) + hit.length);
                 // Only a DOCUMENT: keying on every token under the docs root produced 79 rows for
                 // ~6 real documents - directories, globs and trailing punctuation each got a row.
@@ -2054,24 +2171,36 @@ async function analyzeTranscript(file, window) {
                 // variable binding and the pathlib form are matched too.
                 // The binding and its use sit on DIFFERENT lines of a python heredoc, so both
                 // checks run against the whole command, not the segment the path appeared in.
-                const varBound = new RegExp(`(\\w+)\\s*=\\s*(?:pathlib\\.)?(?:Path\\()?["'\`][^"'\`]*${esc}`).exec(cmdStr);
+                const varBound = new RegExp(`(\\w+)\\s*=\\s*(?:pathlib\\.)?(?:Path\\()?["'\`][^"'\`]*${esc}`).exec(docStr);
                 const varWrite = varBound
-                  ? new RegExp(`open\\(\\s*${varBound[1]}\\s*,[^)]*["']w["']|\\b${varBound[1]}\\.write_(text|bytes)\\(|\\bio\\.open\\(\\s*${varBound[1]}\\s*,[^)]*["']w["']`).test(cmdStr)
+                  ? new RegExp(`open\\(\\s*${varBound[1]}\\s*,[^)]*["']w["']|\\b${varBound[1]}\\.write_(text|bytes)\\(|\\bio\\.open\\(\\s*${varBound[1]}\\s*,[^)]*["']w["']`).test(docStr)
                   : false;
+                // A runtime handed the path as an ARGUMENT whose script reads its argv and writes a file:
+                // `python3 - "$P" <<'PY' ... open(p,'w')` - the plan edits of b35afe70 and ecea6d56 read as reads.
+                const argvWrite = !assigned && RUNTIME_HEAD_RE.test(head) && ARGV_READ_RE.test(docStr) && SCRIPT_WRITE_RE.test(docStr);
                 // `rm` CLEARS a receipt - counting it as a write reported a written document that
                 // was in fact deleted; and `mkdir -p <dir>` is neither read nor write of a document.
                 const cleared = new RegExp(`\\brm\\s+(?:-\\w+\\s+)*["']?${esc}`).test(seg);
                 const made = new RegExp(`\\bmkdir\\s+(?:-\\w+\\s+)*["']?${esc}`).test(seg);
-                const isWrite = varWrite || new RegExp(`(>>?\\s*["']?${esc})|(\\btee\\s+(?:-a\\s+)?["']?${esc})|(open\\([^)]*${esc}[^)]*["']w["'])|(${esc}["'\`]?\\s*\\)?\\.write_(text|bytes)\\()`).test(seg);
-                const e = touched.get(rel) || { r: false, w: false, c: false };
+                const isWrite = varWrite || argvWrite || inPlace || new RegExp(`(>>?\\s*["']?${esc})|(\\btee\\s+(?:-a\\s+)?["']?${esc})|(open\\([^)]*${esc}[^)]*["']w["'])|(${esc}["'\`]?\\s*\\)?\\.write_(text|bytes)\\()`).test(seg);
+                const e = touched.get(rel) || { r: false, w: false, c: false, p };
                 if (isWrite) e.w = true;
                 else if (cleared) e.c = true;
-                else if (!made && !assigned) e.r = true;
+                else if (!made && !assigned && !probe) e.r = true;
                 touched.set(rel, e);
               }
             }
             // Held until the paired tool_result proves the command actually ran (below).
             if (touched.size) pendingDocTouch.set(c.id, [...touched.entries()]);
+            // The stack's own section route names no doc path: `docs.js show <file>#<id>` resolves the file itself, so
+            // the RESULT says which document was read or written (audit 2026-10-10 C03: 18 sessions read their
+            // architecture this way and the table listed no architecture row).
+            const djs = new Set();
+            for (const h of commandHeads(checkCode, cmdShell)) {
+              const dm = DOCS_JS_HEAD_RE.exec(h.shell);
+              if (dm) djs.add(dm[1]);
+            }
+            if (djs.size) pendingDocsJs.set(c.id, djs);
           }
         }
         if (c.name === 'AskUserQuestion') askSinceInvoke = true;
@@ -2228,12 +2357,24 @@ async function analyzeTranscript(file, window) {
             // An occurrence that classified as NOTHING - a bare `VAR=<path>` binding, a `mkdir` of
             // its directory - must not open a row: an all-zero row is one of the 79 the report
             // printed for ~6 real documents.
+            // A read whose result says the file is not there read nothing (audit 2026-10-10: ca65b406 and 49cb4b82
+            // scored `code-style/CODE-STYLE.md +1r` over 'No such file or directory').
+            if (e.r && !e.w && !e.c && missingInResult(plainResult(c), e.p)) continue;
             if (!e.w && !e.c && !e.r) continue;
             const d = s.docTouches[rel] || (s.docTouches[rel] = { reads: 0, writes: 0 });
             if (e.w && !c.is_error) d.bashWrites = (d.bashWrites || 0) + 1;
             else if (e.w && c.is_error) d.bashWritesDenied = (d.bashWritesDenied || 0) + 1;
             if (e.c && !c.is_error) d.cleared = (d.cleared || 0) + 1;
             if (e.r && !e.w && !e.c) d.bashReads = (d.bashReads || 0) + 1;
+          }
+        }
+        const djs = pendingDocsJs.get(c.tool_use_id);
+        if (djs) {
+          pendingDocsJs.delete(c.tool_use_id);
+          for (const [rel, kind] of docsJsTouches(plainResult(c), djs)) {
+            const d = s.docTouches[rel] || (s.docTouches[rel] = { reads: 0, writes: 0 });
+            d[kind] = (d[kind] || 0) + 1;
+            d.docsJs = (d.docsJs || 0) + 1;
           }
         }
         const acts = pendingGitActs.get(c.tool_use_id);
@@ -2527,15 +2668,15 @@ function computeAggregates(main, agents) {
   let inject = main.styleInjections;
   let attach = main.styleRuleAttaches;
   for (const [rel, d] of Object.entries(main.docTouches)) {
-    const r = docRows[rel] || (docRows[rel] = { main: 0, agents: 0, writes: 0, bashReads: 0, bashWrites: 0 });
-    r.main += d.reads; r.writes += d.writes; r.bashReads += d.bashReads || 0; r.bashWrites += d.bashWrites || 0;
+    const r = docRows[rel] || (docRows[rel] = { main: 0, agents: 0, writes: 0, bashReads: 0, bashWrites: 0, docsJs: 0 });
+    r.main += d.reads; r.writes += d.writes; r.bashReads += d.bashReads || 0; r.bashWrites += d.bashWrites || 0; r.docsJs += d.docsJs || 0;
   }
   for (const a of agents) {
     inject += a.stats.styleInjections;
     attach += a.stats.styleRuleAttaches;
     for (const [rel, d] of Object.entries(a.stats.docTouches)) {
-      const r = docRows[rel] || (docRows[rel] = { main: 0, agents: 0, writes: 0, bashReads: 0, bashWrites: 0 });
-      r.agents += d.reads; r.writes += d.writes; r.bashReads += d.bashReads || 0; r.bashWrites += d.bashWrites || 0;
+      const r = docRows[rel] || (docRows[rel] = { main: 0, agents: 0, writes: 0, bashReads: 0, bashWrites: 0, docsJs: 0 });
+      r.agents += d.reads; r.writes += d.writes; r.bashReads += d.bashReads || 0; r.bashWrites += d.bashWrites || 0; r.docsJs += d.docsJs || 0;
     }
   }
 
@@ -3242,7 +3383,7 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
     console.log('\nGENERATED DOCS (capture-doc consumption; reads = orientation happening, writes = capture/loop maintenance)');
     console.log(`  ${pad('doc', 44)} ${rpad('main-reads', 10)} ${rpad('agent-reads', 11)} ${rpad('writes', 6)}`);
     for (const [rel, r] of Object.entries(agg.docRows).sort((a, b) => (b[1].main + b[1].agents) - (a[1].main + a[1].agents))) {
-      const bash = (r.bashReads || r.bashWrites) ? `  (+${r.bashReads || 0}r/${r.bashWrites || 0}w via Bash)` : '';
+      const bash = (r.bashReads || r.bashWrites) ? `  (+${r.bashReads || 0}r/${r.bashWrites || 0}w via Bash${r.docsJs ? `, ${r.docsJs} by docs.js` : ''})` : '';
       console.log(`  ${pad(rel, 44)} ${rpad(r.main, 10)} ${rpad(r.agents, 11)} ${rpad(r.writes, 6)}${bash}`);
     }
     if (agg.attach) console.log(`  ${pad('(style rule attached on file touch)', 44)} ${rpad('-', 10)} ${rpad('-', 11)} ${rpad('-', 6)}  ×${agg.attach}`);
@@ -3516,9 +3657,9 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
   const docEntries = Object.entries(agg.docRows).sort((a, b) => (b[1].main + b[1].agents) - (a[1].main + a[1].agents));
   if (docEntries.length || agg.inject || agg.attach) {
     out.push('## Generated docs (reads = orientation happening, writes = capture/loop maintenance)', '');
-    out.push('_A **lower bound**. This table reads the Bash command text, so doc I/O routed through a script the session WROTE and then ran is invisible to it - measured at 5 reported against >=53 real. When a session writes its own helper, name that script here and treat the counts as a floor._', '');
+    out.push('_A **lower bound**. This table reads the Bash command text, so doc I/O routed through a script the session WROTE and then ran is invisible to it - measured at 5 reported against >=53 real. When a session writes its own helper, name that script here and treat the counts as a floor. A `docs.js` section read or write is counted from the call\'s own output (the file it names), in the via-Bash cell._', '');
     out.push('| doc | main-reads | agent-reads | writes | via Bash (r/w) |', '|---|---|---|---|---|');
-    for (const [rel, r] of docEntries) out.push(`| ${rel} | ${r.main} | ${r.agents} | ${r.writes} | ${(r.bashReads || r.bashWrites) ? `${r.bashReads || 0}/${r.bashWrites || 0}` : ''} |`);
+    for (const [rel, r] of docEntries) out.push(`| ${rel} | ${r.main} | ${r.agents} | ${r.writes} | ${(r.bashReads || r.bashWrites) ? `${r.bashReads || 0}/${r.bashWrites || 0}${r.docsJs ? ` (${r.docsJs} by docs.js)` : ''}` : ''} |`);
     if (agg.attach) out.push(`| (style rule attached on file touch) | - | - | ×${agg.attach} | |`);
     if (agg.inject) out.push(`| (style injected by legacy hook) | - | - | ×${agg.inject} | |`);
     out.push('');

@@ -98,6 +98,75 @@ test('C02: reading the log a backgrounded check wrote is that check\'s result - 
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// C03: the GENERATED DOCS table, against the shapes 18 audited sessions used - the stack's own `docs.js` section route,
+// a path bound to a variable, a runtime fed the path as argv, an in-place edit, a read of a file (or a folder above it)
+// that is not there, another project's docs (by `../`, by absolute path, or relative after a `cd`), and an existence loop.
+test('C03: docs.js show/set/where count from their own output; bound, argv, missing, foreign and probed paths read right', () => {
+  const dir = tmp();
+  try {
+    const cwd = '/work/app';
+    const at = (row) => ({ ...row, cwd });
+    const rows = [
+      at(asst('m1', T(0), [
+        sh('d1', 'node .claude/hooks/docs.js show integrations#five-clients 2>&1 | head -30\nnode .claude/hooks/docs.js show slice-anatomy.md#idioms'),
+        sh('d2', 'node .claude/hooks/docs.js where src/Api/Handlers.cs'),
+        sh('d3', "node .claude/hooks/docs.js set architecture/ARCHITECTURE.md#known-ceilings <<'EOF'\n## Known ceilings\nEOF\necho \"set_exit=$?\""),
+        sh('d4', 'node .claude/hooks/docs.js show nothing-here#x'),
+        sh('v1', "cd /work/app; P=.alfred/docs/plans/2026-01-01-plan.md; cat > $P <<'EOF'\n# Plan\nEOF"),
+        sh('v2', "P=.alfred/docs/plans/2026-01-01-plan.md; python3 - \"$P\" <<'PY'\nimport sys\np=sys.argv[1]; s=open(p).read()\nopen(p,'w').write(s.replace('a','b'))\nPY"),
+        sh('x1', "grep -n '^#' .alfred/docs/code-style/CODE-STYLE.md | head -30"),
+        sh('x2', 'cat ../sibling/.alfred/docs/cross-project-tasks/2026-01-01-card.md'),
+        sh('x3', 'for p in .alfred/docs/architecture/A.md .alfred/docs/quality/Q.md; do [ -e "$p" ] && echo "$p"; done'),
+        sh('x4', 'for p in .alfred/docs/quality/R.md; do cat "$p"; done'),
+        sh('x5', 'ls .alfred/docs/plans/2026-01-01-plan.md'),
+        tool('r1', 'Read', { file_path: '/work/other/.alfred/docs/plans/theirs.md' }),
+        tool('r2', 'Read', { file_path: '/work/app/.alfred/docs/plans/ours.md' }),
+        sh('y1', 'ls .alfred/docs/style/ 2>&1; grep -n x .alfred/docs/style/STYLE.md 2>/dev/null'),
+        sh('y2', 'cd /work && sed -n 29,40p sibling/.alfred/docs/cross-project-tasks/2026-01-02-card.md'),
+        sh('y3', "P=.alfred/docs/plans/2026-01-03-plan.md; sed -i '' 's/a/b/' $P && grep -c b $P"),
+        sh('y4', 'cd .claude/worktrees/w1 && cat .alfred/docs/plans/wt.md'),
+      ])),
+      res(T(1), 'd1', '.alfred/docs/architecture/references/integrations.md line 414\n\n## Five clients\nbody\n\n.alfred/docs/architecture/references/slice-anatomy.md line 12\n\n## Idioms\nbody'),
+      res(T(1), 'd2', 'slice-anatomy#idioms - Three handler idioms (1770 chars)\npersistence#bypass - A second bypass (1492 chars)'),
+      res(T(1), 'd3', 'wrote architecture/ARCHITECTURE.md#known-ceilings into .alfred/docs/architecture/ARCHITECTURE.md\nset_exit=0'),
+      res(T(1), 'd4', 'no such doc file: nothing-here. Known: integrations, slice-anatomy'),
+      res(T(1), 'v1', ''),
+      res(T(1), 'v2', ''),
+      res(T(1), 'x1', 'ugrep: warning: .alfred/docs/code-style/CODE-STYLE.md: No such file or directory'),
+      res(T(1), 'x2', '# card'),
+      res(T(1), 'x3', '.alfred/docs/architecture/A.md'),
+      res(T(1), 'x4', '# R'),
+      res(T(1), 'x5', '.alfred/docs/plans/2026-01-01-plan.md'),
+      res(T(1), 'r1', 'theirs'),
+      res(T(1), 'r2', 'ours'),
+      res(T(1), 'y1', 'ls: .alfred/docs/style/: No such file or directory'),
+      res(T(1), 'y2', '# card'),
+      res(T(1), 'y3', '2'),
+      res(T(1), 'y4', '# wt'),
+    ];
+    const file = write(dir, rows);
+    const docs = run([file]).main.docTouches;
+    assert.deepStrictEqual(docs['architecture/references/integrations.md'], { reads: 0, writes: 0, bashReads: 1, docsJs: 1 });
+    assert.strictEqual(docs['architecture/references/slice-anatomy.md'].bashReads, 1);
+    assert.strictEqual(docs['(docs.js where - section lookup)'].bashReads, 1);
+    assert.strictEqual(docs['architecture/ARCHITECTURE.md'].bashWrites, 1, 'the set wrote the file it names');
+    assert.strictEqual(docs['plans/2026-01-01-plan.md'].bashWrites, 2, 'cat > $P and the argv-fed python write');
+    assert.strictEqual(docs['plans/2026-01-01-plan.md'].bashReads, undefined, 'an ls of it is no read');
+    assert.ok(!('code-style/CODE-STYLE.md' in docs), 'a read of a file that is not there read nothing');
+    assert.ok(!('cross-project-tasks/2026-01-01-card.md' in docs), "another project's card is not this project's doc");
+    assert.ok(!('architecture/A.md' in docs) && !('quality/Q.md' in docs), 'an existence loop reads nothing');
+    assert.strictEqual(docs['quality/R.md'].bashReads, 1, 'a loop that cats its variable reads');
+    assert.ok(!('plans/theirs.md' in docs), "a Read of another project's absolute path is not this project's doc");
+    assert.strictEqual(docs['plans/ours.md'].reads, 1);
+    assert.ok(!('style/STYLE.md' in docs), 'a read under a folder the result says is missing read nothing');
+    assert.ok(!('cross-project-tasks/2026-01-02-card.md' in docs), 'a relative path after cd to the parent is the sibling');
+    assert.deepStrictEqual([docs['plans/2026-01-03-plan.md'].bashWrites, docs['plans/2026-01-03-plan.md'].bashReads], [1, undefined], 'sed -i is a write, and a call that writes a doc counts the write');
+    assert.strictEqual(docs['plans/wt.md'].bashReads, 1, 'a worktree under the project reads its own docs');
+    const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
+    assert.match(md, /\| architecture\/references\/integrations\.md \| 0 \| 0 \| 0 \| 1\/0 \(1 by docs\.js\) \|/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // C05: a commit that opens its own line of a multi-line call (390aebcb, 49cb4b82, f6c591fa: 'git commits 0' over a
 // receipted commit). A heredoc message naming the commit verb still counts nothing.
 test('C05: a git commit or gh pr merge on a later line of a multi-line call counts; a heredoc body never does', () => {
