@@ -394,3 +394,18 @@ test('C12: a pasted secret serves its one call only, and a documented seed is ci
     assert.ok(!sec.includes('pass a pasted secret to a tool'), 'the contradicting clause is gone');
     assert.match(sec, /A documented dev seed is cited by file:line and key, never echoed; an account the run creates at the user's ask is reported once, when made\./);
 });
+
+// ------------------------------------------------------------------ audit 2026-10-10 C25 / C07 / C31
+
+// a3d497f8: Monitor loaded for a single background suite whose exit re-invoked the model anyway (~168k cache read).
+// 3b53e0e8: a foreground `until ... sleep` loop on a sentinel that never matched ran its full 600 s.
+// 68da4b6b: one red spec run took six calls to read - three re-runs and empty greps (~886k cache read).
+// fbfc2de4: a parity question answered 'Yes' from three ledger greps; the user re-asked, and the check found a regression.
+test('C25 / C31 / C07: one background command needs no Monitor, a red run is logged once, a completeness verdict scopes itself', () =>
+{
+    const gates = injected('alfred-quality-gates');
+    assert.match(gates, /One `run_in_background` command needs nothing more - its exit re-invokes you; a condition inside a run or across several arms the `Monitor` tool when you start it/);
+    assert.match(gates, /never a foreground `until` \/ `while` sleep loop/);
+    assert.match(gates, /A red test or build run is captured once to a scratch log \(`<cmd> > <scratch>\/run\.log 2>&1; tail -n 60 <scratch>\/run\.log`\); every later look greps that log, never a re-run\./);
+    assert.match(gates, /A verdict that something is complete against a reference \(parity with another app, everything a spec lists\) leads with what its evidence covers/);
+});
