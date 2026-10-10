@@ -474,6 +474,38 @@ test('C07: a reference skill loaded while a flow cycle is open folds into it; an
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// C07 (d37841e9, f10cb06a): the session-start `instructions` attachment carries each standing file with its text; the
+// analyzer never read it, so the floor was one number, a renamed rule loaded under both names was invisible, and the
+// rules inventory came from today's disk only.
+test('C07: the instructions attachment is the floor breakdown, flags a rule loaded under both names, and joins the rules inventory', () => {
+  const dir = tmp();
+  try {
+    const renamed = require('../meta/stack-manifest.json').renamed.rules;
+    const [old, now] = Object.entries(renamed)[0];
+    const root = path.join(dir, 'proj');
+    fs.mkdirSync(path.join(root, '.claude', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'rules', `${now}.md`), '# rule\\n');
+    const rows = [
+      { type: 'attachment', timestamp: T(0), cwd: root, attachment: { type: 'instructions', files: [
+        { path: `${root}/.claude/rules/${old}.md`, type: 'Project', content: 'x'.repeat(4000) },
+        { path: `${root}/.claude/rules/${now}.md`, type: 'Project', content: 'y'.repeat(3000) },
+        { path: `${root}/CLAUDE.md`, type: 'Project', content: 'z'.repeat(8000) },
+      ] } },
+      { ...human(T(1), 'go'), cwd: root },
+      said('m1', T(2), 'ok'),
+    ];
+    const file = write(dir, rows);
+    const { main, inventory } = run([file]);
+    assert.deepStrictEqual(main.instructionFiles.map((f) => f.chars), [4000, 3000, 8000]);
+    const out = text([file]);
+    assert.match(out, new RegExp(`instructions at session start: 3 file\\(s\\), 15000 chars \\(~3\\.8k tok\\) - proj/CLAUDE\\.md 8000, ${old}\\.md 4000, ${now}\\.md 3000`));
+    assert.match(out, new RegExp(`LOADED TWICE under a renamed rule's old and new name: ${old}\\.md \\+ ${now}\\.md - ~1\\.0k tok`));
+    const r = inventory.rules.find((x) => x.name === `${old}.md`);
+    assert.ok(r, "the stale copy the session was given is in its rules inventory");
+    assert.match(text([file, '--report-md']), /\*\*Loaded twice\*\* under a renamed rule's old and new name/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // C05: a commit that opens its own line of a multi-line call (390aebcb, 49cb4b82, f6c591fa: 'git commits 0' over a
 // receipted commit). A heredoc message naming the commit verb still counts nothing.
 test('C05: a git commit or gh pr merge on a later line of a multi-line call counts; a heredoc body never does', () => {

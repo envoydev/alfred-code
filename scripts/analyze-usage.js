@@ -71,6 +71,20 @@ const ACTIVITY_ROW_TYPES = new Set(['user', 'assistant', 'system', 'attachment']
 // call of one of these opens a phase; any other skill loaded while one is open serves it.
 const FLOW_SKILL_RE = /^(?:task-(?:solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|loop-[a-z-]+|capture-[a-z-]+|issue-diagnoser)$/;
 const idleTailLine = (main) => (main.idleTail ? `idle tail ${dur(Date.parse(main.idleTail.to) - Date.parse(main.idleTail.from))} after the last turn, to a \`${main.idleTail.rowType || '?'}\` row at ${main.idleTail.to} - not session time` : '');
+// The session-start instruction files, largest first, and any rule loaded under both the old and the new name of a
+// manifest rename (`renamed.rules`), which the session paid for twice.
+function instructionsBreakdown(main) {
+  const files = main.instructionFiles;
+  if (!files || !files.length) return null;
+  const name = (p) => { const m = /\/\.claude\/rules\/(.+)$/.exec(p); return m ? m[1] : p.split('/').slice(-2).join('/'); };
+  const total = files.reduce((n, f) => n + f.chars, 0);
+  const rows = files.slice().sort((a, b) => b.chars - a.chars).map((f) => ({ file: name(f.path), chars: f.chars }));
+  let renamed = {};
+  try { renamed = (loadManifest(path.join(__dirname, '..')).renamed || {}).rules || {}; } catch { renamed = {}; }
+  const have = new Map(rows.map((r) => [r.file.replace(/\.md$/, ''), r]));
+  const twice = Object.entries(renamed).filter(([o, n]) => have.has(o) && have.has(n)).map(([o, n]) => ({ old: `${o}.md`, now: `${n}.md`, chars: have.get(o).chars }));
+  return { files: rows.length, chars: total, rows, twice, twiceChars: twice.reduce((n, t) => n + t.chars, 0) };
+}
 // The part of the floor that is the session's own opening prompt, when the floor is the first message (a later,
 // smaller message - after a compaction - carries no such prompt). Null when it is not, or is under 1k tokens.
 function floorPromptTok(main) {
@@ -936,6 +950,17 @@ function applySessionRoster(inv, main) {
   out.why = `${from.join(' and ')} from the session's own roster (the harness's skill / agent listing in this transcript), the rest from ${inv.why}`;
   return out;
 }
+// The always-on rules the session was GIVEN (its `instructions` attachment) join the disk's rules, so a rule since
+// renamed or removed is still in the session's inventory (f10cb06a: seven `baseline-*` rules invisible).
+function applySessionRules(inv, main) {
+  const files = main.instructionFiles || [];
+  const given = files.map((f) => (/\/\.claude\/rules\/(.+\.md)$/.exec(f.path) || [])[1]).filter(Boolean);
+  if (!given.length) return inv;
+  const have = new Set(inv.rules.map((r) => r.name));
+  const extra = given.filter((n) => !have.has(n)).map((n) => ({ name: n, file: null, globs: [], alwaysOn: true, fromSession: true }));
+  if (!extra.length) return inv;
+  return { ...inv, rules: [...inv.rules, ...extra].sort(byName), why: `${inv.why}; ${extra.length} always-on rule(s) from the session's own instructions record` };
+}
 
 const readJsonOr = (f, dflt) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return dflt; } };
 
@@ -1154,7 +1179,7 @@ function inventoryFor(acc, inventoryDir, main) {
     hit = { inv, mcp: loadMcpInventory(inv) };
     acc.invCache.set(key, hit);
   }
-  return { inv: applySessionRoster(hit.inv, main), mcp: hit.mcp };
+  return { inv: applySessionRules(applySessionRoster(hit.inv, main), main), mcp: hit.mcp };
 }
 
 // A stack item's name as the inventory keys it: the house plugin scope stripped (`alfred-code:task-solve`), and an
@@ -1845,6 +1870,14 @@ async function analyzeTranscript(file, window) {
           s.queuedPrompts = (s.queuedPrompts || 0) + 1;
           onHumanTurn(typed, o.timestamp || at.timestamp);
           if (prevAssistantNoTool) { s.unheldStopCandidates.push({ stopTs: prevAssistantNoTool, userTs: o.timestamp || null }); prevAssistantNoTool = null; }
+        }
+        // What the session was GIVEN as standing instructions - each CLAUDE.md / AGENTS.md / always-on rule with its
+        // text - is the session-start `instructions` attachment. The analyzer never read it, so the floor was one number
+        // and a rule loaded under its old and new name was invisible (audit 2026-10-10, d37841e9: 34,059 chars twice).
+        if (at.type === 'instructions' && Array.isArray(at.files) && !foreign && !s.instructionFiles) {
+          s.instructionFiles = at.files.filter((x) => x && typeof x.path === 'string').map((x) => ({
+            path: x.path.replace(/\\/g, '/'), type: x.type || null, chars: typeof x.content === 'string' ? x.content.length : 0,
+          }));
         }
         if (at.type === 'skill_listing') {
           const names = Array.isArray(at.names) && at.names.length ? at.names
@@ -3542,6 +3575,11 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
     const own = floorPromptTok(main);
     console.log(`standing inventory ~${fmt(main.floorCtx)} tok/msg (system prompt + tool schemas + CLAUDE.md + always-on rules) - paid on EVERY message${share != null ? `, ~${share}% of cache-read` : ''}, and re-paid in full after every compaction`);
     if (own) console.log(`  of which ~${fmt(own)} is the session's own first prompt (typed text + slash expansion, chars/4) - the install's floor is ~${fmt(main.floorCtx - own)}`);
+    const ins = instructionsBreakdown(main);
+    if (ins) {
+      console.log(`  instructions at session start: ${ins.files} file(s), ${ins.chars} chars (~${fmt(approxTok(ins.chars))} tok) - ${ins.rows.slice(0, 8).map((r) => `${r.file} ${r.chars}`).join(', ')}${ins.rows.length > 8 ? `, +${ins.rows.length - 8} more` : ''}`);
+      if (ins.twice.length) console.log(`  LOADED TWICE under a renamed rule's old and new name: ${ins.twice.map((t) => `${t.old} + ${t.now}`).join(', ')} - ~${fmt(approxTok(ins.twiceChars))} tok of the floor is the stale copies`);
+    }
   }
   {
     const src = windowSource(main);
@@ -3800,6 +3838,11 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
   if (main.floorCtx) {
     const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
     const own = floorPromptTok(main);
+    const ins = instructionsBreakdown(main);
+    if (ins) {
+      extraFacts.push(`- **Instructions at session start**: ${ins.files} file(s), ${ins.chars} chars (~${fmt(approxTok(ins.chars))} tok) - ${ins.rows.map((r) => `\`${r.file}\` ${r.chars}`).join(', ')}.`);
+      if (ins.twice.length) extraFacts.push(`- **Loaded twice** under a renamed rule's old and new name: ${ins.twice.map((t) => `\`${t.old}\` + \`${t.now}\``).join(', ')} - ~${fmt(approxTok(ins.twiceChars))} tokens of the floor are the stale copies.`);
+    }
     extraFacts.push(`- **Standing inventory** ~${fmt(main.floorCtx)} tokens/message (system prompt + tool schemas + CLAUDE.md + always-on rules) - paid on EVERY message${share != null ? `, ~${share}% of cache-read` : ''}, and re-paid in full after every compaction.${own ? ` Of it, ~${fmt(own)} is the session's own first prompt (typed text + slash expansion, chars/4), so the install's floor is ~${fmt(main.floorCtx - own)}.` : ''}`);
   }
   {
