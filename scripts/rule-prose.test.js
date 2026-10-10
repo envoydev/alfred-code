@@ -283,3 +283,19 @@ test('C14: no shipped instruction prescribes the bash-only PIPESTATUS read; the 
     assert.match(nav, /never word-splits `\$VAR`/);
     assert.match(nav, /a path glob that may match nothing with `find <dir> -name '<pat>'`/);
 });
+
+// ------------------------------------------------------------------ audit 2026-10-10 C22
+
+test('C22: Angular specs route to angular-testing, EF migrations attach the SQL rule, and the markdown carve-out leads', () =>
+{
+    const ng = injected('angular-conventions');
+    assert.match(ng, /Writing or changing a spec file \(`\*\.spec\.ts`\) loads `angular-testing` in the same action/);
+    const graph = JSON.parse(read('meta/stack-graph.json'));
+    assert.ok(graph.rules['angular-conventions'].skills.includes('angular-testing'), 'the rule pulls the skill it names');
+    assert.deepStrictEqual(pathsOf('sql-conventions'), ['**/*.sql', '**/Migrations/*.cs']);
+    assert.match(injected('sql-conventions'), /An EF migration \(`Migrations\/\*\.cs`\) is schema work: the same first action adds the migration-safety skill/);
+    const md = injected('markdown-docs');
+    const carve = md.indexOf('The generated docs root is NOT governed here');
+    assert.ok(carve >= 0 && carve < md.indexOf('the FIRST action after this rule attaches'), 'the carve-out comes before the first action');
+    assert.match(md, /A plan, flow note or capture under `<docs-path>`[^:]*a `\.md` you only READ take no load/);
+});

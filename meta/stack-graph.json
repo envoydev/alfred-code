@@ -951,6 +951,7 @@
     "angular-conventions": {
       "skills": [
         "angular-conventions",
+        "angular-testing",
         "typescript"
       ],
       "agents": [],
@@ -1132,7 +1133,8 @@
       "mcps": [],
       "plugins": [],
       "paths": [
-        "**/*.sql"
+        "**/*.sql",
+        "**/Migrations/*.cs"
       ]
     },
     "typescript-conventions": {

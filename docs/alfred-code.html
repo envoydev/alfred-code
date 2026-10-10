@@ -1268,7 +1268,7 @@ const rules = [
   ["csharp-conventions", "**/*.cs", "C# baseline conventions: points any .cs edit at the csharp skill - backend, desktop, or console (a WPF view-model is C# too)."],
   ["wpf-conventions", "**/*.xaml", "WPF conventions: points a .xaml edit at the dotnet-wpf skill."],
   ["winforms-conventions", "**/*.Designer.cs,**/*Form.cs,**/*Form.*.cs", "WinForms conventions: points a Form/UserControl designer-file edit at the dotnet-winforms skill (generated Resources/Settings wrappers excluded in the rule text)."],
-  ["sql-conventions", "**/*.sql", "SQL conventions: points a hand-written .sql edit at the database-conventions skill."],
+  ["sql-conventions", "**/*.sql,**/Migrations/*.cs", "SQL conventions: points a hand-written .sql edit or an EF migration at the database-conventions skill (a migration adds the migration-safety and engine skills)."],
   ["devops-conventions", "**/Dockerfile*,**/docker-compose*.yml,**/compose*.yml,**/.github/workflows/*.yml,**/.github/actions/**/action.yml,**/azure-pipelines*.yml,**/.gitlab-ci.yml,**/deploy*.sh,**/deploy*.ps1,**/.env.example,**/*.env.template", "DevOps conventions (rest): points a Dockerfile/compose/pipeline/deploy-script/env-template edit at the devops skill."],
 ];
 
