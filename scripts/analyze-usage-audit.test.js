@@ -380,6 +380,28 @@ test('C07: a pipe option is no read target, and one file read by two spellings i
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// C07 (bda299a8, a6a24815): a prompt typed while the model works is a `queued_command` attachment, and the header
+// counted 3 user prompts over 5.
+test('C07: a queued human prompt is a user turn; a queued task notification is not', () => {
+  const dir = tmp();
+  try {
+    const queued = (ts, prompt, human) => ({ type: 'attachment', timestamp: ts, attachment: { type: 'queued_command', prompt, commandMode: human ? 'prompt' : 'task-notification', origin: { kind: human ? 'human' : 'task-notification' }, ...(human ? { humanTurn: true } : {}) } });
+    const rows = [
+      human(T(0), 'build the page'),
+      asst('m1', T(1), [sh('b1', 'npm run build')]),
+      queued(T(2), 'also move the modules link and commit', true),
+      queued(T(2), '<task-notification>\n<task-id>x</task-id>\n</task-notification>', false),
+      res(T(3), 'b1', 'ok'),
+      queued(T(4), [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } }, { type: 'text', text: 'this one is wrong' }], true),
+      said('m2', T(5), 'Done.'),
+    ];
+    const file = write(dir, rows);
+    const { main } = run([file]);
+    assert.deepStrictEqual([main.userPrompts, main.queuedPrompts], [3, 2]);
+    assert.match(text([file]), /user prompts 3 \(2 queued while the model worked\)/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // C05: a commit that opens its own line of a multi-line call (390aebcb, 49cb4b82, f6c591fa: 'git commits 0' over a
 // receipted commit). A heredoc message naming the commit verb still counts nothing.
 test('C05: a git commit or gh pr merge on a later line of a multi-line call counts; a heredoc body never does', () => {

@@ -1828,6 +1828,18 @@ async function analyzeTranscript(file, window) {
         // (`agent_listing_delta`). That is the installed set AT THE TIME, which the project
         // directory on disk stops being the moment the install moves - the drift that had reports
         // scoring a session against skills it never had.
+        // A prompt the person typed while the model was busy arrives as a `queued_command` attachment, never as a user
+        // row - one authorized a seat dispatch, and the header read 'user prompts 3' over 5 (audit 2026-10-10, bda299a8
+        // and a6a24815). A task notification rides the same attachment and is no person.
+        if (at.type === 'queued_command' && !foreign && at.commandMode !== 'task-notification'
+          && (at.humanTurn === true || (at.origin && at.origin.kind === 'human'))) {
+          const p = at.prompt;
+          const typed = typeof p === 'string' ? p : Array.isArray(p) ? p.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n') : '';
+          s.userPrompts++;
+          s.queuedPrompts = (s.queuedPrompts || 0) + 1;
+          onHumanTurn(typed, o.timestamp || at.timestamp);
+          if (prevAssistantNoTool) { s.unheldStopCandidates.push({ stopTs: prevAssistantNoTool, userTs: o.timestamp || null }); prevAssistantNoTool = null; }
+        }
         if (at.type === 'skill_listing') {
           const names = Array.isArray(at.names) && at.names.length ? at.names
             : [...String(at.content || '').matchAll(/^- ([A-Za-z0-9_:.-]+):/gm)].map((m) => m[1]);
@@ -3470,7 +3482,7 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
     console.log(`  active window since last /clear: ${main.clearTs} → ${main.lastTs} (${dur(new Date(main.lastTs) - new Date(main.clearTs))}) - use this, not the raw span, for duration claims`);
   }
   if (window) console.log(`windowed: ${window.fromStr || 'start'} → ${window.toStr || 'end'} (subagents dispatched outside the window are excluded)`);
-  console.log(`user prompts ${main.userPrompts} · API messages ${main.total.msgs} · compactions ${main.compactions} · API errors ${main.apiErrors} · git commits ${main.gitCommits || 0}${main.prMerges ? ` (+${main.prMerges} pr-merge)` : ''}`);
+  console.log(`user prompts ${main.userPrompts}${main.queuedPrompts ? ` (${main.queuedPrompts} queued while the model worked)` : ''} · API messages ${main.total.msgs} · compactions ${main.compactions} · API errors ${main.apiErrors} · git commits ${main.gitCommits || 0}${main.prMerges ? ` (+${main.prMerges} pr-merge)` : ''}`);
   // The PEAK is what every threshold in the stack keys off; the average understated it by 17-43%.
   if (main.peakCtx) console.log(`peak ctx ${fmt(main.peakCtx)} per message${main.peakCtxAt ? ` (at ${main.peakCtxAt})` : ''} - the number every fresh-session threshold is measured against, not the average below`);
   if (main.thinkingTokens) console.log(`thinking ${fmt(main.thinkingTokens)} tok (cost-state.modelUsage) - billed, and attributable to no single message: spike residuals close against this, not against tool output`);
@@ -3775,7 +3787,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
     out.push(`| Active window (since last /clear) | ${main.clearTs} → ${main.lastTs} (${dur(new Date(main.lastTs) - new Date(main.clearTs))}) - use this, not the raw span, for duration claims |`);
   }
   if (main.ccVersion) out.push(`| Claude Code (this session's transcript) | ${main.ccVersion} |`);
-  out.push(`| Volume | ${main.userPrompts} user prompts · ${main.total.msgs} API messages · ${main.compactions} compactions · ${main.apiErrors} API errors |`);
+  out.push(`| Volume | ${main.userPrompts} user prompts${main.queuedPrompts ? ` (${main.queuedPrompts} queued while the model worked)` : ''} · ${main.total.msgs} API messages · ${main.compactions} compactions · ${main.apiErrors} API errors |`);
   {
     const evs = (main.apiErrorEvents || []).filter((e) => e.ctx != null);
     if (evs.length) out.push(`| API errors fired at ctx | ${evs.slice(0, 5).map((e) => `~${fmt(e.ctx)}`).join(', ')}${evs.length > 5 ? ` … +${evs.length - 5} more` : ''} - a cluster at high ctx is context pressure, not provider flakiness |`);
