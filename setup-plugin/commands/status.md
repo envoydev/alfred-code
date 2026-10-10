@@ -259,6 +259,13 @@ It is the only place a plugin that cannot load says so: a row the catalog no lon
 `enabled: true` in settings, loads nothing, and shows the failure nowhere but this field
 (`docs/plugin-cli-evidence.md` S13, S25).
 
+A row whose `projectPath` names another project is that project's install, not this one's - leave it out. Then
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/install/plugins.js" unreached .` names what the settings switch on and no
+record reaches here: each `unreached: <spec>\t<file>\t<why>` line is one more row - version and scope `-`, enabled
+`yes (<file>)`, health `not installed for this project`, the line's command in the close. `unreached: none` adds
+nothing; `unreached: unknown` adds the line under the table (measured: a project's settings enabled a browser
+engine whose only record was another project's, and the session searched for its tools three times).
+
 **Environment** - the install's knobs, one row each, from the STACK VIEW (`settings.local.json` over
 `settings.json` key by key, at every scope):
 

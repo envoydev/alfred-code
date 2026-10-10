@@ -39,7 +39,9 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     `update-preflight.js`'s `new:` lines, classified by `derive-state.classifyNew`; a yes is
     `--add '<category> <name>'` on `--installed-only`), `/alfred-code:configure` adds or drops through
     the walk it shares with setup (`setup-plugin/references/walk.md`), `/alfred-code:status` (read-only, no snapshot: general info, a
-    health column from the CLI's own error fields, usage from `analyze-usage.js --inventory`, plus the
+    health column from the CLI's own error fields plus a `not installed for this project` row per `plugins.js unreached`
+    line - a plugin the settings switch on that no install record reaches, another project's record left out (usage
+    audit 2026-10-10) - usage from `analyze-usage.js --inventory`, plus the
     install's always-on FLOOR, the stack's share counted by `derive-state.js --floor`), `/alfred-code:validate`
     (project-relative two-way reconcile via `stack-select.js --redundant` / `--missing` /
     `--evidence-gaps`, plus the settings.json `env` layer against `environment.json`, and a read-only

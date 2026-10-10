@@ -1000,11 +1000,77 @@ function parseMarketplaces(json)
     catch { return []; }
 }
 
+// The plugins THIS project's settings switch on that no install record reaches (audit 2026-10-10, session 758ce661: a
+// project's settings enabled a browser engine, the capabilities rule listed it, and the only record was another
+// project's - the session had no browser tools and nothing said why). The settings' word is effectiveOn's, over the
+// three files the CLI writes; a record reaches when parsePluginList keeps it (this project's own, or an account-wide
+// one). `listing` is `claude plugin list --json`'s text. Each entry: the spec, the file that switches it on, and how
+// many other projects hold a record of it.
+function unreachedPlugins({ listing, projectRoot, configDir })
+{
+    const claudeDir = path.join(projectRoot, '.claude');
+    const files = { local: path.join(claudeDir, 'settings.local.json'), project: path.join(claudeDir, 'settings.json'), user: path.join(configDir, 'settings.json') };
+    const enabledIn = (file) =>
+    {
+        try { const e = parseJson(fs.readFileSync(file, 'utf8')).enabledPlugins; return e && typeof e === 'object' && !Array.isArray(e) ? e : {}; }
+        catch { return {}; }
+    };
+    const enabled = Object.fromEntries(Object.entries(files).map(([scope, file]) => [scope, enabledIn(file)]));
+    const isOn = (spec, scope) => (typeof enabled[scope][spec] === 'boolean' ? enabled[scope][spec] : undefined);
+    let rows = [];
+    try { const data = JSON.parse(listing); rows = Array.isArray(data) ? data : (data && Array.isArray(data.installed) ? data.installed : []); }
+    catch { rows = []; }
+    // parsePluginList's reach - a row with no projectPath is account-wide, one with a projectPath is that project's -
+    // with the path compared as given and as the file system resolves it (macOS /var is /private/var).
+    const real = (p) => { try { return fs.realpathSync(p); } catch { return p; } };
+    const here = new Set([projectKey(projectRoot), projectKey(real(projectRoot))]);
+    const ours = (pp) => here.has(projectKey(pp)) || here.has(projectKey(real(pp)));
+    const reached = new Set(rows.filter((r) => r && r.id && (!r.projectPath || ours(String(r.projectPath)))).map((r) => String(r.id)));
+    const out = [];
+    for (const spec of [...new Set(Object.values(enabled).flatMap((e) => Object.keys(e)))].sort())
+    {
+        if (effectiveOn(isOn, spec) !== true || reached.has(spec)) continue;
+        const scope = ['local', 'project', 'user'].find((s) => isOn(spec, s) !== undefined);
+        const elsewhere = rows.filter((r) => r && r.id === spec && r.projectPath && !ours(String(r.projectPath))).length;
+        out.push({ spec, file: files[scope], elsewhere });
+    }
+    return out;
+}
+
 module.exports = {
     OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, USER_OFF_WINS, CORE_DEP_PLUGINS, HUD_SPEC, itemScope, scopedItem, moveScoped,
     SCOPES, isManaged, scopeRank, overrideScope, scopesOf, adminOwned, requiredScopes, leftAt, effectiveOn, withEffective,
     pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateRenamed,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, retirementDue, updatePlugins, extraMarketplaces, uninstallEngines,
-    copyRouteStandDown, restoreStoodDown, standDownScope, engineStandDown, rowsOn, moveLocalRows, hudStatusLineMissing,
+    copyRouteStandDown, restoreStoodDown, standDownScope, engineStandDown, rowsOn, moveLocalRows, hudStatusLineMissing, unreachedPlugins,
 };
+
+// `node scripts/install/plugins.js unreached [projectRoot] [--listing <file>]` - /alfred-code:status's read: one
+// `unreached: <spec>\t<settings file>\t<why>` line per plugin the settings switch on that loads nothing here, else
+// `unreached: none`. Without --listing it asks `claude plugin list --json`; a listing it cannot read says so.
+if (require.main === module)
+{
+    require('../../stack/hooks/hook-prelude.js').blockingStdio();
+    const argv = process.argv.slice(2);
+    const at = argv.indexOf('--listing');
+    const listingFile = at >= 0 ? argv[at + 1] : null;
+    const [cmd, root] = at >= 0 ? [...argv.slice(0, at), ...argv.slice(at + 2)] : argv;
+    if (cmd !== 'unreached') { console.error('usage: plugins.js unreached [projectRoot] [--listing <file>]'); process.exit(2); }
+    const projectRoot = path.resolve(root || '.');
+    let listing = '';
+    try { listing = listingFile ? fs.readFileSync(listingFile, 'utf8') : require('./runtime.js').capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot }); }
+    catch { listing = ''; }
+    let readable = false;
+    try { const data = JSON.parse(listing); readable = Array.isArray(data) || Boolean(data && Array.isArray(data.installed)); }
+    catch { readable = false; }
+    if (!readable) { console.log('unreached: unknown - the plugin listing could not be read'); process.exit(0); }
+    const { accountDir } = require('./stamp.js');
+    const found = unreachedPlugins({ listing, projectRoot, configDir: accountDir() });
+    for (const u of found)
+    {
+        const file = path.relative(projectRoot, u.file).startsWith('..') ? u.file : path.relative(projectRoot, u.file).split(path.sep).join('/');
+        console.log(`unreached: ${u.spec}\t${file}\t${u.elsewhere ? `installed for ${u.elsewhere} other project(s) only` : 'no install record'} - switched on, loads nothing here; /alfred-code:configure adds it back, or: claude plugin install ${u.spec} --scope project`);
+    }
+    if (!found.length) console.log('unreached: none');
+}

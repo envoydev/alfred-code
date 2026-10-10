@@ -2416,3 +2416,51 @@ test('seed update --installed-only: optional items stay where they are, and --sc
     assert.match(moved.out, /!! plugin moved \[user -> project\]: claude-hud@claude-hud/);
     assert.ok(!moved.calls.includes('plugin install claude-hud@claude-hud --scope user -y'), 'the moved item is not installed back at its old scope');
 });
+
+// audit 2026-10-10, session 758ce661: the project's settings enabled a browser engine and the capabilities rule listed
+// it, but the only install record was another project's local one - the session had no browser tools, searched three
+// times, and nothing in the stack said why. `plugins.js unreached` names each such plugin for /alfred-code:status.
+test('unreachedPlugins: a plugin the settings switch on with no record reaching this project is named, and nothing else', () =>
+{
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'unreached-'));
+    try
+    {
+        const project = path.join(work, 'proj');
+        const account = path.join(work, 'acct');
+        fs.mkdirSync(path.join(project, '.claude'), { recursive: true });
+        fs.mkdirSync(account, { recursive: true });
+        fs.writeFileSync(path.join(project, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: {
+            'browser-chrome@envoydev': true, 'alfred-code@envoydev': true, 'claude-hud@claude-hud': true, 'browser-webkit@envoydev': true, 'parked@envoydev': false } }));
+        fs.writeFileSync(path.join(project, '.claude', 'settings.local.json'), JSON.stringify({ enabledPlugins: { 'browser-webkit@envoydev': false } }));
+        fs.writeFileSync(path.join(account, 'settings.json'), JSON.stringify({ enabledPlugins: { 'typescript-lsp@claude-plugins-official': true } }));
+        const listing = JSON.stringify([
+            { id: 'browser-chrome@envoydev', version: '2.3.0', scope: 'local', projectPath: path.join(work, 'other'), enabled: true },
+            { id: 'alfred-code@envoydev', version: '2.3.0', scope: 'project', projectPath: project, enabled: true },
+            { id: 'claude-hud@claude-hud', version: '0.8.0', scope: 'user', enabled: true },
+        ]);
+        const found = P.unreachedPlugins({ listing, projectRoot: project, configDir: account });
+        assert.deepStrictEqual(found.map((u) => [u.spec, path.basename(u.file), u.elsewhere]), [
+            ['browser-chrome@envoydev', 'settings.json', 1],
+            ['typescript-lsp@claude-plugins-official', 'settings.json', 0],
+        ], 'a narrower off (browser-webkit), an explicit off and a reaching record (project or user scope) are not named');
+        const file = path.join(work, 'listing.json');
+        fs.writeFileSync(file, listing);
+        const cli = (args) => execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'install', 'plugins.js'), 'unreached', project, ...args], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: account } });
+        const out = cli(['--listing', file]);
+        assert.match(out, /^unreached: browser-chrome@envoydev\t\.claude\/settings\.json\tinstalled for 1 other project\(s\) only - switched on, loads nothing here; .*claude plugin install browser-chrome@envoydev --scope project$/m);
+        assert.match(out, /^unreached: typescript-lsp@claude-plugins-official\t.*settings\.json\tno install record/m);
+        fs.writeFileSync(file, 'not json');
+        assert.strictEqual(cli(['--listing', file]).trim(), 'unreached: unknown - the plugin listing could not be read');
+        fs.writeFileSync(file, JSON.stringify([...JSON.parse(listing), { id: 'browser-chrome@envoydev', version: '2.3.0', scope: 'user', enabled: true },
+            { id: 'typescript-lsp@claude-plugins-official', version: '1.0.0', scope: 'user', enabled: true }]));
+        assert.strictEqual(cli(['--listing', file]).trim(), 'unreached: none');
+        // A record that spells the project through a link (macOS /var for /private/var) is still this project's.
+        const link = path.join(work, 'link');
+        try { fs.symlinkSync(project, link, 'dir'); } catch { return; }
+        const viaLink = JSON.stringify([{ id: 'browser-chrome@envoydev', version: '2.3.0', scope: 'local', projectPath: link, enabled: true }]);
+        assert.ok(!P.unreachedPlugins({ listing: viaLink, projectRoot: project, configDir: account }).some((u) => u.spec === 'browser-chrome@envoydev'), 'the linked spelling reaches');
+    }
+    finally { fs.rmSync(work, { recursive: true, force: true }); }
+});
