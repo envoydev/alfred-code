@@ -176,3 +176,58 @@ test('C21 7491ab75#2 0498718d#16: task-design offers a read fan-out at its mode 
 test('C17 f450ea64#1 + C30 f6c591fa#5: the conformance stamp names the pass that cleared the fix delta, and the stop carries the review fields', () => {
     assert.match(skill('task-solve'), /Stamp `Conformance: <verdict> - <reviewer>, <the pass that cleared the last fix delta>`; the stop's `Result:` carries the review's named fields as it emitted them/);
 });
+
+// ---- C18 (BLOCKER): the checkpoint checks the format of what the commit takes in, and publish reads CI ------------
+const checkpoint = () => read('stack/skills/habits-commit-checkpoint/SKILL.md');
+
+test('C18 e6a68237#1 (skill half): the format CHECK runs over every staged path and its verdict is the receipt\'s format: line', () => {
+    const t = flat(checkpoint());
+    assert.match(t, /The formatter half is never skipped, and it must be FRESH/, 'the skill-comply quote stays');
+    assert.match(t, /run the project's own format CHECK - the command CI runs \(a `format:check` script, the workflow's format step\), else the formatter's check mode - over EVERY staged path, inherited files included/);
+    // The pinned cross-track contract: T3's guard refuses a COMMIT receipt with no format: line or one without `clean`.
+    const block = (checkpoint().match(/```\nVERIFIED <what was reviewed, one phrase>\n([\s\S]*?)```/) || [])[1] || '';
+    assert.match(block, /^format: <the format CHECK command run> - clean over <N> staged files$/m);
+    assert.match(t, /`format: none configured - clean over <N> staged files, nothing to check`/);
+    assert.match(t, /The checkpoint ends by writing its receipt: `<docs-path>\/flow\/COMMIT-GATE`, five lines/, 'the skill-comply quote stays');
+    assert.match(flat(read('stack/skills/task-verify-code/references/commit-gate-receipt.md')), /`format: <the format CHECK command run> - clean over <N> staged files`/);
+});
+
+test('C18 bba03dad#1 e6a68237#2: publish arms one background CI watch on the pushed sha and the close carries its verdict', () => {
+    const t = flat(checkpoint());
+    assert.match(t, /\*\*Watch CI once\.\*\*/);
+    assert.match(t, /`gh run watch <id> --exit-status` as a background task, never a foreground sleep loop/);
+    assert.match(t, /`CI: pending - watching run <id>` when the turn ends first/);
+    assert.match(t, /A red the receipt's `live-probe:` records on a check CI also runs is named in the question/);
+});
+
+test('C18 349e4825#4: typed words for THIS publish skip the publish ask', () => {
+    assert.match(flat(checkpoint()), /Words the user already typed for THIS publish skip the ask - they are the `authorized:` line/);
+});
+
+test('C18 229e2715#6 390aebcb#7: the security half stays inline in an explicit-only flow, and covers the spec: set by count', () => {
+    const t = flat(checkpoint());
+    assert.match(t, /Inside a flow whose dispatch is explicit-only \(the solve flows\) it runs inline unless the stop that led here offered the seat and the user picked it/);
+    assert.match(t, /The review's file list is the set `spec:` counts - hold the two against each other before the verdict - and the `security:` line ends `- over <N> files`, that count/);
+});
+
+test('C18 batch receipts (the pinned T3 contract): one receipt covers a reviewed batch while every later commit stays inside its review', () => {
+    assert.match(flat(checkpoint()), /One receipt covers a reviewed batch: a later commit passes on it while its `head:` is an ancestor of HEAD and every commit since touches only files its review covered/);
+});
+
+test('C18 / C30: the measured stories sit in the evidence appendix, not the run-time body', () => {
+    const e = flat(read('stack/skills/habits-commit-checkpoint/references/evidence.md'));
+    for (const s of [/29\.5 h/, /answered in 6 s/, /\$1\.14/, /covered 4 files/, /five runs/]) assert.match(e, s);
+});
+
+// ---- C30 (receipt half) + C08: review fields reach the receipt, and the gates run the format check -----------------
+test('C30 349e4825#5 a3d497f8#8: the commit receipt carries the review\'s Findings field', () => {
+    const block = (checkpoint().match(/```\nVERIFIED <what was reviewed, one phrase>\n([\s\S]*?)```/) || [])[1] || '';
+    assert.match(block, /^findings: <the review's Findings field, copied - a count by severity, or none>$/m);
+    assert.match(flat(read('stack/skills/task-verify-code/references/commit-gate-receipt.md')), /`findings: <this review's Findings field, copied>`/);
+});
+
+test('C08 a6a24815#5: the done gate and the in-chat review run the project\'s format check', () => {
+    assert.match(skill('habits-done-gate'), /plus the project's format check where it has one \(a `format:check` script, the CI workflow's format step\)/);
+    assert.match(skill('habits-done-gate'), /build \+ relevant tests run after the last edit, output quoted/, 'the skill-comply quote stays');
+    assert.match(skill('task-verify-code'), /Rerun `build`, the suite and the project's format check \(where it has one - the step CI runs\)/);
+});

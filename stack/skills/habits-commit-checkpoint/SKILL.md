@@ -18,8 +18,12 @@ The protocol `alfred-git.md` points at: what runs before a non-trivial commit, t
 On any non-trivial diff, before committing or presenting, in order:
 
 1. **Format.** The formatter half is never skipped, and it must be FRESH: a formatter run from
-   earlier in the session does not cover files edited since - re-run it after the last edit, before
-   the commit. One unformatted commit is a red CI run and a fixup commit.
+   earlier in the session does not cover files edited since. After the last edit, run the project's
+   own format CHECK - the command CI runs (a `format:check` script, the workflow's format step), else
+   the formatter's check mode - over EVERY staged path, inherited files included, not only the files
+   this session edited; fix what it names with the formatter's write mode, re-stage, check again.
+   Its clean verdict is the receipt's `format:` line. One unformatted commit is a red CI run and a
+   fixup commit, and an inherited file is the one the session never thought to format.
 2. **Review.** Run the house review `task-verify-code` - model-invocable, so the gate holds
    in autonomous flows too (`/code-review` is a user-run parallel sweep, not this gate; `/simplify`
    applies its quality findings in place) - plus any diff gates named in the project's `AGENTS.md`.
@@ -70,9 +74,12 @@ the stages in the commit body rather than splitting an unverifiable diff.
 honesty rules and the `VERIFIED` bar; this is how the review runs. **Do the scoped review yourself,
 first:** compute `git diff HEAD` (or the staged diff, or `git diff <base>..HEAD` for a range) and
 apply the vulnerability checklist to exactly that - a read-only general-purpose seat where dispatch
-exists, inline otherwise, and inline inside a stamped flow where the dispatch guard blocks generic
+exists, inline otherwise. Inside a flow whose dispatch is explicit-only (the solve flows) it runs
+inline unless the stop that led here offered the seat and the user picked it, and inline inside a stamped flow where the dispatch guard blocks generic
 seats. Feed it the FULL change set with the reset chained into the SAME call, the spelling that rule
-carries, so untracked files appear in the diff and the intent-to-add entries never outlive it.
+carries, so untracked files appear in the diff and the intent-to-add entries never outlive it. The
+review's file list is the set `spec:` counts - hold the two against each other before the verdict -
+and the `security:` line ends `- over <N> files`, that count.
 
 `/security-review` is the UNBOUNDED route, and the bound is not yours to set: it recomputes a
 whole-branch diff whatever base it is handed, so an explicit base does not scope it, and a branch
@@ -87,7 +94,7 @@ diff: <paths>`).
 
 ## The receipt
 
-The checkpoint ends by writing its receipt: `<docs-path>/flow/COMMIT-GATE`, five lines -
+The checkpoint ends by writing its receipt: `<docs-path>/flow/COMMIT-GATE`, five lines, then the `format:` and `findings:` lines -
 
 ```
 VERIFIED <what was reviewed, one phrase>
@@ -95,7 +102,13 @@ authorized: "<the user's words asking for THIS commit, verbatim>"
 head: <the sha the review ran against>
 spec: <N files - the set it covered>
 live-probe: <what was actually run, or NOT RUN - <reason>>
+format: <the format CHECK command run> - clean over <N> staged files
+findings: <the review's Findings field, copied - a count by severity, or none>
 ```
+
+A project with no formatter at all (no format script, no CI format step, no formatter config) writes
+`format: none configured - clean over <N> staged files, nothing to check`; a format line without the
+word `clean` is a check that did not pass, and the commit guard refuses it.
 
 (the quality-loop and cross-task gate exemptions count as VERIFIED - name the loop or gate); or
 `WAIVED - "<the user's words, verbatim>"` alone on their explicit waiver - 'commit it' is an
@@ -103,7 +116,9 @@ instruction to commit, never a waiver of the review. Each line answers a way the
 passed while recording nothing: the VERIFIED line proves the review ran, `authorized:`
 proves the user asked, `head:` proves it reviewed THIS tree, `spec:` proves it covered every file
 the commit takes in (the index, plus what `-a`, a chained `git add` or the paths it names add - the
-guard counts that set, never the rest of the tree) and `live-probe:` proves it ran the thing. The
+guard counts that set, never the rest of the tree), `live-probe:` proves it ran the thing, `format:`
+proves the check covered what the commit takes in, and `findings:` carries the review's verdict to
+the user's eyes. The
 quoted words must carry a commit verb left standing in its clause ('push it, don't commit' consents to
 no commit; the PUSH-GATE below reads its publish verb the same way) and must not be an option label
 this run wrote: consent given by picking an option is spelled `answered: <the chosen label>` instead,
@@ -130,9 +145,10 @@ commit plus the session's earlier commits that passed without a receipt (a revie
 brought in, adds nothing; the whole uncommitted tree when the session's start cannot be read) - so one
 small commit stays exempt, and a prose-exempt diff above that bar (a formatting-only sweep) still writes
 `VERIFIED` naming the exemption; never split a real change into small commits to slip under it - the
-earlier small ones count. Clear the file once the commit lands - after the
-LAST commit when one receipt covers a reviewed batch - a leftover receipt is the stale-stamp failure
-the hook's 2h age cap exists for.
+earlier small ones count. One receipt covers a reviewed batch: a later commit passes on it while its
+`head:` is an ancestor of HEAD and every commit since touches only files its review covered - a file
+outside that set needs a fresh checkpoint. Clear the file once the commit lands - after the LAST
+commit of the batch - a leftover receipt is the stale-stamp failure the hook's 2h age cap exists for.
 
 The same hook runs a staged-diff scan first - a conflict marker, a debugger, a focused test, a
 credential-shaped literal or a hidden character on an added line. That is a fact check this receipt
@@ -150,12 +166,16 @@ The same ceremony. `git push` and `gh pr merge` are where the work leaves this m
 people and CI get it, and a shared branch cannot be un-pushed quietly - so they carry their own
 receipt, `<docs-path>/flow/PUSH-GATE`, in the SAME five-line shape - `VERIFIED <what is being
 published, one phrase>`, `authorized: "<the user's words asking for THIS publish, verbatim>"`,
-`head:`, `spec: <the commit set going out>` and `live-probe:` - or `WAIVED - "<their words>"`. Only
+`head:`, `spec: <the commit set going out>` and `live-probe:` - or `WAIVED - "<their words>"`; no
+`format:` or `findings:` line, since each commit going out carried its own. Only
 the spec differs in kind: a publish's spec names what LEAVES the machine, not what a commit takes
 in here, so it is required and never counted against the working tree.
 
 1. Name what is going out and to which branch, then confirm it through ONE AskUserQuestion - a picked
-   option is the receipt's `answered: <the chosen label>` line, words the user typed its `authorized:`:
+   option is the receipt's `answered: <the chosen label>` line. Words the user already typed for THIS
+   publish skip the ask - they are the `authorized:` line. A red the receipt's `live-probe:` records
+   on a check CI also runs is named in the question - 'CI runs <check>, red here' - and 'Hold - fix
+   the red first' takes the mark, listed first:
 
    ```ask
    Publish <the commit set> to <remote>/<branch>? It leaves this machine for CI and everyone on the branch.
@@ -166,6 +186,12 @@ in here, so it is required and never counted against the working tree.
 2. Write the receipt as its own call.
 3. Publish, read `git status -sb` back into the close (the branch level with its upstream), then
    clear the receipt.
+4. **Watch CI once.** Where the repo runs CI on the pushed ref (a `.github/workflows/` file, or the
+   CI the project names) and its CLI resolves (`gh` on GitHub), arm ONE background watch on the
+   pushed sha - find its run (`gh run list --commit <sha> --limit 1 --json databaseId,status`), then
+   `gh run watch <id> --exit-status` as a background task, never a foreground sleep loop. The close
+   carries its verdict, or `CI: pending - watching run <id>` when the turn ends first; a red verdict
+   is reported when it lands, with the failing job's first error. No CI or no CLI: say so in one line.
 
 `guard-ungated-commit` enforces this half too. A push that publishes nothing - a dry run, or a
 branch already level with its upstream - is never gated, and a repo whose remote is already gated

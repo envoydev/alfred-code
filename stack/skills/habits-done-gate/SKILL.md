@@ -23,7 +23,9 @@ close all run on this one gate.
 ## The gate
 
 1. **Run after the last edit.** Any edit since the run - one line, a rename, a config key - makes
-   that run stale. Run the build and the tests that cover the change again, now.
+   that run stale. Run the build and the tests that cover the change again, now - plus the project's
+   format check where it has one (a `format:check` script, the CI workflow's format step): CI fails
+   on it as hard as on a red test, and lint plus typecheck green says nothing about it.
 2. **Quote what the run proves.** A GREEN run needs the summary line, not `--verbose` - tail long
    runs to the verdict. A RED run is the opposite case - its stack traces and parse errors are the
    diagnosis, earned cost, never trimmed to the verdict line.
