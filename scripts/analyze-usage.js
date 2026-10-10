@@ -151,18 +151,100 @@ function shellReadTarget(cmd) {
 }
 // A CHECK is something that returns a pass/fail the session can read: a test run, a build, a lint,
 // a CI status read. A test run is SCOPED when it names one project, one file, one filter.
+// Each kind is read at the COMMAND WORD of a segment (`commandHeads` below), past env assignments, shell keywords and
+// the wrappers a runner rides (`CI=1 npx jest`, `timeout 300 dotnet test`). A path prefix is allowed
+// (`./node_modules/.bin/jest`) and the trailing boundary keeps a FILE NAME out (`jest.config.js`, `pytest.ini`): a
+// config file named on a command line is not a run. Matching anywhere in the segment scored `grep -rn jest
+// node_modules/@nx/jest/...` as a whole-suite test run (audit 2026-10-10, session f10cb06a) - a runner named as an
+// argument is not a run.
+const RUNNER_PATH = String.raw`(?:[\w.@~$/\\-]*[/\\])?`;
 const CHECK_RES = {
-  // The runner is matched ANYWHERE in the segment, never only at its start: `./node_modules/.bin/jest`
-  // and `CI=1 npx jest` are test runs, and the segment-start anchor scored both as no check at all -
-  // which then reads as a session that committed without testing. A path prefix is allowed and the
-  // trailing boundary keeps a FILE NAME out (`jest.config.js`, `pytest.ini`, `vitest-setup.ts`): a
-  // config file named on a command line is not a run.
-  test: /(?:^|[\s;&|(<>])(?:[\w.@/\\-]*[/\\])?(?:dotnet\s+test|npm\s+(?:run\s+)?test\S*|pnpm\s+(?:run\s+)?test\S*|yarn\s+(?:run\s+)?test\S*|npx\s+(?:jest|vitest|mocha|playwright\s+test)|jest|vitest|mocha|ng\s+test|pytest|python3?\s+-m\s+pytest|go\s+test|cargo\s+test|node\s+--test|mvn\s+test|gradle\s+test|phpunit)(?![\w.-])/,
-  build: /(?:^|[;&|(]\s*)(?:dotnet\s+(?:build|publish)|npm\s+run\s+build\S*|pnpm\s+(?:run\s+)?build|yarn\s+(?:run\s+)?build|ng\s+build|npx\s+tsc|tsc|msbuild|cargo\s+build|go\s+build|mvn\s+(?:package|compile|install)|gradle\s+(?:build|assemble))\b/,
-  lint: /(?:^|[;&|(]\s*)(?:npm\s+run\s+lint\S*|pnpm\s+(?:run\s+)?lint|yarn\s+(?:run\s+)?lint|npx\s+eslint|eslint|ng\s+lint|dotnet\s+format|ruff|flake8|golangci-lint|cargo\s+clippy)\b/,
-  ci: /(?:^|[;&|(]\s*)gh\s+(?:run\s+(?:view|watch|list)|pr\s+checks)\b/,
+  test: new RegExp(String.raw`^${RUNNER_PATH}(?:dotnet\s+test|(?:npm|pnpm|yarn)\s+(?:run\s+)?test\S*|jest|vitest|mocha|playwright\s+test|ng\s+test|pytest|python3?\s+-m\s+pytest|go\s+test|cargo\s+test|node\s+--test|mvn\s+test|gradlew?\s+test|phpunit)(?![\w.-])`),
+  build: new RegExp(String.raw`^${RUNNER_PATH}(?:dotnet\s+(?:build|publish)|(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:build|typecheck|type-check)\S*|ng\s+build|tsc|vue-tsc|msbuild|cargo\s+build|go\s+build|mvn\s+(?:package|compile|install)|gradlew?\s+(?:build|assemble))(?![\w.-])`),
+  // A formatter CHECK is a lint (`prettier --check` reads, `--write` rewrites), and so is one of the stack's own
+  // read-only checkers: `agents-md-check: clean` was a claim the scorecard could not see (audit 2026-10-10, 65abb00a).
+  lint: new RegExp(String.raw`^${RUNNER_PATH}(?:(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:lint|format:check)\S*|eslint|ng\s+lint|dotnet\s+format|ruff|flake8|golangci-lint|cargo\s+clippy|stylelint|biome\s+(?:check|lint|ci)|prettier\s+(?:\S+\s+)*?(?:--check|-c|--list-different|-l)(?=\s|$)|node\s+${RUNNER_PATH}(?:agents-md-check|library-check|lint-skills)\.js)(?![\w.-])`),
+  ci: /^gh\s+(?:run\s+(?:view|watch|list)|pr\s+checks)(?![\w.-])/,
 };
 const SCOPED_RE = /--filter[= ]|--test-name-pattern|--testNamePattern|--testPathPattern|\s-t\s|\s-k\s|--grep[= ]|--include[= ]|--run\s+\S|[\w./-]+\.(?:spec|test)\.[cm]?[jt]sx?\b|[\w./-]+_test\.go\b|\btest_\w+\.py\b|::\w|[\w./-]+\.csproj\b|node\s+--test\s+[\w./-]+\.[cm]?js\b|cargo\s+test\s+[\w:]+|go\s+test\s+(?!\.\/\.\.\.)[\w./-]+/;
+// Nx: a monorepo runs every check through one launcher, and with no arm for it every Nx session scored 'test 0 /
+// build 0 / lint 0' and its checked commits as unchecked (audit 2026-10-10: 18 sessions, e.g. 0d070bcc ~70 nx runs).
+// `nx <target> [project]`, `nx run <project>:<target>`, and `nx run-many | affected -t <targets>` - one call can be
+// several kinds (`-t test,lint,typecheck`). A typecheck is a build (`tsc` already is). Scoped: a test file
+// (`--testFile`), or one named project; `affected` and `run-many` over many projects are whole-suite.
+const NX_RE = new RegExp(String.raw`^${RUNNER_PATH}(?:(?:yarn|pnpm)\s+)?nx\s+(.*)$`, 's');
+const NX_OWN_COMMANDS = new Set(['run', 'run-many', 'affected', 'serve', 'graph', 'dep-graph', 'show', 'reset', 'daemon', 'migrate', 'generate', 'g', 'add', 'release', 'init', 'list', 'report', 'format', 'format:write', 'sync', 'sync:check', 'watch', 'exec', 'connect', 'view-logs', 'repair', 'import']);
+function nxTargetKind(target) {
+  const t = String(target || '').toLowerCase();
+  if (/^(?:test|e2e|component-test|unit|unit-test|jest|vitest|test[:-][\w:-]+|[\w-]+[:-]test)$/.test(t)) return 'test';
+  if (/^(?:build|typecheck|type-check|tsc|compile|build[:-][\w:-]+)$/.test(t)) return 'build';
+  if (/^(?:lint|stylelint|format-check|format:check|lint[:-][\w:-]+)$/.test(t)) return 'lint';
+  return null;
+}
+const NX_SCOPED_RE = /--testFile[= ]|--test-file[= ]|--testPathPattern|--testNamePattern|--test-name-pattern|[\w./-]+\.(?:spec|test)\.[cm]?[jt]sx?\b/;
+// -> [{ kind, scoped }] for one Nx command head (code spelling for the words, shell spelling for the scope markers).
+function nxChecks(head, shellHead) {
+  const m = NX_RE.exec(head);
+  if (!m) return null;
+  const words = m[1].trim().split(/\s+/).filter(Boolean);
+  const out = [];
+  const projectsOf = () => {
+    const pm = /(?:^|\s)(?:-p|--projects?)(?:=|\s+)(\S+)/.exec(m[1]);
+    return pm ? pm[1].split(',').filter(Boolean) : [];
+  };
+  const fileScoped = NX_SCOPED_RE.test(shellHead || head);
+  if (m[1].trim() === 'format:check' || words[0] === 'format:check') return [{ kind: 'lint' }];
+  if (words[0] === 'run-many' || words[0] === 'affected' || /^affected:/.test(words[0] || '')) {
+    let targets = [];
+    if (/^affected:/.test(words[0])) targets = [words[0].slice('affected:'.length)];
+    const tm = /(?:^|\s)(?:-t|--targets?)(?:=|\s+)((?:[^\s-][^\s]*)(?:\s+(?![-\d]|\S*[<>&])[^\s]+)*)/.exec(m[1]);
+    if (tm) targets = targets.concat(tm[1].split(/[\s,]+/).filter((t) => /^[\w:-]+$/.test(t)));
+    const one = projectsOf().length === 1 && !/[*!]/.test(projectsOf()[0]);
+    for (const t of targets) {
+      const kind = nxTargetKind(t);
+      if (kind && !out.some((x) => x.kind === kind)) out.push({ kind, scoped: kind === 'test' ? (fileScoped || one) : undefined });
+    }
+    return out;
+  }
+  if (words[0] === 'run') {
+    const parts = String(words[1] || '').split(':');
+    const kind = parts.length >= 2 ? nxTargetKind(parts[1]) : null;
+    return kind ? [{ kind, scoped: kind === 'test' ? true : undefined }] : [];
+  }
+  if (!words[0] || words[0].startsWith('-') || NX_OWN_COMMANDS.has(words[0])) return [];
+  const kind = nxTargetKind(words[0]);
+  if (!kind) return [];
+  const project = words[1] && !words[1].startsWith('-') && /^[\w@./:-]+$/.test(words[1]);
+  return [{ kind, scoped: kind === 'test' ? (fileScoped || !!project) : undefined }];
+}
+// The command word of each segment: split at the shell's own separators (a lone `&` too, never the `&` of `2>&1` /
+// `&>`), then past env assignments, keywords and wrappers. The input is the QUOTE-MASKED command - masking is
+// length-preserving, so the offsets also cut the unmasked spelling the scope markers are read from.
+const SEGMENT_SEP_G = /&&|\|\||[;|\n(){}`]|(?<![<>&])&(?![>&])/g;
+const HEAD_PREFIX_RE = /^(?:\s+|!\s*|(?:if|then|else|elif|do|while|until|time|exec|command|builtin|nohup)\s+|[A-Za-z_]\w*=\S*\s+|timeout(?:\s+-{1,2}[\w-]+(?:=\S+)?)*\s+\d\S*\s+|env(?:\s+-u\s+\S+|\s+-\S+)*\s+|nice(?:\s+-n\s*-?\d+|\s+-\d+)?\s+|stdbuf(?:\s+-\S+)+\s+|(?:caffeinate|unbuffer|xvfb-run|sudo|chronic|setsid)(?:\s+-\S+)*\s+|(?:npx|pnpx|bunx)(?:\s+-[\w-]+)*\s+|(?:pnpm|yarn)\s+(?:exec|dlx)\s+|(?:uv|poetry|pipenv|hatch|pdm|rye)\s+run\s+|bundle\s+exec\s+)/;
+function commandHeads(cmdCode, cmdShell) {
+  const code = String(cmdCode);
+  const shell = String(cmdShell == null ? cmdCode : cmdShell);
+  const out = [];
+  let start = 0;
+  let sep = '';
+  const take = (end, nextSep) => {
+    let off = start;
+    for (let i = 0; i < 16; i += 1) {
+      const m = HEAD_PREFIX_RE.exec(code.slice(off, end));
+      if (!m || !m[0]) break;
+      off += m[0].length;
+    }
+    const head = code.slice(off, end).trimEnd();
+    if (head) out.push({ code: head, shell: shell.slice(off, off + head.length), sepBefore: sep });
+    sep = nextSep;
+  };
+  SEGMENT_SEP_G.lastIndex = 0;
+  let m;
+  while ((m = SEGMENT_SEP_G.exec(code))) { take(m.index, m[0]); start = m.index + m[0].length; }
+  take(code.length, '');
+  return out;
+}
 // A removal's own VERIFICATION tail: `rm -rf "$TMP" && ls "$TMP"`, `rm x; test -f x` - the tail
 // exits non-zero BECAUSE the removal worked, and the whole call's result then arrives as
 // `is_error`. Counting that as a tool error put a clean cleanup step in the errors column, where a
@@ -215,11 +297,68 @@ function locateClass(name, input) {
   return null;
 }
 
-function classifyCheck(cmdCode, cmdShell) {
-  for (const kind of ['test', 'build', 'lint', 'ci']) {
-    if (CHECK_RES[kind].test(cmdCode)) return { kind, scoped: kind === 'test' ? SCOPED_RE.test(cmdShell) : undefined };
+// Every check kind one shell call ran, in the scorecard's order (test, build, lint, ci), each once. A test call is
+// scoped when every test head in it is. `logs` are the files a check head redirected its output into - read later,
+// they are that check's result (below).
+const CHECK_KINDS = ['test', 'build', 'lint', 'ci'];
+const REDIRECT_TARGET_G = /(?:^|[^<>&\d])(?:\d?>>?|&>>?)\s*([^\s<>&;|]+)/g;
+function classifyChecks(cmdCode, cmdShell, bindings) {
+  const found = new Map();
+  const logs = [];
+  let checkBefore = false;
+  for (const h of commandHeads(cmdCode, cmdShell)) {
+    const hits = [];
+    const nx = nxChecks(h.code, h.shell);
+    if (nx) hits.push(...nx);
+    else {
+      for (const kind of CHECK_KINDS) {
+        if (CHECK_RES[kind].test(h.code)) hits.push({ kind, scoped: kind === 'test' ? SCOPED_RE.test(` ${h.shell} `) : undefined });
+      }
+    }
+    if (hits.length) {
+      for (const x of hits) {
+        const cur = found.get(x.kind);
+        if (!cur) found.set(x.kind, { kind: x.kind, scoped: x.scoped });
+        else if (x.kind === 'test') cur.scoped = cur.scoped && x.scoped;
+      }
+      for (const r of h.shell.matchAll(REDIRECT_TARGET_G)) logs.push(expandBound(r[1], bindings));
+      checkBefore = true;
+    } else if (checkBefore && h.sepBefore === '|' && /^tee\s/.test(h.code)) {
+      for (const w of h.shell.split(/\s+/).slice(1)) if (w && !w.startsWith('-')) logs.push(expandBound(w, bindings));
+    } else checkBefore = false;
   }
-  return null;
+  return {
+    kinds: CHECK_KINDS.filter((k) => found.has(k)).map((k) => found.get(k)),
+    logs: logs.map(unquoteWord).filter((p) => p && p !== '/dev/null' && !p.startsWith('&')),
+  };
+}
+// A check run in the BACKGROUND writes its verdict to a log the session reads later, often in another turn: that read
+// is the check's result reaching the session (audit 2026-10-10, f24eb967: `cat $S/format.log; tail -5 $S/suite.log`
+// carried 'format_exit=0' and 'Passed 1650', and the green claim beside it was scored unchecked).
+const LOG_READ_HEAD_RE = /^(?:cat|tail|head|less|more|bat|grep|egrep|rg|awk|sed|wc|jq)\s/;
+function readsCheckLog(cmdCode, cmdShell, bindings, checkLogs) {
+  if (!checkLogs.size) return false;
+  for (const h of commandHeads(cmdCode, cmdShell)) {
+    if (!LOG_READ_HEAD_RE.test(h.code)) continue;
+    for (const w of h.shell.split(/\s+/).slice(1)) {
+      const p = unquoteWord(expandBound(w, bindings));
+      if (p && checkLogs.has(p)) return true;
+    }
+  }
+  return false;
+}
+const unquoteWord = (w) => String(w || '').replace(/^["']|["']$/g, '').replace(/[;,)]+$/, '');
+// `NAME=value` bindings the command makes for itself, so `P=<path>; cat > $P` and `S=<dir>; ... > $S/x.log` read the
+// literal they stand for. Only a binding made in the same command is expanded; anything else stays as written.
+const BINDING_G = /(?:^|[\s;&|(])([A-Za-z_]\w*)=("[^"\n]*"|'[^'\n]*'|[^\s;&|()<>"']+)/g;
+function bindingsOf(cmd) {
+  const out = new Map();
+  for (const m of String(cmd).matchAll(BINDING_G)) out.set(m[1], expandBound(unquoteWord(m[2]), out));
+  return out;
+}
+function expandBound(text, bindings) {
+  if (!bindings || !bindings.size) return String(text);
+  return String(text).replace(/\$\{?([A-Za-z_]\w*)\}?/g, (all, name) => (bindings.has(name) ? bindings.get(name) : all));
 }
 // A GREEN CLAIM: prose saying a check passed. The turn it lands in either ran a check or it did not.
 const GREEN_RE = /\b(?:all\s+(?:\d[\d,]*\s+)?tests?|tests?|test\s+suite|suite|build|lint|linter|typecheck|type-check|checks?|ci)\b[^.!?\n]{0,60}?\b(?:pass(?:es|ed|ing)?|green|succeed(?:s|ed)?|clean|ok)\b|\b\d[\d,]*\s*\/\s*\d[\d,]*\s+(?:tests?\s+)?pass(?:ed|ing)?\b/gi;
@@ -1151,6 +1290,36 @@ function maskHeredocs(cmd) {
 const maskQuoted = (cmd) => String(cmd)
   .replace(/'[^'\n]*'/g, (m) => m.replace(/[^\n]/g, 'x'))
   .replace(/"[^"\n]*"/g, (m) => m.replace(/[^\n]/g, 'x'));
+// The check classifier's masker: a quote-state walk, so a quoted span that crosses lines (a `perl -0pi -e '...'`
+// script whose replacement text says `npx nx test <project>`) is text, and a `#` comment is text too - an apostrophe
+// in it never opens a quote. Same length, newlines kept. An unterminated quote leaves the rest as written.
+function maskQuotedShell(cmd) {
+  const s = String(cmd);
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '\\' && i + 1 < s.length) { out += s.slice(i, i + 2); i += 2; continue; }
+    if (c === '#' && (i === 0 || /[\s;&|(]/.test(s[i - 1]))) {
+      const nl = s.indexOf('\n', i);
+      const end = nl < 0 ? s.length : nl;
+      out += 'x'.repeat(end - i);
+      i = end;
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      let j = i + 1;
+      while (j < s.length && s[j] !== c) j += c === '"' && s[j] === '\\' ? 2 : 1;
+      if (j >= s.length) { out += s.slice(i); break; }
+      out += s.slice(i, j + 1).replace(/[^\n]/g, 'x');
+      i = j + 1;
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
 
 // ---------- is this file a FORK, and of which parent? ----------
 // A FORK's transcript opens as a copy of its parent's rows, each copied row keeping the parent's
@@ -1349,6 +1518,7 @@ async function analyzeTranscript(file, window) {
   let toolSeq = 0;                 // tool_use ordinal in this transcript
   const navRecent = [];            // locate class of the last NAV_WINDOW own tool calls
   let lastCheckSeq = -1;           // ordinal of the last test / build / lint / ci-status call
+  const checkLogs = new Set();     // files a check redirected its output into - a later read of one is its result
   let turnHadCheck = false;        // a check ran, or a seat was dispatched, since the last human turn
   const msgText = new Map();       // message.id -> text so far (one message arrives as several rows)
   const turns = [];                // { role, len } - the correction-streak view, as the hook builds it
@@ -1822,13 +1992,24 @@ async function analyzeTranscript(file, window) {
           // paired tool_result proves the call ran, the same way the doc touches are.
           const cmdCode = maskQuoted(cmdShell);
           info.rmVerifyTail = rmVerifyTail(cmdCode);
-          const check = classifyCheck(cmdCode, cmdShell);
-          if (check) {
-            info.check = check.kind; info.scoped = check.scoped;
+          const bindings = bindingsOf(cmdShell);
+          const checkCode = maskQuotedShell(cmdShell);
+          const checks = classifyChecks(checkCode, cmdShell, bindings);
+          if (checks.kinds.length) {
+            // One call can be several kinds (`nx run-many -t test,lint`): each kind counts the call once, and the
+            // result volume is charged to the first, so the shell-volume share never counts one result twice.
+            info.check = checks.kinds[0].kind;
             lastCheckSeq = toolSeq; turnHadCheck = true;
-            const k = s.efficiency.checks[check.kind];
-            k.calls += 1;
-            if (check.kind === 'test') { if (check.scoped) k.scoped += 1; else k.whole += 1; }
+            for (const ck of checks.kinds) {
+              const k = s.efficiency.checks[ck.kind];
+              k.calls += 1;
+              if (ck.kind === 'test') { info.scoped = ck.scoped; if (ck.scoped) k.scoped += 1; else k.whole += 1; }
+            }
+            for (const p of checks.logs) checkLogs.add(p);
+          } else if (readsCheckLog(checkCode, cmdShell, bindings, checkLogs)) {
+            // the read of a log a check wrote: that check's result reaching the session now
+            lastCheckSeq = toolSeq; turnHadCheck = true;
+            s.efficiency.checkLogReads = (s.efficiency.checkLogReads || 0) + 1;
           }
           const commits = (cmdCode.match(/(?:^|[;&|(]\s*)git\s+(?:-[\w-]+(?:[= ]\S+)?\s+)*commit\b/g) || []).length;
           const merges = (cmdCode.match(/(?:^|[;&|(]\s*)gh\s+pr\s+merge\b/g) || []).length;
@@ -2898,7 +3079,7 @@ function efficiencyRows(main, agg, blockLedger) {
     const bashChars = ['Bash', 'PowerShell', 'Monitor'].reduce((n, k) => n + ((agg.tools[k] && agg.tools[k].resultChars) || 0), 0);
     const checkChars = ['test', 'build', 'lint', 'ci'].reduce((n, k) => n + ((c[k] && c[k].chars) || 0), 0);
     const share = bashChars ? Math.round((100 * checkChars) / bashChars) : null;
-    rows.push({ practice: 'test and build runs', measured: `test ${t.calls} (${t.scoped} scoped, ${t.whole} whole-suite) ~${fmt(approxTok(t.chars))} tok; build ${(c.build || {}).calls || 0} ~${fmt(approxTok((c.build || {}).chars || 0))}; lint ${(c.lint || {}).calls || 0} ~${fmt(approxTok((c.lint || {}).chars || 0))}; ci ${(c.ci || {}).calls || 0}${share != null ? ` - ${share}% of shell result volume` : ''}`, tests: 'iterate on ONE test or project, run the whole suite once at the gate; the result chars are what lands in context - a green run needs its summary line, a red run earns its trace' });
+    rows.push({ practice: 'test and build runs', measured: `test ${t.calls} (${t.scoped} scoped, ${t.whole} whole-suite) ~${fmt(approxTok(t.chars))} tok; build ${(c.build || {}).calls || 0} ~${fmt(approxTok((c.build || {}).chars || 0))}; lint ${(c.lint || {}).calls || 0} ~${fmt(approxTok((c.lint || {}).chars || 0))}; ci ${(c.ci || {}).calls || 0}${e.checkLogReads ? `; ${e.checkLogReads} read(s) of a log a check wrote` : ''}${share != null ? ` - ${share}% of shell result volume` : ''}`, tests: 'iterate on ONE test or project, run the whole suite once at the gate; the result chars are what lands in context - a green run needs its summary line, a red run earns its trace' });
   }
   {
     const n = main.gitCommits || 0, k = e.commitsChecked || 0;
@@ -3597,7 +3778,7 @@ function sessionsDirOf(cwd, configDir) {
   return path.join(configDir, 'projects', require('./memory-import.js').slugify(cwd));
 }
 
-module.exports = { houseBare, loadPluginLayers, hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf };
+module.exports = { classifyChecks, commandHeads, maskQuotedShell, houseBare, loadPluginLayers, hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf };
 
 // ---------- entry ----------
 
