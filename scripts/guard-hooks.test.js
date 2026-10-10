@@ -616,6 +616,7 @@ test('guard-ungated-commit: the receipt states', () => {
     over.head === null ? null : `head: ${over.head || head}`,
     over.spec === null ? null : (over.spec || 'spec: 3 files'),
     over.probe === null ? null : (over.probe || 'live-probe: `npm test` 238/238'),
+    over.format === null ? null : (over.format || 'format: npx prettier --check - clean over 3 staged files'),
   ].filter((l) => l != null).join('\n') + '\n';
 
   receipt('WAIVED - "skip the review"\n'); assert.equal(gateIn(dir, 'git commit -am x'), 0, 'WAIVED');
@@ -691,7 +692,7 @@ test('guard-ungated-commit: an option label THIS run wrote is not the user askin
   const tp = transcript('own-label', [
     { type: 'assistant', message: { id: 'q1', content: [{ type: 'tool_use', id: 'u1', name: 'AskUserQuestion', input: { questions: [{ question: 'Next?', options: [{ label: 'Commit now (Recommended)', description: 'land it' }, { label: 'Hold', description: 'wait' }] }] } }] } },
   ]);
-  const body = (auth) => `VERIFIED the checkpoint\n${auth}\nhead: ${head}\nspec: 3 files\nlive-probe: npm test\n`;
+  const body = (auth) => `VERIFIED the checkpoint\n${auth}\nhead: ${head}\nspec: 3 files\nlive-probe: npm test\nformat: npx prettier --check - clean over 3 staged files\n`;
   const gateT = () => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -am x' }, transcript_path: tp },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
   fs.writeFileSync(gate, body('authorized: "Commit now (Recommended)"')); assert.equal(gateT(), 2, 'the model\'s own option label, marker included');
@@ -3253,7 +3254,7 @@ test('guard-ungated-commit: an ABSOLUTE docs root inside the repo does not fail 
   fs.mkdirSync(path.join(docs, 'flow'), { recursive: true });
   const head = spawnSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
   fs.writeFileSync(path.join(docs, 'flow', 'COMMIT-GATE'),
-    `VERIFIED the three fixtures\nauthorized: "commit it"\nhead: ${head}\nspec: 3 files - the fixtures\nlive-probe: tests green\n`);
+    `VERIFIED the three fixtures\nauthorized: "commit it"\nhead: ${head}\nspec: 3 files - the fixtures\nlive-probe: tests green\nformat: npx prettier --check - clean over 3 staged files\n`);
   const status = spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git commit -am wip' } }),
     encoding: 'utf8',

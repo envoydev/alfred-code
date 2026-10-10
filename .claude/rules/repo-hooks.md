@@ -315,8 +315,16 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     first push's scope reads the commits no remote holds. A PUSH-GATE written before this session began is absent
     (the transcript's birthtime, the dispatch guard's APPROVAL rule); a `WAIVED` quote must waive the review in the
     user's own words (skip, without the review, just push - a bare 'commit it' is no waiver, an option label this run
-    wrote is no user's words); `head:` is the first sha word on its line; the act a denial echoes is capped at 200
-    characters with a URL credential masked, and the publish denial names `habits-commit-checkpoint`.
+    wrote is no user's words - unless a turn the user TYPED carries the quote, audit 2026-10-10 f24eb967); `head:` is the
+    first sha word on its line, and one receipt covers a reviewed BATCH: a `head:` that is an ancestor of HEAD passes
+    when no merge landed since it, every commit since it was made after the receipt was written, and those commits plus
+    this act take in only the paths `spec:` names (or no more files than its count). A COMMIT receipt carries
+    `format: <the formatter check run> - clean over <N> staged files` (or a quoted user waiver on that line; audit
+    2026-10-10 C18). A verify-skill VERIFIED line needs a Skill run in THIS session, read from the tool-usage ledger
+    and then the whole transcript (newest 64MB) - a 256KB tail refused three sessions whose review sat further back.
+    A `git add -N .` survey chained to a bare `git reset -q` blocks while the index holds staged work (the reset
+    would unstage it); the denial names `git diff HEAD --stat; git ls-files --others --exclude-standard`. The act a
+    denial echoes is capped at 200 characters with a URL credential masked, and the publish denial names `habits-commit-checkpoint`.
     Both are judged in the repo git runs in (the shell's cwd, a leading `cd`, `-C`) - a worktree is its own.
     A PUSH-GATE receipt spanning more than one MANIFEST-owning directory needs a `scope:` line naming
     what the probe actually ran (a plain top-level folder is no project, so an ordinary repo never asks).
