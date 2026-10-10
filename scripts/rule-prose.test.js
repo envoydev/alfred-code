@@ -323,3 +323,29 @@ test('C29: update passes the running plugin root, runs the AGENTS.md check itsel
     assert.match(update, /When step 3's `--log` call printed `restart: yes`, the RESTART is row one/);
     assert.match(update, /Under a restart row the note reads 'run it in the session the restart opens' instead/);
 });
+
+// ------------------------------------------------------------------ audit 2026-10-10 C26 / C13
+
+// 390aebcb: a recommended option the session could not carry out ('Open a new gated cycle' - a command only the user
+// runs) was picked and handed back, a stop block and two messages later. f450ea64: a two-option ask marked neither.
+test('C26: a blocking ask marks one option (Recommended), lists it first, and labels the user\'s own action', () =>
+{
+    assert.match(injected('alfred-interaction'), /concrete options, the recommended one marked \(Recommended\) and listed first, and an option only the user can carry out \(a manual-only command, `\/clear`, an input only they hold\) names their action in its label/);
+});
+
+// 9a4ef375 / 0498718d: implementer seats made 85% and 96% of their source edits as shell writes, which the Write|Edit
+// hooks never see; the navigation rule sanctioned any anchor-counted splice beside 'every other edit goes through Edit / Write'.
+test('C13: a splice is for a mechanical rename, and every implementer routes source edits through Edit / Write', () =>
+{
+    assert.match(injected('alfred-navigation'), /A splice \(`sed -i`, an in-place python or perl replace\) is for a mechanical rename across many sites, never an edit Edit \/ Write can make/);
+    const entry = registry()['implementer-edit-route'];
+    assert.ok(entry, 'the bullet is pinned');
+    const seats = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).filter((f) => f.endsWith('-implementer.md')).map((f) => `stack/agents/${f}`);
+    assert.deepStrictEqual(homes(entry).map((h) => h.file).sort(), seats.sort(), 'every implementer seat, and only those, carries it');
+    for (const seat of seats)
+    {
+        const lines = read(seat).split('\n');
+        const at = lines.findIndex((l) => l.includes(entry.owner.marker));
+        assert.ok(at > 0 && lines[at - 1].startsWith('- You usually share ONE working tree'), `${seat}: the bullet follows the shared-tree bullet`);
+    }
+});

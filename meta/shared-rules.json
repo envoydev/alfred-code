@@ -2415,6 +2415,24 @@
         }
       ]
     },
+    "implementer-edit-route": {
+      "_note": "Implementer seats edit source through Edit / Write, the tools the edit hooks watch - measured (audit 2026-10-10): one run's seats made 155 shell writes against 28 Edit calls (85% unseen by check-turn-build, matched only on Write|Edit|MultiEdit), another 132 against 5. A shell splice stays for a mechanical rename across many sites. Byte-identical across all 10 implementers.",
+      "owner": {
+        "file": "stack/agents/aspnet-implementer.md",
+        "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+      },
+      "sites": [
+        { "file": "stack/agents/web-angular-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
+        { "file": "stack/agents/ionic-angular-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
+        { "file": "stack/agents/wpf-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
+        { "file": "stack/agents/winforms-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
+        { "file": "stack/agents/console-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
+        { "file": "stack/agents/windows-service-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
+        { "file": "stack/agents/data-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
+        { "file": "stack/agents/devops-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
+        { "file": "stack/agents/browser-extension-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." }
+      ]
+    },
     "implementer-worktree-step-zero": {
       "_note": "Worktree-isolated implementers verify HEAD == the brief's pinned base at step zero, ff-only on mismatch, else STOP as BLOCKED - measured: seats pinned 77 and 91 commits behind built discarded work. The OWNER is the protocol, not a seat: the protocol is the only place that knows the sha and carries the ff-only recovery and the per-stack stale-base tells; each seat keeps one sentence pointing at it.",
       "owner": {
