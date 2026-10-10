@@ -381,3 +381,16 @@ test('C17: the commit-ask scope survey lists untracked files and leaves the inde
     }
     finally { fs.rmSync(repo, { recursive: true, force: true }); }
 });
+
+// ------------------------------------------------------------------ audit 2026-10-10 C12
+
+// 4f1c2ebb: 'a pasted one may still do the job asked' beside 'Never ... pass a pasted secret to a tool' - the session
+// took the first, dug the value out of its own transcript after compaction and wrote it to a file. 84eedb4b: a seed
+// password from the project's docs was echoed unprompted, and a password the run created was echoed again.
+test('C12: a pasted secret serves its one call only, and a documented seed is cited, never echoed', () =>
+{
+    const sec = injected('alfred-security');
+    assert.match(sec, /a pasted one may do the job it was pasted for, inline in that one call, and is never written to a file or recovered from the transcript later/);
+    assert.ok(!sec.includes('pass a pasted secret to a tool'), 'the contradicting clause is gone');
+    assert.match(sec, /A documented dev seed is cited by file:line and key, never echoed; an account the run creates at the user's ask is reported once, when made\./);
+});
