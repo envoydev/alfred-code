@@ -66,6 +66,13 @@ const fmt = (n) => {
   return String(Math.round(n));
 };
 const approxTok = (chars) => Math.round(chars / 4);
+// The part of the floor that is the session's own opening prompt, when the floor is the first message (a later,
+// smaller message - after a compaction - carries no such prompt). Null when it is not, or is under 1k tokens.
+function floorPromptTok(main) {
+  if (!main.floorCtx || main.floorCtx !== main.firstMsgCtx) return null;
+  const tok = approxTok(main.floorPromptChars || 0);
+  return tok >= 1000 && tok < main.floorCtx ? tok : null;
+}
 const dur = (ms) => {
   if (!ms || ms < 0) return '-';
   const m = Math.round(ms / 60000);
@@ -872,15 +879,22 @@ function applySessionRoster(inv, main) {
   if ((!skills || !skills.length) && (!agents || !agents.length)) return inv;
   const out = { ...inv };
   const from = [];
+  // The roster spells a plugin item with its scope (`alfred-code:aspnet-verifier`) or under an older release's name
+  // (`project-solve-task`), while every use is keyed through houseBare - so a dispatched seat read unused beside its own
+  // 'observed' row, and its preloads read as slash commands (audit 2026-10-10 C06: 9a4ef375, bc2fa83e, 69dbed46).
+  // Both sides go through the one function, once.
+  const canon = (names) => [...new Set([...names].map(houseBare))];
   if (skills && skills.length) {
     const onDisk = new Map(inv.skills.map((x) => [x.name, x]));
-    out.skills = skills.map((n) => onDisk.get(n) || { name: n, file: null }).sort(byName);
-    from.push(`${skills.length} skills`);
+    const names = canon(skills);
+    out.skills = names.map((n) => onDisk.get(n) || { name: n, file: null }).sort(byName);
+    from.push(`${names.length} skills`);
   }
   if (agents && agents.length) {
     const onDisk = new Map(inv.agents.map((x) => [x.name, x]));
-    out.agents = agents.map((n) => onDisk.get(n) || { name: n, file: null, skills: [] }).sort(byName);
-    from.push(`${agents.length} agent types`);
+    const names = canon(agents);
+    out.agents = names.map((n) => onDisk.get(n) || { name: n, file: null, skills: [] }).sort(byName);
+    from.push(`${names.length} agent types`);
   }
   out.why = `${from.join(' and ')} from the session's own roster (the harness's skill / agent listing in this transcript), the rest from ${inv.why}`;
   return out;
@@ -1224,6 +1238,19 @@ function addSessionUse(acc, main, agents, inventoryDir) {
       noteNs(nsPreload, sk, e.n, e.firstTs);
     }
   }
+  // A seat whose definition is not on disk here (a plugin-served seat, a bundle read on another machine) still proves
+  // its preloads in its own transcript; a seat the frontmatter route above already credited is not counted twice.
+  for (const a of agents) {
+    const t = a.meta && a.meta.agentType;
+    const pre = Object.entries((a.stats && a.stats.preloadedSkills) || {});
+    if (!pre.length) continue;
+    const fm = t && inv.agents.find((x) => x.name === houseBare(t));
+    if (fm && fm.skills && fm.skills.length && dispatched.has(t)) continue;
+    for (const [sk, ts] of pre) {
+      mark(ensure(acc.skills, houseBare(sk)), `preloaded via ${t || 'a seat'}`, 1, ts);
+      noteNs(nsPreload, sk, 1, ts);
+    }
+  }
 
   // --- rules: two direct records, then the glob proxy as the floor under them
   for (const src of srcs) for (const [file, e] of Object.entries(src.ruleAttachments || {})) {
@@ -1553,6 +1580,9 @@ async function analyzeTranscript(file, window) {
     peakCtx: 0,                  // largest per-message context carried, and where
     peakCtxAt: null,
     floorCtx: 0,                 // smallest per-message context = the standing inventory
+    preloadedSkills: {},         // skill -> first ts: a seat's frontmatter preload, written as an isMeta command row
+    firstMsgCtx: 0,              // the first message's context, and the user / meta text sent ahead of it - when the
+    floorPromptChars: 0,         // floor IS that first message, the session's own opening prompt is inside it
     modelIdsFull: [],            // model ids WITH their window suffix, from cost-state
     modelIdReminder: null,       // the id the SESSION was told it is running, from its own reminder
     userInterrupts: 0,           // '[Request interrupted by user]' markers - a stop, never an error
@@ -1720,6 +1750,14 @@ async function analyzeTranscript(file, window) {
     if (foreign) {
       s.forkPrefix.rows += 1;
       if (!s.forkPrefix.sessionIds.includes(origin)) s.forkPrefix.sessionIds.push(origin);
+    }
+    // What the session sent before its first answer - the typed prompt and a slash run's expansion - is the session's
+    // own, not the install's: a /task-solve opening of ~112k chars sat inside a '139.4k standing inventory' that the
+    // report charged to the install (audit 2026-10-10 C06, 8f44a003).
+    if (!foreign && !s.firstMsgCtx && o.type === 'user' && o.message) {
+      const c = o.message.content;
+      s.floorPromptChars += typeof c === 'string' ? c.length
+        : Array.isArray(c) ? c.filter((b) => b && b.type === 'text').reduce((n, b) => n + String(b.text || '').length, 0) : 0;
     }
     if (window && o.timestamp) {
       const ts = Date.parse(o.timestamp);
@@ -1933,7 +1971,17 @@ async function analyzeTranscript(file, window) {
     if (o.type === 'user' && o.message && Array.isArray(o.message.content)) {
       for (const b of o.message.content) if (b && b.type === 'tool_result' && skillCallIds.has(b.tool_use_id)) lastSkillResult = skillCallIds.get(b.tool_use_id);
     }
-    if (o.type === 'user' && o.message && raw.includes('<command-name>')) {
+    // A seat's frontmatter `skills:` arrive as isMeta rows spelled like a slash turn plus `<skill-format>true` - a
+    // preload, never a command the session ran (audit 2026-10-10, bc2fa83e: six preloads scored 'slash command x1').
+    const preloadRow = o.type === 'user' && o.isMeta && o.message && raw.includes('<command-name>') && raw.includes('<skill-format>true</skill-format>');
+    if (preloadRow) {
+      const c = o.message.content;
+      const own = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : '';
+      for (const m of own.matchAll(/<command-name>\s*\/?\s*([A-Za-z0-9_:-]+)\s*<\/command-name>/g)) {
+        if (!(m[1] in s.preloadedSkills)) s.preloadedSkills[m[1]] = o.timestamp || null;
+      }
+    }
+    if (!preloadRow && o.type === 'user' && o.message && raw.includes('<command-name>')) {
       const own = typeof o.message.content === 'string' ? o.message.content
         : Array.isArray(o.message.content) ? o.message.content.filter((c) => c.type === 'text').map((c) => c.text || '').join('\n') : '';
       // A LEADING SPACE inside the tag suppressed the match, and a whole guided-command run then
@@ -1985,6 +2033,7 @@ async function analyzeTranscript(file, window) {
           // message and re-paid in full after every compaction. Measured at 3.7%-86.8% of a
           // session's cache-read and 23-48% of its own floor, and no report had a row for it.
           if (ctx > 0 && (s.floorCtx === 0 || ctx < s.floorCtx)) s.floorCtx = ctx;
+          if (ctx > 0 && !foreign && !s.firstMsgCtx) s.firstMsgCtx = ctx;
           // Cache continuity, by Claude Code's OWN definition (its `Prompt cache (main)` status
           // line): a request is a MISS when it re-processed more than 5% and at least 2,000 tokens
           // of what the previous request had cached; the first request after a compaction is an
@@ -3248,7 +3297,8 @@ function efficiencyRows(main, agg, blockLedger) {
   }
   if (main.floorCtx) {
     const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
-    rows.push({ practice: 'standing floor', measured: `~${fmt(main.floorCtx)} tok/msg${share != null ? `, ~${share}% of cache-read` : ''}`, tests: 'the always-on set is the one lever on this number - lint check 33 caps it, /alfred-code:status reports it per install' });
+    const own = floorPromptTok(main);
+    rows.push({ practice: 'standing floor', measured: `~${fmt(main.floorCtx)} tok/msg${share != null ? `, ~${share}% of cache-read` : ''}${own ? `, of which the first prompt ~${fmt(own)} (install ~${fmt(main.floorCtx - own)})` : ''}`, tests: 'the always-on set is the one lever on this number - lint check 33 caps it, /alfred-code:status reports it per install' });
   }
   rows.push({
     practice: 'cache continuity',
@@ -3340,7 +3390,9 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
   if (main.thinkingTokens) console.log(`thinking ${fmt(main.thinkingTokens)} tok (cost-state.modelUsage) - billed, and attributable to no single message: spike residuals close against this, not against tool output`);
   if (main.floorCtx) {
     const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
+    const own = floorPromptTok(main);
     console.log(`standing inventory ~${fmt(main.floorCtx)} tok/msg (system prompt + tool schemas + CLAUDE.md + always-on rules) - paid on EVERY message${share != null ? `, ~${share}% of cache-read` : ''}, and re-paid in full after every compaction`);
+    if (own) console.log(`  of which ~${fmt(own)} is the session's own first prompt (typed text + slash expansion, chars/4) - the install's floor is ~${fmt(main.floorCtx - own)}`);
   }
   {
     const src = windowSource(main);
@@ -3594,7 +3646,8 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
   if (main.thinkingTokens) extraFacts.push(`- **Thinking** ${fmt(main.thinkingTokens)} tokens (\`cost-state.modelUsage\`) - billed, attributable to no single message.`);
   if (main.floorCtx) {
     const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
-    extraFacts.push(`- **Standing inventory** ~${fmt(main.floorCtx)} tokens/message (system prompt + tool schemas + CLAUDE.md + always-on rules) - paid on EVERY message${share != null ? `, ~${share}% of cache-read` : ''}, and re-paid in full after every compaction.`);
+    const own = floorPromptTok(main);
+    extraFacts.push(`- **Standing inventory** ~${fmt(main.floorCtx)} tokens/message (system prompt + tool schemas + CLAUDE.md + always-on rules) - paid on EVERY message${share != null ? `, ~${share}% of cache-read` : ''}, and re-paid in full after every compaction.${own ? ` Of it, ~${fmt(own)} is the session's own first prompt (typed text + slash expansion, chars/4), so the install's floor is ~${fmt(main.floorCtx - own)}.` : ''}`);
   }
   {
     const src = windowSource(main);

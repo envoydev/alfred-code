@@ -216,6 +216,56 @@ test('C04: vintage reads Skill-call and command bodies from their meta rows, pas
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// C06: the inventory join. The harness roster spells a plugin seat with its scope and a skill under the name the
+// session's release gave it; every use is keyed bare and current. And the standing floor is the first message, which
+// carries the session's own opening prompt (8f44a003: a ~112k-char slash load inside a '139.4k' install floor).
+test('C06: scoped and pre-rename roster names join their uses, preloads follow the seat, and the floor nets out the first prompt', () => {
+  const dir = tmp();
+  try {
+    const root = path.join(dir, 'proj');
+    const claude = path.join(root, '.claude');
+    fs.mkdirSync(path.join(claude, 'agents'), { recursive: true });
+    fs.writeFileSync(path.join(claude, 'agents', 'demo-verifier.md'), '---\nname: demo-verifier\ndescription: fixture\nskills:\n  - demo-preload\n---\n\nbody\n');
+    for (const n of ['task-solve', 'demo-preload']) {
+      fs.mkdirSync(path.join(claude, 'skills', n), { recursive: true });
+      fs.writeFileSync(path.join(claude, 'skills', n, 'SKILL.md'), `---\nname: ${n}\ndescription: fixture\n---\n\n# ${n}\n`);
+    }
+    const big = (id, ts, ctx, content) => ({ ...asst(id, ts, content), message: { id, model: 'claude-sonnet-5', usage: usage(1, 0, ctx, 5), content } });
+    const rows = [
+      { ...human(T(0), '/task-solve the brief'), cwd: root },
+      { type: 'user', timestamp: T(0), cwd: root, isMeta: true, message: { content: [{ type: 'text', text: '# Solve\n' + 'x'.repeat(20000) }] } },
+      { type: 'attachment', timestamp: T(0), attachment: { type: 'skill_listing', isInitial: true, names: ['alfred-code:project-solve-task', 'demo-preload'], content: '' } },
+      { type: 'attachment', timestamp: T(0), attachment: { type: 'agent_listing_delta', isInitial: true, addedTypes: ['alfred-code:demo-verifier'], removedTypes: [], addedLines: [] } },
+      big('m1', T(1), 30000, [tool('k1', 'Skill', { skill: 'alfred-code:project-solve-task' })]),
+      res(T(2), 'k1', 'Launching skill'),
+      big('m2', T(3), 31000, [tool('a1', 'Agent', { subagent_type: 'alfred-code:demo-verifier', description: 'verify', prompt: 'check it' })]),
+      res(T(4), 'a1', 'verified'),
+      { ...said('m3', T(5), 'done'), message: { id: 'm3', model: 'claude-sonnet-5', usage: usage(1, 0, 32000, 5), content: [{ type: 'text', text: 'done' }], stop_reason: 'end_turn' } },
+    ];
+    const file = write(dir, rows);
+    // a plugin-served seat with no definition on disk: its preloads are isMeta rows spelled like a slash turn
+    const sub = path.join(dir, 'session', 'subagents');
+    fs.mkdirSync(sub, { recursive: true });
+    fs.writeFileSync(path.join(sub, 'agent-s1.meta.json'), JSON.stringify({ agentType: 'alfred-code:other-seat' }));
+    fs.writeFileSync(path.join(sub, 'agent-s1.jsonl'), [
+      { type: 'user', timestamp: T(3), message: { content: 'review it' } },
+      { type: 'user', timestamp: T(3), isMeta: true, message: { content: [{ type: 'text', text: '<command-message>demo-preload</command-message>\n<command-name>demo-preload</command-name>\n<skill-format>true</skill-format>' }, { type: 'text', text: 'Base directory for this skill: x\n\n# demo-preload\n' }] } },
+      asst('s1', T(4), [{ type: 'text', text: 'ok' }]),
+    ].map(line).join(''));
+    const { inventory } = run([file]);
+    const row = (list, n) => list.find((r) => r.name === n);
+    assert.strictEqual(row(inventory.agents, 'demo-verifier').used, 'yes', 'the dispatched seat joins its roster row');
+    assert.strictEqual(row(inventory.agents, 'alfred-code:demo-verifier'), undefined, 'no scoped twin left unused');
+    assert.strictEqual(row(inventory.skills, 'task-solve').used, 'yes', 'the pre-rename roster name joins the run');
+    assert.strictEqual(row(inventory.skills, 'project-solve-task'), undefined, 'no pre-rename twin left unused');
+    assert.deepStrictEqual(row(inventory.skills, 'demo-preload').how, ['preloaded via alfred-code:demo-verifier x1', 'preloaded via alfred-code:other-seat x1'],
+      "a frontmatter preload follows the dispatch, and a seat's own preload row is a preload, never a slash command");
+    const out = text([file]);
+    assert.match(out, /standing inventory ~30\.0k tok\/msg/);
+    assert.match(out, /of which ~5\.0k is the session's own first prompt .* the install's floor is ~25\.0k/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // C05: a commit that opens its own line of a multi-line call (390aebcb, 49cb4b82, f6c591fa: 'git commits 0' over a
 // receipted commit). A heredoc message naming the commit verb still counts nothing.
 test('C05: a git commit or gh pr merge on a later line of a multi-line call counts; a heredoc body never does', () => {
