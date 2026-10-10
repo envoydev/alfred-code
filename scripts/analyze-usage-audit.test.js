@@ -553,6 +553,42 @@ test('C23: a result opening with the harness PreToolUse hook-error prefix is a h
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// C16: a red run the test-first method meant (ca65b406: 'Run the mapper unit tests expecting the new ordering test
+// red', habits-test-first loaded before it) was printed as a root-cause streak 'loaded after the fix'. It is intended
+// red, outside the streak count - only with the method in context (loaded earlier, or preloaded by the seat) and a
+// description that expects red.
+test('C16: a red run expected red inside a test-first window is intended red, not a root-cause streak', () => {
+  const dir = tmp();
+  try {
+    const sid = '33333333-4444-4555-8666-777777777777';
+    const red = 'Exit code 1\nFailed! - Failed: 1';
+    const edit = (id, f) => tool(id, 'Edit', { file_path: f, old_string: 'a', new_string: 'b' });
+    const file = write(dir, [
+      asst('m1', T(0), [tool('k1', 'Skill', { skill: 'alfred-code:habits-test-first' })]), res(T(1), 'k1', 'ok'),
+      asst('m2', T(2), [sh('r1', 'npm test', { description: 'Run the mapper tests expecting the new ordering test red' })]), res(T(3), 'r1', red, true),
+      asst('m3', T(4), [edit('e1', 'src/mapper.js')]), res(T(5), 'e1', 'ok'),
+      asst('m4', T(6), [sh('r2', 'npm test', { description: 'Run the suite expecting no failures' })]), res(T(7), 'r2', red, true),
+      asst('m5', T(8), [edit('e2', 'src/other.js')]), res(T(9), 'e2', 'ok'),
+    ], `${sid}.jsonl`);
+    const sub = path.join(dir, sid, 'subagents');
+    fs.mkdirSync(sub, { recursive: true });
+    const seat = (name, rows) => fs.writeFileSync(path.join(sub, `agent-${name}.jsonl`), rows.map(line).join(''));
+    // a seat without the method in context: its 'expecting red' is still a streak
+    seat('a1', [asst('s1', T(10), [sh('x1', 'npm test', { description: 'Run it expecting red' })]), res(T(11), 'x1', red, true), asst('s2', T(12), [edit('x2', 'src/b.js')]), res(T(13), 'x2', 'ok')]);
+    // a seat whose definition preloads the method
+    seat('a2', [asst('s3', T(14), [sh('y1', 'dotnet test', { description: 'Run the new test, expecting it to fail' })]), res(T(15), 'y1', red, true), asst('s4', T(16), [edit('y2', 'src/c.cs')]), res(T(17), 'y2', 'ok')]);
+    const probe = (id, extra) => line({ ts: T(3), hook: 'guard-stop-contract.js', event: 'PostToolUse', tool: 'Bash', mode: 'probe', kind: 'root-cause',
+      reason: 'probe: a red test run - logged, nothing injected', detail: { run: 'npm test', key: 'npm test', tool_use_id: id, agent: null, agent_type: null, ...(extra || {}) } });
+    const blocks = path.join(dir, 'hook-blocks');
+    fs.mkdirSync(blocks);
+    fs.writeFileSync(path.join(blocks, `${sid}.jsonl`), [probe('r1'), probe('r2'), probe('x1', { agent: 'a1' }), probe('y1', { agent: 'a2', agent_type: 'alfred-code:aspnet-implementer' })].join(''));
+    const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+    assert.deepStrictEqual(hookBlocks.rootCause, { streaks: 2, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 2, noFix: 0, unmatched: 0, intended: 2 });
+    assert.match(text([file, '--hook-blocks', blocks]), /ROOT CAUSE \(probe\): 2 red streak\(s\) - .*, 2 MISSED, .*; 2 intended red \(expected red after habits-test-first, not counted\)/);
+    assert.match(execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--report-md'], { encoding: 'utf8' }), /\| root cause \| 2 \| 0 \| 0 \| 0 \| 0 \| 2 \| 0 \| 0 \| 2 \|/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // C05: a commit that opens its own line of a multi-line call (390aebcb, 49cb4b82, f6c591fa: 'git commits 0' over a
 // receipted commit). A heredoc message naming the commit verb still counts nothing.
 test('C05: a git commit or gh pr merge on a later line of a multi-line call counts; a heredoc body never does', () => {

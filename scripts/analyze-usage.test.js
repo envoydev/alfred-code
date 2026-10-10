@@ -816,7 +816,7 @@ test('hook-blocks: a root-cause probe is resolved against the transcript after t
   agent('a5', [tool('y1', 'Bash', { command: 'npm test' }), result('y1', red), tool('y2', 'Write', { file_path: '/tmp/probe.js', content: '1' }), result('y2')]);
   fs.appendFileSync(path.join(blocks, 'session.jsonl'), redRow('y1', { agent: 'a5' }));
   const { hookBlocks } = run([file, '--hook-blocks', blocks]);
-  assert.deepStrictEqual(hookBlocks.rootCause, { streaks: 8, beforeFix: 1, inContext: 1, preloaded: 1, afterFix: 1, missed: 1, noFix: 2, unmatched: 1 });
+  assert.deepStrictEqual(hookBlocks.rootCause, { streaks: 8, beforeFix: 1, inContext: 1, preloaded: 1, afterFix: 1, missed: 1, noFix: 2, unmatched: 1, intended: 0 });
   const text = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
   assert.match(text, /ROOT CAUSE \(probe\): 8 red streak\(s\) - 1 loaded before the fix, 1 already in context, 1 preloaded by the seat, 1 loaded after the fix, 1 MISSED, 2 with no fix after, 1 unmatched/);
 });
@@ -905,7 +905,7 @@ test('hook-blocks: directory mode sums the probe rows of each session it reads, 
   fs.writeFileSync(path.join(blocks, 's-other.jsonl'), doneRow({}));
   const out = run([dir, '--hook-blocks', blocks]);
   assert.deepStrictEqual(out.probes.doneGate, { claims: 3, ran: 1, unrun: 2, byRule: 0, noTests: 1, skillLoaded: 0, inContext: 0, missed: 1 });
-  assert.deepStrictEqual(out.probes.rootCause, { streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0 });
+  assert.deepStrictEqual(out.probes.rootCause, { streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0, intended: 0 });
   const text = execFileSync('node', [SCRIPT, dir, '--hook-blocks', blocks], { encoding: 'utf8' });
   assert.match(text, /DONE GATE \(probe\): 3 done claim\(s\)/);
   assert.ok(!('probes' in run([dir])), 'no --hook-blocks, no probe tally');

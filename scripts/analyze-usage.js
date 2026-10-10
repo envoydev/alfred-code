@@ -3136,9 +3136,14 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
 // session's own cwd (the row's `cwd`; a relative path is inside it, resolved through the command's own
 // `cd`s) - a write anywhere else is scratch, and a target behind a variable is not judged. A row with no
 // cwd falls back to reading a temp-dir path as scratch. A call whose result is an error - a denied edit,
-// a failed Skill load - changed nothing and loaded nothing.
-const newRootCause = () => ({ streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0 });
+// a failed Skill load - changed nothing and loaded nothing. A red run the test-first method meant is no
+// streak: with that method in context (loaded earlier in the file, or preloaded by the seat) and a call
+// description that expects red ('expecting the new test red', 'expecting it to fail'), it is counted as
+// intended red, outside the streaks (audit 2026-10-10, session ca65b406: 2 such runs read as streaks).
+const newRootCause = () => ({ streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0, intended: 0 });
 const ROOT_CAUSE_SKILL_RE = /(?:^|:)(?:alfred-)?habits-root-cause$/;
+const TEST_FIRST_SKILL_RE = /(?:^|:)(?:alfred-)?habits-test-first$/;
+const EXPECTS_RED_RE = /\bexpect(?:s|ed|ing)?\b(?!\s+(?:no|zero|0|none)\b)[^.;\n]*?\b(?:red|fail|fails|failing|failure)\b/i;
 const FIX_EDIT_TOOL_RE = /^(?:Edit|Write|MultiEdit|NotebookEdit)$/;
 const FIX_SKIP_RE = /\.(?:md|mdx|markdown|txt|rst|adoc|log|out|err|tmp|bak)$|(?:^|[\\/])\.claude[\\/]/i;
 const TEMP_PATH_RE = /^\/(?:tmp|dev|private\/tmp)\//;
@@ -3210,32 +3215,36 @@ function toolSequence(file) {
   return seq;
 }
 const preloadCache = new Map();
-function seatPreloads(agentType) {
+function seatPreloads(agentType, skillRe = ROOT_CAUSE_SKILL_RE) {
   const name = String(agentType || '').replace(/^.*:/, '');
   if (!name) return false;
-  if (!preloadCache.has(name)) {
+  const key = `${name}\0${skillRe.source}`;
+  if (!preloadCache.has(key)) {
     let hit = false;
     for (const f of [path.join(__dirname, '..', 'stack', 'agents', `${name}.md`), path.join(process.cwd(), '.claude', 'agents', `${name}.md`)]) {
       try {
         const fm = (fs.readFileSync(f, 'utf8').match(/^---\n([\s\S]*?)\n---/) || [])[1] || '';
         const skills = (fm.match(/^skills:\s*\n((?:\s+-\s+.*\n?)+)/m) || [])[1] || '';
-        if (skills.split('\n').some((l) => ROOT_CAUSE_SKILL_RE.test(l.replace(/^\s*-\s*/, '').trim()))) { hit = true; break; }
+        if (skills.split('\n').some((l) => skillRe.test(l.replace(/^\s*-\s*/, '').trim()))) { hit = true; break; }
       } catch { /* not this home */ }
     }
-    preloadCache.set(name, hit);
+    preloadCache.set(key, hit);
   }
-  return preloadCache.get(name);
+  return preloadCache.get(key);
 }
 function resolveRootCause(details, files) {
   const t = newRootCause();
   if (!details || !details.length) return t;
   const seqs = files.map(toolSequence);
   const isLoad = (st) => !st.error && st.name === 'Skill' && ROOT_CAUSE_SKILL_RE.test(String(st.input.skill || ''));
+  const isTestFirst = (st) => !st.error && st.name === 'Skill' && TEST_FIRST_SKILL_RE.test(String(st.input.skill || ''));
   for (const d of details) {
-    t.streaks += 1;
     let seq = null;
     let at = -1;
     for (const sq of seqs) { at = d.tool_use_id ? sq.findIndex((st) => st.id === d.tool_use_id) : -1; if (at >= 0) { seq = sq; break; } }
+    if (seq && EXPECTS_RED_RE.test(String(seq[at].input.description || ''))
+      && (seq.slice(0, at).some(isTestFirst) || seatPreloads(d.agent_type, TEST_FIRST_SKILL_RE))) { t.intended += 1; continue; }
+    t.streaks += 1;
     if (!seq) { t.unmatched += 1; continue; }
     if (seq.slice(0, at).some(isLoad)) { t.inContext += 1; continue; }
     if (seatPreloads(d.agent_type)) { t.preloaded += 1; continue; }
@@ -3249,7 +3258,8 @@ function resolveRootCause(details, files) {
   return t;
 }
 const rootCauseLine = (t) => `ROOT CAUSE (probe): ${t.streaks} red streak(s) - ${t.beforeFix} loaded before the fix, ${t.inContext} already in context, `
-  + `${t.preloaded} preloaded by the seat, ${t.afterFix} loaded after the fix, ${t.missed} MISSED, ${t.noFix} with no fix after, ${t.unmatched} unmatched`;
+  + `${t.preloaded} preloaded by the seat, ${t.afterFix} loaded after the fix, ${t.missed} MISSED, ${t.noFix} with no fix after, ${t.unmatched} unmatched`
+  + (t.intended ? `; ${t.intended} intended red (expected red after habits-test-first, not counted)` : '');
 // The correction probe (guard-answer-length.js, log-only unless ALFRED_CODE_CORRECTION_NUDGE=inject):
 // one row per correction turn. Whether it was then SAVED is the scorecard's corrections-saved row,
 // read from the transcript with the same test.
@@ -4089,8 +4099,8 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
     if (dg) out.push('| probe | claims over an edit | ran after it | excused by a rule | no tests found | skill loaded, unrun | loaded earlier, unrun | MISSED |', '|---|---|---|---|---|---|---|---|',
       `| done gate | ${dg.claims} | ${dg.ran} | ${dg.byRule} | ${dg.noTests} | ${dg.skillLoaded} | ${dg.inContext} | ${dg.missed} |`, '');
     const rc = blockLedger.rootCause;
-    if (rc) out.push('| probe | red streaks | loaded before the fix | in context | preloaded | loaded after the fix | MISSED | no fix after | unmatched |', '|---|---|---|---|---|---|---|---|---|',
-      `| root cause | ${rc.streaks} | ${rc.beforeFix} | ${rc.inContext} | ${rc.preloaded} | ${rc.afterFix} | ${rc.missed} | ${rc.noFix} | ${rc.unmatched} |`, '');
+    if (rc) out.push('| probe | red streaks | loaded before the fix | in context | preloaded | loaded after the fix | MISSED | no fix after | unmatched | intended red (test-first, not counted) |', '|---|---|---|---|---|---|---|---|---|---|',
+      `| root cause | ${rc.streaks} | ${rc.beforeFix} | ${rc.inContext} | ${rc.preloaded} | ${rc.afterFix} | ${rc.missed} | ${rc.noFix} | ${rc.unmatched} | ${rc.intended || 0} |`, '');
     const co = blockLedger.correction;
     if (co) out.push('| probe | correction turns | save line injected | logged only |', '|---|---|---|---|',
       `| correction nudge | ${co.turns} | ${co.injected} | ${co.turns - co.injected} |`, '');
@@ -4367,7 +4377,7 @@ async function runAnalysis() {
     for (const f of files) {
       if (probeSum) {
         const led = finishProbes(readBlockLedger(blockDir, path.basename(f, '.jsonl'), f), f);
-        for (const [k, sum] of Object.entries(probeSum)) if (led[k]) for (const n of Object.keys(sum)) sum[n] += led[k][n];
+        for (const [k, sum] of Object.entries(probeSum)) if (led[k]) for (const n of Object.keys(sum)) sum[n] += led[k][n] || 0;
       }
       const s = await analyzeTranscript(f, window);
       const agents = await analyzeSubagents(f, window);
@@ -4401,7 +4411,7 @@ async function runAnalysis() {
     const unsaved = grandCorr.total - grandCorr.saved;
     console.log(`\ncorrections saved to memory over ${files.length} session${files.length === 1 ? '' : 's'}: ${grandCorr.total ? `${grandCorr.saved} of ${grandCorr.total}; ${unsaved} unsaved (${Math.round((100 * unsaved) / grandCorr.total)}%)` : 'no correction turn'}`);
     if (probeSum && probeSum.doneGate.claims) console.log('\n' + doneGateLine(probeSum.doneGate));
-    if (probeSum && probeSum.rootCause.streaks) console.log((probeSum.doneGate.claims ? '' : '\n') + rootCauseLine(probeSum.rootCause));
+    if (probeSum && (probeSum.rootCause.streaks || probeSum.rootCause.intended)) console.log((probeSum.doneGate.claims ? '' : '\n') + rootCauseLine(probeSum.rootCause));
     if (probeSum && probeSum.correction.turns) console.log((probeSum.doneGate.claims || probeSum.rootCause.streaks ? '' : '\n') + correctionLine(probeSum.correction));
     if (probeSum && probeSum.rationalization.closes) console.log((probeSum.doneGate.claims || probeSum.rootCause.streaks || probeSum.correction.turns ? '' : '\n') + rationalizationLine(probeSum.rationalization));
     printInventoryBlock(invUse);
