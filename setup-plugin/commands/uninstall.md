@@ -43,7 +43,8 @@ print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to us
 
 `node "$TMP/repo/scripts/install/alfred-code.js" uninstall --source "$TMP/repo" 2>&1 | tee "$TMP/install.log"`
 
-Read `${PIPESTATUS[0]}`. Exit 1 carries one `error:` line and nothing was touched:
+Open the call with `set -o pipefail;` and append `; echo "install exit: $?"`, then read that exit - the pipe
+makes a bare `$?` `tee`'s, and `${PIPESTATUS[0]}` reads empty in zsh. Exit 1 carries one `error:` line and nothing was touched:
 
 - `predates the install ledger` -> the stamp is from before the ledger, so the stack's entries
   cannot be told from the user's: run `/alfred-code:update` once (it records the ledger), then this

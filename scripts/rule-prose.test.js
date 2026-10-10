@@ -258,3 +258,28 @@ test('agents F03: a seat whose tools: list names a locked server\'s tools calls 
         assert.ok(injected(name).includes(clause), name);
     assert.ok(injected('alfred-quality-gates').includes('then the query (a seat whose `tools:` list names them calls them directly)'));
 });
+
+// ------------------------------------------------------------------ audit 2026-10-10 C14
+
+// The Bash tool runs zsh on macOS: `${PIPESTATUS[0]}` reads empty there, so a shipped instruction that prescribes it
+// loses every exit status it was meant to read (measured in 9 sessions, 22 of 22 reads blank).
+test('C14: no shipped instruction prescribes the bash-only PIPESTATUS read; the navigation rule teaches the zsh-safe forms', () =>
+{
+    const hits = [];
+    const walk = (dir) =>
+    {
+        for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }))
+        {
+            const rel = `${dir}/${e.name}`;
+            if (e.isDirectory()) walk(rel);
+            else if (/\.md$/.test(e.name) && /PIPESTATUS/.test(read(rel).split('`${PIPESTATUS[0]}` reads empty').join(''))) hits.push(rel);
+        }
+    };
+    for (const dir of ['stack', 'setup-plugin']) walk(dir);
+    assert.deepStrictEqual(hits, [], 'a shipped text tells the model to read ${PIPESTATUS[0]}');
+    const nav = injected('alfred-navigation');
+    assert.match(nav, /Read `\$\?` on the very next line, with `set -o pipefail` before a pipe/);
+    assert.match(nav, /a bare word opening with `=`[^.]*quote it, `echo '====='`/);
+    assert.match(nav, /never word-splits `\$VAR`/);
+    assert.match(nav, /a path glob that may match nothing with `find <dir> -name '<pat>'`/);
+});

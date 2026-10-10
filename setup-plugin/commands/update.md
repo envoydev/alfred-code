@@ -395,9 +395,9 @@ or the adoption alone.
 **Give that call a 10-minute timeout, and read its exit code.** A full refresh runs past the Bash
 tool's own default on a cold machine, and a timed-out call is BACKGROUNDED, not failed: the run then
 pays turns re-finding its own installer (measured: 3 recovery turns, one of them loading a tool
-schema it never called). Pass `timeout: 600000` on the call. The `tee` means `$?` is the pipe's own
-exit code, not the installer's - append `; echo "install exit: ${PIPESTATUS[0]}"` and read THAT
-number. A NON-ZERO exit stops the run - report the log's last lines verbatim as a blocker with the
+schema it never called). Pass `timeout: 600000` on the call. The `tee` makes `$?` the pipe's own
+exit code, not the installer's - open the call with `set -o pipefail;`, append `; echo "install exit: $?"`
+and read THAT number (`${PIPESTATUS[0]}` reads empty in zsh, the macOS Bash tool's shell). A NON-ZERO exit stops the run - report the log's last lines verbatim as a blocker with the
 fix they name, and never continue to the prune, the close, or ad-hoc repair work: the measured
 breach spent 14 messages and 1.69M tokens on improvised forensics after exit 1 and then changed 226
 files under the user's `.claude` with no ask.

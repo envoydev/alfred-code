@@ -364,7 +364,8 @@ fallback cloned), and never deletes a source it was handed - cleanup is the comm
 appends `2>&1 | tee "$TMP/install.log"` to that call, always the same filename - never call it
 without capture and grep a log nobody wrote, and never call it a second time to get the log a first
 call should have kept (measured: a run paid a second full installer pass for exactly this). The pipe
-means `$?` is `tee`'s exit code, not the installer's - read `${PIPESTATUS[0]}` instead. Every later
+makes `$?` `tee`'s exit code, not the installer's - open the call with `set -o pipefail;` and read `$?`
+(bash and zsh both honour it; `${PIPESTATUS[0]}` reads empty in zsh, the macOS Bash tool's shell). Every later
 step reads `"$TMP/install.log"`, never a tail, never a second grep.
 
 **A harness denial of the installer call is not a question.** The auto-mode classifier can decline

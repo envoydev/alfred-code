@@ -31,9 +31,10 @@ description: House baseline - code navigation and reading. Always-on (no paths),
 
 ## Shell commands
 
-- Single-quote a glob the TOOL owns (`grep --include='*.cs'`, `find . -name '*.md'`): zsh aborts on an unmatched bare glob with status 1, the same as a genuine no-match, so an aborted scan reads as 'nothing there'.
+- zsh aborts the WHOLE command on an unmatched bare glob, status 1 like a genuine no-match, so an aborted scan reads as 'nothing there': single-quote a glob the TOOL owns (`grep --include='*.cs'`, `find . -name '*.md'`), and list a path glob that may match nothing with `find <dir> -name '<pat>'`.
+- zsh also aborts on a bare word opening with `=` (`echo =====` looks up a command `====`): quote it, `echo '====='`. It never word-splits `$VAR`, so a command plus flags held in one variable runs as one word - use a function or an array.
 - A splice (`sed -i`, an in-place python or perl replace) counts its anchor first and replaces only when it appears exactly once.
-- Read `$?` (or `${PIPESTATUS[0]}`) on the very next line; never `<cmd> || echo none`, which launders a failure into an empty result. A scan used as evidence of ABSENCE runs a must-match positive control in the same call, and resolves its tool absolutely or checks it with `type` first.
+- Read `$?` on the very next line, with `set -o pipefail` before a pipe (bash and zsh both honour it; `${PIPESTATUS[0]}` reads empty in zsh); never `<cmd> || echo none`, which launders a failure into an empty result. A scan used as evidence of ABSENCE runs a must-match positive control in the same call, and resolves its tool absolutely or checks it with `type` first.
 - On Windows a Git Bash `/tmp/x` path is one native `node` cannot open: pass it through `cygpath -w`, or write under `$TEMP`.
 - Scratch code goes outside the tracked tree (the session scratchpad or the OS temp dir), or into a gitignored dir inside the repo when an ESM script must import the project's `node_modules`. An interrupted compound write may already have run - check the target before trusting the rejection.
 
