@@ -54,6 +54,9 @@ test('seed install: a wpf selection on Windows installs windows-desktop and says
     assert.match(out, /windows-desktop needs the Windows display language set to English/);
     assert.match(out, /same privilege level as the app it drives - a UAC prompt can never be automated/);
     assert.match(out, /PowerShell, Registry, Process and FileSystem stay off \(ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE/);
+    // SD08 (audit 2026-10-11): the screenshot knob is named at install and never given a value by the stack.
+    assert.match(out, /windows-desktop sends screenshots at full display size - WINDOWS_MCP_SCREENSHOT_SCALE \(0\.1 to 1\.0, Windows-MCP's own, unset by the stack\)/);
+    assert.ok(!calls.some((c) => /SCREENSHOT_SCALE/.test(c)), calls.join("\n"));
     assert.ok(!/left out/.test(out), out);
 });
 
@@ -110,6 +113,7 @@ test('seed update over an install that carries windows-desktop keeps it, and say
     assert.ok(calls.includes('plugin update windows-desktop@envoydev --scope project -y'), calls.join('\n'));
     assert.ok(!calls.some((c) => /^plugin (uninstall|disable) windows-desktop@/.test(c)), calls.join('\n'));
     assert.ok(!/English/.test(out), 'the prerequisites were said again on an update that brought nothing in');
+    assert.ok(!/SCREENSHOT_SCALE/.test(out), 'the screenshot knob was said again on an update that brought nothing in');
 });
 
 test('seed update on macOS over a project a Windows machine enabled windows-desktop in: left as it is, and said', POSIX_ONLY, () =>

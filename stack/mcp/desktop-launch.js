@@ -147,7 +147,10 @@ function prereqNotes(name, { uvx = true, exclude = DEFAULT_EXCLUDE } = {})
     const first = `its first start downloads Python and ${DESKTOP[name].upstream}, and a timeout then clears with a reconnect from /mcp`;
     const lines = name === 'windows-desktop'
         ? ["  desktop: windows-desktop needs the Windows display language set to English (Windows-MCP's App tool reads app names in English), and Claude Code at the same privilege level as the app it drives - a UAC prompt can never be automated",
-            `  desktop: windows-desktop - ${gateNote(exclude)}; ${first}`]
+            `  desktop: windows-desktop - ${gateNote(exclude)}; ${first}`,
+            // SD08 (audit 2026-10-11): full-size screenshots were a third of one session's cache reads. The knob is the
+            // server's own and stays unset here until a readability measurement picks a value.
+            "  desktop: windows-desktop sends screenshots at full display size - WINDOWS_MCP_SCREENSHOT_SCALE (0.1 to 1.0, Windows-MCP's own, unset by the stack) shrinks every one; set it in the environment that starts Claude Code once a smaller size proves readable for your apps"]
         // I45: MacOS-MCP 0.4.6 checks its grants before it serves and exits when one is missing
         // (permissions.py validate_permissions) - an empty snapshot needs MACOS_MCP_SKIP_PERMISSION_CHECK=1 first.
         : ["  !! desktop: macos-desktop needs Accessibility and Screen Recording (System Settings > Privacy & Security) for the terminal or IDE running Claude Code and for the uv-managed Python it runs on - approve the 'would like to control this computer' dialog at its first start; a server that fails to connect at start while System Settings opens is missing a grant - its log names which; a black vision snapshot means Screen Recording is missing",
