@@ -92,6 +92,29 @@ test('SD16 42951e5b#3: the review read is git diff HEAD plus each untracked file
     for (const f of fs.readdirSync(path.join(ROOT, 'stack', 'rules'))) assert.doesNotMatch(read(`stack/rules/${f}`), /git add -N \.[^`]*git reset/, `${f} prescribes add -N + reset`);
 });
 
+// ---- SD12: the usage audit's batch bound, scope grep and summary ---------------------------------------------------
+test('SD12 ae38c08f#3 ae38c08f#6: the batch also closes past the fresh-session trigger, and one gate call after each bundle decides it and writes the summary rows', () => {
+    const t = skill('capture-usage-report');
+    assert.match(t, /\*\*The batch is BOUNDED - at 12 bundles, or at the first bundle boundary past this install's fresh-session trigger, whichever comes first/);
+    assert.doesNotMatch(t, /the biggest scope marked Recommended is what forces compactions/, 'the compaction rationale alone does not cover a 1M window');
+    assert.match(t, /`node <snapshot>\/stack\/skills\/capture-usage-report\/scripts\/bundle-gate\.js --done <bundles closed this run> --summary <docs-path>\/usage-report`/);
+    assert.ok(fs.existsSync(path.join(ROOT, 'stack/skills/capture-usage-report/scripts/bundle-gate.js')), 'the gate the body names ships in the skill folder');
+    assert.match(t, /\*\*Its bundle list is rewritten after EACH bundle, by the gate call that ends step 4\*\*/);
+    assert.match(t, /keep the two markers and the rows between them as the gate wrote them, never hand-write those rows/);
+    assert.doesNotMatch(t, /Rewrite it after EACH bundle closes, not once at the end of the run/, 'the reminder became the gate call');
+});
+
+test('SD12 ae38c08f#4 (skill half): the scope grep allows a plugin prefix and counts the core commands', () => {
+    const t = skill('capture-usage-report');
+    assert.match(t, /grep -lE '<command-name>\/\?\(\[A-Za-z0-9_-\]\+:\)\?\(<names>\)<\/command-name>\|"skill":"\(\[A-Za-z0-9_-\]\+:\)\?\(<names>\)"'/);
+    assert.match(t, /the core's `\/alfred-code:\*` command runs \(setup, update, configure, validate, init\) count as stack runs too/);
+    // The pattern the body prints finds both spellings of a JSONL marker.
+    const re = /<command-name>\/?([A-Za-z0-9_-]+:)?(configure|task-solve)<\/command-name>|"skill":"([A-Za-z0-9_-]+:)?(configure|task-solve)"/;
+    for (const line of ['"content":"<command-name>/alfred-code:configure</command-name>"', '"content":"<command-name>/task-solve</command-name>"', '"input":{"skill":"alfred-code:configure"}', '"input":{"skill":"task-solve"}'])
+        assert.match(line, re, line);
+    assert.doesNotMatch('"text":"run /task-solve next"', re, 'a bare mention is not a run');
+});
+
 test('SD07 2ca8e8ee#10 42951e5b#6 fdce35ae#8: a named skill not installed here is offered through configure, never borrowed', () => {
     const p = policyBlock();
     assert.match(p, /A skill the user names that is not installed here \(`Unknown skill`\): say so and offer `\/alfred-code:configure` to add it - never load another project's or a plugin cache's copy/);
