@@ -297,7 +297,7 @@ Presence, never the value - run this and paste its lines as-is:
 `node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
 (the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is
 not a variable). The guard ships in the running core plugin, so it is always there when this
-command is. Output is `KEY=set (N chars)` or `KEY=absent`; any other key the table marks secret is
+command is. Output is `KEY=set (N chars)`, `KEY=empty (present, no value)` or `KEY=absent`; any other key the table marks secret is
 read the same way, one `--presence <file> <KEY>` call per file - never by reading the file another
 way.
 

@@ -417,6 +417,18 @@ test('guard-secret-value --presence: reports set (N chars) or absent, never a va
   assert.match(tilde.stdout, /^# .*\.this-file-does-not-exist-guard-secret-value\.json: not found\nX=absent\n$/, '~ is expanded');
 });
 
+test('every page naming the presence read names its three answers (audit 2026-10-10, session f24eb967)', () => {
+  // The guard prints KEY=empty for a key present with no value; a page listing only set / absent sent a reader to call it absent.
+  const repo = path.join(__dirname, '..');
+  const pages = ['configure', 'setup', 'status', 'update', 'validate'].map((c) => path.join('setup-plugin', 'commands', `${c}.md`))
+    .concat([path.join('docs', 'alfred-code.html'), path.join('meta', 'shared-rules.json')]);
+  for (const rel of pages) {
+    const text = fs.readFileSync(path.join(repo, rel), 'utf8');
+    if (!/KEY=absent/.test(text)) continue;
+    assert.match(text, /KEY=empty \(present, no value\)/, `${rel} names set and absent but not empty`);
+  }
+});
+
 test('guard-secret-value: a CRLF dotenv file - the Windows-authored spelling - is read like an LF one', () => {
   // `DOTENV_LINE` ends in `(.*)$`, and `.` never crosses a line terminator, so a line split on `\n`
   // alone leaves a `\r` that no line matched: a CRLF .env was never judged (a live key passed) and

@@ -1297,7 +1297,7 @@ const rewrite = (command, detail) => {
 };
 const presenceHint = (file) =>
   `Per alfred-security.md a credential is read for PRESENCE only:\n` +
-  `  node "${__filename}" --presence "${file}" [KEY ...]   ->  KEY=set (N chars) | KEY=absent\n` +
+  `  node "${__filename}" --presence "${file}" [KEY ...]   ->  KEY=set (N chars) | KEY=empty (present, no value) | KEY=absent\n` +
   `A shell dump of it - cat "${file}" - is rewritten into the redacted view for free:\n` +
   `  node "${__filename}" --redacted "${file}"   ->  the file, every credential value shown as <set (N chars)>\n` +
   `Never echo the value, never pass it to a tool, never ask for it in the chat - the user sets it in\n` +

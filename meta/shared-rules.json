@@ -5167,7 +5167,7 @@
       ]
     },
     "credential-presence-line": {
-      "_note": "The sanctioned presence read of the account settings.json - guard-secret-value.js --presence, pasted as-is, KEY=set (N chars) / KEY=absent - carried by every command that touches the file. The hook owns the mode; the commands restate the call because none of them co-load.",
+      "_note": "The sanctioned presence read of the account settings.json - guard-secret-value.js --presence, pasted as-is, KEY=set (N chars) / KEY=empty (present, no value) / KEY=absent - carried by every command that touches the file. The hook owns the mode; the commands restate the call because none of them co-load.",
       "owner": {
         "file": "stack/hooks/guard-secret-value.js",
         "marker": "--presence <file> [KEY ...]"
