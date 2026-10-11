@@ -11,6 +11,10 @@ compile are its scope too), make-the-tests-pass goes to **`dotnet-test-failure-r
 once the build is green. The subagent absorbs the repeated build/test output and returns only a
 diagnosis.
 
+A package change in a project file (a version bump, central package alignment in
+`Directory.Packages.props`) is a migration step, not a repair: before its first edit, load the .NET
+skill whose description covers updating NuGet packages, where the install has one.
+
 A seat may register under a NAMESPACE (`<namespace>:<seat>`) rather than as a bare name; where it
 does, only that spelling resolves - dispatch it exactly as the roster spells it.
 

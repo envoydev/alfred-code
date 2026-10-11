@@ -62,6 +62,13 @@ test('SD16 7f8803eb#5: a suite of unknown length arms Monitor on its failure lin
     assert.match(t, /One `run_in_background` command whose end is all that matters needs nothing more - its exit re-invokes you; a suite of unknown length \(failures show long before its end\), a condition inside a run or across several arms the `Monitor` tool when you start it - on the failure lines plus an alert when the output goes quiet/);
 });
 
+// ---- SD15: a package change in a project file routes to the migration workflow ----------------------------------------
+test('SD15 42951e5b#8: the .NET router sends a package change to the migration-workflow skill, by description', () => {
+    const t = flat(read('stack/rules/dotnet-repair-agents.md'));
+    assert.match(t, /A package change in a project file \(a version bump, central package alignment in `Directory\.Packages\.props`\) is a migration step, not a repair: before its first edit, load the \.NET skill whose description covers updating NuGet packages, where the install has one\./);
+    assert.doesNotMatch(t, /`dotnet-migrate`/, 'selected by description - the skill may be absent');
+});
+
 // ---- SD13: Windows shell idioms (Git Bash ships no jq; MSYS path conversion; PowerShell from Bash) -----------------
 test('SD13 177c5743#3 e90a1845#2 42951e5b#7 7f8803eb#9: JSON through node -e, rev:path with conversion off, PowerShell from a .ps1', () => {
     const nav = flat(read('stack/rules/alfred-navigation.md'));
