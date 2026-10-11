@@ -1167,8 +1167,9 @@ function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
 // after') ended a build half-done. The recommended option is listed FIRST, where the approver's pick lands. The three
 // flow skills below carry their stops as templates in SKILL.md itself - the file every run reads - and the count is
 // pinned per skill, so a rewrite that drops even one stop back to prose goes red (a new stop raises the pin). The
-// AGENTS.md improve ask joined them (usage audit 2026-10-10: as prose it went out with no option marked).
-const ASK_FLOW_TEMPLATES = { 'task-solve': 9, 'task-solve-cross': 5, 'issue-diagnoser': 4, 'habits-adjust-agents-md': 1 };
+// AGENTS.md improve ask joined them (usage audit 2026-10-10: as prose it went out with no option marked), and its
+// check-rows-only twin (audit 2026-10-11 SD04: with only check rows drafted the run ruled them itself, no ask).
+const ASK_FLOW_TEMPLATES = { 'task-solve': 9, 'task-solve-cross': 5, 'issue-diagnoser': 4, 'habits-adjust-agents-md': 2 };
 const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
 // The setup / configure walk's layer asks are templates too (2026-09-29: a walk with whole-layer verdicts only left every
 // per-row change to typing). Pinned per file like the flow skills, so a layer ask dropped back to prose goes red.

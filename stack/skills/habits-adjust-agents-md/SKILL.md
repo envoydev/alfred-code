@@ -101,8 +101,16 @@ names every file written with its line count.
 ## 5. Improve - show before writing, never rewrite the project's prose
 
 1. Run the check first (step 7's command): its rows are the stale lines.
-2. Read each listed file whole - they are small - against the outline, and note the sections it lacks
-   that step 3 has facts for (Setup and Key files most often). Its Rules list is held against
+2. Read each listed file whole - they are small - and run the outline compare, which the script states:
+
+   ```bash
+   node "<stack>/scripts/agents-md-check.js" --root . --outline
+   ```
+
+   It prints each numbered outline section with the heading that holds it, or `lacks`. A `lacks` row
+   step 3 has a fact for is an addition (Setup and Key files most often); a matched heading is a guess,
+   so a section filed under another name is read before it is called missing, and the report says how
+   many sections lack and how many this run added. Its Rules list is held against
    `.claude/rules/` by the check: a named rule with no file and a rule file the list does not name
    are both `rule` rows - read them in both directions before saying anything about the table.
 3. Draft three kinds of change, nothing else:
@@ -121,20 +129,32 @@ names every file written with its line count.
    The project's own wording, order and sections are never reworded, reordered or deleted beyond that,
    and a line the project wrote is never extended - an addition goes on a line of its own.
 4. Show every change before writing: per file, a `diff` block and one line saying why it helps a
-   future session. Then ONE AskUserQuestion:
+   future session - in the reply, and again as the `preview` of each option that writes (the
+   AskUserQuestion option field, single-select only), so the ask cannot go out without its diffs. Then
+   ONE AskUserQuestion:
 
    ```ask
    Apply these changes to <the files>? <N> additions and <N> verified fixes rest on facts read this run; <N> check fixes are heuristic - read each diff above.
    - 'Apply the additions and verified fixes (Recommended)' - every line backed by a fact or a target confirmed on disk
    - 'Also apply the check fixes' - the heuristic rows too, each one read first
-   - 'Apply some - name them in Other' - only the changes you list
+   - 'Apply some - name them in Other' - only the changes you list; a check row named 'keep' gets the keep marker
    - 'Skip' - nothing is written
    ```
 
    An unverified check fix is never in the recommended option: the check is heuristic, and a row can
-   be correct text it could not resolve, so the user reads each one and picks - with only check fixes
-   drafted, 'Skip' takes the mark, listed first. A dispatched seat has no user channel: it returns the
-   diffs in its report instead.
+   be correct text it could not resolve, so the user reads each one and picks. With only check fixes
+   drafted, the ask still runs - its keep option is the one route to the keep marker, so a row is never
+   ruled correct by the run itself - in this shape:
+
+   ```ask
+   Apply the <N> check fixes to <the files>? Each is a heuristic row that can be correct text the check could not resolve - read each diff above.
+   - 'Skip (Recommended)' - nothing is written; the rows come back on the next run
+   - 'Keep the lines as written for good' - each flagged line ends with the keep marker, and no later run raises it
+   - 'Apply the check fixes' - every diff above is written
+   - 'Apply some - name them in Other' - only the changes you list
+   ```
+
+   A dispatched seat has no user channel: it returns the diffs in its report instead.
 5. Before the write, `git ls-files <file>`: an untracked target (git-ignored, or never added) has no
    diff to review and no history to restore - edit it with the harness's own edit tool (its history
    rewinds) or copy it to the scratchpad first, never an in-place shell rewrite, and the report says
@@ -159,8 +179,8 @@ node "<stack>/scripts/agents-md-check.js" --root .
 
 - A row on a line this run wrote is this run's bug: fix it and run the check again.
 - A row on a line the user kept (declined in step 5) stays, named in the report. When the user says
-  the line is right as written for good, end it with `<!-- agents-md-check: keep -->` - the check
-  then raises no row on it, so the next run does not ask again.
+  the line is right as written for good (step 5's keep option, or their own word), end it with
+  `<!-- agents-md-check: keep -->` - the check then raises no row on it, so the next run does not ask again.
 - A `command` row on a program only another OS runs (a PowerShell-only step on macOS) stays, named.
 
 ## 8. Report

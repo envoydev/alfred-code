@@ -276,7 +276,7 @@ test('C24 65abb00a#4 65abb00a#5 f10cb06a#3 f10cb06a#4 + C16 65abb00a#2: the AGEN
     assert.doesNotMatch(t, /env var NAMES a test reads \(`\.env\.example`/);
     assert.match(t, /Before the write, `git ls-files <file>`: an untracked target \(git-ignored, or never added\) has no diff to review and no history to restore/);
     const { ASK_FLOW_TEMPLATES } = require('./lint-skills.js');
-    assert.strictEqual(ASK_FLOW_TEMPLATES['habits-adjust-agents-md'], 1, 'pinned, so the ask cannot drop back to prose');
+    assert.strictEqual(ASK_FLOW_TEMPLATES['habits-adjust-agents-md'], 2, 'pinned, so the ask (and its check-rows-only twin) cannot drop back to prose');
 });
 
 test('C16 7fae0c39#5 (skill half): a red over a run that never compiled is a sign the cycle was skipped', () => {
