@@ -129,9 +129,15 @@ grep over its log. It runs identically on the cheap tier and costs about a THIRD
 `model:` key CAN pin a skill's run to a tier (the Claude Code skills frontmatter reference lists
 `model` and `effort` beside `allowed-tools`), and this command deliberately carries none: a pin
 every install inherits is a behaviour change that ships with its own evidence, and `/model` is the
-USER's command. So when this session is on an expensive tier, say it ONCE in the opening line - 'this walk is scripted;
-`/model sonnet` runs it for about a third' - and continue either way. Never ask about it, never
-repeat it.
+USER's command. So on an expensive tier when a cheap one is available, step 0 is a STOP, not an ask: the
+opening line is the whole turn - 'this walk is scripted: `/model sonnet`, then `/alfred-code:update` again,
+runs it for about a third; `/alfred-code:update` again on this model runs it here' - and the turn ends
+before the snapshot is resolved (audit 2026-10-11, session 37d7a42c: the run went on on Opus after the
+hint, 245.9k cache-read and 83.1k cache-write over 3 messages, and the user interrupted it and ran it
+again on Sonnet). A second `/alfred-code:update` in this session goes ahead on whatever tier it finds, with
+no line. An unattended launch picks its model up front and has nobody to switch it: on the expensive tier
+make the first call `printf 'unattended=%s\n' "${ALFRED_CODE_UNATTENDED:-}"`, and on `unattended=1` log
+`unattended: tier -> run here` and go on instead of stopping.
 
 **House voice in every line this run emits** - narration, tables and the asks alike: single
 dashes, never em-dashes, and single quotes in prose. A fresh or refreshed install may have no
@@ -140,29 +146,25 @@ the voice can come from (measured: a first-run narration line opened with an em-
 surface where the rule forbidding it cannot yet exist).
 
 **This run needs NO conversation context**, so it is the cheapest thing in the stack to move -
-but only out of a session that is actually loaded. Measure before you ask: this session's own
-per-message context is `input + cache_read + cache_creation` off the last assistant message in the
-transcript. Ask ONLY when that figure is past the same trigger `guard-fresh-session-start.js` uses
-- the tier's own absolute trigger, `ALFRED_CODE_FRESH_SESSION_200K` (default 150,000) or
-`ALFRED_CODE_FRESH_SESSION_1M` (default 400,000), or `ALFRED_CODE_FRESH_SESSION_DEFAULT`
-(default 300,000) when the window is neither of those two sizes or cannot be read at all - which
-one applies comes from the session model's row in `.claude/hooks/model-windows.json`, else
-`ALFRED_CODE_DEFAULT_CONTEXT_WINDOW` - or when that hook has already injected
-the ask into this turn. Below the trigger, or when the figure cannot be read at all, SKIP the ask
-silently and go to step 1: an ask with no measurement behind it is the failure this replaced
-(measured: it fired on the FIRST message of a brand-new session, twice in one run, and could quote
-no number when the user challenged it). Never author the decision in prose either way - and below the trigger that means NO line at
-all: not 'context is low, proceeding', not a one-clause aside. The only visible output of a
-skipped step 0 is that step 1 starts.
+but only out of a session that is actually loaded, and the measuring is the hook's, never yours.
+`guard-fresh-session-start.js` reads this session's per-message context against its tier's trigger (and
+whether a guided run already ran in this session) and, when a move pays, injects a note into this very
+turn that quotes the figure and says 'Do NOT start the run yet'. With that note, step 0 is its ask.
+Without it, step 0 does not exist: never measure, never mention it - no 'step 0 skipped', no 'fresh
+session', no 'context is low, proceeding' - the first line you write is step 1's (audit 2026-10-11,
+session bca100bd: 'Step 0 skipped (fresh session)' on the first message of a fresh session, the line
+this clause forbids; a model-side measurement fired on the FIRST message of a brand-new session before).
+Where the stack's hooks stand down (a legacy install before its first stamp, `hook_profile: minimal`)
+no note comes, and the walk runs here.
 
-When it does fire, put the choice through AskUserQuestion - run here anyway vs run in a fresh
+When the note comes, put the choice through AskUserQuestion - run here anyway vs run in a fresh
 session (recommended). One ordering rule for every ask in this run: **never lead with an option
 the harness has already refused.** Once an installer invocation has come back denied, the
 recommended answer becomes 'you run it yourself' with the command to paste, and the settings rule
 that would pre-authorize it named beside it - re-offering the denied path as the recommendation
 buys a second identical denial (measured, and it drew the only free-text complaint in that
 session). The fast path is ~10k tokens on its own, but every one of its messages
-re-sends whatever this session already carries, so state the figure you measured and the ~10k
+re-sends whatever this session already carries, so state the figure the note quotes and the ~10k
 budget beside it. Never quote a figure measured in another session: the number that used to sit
 here was ~2x over on lifetime cache-read and ~4.8x over on the tail when it was next checked.
 
@@ -339,7 +341,10 @@ count, run without the flag (the old places stay in effect, except one a server 
 new place serves, and the log's `still holds data` line names the leftover to remove or merge), and the
 next update offers again once they are cleared. After a move the log carries `docs root: moved ...` and `data root: ...` lines (what
 moved now, what waits for a server's next start), the `--log` call prints `restart: yes`, and until that
-restart this session writes the docs under the NEW root - its loaded rule text still names the old one.
+restart this session's hooks keep writing under the OLD root - they read it from the environment the session
+started with - and its loaded rule text still names the old one (audit 2026-10-11, session bca100bd: the
+monitor hook re-created `<old root>/flow/` after the move). Say so in the close, with the one action it
+leaves: after the restart, a `flow/` file left under the old root is this session's record and safe to delete.
 Unattended, both asks take their Recommended option - the move overwrites nothing (a conflict already
 stops it) and adding the recommended items only adds - each logged as one `unattended: <question> ->
 <choice>` line; a `yours=yes` offer is the exception, a value the user once kept: pass no `--data-move`,
@@ -584,9 +589,28 @@ sections the template gained and OFFERS a fix for what its check reports (never 
 option - a check row is heuristic, applied only when the user picks it), this run's own part is the rules
 table for what it pruned, the project's own prose is never overwritten, and every change is shown
 before writing.
-The installer has already re-spelled every renamed skill or seat name the stack wrote into
-`AGENTS.md`, `.claude/AGENTS.md` and the generated rules (one `renamed: <file> - <n> ...` line per
-file) - report those lines, and leave the names to it.
+The installer re-spells the renamed skill and seat names only where the stack wrote them - an instruction
+file it seeded and still holds at its hash, and the generated rules (one `renamed: <file> - <n> ...` line per
+file) - report those lines. A file that is the project's own it only NAMES, and step 3's `--log` call carries
+that as `warn: !! <file> is yours and names <n> old stack name(s) ...`. Never splice those by hand (audit
+2026-10-11, session b3f8193f: a hand `sed -i` after an ask that showed no diff, on a file git did not track).
+Print the edit instead:
+
+```bash
+node "$TMP/repo/scripts/update-preflight.js" --respell --root .
+```
+
+`respell: none` asks nothing. Otherwise paste its `respell:` / `-` / `+` lines verbatim in a fenced block - they
+are the diff - and ask once:
+
+```ask
+Re-spell the old stack names in <file> as shown above?
+- 'Re-spell them (Recommended)' - each line exactly as the plan shows it, and nothing else in the file
+- 'Leave them' - the file keeps the old names, which no longer resolve to a skill or seat
+```
+
+On a yes, the same call with `--apply` writes those lines alone and prints `respelled: <file> - <n> line(s)`
+- report it. Unattended, take the Recommended option and log it.
 The installer has also dealt with the seeded file's name: an unedited `.claude/CLAUDE.md` it seeded is
 moved to `.claude/AGENTS.md` (`git mv` where git tracks it), and so is the user's own on step 2's
 rename answer (`--rename-claude-md`); without that answer an edited one, or any when an AGENTS.md
@@ -599,6 +623,11 @@ template-unchanged skip left that question with no command that answers it: not 
 skipped, and not validate, which touches only the rules table. Measured: a user asked it twice,
 verbatim, five and a half minutes apart. The compare is a 75-line file against a 116-line one, so
 cost is not the argument; when it comes back clean, say so in one clause and write nothing.
+
+The step closes on ONE receipt line, which step 7 repeats verbatim: `agents-md: compare <clean|N additions> -
+check <N rows>` - the sections the compare offered (`clean` when none) and the rows the check printed (`0
+rows` when none). A close with no receipt is a step 6 that did not run (audit 2026-10-11, session 5b9ce9c5:
+the check ran, the compare never did, and nothing in the close showed it).
 
 ## 7. Post-check
 Every line below is READ from something already in context - step 2's preflight output, the one
@@ -616,7 +645,7 @@ installer's own counts with the pruned items by name, never a count from memory 
 (measured: a close said 'Renamed: 35' and 'the 26 old skill copies' against 34 and 34 in the log), the REPAIRED line when the installer logged any (`mcp repaired: <name>` rows and the
 plugin version moves - these are the drift the run corrected, and a user who has been carrying a
 stale registration needs to see it named), the ENVIRONMENT line, the NEW-ITEMS line (what arrived,
-what was taken, what stays off or was left, each by name), and the restart line.
+what was taken, what stays off or was left, each by name), step 6's `agents-md:` receipt, and the restart line.
 
 - **ENVIRONMENT** - the installer prints one line per env change, named by the file the scope
   writes (`settings.json env: <old> renamed to <new>`, or `settings.local.json env: ...` for a key
@@ -758,7 +787,8 @@ the close-out, not silently ignored.
   back and CONTINUED - the fallback is the designed behaviour, and the line usually says so.
   Report it; never re-run the installer end to end to feel sure. Measured: one run did, at about
   half the session's total cost, and changed nothing.
-- Never run this walk on the expensive tier when a cheap one is available. It is script
-  orchestration - a preflight, an installer invocation, a grep and a report - not reasoning: the
-  same scripted walk cost 3x on a 1M-window opus session as on sonnet in the same project, for the
-  same output.
+- Never start this walk on the expensive tier when a cheap one is available - step 0's tier stop ends
+  the first invocation's turn before the snapshot; a second invocation in the session, or an
+  unattended launch, goes ahead. It is script orchestration - a preflight, an installer invocation, a
+  grep and a report - not reasoning: the same scripted walk cost 3x on a 1M-window opus session as on
+  sonnet in the same project, for the same output.

@@ -582,7 +582,9 @@ function respellDocsRoot({ projectRoot, from, to, log = () => {}, note = () => {
 // `owned(rel)` says an instruction file is the stack's own seed (the ledger still holds it at its hash); every
 // other AGENTS.md / CLAUDE.md is the project's, so an old name in it is only named, never rewritten. `onWrite(rel)`
 // hears each owned instruction file this run rewrote, so the ledger keeps it.
-function respellRenamed({ projectRoot, renamed, engines = [], owned = () => false, onWrite = () => {}, log = () => {}, note = () => {} })
+// The old -> new pairs and the patterns both re-spellings read: `re` / `mcpRe` for a file the stack wrote, and the
+// narrower `nameRe` / `toolRe` for the project's own instruction file. Null when no rename applies.
+function respellPatterns(renamed, engines = [])
 {
     // A rule is named in a seeded AGENTS.md by its path (`.claude/rules/baseline-git.md`), so its pairs are the
     // file names without the extension; the four generated pointers moved by moveGeneratedRules follow the same way.
@@ -593,13 +595,66 @@ function respellRenamed({ projectRoot, renamed, engines = [], owned = () => fals
     const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const mcpPairs = mcpRespellPairs((renamed && renamed.mcps) || {}, engines);
     const mcpOlds = Object.keys(mcpPairs).sort((a, b) => b.length - a.length);
-    if (!olds.length && !mcpOlds.length) return 0;
+    if (!olds.length && !mcpOlds.length) return null;
     const re = olds.length ? new RegExp(`(?<![A-Za-z0-9_-])(${olds.map(escape).join('|')})(?![A-Za-z0-9_-])`, 'g') : null;
     const mcpRe = mcpOlds.length ? new RegExp(mcpOlds.map(escape).join('|'), 'g') : null;
     // The project's own file: a name inside a path (`scripts/<name>.sh`) or a backticked word is no hit.
     const nameRe = olds.length ? new RegExp(`(?<![A-Za-z0-9_.-])(?<![A-Za-z0-9_.-]/)(${olds.map(escape).join('|')})(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, 'g') : null;
     const toolOlds = mcpOlds.filter((o) => o.startsWith('mcp__'));
     const toolRe = toolOlds.length ? new RegExp(toolOlds.map(escape).join('|'), 'g') : null;
+    return { pairs, mcpPairs, re, mcpRe, nameRe, toolRe };
+}
+
+// audit 2026-10-11, session b3f8193f: the installer only NAMES an old stack name in the project's own instruction file
+// (`!! <file> is yours ...`), and update's step 6 then spliced it by hand with no diff shown. This is that edit as a
+// plan: every line the narrow patterns hit, before and after, so the ask quotes it as its diff and `apply` writes
+// exactly those lines - the same hits the `!!` line counted, nothing else. A line ending (`\r`) and every other
+// line are kept byte for byte.
+function respellOwnPlan({ projectRoot, renamed, engines = [], files = null })
+{
+    const p = respellPatterns(renamed, engines);
+    const plan = [];
+    if (!p || (!p.nameRe && !p.toolRe)) return plan;
+    for (const file of files || instructionFiles(projectRoot))
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        const rel = path.relative(projectRoot, file).split(path.sep).join('/');
+        const lines = text.split('\n');
+        lines.forEach((before, i) =>
+        {
+            const names = [];
+            let after = p.nameRe ? before.replace(p.nameRe, (old) => { names.push([old, p.pairs[old]]); return p.pairs[old]; }) : before;
+            if (p.toolRe) after = after.replace(p.toolRe, (old) => { names.push([old, p.mcpPairs[old]]); return p.mcpPairs[old]; });
+            if (after !== before) plan.push({ file: rel, line: i + 1, before, after, names });
+        });
+    }
+    return plan;
+}
+
+function respellOwnApply({ projectRoot, plan })
+{
+    const byFile = new Map();
+    for (const row of plan) byFile.set(row.file, [...(byFile.get(row.file) || []), row]);
+    const done = [];
+    for (const [rel, rows] of byFile)
+    {
+        const file = path.join(projectRoot, ...rel.split('/'));
+        const lines = fs.readFileSync(file, 'utf8').split('\n');
+        // A line that no longer reads as planned (edited since the dry run) is left alone and named.
+        const stale = rows.filter((r) => lines[r.line - 1] !== r.before);
+        for (const r of rows) if (lines[r.line - 1] === r.before) lines[r.line - 1] = r.after;
+        fs.writeFileSync(file, lines.join('\n'));
+        done.push({ file: rel, lines: rows.length - stale.length, stale: stale.map((r) => r.line) });
+    }
+    return done;
+}
+
+function respellRenamed({ projectRoot, renamed, engines = [], owned = () => false, onWrite = () => {}, log = () => {}, note = () => {} })
+{
+    const patterns = respellPatterns(renamed, engines);
+    if (!patterns) return 0;
+    const { pairs, mcpPairs, re, mcpRe, nameRe, toolRe } = patterns;
     const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
     const instructions = instructionFiles(projectRoot);
     let total = 0;
@@ -611,7 +666,7 @@ function respellRenamed({ projectRoot, renamed, engines = [], owned = () => fals
         if (instructions.includes(file) && !owned(name))
         {
             const hits = [...new Set([...(nameRe ? text.matchAll(nameRe) : []), ...(toolRe ? text.matchAll(toolRe) : [])].map((m) => m[0]))];
-            if (hits.length) log(`  !! ${name} is yours and names ${hits.length} old stack name(s) (${hits.slice(0, 5).join(', ')}${hits.length > 5 ? ', ...' : ''}) - re-spell them by hand where they mean the stack's`);
+            if (hits.length) log(`  !! ${name} is yours and names ${hits.length} old stack name(s) (${hits.slice(0, 5).join(', ')}${hits.length > 5 ? ', ...' : ''}) - /alfred-code:update shows each line and re-spells it on your yes (update-preflight.js --respell)`);
             continue;
         }
         let n = 0;
@@ -885,6 +940,6 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 }
 
 module.exports = {
-    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, respellRenamed, respellRosterSeats, respellMcpRows, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, respellRenamed, respellOwnPlan, respellOwnApply, respellRosterSeats, respellMcpRows, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, itemScopes, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, FORMER_PLUGINS,
 };

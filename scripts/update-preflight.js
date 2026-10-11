@@ -55,6 +55,18 @@
 //   warn: <line>                            (one per '!!' fail-soft line; none printed if none)
 //   renamed: <n> (<kind>=<n> ...) | none     (the installer's `renamed: <kind> <old> -> <new>` lines)
 //   pruned: <n> (<kind>=<n> ...) - <kind> <name>, ...; ... | none   (its `<kind> pruned (...)` lines, by name)
+//
+// `--respell [--apply] [--root <install root>]` is update step 6's route for the old stack names the installer only
+// NAMED in the project's own AGENTS.md / CLAUDE.md (its `!! <file> is yours and names <n> old stack name(s)` line).
+// Run from the snapshot, it reads that snapshot's `renamed` map and prints the edit as a plan, one block per line:
+//
+//   respell: <file>:<line>  <old> -> <new>[, <old> -> <new>]
+//   - <the line as it reads>
+//   + <the line re-spelled>
+//   respell: <n> line(s) in <m> file(s) | respell: none
+//
+// `--apply` writes exactly those lines (one `respelled: <file> - <n> line(s)` each; a line edited since reads
+// `not applied`). Nothing else in the file is touched (audit 2026-10-11, session b3f8193f: a hand `sed -i` splice).
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -441,16 +453,38 @@ function dataMoveLine({ root, claudeDir, stampFile, stampScope })
     }));
 }
 
+function runRespellMode()
+{
+    const root = path.resolve(arg('--root', '.'));
+    const snapshot = path.join(__dirname, '..');
+    const renamed = (readJson(path.join(snapshot, 'meta', 'stack-manifest.json')) || {}).renamed || {};
+    const engines = require('./install/stamp.js').readPlaywright(stampIn(path.join(root, '.claude')).read || '') || [];
+    const selection = require('./install/selection.js');
+    const plan = selection.respellOwnPlan({ projectRoot: root, renamed, engines });
+    if (!plan.length) { console.log('respell: none'); return; }
+    for (const row of plan)
+    {
+        console.log(`respell: ${row.file}:${row.line}  ${row.names.map(([o, n]) => `${o} -> ${n}`).join(', ')}`);
+        console.log(`- ${row.before.replace(/\r$/, '')}`);
+        console.log(`+ ${row.after.replace(/\r$/, '')}`);
+    }
+    console.log(`respell: ${plan.length} line(s) in ${new Set(plan.map((r) => r.file)).size} file(s)`);
+    if (!process.argv.includes('--apply')) return;
+    for (const done of selection.respellOwnApply({ projectRoot: root, plan }))
+        console.log(`respelled: ${done.file} - ${done.lines} line(s)${done.stale.length ? ` (line ${done.stale.join(', ')} not applied - edited since)` : ''}`);
+}
+
 function main()
 {
     const logFile = arg('--log');
     if (logFile) { runLogMode(logFile); return; }
+    if (process.argv.includes('--respell')) { runRespellMode(); return; }
 
     const snapshot = arg('--snapshot');
     const offerOnly = process.argv.includes('--offers');
     if (!snapshot && !offerOnly)
     {
-        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --offers [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --log <installer-log> [--hooks <n>] [--running <the session\'s plugin root>] [--root <install root>] [--stamp <stamp-file>]');
+        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --offers [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --log <installer-log> [--hooks <n>] [--running <the session\'s plugin root>] [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --respell [--apply] [--root <install root>]');
         process.exit(1);
     }
     const root = arg('--root', '.');

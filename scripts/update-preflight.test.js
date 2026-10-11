@@ -752,3 +752,33 @@ test('--log mode: the installer\'s renamed and pruned lines are counted, the pru
     assert.match(quiet, /^renamed: none$/m);
     assert.match(quiet, /^pruned: none$/m);
 });
+
+// audit 2026-10-11, session b3f8193f: the installer only NAMES an old stack name in the project's own AGENTS.md, and
+// step 6 spliced it with a hand `sed -i` after an ask that showed no diff. `--respell` prints that edit line by line
+// from the snapshot's own renamed map, and `--apply` writes exactly those lines - the same hits the `!!` line counted.
+test('--respell: the project\'s own instruction file gets a per-line plan, and --apply writes only those lines', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-respell-'));
+    try {
+        const renamed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).renamed;
+        const [from, to] = Object.entries(renamed.skills).find(([, n]) => n === 'capture-code-quality');
+        const own = [`# Notes`, `Run /${from} after a big change.`, `Keep scripts/${from}.sh as it is.`, `Untouched line.`, ''].join('\r\n');
+        fs.mkdirSync(path.join(dir, '.claude'));
+        fs.writeFileSync(path.join(dir, '.claude', 'AGENTS.md'), own);
+        const dry = run(['--respell', '--root', dir]).out;
+        assert.match(dry, new RegExp(`^respell: \\.claude/AGENTS\\.md:2  ${from} -> ${to}$`, 'm'), dry);
+        assert.match(dry, new RegExp(`^- Run /${from} after a big change\\.$`, 'm'));
+        assert.match(dry, new RegExp(`^\\+ Run /${to} after a big change\\.$`, 'm'));
+        assert.match(dry, /^respell: 1 line\(s\) in 1 file\(s\)$/m, 'a name inside a path is no hit');
+        assert.strictEqual(fs.readFileSync(path.join(dir, '.claude', 'AGENTS.md'), 'utf8'), own, 'a dry run writes nothing');
+        // the installer's `!!` line counts the same hits the plan lists
+        const logs = [];
+        require('./install/selection.js').respellRenamed({ projectRoot: dir, renamed, log: (m) => logs.push(m), note: () => {} });
+        assert.ok(logs.some((l) => l.includes('.claude/AGENTS.md is yours and names 1 old stack name(s)') && l.includes('update-preflight.js --respell')), logs.join('\n'));
+        const applied = run(['--respell', '--apply', '--root', dir]).out;
+        assert.match(applied, /^respelled: \.claude\/AGENTS\.md - 1 line\(s\)$/m, applied);
+        assert.strictEqual(fs.readFileSync(path.join(dir, '.claude', 'AGENTS.md'), 'utf8'), own.replace(`/${from} `, `/${to} `), 'that line alone, CRLF kept');
+        assert.match(run(['--respell', '--root', dir]).out, /^respell: none$/m, 'a second run has nothing to do');
+        fs.rmSync(path.join(dir, '.claude', 'AGENTS.md'));
+        assert.match(run(['--respell', '--root', dir]).out, /^respell: none$/m, 'no instruction file is nothing to do');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

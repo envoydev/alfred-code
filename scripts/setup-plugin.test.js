@@ -1097,3 +1097,56 @@ test('setup and configure name option asks, not typed numbers, for stacks and th
     assert.doesNotMatch(configure, /an ADD round and a DROP round/);
     assert.match(configure, /walk\.md's DELTA/);
 });
+
+// ------------------------------------------------------------------ audit 2026-10-11 SD06 / SD04 / SD09 (update)
+
+const updateBody = () => fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
+const stepOf = (body, from, to) => flat(body.slice(body.indexOf(from), body.indexOf(to)));
+
+// 37d7a42c: step 0 said 'continue either way' and the Never list 'never run on the expensive tier'; the run went on on
+// Opus and the user redid it on Sonnet. bca100bd: a measured-in-prose step 0 narrated its own skip. One rule each.
+test('update step 0: the tier hint is a stop the Never list agrees with, and the fresh-session ask is the hook note alone', () =>
+{
+    const body = updateBody();
+    const zero = stepOf(body, '## 0. Where to run it', '## 1. Preconditions');
+    assert.doesNotMatch(zero, /continue either way/, 'the tier hint no longer lets the run go on');
+    assert.match(zero, /step 0 is a STOP, not an ask/);
+    assert.match(zero, /the turn ends before the snapshot is resolved/);
+    assert.match(zero, /A second `\/alfred-code:update` in this session goes ahead/);
+    assert.match(zero, /unattended: tier -> run here/, 'an unattended launch never stops on it');
+    assert.match(flat(body.slice(body.indexOf('## Do not'))), /- Never start this walk on the expensive tier when a cheap one is available - step 0's tier stop/,
+        'the Never line says the same thing as step 0');
+    assert.doesNotMatch(zero, /cache_read \+ cache_creation|Measure before you ask/, 'no model-side measurement is left');
+    assert.match(zero, /the measuring is the hook's, never yours/);
+    assert.match(zero, /Without it, step 0 does not exist: never measure, never mention it/);
+    // the note step 0 keys on is the hook's own text
+    const hook = fs.readFileSync(path.join(ROOT, 'stack', 'hooks', 'guard-fresh-session-start.js'), 'utf8');
+    const quoted = zero.match(/says '([^']+)'/);
+    assert.ok(quoted && hook.includes(quoted[1]), `step 0 quotes '${quoted && quoted[1]}', which the hook's note must carry`);
+});
+
+// bca100bd: after a docs move the hooks kept writing the OLD root until the restart; the body said the new one.
+test('update: the docs move says the hooks keep the old root until the restart', () =>
+{
+    const body = flat(updateBody());
+    assert.doesNotMatch(body, /this session writes the docs under the NEW root/);
+    assert.match(body, /until that restart this session's hooks keep writing under the OLD root/);
+    assert.match(body, /a `flow\/` file left under the old root is this session's record and safe to delete/);
+});
+
+// b3f8193f: the project's own AGENTS.md was spliced by hand after an ask with no diff. 5b9ce9c5: the compare never ran
+// and nothing in the close showed it.
+test('update step 6: the own-file re-spell goes through the preflight plan and one ask, and the step closes on a receipt', () =>
+{
+    const body = updateBody();
+    const six = body.slice(body.indexOf('## 6. Reconcile'), body.indexOf('## 7. Post-check'));
+    assert.doesNotMatch(flat(six), /leave the names to it/, 'the installer does not re-spell the project\'s own file');
+    assert.match(six, /update-preflight\.js" --respell --root \./);
+    assert.match(flat(six), /the same call with `--apply` writes those lines alone/);
+    const ask = askBlocks(six);
+    assert.strictEqual(ask.length, 1, 'one ask template for the re-spell');
+    assert.match(ask[0].filter((l) => /^- '/.test(l))[0], /^- 'Re-spell them \(Recommended\)'/);
+    assert.match(flat(six), /`agents-md: compare <clean\|N additions> - check <N rows>`/);
+    assert.match(flat(body.slice(body.indexOf('## 7. Post-check'))), /step 6's `agents-md:` receipt/);
+    assert.strictEqual(askBlocks(body).length, SETUP_ASK_TEMPLATES['setup-plugin/commands/update.md'], 'update.md\'s asks are pinned');
+});

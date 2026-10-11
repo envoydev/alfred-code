@@ -1177,6 +1177,8 @@ const SETUP_ASK_TEMPLATES = {
     'setup-plugin/references/walk.md': 12,
     'setup-plugin/commands/setup.md': 2,
     'setup-plugin/commands/configure.md': 4,
+    // audit 2026-10-11: update's three asks plus step 6's re-spell of the project's own AGENTS.md (session b3f8193f).
+    'setup-plugin/commands/update.md': 4,
 };
 // The setup-plugin files that carry ask templates, read from `root` (the repo, or a fixture).
 function setupAskFiles(root, fsLike = fs)
