@@ -346,3 +346,51 @@ test('compact-state: the prompt ending an idle gap past the clock hours is offer
     assert.strictEqual(prompt(u, u.transcript(rows(19)), {}, { ALFRED_CODE_UNATTENDED: '1' }).stdout, '', 'nobody at the terminal: no offer');
     assert.strictEqual(project().run('garbage', env).status, 0, 'garbage stdin never blocks');
 });
+
+// Audit 2026-10-10 C19, b35afe70: spec-check printed `path: gated`, the plan was written and task-verify-plan ran 8s
+// later with no stop; the one stop the user saw in 38 minutes was the approval.
+test('gated stops: a gated cycle\'s gate and build skills wait for a stop after the step before them (C19)', () =>
+{
+    const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+    let k = 0;
+    const call = (name, input, out) => { const id = `g${++k}`; return [{ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name, input }] } },
+        { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: out }] } }]; };
+    const spec = (p) => call('Bash', { command: 'node spec-check.js "add the export"' },
+        `surface: no\nbehaviour: yes - export\nverified: no\nstacks: 1 - node\nsecurity: no\nspec: not full - surface; verified\npath: ${p}`);
+    const design = call('Skill', { skill: 'task-design' }, 'Launching skill: task-design');
+    const plan = call('Write', { file_path: 'docs/plans/2026-10-10-export.md', content: '# plan' }, 'ok');
+    const answered = call('AskUserQuestion', { questions: [] }, 'Your questions have been answered: "Design done. Audit it?"="Audit (Recommended)". You can now continue.');
+    const base = [typed('<command-name>/task-solve</command-name>'), ...call('Skill', { skill: 'task-solve' }, 'Its `path: gated` is final.'), ...spec('gated'), ...design, ...plan];
+    const skillCall = (s, extra = {}) => ({ hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: s }, ...extra });
+    const p = project();
+    const tp = p.transcript(base);
+    const r = p.run({ ...skillCall('task-verify-plan'), transcript_path: tp });
+    assert.strictEqual(r.status, 2, 'the gate skill right after the design is held');
+    assert.match(r.stderr, /spec check printed `path: gated`, so step 1 DESIGN ends with a STOP before task-verify-plan/);
+    const again = p.run({ ...skillCall('task-verify-plan'), transcript_path: tp });
+    assert.strictEqual(again.status, 0, 'held once per step call - never a loop');
+    const rows = fs.readFileSync(path.join(p.root, '.alfred', 'docs', 'hook-blocks', `${p.sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.ok(rows.some((x) => x.mode === 'probe' && x.kind === 'gated-stop'), 'the pass after the deny is a row');
+    const pass = (name, rowsOf, s = 'task-verify-plan', extra = {}, env = {}) => { const q = project(); assert.strictEqual(q.run({ ...skillCall(s, extra), transcript_path: q.transcript(rowsOf) }, env).status, 0, name); };
+    pass('an answered ask after the design releases it', [...base, ...answered]);
+    pass('a typed prompt after the design releases it', [...base, typed('looks good, audit it')]);
+    pass('a merged path is never held', [typed('<command-name>/task-solve</command-name>'), ...spec('merged'), ...design, ...plan]);
+    pass('the skill body naming `path: gated` is no spec check', [typed('<command-name>/task-solve</command-name>'), ...call('Skill', { skill: 'task-solve' }, 'Its `path: gated` is final.'), ...design, ...plan]);
+    pass('a seat is never held', base, 'task-verify-plan', { agent_id: 'a1' });
+    pass('nobody at the terminal waives the stops', base, 'task-verify-plan', {}, { ALFRED_CODE_UNATTENDED: '1' });
+    pass('another skill is never held', base, 'habits-clarify');
+    const gate = call('Skill', { skill: 'alfred-code:task-verify-plan' }, 'Launching skill: task-verify-plan');
+    const q = project();
+    const b = q.run({ ...skillCall('alfred-code:task-implement'), transcript_path: q.transcript([...base, ...answered, ...gate]) });
+    assert.strictEqual(b.status, 2, 'the build skill right after the gate is held');
+    assert.match(b.stderr, /step 2 GATE ends with a STOP before task-implement/);
+    pass('the build after the approval ask passes', [...base, ...answered, ...gate, ...answered], 'task-implement');
+    // b35afe70: the design's own clarify ask (L122) was answered BEFORE the plan was written - no stop after the artifact
+    const c = project();
+    const mid = [typed('<command-name>/task-solve</command-name>'), ...spec('gated'), ...design, ...answered, ...plan];
+    assert.strictEqual(c.run({ ...skillCall('task-verify-plan'), transcript_path: c.transcript(mid) }).status, 2, 'a clarify ask answered mid-design is no stop');
+    const stamp = call('Edit', { file_path: 'docs/plans/2026-10-10-export.md', old_string: 'x', new_string: 'Gated: passed' }, 'ok');
+    const d = project();
+    assert.strictEqual(d.run({ ...skillCall('task-implement'), transcript_path: d.transcript([...base, ...answered, ...gate, ...answered, ...stamp]) }).status, 0,
+        'step 3\'s Approved: stamp after the approval answer moves nothing');
+});

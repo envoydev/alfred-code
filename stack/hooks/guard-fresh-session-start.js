@@ -570,6 +570,96 @@ if (IS_SKILL_CALL && skill) {
 // A phase Skill call after a compaction is a change like any other (the post-compaction hold above).
 if (IS_SKILL_CALL) compactHold();
 
+// THE GATED STOPS (audit 2026-10-10 C19, b35afe70: spec-check printed `path: gated`, the plan was written and
+// task-verify-plan ran 8s later with no stop, the gate's stop folded into the approval ask, and the 5 gaps the audit
+// fixed were never named - the one stop the user saw in 38 minutes was the approval). In a solve-task cycle whose spec
+// check printed `path: gated`, the GATE skill waits for a stop after the DESIGN skill, and the BUILD skill for one after
+// the GATE: an answered ask or a typed prompt since that step's own Skill call and its last plan-file write. Denied once per step call, then it
+// passes with a row; a seat's call and nobody at the terminal (an AUTO waiver included - the flow waives its stops)
+// are never held. The marker sits at the cycle's head - 14.6MB and a compaction before the gate call in b35afe70 - so
+// the whole transcript is read, in 4MB chunks, on these two skill calls only.
+function transcriptLines(each) {
+  const p = payload.transcript_path;
+  const size = fs.statSync(p).size;
+  const fd = fs.openSync(p, 'r');
+  try {
+    const dec = new (require('string_decoder').StringDecoder)('utf8');   // a chunk edge never splits a character
+    let at = 0;
+    let carry = '';
+    while (at < size) {
+      const buf = Buffer.alloc(Math.min(4 * 1024 * 1024, size - at));
+      fs.readSync(fd, buf, 0, buf.length, at);
+      at += buf.length;
+      const parts = (carry + dec.write(buf)).split('\n');
+      carry = parts.pop();
+      for (const line of parts) each(line);
+    }
+    if (carry) each(carry);
+  } finally { fs.closeSync(fd); }
+}
+function gatedStepHold() {
+  const name = String(skill || '').replace(/^alfred-code:/, '').replace(/^alfred-/, '');
+  const prev = name === 'task-verify-plan' ? 'task-design' : name === 'task-implement' ? 'task-verify-plan' : null;
+  if (!prev || payload.agent_id || unattended(payload)) return;
+  const MARK_RE = /<command-name>\s*\/?(?:alfred-code:)?(?:alfred-)?task-solve\s*<\/command-name>|"skill"\s*:\s*"(?:alfred-code:)?(?:alfred-)?task-solve"/;
+  // spec-check.js's own two closing lines, never the skill body's backticked mention
+  const PATH_RE = /(?:^|\\n)spec: [^"\n]*?\\npath: (gated|merged)\b/;
+  const ANSWER_RE = /"(?:content|text)"\s*:\s*"(?:Your questions have been answered:|The user answered:|The user (?:declined|chose not) to answer)/;
+  const STEP_RE = new RegExp(`"skill"\\s*:\\s*"(?:alfred-code:)?(?:alfred-)?${prev}"`);
+  let gated = false;
+  let stepId = null;
+  let stopped = false;
+  // The DESIGN's stop comes after its ARTIFACT: an ask answered before the plan reached disk is the design's own clarify
+  // question (b35afe70: its one ask before the gate was L122's, and the plan went to disk through `cat > $P <<'EOF'` at
+  // L1503). The gate's stamp and step 3's `Approved:` line write the plan again, after the stop, and move nothing.
+  const needsArtifact = prev === 'task-design';
+  let artifact = !needsArtifact;
+  try {
+    transcriptLines((line) => {
+      if (!line) return;
+      const isUser = /"type"\s*:\s*"user"/.test(line);
+      const isAssistant = !isUser && /"type"\s*:\s*"assistant"/.test(line);
+      const result = isUser && line.includes('"tool_result"');
+      if (MARK_RE.test(line) && (isUser ? !result : isAssistant && line.includes('"tool_use"'))) { gated = false; stepId = null; stopped = false; return; }
+      if (result) {
+        const m = PATH_RE.exec(line);
+        if (m) gated = m[1] === 'gated';
+        if (stepId && artifact && ANSWER_RE.test(line)) stopped = true;
+        return;
+      }
+      if (isUser && stepId && artifact && isHumanTurn(line) && !/"content"\s*:\s*"\s*Stop hook feedback:/.test(line)) { stopped = true; return; }
+      if (!isAssistant || !line.includes('"tool_use"')) return;
+      const fileWrite = /"name"\s*:\s*"(?:Write|Edit|MultiEdit)"/.test(line) && /"file_path"\s*:\s*"[^"]*plans[\\/]+[^"]*\.md"/.test(line);
+      const shellWrite = /"name"\s*:\s*"(?:Bash|PowerShell)"/.test(line) && /plans[\\/]+[^"\s\\]*\.md/.test(line) && /(?:>|\btee\b|Set-Content|Out-File)/.test(line);
+      if (stepId && (fileWrite || shellWrite)) { artifact = true; return; }
+      if (STEP_RE.test(line)) {
+        try {
+          const b = (JSON.parse(line).message.content || []).find((x) => x && x.type === 'tool_use' && x.name === 'Skill' && STEP_RE.test(JSON.stringify(x.input || {})));
+          if (b) { stepId = String(b.id || 'step'); stopped = false; artifact = !needsArtifact; }
+        } catch { /* a cut row */ }
+      }
+    });
+  } catch { return; }   // unreadable - never held
+  if (!gated || !stepId || stopped) return;
+  const key = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_');
+  const marker = nodePath.join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(), `guard-fresh-gated-${key}-${stepId.replace(/[^\w-]/g, '_').slice(-40)}.denied`);
+  if (fs.existsSync(marker)) {
+    ledgerRow({ mode: 'probe', kind: 'gated-stop', reason: 'probe: a gated step ran after its once-deny with no stop', detail: { skill: name, after: prev } });
+    return;
+  }
+  try { fs.writeFileSync(marker, new Date().toISOString()); } catch { return; }   // no marker, no deny - never a loop
+  global.BLOCK_DETAIL = { branch: 'gated-stop', skill: name, after: prev };
+  const step = prev === 'task-design' ? 'step 1 DESIGN' : 'step 2 GATE';
+  process.stderr.write(
+    `Held once: this solve-task cycle's spec check printed \`path: gated\`, so ${step} ends with a STOP before ${name} runs,\n`
+    + `and none landed since ${prev} ran. Put the stop to the user now: \`Result:\` (the plan path${prev === 'task-verify-plan' ? ', and each fix the gate applied, named' : ''}), \`Progress:\`\n`
+    + `and \`Leftovers:\`, then ONE AskUserQuestion with the next step recommended${prev === 'task-verify-plan' ? ' - on a gate pass with no open item, step 3\'s approval ask is this stop' : ''}.\n`
+    + `Call ${name} after the answer.`,
+  );
+  process.exit(2);
+}
+if (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) gatedStepHold();
+
 if (EVENT !== 'SessionStart' && !isOrchestration(skill)) process.exit(0);
 
 // SessionStart carries no run name and nothing measurable - the transcript has just been REPLACED

@@ -517,7 +517,12 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     TYPED a run - a Skill call is a phase of a run in flight, and harness-written user rows are no turn. The size offer
     stands until an ask is answered after it (its file records the transcript size; a retry with no ask between was a
     soft gate), and a Skill call whose turn already ANSWERED an ask carrying the fresh-session choice (task-solve's stop
-    asks) is not offered again - `freshAskAnsweredThisTurn`, one home in `fresh-session.js`, the stop contract's too. Routes:
+    asks) is not offered again - `freshAskAnsweredThisTurn`, one home in `fresh-session.js`, the stop contract's too. The
+    same Skill route holds a GATED solve-task cycle's stops once per step call (audit 2026-10-10 C19): where spec-check
+    printed `path: gated`, `task-verify-plan` waits for an answered ask or typed prompt after `task-design` wrote the plan,
+    and `task-implement` for one after `task-verify-plan` - the whole transcript read in 4MB chunks on those two calls; a
+    seat and nobody at the terminal (an AUTO waiver) pass, and the second call passes with a `gated-stop` row (corpus: 58
+    gate / build calls, 1 held - the audited miss). Routes:
     PreToolUse `Skill` BLOCKS; `UserPromptExpansion` INJECTS for slash-invoked runs (2.1.5 M14: the event fires on a
     typed command and names it in `command_name`, the typed prompt settling a plugin command's namespace; its matcher, a
     regex with no colon, lists the orchestration commands, so no ordinary prompt spawns it; never blocks - a blocked

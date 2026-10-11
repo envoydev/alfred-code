@@ -204,9 +204,13 @@ test('the slash route is UserPromptExpansion, its matcher naming every orchestra
     const file = 'guard-fresh-session-start.js';
     const slash = (block.UserPromptExpansion || []).filter((b) => b.hooks.some((h) => h.command.includes(file)));
     assert.strictEqual(slash.length, 1, 'wired once on UserPromptExpansion');
-    assert.ok(!(block.UserPromptSubmit || []).some((b) => b.hooks.some((h) => h.command.includes(file))), 'and no longer on UserPromptSubmit');
     const matches = (name) => new RegExp(slash[0].matcher).test(name);
     const src = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', file), 'utf8');
+    // UserPromptSubmit carries ONLY the idle-gap route (audit 2026-10-10 C09): the branch offers on a gap and exits,
+    // so the slash offer never runs on an ordinary prompt.
+    const submit = (block.UserPromptSubmit || []).filter((b) => b.hooks.some((h) => h.command.includes(file)));
+    assert.ok(submit.length <= 1, 'at most once on UserPromptSubmit');
+    assert.match(src, /if \(EVENT === 'UserPromptSubmit'\) \{\s*idleGapOffer\(\);\s*process\.exit\(0\);\s*\}/, 'and that route is the idle gap alone');
     const orchestration = new RegExp(src.match(/^const ORCHESTRATION = \/(.+)\/;$/m)[1]);
     const names = ['loop-quality', 'loop-architecture-quality', 'loop-test-coverage', 'capture-architecture',
         'capture-project-capabilities', 'task-solve', 'task-solve-cross', 'task-verify-code', 'issue-diagnoser',
