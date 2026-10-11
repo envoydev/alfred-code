@@ -115,7 +115,7 @@ Total time: <sum across all groups>.
   node "$T" < "$LINES"
   ```
 
-  Confirm its total equals the printed `Total time`; it reads only the bracketed time after the ticket id (a duration in the summary never counts), normalizes the h/m, Ukrainian and decimal-hour spellings, and counts a `(time not specified)` line as zero. On a mismatch, take the script's total - never print an unverified sum. Where neither path holds the script, re-add the times by hand and say the check was manual.
+  Feed it the exact lines the log will print, never re-typed or sample lines, and re-run it after any edit to a line. The `Total time` you print is copied from the `Total time:` line of that last run, never carried from an earlier run or from your own sum. It reads only the bracketed time after the ticket id (a duration in the summary never counts), normalizes the h/m, Ukrainian and decimal-hour spellings, compact or spaced (`1h15m`, `1г 15хв`), and counts a `(time not specified)` line as zero. Exit 2 with `UNREADABLE` names a bracketed time it could not read in full: respell it as `<n>h <n>m` and re-run - that run printed no total to take. Where neither path holds the script, re-add the times by hand and say the check was manual.
 
 **Task grouping within a day**
 - Keep only the main points - no extra explanations, no step-by-step process.
