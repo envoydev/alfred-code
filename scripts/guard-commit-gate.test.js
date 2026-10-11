@@ -1099,6 +1099,11 @@ test('audit 2026-10-10 C17: one receipt covers a reviewed batch - head: an ances
   const reviewed = headOf(dir);
   // the review covered a.txt, b.txt, c.txt (3 files); commit 1 takes a.txt + b.txt, commit 2 c.txt
   writeReceipt(dir, 'COMMIT-GATE', commitReceipt(reviewed, { first: 'VERIFIED the checkpoint' }));
+  const gate = path.join(dir, '.alfred', 'docs', 'flow', 'COMMIT-GATE');
+  // A receipt REWRITTEN below is the same review re-spelled, so it keeps the first one's time: the guard refuses a commit
+  // made more than 2s before the receipt it is judged under, and a slow runner (the gate's Windows leg) crossed that.
+  const writtenAt = fs.statSync(gate).mtime;
+  const sameReview = () => fs.utimesSync(gate, writtenAt, writtenAt);
   assert.equal(gateIn(dir, 'git add a.txt b.txt && git commit -m one'), 0, 'commit 1 under the receipt');
   git('add', 'a.txt', 'b.txt'); git('commit', '-qm', 'one');
   assert.equal(gateIn(dir, 'git add c.txt && git commit -m two'), 0, 'commit 2: head: is an ancestor and the batch stays inside 3 files');
@@ -1109,6 +1114,7 @@ test('audit 2026-10-10 C17: one receipt covers a reviewed batch - head: an ances
   assert.match(over.stderr, /more than the 3 its spec: covered/);
   // a spec naming its paths is read by path
   writeReceipt(dir, 'COMMIT-GATE', commitReceipt(reviewed, { first: 'VERIFIED the checkpoint', spec: 'spec: 3 files - a.txt, b.txt, c.txt' }));
+  sameReview();
   assert.equal(gateIn(dir, 'git add c.txt && git commit -m two'), 0, 'every file named');
   const named = gateFull(dir, 'git add c.txt d.txt && git commit -m two');
   assert.equal(named.status, 2, 'd.txt is not among the named paths');
@@ -1120,7 +1126,6 @@ test('audit 2026-10-10 C17: one receipt covers a reviewed batch - head: an ances
   assert.match(gateFull(dir, 'git add c.txt && git commit -m two').stderr, /the review ran against a different commit/, 'not an ancestor');
   // a commit made BEFORE the receipt was written was never under it
   writeReceipt(dir, 'COMMIT-GATE', commitReceipt(reviewed, { first: 'VERIFIED the checkpoint' }));
-  const gate = path.join(dir, '.alfred', 'docs', 'flow', 'COMMIT-GATE');
   const future = Date.now() / 1000 + 60; fs.utimesSync(gate, future, future); // the receipt reads as written after commit 1
   assert.match(gateFull(dir, 'git add c.txt && git commit -m two').stderr, /made before this receipt was written/, 'an older commit is outside the receipt');
 });
