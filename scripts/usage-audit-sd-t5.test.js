@@ -119,3 +119,13 @@ test('SD07 2ca8e8ee#10 42951e5b#6 fdce35ae#8: a named skill not installed here i
     const p = policyBlock();
     assert.match(p, /A skill the user names that is not installed here \(`Unknown skill`\): say so and offer `\/alfred-code:configure` to add it - never load another project's or a plugin cache's copy/);
 });
+
+test('SD14 ae38c08f#5 (skill half): an error on a call a PreToolUse hook rewrote is read against the rewrite first', () => {
+    const d = flat(read('stack/skills/capture-usage-report/references/diagnosis-discipline.md'));
+    assert.match(d, /An error on a REWRITTEN call has the rewrite as its first suspect/);
+    // The column and the line the discipline names are the analyzer's own words.
+    const a = read('scripts/analyze-usage.js');
+    assert.match(a, /rpad\('hook-rw', 7\)/);
+    assert.match(a, /ran with input a PreToolUse hook REWROTE/);
+    assert.match(d, /hook-rw column and the skeleton's 'ran with input a PreToolUse hook REWROTE' line/);
+});

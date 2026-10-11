@@ -84,7 +84,8 @@ test('the checkpoint review read keeps a merge and the index, reads a brand-new 
 // ------------------------------------------------------------------ JSON on Windows (SD13 contract, the skill texts)
 
 // Git for Windows ships no jq (e90a1845 and 177c5743 hit exit 127): a skill or seat that parses JSON says `node -e`.
-// `gh ... --jq` is gh's own built-in filter and needs no jq binary. The three folders another track owns are left to it.
+// `gh ... --jq` is gh's own built-in filter and needs no jq binary. The capture-agent-capabilities, capture-usage-report and
+// habits-adjust-agents-md folders are pinned by usage-audit-sd-t5.test.js: their prose says 'never `jq`', which this pattern reads as a call.
 test('no skill or seat text runs a bare jq', () =>
 {
     const OTHER_TRACK = new Set(['capture-agent-capabilities', 'capture-usage-report', 'habits-adjust-agents-md']);
