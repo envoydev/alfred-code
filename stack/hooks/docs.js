@@ -278,6 +278,25 @@ function where(paths, limit = 3) {
   return out;
 }
 
+// The sections whose OWN text (subsections aside) names one of these repo paths verbatim - the surest sign a section
+// states a fact about that file, a count or a shape (audit 2026-10-10 C23, session f6c591fa: the watch entry's three
+// sections stated no count for the changed contract, and the two naming it with a count were never offered). History
+// is never offered; the most paths named first, then the shorter text.
+function namingSections(files, limit = 3) {
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const want = [...new Set(files)].filter((f) => typeof f === 'string' && f.length > 3 && !f.endsWith('/'))
+    .map((f) => ({ f, re: new RegExp(`(?<![\\w./-])${esc(f)}(?![\\w/-]|\\.\\w)`) }));
+  if (!want.length) return [];
+  const out = [];
+  for (const s of allSections()) {
+    if (s.history) continue;
+    const own = s.text.slice(0, s.ownChars);
+    const named = want.filter((w) => own.includes(w.f) && w.re.test(own)).map((w) => w.f);
+    if (named.length) out.push({ id: s.id, domain: fileDomain(s.file), files: named, chars: s.chars });
+  }
+  return out.sort((a, b) => b.files.length - a.files.length || a.chars - b.chars).slice(0, limit);
+}
+
 // The block is paid for by every session, so every claim in it that CAN be checked against the repo is checked:
 // the sections it points at, the paths it names, and any count it states about a file it names.
 function verifyBlock() {
@@ -1743,13 +1762,33 @@ function snapshot() {
     const parts = f.split('/');
     for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'));
   }
-  return { head: git(['rev-parse', 'HEAD']), dirty, dirs: [...dirs].slice(0, 20000) };
+  return { head: git(['rev-parse', 'HEAD']), at: Math.floor(Date.now() / 1000), dirty, dirs: [...dirs].slice(0, 20000) };
+}
+
+// Of the files the tree diff since the snapshot's HEAD names, only those a commit made SINCE the snapshot touched (audit
+// 2026-10-10 C23, session 349e4825: a checkout brought staging's own commit in, and the Stop ask said 'you changed' a
+// file the session never touched). A commit a checkout, pull or merge brought in was made before the snapshot, and a
+// merge commit's diff is what it brought, so neither counts; the tree diff stays the outer bound, so a change made and
+// reverted stays out. A snapshot taken before this (no `at`), or a range git cannot list, keeps the whole diff.
+function ownCommitFiles(snap, range) {
+  if (!range.length || !Number.isFinite(snap.at)) return range;
+  const listed = git(['rev-list', '--no-merges', '--format=%ct', `${snap.head}..HEAD`]);
+  if (listed === null) return range;
+  const shas = [];
+  const lines = listed.split('\n');
+  for (let i = 0; i + 1 < lines.length; i += 2) {
+    const sha = (/^commit ([0-9a-f]{7,64})$/.exec(lines[i]) || [])[1];
+    if (sha && Number(lines[i + 1]) >= snap.at) shas.push(sha);
+  }
+  if (!shas.length) return [];
+  const touched = new Set((git(['show', '--name-only', '--format=', ...shas.slice(0, 500)]) || '').split('\n').filter(Boolean));
+  return range.filter((f) => touched.has(f));
 }
 
 function changedSince(snap) {
   const out = new Set();
   if (!snap) return { files: [], dirs: [] };
-  if (snap.head) for (const f of (git(['diff', '--name-only', `${snap.head}..HEAD`]) || '').split('\n').filter(Boolean)) out.add(f);
+  if (snap.head) for (const f of ownCommitFiles(snap, (git(['diff', '--name-only', `${snap.head}..HEAD`]) || '').split('\n').filter(Boolean))) out.add(f);
   const before = snap.dirty || {};
   const listed = new Set(porcelainPaths());
   // Every path is hashed ONCE: what is dirty now, plus what was dirty at snapshot time and is not listed any more
@@ -1878,7 +1917,7 @@ function adrNew(title) {
 module.exports = {
   ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, BRANCHES, domains, domainDir, resetDomains,
   git, tracked, VERSIONING_KEYS, docsMode, gitVersioned, versioningMismatch, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, parseRef, isHistory,
-  parse, sections, allSections, where, show, toc, matches, outgrownFiles, stale,
+  parse, sections, allSections, where, namingSections, show, toc, matches, outgrownFiles, stale,
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf, blobsOf, overlayOwner,
   stripStamp, stampLineOf, withStamp, conflictView,
   overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,

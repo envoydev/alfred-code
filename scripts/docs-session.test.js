@@ -1644,3 +1644,68 @@ test('a write to a plan stamped Completed: is denied unless it changes only stam
     assert.ok(rows.length >= 4 && rows.every((x) => /stamped Completed/.test(x.reason)), 'one block row per denial');
   } finally { r.rm(); }
 });
+
+// ---- audit 2026-10-10 C03 / C23: the hold pastes only a covering section, and calls only a code-style one the convention ----
+test('audit 2026-10-10 C03 C23: a word-only hit is named as a candidate, never pasted as the convention; the hold does not repeat', () => {
+  const WORDS = section('di-selection', '', 'The staff role composition table: staff role selection happens in the composition root, and the staff role seed reads it.');
+  const r = repo({ files: { 'src/Api/Seeding/StaffRoleSeed.cs': 'class StaffRoleSeed {}\n' }, docs: { 'references/integrations.md': WORDS, 'references/patterns.md': PATTERNS } });
+  try {
+    const s = sid();
+    const held = r.hook(pre('Edit', { file_path: 'src/Api/Seeding/StaffRoleSeed.cs' }, s));
+    assert.ok(denied(held), 'still one hold');
+    assert.match(held.stdout, /No section declares src\/Api\/Seeding\/StaffRoleSeed\.cs; these name its words:/);
+    assert.match(held.stdout, /integrations#di-selection \(\d+ chars, `node \.claude\/hooks\/docs\.js show integrations#di-selection`\)/);
+    assert.doesNotMatch(held.stdout, /selection happens in the composition root/, 'the section is not pasted');
+    assert.doesNotMatch(held.stdout, /convention this change follows/);
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Seeding/StaffRoleSeed.cs' }, s))), 'the retry goes through');
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"hold".*"via":"words"/);
+  } finally { r.rm(); }
+});
+
+test('audit 2026-10-10 C23: a covering section is the documented context; a covering code-style section is preferred and is the convention', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const plain = r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, sid()));
+    assert.match(plain.stdout, /patterns#orders covers src\/Api\/Orders\/Refund\.cs - here it is/);
+    assert.match(plain.stdout, /That is the documented context for this path\. Now make the change\./);
+    assert.doesNotMatch(plain.stdout, /convention this change follows/);
+    r.write('.claude/docs/code-style/watch.json', '{}\n');
+    r.write('.claude/docs/code-style/csharp.md', section('handlers', 'src/Api/Orders/**', 'A handler returns a Result, never throws for a business rule, and stays under forty lines of body text.'));
+    const styled = r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, sid()));
+    assert.match(styled.stdout, /csharp#handlers covers src\/Api\/Orders\/Refund\.cs - here it is/, 'the code-style section is the one pasted');
+    assert.match(styled.stdout, /Also covering it: patterns#orders/);
+    assert.match(styled.stdout, /That is the convention this change follows\./);
+  } finally { r.rm(); }
+});
+
+test('audit 2026-10-10 C23: a section naming the changed file verbatim is asked about first; a near spelling is not', () => {
+  const CODES = section('codes', '', 'src/Api/Program.cs registers 148 codes, 136 validator + 12 handler.')
+    + '\n' + section('near', '', 'other/src/Api/Program.cs and src/Api/Program.cs.bak and src/Api/Program.csx are not it.');
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'references/slices.md': CODES, 'watch.json': WATCH() } });
+  try {
+    const s = sid(); start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
+    assert.match(reason, /^2 sections document this file:/m);
+    assert.ok(reason.indexOf('set slices#codes') >= 0 && reason.indexOf('set slices#codes') < reason.indexOf('set patterns#orders'), reason);
+    assert.doesNotMatch(reason, /slices#near/);
+  } finally { r.rm(); }
+});
+
+test('audit 2026-10-10 C23: a file a checkout brought in is not the session\'s change; its own commit is', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  const older = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+  try {
+    r.git('checkout', '-qb', 'staging');
+    r.write('src/Api/Program.cs', 'app.UseStaging();\napp.Run();\n');
+    process.env.GIT_COMMITTER_DATE = older;
+    try { r.git('commit', '-qam', 'staging config'); } finally { delete process.env.GIT_COMMITTER_DATE; }
+    r.git('checkout', '-q', 'develop');
+    const s = sid(); start(r, s);
+    r.git('checkout', '-q', 'staging');
+    assert.strictEqual(r.hook(stopEv(s)).stdout, '', 'staging\'s own commit is not this session\'s change');
+    r.write('src/Api/Program.cs', 'app.UseStaging();\napp.UseAuth();\napp.Run();\n');
+    r.git('commit', '-qam', 'mine');
+    assert.match(JSON.parse(r.hook(stopEv(s)).stdout).reason, /^Docs check: you changed src\/Api\/Program\.cs\n/, 'a commit the session made is');
+  } finally { r.rm(); }
+});

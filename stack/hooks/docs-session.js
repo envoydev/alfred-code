@@ -497,6 +497,16 @@ function resolveHit(docs, h, id) {
 // it has more than one matching entry - deliberately kept, not a side effect to undo: breadth across
 // entries (naming more DIFFERENT decisions) is worth more at the cap than depth into the one that sorted
 // first. A project with only one matching entry per hit sees no change at all.
+// A section whose own text names a file a watch entry hit, verbatim, answers before the entries' sections (audit
+// 2026-10-10 C23, session f6c591fa): each is a queue of its own ahead of theirs, so the round-robin below takes it
+// first. Only the files already hit are matched, so the ask fires exactly when it did before.
+function namedFirst(docs, hits) {
+  if (typeof docs.namingSections !== 'function') return hits;
+  let named = [];
+  try { named = docs.namingSections(hits.flatMap((h) => h.files), ASK_SECTIONS); } catch { return hits; }
+  return [...named.map((n) => ({ kind: 'names the file', files: n.files, sections: [n.id], domain: n.domain })), ...hits];
+}
+
 function sectionRefs(docs, hits, limit, exclude = () => false) {
   const seenAsk = new Set();
   const seenWarn = new Set();
@@ -615,7 +625,7 @@ function subagentStop(input, root, docs) {
   if (!hits.length) return;
   // Dedupe on the pair (agent, section), never the section alone: two agents in one run often touch the same
   // section, and the second is the one most likely to notice the first's rewrite only covered half the change.
-  const { asks, warnings } = sectionRefs(docs, hits, ASK_SECTIONS, (id) => a.asked.includes(id));
+  const { asks, warnings } = sectionRefs(docs, namedFirst(docs, hits), ASK_SECTIONS, (id) => a.asked.includes(id));
   if (!asks.length && !warnings.length) return;
   const files = [...new Set(hits.flatMap((h) => h.files))];
   const reason = finishAsk(docs, files, asks, warnings, SEAT_REPORT_LAST);
@@ -842,7 +852,7 @@ function preToolUse(input, root, docs, state) {
     saveState(input.session_id, state);
     if (state.edits === 1) log(root, input, { event: 'first-edit', target: targets[0], consulted: state.consults.length > 0 });
   };
-  if (envOf(process.env, 'DOCS_GATE') === '0' || state.consults.length) { allow(); return; }
+  if (envOf(process.env, 'DOCS_GATE') === '0' || state.consults.length || state.candidates) { allow(); return; }
   // Nothing under the docs root can be read by section, so a hold would only point at an empty list.
   let readable = true;
   try { readable = docs.docFiles().length > 0; } catch {}
@@ -854,11 +864,31 @@ function preToolUse(input, root, docs, state) {
   saveState(input.session_id, state);
   let hits = [];
   try { hits = docs.where(targets, 3); } catch {}
+  // Only a section that DECLARES a cover of the target is pasted, and only a code-style one is called the convention
+  // (audit 2026-10-10 C03 / C23: a word match on a cover-less section was pasted as 'the convention this change
+  // follows' for a test helper - ab61627f, f24eb967 - and a module-size inventory for a one-line fix - 8f44a003). A
+  // covering code-style section is preferred; word-only hits are named as candidates, and the hold does not repeat.
+  const covering = hits.filter((h) => { try { return h.covers && h.covers.length > 0 && docs.matches(h.covers, targets[0]); } catch { return false; } });
+  let styleDir = null;
+  try { styleDir = docs.domainDir('code-style'); } catch {}
+  const isStyle = (h) => Boolean(styleDir && h.file && !path.relative(styleDir, h.file).startsWith('..'));
+  const first = covering.find(isStyle) || covering[0];
+  const shown = (h) => `${h.id} (${h.chars} chars, \`${READ} show ${h.id}\`)`;
   let reason;
   if (!hits.length) {
     reason = `Docs not read yet in this session. Before changing ${targets[0]}, see what is documented: ${READ} files`;
+  } else if (!first) {
+    state.candidates = true;
+    saveState(input.session_id, state);
+    reason = [
+      `Docs not read yet in this session. No section declares ${targets[0]}; these name its words:`,
+      ...hits.map((h) => `  ${shown(h)}`),
+      '',
+      'Read one if it bears on this change; otherwise make the change as it is - this hold does not repeat.',
+    ].join('\n');
   } else {
-    const [first, ...rest] = hits;
+    const alsoCovering = covering.filter((h) => h !== first);
+    const words = hits.filter((h) => !covering.includes(h));
     const body = first.text.length > INLINE_CHARS ? `${first.text.slice(0, INLINE_CHARS)}\n... (${first.text.length - INLINE_CHARS} more chars: \`${READ} show ${first.id}\`)` : first.text;
     state.consults.push(first.id);
     saveState(input.session_id, state);
@@ -866,11 +896,12 @@ function preToolUse(input, root, docs, state) {
     reason = [
       `Docs not read yet in this session. ${first.id} covers ${targets[0]} - here it is:`,
       '', body, '',
-      ...(rest.length ? [`Also covering it: ${rest.map((h) => `${h.id} (${h.chars} chars, \`${READ} show ${h.id}\`)`).join(', ')}`, ''] : []),
-      'That is the convention this change follows. Now make the change.',
+      ...(alsoCovering.length ? [`Also covering it: ${alsoCovering.map(shown).join(', ')}`, ''] : []),
+      ...(words.length ? [`Naming its words: ${words.map(shown).join(', ')}`, ''] : []),
+      isStyle(first) ? 'That is the convention this change follows. Now make the change.' : 'That is the documented context for this path. Now make the change.',
     ].join('\n');
   }
-  log(root, input, { event: 'hold', target: targets[0], offered: hits.map((h) => h.id) });
+  log(root, input, { event: 'hold', target: targets[0], offered: hits.map((h) => h.id), via: first ? 'cover' : hits.length ? 'words' : 'none' });
   blockRow(root, input, reason);
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
 }
@@ -987,7 +1018,7 @@ function stop(input, root, docs, state) {
     hits = docs.watchHits(files, dirs);
   } catch { return; }
   if (!hits.length) return;
-  const { asks, warnings } = sectionRefs(docs, hits, ASK_SECTIONS);
+  const { asks, warnings } = sectionRefs(docs, namedFirst(docs, hits), ASK_SECTIONS);
   if (!asks.length && !warnings.length) return;
   const files = [...new Set(hits.flatMap((h) => h.files))];
   // Nobody at the terminal (hook-prelude.js unattended): the ask would only turn the final answer into
