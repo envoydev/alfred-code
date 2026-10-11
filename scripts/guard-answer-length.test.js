@@ -325,6 +325,18 @@ test('the correction test leaves questions, status checks and requests alone', (
     }
 });
 
+// Audit 2026-10-11 SD14, session 5f9fec85: a request matched the weak 'it should be' inside a wh-clause ('investigate
+// what type of a ticket it should be') and was logged as a correction.
+test('the weak \'it should\' marker inside a wh-clause is no correction; standing alone it still is', () => {
+    for (const prompt of ['Create a ticket for the browser extension, but before investigate what type of a ticket it should be',
+        'check how it should be wired', 'find out which branch this should go to']) {
+        assert.deepStrictEqual(prompted(prompt).rows, [], `a wh-clause: ${prompt}`);
+    }
+    for (const prompt of ['it should be the staging branch', 'Check the log. It should be empty', 'what a mess, it should be one file']) {
+        assert.strictEqual(prompted(prompt).rows.length, 1, `a correction: ${prompt}`);
+    }
+});
+
 test('the correction test needs an answer before it, a typed turn and at most 200 characters', () => {
     const userOnly = [{ type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'hi' }] } }];
     assert.deepStrictEqual(prompted('no, use the org token', { rows: userOnly }).rows, [], 'a first turn corrects nothing');

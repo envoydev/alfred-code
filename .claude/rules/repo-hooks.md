@@ -649,7 +649,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     Stop half blocks prose past 1800 chars when the user asked for no depth, and blocks an em-dash (en-dash and horizontal
     bar too, `HOUSE_DASH`) in prose at any length. After the third consecutive short correction following a long answer it injects
     the format ask (injection only). A correction turn (short, after an answer, carrying a correction marker -
-    the test the analyzer shares, `correction-turn-test`) writes one `correction` probe row;
+    the test the analyzer shares, `correction-turn-test`; the weak 'it should' inside a wh-clause - 'what type of a
+    ticket it should be' - is a request, audit 2026-10-11 SD14, session 5f9fec85) writes one `correction` probe row;
     `ALFRED_CODE_CORRECTION_NUDGE` is seeded `log`, `inject` adds the memory-save line with the `ToolSearch select:`
     line that loads the deferred `memory_store` (M11) - the line names a project fact the correction states as a
     `reference` memory beside the `user_correction` (audit 2026-10-10, T5 cross-track), and a stated preference as
