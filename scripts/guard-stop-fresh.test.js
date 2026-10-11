@@ -635,6 +635,54 @@ test('guard-stop-contract: an ask that sends the user to type into Other, or mar
     'two marks are still denied');
 });
 
+// Audit 2026-10-11, session 2ca8e8ee: 'The staged plan is ready ... Execute it stage by stage?' with no text block since the
+// prompt, and 'Post this simplified comment ... as shown' after the user's edit request - both approved unseen.
+test('guard-stop-contract: an approval ask over nothing the chat showed since the typed turn is sent back once', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const toolRow = (id) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', id: `tu-${id}`, name: 'Read', input: { file_path: 'a.md' } }] } });
+  const plan = [{ question: 'The staged plan is ready: 6 implementation stages. Execute it stage by stage?', options: [{ label: 'Execute (Recommended)', description: 'stage 1 first' }, { label: 'Hold', description: 'not now' }] }];
+  const tp = transcript('blind-plan', [typed('upgrade the framework'), toolRow('b1'), toolRow('b2')]);
+  const env = logEnv();
+  const r = askIn(tp, plan, env);
+  assert.equal(r.status, 2, 'the measured case: no text since the prompt');
+  assert.match(r.stderr, /an approval of the plan the chat has not shown since the user's last message/);
+  assert.match(r.stderr, /put the plan in your reply text first/);
+  assert.equal(askIn(tp, plan, env).status, 0, 're-sent unchanged, it passes - never a loop');
+  const stages = Array.from({ length: 6 }, (_, i) => `${i + 1}. Stage ${i + 1}: bump the packages of layer ${i + 1}, build, run its tests, rollback point tagged.`).join('\n');
+  assert.equal(askIn(transcript('shown-plan', [typed('upgrade the framework'), toolRow('s1'), assistantRow('s2', `The staged plan:\n${stages}`)]), plan).status, 0,
+    'the stages shown in the reply text first');
+  const post = [{ question: 'Post this simplified comment on the ticket? It goes up as shown.', options: [{ label: 'Post it (Recommended)', description: 'as shown' }, { label: 'Do not post', description: 'hold' }] }];
+  const status = 'Tests: 412 passed, 0 failed. Lint is clean, the build is green on both targets, and the branch is level with its upstream. '.repeat(2);
+  assert.equal(askIn(transcript('blind-post', [typed('make it shorter and drop the second paragraph'), assistantRow('p1', status)]), post).status, 2,
+    'text that does not carry the comment is no showing');
+  const draft = `Here is the comment as it will be posted:\n\n> The crash came from the restore policy running twice on resume. The fix guards the second call and adds a regression test; the release note is in the ticket description. ${'x'.repeat(20)}`;
+  assert.equal(askIn(transcript('shown-post', [typed('make it shorter and drop the second paragraph'), assistantRow('p2', draft)]), post).status, 0, 'the draft shown first');
+  assert.equal(askIn(transcript('blind-other', [typed('what next?'), toolRow('o1')]), oneQ).status, 0, 'an ask that approves nothing');
+  assert.equal(askIn(transcript('blind-untyped', [toolRow('u1')]), plan).status, 0, 'no typed turn to read back to: never a denial');
+});
+
+// Audit 2026-10-11, session 5984019e: a small solve-task run closed and handed off a product change with no verifier load
+// and no review anywhere in its text (task-solve SKILL.md: 'a small close's `Result:` carries `review: <reviewer> - <its verdict>`').
+test('guard-stop-contract: a small solve-task close whose Result line has no review field is sent back once', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const marker = typed('<command-name>/task-solve</command-name>');
+  const close = (result) => [{ question: `Size: small - one file. Result: ${result}. Progress: 3 of 3 steps. Leftovers: none. Close the run?`,
+    options: [{ label: 'Close it (Recommended)', description: 'x' }, { label: 'Keep going', description: 'y' }] }];
+  const tp = transcript('small-close', [marker, assistantRow('a', 'Built and checked.')]);
+  const env = logEnv();
+  const r = askIn(tp, close('restore guard added at src/RetryPolicy.cs'), env);
+  assert.equal(r.status, 2, 'the measured case: no review on the small close');
+  assert.match(r.stderr, /a small solve-task close whose `Result:` line has no `review:` field/);
+  assert.match(r.stderr, /run it, then put `review: <reviewer> - <its verdict>` on the `Result:` line/);
+  assert.equal(askIn(tp, close('restore guard added at src/RetryPolicy.cs'), env).status, 0, 're-sent unchanged, it passes - never a loop');
+  assert.equal(askIn(transcript('small-close-ok', [marker, assistantRow('a', 'Built and checked.')]),
+    close('restore guard added at src/RetryPolicy.cs, review: task-verify-code - PASS, 0 findings')).status, 0, 'the receipt on the Result line');
+  const std = [{ question: 'Size: standard - two modules. Result: spec at docs/plans/x.md. Progress: 1 of 6 steps. Leftovers: none. Go on?',
+    options: [{ label: 'Go on (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }];
+  assert.equal(askIn(transcript('std-close', [marker, assistantRow('a', 'ok')]), std).status, 0, 'a standard stop owes no review here');
+  assert.equal(askIn(transcript('small-noflow', [typed('fix it'), assistantRow('a', 'ok')]), close('fixed')).status, 0, 'no solve-task run in this session');
+});
+
 test('guard-stop-contract: a solve-task stop that owes a receipt is told which one (audit 2026-10-10, T4 cross-track)', () => {
   const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
   const marker = typed('<command-name>/task-solve</command-name>');

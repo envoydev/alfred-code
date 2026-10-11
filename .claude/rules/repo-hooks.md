@@ -447,7 +447,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     telling the user to type into Other, a single-select question without exactly one '(Recommended)' listed first (an
     unmarked one whose text says why none is recommended passes), and a new cycle's
     first ask with no fresh option after a typed prompt followed this session's plan `Completed:` stamp (once per stamp;
-    audit 2026-10-10 C08 / C09 / C26). The solve-task FLOW STOP FIELDS note reads the whole transcript once per session
+    audit 2026-10-10 C08 / C09 / C26); a question shaped as an approval (approve, as shown, is ready, post / file /
+    publish / send this) with no chat text since the user's last typed turn that carries its subject - 200 characters or
+    more naming its noun (audit 2026-10-11, session 2ca8e8ee: a staged plan and a ticket comment approved unseen); and a
+    small solve-task close whose `Result:` line has no `review:` field (session 5984019e). The solve-task FLOW STOP FIELDS note reads the whole transcript once per session
     for the flow's marker (`guard-stop-flow-*` keeps how far it read), and accepts a field opening a sentence inside a
     one-line question; the same read places the stop, so the note also names a RECEIPT the stop owes and left out - `Size:`
     at a cycle's first stop (no ask answered since its marker or its new-scope prompt, an opening fresh hand-off excepted),
@@ -515,7 +518,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     run, a skipped test or an added skip marker writes one `rationalization` row per turn. Two flow probes, the same
     log-only footing (audit 2026-10-10, T4 cross-track): a turn that loaded habits-execution-strategy with no `Execution:`
     line after it writes one `execution-line` row, and a source edit under a new prompt after this session's plan
-    `Completed:` stamp, with no new plan file, one `post-close-edit` row per stamp.
+    `Completed:` stamp, with no new plan file, one `post-close-edit` row per stamp. A third, once per session: edits
+    across 2+ files with no habits-execution-strategy load before the first, read from the same whole-transcript flow
+    state, one `no-execution-strategy` row (audit 2026-10-11, session 7f8803eb: 21 Edits over 5 files, never loaded).
     Fresh-session offer on a clean close past the window's ABSOLUTE trigger:
     `ALFRED_CODE_FRESH_SESSION_200K` (default 150000), `_1M` (400000), `_DEFAULT` (300000, any other or
     unreadable window); `0` switches that case off; seeded absent-only. The window comes from ONE table (the session

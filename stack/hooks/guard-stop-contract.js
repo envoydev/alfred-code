@@ -1071,6 +1071,41 @@ const USER_RUN = String.raw`(?:run|pull|install|restart|rebuild|reload|re-?run|t
 const USER_RUN_WAIT_RE = new RegExp(String.raw`(?:^|[.!;:]\s+|\n\s*)(?:please\s+|just\s+)?${USER_RUN}\b[^.\n]{0,120}\b(?:then|and)\s+(?:tell|let) me\b`
   + String.raw`|\b(?:tell|let) me (?:know )?(?:when|once|after) (?:it|that|this|they|the [\w-]+)(?:'s| is| are| has| have)? (?:done|finished|complete[d]?|through|passed|working)\b`
   + String.raw`|\bonce you(?:'ve| have)? (?:ran|run|pulled|installed|restarted|rebuilt|re-?run|tested|tried|applied|executed|deployed|synced)\b`, 'i');
+// The assistant's chat text since the user's last typed turn - what the user could read before an ask lands.
+function shownSinceTyped() {
+  try {
+    return walkBack(() => {
+      const texts = [];
+      return (o) => {
+        if (!o || !o.message) return undefined;
+        if (o.type === 'assistant') { const c = o.message.content; if (Array.isArray(c)) for (const b of c) if (b && b.type === 'text' && b.text) texts.push(b.text); return undefined; }
+        if (o.type === 'user' && isTypedTurn(o) && !/^\s*Stop hook feedback:/.test(rowText(o))) return texts.join('\n');
+        return undefined;
+      };
+    }, null);
+  } catch { return null; }
+}
+// An ask that asks to APPROVE, post, file, send or execute something, and the thing it names (audit 2026-10-11, session
+// 2ca8e8ee: 'The staged plan is ready ... Execute it stage by stage?' with no text block since the prompt, and 'Post this
+// simplified comment ... as shown' after the user's edit request - both approved blind).
+// The finding's own shapes - approve, as shown, is ready, post / file / publish / send this - never a bare action
+// ('Run it?' approves a step, not a text the user must read).
+const APPROVAL_ASK_RE = /\b(?:approve|as shown|(?:is|are) ready|(?:post|file|publish|send) (?:this|these|it|them|the (?:above |drafted |simplified |new )?(?:comment|draft|message|reply|description|summary|note|email|post))\b)/i;
+const SUBJECT_RE = /\b(?:this|these|the|that)\s+(?:[\w-]+\s+){0,3}?(plan|comment|draft|message|reply|description|summary|ticket|issue|changes?|diff|patch|stages?|spec|design|report|wording|version|email|note|edits?|post)\b/i;
+const SHOWN_MIN = 200;
+// Read on the QUESTION only: an 'Approve' option label is the solve-task approval stop, whose own contract prints the
+// audited plan before it (and whose receipts are notes).
+function approvalOverNothingShown(questions) {
+  const text = questions.map((q) => String((q && q.question) || '')).join('\n');
+  if (!APPROVAL_ASK_RE.test(text)) return null;
+  const shown = shownSinceTyped();
+  if (shown === null) return null; // no typed turn to read back to: unknown, never a denial
+  const noun = (SUBJECT_RE.exec(text) || [])[1];
+  const stem = noun ? noun.toLowerCase().replace(/(?:es|s)$/, '') : null;
+  const carries = shown.trim().length >= SHOWN_MIN && (!stem || new RegExp(`\\b${stem.replace(/\s+/g, '\\s+')}`, 'i').test(shown));
+  return carries ? null : { noun: noun || null, shown: shown.trim().length };
+}
+
 function deferAnsweredThisTurn() {
   try {
     return walkBack(() => (o) => {
@@ -1621,6 +1656,16 @@ function execLineMissed() {
   return { missed: !/(?:^|\n|[.;!?]\s+)\s*(?:[-*+]\s*)?\**Execution\**\s*:/i.test(text), turnKey: first ? String(first.uuid || first.timestamp || 'turn') : 'noturn' };
 }
 
+// The NO-STRATEGY probe (audit 2026-10-11, session 7f8803eb: 21 Edits over 5 files, habits-execution-strategy never
+// loaded, against the always-on clause that makes its Skill call the first action of a multi-file task, before the
+// first edit). Read from flowState's whole-transcript facts: the session edited 2+ files and loaded the skill never, or
+// only after its first edit.
+function strategySkippedOverFiles(f) {
+  if (!f || f.noStrategyLogged || !Array.isArray(f.editFiles) || f.editFiles.length < 2) return null;
+  if (f.strategyAt >= 0 && f.strategyAt < f.firstEditAt) return null;
+  return { loaded: f.strategyAt >= 0 ? 'after-first-edit' : 'never', files: f.editFiles.map((x) => x.split(/[\\/]/).pop()) };
+}
+
 // --- rationalization phrases (ECC comparison R8; LOG-ONLY - never holds, never injects) --------
 // ECC's delivery gate warns on a regex over the close: 'skipping tests for now', 'pre-existing bug',
 // 'tests are failing but I'll fix', 'leaving the failing tests'. Its four, plus the dismissals the
@@ -1844,6 +1889,17 @@ if (payload.hook_event_name === 'Stop') {
         ledgerRow({ tool: '', mode: 'probe', kind: 'execution-line', reason: 'probe: habits-execution-strategy loaded and no `Execution:` line after it - logged, not held' });
       }
     } catch { /* an unreadable turn logs nothing */ }
+    // A third, once per session: a session whose edits spanned 2+ files with no habits-execution-strategy load before its
+    // first edit (7f8803eb). The flag rides the flow state, so the row is written once.
+    try {
+      const f = flowState();
+      const skip = strategySkippedOverFiles(f);
+      if (skip) {
+        try { fs.writeFileSync(flowStateFile(), JSON.stringify({ ...f, noStrategyLogged: true })); } catch { /* logs once more at most */ }
+        ledgerRow({ tool: '', mode: 'probe', kind: 'no-execution-strategy',
+          reason: 'probe: edits across 2+ files with no habits-execution-strategy load before the first - logged, not held', detail: skip });
+      }
+    } catch { /* an unreadable transcript logs nothing */ }
     try {
       const f = flowState();
       if (f.flow && f.completed !== null && f.editAfterAt > f.completed && !f.planAfter && f.postCloseLogged !== f.completed) {
@@ -2186,7 +2242,16 @@ if (payload.tool_name === 'AskUserQuestion') {
         if (!ctxNow || worthResuming(ctxNow)) newCycle = { ctx: ctxNow, floor: coldFloor(), at: fs2.completed };
       }
     }
-    if (voice.length || numbers || typeIntoOther || unmarked || newCycle) {
+    // 11. APPROVAL OVER NOTHING SHOWN. An ask to approve, post, file or execute something is answered on what the chat
+    // showed: no text since the user's last typed turn that carries the thing it names (at least SHOWN_MIN characters,
+    // naming its noun) is a blind approval (audit 2026-10-11, session 2ca8e8ee: a 6-stage plan and a ticket comment were
+    // approved unseen, then the user typed 'show me it here'). Denied once per ask text, like the others: an ask whose
+    // subject sits in a file the user has open is re-sent unchanged and passes.
+    const blind = approvalOverNothingShown(questions);
+    // 12. A SMALL CLOSE WITH NO REVIEW RECEIPT (smallCloseOwesReview, below) - denied once per ask text: the verifier runs
+    // before the close is put to the user, not after the answer.
+    const noReview = (() => { try { const f = flowState(); return f.flow && smallCloseOwesReview(f, `${turnProseBeforeAsk()}\n${askText}`); } catch { return false; } })();
+    if (voice.length || numbers || typeIntoOther || unmarked || newCycle || blind || noReview) {
       const fixProse = (t) => (voice.length ? String(t).replace(new RegExp(`\\s*${DASH}\\s*`, 'g'), ' - ').replace(/["“”]/g, "'") : String(t));
       const fix = (t) => String(t).split(/(```[\s\S]*?```|`[^`\n]*`)/).map((s, i) => (i % 2 ? s : fixProse(s))).join('');
       const k = (n) => `~${Math.round(n / 1000)}k`;
@@ -2214,17 +2279,21 @@ if (payload.tool_name === 'AskUserQuestion') {
         catch { newCycle = null; }
       }
       const mechanical = voice.length || numbers;
-      if (first && (mechanical || typeIntoOther || unmarked || newCycle)) {
+      if (first && (mechanical || typeIntoOther || unmarked || newCycle || blind || noReview)) {
         const reasons = [...voice];
+        if (noReview) reasons.push('a small solve-task close whose `Result:` line has no `review:` field');
+        if (blind) reasons.push(`an approval of ${blind.noun ? `the ${blind.noun}` : 'something'} the chat has not shown since the user's last message`);
         if (numbers) reasons.push(`a fresh-session option with no measured number (this session carries ${k(numbers.ctx)} per message now)`);
         if (typeIntoOther) reasons.push('an option that tells the user to type into Other');
         if (unmarked) reasons.push(`${unmarked} question(s) without exactly one option marked '(Recommended)', listed first`);
         if (newCycle) reasons.push('no fresh-session option, while this ask opens new work after this session already finished a solve-task cycle');
-        global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, newCycle: !!newCycle };
+        global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]), numbers: !!numbers, other: typeIntoOther, unmarked, newCycle: !!newCycle, blind: !!blind, noReview: !!noReview };
         process.stderr.write(`Blocked: this AskUserQuestion carries ${reasons.join('; ')}.`
           + (voice.length ? ` The house voice (alfred-interaction.md) covers an ask's question, header, labels and descriptions, and the user reads them as written.` : '')
           + (typeIntoOther ? ` A picked option returns only its LABEL - a value the user must type goes in plain prose that ends the turn, and the ask carries what they can PICK ('I have them' / 'Someone else owns them' / 'Defer').` : '')
           + (unmarked ? ` Mark the recommended option '(Recommended)' and list it first - or, for a question with no default, say why in the question ('no option is recommended: <why>').` : '')
+          + (noReview ? ` The small row runs \`task-verify-code\` inline before its close (task-solve SKILL.md): run it, then put \`review: <reviewer> - <its verdict>\` on the \`Result:\` line - or, if the size grew past small, restate \`Size:\`.` : '')
+          + (blind ? ` The user approves what the chat SHOWS: put ${blind.noun ? `the ${blind.noun}` : 'what the ask approves'} in your reply text first (the stages, the draft as it will be posted, the edit made), then ask about 'the ${blind.noun || 'draft'} above' - or, if it sits in a file the user has open, re-send the ask unchanged.` : '')
           + (newCycle ? ` A new cycle after a finished one recommends the fresh-session hand-off first: add 'Resume in a fresh session (Recommended)' quoting ${newCycle.ctx ? `${k(newCycle.ctx)} per message here` : 'this session\'s carry'} and ${newCycle.floor ? `${k(newCycle.floor)} for a fresh start` : 'the fresh start\'s floor'}, and state the new cycle's \`Size:\` line in the question - or, if this ask still belongs to the finished cycle, re-send it unchanged.` : '')
           + (mechanical ? ` Re-send the ask with these questions - only ${[voice.length ? 'the dashes and quotes' : '', numbers ? 'the fresh option\'s numbers' : ''].filter(Boolean).join(' and ')} changed:\n${JSON.stringify(fixed, null, 1)}\n` : '\n'));
         process.exit(2);
@@ -2452,6 +2521,17 @@ function flowReceiptsOwed(flow, text, questions) {
   return owed;
 }
 
+// A SMALL solve-task run's close (its one stop, `Size: small`) whose `Result:` line carries no `review:` field - the
+// receipt that `task-verify-code` ran inline before it (task-solve SKILL.md: 'a small close's `Result:` carries
+// `review: <reviewer> - <its verdict>`'). Audit 2026-10-11, session 5984019e: a small run closed and handed off a product
+// change with no verifier load and no review anywhere in its text. Any `Result:` line of the stop's text that names a
+// review passes.
+function smallCloseOwesReview(flow, text) {
+  if (!flow.flow || flow.cross || !/\bSize\**\s*:\s*\**\s*small\b/i.test(text)) return false;
+  const lines = [...String(text).matchAll(/(?:^|\n|[.;!?)]\s+|\s[-|]\s+)\s*(?:[-*+]\s*)?\**Result\**\s*:([^\n]*)/gi)].map((m) => m[1].split(/\**(?:Progress|Leftovers)\**\s*:/i)[0]);
+  return lines.length > 0 && !lines.some((l) => /\breview\**\s*:/i.test(l));
+}
+
 // Is this ask a stop inside a solve-task cycle? The transcript-local proof: the flow was invoked in this session, by
 // its slash marker in a typed user row or as a Skill call. A session that never ran the flow is never asked for the
 // flow's stamp. The marker sits at the transcript's HEAD - a slash cycle's first stop arrives 0.5-3MB after it (session
@@ -2478,6 +2558,23 @@ function flowLine(line, at, state) {
     state.flow = true;
     state.flowAt = at;
     state.cross = /task-solve-cross/.test(m[0]);
+  }
+  // The no-strategy probe's facts (audit 2026-10-11, session 7f8803eb): where the session first edited, the first two
+  // files it edited, and where it first loaded habits-execution-strategy - read across the whole transcript once, like
+  // the rest of this state (its 17.7MB of screenshots put the edits far past any tail).
+  if (isAssistant && line.includes('"tool_use"') && /"name"\s*:\s*"(?:Write|Edit|MultiEdit|NotebookEdit|Skill)"/.test(line)
+      && (state.editFiles.length < 2 || state.strategyAt < 0)) {
+    try {
+      for (const b of JSON.parse(line).message.content || []) {
+        if (!b || b.type !== 'tool_use') continue;
+        const input = b.input || {};
+        if (b.name === 'Skill' && state.strategyAt < 0 && /(?:^|:)(?:alfred-)?habits-execution-strategy$/.test(String(input.skill || ''))) state.strategyAt = at;
+        const file = /^(?:Write|Edit|MultiEdit|NotebookEdit)$/.test(b.name) ? String(input.file_path || input.notebook_path || '') : '';
+        if (!file) continue;
+        if (state.firstEditAt < 0) state.firstEditAt = at;
+        if (state.editFiles.length < 2 && !state.editFiles.includes(file)) state.editFiles.push(file);
+      }
+    } catch { /* a cut row */ }
   }
   // Where the newest ANSWERED ask sits: the first stop is the ask with no answer since the newest marker, and the close
   // the one with none since the plan's Completed stamp (audit 2026-10-10, the T4 cross-track receipts).
@@ -2523,16 +2620,17 @@ function flowLine(line, at, state) {
 }
 function flowState() {
   const none = { flow: false, completed: null, typedAfter: false, typedAfterAt: -1, flowAt: -1, cross: false, askAt: -1,
-    completedPlan: null, planAfter: false, editAfterAt: -1, editAfterFile: null, postCloseLogged: null };
+    completedPlan: null, planAfter: false, editAfterAt: -1, editAfterFile: null, postCloseLogged: null,
+    firstEditAt: -1, editFiles: [], strategyAt: -1, noStrategyLogged: false };
   try {
     const p = payload.transcript_path;
     if (!p) return none;
     const size = fs.statSync(p).size;
-    let state = { v: 3, upTo: 0, ...none };
+    let state = { v: 4, upTo: 0, ...none, editFiles: [] };
     try {
       const kept = JSON.parse(fs.readFileSync(flowStateFile(), 'utf8'));
-      // a shorter file is another transcript under the same name - read it whole
-      if (kept && kept.v === 3 && kept.upTo > 0 && kept.upTo <= size) state = kept;
+      // a shorter file is another transcript under the same name - read it whole; v4 added the no-strategy facts
+      if (kept && kept.v === 4 && kept.upTo > 0 && kept.upTo <= size) state = kept;
     } catch { /* no state yet, or the old one-word format - read it all */ }
     const fd = fs.openSync(p, 'r');
     try {

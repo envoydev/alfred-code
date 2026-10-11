@@ -781,6 +781,33 @@ test('flow probes: a source edit under a new prompt after the plan\'s Completed 
     assert.strictEqual(flowProbes(ok, 'post-close-edit').length, 0, 'a new plan, the same turn as the stamp, a prose file, or no flow - nothing');
 });
 
+// Audit 2026-10-11, session 7f8803eb: 21 Edits over 5 files with habits-execution-strategy never loaded, against the
+// always-on clause that makes it the first action of a multi-file task. Log-only, once per session.
+test('flow probes: a session whose edits span 2+ files with no habits-execution-strategy load before them writes one row', () => {
+    const root = project();
+    // the measured run spread its edits over many prompts: the second file arrives two turns after the first
+    const tp = transcript(root, steps(root, [['prompt', 'fix the totals'], ['edit', 'src/cart.ts'], ['edit', 'src/cart.ts'], ['prompt', 'and the rounding'], ['text', 'On it.']]));
+    flowStop(root, tp, 'Done.');
+    assert.strictEqual(flowProbes(root, 'no-execution-strategy').length, 0, 'one file so far');
+    fs.appendFileSync(tp, steps(root, [['prompt', 'now the totals helper'], ['edit', 'src/totals.ts']]).map((r) => JSON.stringify(r)).join('\n') + '\n');
+    flowStop(root, tp, 'The totals are fixed.');
+    const rows = flowProbes(root, 'no-execution-strategy');
+    assert.strictEqual(rows.length, 1, 'a row once the second file is edited');
+    assert.deepStrictEqual(rows[0].detail, { loaded: 'never', files: ['cart.ts', 'totals.ts'] });
+    fs.appendFileSync(tp, steps(root, [['prompt', 'and the header'], ['edit', 'src/a.css']]).map((r) => JSON.stringify(r)).join('\n') + '\n');
+    flowStop(root, tp, 'Done.');
+    assert.strictEqual(flowProbes(root, 'no-execution-strategy').length, 1, 'once per session');
+    const skill = call('Skill', { skill: 'alfred-code:habits-execution-strategy' });
+    const late = project();
+    flowStop(late, transcript(late, [...steps(late, [['prompt', 'fix it'], ['edit', 'src/cart.ts']]), skill.row, result(skill.id, 'ok'), ...steps(late, [['edit', 'src/totals.ts']])]), 'Done.');
+    assert.deepStrictEqual(flowProbes(late, 'no-execution-strategy').map((r) => r.detail.loaded), ['after-first-edit'], 'loaded after the first edit');
+    const ok = project();
+    flowStop(ok, transcript(ok, [typed('fix the totals'), skill.row, result(skill.id, 'Launching skill: habits-execution-strategy'), ...steps(ok, [['edit', 'src/cart.ts'], ['edit', 'src/totals.ts']])]), 'Done.');
+    assert.strictEqual(flowProbes(ok, 'no-execution-strategy').length, 0, 'the skill loaded first - nothing');
+    const r = run(project(), { hook_event_name: 'Stop', stop_hook_active: true, transcript_path: tp, last_assistant_message: 'Done.' });
+    assert.strictEqual(r.status, 0, 'a continuation never holds on it');
+});
+
 test('flow probes: a Windows plan path - backslashes, as Claude Code writes file_path there - is read the same (gate, Windows leg)', () => {
     const root = project();
     const plan = 'C:\\proj\\.alfred\\docs\\plans\\2026-10-10-cart.md';
