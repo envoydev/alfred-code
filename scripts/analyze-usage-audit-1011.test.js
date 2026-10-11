@@ -151,3 +151,37 @@ test('2ca8e8ee#8: cancelled hook runs make a per-hook timeout row, and a timed-o
     assert.match(md, /\| monitor-session\.js \| 0 \| 1 \| 0\.9s \| UserPromptSubmit \|/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// 5b9ce9c5#8 / a9e06780#7: the rule glob proxy scored `skill-authoring.md` and `markdown-docs.md` used from Reads of
+// files outside the project - a temp-dir checkout and the plugin cache - which no path-scoped rule attaches to.
+test('5b9ce9c5#8 / a9e06780#7: the rule glob proxy scores only paths under the session cwd, Windows spellings folded', () => {
+  const dir = tmp();
+  try {
+    const read = (id, p) => tool(id, 'Read', { file_path: p });
+    const rows = [
+      human(T(0), 'go'),
+      asst('m1', T(1), [
+        read('r1', 'C:\\Users\\dev\\AppData\\Local\\Temp\\x.abc\\repo\\stack\\skills\\demo\\SKILL.md'),   // outside: the temp dir
+        read('r2', 'C:\\Users\\dev\\.claude\\plugins\\cache\\m\\p\\1.0.0\\references\\walk.md'),         // outside: the plugin cache
+        sh('s1', 'cat ../sibling/notes.md'),                                                              // outside: a sibling repo
+      ]),
+      res(T(2), 'r1', 'a'), res(T(2), 'r2', 'b'), res(T(2), 's1', 'c'),
+    ];
+    const outside = run([write(dir, rows, 'outside.jsonl')]).inventory;
+    const used = (inv, name) => (inv.rules.find((r) => r.name === name) || {}).how || [];
+    assert.deepStrictEqual(used(outside, 'markdown-docs.md'), [], 'three .md files outside the project attach nothing');
+    assert.deepStrictEqual(used(outside, 'skill-authoring.md'), []);
+    const inside = [
+      ...rows,
+      asst('m2', T(3), [
+        read('r3', 'c:\\WORK\\app\\docs\\guide.md'),                // inside: another drive-letter and folder case
+        sh('s2', 'cat /c/work/app/stack/skills/demo/SKILL.md'),    // inside: the Git Bash spelling
+        read('r4', 'C:\\work\\app\\..\\other\\x.md'),              // climbs out: outside
+      ]),
+      res(T(4), 'r3', 'd'), res(T(4), 's2', 'e'), res(T(4), 'r4', 'f'),
+    ];
+    const inv = run([write(dir, inside, 'inside.jsonl')]).inventory;
+    assert.deepStrictEqual(used(inv, 'markdown-docs.md'), ['glob proxy x2'], 'guide.md and SKILL.md, nothing outside');
+    assert.deepStrictEqual(used(inv, 'skill-authoring.md'), ['glob proxy x1'], 'the in-project SKILL.md only');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

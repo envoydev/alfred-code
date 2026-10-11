@@ -565,6 +565,26 @@ function foreignDocPath(p, cwd) {
   const [a, b] = [fold(c), fold(owner)];
   return !(a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`));
 }
+// A touched path as the project sees it: relative to the session's cwd, or null when it sits OUTSIDE the project (the
+// plugin cache, the temp dir, a sibling repo). A path-scoped rule's glob is the project's, so a file outside it attaches
+// nothing - the proxy scored `markdown-docs.md` used from two plugin-cache Reads (audit 2026-10-11, sessions a9e06780
+// and 5b9ce9c5). Windows spellings compare as one: backslashes, a drive letter in any case, Git Bash's `/c/...`. With no
+// cwd on record an absolute path is judged as written, the reading before this check.
+function projectRelPath(p, cwd) {
+  const winRoot = /^[A-Za-z]:[\\/]/.test(String(cwd || ''));
+  const norm = (x) => {
+    let q = String(x || '').replace(/\\/g, '/');
+    if (winRoot) { const gb = /^\/([A-Za-z])(?=\/|$)/.exec(q); if (gb) q = `${gb[1]}:${q.slice(2) || '/'}`; }
+    return q;
+  };
+  const q = path.posix.normalize(norm(p));
+  if (!/^(?:\/|[A-Za-z]:\/)/.test(q)) return q === '..' || q.startsWith('../') ? null : q.replace(/^\.\//, '');
+  if (!cwd) return q;
+  const root = path.posix.normalize(norm(cwd)).replace(/\/+$/, '');
+  const fold = (x) => (winRoot ? x.toLowerCase() : x);
+  if (fold(q) === fold(root)) return '';
+  return fold(q).startsWith(`${fold(root)}/`) ? q.slice(root.length + 1) : null;
+}
 // The command word of one segment, past the same env assignments, keywords and wrappers the check classifier strips.
 function segmentHead(seg) {
   let s = String(seg);
@@ -1358,7 +1378,8 @@ function addSessionUse(acc, main, agents, inventoryDir) {
     let n = 0;
     let first = null;
     for (const src of srcs) for (const [p, t] of Object.entries(src.fileTouches || {})) {
-      if (!res.some((re) => re.test(String(p).replace(/\\/g, '/')))) continue;
+      const rel = projectRelPath(p, src.cwd || main.cwd);
+      if (rel == null || !res.some((re) => re.test(rel))) continue;
       n += t.n;
       if (t.firstTs && (!first || t.firstTs < first)) first = t.firstTs;
     }
