@@ -450,14 +450,23 @@ function expandBound(text, bindings) {
 }
 // A GREEN CLAIM: prose saying a check passed. The turn it lands in either ran a check or it did not.
 const GREEN_RE = /\b(?:all\s+(?:\d[\d,]*\s+)?tests?|tests?|test\s+suite|suite|build|lint|linter|typecheck|type-check|checks?|ci)\b[^.!?\n]{0,60}?\b(?:pass(?:es|ed|ing)?|green|succeed(?:s|ed)?|clean|ok)\b|\b\d[\d,]*\s*\/\s*\d[\d,]*\s+(?:tests?\s+)?pass(?:ed|ing)?\b/gi;
+// A suite or test NAMED with its count: 'Parser 716 green', 'Exporter 707 pass', 'Redo passes in full-suite order' -
+// the shapes a stop's `Result:` line takes, which GREEN_RE's keyword list never reads (audit 2026-10-11, session
+// 5984019e: 0 of 9 ask results matched). Case-sensitive on purpose: the name is a capitalised word. A pronoun or article
+// is no name, a transitive 'passes the value' is no result, and a failure count in the same clause makes it no green.
+const GREEN_NAMED_RE = /\b(?!(?:It|This|That|These|Those|The|A|An|He|She|They|We|You|I|Which|Who|What|Where|When|Then|If|And|But|Or|So)\b)[A-Z][A-Za-z0-9_.-]*(?:\s+\d[\d,]*(?:\s*\/\s*\d[\d,]*)?)?\s+(?:pass(?:es|ed)?|green)\b(?!\s+(?:the|a|an|it|its|them|this|that|these|those|through|to|into|along|over|down|back)\b)/g;
+const FAILED_AFTER_RE = /^[^.!?\n;]{0,80}?\b(?:[1-9][\d,]*\s+(?:tests?\s+)?(?:failed|failing|failures?|errors?|red)\b|still\s+(?:red|failing))/i;
 function claimsGreen(prose) {
-  GREEN_RE.lastIndex = 0;
-  let m;
-  while ((m = GREEN_RE.exec(prose))) {
+  const negated = (m, re) => {
     const before = prose.slice(Math.max(0, m.index - 24), m.index);
-    if (/\b(?:not|no|never|n't|until|if|when|once|should|will|would|must|before|fail\w*)\b[^.]{0,20}$/i.test(before)) continue;
-    if (/\b(?:not|n't|never|fail)/i.test(m[0])) continue;
-    return true;
+    if (/\b(?:not|no|never|n't|until|if|when|once|should|will|would|must|before|fail\w*)\b[^.]{0,20}$/i.test(before)) return true;
+    if (/\b(?:not|n't|never|fail)/i.test(m[0])) return true;
+    return re === GREEN_NAMED_RE && FAILED_AFTER_RE.test(prose.slice(m.index + m[0].length));
+  };
+  for (const re of [GREEN_RE, GREEN_NAMED_RE]) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(prose))) if (!negated(m, re)) return true;
   }
   return false;
 }
@@ -1733,7 +1742,7 @@ async function analyzeTranscript(file, window) {
       buildDirReads: { calls: 0, chars: 0, paths: {} },
       checks: { test: { calls: 0, chars: 0, scoped: 0, whole: 0 }, build: { calls: 0, chars: 0 }, lint: { calls: 0, chars: 0 }, ci: { calls: 0, chars: 0 } },
       commitsChecked: 0, commitsUnchecked: [],
-      greenClaims: 0, unverifiedGreenClaims: [],
+      greenClaims: 0, unverifiedGreenClaims: [], greenClaimsInAsks: 0,
       correctionStreaks: [],     // the hook's strict detector: timestamps where it would fire
       correctionTurns: 0,        // short user turns right after a 1,500+ char answer (assistant rows merged)
       correctionsSaved: 0,       // correction turns (the hook's marker test) followed by a memory store within SAVE_WINDOW replies
@@ -2516,6 +2525,16 @@ async function analyzeTranscript(file, window) {
           }
         }
         if (c.name === 'AskUserQuestion') askSinceInvoke = true;
+        // An ask is an ANSWER surface too: a flow's stop reports its `Result:` inside the question, never as end_turn
+        // prose, so a conforming run's green claims were never scored (audit 2026-10-11, session 5984019e: 9 asks).
+        if (c.name === 'AskUserQuestion' && !foreign && c.input && Array.isArray(c.input.questions)) {
+          const asked = proseOf(c.input.questions.map((q) => String((q && q.question) || '')).join('\n'));
+          if (asked && claimsGreen(asked)) {
+            const e = s.efficiency;
+            e.greenClaims += 1; e.greenClaimsInAsks = (e.greenClaimsInAsks || 0) + 1;
+            if (!turnHadCheck) e.unverifiedGreenClaims.push(o.timestamp || null);
+          }
+        }
         // What the call was FOR, in the call's own words - the Bash description the model wrote,
         // the file a Read named, the seat a dispatch went to. The report used to print result
         // SIZES with no call beside them, so whoever wrote it hand-mapped char counts back onto
@@ -3703,7 +3722,7 @@ function efficiencyRows(main, agg, blockLedger) {
     const n = main.gitCommits || 0, k = e.commitsChecked || 0;
     rows.push({ practice: 'checked commits', measured: n ? `${k} of ${n} commit(s) had a test, build, lint or ci-status call in the ${CHECK_WINDOW} tool calls before${(e.commitsUnchecked || []).length ? ` - unchecked at: ${tsList(e.commitsUnchecked)}` : ''}` : 'no commit', tests: 'a check the session can run, before the work is called done - ran, not necessarily green; open the run' });
   }
-  rows.push({ practice: 'green claims', measured: `${(e.unverifiedGreenClaims || []).length} of ${e.greenClaims || 0} claim(s) that a check passed landed in a turn that ran no check${(e.unverifiedGreenClaims || []).length ? ` - at: ${tsList(e.unverifiedGreenClaims)}` : ''}`, tests: "evidence, not assertion - open each turn: a check run in an EARLIER turn, or in a dispatched seat's own transcript, is evidence the regex cannot see" });
+  rows.push({ practice: 'green claims', measured: `${(e.unverifiedGreenClaims || []).length} of ${e.greenClaims || 0} claim(s) that a check passed landed in a turn that ran no check${e.greenClaimsInAsks ? ` (${e.greenClaimsInAsks} of the claims in an ask's question)` : ''}${(e.unverifiedGreenClaims || []).length ? ` - at: ${tsList(e.unverifiedGreenClaims)}` : ''}`, tests: "evidence, not assertion - open each turn: a check run in an EARLIER turn, or in a dispatched seat's own transcript, is evidence the regex cannot see" });
   rows.push({ practice: 'correction streaks', measured: `${(e.correctionStreaks || []).length} streak(s) (${STREAK_TURNS} short user turns in a row, each after a ${fmt(STREAK_LONG)}+ char answer, as guard-answer-length counts them)${(e.correctionStreaks || []).length ? ` at: ${tsList(e.correctionStreaks)}` : ''}; ${e.correctionTurns || 0} of ${e.longAnswered || 0} answer(s) over ${fmt(STREAK_LONG)} chars drew a short (under ${STREAK_SHORT} char) user turn`, tests: 'after two corrections the context holds the failed drafts: the format ask, or /clear with a prompt that carries what was learned; the second number is what the strict walk did not chain' });
   {
     const total = (e.correctionsSaved || 0) + (e.correctionsUnsaved || []).length;

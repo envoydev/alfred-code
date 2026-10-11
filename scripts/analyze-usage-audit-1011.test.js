@@ -208,3 +208,33 @@ test('11b595da#3: the standing-floor share is measured against the context sent,
     assert.match(text([file, '--report-md']), /\*\*Standing inventory\*\* ~76\.3k tokens\/message .* ~94% of the context sent/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// 5984019e#8: a conforming flow run reports each stop's `Result:` inside its AskUserQuestion, and the green-claims row
+// read only end_turn prose - '1 of 1' over 9 ask results - nor did its regex read '<Name> <n> green' or '<Test> passes'.
+test('5984019e#8: an ask\'s question is an answer surface, and a named suite with its count or a named test passing is a green claim', () => {
+  const dir = tmp();
+  try {
+    const ask = (id, ts, q) => asst(id, ts, [tool(id, 'AskUserQuestion', { questions: [{ question: q, header: 'Next', multiSelect: false, options: [{ label: 'Go on (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }] })]);
+    const said = (id, ts, t) => asst(id, ts, [{ type: 'text', text: t }], { stop_reason: 'end_turn' });
+    const answered = (ts, id) => res(ts, id, 'User has answered your questions: "Next"="Go on (Recommended)".');
+    const rows = [
+      human(T(0), 'carry on'),
+      ask('a1', T(1), 'Result: Builder 23/24, Editor 728 / Viewer 707 / Mailer 716 green, all uncommitted. What next?'),
+      answered(T(2), 'a1'),
+      human(T(10), 'fix the redo test'),
+      asst('m1', T(11), [sh('t1', 'dotnet test Tests/App.Tests.csproj --filter Redo')]),
+      res(T(12), 't1', 'Passed!  - Failed: 0, Passed: 1'),
+      ask('a2', T(13), 'Result: Redo fixed, and Redo passes in full-suite order. Commit?'),
+      answered(T(14), 'a2'),
+      ask('a3', T(15), 'Result: Browser 700 passed, 3 skipped, 1 failed (Redo). Look at it?'),
+      answered(T(16), 'a3'),
+      ask('a4', T(17), 'The hook passes the value to the guard. It passes. Keep it?'),
+      answered(T(18), 'a4'),
+      said('m2', T(19), 'All 12 tests pass.'),
+    ];
+    const file = write(dir, rows);
+    const e = run([file]).main.efficiency;
+    assert.deepStrictEqual([e.greenClaims, e.greenClaimsInAsks, e.unverifiedGreenClaims], [3, 2, [T(1)]], 'a1 (no check in its turn), a2 and the end_turn line; a3 has a failure, a4 is no result');
+    assert.match(text([file]), /green claims +1 of 3 claim\(s\) that a check passed landed in a turn that ran no check \(2 of the claims in an ask's question\) - at: 07:00:01/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
