@@ -673,6 +673,36 @@ test('stop chain: own continuation stands down, a sibling one is judged, a fresh
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// Audit 2026-10-11 SD10, session 31da645f: after its own prose-ask block the stop contract's continuation ran an ask, a
+// Skill, an Edit and a check, then closed on a new prose question no hook judged. opts.workSince reopens the cycle when
+// the continuation made a tool call after the hook's block; a rewritten close with no call between stays held.
+test('stop chain: workSince reopens the cycle only after a tool call made since the hook\'s own block', () => {
+    const { stopHeldThisCycle, markStopHeld, stopMarkerFile } = require(PRELUDE);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stop-work-'));
+    const env = { ALFRED_CODE_HOOK_LOG_DIR: dir };
+    try {
+        const tp = path.join(dir, 't.jsonl');
+        const row = (ms, content) => JSON.stringify({ type: 'assistant', timestamp: new Date(ms).toISOString(), message: { id: `m${ms}`, content } });
+        const cont = { hook_event_name: 'Stop', session_id: 's1', stop_hook_active: true, transcript_path: tp };
+        const marked = () => { markStopHeld('guard-a', cont, env); return fs.statSync(stopMarkerFile('guard-a', cont, env)).mtimeMs; };
+        let at = marked();
+        fs.writeFileSync(tp, [row(at - 5000, [{ type: 'tool_use', id: 'old', name: 'Bash', input: {} }]), row(at - 1000, [{ type: 'text', text: 'Want me to go on?' }]),
+            row(at + 2000, [{ type: 'text', text: 'Rewritten close.' }])].join('\n') + '\n');
+        assert.strictEqual(stopHeldThisCycle('guard-a', cont, env, { workSince: true }), true, 'a close rewritten with no call between stays held');
+        fs.appendFileSync(tp, row(at + 3000, [{ type: 'tool_use', id: 'new', name: 'Edit', input: {} }]) + '\n');
+        assert.strictEqual(stopHeldThisCycle('guard-a', cont, env), true, 'without the option the old reading holds');
+        assert.strictEqual(stopHeldThisCycle('guard-a', { ...cont, hook_event_name: 'SubagentStop' }, env, { workSince: true }), false, 'a SubagentStop has its own marker');
+        assert.strictEqual(stopHeldThisCycle('guard-a', cont, env, { workSince: true }), false, 'a tool call after the block reopens the cycle');
+        assert.ok(!fs.existsSync(stopMarkerFile('guard-a', cont, env)), '... and clears the marker, so the next block marks afresh');
+        at = marked();
+        fs.writeFileSync(tp, '{torn');
+        assert.strictEqual(stopHeldThisCycle('guard-a', cont, env, { workSince: true }), true, 'a garbage transcript stays held');
+        assert.strictEqual(stopHeldThisCycle('guard-a', { ...cont, transcript_path: path.join(dir, 'gone.jsonl') }, env, { workSince: true }), true, 'a missing one too');
+        assert.strictEqual(stopHeldThisCycle('guard-a', { ...cont, transcript_path: 7 }, env, { workSince: true }), true, 'and a malformed path');
+        assert.ok(at > 0);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // 2026-10-09: the sweep listed the whole temp dir on every hook call - 78ms of a 136ms Stop over a 52,840-entry temp
 // dir. A stamp beside the state gates the pass to once a day per dir and prefix, across processes.
 test('sweepStale lists the dir at most once a day per prefix across processes - a stamp gates it', () =>

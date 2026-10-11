@@ -117,7 +117,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   order (the four run in parallel; answer length yields its wording to the stop contract's marker or ledger row), with
   Claude Code's 8-consecutive-continuation cap the outer guard - and an unwritable marker dir stands a continuation
   down, the old reading. The stop contract's per-turn probes skip a continuation (the same turn), and its SubagentStop
-  hold keeps the plain flag beside its own once-marker (`guard-hooks.test.js`: never held again, marker or not).
+  hold keeps the plain flag beside its own once-marker (`guard-hooks.test.js`: never held again, marker or not). The
+  stop contract alone opts into `workSince` (audit 2026-10-11 SD10, 31da645f): a continuation that made a tool call
+  after its own block (the marker's ISO stamp) reopens its cycle, so new work's close is judged; a bare rewrite stays held.
   STDIO BLOCKS (2026-10-10): Node writes a pipe async on macOS and `process.exit()` drops what the pipe has not taken,
   so a decision past 64KB (8KB on Node 22.16) reached the harness cut off - the secret guard's rewrite of a 100KB
   command arrived unparseable and the call ran raw. Loading `hook-prelude.js` makes stdout and stderr blocking
@@ -478,7 +480,14 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     a wait, 'your allow' is a hand-back, and a `gh run watch` ends. An answer to the user's own question listing only a
     third party's or deferred items passes, and so does the close after a fresh-session ask answered this turn. The
     ask branch's typed-turn count follows the live `parentUuid` chain, and its stale-scope note counts `push` only in a
-    git shape. A tool-ended transcript read retries once after 300ms (`no-tail` probe row). Credential branch: asks for rotation ONCE per exposure (`ALFRED_CODE_ROTATE_ASK=0` off; any ask
+    git shape. Audit 2026-10-11 SD10: a line opening `Deferred by you:` is nothing owed when an ask answered THIS turn
+    carries a deferral in its answer (the pinned contract with validate's close; with no such answer it is judged as
+    written); an answer to an informational prompt ('Show me ...', a question) from a turn whose every call reads
+    (a read tool, a whitelisted read-only shell command) passes when it states only waits and states - no step, offer of
+    its own or approval hand-back; an ask just answered no longer exempts a close handing the user a NEW run-and-report
+    action ('Run the pull, then tell me when it's done'); a merge, PR, remote or CI ask's stale-scope note needs a
+    remote-aware read (`git fetch`, a `git log origin/...`, `git branch -r`, `gh pr`), never `git status`; and a production
+    file the streak CREATED ('File created') beside a test edit is test-first scaffolding, not a root-cause streak. A tool-ended transcript read retries once after 300ms (`no-tail` probe row). Credential branch: asks for rotation ONCE per exposure (`ALFRED_CODE_ROTATE_ASK=0` off; any ask
     answered or declined after its block is the answer, a free-text 'Other' included), judged
     on what the model was SENT - a tool result's `message`, never the CLI's stored `toolUseResult` copy (an
     Edit's `originalFile` held a JWT the secret guard had kept out of context, pilot 3).

@@ -54,7 +54,7 @@ if (require.main === module) {
     autoLive = prelude.autoStampLive || autoLive;
     houseDash = prelude.HOUSE_DASH || houseDash;
     if (prelude.stopHeldThisCycle) {
-      stopHeld = (input) => prelude.stopHeldThisCycle('guard-stop-contract', input);
+      stopHeld = (input) => prelude.stopHeldThisCycle('guard-stop-contract', input, undefined, { workSince: true });
       markHeld = (input) => prelude.markStopHeld('guard-stop-contract', input);
     }
     if (prelude.standDown('guard-stop-contract')) process.exit(0);
@@ -247,21 +247,41 @@ function testFirstEdits() {
     try { fs.readSync(fd, buf, 0, buf.length, from); } finally { fs.closeSync(fd); }
     let loaded = false;
     let edits = [];
+    // A production file the streak CREATED (a Write the harness answered 'File created') beside a test edit is the
+    // compile stub a test-first red needs - a new type no earlier behaviour depended on (audit 2026-10-11 SD10, session
+    // 2ca8e8ee: a C# stub written before its tests opened a root-cause streak over a planned red).
+    let writeIds = new Map();
+    let created = new Set();
+    const settled = () => (edits.some((f) => TEST_PATH_RE.test(f)) ? edits.filter((f) => TEST_PATH_RE.test(f) || !created.has(f)) : edits);
     for (const line of buf.toString('utf8').split('\n')) {
       if (!loaded && TEST_FIRST_LOAD_RE.test(line)) loaded = true;
+      if (line.includes('"tool_result"') && writeIds.size) {
+        let r;
+        try { r = JSON.parse(line); } catch { r = null; }
+        const c = r && r.type === 'user' && r.message && r.message.content;
+        if (Array.isArray(c)) {
+          for (const b of c) {
+            if (b && b.type === 'tool_result' && writeIds.has(b.tool_use_id) && /^\s*File created successfully\b/.test(resultText(b))) created.add(writeIds.get(b.tool_use_id));
+          }
+        }
+        continue;
+      }
       if (!line.includes('"tool_use"')) continue;
       let o;
       try { o = JSON.parse(line); } catch { continue; }
       if (!o || o.type !== 'assistant' || !Array.isArray(o.message && o.message.content)) continue;
       for (const b of o.message.content) {
         if (!b || b.type !== 'tool_use') continue;
-        if (b.id && b.id === payload.tool_use_id) return loaded ? edits : null;
+        if (b.id && b.id === payload.tool_use_id) return loaded ? settled() : null;
         const input = b.input || {};
-        if (/^(?:Write|Edit|MultiEdit|NotebookEdit)$/.test(b.name)) edits.push(String(input.file_path || input.notebook_path || ''));
-        else if (SHELL_TOOL_RE.test(String(b.name)) && buildTestRun(input.command)) edits = [];
+        if (/^(?:Write|Edit|MultiEdit|NotebookEdit)$/.test(b.name)) {
+          const f = String(input.file_path || input.notebook_path || '');
+          edits.push(f);
+          if (b.name === 'Write' && b.id) writeIds.set(b.id, f);
+        } else if (SHELL_TOOL_RE.test(String(b.name)) && buildTestRun(input.command)) { edits = []; writeIds = new Map(); created = new Set(); }
       }
     }
-    return loaded ? edits : null;
+    return loaded ? settled() : null;
   } catch { return null; }
 }
 // A suite run in the BACKGROUND is read later, from its output file (bc2fa83e: the session's one unexpected red was a
@@ -828,6 +848,69 @@ function answersOthersOpen(closeTail) {
   })) return false;
   return /\?\s*$/.test(turnPrompt().trim());
 }
+// An ANSWER to a request for information, from a turn that changed nothing, reports the state and the steps the user
+// asked for (audit 2026-10-11 SD10, session 2ca8e8ee: 'Show me the merge order as sentences' got a read-only git survey
+// and a list opening on a ticket 'committed ... waiting for its PR'; the done-close block forced a 'Nothing is waiting
+// on me' retry at 338k). The model's own next move, an approval hand-back or any changing call keeps the close judged.
+const INFO_PROMPT_RE = /^\s*(?:please\s+|can you\s+|could you\s+)?(?:show|list|explain|describe|summari[sz]e|tell me|give me|walk me through|what|which|how|why|where|who|whose|is|are|was|were|does|do|did|has|have)\b|\?\s*$|^\s*(?:покажи|поясни|розкажи|расскажи|що|чому|як|де|что|почему|как|где)(?!\p{L})/iu;
+const READ_ONLY_TOOL_RE = /^(?:Read|Grep|Glob|LS|WebFetch|WebSearch|ToolSearch|TodoWrite|TaskOutput|BashOutput)$|^mcp__.+__(?:find|get|search|list|read|query|resolve|fetch)[\w-]*$/i;
+const READ_HEAD_RE = /^(?:ls|cat|head|tail|grep|egrep|fgrep|rg|wc|cut|sort|uniq|tr|column|echo|printf|pwd|cd|true|stat|file|du|df|which|whoami|date|uname|tree|jq|diff|cmp|realpath|basename|dirname|nl|awk)$/;
+const GIT_SAFE_SUB = /^(?:status|log|show|diff|rev-parse|rev-list|ls-files|ls-tree|ls-remote|describe|blame|shortlog|merge-base|cat-file|for-each-ref|show-ref|grep|name-rev|check-ignore|cherry|fetch)$/;
+const GIT_LIST_FORM = { branch: /^(?:--show-current|-[arvl]+|-vv|--all|--remotes|--list|--merged|--no-merged|--no-color)$/, tag: /^(?:-l|--list|-n\d*)$/, remote: /^-v$/ };
+const GIT_LIST_SUB = /^(?:stash (?:list|show)|worktree list|reflog(?: show)?|remote (?:show|get-url))(?:\s|$)/;
+const OWN_MOVE_RE = /\b(?:I(?:'ll| will| can| could| am going to| plan to|'d (?:suggest|recommend))|let me|shall I|want me to)\b/i;
+const STATE_ITEM_RE = /^(?:awaiting|waiting (?:on|for)|still (?:running|building|working|going)|not pushed|nothing pushed|un-?pushed|still open|still held for (?:your )?review)$/i;
+function readOnlyCommand(command) {
+  const cmd = String(command || '');
+  if (!shellWrites || !cmd.trim() || /\$\(|`|[<>]\(/.test(cmd)) return false;
+  const scan = shellWrites.scanShell(cmd);
+  if (scan.targets.some((t) => t.raw !== '/dev/null') || (scan.unread && scan.unread.length)) return false;
+  const chars = scan.command.split('');
+  for (const [a, b] of scan.quoted) for (let i = a; i < b; i += 1) if (chars[i] !== '\n') chars[i] = ' ';
+  return chars.join('').replace(/\d*[<>]&\d*-?|&>>?|\d*>>?\s*\/dev\/null/g, ' ').split(/&&|\|\||[;|&\n]/).every((seg) => {
+    const words = seg.trim().replace(/^(?:\w+=\S*\s+)+/, '').split(/\s+/).filter(Boolean);
+    const head = words[0] || '';
+    if (!head) return true;
+    if (head === 'git') {
+      let i = 1;
+      while (i < words.length && words[i].startsWith('-')) i += /^(?:-C|-c|--git-dir|--work-tree)$/.test(words[i]) ? 2 : 1;
+      const sub = words[i] || '';
+      if (GIT_SAFE_SUB.test(sub) || GIT_LIST_SUB.test(words.slice(i).join(' '))) return true;
+      return !!GIT_LIST_FORM[sub] && words.slice(i + 1).every((w) => GIT_LIST_FORM[sub].test(w));
+    }
+    if (head === 'sed') return !words.some((w) => /^-[a-zA-Z]*i|^--in-place/.test(w));
+    if (head === 'find') return !words.some((w) => /^-(?:delete|exec|execdir|ok|okdir|fprint\w*|fls)$/.test(w));
+    return READ_HEAD_RE.test(head);
+  });
+}
+function readOnlyTurn() {
+  try {
+    return walkBack(() => (o) => {
+      if (!o || !o.message) return undefined;
+      const c = o.message.content;
+      if (o.type === 'assistant' && Array.isArray(c)) {
+        for (const b of c) {
+          if (!b || b.type !== 'tool_use') continue;
+          const name = String(b.name || '');
+          if (READ_ONLY_TOOL_RE.test(name)) continue;
+          if ((shellWrites ? shellWrites.isShellTool(name) : SHELL_TOOL_RE.test(name)) && name !== 'Monitor' && readOnlyCommand((b.input || {}).command)) continue;
+          return false;
+        }
+        return undefined;
+      }
+      if (o.type === 'user' && isTypedTurn(o) && !/^\s*Stop hook feedback:/.test(rowText(o))) return true;
+      return undefined;
+    }, false) === true;
+  } catch { return false; }
+}
+function answersInfoRequest(closeTail) {
+  const scrubbed = closeTail.replace(NO_HANDBACK_RE, ' ').replace(NOTHING_PENDING_RE, ' ');
+  if (OWN_MOVE_RE.test(closeTail) || HANDBACK_RE.test(scrubbed) || PERSON_ASK_RE.test(scrubbed) || PERSON_ASK_CYR.test(scrubbed)) return false;
+  // a pending STEP ('the next step is task 5', 'left to do') is the model's own move; only a reported state passes
+  if (!pendingItems(closeTail).every((m) => STATE_ITEM_RE.test(m[0]))) return false;
+  const prompt = turnPrompt().trim();
+  return !!prompt && INFO_PROMPT_RE.test(prompt) && readOnlyTurn();
+}
 
 // --- read the transcript tail (last ~512KB) and pull the last assistant message ---
 // A last row bigger than the window (a huge Write input) leaves only a partial line, so an empty
@@ -970,6 +1053,31 @@ function freshPickedThisTurn() {
       const c = o.message.content;
       if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && ANSWER_RESULT_RE.test(resultText(b)) && FRESH_PICK_RE.test(resultText(b)))) return true;
       if (isTypedTurn(o) && !/^Stop hook feedback:/.test(rowText(o))) return false;
+      return undefined;
+    }, false);
+  } catch { return false; }
+}
+// 'Deferred by you:' (the pinned contract with validate's close): the line names an item the user deferred through an
+// ask, so it is nothing owed - but only when an ask answered in THIS turn carries a deferral in its ANSWER (a picked
+// option's `"="...` part or a free-text answer), so a line the model writes on its own authority is judged as written.
+const DEFERRED_BY_YOU_LINE_RE = /^\s*(?:[-*+]\s+|\d+[.)]\s+)?(?:\*\*|__)?Deferred by you(?:\*\*|__)?:/i;
+const DEFERRED_BY_YOU_RE = new RegExp(DEFERRED_BY_YOU_LINE_RE.source, 'im');
+const DEFER_WORD = String.raw`\b(?:defer\w*|later|postpone\w*|not now|park\w*|leave (?:it|that|them|as is)|hold off|skip\w*)\b`;
+const DEFER_ANSWER_RE = new RegExp(String.raw`"="[^"\n]*${DEFER_WORD}|^\s*The user answered:[^\n]*${DEFER_WORD}`, 'i');
+// A close handing the user a NEW action to run and report back on ('Run the pull, then tell me when it's done'), which
+// an ask answered just before it did not settle (audit 2026-10-11 SD10, d9035363). A wait on a decision the answer
+// already made ('tell me when you want it pushed') is not one.
+const USER_RUN = String.raw`(?:run|pull|install|restart|rebuild|reload|re-?run|test|try|execute|apply|deploy|sync)`;
+const USER_RUN_WAIT_RE = new RegExp(String.raw`(?:^|[.!;:]\s+|\n\s*)(?:please\s+|just\s+)?${USER_RUN}\b[^.\n]{0,120}\b(?:then|and)\s+(?:tell|let) me\b`
+  + String.raw`|\b(?:tell|let) me (?:know )?(?:when|once|after) (?:it|that|this|they|the [\w-]+)(?:'s| is| are| has| have)? (?:done|finished|complete[d]?|through|passed|working)\b`
+  + String.raw`|\bonce you(?:'ve| have)? (?:ran|run|pulled|installed|restarted|rebuilt|re-?run|tested|tried|applied|executed|deployed|synced)\b`, 'i');
+function deferAnsweredThisTurn() {
+  try {
+    return walkBack(() => (o) => {
+      if (!o || o.type !== 'user' || !o.message) return undefined;
+      const c = o.message.content;
+      if (Array.isArray(c) && c.some((b) => b && b.type === 'tool_result' && ANSWER_RESULT_RE.test(resultText(b)) && DEFER_ANSWER_RE.test(resultText(b)))) return true;
+      if (isTypedTurn(o) && !/^\s*Stop hook feedback:/.test(rowText(o))) return false;
       return undefined;
     }, false);
   } catch { return false; }
@@ -1635,7 +1743,12 @@ if (payload.hook_event_name === 'Stop') {
   const closeWhole = closeProse(prose.slice(-16 * 1024));
   // ... and the done/pending halves read it with code spans, paths and negations removed (see
   // closeProse): each of those cost a measured false block on a close that asked nothing.
-  const closeTail = closeProse(tail);
+  // A line opening `Deferred by you:` names what the user deferred through an ask answered THIS turn, and is nothing owed
+  // - the cross-track contract with validate's close (audit 2026-10-11 SD10: 'Acknowledge and defer' was answered at the
+  // run's own credential ask, the close listed the rotation as still owed, and the block forced a 142k restate, sessions
+  // 6288ad94 and 757a4ac0). Without such an answer in the turn the line is judged like any other.
+  const deferredLines = DEFERRED_BY_YOU_RE.test(tail) && deferAnsweredThisTurn();
+  const closeTail = closeProse(deferredLines ? tail.split('\n').filter((l) => !DEFERRED_BY_YOU_LINE_RE.test(l)).join('\n') : tail);
   // The phrase list only ever covered the shapes MEASURED in the corpus, so an ordinary
   // decision question ('What's the deploy target?', 'Which one should we go with?') walked
   // straight past it (reproduced). A turn that ends on a question and hands nothing to a tool is
@@ -1672,7 +1785,9 @@ if (payload.hook_event_name === 'Stop') {
     // close after the user picked the fresh-session option this turn (69dbed46: 'Nothing is committed or pushed' read as
     // done + pending, and the resume block was forced out again at 132.4k) - audit 2026-10-10 C15.
     && !answersOthersOpen(closeTail)
-    && !freshPickedThisTurn();
+    && !freshPickedThisTurn()
+    // ...and an answer to a request for information from a turn that changed nothing (audit 2026-10-11 SD10, 2ca8e8ee).
+    && !answersInfoRequest(closeTail);
   // The done-gate PROBE, log-only since 2026-09-25 (the user's ruling: rely on the skill's description
   // and the flows that load it, and count the misses). A claim over a turn with a source edit writes
   // one row per turn - `unrun` when the last edit came after the last run (or none ran), `ran` when a
@@ -1861,7 +1976,10 @@ if (payload.hook_event_name === 'Stop') {
   // Both remaining branches DEMAND an AskUserQuestion. If one was just answered - or declined with
   // 'clarify', which the harness answers by instructing prose - the decision is already settled and
   // demanding it again is the measured failure documented at askJustAnswered().
-  if (askJustAnswered()) {
+  // ...unless the close hands the user a NEW action to run and report back on ('Run the pull, then tell me when it's
+  // done'): the answer settled the ask before it, not this one (audit 2026-10-11 SD10, session d9035363 - the block
+  // this exemption skipped was answered in one click).
+  if (askJustAnswered() && !(doneClose && USER_RUN_WAIT_RE.test(closeTail))) {
     breadcrumb('Stop: an AskUserQuestion was just answered or declined - not re-asking');
     process.exit(0);
   }
@@ -1878,8 +1996,9 @@ if (payload.hook_event_name === 'Stop') {
       'home (audit 2026-10-10 C18, 0824440b: three homes marked three options, the user\n' +
       'overrode the mark 3 of 3 times). A deferred item either side still owes - a check the user runs, an id\n' +
       'someone sends, a step put off - is pending: it goes in the ask, never under a\n' +
-      '\'nothing pending\' line. Only when nothing at all is owed, say so in one line with no\n' +
-      'open next action and stop.',
+      '\'nothing pending\' line - except an item the user deferred through an ask answered this\n' +
+      'turn, which goes on its own line opening \'Deferred by you:\' and is not owed. Only when\n' +
+      'nothing at all is owed, say so in one line with no open next action and stop.',
     );
     process.exit(2);
   }
@@ -1979,6 +2098,9 @@ function blockStateFile() {
 //   6. FLOW STOP FIELDS - a solve-task stop reports Result / Progress / Leftovers before its ask.
 //      Measured across the collection: 13 sessions loaded that contract, 5 used the fields even
 //      once, across 109 asks - one session missed all 12 of its own stops.
+// The stale-scope note's remote half (read by freshStateReadThisTurn, so declared before the branch runs).
+const REMOTE_STATE_RE = /\b(?:merged?|merging|pull request|PRs?|remote|upstream|deploy(?:ed|ment)?|pipeline|CI|workflow run)\b/i;
+const REMOTE_READ_RE = /\bgit\s+(?:fetch|pull|ls-remote|remote\s+(?:update|show))\b|\bgit\s+(?:log|rev-list|branch|show|merge-base|diff|cherry)\b[^\n;|&]*\s(?:origin|upstream)\/|\bgit\s+branch\b[^\n;|&]*\s(?:-r|-a|--remotes|--all)\b|\bgh\s+(?:pr|run|api|repo)\b/;
 if (payload.tool_name === 'AskUserQuestion') {
   const notes = [];
   try {
@@ -2115,9 +2237,18 @@ if (payload.tool_name === 'AskUserQuestion') {
     // A bare 'push' is not git state: 'Run the push check on the Android emulator against staging?' named a push
     // NOTIFICATION and got the git re-read note (audit 2026-10-10 C15, ecea6d56) - so push counts in a git shape only.
     const GIT_PUSH_RE = /\bgit push\b|\bunpushed\b|\bpush(?:ed|ing)?\s+(?:it|them|this|that|now|develop|main|master|origin|upstream|the\s+(?:branch|commits?|tags?|diff|changes?|fix))\b|\bpush(?:ed|ing)?\s+(?:\S+\s+){0,2}?to\s+(?:origin|the remote|remote|upstream|develop|main|master|github|gitlab)\b|\borigin\//i;
-    if ((/\b(commit|branch|pull request|\bPRs?\b|merge|rebase|stash|staged|unstaged|uncommitted|untracked|remote|upstream|deploy(ed|ment)?|pipeline|\bCI\b|workflow run|job)\b/i.test(askText) || GIT_PUSH_RE.test(askText))
-        && !freshStateReadThisTurn()) {
-      notes.push('The ask just answered named repository, remote or job state, and no `git status` / ' +
+    if ((/\b(commit|branch|pull request|\bPRs?\b|merge|rebase|stash|staged|unstaged|uncommitted|untracked|remote|upstream|deploy(ed|ment)?|pipeline|\bCI\b|workflow run|job)\b/i.test(askText) || GIT_PUSH_RE.test(askText) || REMOTE_STATE_RE.test(askText))
+        && !freshStateReadThisTurn(REMOTE_STATE_RE.test(askText))) {
+      // Merge, pull-request, remote and job state lives past the clone: `git status` cannot see whether a ticket branch
+      // merged, so such an ask is backed only by a remote-aware read (audit 2026-10-11 SD10, session 2ca8e8ee: 'wait
+      // until the earlier ticket is merged' rested on a day-old read and one `git status --short`; it had merged - and
+      // 'merged' was no word of the list above, so that ask drew no note at all).
+      if (REMOTE_STATE_RE.test(askText)) notes.push('The ask just answered named repository, remote or job state that lives past '
+        + 'the local clone (a merge, a pull request, a remote branch, a CI run), and no remote-aware read in this turn backed '
+        + 'it (`git fetch` then `git log origin/<branch>`, `git branch -r --merged`, `gh pr view` / `gh run`) - `git status` '
+        + 'reads only the clone. Before acting on the answer, read that state FRESH; if it moved, say so and re-ask - a '
+        + 'merge-order answer resting on a day-old read was discarded when the user found the branch already merged.');
+      else notes.push('The ask just answered named repository, remote or job state, and no `git status` / ' +
         '`git diff` / `gh` call in this turn backed it. Before acting on the answer, read that state FRESH; ' +
         'if it moved, say so and re-ask - a fifty-minute-old read had already been overtaken by another ' +
         'agent while an ask was on screen, and the answer it produced was discarded whole.');
@@ -2433,7 +2564,7 @@ function solveTaskCycle() {
 
 // Did a repository/remote state read run since the last typed user turn? The ask's scope has to be
 // derived at ask time, and the cheap proof of that is a state-reading call in the same turn.
-function freshStateReadThisTurn() {
+function freshStateReadThisTurn(remote) {
   try {
     const p = payload.transcript_path;
     if (!p) return false;
@@ -2456,7 +2587,7 @@ function freshStateReadThisTurn() {
         for (const b of o.message.content) {
           if (!b || b.type !== 'tool_use' || !SHELL_TOOL_RE.test(String(b.name))) continue;
           const cmd = String((b.input && b.input.command) || '');
-          if (/\bgit\s+(status|diff|log|show|rev-parse|rev-list|ls-files|fetch)\b|\bgh\s+(pr|run|api|repo)\b/.test(cmd)) return true;
+          if ((remote ? REMOTE_READ_RE : /\bgit\s+(status|diff|log|show|rev-parse|rev-list|ls-files|fetch)\b|\bgh\s+(pr|run|api|repo)\b/).test(cmd)) return true;
         }
       }
     }

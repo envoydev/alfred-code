@@ -396,7 +396,33 @@ function stopMarkerFile(hook, input, env)
     return path.join(dir, `alfred-stop-held-${baseName(hook)}-${part(input.hook_event_name)}-${part(input.session_id || 'nosession')}-${part(input.agent_id || 'main')}`);
 }
 
-function stopHeldThisCycle(hook, input, env)
+// opts.workSince (opt-in, the stop contract): a continuation that made a TOOL CALL after this hook's own block is new
+// work, and its close is judged again - the marker is cleared and the cycle reopens (audit 2026-10-11 SD10, session
+// 31da645f: after a prose-ask block the continuation ran an ask, a Skill, an Edit and a check, then closed on a new
+// prose question nothing judged). A rewritten close with no call between stays held, so the once-per-close guard holds.
+function toolCallSince(transcriptPath, sinceMs)
+{
+    const size = fs.statSync(transcriptPath).size;
+    const from = Math.max(0, size - 2 * 1024 * 1024);
+    const fd = fs.openSync(transcriptPath, 'r');
+    const buf = Buffer.alloc(size - from);
+    try { fs.readSync(fd, buf, 0, buf.length, from); } finally { fs.closeSync(fd); }
+    const lines = buf.toString('utf8').split('\n');
+    for (let i = lines.length - 1; i >= 0; i -= 1)
+    {
+        const line = lines[i];
+        if (!line.includes('"tool_use"') || !line.includes('"assistant"')) continue;
+        let o;
+        try { o = JSON.parse(line); } catch { continue; }
+        if (!o || o.type !== 'assistant' || !o.message || !Array.isArray(o.message.content)) continue;
+        const at = Date.parse(o.timestamp || '');
+        if (!Number.isFinite(at) || at <= sinceMs) continue;
+        if (o.message.content.some((b) => b && b.type === 'tool_use')) return true;
+    }
+    return false;
+}
+
+function stopHeldThisCycle(hook, input, env, opts)
 {
     if (!input || typeof input !== 'object' || !input.stop_hook_active)
     {
@@ -406,7 +432,26 @@ function stopHeldThisCycle(hook, input, env)
     try
     {
         const file = stopMarkerFile(hook, input, env);
-        if (fs.existsSync(file)) return true;
+        if (fs.existsSync(file))
+        {
+            if (opts && opts.workSince && input.hook_event_name === 'Stop' && typeof input.transcript_path === 'string')
+            {
+                let reopen = false;
+                // the block's time is the ISO stamp markStopHeld wrote (a coarse-mtime file system rounds the mtime down)
+                try
+                {
+                    const stamped = Date.parse(fs.readFileSync(file, 'utf8').trim());
+                    reopen = toolCallSince(input.transcript_path, Math.max(fs.statSync(file).mtimeMs, Number.isFinite(stamped) ? stamped : 0));
+                }
+                catch { /* unreadable: held */ }
+                if (reopen)
+                {
+                    fs.rmSync(file, { force: true });
+                    return false;
+                }
+            }
+            return true;
+        }
         fs.accessSync(path.dirname(file), fs.constants.W_OK);
         return false;
     }

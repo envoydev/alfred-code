@@ -568,6 +568,32 @@ test('root cause: a test-first red under habits-test-first is logged apart, and 
     fs.writeFileSync(tp3, [typed('go'), spec.row, run4.row].map((r) => JSON.stringify(r)).join('\n') + '\n');
     assert.ok(logged(r3, 'PostToolUseFailure', 'Bash', 'npm test', { ...red, transcript_path: tp3, tool_use_id: run4.id }), 'no test-first load, no exemption');
 });
+// Audit 2026-10-11 SD10, session 2ca8e8ee: under habits-test-first a C# compile stub (a new production file the tests
+// need) was written before the tests, and the planned red opened a root-cause streak. A production file the streak
+// CREATED beside a test edit is scaffolding; an edit to an existing production file still opens the streak.
+test('root cause: a production stub the streak created beside its tests is test-first scaffolding (audit 2026-10-11 SD10)', () => {
+    const skill = call('Skill', { skill: 'alfred-code:habits-test-first' });
+    const red = { error: 'Exit code 1\nFailed!  - Failed:     3, Passed:    12, Skipped:     0, Total:    15' };
+    const runOver = (rows, label) => {
+        const root = project();
+        const tp = path.join(root, 'transcript.jsonl');
+        const run1 = call('Bash', { command: 'dotnet test' });
+        fs.writeFileSync(tp, [typed('add the restore policy'), skill.row, result(skill.id, 'loaded'), ...rows(root), run1.row].map((r) => JSON.stringify(r)).join('\n') + '\n');
+        logged(root, 'PostToolUseFailure', 'Bash', 'dotnet test', { ...red, transcript_path: tp, tool_use_id: run1.id });
+        return allRows(root).map((r) => r.kind).join(',') || label;
+    };
+    const write = (file, created) => { const c = call('Write', { file_path: file, content: 'class X {}' }); return [c.row, result(c.id, created ? `File created successfully at: ${file}` : `The file ${file} has been updated successfully.`)]; };
+    const edit = (file) => { const c = call('Edit', { file_path: file, old_string: 'a', new_string: 'b' }); return [c.row, result(c.id, 'ok')]; };
+    const stub = (root) => path.join(root, 'App', 'RetryPolicy.cs');
+    const spec = (root) => path.join(root, 'App.Tests', 'RetryPolicyTests.cs');
+    assert.strictEqual(runOver((root) => [...write(stub(root), true), ...write(spec(root), true)]), 'test-first-red', 'the measured case: stub created, then the tests');
+    assert.strictEqual(runOver((root) => [...write(spec(root), true), ...write(stub(root), true), ...edit(stub(root))]), 'test-first-red', 'the stub edited again in the streak is still new');
+    assert.strictEqual(runOver((root) => [...write(stub(root), false), ...write(spec(root), true)]), 'root-cause', 'an overwritten production file is a change');
+    assert.strictEqual(runOver((root) => [...edit(path.join(root, 'App', 'Existing.cs')), ...write(stub(root), true), ...write(spec(root), true)]), 'root-cause', 'an edit to an existing one keeps the streak');
+    assert.strictEqual(runOver((root) => [...write(stub(root), true)]), 'root-cause', 'a created file with no test edit is no test-first red');
+    const garbled = (root) => { const c = call('Write', { file_path: stub(root), content: 'x' }); return [c.row, { type: 'user', message: { content: 'torn' } }, ...write(spec(root), true)]; };
+    assert.strictEqual(runOver(garbled), 'root-cause', 'a Write with no readable result is not taken as created');
+});
 test('root cause: a failure needs the runner\'s verdict, Nx\'s verdict counts, and a background suite read later opens the streak (audit 2026-10-10 C16 / C02)', () => {
     const root = project();
     assert.strictEqual(logged(root, 'PostToolUseFailure', 'Bash', 'npm test', { error: 'Exit code 1\n==\n==\n==\n==' }), null, '6ed392a5: an exit 1 with no verdict is unknown');

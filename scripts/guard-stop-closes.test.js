@@ -175,3 +175,86 @@ test('C18: the done-close denial sends a commit or publish choice to the checkpo
   assert.match(r.stderr, /habits-commit-checkpoint's own ask, marked as its template marks it/);
   assert.doesNotMatch(r.stderr, /never the recommended/, 'the denial sets no mark of its own');
 });
+
+// Audit 2026-10-11 SD10 - the pinned 'Deferred by you:' contract (validate's close, T3): an item the user deferred through
+// an ask answered this turn sits on a line opening 'Deferred by you:' and is nothing owed (sessions 6288ad94 / 757a4ac0:
+// 'Acknowledge and defer' answered, the close listed the rotation as owed, the block forced a 142k restate).
+const asked = (id, answer) => [call(id, 'AskUserQuestion', { questions: [{ question: 'How do you want to handle the exposure?', options: [] }] }),
+  result(id, `Your questions have been answered: "How do you want to handle the exposure?"="${answer}". You can now continue with these answers in mind.`)];
+test('SD10: a Deferred by you line is nothing owed only after an ask answered this turn deferred it', () => {
+  const done = 'The validate run is finished and the AGENTS.md fix is applied.\n\n';
+  const line = 'Deferred by you: the credential cleanup - delete the two keys from the project settings when you choose.';
+  const turn = (answer) => [typed('/validate'), ...asked(`d${seq}`, answer), ...work(4)];
+  assert.strictEqual(over(turn('Acknowledge and defer (Recommended)'), done + line).status, 0, 'the contract: the deferred item is on its line');
+  assert.strictEqual(over(turn('Acknowledge and defer (Recommended)'), done + `- **${line.replace(':', ':**')}`).status, 0, 'a bulleted, bold spelling too');
+  assert.strictEqual(over(turn('Later'), done + line).status, 0, "'Later' defers");
+  const owed = over(turn('Acknowledge and defer (Recommended)'), done + 'Still owed from you: the credential cleanup, which you deferred.');
+  assert.strictEqual(owed.status, 2, 'the same item stated as owed is still a stall');
+  assert.match(owed.stderr, /opening 'Deferred by you:'/, 'and the denial names the route');
+  assert.strictEqual(over(turn('Rotate now (Recommended)'), done + line).status, 2, 'an answer that deferred nothing opens no line');
+  assert.strictEqual(over([...asked(`e${seq}`, 'Acknowledge and defer'), typed('and the rest?'), ...work(4)], done + line).status, 2, 'a deferral answered in an earlier turn is not this one');
+  assert.strictEqual(over(turn('Acknowledge and defer (Recommended)'), done + line + '\nNext step: push when you approve.').status, 2, 'a hand-back on another line still blocks');
+  assert.strictEqual(over([typed('go'), ...work(4)], done + line).status, 2, 'no ask at all: the line is judged as written');
+});
+
+// d9035363: an ask answered one call back settled ITS question, not the new action the close hands the user.
+test("SD10: an answer just given does not exempt a close handing the user a new run-and-report action", () => {
+  const turn = () => [typed('go'), ...asked(`p${seq}`, 'I will pull first'), ...work(1)];
+  const close1 = "The answer was 'I will pull first', and the clone is still at abc1234 (1.2.0). Run the pull, then tell me when it's done.\n\n- Once the head moves, I'll start both analyzer seats.";
+  assert.strictEqual(over(turn(), close1).status, 2, 'the measured close: the 2.1.8 guard blocked it and the ask took one click');
+  assert.strictEqual(over(turn(), 'Committed. Tell me when you want it pushed.').status, 0, 'a wait on the decision just made stays exempt');
+  assert.strictEqual(over(turn(), "Done - the answer is recorded and nothing else is owed.").status, 0, 'a plain acknowledgement stays exempt');
+});
+
+// 2ca8e8ee: 'Show me the merge order as sentences' - a read-only survey and a list opening on a user-owned state.
+test('SD10: an answer to a request for information from a read-only turn is no done-close stall', () => {
+  const answer = 'Tickets 1 and 2 are already merged, and ticket 3 is committed on `tasks/t3` waiting for its PR.\n\n1. Merge the ticket 3 PR.\n2. Apply ticket 4 on a new branch, commit it and merge it.';
+  const survey = (prompt, extra) => { const id = `g${seq}`; return [typed(prompt), call(id, 'Bash', { command: 'git branch --show-current; git log --oneline -4 | cat; git stash list 2>/dev/null' }), result(id, 'tasks/t3'), ...(extra || [])]; };
+  assert.strictEqual(over(survey('Show me order of stashed to merge as sentences not table'), answer).status, 0, 'the measured answer');
+  assert.strictEqual(over(survey('what is left to merge?'), answer).status, 0, 'a question prompt too');
+  assert.strictEqual(over(survey('merge them in order'), answer).status, 2, 'an instruction is no request for information');
+  const id = `x${seq}`;
+  assert.strictEqual(over(survey('Show me the order', [call(id, 'Edit', { file_path: 'a.cs', old_string: 'a', new_string: 'b' }), result(id, 'ok')]), answer).status, 2, 'a turn that edited a file');
+  for (const command of ['git stash pop', 'git commit -qm wip', 'git branch t4', 'git status > state.txt', 'git log $(cat ref)', 'npm install', 'sed -i s/a/b/ f.txt', 'find . -name x -delete']) {
+    const k = `y${seq}`;
+    assert.strictEqual(over(survey('Show me the order', [call(k, 'Bash', { command }), result(k, 'ok')]), answer).status, 2, `a changing call: ${command}`);
+  }
+  assert.strictEqual(over(survey('Show me the order'), answer + "\n\nI'll start on ticket 4 next.").status, 2, 'the model\'s own next move');
+  assert.strictEqual(over(survey('Show me the order'), answer + '\n\nPush when you approve.').status, 2, 'an approval hand-back');
+  assert.strictEqual(over(survey('what is left?'), 'Ticket 3 is committed. The next step is the ticket 4 branch.').status, 2, 'a pending step, not a reported state');
+});
+
+// 2ca8e8ee: 'wait until the earlier ticket is merged' rested on a day-old read and one `git status --short`.
+test('SD10: a merge, PR or remote ask is backed only by a remote-aware read', () => {
+  const ask = (rows, question) => {
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: `a${++seq}`, hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
+      transcript_path: transcript(rows), tool_input: { questions: [{ question, options: [{ label: 'Wait (Recommended)', description: 'x' }, { label: 'Go now', description: 'y' }] }] } }), encoding: 'utf8', env: logEnv() });
+    return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext || '' : '';
+  };
+  const ran = (command) => { const id = `r${seq}`; return [typed('go'), call(id, 'Bash', { command }), result(id, 'ok')]; };
+  const merged = 'The check needs the new services. Recommended: wait until ticket 3 is merged and install that build.';
+  assert.match(ask(ran('git status --short'), merged), /lives past the local clone/, 'the measured ask: git status cannot see a merge');
+  for (const command of ['git fetch -q && git log origin/develop --oneline -5', 'git branch -r --merged origin/develop', 'gh pr view 42'])
+    assert.doesNotMatch(ask(ran(command), merged), /named repository, remote or job state/, `a remote-aware read: ${command}`);
+  assert.doesNotMatch(ask(ran('git status --short'), 'Commit the staged files now?'), /named repository/, 'a local ask keeps the local read');
+  assert.match(ask(ran('ls'), 'Commit the staged files now?'), /no `git status`/, '... and its own note without one');
+});
+
+// 31da645f: after its own prose-ask block the continuation ran an ask, a Skill, an Edit and a check, then closed on a new
+// prose question that no hook judged. A tool call after the block reopens the cycle; a bare rewrite stays held.
+test('SD10: a continuation that made a tool call after this hook\'s block is judged again', () => {
+  const env = logEnv();
+  const session = `w${++seq}`;
+  const tp = transcript([typed('go'), say('c1', 'The audit has 4 rows. Do you want me to draft fixes for them?')]);
+  const stop = (text, active) => spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ session_id: session, hook_event_name: 'Stop', stop_hook_active: active,
+    transcript_path: tp, last_assistant_message: text }), encoding: 'utf8', env });
+  const now = (row) => fs.appendFileSync(tp, JSON.stringify({ ...row, timestamp: new Date().toISOString() }) + '\n');
+  const ask1 = 'The audit has 4 rows. Do you want me to draft fixes for them?';
+  const ask2 = 'Fixed row 1. Do you want me to draft fixes for the other 3 rows?';
+  assert.strictEqual(stop(ask1, false).status, 2, 'the first prose ask blocks');
+  assert.strictEqual(stop(ask1, true).status, 0, 'a rewrite with no call between stays held - never a loop');
+  now(call('e1', 'Edit', { file_path: 'a.md', old_string: 'a', new_string: 'b' }));
+  now(result('e1', 'ok'));
+  assert.strictEqual(stop(ask2, true).status, 2, 'the measured miss: new work, a new prose question, judged');
+  assert.strictEqual(stop(ask2, true).status, 0, 'and it holds once more, until the next call');
+});
