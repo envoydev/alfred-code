@@ -316,3 +316,35 @@ test('d9035363#7: docs.js seed-ids, adr new and promote count as doc writes - on
     }, '0 ids added and an all-conflict promote write nothing');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// d56562c7#2: the vintage graded a loaded body 'same' though three clauses had changed since - the headings were equal
+// and the -50 char net delta sat inside the 64-char tolerance.
+test('d56562c7#2: offsetting edits read DIFFERS by paragraph, and an expanded placeholder still reads same', () => {
+  const dir = tmp();
+  try {
+    const claude = path.join(dir, 'install', '.claude');
+    const skill = (name, body) => {
+      fs.mkdirSync(path.join(claude, 'skills', name), { recursive: true });
+      fs.writeFileSync(path.join(claude, 'skills', name, 'SKILL.md'), `---\nname: ${name}\ndescription: "fixture"\n---\n\n${body}`);
+    };
+    const now = '# Root cause\n\nFind the cause before the fix. Read the failure whole.\n\n## Steps\n\n1. Reproduce it.\n\n7. Ask ONE question with the redesign recommended.\n\nScope: read-only until the cause is named.\n';
+    const then = '# Root cause\n\nFind the cause before the fix. Read the failure whole. Never guess at a fix first.\n\n## Steps\n\n1. Reproduce it.\n\n7. Ask a question.\n\nScope: the diagnosis stays read-only.\n';
+    skill('habit-rc', now);
+    skill('tool-run', '# Tool\n\nRun `node "${CLAUDE_SKILL_DIR}/scripts/total.js"` over the log.\n');
+    const meta = (ts, id, dirName, body) => ({ type: 'user', timestamp: ts, cwd: WIN_CWD, isMeta: true, sourceToolUseID: id, message: { content: [{ type: 'text', text: `Base directory for this skill: ${dirName}\n\n${body}` }] } });
+    const rows = [
+      human(T(0), 'go'),
+      asst('m1', T(1), [tool('k1', 'Skill', { skill: 'habit-rc' })]),
+      res(T(2), 'k1', 'Launching skill: habit-rc'),
+      meta(T(2), 'k1', 'C:\\work\\app\\.claude\\skills\\habit-rc', then),
+      asst('m2', T(3), [tool('k2', 'Skill', { skill: 'tool-run' })]),
+      res(T(4), 'k2', 'Launching skill: tool-run'),
+      meta(T(4), 'k2', 'C:\\work\\app\\.claude\\skills\\tool-run', '# Tool\n\nRun `node "C:\\Users\\dev\\.claude\\plugins\\cache\\m\\p\\9.9.9\\skills\\tool-run/scripts/total.js"` over the log.\n'),
+    ];
+    const vin = run([write(dir, rows), '--inventory', claude]).inventory.vintage;
+    const row = (n) => vin.rows.find((r) => r.name === n) || {};
+    assert.ok(Math.abs(row('habit-rc').currentChars - row('habit-rc').loadedChars) < 64, 'the net delta sits inside the old tolerance');
+    assert.match(row('habit-rc').verdict, /^DIFFERS - same sections, 3 of 6 paragraph\(s\) changed \([+-]\d+ chars\) in the current source$/);
+    assert.strictEqual(row('tool-run').verdict, 'same', 'a placeholder the harness expanded to a Windows path is no edit');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

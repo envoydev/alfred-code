@@ -53,6 +53,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const readline = require('readline');
+const { createHash } = require('crypto');
 const { loadManifest } = require('./install/manifest.js');
 const { parseJson } = require('./install/json-file.js');
 
@@ -853,6 +854,23 @@ const skillBodyOf = (text) => String(text || '')
 const loadedBodyOf = (text) => skillBodyOf(String(text || '').replace(/\n\nARGUMENTS: [\s\S]*$/, ''));
 const headingFingerprint = (text) => String(text || '').split('\n')
   .filter((l) => /^#{1,6}\s/.test(l)).map((l) => l.trim().replace(/\s+/g, ' ')).join(' | ');
+// One short hash per PARAGRAPH, with what the harness expands read as one token on both sides: a `${VAR}` placeholder
+// and any absolute path (the expansion of one) become `<P>`, so only an edit moves a hash. The heading list and the
+// char count missed offsetting edits - a body that lost a sentence, gained a clause and had a line rewritten, 50 chars
+// net, read 'same' (audit 2026-10-11, session d56562c7).
+const EXPANDED_RE = /\$\{[A-Za-z_][A-Za-z0-9_]*\}[^\s`'"()<>\]]*|(?<![\w.~-])(?:[A-Za-z]:)?[\\/][^\s`'"()<>\]]*/g;
+const paraFingerprint = (text) => String(text || '').replace(/\r\n?/g, '\n').split(/\n[ \t]*\n/)
+  .map((p) => p.replace(EXPANDED_RE, '<P>').replace(/\s+/g, ' ').trim()).filter(Boolean)
+  .map((p) => createHash('sha1').update(p).digest('hex').slice(0, 12));
+// Paragraphs one side has and the other lacks, counted as a multiset.
+function paraDelta(a, b) {
+  const left = new Map();
+  for (const h of a || []) left.set(h, (left.get(h) || 0) + 1);
+  let onlyB = 0;
+  for (const h of b || []) { const n = left.get(h) || 0; if (n) left.set(h, n - 1); else onlyB += 1; }
+  const onlyA = [...left.values()].reduce((n, k) => n + k, 0);
+  return { onlyA, onlyB };
+}
 
 function dirEntries(dir) {
   try { return fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
@@ -1302,12 +1320,16 @@ function buildVintage(inv, main) {
     const entry = sourceOf(name);
     const file = entry && entry.file ? entry.file : null;
     const body = file ? skillBodyOf(readHead(file)) : '';
-    const cur = body ? { chars: body.length, headings: headingFingerprint(body) } : null;
+    const cur = body ? { chars: body.length, headings: headingFingerprint(body), paras: paraFingerprint(body) } : null;
     const delta = cur ? cur.chars - l.chars : null;
+    // Paragraphs decide when both sides carry them; a body recorded without them falls back to the char tolerance.
+    const pd = cur && l.paras ? paraDelta(l.paras, cur.paras) : null;
+    const changed = pd ? Math.max(pd.onlyA, pd.onlyB) : 0;
     const verdict = !cur ? 'current source unreachable - the loaded body is the only copy'
       : cur.headings !== l.headings ? 'DIFFERS - the current source has different sections'
-        : Math.abs(delta) > Math.max(64, Math.round(0.01 * l.chars)) ? `DIFFERS - same sections, ${delta > 0 ? '+' : ''}${delta} chars in the current source`
-          : 'same';
+        : pd ? (changed ? `DIFFERS - same sections, ${changed} of ${l.paras.length} paragraph(s) changed (${delta > 0 ? '+' : ''}${delta} chars) in the current source` : 'same')
+          : Math.abs(delta) > Math.max(64, Math.round(0.01 * l.chars)) ? `DIFFERS - same sections, ${delta > 0 ? '+' : ''}${delta} chars in the current source`
+            : 'same';
     rows.push({ name, how: l.via === 'slash' || l.via === 'command' ? 'slash command' : 'Skill call', loadedChars: l.chars, currentChars: cur ? cur.chars : null, file, verdict, ts: l.ts });
   }
   // A run whose body never reached the transcript is NOT a match - say so rather than comparing
@@ -2061,7 +2083,7 @@ async function analyzeTranscript(file, window) {
             if (!sk || !sk.name) continue;
             const body = loadedBodyOf(sk.content);
             if (!body) continue;
-            s.loadedSkillBodies[sk.name] = { chars: body.length, headings: headingFingerprint(body), path: sk.path || null, ts: o.timestamp || null, via: (s.loadedSkillBodies[sk.name] || {}).via };
+            s.loadedSkillBodies[sk.name] = { chars: body.length, headings: headingFingerprint(body), paras: paraFingerprint(body), path: sk.path || null, ts: o.timestamp || null, via: (s.loadedSkillBodies[sk.name] || {}).via };
           }
         }
         // A hook's run is on record when the row names its command: `hook_success`, the error and
@@ -2235,7 +2257,7 @@ async function analyzeTranscript(file, window) {
     if (callSkill) {
       const body = loadedBodyOf(metaText);
       const dir = (/^Base directory for this skill:\s*(.*)/.exec(metaText) || [])[1] || null;
-      if (body) s.loadedSkillBodies[callSkill] = { chars: body.length, headings: headingFingerprint(body), path: dir && dir.trim(), ts: o.timestamp || null, via: 'skill' };
+      if (body) s.loadedSkillBodies[callSkill] = { chars: body.length, headings: headingFingerprint(body), paras: paraFingerprint(body), path: dir && dir.trim(), ts: o.timestamp || null, via: 'skill' };
       lastSkillResult = null;
     } else if (slashPending && o.type === 'user' && o.message) {
       const c = o.message.content;
@@ -2244,7 +2266,7 @@ async function analyzeTranscript(file, window) {
         const body = loadedBodyOf(txt);
         const dir = (/^Base directory for this skill:\s*(.*)/.exec(txt) || [])[1] || null;
         if (body) {
-          s.loadedSkillBodies[slashPending.name] = { chars: body.length, headings: headingFingerprint(body), path: dir && dir.trim(), ts: o.timestamp || null, via: 'slash' };
+          s.loadedSkillBodies[slashPending.name] = { chars: body.length, headings: headingFingerprint(body), paras: paraFingerprint(body), path: dir && dir.trim(), ts: o.timestamp || null, via: 'slash' };
           s.slashSkillRuns[slashPending.name] = true;
         }
         slashPending = null;
@@ -2252,7 +2274,7 @@ async function analyzeTranscript(file, window) {
         // A COMMAND's expansion carries no `Base directory` line: `/alfred-code:update` loaded 63,950 chars as one isMeta
         // row and the vintage said no copy existed (audit 2026-10-10, 229e2715). The harness's own rows open with a tag.
         const body = loadedBodyOf(txt);
-        if (body) s.loadedSkillBodies[slashPending.name] = { chars: body.length, headings: headingFingerprint(body), path: null, ts: o.timestamp || null, via: 'command' };
+        if (body) s.loadedSkillBodies[slashPending.name] = { chars: body.length, headings: headingFingerprint(body), paras: paraFingerprint(body), path: null, ts: o.timestamp || null, via: 'command' };
         slashPending = null;
       } else if (!o.isMeta && !raw.includes('<command-name>')) slashPending = null;
     } else if (o.type === 'assistant') slashPending = null;
