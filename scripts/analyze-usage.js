@@ -179,6 +179,26 @@ function correctionMarker(text) {
   return m ? m[0].trim().slice(0, 40) : null;
 }
 // --- end correction-turn test
+// The answers an AskUserQuestion result carries that match none of the offered labels - typed into the Other field.
+// The structured toolUseResult first, else the text form `"Q"="A"`; a multi-select answer is its labels joined by ', '.
+function typedAskAnswers(questions, result, text) {
+  let answers = result && typeof result === 'object' && result.answers && typeof result.answers === 'object' ? result.answers : null;
+  if (!answers) {
+    answers = {};
+    for (const m of String(text || '').replace(/\\"/g, '"').matchAll(/"((?:[^"\\]|\\.)*)"="((?:[^"\\]|\\.)*)"/g)) answers[m[1]] = m[2];
+  }
+  const out = [];
+  for (const [q, a] of Object.entries(answers)) {
+    const answer = String(a || '').trim();
+    if (!answer) continue;
+    const spec = (questions || []).find((x) => x && String(x.question || '').trim() === q.trim());
+    const labels = new Set(((spec && spec.options) || []).map((x) => String((x && x.label) || '').trim()));
+    const parts = spec && spec.multiSelect ? answer.split(/,\s*/) : [answer];
+    if (labels.size && parts.every((x) => labels.has(x.trim()))) continue;
+    out.push(answer);
+  }
+  return out;
+}
 // A correction counts as saved when a memory store follows within this many replies - the plugin
 // route's name or a registration's (history plan, Gate G2).
 const SAVE_WINDOW = 3;
@@ -2435,6 +2455,7 @@ async function analyzeTranscript(file, window) {
           if (c.name.startsWith('mcp__')) return c.name.split('__').slice(2).join('__');
           return '';
         })();
+        if (c.name === 'AskUserQuestion' && c.input && Array.isArray(c.input.questions)) info.questions = c.input.questions;
         toolById.set(c.id, info);
         lastToolName = c.name;
       }
@@ -2532,6 +2553,12 @@ async function analyzeTranscript(file, window) {
         pending.push({ name: info ? info.name : '?', chars, images: imgs });
         if (imgs && info && s.toolCalls[info.name]) s.toolCalls[info.name].images = (s.toolCalls[info.name].images || 0) + imgs;
         if (!info) continue;
+        // A correction TYPED into an ask (its Other field) waits on a save like a typed prompt (audit 2026-10-10 C15,
+        // 4f1c2ebb): guard-answer-length logs it as a `correction` row `via: ask-answer`, so the row reading the
+        // transcript reads it too - the same marker test, the same length cap, an offered label never counted.
+        if (info.name === 'AskUserQuestion' && !c.is_error)
+          for (const a of typedAskAnswers(info.questions, o.toolUseResult, text))
+            if (a.length <= STREAK_SHORT && correctionMarker(a)) pendingSaves.push({ ts: o.timestamp || null, left: SAVE_WINDOW });
         // The biggest individual results, joined to what the call asked for. Kept sorted and
         // capped, so this costs nothing on a long session.
         s.topResults.push({ name: info.name, label: info.label || '', chars, ts: o.timestamp || null, error: !!c.is_error && !info.rmVerifyTail });
@@ -3044,6 +3071,9 @@ function readBlockLedger(target, sessionId, transcript) {
       if (o.ts) out.rowTs.push({ ts: Date.parse(o.ts), hook: o.hook });
       const e = out.byHook[o.hook] || (out.byHook[o.hook] = { blocks: 0, reasons: new Map(), events: new Set(), tools: new Set() });
       e.blocks += 1;
+      // Who was blocked (audit 2026-10-10 C07, 0498718d): the block row carries `agent` - a seat's id, or null for the
+      // main session. A row from before the field has none, and is counted apart, never guessed.
+      if (Object.hasOwn(o, 'agent')) { if (o.agent) { out.seatRows = (out.seatRows || 0) + 1; e.seat = (e.seat || 0) + 1; } else out.mainRows = (out.mainRows || 0) + 1; }
       if (o.event) e.events.add(o.event);
       if (o.tool) e.tools.add(o.tool);   // rows from before the column exist without it - the cell stays empty
       // Keyed by REASON, which carries the file the denial named - two blocks on two different
@@ -3140,7 +3170,7 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
 // streak: with that method in context (loaded earlier in the file, or preloaded by the seat) and a call
 // description that expects red ('expecting the new test red', 'expecting it to fail'), it is counted as
 // intended red, outside the streaks (audit 2026-10-10, session ca65b406: 2 such runs read as streaks).
-const newRootCause = () => ({ streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0, intended: 0 });
+const newRootCause = () => ({ streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0, intended: 0, testFirstRed: 0 });
 const ROOT_CAUSE_SKILL_RE = /(?:^|:)(?:alfred-)?habits-root-cause$/;
 const TEST_FIRST_SKILL_RE = /(?:^|:)(?:alfred-)?habits-test-first$/;
 const EXPECTS_RED_RE = /\bexpect(?:s|ed|ing)?\b(?!\s+(?:no|zero|0|none)\b)[^.;\n]*?\b(?:red|fail|fails|failing|failure)\b/i;
@@ -3257,9 +3287,16 @@ function resolveRootCause(details, files) {
   }
   return t;
 }
+// The main-session / seat split of a block total; rows written before the `agent` field are named as such.
+const blockSplit = (l) => {
+  const main = l.mainRows || 0, seat = l.seatRows || 0, old = l.rows - main - seat;
+  if (!main && !seat) return '';
+  return ` (${main} main session, ${seat} seat${old ? `, ${old} from rows with no agent field` : ''})`;
+};
 const rootCauseLine = (t) => `ROOT CAUSE (probe): ${t.streaks} red streak(s) - ${t.beforeFix} loaded before the fix, ${t.inContext} already in context, `
   + `${t.preloaded} preloaded by the seat, ${t.afterFix} loaded after the fix, ${t.missed} MISSED, ${t.noFix} with no fix after, ${t.unmatched} unmatched`
-  + (t.intended ? `; ${t.intended} intended red (expected red after habits-test-first, not counted)` : '');
+  + (t.intended ? `; ${t.intended} intended red (expected red after habits-test-first, not counted)` : '')
+  + (t.testFirstRed ? `; ${t.testFirstRed} test-first red run(s) logged apart (test-first-red rows, not streaks)` : '');
 // The correction probe (guard-answer-length.js, log-only unless ALFRED_CODE_CORRECTION_NUDGE=inject):
 // one row per correction turn. Whether it was then SAVED is the scorecard's corrections-saved row,
 // read from the transcript with the same test.
@@ -3293,8 +3330,12 @@ function finishProbes(ledger, sessionFile) {
     for (const d of ledger.doneGateRows) tallyDoneGate(ledger.doneGate, d, loadedBefore);
     delete ledger.doneGateRows;
   }
-  if (ledger && ledger.rootCauseRows) {
-    ledger.rootCause = resolveRootCause(ledger.rootCauseRows, sessionTranscriptFiles(sessionFile));
+  // A red-first run the test-first method meant is logged apart as `test-first-red` (guard-stop-contract.js) and never
+  // reaches the streak rows; its count rides the ROOT CAUSE line, so a low MISSED is read beside it (audit 2026-10-10 C16).
+  const testFirstRed = ledger && ledger.probeKinds ? ledger.probeKinds['test-first-red'] || 0 : 0;
+  if (ledger && (ledger.rootCauseRows || testFirstRed)) {
+    ledger.rootCause = resolveRootCause(ledger.rootCauseRows || [], sessionTranscriptFiles(sessionFile));
+    ledger.rootCause.testFirstRed = testFirstRed;
     delete ledger.rootCauseRows;
   }
   return ledger;
@@ -3763,7 +3804,7 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
       for (const [r, n] of reasons.slice(1, 5)) console.log(`  ${pad('', 32)} ${rpad('', 6)} ${rpad('', 22)} ${r}${n > 1 ? ` x${n}` : ''}`);
       if (reasons.length > 5) console.log(`  ${pad('', 32)} ${rpad('', 6)} ${rpad('', 22)} … +${reasons.length - 5} more distinct reason(s)`);
     }
-    console.log(`  ${blockLedger.rows} block(s) total - review each distinct reason on its own; two reasons naming two files are two causes.`);
+    console.log(`  ${blockLedger.rows} block(s) total${blockSplit(blockLedger)} - review each distinct reason on its own; two reasons naming two files are two causes.`);
   }
   if (blockLedger && blockLedger.missing) console.log(`\nHOOK BLOCKS: ${blockLedger.missing} (looked for <sid>.jsonl and hook-blocks-<sid>.jsonl) - no measurement, never a zero`);
   if (blockLedger && blockLedger.doneGate) console.log('\n' + doneGateLine(blockLedger.doneGate));
@@ -4086,7 +4127,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
         out.push(`| \`${hook}\` | ${n} | ${where} | ${String(r).replace(/\|/g, '\\|')} |`);
       }
     }
-    out.push('', `${blockLedger.rows} block(s) total.`, '');
+    out.push('', `${blockLedger.rows} block(s) total${blockSplit(blockLedger)}.`, '');
   } else if (blockLedger && blockLedger.missing) {
     out.push(`_${blockLedger.missing} (looked for \`<sid>.jsonl\` and \`hook-blocks-<sid>.jsonl\`) - no measurement, never a zero. Pass the ledger file itself._`, '');
   } else {
@@ -4411,7 +4452,7 @@ async function runAnalysis() {
     const unsaved = grandCorr.total - grandCorr.saved;
     console.log(`\ncorrections saved to memory over ${files.length} session${files.length === 1 ? '' : 's'}: ${grandCorr.total ? `${grandCorr.saved} of ${grandCorr.total}; ${unsaved} unsaved (${Math.round((100 * unsaved) / grandCorr.total)}%)` : 'no correction turn'}`);
     if (probeSum && probeSum.doneGate.claims) console.log('\n' + doneGateLine(probeSum.doneGate));
-    if (probeSum && (probeSum.rootCause.streaks || probeSum.rootCause.intended)) console.log((probeSum.doneGate.claims ? '' : '\n') + rootCauseLine(probeSum.rootCause));
+    if (probeSum && (probeSum.rootCause.streaks || probeSum.rootCause.intended || probeSum.rootCause.testFirstRed)) console.log((probeSum.doneGate.claims ? '' : '\n') + rootCauseLine(probeSum.rootCause));
     if (probeSum && probeSum.correction.turns) console.log((probeSum.doneGate.claims || probeSum.rootCause.streaks ? '' : '\n') + correctionLine(probeSum.correction));
     if (probeSum && probeSum.rationalization.closes) console.log((probeSum.doneGate.claims || probeSum.rootCause.streaks || probeSum.correction.turns ? '' : '\n') + rationalizationLine(probeSum.rationalization));
     printInventoryBlock(invUse);

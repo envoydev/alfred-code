@@ -3528,7 +3528,7 @@
       ]
     },
     "hook-block-telemetry": {
-      "_note": "One JSONL row per BLOCK, appended by every guard hook to <docs-path>/hook-blocks/<session>.jsonl. A block costs its denial text plus the retried turn, so a FALSE block is 10-100x the gate's own cost (measured 2026-09-04: a hook runs in 22-25ms, almost all node spawn) - and the transcript records only WHICH TOOL was denied, never which hook denied it. scripts/analyze-usage.js --hook-blocks reads the ledger. The block is identical in every guard hook that blocks and must stay that way: it wraps process.exit and stderr.write, and it is best-effort in both directions - telemetry never changes a verdict and never throws.",
+      "_note": "One JSONL row per BLOCK, appended by every guard hook to <docs-path>/hook-blocks/<session>.jsonl. A block costs its denial text plus the retried turn, so a FALSE block is 10-100x the gate's own cost (measured 2026-09-04: a hook runs in 22-25ms, almost all node spawn) - and the transcript records only WHICH TOOL was denied, never which hook denied it. scripts/analyze-usage.js --hook-blocks reads the ledger. Each row carries `agent` (a seat's id, null for the main session) and `tool_use_id`, so HOOK BLOCKS splits main from seat and joins a row to its call. The block is identical in every guard hook that blocks and must stay that way: it wraps process.exit and stderr.write, and it is best-effort in both directions - telemetry never changes a verdict and never throws.",
       "owner": {
         "file": "stack/hooks/guard-cross-project-write.js",
         "marker": "block telemetry (shared by every guard hook; keep the copies identical)"

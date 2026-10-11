@@ -588,9 +588,54 @@ test('C16: a red run expected red inside a test-first window is intended red, no
     fs.mkdirSync(blocks);
     fs.writeFileSync(path.join(blocks, `${sid}.jsonl`), [probe('r1'), probe('r2'), probe('x1', { agent: 'a1' }), probe('y1', { agent: 'a2', agent_type: 'alfred-code:aspnet-implementer' })].join(''));
     const { hookBlocks } = run([file, '--hook-blocks', blocks]);
-    assert.deepStrictEqual(hookBlocks.rootCause, { streaks: 2, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 2, noFix: 0, unmatched: 0, intended: 2 });
+    assert.deepStrictEqual(hookBlocks.rootCause, { streaks: 2, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 2, noFix: 0, unmatched: 0, intended: 2, testFirstRed: 0 });
     assert.match(text([file, '--hook-blocks', blocks]), /ROOT CAUSE \(probe\): 2 red streak\(s\) - .*, 2 MISSED, .*; 2 intended red \(expected red after habits-test-first, not counted\)/);
     assert.match(execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--report-md'], { encoding: 'utf8' }), /\| root cause \| 2 \| 0 \| 0 \| 0 \| 0 \| 2 \| 0 \| 0 \| 2 \|/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C16 (T1 cross-track, f6c591fa): a red-first run the hook logs apart as `test-first-red` is counted beside ROOT CAUSE,
+// so a low MISSED is read with the method's own red runs in view - even in a session with no streak row at all.
+test('C16: the test-first red runs the hook logged apart print beside ROOT CAUSE', () => {
+  const dir = tmp();
+  try {
+    const sid = '44444444-5555-4666-8777-888888888888';
+    const file = write(dir, [asst('m1', T(0), [sh('r1', 'npm test', { description: 'Run the new test, expecting red' })]), res(T(1), 'r1', 'Exit code 1\nFailed! - Failed: 1', true)], `${sid}.jsonl`);
+    const tfr = (id) => line({ ts: T(1), hook: 'guard-stop-contract.js', event: 'PostToolUse', tool: 'Bash', mode: 'probe', kind: 'test-first-red',
+      reason: 'probe: a test-first red test run - the method working, logged apart from root-cause', detail: { tool_use_id: id } });
+    const blocks = path.join(dir, 'hook-blocks');
+    fs.mkdirSync(blocks);
+    fs.writeFileSync(path.join(blocks, `${sid}.jsonl`), [tfr('r1'), tfr('r2')].join(''));
+    const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+    assert.strictEqual(hookBlocks.rootCause.testFirstRed, 2);
+    assert.strictEqual(hookBlocks.rootCause.streaks, 0);
+    assert.match(text([file, '--hook-blocks', blocks]), /ROOT CAUSE \(probe\): 0 red streak\(s\) - .*; 2 test-first red run\(s\) logged apart \(test-first-red rows, not streaks\)/);
+    // over a run of sessions the sum carries it too
+    assert.match(text([dir, '--hook-blocks', blocks]), /2 test-first red run\(s\) logged apart/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C07 (T1 cross-track, 0498718d): every guard's block row carries `agent` and `tool_use_id`, and the HOOK BLOCKS total
+// splits the main session from the seats - a seat's blocks read as the main session's before. Driven through a real
+// guard, so the shared telemetry copy and the analyzer are held to each other.
+test('C07: a block row names the agent and the call, and HOOK BLOCKS splits main from seat', () => {
+  const dir = tmp();
+  try {
+    const sid = '55555555-6666-4777-8888-999999999999';
+    const proj = path.join(dir, 'proj');
+    fs.mkdirSync(proj);
+    const rm = (extra) => require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, '..', 'stack', 'hooks', 'guard-catastrophic-rm.js')], {
+      input: JSON.stringify({ session_id: sid, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'rm -rf /' }, cwd: proj, ...extra }),
+      encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: proj } }).status;
+    assert.strictEqual(rm({ tool_use_id: 'toolu_main' }), 2);
+    assert.strictEqual(rm({ tool_use_id: 'toolu_seat', agent_id: 'a1b2', agent_type: 'Explore' }), 2);
+    const blocks = path.join(proj, '.alfred', 'docs', 'hook-blocks');
+    const rows = fs.readFileSync(path.join(blocks, `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepStrictEqual(rows.map((r) => [r.agent, r.tool_use_id]), [[null, 'toolu_main'], ['a1b2', 'toolu_seat']]);
+    // a row from before the field is counted apart, never guessed
+    fs.appendFileSync(path.join(blocks, `${sid}.jsonl`), JSON.stringify({ ts: T(9), hook: 'guard-catastrophic-rm.js', event: 'PreToolUse', tool: 'Bash', reason: 'Blocked: old row' }) + '\n');
+    const file = write(dir, [asst('m1', T(0), [sh('toolu_main', 'rm -rf /')]), res(T(1), 'toolu_main', 'Blocked', true)], `${sid}.jsonl`);
+    assert.match(text([file, '--hook-blocks', blocks]), /3 block\(s\) total \(1 main session, 1 seat, 1 from rows with no agent field\)/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

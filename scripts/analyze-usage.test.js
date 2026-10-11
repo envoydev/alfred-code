@@ -816,7 +816,7 @@ test('hook-blocks: a root-cause probe is resolved against the transcript after t
   agent('a5', [tool('y1', 'Bash', { command: 'npm test' }), result('y1', red), tool('y2', 'Write', { file_path: '/tmp/probe.js', content: '1' }), result('y2')]);
   fs.appendFileSync(path.join(blocks, 'session.jsonl'), redRow('y1', { agent: 'a5' }));
   const { hookBlocks } = run([file, '--hook-blocks', blocks]);
-  assert.deepStrictEqual(hookBlocks.rootCause, { streaks: 8, beforeFix: 1, inContext: 1, preloaded: 1, afterFix: 1, missed: 1, noFix: 2, unmatched: 1, intended: 0 });
+  assert.deepStrictEqual(hookBlocks.rootCause, { streaks: 8, beforeFix: 1, inContext: 1, preloaded: 1, afterFix: 1, missed: 1, noFix: 2, unmatched: 1, intended: 0, testFirstRed: 0 });
   const text = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
   assert.match(text, /ROOT CAUSE \(probe\): 8 red streak\(s\) - 1 loaded before the fix, 1 already in context, 1 preloaded by the seat, 1 loaded after the fix, 1 MISSED, 2 with no fix after, 1 unmatched/);
 });
@@ -905,7 +905,7 @@ test('hook-blocks: directory mode sums the probe rows of each session it reads, 
   fs.writeFileSync(path.join(blocks, 's-other.jsonl'), doneRow({}));
   const out = run([dir, '--hook-blocks', blocks]);
   assert.deepStrictEqual(out.probes.doneGate, { claims: 3, ran: 1, unrun: 2, byRule: 0, noTests: 1, skillLoaded: 0, inContext: 0, missed: 1 });
-  assert.deepStrictEqual(out.probes.rootCause, { streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0, intended: 0 });
+  assert.deepStrictEqual(out.probes.rootCause, { streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0, intended: 0, testFirstRed: 0 });
   const text = execFileSync('node', [SCRIPT, dir, '--hook-blocks', blocks], { encoding: 'utf8' });
   assert.match(text, /DONE GATE \(probe\): 3 done claim\(s\)/);
   assert.ok(!('probes' in run([dir])), 'no --hook-blocks, no probe tally');
@@ -1219,6 +1219,27 @@ test('scorecard: a correction is saved when a memory store follows within three 
   assert.match(rtxt, /^\s+a\s.*\s2\/3\s*$/m);
   assert.match(rtxt, /^\s+TOTAL\s.*\s3\/5\s*$/m);
   assert.match(rtxt, /^corrections saved to memory over 2 sessions: 3 of 5; 2 unsaved \(40%\)$/m);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('scorecard: a correction typed into an ask waits on a save like a typed prompt; an offered label never does (audit 2026-10-10 C15, 4f1c2ebb)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+  const endTurn = (id, ts, text) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
+  const store = (id, ts) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `t${id}`, name: 'mcp__plugin_alfred-memory_alfred-memory__memory_store', input: { content: 'a lesson' } }]) + toolRes(ts, `t${id}`, 'stored');
+  const questions = [{ question: 'Ship it?', header: 'Ship', multiSelect: false, options: [{ label: 'Ship (Recommended)', description: 'a' }, { label: 'Hold', description: 'b' }] }];
+  const ask = (id, ts, answer, structured) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `q${id}`, name: 'AskUserQuestion', input: { questions } }])
+    + line({ type: 'user', timestamp: ts, message: { content: [{ type: 'tool_result', tool_use_id: `q${id}`, content: `User has answered your questions: "Ship it?"="${answer}". You can now continue.` }] },
+      ...(structured ? { toolUseResult: { questions, answers: { 'Ship it?': answer } } } : {}) });
+  // a: typed correction (text form), saved next reply; a typed correction (structured form), never saved; an offered label.
+  let a = scHuman(scT(0), 'go') + ask('a1', scT(1), 'why you bother me, just ship it') + store('a2', scT(2)) + endTurn('a3', scT(3), 'Saved.');
+  a += scHuman(scT(4), 'next') + ask('a4', scT(5), 'no, I said hold the release', true) + endTurn('a5', scT(6), 'Held.');
+  a += scHuman(scT(7), 'x') + endTurn('a6', scT(8), 'ok') + scHuman(scT(9), 'y') + endTurn('a7', scT(10), 'ok') + scHuman(scT(11), 'z') + endTurn('a8', scT(12), 'ok');
+  a += scHuman(scT(13), 'w') + ask('a9', scT(14), 'Hold') + endTurn('a10', scT(15), 'Holding.');
+  const fa = path.join(dir, 'a.jsonl');
+  fs.writeFileSync(fa, a);
+  const ea = run([fa]).main.efficiency;
+  assert.strictEqual(ea.correctionsSaved, 1, 'the text-form typed correction, saved in the next reply');
+  assert.deepStrictEqual(ea.correctionsUnsaved, [scT(5)], 'the structured-form typed correction, never saved; the offered label is no correction');
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

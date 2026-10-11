@@ -95,6 +95,10 @@ if (cursorOff) process.exit(0);
           hook: path.basename(__filename),
           event: payload.hook_event_name || payload.tool_name || '',
           tool: payload.tool_name || '',
+          // WHO was blocked and on which call: a seat's block is its own row (audit 2026-10-10 C07, 0498718d - seat
+          // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
+          agent: payload.agent_id || null,
+          tool_use_id: payload.tool_use_id || null,
           reason: last.split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose

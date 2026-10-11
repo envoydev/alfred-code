@@ -105,7 +105,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   run only for the tools its own manifest row names (its `GUARDS` table, held to the manifest by a test), the secret
   guard run first and its exit 2 answered at once; instrumentation stays its own `.*` row. Both still launch in shell form (below).
   Every guard appends one row per BLOCK to `<docs-path>/hook-blocks/<session>.jsonl`
-  (`analyze-usage.js --hook-blocks` tallies it) - the block RATE is what says a gate earns its keep.
+  (`analyze-usage.js --hook-blocks` tallies it, split main session / seat by the row's `agent`, joined to its call by
+  `tool_use_id`) - the block RATE is what says a gate earns its keep.
   THE STOP CHAIN (hooks audit 2026-10-08 S1): four hooks can block a `Stop` - the stop contract, answer length,
   docs-session and the turn build check - and `stop_hook_active` is true after ANY of them blocked ('true when Claude
   Code is already continuing as a result of a stop hook', code.claude.com/docs/en/hooks), so a hook that stood down on
