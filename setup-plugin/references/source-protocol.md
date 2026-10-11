@@ -16,7 +16,10 @@ Claude Code installs the core plugin by taking this repo into its own cache at
 shares the REPO ROOT as its `source`, that entry is the WHOLE repo - not just the `setup-plugin/`
 subdir it serves as the plugin. Measured on a real install: `stack/rules`,
 `stack/AGENTS.template.md`, the two hook engines, `stack/hooks/model-windows.json`,
-`meta/recommendations.json`, `scripts/selection-plugins.js` and `RELEASE-SOURCE` are all there. So a
+`meta/recommendations.json` and `scripts/selection-plugins.js` are all there - but NO `RELEASE-SOURCE`
+and no `.git`: only the release archive carries that file, so the snapshot's version is its own
+`setup-plugin/.claude-plugin/plugin.json` (the resolve line reads it) and its revision the `v<version>`
+tag (`stamp-compare.js` and the installer fall back to it). Never probe for `RELEASE-SOURCE` there. So a
 project with the stack enabled already holds the snapshot on disk, fetched once per release by the
 CLI itself. Take it: no probe, no archive, no marketplace clone - and it is by construction the exact
 revision the enabled plugins are running from, so the seed and the plugins can never be two different
@@ -57,15 +60,20 @@ Windows run's first call silently no-opped, no `RESOLVED`/`REUSING` line, until 
 platform, pre-set env var or not:
 
 ```bash
+command -v tr >/dev/null 2>&1 || PATH="/usr/bin:/bin:/mingw64/bin:$(/usr/bin/cygpath -u -p "$PATH" 2>/dev/null || printf '%s' "$PATH")"   # Git Bash handed a Windows-form PATH
+for T in git tr cut mktemp node; do command -v "$T" >/dev/null 2>&1 || { echo "MISSING $T on the Bash PATH - nothing resolved"; exit 1; }; done
 RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 TD="${TMPDIR:-/tmp}"; TD="${TD%/}"   # a sandboxed command writes only under $TMPDIR (and the project)
 MARK="$TD/alfred-code-run.$(printf '%s' "$RUN_ROOT" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' "$RUN_ROOT" | git hash-object --stdin | cut -c1-12).path"
-if [ -f "$MARK" ] && [ -d "$(cat "$MARK")/repo" ]; then
-  TMP=$(cat "$MARK"); echo "REUSING TMP=$TMP seed=${ALFRED_CODE_SEED:-node}"   # a valid marker from an earlier call
+OLD=$(cat "$MARK" 2>/dev/null)
+if [ -n "$OLD" ] && [ -d "$OLD/repo" ] && [ -f "$OLD/run-session" ] && [ "$(cat "$OLD/run-session")" = "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+  TMP=$OLD; STATE=REUSING   # this session's own marker; another session's, or one from before the session check, resolves fresh
 else
+STATE=RESOLVED
 REPO_URL=https://github.com/envoydev/alfred-code
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 TMP=$(mktemp -d "$TD/alfred-code.XXXXXX")   # the template names the dir: macOS mktemp -d alone ignores $TMPDIR
+[ -n "$TMP" ] && [ -d "$TMP" ] || { echo "MISSING a temp dir under $TD - nothing resolved"; exit 1; }
 WAS=""        # LATEST first: only `plugin update` lands a newer cache entry, and the newest entry IS the snapshot
 MKT=""        # the marketplace key the core is listed under
 if command -v claude >/dev/null 2>&1; then
@@ -86,9 +94,11 @@ else
   curl -fsSL "$REPO_URL/releases/latest/download/alfred-code.tar.gz" -o "$TMP/alfred-code.tar.gz"
   mkdir -p "$TMP/repo" && tar -xzf "$TMP/alfred-code.tar.gz" -C "$TMP/repo"
 fi
-VER=$(sed -n 's/^version: //p' "$TMP/repo/RELEASE-SOURCE" 2>/dev/null | head -1)
-printf '%s\n' "$TMP" > "$MARK"; echo "RESOLVED TMP=$TMP ${VER:-?} seed=${ALFRED_CODE_SEED:-node} running=${WAS:-?} key=${MKT:-?}"
+printf '%s\n' "${CLAUDE_CODE_SESSION_ID:-}" > "$TMP/run-session"; printf '%s\n' "$TMP" > "$MARK"
 fi
+VER=$(sed -n 's/^version: //p' "$TMP/repo/RELEASE-SOURCE" 2>/dev/null | head -1)   # the archive's; a plugin-cache entry carries none
+[ -n "$VER" ] || VER=$(node -e 'try{process.stdout.write(String(require(process.argv[1]).version||""))}catch{}' "$TMP/repo/setup-plugin/.claude-plugin/plugin.json")
+if [ "$STATE" = RESOLVED ]; then echo "RESOLVED TMP=$TMP ${VER:-?} seed=${ALFRED_CODE_SEED:-node} running=${WAS:-?} key=${MKT:-?}"; else echo "REUSING TMP=$TMP ${VER:-?} seed=${ALFRED_CODE_SEED:-node}"; fi
 ```
 
 Windows (PowerShell). **Invoke it as a FILE, never as a double-quoted `-Command` string.** The
@@ -157,6 +167,7 @@ if ($Src) {
   Expand-Archive -LiteralPath "$TMP/alfred-code.zip" -DestinationPath "$TMP/repo"
 }
 $Ver = ((Get-Content "$TMP/repo/RELEASE-SOURCE" -ErrorAction SilentlyContinue | Where-Object { $_ -match '^version: ' }) -replace '^version: ', '').Trim()
+if (-not $Ver) { $Ver = try { "$((Get-Content -Raw -LiteralPath "$TMP/repo/setup-plugin/.claude-plugin/plugin.json" | ConvertFrom-Json).version)" } catch { '' } }   # a plugin-cache entry carries no RELEASE-SOURCE
 $Show = { param($v) if ($v) { $v } else { '?' } }
 Write-Output "RESOLVED TMP=$TMP $(& $Show $Ver) seed=$Seed running=$(& $Show $Was) key=$(& $Show $Key)"
 ```
@@ -170,8 +181,16 @@ the revision the earlier steps read.
 
 **`$TMP` lives in a MARKER FILE KEYED BY THE PROJECT, and every run artifact is addressed through
 it.** Each Bash call is its own shell, so a `TMP=$(mktemp -d)` set in one call is gone by the next -
-the resolve-or-reuse block above already keys and tests this marker itself, first call or later, a
-stale marker (its `$TMP/repo` gone) falling straight back to a fresh resolve with no separate check.
+the resolve-or-reuse block above already keys and tests this marker itself, first call or later. It
+reuses only THIS session's marker: the resolve writes `$CLAUDE_CODE_SESSION_ID` (set in every tool
+shell) into `$TMP/run-session`, and a marker whose `$TMP/repo` is gone, whose session differs, or that
+names no session resolves fresh. A cleanup the user rejected leaves the marker behind, and a temp dir
+nothing clears (Windows `%TEMP%`) let the next day's update reuse a 2.1.6 snapshot with 2.1.8
+installed, its preflight reading 'no change' (audit 2026-10-11, session bca100bd).
+The block opens with two guards: a Windows-form PATH (`C:\...;C:\...` - Git Bash then finds no coreutils
+and no `node`) is converted in place, and a tool still missing stops the call on one `MISSING <tool>`
+line - before it ran on and printed `RESOLVED TMP= ?` over an empty marker (session 5b9ce9c5, 216k to
+repair). An empty `$TMP` stops it the same way, before any copy or marker write.
 The marker name is DERIVED, never a fixed path: two Claude Code sessions on one machine run these
 commands concurrently in different projects, and a shared `alfred-code-run.path` hands the
 second run's `$TMP` to the first - measured: an installer log came back holding the other session's
@@ -183,10 +202,11 @@ It lives under `$TMPDIR`, as does `$TMP`: a sandboxed command may write only the
 and every call resolved a fresh `$TMP`. Every later call in this run just re-reads it:
 
 ```bash
+command -v tr >/dev/null 2>&1 || PATH="/usr/bin:/bin:/mingw64/bin:$(/usr/bin/cygpath -u -p "$PATH" 2>/dev/null || printf '%s' "$PATH")"   # Git Bash handed a Windows-form PATH
 RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 TD="${TMPDIR:-/tmp}"; TD="${TD%/}"   # a sandboxed command writes only under $TMPDIR (and the project)
 MARK="$TD/alfred-code-run.$(printf '%s' "$RUN_ROOT" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' "$RUN_ROOT" | git hash-object --stdin | cut -c1-12).path"
-TMP=$(cat "$MARK")
+TMP=$(cat "$MARK" 2>/dev/null); [ -n "$TMP" ] || { echo "MISSING the run marker - run the resolve block first"; exit 1; }
 TMP_WIN=$(cygpath -w "$TMP" 2>/dev/null || printf '%s' "$TMP")         # Windows spelling, empty-safe
 ```
 
@@ -244,10 +264,15 @@ pwsh -NoProfile -File "$TMP/step.ps1"
 
 The tooling always comes fresh from the snapshot, but YOUR numbered steps ship with the
 plugin this SESSION loaded - so compare versions right after the resolve: the snapshot's is the
-`version:` line in `$TMP/repo/RELEASE-SOURCE`; the running plugin's is `running=` on the RESOLVED
+version on the RESOLVED line (the archive's `RELEASE-SOURCE`, else the copied `plugin.json`; `?` only
+when neither can be read - then drop the check like `running=?`); the running plugin's is `running=` on the RESOLVED
 line (`$Was` in the PowerShell block), read BEFORE the resolve's own update. A fresh `claude plugin
-list` after it would report the version just installed, which this session has not loaded - an
-update lands on disk, and a session keeps the version it started with until a restart.
+list` after it would report the version just installed, which this session has not loaded. An update
+lands on disk and the session's HOOKS follow it at once - each hook launches from the newest cache
+entry (measured on CLI 2.1.296: hook commands ran from the new version's dir within five minutes of
+the update, session 5f9fec85) - while the command and skill bodies, and their listings, stay on the
+version the session started with until a restart. So a session after an update runs mixed versions:
+say which half waits for the restart (the commands), never that the restart loads hooks already running.
 
 **Do NOT read `${CLAUDE_PLUGIN_ROOT}` from the shell to find it.** That variable is expanded into a
 command's markdown at injection time, but it is NOT in the Bash tool's environment - a command that
@@ -326,8 +351,9 @@ Everything comes out of `$TMP/repo`:
 - the `meta/` catalogs - `recommendations.json`, `evidence.json`, `judgment.json` (seeds, the
   evidence-scan signals, the judgment gates)
 - `stack/AGENTS.template.md` (the AGENTS.md fill-in / reconcile step)
-- `RELEASE-SOURCE` - the snapshot's commit (the `configure` and `update` commands compare the stamp against it
-  via the GitHub compare API; an archive has no git history to diff locally)
+- the snapshot's revision - `RELEASE-SOURCE`'s commit in an archive, the `v<version>` tag of its
+  `plugin.json` in a plugin-cache copy (which has no `RELEASE-SOURCE`); `stamp-compare.js` reads either
+  and diffs the stamp against it via the GitHub compare API, since neither has git history to diff locally
 
 Run every later `node`/`bash` step against these snapshot copies - never re-fetch one from a raw
 URL; the snapshot is already the newest, consistent copy, and it is the copy the installer runs
@@ -357,8 +383,8 @@ same line the seed itself prints and exits 1 on. Never hand the Node seed a Powe
 Pass `--source "$TMP/repo"` when running the installer's action. That is
 what keeps a guided run at ONE download instead of two, and it guarantees the run lands the same
 revision the command's earlier steps inspected. The installer copies out of `$TMP/repo`, writes the
-`alfred-code.stamp` naming that revision (from `RELEASE-SOURCE`, or the checkout's HEAD when the
-fallback cloned), and never deletes a source it was handed - cleanup is the command's job, below.
+`alfred-code.stamp` naming that revision (from an archive's `RELEASE-SOURCE`, a plugin-cache copy's
+`v<version>` tag, or the checkout's HEAD when the fallback cloned), and never deletes a source it was handed - cleanup is the command's job, below.
 
 **Capture the installer's own output, one fixed form.** Every command that runs the installer
 appends `2>&1 | tee "$TMP/install.log"` to that call, always the same filename - never call it

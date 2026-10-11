@@ -41,8 +41,9 @@ it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid pl
 from that snapshot, hand it back with `--source` in step 12, and remove `$TMP` per the 'Clean up'
 section on every exit path. The protocol's 'Narrate, don't trace' section governs every tool
 call: one quiet call per recompute, no pasted tool output except the decision tables, one narration line between steps.
-This command's extra stake in the snapshot: its `RELEASE-SOURCE` commit is what step 1 compares
-the stamp against to report what an update would bring.
+This command's extra stake in the snapshot: its revision is what step 1 compares the stamp against
+to report what an update would bring - an archive's `RELEASE-SOURCE` commit, or the `v<version>` tag of
+a plugin-cache copy, which carries no `RELEASE-SOURCE` (never probe for one there).
 
 **Table before question - no exceptions.** Any table or report the user decides from (every layer's `stack-select.js --table` catalog, the `plugin-settings.js` report) is pasted into YOUR message, byte-for-byte in a fenced block, BEFORE the AskUserQuestion that asks about it - never after, never only in the ask's preview panel, never replaced by 'shown above' or a prose summary. A tool result is collapsed in the UI, so a table you only ran is a table the user never saw (measured: agents and skills asks answered 'I do not see any table'). This is the one sanctioned exception to 'no pasted tool output', and the plugin's `guard-layer-table.js` hook denies an ask whose table is missing.
 
@@ -126,7 +127,7 @@ node "$TMP/repo/scripts/stamp-compare.js" --snapshot "$TMP/repo" --stamp .claude
 ```
 
 (A fork install passes `--repo <owner/name>`; the script reads the snapshot's `RELEASE-SOURCE`,
-falling back to the clone's git HEAD.) It prints the version delta first (`version: 0.1.0 ->
+falling back to the clone's git HEAD, then to the `v<version>` tag of its `plugin.json`.) It prints the version delta first (`version: 0.1.0 ->
 0.2.0` - the plugin/marketplace version; `unknown` when either side lacks one), then
 `status<TAB>path` lines (`modified`/`added`/`removed`, and `renamed` with `<- old-path`)
 filtered to stack-owned paths. Summarise by category, naming the items - that is the honest

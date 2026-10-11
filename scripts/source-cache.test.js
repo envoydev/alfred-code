@@ -5,8 +5,9 @@
 // probe and an adoption path for Claude Code's marketplace clone. Phase 5 of the plugin migration
 // deleted all three: every marketplace entry shares this repo's root as its `source`, so installing
 // the core plugin leaves the WHOLE repo at <config>/plugins/cache/<marketplace>/alfred-code/
-// <version> - RELEASE-SOURCE included - and that is the same snapshot the installer was
-// downloading. The archive and clone routes remain for the two paths with no plugin cache to read:
+// <version>, and that is the same snapshot the installer was
+// downloading - with NO RELEASE-SOURCE (only the release archive carries one), so the fixtures below
+// plant the version where a real entry holds it, its own setup-plugin/.claude-plugin/plugin.json. The archive and clone routes remain for the two paths with no plugin cache to read:
 // the copy route (both VIA_PLUGIN switches off) and a machine with no `claude` CLI.
 //
 // The plugin-cache/archive/clone resolution ORDER and its fallbacks are unit-tested directly against
@@ -52,14 +53,23 @@ function work() {
 // A plugin cache entry the way `claude plugin install` leaves it: the whole repo under
 // <config>/plugins/cache/<marketplace>/alfred-code/<version>. Built from the same archive the
 // release host serves, so a run that reads it installs exactly what a download would have.
+function plantVersion(dir, version) {
+    const file = path.join(dir, 'setup-plugin', '.claude-plugin', 'plugin.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    let manifest = {};
+    try { manifest = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { manifest = { name: 'alfred-code' }; }
+    fs.writeFileSync(file, JSON.stringify({ ...manifest, version }, null, 2));
+}
+
 function plantPluginCache(home, { version = VERSION, marketplace = 'envoydev', plugin = 'alfred-code', truncated = false } = {}) {
     const dir = path.join(home, '.claude', 'plugins', 'cache', marketplace, plugin, version);
     fs.mkdirSync(dir, { recursive: true });
     execFileSync('tar', ['-xzf', ARCHIVE, '-C', dir]);
-    // The CLI names the directory after the release it installed, so the entry's own RELEASE-SOURCE
-    // says the same thing. The archive this fixture untars always names VERSION, so restate it -
-    // otherwise a multi-version case would resolve one version by directory and report another.
-    fs.writeFileSync(path.join(dir, 'RELEASE-SOURCE'), `sha: ${FAKE_SHA}\nref: main\nversion: ${version}\nbuilt: 2026-09-09T00:00:00Z\n`);
+    // The CLI names the directory after the release it installed, and the entry's own plugin.json says
+    // the same thing - a real entry carries NO RELEASE-SOURCE (audit 2026-10-11: the resolve read only that
+    // file and printed '?' in five sessions), so the archive's copy is removed and the version restated.
+    fs.rmSync(path.join(dir, 'RELEASE-SOURCE'), { force: true });
+    plantVersion(dir, version);
     // a half-written entry: the validity test is stack/skills + stack/agents, so drop one
     if (truncated) fs.rmSync(path.join(dir, 'stack', 'agents'), { recursive: true, force: true });
     return dir;
@@ -111,7 +121,7 @@ function stubClaude(home, listing, lands) {
     fs.writeFileSync(path.join(bin, 'claude'), ['#!/bin/sh',
         `printf '%s\\n' "$*" >> ${JSON.stringify(path.join(home, 'claude-calls.log'))}`,
         `if [ "$1 $2" = "plugin list" ]; then cat ${JSON.stringify(path.join(home, 'listing.json'))}; fi`,
-        lands ? `if [ "$1 $2 $3" = "plugin update alfred-code@envoydev" ]; then cp -R ${JSON.stringify(path.join(cache, '0.10.0'))} ${JSON.stringify(path.join(cache, lands))}; printf 'sha: x\\nref: main\\nversion: ${lands}\\n' > ${JSON.stringify(path.join(cache, lands, 'RELEASE-SOURCE'))}; fi` : '',
+        lands ? `if [ "$1 $2 $3" = "plugin update alfred-code@envoydev" ]; then cp -R ${JSON.stringify(path.join(cache, '0.10.0'))} ${JSON.stringify(path.join(cache, lands))}; printf '{"version": "${lands}"}\\n' > ${JSON.stringify(path.join(cache, lands, 'setup-plugin', '.claude-plugin', 'plugin.json'))}; fi` : '',
         'exit 0', ''].join('\n'), { mode: 0o755 });
     return bin + path.delimiter + process.env.PATH;
 }
@@ -252,10 +262,9 @@ test("the protocol's bash snippet resolves the newest valid cache entry", () => 
         assert.strictEqual(m[2], '0.10.0', 'it read the wrong entry - not the newest valid one');
         assert.ok(fs.existsSync(path.join(tmp, 'repo', 'stack', 'skills')), 'nothing was copied into $TMP/repo');
         assert.ok(!fs.existsSync(path.join(tmp, 'alfred-code.tar.gz')), 'it downloaded the archive over a usable cache');
-        assert.strictEqual(
-            fs.readFileSync(path.join(tmp, 'repo', 'RELEASE-SOURCE'), 'utf8'),
-            fs.readFileSync(path.join(want, 'RELEASE-SOURCE'), 'utf8'),
-            'the copy did not come from the newest valid entry');
+        const manifestOf = (d) => fs.readFileSync(path.join(d, 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8');
+        assert.strictEqual(manifestOf(path.join(tmp, 'repo')), manifestOf(want), 'the copy did not come from the newest valid entry');
+        assert.ok(!fs.existsSync(path.join(tmp, 'repo', 'RELEASE-SOURCE')), 'a plugin-cache copy carries no RELEASE-SOURCE - the version came from its plugin.json');
     }
     finally
     {
@@ -280,7 +289,7 @@ test("the protocol's bash snippet keeps its run marker under $TMPDIR, and a seco
     {
         plantThree(home);
         fs.writeFileSync(script, protocolSnippet('bash', 0));
-        const env = { ...process.env, TMPDIR: sbx, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH: stubClaude(home, '[]') };
+        const env = { ...process.env, TMPDIR: sbx, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH: stubClaude(home, '[]'), CLAUDE_CODE_SESSION_ID: 'sess-a' };
         const first = execFileSync('bash', [script], { cwd: home, encoding: 'utf8', env });
         const m = first.match(/RESOLVED TMP=(\S+)/);
         assert.ok(m, first);
@@ -290,13 +299,85 @@ test("the protocol's bash snippet keeps its run marker under $TMPDIR, and a seco
         // snippet names the directory in its template.
         assert.strictEqual(path.dirname(m[1]), sbx, '$TMP itself is under $TMPDIR');
         const second = execFileSync('bash', [script], { cwd: home, encoding: 'utf8', env });
-        assert.match(second, new RegExp(`^REUSING TMP=${m[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `, 'm'), 'the next call finds the same $TMP');
+        assert.match(second, new RegExp(`^REUSING TMP=${m[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} 0\\.10\\.0 `, 'm'), 'the next call finds the same $TMP and names its version');
+        // audit 2026-10-11 (sessions a9e06780 / bca100bd): a marker another session left - its cleanup rejected -
+        // was reused 17 h later with a newer release installed. Only this session's own marker is reused.
+        const other = execFileSync('bash', [script], { cwd: home, encoding: 'utf8', env: { ...env, CLAUDE_CODE_SESSION_ID: 'sess-b' } });
+        const fresh = other.match(/^RESOLVED TMP=(\S+) /m);
+        assert.ok(fresh, `another session's marker was reused:\n${other}`);
+        tmps.push(fresh[1]);
+        assert.notStrictEqual(fresh[1], m[1], 'a fresh resolve gets its own $TMP');
+        // A marker written before the session check names no session: it resolves fresh too.
+        fs.rmSync(path.join(fresh[1], 'run-session'));
+        const legacy = execFileSync('bash', [script], { cwd: home, encoding: 'utf8', env: { ...env, CLAUDE_CODE_SESSION_ID: 'sess-b' } });
+        const again = legacy.match(/^RESOLVED TMP=(\S+) /m);
+        assert.ok(again, `a marker with no session was reused:\n${legacy}`);
+        tmps.push(again[1]);
     }
     finally
     {
         for (const p of tmps) fs.rmSync(p, { recursive: true, force: true });
         fs.rmSync(home, { recursive: true, force: true });
     }
+});
+
+// audit 2026-10-11, session 5b9ce9c5: the Windows Bash tool handed the shell a Windows-form PATH
+// (`C:\...;C:\...`), so no coreutils and no node resolved - and the block ran on, printing a success-shaped
+// `RESOLVED TMP= ?` over an empty marker (216k to repair). The PATH is set INSIDE the shell, the way that
+// session met it, so the case runs on every OS: where the heal finds every tool the run resolves for real,
+// and where it cannot (no node under /usr/bin, no cygpath) the call stops on one MISSING line, writes no
+// marker and never prints RESOLVED.
+test("the protocol's bash snippet heals or stops on a Windows-form PATH - never a success line over an empty $TMP", () => {
+    const home = work();
+    const script = path.join(home, 'resolve.sh');
+    try
+    {
+        plantThree(home);
+        fs.writeFileSync(script, protocolSnippet('bash', 0));
+        const mark = markOf(home);
+        const r = spawnSync('bash', ['-c', `PATH='C:\\Windows\\system32;C:\\nowhere\\nodejs'; . "$1"`, 'resolve', script], {
+            cwd: home, encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude') },
+        });
+        const out = `${r.stdout}${r.stderr}`;
+        assert.doesNotMatch(out, /RESOLVED TMP= /, `a success line with an empty $TMP:\n${out}`);
+        const missing = /^MISSING (\S+) on the Bash PATH - nothing resolved$/m.exec(r.stdout);
+        if (missing)
+        {
+            assert.strictEqual(r.status, 1, out);
+            assert.ok(!fs.existsSync(mark), 'a stopped resolve wrote the marker');
+            assert.doesNotMatch(r.stdout, /RESOLVED|REUSING/, out);
+        }
+        else
+        {
+            const m = /^RESOLVED TMP=(\S+) 0\.10\.0 /m.exec(r.stdout);
+            assert.ok(m, `neither a MISSING line nor a full resolve:\n${out}`);
+            fs.rmSync(nativePath(m[1]), { recursive: true, force: true });
+        }
+        fs.rmSync(mark, { force: true });
+    }
+    finally { fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+// The same session's PATH with mktemp failing: before, an empty TMP and a cache hit ran `cp -R "$SRC" "/repo"` and wrote
+// an empty marker. Now the call stops before any copy or marker write.
+test("the protocol's bash snippet stops on an empty $TMP before any copy or marker write", POSIX_STUB, () => {
+    const home = work();
+    const script = path.join(home, 'resolve.sh');
+    try
+    {
+        plantThree(home);
+        fs.writeFileSync(script, protocolSnippet('bash', 0));
+        const bin = stubClaude(home, '[]');
+        fs.writeFileSync(path.join(home, 'bin', 'mktemp'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+        const mark = markOf(home);
+        const r = spawnSync('bash', [script], { cwd: home, encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH: bin } });
+        assert.strictEqual(r.status, 1, `${r.stdout}${r.stderr}`);
+        assert.match(r.stdout, /^MISSING a temp dir under \S+ - nothing resolved$/m);
+        assert.doesNotMatch(r.stdout, /RESOLVED|REUSING/);
+        assert.ok(!fs.existsSync(mark), 'the marker was written over an empty $TMP');
+        assert.ok(!claudeCalls(home).some((c) => /^plugin update /.test(c)), 'it went on to update plugins');
+    }
+    finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
 
 test("the protocol's PowerShell snippet resolves the same entry", { skip: skipNoPwsh }, () => {
@@ -373,7 +454,7 @@ function plantBare(cfg, marketplace, plugin, version, { orphaned = false, file }
     const dir = path.join(cfg, 'plugins', 'cache', marketplace, plugin, version);
     for (const sub of ['stack/skills', 'stack/agents', 'scripts', 'stack/skills/capture-agent-capabilities/scripts', 'stack/skills/task-solve-cross/references'])
         fs.mkdirSync(path.join(dir, sub), { recursive: true });
-    fs.writeFileSync(path.join(dir, 'RELEASE-SOURCE'), `sha: x\nref: main\nversion: ${version}\n`);
+    plantVersion(dir, version);   // a real cache entry: the version in plugin.json, no RELEASE-SOURCE
     for (const f of ['scripts/scan-evidence.js', 'stack/skills/capture-agent-capabilities/scripts/capabilities-inventory.js', 'stack/skills/task-solve-cross/references/contract-protocol.md'])
         fs.writeFileSync(path.join(dir, f), file || '');
     if (orphaned) fs.writeFileSync(path.join(dir, '.orphaned_at'), '1790246851942');

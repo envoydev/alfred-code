@@ -213,7 +213,7 @@ No `--memory-level`: the level is init's question. The installer says so in one 
 import waits for `/alfred-code:init`) and leaves Claude's own memory on - report that line, never a
 switch-off.
 
-`--source` is what makes the guided run take ONE download. The installer owns nothing here: it copies out of `$TMP/repo` and leaves it for you to remove at cleanup. It writes `.claude/alfred-code.stamp` recording the commit it installed (read from the snapshot's `RELEASE-SOURCE`) - that is what a later `/alfred-code:configure` diffs against.
+`--source` is what makes the guided run take ONE download. The installer owns nothing here: it copies out of `$TMP/repo` and leaves it for you to remove at cleanup. It writes `.claude/alfred-code.stamp` recording the revision it installed (an archive's `RELEASE-SOURCE` commit, or the `v<version>` tag of a plugin-cache copy, which carries no `RELEASE-SOURCE`) - that is what a later `/alfred-code:configure` diffs against.
 
 The documentation server key is ACCOUNT-level, not project-level: when `CONTEXT7_API_KEY` is exported in the shell the installer runs in, the run writes it into the account `settings.json` env (at every scope - never through the chat). The key is optional - the hosted server answers without one at a lower rate limit.
 
