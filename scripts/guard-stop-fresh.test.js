@@ -513,7 +513,7 @@ test('guard-stop-contract: the done half is read over the whole close (2.1.6 re-
   }
 });
 
-// Speech-direct sessions (2026-09-28), each close verbatim or its load-bearing clause.
+// A consuming project's sessions (2026-09-28), each close verbatim or its load-bearing clause.
 test('guard-stop-contract: a bare \'remains\' is a status, only its pending forms are a step (8b5dcb1a)', () => {
   assert.equal(close('Done - `playwright-chrome` removed from `.mcp.json` and `enabledMcpjsonServers`; only `sentry` remains.').status, 0,
     'what is left installed is no pending step');

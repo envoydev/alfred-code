@@ -1757,7 +1757,7 @@ test('--check-report prints one row per judgment number that cites no machine ro
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// Speech-direct reports (2026-10-05): every one carrying the analyzer's own 'AFTER this session's last row <ISO date>'
+// A consuming project's reports (2026-10-05): every one carrying the analyzer's own 'AFTER this session's last row <ISO date>'
 // printed 'locator out of range ... row 2026' three times.
 test('--check-report reads no date as a locator, and checks only the judgment lines an author wrote', () => {
   const dir = tmp();
