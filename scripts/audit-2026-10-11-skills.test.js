@@ -124,6 +124,34 @@ test('42951e5b#10: a command the cycle proved wrong is doc drift, named against 
     assert.match(mech, /names the AGENTS\.md line or the run-book section \(`<docs-path>\/project-capabilities\/PROJECT-CAPABILITIES\.md`\)/);
 });
 
+// ------------------------------------------------------------------ SD15 - the upgrade gate and the execution verdict
+
+// 2ca8e8ee#1: 'The staged plan is ready ... Execute it stage by stage?' fired with no text block since the plan was built -
+// the user approved blind. 2ca8e8ee#2: the run then dropped every seat on its own call ('the stages share csproj files').
+test('2ca8e8ee#1 #2: the upgrade gate follows a printed plan and offers the in-session mode, never drops seats alone', () =>
+{
+    const up = read('stack/skills/task-version-upgrade/SKILL.md');
+    assert.match(flat(up), /PRINT the staged plan in the chat first - every stage with its edits, its verification command and its rollback point - in the same turn as the gate/);
+    const gates = asksOf(up).filter((a) => /^The staged plan above/.test(a.question));
+    assert.strictEqual(gates.length, 2, 'both gate templates say the plan is above');
+    assert.ok(!asksOf(up).some((a) => /^The staged plan is ready:/.test(a.question)), 'no gate over an unshown plan');
+    assert.deepStrictEqual(gates[0].options, ['Approve - execute through the seats (Recommended)', 'Approve - execute in this session', 'Just the plan', 'Stop - changes needed']);
+    assert.match(flat(up), /The mark moves to 'in this session' when the verdict reads `serial`; the run never drops the seats on its own call/);
+    assert.match(flat(up), /Load `habits-execution-strategy` \(the Skill tool\); its `Execution:` line is the mode reason/);
+    const strat = flat(read('stack/skills/habits-execution-strategy/SKILL.md'));
+    assert.match(strat, /Inside a flow that owns dispatch - the solve flows, the diagnose flow, the version-upgrade flow -/);
+    assert.match(strat, /the flow's seats stand until the user picks in-session there/);
+});
+
+// 177c5743#4: 29 fork seats spent ~61.6M of ~69.2M input tokens re-reading the parent; seats $20.44 against main $17.73.
+test('177c5743#4: the mode choice prices a fork against a briefed seat', () =>
+{
+    const strat = flat(read('stack/skills/habits-execution-strategy/SKILL.md'));
+    assert.match(strat, /\*\*A fork or a briefed seat\*\* - a fork starts from this whole conversation and re-sends it on every turn it takes/);
+    assert.match(strat, /Past the install's fresh-session trigger, brief a named or Explore seat; fork only a seat that needs this conversation's own state/);
+    assert.match(strat, /A fork dispatched past the fresh-session trigger for a unit a brief could carry\./);
+});
+
 // 5984019e#2 / #3: a small run grew to 10 files and closed with no review; the re-check is a script line, the review a receipt.
 test('5984019e#2 #3: a trivial or small close re-checks its size by script and carries its review receipt', () =>
 {

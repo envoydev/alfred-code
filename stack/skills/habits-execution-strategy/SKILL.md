@@ -18,7 +18,7 @@ tune on what the project measures, not a law.
 
 - Fires before the first edit of a task that needs more than a few steps across more than one file or subtask, spans stacks, touches auth, a migration or a public contract, or would fan work out to seats. A small task settles route, mode and model inline from the always-on line (a direct edit, one agent, batched calls, the session's model) - no load.
 - It decides the route, the mode, the model and the check tiers. Test-first (`habits-test-first`) still runs inside each track, and this skill never replaces it.
-- Inside a solve or diagnose flow, the flow calls it before its build-mode ask or its fix task cards. The route is then the flow, so it supplies the mode and the model in the `Execution:` verdict and the option it recommends; the flow keeps the plan file, the approval gate, the dispatch and the seats, and the user's answer still decides.
+- Inside a flow that owns dispatch - the solve flows, the diagnose flow, the version-upgrade flow - the flow calls it before its build-mode ask (the upgrade flow's approval gate) or its fix task cards. The route is then the flow, so it supplies the mode and the model in the `Execution:` verdict and the option it recommends; the flow keeps the plan file, the approval gate, the dispatch and the seats. A `serial` verdict moves the gate's mark to the in-session option, never past the gate: the flow's seats stand until the user picks in-session there.
 
 ## Route - where the work runs
 
@@ -127,6 +127,7 @@ proceed without waiting unless a stop below applies.
 - **One agent, in order** - the quality check fails for these units.
 - **One agent, batched calls** - the check passes and the units are small. Reads, searches and commands that do not depend on each other go in the same turn; a call whose input is another's result waits.
 - **Parallel seats** - the check passes for two or more units that are each sizeable (about ten tool calls, or a wide read that would flood this context) and whose shared contracts already exist in code. Up to 3 at once by default, more only on the user's ask. Never for a handful of calls (those are batched), never to re-check your own work.
+- **A fork or a briefed seat** - a fork starts from this whole conversation and re-sends it on every turn it takes; a named or Explore seat starts from its own floor plus the brief. Past the install's fresh-session trigger, brief a named or Explore seat; fork only a seat that needs this conversation's own state (measured: 29 forks spent ~61.6M of their ~69.2M input tokens re-reading the parent, $20.44 against the main session's $17.73).
 
 Edit seats are the house `<stack>-implementer`, inside a flow (Route, above); read-only seats run on any route. The dispatch guard blocks a generic dispatch while a flow stamp is live. Seats that edit files in one directory each get a separate worktree where the platform offers one - and only when every contract they build on is COMMITTED: a worktree branches from HEAD, so seats that need this session's uncommitted plan, keys or files build in the shared tree, one owner per file. With no dispatch available, run the tracks inline in order.
 
@@ -168,6 +169,8 @@ One line on the route, mode and model and why, what changed, each tier's command
 - A flow's mode ask whose recommendation names no execution verdict.
 - A gated or cross-domain change started as a direct edit with no route ask, or an implementer seat dispatched on the direct route.
 - A seat dispatched below its pin on a risk path.
+- A fork dispatched past the fresh-session trigger for a unit a brief could carry.
+- Inside a flow, its seats dropped with no gate answer picking in-session.
 - The full suite re-run after every step, or CI treated as the first real test.
 - Two seats editing one file or one shared contract.
 - A seat's report taken as proof without the integrated run.

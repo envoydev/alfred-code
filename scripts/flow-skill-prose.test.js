@@ -303,7 +303,7 @@ test('M103: version-upgrade\'s approval gate is two ask templates, the mark fixe
     const text = skill('task-version-upgrade');
     assert.doesNotMatch(flat(text), /\(recommended when no user-level question is open\)/, 'a conditional mark leaves one state unmarked');
     const all = asks(text);
-    const approve = all.find((a) => a.options[0] === 'Approve - execute the stages (Recommended)');
+    const approve = all.find((a) => a.options[0] === 'Approve - execute through the seats (Recommended)');
     const plan = all.find((a) => a.options[0] === 'Just the plan (Recommended)');
     assert.ok(approve, 'no open question: approve is recommended');
     assert.ok(plan, 'a user-level question open: just the plan is recommended');
