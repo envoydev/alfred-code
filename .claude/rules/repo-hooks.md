@@ -626,6 +626,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     written in a turn, the context at 80% of the fresh-session trigger (read from `fresh-session.js`, once per
     session). A Read's input includes the file's mtime and size, so a file regenerated between reads is a new input, and a
     harness `<task-notification>` prompt opens no turn - the same exit in the answer-length hook (audit 2026-10-10 C25).
+    An MCP call's repeat count restarts when the same actor ACTED on that server between (any call but a look -
+    Snapshot, Screenshot, WaitFor, a get / list / read / find / search), so a Screenshot after each Click is a new look,
+    and a desktop server action right after the same actor's previous desktop action, no look between, is one
+    `unobserved-action` note - desktop-automation's hard rule read off the stream (audit 2026-10-11 SD08, sessions
+    fdce35ae / 7f8803eb; a PreToolUse deny waits on its row rate).
     Each call appends its own row to the turn's log (`<docs-path>/flow/monitor-<session>.jsonl`, emptied at a
     prompt) and counts the rows up to it, so parallel calls lose no count (2.1.5 M15); the context note is claimed by an
     exclusive marker. Each note is one `mode: monitor` row in the hook-blocks ledger; `ALFRED_CODE_MONITOR` is seeded

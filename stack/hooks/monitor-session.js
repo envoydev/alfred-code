@@ -2,7 +2,9 @@
 // monitor-session.js - PostToolUse (every tool) + UserPromptSubmit. A live monitor that NEVER denies:
 // three facts read from the call stream, each noted once, each a `mode: monitor` row in the
 // hook-blocks ledger so `analyze-usage.js --hook-blocks` tallies them.
-//   repeat  - one actor ran the same tool with the same input 5 times inside one turn;
+//   repeat  - one actor ran the same tool with the same input 5 times inside one turn (an MCP call's count
+//             restarts after an action on the same server);
+//   unobserved-action - a desktop server action right after another, no Snapshot between;
 //   scope   - one actor wrote more than 20 distinct files inside one turn;
 //   context - the session's context reached 80% of the fresh-session trigger `fresh-session.js`
 //             computes (one table - no second window guess), once per session.
@@ -44,6 +46,19 @@ function rowFor(payload, id)
   return { id, a: actor, t: tool, k: `${actor}|${tool}|${hash}`, f: file };
 }
 
+// An MCP call's server and tool name, from `mcp__<server>__<tool>` (both routes' spellings: the plugin route's server
+// is `plugin_<plugin>_<server>`), else null.
+function mcpParts(tool)
+{
+  const m = /^mcp__(.+)__([^_].*)$/.exec(String(tool || ''));
+  return m ? { server: m[1].replace(/^plugin_[^_]+_/, ''), name: m[2] } : null;
+}
+// An MCP call that only LOOKS (a Snapshot, a Screenshot, a WaitFor, a get / list / read / find / search); any other
+// MCP call acts on what the server drives.
+const OBSERVE_NAME = /^(?:browser_)?(?:snapshot|screenshot|take_screenshot|wait|get|list|read|find|search|query|show|describe|fetch|view|inspect|resolve)/i;
+const observes = (parts) => OBSERVE_NAME.test(parts.name);
+const DESKTOP_SERVER = /^(?:windows|macos)-desktop$/;
+
 // The log's text as rows; a line that is not a row is skipped.
 function parseLog(text)
 {
@@ -68,9 +83,21 @@ function notesFor(rows, id, { contextNow = () => 0, trigger = () => null, floor 
   const tool = mine.t;
   const notes = [];
   // Exactly at the threshold, so the sixth call of a turn is never a second note.
-  let first = -1;
-  let same = 0;
-  for (let i = 0; i <= at; i++) if (rows[i].k === mine.k) { same += 1; if (first < 0) first = i; }
+  // An MCP call's count restarts when the same actor ACTED on that server between (audit 2026-10-11 SD08, sessions
+  // fdce35ae / 7f8803eb: an input-less Screenshot after each Click, and a fixed-coordinate menu Click between other
+  // Clicks, drew the repeat row while the screen changed under it - the C25 Read stamp's case for a screen). An
+  // observation between keeps the count: Click, Snapshot, the same Click again is the loop the note is for.
+  const mineMcp = mcpParts(tool);
+  let first = at;
+  let same = 1;
+  for (let i = at - 1; i >= 0; i--)
+  {
+    const r = rows[i];
+    if (r.k === mine.k) { same += 1; first = i; continue; }
+    if (!mineMcp || r.a !== mine.a) continue;
+    const p = mcpParts(r.t);
+    if (p && p.server === mineMcp.server && !observes(p)) break;
+  }
   if (same === REPEAT_AT)
   {
     let writesBetween = 0;
@@ -80,6 +107,27 @@ function notesFor(rows, id, { contextNow = () => 0, trigger = () => null, floor 
       reason: `you repeated ${tool} ${REPEAT_AT} times with identical input - stop and change approach`,
       detail: { actor: mine.a, count: REPEAT_AT, writesBetween },
     });
+  }
+
+  // desktop-automation's hard rule, never two actions without a Snapshot between them, read off the stream (audit
+  // 2026-10-11 SD08, session fdce35ae: 4 of 53 Clicks followed another action, one undisclosed). The actor's previous
+  // desktop call this turn was an action too; calls on other tools between observe nothing on the screen.
+  if (mineMcp && DESKTOP_SERVER.test(mineMcp.server) && !observes(mineMcp))
+  {
+    for (let i = at - 1; i >= 0; i--)
+    {
+      const r = rows[i];
+      if (r.a !== mine.a) continue;
+      const p = mcpParts(r.t);
+      if (!p || !DESKTOP_SERVER.test(p.server)) continue;
+      if (!observes(p))
+        notes.push({
+          kind: 'unobserved-action', tool,
+          reason: `two desktop actions with no Snapshot between them (${p.name}, then ${mineMcp.name}) - Snapshot now and confirm the first one landed before the next action`,
+          detail: { actor: mine.a, previous: p.name },
+        });
+      break;
+    }
   }
 
   if (mine.f)
