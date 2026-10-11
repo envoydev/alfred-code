@@ -1020,10 +1020,11 @@ test('lint <domain> limits the rows to that domain; no argument keeps the whole 
 test('seed-ids adds missing ids once; a second run changes nothing; duplicate headings get distinct ids', () => {
   const r = repo({ docs: { 'references/p.md': '## Orders\nA.\n\n## Orders\nB.\n\n## Users\n<!-- id: users -->\nC.\n' } });
   try {
-    assert.match(r.cli(['seed-ids']).stdout, /^2 ids added/);
+    // audit 2026-10-11, session d9035363: one line per file rewritten, as shown() prints it, before the total
+    assert.strictEqual(r.cli(['seed-ids']).stdout, 'ids added: .claude/docs/architecture/references/p.md (+2)\n2 ids added\n');
     const once = r.read('.claude/docs/architecture/references/p.md');
     assert.match(once, /<!-- id: orders -->[\s\S]*<!-- id: orders-2 -->/);
-    assert.match(r.cli(['seed-ids']).stdout, /^0 ids added/);
+    assert.strictEqual(r.cli(['seed-ids']).stdout, '0 ids added\n', 'a second run names no file');
     assert.strictEqual(r.read('.claude/docs/architecture/references/p.md'), once);
   } finally { r.rm(); }
 });

@@ -21,7 +21,8 @@
 //   promote <branch> | --merged     fold a branch's overrides into mainline, section by section, three ways
 //   prune [branch]                  drop one branch's overlay, or overlays of branches gone for 30 days
 //   lint [domain]                   metadata and budget problems (exit 1 when any); a domain limits the rows to it
-//   seed-ids                        give every section a stable id (idempotent)
+//   seed-ids                        give every section a stable id (idempotent); one `ids added: <file> (+n)` line
+//                                   per file rewritten, then the total
 //   watch <path...> [--dir <dir...>]  which watch.json entries these changed paths (and new folders) hit
 //   adr new '<title>' | adr index   allocate the next decision record under decisions/ and rewrite the DECISIONS.md
 //                                   index table from the records (index alone: the table only)
@@ -1564,7 +1565,9 @@ function lint(domain) {
   return { problems, notes };
 }
 
-function seedIds() {
+// `onFile(file, n)` hears each file it rewrote (audit 2026-10-11, session d9035363: the CLI printed only a total, so
+// the usage analyzer could not name the 13 ids it wrote into two files).
+function seedIds(onFile = () => {}) {
   let added = 0;
   for (const f of docFiles()) {
     const lines = fs.readFileSync(f, 'utf8').split('\n');
@@ -1584,7 +1587,7 @@ function seedIds() {
       out.push(`<!-- id: ${id} -->`);
       here++;
     }
-    if (here) fs.writeFileSync(f, out.join('\n'));
+    if (here) { fs.writeFileSync(f, out.join('\n')); onFile(f, here); }
     added += here;
   }
   return added;
@@ -2059,7 +2062,8 @@ const commands = {
     console.log(`${problems.length} problems, ${notes.length} notes`);
     process.exit(problems.length ? 1 : 0);
   },
-  'seed-ids': () => console.log(`${seedIds()} ids added`),
+  // one `ids added: <file> (+n)` line per file rewritten, then the total - the line analyze-usage.js reads
+  'seed-ids': () => console.log(`${seedIds((f, n) => console.log(`ids added: ${shown(f)} (+${n})`))} ids added`),
   watch: () => {
     const w = loadWatch();
     if (w.missing) { console.log('no watch.json in any domain - run a docs capture to write one'); return; }
