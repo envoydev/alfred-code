@@ -124,7 +124,7 @@ test('A5: the build bar - a model change never leaves its task without its migra
 // Pilot 3: the gate changed the plan in 1 of 4 feature cells, and the steps before the build cost $0.95-1.65 a cell.
 test('full spec: the solve flow states the checklist, runs the check script and pins the merged ask', () => {
     const { ASK_FLOW_TEMPLATES } = require('./lint-skills.js');
-    assert.deepStrictEqual(ASK_FLOW_TEMPLATES, { 'task-solve': 8, 'task-solve-cross': 5, 'issue-diagnoser': 4, 'habits-adjust-agents-md': 1 });
+    assert.deepStrictEqual(ASK_FLOW_TEMPLATES, { 'task-solve': 9, 'task-solve-cross': 5, 'issue-diagnoser': 4, 'habits-adjust-agents-md': 1 });
     for (const name of ['task-solve', 'task-solve-cross']) {
         const core = fs.readFileSync(path.join(SKILLS, name, 'SKILL.md'), 'utf8');
         assert.match(core, /scripts\/spec-check\.js/, `${name}: the check is a script, not a judgment`);

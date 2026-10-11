@@ -96,7 +96,11 @@ Both modes build to the bar `task-implement` and every `<stack>-implementer` sea
 quality loop's five stages met on the first pass, comments carrying the why, each judgment call
 decided against the codebase's precedent - and the plan's `## Decisions` ledger grows as they
 land: appended directly in session mode, folded in from each seat's `decisions:` report lines as
-its report lands in agents mode. A return with no closing status line - a seat stopped at its `maxTurns` (Claude Code marks the output partial from 2.1.246) or killed mid-task - is never DONE and never resumed as-is, since a resume hands a runaway a fresh budget: re-dispatch it ONCE with a scoped resume brief (its handoff note and partial diff name what landed); a second status-less return from that task goes to the user as BLOCKED.
+its report lands in agents mode. A mid-build how-to-build question is a protocol violation.
+Build-time stops are for what the BUILD cannot decide - scope beyond the plan, a decision the plan
+left open that the code now forces, an EXTERNAL blocker (a dependency down, a credential missing, a
+locked file). A tool the environment blocks is not yet a blocker: `task-implement`'s in-session route
+comes first. A return with no closing status line - a seat stopped at its `maxTurns` (Claude Code marks the output partial from 2.1.246) or killed mid-task - is never DONE and never resumed as-is, since a resume hands a runaway a fresh budget: re-dispatch it ONCE with a scoped resume brief (its handoff note and partial diff name what landed); a second status-less return from that task goes to the user as BLOCKED.
 
 ## Reviewer fit - the step-4 stop's recommendation
 
@@ -132,3 +136,9 @@ the architecture capture: a schema / EF migration, a new module or project, a mo
 dependency direction, a changed cross-stack seam or eventing contract, a new external dependency.
 Such a change names `/capture-architecture` (diff-scoped, cheap); substantial code + tests with the
 coverage doc absent or stamped before the change names `/capture-test-coverage`.
+
+A build, test or run command this cycle proved wrong - a red the documented command gave and a changed
+flag or path turned green - is doc drift too, whatever the code surface: the close line names the
+AGENTS.md line or the run-book section (`<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md`) that still
+prints the old command, beside the command that worked. A plan's `## Decisions` entry is not that
+record - the plan closes, the run book is what the next session reads.

@@ -10,9 +10,12 @@
 // lower it.
 //
 //   node spec-check.js [<request file>]      (the request text on stdin when no file is named)
+//   node spec-check.js --touched <size>      (the size re-check before a trivial or small close, run in the project)
 //
-// Built-ins only. Prints one line per item, the `size floor:` the request proves, then `spec:` and `path: merged|gated`.
+// Built-ins only. Prints one line per item, the `size floor:` the request proves, then `spec:` and `path: merged|gated`;
+// `--touched` prints one `size check:` line.
 const fs = require('fs');
+const path = require('path');
 
 const SURFACE_NOUN = 'endpoint|component|table|column|index|page|screen|form|service|class|method|function|migration|command|route|view|model|entity|dto|query|controller|repository|job|worker';
 const SURFACE = [
@@ -110,7 +113,48 @@ function report(r) {
     ].join('\n');
 }
 
-module.exports = { classify, report };
+// The size re-check (usage audit 2026-10-11, session 5984019e: a run sized small at a 4-file starting diff ended at 10
+// touched files, two of them product code, and its close never raised the size, so the small row's one stop was the
+// only one). What the run touched is the tracked diff against HEAD plus the untracked files, minus the data root,
+// `.claude/` and the files the docs hook recorded as untracked when the change began - counted against the row's cap.
+const SIZE_CAPS = { trivial: 1, small: 3 };
+const SIZES = ['trivial', 'small', 'standard', 'cross'];
+
+function gitOut(args, cwd) {
+    const r = require('child_process').spawnSync('git', ['-c', 'core.quotePath=false', ...args], { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    return r.status === 0 ? String(r.stdout) : null;
+}
+// A -z listing as its paths, null when git refused.
+const gitLines = (args, cwd) => { const out = gitOut(args, cwd); return out === null ? null : out.split('\0').filter(Boolean); };
+
+function touchedFiles(cwd = process.cwd(), env = process.env) {
+    const root = String(gitOut(['rev-parse', '--show-toplevel'], cwd) || '').trim();
+    if (!root) return null;
+    const tracked = gitLines(['diff', 'HEAD', '--name-only', '-z'], root) || gitLines(['diff', '--cached', '--name-only', '-z'], root) || [];
+    const untracked = gitLines(['ls-files', '-o', '--exclude-standard', '-z'], root) || [];
+    const posix = (p) => String(p).replace(/\\/g, '/');
+    const docsRel = posix(path.relative(root, path.resolve(root, posix(env.ALFRED_CODE_DOCS_PATH || '.alfred/docs'))));
+    const head = String(gitOut(['rev-parse', '--verify', '-q', 'HEAD'], root) || '').trim();
+    let before = [];
+    try { before = fs.readFileSync(path.join(root, docsRel, 'flow', `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`), 'utf8').split(/\r?\n/).filter(Boolean).map(posix); }
+    catch { /* no record - nothing to subtract */ }
+    // The docs root sits in the stack's data root (`<data root>/docs`), whose other files are the stack's too.
+    const dataRel = path.posix.basename(docsRel) === 'docs' && !['.', ''].includes(path.posix.dirname(docsRel)) ? path.posix.dirname(docsRel) : docsRel;
+    const outside = (f) => f === '.claude' || f.startsWith('.claude/') || (dataRel && !dataRel.startsWith('..') && (f === dataRel || f.startsWith(`${dataRel}/`)));
+    return [...new Set([...tracked, ...untracked].map(posix))].filter((f) => !outside(f) && !before.includes(f)).sort();
+}
+
+function sizeCheck(size, files) {
+    if (!SIZES.includes(size)) return `size check: unknown size '${size}' - one of ${SIZES.join(', ')}`;
+    if (files === null) return 'size check: not a git checkout - count the files the run touched by hand';
+    const list = files.slice(0, 12).join(', ') + (files.length > 12 ? `, +${files.length - 12} more` : '');
+    const cap = SIZE_CAPS[size];
+    if (cap === undefined) return `size check: ${size} has no file cap - ${files.length} file(s) touched`;
+    if (files.length <= cap) return `size check: ${size} holds - ${files.length} of ${cap} file(s) touched${list ? `: ${list}` : ''}`;
+    return `size check: raise to standard - ${files.length} files touched, ${size} allows ${cap}: ${list}`;
+}
+
+module.exports = { classify, report, touchedFiles, sizeCheck };
 
 // stdout and stderr block, so a pipe gets every byte before process.exit (macOS writes a pipe async) - the
 // prelude's blockingStdio, inline because a skill copy has no prelude beside it (blocking-stdio in meta/shared-rules.json).
@@ -123,7 +167,10 @@ function blockingStdio(streams = [process.stdout, process.stderr])
     }
 }
 
-if (require.main === module) {
+if (require.main === module && process.argv[2] === '--touched') {
+    blockingStdio();
+    process.stdout.write(`${sizeCheck(String(process.argv[3] || '').toLowerCase(), touchedFiles())}\n`);
+} else if (require.main === module) {
     blockingStdio();
     let text;
     try { text = fs.readFileSync(process.argv[2] || 0, 'utf8'); }

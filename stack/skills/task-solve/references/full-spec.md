@@ -19,6 +19,16 @@ else echo 'path: gated - spec-check not found'; fi
 
 A script neither home has prints `path: gated`: keep every gate.
 
+## The size re-check - before a trivial or small close
+
+Before a trivial or small run's close stop, run the same script from the project root as
+`node "$SPEC" --touched <trivial|small>` - the lookup block above with its heredoc call swapped for that
+line. It prints ONE `size check:` line: the files the run touched (the tracked diff plus new files, minus
+the stack's data root, `.claude/` and what was untracked when the change began) against the row's cap, and the
+close's `Progress:` line quotes it. On `raise to standard` the size rises where the run stands - write
+the plan file with the work done as ticked tasks, then take standard's step-4 stop (the reviewer ask),
+step 5 and step 6; the small row's close is gone.
+
 ## The merged path
 
 On `path: merged`, steps 1 and 2 are ONE step: the design and the plan audit both in this session

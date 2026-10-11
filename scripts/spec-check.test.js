@@ -191,3 +191,42 @@ test('the cross-task orchestrator carries a byte-identical copy of the script in
   assert.ok(require('node:fs').existsSync(twin), 'task-solve-cross/scripts/spec-check.js exists');
   assert.strictEqual(require('node:fs').readFileSync(twin, 'utf8'), require('node:fs').readFileSync(SCRIPT, 'utf8'), 'the twin matches the owner byte for byte');
 });
+
+// Usage audit 2026-10-11, session 5984019e: a run sized small at a 4-file starting diff ended at 10 touched files and
+// never raised its size. `--touched <size>` counts what the run touched against the row's cap - the tracked diff plus
+// untracked files, minus the docs root, `.claude/` and the docs hook's untracked-at-start record (Windows-shaped here:
+// a backslash docs path and a CRLF record, on every OS).
+test('--touched: the size re-check counts the run\'s files against the row cap', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const { execFileSync } = require('node:child_process');
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'sd-touched-'));
+  try {
+    const git = (...a) => execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', ...a], { cwd: repo, encoding: 'utf8' });
+    git('init', '-q');
+    for (const f of ['a.cs', 'b.cs', 'c.cs']) fs.writeFileSync(path.join(repo, f), 'x\n');
+    git('add', '.');
+    git('commit', '-qm', 'base');
+    const head = git('rev-parse', 'HEAD').trim();
+    fs.mkdirSync(path.join(repo, '.alfred', 'docs', 'flow'), { recursive: true });
+    fs.writeFileSync(path.join(repo, 'old-notes.txt'), 'was here before\n');
+    fs.writeFileSync(path.join(repo, '.alfred', 'docs', 'flow', `untracked-at-start-${head}`), 'old-notes.txt\r\n');
+    fs.writeFileSync(path.join(repo, '.alfred', 'docs', 'plan.md'), 'plan\n');
+    fs.writeFileSync(path.join(repo, '.alfred', '.gitignore'), '*\n!docs/\n');
+    fs.mkdirSync(path.join(repo, '.claude'));
+    fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), '{}\n');
+    const check = (size) => spawnSync(process.execPath, [SCRIPT, '--touched', size], { cwd: repo, encoding: 'utf8', env: { ...process.env, ALFRED_CODE_DOCS_PATH: '.alfred\\docs' } }).stdout.trim();
+    fs.writeFileSync(path.join(repo, 'a.cs'), 'y\n');
+    fs.writeFileSync(path.join(repo, 'new.cs'), 'n\n');
+    assert.strictEqual(check('small'), 'size check: small holds - 2 of 3 file(s) touched: a.cs, new.cs');
+    assert.strictEqual(check('trivial'), 'size check: raise to standard - 2 files touched, trivial allows 1: a.cs, new.cs');
+    fs.writeFileSync(path.join(repo, 'b.cs'), 'y\n');
+    git('rm', '-q', 'c.cs');
+    assert.strictEqual(check('small'), 'size check: raise to standard - 4 files touched, small allows 3: a.cs, b.cs, c.cs, new.cs', 'a staged deletion counts; the docs root, .claude and the recorded file do not');
+    assert.strictEqual(check('standard'), 'size check: standard has no file cap - 4 file(s) touched');
+    assert.match(check('huge'), /^size check: unknown size 'huge'/);
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'sd-touched-none-'));
+    try { assert.match(spawnSync(process.execPath, [SCRIPT, '--touched', 'small'], { cwd: outside, encoding: 'utf8' }).stdout, /not a git checkout/); }
+    finally { fs.rmSync(outside, { recursive: true, force: true }); }
+  } finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});

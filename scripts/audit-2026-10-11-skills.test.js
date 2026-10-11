@@ -95,3 +95,43 @@ test('no skill or seat text runs a bare jq', () =>
     const hits = files.filter((f) => bare.test(fs.readFileSync(f, 'utf8').replace(/--jq\b/g, '')));
     assert.deepStrictEqual(hits.map((f) => path.relative(ROOT, f)), []);
 });
+
+// ------------------------------------------------------------------ SD15 - task-solve's close and size
+
+// The `ask` blocks of a text, as { question, options: [label] }.
+const asksOf = (text) => [...String(text).matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?)^[ \t]*```/gm)].map((m) =>
+{
+    const lines = m[1].split('\n').map((l) => l.trim()).filter(Boolean);
+    return { question: lines[0], options: lines.slice(1).map((l) => (/^- '(.*)'(?: - |$)/.exec(l) || [])[1]).filter(Boolean) };
+});
+
+// 42951e5b#9: the close ask left the unpushed commit out; the user typed 'commit both and push them' in Other.
+test('42951e5b#9: an unpushed commit is its own close question, Hold first and recommended', () =>
+{
+    const solve = read('stack/skills/task-solve/SKILL.md');
+    const push = asksOf(solve).find((a) => /is not pushed to <remote>/.test(a.question));
+    assert.ok(push, 'the push question is a template');
+    assert.deepStrictEqual(push.options, ['Hold - push later (Recommended)', 'Push now']);
+    assert.match(push.question, /merge <A> before <B> - why/, 'several branches name the merge order');
+    assert.match(flat(solve), /An unpushed commit is its own question too/);
+});
+
+// 42951e5b#10: a documented test command proved wrong (6 false reds without a platform flag) had no close-out route.
+test('42951e5b#10: a command the cycle proved wrong is doc drift, named against AGENTS.md or the run book', () =>
+{
+    const mech = flat(read('stack/skills/task-solve/references/step-mechanics.md'));
+    assert.match(mech, /A build, test or run command this cycle proved wrong[^.]*is doc drift too/);
+    assert.match(mech, /names the AGENTS\.md line or the run-book section \(`<docs-path>\/project-capabilities\/PROJECT-CAPABILITIES\.md`\)/);
+});
+
+// 5984019e#2 / #3: a small run grew to 10 files and closed with no review; the re-check is a script line, the review a receipt.
+test('5984019e#2 #3: a trivial or small close re-checks its size by script and carries its review receipt', () =>
+{
+    const solve = flat(read('stack/skills/task-solve/SKILL.md'));
+    assert.match(solve, /The size can be raised mid-run, never lowered - re-checked before a trivial or small close \(`references\/full-spec\.md`\); a small close's `Result:` carries `review: <reviewer> - <its verdict>`/);
+    const spec = flat(read('stack/skills/task-solve/references/full-spec.md'));
+    assert.match(spec, /`node "\$SPEC" --touched <trivial\|small>`/);
+    assert.match(spec, /On `raise to standard` the size rises where the run stands/);
+    const body = read('stack/skills/task-solve/SKILL.md').replace(/^---\n[\s\S]*?\n---\n/, '');
+    assert.ok(body.length < 17700, `the body stays under its cap: ${body.length}`);
+});

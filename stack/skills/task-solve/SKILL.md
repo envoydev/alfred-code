@@ -93,7 +93,8 @@ pre-commit checkpoint and its receipt still apply. A session past the trigger, o
 State the size in ONE line before anything else - `Size: <trivial|small|standard|cross> - <the
 signal that decided it>`, never below the `size floor:` the full-spec check prints (run it first, on
 every size) - then run only that row's steps; it rides the first stop's `Result:`, `Spec:` beside it.
-The size can be raised mid-run, never lowered.
+The size can be raised mid-run, never lowered - re-checked before a trivial or small close
+(`references/full-spec.md`); a small close's `Result:` carries `review: <reviewer> - <its verdict>`.
 
 | Size | Signals | Steps that run |
 |---|---|---|
@@ -162,12 +163,8 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
      exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), by the
      step mechanics' dispatch rules - the approval stamp first, the contract version and the card's
      docs anchors in every brief, no isolation, no `model:` override.
-   Both modes build to the step mechanics' bar, and the plan's `## Decisions` ledger grows as they
-   land. A mid-build how-to-build question is a protocol violation. Build-time stops are for what the
-   BUILD cannot decide - scope beyond the plan, a decision the plan left open that the code now
-   forces, an EXTERNAL blocker (a dependency down, a credential missing, a locked file). A tool the
-   environment blocks is not yet a blocker: `task-implement`'s in-session route comes first. State
-   what blocks and what is done, then ONE ask - never 'retry the same command' or 'you run it':
+   Both modes build to the step mechanics' bar, its build-time stop list included. State what blocks
+   and what is done, then ONE ask - never 'retry the same command' or 'you run it':
 
    ```ask
    <What blocks task N>. <The in-session route> finishes it here - the task cannot close without it.
@@ -233,8 +230,15 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    - 'Leave it for later' - named in Leftovers
    ```
 
-   A picked commit runs `habits-commit-checkpoint` whole, the formatter check included - never a
-   shortcut because the review already ran.
+   An unpushed commit is its own question too (several branches: the merge order):
+
+   ```ask
+   <sha> on <branch> is not pushed to <remote><; merge <A> before <B> - why>.
+   - 'Hold - push later (Recommended)' - nothing leaves this machine
+   - 'Push now' - the checkpoint's publish half takes this answer as its confirmation
+   ```
+
+   A picked commit runs the checkpoint whole, its formatter included.
    New scope arriving in-chat after `Completed:` is a NEW cycle in a NEW plan file (a stamped file
    is a record, never appended to) - re-enter step 1, or state in one `ungated: <why>` line that the
    work runs outside the cycle; never build it on a casual 'yes, add it'. A change a sibling repo must
