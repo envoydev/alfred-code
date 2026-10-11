@@ -39,6 +39,12 @@ Each line closed a measured way the receipt passed while recording nothing.
   the checkpoint dispatched a general-purpose security seat anyway (17 messages, $1.14).
 - The file count (390aebcb): a receipt claimed an 'inline security review over the full 11-file
   diff' while the security diff covered 4 files; the membership handler never went through it.
+- The index-safe read (usage audit 2026-10-11, session 42951e5b): the old review recipe
+  `git add -N . && git diff HEAD; git reset -q`, run mid-merge, dropped `MERGE_HEAD`; the merge state was
+  rebuilt by hand (387.0k). Its replacement names each untracked file because, measured against the
+  stack's secret guard on 2026-10-11, a `while read` loop or an `xargs` over `git ls-files -o` printed an
+  untracked `.env` key raw, while the same `git diff --no-index -- /dev/null .env` named in the command
+  was rewritten and masked.
 
 ## Why the receipt is its own tool call
 

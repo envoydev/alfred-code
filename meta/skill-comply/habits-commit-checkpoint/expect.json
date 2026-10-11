@@ -63,17 +63,23 @@
     {
       "id": "security-full-change-set",
       "from": "stack/skills/habits-commit-checkpoint/SKILL.md",
-      "quote": "Feed it the FULL change set with the reset chained into the SAME call",
+      "quote": "Feed it the FULL change set, read without touching the index",
       "graders": [
         {
           "type": "tool_order",
-          "name": "git add -N, git diff HEAD and git reset -q in one call, before the commit",
+          "name": "the untracked token module read through git diff --no-index, before the commit",
           "before": { "any": [
-            { "tool": "Bash", "field": "command", "text_match": "git add -N \\.[\\s\\S]*git diff HEAD[\\s\\S]*git reset -q" },
-            { "tool": "Agent", "field": "prompt", "text_match": "git add -N \\.[\\s\\S]*git diff HEAD" },
-            { "tool": "Task", "field": "prompt", "text_match": "git add -N \\.[\\s\\S]*git diff HEAD" }
+            { "tool": "Bash", "field": "command", "text_match": "git diff --no-index -- /dev/null [^;&|\\n]*tokens\\.js" },
+            { "tool": "Agent", "field": "prompt", "text_match": "--no-index" },
+            { "tool": "Task", "field": "prompt", "text_match": "--no-index" }
           ] },
           "after": { "ref": "commit" }
+        },
+        {
+          "type": "tool_used",
+          "name": "no git add -N and no git reset in the review read",
+          "tool": "Bash", "field": "command", "text_match": "git add (-N|--intent-to-add)|git reset\\b",
+          "min": 0, "max": 0
         }
       ]
     },

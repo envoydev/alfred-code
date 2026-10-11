@@ -76,10 +76,25 @@ first:** compute `git diff HEAD` (or the staged diff, or `git diff <base>..HEAD`
 apply the vulnerability checklist to exactly that - a read-only general-purpose seat where dispatch
 exists, inline otherwise. Inside a flow whose dispatch is explicit-only (the solve flows) it runs
 inline unless the stop that led here offered the seat and the user picked it, and inline inside a stamped flow where the dispatch guard blocks generic
-seats. Feed it the FULL change set with the reset chained into the SAME call, the spelling that rule
-carries, so untracked files appear in the diff and the intent-to-add entries never outlive it. The
-review's file list is the set `spec:` counts - hold the two against each other before the verdict -
-and the `security:` line ends `- over <N> files`, that count.
+seats. Feed it the FULL change set, read without touching the index - `git diff HEAD` plus, for each
+file `git ls-files -o --exclude-standard` lists, `git diff --no-index -- /dev/null <file>`, so a
+brand-new file is reviewed too. First the tracked diff and the untracked list:
+
+```bash
+git diff HEAD; git ls-files -o --exclude-standard
+```
+
+then ONE call naming each listed file, `|| true` because `--no-index` exits 1 whenever the files differ:
+
+```bash
+git diff --no-index -- /dev/null <file-1> || true; git diff --no-index -- /dev/null <file-2> || true
+```
+
+Name every file; never a loop or `xargs` over the list - the secret guard masks a credential only in a
+`git diff` whose path it can read. Never `git add -N` and never `git reset` in a review or scope read:
+a mixed reset during a merge drops `MERGE_HEAD`, and the merge state has to be rebuilt by hand. The
+review's file list is the set `spec:` counts - hold the two against each other before
+the verdict - and the `security:` line ends `- over <N> files`, that count.
 
 `/security-review` is the UNBOUNDED route, and the bound is not yours to set: it recomputes a
 whole-branch diff whatever base it is handed, so an explicit base does not scope it, and a branch
