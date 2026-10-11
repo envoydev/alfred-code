@@ -1576,6 +1576,7 @@ function stdinIsScript(word, rest) {
 }
 // A QUOTED or backslashed tag (`<<'EOF'`, `<<"EOF"`, `<<\EOF`) hands the body over verbatim: the shell expands nothing in it. The
 // spans are `heredocsOf`'s - the reader every guard shares - so an opener spelling it accepts is one here too (seam M1).
+const CODE_FILE = /\.(?:[cm]?[jt]sx?|py|rb|pl|pm|php|sh|bash|zsh|ksh|ps1|psm1)["']?$/i;
 function stripHeredocsOf(c, code) {
   if (!code) return blankHeredocs(c);
   const docs = heredocsOf(c);
@@ -1598,7 +1599,14 @@ function stripHeredocsOf(c, code) {
       const words = shellTokens(blank.slice(Math.max(0, at - 200), at).split(/[;&|\n(]/).pop().trim()).map((w) => w.replace(/^["']|["']$/g, ''));
       const k = commandIndex(words);
       const word = (words[k] || '').replace(/^.*[\\/]/, '');
-      if (RUNTIME_WORD.test(word) || SHELL_WORD.test(word)) code.push({ body, runtime: !SHELL_WORD.test(word), lang: runtimeLang(word), verbatim: heredocVerbatim(c, h) });
+      // Only as the runtime's SCRIPT: the words before the file name no script of their own (stdinIsScript: no script
+      // file, no `-c` / `-e` code) and no runtime `-` (stdin is the script, the file its argv). A data file a script reads
+      // is no code - `node assemble.js $B fills/x.md` replaced a 19k-character command whose fill named a settings file,
+      // and the replacement died on the Windows harness (audit 2026-10-11 SD01, session ae38c08f).
+      // A file with a code extension stays code even as an argument - a loader script may run it.
+      const pre = words.slice(k + 1).filter(Boolean); // the file's own opening quote leaves an empty word
+      const asScript = (stdinIsScript(word, pre) && !(RUNTIME_WORD.test(word) && pre.includes('-'))) || CODE_FILE.test(file);
+      if (asScript && (RUNTIME_WORD.test(word) || SHELL_WORD.test(word))) code.push({ body, runtime: !SHELL_WORD.test(word), lang: runtimeLang(word), verbatim: heredocVerbatim(c, h) });
     }
   }
   return blank;
@@ -2521,10 +2529,41 @@ function narrowGrep(stages, words, tok, prefix) {
 // text is not the command), a split that fell back to the quote-blind form, and a command whose
 // other segments name a credential file of their own or a path this guard cannot resolve - keeping
 // those would let an unjudged read run, which is the one thing a rewrite must never do.
+// A step that NAMES a credential file but prints none of it - a count or a test (judgeShell's own reducer and redirect
+// skips), or a git call that reports names and history, never content - no longer forces the whole-command rewrite: a
+// configure run's `git ls-files`, `git check-ignore`, `git log -S ... | wc -l` and `git show ... | grep -c` were dropped
+// as 9 steps and the kept `jq` died on Git Bash (audit 2026-10-11 SD01, session 5f9fec85). The kept step is still judged
+// as written (judgeKept), so a print there takes its own form.
+const GIT_NAMES_ONLY = /^(?:ls-files|check-ignore|check-attr|status|rev-parse|ls-tree|rev-list|show-ref|log|whatchanged)$/;
+function printsNoContent(part, stages) {
+  if (!stages.some(teesToTerminal) && (redirectsToFile(part) || stages.some(isReducer))) return true;
+  return stages.every((st) => {
+    const head = st.replace(PREFIX_WORDS, '').trim();
+    if (/^(?:echo|printf)\b/.test(head) && !/\$\(|`/.test(st)) return true; // prints its own words, `echo "rc=${PIPESTATUS[0]}"`
+    const w = shellTokens(head).map(dequoteWord);
+    if (!/^git(?:\.exe)?$/i.test(w[0] || '')) return !namesCredentialStage(st);
+    let i = 1;
+    while (i < w.length && w[i].startsWith('-')) i += /^(?:-C|-c|--git-dir|--work-tree|--namespace)$/.test(w[i]) ? 2 : 1;
+    return GIT_NAMES_ONLY.test(w[i] || '') && !gitPrintsContent(st);
+  });
+}
+function namesCredentialStage(stage) {
+  if (selfRun(stage)) return false; // this guard's own presence / redacted read
+  const toks = shellTokens(stage).filter((t) => !t.startsWith('-') && /[\/.~$]/.test(t));
+  for (const m of stage.matchAll(/(?:^|[^<])<\s*("[^"]*"|'[^']*'|[^\s;|&<>()]+)/g)) toks.push(m[1]);
+  for (const m of stage.matchAll(/(["'`])([^"'`\n]{2,300})\1/g)) toks.push(m[2]);
+  for (const tok of toks) {
+    if (/\$\{?[A-Za-z_]/.test(tok) && !expandPath(tok)) return true; // unknowable - never kept
+    for (const p of candidatePaths(tok)) { const f = statFile(p); if (f && secretInUnlessAllowed(f)) return true; }
+  }
+  return false;
+}
 function namesCredentialFileIn(part) {
   const asg = part.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s;|&]*)/);
   if (asg) VARS.set(asg[1], [asg[2].replace(/^(["'])([\s\S]*)\1$/, '$2')]);
-  for (const stage of splitPipes(part)) {
+  const stages = splitPipes(part);
+  if (stages.some(namesCredentialStage) && printsNoContent(part, stages)) return false;
+  for (const stage of stages) {
     if (selfRun(stage)) continue; // this guard's own presence / redacted read
     const toks = shellTokens(stage).filter((t) => !t.startsWith('-') && /[\/.~$]/.test(t));
     for (const m of stage.matchAll(/(?:^|[^<])<\s*("[^"]*"|'[^']*'|[^\s;|&<>()]+)/g)) toks.push(m[1]);
@@ -2574,7 +2613,9 @@ function wholeView(view, file) {
   // the replacement. The judged text is the base where it is the command; otherwise (a heredoc in
   // the command, a heredoc body) the command's own segments are, minus the one naming the file.
   const parts = judging && judging.main ? splitSegments(stripComments(judging.text)) : null;
-  const base = parts || splitSegments(stripComments(String(input.command || '')));
+  // a heredoc body is no step: the blanked command keeps each opener line and blanks the body, which listed 161 body
+  // lines as 'dropped steps' in an 8k-character note (audit 2026-10-11 SD01, session ae38c08f)
+  const base = parts || splitSegments(stripComments(blankHeredocs(String(input.command || ''))));
   const dropped = [];
   for (let i = 0; i < base.length; i++) {
     const p = base[i].trim().replace(/\s+/g, ' ');
@@ -2752,6 +2793,9 @@ function gitPrintsContent(stage) {
   if (sub === 'log' || sub === 'whatchanged') return patch;
   if (sub === 'stash') return args[0] === 'show' && patch;
   if (sub === 'cat-file') return args.some((a) => /^(?:-p|blob|--textconv|--filters)$/.test(a)); // prints a blob whole (seam m5)
+  // a tracked file's matching lines, a tracked credential file's too (audit 2026-10-11 SD01: `git grep` was never judged);
+  // names and counts print none
+  if (sub === 'grep') return !args.some((a) => /^(?:-[A-Za-z]*[lLcq][A-Za-z]*|--name-only|--files-with-matches|--files-without-match|--count|--quiet)$/.test(a));
   // A remote URL and a config value may carry a token (`https://user:token@host/...`): only the READ forms count, since the
   // probe RUNS the command and `git config user.name x` must never be one.
   if (sub === 'remote') return args[0] === 'get-url' || args[0] === 'show' || args.some((a) => /^(?:-v|--verbose)$/.test(a));
@@ -2796,7 +2840,7 @@ function gitOutputLeaks(stage) {
   if (w.slice(at).some((a) => /^--output(?:=|$)/.test(a))) return true;
   if (w[i] === 'cat-file' && w.some((a) => /^--(?:textconv|filters)$/.test(a))) return true; // runs a repository's own driver
   // a remote or config read takes none of the diff flags, and `remote show` asks the network unless told `-n`
-  const plain = w[i] === 'cat-file' || w[i] === 'remote' || w[i] === 'config';
+  const plain = w[i] === 'cat-file' || w[i] === 'remote' || w[i] === 'config' || w[i] === 'grep';
   // a clean filter the repository configures runs inside a working-tree diff - a command, before any approval
   if (!plain && localFilterConfigured(w.slice(1, i))) return true;
   if (!takeProbe()) return true;

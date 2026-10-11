@@ -295,7 +295,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     missing operand keeping grep's own error and a directory or an unexpandable operand named on stderr as not searched.
     Audit 2026-10-11 SD01 (`grepArgs`): a narrowed filter never carries a recursion option, and every walk spelling -
     `-rC2`, `-d recurse`, ugrep's `-NUM` / `--depth`, and a directory operand with no `-r`, which ugrep (the Bash tool's
-    `grep` on every OS) walks - is probed with `-r` (a kept `-rn` walked the cwd and printed the credential raw); a loop's `cat "$f"` becomes `--redacted "$f"` with the
+    `grep` on every OS) walks - is probed with `-r` (a kept `-rn` walked the cwd and printed the credential raw); `git grep`
+    is probed like the other git reads; a sibling step that names the file but prints none of it (`git ls-files`,
+    `check-ignore`, a non-patch `git log`, a count, an `echo`) no longer forces the whole-command rewrite; a heredoc-written
+    file is code only as the runtime's SCRIPT operand or with a code extension, never as a data argument, and the
+    dropped-steps note lists no body lines (sessions ae38c08f, 5f9fec85); a loop's `cat "$f"` becomes `--redacted "$f"` with the
     loop and every other step kept; `--presence` prints `KEY=empty (present, no value)` for `''` / `null`. `git remote -v` / `get-url` / `show` and
     `git config --list` / `--get` are probed the same way (a tokened URL is masked; a config write is never probed). A print
     piped into a login that reads stdin (`--password-stdin`, `--with-token`) is a use, `${NAME:+word}` prints no value, a
