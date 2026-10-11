@@ -452,6 +452,28 @@ test('audit 2026-10-10 C11: shell spans join the Read tool\'s range cap', () => 
   assert.match(second.stderr, /at most 60%/, 'the denial states the cap');
 });
 
+// Audit 2026-10-11 SD16, session 5984019e: a sibling repo's 316-line service worker, Read 200+150 denied at 61% with the
+// navigation remedy (that repo is in no index); the grep -C 3 fallback cut the handler at line 250 that held the answer.
+test('audit 2026-10-11 SD16: an out-of-project file is located with grep, and the cap denial says how many lines are left', () => {
+  const dir = capDir(); const f = path.join(dir, 'index.js'); fs.writeFileSync(f, linesOf(316, 'js'));
+  const s = sid();
+  assert.equal(readAt(f, 1, 100, s).status, 0, 'a first range (32%)');
+  const r = readAt(f, 200, 150, s);
+  assert.equal(r.status, 2, 'the measured second range still blocks - the 60% cap is unchanged');
+  assert.match(r.stderr, /89 of its 316 lines are still readable by range here/, 'floor(316 x 0.6) = 189, less the 100 read');
+  assert.match(r.stderr, /outside the project, so the navigation server has not indexed it/);
+  assert.match(r.stderr, /grep -n '<function, handler or key you need>'/);
+  assert.doesNotMatch(r.stderr, /get_symbols_overview|ToolSearch select/, 'no navigation remedy for a tree it never indexed');
+  assert.equal(readAt(f, 237, 24, s).status, 0, 'the targeted range the denial points at passes (39%)');
+  const inside = path.join(ROOT, 'svc.ts'); fs.writeFileSync(inside, linesOf(316));
+  const s2 = sid();
+  assert.equal(readAt(inside, 1, 100, s2).status, 0);
+  const own = readAt(inside, 200, 150, s2);
+  assert.equal(own.status, 2);
+  assert.match(own.stderr, /ToolSearch select:/, 'a file in the project keeps the navigation remedy');
+  assert.match(own.stderr, /89 of its 316 lines are still readable/);
+});
+
 test('audit 2026-10-10 C11: a markup template\'s denial names grep, never the symbol overview', () => {
   const dir = capDir(); const f = path.join(dir, 'project-detail.page.html'); fs.writeFileSync(f, linesOf(326, 'html'));
   const r = readAt(f, undefined, undefined, sid());

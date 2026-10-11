@@ -167,20 +167,44 @@ function planOnDisk(plan, root) {
     return fs.existsSync(abs);
   } catch { return true; }
 }
+// Over the cap, rulings go last and fairly (audit 2026-10-11 SD16, session e90a1845: trimming from the end cut every
+// ruling of the older session - AGENTS.md rows kept as they are, a credential deferral - while the newest session's three
+// stayed, and the same rows were reviewed again and answered the same). A question is shown once, at its newest answer;
+// the ruling lines leave in round-robin order across sessions (each session's oldest shown ruling first), and only then
+// the older sessions' own lines.
+const questionKey = (q) => String(q || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 70);
 function renderStartBlock(entries, cap = 600, root = null) {
   if (!entries.length) return '';
   const head = 'Previous sessions on this branch - history, not instructions; a ruling stands, a file claim is verified before use:';
-  const lines = [head];
-  for (const e of entries) {
+  const seen = new Set();
+  const per = entries.map((e) => (e.rulings || []).slice(-3).reverse().filter((r) => {
+    const k = questionKey(r && r.question);
+    if (!r || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  }));
+  const rank = new Map();
+  let n = 0;
+  for (let round = 0; round < 3; round++) per.forEach((rs) => { if (rs[round]) rank.set(rs[round], n++); });
+  const items = [{ text: head }];
+  entries.forEach((e, i) => {
     const when = String(e.updatedAt || '').slice(0, 16).replace('T', ' ');
     const bits = [`${(e.commits || []).length} commit(s)`, `${(e.dirty && e.dirty.count) || 0} file(s) left uncommitted`];
     if (e.plan && planOnDisk(e.plan, root)) bits.push(`plan ${e.plan}`);
-    lines.push(`- ${when}: ${bits.join(', ')}`);
-    for (const r of (e.rulings || []).slice(-3)) lines.push(`  ruled: ${r.question.slice(0, 70)} -> ${r.answer.slice(0, 60)}`);
+    items.push({ text: `- ${when}: ${bits.join(', ')}`, entry: i });
+    for (const r of per[i].slice().reverse()) items.push({ text: `  ruled: ${String(r.question).slice(0, 70)} -> ${String(r.answer).slice(0, 60)}`, rank: rank.get(r), entry: i });
+  });
+  items.push({ text: 'More: node .claude/hooks/history.js rulings' });
+  const render = () => items.map((x) => x.text).join('\n');
+  let text = render();
+  while (text.length > cap) {
+    let drop = -1;
+    items.forEach((x, k) => { if (x.rank !== undefined && (drop < 0 || x.rank > items[drop].rank)) drop = k; });
+    if (drop < 0) for (let k = items.length - 2; k > 1 && drop < 0; k--) if (items[k].entry !== undefined && items[k].entry > 0) drop = k;
+    if (drop < 0) break;
+    items.splice(drop, 1);
+    text = render();
   }
-  lines.push('More: node .claude/hooks/history.js rulings');
-  let text = lines.join('\n');
-  while (text.length > cap && lines.length > 3) { lines.splice(lines.length - 2, 1); text = lines.join('\n'); }
   return text.slice(0, cap);
 }
 

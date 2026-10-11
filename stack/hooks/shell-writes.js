@@ -2076,11 +2076,29 @@ function gitText(raw, cwd) {
   const calls = parsed ? gitCalls(null, parsed) : [];
   const regionCds = new Map();
   const cdTarget = (t) => nativePath(unquote(t));
+  // A `cd "$WT"` whose variable the same command assigned a LITERAL before it is followed (audit 2026-10-11 SD16, session
+  // 2ca8e8ee: `WT=<scratch>; git worktree add --detach "$WT" ... && cd "$WT" && git commit` was judged in the project's
+  // tree, whose 39-file diff demanded a receipt). The newest literal set before the cd wins; anything else stays unread.
+  const events = (parsed && parsed.assignEvents) || [];
+  const literalAt = (name, at) => {
+    let v = null;
+    for (const e of events) if (e.kind === 'set' && e.name === name && e.at < at) v = /[$`]/.test(String(e.value)) ? null : e.value;
+    return v;
+  };
+  const resolveCd = (c) => {
+    const t = unquote(String(c[1] || ''));
+    if (!/\$/.test(t)) return c;
+    const out = t.replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g, (m, br, bare) => { const v = literalAt(br || bare, c.index); return v === null ? m : v; });
+    if (out === t) return c;
+    const copy = Object.assign([], c);
+    copy[1] = out;
+    return copy;
+  };
   function callDir(call) {
     let k = regions.length - 1;
     while (k > 0 && regions[k].from > call.at) k--;
     const r = regions[k];
-    if (!regionCds.has(k)) regionCds.set(k, (parsed ? parsed.cds : []).filter((c) => c.index >= r.from && c.index < r.to));
+    if (!regionCds.has(k)) regionCds.set(k, (parsed ? parsed.cds : []).filter((c) => c.index >= r.from && c.index < r.to).map(resolveCd));
     let dir = anchorAt(regionCds.get(k), call.at, r.cwd, cdTarget) || r.cwd;
     for (const d of call.dirs) if (!isVar(d)) dir = path.resolve(dir, nativePath(d));
     try { dir = fs.realpathSync.native(dir); } catch { /* git reports the missing directory itself */ }

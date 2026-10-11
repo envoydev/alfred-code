@@ -1551,6 +1551,21 @@ function stagedFindings() {
   }
 }
 if (carriesOwnReceipt('COMMIT-GATE', commitMatch.index)) process.exit(0);
+// A SCRATCH commit is no project history: git runs in a checkout other than the project's own, on a DETACHED HEAD, under
+// the temp dir or the harness's scratch root (audit 2026-10-11 SD16, session 2ca8e8ee: a throwaway replay commit in a
+// detached scratch worktree was held for the project's receipt). The staged scan above still ran; a branch, the
+// project's own tree or a path outside the temp roots is gated as before.
+if (commitMatch.call && gitTop && !(projectDir && gitTop === topOf(projectDir))) {
+  const UID = typeof process.getuid === 'function' ? process.getuid() : null;
+  const realOr = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
+  const tmpRoots = [require('os').tmpdir(), ...(UID != null ? [`/tmp/claude-${UID}`, `/private/tmp/claude-${UID}`] : [])].map(realOr);
+  const under = tmpRoots.some((d) => gitTop === d || gitTop.startsWith(d.endsWith(path.sep) ? d : d + path.sep));
+  let detached = false;
+  if (under) {
+    try { execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: gitTop, timeout: 5000, stdio: 'ignore' }); } catch (e) { detached = !!e && e.status === 1; }
+  }
+  if (under && detached) process.exit(0);
+}
 // Trivial-diff exemption: total churn across this session's change - this commit plus what the session's
 // earlier trivial commits took in (barSet, above; the whole uncommitted tree when no session start can be read).
 // A chained `git add && git commit` stages mid-command, so the commit's set reads the add's own paths.

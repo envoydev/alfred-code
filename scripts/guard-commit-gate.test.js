@@ -1248,3 +1248,31 @@ test('audit 2026-10-10 C17: a refused consent quote names the option the user pi
   assert.equal(r.status, 2, 'a typo carries no publish verb (bda299a8)');
   assert.match(r.stderr, /this session's latest ask was answered "Publish \(Recommended\)"; a picked option is written `answered: Publish \(Recommended\)`/);
 });
+
+// Audit 2026-10-11 SD16, session 2ca8e8ee: a throwaway replay commit in a DETACHED scratch worktree (`cd "$WT"`, WT
+// assigned in the same command) was judged in the project's 39-file tree and held for its receipt.
+test('audit 2026-10-11 SD16: a literal cd "$WT" is followed, and a detached scratch worktree under the temp dir is no project history', () => {
+  const dir = scratchRepo();
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  const scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'sd-scratch-')));
+  const detachedWt = path.join(scratch, 'replay');
+  git('worktree', 'add', '-q', '--detach', detachedWt);
+  for (const f of ['a.txt', 'b.txt', 'c.txt']) fs.writeFileSync(path.join(detachedWt, f), forty());
+  assert.equal(gateIn(dir, `WT=${detachedWt}; cd "$WT" && git add -A && git commit -qm replay`), 0, 'the measured scratch commit');
+  assert.equal(gateIn(dir, `cd ${detachedWt} && git commit -qam replay`), 0, 'a literal cd too');
+  assert.equal(gateIn(dir, `git -C ${detachedWt} commit -qam replay`), 0, 'and -C');
+  // the cd resolution on its own: a worktree on a BRANCH is gated in its own tree
+  const clean = scratchRepo();
+  spawnSync('git', ['-C', clean, 'checkout', '-q', '--', '.'], { encoding: 'utf8' });
+  for (const f of ['b.txt', 'c.txt']) fs.rmSync(path.join(clean, f), { force: true });
+  const branchWt = path.join(scratch, 'feature');
+  spawnSync('git', ['-C', clean, 'worktree', 'add', '-q', '-b', 'feature', branchWt], { encoding: 'utf8' });
+  for (const f of ['a.txt', 'b.txt', 'c.txt']) fs.writeFileSync(path.join(branchWt, f), forty());
+  assert.equal(gateIn(clean, `WT=${branchWt}; cd "$WT" && git add -A && git commit -qm feature`), 2, 'a branch worktree is real history: gated in ITS tree (the clean project would pass)');
+  assert.equal(gateIn(clean, 'WT=$(mktemp -d); cd "$WT" && git commit -qam x'), 0, 'a computed cd stays unread: the clean project is judged');
+  assert.equal(gateIn(dir, 'WT=$(mktemp -d); cd "$WT" && git commit -qam x'), 2, '... and the dirty one is gated');
+  assert.equal(gateIn(dir, `cd "$WT" && git commit -qam x; WT=${detachedWt}`), 2, 'an assignment AFTER the cd is not its value');
+  // the staged scan still runs in a scratch tree
+  fs.writeFileSync(path.join(detachedWt, 'd.txt'), '<<<<<<< HEAD\nx\n=======\ny\n>>>>>>> other\n');
+  assert.equal(gateIn(dir, `cd ${detachedWt} && git add -A && git commit -qm replay`), 2, 'a conflict marker is still caught');
+});

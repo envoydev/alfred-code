@@ -1870,7 +1870,10 @@ test('guard-cross-project-write: the session\'s own scratch and the account dir 
   assert.equal(inRepo({ tool_name: 'Bash', tool_input: { command: 'echo x > /tmp/probe.txt' } }), 0, 'a temp file from the shell');
   const home = os.homedir();
   if (home) assert.equal(w(path.join(home, '.claude', 'projects', 'p', 'memory', 'm.md')), 0, 'memory writes must keep working');
-  assert.equal(w(path.join(path.dirname(repoRoot), 'some-other-repo', 'src', 'a.ts')), 2, 'a real sibling repo is still blocked');
+  // the sibling of the main checkout: run from a linked worktree (`.claude/worktrees/<x>`), the worktree's own parent is
+  // inside the main checkout - the same repository, which a write may reach (audit 2026-10-11 SD16)
+  const mainTop = (function up(d) { const g = path.join(d, '.git'); return fs.existsSync(g) && fs.statSync(g).isDirectory() ? d : path.dirname(d) === d ? repoRoot : up(path.dirname(d)); })(repoRoot);
+  assert.equal(w(path.join(path.dirname(mainTop), 'some-other-repo', 'src', 'a.ts')), 2, 'a real sibling repo is still blocked');
 });
 
 // Audit 2026-10-08 row 23: the shell runs in the Bash tool's persisted cwd (`payload.cwd`), and the guard anchored every
@@ -1907,6 +1910,47 @@ test('guard-cross-project-write: a removal judges a symbolic link where it lives
     assert.equal(xpBash(`echo x > ${link}`), 2, 'a write through the link still lands in the sibling');
     assert.equal(xpBash(`rm -rf ${path.join(XP_OTHER, 'dist')}`), 2, 'a plain path is unchanged');
   } finally { drop(link); drop(back); }
+});
+
+// Audit 2026-10-11 SD16, session 42951e5b: two Edits in a `git worktree add` sibling of the session's own repo were blocked
+// as another project; the ask ended in the worktree's removal (569.1k). A linked worktree of ROOT's repo is the project.
+test('guard-cross-project-write: a linked worktree of the project\'s own repository is the project (audit 2026-10-11 SD16)', () => {
+  const { execFileSync } = require('node:child_process');
+  const base = fs.mkdtempSync(path.join(TMP, 'xw-wt-'));
+  const g = (cwd, ...args) => execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', '-c', 'init.defaultBranch=main', ...args], { cwd, stdio: 'pipe' });
+  const main = path.join(base, 'app');
+  fs.mkdirSync(main);
+  g(main, 'init', '-q');
+  fs.writeFileSync(path.join(main, 'a.txt'), 'a\n');
+  g(main, 'add', 'a.txt');
+  g(main, 'commit', '-qm', 'init');
+  const wt = path.join(base, 'app-wt');
+  g(main, 'worktree', 'add', '-q', '-b', 'tasks/t1', wt);
+  const clone = path.join(base, 'app-clone');
+  g(base, 'clone', '-q', main, clone);
+  const other = path.join(base, 'other');
+  fs.mkdirSync(other);
+  g(other, 'init', '-q');
+  const forged = path.join(base, 'forged');
+  fs.mkdirSync(forged);
+  fs.writeFileSync(path.join(forged, '.git'), `gitdir: ${path.join(other, '.git')}\n`);
+  const garbage = path.join(base, 'garbage');
+  fs.mkdirSync(garbage);
+  fs.writeFileSync(path.join(garbage, '.git'), '{not a gitdir line');
+  const run = (root, payload) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' } }).status;
+  const write = (root, f) => run(root, { tool_name: 'Write', tool_input: { file_path: f } });
+  assert.equal(write(main, path.join(wt, 'Server', 'Socket.csproj')), 0, 'the measured Edit: a file in the session\'s own worktree');
+  assert.equal(run(main, { tool_name: 'Edit', tool_input: { file_path: path.join(wt, 'a.txt'), old_string: 'a', new_string: 'b' } }), 0, 'an Edit too');
+  assert.equal(run(main, { tool_name: 'Bash', cwd: main, tool_input: { command: `echo x > ${path.join(wt, 'b.txt')}` } }), 0, 'and the shell route');
+  assert.equal(write(wt, path.join(main, 'a.txt')), 0, 'from the worktree, the main checkout is the same repo');
+  assert.equal(write(main, path.join(clone, 'a.txt')), 2, 'a clone has its own git dir: another checkout');
+  assert.equal(write(main, path.join(other, 'a.txt')), 2, 'an unrelated repo stays blocked');
+  assert.equal(write(main, path.join(forged, 'a.txt')), 2, 'a .git file pointing at another repo is that repo');
+  assert.equal(write(main, path.join(garbage, 'a.txt')), 2, 'a malformed .git file is no worktree');
+  const plain = path.join(base, 'not-a-repo');
+  fs.mkdirSync(plain);
+  assert.equal(write(plain, path.join(wt, 'a.txt')), 2, 'a project outside git has no worktrees');
 });
 
 // Audit 2026-10-08 row 37: a relocated account dir holds the harness's memory writes, and a project under /tmp dropped
@@ -3259,7 +3303,8 @@ test('guard-read-whole-file: the denial names the call that LOADS the serena too
   // serena calls. The remedy belongs in the denial the model is already reading.
   // 2.1.6 K4: a fixture outside the repo - a checkout under a `.claude/` directory (every .claude/worktrees/<x>) puts
   // BIG in a tree the navigation server ignores, where the denial rightly names grep instead of the load call.
-  const big = path.join(TMP, 'navigable.ts');
+  // audit 2026-10-11 SD16: and inside the project - a file outside it is in no index either, and takes the grep route
+  const big = path.join(process.env.CLAUDE_PROJECT_DIR, 'navigable.ts');
   fs.writeFileSync(big, Array.from({ length: 400 }, (_, i) => `export const v${i} = ${i};`).join('\n'));
   const r = runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: big } }, {});
   assert.equal(r.status, 2);
@@ -3868,6 +3913,36 @@ test('guard-config-protection: a heredoc body or a quoted message naming a confi
     assert.strictEqual(sh('rm ".eslintrc.json"'), 2, 'a quoted target is still the target');
     assert.strictEqual(sh("cat > .editorconfig <<'EOF'\nroot = false\nEOF"), 2, "a heredoc's own redirect still writes");
     assert.strictEqual(sh("git add -A && rm .eslintrc.json"), 2, 'a real second step');
+  });
+});
+
+// Audit 2026-10-11 SD16, session 2ca8e8ee: removing `CS9057` from a NoWarn re-enables the warning, and was blocked as
+// weakening a check (an ask, a receipt, a retry - 3 messages at 417k). A change that only tightens passes.
+test('guard-config-protection: an MSBuild change that only makes a check stricter passes (audit 2026-10-11 SD16)', () => {
+  const H = 'guard-config-protection.js';
+  const { root, at } = cfgProject('cfg-tight-');
+  const edit = (file, old_string, new_string) => run(H, { tool_name: 'Edit', cwd: root, tool_input: { file_path: file, old_string, new_string } });
+  withProject(root, {}, () => {
+    const props = at('Directory.Build.props', '<Project>\n  <PropertyGroup>\n    <NoWarn>$(NoWarn);CS9057;NU1608</NoWarn>\n    <WarningLevel>4</WarningLevel>\n    <Nullable>annotations</Nullable>\n  </PropertyGroup>\n</Project>\n');
+    assert.strictEqual(edit(props, '$(NoWarn);CS9057;NU1608', '$(NoWarn);NU1608'), 0, 'the measured edit: one NoWarn entry removed');
+    assert.strictEqual(edit(props, '    <NoWarn>$(NoWarn);CS9057;NU1608</NoWarn>\n', ''), 0, 'the whole NoWarn removed');
+    assert.strictEqual(edit(props, '<WarningLevel>4</WarningLevel>', '<WarningLevel>5</WarningLevel>'), 0, 'a higher warning level');
+    assert.strictEqual(edit(props, '<Nullable>annotations</Nullable>', '<Nullable>enable</Nullable>'), 0, 'Nullable toward enable');
+    assert.strictEqual(edit(props, '  </PropertyGroup>', '    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>\n  </PropertyGroup>'), 0, 'TreatWarningsAsErrors added as true');
+    assert.strictEqual(edit(props, '  </PropertyGroup>', '    <WarningsAsErrors>CS8602</WarningsAsErrors>\n  </PropertyGroup>'), 0, 'a WarningsAsErrors entry added');
+    // every loosening, and anything mixed, still blocks
+    assert.strictEqual(edit(props, '$(NoWarn);CS9057;NU1608', '$(NoWarn);CS9057;NU1608;CS8602'), 2, 'a NoWarn entry added');
+    assert.strictEqual(edit(props, '$(NoWarn);CS9057;NU1608', '$(NoWarn);NU1608;CS8602'), 2, 'one removed and another added');
+    assert.strictEqual(edit(props, '<WarningLevel>4</WarningLevel>', '<WarningLevel>3</WarningLevel>'), 2, 'a lower warning level');
+    assert.strictEqual(edit(props, '<Nullable>annotations</Nullable>', '<Nullable>disable</Nullable>'), 2, 'Nullable toward disable');
+    assert.strictEqual(edit(props, '<Nullable>annotations</Nullable>', '<Nullable>maybe</Nullable>'), 2, 'an unknown Nullable value');
+    assert.strictEqual(edit(props, '<WarningLevel>4</WarningLevel>', '<WarningLevel Condition="\'$(CI)\'==\'\'">5</WarningLevel>'), 2, 'an attribute change');
+    assert.strictEqual(edit(props, '$(NoWarn);CS9057;NU1608</NoWarn>', '$(NoWarn);NU1608</NoWarn>\n    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>'), 2, 'a tightening beside a loosening');
+    assert.strictEqual(edit(props, '  </PropertyGroup>', '    <AnalysisLevel>latest</AnalysisLevel>\n  </PropertyGroup>'), 2, 'a key with no direction rule keeps the block');
+    assert.strictEqual(edit(props, '  </PropertyGroup>', '    <NoWarn>CS1591</NoWarn>\n  </PropertyGroup>'), 2, 'a property named twice keeps the block');
+    assert.strictEqual(edit(props, 'not in the file', '<NoWarn></NoWarn>'), 2, 'an old_string the file lacks is judged on the fragments');
+    const tw = at('src/App/App.csproj', '<Project><PropertyGroup><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup></Project>');
+    assert.strictEqual(edit(tw, '<TreatWarningsAsErrors>true</TreatWarningsAsErrors>', ''), 2, 'removing TreatWarningsAsErrors');
   });
 });
 

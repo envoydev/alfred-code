@@ -136,3 +136,30 @@ test('prune keeps the newest N and drops entries past the age limit', () => {
   H.prune(dir, 10, 1.5); // s1 is one day old plus the test's own milliseconds - the limit sits between s1 and s2
   assert.deepStrictEqual(fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort(), ['s0.json', 's1.json']);
 });
+
+// Audit 2026-10-11 SD16, session e90a1845: trimming from the end cut every ruling of the older session (AGENTS.md rows
+// kept, a credential deferral) while the newest session's three stayed; the same rows were reviewed and answered again.
+test('the start block keeps each session\'s newest ruling before any older one, and shows a question once', () => {
+  const at = (min) => new Date(Date.now() - min * 60000).toISOString();
+  const r = (q, a) => ({ ts: '', question: q, answer: a });
+  const entry = (min, rulings) => ({ session: `s${min}`, branch: 'develop', updatedAt: at(min), commits: [], dirty: { count: 1, files: [] }, rulings });
+  const newest = entry(10, [r('Run the reconcile now, or leave the plugin list as it is today?', 'Run the reconcile (Recommended)'),
+    r('Install the C# language server plugin at project scope for this repository?', 'Install at project scope'),
+    r('The AGENTS.md check reports three drift rows. Review them with the adjust skill?', 'Leave them as they are')]);
+  const older = entry(40, [r('Apply the line 31 rewording to AGENTS.md? It is the only change drafted.', 'Apply it'),
+    r('The project settings hold two credential keys. How do you want to handle the exposure?', 'Acknowledge and defer (Recommended)')]);
+  const block = H.renderStartBlock([newest, older], 600);
+  assert.ok(block.length <= 600, `block is ${block.length}`);
+  assert.match(block, /Acknowledge and defer/, 'the older session\'s newest ruling survives the trim');
+  assert.match(block, /Leave them as they are/, 'and so does the newest session\'s newest');
+  assert.match(block, /More: node \.claude\/hooks\/history\.js rulings/, 'the footer stays');
+  // a question answered in both sessions is shown once, at its newest answer
+  const repeat = entry(70, [r('The AGENTS.md check reports three drift rows. Review them with the adjust skill?', 'Review them')]);
+  const both = H.renderStartBlock([newest, repeat], 2000);
+  assert.strictEqual((both.match(/AGENTS\.md check reports/g) || []).length, 1);
+  assert.match(both, /-> Leave them as they are/);
+  assert.doesNotMatch(both, /-> Review them/);
+  // under the cap nothing moves; garbage rulings never throw
+  assert.match(H.renderStartBlock([entry(5, [r('Order?', 'Migration first')])], 600), /- .*: 0 commit\(s\), 1 file\(s\) left uncommitted\n  ruled: Order\? -> Migration first\nMore:/);
+  assert.ok(H.renderStartBlock([entry(5, [null, { question: null, answer: 7 }])], 600).length > 0);
+});

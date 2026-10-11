@@ -230,7 +230,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     overview; and the convention-rule notice reads no `>` inside quotes and no write target outside the project.
     Every denial on a file the navigation server indexes carries the
     `ToolSearch select:` line that loads the navigation server's tools (a size denial on another extension and a tree it
-    never indexes name grep instead). Its convention-rule announcement
+    never indexes name grep instead - a file outside `CLAUDE_PROJECT_DIR` among them, and a range-cap denial states how many
+    of the file's lines the cap still leaves; audit 2026-10-11 SD16, 5984019e). Its convention-rule announcement
     names only a rule in the project's own `.claude/rules` - a plugin-launched hook's sibling `rules/` is
     the whole catalog (it named `winforms-conventions.md` to a project without it, the 2026-09-26 pilot); with no rules
     directory anywhere it cannot tell and names the rule (a recorded choice, pinned in `guard-read-write.test.js`); a
@@ -385,7 +386,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     A `git add -N .` survey chained to a bare `git reset -q` blocks while the index holds staged work (the reset
     would unstage it); the denial names `git diff HEAD --stat; git ls-files -o --exclude-standard`. The act a
     denial echoes is capped at 200 characters with a URL credential masked, and the publish denial names `habits-commit-checkpoint`.
-    Both are judged in the repo git runs in (the shell's cwd, a leading `cd`, `-C`) - a worktree is its own.
+    Both are judged in the repo git runs in (the shell's cwd, a leading `cd`, `-C`) - a worktree is its own. A `cd "$VAR"`
+    follows the newest LITERAL the same command assigned before it (`gitText`'s `callDir`), and a commit in a checkout other
+    than the project's, on a detached HEAD, under the temp dir or the harness scratch root is scratch and needs no receipt
+    - the staged scan still runs (audit 2026-10-11 SD16, 2ca8e8ee).
     A PUSH-GATE receipt spanning more than one MANIFEST-owning directory needs a `scope:` line naming
     what the probe actually ran (a plain top-level folder is no project, so an ordinary repo never asks).
     Every commit, trivial or not, first gets a scan of the lines it ADDS (the index, plus what `-a` or a
@@ -581,7 +585,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `<docs-path>/flow/CROSS-WRITE-ALLOW` receipt; `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` opens a second
     tree permanently. A removal (`rm`, PowerShell's remove) of a symbolic link is judged where the link lives - its folder
     resolved, its name kept - unless a trailing slash follows it (audit 2026-10-10 C31, session 0d070bcc: `rm -f` of the
-    session's own link to a sibling repo was blocked as a write into it). The log-only fork-liveness probe is retired (2026-10-09, the user's ruling after its rows were read:
+    session's own link to a sibling repo was blocked as a write into it). A LINKED WORKTREE of the project's own repository
+    is the project - read from git's own files, no git call: the target's nearest `.git` file, its `gitdir:` and that dir's
+    `commondir` must reach ROOT's common git dir; a clone, a forged or malformed `.git` file stays outside (audit
+    2026-10-11 SD16, session 42951e5b: a `git worktree add` sibling blocked, 569.1k). The log-only fork-liveness probe is retired (2026-10-09, the user's ruling after its rows were read:
     56 probe rows over two weeks in three projects, none naming a collision; the per-call head reads cost 12-22ms).
     LOG-ONLY (audit 2026-10-10): an interpreter script writing an in-project source file (a `python3 - <<` splice, a
     computed path) writes one `mode: probe` row per command, `interpreter-write`, the rate a notice would be decided on.
@@ -597,7 +604,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (`Condition="false"`); an Edit is judged on the whole file it leaves; a shell write that replaces or removes a keyed
     file holding a strictness key blocks; PowerShell's backslash is a separator; and paths compare as real paths.
     'Allow' is honoured through `<docs-path>/flow/CONFIG-EDIT-ALLOW` (a
-    file, its basename or `*`); `ALFRED_CODE_CONFIG_PROTECT=0` turns it off. A lockfile, a migration, the central
+    file, its basename or `*`); `ALFRED_CODE_CONFIG_PROTECT=0` turns it off. An MSBuild edit that only TIGHTENS passes
+    (audit 2026-10-11 SD16, 2ca8e8ee: a `NoWarn` entry removed was blocked): every changed property moves one way - a
+    `NoWarn` / `WarningsNotAsErrors` list only loses entries, `WarningsAsErrors` only gains, `TreatWarningsAsErrors` /
+    `EnforceCodeStyleInBuild` go true, `WarningLevel` up, `Nullable` toward enable; a property named twice, an attribute
+    change or any other key keeps the block. A lockfile, a migration, the central
     package file and a solution file are a recorded DECLINE (2.1.5 M13, in its header): legitimate work edits each, and
     whether a migration was applied lives in a database no hook reads.
   - `guard-desktop-exec.js` (PreToolUse on the desktop servers' two process launchers, both routes' spellings, one
@@ -636,7 +647,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     the test the analyzer shares, `correction-turn-test`) writes one `correction` probe row;
     `ALFRED_CODE_CORRECTION_NUDGE` is seeded `log`, `inject` adds the memory-save line with the `ToolSearch select:`
     line that loads the deferred `memory_store` (M11) - the line names a project fact the correction states as a
-    `reference` memory beside the `user_correction` (audit 2026-10-10, T5 cross-track) - `0` is off. Its `PostToolUse` `AskUserQuestion` half reads an
+    `reference` memory beside the `user_correction` (audit 2026-10-10, T5 cross-track), and a stated preference as
+    `preference_signal` (audit 2026-10-11 SD16, ce9d4811) - `0` is off. Its `PostToolUse` `AskUserQuestion` half reads an
     answer typed into an ask (matching no offered label): one `ask-answer-typed` probe row, the same correction test and
     row over a short one, and a note to open a path it names and restate what it changes (audit 2026-10-10 C15 / C07).
   - `instrument-tool-usage.js` - wired env-gated: skipped unless `ALFRED_CODE_INSTRUMENT` (seeded "0")
@@ -679,7 +691,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     at `SessionStart` it injects the last
     three records of the SAME branch in at most 600 chars, framed as history, never instructions - a record that read no
     transcript row and holds no commit, ruling or plan takes no slot, and a plan no longer on disk is left out (audit
-    2026-10-10 C23) - and prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off.
+    2026-10-10 C23); a question is shown once, at its newest answer, and past the cap the ruling lines leave round-robin
+    across sessions, each session's newest kept longest, before an older session's own line (audit 2026-10-11 SD16,
+    e90a1845: the older session's rulings were cut whole and re-asked) - and prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off.
   - Formatter after an edit: DECLINED (hooks audit 2026-10-08, coverage map) - no measured incident; formatting is
     the project's lint and the verifier's job, and a PostToolUse formatter rewrites files under the model between its
     own edits, so the next `old_string` misses.

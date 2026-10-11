@@ -233,6 +233,17 @@ const LOAD_SERENA = `  ToolSearch select:mcp__plugin_alfred-navigation_alfred-na
 // A markup template has no symbols the navigation server indexes: get_symbols_overview on a 326-line Angular template
 // was the remedy a denial named, and the session read the lines through `sed -n` instead (audit 2026-10-10, 81264f0d).
 const MARKUP_EXT = /\.(?:html|razor|cshtml|xaml)$/i;
+// A file OUTSIDE the project is in no index this session's navigation server holds (audit 2026-10-11 SD16, 5984019e: a
+// sibling repo's service worker was denied with the navigation remedy, the grep -C 3 fallback cut the handler that
+// held the decisive line, and a wrong bug claim reached the user and two handoff memories for 12h).
+function outsideProject(p) {
+  const root = process.env.CLAUDE_PROJECT_DIR || '';
+  const s = String(p || '');
+  if (!root || !s || !pathMod.isAbsolute(s)) return false;
+  const realOr = (x) => { try { return fs.realpathSync(x); } catch { return pathMod.resolve(x); } };
+  const rel = pathMod.relative(realOr(root), realOr(s));
+  return rel.startsWith('..') || pathMod.isAbsolute(rel);
+}
 const serenaHint = (p) => (MARKUP_EXT.test(String(p))
   ? `A markup template has no symbols to navigate - locate inside it instead:\n`
     + `  grep -n '<element, binding or text you need>' '${p}'   ->  then Read with offset+limit on the lines it names.`
@@ -240,6 +251,10 @@ const serenaHint = (p) => (MARKUP_EXT.test(String(p))
   ? `The navigation server cannot locate anything here: the installers seed the data root (\`${dataRootEnv()}\`), \`.claude\` and the old \`.serena\` / \`.playwright\` into\n`
     + `its own ignored_paths, so this tree is not indexed. Locate inside the file instead:\n`
     + `  grep -n '<pattern>' '${p}'   ->  then Read with offset+limit on the lines it names.`
+  : outsideProject(p)
+  ? `This file is outside the project, so the navigation server has not indexed it. Locate inside the file instead:\n`
+    + `  grep -n '<function, handler or key you need>' '${p}'   ->  then Read with offset+limit from the line it names\n`
+    + `  through the end of that function (a grep -C window cuts a handler in half).`
   : `Locate first with the navigation server. If those tools are not loaded in this session, load them first:\n` +
   LOAD_SERENA +
   `then get_symbols_overview('${p}') and find_symbol(...),\n` +
@@ -1681,6 +1696,7 @@ function rangeCap(abs, shown, lineCount, a, b) {
   };
   const coverOf = (m) => m.reduce((n, [x, y]) => n + (y - x + 1), 0);
   let merged = [];
+  let prior = null; // the coverage before this range - what the cap still leaves readable
   let mine = false;
   try {
     for (const line of fs.readFileSync(rangeLog, 'utf8').split('\n')) {
@@ -1689,11 +1705,11 @@ function rangeCap(abs, shown, lineCount, a, b) {
       // a row written before 2026-10-10 carries no actor or version: the main session's, of this version
       if (!row || row.f !== fileKey || (row.ag || 'main') !== actorKey || (row.v && row.v !== ver)) continue;
       const next = mergeIn(merged, row.a, Math.min(row.b, lineCount));
-      if (row.id === rowId) { merged = next; mine = true; break; }
+      if (row.id === rowId) { prior = merged; merged = next; mine = true; break; }
       if (coverOf(next) <= lineCount * CAP) merged = next; // an earlier row past the cap was blocked: it read nothing
     }
   } catch { /* no log - this range alone */ }
-  if (!mine) merged = mergeIn(merged, a, b);
+  if (!mine) { prior = merged; merged = mergeIn(merged, a, b); }
   const covered = coverOf(merged);
   if (covered <= lineCount * CAP) return;
   // A file the working tree ADDS is under review whole - a verifier seat left half of a new 251-line test file unread
@@ -1706,6 +1722,10 @@ function rangeCap(abs, shown, lineCount, a, b) {
       `ranges of one file may cover at most ${Math.round(CAP * 100)}% of it, on the Read tool and the shell's sed -n / head / tail / awk NR\n` +
       `alike: reconstructing a large file from splits is the whole-file read the guard exists to stop\n` +
       `(measured: 2-3-call splits rebuilt 7 blocked files in one run). Read the located symbol's range, never halves.\n` +
+      // the lines the cap still leaves (audit 2026-10-11 SD16, 5984019e: the denied Read held the decisive line, and a
+      // targeted 24-line range would have passed at 31% - the denial never said how much was left)
+      `${Math.max(0, Math.floor(lineCount * CAP) - coverOf(prior || []))} of its ${lineCount} lines are still readable by range here - spend them on the located\n` +
+      `function's own lines (a grep -n of its name gives the start), not on the rest of this request.\n` +
       (state === 'changed' ? `Reviewing this change? Its diff is the review route: git diff HEAD -- '${shown}'\n` : '') +
       `A file with nothing to locate (a data table, a message map): grep -n '<the key you need>' '${shown}', then that range.\n` +
       `For the remainder:\n` + serenaHint(shown),

@@ -168,7 +168,48 @@ function judgeFileTool() {
   }
   const before = applied !== null ? text : edits.map((e) => (e && e.old_string) || '').join('\n');
   const after = applied !== null ? applied : edits.map((e) => (e && e.new_string) || '').join('\n');
-  return keyPairs(before, keyed) === keyPairs(after, keyed) ? null : { abs, why: 'the change touches a strictness / warning setting' };
+  if (keyPairs(before, keyed) === keyPairs(after, keyed)) return null;
+  return applied !== null && keyed === KEYED[1] && onlyTightens(before, after, keyed) ? null : { abs, why: 'the change touches a strictness / warning setting' };
+}
+// A change that only makes an MSBuild check STRICTER is no weakening (audit 2026-10-11 SD16, session 2ca8e8ee: removing
+// `CS9057` from a `NoWarn` re-enables the warning and was blocked as weakening a check, an ask and a receipt for the
+// right fix). Every changed property must move one way: a NoWarn / WarningsNotAsErrors list only loses entries, a
+// WarningsAsErrors list only gains them, TreatWarningsAsErrors / EnforceCodeStyleInBuild go to true, WarningLevel up,
+// Nullable toward enable. A property named twice, an attribute change or any other key keeps the block.
+function onlyTightens(before, after, keyed) {
+  const props = (t) => {
+    const m = new Map();
+    for (const x of keyed.strip(String(t || '')).matchAll(keyed.pair)) {
+      const k = `${x[1]}[${x[2].trim().replace(/\s+/g, ' ')}]`;
+      if (m.has(k)) return null;
+      m.set(k, { name: x[1], value: x[3].trim() });
+    }
+    return m;
+  };
+  const b = props(before);
+  const a = props(after);
+  if (!b || !a) return false;
+  const list = (v) => new Set(String(v || '').split(/[;,]/).map((s) => s.trim().toLowerCase()).filter(Boolean));
+  const subset = (x, y) => [...x].every((e) => y.has(e));
+  const bool = (v) => String(v || '').trim().toLowerCase() === 'true';
+  const NULLABLE = { disable: 0, annotations: 1, warnings: 1, enable: 2 };
+  for (const k of new Set([...b.keys(), ...a.keys()])) {
+    const was = b.get(k);
+    const now = a.get(k);
+    if (was && now && was.value === now.value) continue;
+    const name = (was || now).name;
+    if (name === 'NoWarn' || name === 'WarningsNotAsErrors') { if (!subset(list(now && now.value), list(was && was.value))) return false; continue; }
+    if (name === 'WarningsAsErrors') { if (!now || !subset(list(was && was.value), list(now.value))) return false; continue; }
+    if (name === 'TreatWarningsAsErrors' || name === 'EnforceCodeStyleInBuild') { if (!now || !bool(now.value) || (was && bool(was.value))) return false; continue; }
+    if (name === 'WarningLevel') { if (!now || !(Number(now.value) > (was ? Number(was.value) : -1))) return false; continue; }
+    if (name === 'Nullable') {
+      const r = (v) => NULLABLE[String(v || 'disable').trim().toLowerCase()];
+      if (!now || r(now.value) === undefined || !(r(now.value) > (was ? r(was.value) : 0))) return false;
+      continue;
+    }
+    return false;
+  }
+  return true;
 }
 
 const WRITE_VERB = new Set(['tee', 'rm', 'mv', 'truncate', 'set-content', 'add-content', 'out-file', 'clear-content', 'remove-item', 'move-item']);

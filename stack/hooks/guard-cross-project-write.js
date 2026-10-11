@@ -249,12 +249,48 @@ const receiptRoots = (() => {
 // --space install's memory writes were blocked (reproduced).
 const spacePrefix = HOME ? real(HOME) + path.sep + '.claude-' : null;
 const spaceOk = spacePrefix && !fold(ROOT).startsWith(fold(spacePrefix));
+// A LINKED WORKTREE of this project's own repository is the project (audit 2026-10-11 SD16, session 42951e5b: two Edits
+// in a `git worktree add` sibling the session had just made were blocked as another project, and the ask that followed
+// ended in the worktree's removal - 569.1k). Judged from the files git itself writes, no git call: the nearest folder
+// holding `.git` above the target, its `.git` FILE's `gitdir:` line, and that gitdir's `commondir` - the common git dir
+// must be this ROOT's own.
+function commonGitDir(dir) {
+  try {
+    const dotGit = path.join(dir, '.git');
+    const st = fs.statSync(dotGit);
+    if (st.isDirectory()) return fold(real(dotGit));
+    const m = /^gitdir:\s*(.+?)\s*$/m.exec(fs.readFileSync(dotGit, 'utf8'));
+    if (!m) return null;
+    const gitdir = path.resolve(dir, nativePath(m[1]));
+    let common = gitdir;
+    try { common = path.resolve(gitdir, nativePath(fs.readFileSync(path.join(gitdir, 'commondir'), 'utf8').trim())); } catch { /* a gitdir with no commondir is its own */ }
+    return fold(real(common));
+  } catch { return null; }
+}
+function gitTopOf(p) {
+  let dir = p;
+  for (let i = 0; i < 64; i++) {
+    if (holdsGit(dir)) return dir;
+    const up = path.dirname(dir);
+    if (up === dir) return null;
+    dir = up;
+  }
+  return null;
+}
+let rootCommon;
+function sameRepoWorktree(t) {
+  if (rootCommon === undefined) { const top = gitTopOf(ROOT); rootCommon = top ? commonGitDir(top) : null; }
+  if (!rootCommon) return false;
+  const top = gitTopOf(t);
+  return !!top && commonGitDir(top) === rootCommon;
+}
 function allowed(target) {
   const t = realish(target);
   if (inside(t, ROOT)) return true;
   if (effectiveAllow.some((d) => inside(t, d))) return true;
   if (receiptRoots.some((d) => inside(t, d))) return true; // the user's 'allow' for this session
   if (spaceOk && fold(t).startsWith(fold(spacePrefix))) return true;
+  if (sameRepoWorktree(t)) return true;
 
   return false;
 }

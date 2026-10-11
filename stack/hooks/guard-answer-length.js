@@ -370,7 +370,10 @@ const PATH_IN_ANSWER_RE = /(?:^|[\s'"(`])((?:~|\.{1,2})?\/?(?:[\w.@-]+\/){2,}[\w
 // The save line both correction routes inject. A correction often carries a PROJECT FACT (audit 2026-10-10, T5
 // cross-track, 84eedb4b: 'api from develop is for current version' - a branch pairing acted on, never stored, 0
 // memory_store calls), so it names the reference type beside user_correction (alfred-memory.md's three save triggers).
-const SAVE_LINE = 'store it with memory_store (user_correction, project tag) before continuing - and a project fact it states '
+// A stated preference rides the same line (audit 2026-10-11 SD16, session ce9d4811: 'I do not want it global but per
+// project scope' was never stored and restated 3 minutes later): its type is preference_signal.
+const SAVE_LINE = 'store it with memory_store (user_correction, project tag) before continuing - a preference it states '
+  + '(\'per project, never global\') as preference_signal, and a project fact it states '
   + '(a branch, an environment, a version pairing) as a reference memory; the tool is deferred, so load it first: '
   + 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store';
 function typedAnswers(p) {
