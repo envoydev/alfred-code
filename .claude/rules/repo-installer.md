@@ -123,7 +123,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   the core's scope; a core whose only row is managed sends them to user scope with one `!!` line
   (`plugins.requiredScopes`, the user's ruling). (2) A plugin at several scopes reads its narrowest row
   (`parsePluginList` ranks local, project, user, managed). (3) An uninstall or a move takes one scope's row; a
-  broader row stays, named. (4) An update refreshes every scope a plugin is installed at (`updateEvery`), and on
+  broader row stays, named. (4) An update refreshes every scope a plugin is installed at (`updateEvery`) - a stack
+  row already at the snapshot's release is skipped (`atRelease`, `plugin current [<scope>]`: the source step updated
+  it, audit 2026-10-11) - and on
   the MCP copy route the stack's registration at the other account-file scope (`refreshElsewhere`; a user-scope
   full-copy run leaves C10's user-scope leftovers to their named remove line). (5) A narrower scope switches a
   broader row off for itself alone: a plugin through `claude plugin disable --scope <run scope>`

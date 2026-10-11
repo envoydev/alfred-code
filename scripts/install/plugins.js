@@ -202,12 +202,26 @@ function scopesOf(rows, spec, fallback = '')
 // enable or block it everywhere, so a second row would change nothing but the version it loads.
 const adminOwned = (rows, spec) => scopesOf(rows, spec).some(isManaged);
 
+// A stack row already at the snapshot's own release needs no `plugin update`: the source step (the protocol's
+// resolve, or refreshStackSource) updated every stack entry before the run read its snapshot, the snapshot IS the
+// newest entry, and every marketplace entry ships at the one release version. Updating it again spawned the CLI
+// once more per row for 'already at the latest version' (audit 2026-10-11, session 5b9ce9c5: six rows, on a machine
+// where the resolve alone ran 240.8 s). `release` is `{ market, version }`; no version read skips nothing.
+function atRelease(rows, spec, scope, release)
+{
+    if (!release || !release.version || !release.market) return false;
+    const [name, market] = String(spec).split('@');
+    if (market !== release.market) return false;
+    return (rows || []).some((r) => r.name === name && r.marketplace === market && r.scope === scope && r.version === release.version);
+}
+
 // Update `spec` at every scope it is installed at - the admin's managed row included, the one call
-// that scope takes. Returns the scopes updated.
-function updateEvery(spec, at, { cli, log = () => {}, quiet = true })
+// that scope takes - except a scope whose stack row is at the snapshot's release already. Returns the scopes.
+function updateEvery(spec, at, { cli, log = () => {}, quiet = true, rows = [], release = null })
 {
     for (const scope of at)
     {
+        if (atRelease(rows, spec, scope, release)) { log(`plugin current [${scope}]: ${spec} (already ${release.version}, the snapshot's release)`); continue; }
         log(`plugin update [${scope}]: ${spec}`);
         cli(['plugin', 'update', spec, '--scope', scope, '-y'], quiet ? { quiet: true } : undefined);
     }
@@ -426,12 +440,12 @@ function switchOff(spec, scope, { cli, log, note })
 // S28). It is updated at its own scope, and switched only to the user's answer - at this run's scope
 // only, since one at another scope is every project's install there. A switch the settings file shows
 // already made is skipped: a no-op enable or disable exits 1 (S28), which would read as a failure.
-function engineInPlace(spec, { scope, scopes = {}, before, rows = [], engines, cli, log, note })
+function engineInPlace(spec, { scope, scopes = {}, before, rows = [], engines, release = null, cli, log, note })
 {
     const at = fieldOf(before, spec, 'version') ? scopeFor(spec, scope, before, scopes) : ((engines.presentScope || {})[spec] || scopeFor(spec, scope, [], scopes));
     // Updated at every scope it is installed at; switched only where this project loads it (`at`, the narrowest).
     const every = scopesOf(rows, spec);
-    updateEvery(spec, every.includes(at) ? every : [at, ...every], { cli, log, quiet: false });
+    updateEvery(spec, every.includes(at) ? every : [at, ...every], { cli, log, quiet: false, rows, release });
     if (!engines.on) return;
     const want = engines.on.includes(spec);
     const verb = want ? 'enable' : 'disable';
@@ -482,7 +496,7 @@ function uninstallEngines({ specs = [], rows = [], blind = false, scope, cli, lo
 // `engineInPlace` way when installed, and is switched off right after its install when the user chose
 // it off (`engines`, above). `rows` (every scope's, parsePluginList everyScope) names each scope an installed
 // plugin is updated at; `pinned` sends a required plugin to a scope of its own (`requiredScopes`).
-function installPlugins({ plugins, scope, scopes = {}, pinned = {}, marketplaces = [], before = [], rows = before, fresh = [], refreshed = new Set(), engines = NO_ENGINES, cli, log = () => {}, note = () => {} })
+function installPlugins({ plugins, scope, scopes = {}, pinned = {}, marketplaces = [], before = [], rows = before, fresh = [], refreshed = new Set(), engines = NO_ENGINES, release = null, cli, log = () => {}, note = () => {} })
 {
     cli(['plugin', 'marketplace', 'add', OFFICIAL_MARKETPLACE], { quiet: true });
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
@@ -493,13 +507,13 @@ function installPlugins({ plugins, scope, scopes = {}, pinned = {}, marketplaces
     for (const spec of plugins)
     {
         if (fresh.includes(spec)) continue;
-        if (enginePresent(spec, before, engines)) { engineInPlace(spec, { scope, scopes, before, rows, engines, cli, log, note }); continue; }
+        if (enginePresent(spec, before, engines)) { engineInPlace(spec, { scope, scopes, before, rows, engines, release, cli, log, note }); continue; }
         const every = scopesOf(rows, spec);
         // The admin's install (a managed row) is updated there and never doubled at another scope.
         if (adminOwned(rows, spec))
         {
             log(`plugin [managed]: ${spec} - installed by your organization's managed settings, updated only`);
-            updateEvery(spec, every, { cli, log });
+            updateEvery(spec, every, { cli, log, rows, release });
             continue;
         }
         // An optional item already installed is refreshed where it lives, never doubled at the run's scope (2.2.0);
@@ -508,7 +522,7 @@ function installPlugins({ plugins, scope, scopes = {}, pinned = {}, marketplaces
         if (offByUser(spec, before))
         {
             log(`plugin [${scopeFor(spec, scope, before, scopes)}]: ${spec} is disabled - kept off, updated only`);
-            updateEvery(spec, every.length ? every : [scopeFor(spec, scope, before, scopes)], { cli });
+            updateEvery(spec, every.length ? every : [scopeFor(spec, scope, before, scopes)], { cli, rows, release });
             continue;
         }
         log(`plugin [${pscope}]: ${spec}`);
@@ -516,7 +530,7 @@ function installPlugins({ plugins, scope, scopes = {}, pinned = {}, marketplaces
         // which is every guided run.
         if (!cli(['plugin', 'install', spec, '--scope', pscope, '-y'], { expect: 'reported' })) { note(`plugin ${spec} failed`); continue; }
         if (fieldOf(before, spec, 'version'))
-            updateEvery(spec, every.length ? every : [scopeFor(spec, scope, before, scopes)], { cli });
+            updateEvery(spec, every.length ? every : [scopeFor(spec, scope, before, scopes)], { cli, rows, release });
         else if (engines.off.includes(spec)) switchOff(spec, pscope, { cli, log, note });
     }
 }
@@ -939,20 +953,20 @@ function extraMarketplaces(rows, set)
 // install: switched off after when the user chose it off. Every plugin is updated at EACH scope it is installed
 // at (`rows`, every scope's) - the admin's managed row included, the one call that scope takes - while an
 // enable runs only where this project loads it, never at managed scope.
-function updatePlugins({ plugins, scope, scopes = {}, pinned = {}, marketplaces = [], before = [], rows = before, after, fresh = [], restored = [], refreshed = new Set(), engines = NO_ENGINES, cli, log = () => {}, note = () => {} })
+function updatePlugins({ plugins, scope, scopes = {}, pinned = {}, marketplaces = [], before = [], rows = before, after, fresh = [], restored = [], refreshed = new Set(), engines = NO_ENGINES, release = null, cli, log = () => {}, note = () => {} })
 {
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
     refreshMarketplaces({ plugins, cli, refreshed });
     for (const spec of plugins)
     {
         if (fresh.includes(spec)) continue;
-        if (enginePresent(spec, before, engines)) { engineInPlace(spec, { scope, scopes, before, rows, engines, cli, log, note }); continue; }
+        if (enginePresent(spec, before, engines)) { engineInPlace(spec, { scope, scopes, before, rows, engines, release, cli, log, note }); continue; }
         const pscope = fieldOf(before, spec, 'version') ? scopeFor(spec, scope, before, scopes) : (pinned[bareName(spec)] || scopeFor(spec, scope, before, scopes));
         const every = scopesOf(rows, spec);
         if (adminOwned(rows, spec))
         {
             log(`plugin [managed]: ${spec} - installed by your organization's managed settings, updated only`);
-            updateEvery(spec, every, { cli, log, quiet: false });
+            updateEvery(spec, every, { cli, log, quiet: false, rows, release });
             continue;
         }
         if (!fieldOf(before, spec, 'version'))
@@ -970,7 +984,7 @@ function updatePlugins({ plugins, scope, scopes = {}, pinned = {}, marketplaces 
             // already enabled at <scope> scope' (measured on 2.1.282, project and user scope - M8, R132).
             cli(['plugin', 'enable', spec, '--scope', pscope], { expect: /is already enabled/ });
         }
-        updateEvery(spec, every.includes(pscope) ? every : [pscope, ...every], { cli, log, quiet: false });
+        updateEvery(spec, every.includes(pscope) ? every : [pscope, ...every], { cli, log, quiet: false, rows, release });
     }
 
     const now = typeof after === 'function' ? after() : (after || []);
@@ -1039,7 +1053,7 @@ function unreachedPlugins({ listing, projectRoot, configDir })
 
 module.exports = {
     OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, USER_OFF_WINS, CORE_DEP_PLUGINS, HUD_SPEC, itemScope, scopedItem, moveScoped,
-    SCOPES, isManaged, scopeRank, overrideScope, scopesOf, adminOwned, requiredScopes, leftAt, effectiveOn, withEffective,
+    SCOPES, isManaged, scopeRank, overrideScope, scopesOf, adminOwned, atRelease, requiredScopes, leftAt, effectiveOn, withEffective,
     pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateRenamed,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, retirementDue, updatePlugins, extraMarketplaces, uninstallEngines,

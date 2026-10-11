@@ -1544,12 +1544,15 @@ function installPlugins(ctx)
     const back = copyRoute ? { restored: [], owed: null }
         : plugins.restoreStoodDown({ record: ctx.standDown.prior, plugins: set, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note });
     ctx.standDown.owed = back.owed;
+    // A stack row already at this snapshot's release is not updated again (plugins.atRelease): the source step
+    // updated every stack entry before the snapshot was read (audit 2026-10-11, session 5b9ce9c5).
+    const release = { market: ctx.market, version: releaseVersion(ctx.source.dir) };
     if (ctx.args.action === 'update')
     {
         plugins.prunedRetired({ rows, retired, retiredRows, market: ctx.market, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log, note: ctx.note });
         standDown();
         plugins.updatePlugins({
-            plugins: set, scope: ctx.cliScope, scopes, pinned, marketplaces, before: listing, rows, fresh, restored: back.restored, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
+            plugins: set, scope: ctx.cliScope, scopes, pinned, marketplaces, before: listing, rows, fresh, restored: back.restored, refreshed: ctx.refreshed, engines, release, cli: ctx.cli, log: ctx.log, note: ctx.note,
             after: readListing,
         });
         hudLine();
@@ -1577,7 +1580,7 @@ function installPlugins(ctx)
     }
     standDown();
     plugins.installPlugins({
-        plugins: set, scope: ctx.cliScope, scopes, pinned, marketplaces, before: listing, rows, fresh, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
+        plugins: set, scope: ctx.cliScope, scopes, pinned, marketplaces, before: listing, rows, fresh, refreshed: ctx.refreshed, engines, release, cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
     hudLine();
 }

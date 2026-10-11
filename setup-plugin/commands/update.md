@@ -413,7 +413,7 @@ the log), because `claude mcp add` over a name the preceding `remove` did not cl
 exists' and exits 0 - which is how consuming projects kept a stale stdio registration through update after
 update. Servers the project added by hand are never touched. Plugins are updated
 at EVERY scope the listing says they are installed at - `local`, `project`, `user` and the admin's `managed`
-row, the one call that scope takes (`plugin update [<scope>]: <entry>`, one line per scope) - and their versions are read back, so the log names
+row, the one call that scope takes (`plugin update [<scope>]: <entry>`, one line per scope; a stack row the resolve already took to the snapshot's release logs `plugin current [<scope>]` and is not spawned again) - and their versions are read back, so the log names
 each one as `x -> y`, `installed this run` or `already newest` instead of asserting a refresh. On the MCP copy
 route a registration of the stack's own at the other account-file scope is refreshed there too (`mcp refreshed
 [<scope>]: <name>`). This command moves nothing between scopes and removes no pick: it passes the stamp's own

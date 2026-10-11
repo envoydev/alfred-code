@@ -327,6 +327,37 @@ test('update: every marketplace the specs name is refreshed before the first upd
     }
 });
 
+// audit 2026-10-11, session 5b9ce9c5: the protocol's resolve updated every stack row, then the installer updated the
+// same rows again - six 'already at the latest version' spawns, on a machine where the resolve alone ran 240.8 s. A
+// stack row already at the snapshot's own release is skipped; one behind it, another marketplace's row and a run
+// with no release read are updated as before.
+test('update and install: a stack row already at the snapshot\'s release is not updated again (5b9ce9c5)', () =>
+{
+    const rows = [
+        { name: 'alfred-code', marketplace: 'envoydev', version: '2.3.0', scope: 'project', enabled: true },
+        { name: 'alfred-navigation', marketplace: 'envoydev', version: '2.2.2', scope: 'project', enabled: true },
+        { name: 'alfred-navigation', marketplace: 'envoydev', version: '2.3.0', scope: 'user', enabled: true },
+        { name: 'companion', marketplace: 'elsewhere', version: '2.3.0', scope: 'project', enabled: true },
+    ];
+    const plugins = ['alfred-code@envoydev', 'alfred-navigation@envoydev', 'companion@elsewhere'];
+    const release = { market: 'envoydev', version: '2.3.0' };
+    const want = ['plugin update alfred-navigation@envoydev --scope project -y', 'plugin update companion@elsewhere --scope project -y'];
+    const upd = cli();
+    const lines = [];
+    P.updatePlugins({ plugins, scope: 'project', before: rows, rows, after: rows, release, cli: upd, log: (l) => lines.push(l) });
+    assert.deepStrictEqual(upd.matching(/^plugin update /).sort(), want, upd.calls.join(' | '));
+    assert.ok(lines.includes('plugin current [project]: alfred-code@envoydev (already 2.3.0, the snapshot\'s release)'), lines.join(' | '));
+    assert.ok(lines.includes('plugin current [user]: alfred-navigation@envoydev (already 2.3.0, the snapshot\'s release)'), lines.join(' | '));
+    const inst = cli();
+    P.installPlugins({ plugins, scope: 'project', before: rows, rows, release, cli: inst });
+    assert.deepStrictEqual(inst.matching(/^plugin update /).sort(), want, inst.calls.join(' | '));
+    // no release read (an unreadable plugin.json) skips nothing
+    const blind = cli();
+    P.updatePlugins({ plugins, scope: 'project', before: rows, rows, after: rows, release: { market: 'envoydev', version: '' }, cli: blind });
+    assert.strictEqual(blind.matching(/^plugin update /).length, 4, blind.calls.join(' | '));
+    assert.strictEqual(P.atRelease(rows, 'alfred-code@envoydev', 'user', release), false, 'a scope the row is not at is no match');
+});
+
 test('source: EVERY installed stack entry is updated at its own scope before the snapshot is read', () =>
 {
     // Not the core alone: the entry Claude Code launches is read from the refreshed catalog, so an
