@@ -224,10 +224,14 @@ It prints, in order:
 - `status<TAB>path` lines (`modified`/`added`/`removed`, `renamed` with `<- old-path`) filtered
   to stack-owned paths; the diff is what has been RELEASED since the stamp - work still on
   `develop` is invisible by design, never diff against it.
-- `changed: skills=<n> agents=<n> rules=<n> hooks=<n> template=<yes|no>` - the delta bucketed by
-  install class. This is what step 7 names as refreshed, and what gates the
-  `/capture-agent-capabilities` suggestion; the installer's log tail counts every file it
-  COPIED, which is all of them on every run, so it can never answer 'what changed'.
+- `changed: skills=<n> agents=<n> rules=<n> hooks=<n> template=<yes|no>` - the RELEASE's delta bucketed by
+  install class; the installer's log tail counts every file it COPIED, which is all of them on every run,
+  so it can never answer 'what changed'.
+- `changed-here: skills=<n> agents=<n> rules=<n> hooks=<n>` - the part of that delta THIS install carries (a
+  copy on disk, a seat on the core no deny names, a hook the plugin route carries and `ALFRED_CODE_HOOKS_OFF`
+  does not name). Step 7 names THIS as the refresh, and it gates the `/capture-agent-capabilities`
+  suggestion (measured: a close named 'skills=10 agents=44' as this install's refresh where the installer
+  copied 9 of the 10 and the install enables 21 seats).
 - `migration: <id><TAB><detect kind>` per DETECTED entry, or `migrations: none detected`, each
   followed by its own indented `why:` / `then:` / `remove:` / `unwire:` / `env-rename:` /
   `env-rename-prefix:` / `env-remove:` / `env-reset:` lines - everything you act on. A detected entry joins the prune list labeled
@@ -280,17 +284,21 @@ prefix entry, `env: <key> removed (retired)`. New variables the release introduc
 catalog entry at all - the same pass seeds them absent-only - but report those too, as
 `env: <key> seeded (<value>)`, reading the file after the run rather than assuming.
 
-**Build the prune list** from the compare's `removed` lines (a `stack/...` path gone entirely
-maps to its installed artifact; a path still present in the snapshot is a move WITHIN the item,
-not a removal), every `new:` row carrying `old-on-disk` (its old copy is pruned whatever the
-verdict - an arriving rename leaves the old copy behind too; a `renamed` row's new name is carried
-by `--add`, a rename being the same item continuing, never an adoption choice), and the detected
-migrations. Three outputs decide the path:
+**Build the prune list** from the detected migrations alone - the removals step 5 makes by hand. The
+installer prunes every copy the release retired or renamed ITSELF (the manifest's `retired` names, and
+only a copy the stack's own record holds - the stamp's hash, the ledger, a name only the stack uses; a
+project's own is kept and named), on the fast path and the pruning path alike, whatever step 4's
+answer - so a compare `removed` line or a `new:` row carrying `old-on-disk` is reported at step 7 from the
+`--log` call's `pruned:` line, never offered as a choice the installer would not honour (measured: a
+'Refresh only' option promised the old copies would stay, and the installer pruned all 34). A
+`renamed` row's new name is carried by `--add`, a rename being the same item continuing. The rename rows
+come from the snapshot's `renamed` map as well as the compare, so a `TRUNCATED` compare still lists
+every rename whose old copy is on disk. Two outputs decide the path:
 
-- **Prune list EMPTY** -> step 3, the fast path. This includes `no-stamp` (exit 2 - no baseline,
-  pruning impossible, refreshing unaffected), `compare-unreachable` (exit 3 - same), and a
-  `TRUNCATED` line, third after the version + base lines (the removal list cannot be trusted complete - never prune from a
-  possibly-partial diff; route the reconcile to `configure` in the report). Say which applied.
+- **Prune list EMPTY** -> step 3, the fast path. Say which compare signal applied, if any: `no-stamp`
+  (exit 2 - no baseline, refreshing unaffected), `compare-unreachable` (exit 3 - same), or a
+  `TRUNCATED` line, third after the version + base lines (the file list may be incomplete - route the
+  reconcile to `configure` in the report).
 - **Prune list NON-EMPTY** -> step 4, the pruning path.
 
 **New items - ONE ask, and only when a `new:` line says `offer`.** Put every offer through one
@@ -461,7 +469,7 @@ breath, by the script that already prints `changed:`:
 node "$TMP/repo/scripts/update-preflight.js" --log "$TMP/install.log" --hooks <step 2's changed: hooks=N> --running "${CLAUDE_PLUGIN_ROOT}"
 ```
 
-Paste `restart: yes|no` and every `warn: <line>` it prints verbatim - step 7 below reads them, not
+Paste `restart: yes|no`, every `warn: <line>`, and its `renamed:` / `pruned:` lines verbatim - step 7 below reads them, not
 the raw grep. `--running` is the release this session loaded: a session already on the snapshot's release
 runs its plugin-route hooks, so the hook delta owes no restart there; the summary's `mcps=` is the
 selection's size and never counts (measured: `restart: yes` on an update that changed nothing loaded).
@@ -516,20 +524,23 @@ and that is their decision to make, not one to leave unsaid. Then:
 The installer reads the install back itself (`--installed-only`), so the ask below needs only the
 compare.
 
-Show the version delta, the refresh counts by category, and the NAMED prune list (migrations
-included, with their why). Ask ONE question through AskUserQuestion: proceed with refresh +
-prune (recommended), or refresh only. Nothing is ever deleted silently; 'refresh only' means
-step 3's installer run instead, then the report. For example:
+Show the version delta, the refresh counts by category (step 2's `changed-here:`), and the NAMED prune
+list - each detected migration with its why. Ask ONE question through AskUserQuestion: proceed with
+refresh + prune (recommended), or refresh only. The answer governs those removals alone: 'refresh only'
+means step 3's installer run and no migration removal, while the copies the release retired or renamed go
+either way - the installer prunes the stack's own on both answers, so the ask says so in one clause and
+never offers to keep them. For example:
 
 ```
 alfred-code 0.1.0 -> 0.2.0 - refresh: 12 skills, 9 agents, 6 rules, 3 hooks
-prune: .claude/rules/web-conventions.md (renamed upstream; typescript-conventions.md carried over)
+prune: .claude/hooks/inject-code-style.js (migration: style delivery moved to a generated rule)
 ```
 
 On 'proceed': run the installer exactly as in step 3 - its `--add` already carries every `renamed`
 row's new name (the old copy is on disk, the new one is not yet, so the read-back alone would lose
 it) and every offer the step-2 ask took. A removed name needs no flag - this release
-does not ship it, so the read-back cannot carry it - and step 5 deletes its files. Never rebuild the
+does not ship it, so the read-back cannot carry it - and the installer prunes its copy; step 5 deletes only
+what the migrations name. Never rebuild the
 selection from a disk inventory on the Node seed: on the plugin routes `.claude/` holds only the
 library copies, and a selection built from it switches off every seat an enabled entry carries (the Phase 8
 read-back exists for exactly that). The first update past 2.1.0 is the one that moves an install
@@ -594,13 +605,15 @@ Every line below is READ from something already in context - step 2's preflight 
 post-install grep, and the step-3 `update-preflight.js --log` call. Nothing here is stated from
 memory, and nothing needs another call.
 
-Report the version delta, then what actually CHANGED: step 2's `changed: skills=<n> agents=<n>
-rules=<n> hooks=<n> template=<yes|no>` line, naming the paths from the compare's own
-`status<TAB>path` rows. Do NOT report the installer's copy counts as the delta - it re-copies every
-installed file on every run, so its `installed/refreshed this run - skills=N` is the SELECTION size,
-not the change; an audited close named the two refreshed rules and omitted the two hooks that were
-the entire upstream delta, because it read the log tail instead of the compare. Then the pruned
-items by name, the REPAIRED line when the installer logged any (`mcp repaired: <name>` rows and the
+Report the version delta, then what THIS install refreshed: step 2's `changed-here: skills=<n> agents=<n>
+rules=<n> hooks=<n>` line (the release's own `changed:` beside it when they differ - 'skills 9 here of the
+release's 10'), naming the paths from the compare's own `status<TAB>path` rows. Do NOT report the
+installer's copy counts as the delta - it re-copies every installed file on every run, so its
+`installed/refreshed this run - skills=N` is the SELECTION size, not the change; an audited close named the
+two refreshed rules and omitted the two hooks that were the entire upstream delta, because it read the log
+tail instead of the compare. Then the `--log` call's `renamed:` and `pruned:` lines, VERBATIM - the
+installer's own counts with the pruned items by name, never a count from memory or from the step-4 ask
+(measured: a close said 'Renamed: 35' and 'the 26 old skill copies' against 34 and 34 in the log), the REPAIRED line when the installer logged any (`mcp repaired: <name>` rows and the
 plugin version moves - these are the drift the run corrected, and a user who has been carrying a
 stale registration needs to see it named), the ENVIRONMENT line, the NEW-ITEMS line (what arrived,
 what was taken, what stays off or was left, each by name), and the restart line.
@@ -662,8 +675,9 @@ what was taken, what stays off or was left, each by name), and the restart line.
   this project stopped needing is validate's whole-stack-absent pass, unmentioned by this command.
 
 The run rewrote `alfred-code.stamp` - the next update or configure diffs from here. Name
-`/capture-agent-capabilities` (when installed) as the USER's next step when step 2's `changed:`
-line shows `skills=` or `agents=` above 0 - the generated rule stamps each skill's first sentence,
+`/capture-agent-capabilities` (when installed) as the USER's next step when step 2's `changed-here:`
+line shows `skills=` or `agents=` above 0 (this install's half - a change to a skill it never copied
+stales nothing it carries) - the generated rule stamps each skill's first sentence,
 which drifts with content-only updates (measured: a 'roster unchanged, rule still accurate' skip
 left 7 of 10 stamped sentences stale and the user caught it manually). Gate it on THAT number and
 nothing else: keyed on 'the release refreshed any installed skill or agent file' the clause was

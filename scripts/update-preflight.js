@@ -17,7 +17,8 @@
 // Output is the stamp-compare line contract, unchanged and first (so every existing branch
 // still reads), then:
 //
-//   changed: skills=<n> agents=<n> rules=<n> hooks=<n> template=<yes|no>
+//   changed: skills=<n> agents=<n> rules=<n> hooks=<n> template=<yes|no>   (the RELEASE's delta)
+//   changed-here: skills=<n> agents=<n> rules=<n> hooks=<n>                (the part of it THIS install carries)
 //   validate: yes|no                        (the version delta spans more than one release)
 //   policy-rev: current|none|stale installed=<hash|none> snapshot=<hash|none>
 //   migration: <id>\t<detect kind>          (one line per DETECTED entry; none -> no lines)
@@ -52,6 +53,8 @@
 //                                           another release of the stack's plugins, --hooks <n> above 0
 //                                           unless those hooks are already live, or a moved docs root)
 //   warn: <line>                            (one per '!!' fail-soft line; none printed if none)
+//   renamed: <n> (<kind>=<n> ...) | none     (the installer's `renamed: <kind> <old> -> <new>` lines)
+//   pruned: <n> (<kind>=<n> ...) - <kind> <name>, ...; ... | none   (its `<kind> pruned (...)` lines, by name)
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -120,10 +123,9 @@ function migrationFields(e)
 // The compare's stack-owned paths, bucketed by the install class they land in. The update
 // close names what the release actually refreshed from THIS, not from the installer's log
 // tail (which counts everything it copied - it re-copies every file on every run).
-function changedClasses(compareLines)
+function changedItems(compareLines)
 {
-    const n = { skills: 0, agents: 0, rules: 0, hooks: 0, template: false };
-    const seen = { skills: new Set(), agents: new Set(), rules: new Set(), hooks: new Set() };
+    const seen = { skills: new Set(), agents: new Set(), rules: new Set(), hooks: new Set(), template: false };
     for (const line of compareLines)
     {
         const m = /^(modified|added|removed|renamed)\t([^\t]+)/.exec(line);
@@ -133,10 +135,43 @@ function changedClasses(compareLines)
         // (measured: skills=108 reported against 78 shipped).
         const item = /^stack\/(skills|agents|rules|hooks)\/([^/]+)/.exec(p);
         if (item) seen[item[1]].add(item[2]);
-        else if (/^stack\/(?:AGENTS|CLAUDE)\.template\.md$/.test(p)) n.template = true;
+        else if (/^stack\/(?:AGENTS|CLAUDE)\.template\.md$/.test(p)) seen.template = true;
     }
-    for (const k of Object.keys(seen)) n[k] = seen[k].size;
-    return n;
+    return seen;
+}
+
+function changedClasses(compareLines)
+{
+    const seen = changedItems(compareLines);
+    return { skills: seen.skills.size, agents: seen.agents.size, rules: seen.rules.size, hooks: seen.hooks.size, template: seen.template };
+}
+
+// The release delta narrowed to what THIS install carries (audit 2026-10-11, session 5b9ce9c5: the close named
+// 'changed: skills=10 agents=44' as this install's refresh while the installer copied 9 of the 10 skills and the
+// install enabled 21 seats). A skill or rule counts when its copy is on disk; a seat when its copy is, or when it rides
+// the core and no deny names it; a hook file when its copy is, or when the plugin route carries it and
+// ALFRED_CODE_HOOKS_OFF does not name it. The capture suggestion keys on this half.
+function changedHere(compareLines, { claudeDir, stampFile, settings, routes })
+{
+    const seen = changedItems(compareLines);
+    const s = settings && typeof settings === 'object' ? settings : {};
+    const env = s.env && typeof s.env === 'object' ? s.env : {};
+    const { stackSeat } = require('./derive-state.js');
+    const denied = new Set((s.permissions && Array.isArray(s.permissions.deny) ? s.permissions.deny : []).map(stackSeat).filter(Boolean));
+    const stamp = require('./install/stamp.js');
+    const seatsOnCore = stamp.readSeatsRoute(stampFile) !== 'copy';
+    const hooksRoute = stamp.readHooksRoute(stampFile);
+    const hooksOnPlugin = hooksRoute ? hooksRoute === 'plugin' : Boolean(routes && routes.hooks);
+    const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
+    const has = (...p) => fs.existsSync(path.join(claudeDir, ...p));
+    const here = {
+        skills: [...seen.skills].filter((n) => has('skills', n, 'SKILL.md')),
+        agents: [...seen.agents].map((f) => f.replace(/\.md$/, '')).filter((n) => has('agents', `${n}.md`) || (seatsOnCore && !denied.has(n))),
+        rules: [...seen.rules].filter((f) => has('rules', f)),
+        hooks: [...seen.hooks].filter((f) => has('hooks', f)
+            || (hooksOnPlugin && /\.js$/.test(f) && !hookDisabled(f, { ALFRED_CODE_HOOKS_OFF: String(env.ALFRED_CODE_HOOKS_OFF || '') }))),
+    };
+    return `changed-here: skills=${here.skills.length} agents=${here.agents.length} rules=${here.rules.length} hooks=${here.hooks.length}`;
 }
 
 // Version-delta span, from the compare's own `version: <old> -> <new>` line - no second call,
@@ -173,8 +208,17 @@ const OLD_COPY = { skill: (d, n) => path.join(d, 'skills', n, 'SKILL.md'), agent
 // A name the snapshot's `renamed` map (meta/stack-manifest.json) carries is the same item continuing
 // even when the compare saw only an add - git reports a rewritten folder as added plus removed.
 const RENAMED_KIND = { skill: 'skills', agent: 'agents', rule: 'rules' };
+const ITEM_FILE = { skill: (n) => `stack/skills/${n}/SKILL.md`, agent: (n) => `stack/agents/${n}.md`, rule: (n) => `stack/rules/${n}.md` };
 function addedItems(compareLines, claudeDir, renamed = {})
 {
+    // audit 2026-10-11, session b3f8193f: the compare API caps at 300 files (`TRUNCATED`), so the renames past the cap
+    // never reached the ask - it named 26 renamed skill copies and the installer pruned 34. The snapshot's `renamed` map
+    // is the installer's own source of truth, so every old name whose copy is on disk is a rename row whatever the
+    // compare listed; the compare still decides the content delta.
+    const fromMap = Object.entries(RENAMED_KIND).flatMap(([category, kind]) => Object.entries(renamed[kind] || {})
+        .filter(([from]) => fs.existsSync(OLD_COPY[category](claudeDir, from)))
+        .map(([from, to]) => `renamed\t${ITEM_FILE[category](to)}\t<- ${ITEM_FILE[category](from)}`));
+    compareLines = [...compareLines, ...fromMap];
     const out = [];
     for (const line of compareLines)
     {
@@ -323,6 +367,28 @@ const SESSION_CHANGED = [
     /(?:^|\s)plugin [A-Za-z0-9_.-]+: (?:\S+ -> \S+$|.*\(installed this run\))/m,
 ];
 
+// The installer's own rename and prune lines, counted and named (audit 2026-10-11, session b3f8193f: the close said
+// 'Renamed: 35 skills' and 'the 26 old skill copies' from memory while the log held 34 of each - and neither the
+// step-7 grep nor this mode carried a prune line). One `renamed:` and one `pruned:` row, pasted verbatim.
+const RENAMED_LINE = /(?:^|\s)renamed: (skill|agent|rule|hook|mcp|plugin) (\S+) -> (\S+)/;
+const PRUNED_LINE = /(?:^|\s)(skill|agent|rule|hook|mcp|plugin) pruned(?: \([^)]*\))?(?: \[[a-z]+\])?: (\S+)/;
+function tallyLine(label, text, re, named)
+{
+    const byKind = new Map();
+    for (const line of text.split('\n'))
+    {
+        const m = re.exec(line);
+        if (!m) continue;
+        const names = byKind.get(m[1]) || new Set();
+        names.add(m[2]);
+        byKind.set(m[1], names);
+    }
+    const total = [...byKind.values()].reduce((n, s) => n + s.size, 0);
+    if (!total) return `${label}: none`;
+    const kinds = [...byKind].map(([kind, names]) => `${kind}=${names.size}`).join(' ');
+    return named ? `${label}: ${total} (${kinds}) - ${[...byKind].map(([kind, names]) => `${kind} ${[...names].join(', ')}`).join('; ')}` : `${label}: ${total} (${kinds})`;
+}
+
 function runLogMode(logFile)
 {
     const hooks = Number(arg('--hooks', '0')) || 0;
@@ -330,6 +396,8 @@ function runLogMode(logFile)
     try { text = fs.readFileSync(logFile, 'utf8'); } catch { text = ''; }
     const warnLines = text.split('\n').filter(l => l.includes('!!'));
     for (const l of warnLines) console.log(`warn: ${l.trim()}`);
+    console.log(tallyLine('renamed', text, RENAMED_LINE, false));
+    console.log(tallyLine('pruned', text, PRUNED_LINE, true));
     const changed = SESSION_CHANGED.some((re) => re.test(text));
     const { versionTag } = require('./install/source.js');
     const running = arg('--running') ? versionTag(arg('--running')) : '';
@@ -419,13 +487,19 @@ function main()
 
     const lines = out ? out.split('\n') : [];
     const c = changedClasses(lines);
+    const settings = readJson(settingsFile);
+    // N6: the routes the installer will commit (plugins.js committedRoutesAt, C5) - a switch only
+    // settings.local.json holds yields to settings.json below local scope. They sit in the project's
+    // `.claude/`: the --settings file's own folder when one is named (a 1.x global install's is there).
+    const routeDir = arg('--settings') ? path.dirname(path.resolve(arg('--settings'))) : accountDir ? path.resolve('.claude') : claudeDir;
+    const routes = require('./install/plugins.js').committedRoutesAt({ env: process.env, claudeDir: routeDir, scope: stampScope === 'local' ? 'local' : 'project' });
     console.log(`changed: skills=${c.skills} agents=${c.agents} rules=${c.rules} hooks=${c.hooks} template=${c.template ? 'yes' : 'no'}`);
+    console.log(changedHere(lines, { claudeDir, stampFile, settings: layered || settings, routes }));
     console.log(`validate: ${spansMultipleReleases(lines.find(l => l.startsWith('version: '))) ? 'yes' : 'no'}`);
     console.log(policyRevLine(root, snapshot));
 
     const catalog = readJson(path.join(snapshot, 'meta', 'migrations.json'));
     const entries = (catalog && catalog.migrations) || [];
-    const settings = readJson(settingsFile);
     // R99: a project or user run migrates the STACK keys settings.local.json holds too (the writer's
     // overlay), so a migration fires on either file - on the local one for those keys alone.
     const localFile = path.join(claudeDir, 'settings.local.json');
@@ -446,11 +520,6 @@ function main()
     }
     if (!fired) console.log('migrations: none detected');
 
-    // N6: the routes the installer will commit (plugins.js committedRoutesAt, C5) - a switch only
-    // settings.local.json holds yields to settings.json below local scope. They sit in the project's
-    // `.claude/`: the --settings file's own folder when one is named (a 1.x global install's is there).
-    const routeDir = arg('--settings') ? path.dirname(path.resolve(arg('--settings'))) : accountDir ? path.resolve('.claude') : claudeDir;
-    const routes = require('./install/plugins.js').committedRoutesAt({ env: process.env, claudeDir: routeDir, scope: stampScope === 'local' ? 'local' : 'project' });
     for (const l of newItemLines({ root, claudeDir, snapshot, settings: layered || settings, stampFile, compareLines: lines, routes })) console.log(l);
 
     if (!accountDir)

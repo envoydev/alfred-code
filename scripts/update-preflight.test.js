@@ -664,3 +664,91 @@ test('data-move: an unstamped legacy install is offered the move; a tree with no
     assert.strictEqual(legacy.code, 2, 'still no stamp to compare');
     assert.match(legacy.out, /^data-move: offer \.alfred\tfrom=\.claude\/docs\tdocs=1 serena=no browser=none memory=no$/m, legacy.out);
 });
+
+// audit 2026-10-11, session 5b9ce9c5: the close named the release delta ('changed: skills=10 agents=44') as this
+// install's refresh while the installer copied 9 of the 10 skills and the install enabled 21 seats. `changed-here:`
+// is the part this install carries - a copy on disk, a seat on the core no deny names, a hook the plugin route carries
+// and HOOKS_OFF does not name - and the release's own `changed:` line stays as it was.
+test('changed-here: the release delta narrowed to what this install carries, on the plugin and the copy route', () => {
+    const fixture = { files: [
+        { status: 'modified', filename: 'stack/skills/csharp/SKILL.md' },
+        { status: 'modified', filename: 'stack/skills/dotnet/SKILL.md' },
+        { status: 'modified', filename: 'stack/agents/code-reviewer.md' },
+        { status: 'modified', filename: 'stack/agents/security-auditor.md' },
+        { status: 'modified', filename: 'stack/rules/markdown-docs.md' },
+        { status: 'modified', filename: 'stack/rules/web-conventions.md' },
+        { status: 'modified', filename: 'stack/hooks/guard-secret-value.js' },
+        { status: 'modified', filename: 'stack/hooks/guard-catastrophic-rm.js' },
+        { status: 'modified', filename: 'stack/hooks/model-windows.json' },
+    ] };
+    const lay = (install) => {
+        fs.mkdirSync(path.join(install, '.claude', 'skills', 'csharp'), { recursive: true });
+        fs.writeFileSync(path.join(install, '.claude', 'skills', 'csharp', 'SKILL.md'), '---\nname: csharp\n---\n');
+        fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
+        fs.writeFileSync(path.join(install, '.claude', 'rules', 'markdown-docs.md'), '# r\n');
+        fs.mkdirSync(path.join(install, '.claude', 'hooks'), { recursive: true });
+        fs.writeFileSync(path.join(install, '.claude', 'hooks', 'model-windows.json'), '{}');
+    };
+    const plugin = scaffold({ fixture, stamp: 'sha: aaa111\nversion: 0.2.60\nseats-route: plugin\nhooks-route: plugin\n',
+        settings: { permissions: { deny: ['Agent(alfred-code:security-auditor)'] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-catastrophic-rm' } } });
+    lay(plugin.install);
+    const p = run(['--snapshot', plugin.snap, '--root', plugin.install, '--fixture', plugin.fixtureFile]).out;
+    assert.match(p, /^changed: skills=2 agents=2 rules=2 hooks=3 template=no$/m, 'the release delta is unchanged');
+    assert.match(p, /^changed-here: skills=1 agents=1 rules=1 hooks=2$/m, p);
+    const copy = scaffold({ fixture, stamp: 'sha: aaa111\nversion: 0.2.60\nseats-route: copy\nhooks-route: copy\n', settings: { env: {} } });
+    lay(copy.install);
+    fs.mkdirSync(path.join(copy.install, '.claude', 'agents'), { recursive: true });
+    fs.writeFileSync(path.join(copy.install, '.claude', 'agents', 'code-reviewer.md'), '---\nname: code-reviewer\n---\n');
+    fs.writeFileSync(path.join(copy.install, '.claude', 'hooks', 'guard-secret-value.js'), '// copy\n');
+    const c = run(['--snapshot', copy.snap, '--root', copy.install, '--fixture', copy.fixtureFile]).out;
+    assert.match(c, /^changed-here: skills=1 agents=1 rules=1 hooks=2$/m, 'the copy route counts copies on disk only');
+});
+
+// audit 2026-10-11, session b3f8193f: the compare API caps at 300 files (`TRUNCATED`), and the 8 renames past the cap
+// never reached the ask - it named 26 renamed skill copies, and the installer pruned 34. Every old name of the
+// snapshot's `renamed` map whose copy is on disk is a rename row, listed by the compare or not.
+test('new items: a rename the truncated compare never listed is still a renamed row when its old copy is on disk', () => {
+    const { loadManifest } = require('./install/manifest.js');
+    const renamed = loadManifest(path.join(__dirname, '..')).renamed;
+    const [[oldA, toA], [oldB, toB]] = Object.entries(renamed.skills).filter(([, to]) => to.startsWith('task-')).slice(0, 2);
+    const files = [{ status: 'renamed', filename: `stack/skills/${toA}/SKILL.md`, previous_filename: `stack/skills/${oldA}/SKILL.md` }];
+    for (let i = 0; i < 300; i++) files.push({ status: 'modified', filename: `stack/skills/csharp/references/f${i}.md` });
+    const { snap, install, fixtureFile } = scaffold({ fixture: { files } });
+    fs.writeFileSync(path.join(snap, 'meta', 'stack-manifest.json'), JSON.stringify({ renamed }));
+    for (const old of [oldA, oldB])
+    {
+        fs.mkdirSync(path.join(install, '.claude', 'skills', old), { recursive: true });
+        fs.writeFileSync(path.join(install, '.claude', 'skills', old, 'SKILL.md'), `---\nname: ${old}\n---\n`);
+    }
+    const listing = path.join(install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
+    const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
+    assert.strictEqual(code, 0, out);
+    assert.match(out, /^TRUNCATED/m, 'the fixture is past the compare cap');
+    for (const [old, to] of [[oldA, toA], [oldB, toB]])
+        assert.match(out, new RegExp(`^new: skill ${to}\\t\\S+\\t.*from=${old}\\told-on-disk`, 'm'), `${old} -> ${to}:\n${out}`);
+});
+
+// audit 2026-10-11, session b3f8193f: the close stated 'Renamed: 35 skills' and 'the 26 old skill copies' from memory,
+// against 34 of each in the log. `--log` prints the installer's own counts, the pruned items by name.
+test('--log mode: the installer\'s renamed and pruned lines are counted, the pruned ones named', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-log-'));
+    const log = path.join(dir, 'install.log');
+    fs.writeFileSync(log, [
+        '==> renamed: skill old-solve -> new-solve',
+        '==> renamed: skill old-design -> new-design',
+        '==> renamed: agent old-seat -> new-seat',
+        '==>   renamed: .claude/AGENTS.md - 3 old skill or seat name(s) re-spelled to the new names',
+        '==>   skill pruned (retired upstream): old-solve',
+        '==>   skill pruned (retired upstream): old-design',
+        '==>   skill kept (retired upstream, tracked in git): plugin-authoring',
+        '==>   plugin pruned (retired upstream) [project]: ponytail@ponytail',
+    ].join('\n'));
+    const { out } = run(['--log', log]);
+    assert.match(out, /^renamed: 3 \(skill=2 agent=1\)$/m, out);
+    assert.match(out, /^pruned: 3 \(skill=2 plugin=1\) - skill old-solve, old-design; plugin ponytail@ponytail$/m, out);
+    fs.writeFileSync(log, '==>   installed/refreshed this run - skills=12, plugins=6, mcps=0, hooks=0, agents=11, rules=9');
+    const quiet = run(['--log', log]).out;
+    assert.match(quiet, /^renamed: none$/m);
+    assert.match(quiet, /^pruned: none$/m);
+});
