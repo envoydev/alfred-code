@@ -994,6 +994,18 @@ function hookCommandKey(cmd) {
   return String(cmd || '').replace(/["']/g, '').replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, '$$$1')
     .replace(/\s+/g, ' ').trim().replace(HOOK_INTERPRETER_RE, '');
 }
+// The hook a `hook_*` attachment ran, by its script's file name (`shell-guards.js`), else the row's own `hookName`.
+function hookFileOf(at) {
+  const files = [...String((at && at.command) || '').matchAll(/([A-Za-z0-9._-]+\.(?:[cm]?js|sh|py|ps1))\b/g)];
+  return files.length ? files[files.length - 1][1] : String((at && at.hookName) || '(unnamed hook)');
+}
+// A hook's stdout as the harness parsed it: one JSON object, or the object a line of text wraps.
+function hookJsonOf(text) {
+  const s = String(text || '').trim();
+  if (!s.includes('{')) return null;
+  try { return JSON.parse(s); } catch { /* text around it */ }
+  try { return JSON.parse(s.slice(s.indexOf('{'), s.lastIndexOf('}') + 1)); } catch { return null; }
+}
 
 // What one install of a plugin declares, read the three ways Claude Code reads it: the plugin's own
 // `plugin.json`, its entry in a marketplace manifest (the one its root ships - every stack entry
@@ -1658,6 +1670,7 @@ async function analyzeTranscript(file, window) {
     stopHookBlocks: 0,           // Stop-hook denials: an isMeta user STRING, invisible to is_error
     harnessDenials: 0,           // denials that are the HARNESS's, not a stack hook's - kept out of hook-blk
     denialsByHook: {},           // hook file name (or '(unattributed)') -> denials attributed to it
+    rewritesByHook: {},          // hook file name -> calls whose input it REWROTE (`updatedInput`)
     topResults: [],              // the N biggest tool results, each with the call's own label
     peakCtx: 0,                  // largest per-message context carried, and where
     peakCtxAt: null,
@@ -1816,6 +1829,7 @@ async function analyzeTranscript(file, window) {
   let slashPending = null;         // { name } - a slash command whose expansion row has not arrived yet
   const skillCallIds = new Map();  // Skill tool_use id -> skill: its body arrives as an isMeta row naming that id
   const callIdxById = new Map();   // tool_use id -> its toolCallIdx entry, which takes the result's timestamp
+  const rewriteOf = new Map();     // tool_use id -> the hooks that rewrote its input before it ran
   let lastSkillResult = null;      // the Skill call whose result came last, for a body row that names no id
   let prevAssistantNoTool = null;  // ts of an end_turn assistant msg with no tool_use
   s.gitCommits = 0; s.prMerges = 0; s.clearTs = null; s.ccVersion = null;
@@ -1928,6 +1942,26 @@ async function analyzeTranscript(file, window) {
             const k = hookCommandKey(cmd);
             const e = s.hookCommands[k] || (s.hookCommands[k] = { n: 0, firstTs: o.timestamp || null });
             e.n += 1;
+          }
+          // A PreToolUse hook that answers `hookSpecificOutput.updatedInput` REWROTE the call: what ran is not what the
+          // model wrote, so an error on that call is the rewrite's first suspect (audit 2026-10-11, session ae38c08f: a
+          // guard's rewrite of 1 of 149 Bash calls caused its error, and the report blamed the model's heredoc).
+          if (at.type === 'hook_success' && !foreign && at.toolUseID && String(at.stdout || '').includes('updatedInput')) {
+            const hso = (hookJsonOf(at.stdout) || {}).hookSpecificOutput;
+            if (hso && hso.updatedInput && typeof hso.updatedInput === 'object') {
+              const hook = hookFileOf(at);
+              const list = rewriteOf.get(at.toolUseID) || [];
+              if (!list.includes(hook)) {
+                if (!list.length) {
+                  const name = (toolById.get(at.toolUseID) || {}).name || String(at.hookName || '').split(':')[1] || null;
+                  const t = name && s.toolCalls[name];
+                  if (t) t.rewrites = (t.rewrites || 0) + 1;
+                }
+                list.push(hook);
+                rewriteOf.set(at.toolUseID, list);
+                s.rewritesByHook[hook] = (s.rewritesByHook[hook] || 0) + 1;
+              }
+            }
           }
         } else if (at.type === 'diagnostics' && Array.isArray(at.files)) {
           // A language server's findings for the files it watched - the `*-lsp` plugins' use, which
@@ -2660,6 +2694,9 @@ async function analyzeTranscript(file, window) {
             // then. Measured: two errors at 06:57 were reported as the browser phase's, and the
             // browser work did not start until ~07:2x - a whole phase blamed for someone else's.
             if (o.timestamp) (t.errorTs = t.errorTs || []).push(o.timestamp);
+            // The call that errored ran a hook's rewrite of the model's input - name the hook beside the error.
+            const rw = rewriteOf.get(c.tool_use_id);
+            if (rw) (t.rewriteErrors = t.rewriteErrors || []).push({ ts: o.timestamp || null, hooks: rw });
           }
         }
         if (info.skill) s.skillInvocations[info.skill].injectedChars += chars;
@@ -2769,6 +2806,19 @@ function imageLine(main, agents) {
   const per = Object.entries(by).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ');
   return `images ${n} in tool results (${per}) ~${fmt(tok)} tok, from the context growth of the turns that carried ${measured} of them - never counted as text in the results column`;
 }
+// Calls whose input a PreToolUse hook REWROTE (`updatedInput`), by hook, and each error such a call returned with the
+// hook named - one line both renderers print under the TOOLS table. Without it an error the rewrite caused read as
+// the model's own (audit 2026-10-11, session ae38c08f).
+function rewriteLine(main, agents, tools) {
+  const n = Object.values(tools).reduce((k, t) => k + (t.rewrites || 0), 0);
+  if (!n) return null;
+  const by = {};
+  for (const x of [main, ...agents.map((a) => a.stats)]) for (const [h, k] of Object.entries(x.rewritesByHook || {})) by[h] = (by[h] || 0) + k;
+  const hooks = Object.entries(by).sort((a, b) => b[1] - a[1]).map(([h, k]) => `${h} ${k}`).join(', ');
+  const errs = Object.entries(tools).flatMap(([name, t]) => (t.rewriteErrors || []).map((e) => `${name}@${String(e.ts || '?').slice(11, 19)} after ${e.hooks.join(' + ')}`));
+  return `${n} call(s) ran with input a PreToolUse hook REWROTE (updatedInput): ${hooks}${errs.length ? `; ${errs.length} of them errored - ${errs.join(', ')}: open the rewrite on that call's toolUseID before attributing the error to the model` : ''}`;
+}
+
 function summarizeCauses(pending, imageTok = 0) {
   const by = {};
   let images = 0;
@@ -2969,10 +3019,11 @@ function computeAggregates(main, agents) {
   const tools = {};
   for (const src of [main, ...agents.map((a) => a.stats)]) {
     for (const [name, t] of Object.entries(src.toolCalls)) {
-      const e = tools[name] || (tools[name] = { calls: 0, resultChars: 0, errors: 0, hookBlocks: 0, declines: 0, rmVerifyTails: 0, errorTs: [] });
+      const e = tools[name] || (tools[name] = { calls: 0, resultChars: 0, errors: 0, hookBlocks: 0, declines: 0, rmVerifyTails: 0, rewrites: 0, errorTs: [], rewriteErrors: [] });
       e.calls += t.calls; e.resultChars += t.resultChars; e.errors += t.errors; e.hookBlocks += t.hookBlocks || 0;
-      e.declines += t.declines || 0; e.rmVerifyTails += t.rmVerifyTails || 0;
+      e.declines += t.declines || 0; e.rmVerifyTails += t.rmVerifyTails || 0; e.rewrites += t.rewrites || 0;
       if (t.errorTs) e.errorTs = e.errorTs.concat(t.errorTs).sort();
+      if (t.rewriteErrors) e.rewriteErrors = e.rewriteErrors.concat(t.rewriteErrors);
     }
   }
 
@@ -3754,20 +3805,22 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
 
   printInventoryBlock(invUse);
 
-  console.log('\nTOOLS (main + subagents; result volume = what lands back in context; declines = the USER answering an ask, never a failure; hook-blk = PreToolUse denials - a denial may be a FALSE POSITIVE, so read the block before scoring it as the gate working)');
-  console.log(`  ${pad('tool', 28)} ${rpad('calls', 5)} ${rpad('results', 9)} ${rpad('errors', 6)} ${rpad('declines', 9)} ${rpad('hook-blk', 8)}`);
+  console.log('\nTOOLS (main + subagents; result volume = what lands back in context; declines = the USER answering an ask, never a failure; hook-blk = PreToolUse denials - a denial may be a FALSE POSITIVE, so read the block before scoring it as the gate working; hook-rw = calls a PreToolUse hook rewrote before they ran)');
+  console.log(`  ${pad('tool', 28)} ${rpad('calls', 5)} ${rpad('results', 9)} ${rpad('errors', 6)} ${rpad('declines', 9)} ${rpad('hook-blk', 8)} ${rpad('hook-rw', 7)}`);
   {
     // Top 15 by result volume, PLUS any dropped row carrying errors or hook blocks - a
     // 100%-error tool must never vanish on low volume (measured: 2/2-error browser_click did).
     const rows = Object.entries(agg.tools).sort((a, b) => b[1].resultChars - a[1].resultChars);
-    const shown = rows.slice(0, 15).concat(rows.slice(15).filter(([, t]) => t.errors > 0 || t.hookBlocks > 0));
+    const shown = rows.slice(0, 15).concat(rows.slice(15).filter(([, t]) => t.errors > 0 || t.hookBlocks > 0 || t.rewrites > 0));
     for (const [name, t] of shown) {
-      console.log(`  ${pad(name, 28)} ${rpad(t.calls, 5)} ${rpad('~' + fmt(approxTok(t.resultChars)), 9)} ${rpad(t.errors, 6)} ${rpad(t.declines || '', 9)} ${rpad(t.hookBlocks || '', 8)}`);
+      console.log(`  ${pad(name, 28)} ${rpad(t.calls, 5)} ${rpad('~' + fmt(approxTok(t.resultChars)), 9)} ${rpad(t.errors, 6)} ${rpad(t.declines || '', 9)} ${rpad(t.hookBlocks || '', 8)} ${rpad(t.rewrites || '', 7)}`);
     }
     const rmv = Object.values(agg.tools).reduce((n, t) => n + (t.rmVerifyTails || 0), 0);
     if (rmv) console.log(`  ${rmv} shell call(s) ended on an ls/test verifying an rm - the non-zero exit there is the removal CONFIRMED, so they are not in the errors column`);
     const img = imageLine(main, agents);
     if (img) console.log(`  ${img}`);
+    const rw = rewriteLine(main, agents, agg.tools);
+    if (rw) console.log(`  ${rw}`);
   }
   {
     const errs = Object.entries(agg.tools).filter(([, t]) => (t.errorTs || []).length);
@@ -3775,7 +3828,8 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
       console.log('\n  errors, by WHEN they landed (attribute them to the phase running at that time, never to the loudest one):');
       for (const [name, t] of errs) {
         const ts = t.errorTs.slice(0, 6).map((x) => String(x).slice(11, 19)).join(', ');
-        console.log(`  ${pad(name, 28)} ${rpad(t.errors, 5)} ${ts}${t.errorTs.length > 6 ? ` … +${t.errorTs.length - 6}` : ''}`);
+        const rw = (t.rewriteErrors || []).length;
+        console.log(`  ${pad(name, 28)} ${rpad(t.errors, 5)} ${ts}${t.errorTs.length > 6 ? ` … +${t.errorTs.length - 6}` : ''}${rw ? ` - ${rw} on a call a hook rewrote` : ''}`);
       }
     }
   }
@@ -4044,17 +4098,20 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
 
   out.push('## Tools (main + subagents; result volume = what lands back in context)', '');
   out.push('`hook-blk` = PreToolUse denials. A denial is not automatically the gate working - it may be a FALSE POSITIVE, and a false positive costs the denial text plus the whole retried turn. Read the block before scoring it. (Shipped verbatim over sessions whose blocks were 2 of 2 and 3 of 3 false positives, across 11 bundles.)', '');
-  out.push('| tool | calls | results | errors | declines | hook-blk |', '|---|---|---|---|---|---|');
+  out.push('`hook-rw` = calls a PreToolUse hook REWROTE (`updatedInput`) before they ran - what ran is not what the model wrote.', '');
+  out.push('| tool | calls | results | errors | declines | hook-blk | hook-rw |', '|---|---|---|---|---|---|---|');
   {
     const rows = Object.entries(agg.tools).sort((a, b) => b[1].resultChars - a[1].resultChars);
-    const shown = rows.slice(0, 15).concat(rows.slice(15).filter(([, t]) => t.errors > 0 || t.hookBlocks > 0));
+    const shown = rows.slice(0, 15).concat(rows.slice(15).filter(([, t]) => t.errors > 0 || t.hookBlocks > 0 || t.rewrites > 0));
     for (const [name, t] of shown) {
-      out.push(`| ${name} | ${t.calls} | ~${fmt(approxTok(t.resultChars))} | ${t.errors} | ${t.declines || ''} | ${t.hookBlocks || ''} |`);
+      out.push(`| ${name} | ${t.calls} | ~${fmt(approxTok(t.resultChars))} | ${t.errors} | ${t.declines || ''} | ${t.hookBlocks || ''} | ${t.rewrites || ''} |`);
     }
     const rmv = Object.values(agg.tools).reduce((n, t) => n + (t.rmVerifyTails || 0), 0);
     if (rmv) out.push('', `> ${rmv} shell call(s) ended on an \`ls\`/\`test\` verifying an \`rm\` - the non-zero exit there is the removal CONFIRMED, so they are not counted in the errors column.`);
     const img = imageLine(main, agents);
     if (img) out.push('', `> ${img}.`);
+    const rw = rewriteLine(main, agents, agg.tools);
+    if (rw) out.push('', `> ${rw}.`);
   }
   out.push('');
   {
@@ -4063,9 +4120,10 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
       out.push('### Errors, by when they landed', '');
       out.push('Attribute each error to the phase that was RUNNING at that time. Measured: two errors at');
       out.push('06:57 were reported as the browser phase\'s, and the browser work started ~07:2x.', '');
-      out.push('| tool | errors | timestamps |', '|---|---|---|');
+      out.push('| tool | errors | timestamps | after a hook rewrite |', '|---|---|---|---|');
       for (const [name, t] of errs) {
-        out.push(`| ${name} | ${t.errors} | ${t.errorTs.slice(0, 6).map((x) => String(x).slice(11, 19)).join(', ')}${t.errorTs.length > 6 ? ` … +${t.errorTs.length - 6}` : ''} |`);
+        const rw = (t.rewriteErrors || []).map((e) => `${String(e.ts || '?').slice(11, 19)} ${e.hooks.join(' + ')}`).join(', ');
+        out.push(`| ${name} | ${t.errors} | ${t.errorTs.slice(0, 6).map((x) => String(x).slice(11, 19)).join(', ')}${t.errorTs.length > 6 ? ` … +${t.errorTs.length - 6}` : ''} | ${rw} |`);
       }
       out.push('');
     }
