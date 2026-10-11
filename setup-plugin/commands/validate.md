@@ -51,7 +51,7 @@ state .`, which reads the install records the hooks read (`alfred-code.stamp`, a
 `hooks/docs.js`) in this repo, its git top level or a worktree's main
 checkout - never `.claude/skills` or `.claude/agents`, which a plugin-route install may not have:
 `not-installed` -> stop and route to `/alfred-code:setup`; `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:validate from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to
-`/alfred-code:update`, which reads its picks off disk and writes the stamp first; `installed` / `initialised` -> go on. `<scope>` below is `node "$TMP/repo/scripts/install/stamp.js" scope .` -
+`/alfred-code:update`, which reads its picks off disk and writes the stamp first; `installed` / `initialised` -> go on. Every installer call below carries its scope inline, `--scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)"` -
 the same script, reading the stamp, a `global` line as `user`, anything else as `project` - passed to every
 installer call so the read-back and the apply read and write the settings file that scope uses
 (`.claude/settings.local.json` laid over `.claude/settings.json` at local scope; at project and user
@@ -89,7 +89,7 @@ it (a hand inventory unioned what the plugin entries carry, and the apply switch
 back on). One call from the snapshot, on every OS and seed - a `--print-plan` run writes nothing:
 
 ```bash
-node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1
+node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1
 ```
 
 `$TMP/installed.json` is the `--installed` input for the walk: `{rules, agents, skills, hooks, mcps,
@@ -490,7 +490,7 @@ profile), output to `$TMP/select.out` - then:
   closure re-requires but no accepted add names - report it as staying off) and `keep-parked plugin
   <name>` (a parked plugin the read-back would enable - a `--drop` whenever the installer runs, no
   reason on its own to run it). Otherwise:
-  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--browsers <csv> --browser-enabled <csv|none>] 2>&1 | tee "$TMP/install.log"`
+  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only [--add '<line>']... [--drop '<line>']... [--browsers <csv> --browser-enabled <csv|none>] 2>&1 | tee "$TMP/install.log"`
   - one `--add` per `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted,
   applied on top of the same read-back, so nothing the reconcile did not touch moves. Never
   `--selection` on this seed: that route neither removes nor disables what the reconcile dropped,
@@ -552,7 +552,7 @@ audited session, which is why the reason rides beside every step. Close with thi
 'Nothing is pending on this run - these are yours to run when you choose.' The stop-contract
 guard reads that sentence as a finished close; without it a 'done + next step' card is blocked
 as a stall and the guard demands the very ask this paragraph removes.
-The line is CONDITIONAL: print it only when the card carries nothing OWED. A still-required user action - revoke the old token, fill in a credential, run a rotation - IS pending, so name it and put the close through the ask instead (measured: one close stated 'Still owed: revoke the old token in Sentry's dashboard' and this line in the same message).
+The line is CONDITIONAL: print it only when the card carries nothing OWED. A still-required user action - revoke the old token, fill in a credential, run a rotation - IS pending, so name it and put the close through the ask instead (measured: one close stated 'Still owed: revoke the old token in Sentry's dashboard' and this line in the same message). An item the user DEFERRED through an AskUserQuestion answer in this run ('Acknowledge and defer') is not owed: list it on ONE line that starts `Deferred by you:` and close with the line above - the stop-contract guard does not count that line as pending (audit 2026-10-11, session 6288ad94: a close listing a deferred rotation as 'Still owed from you' was blocked, and the retry cost 142.0k cache-read).
 
 
 ## 12. Post-check
@@ -613,10 +613,17 @@ node "$TMP/repo/scripts/agents-md-check.js" --root .
 Paste the output byte-for-byte in the same fenced block (`agents-md-check: clean (...)` or `no
 AGENTS.md or CLAUDE.md in this project` is the whole paste). Each row is `<file>:<line> <kind>: ...` - a named path
 that is gone, a command whose program is not on PATH, a placeholder or TODO left, or a line still
-carrying the template's authoring text. Rows get ONE AskUserQuestion with NO option marked
-recommended - the check is heuristic, and a row can be correct text it could not resolve (a folder
-under a prefixed name, a program a script installs), so each row is the user's read: 'Review them with
-`/habits-adjust-agents-md`' (its improve mode shows every change before writing) or 'Leave them'.
+carrying the template's authoring text. Rows get ONE ask, leaving them marked and first - the check is
+heuristic, a row can be correct text it could not resolve (a folder under a prefixed name, a program a
+script installs), and the approver takes the first option (audit 2026-10-11, session 6288ad94: 'Review'
+listed first and unmarked was taken, and the review of 4 rows that were all false positives cost ~825k):
+
+```ask
+Review the AGENTS.md check rows above?
+- 'Leave them (Recommended)' - nothing is written; a row comes back on the next run until its line carries the keep marker
+- 'Review them with /habits-adjust-agents-md' - its improve mode shows every change before writing, and a row you keep gets the keep marker
+```
+
 Never edit an instruction file from this command; a `command` row on a program only another OS runs is the
 user's call, not a fix. A left row comes back on the next run; a line the user keeps for good carries
 `<!-- agents-md-check: keep -->` at its end (the skill's improve mode writes it on the user's word), and

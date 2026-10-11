@@ -1919,7 +1919,7 @@
         },
         {
           "file": "setup-plugin/commands/validate.md",
-          "marker": "`node \"$TMP/repo/scripts/install/alfred-code.js\" update --source \"$TMP/repo\" --scope <scope> --installed-only [--add"
+          "marker": "`node \"$TMP/repo/scripts/install/alfred-code.js\" update --source \"$TMP/repo\" --scope \"$(node \"$TMP/repo/scripts/install/stamp.js\" scope .)\" --installed-only [--add"
         },
         {
           "file": "setup-plugin/commands/uninstall.md",

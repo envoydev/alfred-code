@@ -110,7 +110,7 @@ test('setup: no memory level, the init prerequisites deferred, and a close that 
 test('the walk: the playwright ENABLE pre-selection reads plan-out\'s live state in DELTA (R77)', () => {
     const walk = walkBody();
     const mcps = flat(walk.slice(walk.indexOf('## MCPs'), walk.indexOf('## Plugins')));
-    assert.match(mcps, /DELTA pre-selects from the LIVE install, never by hand: `jq -c '\.browser' "\$TMP\/installed\.json"`/);
+    assert.match(mcps, /DELTA pre-selects from the LIVE install, never by hand: `node -e '[^']*\.browser\)\)' "\$TMP\/installed\.json"`/);
     assert.match(mcps, /Never pre-select from the stamp's own `browser-enabled:` line/);
     assert.match(mcps, /pre-selected: `enabled` plus any newly added one in DELTA, every one in FRESH/);
     assert.match(mcps, /18\.7k characters of schema/, 'the per-session cost stays named (R67)');
@@ -584,7 +584,7 @@ test('every command gate and the router stop in a worktree of an installed check
     }
     // M5: validate's scope comes from the same script, which reads either stamp name - never a grep.
     const validate = cmdBody('validate');
-    assert.match(flat(validate), /`<scope>` below is `node "\$TMP\/repo\/scripts\/install\/stamp\.js" scope \.`/);
+    assert.match(flat(validate), /Every installer call below carries its scope inline, `--scope "\$\(node "\$TMP\/repo\/scripts\/install\/stamp\.js" scope \.\)"`/);
     assert.ok(!/grep -m1 '\^scope:'/.test(validate), 'no grep of one stamp name');
     // The installer refuses the same tree, so a gate skipped by hand cannot restart the loop either.
     assert.match(fs.readFileSync(path.join(ROOT, 'scripts', 'install', 'alfred-code.js'), 'utf8'), /this is a git worktree of \$\{worktreeOf\}, which holds the install - run the installer from there/);
@@ -679,8 +679,12 @@ test('validate reconciles both ways (--redundant + --missing), walks layers, run
     assert.ok(!/project mode only/i.test(body), 'validate runs at every scope');
     assert.match(flat(body), /\*\*Every scope\.\*\* A project, user or local install keeps its stamp, its library copies and its settings in the project's `\.claude\/`/);
     assert.match(flat(body), /Find the install with `node "\$TMP\/repo\/scripts\/install\/stamp\.js" state \.`/);
-    assert.match(body, /install\/alfred-code\.js" update --source "\$TMP\/repo" --scope <scope> --installed-only --print-plan --plan-out/, 'validate reads the install back at its own scope');
-    assert.match(body, /install\/alfred-code\.js" update --source "\$TMP\/repo" --scope <scope> --installed-only \[--add/, 'validate applies the accepted adds and removes via the seed, over the read-back, at its own scope');
+    // audit 2026-10-11, session 6288ad94: a literal `<scope>` left the value to infer - the run guessed `project`,
+    // read `user` back and re-ran the read-back. The stamp's own scope is inline now.
+    const SCOPE = '--scope "\\$\\(node "\\$TMP\\/repo\\/scripts\\/install\\/stamp\\.js" scope \\.\\)"';
+    assert.match(body, new RegExp(`install\\/alfred-code\\.js" update --source "\\$TMP\\/repo" ${SCOPE} --installed-only --print-plan --plan-out`), 'validate reads the install back at its own scope');
+    assert.match(body, new RegExp(`install\\/alfred-code\\.js" update --source "\\$TMP\\/repo" ${SCOPE} --installed-only \\[--add`), 'validate applies the accepted adds and removes via the seed, over the read-back, at its own scope');
+    assert.doesNotMatch(body, /--scope <scope>/, 'no scope placeholder is left to infer');
     assert.ok(!/--scope project --installed-only/.test(body), 'no apply pinned to project scope');
     assert.match(body, /ALFRED_CODE_SEED=shell/, '... and still names the shell switch it refuses');
     // the judgment step: two gates (code-corroborated non-use, verbatim doc conflict), never
@@ -1149,4 +1153,40 @@ test('update step 6: the own-file re-spell goes through the preflight plan and o
     assert.match(flat(six), /`agents-md: compare <clean\|N additions> - check <N rows>`/);
     assert.match(flat(body.slice(body.indexOf('## 7. Post-check'))), /step 6's `agents-md:` receipt/);
     assert.strictEqual(askBlocks(body).length, SETUP_ASK_TEMPLATES['setup-plugin/commands/update.md'], 'update.md\'s asks are pinned');
+});
+
+// ------------------------------------------------------------------ audit 2026-10-11 SD06 / SD10 (validate)
+
+// 6288ad94 / 757a4ac0: a credential rotation the user deferred through the run's own ask was listed as 'Still owed',
+// and the stop guard blocked the close. The pinned contract: a `Deferred by you:` line, which the guard never counts.
+test('validate: an item the user deferred through this run\'s ask closes on a Deferred by you: line, not as owed', () =>
+{
+    const body = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'validate.md'), 'utf8'));
+    assert.match(body, /An item the user DEFERRED through an AskUserQuestion answer in this run[^.]*is not owed: list it on ONE line that starts `Deferred by you:` and close with the line above/);
+});
+
+// The pinned agents-md contract: validate's ask over the check rows lists its (Recommended) option first, as a template.
+// 6288ad94: 'Review' first and unmarked was taken, ~825k on 4 false-positive rows - 'Leave them' takes the mark.
+test('validate: the AGENTS.md check rows get one ask template, Leave them recommended and first (6288ad94)', () =>
+{
+    const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'validate.md'), 'utf8');
+    const ask = askBlocks(body).filter((b) => /^Review the AGENTS\.md check rows/.test(b[0]));
+    assert.strictEqual(ask.length, 1, 'one template for the check rows');
+    assert.match(ask[0].filter((l) => /^- '/.test(l))[0], /^- 'Leave them \(Recommended\)'/);
+    assert.doesNotMatch(flat(body), /NO option marked recommended/);
+    assert.strictEqual(askBlocks(body).length, SETUP_ASK_TEMPLATES['setup-plugin/commands/validate.md'], 'validate.md\'s asks are pinned');
+});
+
+// Git for Windows ships no jq (SUMMARY premise check): every JSON read a setup text runs is `node -e`.
+test('setup texts read JSON with node -e, never jq', () =>
+{
+    const files = [];
+    for (const dir of ['commands', 'references']) for (const f of fs.readdirSync(path.join(PLUGIN_DIR, dir))) if (f.endsWith('.md')) files.push(path.join(dir, f));
+    for (const rel of files)
+    {
+        const text = fs.readFileSync(path.join(PLUGIN_DIR, rel), 'utf8');
+        const runs = text.split('\n').filter((l) => /(^|[`$(|;&]\s*)jq\s+-/.test(l));
+        assert.deepStrictEqual(runs, [], `${rel} runs jq`);
+    }
+    assert.match(fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'walk.md'), 'utf8'), /node -e '[^']*\.browser\)\)' "\$TMP\/installed\.json"/);
 });

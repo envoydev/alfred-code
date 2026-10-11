@@ -47,7 +47,7 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     `--evidence-gaps`, plus the settings.json `env` layer against `environment.json`, and a read-only
     install audit at its post-check - `scripts/audit-install.js` rows on unpinned launches, wide shell
     grants, hook wirings and credential literals, pasted before one ask, never auto-fixed, and the
-    AGENTS.md check - `agents-md-check.js` rows offered to the skill's improve mode, no option recommended), `/alfred-code:uninstall`
+    AGENTS.md check - `agents-md-check.js` rows offered to the skill's improve mode, 'Leave them' recommended and first), `/alfred-code:uninstall`
     (the seed's `uninstall` over the stamp's ledger, below; user-scope plugin rows and MCP registrations printed, never run). In a git
     worktree of an installed checkout every command stops and names the main checkout. A legacy copy-route install that never
     wrote a stamp reads `legacy-unstamped` (`stamp.js legacySignature`: no install record, and TWO of the stack's hook files, a
