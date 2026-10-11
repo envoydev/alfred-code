@@ -2765,7 +2765,7 @@ function redactGitStages(text) {
     if (stages.join('|') !== seg || stages.some((st) => REDACT.test(st))) return seg;
     if (!stages.some(teesToTerminal) && (redirectsToFile(seg) || stages.some(isReducer))) return seg;
     // a git dump and a recursive search take the same pipe; the search's lines carry a `path:line:` prefix the mask reads past
-    const hits = stages.map((st) => (gitPrintsContent(st) ? (moved || gitOutputLeaks(st) ? '' : null) : walkPrints(st) ? (moved || walkLeaks(st) ? ` --grep${walkNamesSecret(st) ? ' --literals' : ''}` : null) : null));
+    const hits = stages.map((st) => { const g = gitDumpOf(st); return g ? (moved || g.fed || gitOutputLeaks(g.inner) ? '' : null) : walkPrints(st) ? (moved || walkLeaks(st) ? ` --grep${walkNamesSecret(st) ? ' --literals' : ''}` : null) : null; });
     if (hits.every((h) => h === null)) return seg;
     changed = true;
     hits.forEach((h) => { if (h !== null) redactGitStages.kinds.add(h ? 'walk' : 'git'); });
@@ -2775,6 +2775,22 @@ function redactGitStages(text) {
     return stages.map((st, i) => (hits[i] !== null ? `${st.replace(/\s+$/, '')} | ${view}${hits[i]}${st.match(/\s*$/)[0]}` : st)).join('|');
   });
   return changed ? out.map((seg, i) => seg + (seps[i] || '')).join('') : text;
+}
+// The git dump a stage runs: the stage itself, a loop or branch BODY's command (`do git diff ... "$f"`, `then`, `else`, a
+// group's `{` / `(`), or the command an `xargs` runs on its input (`xargs -I{} git diff --no-index -- /dev/null {}`) -
+// whose files only the input names, so it is never probed (`fed`). Audit 2026-10-11, session 42951e5b (the index-safe
+// review read): the per-file `git diff --no-index -- /dev/null <file>` over a `git ls-files -o` listing ran unmasked in a
+// `while read` loop and behind xargs. A condition (`if`, `elif`, `while`, `until`, `!`) is left as written - a pipe would
+// replace the status it tests.
+function gitDumpOf(stage) {
+  if (gitPrintsContent(stage)) return { inner: stage, fed: false };
+  const words = shellTokens(stage);
+  const k = commandAt(words);
+  if (!k || k >= words.length) return null;
+  const before = words.slice(0, k).map((w) => dequoteWord(w).replace(/^.*[\\/]/, ''));
+  if (before.some((w) => /^(?:if|elif|while|until|!)$/.test(w))) return null;
+  const inner = words.slice(k).join(' ');
+  return gitPrintsContent(inner) ? { inner, fed: before.includes('xargs') } : null;
 }
 // True for a git stage whose output carries file CONTENT: `diff` and `show` unless a summary or no-patch form
 // asks for less, `log` / `whatchanged` / `stash show` only with a patch flag, `cat-file` with `-p` / a type. Git's own options before the

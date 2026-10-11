@@ -304,7 +304,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     file is code only as the runtime's SCRIPT operand or with a code extension, never as a data argument, and the
     dropped-steps note lists no body lines (sessions ae38c08f, 5f9fec85); a loop's `cat "$f"` becomes `--redacted "$f"` with the
     loop and every other step kept; `--presence` prints `KEY=empty (present, no value)` for `''` / `null`. `git remote -v` / `get-url` / `show` and
-    `git config --list` / `--get` are probed the same way (a tokened URL is masked; a config write is never probed). A print
+    `git config --list` / `--get` are probed the same way (a tokened URL is masked; a config write is never probed). A git
+    dump in a loop or branch body (`do`, `then`, `else`, a group) or run by `xargs` over a listing takes the same pipe where
+    it stands - the xargs-fed one unprobed, a condition (`if`, `while`) left as written (audit 2026-10-11, session 42951e5b:
+    the per-file `git diff --no-index -- /dev/null <file>` review read ran unmasked in a `while read` loop and behind xargs). A print
     piped into a login that reads stdin (`--password-stdin`, `--with-token`) is a use, `${NAME:+word}` prints no value, a
     `{...process.env}` spread is no dump, and a command whose stdout IS a token (`gh auth token`, `op read`, a keychain `-w`)
     is a print when it ends the pipeline. An environment dump is replaced

@@ -1797,6 +1797,37 @@ test('I2: a git command that prints file content is piped through the stream red
     assert.equal(bash(c), 0, `${c} passes untouched`);
 });
 
+// Audit 2026-10-11, session 42951e5b (the index-safe review read): the per-file `git diff --no-index -- /dev/null <file>`
+// over a `git ls-files -o` listing ran unmasked inside a `while read` loop and behind xargs - the git pass judged only a
+// stage whose first word was git.
+test('a git dump in a loop body or behind xargs takes the stream redactor where it stands', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'loop-'));
+  const g = (...a) => spawnSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', ...a], { cwd: dir, encoding: 'utf8' });
+  g('init', '-q'); fs.writeFileSync(path.join(dir, 'a.txt'), 'x\n'); g('add', '-A'); g('commit', '-qm', 's');
+  fs.writeFileSync(path.join(dir, '.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
+  fs.writeFileSync(path.join(dir, 'new.js'), 'const a = 1;\n');
+  const at = (command) => updatedCommand(run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd: dir }));
+  const list = 'git ls-files -o --exclude-standard';
+  const cases = [
+    [`${list} | while read f; do git diff --no-index -- /dev/null "$f"; done`, `${list} | while read f; do git diff --no-index -- /dev/null "$f" | ${REDACTOR}; done`],
+    [`${list} | while IFS= read -r f; do git diff --no-index -- /dev/null "$f" || true; done`, `${list} | while IFS= read -r f; do git diff --no-index -- /dev/null "$f" | ${REDACTOR} || true; done`],
+    [`for f in $(${list}); do git diff --no-index -- /dev/null "$f"; done`, `for f in $(${list}); do git diff --no-index -- /dev/null "$f" | ${REDACTOR}; done`],
+    [`${list} | xargs -I{} git diff --no-index -- /dev/null {}`, `${list} | xargs -I{} git diff --no-index -- /dev/null {} | ${REDACTOR}`],
+    [`${list} -z | xargs -0 -n1 git diff --no-index -- /dev/null`, `${list} -z | xargs -0 -n1 git diff --no-index -- /dev/null | ${REDACTOR}`],
+  ];
+  for (const [command, want] of cases) {
+    const got = at(command);
+    assert.equal(got, want, command);
+    const ran = spawnSync('bash', ['-c', got], { cwd: dir, encoding: 'utf8' });
+    assert.ok(!ran.stdout.includes(FAKE_TOKEN), `the rewritten command prints no credential: ${command}\n${ran.stdout}`);
+    assert.match(ran.stdout, /\+API_TOKEN=<set \(40 chars\)>/, `the masked line: ${command}`);
+    assert.match(ran.stdout, /\+const a = 1;/, `the other file reads as written: ${command}`);
+  }
+  // a condition keeps its own exit status: a pipe would replace the status it tests
+  assert.equal(at(`if git diff --no-index -- /dev/null "$f"; then echo same; fi`), null, 'an if condition is left as written');
+  assert.equal(at(`${list} | xargs git diff --no-index --stat -- /dev/null`), null, 'a summary form prints no content');
+});
+
 test('I2: the stream redactor masks credential values, URL passwords and PEM bodies line by line', () => {
   const pem = ['-----BEGIN RSA PRIVATE KEY-----', 'MIIEowIBAAKCAQEA0000', 'abcdabcdabcd', '-----END RSA PRIVATE KEY-----'];
   const input = ['diff --git a/.env b/.env', '--- a/.env', '+++ b/.env', '-API_TOKEN=old', `+API_TOKEN=${FAKE_TOKEN}`, ' DB_HOST=localhost',
