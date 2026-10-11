@@ -80,7 +80,7 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   opened by a `CROSS-WRITE-ALLOW` line naming its path or `unread`); the done gate reads neither. It is also the one home of the SHELL ROUTE, `SHELL_TOOLS` / `isShellTool`
   (Bash, PowerShell and Monitor - Monitor runs its `command` under Bash's permission rules, and a `ws` watch carries
   none), which every shell guard requires and the dispatcher's `MATCHER` spells (2.1.4 audit I1: no guard saw a
-  Monitor command). The eight guards with a
+  Monitor command). The nine guards with a
   `Bash|PowerShell|Monitor` row are wired as ONE hook, `shell-guards.js` (R11; both generators fold the rows,
   `wiringRows`): each guard runs in-process with its own gates and ledger row (its `global.BLOCK_DETAIL` cleared before and after it), every block reason
   reaches the model, a throwing guard fails open alone - except that a PROTECTIVE guard's exit 2 (force-push, rm,
@@ -530,8 +530,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     double-submitted command re-injects on the live branch); `SessionStart` matcher `compact` - an AUTOMATIC compaction
     only, a typed `/compact` gets just the two lines below - names the summary's 'continue without asking' line as
     superseded and leaves a one-shot HOLD (`guard-fresh-compact-*`): the first changing call after it that this hook is
-    wired on (`Agent` / `Task`, a `Skill`; the file tools and the shell route carry only their two dispatchers, one
-    process per call - 2.1.5 M3 - so the hold reaches an edit or a shell call once a dispatcher runs it) is denied with this session's measured
+    wired on (`Write` / `Edit` / `MultiEdit` / `NotebookEdit` and the shell route - both rows fold into their
+    dispatcher, which runs the hook in-process, one process per call (2.1.5 M3) - `Agent` / `Task`, a `Skill`) is denied with this session's measured
     carry and cold floor until an ask is answered or the turn writes 'single short step', released with no deny when a
     resume would recover too little, nobody is at the terminal, a seat made the call or it has denied twice (audit
     2026-10-10 C09: the injection alone lost to the summary line in six sessions), plus two lines: answer in

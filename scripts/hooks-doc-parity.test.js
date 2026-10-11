@@ -28,7 +28,7 @@ const manifestRows = () => JSON.parse(read('meta/stack-manifest.json')).hooks;
 
 test('I1: CLAUDE.md names the Monitor route and the widened dispatcher matcher', () => {
   const text = claude();
-  assert.match(text, /The eight guards with a\s+`Bash\|PowerShell\|Monitor` row are wired as ONE hook/);
+  assert.match(text, /The nine guards with a\s+`Bash\|PowerShell\|Monitor` row are wired as ONE hook/);
   assert.doesNotMatch(text, /The eight guards with a\s+`Bash\|PowerShell` row/);
   for (const row of manifestRows().filter((r) => !r.matcher.startsWith('@') && /(^|\|)Bash(\||$)/.test(r.matcher)))
     assert.strictEqual(row.matcher, 'Bash|PowerShell|Monitor', `${row.file}: every shell row names Monitor`);

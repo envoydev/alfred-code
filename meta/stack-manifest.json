@@ -833,7 +833,19 @@
       "file": "guard-fresh-session-start.js",
       "matcher": "Agent|Task",
       "event": "",
-      "note": "the post-compaction hold: after an automatic compaction the first dispatch (and, on the Skill row, the first phase Skill call) is denied once with the measured carry and cold floor until an AskUserQuestion is answered or the turn names a single short step - released when a resume would recover too little, when nobody is at the terminal (a live AUTO waiver included) or after two denials; with no hold pending the hook exits on one file check. The file tools and the shell route carry only their dispatchers (one process per call, 2.1.5 M3), so the hold reaches an edit or a shell call only once those dispatchers run it in-process"
+      "note": "the post-compaction hold: after an automatic compaction the first changing call (a dispatch here, the first phase Skill call on the Skill row, an edit or a shell call on the two rows below) is denied once with the measured carry and cold floor until an AskUserQuestion is answered or the turn names a single short step - released when a resume would recover too little, when nobody is at the terminal (a live AUTO waiver included) or after two denials; with no hold pending the hook exits on one file check"
+    },
+    {
+      "file": "guard-fresh-session-start.js",
+      "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+      "event": "",
+      "note": "the post-compaction hold on an edit - this row folds into the file-guard dispatcher, which runs the hook in-process (one process per file call, 2.1.5 M3)"
+    },
+    {
+      "file": "guard-fresh-session-start.js",
+      "matcher": "Bash|PowerShell|Monitor",
+      "event": "",
+      "note": "the post-compaction hold on the shell route - a shell command after an automatic compaction is a change like an edit; this row folds into the shell-guard dispatcher (one process per shell call)"
     },
     {
       "file": "guard-config-protection.js",

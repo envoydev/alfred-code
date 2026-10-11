@@ -2,7 +2,7 @@
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
 //
 // THE SHELL-GUARD DISPATCHER (R11). A Bash or PowerShell call used to spawn one node process per
-// shell guard - eight guards plus instrumentation, nine processes - and on a Windows guest a bare
+// shell guard - eight guards plus instrumentation, nine processes (R11; nine guards since the post-compaction hold) - and on a Windows guest a bare
 // node start alone costs ~90-130ms, so one call paid 350-410ms in parallel (measured, R11). This
 // hook is the ONE process for all of them: it runs each guard IN-PROCESS and answers the way
 // Claude Code merges the same guards wired as separate hooks.
@@ -42,8 +42,8 @@ const vm = require('node:vm');
 const { createRequire } = require('node:module');
 
 // The guards a shell call runs, in the manifest's order. A guard joins when its verdict is a
-// function of the payload and the files it reads - true of all eight, docs-session's state files
-// included. instrument-tool-usage is not here: it is wired on every tool (`.*`), so it would fire
+// function of the payload and the files it reads - true of all nine, docs-session's state files
+// and the post-compaction hold's marker included. instrument-tool-usage is not here: it is wired on every tool (`.*`), so it would fire
 // for Bash as well.
 const GUARDS = [
     'guard-protected-force-push',
@@ -51,6 +51,7 @@ const GUARDS = [
     'guard-read-whole-file',
     'guard-secret-value',
     'guard-ungated-commit',
+    'guard-fresh-session-start',
     'guard-config-protection',
     'guard-cross-project-write',
     'docs-session',

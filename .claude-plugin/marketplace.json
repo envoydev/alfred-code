@@ -348,7 +348,7 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/shell-guards.js\"",
-                "timeout": 80
+                "timeout": 90
               }
             ]
           },
@@ -358,7 +358,7 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js\"",
-                "timeout": 50
+                "timeout": 60
               }
             ]
           },

@@ -31,7 +31,7 @@ function project()
     // Windows, so all three are pointed at it.
     const tmpdir = fs.mkdtempSync(path.join(TMP, `tmp-${seq}-`));
     const sid = `sess-${seq}`;
-    const run = (payload, env = {}) => spawnSync(process.execPath, [HOOK], {
+    const run = (payload, env = {}, hook = HOOK) => spawnSync(process.execPath, [hook], {
         input: typeof payload === 'string' ? payload : JSON.stringify({ session_id: sid, cwd: root, ...payload }),
         encoding: 'utf8', env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: root, TMPDIR: tmpdir, TEMP: tmpdir, TMP: tmpdir, ...env },
     });
@@ -305,6 +305,33 @@ test('compact-state: the first change after an automatic compaction is held once
     a.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: ta }, env);
     after(ta, usageRow('b', { cache_read_input_tokens: 120000 }));
     assert.strictEqual(call(a, ta, 'Edit'), 0, 'a live AUTO waiver holds nothing');
+});
+
+test('compact-state: the hold reaches an edit and a shell call through their one-process dispatchers (C09, 7fae0c39 / 84eedb4b)', () =>
+{
+    // The measured sessions went on with Bash and Edit after the compaction; both tools carry only their dispatcher
+    // (2.1.5 M3), which runs the hook in-process from the manifest's folded rows.
+    const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
+    const SHELL = path.join(HOOKS, 'shell-guards.js');
+    const FILES = path.join(HOOKS, 'file-guards.js');
+    const env = { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'hold-via-')) };
+    const rows = [usageRow('f', { cache_creation_input_tokens: 40000 }), usageRow('a', { cache_read_input_tokens: 316000 }), boundary('auto', 317000)];
+    const p = project();
+    const tp = p.transcript(rows);
+    const via = (hook, tool, input) => p.run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, transcript_path: tp }, env, hook);
+    assert.strictEqual(via(SHELL, 'Bash', { command: 'ls' }).status, 0, 'no hold pending: the dispatcher passes');
+    assert.strictEqual(via(FILES, 'Edit', { file_path: path.join(p.root, 'a.txt'), old_string: 'a', new_string: 'b' }).status, 0);
+    p.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tp }, env);
+    fs.appendFileSync(tp, JSON.stringify(usageRow('b', { cache_read_input_tokens: 120000 })) + '\n');
+    assert.strictEqual(via(FILES, 'Read', { file_path: path.join(p.root, 'a.txt') }).status, 0, 'a read is never held');
+    const shell = via(SHELL, 'Bash', { command: 'ls' });
+    assert.strictEqual(shell.status, 2, 'the first shell call after the compaction is held');
+    assert.match(shell.stderr, /Held once: this session AUTO-COMPACTED/);
+    assert.match(shell.stderr, /~120k tokens per message/);
+    const edit = via(FILES, 'Edit', { file_path: path.join(p.root, 'a.txt'), old_string: 'a', new_string: 'b' });
+    assert.strictEqual(edit.status, 2, 'an edit is held through the file dispatcher');
+    assert.match(edit.stderr, /Held once/);
+    assert.strictEqual(via(SHELL, 'Bash', { command: 'ls' }).status, 0, 'two denials, then it gives way - the cap is shared by both routes');
 });
 
 test('compact-state: the prompt ending an idle gap past the clock hours is offered a fresh session once (C09, ca65b406)', () =>
