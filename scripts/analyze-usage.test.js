@@ -1173,6 +1173,21 @@ test('scorecard: corrections are the hook\'s marker test, not a short turn after
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// Audit 2026-10-11 SD14, session 5f9fec85: the pinned copy carries the owner's wh-clause lookbehind, so the saved share
+// and the hook's probe rate judge a request like 'check how it should be wired' the same way - no correction.
+test('scorecard: a weak "it should" inside a wh-clause is no correction; standing alone it still is', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+  const endTurn = (id, ts, text) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
+  const prompts = ['check how it should be wired', 'find out which branch this should go to', 'it should be the staging branch', 'Check the log. It should be empty'];
+  let a = scHuman(scT(0), 'start') + endTurn('a0', scT(1), 'Ready.');
+  prompts.forEach((p, i) => { a += scHuman(scT(2 + 2 * i), p) + endTurn(`a${i + 1}`, scT(3 + 2 * i), 'Done.'); });
+  const fa = path.join(dir, 'a.jsonl');
+  fs.writeFileSync(fa, a);
+  const ea = run([fa]).main.efficiency;
+  assert.deepStrictEqual(ea.correctionsUnsaved, [scT(6), scT(8)], 'only the two standing-alone markers');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('scorecard: a correction is saved when a memory store follows within three replies, and unsaved otherwise', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
   const endTurn = (id, ts, text) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
