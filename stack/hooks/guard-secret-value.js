@@ -2330,8 +2330,133 @@ function refuseDroppedSteps(what, spliced) {
 // view is piped in. Only when the file is the stage's ONE file operand, spelled once, and not a `<` redirect;
 // Bash tool only (the note goes to stderr, which a PowerShell pipe turns into an error record).
 const FILTER_VERB = /^(?:grep|egrep|fgrep|rg|jq|head|tail|sed|awk|cut)(?=\s|$)/;
+const dequoteWord = (w) => String(w || '').replace(/^(['"])([\s\S]*)\1$/, '$2');
+// ---- the grep family's argv (audit 2026-10-11 SD01, session ae38c08f) ----------------------------------------------------
+// Read the way GNU grep, BSD grep and ugrep agree on. ugrep IS the Bash tool's `grep` on every OS (the harness's shell
+// wrapper, its msys branch included), and three of its readings walk files no operand names: a recursion option with no
+// operand walks the cwd - `-r` / `-R` in any cluster (`-rC2`, `-nr`), `--recursive`, `-d recurse` / `-drecurse` /
+// `--directories recurse`; `-NUM` and `--depth` are a recursion depth (GNU reads `-3` as context lines); and a directory
+// operand is walked with no `-r` at all. The narrowed read kept `-rn` on the filter it pipes the view into, so the filter
+// ignored the view and printed the credential file raw from the cwd (reproduced on develop 94211763, under ugrep and the
+// system grep alike). `kept` is the argv minus its operands and every recursion or depth option - a view on stdin has
+// nothing to walk; `unknown` marks an option outside the agreed set, whose arity this reader cannot vouch for, so a
+// narrowed filter never takes one (the safe side: the whole view, never a guessed argv).
+const GREP_SHORT = 'abcEFGHhIiLlnoPqsTvwxy';
+const GREP_SHORT_VALUE = 'efABCmd';
+const GREP_LONG = new Set(['ignore-case', 'no-ignore-case', 'line-number', 'invert-match', 'word-regexp', 'line-regexp', 'only-matching',
+  'count', 'files-with-matches', 'files-without-match', 'no-filename', 'with-filename', 'no-messages', 'quiet', 'silent',
+  'extended-regexp', 'fixed-strings', 'basic-regexp', 'perl-regexp', 'text', 'byte-offset', 'line-buffered', 'initial-tab', 'color', 'colour']);
+const GREP_LONG_VALUE = new Set(['regexp', 'file', 'after-context', 'before-context', 'context', 'max-count', 'binary-files', 'include', 'exclude', 'exclude-dir']);
+const shellWord = (w) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, "'\\''")}'`);
+// A note on stderr that names words verbatim with no `$` in the command text: this guard re-judges what it writes, and a
+// `$API_TOKEN_PATH` it merely names must not read as a printed credential variable (printf's `\044` is the dollar).
+const stderrNote = (text) => `printf '${String(text).replace(/\\/g, '\\\\').replace(/%/g, '%%').replace(/\$/g, '\\044').replace(/'/g, "'\\''")}\\n' >&2`;
+function grepArgs(words) {
+  const g = { verb: words[0], kept: [words[0]], operands: [], recursive: false, depth: false, unknown: false, namesOnly: false, quiet: false };
+  let patternGiven = false;
+  let endOpts = false;
+  for (let k = 1; k < words.length; k++) {
+    const raw = words[k];
+    const w = dequoteWord(raw);
+    // a redirection is the shell's: an output one stays on the filter, an input one feeds it something other than the view
+    if (/^(?:\d*|&)>/.test(raw)) { g.kept.push(raw); if (/^(?:\d*|&)>>?$/.test(raw) && k + 1 < words.length) g.kept.push(words[++k]); continue; }
+    if (/^\d*</.test(raw)) { g.unknown = true; continue; }
+    if (!endOpts && w === '--') { endOpts = true; g.kept.push(raw); continue; }
+    if (!endOpts && /^--./.test(w)) {
+      const eq = w.indexOf('=');
+      const name = (eq < 0 ? w.slice(2) : w.slice(2, eq)).toLowerCase();
+      const next = () => (eq < 0 && k + 1 < words.length ? words[++k] : null);
+      if (name === 'recursive' || name === 'dereference-recursive') { g.recursive = true; continue; }
+      if (name === 'depth') { g.depth = true; next(); continue; }
+      if (name === 'directories') {
+        const v = eq < 0 ? next() : w.slice(eq + 1);
+        if (dequoteWord(v) === 'recurse') { g.recursive = true; continue; }
+        g.kept.push(raw); if (eq < 0 && v != null) g.kept.push(v);
+        continue;
+      }
+      if (name === 'regexp' || name === 'file') patternGiven = true;
+      if (/^(?:quiet|silent)$/.test(name)) { g.quiet = true; g.namesOnly = true; }
+      if (/^(?:files-with-matches|files-without-match|count)$/.test(name)) g.namesOnly = true;
+      if (GREP_LONG_VALUE.has(name)) { g.kept.push(raw); const v = next(); if (v != null) g.kept.push(v); continue; }
+      if (!GREP_LONG.has(name) || (eq >= 0 && !/^colou?r$/.test(name))) g.unknown = true;
+      g.kept.push(raw);
+      continue;
+    }
+    if (!endOpts && /^-./.test(w)) {
+      let flags = '';
+      let value = null;
+      for (let i = 1; i < w.length; i++) {
+        const c = w[i];
+        if (c === 'r' || c === 'R') { g.recursive = true; continue; }
+        if (/\d/.test(c)) { g.depth = true; continue; } // ugrep's depth, GNU's context: no use on a view either way
+        if (GREP_SHORT_VALUE.includes(c)) {
+          const attached = w.slice(i + 1);
+          const v = attached || (k + 1 < words.length ? words[k + 1] : '');
+          if (c === 'd' && dequoteWord(v) === 'recurse') { g.recursive = true; if (!attached) k++; break; }
+          if (c === 'e' || c === 'f') patternGiven = true;
+          flags += c + attached;
+          if (!attached && k + 1 < words.length) value = words[++k];
+          break;
+        }
+        if (!GREP_SHORT.includes(c)) g.unknown = true;
+        if ('lLcq'.includes(c)) g.namesOnly = true;
+        if (c === 'q') g.quiet = true;
+        flags += c;
+      }
+      if (flags) g.kept.push(`-${flags}` === w ? raw : shellWord(`-${flags}`));
+      if (value != null) g.kept.push(value);
+      continue;
+    }
+    if (!patternGiven) { patternGiven = true; g.kept.push(raw); continue; }
+    g.operands.push(raw);
+  }
+  return g;
+}
+// What one operand word names, read where the shell stands: `cred` files hold a credential, `plain` files do not, a word
+// whose path does not exist is `missing` (grep's own error is honest), and a directory or a word this guard cannot expand
+// is `opaque` - under ugrep a directory is walked, and an unexpanded `$VAR` may be either.
+function operandKinds(word) {
+  const w = dequoteWord(word);
+  const paths = candidatePaths(word);
+  if (!paths.length) return /\$\{?[A-Za-z_]/.test(w) ? [{ kind: 'opaque', word }] : [{ kind: 'missing', word }];
+  const single = paths.length === 1 && !GLOB_CHARS.test(w) && !/[{]/.test(w);
+  // the label a glob's file gets is the path the shell would have printed, relative where the shell stands
+  const here = cwdAnchor || (payload && typeof payload.cwd === 'string' && payload.cwd) || anchorDirs()[0] || '';
+  const shown = (f) => { const rel = here && !pathMod.isAbsolute(w) ? pathMod.relative(here, f) : ''; return rel && !rel.startsWith('..') ? rel.split(pathMod.sep).join('/') : f; };
+  return paths.map((p) => {
+    const f = statFile(p);
+    const spelled = single ? word : `"${shDouble(f || p)}"`;
+    if (f) return secretInUnlessAllowed(f) ? { kind: 'cred', file: f, label: single && !/[$~]/.test(w) ? w : shown(f), word: spelled } : { kind: 'plain', word: spelled };
+    const dir = anchorDirs().some((d) => { try { return fs.statSync(pathMod.isAbsolute(p) ? p : pathMod.join(d, p)).isDirectory(); } catch { return false; } });
+    return { kind: dir ? 'opaque' : 'missing', dir, word: spelled };
+  });
+}
+// ripgrep's operands: its pattern is the first word unless -e / -f gave it, and these options take a value. A word this
+// list misreads as an operand only makes the read unnarrowable (the whole view), never a narrowed rg that walks.
+const RG_SHORT_VALUE = 'efgtTABCmrMjE';
+const RG_LONG_VALUE = /^--(?:regexp|file|glob|iglob|type|type-not|type-add|type-clear|after-context|before-context|context|max-count|replace|max-columns|threads|encoding|context-separator|field-match-separator|field-context-separator|path-separator|max-depth|max-filesize|sort|sortr|colors|color|engine|dfa-size-limit|regex-size-limit|pre|pre-glob|ignore-file|hyperlink-format)$/;
+function rgOperands(words) {
+  const out = [];
+  let patternGiven = false;
+  for (let k = 1; k < words.length; k++) {
+    const w = dequoteWord(words[k]);
+    if (/^(?:\d*|&)>/.test(words[k])) { if (/^(?:\d*|&)>>?$/.test(words[k])) k++; continue; }
+    if (w === '--') { out.push(...words.slice(patternGiven ? k + 1 : k + 2)); return out; }
+    if (/^--./.test(w)) { if (/^--(?:regexp|file)(?:=|$)/.test(w)) patternGiven = true; if (RG_LONG_VALUE.test(w)) k++; continue; }
+    if (/^-./.test(w)) {
+      for (let i = 1; i < w.length; i++) if (RG_SHORT_VALUE.includes(w[i])) { if ('ef'.includes(w[i])) patternGiven = true; if (i + 1 === w.length) k++; break; }
+      continue;
+    }
+    if (!patternGiven) { patternGiven = true; continue; }
+    out.push(words[k]);
+  }
+  return out;
+}
 // A `cat <file> | <reader>` hands its reader the file - the view stands in for the cat, and the reader keeps reading
 // (the sessions' `cat <settings> | node -e '<print the plugin keys>'` came back as the whole view).
+// What it returns: a string - the rest of the pipeline to pipe the view into; `{ command }` - a grep's whole replacement,
+// one view per credential operand and the other operands searched as written; `{ whole, unsearched }` - the whole view,
+// with the operands it does not search named on stderr; null - the whole view, as before.
 function narrowFilter(stages, tok) {
   const first = stages[0];
   const piped = stages.length > 1 && /^cat\s+(?:--\s+)?["']?[^\s"']+["']?\s*$/.test(first.replace(PREFIX_WORDS, '').trim());
@@ -2339,37 +2464,51 @@ function narrowFilter(stages, tok) {
   if (!FILTER_VERB.test(first.replace(PREFIX_WORDS, ''))) return null;
   const words = shellTokens(first);
   if (words.filter((w) => w === tok).length !== 1) return null;
-  const others = words.map((w, k) => (k > 0 && w !== tok && !w.startsWith('-') && candidatePaths(w).some((p) => statFile(p)) ? k : -1)).filter((k) => k >= 0);
-  if (others.length) return splitGrep(stages, words, tok, others);
+  const lead = first.match(PREFIX_WORDS)[0];
+  const verbWords = shellTokens(first.slice(lead.length));
+  const verb = dequoteWord(verbWords[0]);
+  if (/^(?:grep|egrep|fgrep)$/.test(verb)) return narrowGrep(stages, verbWords, tok, lead.trim());
+  if (verb === 'rg') {
+    const ops = rgOperands(verbWords);
+    if (ops.length !== 1 || ops[0] !== tok) return ops.includes(tok) ? { whole: true, unsearched: ops.filter((o) => o !== tok) } : null;
+  } else {
+    const others = words.map((w, k) => (k > 0 && w !== tok && !w.startsWith('-') && candidatePaths(w).some((p) => statFile(p)) ? k : -1)).filter((k) => k >= 0);
+    if (others.length) return null;
+  }
   const at = first.match(new RegExp(`(^|\\s)${tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`));
   if (!at || /<\s*$/.test(first.slice(0, at.index + at[1].length))) return null;
   const rest = (first.slice(0, at.index) + first.slice(at.index + at[0].length)).trim();
   return [rest, ...stages.slice(1).map((x) => x.trim())].join(' | ');
 }
 
-// A grep over the credential file AND other files: the credential file is searched through its view, the others by the
-// same grep as written - a key-name grep over settings.json and settings.local.json came back as the whole view of the
-// first, its filter and the file that wins both dropped (audit 2026-10-10, session 65abb00a). `{ view | grep -H
-// --label=<file> ...; grep -H ... <others>; }` keeps grep's `file:` prefix on every line. Only a grep that is its own
-// segment, prints lines (no -h / -l / -L / -c / -q / -Z) and whose other files hold no credential; else null (the view).
-function splitGrep(stages, words, tok, others) {
-  const dequote = (w) => String(w || '').replace(/^(['"])([\s\S]*)\1$/, '$2');
-  if (stages.length !== 1 || !/^(?:grep|egrep|fgrep)$/.test(dequote(words[0]))) return null;
-  if (words.some((w) => /^-[A-Za-z]*[hlLcqsZ]|^--(?:no-filename|null|files-with|files-without|count|quiet|silent|label)/.test(dequote(w)))) return null;
-  // the pattern word is no file operand, even when a file shares its name
-  if (!words.some((w) => /^-[A-Za-z]*[ef]$|^--(?:regexp|file)(?:=|$)/.test(dequote(w)))) {
-    for (let k = 1; k < words.length; k++) {
-      const w = dequote(words[k]);
-      if (/^-[ABCmdD]$/.test(w)) { k++; continue; }
-      if (!w.startsWith('-')) { others = others.filter((o) => o !== k); break; }
-    }
-  }
-  if (!others.length) return null;
-  if (others.some((k) => candidatePaths(words[k]).some((p) => { const f = statFile(p); return f && secretInUnlessAllowed(f); }))) return null;
-  const at = words.indexOf(tok);
-  const filter = words.filter((w, k) => k !== at && !others.includes(k));
-  const rest = words.filter((w, k) => k !== at);
-  return { filter: `${filter.join(' ')} -H --label="${shDouble(dequote(tok))}"`, rest: `${rest[0]} -H ${rest.slice(1).join(' ')}` };
+// A grep over a credential file: each credential operand is searched through ITS OWN view, every other file by the same
+// grep as written, and nothing walks. A key-name grep over settings.json and settings.local.json came back as the whole
+// view of the first, its filter and the file that wins both dropped (audit 2026-10-10, session 65abb00a); a second
+// credential operand, and a missing one, still dropped the filter or took it over (audit 2026-10-11 SD01, session
+// ce9d4811: a planted key read as absent). `{ view1 | grep -H --label=<file1> ...; view2 | ...; grep -H ... <others>; }`
+// keeps grep's `file:` prefix on every line; a missing operand stays in the as-written grep, where its error is honest;
+// a directory or an operand this guard cannot expand is searched by none of them, and the note on stderr names it.
+function narrowGrep(stages, words, tok, prefix) {
+  const g = grepArgs(words);
+  const pre = prefix ? `${prefix} ` : '';
+  const ops = g.operands.map((o) => ({ o, kinds: operandKinds(o) }));
+  const others = g.operands.filter((o) => o !== tok);
+  if (!g.operands.includes(tok)) return null; // the file is an option's value (`-f <file>`): the whole view
+  if (g.unknown) return others.length ? { whole: true, unsearched: others } : null;
+  const flat = ops.flatMap((x) => x.kinds);
+  const creds = flat.filter((x) => x.kind === 'cred');
+  const asWritten = flat.filter((x) => x.kind === 'plain' || x.kind === 'missing').map((x) => x.word);
+  const unsearched = flat.filter((x) => x.kind === 'opaque').map((x) => dequoteWord(x.word));
+  if (!creds.length) return null;
+  const filter = g.kept.slice(1).join(' ');
+  const tail = stages.slice(1).map((x) => x.trim());
+  if (creds.length === 1 && !asWritten.length && !unsearched.length) return [`${pre}${g.verb}${filter ? ` ${filter}` : ''}`, ...tail].join(' | ');
+  if (g.quiet) return { whole: true, unsearched: others }; // its exit status is the answer, which a group of searches cannot give
+  const note = unsearched.length ? [stderrNote(`# credential guard: not searched - ${unsearched.join(', ')} (a directory, or a path this guard cannot expand, beside a credential file); search it on its own`)] : [];
+  const pieces = [...note,
+    ...creds.map((c) => `node "${shDouble(__filename)}" --redacted "${shDouble(c.file)}" --note-to-stderr | ${pre}${g.verb} -H --label="${shDouble(c.label)}"${filter ? ` ${filter}` : ''}`),
+    ...(asWritten.length ? [`${pre}${g.verb} -H${filter ? ` ${filter}` : ''} ${asWritten.join(' ')}`] : [])];
+  return { command: [`{ ${pieces.join('; ')}; }`, ...tail].join(' | ') };
 }
 
 // A rewrite replaces the WHOLE command, so a compound READ-ONLY command came back as one
@@ -2678,18 +2817,32 @@ function gitOutputLeaks(stage) {
 // search on ONE named file is rewritten or blocked. The stage's words when it is such a walk - grep, egrep, fgrep with
 // -r / -R / --recursive / -d recurse, or rg, which always recurses - that prints lines (not `-l` / `-c` / `-q`) and
 // names no existing FILE among its operands (a named credential file takes the file route's redacted view, as before).
+// Audit 2026-10-11 SD01 (grepArgs above): a recursion option in any spelling (`-rC2`, `-drecurse`, `--directories recurse`,
+// ugrep's `-NUM` / `--depth`) and, under ugrep, a DIRECTORY operand with no option at all are walks - each printed a
+// planted credential raw while this test read only `-r` clusters of letters. A walk beside a named file is still a walk:
+// the directory is walked whatever else is named. An operand this guard cannot expand counts only beside a recursion
+// option - `grep -n X "$f"` in a loop stays a plain read.
 function walkPrints(stage) {
-  const w = shellTokens(stage.replace(PREFIX_WORDS, '').trim()).map((t) => t.replace(/^(['"])([\s\S]*)\1$/, '$2'));
+  const raw = shellTokens(stage.replace(PREFIX_WORDS, '').trim());
+  const w = raw.map(dequoteWord);
   const verb = (w[0] || '').replace(/^.*[\\/]/, '');
   if (!/^(?:grep|egrep|fgrep|rg)$/.test(verb)) return false;
   const args = w.slice(1);
-  const recursive = verb === 'rg' || args.some((a, k) => /^-[A-Za-z]*[rR][A-Za-z]*$/.test(a) || /^--(?:dereference-)?recursive$/.test(a)
-    || a === '--directories=recurse' || (a === '-d' && args[k + 1] === 'recurse'));
-  if (!recursive) return false;
-  // l / c / q anywhere in a short-flag cluster (`-rli`, `-lr`, `-rlin`) prints names or counts only (audit 2026-10-10,
-  // session db6c1ae1: `grep -rli` was piped as if it printed lines)
-  if (args.some((a) => /^(?:-[A-Za-z]*[lcq][A-Za-z]*|--files-with-matches|--files-without-match|--count|--quiet|--silent|--files)$/.test(a))) return false;
-  return !args.some((a) => !a.startsWith('-') && resolveFile(a));
+  const kinds = (ops) => ops.flatMap(operandKinds);
+  if (verb === 'rg') {
+    if (args.some((a) => /^(?:-[A-Za-z]*[lcq][A-Za-z]*|--files-with-matches|--files-without-match|--count|--quiet|--files)$/.test(a))) return false;
+    const ops = kinds(rgOperands(raw));
+    // a named credential file takes the file route's view, as before
+    return !ops.some((x) => x.kind === 'cred') && (!ops.length || ops.some((x) => x.kind === 'opaque'));
+  }
+  const g = grepArgs(raw);
+  // l / c / q in a short-flag cluster (`-rli`, `-lr`, `-rlin`) prints names or counts only (audit 2026-10-10, session
+  // db6c1ae1) - read as flags, so `-ec` (the pattern `c`) still prints lines
+  if (g.namesOnly) return false;
+  const ops = kinds(g.operands);
+  if (ops.some((x) => x.kind === 'cred')) return false;
+  if (g.recursive || g.depth) return !ops.length || ops.some((x) => x.kind === 'opaque');
+  return ops.some((x) => x.dir);
 }
 // A search that asks for a credential by name - its pattern, not a file filter, says password / secret / token / api key.
 function walkNamesSecret(stage) {
@@ -2730,7 +2883,9 @@ function walkLeaks(stage) {
   // permission prompt - so it is never spawned; the stage is piped unprobed (audit 2026-10-08: a repo script ran).
   if (/[\\/]/.test(w[0])) return true;
   if (!takeProbe()) return true;
-  const r = require('child_process').spawnSync(w[0], args, {
+  // The probe runs the system grep, which reads a directory operand and `-3` the GNU way; the Bash tool's ugrep walks
+  // both. `-r` first makes the probe walk what the tool will (audit 2026-10-11 SD01) - a superset, the safe side.
+  const r = require('child_process').spawnSync(w[0], w[0] === 'rg' ? args : ['-r', ...args], {
     cwd: probeCwd(), timeout: 3000, maxBuffer: 8 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, RIPGREP_CONFIG_PATH: '' },
   });
@@ -3052,7 +3207,8 @@ function judgeShell(text, forceRuntime, main, bodyLang) {
             : `node "${shDouble(__filename)}" --redacted ${loopVar ? `"$${loopVar}"` : `"${shDouble(file)}"`}`;
           const narrow = !IS_PWSH && !isRuntime && sj === 0 && narrowFilter(stages, tok);
           const shown = !narrow ? view : typeof narrow === 'string' ? `${view} --note-to-stderr | ${narrow}`
-            : `{ ${view} --note-to-stderr | ${narrow.filter}; ${narrow.rest}; }`;
+            : narrow.command ? narrow.command
+            : `{ ${stderrNote(`# credential guard: not searched - ${narrow.unsearched.map(dequoteWord).join(', ')} (the read beside a credential file shows its whole redacted view); search it on its own`)}; ${view}; }`;
           const spliced = spliceView(shown, loopVar);
           refuseDroppedSteps(`${file}, which holds a credential under \`${key}\``, spliced != null);
           if (spliced != null) judgeKept(spliced);

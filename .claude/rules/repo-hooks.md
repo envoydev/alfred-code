@@ -291,7 +291,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     runtime's code is no shell: a string in it, or any word of a heredoc body, is globbed only when the code calls a glob
     (`/**` in a JSDoc named a credential file 7 times), and `/**` globs `/`. `T=$(<reader>)` whose `$T` only reaches
     another command's arguments (no print verb, runtime, `curl -v` or `set -x`) prints nothing; a grep over a credential
-    file and others searches the others as written (`-H --label`); a loop's `cat "$f"` becomes `--redacted "$f"` with the
+    file and others searches each credential file through its own view and the others as written (`-H --label`), a
+    missing operand keeping grep's own error and a directory or an unexpandable operand named on stderr as not searched.
+    Audit 2026-10-11 SD01 (`grepArgs`): a narrowed filter never carries a recursion option, and every walk spelling -
+    `-rC2`, `-d recurse`, ugrep's `-NUM` / `--depth`, and a directory operand with no `-r`, which ugrep (the Bash tool's
+    `grep` on every OS) walks - is probed with `-r` (a kept `-rn` walked the cwd and printed the credential raw); a loop's `cat "$f"` becomes `--redacted "$f"` with the
     loop and every other step kept; `--presence` prints `KEY=empty (present, no value)` for `''` / `null`. `git remote -v` / `get-url` / `show` and
     `git config --list` / `--get` are probed the same way (a tokened URL is masked; a config write is never probed). A print
     piped into a login that reads stdin (`--password-stdin`, `--with-token`) is a use, `${NAME:+word}` prints no value, a

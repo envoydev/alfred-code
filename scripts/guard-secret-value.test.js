@@ -1454,7 +1454,9 @@ test('guard-secret-value: a narrow read of a credential file keeps its own filte
   assert.equal(rewritten(`jq -r '.env.SENTRY_SLUG' "${f.secret}"`), `${view(f.secret)} --note-to-stderr | jq -r '.env.SENTRY_SLUG'`, 'a quoted file operand');
   assert.equal(rewritten(`head -3 ${f.secret} | tail -1`), `${view(f.secret)} --note-to-stderr | head -3 | tail -1`, 'the rest of the pipeline is kept');
   assert.equal(rewritten(`cat ${f.secret}`), view(f.secret), 'a whole-file dump is still the whole view');
-  assert.equal(rewritten(`grep SENTRY ${f.secret} ${f.dotenv}`), view(f.secret), 'two files: the view of the first, as before');
+  // audit 2026-10-11 SD01 (ce9d4811): two credential files - each searched through its own view, never the first alone
+  assert.equal(rewritten(`grep SENTRY ${f.secret} ${f.dotenv}`), `{ ${view(f.secret)} --note-to-stderr | grep -H --label="${f.secret}" SENTRY; `
+    + `${view(f.dotenv)} --note-to-stderr | grep -H --label="${f.dotenv}" SENTRY; }`, 'two files: a view each');
   const pw = updatedCommand(run({ tool_name: 'PowerShell', tool_input: { command: `grep -n SENTRY_SLUG ${f.secret}` }, session_id: 'suite' }));
   assert.equal(pw, `node '${HOOK}' --redacted '${f.secret}'`, 'the PowerShell tool keeps the whole view, PowerShell-quoted');
   // run for real: the note goes to stderr, the filter sees only the masked file
@@ -2253,8 +2255,81 @@ test('audit 2026-10-10 C12: a grep over a credential file and others searches ea
   assert.match(r.stdout, /^settings\.json:\d+:.*\.alfred/m, 'the credential file, through its view, with its name');
   assert.match(r.stdout, /^settings\.local\.json:\d+:.*docs-local/m, 'the other file, as written (65abb00a)');
   assert.ok(!r.stdout.includes(FAKE_TOKEN));
-  // a second credential file among the others keeps the whole view
-  assert.ok(!String(updatedCommand(at(dir, 'grep -n token settings.json .sentryclirc'))).includes('--label'), 'two credential files');
+  // a second credential file among the others is searched through its own view (audit 2026-10-11 SD01, ce9d4811)
+  const two = String(updatedCommand(at(dir, 'grep -n token settings.json .sentryclirc')));
+  assert.ok(two.includes('--label="settings.json"') && two.includes('--label=".sentryclirc"'), two);
+});
+
+// ---- audit 2026-10-11 SD01: a rewrite must never change what the command reads ----------------------------------------
+// A grep that walks reads the files no operand names. The narrowed read kept `-rn` on the filter it piped the view into, so
+// the filter walked the cwd and printed the credential file raw (session ae38c08f, reproduced on develop 94211763); ugrep,
+// the Bash tool's own grep, also walks a directory operand with no `-r` and reads `-NUM` as a depth.
+test('audit 2026-10-11 SD01: a narrowed read of a credential file carries no recursion option - the filter reads the view only', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = c12Project();
+  for (const flags of ['-rn', '-Rn', '-n --recursive', '-n --dereference-recursive', '-n -d recurse', '-n -drecurse', '-n --directories recurse',
+    '-n --directories=recurse', '-nr', '-rni', '-3n', '-n --depth=2']) {
+    const c = `grep ${flags} SENTRY settings.json`;
+    const out = updatedCommand(at(dir, c));
+    assert.ok(out && out.includes('--redacted'), `${c} -> ${out}`);
+    const filter = out.slice(out.indexOf('|') + 1);
+    assert.ok(!/\s-[A-Za-z]*[rR]|--recursive|recurse|--depth|\s-\d/.test(filter), `${c}: the filter still walks: ${filter}`);
+    // run where the cwd holds the credential file, the walk's target
+    const r = spawnSync('sh', ['-c', out], { cwd: dir, encoding: 'utf8' });
+    assert.ok(!r.stdout.includes(FAKE_TOKEN), `${c} printed the credential raw:\n${r.stdout}`);
+    assert.match(r.stdout, /SENTRY_ACCESS_TOKEN": "<set \(40 chars\)>/, `${c} still answers through the view`);
+  }
+  // what stays: the filter's own options, a quoted pattern and a redirection
+  assert.ok(String(updatedCommand(at(dir, "grep -rni -C 2 'sentry_access' settings.json 2>/dev/null"))).endsWith("| grep -ni -C 2 'sentry_access' 2>/dev/null"));
+  assert.ok(String(updatedCommand(at(dir, 'grep -n -e -r settings.json'))).includes("--redacted"), 'a pattern spelled -r after -e is no flag');
+});
+
+test('audit 2026-10-11 SD01: every spelling of a walk is probed - and a clean search or a plain read still runs as written', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = c12Project();
+  fs.mkdirSync(path.join(dir, 'notes'));
+  fs.writeFileSync(path.join(dir, 'notes', 'a.md'), 'SENTRY is the error tracker\n');
+  const v = (c) => verdict(at(dir, c));
+  for (const c of ['grep -rC2 SENTRY .', 'grep -nr2 SENTRY .', 'grep -drecurse SENTRY .', 'grep --directories recurse SENTRY .',
+    'grep -3 SENTRY', 'grep --depth=2 SENTRY', 'grep -n SENTRY .', 'grep -n SENTRY notes .', 'grep -rn SENTRY settings.local.json .']) {
+    const out = updatedCommand(at(dir, c));
+    assert.ok(out && out.includes('--redact-stdin --grep'), `${c} walks and must be piped: ${out}`);
+    const r = spawnSync('sh', ['-c', out], { cwd: dir, encoding: 'utf8' });
+    assert.ok(!r.stdout.includes(FAKE_TOKEN), `${c} printed a credential:\n${r.stdout}`);
+  }
+  // the probe walks a directory operand the way ugrep does, so a clean one still runs as written - no new prompt
+  assert.equal(v('grep -n SENTRY notes'), 0, 'a directory holding no credential');
+  assert.equal(v('grep -rn SENTRY notes'), 0);
+  assert.equal(v('grep -n SENTRY notes/a.md'), 0, 'a plain file');
+  assert.equal(v('for f in notes/a.md; do grep -n SENTRY "$f"; done'), 0, 'a loop over plain files');
+  assert.equal(v('grep -n SENTRY "$SOME_FILE"'), 0, 'an unexpanded operand with no recursion stays a plain read');
+  assert.equal(v('grep -rli SENTRY .'), 0, 'names only');
+  assert.equal(v('grep -rc SENTRY .'), 0, 'counts only');
+});
+
+test('audit 2026-10-11 SD01: a grep over several operands searches every one - a view per credential file, the rest as written, the unsearched named', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = c12Project();
+  // the replayed shape (ce9d4811): the key sits in the plain project file, beside the credential file
+  fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ enabledPlugins: { 'csharp-lsp@official': true } }, null, 2));
+  const sh = (c) => { const out = updatedCommand(at(dir, c)); assert.ok(out, `${c} was not rewritten`); return { out, r: spawnSync('sh', ['-c', out], { cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: dir } }) }; };
+  // two credential files and a plain one: three searches, each labelled
+  let { out, r } = sh('grep -n "csharp-lsp\\|DOCS_ROOT\\|token" settings.json .sentryclirc settings.local.json');
+  assert.match(r.stdout, /^settings\.json:\d+:.*DOCS_ROOT/m, out);
+  assert.match(r.stdout, /^\.sentryclirc:\d+:token=<set \(40 chars\)>/m, out);
+  assert.match(r.stdout, /^settings\.local\.json:\d+:.*csharp-lsp/m, 'the planted key is found, never reported absent');
+  assert.ok(!r.stdout.includes(FAKE_TOKEN), r.stdout);
+  // a glob and a missing operand: the glob's plain file is searched, the missing one keeps grep's own honest error
+  ({ out, r } = sh('grep -rn "csharp-lsp" settings*.json "$HOME/missing.json"'));
+  assert.match(r.stdout, /settings\.local\.json:\d+:.*csharp-lsp/, out);
+  assert.match(r.stderr, /missing\.json/, 'the missing file is reported by grep, not dropped');
+  assert.ok(!r.stdout.includes(FAKE_TOKEN));
+  // an operand this guard cannot expand, and a directory, are searched by nothing - and the note says so
+  ({ out, r } = sh('grep -n DOCS_ROOT settings.json "$NOT_SET_HERE/x.json" src'));
+  assert.match(r.stdout, /DOCS_ROOT/);
+  assert.match(r.stderr, /not searched - \$NOT_SET_HERE\/x\.json, src/, r.stderr);
+  assert.ok(!/\$NOT_SET/.test(out), 'the note spells the dollar as printf octal, never a variable this guard would re-judge');
+  assert.equal(verdict(at(dir, 'grep -q DOCS_ROOT settings.json settings.local.json')), 0, 'a quiet grep prints nothing');
+  // an option this reader cannot vouch for: the whole view, never a guessed argv
+  ({ out } = sh('grep -n -Q DOCS_ROOT settings.json settings.local.json'));
+  assert.ok(out.includes('--redacted') && !out.includes('| grep'), out);
 });
 
 test('audit 2026-10-10 C12: a loop over files is viewed file by file and its other steps run, the env scan included', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
