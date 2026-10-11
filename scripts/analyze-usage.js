@@ -87,6 +87,16 @@ function instructionsBreakdown(main) {
 }
 // The part of the floor that is the session's own opening prompt, when the floor is the first message (a later,
 // smaller message - after a compaction - carries no such prompt). Null when it is not, or is under 1k tokens.
+// The standing floor's share of the context the session SENT: floor x messages against every input-side token - cache
+// read, cache write and uncached input, which is what each message's context is made of. Against cache-read alone, a
+// short run whose first floor copy was a cache WRITE printed an impossible '~113% of cache-read' (audit 2026-10-11,
+// session 11b595da: 76.3k x 4 msgs = 305.2k over 269.5k cache-read, with 55.9k of cache-write beside it).
+function floorShare(main) {
+  const t = main.total || {};
+  const sent = (t.cacheRead || 0) + (t.cacheCreate || 0) + (t.input || 0);
+  return sent && main.floorCtx ? Math.min(100, Math.round((100 * main.floorCtx * (t.msgs || 0)) / sent)) : null;
+}
+
 function floorPromptTok(main) {
   if (!main.floorCtx || main.floorCtx !== main.firstMsgCtx) return null;
   const tok = approxTok(main.floorPromptChars || 0);
@@ -3662,9 +3672,9 @@ function efficiencyRows(main, agg, blockLedger) {
     }
   }
   if (main.floorCtx) {
-    const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
+    const share = floorShare(main);
     const own = floorPromptTok(main);
-    rows.push({ practice: 'standing floor', measured: `~${fmt(main.floorCtx)} tok/msg${share != null ? `, ~${share}% of cache-read` : ''}${own ? `, of which the first prompt ~${fmt(own)} (install ~${fmt(main.floorCtx - own)})` : ''}`, tests: 'the always-on set is the one lever on this number - lint check 33 caps it, /alfred-code:status reports it per install' });
+    rows.push({ practice: 'standing floor', measured: `~${fmt(main.floorCtx)} tok/msg${share != null ? `, ~${share}% of the context sent (cache-read + cache-write + input)` : ''}${own ? `, of which the first prompt ~${fmt(own)} (install ~${fmt(main.floorCtx - own)})` : ''}`, tests: 'the always-on set is the one lever on this number - lint check 33 caps it, /alfred-code:status reports it per install' });
   }
   rows.push({
     practice: 'cache continuity',
@@ -3756,9 +3766,9 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
   if (main.peakCtx) console.log(`peak ctx ${fmt(main.peakCtx)} per message${main.peakCtxAt ? ` (at ${main.peakCtxAt})` : ''} - the number every fresh-session threshold is measured against, not the average below`);
   if (main.thinkingTokens) console.log(`thinking ${fmt(main.thinkingTokens)} tok (cost-state.modelUsage) - billed, and attributable to no single message: spike residuals close against this, not against tool output`);
   if (main.floorCtx) {
-    const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
+    const share = floorShare(main);
     const own = floorPromptTok(main);
-    console.log(`standing inventory ~${fmt(main.floorCtx)} tok/msg (system prompt + tool schemas + CLAUDE.md + always-on rules) - paid on EVERY message${share != null ? `, ~${share}% of cache-read` : ''}, and re-paid in full after every compaction`);
+    console.log(`standing inventory ~${fmt(main.floorCtx)} tok/msg (system prompt + tool schemas + CLAUDE.md + always-on rules) - paid on EVERY message${share != null ? `, ~${share}% of the context sent (cache-read + cache-write + input)` : ''}, and re-paid in full after every compaction`);
     if (own) console.log(`  of which ~${fmt(own)} is the session's own first prompt (typed text + slash expansion, chars/4) - the install's floor is ~${fmt(main.floorCtx - own)}`);
     const ins = instructionsBreakdown(main);
     if (ins) {
@@ -4032,14 +4042,14 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
   if (main.peakCtx) extraFacts.push(`- **Peak context** ${fmt(main.peakCtx)} tokens per message${main.peakCtxAt ? ` (at ${main.peakCtxAt})` : ''} - every fresh-session threshold is measured against this, not the average.`);
   if (main.thinkingTokens) extraFacts.push(`- **Thinking** ${fmt(main.thinkingTokens)} tokens (\`cost-state.modelUsage\`) - billed, attributable to no single message.`);
   if (main.floorCtx) {
-    const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
+    const share = floorShare(main);
     const own = floorPromptTok(main);
     const ins = instructionsBreakdown(main);
     if (ins) {
       extraFacts.push(`- **Instructions at session start**: ${ins.files} file(s), ${ins.chars} chars (~${fmt(approxTok(ins.chars))} tok) - ${ins.rows.map((r) => `\`${r.file}\` ${r.chars}`).join(', ')}.`);
       if (ins.twice.length) extraFacts.push(`- **Loaded twice** under a renamed rule's old and new name: ${ins.twice.map((t) => `\`${t.old}\` + \`${t.now}\``).join(', ')} - ~${fmt(approxTok(ins.twiceChars))} tokens of the floor are the stale copies.`);
     }
-    extraFacts.push(`- **Standing inventory** ~${fmt(main.floorCtx)} tokens/message (system prompt + tool schemas + CLAUDE.md + always-on rules) - paid on EVERY message${share != null ? `, ~${share}% of cache-read` : ''}, and re-paid in full after every compaction.${own ? ` Of it, ~${fmt(own)} is the session's own first prompt (typed text + slash expansion, chars/4), so the install's floor is ~${fmt(main.floorCtx - own)}.` : ''}`);
+    extraFacts.push(`- **Standing inventory** ~${fmt(main.floorCtx)} tokens/message (system prompt + tool schemas + CLAUDE.md + always-on rules) - paid on EVERY message${share != null ? `, ~${share}% of the context sent (cache-read + cache-write + input)` : ''}, and re-paid in full after every compaction.${own ? ` Of it, ~${fmt(own)} is the session's own first prompt (typed text + slash expansion, chars/4), so the install's floor is ~${fmt(main.floorCtx - own)}.` : ''}`);
   }
   {
     const src = windowSource(main);

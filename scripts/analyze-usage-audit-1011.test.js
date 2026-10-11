@@ -185,3 +185,26 @@ test('5b9ce9c5#8 / a9e06780#7: the rule glob proxy scores only paths under the s
     assert.deepStrictEqual(used(inv, 'skill-authoring.md'), ['glob proxy x1'], 'the in-project SKILL.md only');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// 11b595da#3: a 4-message run whose first floor copy was a cache WRITE printed 'standing inventory ~76.3k tok/msg ...
+// ~113% of cache-read' (76.3k x 4 = 305.2k over 269.5k cache-read, 55.9k cache-write beside it).
+test('11b595da#3: the standing-floor share is measured against the context sent, never above 100%', () => {
+  const dir = tmp();
+  try {
+    const msg = (id, ts, cc, cr) => ({ type: 'assistant', timestamp: ts, cwd: WIN_CWD, message: { id, model: 'claude-sonnet-5', usage: usage(3, cc, cr, 50), content: [{ type: 'text', text: 'x' }] } });
+    const rows = [
+      human(T(0), 'go'),
+      msg('m1', T(1), 55900, 20400),    // the first copy of the floor is mostly a cache WRITE
+      msg('m2', T(2), 0, 76300),
+      msg('m3', T(3), 0, 81200),
+      msg('m4', T(4), 0, 91600),
+    ];
+    const file = write(dir, rows);
+    const out = text([file]);
+    // floor 76,303 x 4 = 305,212 over 325,412 sent (269,500 read + 55,900 written + 12 input) = 94%
+    assert.match(out, /standing inventory ~76\.3k tok\/msg .* ~94% of the context sent \(cache-read \+ cache-write \+ input\)/);
+    assert.doesNotMatch(out, /% of cache-read/);
+    assert.match(out, /standing floor +~76\.3k tok\/msg, ~94% of the context sent/);
+    assert.match(text([file, '--report-md']), /\*\*Standing inventory\*\* ~76\.3k tokens\/message .* ~94% of the context sent/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
