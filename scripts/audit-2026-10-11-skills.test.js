@@ -143,6 +143,15 @@ test('2ca8e8ee#1 #2: the upgrade gate follows a printed plan and offers the in-s
     assert.match(strat, /the flow's seats stand until the user picks in-session there/);
 });
 
+// 42951e5b#2: the plan audit applied a 'non-judgment' fix that dropped a correct `-p:Platform=x86` from the test
+// command, hedged 'if the project lacks that configuration, say so', with no read of the test project: 6 false reds.
+test('42951e5b#2: a command-changing fix lands only with its proof quoted; a hedged one is an unverified finding', () =>
+{
+    const vp = flat(read('stack/skills/task-verify-plan/SKILL.md'));
+    assert.match(vp, /Nor is a fix that changes a build, test or acceptance COMMAND \(a flag, a configuration, a project path\) unless the run or read that proves the new form is quoted in the `Gated` block/);
+    assert.match(vp, /a fix hedged on an assumption \('if the project lacks that configuration, say so'\) is a finding marked `unverified`, left in the plan as written for the build to prove, never applied in-step/);
+});
+
 // 177c5743#4: 29 fork seats spent ~61.6M of ~69.2M input tokens re-reading the parent; seats $20.44 against main $17.73.
 test('177c5743#4: the mode choice prices a fork against a briefed seat', () =>
 {

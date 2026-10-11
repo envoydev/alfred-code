@@ -63,7 +63,7 @@ Findings:  <count by severity, or `none`>
 Gated:     passed | passed - <N> fixes applied | <N> gaps listed - <date>
 ```
 
-`Passes:` is the audit record a calling flow copies into its ledger as written: each `<v>` is `pass` or that pass's worst severity (`MAJOR`, `MINOR`), and a pass that did not run is `NOT RUN`, never left out. `passed - <N> fixes applied` is the one form for an audit whose non-judgment fixes landed in the plan in the same step - each named in the calling stop's `Result:` line; a `judgment` item is never one of them.
+`Passes:` is the audit record a calling flow copies into its ledger as written: each `<v>` is `pass` or that pass's worst severity (`MAJOR`, `MINOR`), and a pass that did not run is `NOT RUN`, never left out. `passed - <N> fixes applied` is the one form for an audit whose non-judgment fixes landed in the plan in the same step - each named in the calling stop's `Result:` line; a `judgment` item is never one of them. Nor is a fix that changes a build, test or acceptance COMMAND (a flag, a configuration, a project path) unless the run or read that proves the new form is quoted in the `Gated` block; a fix hedged on an assumption ('if the project lacks that configuration, say so') is a finding marked `unverified`, left in the plan as written for the build to prove, never applied in-step (measured: an audit dropped a correct `-p:Platform=x86` from a test command on the run book's say-so, no test project read, and the build's run went 6 red before the flag came back).
 
 `Decisions:` is a PASS CONDITION, not a note: a plan whose `## Decisions` ledger is absent is a
 finding in its own right, because the build seats read that ledger for the precedents they must
