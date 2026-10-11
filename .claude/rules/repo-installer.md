@@ -90,7 +90,10 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
     (up to 3 times per table since the last answered ask; it waits for the ask's own transcript row - only when a table call sits in the tail since the typed prompt, M15 - and fails open) whose decision table was run but never pasted - a `stack-select.js
     --table` catalog, the `plugin-settings.js` report or validate's install audit - and, inside a walk (a `stack-select.js`
     call since the typed prompt), a layer's own selection ask (`Agents: ...`, `Add to the installed skills?`) whose
-    `--table <layer>` never ran (2.1.7, the user's report of 2026-10-06; its own valve of three per layer). It ships in the plugin because a fresh setup
+    `--table <layer>` never ran (2.1.7, the user's report of 2026-10-06; its own valve of three per layer). Audit 2026-10-11 added
+    configure step 1's `update-preflight.js --inventory` table (proof: its `total:` line) with its closing ask, which needs that
+    call to have run, and - inside a typed setup / configure / validate run that printed a banner - a gap in the `[step n/N`
+    numbers, each with its own valve. It ships in the plugin because a fresh setup
     has no stack hooks yet; the rule text is pinned as `table-before-question`. It and `library-stamp.js` run the
     core's prelude gates from the plugin root (2.1.5 M4: the csv, `hook_profile: minimal`, the alias and a Cursor payload
     stand them down; GATE 4 is skipped, `setUp: false`, since the gate serves setup), and a layer-table denial writes a

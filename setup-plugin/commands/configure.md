@@ -45,7 +45,7 @@ This command's extra stake in the snapshot: its revision is what step 1 compares
 to report what an update would bring - an archive's `RELEASE-SOURCE` commit, or the `v<version>` tag of
 a plugin-cache copy, which carries no `RELEASE-SOURCE` (never probe for one there).
 
-**Table before question - no exceptions.** Any table or report the user decides from (every layer's `stack-select.js --table` catalog, the `plugin-settings.js` report) is pasted into YOUR message, byte-for-byte in a fenced block, BEFORE the AskUserQuestion that asks about it - never after, never only in the ask's preview panel, never replaced by 'shown above' or a prose summary. A tool result is collapsed in the UI, so a table you only ran is a table the user never saw (measured: agents and skills asks answered 'I do not see any table'). This is the one sanctioned exception to 'no pasted tool output', and the plugin's `guard-layer-table.js` hook denies an ask whose table is missing.
+**Table before question - no exceptions.** Any table or report the user decides from (step 1's `--inventory` table, every layer's `stack-select.js --table` catalog, the `plugin-settings.js` report) is pasted into YOUR message, byte-for-byte in a fenced block, BEFORE the AskUserQuestion that asks about it - never after, never only in the ask's preview panel, never replaced by 'shown above' or a prose summary. A tool result is collapsed in the UI, so a table you only ran is a table the user never saw (measured: agents and skills asks answered 'I do not see any table'). This is the one sanctioned exception to 'no pasted tool output', and the plugin's `guard-layer-table.js` hook denies an ask whose table is missing.
 
 **Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one
 marked, free text via Other; a prose question or a bare stop-and-wait is invalid (measured: prose asks
@@ -114,7 +114,16 @@ comparable banner by banner; the content varies, the skeleton never does.
   `skills=plugin` means the plugin listing could not be read or the core entry is parked - stop and
   report which, since every carried seat would read as dropped. `hooks=no` means the hooks layer is
   not walked this run: its table would be a guess.
-- Show the inventory grouped by category, with counts. Also run the evidence scan quietly -
+- Show the inventory from the read-back, never a hand table:
+
+  ```bash
+  node "$TMP/repo/scripts/update-preflight.js" --inventory "$TMP/installed.json"
+  ```
+
+  It prints the fixed `| category | count | items |` table, the six rows in order, and a `total: <n> installed` line -
+  block (1) below, pasted byte-for-byte in a fenced block. The plugin's `guard-layer-table.js` denies the step-1 ask
+  until this call ran and its `total:` line is in your message (audit 2026-10-11, session a9e06780: the inventory
+  sat in a collapsed tool result and the ask said 'Installed set is shown above'). Also run the evidence scan quietly -
   `node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json"
   --out "$TMP/found.json"` - so the walk's tables can label what the project provably uses
   (`--found`).
@@ -145,18 +154,32 @@ so never diff against or mention `develop`. Two signal lines to handle, neither 
 
 A `TRUNCATED` line (the third, after the version and base lines) means the preview may be missing files - say so alongside the summary.
 
-**This step's output has ONE fixed shape** - three blocks, nothing else: (1) the inventory table,
-fixed columns `category | count | items`, six rows in the fixed order
-rules/agents/skills/hooks/mcps/plugins (note excluded generated files in one trailing line, not
-per-row prose); (2) the update-preview verdict - one line leading with the version delta or 'no
+**This step's output has ONE fixed shape** - the `[step 1/13 - install status]` banner, then three blocks, nothing
+else: (1) the `--inventory` output in a fenced block (note excluded generated files in one trailing line under it,
+not per-row prose); (2) the update-preview verdict - one line leading with the version delta or 'no
 upstream changes', then the category summary only when there IS a diff; (3) the closing question.
 Detection detail, tool notes, and narration beyond these three blocks is the chaos this shape
 exists to prevent.
 
-Close the step with one AskUserQuestion: **adjust the selection** (continue to the area pick at step 2), or
-**refresh as-is** (nothing to change - skip straight to step 11; when upstream changed nothing
-either, offer to stop rather than running a no-op, and note the sibling `update` command is the
-no-questions path for plain refreshes).
+Close the step with ONE AskUserQuestion, the template for the case. Upstream changed something:
+
+```ask
+Adjust the installed selection? <the update-preview line>
+- 'Adjust the selection (Recommended)' - continue to the area pick at step 2
+- 'Refresh as-is' - nothing to change; skip to step 11 and take the release in step 12
+```
+
+Upstream changed nothing (`no upstream changes`, or `no-stamp` / `compare-unreachable` with nothing to name) - a
+refresh would be a no-op, so stopping takes the mark:
+
+```ask
+Adjust the installed selection? No upstream changes since the install.
+- 'Stop here (Recommended)' - nothing to refresh; the sibling /alfred-code:update is the no-questions path when a release lands
+- 'Adjust the selection' - continue to the area pick at step 2
+```
+
+'Stop here' prints the remaining banners with their one skip line each, then the cleanup (audit 2026-10-11, session
+a9e06780: an improvised step-1 ask listed the marked stop last of three, and the user took it).
 
 ## 2. Choose the areas
 
@@ -165,7 +188,9 @@ installer run at step 12, which works from the whole selection - and gets one na
 
 ## The walk - steps 3-8, one layer at a time
 
-Read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/walk.md` before step 3 and run it in **DELTA**
+Read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/walk.md` AT step 3, never earlier - a run that stops at step 1 or
+skips to step 11 never needs it (audit 2026-10-11, session a9e06780: read at the start, ~7.6k re-sent on 5 requests
+of a run that stopped at step 1) - and run it in **DELTA**
 mode - setup's own walk, over the installer's read-back instead of the recommendations, so the two
 cannot drift. The layers run in dependency order, rules -> agents -> skills -> hooks -> MCPs ->
 plugins (only the areas picked at step 2), over `raw.json` and `dropped.json` seeded from step 1's

@@ -782,3 +782,26 @@ test('--respell: the project\'s own instruction file gets a per-line plan, and -
         assert.match(run(['--respell', '--root', dir]).out, /^respell: none$/m, 'no instruction file is nothing to do');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// audit 2026-10-11, session a9e06780: configure step 1's inventory, rendered from the read-back so its shape is fixed and
+// the layer-table gate can prove the paste by its last line.
+test('--inventory: the six rows in order with counts, plugins with their scope, and the total line last', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-inv-'));
+    try {
+        const file = path.join(dir, 'installed.json');
+        fs.writeFileSync(file, '\uFEFF' + JSON.stringify({ skills: ['b', 'a'], agents: [], rules: ['r1'], hooks: ['h1', 'h2'], mcps: ['browser'],
+            plugins: [{ name: 'claude-hud', scope: 'user' }], plugins_disabled: ['x'], left_out: ['agent y'] }));
+        const lines = run(['--inventory', file]).out.trim().split('\n');
+        assert.deepStrictEqual(lines, [
+            '| category | count | items |', '|---|---|---|',
+            '| rules | 1 | r1 |', '| agents | 0 | - |', '| skills | 2 | b, a |', '| hooks | 2 | h1, h2 |', '| mcps | 1 | browser |',
+            '| plugins | 1 | claude-hud [user] |',
+            'total: 7 installed, 1 switched off, 1 plugin(s) parked',
+        ]);
+        fs.writeFileSync(file, 'garbage');
+        const bad = run(['--inventory', file]);
+        assert.strictEqual(bad.code, 1);
+        assert.match(bad.out, /^inventory: .* could not be read - re-run the step-1 read-back$/m);
+        assert.strictEqual(run(['--inventory', path.join(dir, 'missing.json')]).code, 1, 'a missing file is no empty inventory');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

@@ -22,7 +22,10 @@
 // message it cannot see. ALFRED_CODE_LAYER_GATE_WAIT_MS overrides the 2000ms budget (tests). With no
 // table call since the typed prompt it never waits: there is nothing to judge (M15). A layer's own
 // selection ask ('Agents: ...', 'Add to the installed skills?') inside a walk also needs that layer's
-// table to have RUN since the typed prompt - same valve, counted per layer (2.1.7).
+// table to have RUN since the typed prompt - same valve, counted per layer (2.1.7). Audit 2026-10-11: configure step 1's
+// `update-preflight.js --inventory` table is a decision table too (proof: its `total: <n> installed` line), and step 1's
+// closing ask ('Adjust the installed selection?') needs it to have run; inside a typed setup / configure / validate run
+// that has printed a step banner, a gap in the banner numbers denies the next ask. Each has its own valve of three.
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unreadable.
 //
 // STACK HOOK GATES (2.1.5 M4) - the core's hook-prelude.js, reached from the plugin root (the core entry ships
@@ -110,9 +113,13 @@ const AUDIT_RE = /stack-select\.js\b(?:[^\n]|\\\r?\n)*?--(redundant|missing|evid
 const AUDIT_PROOF = /\b(REDUNDANT|MISSING|DISABLED|JUDGMENT-DROP|JUDGMENT-ADD)\b/;
 // Reports proven by their LAST line in the assistant text. `skip` is the flag that makes the same
 // script print no table; `empty` is the all-clear line, which setup and validate pass over silently.
+const NEVER = /(?!)/;
+const INVENTORY_RE = /update-preflight\.js\b(?:[^\n]|\\\r?\n)*?--inventory\b/;
 const LAST_LINE_REPORTS = [
   { re: /plugin-settings\.js\b/, skip: /--apply\b/, empty: /nothing to offer/, name: 'plugin-settings report' },
   { re: /audit-install\.js\b/, skip: /--json\b/, empty: /nothing to report/, name: 'install audit' },
+  // configure step 1's inventory table, proven by its `total: <n> installed` line (audit 2026-10-11, session a9e06780).
+  { re: INVENTORY_RE, skip: NEVER, empty: NEVER, name: 'install inventory' },
 ];
 // M15: the own-row wait only buys a view of the ask's own message, which matters only when a table call
 // since the typed prompt could need proving - with none, there is nothing to judge and the ask passes now.
@@ -178,6 +185,66 @@ const unrunLayer = (rs, asked) => {
 
 const resultText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (x && x.text) || '').join('\n') : '');
 
+// One pass back to the typed prompt: the prompt itself, the assistant text, the commands run, and how many of OUR
+// denials of `kind` came after the last answered ask - so each check below keeps its own valve of MAX_DENIALS.
+const span = (rs, kind) => {
+  const out = { prompt: '', texts: [], commands: [], denials: 0 };
+  const results = {};
+  let answered = false;
+  for (let i = rs.length - 1; i >= 0; i--) {
+    let o;
+    try { o = JSON.parse(rs[i]); } catch { continue; }
+    const content = o && o.message && o.message.content;
+    if (o && o.type === 'user' && typeof content === 'string') { out.prompt = content; break; }
+    if (!Array.isArray(content)) continue;
+    for (const b of content) {
+      if (!b) continue;
+      if (o.type === 'user' && b.type === 'tool_result') {
+        const r = resultText(b.content);
+        results[b.tool_use_id] = r;
+        if (!answered && r.includes(`${MARKER}: ${kind}`)) out.denials += 1;
+      }
+      if (o.type !== 'assistant') continue;
+      if (b.type === 'text') out.texts.push(b.text || '');
+      if (b.type !== 'tool_use') continue;
+      if (b.name === 'AskUserQuestion' && b.id !== ownId && b.id in results && !results[b.id].includes(MARKER)) answered = true;
+      out.commands.push(String((b.input && b.input.command) || ''));
+    }
+  }
+  return out;
+};
+
+// configure step 1's closing ask (its two templates open with this question): the inventory table must have RUN since
+// the typed prompt - audit 2026-10-11, session a9e06780 asked 'Installed set is shown above' over a collapsed result.
+// Once it ran, the report gate below holds its `total:` line to the assistant text like any other table.
+const STEP1_ASK = /^\s*Adjust the installed selection\?/i;
+const asksStep1 = (input) => (input && Array.isArray(input.questions) ? input.questions : []).some((q) => STEP1_ASK.test(String((q && q.question) || '')));
+
+// THE SKELETON (audit 2026-10-11): setup, configure and validate print one `[step n/N - <name>]` banner per step, a
+// skipped step's banner with one line saying why. Six of six guided runs in one consuming project skipped banners
+// (session 5f9fec85 printed 6 of 13, 6288ad94 2 of 12), and nothing read the clause. Judged only inside such a run once
+// it has printed a banner: every step number from the first banner seen since the typed prompt to the highest must have
+// printed one. A run that prints none is not judged here (configure step 1's inventory gate catches its first ask).
+const GUIDED = /\balfred-code:(setup|configure|validate)\b/;
+const BANNER = /\[step (\d+)\/(\d+) - /g;
+const bannerGap = (rs) => {
+  const s = span(rs, 'step banner');
+  if (!GUIDED.test(s.prompt) || s.denials >= MAX_DENIALS) return null;
+  const seen = new Set();
+  let total = 0;
+  for (const t of s.texts) for (const m of t.matchAll(BANNER)) { seen.add(Number(m[1])); total = Number(m[2]); }
+  if (!seen.size) return null;
+  const lo = Math.min(...seen);
+  const hi = Math.max(...seen);
+  const missing = [];
+  for (let n = lo; n <= hi; n++) if (!seen.has(n)) missing.push(n);
+  return missing.length ? { missing, total } : null;
+};
+const guidedRun = (rs) => {
+  const s = span(rs, 'step banner');
+  return GUIDED.test(s.prompt) && s.texts.some((t) => /\[step \d+\/\d+ - /.test(t));
+};
+
 let rows;
 try {
   rows = readRows();
@@ -193,7 +260,21 @@ try {
     process.stderr.write(denial);
     process.exit(2);
   }
-  if (!tailHasTable(rows)) process.exit(0);
+  if (asksStep1(payload.tool_input)) {
+    const s = span(rows, 'the install inventory never ran');
+    if (!s.commands.some((c) => INVENTORY_RE.test(c)) && s.denials < MAX_DENIALS) {
+      const denial =
+        `${MARKER}: the install inventory never ran - this is step 1's closing ask, and the user decides it from the ` +
+        `inventory table. Run \`node "$TMP/repo/scripts/update-preflight.js" --inventory "$TMP/installed.json"\` (after the ` +
+        `step-1 read-back), then send ONE message: the step banner, its output byte-for-byte inside a fenced code block, ` +
+        `the update-preview line, then this same ask.\n`;
+      blockRow(denial.split('\n')[0], 'install inventory');
+      process.stderr.write(denial);
+      process.exit(2);
+    }
+  }
+  const guided = guidedRun(rows);
+  if (!tailHasTable(rows) && !guided) process.exit(0);
   if (ownId && !hasOwnRow(rows)) {
     const until = Date.now() + waitMs;
     while (Date.now() < until && !hasOwnRow(rows)) {
@@ -202,6 +283,18 @@ try {
     }
     if (!hasOwnRow(rows)) process.exit(0);
   }
+  const gap = guided ? bannerGap(rows) : null;
+  if (gap) {
+    const example = '`[step 7/13 - MCPs] skipped - area not selected`';
+    const denial =
+      `${MARKER}: step banner missing - step ${gap.missing.join(', ')} of ${gap.total} printed none. The skeleton is ` +
+        `invariant: every step prints its banner, a skipped one with ONE line saying why (${example}). Send ONE message: ` +
+        `the missing banners in order, each with its one line, then this step's content and this same ask.\n`;
+    blockRow(denial.split('\n')[0], 'step banner');
+    process.stderr.write(denial);
+    process.exit(2);
+  }
+  if (!tailHasTable(rows)) process.exit(0);
 } catch {
   process.exit(0);
 }

@@ -67,6 +67,16 @@
 //
 // `--apply` writes exactly those lines (one `respelled: <file> - <n> line(s)` each; a line edited since reads
 // `not applied`). Nothing else in the file is touched (audit 2026-10-11, session b3f8193f: a hand `sed -i` splice).
+//
+// `--inventory <installed.json>` is configure step 1's table, rendered from the installer's own read-back (its
+// `--plan-out` file) so the step's first block has one fixed shape and a closing line the plugin's layer-table gate
+// proves the paste by (audit 2026-10-11, session a9e06780: the inventory stayed in a collapsed tool result and the
+// step-1 ask said 'Installed set is shown above'):
+//
+//   | category | count | items |
+//   |---|---|---|
+//   | rules | <n> | <name>, ... |        (rules, agents, skills, hooks, mcps, plugins - always these six, in order)
+//   total: <n> installed[, <n> switched off][, <n> plugin(s) parked]
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -474,17 +484,33 @@ function runRespellMode()
         console.log(`respelled: ${done.file} - ${done.lines} line(s)${done.stale.length ? ` (line ${done.stale.join(', ')} not applied - edited since)` : ''}`);
 }
 
+function runInventoryMode(file)
+{
+    const inv = readJson(file);
+    if (!inv || typeof inv !== 'object' || Array.isArray(inv)) { console.log(`inventory: ${file} could not be read - re-run the step-1 read-back`); process.exitCode = 1; return; }
+    const list = (v) => (Array.isArray(v) ? v : []).map((x) => (x && typeof x === 'object' ? `${x.name}${x.scope ? ` [${x.scope}]` : ''}` : String(x)));
+    const rows = ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins'].map((c) => [c, list(inv[c])]);
+    console.log('| category | count | items |');
+    console.log('|---|---|---|');
+    for (const [c, items] of rows) console.log(`| ${c} | ${items.length} | ${items.join(', ') || '-'} |`);
+    const off = list(inv.left_out).length;
+    const parked = list(inv.plugins_disabled).length;
+    console.log(`total: ${rows.reduce((n, [, items]) => n + items.length, 0)} installed${off ? `, ${off} switched off` : ''}${parked ? `, ${parked} plugin(s) parked` : ''}`);
+}
+
 function main()
 {
     const logFile = arg('--log');
     if (logFile) { runLogMode(logFile); return; }
     if (process.argv.includes('--respell')) { runRespellMode(); return; }
+    const inventory = arg('--inventory');
+    if (inventory) { runInventoryMode(inventory); return; }
 
     const snapshot = arg('--snapshot');
     const offerOnly = process.argv.includes('--offers');
     if (!snapshot && !offerOnly)
     {
-        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --offers [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --log <installer-log> [--hooks <n>] [--running <the session\'s plugin root>] [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --respell [--apply] [--root <install root>]');
+        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --offers [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --log <installer-log> [--hooks <n>] [--running <the session\'s plugin root>] [--root <install root>] [--stamp <stamp-file>]\n       update-preflight.js --respell [--apply] [--root <install root>]\n       update-preflight.js --inventory <installed.json>');
         process.exit(1);
     }
     const root = arg('--root', '.');

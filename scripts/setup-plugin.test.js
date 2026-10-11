@@ -118,7 +118,7 @@ test('the walk: the playwright ENABLE pre-selection reads plan-out\'s live state
     assert.match(mcps, /Picking one IS installing it, and the question says so in one line: the install downloads a picked `firefox` \/ `webkit`/);
     assert.match(mcps, /`\/alfred-code:init` reports one that is not there/);
     assert.match(flat(cmdBody('setup')), /references\/walk\.md` before step 4 and run it in \*\*FRESH\*\*/);
-    assert.match(flat(cmdBody('configure')), /references\/walk\.md` before step 3 and run it in \*\*DELTA\*\*/);
+    assert.match(flat(cmdBody('configure')), /references\/walk\.md` AT step 3, never earlier - [^*]*and run it in \*\*DELTA\*\*/);
     assert.match(cmdBody('configure'), /--installed-only --print-plan --plan-out "\$TMP\/installed\.json"/, 'the DELTA walk reads the plan configure wrote');
 });
 
@@ -1189,4 +1189,26 @@ test('setup texts read JSON with node -e, never jq', () =>
         assert.deepStrictEqual(runs, [], `${rel} runs jq`);
     }
     assert.match(fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'walk.md'), 'utf8'), /node -e '[^']*\.browser\)\)' "\$TMP\/installed\.json"/);
+});
+
+// ------------------------------------------------------------------ audit 2026-10-11 SD06 (configure step 1)
+
+// a9e06780: step 1 printed none of its blocks, asked an improvised question with the marked stop listed last, and read
+// walk.md at the start of a run that stopped at step 1.
+test('configure step 1: the inventory comes from the preflight, the close is one of two templates, walk.md waits for step 3', () =>
+{
+    const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
+    const one = body.slice(body.indexOf('## 1. Install status'), body.indexOf('## 2. Choose the areas'));
+    assert.match(one, /node "\$TMP\/repo\/scripts\/update-preflight\.js" --inventory "\$TMP\/installed\.json"/);
+    assert.doesNotMatch(one, /Show the inventory grouped by category, with counts/, 'no hand table');
+    const asks = askBlocks(one);
+    assert.strictEqual(asks.length, 2, 'one template per case');
+    for (const a of asks) assert.match(a[0], /^Adjust the installed selection\?/, 'the question the layer-table gate keys on');
+    assert.match(asks[0].filter((l) => /^- '/.test(l))[0], /^- 'Adjust the selection \(Recommended\)'/);
+    assert.match(asks[1][0], /No upstream changes/);
+    assert.match(asks[1].filter((l) => /^- '/.test(l))[0], /^- 'Stop here \(Recommended\)'/, 'an empty delta: stopping takes the mark, first');
+    const gate = fs.readFileSync(path.join(PLUGIN_DIR, 'hooks', 'guard-layer-table.js'), 'utf8');
+    assert.match(gate, /const STEP1_ASK = \/\^\\s\*Adjust the installed selection\\\?\/i;/, 'the gate keys on the same question');
+    assert.match(flat(body), /walk\.md` AT step 3, never earlier/);
+    assert.strictEqual(askBlocks(body).length, SETUP_ASK_TEMPLATES['setup-plugin/commands/configure.md'], 'configure.md\'s asks are pinned');
 });
