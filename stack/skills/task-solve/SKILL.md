@@ -74,14 +74,14 @@ text and END THE TURN.
 (`/clear`): resume needs only the plan file, and restarts at 21.5-59.4% of the carried context with zero
 re-work - state those two absolute numbers to the user, never a ratio. Once the cycle has crossed the install's
 fresh-session trigger for its context window (150,000 tokens on a 200k window, 400,000 on a 1M one, 300,000 on
-any other window), spans hours, or resumes after an idle gap, the fresh-session resume IS one of the next ask's
+any other window), spans hours, or resumes after a 2h+ idle gap, the fresh-session resume IS one of the next ask's
 options - every ask until it is taken or the cycle closes; the stop-contract hook then injects the two measured
-numbers (this session's carry per message, a fresh one's cold floor): quote them, or say they are unmeasured.
+numbers (this session's carry per message, a fresh one's cold floor): quote THIS stop's, or say they are unmeasured.
 Wherever it is offered, the paste-ready resume block - first line `Open in: <the project root>`, then
 `/clear, then paste:` and the `/task-solve` line naming the plan file - is printed ABOVE the ask, so
 taking it needs no reply turn. And HONOR the answer: when the user picks it, the turn ends with a one-line ack -
 no 'one more step', no new work in this chat. A CONSTRUCTION check, not a memory: before any stop's
-ask, 'has this cycle crossed the trigger?' - if yes and no fresh-session option is listed, rebuild it.
+ask, 'has this cycle crossed the trigger?' - if yes and the option is missing, rebuild it.
 
 **Autonomy waiver (AUTO).** When the user explicitly asks for a no-stops run ('run all
 recommended without asking me'), never self-authorize silently - write `<docs-path>/flow/APPROVAL`

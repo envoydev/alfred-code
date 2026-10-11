@@ -293,3 +293,16 @@ test('C08 a6a24815#5: the done gate and the in-chat review run the project\'s fo
     assert.match(skill('habits-done-gate'), /build \+ relevant tests run after the last edit, output quoted/, 'the skill-comply quote stays');
     assert.match(skill('task-verify-code'), /Rerun `build`, the suite and the project's format check \(where it has one - the step CI runs\)/);
 });
+
+test('C08 C09 9a4ef375#3 c6142301#2 c6142301#6 e6a68237#6 0d070bcc#6 (skill half): AUTO logs the fresh-session offer, stops keep their fields, the numbers are this stop\'s', () => {
+    const mech = flat(read('stack/skills/task-solve/references/step-mechanics.md'));
+    assert.match(mech, /the fresh-session offer and the post-compaction hold are logged, not asked/);
+    assert.match(mech, /fresh-session option is never taken, since nobody is there to paste the resume block/);
+    assert.match(mech, /Every stop still prints its `Result:` \/ `Progress:` \/ `Leftovers:` lines, and the close its receipts/);
+    assert.match(mech, /a figure injected at an earlier stop is stale/);
+    assert.match(mech, /An idle gap is the clock route's `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` \(default 2\)/);
+    const t = flat(skill('task-solve'));
+    assert.match(t, /or resumes after a 2h\+ idle gap, the fresh-session resume IS one of the next ask's options/);
+    assert.match(t, /quote THIS stop's, or say they are unmeasured/);
+    assert.match(t, /`references\/step-mechanics\.md` holds the rest/, 'the AUTO paragraph points at the mechanics');
+});

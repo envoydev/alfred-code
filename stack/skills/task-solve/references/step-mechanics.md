@@ -54,6 +54,15 @@ are in `SKILL.md`; these are the mechanics around them.
   next dispatch asks. Step 4's
   delete-when-fan-out-completes applies to per-plan APPROVED stamps, and a step-5 punch-list
   re-dispatch under AUTO rides the still-live waiver.
+- **Under AUTO nobody is at the terminal** (audit 2026-10-10, sessions c6142301 and 9a4ef375: an overnight run
+  asked for a fresh session nobody could take, and a waived close printed none of its fields). So the fresh-session
+  offer and the post-compaction hold are logged, not asked - the hooks read a live AUTO stamp as unattended - and the
+  fresh-session option is never taken, since nobody is there to paste the resume block. Every stop still prints its
+  `Result:` / `Progress:` / `Leftovers:` lines, and the close its receipts: they are the user's first sight of the run.
+- **The fresh-session numbers are this stop's.** The stop-contract hook injects the carry and the cold floor at each
+  stop; a figure injected at an earlier stop is stale (e6a68237 quoted a 74-minute-old 192k while the request carried
+  284.5k). An idle gap is the clock route's `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` (default 2): the prompt that
+  ends it is offered the fresh session by the hook, and the next ask lists it.
 
 ## Agents-mode dispatch - step 4
 
