@@ -834,6 +834,33 @@ test('guard-catastrophic-rm: git destroys a working tree too, and prose about it
   assert.equal(rm('echo "careful" && git clean -fdx'), 2, 'but a real one after a prose mention still blocks');
 });
 
+// audit 2026-10-10 C17 (session 349e4825): an approved `git merge --abort && ... git reset --hard` was denied over the
+// conflicted merge's index rows, which the abort drops before the reset runs.
+test('guard-catastrophic-rm: a reset after an abort of a merge in progress is judged without the merge\'s rows', () => {
+  const dir = cleanRepo();
+  const g = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  const rm = (command) => runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
+  const base = g('rev-parse', '--abbrev-ref', 'HEAD').stdout.trim();
+  g('checkout', '-qb', 'other'); fs.writeFileSync(path.join(dir, 'seed.txt'), 'theirs\n'); fs.writeFileSync(path.join(dir, 'added.txt'), 'a\n');
+  g('add', '-A'); g('commit', '-qm', 'theirs');
+  g('checkout', '-q', base); fs.writeFileSync(path.join(dir, 'seed.txt'), 'ours\n'); g('commit', '-qam', 'ours');
+  g('merge', 'other');
+  assert.ok(fs.existsSync(path.join(dir, '.git', 'MERGE_HEAD')), 'a conflicted merge is in progress');
+  assert.equal(rm('git reset --hard'), 2, 'without the abort the merge rows are still judged');
+  assert.equal(rm('git merge --abort && git reset --hard'), 0, 'the abort drops them first');
+  assert.equal(rm('git merge --abort; git reset --hard HEAD'), 0, 'chained by ; too');
+  assert.equal(rm('git rebase --abort && git reset --hard'), 2, 'an abort of an operation not in progress changes nothing');
+  g('merge', '--abort');
+  fs.writeFileSync(path.join(dir, 'tracked-edit.md'), 'y\n'); g('add', 'tracked-edit.md'); g('commit', '-qm', 't');
+  fs.writeFileSync(path.join(dir, 'tracked-edit.md'), 'mine\n');
+  g('merge', 'other');
+  assert.ok(fs.existsSync(path.join(dir, '.git', 'MERGE_HEAD')), 'the merge starts beside an unstaged edit of a file it does not touch');
+  assert.equal(rm('git merge --abort && git reset --hard'), 2, 'a work-tree edit of the user\'s own is still a loss');
+  fs.writeFileSync(path.join(dir, 'tracked-edit.md'), 'y\n');
+  assert.equal(rm('git merge --abort && git reset --hard'), 0, 'and without it the abort and reset lose nothing of the user\'s');
+});
+
 test('guard-catastrophic-rm: the gate reads the PATHSPEC, and honours a discard receipt', () => {
   // The gate asked only 'is the tree dirty', which made its own prescribed escape - 'name the ONE
   // file to revert instead of the whole tree' - unreachable: `git restore .gitignore` was denied
@@ -1845,6 +1872,25 @@ test('guard-cross-project-write: a shell path is anchored at the payload cwd, bo
   assert.equal(at(path.join(XP_ROOT, 'gone'), 'echo hi > ../../x.txt'), 2, 'a cwd that is gone reads as the project root');
   assert.equal(at('relative/dir', 'echo hi > x.txt'), 0, 'and so does a relative one');
   assert.equal(xp({ tool_name: 'Write', cwd: XP_OTHER, tool_input: { file_path: 'src/a.ts' } }), 0, 'a file tool keeps the project root');
+});
+
+// audit 2026-10-10 C31 (session 0d070bcc): `rm -f` of the session's own link to a sibling repo was judged as a write into
+// the sibling, because the link was resolved before the removal was judged.
+test('guard-cross-project-write: a removal judges a symbolic link where it lives, not where it points', { skip: process.platform === 'win32' && 'symlinks need privileges' }, () => {
+  const link = path.join(XP_ROOT, 'link-to-b');
+  const back = path.join(XP_OTHER, 'link-to-a');
+  const drop = (p) => { try { fs.unlinkSync(p); } catch { /* not there */ } };
+  drop(link); drop(back);
+  fs.symlinkSync(XP_OTHER, link); fs.symlinkSync(XP_ROOT, back);
+  try {
+    assert.equal(xpBash(`rm -f ${link}`), 0, 'the project\'s own link to the sibling');
+    assert.equal(xpBash(`ln -s ${XP_OTHER} ${link}2 && rm -f ${link}2`), 0, 'the finding\'s chain, the link not made yet');
+    assert.equal(xpBash(`rm -rf ${link}/`), 2, 'a trailing slash follows the link');
+    assert.equal(xpBash(`rm -rf ${link}/dist`), 2, 'and so does a path through it');
+    assert.equal(xpBash(`rm -f ${back}`), 2, 'a link living in the sibling is the sibling\'s');
+    assert.equal(xpBash(`echo x > ${link}`), 2, 'a write through the link still lands in the sibling');
+    assert.equal(xpBash(`rm -rf ${path.join(XP_OTHER, 'dist')}`), 2, 'a plain path is unchanged');
+  } finally { drop(link); drop(back); }
 });
 
 // Audit 2026-10-08 row 37: a relocated account dir holds the harness's memory writes, and a project under /tmp dropped

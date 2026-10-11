@@ -381,7 +381,7 @@ const anchorAt = (index) => shell.anchorAt(scan.cds, index, SHELL_CWD, anchorNor
 // is resolved at all - an explicitly out-of-tree spelling (absolute, ~-rooted, reaching up with
 // `..`), or any relative path once a `cd` has moved the anchor. A bare relative path with the
 // anchor still at the project root is this project's own file - the case that must never block.
-function judge(rawIn, index, what) {
+function judge(rawIn, index, what, verb) {
   const raw = scan.expandVars(rawIn);
   if (isVar(raw)) return; // an unexpanded variable - cannot judge, don't guess
   const base = anchorAt(index);
@@ -396,6 +396,19 @@ function judge(rawIn, index, what) {
   const expanded = nativePath(expandTilde(raw));
   if (!path.isAbsolute(expanded) && base === null) return; // relative from an unknown anchor
   const abs = resolveTarget(expanded, base);
+  // A removal unlinks a symbolic link itself, never what it points at (audit 2026-10-10 C31, session 0d070bcc: `rm -f`
+  // of the session's own scratch link to a sibling repo was blocked as a write into that repo, and the denial offered to
+  // open the sibling). The link is judged where it LIVES - its folder resolved, its own name kept - unless a trailing
+  // slash makes the shell follow it. Seeded into realish's cache, so the verdict and a denial's names read the same path.
+  if (verb === 'rm' && !/[\\/]\.?$/.test(raw)) {
+    let link = false;
+    try { link = fs.lstatSync(abs).isSymbolicLink(); } catch { link = false; }
+    if (link) {
+      const at = path.join(realish(path.dirname(abs)), path.basename(abs));
+      realishSeen.set(abs, at);
+      realishSeen.set(at, at);
+    }
+  }
   // A target whose own leading segment is a GLOB names no project, and the denial then built its
   // remedy out of the fabricated name - 'finish YOUR side against the current behaviour of `*`'.
   // Nothing can be handed off to a repo that cannot be named, so this passes rather than blocks. Asked only of a write
@@ -410,7 +423,7 @@ function judge(rawIn, index, what) {
 // that resolves inside the project - the overwhelming majority, relative paths included - never
 // reaches the check, so the false-positive surface is limited to commands genuinely writing out
 // of tree. The interpreter-script writes come last, as a literal path only.
-for (const t of scan.targets) judge(t.raw, t.index, t.what);
+for (const t of scan.targets) judge(t.raw, t.index, t.what, t.verb);
 
 // A bare `git <mutating>` after a `cd` out of tree writes THAT checkout - the same event as
 // `git -C <dir>`, spelled the way a session actually spells it (reproduced: passed).

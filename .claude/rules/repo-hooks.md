@@ -156,7 +156,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     a non-ASCII name reads as written; an untracked file counts only when the target tracks it, `-` being
     the previous branch), `clean -f` by its own `-n` dry run (ignored files included), plus
     `stash drop` / `stash clear` / `reflog expire` / `prune` / a `gc` given a prune date or a `-c gc.*Expire`
-    by what they destroy; one block names every loss. PowerShell `Remove-Item -Recurse`
+    by what they destroy; one block names every loss. A `merge` / `rebase` / `cherry-pick` / `revert` / `am --abort`
+    earlier in the command, of an operation in progress in that repo, takes that operation's rows (staged-only or
+    unmerged) out of a later discard's loss - its abort drops them first (audit 2026-10-10 C17, session 349e4825: 37
+    merge rows blocked an approved abort-and-reset); a row the work tree also changes is still judged. PowerShell `Remove-Item -Recurse`
     counts. A `claude plugin marketplace remove|rm` with no `--scope` - the binary by its path or inside `bash -c` too -
     is denied (2.1.7): the CLI then removes the
     declaration from every scope and uninstalls every plugin installed from it, in every project. A SQL `DROP` or `dotnet ef database drop` writes a log-only probe row. A 'discard it' answer
@@ -497,7 +500,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `/cygdrive/c/...`) is translated first (`shell-writes.js` `nativePath`, the one home every path-resolving guard
     requires - 2.1.5 M8). 'Allow' is honoured through the
     `<docs-path>/flow/CROSS-WRITE-ALLOW` receipt; `ALFRED_CODE_ALLOW_WRITE_OUTSIDE` opens a second
-    tree permanently. The log-only fork-liveness probe is retired (2026-10-09, the user's ruling after its rows were read:
+    tree permanently. A removal (`rm`, PowerShell's remove) of a symbolic link is judged where the link lives - its folder
+    resolved, its name kept - unless a trailing slash follows it (audit 2026-10-10 C31, session 0d070bcc: `rm -f` of the
+    session's own link to a sibling repo was blocked as a write into it). The log-only fork-liveness probe is retired (2026-10-09, the user's ruling after its rows were read:
     56 probe rows over two weeks in three projects, none naming a collision; the per-call head reads cost 12-22ms).
     LOG-ONLY (audit 2026-10-10): an interpreter script writing an in-project source file (a `python3 - <<` splice, a
     computed path) writes one `mode: probe` row per command, `interpreter-write`, the rate a notice would be decided on.
