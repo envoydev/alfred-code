@@ -166,3 +166,12 @@ test('C15: the ask branch counts typed turns on the live branch, and push as git
   const gitPush = [{ question: 'Push to origin/develop?', options: [{ label: 'Push now (Recommended)', description: 'x' }, { label: 'Hold', description: 'y' }] }];
   assert.match(ask([typed('go'), say('s2', 'ok')], gitPush), /named repository, remote or job state/);
 });
+
+// Audit 2026-10-10 C18, 0824440b: the commit / publish ask carried three different recommended options across three
+// homes - the denial among them ('so it is never the recommended next move') - and the user overrode the mark 3 of 3.
+test('C18: the done-close denial sends a commit or publish choice to the checkpoint\'s own ask and mark', () => {
+  const r = close('Pushed the cards to develop. The only open item is the device check.');
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /habits-commit-checkpoint's own ask, marked as its template marks it/);
+  assert.doesNotMatch(r.stderr, /never the recommended/, 'the denial sets no mark of its own');
+});

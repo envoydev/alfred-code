@@ -1869,8 +1869,10 @@ if (payload.hook_event_name === 'Stop') {
       'finished?" from the user 2-22 minutes later. Per alfred-interaction.md, put the pending decision (continue or stop,\n' +
       'which deliverable next) through ONE AskUserQuestion call with the options you already\n' +
       'have in mind, recommended one marked. An uncommitted diff is held for the user\'s review:\n' +
-      'a commit waits for their own word (alfred-git.md), so it is never the recommended\n' +
-      'next move. A deferred item either side still owes - a check the user runs, an id\n' +
+      'a commit waits for their own word (alfred-git.md), and a commit or publish choice is\n' +
+      'habits-commit-checkpoint\'s own ask, marked as its template marks it - one mark in every\n' +
+      'home (audit 2026-10-10 C18, 0824440b: three homes marked three options, the user\n' +
+      'overrode the mark 3 of 3 times). A deferred item either side still owes - a check the user runs, an id\n' +
       'someone sends, a step put off - is pending: it goes in the ask, never under a\n' +
       '\'nothing pending\' line. Only when nothing at all is owed, say so in one line with no\n' +
       'open next action and stop.',
