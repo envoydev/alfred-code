@@ -33,3 +33,17 @@ test('SD04 5b9ce9c5#3 6288ad94#8 bca100bd#5: check rows alone still get the ask,
     assert.match(t, /node "<stack>\/scripts\/agents-md-check\.js" --root \. --outline/);
     assert.match(t, /the report says how many sections lack and how many this run added/);
 });
+
+// ---- SD07: a library skill the user names that this project does not carry -----------------------------------------
+// The stamped usage policy is the one always-on text every project's capabilities rule carries.
+const policyBlock = () => {
+    const lines = read('stack/skills/capture-agent-capabilities/SKILL.md').split('\n');
+    const at = lines.findIndex((l) => l.startsWith('## Usage policy (fixed'));
+    let end = at + 2;
+    while (end < lines.length && !lines[end].startsWith('## ')) end += 1;
+    return flat(lines.slice(at + 2, end).join('\n'));
+};
+test('SD07 2ca8e8ee#10 42951e5b#6 fdce35ae#8: a named skill not installed here is offered through configure, never borrowed', () => {
+    const p = policyBlock();
+    assert.match(p, /A skill the user names that is not installed here \(`Unknown skill`\): say so and offer `\/alfred-code:configure` to add it - never load another project's or a plugin cache's copy/);
+});
