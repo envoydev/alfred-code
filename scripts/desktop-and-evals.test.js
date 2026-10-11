@@ -152,3 +152,35 @@ test('CLAUDE.md states the new gate, the browser flag and the stack serena conte
     assert.doesNotMatch(doc, /Cursor runs serena with `--context ide-assistant`; Claude with `claude-code`\./);
     assert.doesNotMatch(doc, /MCP entries? (?:names?|depends? on) the core/);
 });
+
+// ---------------------------------------------------------------- SD08 - screenshot size and the Observe price
+// Audit 2026-10-11, sessions 7f8803eb and fdce35ae: a Windows Snapshot measured 10-30k chars against ~2.4-2.7k tokens
+// for a full-size screenshot, so 'Snapshot first ... an image is paid for on every later turn' steered to the dearer
+// look, and the 85 full-size screenshots of the two runs were re-sent on every later turn with the scale knob never
+// in view. The scale value itself is observe-first: the stack names WINDOWS_MCP_SCREENSHOT_SCALE and seeds none.
+test('SD08: the Observe step picks the look by the question and names the scale knob', () =>
+{
+    const skill = flat(read('stack/skills/desktop-automation/SKILL.md'));
+    assert.doesNotMatch(skill, /Snapshot first, with its UI tree and without vision\. Ask for vision \(a screenshot\) only/, 'the one-route rule that priced the image as the dear side');
+    assert.match(skill, /\*\*To address an element\*\*[^*]*Snapshot with its UI tree and without vision/);
+    assert.match(skill, /\*\*To check a state\*\*[^*]*on Windows a `Screenshot`/);
+    assert.match(skill, /measured at 10-30k chars/);
+    assert.match(skill, /MacOS-MCP has no Screenshot tool: its image is Snapshot with vision/);
+    assert.match(skill, /`WINDOWS_MCP_SCREENSHOT_SCALE` \(0\.1 to 1\.0, default 1\.0 - full size\)[^.]*the stack seeds no value/);
+    assert.match(skill, /no Snapshot, Screenshot or WaitFor between/);
+    assert.match(skill, /windows-desktop__WaitFor,mcp__plugin_windows-desktop_windows-desktop__Screenshot`/, 'the Windows ToolSearch line loads Screenshot');
+    const win = flat(read('stack/skills/desktop-automation/references/windows.md'));
+    assert.match(win, /The stack seeds no value: how far a 1080p and a 4K desktop can shrink and stay readable is not measured yet\./);
+});
+
+test('SD08: the windows-desktop entry seeds no screenshot scale on either route, and its note names the knob', () =>
+{
+    const manifest = JSON.parse(read('meta/stack-manifest.json'));
+    const row = manifest.mcps.find((m) => m.name === 'windows-desktop');
+    assert.doesNotMatch(row.args, /SCREENSHOT_SCALE/, 'observe-first: no seeded value until a readability measurement');
+    assert.match(row.note, /WINDOWS_MCP_SCREENSHOT_SCALE \(0\.1-1\.0\) is set in the shell that starts Claude Code - the stack seeds no value/);
+    const { DESKTOP_ENV } = require('../stack/mcp/desktop-launch.js');
+    assert.ok(!Object.keys(DESKTOP_ENV).some((k) => /SCALE/.test(k)), 'the plugin entry env seeds none either');
+    const html = read('docs/alfred-code.html').split('\n').find((l) => l.startsWith('  ["windows-desktop", "MCP server"'));
+    assert.match(html, /WINDOWS_MCP_SCREENSHOT_SCALE \(0\.1-1\.0\)[^.]*the stack seeds no value/);
+});

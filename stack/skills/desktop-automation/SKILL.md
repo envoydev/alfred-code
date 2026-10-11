@@ -10,7 +10,7 @@ whatever window is in front, and nothing undoes it. So the run looks before ever
 after it, and it drives only the UI the user asked about.
 
 Where the harness defers MCP tools (Claude Code), load them before the first call:
-`ToolSearch select:mcp__plugin_windows-desktop_windows-desktop__Snapshot,mcp__plugin_windows-desktop_windows-desktop__Click,mcp__plugin_windows-desktop_windows-desktop__Type,mcp__plugin_windows-desktop_windows-desktop__WaitFor`,
+`ToolSearch select:mcp__plugin_windows-desktop_windows-desktop__Snapshot,mcp__plugin_windows-desktop_windows-desktop__Click,mcp__plugin_windows-desktop_windows-desktop__Type,mcp__plugin_windows-desktop_windows-desktop__WaitFor,mcp__plugin_windows-desktop_windows-desktop__Screenshot`,
 plus the other `mcp__plugin_windows-desktop_windows-desktop__*` names the session's own listing shows, on Windows, and on macOS
 `ToolSearch select:mcp__plugin_macos-desktop_macos-desktop__Snapshot,mcp__plugin_macos-desktop_macos-desktop__Click,mcp__plugin_macos-desktop_macos-desktop__Type,mcp__plugin_macos-desktop_macos-desktop__App`,
 plus the other `mcp__plugin_macos-desktop_macos-desktop__*` names the session's own listing shows.
@@ -26,23 +26,36 @@ Not for a web page in a browser, which the browser server drives, or for writing
 
 ## The loop
 
-1. **Observe.** Snapshot first, with its UI tree and without vision. Ask for vision (a screenshot) only
-   when the tree is empty, ambiguous, or the app is one that only takes coordinates (the table
-   below) - an image stays in the context and is paid for on every later turn.
+1. **Observe** - pick the look by the question. Every result, image or text, stays in the context and
+   is paid for on every later turn, so take the smaller one that answers it:
+   - **To address an element** (the next action clicks or types into it): Snapshot with its UI tree
+     and without vision - the tree carries the label ids an action needs.
+   - **To check a state** (the dialog closed, the app is up, the text shows): on Windows a
+     `Screenshot`. A Windows Snapshot lists the taskbar and every open window - measured at 10-30k
+     chars (about 2.6k to 8k tokens) on a consuming project's desktop, one to three full-size
+     screenshots (about 2.4k to 2.7k tokens each at 1728x1046 or 1920x1012). After one empty or
+     desktop-wide tree for the app, observe with Screenshot until an action needs a label id.
+     MacOS-MCP has no Screenshot tool: its image is Snapshot with vision.
+   - **Vision beside the tree** only when the tree is empty, ambiguous, or the app is one that only
+     takes coordinates (the table below).
+
+   The screenshot size is the server's own: Windows-MCP reads `WINDOWS_MCP_SCREENSHOT_SCALE` (0.1 to
+   1.0, default 1.0 - full size) from the shell that starts Claude Code, the stack seeds no value, and
+   the run cannot change it mid-session (`references/windows.md`).
 2. **Act - ONE action.** Address the element the LAST snapshot listed: its label id on Windows, the
    coordinates that snapshot gave on macOS (MacOS-MCP takes coordinates only). Filling a field is ONE
    Type call aimed at the field - it clicks the field itself, and `clear=True` replaces what it holds -
    never a Click and then a Type. Never a coordinate remembered from an earlier snapshot, or guessed
    from a screenshot, once anything moved.
-3. **Verify.** Snapshot again (on Windows, WaitFor when the change takes time) and find the change the
+3. **Verify.** Observe again by step 1's rule (on Windows, WaitFor when the change takes time) and find the change the
    action should have made - the field holds the text, the dialog closed, the row is gone. No change
    means stop and re-observe; never repeat the action blind, never go on to the next one.
 4. **Report** what the last snapshot shows, not what the actions were meant to do.
 
-Hard rule: never two actions without a snapshot between them. The excuses - 'the field is right there
+Hard rule: never two actions without an observation between them. The excuses - 'the field is right there
 in the tree', 'the dialog always opens in the same place', 'one snapshot at the end is enough' - are
 how a keystroke lands in the wrong window. Signs it was skipped: a Click followed by a Type or another
-Click with no Snapshot or WaitFor between; a closing report that names what was typed, not what the
+Click with no Snapshot, Screenshot or WaitFor between; a closing report that names what was typed, not what the
 screen shows.
 
 ## Stay in the UI, stay out of four dialogs
