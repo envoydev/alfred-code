@@ -288,3 +288,31 @@ test('bca100bd#7: a doc path inside a grep pattern is no read; the files grep re
       'the pattern operands (the capabilities doc, B, E, F, H, J) are text grep searches for, never a file it reads');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// d9035363#7: `docs.js seed-ids` added 13 section ids to two docs and the GENERATED DOCS table printed 0 writes; `adr new`
+// and `promote` rewrite docs without a `set` too.
+test('d9035363#7: docs.js seed-ids, adr new and promote count as doc writes - on the files they name, else as their own row', () => {
+  const dir = tmp();
+  try {
+    const DJS = 'node .claude/hooks/docs.js';
+    const calls = [
+      [`cd /c/work/app && ${DJS} seed-ids 2>&1 | tail -15; echo ---; ${DJS} lint 2>&1 | tail -3`, '13 ids added\n---\n0 problems, 2 notes'],
+      [`${DJS} seed-ids`, 'ids added: .alfred/docs/code-style/CODE-STYLE.md (+9)\nids added: .alfred/docs/related-projects/RELATED-PROJECTS.md (+4)\n13 ids added'],
+      [`${DJS} seed-ids`, '0 ids added'],
+      [`${DJS} adr new 'Use one ledger'`, 'created .alfred/docs/decisions/0003-use-one-ledger.md - ADR-0003, status Proposed: write its Context, Decision and Consequences\nindex rewritten: .alfred/docs/decisions/DECISIONS.md (3 records)'],
+      [`${DJS} promote feature-x`, 'ARCHITECTURE#overview: merged\nARCHITECTURE#data: conflict (both changed)'],
+      [`${DJS} promote feature-y`, 'ARCHITECTURE#data: conflict (both changed)'],
+    ];
+    const rows = [human(T(0), 'go'), asst('m1', T(1), calls.map(([c], k) => sh(`d${k}`, c))), ...calls.map(([, out], k) => res(T(2), `d${k}`, out))];
+    const t = run([write(dir, rows)]).main.docTouches;
+    const w = Object.fromEntries(Object.entries(t).filter(([, d]) => d.bashWrites).map(([k, d]) => [k, d.bashWrites]));
+    assert.deepStrictEqual(w, {
+      '(docs.js seed-ids - section ids added, files not named)': 1,
+      'code-style/CODE-STYLE.md': 1,
+      'related-projects/RELATED-PROJECTS.md': 1,
+      'decisions/0003-use-one-ledger.md': 1,
+      'decisions/DECISIONS.md': 1,
+      '(docs.js promote - sections folded into mainline)': 1,
+    }, '0 ids added and an all-conflict promote write nothing');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

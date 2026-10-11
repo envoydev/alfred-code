@@ -706,7 +706,7 @@ const RUNTIME_HEAD_RE = /^(?:python[\d.]*|node|perl|ruby|deno|bun)(?=\s|$)/;
 const ARGV_READ_RE = /\bsys\.argv\b|\bprocess\.argv\b|\bARGV\b|\$ARGV\b/;
 const SCRIPT_WRITE_RE = /\bopen\([^)]*,\s*(?:mode\s*=\s*)?["'][wa]\+?b?["']|\.write_(?:text|bytes)\(|\bwriteFileSync\(|\bFile\.write\(|\bopen\s*\(\s*my\s+\$\w+\s*,\s*["']>/;
 // `node <path>/docs.js <verb> ...` at a command word.
-const DOCS_JS_HEAD_RE = /^node\s+["']?(?:\S*[/\\])?docs\.js["']?\s+(show|toc|set|where)(?=\s|$)/;
+const DOCS_JS_HEAD_RE = /^node\s+["']?(?:\S*[/\\])?docs\.js["']?\s+(show|toc|set|where|seed-ids|promote|adr)(?=\s|$)/;
 // A tool result as the text the model read: a string, or the text blocks of a block array.
 function plainResult(c) {
   if (!c) return '';
@@ -742,6 +742,8 @@ function resolveAt(anchor, p) {
 // `where` lists the covering sections - one orientation lookup row. A show of a ref that resolves to nothing prints no
 // path and counts nothing, as docs-session.js reads it.
 const DOCS_WHERE_ROW = '(docs.js where - section lookup)';
+const DOCS_SEED_ROW = '(docs.js seed-ids - section ids added, files not named)';
+const DOCS_PROMOTE_ROW = '(docs.js promote - sections folded into mainline)';
 function docsJsTouches(text, verbs) {
   const out = [];
   const seen = new Set();
@@ -759,6 +761,18 @@ function docsJsTouches(text, verbs) {
     }
   }
   if (verbs.has('where') && /^\S+#\S+ - /m.test(String(text))) out.push([DOCS_WHERE_ROW, 'bashReads']);
+  // The verbs that REWRITE docs without a `set` (audit 2026-10-11, session d9035363: `seed-ids` added 13 section ids to
+  // two docs and the table printed 0 writes). `adr new` names each file it created or rewrote; `seed-ids` names a file
+  // only on a per-file `ids added: <path> (+N)` line, else the run is one row of its own, as a `promote` that folded
+  // sections into mainline is (its result lines name a section, never a path).
+  const write = (r) => { if (r && !seen.has(`w:${r}`)) { seen.add(`w:${r}`); out.push([r, 'bashWrites']); } };
+  if (verbs.has('adr')) for (const m of String(text).matchAll(/^(?:created|index rewritten:|seeded) (\S+\.md)\b/gm)) write(rel(m[1]));
+  if (verbs.has('seed-ids')) {
+    const named = [...String(text).matchAll(/^ids added: (\S+\.md) \(\+\d+\)/gm)];
+    for (const m of named) write(rel(m[1]));
+    if (!named.length && /^([1-9]\d*) ids added$/m.test(String(text))) write(DOCS_SEED_ROW);
+  }
+  if (verbs.has('promote') && /^\S+#\S+: (?:added|merged)\b/m.test(String(text))) write(DOCS_PROMOTE_ROW);
   return out;
 }
 
