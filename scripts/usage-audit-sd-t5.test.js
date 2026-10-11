@@ -43,6 +43,20 @@ const policyBlock = () => {
     while (end < lines.length && !lines[end].startsWith('## ')) end += 1;
     return flat(lines.slice(at + 2, end).join('\n'));
 };
+// ---- SD13: Windows shell idioms (Git Bash ships no jq; MSYS path conversion; PowerShell from Bash) -----------------
+test('SD13 177c5743#3 e90a1845#2 42951e5b#7 7f8803eb#9: JSON through node -e, rev:path with conversion off, PowerShell from a .ps1', () => {
+    const nav = flat(read('stack/rules/alfred-navigation.md'));
+    assert.match(nav, /queried \(a `node -e` projection - Git for Windows ships no `jq` - or `grep -n`, then a ranged Read\)/);
+    assert.match(nav, /prefix a `git show <rev>:<path>` with `MSYS2_ARG_CONV_EXCL='\*'`, or path conversion rewrites it/);
+    assert.match(nav, /run PowerShell as a quoted-heredoc \(`<<'EOF'`\) `\.ps1` via `-File "\$\(cygpath -w <file>\)"`, never a double-quoted `-Command` \(Bash expands its `\$_`\)/);
+    for (const rel of ['stack/rules', 'stack/skills/capture-usage-report', 'stack/skills/capture-agent-capabilities', 'stack/skills/habits-adjust-agents-md'])
+    {
+        const walk = (dir) => fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(`${dir}/${e.name}`) : e.name.endsWith('.md') ? [`${dir}/${e.name}`] : []));
+        for (const f of walk(rel)) assert.doesNotMatch(read(f), /\bjq\s+(-[a-z]+\s+)?'/, `${f} prescribes a jq command`);
+    }
+    assert.match(flat(read('stack/skills/capture-usage-report/references/run-mechanics.md')), /node, never `jq` - Git for Windows ships none/);
+});
+
 // ---- SD16: the security review reads the full change set without moving the index ------------------------------------
 test('SD16 42951e5b#3: the review read is git diff HEAD plus each untracked file against /dev/null - never add -N or reset', () => {
     const t = flat(read('stack/rules/alfred-security.md'));

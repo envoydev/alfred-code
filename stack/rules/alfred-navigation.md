@@ -19,7 +19,7 @@ description: House baseline - code navigation and reading. Always-on (no paths),
 - A symbol its language server cannot resolve (a large or SDK-heavy C# solution indexes slowly) falls back to the `LSP` plugin, then to a scoped grep reported as name-matched, not resolved. The navigation server keeps symbol lookup, `rename_symbol`, `safe_delete_symbol` and the seat memory handoff; every other edit goes through Edit / Write, the tools the edit hooks watch.
 - `Active language servers: []` is a run-level fact: say so once, take that fallback, never re-issue the call class this run, and hand the fact to the seats you dispatch next.
 - A language the navigation server's `project.yml` (`<data root>/serena/`) does not list takes the fallback from its first call.
-- A large JSON / YAML / lock / fixture file is queried (`jq '.path'`, `grep -n`, then a ranged Read), never read whole.
+- A large JSON / YAML / lock / fixture file is queried (a `node -e` projection - Git for Windows ships no `jq` - or `grep -n`, then a ranged Read), never read whole.
 - A large symbol is fetched WITHOUT its body first (signature, children), then read by range.
 - `get_symbols_overview` takes ONE file, never a directory - list the directory first; on C# pass `depth: 2` (the default stops at the namespace, so it returns only its name; 2 reaches the type members, nested-type members need 3; a top-level-statements file returns `{}` at any depth).
 - An EMPTY reference result for a symbol that plausibly has callers is suspect (a multi-tsconfig monorepo hides cross-lib callers): cross-check with a grep before saying 'no callers'.
@@ -35,7 +35,7 @@ description: House baseline - code navigation and reading. Always-on (no paths),
 - zsh also aborts on a bare word opening with `=` (`echo =====` looks up a command `====`): quote it, `echo '====='`. It never word-splits `$VAR`, so a command plus flags held in one variable runs as one word - use a function or an array.
 - A splice (`sed -i`, an in-place python or perl replace) is for a mechanical rename across many sites, never an edit Edit / Write can make; it counts its anchor first and replaces only when the count is the one it expects.
 - Read `$?` on the very next line, with `set -o pipefail` before a pipe (bash and zsh both honour it; `${PIPESTATUS[0]}` reads empty in zsh); never `<cmd> || echo none`, which launders a failure into an empty result. A scan used as evidence of ABSENCE runs a must-match positive control in the same call, and resolves its tool absolutely or checks it with `type` first.
-- On Windows a Git Bash `/tmp/x` path is one native `node` cannot open: pass it through `cygpath -w`, or write under `$TEMP`.
+- On Windows (Git Bash): pass a `/tmp/x` path to native `node` through `cygpath -w` (or write under `$TEMP`); prefix a `git show <rev>:<path>` with `MSYS2_ARG_CONV_EXCL='*'`, or path conversion rewrites it; run PowerShell as a quoted-heredoc (`<<'EOF'`) `.ps1` via `-File "$(cygpath -w <file>)"`, never a double-quoted `-Command` (Bash expands its `$_`).
 - Scratch code goes outside the tracked tree (the session scratchpad or the OS temp dir), or into a gitignored dir inside the repo when an ESM script must import the project's `node_modules`. An interrupted compound write may already have run - check the target before trusting the rejection.
 
 ## When the target is ambiguous
