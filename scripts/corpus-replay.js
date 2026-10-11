@@ -43,7 +43,7 @@ const UPE_MATCHER = (() => {
     return row ? new RegExp(row.matcher.slice('@UserPromptExpansion:'.length)) : null;
   } catch { return null; }
 })();
-const HOLD_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Agent', 'Task', 'Bash', 'PowerShell', 'Monitor'];
+const HOLD_TOOLS = ['Agent', 'Task'];
 const ROUTES = [
   { hook: 'guard-protected-force-push.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell', 'Monitor'], deny: true },
   { hook: 'guard-catastrophic-rm.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell', 'Monitor'], deny: true },

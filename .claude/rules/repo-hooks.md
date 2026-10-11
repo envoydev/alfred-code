@@ -529,8 +529,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     expansion shows its reason to the user only; the chained offer is spent only once an ask is answered after it, so a
     double-submitted command re-injects on the live branch); `SessionStart` matcher `compact` - an AUTOMATIC compaction
     only, a typed `/compact` gets just the two lines below - names the summary's 'continue without asking' line as
-    superseded and leaves a one-shot HOLD (`guard-fresh-compact-*`): the first changing call after it (`Write` / `Edit` /
-    `MultiEdit` / `NotebookEdit` / `Agent` / `Task`, the shell route, a `Skill`) is denied with this session's measured
+    superseded and leaves a one-shot HOLD (`guard-fresh-compact-*`): the first changing call after it that this hook is
+    wired on (`Agent` / `Task`, a `Skill`; the file tools and the shell route carry only their two dispatchers, one
+    process per call - 2.1.5 M3 - so the hold reaches an edit or a shell call once a dispatcher runs it) is denied with this session's measured
     carry and cold floor until an ask is answered or the turn writes 'single short step', released with no deny when a
     resume would recover too little, nobody is at the terminal, a seat made the call or it has denied twice (audit
     2026-10-10 C09: the injection alone lost to the summary line in six sessions), plus two lines: answer in
