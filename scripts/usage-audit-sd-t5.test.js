@@ -43,6 +43,13 @@ const policyBlock = () => {
     while (end < lines.length && !lines[end].startsWith('## ')) end += 1;
     return flat(lines.slice(at + 2, end).join('\n'));
 };
+// ---- SD10: the offer route ------------------------------------------------------------------------------------------
+test('SD10 d56562c7#1: an offer to make a change goes through AskUserQuestion; a prose want-me-to close is blocked', () => {
+    const t = flat(read('stack/rules/alfred-interaction.md'));
+    assert.match(t, /No closing offer to elaborate; an offer to MAKE a change goes through AskUserQuestion - the stop guard blocks a prose 'want me to \.\.\.\?' close\./);
+    assert.doesNotMatch(t, /an offer to MAKE a change is fine/);
+});
+
 // ---- SD13: Windows shell idioms (Git Bash ships no jq; MSYS path conversion; PowerShell from Bash) -----------------
 test('SD13 177c5743#3 e90a1845#2 42951e5b#7 7f8803eb#9: JSON through node -e, rev:path with conversion off, PowerShell from a .ps1', () => {
     const nav = flat(read('stack/rules/alfred-navigation.md'));
