@@ -28,7 +28,10 @@ close all run on this one gate.
    on it as hard as on a red test, and lint plus typecheck green says nothing about it.
 2. **Quote what the run proves.** A GREEN run needs the summary line, not `--verbose` - tail long
    runs to the verdict. A RED run is the opposite case - its stack traces and parse errors are the
-   diagnosis, earned cost, never trimmed to the verdict line.
+   diagnosis, earned cost, never trimmed to the verdict line. A claim about a NAMED test inside a run
+   ('X passes in full-suite order', 'the other 37 fail for Y') quotes that test's own line from the
+   run's saved log, found by its name (`grep -n '<test name>' <log>`); a claim about every failure
+   counts and reads the whole list - a `head` of it proves the lines it printed and nothing past them.
 3. **Scoped while iterating, the full suite once.** While iterating on a failure, run the ONE
    failing test, file or project - the SCOPED test command this project's AGENTS.md records beside
    the full-suite one (a single project, a test filter, a spec path). The whole suite runs once, at
@@ -46,4 +49,5 @@ Go back to step 1 on any of these:
 - 'Should pass now' or 'this fixes it', with no run after the change.
 - A run quoted from before the last edit.
 - A green claim over a red run, an unread run, or a pipe that hid the verdict.
+- A claim about a named test, or about all the failures, resting on a `head` of the log that never printed it.
 - A test, a warning or a check switched off on the way to green.

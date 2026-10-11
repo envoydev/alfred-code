@@ -60,6 +60,20 @@ Resume: next task 1
   with no test of its own says why (`test: covered by task 2`, `test: none - config only`).
 - `acceptance:` is a command someone can run and a result they can read; 'works' is not a result.
 
+A documentation plan - pages, sections or docs files, no product code - takes the documentation card:
+four fields in place of `files`, `anchors`, `traps`, `test`, `acceptance` and `log_points`, the status
+marks and header unchanged.
+
+```text
+### Task 1 - <the page or section, and what changes in it>
+
+- status: TODO
+- target: <the page, section or docs file> (create | modify)
+- change: <what a reader will find different, one or two lines>
+- evidence: <the code, config or source each claim rests on - file:symbol or URL> located this session
+- verification: <how the result is checked - a read-back of the written or published page, a link check>
+```
+
 ## What the build and the gates add
 
 The design writes the header, the fit, the cards at `status: TODO` and the ledger. The rest is

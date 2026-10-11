@@ -152,6 +152,25 @@ test('42951e5b#2: a command-changing fix lands only with its proof quoted; a hed
     assert.match(vp, /a fix hedged on an assumption \('if the project lacks that configuration, say so'\) is a finding marked `unverified`, left in the plan as written for the build to prove, never applied in-step/);
 });
 
+// 5984019e#7: 'Redo passes in full-suite order' rested on `grep ... | head -8` of 39 failure names; the other 31 were
+// never read, and 'the other 37 are the extension going silent' had no log check.
+test('5984019e#7: a per-test claim quotes that test\'s own log line, and a head of the list proves only what it printed', () =>
+{
+    const gate = flat(read('stack/skills/habits-done-gate/SKILL.md'));
+    assert.match(gate, /A claim about a NAMED test inside a run \('X passes in full-suite order', 'the other 37 fail for Y'\) quotes that test's own line from the run's saved log, found by its name/);
+    assert.match(gate, /a `head` of it proves the lines it printed and nothing past them/);
+    assert.match(gate, /A claim about a named test, or about all the failures, resting on a `head` of the log that never printed it\./);
+});
+
+// 177c5743#5: 31 documentation plans adapted the code-only task card on their own.
+test('177c5743#5: a documentation plan has its own card - target, change, evidence, verification', () =>
+{
+    const pw = read('stack/skills/habits-plan-writing/SKILL.md');
+    const card = (/A documentation plan[\s\S]*?```text\n([\s\S]*?)```/.exec(pw) || [])[1] || '';
+    assert.deepStrictEqual([...card.matchAll(/^- (\w+):/gm)].map((m) => m[1]), ['status', 'target', 'change', 'evidence', 'verification']);
+    assert.match(flat(pw), /four fields in place of `files`, `anchors`, `traps`, `test`, `acceptance` and `log_points`/);
+});
+
 // 177c5743#4: 29 fork seats spent ~61.6M of ~69.2M input tokens re-reading the parent; seats $20.44 against main $17.73.
 test('177c5743#4: the mode choice prices a fork against a briefed seat', () =>
 {
