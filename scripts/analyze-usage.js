@@ -3453,7 +3453,6 @@ function hookJoinStats(main, agents, hookLog, tools) {
   const firstMs = ms(hookLog.firstTs);
   const lastMs = ms(hookLog.lastTs);
   const allTs = [main, ...agents.map((a) => a.stats)].flatMap((src) => src.toolCallTs || []);
-  const inWin = allTs.filter((ts) => ms(ts) >= firstMs - HOOK_LATENCY_MS && ms(ts) <= lastMs + HOOK_LATENCY_MS).length;
   // Anchor coverage to the ACTIVE window (after a mid-file /clear) - the raw span counted a
   // dead 23h50m gap as uncovered session time, reporting ~6% coverage for a ~96%-covered
   // 89-minute work window (measured).
@@ -3464,17 +3463,12 @@ function hookJoinStats(main, agents, hookLog, tools) {
   // A quiet tail (zero calls after the ledger's last row) and a real coverage gap read the
   // same in percentages - count the tail's calls so the report can tell them apart
   // (measured: an idle 38%-of-session tail with 0 tool calls was reported as unlogged activity).
-  // `lastTs + HOOK_LATENCY_MS` on a string CONCATENATES ('...Z' + 250 = '...Z250'), so this was
-  // always false too and the quiet-tail line printed unconditionally.
-  const tailCalls = allTs.filter((ts) => ms(ts) > lastMs + HOOK_LATENCY_MS).length;
-  // CALL coverage leads, wall clock follows: a session whose last hour is one idle await_summary
-  // reads as 38% time-covered and 100% call-covered, and the second number is the true one.
-  const callPct = allTs.length ? Math.round((100 * inWin) / allTs.length) : 100;
   // Per-side join. A call the harness rejects before PreToolUse leaves no ledger row, and a ledger
   // row can have no transcript call (an ask the transcript never wrote) - a count-based 'unmatched'
   // cancels the two into a false 40 vs 40 (measured). Match each in-window call to the nearest
   // unused row of the same tool within the latency budget and list the leftovers on each side.
-  const allCalls = [main, ...agents.map((a) => a.stats)].flatMap((src) => src.toolCallIdx || []);
+  // (a stats object with stamps and no call index - an older dump - still counts its calls by stamp)
+  const allCalls = [main, ...agents.map((a) => a.stats)].flatMap((src) => ((src.toolCallIdx || []).length ? src.toolCallIdx : (src.toolCallTs || []).map((ts) => ({ ts }))));
   const rowsIdx = (hookLog.rowsIdx || []).map((r) => ({ ts: r.ts, tool: r.tool, id: r.id || null, detail: r.detail || null, ms: ms(r.ts), used: false }));
   const unmatchedCalls = [];
   let matchedCalls = 0;
@@ -3490,6 +3484,7 @@ function hookJoinStats(main, agents, hookLog, tools) {
   const matchedById = joinedById.size;
   const otherDetail = (c, r) => !!(c.detail && r.detail && c.detail !== r.detail && !/redacted/.test(`${c.detail}${r.detail}`));
   const timeLeft = [];
+  const joinedByTime = new Set();
   for (const c of allCalls) {
     if (joinedById.has(c)) continue;
     const t = ms(c.ts);
@@ -3511,7 +3506,7 @@ function hookJoinStats(main, agents, hookLog, tools) {
     // Two rows of the same tool within 100ms of each other cannot be told apart by time, and the
     // rows carry no tool_use_id to break the tie - so neither is joined.
     const ambiguous = best && runnerUp && Math.abs(runnerUp.d - best.d) <= 100;
-    if (best && !ambiguous) { best.r.used = true; matchedCalls += 1; } else timeLeft.push({ c, ambiguous: !!ambiguous });
+    if (best && !ambiguous) { best.r.used = true; matchedCalls += 1; joinedByTime.add(c); } else timeLeft.push({ c, ambiguous: !!ambiguous });
   }
   // Pass 3 - an older row (no id) the time budget missed: the same tool naming the same detail (the Bash description, the
   // file's basename, the skill), written between the call and its result - PreToolUse fires in that span, however late a
@@ -3529,13 +3524,26 @@ function hookJoinStats(main, agents, hookLog, tools) {
     // leftover call of that tool reaches it.
     const lone = !c.detail && cands.length === 1 && !timeLeft.some((o) => o.c !== c && o.c.tool === c.tool && inSpan(cands[0], spanOf(o.c)));
     const r = c.detail ? cands[0] : lone ? cands[0] : null;
-    if (r) { r.used = true; matchedByDetail += 1; continue; }
+    if (r) { r.used = true; matchedByDetail += 1; joinedByTime.add(c); continue; }
     unmatchedCalls.push({ ts: c.ts, tool: c.tool, ambiguous });
     if (ambiguous) ambiguousCalls += 1;
   }
   const unmatchedRows = rowsIdx.filter((r) => !r.used).map((r) => ({ ts: r.ts, tool: r.tool }));
+  // A call a pass JOINED is covered whatever its stamp: Windows PreToolUse lag ran 788-5,616ms on 6 of 13 calls of one
+  // session, so a joined call stamped before the ledger's first row read 'outside the ledger window' and printed the
+  // false 'wired mid-session' cause (audit 2026-10-11, session 5b9ce9c5). Only an UNJOINED call is judged by its stamp.
+  const joined = (c) => joinedById.has(c) || joinedByTime.has(c);
+  const inTsWindow = (c) => ms(c.ts) >= firstMs - HOOK_LATENCY_MS && ms(c.ts) <= lastMs + HOOK_LATENCY_MS;
+  const inWin = allCalls.filter((c) => joined(c) || inTsWindow(c)).length;
+  const lagJoined = allCalls.filter((c) => joined(c) && !inTsWindow(c)).length;
+  // `lastTs + HOOK_LATENCY_MS` on a string CONCATENATES ('...Z' + 250 = '...Z250'), so this was
+  // always false too and the quiet-tail line printed unconditionally.
+  const tailCalls = allCalls.filter((c) => !joined(c) && ms(c.ts) > lastMs + HOOK_LATENCY_MS).length;
+  // CALL coverage leads, wall clock follows: a session whose last hour is one idle await_summary
+  // reads as 38% time-covered and 100% call-covered, and the second number is the true one.
+  const callPct = allTs.length ? Math.round((100 * inWin) / allTs.length) : 100;
   return { trTools, coverage: {
-    inWin, callPct, pct, calls: allTs.length, outside: allTs.length - inWin, tailCalls, unmatched: Math.max(0, inWin - hookLog.rows),
+    inWin, callPct, pct, calls: allTs.length, outside: allTs.length - inWin, tailCalls, lagJoined, unmatched: Math.max(0, inWin - hookLog.rows),
     latencyMs: HOOK_LATENCY_MS, matchedCalls: matchedCalls + matchedById + matchedByDetail, matchedById, matchedByTime: matchedCalls, matchedByDetail, ambiguousCalls,
     unmatchedCallCount: unmatchedCalls.length, unmatchedCalls: unmatchedCalls.slice(0, 8),
     unmatchedRowCount: unmatchedRows.length, unmatchedRows: unmatchedRows.slice(0, 8),
@@ -3885,7 +3893,7 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
       console.log(`  coverage: ledger window ${hookLog.firstTs} → ${hookLog.lastTs} spans ~${j.coverage.pct}% of the session`);
       console.log(`  cross-check: ${j.coverage.callPct}% of tool calls are inside the ledger window - ${j.coverage.inWin} of ${j.coverage.calls}${j.coverage.calls !== j.trTools ? ` (${j.trTools} in the file; the rest belong to the fork prefix)` : ''} - vs ${hookLog.rows} ledger rows`);
       if (j.coverage.outside > 0) console.log(`  ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (${j.coverage.tailCalls} after its last row${j.coverage.tailCalls === 0 ? ' - a quiet tail, not lost coverage' : ''}) - two causes, both real: a ledger wired mid-session legitimately misses the head, and a call the HARNESS rejected before PreToolUse (a classifier denial, a schema failure) never reaches a hook at all and can have no row`);
-      console.log(`  joined: ${j.coverage.matchedCalls} call(s) - ${j.coverage.matchedById} by tool_use_id, ${j.coverage.matchedByTime} by tool + timestamp within ${j.coverage.latencyMs}ms, ${j.coverage.matchedByDetail} by detail (same tool and detail, between the call and its result)`);
+      console.log(`  joined: ${j.coverage.matchedCalls} call(s) - ${j.coverage.matchedById} by tool_use_id, ${j.coverage.matchedByTime} by tool + timestamp within ${j.coverage.latencyMs}ms, ${j.coverage.matchedByDetail} by detail (same tool and detail, between the call and its result)${j.coverage.lagJoined ? `; ${j.coverage.lagJoined} of them stamped outside the ledger window by hook lag, counted covered` : ''}`);
       if (j.coverage.unmatchedCallCount) console.log('  ' + j.coverage.unmatchedCallCount + ' in-window call(s) UNJOINED - no row carrying its tool_use_id, none of the same tool within ' + j.coverage.latencyMs + 'ms, none naming its detail before its result' + (j.coverage.ambiguousCalls ? ` (${j.coverage.ambiguousCalls} of them ambiguous: two rows of that tool sit equally close)` : '') + ': ' + j.coverage.unmatchedCalls.map((c) => c.tool + '@' + c.ts + (c.ambiguous ? ' (ambiguous)' : '')).join(', ') + ' - a call the harness rejected before PreToolUse leaves no row, so unjoined is reported rather than guessed');
       if (j.coverage.unmatchedRowCount) console.log('  ' + j.coverage.unmatchedRowCount + ' ledger row(s) with no transcript call: ' + j.coverage.unmatchedRows.map((c) => c.tool + '@' + c.ts).join(', ') + ' - an ask or a call the transcript never wrote');
       if (j.coverage.unmatched > 0) console.log(`  ${j.coverage.unmatched} in-window call${j.coverage.unmatched === 1 ? '' : 's'} with no ledger row - check each call's own tool_result for a Blocked:/error string (harness-level blocks and input-validation failures never reach PreToolUse) before calling it a gap`);
@@ -4160,7 +4168,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
       out.push(`- Coverage: ledger window ${hookLog.firstTs} → ${hookLog.lastTs} spans ~${j.coverage.pct}% of the session.`);
       out.push(`- Cross-check: ${j.coverage.callPct}% of tool calls are inside the ledger window - ${j.coverage.inWin} of ${j.coverage.calls}${j.coverage.calls !== j.trTools ? ` (${j.trTools} in the file; the rest belong to the fork prefix)` : ''} - vs ${hookLog.rows} ledger rows.`);
       if (j.coverage.outside > 0) out.push(`- ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (${j.coverage.tailCalls} after its last row${j.coverage.tailCalls === 0 ? ' - a quiet tail, not lost coverage' : ''}) - two causes, both real: a ledger wired mid-session legitimately misses the head, and a call the HARNESS rejected before PreToolUse (a classifier denial, a schema failure) never reaches a hook and can have no row.`);
-      out.push(`- joined: ${j.coverage.matchedCalls} call(s) - ${j.coverage.matchedById} by \`tool_use_id\`, ${j.coverage.matchedByTime} by tool + timestamp within ${j.coverage.latencyMs}ms, ${j.coverage.matchedByDetail} by detail (same tool and detail, between the call and its result)`);
+      out.push(`- joined: ${j.coverage.matchedCalls} call(s) - ${j.coverage.matchedById} by \`tool_use_id\`, ${j.coverage.matchedByTime} by tool + timestamp within ${j.coverage.latencyMs}ms, ${j.coverage.matchedByDetail} by detail (same tool and detail, between the call and its result)${j.coverage.lagJoined ? `; ${j.coverage.lagJoined} of them stamped outside the ledger window by hook lag, counted covered` : ''}`);
       if (j.coverage.unmatchedCallCount) out.push('- ' + j.coverage.unmatchedCallCount + ' in-window call(s) UNJOINED - no row carrying its `tool_use_id`, none of the same tool within ' + j.coverage.latencyMs + 'ms, none naming its detail before its result' + (j.coverage.ambiguousCalls ? ` (${j.coverage.ambiguousCalls} ambiguous: two rows of that tool sit equally close)` : '') + ': ' + j.coverage.unmatchedCalls.map((c) => c.tool + '@' + c.ts + (c.ambiguous ? ' (ambiguous)' : '')).join(', ') + ' - an unjoinable call is reported unjoined, never joined to a neighbouring row. A call the harness rejected before PreToolUse leaves no row at all.');
       if (j.coverage.unmatchedRowCount) out.push('- ' + j.coverage.unmatchedRowCount + ' ledger row(s) with no transcript call: ' + j.coverage.unmatchedRows.map((c) => c.tool + '@' + c.ts).join(', ') + ' - an ask or a call the transcript never wrote.');
       if (j.coverage.unmatched > 0) out.push(`- ${j.coverage.unmatched} in-window call${j.coverage.unmatched === 1 ? '' : 's'} with no ledger row - check each call's own tool_result for a Blocked:/error string (harness-level blocks and input-validation failures never reach PreToolUse) before calling it a gap.`);

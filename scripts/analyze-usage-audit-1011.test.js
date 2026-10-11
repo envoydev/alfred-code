@@ -71,3 +71,33 @@ test('ae38c08f#5: a PreToolUse rewrite is counted per tool and names its hook be
     assert.match(md, /\| Bash \| 2 \| 07:00:02, 07:00:04 \| 07:00:02 shell-guards\.js \|/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// 5b9ce9c5#7: Windows PreToolUse lag ran 788-5,616ms on 6 of 13 calls; the call joined by its own tool_use_id still read
+// 'outside the ledger window' and the report printed a false 'ledger wired mid-session' cause.
+test('5b9ce9c5#7: a call joined by any pass is covered whatever its stamp; only an unjoined call is judged by time', () => {
+  const dir = tmp();
+  try {
+    const ms = (sec, frac) => `2026-07-15T07:00:${String(sec).padStart(2, '0')}.${frac}Z`;
+    const rows = [
+      human(ms(0, '000'), 'go'),
+      asst('m1', ms(0, '100'), [sh('c1', 'dotnet build', { description: 'Build the solution' })]),
+      res(ms(7, '000'), 'c1', 'ok'),
+      asst('m2', ms(10, '000'), [tool('c2', 'Read', { file_path: 'C:\\work\\app\\src\\A.cs' })]),
+      res(ms(10, '400'), 'c2', 'x'),
+      asst('m3', ms(30, '000'), [sh('c3', 'git status', { description: 'Show status' })]),
+      res(ms(30, '500'), 'c3', 'x'),
+    ];
+    const file = write(dir, rows);
+    const ledger = path.join(dir, 'tools-usage.jsonl');
+    fs.writeFileSync(ledger, [
+      { ts: ms(5, '716'), session: 's', tool: 'Bash', detail: 'Build the solution', cwd: WIN_CWD, tool_use_id: 'c1', agent_id: null },   // 5.6s of lag, the ledger's first row
+      { ts: ms(10, '300'), session: 's', tool: 'Read', detail: 'A.cs', cwd: WIN_CWD, tool_use_id: 'c2', agent_id: null },
+    ].map(line).join(''));
+    const cov = run([file, '--hook-log', ledger]).hookLog.coverage;
+    assert.deepStrictEqual([cov.matchedById, cov.inWin, cov.outside, cov.tailCalls, cov.lagJoined, cov.callPct], [2, 2, 1, 1, 1, 67]);
+    const out = text([file, '--hook-log', ledger]);
+    assert.match(out, /cross-check: 67% of tool calls are inside the ledger window - 2 of 3/);
+    assert.match(out, /1 call outside the ledger window \(1 after its last row\)/, 'only the unjoined tail call is outside');
+    assert.match(out, /joined: 2 call\(s\) - 2 by tool_use_id.*; 1 of them stamped outside the ledger window by hook lag, counted covered/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
