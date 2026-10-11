@@ -56,6 +56,12 @@ test('SD09 d9035363#5: a docs cleanup keeps the hook ledgers and flow/ state, or
     assert.match(t, /The hooks' ledgers \(`tools-usage\/`, `hook-blocks\/`, `history\/`\) are the only record of what ran and what the guards denied, and `flow\/` is live per-session state: a cleanup keeps them, or its ask names that loss - never 'regenerable'\./);
 });
 
+// ---- SD16: a run of unknown length is watched on its failure lines, not only for its exit ---------------------------
+test('SD16 7f8803eb#5: a suite of unknown length arms Monitor on its failure lines plus a quiet alert; exit-only is for a run whose end is all that matters', () => {
+    const t = flat(read('stack/rules/alfred-quality-gates.md'));
+    assert.match(t, /One `run_in_background` command whose end is all that matters needs nothing more - its exit re-invokes you; a suite of unknown length \(failures show long before its end\), a condition inside a run or across several arms the `Monitor` tool when you start it - on the failure lines plus an alert when the output goes quiet/);
+});
+
 // ---- SD13: Windows shell idioms (Git Bash ships no jq; MSYS path conversion; PowerShell from Bash) -----------------
 test('SD13 177c5743#3 e90a1845#2 42951e5b#7 7f8803eb#9: JSON through node -e, rev:path with conversion off, PowerShell from a .ps1', () => {
     const nav = flat(read('stack/rules/alfred-navigation.md'));

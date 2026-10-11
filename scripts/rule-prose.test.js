@@ -404,7 +404,7 @@ test('C12: a pasted secret serves its one call only, and a documented seed is ci
 test('C25 / C31 / C07: one background command needs no Monitor, a red run is logged once, a completeness verdict scopes itself', () =>
 {
     const gates = injected('alfred-quality-gates');
-    assert.match(gates, /One `run_in_background` command needs nothing more - its exit re-invokes you; a condition inside a run or across several arms the `Monitor` tool when you start it/);
+    assert.match(gates, /One `run_in_background` command whose end is all that matters needs nothing more - its exit re-invokes you; .*a condition inside a run or across several arms the `Monitor` tool when you start it/);
     assert.match(gates, /never a foreground `until` \/ `while` sleep loop/);
     assert.match(gates, /A red test or build run is captured once to a scratch log \(`<cmd> > <scratch>\/run\.log 2>&1; tail -n 60 <scratch>\/run\.log`\); every later look greps that log, never a re-run\./);
     assert.match(gates, /A verdict that something is complete against a reference \(parity with another app, everything a spec lists\) leads with what its evidence covers/);
