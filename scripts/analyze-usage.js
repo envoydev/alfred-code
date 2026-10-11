@@ -66,6 +66,7 @@ const fmt = (n) => {
   return String(Math.round(n));
 };
 const approxTok = (chars) => Math.round(chars / 4);
+const sharePct = (part, whole) => `${((100 * part) / whole).toFixed(1)}%`;
 const ACTIVITY_ROW_TYPES = new Set(['user', 'assistant', 'system', 'attachment']);
 // The stack's orchestration flows and their phases (guard-fresh-session-start.js ORCHESTRATION, skills half): a Skill
 // call of one of these opens a phase; any other skill loaded while one is open serves it.
@@ -1782,6 +1783,7 @@ async function analyzeTranscript(file, window) {
   };
   let prevCtx = null;
   let prevMsgReg = null;           // the previous API message's folded usage - its output is in the next context too
+  let liveImgTok = 0;              // measured image tokens still in context - re-sent on every message until a reset
   let pending = [];               // tool results since the previous counted assistant msg
   // One real compaction emits TWO lines (a system compactMetadata + a user isCompactSummary,
   // ms apart) - counting both doubled the number in four audited bundles. Count boundaries;
@@ -1862,6 +1864,7 @@ async function analyzeTranscript(file, window) {
   };
   const openCompactionTracker = (ts) => {
     afterCompaction = true;
+    liveImgTok = 0;                // the summary carries no image
     s.efficiency.compactionRereads.push({ ts: ts || null, before: new Set(readPaths), seen: new Set(), files: 0, chars: 0 });
   };
                                    // call means the user gated a NEW phase - never fold it as
@@ -2205,6 +2208,7 @@ async function analyzeTranscript(file, window) {
         // read as a multi-day session at ~6% ledger coverage when the real work window was
         // ~89 min at ~96% (measured) - record the boundary so printers can show both.
         if (m[1] === 'clear' && o.timestamp) s.clearTs = o.timestamp;
+        if (m[1] === 'clear') liveImgTok = 0;
       }
     }
 
@@ -2259,13 +2263,17 @@ async function analyzeTranscript(file, window) {
           // An image result is billed as pixels, never as its base64 text: what it cost is the context growth of the turn
           // that carried it, net of the text results and the previous answer's output (audit 2026-10-10, b35afe70: 70
           // screenshots read as 'Read ~933' and a spike cause '~2 tok', where the growth said ~64k).
+          // The CARRY: every image already in context is re-sent as cache-read on this message too, until a compaction
+          // or a /clear drops it - priced on arrival only, 29 screenshots read '~78.2k tok' where the carry was ~6.5M
+          // (audit 2026-10-11, session 7f8803eb, 12.6% of its cache-read), and no waste analysis named them.
+          if (!foreign && liveImgTok && ctx > 0) s.imageCarryTok = (s.imageCarryTok || 0) + liveImgTok;
           const imgN = pending.reduce((n, p) => n + (p.images || 0), 0);
           let imgTok = 0;
           if (imgN && prevCtx != null && ctx - prevCtx > 0) {
             const textTok = approxTok(pending.reduce((n, p) => n + p.chars, 0));
             imgTok = Math.max(0, ctx - prevCtx - textTok - (prevMsgReg ? prevMsgReg.u.out : 0));
             // a copied fork prefix is the parent's bill: its spike still names the cause, the total does not take it
-            if (!foreign) { s.imageTok = (s.imageTok || 0) + imgTok; s.imagesMeasured = (s.imagesMeasured || 0) + imgN; }
+            if (!foreign) { s.imageTok = (s.imageTok || 0) + imgTok; s.imagesMeasured = (s.imagesMeasured || 0) + imgN; liveImgTok += imgTok; }
           }
           if (prevCtx != null && ctx - prevCtx > 0) {
             s.spikes.push({ ts: o.timestamp, delta: ctx - prevCtx, ctx, causes: summarizeCauses(pending, imgTok) });
@@ -2869,7 +2877,10 @@ function imageLine(main, agents) {
   const by = {};
   for (const x of srcs) for (const [name, t] of Object.entries(x.toolCalls || {})) if (t.images) by[name] = (by[name] || 0) + t.images;
   const per = Object.entries(by).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ');
-  return `images ${n} in tool results (${per}) ~${fmt(tok)} tok, from the context growth of the turns that carried ${measured} of them - never counted as text in the results column`;
+  const carry = srcs.reduce((k, x) => k + (x.imageCarryTok || 0), 0);
+  const cr = srcs.reduce((k, x) => k + ((x.total && x.total.cacheRead) || 0), 0);
+  const carried = carry ? ` - that is their ARRIVAL; then CARRIED ~${fmt(carry)} tok of cache-read, re-sent on every later message until a compaction or /clear dropped them${cr ? ` (${sharePct(carry, cr)} of cache-read)` : ''}` : '';
+  return `images ${n} in tool results (${per}) ~${fmt(tok)} tok, from the context growth of the turns that carried ${measured} of them${carried} - never counted as text in the results column`;
 }
 // Calls whose input a PreToolUse hook REWROTE (`updatedInput`), by hook, and each error such a call returned with the
 // hook named - one line both renderers print under the TOOLS table. Without it an error the rewrite caused read as
@@ -3694,6 +3705,10 @@ function efficiencyRows(main, agg, blockLedger) {
     const share = floorShare(main);
     const own = floorPromptTok(main);
     rows.push({ practice: 'standing floor', measured: `~${fmt(main.floorCtx)} tok/msg${share != null ? `, ~${share}% of the context sent (cache-read + cache-write + input)` : ''}${own ? `, of which the first prompt ~${fmt(own)} (install ~${fmt(main.floorCtx - own)})` : ''}`, tests: 'the always-on set is the one lever on this number - lint check 33 caps it, /alfred-code:status reports it per install' });
+  }
+  if (main.imageResults) {
+    const carry = main.imageCarryTok || 0;
+    rows.push({ practice: 'image carry', measured: `${main.imageResults} image(s) in the main session: ~${fmt(main.imageTok || 0)} tok on arrival (${main.imagesMeasured || 0} measured), ~${fmt(carry)} tok carried as cache-read by the later messages${carry && main.total.cacheRead ? `, ${sharePct(carry, main.total.cacheRead)} of cache-read` : ''}`, tests: 'an image is paid on arrival and again on every later message until a compaction or /clear - a smaller or cropped capture, or reading the UI as text, cuts the carry, not just the arrival' });
   }
   rows.push({
     practice: 'cache continuity',

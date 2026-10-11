@@ -238,3 +238,30 @@ test('5984019e#8: an ask\'s question is an answer surface, and a named suite wit
     assert.match(text([file]), /green claims +1 of 3 claim\(s\) that a check passed landed in a turn that ran no check \(2 of the claims in an ask's question\) - at: 07:00:01/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// 7f8803eb#8: 29 screenshots priced on arrival only ('~78.2k tok') while their carry - each re-sent as cache-read on
+// every later message until a compaction - was ~6.50M (12.6%), so no waste analysis or verdict named them.
+test('7f8803eb#8: an image is priced on arrival AND as the cache-read it is carried for, until a compaction drops it', () => {
+  const dir = tmp();
+  try {
+    const img = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'A'.repeat(4000) } };
+    const at = (id, ts, cr, content) => ({ type: 'assistant', timestamp: ts, cwd: WIN_CWD, message: { id, model: 'claude-sonnet-5', usage: usage(1, 0, cr, 100), content } });
+    const rows = [
+      human(T(0), 'check the screens'),
+      at('m1', T(1), 10000, [tool('s1', 'mcp__plugin_desk_desk__Screenshot', {}), tool('s2', 'mcp__plugin_desk_desk__Screenshot', {})]), // mcp-fixture
+      { type: 'user', timestamp: T(2), cwd: WIN_CWD, message: { content: [{ type: 'tool_result', tool_use_id: 's1', content: [img] }, { type: 'tool_result', tool_use_id: 's2', content: [img] }] } },
+      at('m2', T(3), 12100, [{ type: 'text', text: 'arrived' }]),   // +2,100: 100 of output, ~1,999 the two images
+      at('m3', T(4), 12200, [{ type: 'text', text: 'carried once' }]),
+      at('m4', T(5), 12300, [{ type: 'text', text: 'carried twice' }]),
+      { type: 'system', timestamp: T(6), compactMetadata: { trigger: 'auto' } },
+      at('m5', T(7), 5000, [{ type: 'text', text: 'after the compaction - dropped' }]),
+    ];
+    const file = write(dir, rows);
+    const { main } = run([file]);
+    assert.deepStrictEqual([main.imageTok, main.imageCarryTok], [1999, 3998], 'arrival once; carried on m3 and m4; nothing after the compaction');
+    const out = text([file]);
+    assert.match(out, /images 2 in tool results \(mcp__plugin_desk_desk__Screenshot 2\) ~2\.0k tok, from the context growth of the turns that carried 2 of them - that is their ARRIVAL; then CARRIED ~4\.0k tok of cache-read, re-sent on every later message until a compaction or \/clear dropped them \(7\.7% of cache-read\)/); // mcp-fixture
+    assert.match(out, /image carry +2 image\(s\) in the main session: ~2\.0k tok on arrival \(2 measured\), ~4\.0k tok carried as cache-read by the later messages, 7\.7% of cache-read/);
+    assert.match(text([file, '--report-md']), /then CARRIED ~4\.0k tok of cache-read/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
