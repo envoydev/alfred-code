@@ -482,3 +482,57 @@ test('I3: the seed holding the user\'s own lines under a renamed H1 is the proje
     fs.writeFileSync(path.join(withAgents, '.claude/AGENTS.md'), agentsMdBody({ projectRoot: withAgents, sourceDir: path.join(__dirname, '..') }));
     assert.match(cli(withAgents, ['--list']).stdout, /unfilled/, 'the import the installer writes under the H1 is the installer\'s');
 });
+
+// Audit 2026-10-11 SD04 (sessions e7c8cbb6, b3f8193f, bca100bd, 6288ad94, 5b9ce9c5, 5f9fec85): 3 to 4 rows per run, every one
+// correct text, and one 825k detour that reworded a correct line to silence the check. Three shapes, each replayed here.
+const SHIPPED_TEMPLATE = fs.readFileSync(path.join(__dirname, '..', 'stack', 'AGENTS.template.md'), 'utf8');
+
+test('SD04: a bare name in a list of glob patterns is a pattern, never a claimed path - the rule name the list routes to is still checked', () =>
+{
+    const root = tree({ 'Directory.Build.props': '', '.claude/rules/dotnet-repair-agents.md': '' });
+    const list = '- `**/*.csproj`, `**/*.sln`, `Directory.Build.props`, `Directory.Packages.props`, `**/*.targets`, `nuget.config` (and every `.cs`/`.xaml` touch) -> `dotnet-repair-agents.md` - routes a broken build.';
+    const text = ['# Orders', '', '## Rules', '', list, '- `**/*.ts` or `tsconfig.app.json` -> `angular-repair-agents.md`'].join('\n');
+    assert.deepStrictEqual(kinds(run(root, text)), ['6 rule angular-repair-agents.md'], 'the list names attach patterns; the routed rule is still held to .claude/rules');
+    const prose = ['# Orders', '', 'Sources match `src/**/*.cs`; the solution config is `Gone.props`.'].join('\n');
+    assert.deepStrictEqual(kinds(run(root, prose)), ['3 path Gone.props'], 'a glob elsewhere on the line, past prose, makes no list of the path');
+});
+
+test('SD04: a path its own line places in the parent directory is read from there - and is a row when it is not there either', () =>
+{
+    const parent = tree({ 'run_app.bat': '', 'proj/src/': '' });
+    const root = path.join(parent, 'proj');
+    const line = (name) => `- **Build/run**: open the solution and build. A convenience script \`${name}\` exists at the parent directory.`;
+    assert.deepStrictEqual(kinds(run(root, ['# Orders', '', line('run_app.bat')].join('\n'), { file: '.claude/AGENTS.md' })), []);
+    assert.deepStrictEqual(kinds(run(root, ['# Orders', '', line('gone_app.bat')].join('\n'), { file: '.claude/AGENTS.md' })), ['3 path gone_app.bat']);
+    assert.deepStrictEqual(kinds(run(root, ['# Orders', '', 'A convenience script `run_app.bat` sits beside the solution.'].join('\n'), { file: '.claude/AGENTS.md' })), ['3 path run_app.bat'],
+        'a line that places it nowhere else is read from the project only');
+});
+
+test('SD04: a line pointing at a generated rule is that pointer, not the outline - a copied outline sentence elsewhere still is', () =>
+{
+    const root = tree({ '.claude/rules/alfred-project-agent-capabilities.md': '' });
+    const pointer = '- MCP/skill/agent routing is not hand-filled here - it lives in the generated `.claude/rules/alfred-project-agent-capabilities.md`; re-run the capture after an install.';
+    const text = ['# Orders', '', '## Stack', '', pointer, '- .NET 10, WPF.'].join('\n');
+    assert.deepStrictEqual(kinds(run(root, text, { file: '.claude/AGENTS.md', template: SHIPPED_TEMPLATE })), []);
+    const copied = ['# Orders', '', '## Setup', '', '- what a machine needs before build and test work: the SDK / runtime versions, nothing more.'].join('\n');
+    assert.deepStrictEqual(run(root, copied, { file: '.claude/AGENTS.md', template: SHIPPED_TEMPLATE }).map((f) => `${f.line} ${f.kind}`), ['5 template']);
+});
+
+test('SD04 --outline: each numbered outline section with the heading that holds it, or lacks - informational, exit 0', () =>
+{
+    const body = ['# Orders', '', 'A billing service over SQL Server.', '', '## Stack', '', '- .NET 10.', '', '## Build and run commands', '', '- `dotnet build`',
+        '', '### Testing', '', '- `dotnet test`', '', '## Rules', '', '- none'].join('\n');
+    const root = tree({ '.claude/AGENTS.md': body }, { git: true });
+    const r = cli(root, ['--outline']);
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    const rows = r.stdout.trim().split('\n');
+    assert.strictEqual(rows.length, 13, r.stdout);
+    assert.match(rows[0], /^\.claude\/AGENTS\.md: outline 1\. What this project is - has \(line 3\)$/);
+    assert.match(rows[1], /^\.claude\/AGENTS\.md: outline 2\. Stack - has \(line 5 '## Stack'\)$/);
+    assert.match(rows[2], /^\.claude\/AGENTS\.md: outline 3\. Setup - lacks$/);
+    assert.match(rows[3], /^\.claude\/AGENTS\.md: outline 4\. Commands - has \(line 9 '## Build and run commands'\)$/);
+    assert.match(rows[11], /^\.claude\/AGENTS\.md: outline 12\. Testing approach - has \(line 13 '### Testing'\)$/);
+    assert.strictEqual(rows.filter((l) => / - lacks$/.test(l)).length, 9);
+    const bare = tree({ 'CLAUDE.md': '# Orders\n\n## Stack\n' }, { git: true });
+    assert.match(cli(bare, ['--outline']).stdout, /^CLAUDE\.md: outline 1\. What this project is - lacks$/m, 'an H1 with no paragraph under it says nothing about the project');
+});

@@ -7,9 +7,15 @@
 //   node scripts/agents-md-check.js [--root <dir>] [--file <path> ...] [--template <file>]
 //   node scripts/agents-md-check.js --list [--root <dir>]   - the files it would check, each with its size,
 //                                                             the untouched seed marked; nothing checked
+//   node scripts/agents-md-check.js --outline [--root <dir>] [--file <path> ...]
+//                                                           - per file, each numbered section of the template's
+//                                                             outline with the heading that holds it, or `lacks`;
+//                                                             informational, exit 0 (a lacks row is a candidate
+//                                                             addition, never a finding)
 //
 //   path        - a path the file names does not exist (a code span, an @import, a relative link); a
-//                 clause that denies it ('No `x`') claims nothing
+//                 clause that denies it ('No `x`') claims nothing, a name in a list of glob patterns is a
+//                 pattern, and a line placing it in the parent directory is read from there too
 //   command     - a command's program does not resolve on PATH or in the project (node_modules/.bin, a
 //                 package.json dependency, a dotnet tool manifest, a script in the folder) - a shell
 //                 block, or a code span under a commands / setup / build / run heading
@@ -31,7 +37,7 @@ const { parseJson } = require('./install/json-file.js');
 const TEMPLATE_DEFAULT = path.join(__dirname, '..', 'stack', 'AGENTS.template.md');
 // The seeded file is AGENTS.md; a project that already keeps a CLAUDE.md keeps it checked all the same.
 const INSTRUCTION_FILES = ['AGENTS.md', 'CLAUDE.md'];
-const USAGE = 'usage: node agents-md-check.js [--root <dir>] [--file <path> ...] [--template <file>] | --list [--root <dir>]';
+const USAGE = 'usage: node agents-md-check.js [--root <dir>] [--file <path> ...] [--template <file>] | --list [--root <dir>] | --outline [--root <dir>] [--file <path> ...]';
 
 // Folders that hold someone else's files or a build's output - never an AGENTS.md or CLAUDE.md of the project's own. The
 // data root's default (`.alfred`: the stack's docs and its servers' data) and the 2.0.0 server folders too.
@@ -215,6 +221,31 @@ function dependencyNames(root, tree)
 // A line the user kept on purpose carries this marker in a comment, and no row is raised on it again -
 // validate re-asked the same kept rows every run (audit 2026-10-10 C24).
 const KEEP_MARKER = /<!--\s*agents-md-check:\s*keep\s*-->/;
+
+// Code spans joined only by list separators - `a`, `b` or `c` - are one list; a list holding a glob is a list of attach
+// patterns, and a bare name in it (`nuget.config` beside `**/*.csproj`) is a pattern, never a claimed path. Audit
+// 2026-10-11 SD04: two such rows on every run in six sessions, all correct text.
+const LIST_SEP = /^\s*(?:[,/]\s*)?(?:(?:or|and)\s+)?$/i;
+function patternSpans(line, spans)
+{
+    const out = new Set();
+    let group = [];
+    const close = () => { if (group.some((k) => spans[k].text.includes('*'))) for (const k of group) out.add(k); group = []; };
+    spans.forEach((s, k) =>
+    {
+        const prev = spans[k - 1];
+        if (group.length && !LIST_SEP.test(line.slice(prev.col + prev.text.length + 2, s.col))) close();
+        group.push(k);
+    });
+    close();
+    return out;
+}
+// A line that places what it names in the parent directory ('exists at the parent directory', 'one level up') is read
+// from there as well (audit 2026-10-11 SD04: a run script beside the repo raised a row on every run of four sessions).
+const PARENT_DIR = /\bparent\s+(?:directory|folder|dir)\b|\b(?:one|a)\s+(?:level|folder|directory)\s+(?:up|above)\b/i;
+// A line naming a generated rule (`alfred-project-*.md`, `project-*.md`) points at it, as the outline asks - its words
+// are no copied authoring text (audit 2026-10-11 SD04, session 6288ad94: a correct pointer reworded to silence the row).
+const GENERATED_RULE_REF = /(?:^|[\s`/])(?:alfred-)?project-[a-z0-9-]+\.md\b/;
 
 // True when the clause holding columns [from, to) of `prose` denies what it names.
 function denied(prose, from, to)
@@ -439,19 +470,21 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
         }
 
         const spans = spansOf(line);
+        const patterns = patternSpans(line, spans);
         // A code span MENTIONS a placeholder or a TODO (`__DOCS_ROOT__` is stamped by the installer);
         // only the prose around it is left unfilled.
         const prose = line.replace(/`[^`\n]+`/g, (m) => ' '.repeat(m.length));
         for (const m of prose.matchAll(PLACEHOLDER)) add(n, m.index, 'placeholder', m[0]);
         for (const m of prose.matchAll(/\bTODO\b/g)) add(n, m.index, 'todo', 'TODO');
+        const bases = PARENT_DIR.test(prose) ? [...new Set([base, root, path.dirname(base), path.dirname(root)])] : [base, root];
 
-        for (const span of spans)
+        for (const [k, span] of spans.entries())
         {
             if (rules && rules.open && ruleSpan(span.text, n, span.col)) continue;
             // A dot-token written onto a word (appsettings`.local`) is that word's suffix.
             const suffix = span.text.trim().startsWith('.') && /[\w*]/.test(line[span.col - 1] || '');
-            const p = suffix ? null : pathOf(span.text, docs);
-            if (p && !denied(prose, span.col, span.col + span.text.length + 2) && pathMissing(p.path, [base, root], { anchored: p.anchored }))
+            const p = suffix || patterns.has(k) ? null : pathOf(span.text, docs);
+            if (p && !denied(prose, span.col, span.col + span.text.length + 2) && pathMissing(p.path, bases, { anchored: p.anchored }))
                 add(n, span.col, 'path', p.path.replace(/^\?/, ''), movedWhy(p.path.replace(/^\?/, '')));
             if (COMMAND_HEADING.test(heading) && /\s/.test(span.text.trim()))
                 for (const program of programsOf(span.text)) checkProgram(program, n, span.col);
@@ -521,6 +554,7 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
                 if (!shingles.has(pw.slice(k, k + SHINGLE).map((x) => x.k).join(' '))) continue;
                 let end = k + SHINGLE;
                 while (end < pw.length && shingles.has(pw.slice(end - SHINGLE + 1, end + 1).map((x) => x.k).join(' '))) end++;
+                if (pw.slice(k, end).some((x) => GENERATED_RULE_REF.test(lines[x.n - 1]))) { k = end - 1; continue; }
                 const run = pw.slice(k, end).map((x) => x.w).join(' ');
                 add(pw[k].n, 0, 'template', run.length > 80 ? `${run.slice(0, 77)}...` : run);
                 k = end - 1;
@@ -543,11 +577,13 @@ function main(argv, { out = (s) => process.stdout.write(s), err = (s) => process
     let templateFile = TEMPLATE_DEFAULT;
     const files = [];
     let list = false;
+    let outline = false;
     for (let i = 0; i < argv.length; i++)
     {
         const flag = argv[i];
         const value = argv[i + 1];
         if (flag === '--list') { list = true; continue; }
+        if (flag === '--outline') { outline = true; continue; }
         if (['--root', '--file', '--template'].includes(flag) && value && !value.startsWith('--'))
         {
             if (flag === '--root') root = path.resolve(value);
@@ -560,6 +596,7 @@ function main(argv, { out = (s) => process.stdout.write(s), err = (s) => process
         return 2;
     }
     if (list) return listMain(root, files.length ? files : findFiles(root), { out, err, template: readFileOrNull(templateFile) });
+    if (outline) return outlineMain(root, files.length ? files : findFiles(root), { out, err, template: readFileOrNull(templateFile) });
     const template = readFileOrNull(templateFile);
     if (template === null) err(`agents-md-check: template ${templateFile} unreadable - the template-text check did not run\n`);
     const targets = files.length ? files : findFiles(root);
@@ -592,6 +629,61 @@ function listMain(root, targets, { out, err, template = null })
         const lines = text.replace(/\n$/, '').split('\n').length;
         const seeded = unfilledSeed(text, template);
         out(`${file}: ${lines} lines${seeded ? ', the seeded template (unfilled)' : ''}\n`);
+    }
+    return 0;
+}
+
+// The improve pass's section compare, stated by the script (audit 2026-10-11 SD04, session bca100bd: the compare never
+// read the outline and the close said nothing about it). Each numbered section of the template's authoring outline is
+// matched against the file's live `##`-`######` headings by its title words or a common heading for it; section 1 is
+// the paragraph under the H1. A heuristic listing: `lacks` names a candidate addition, which still needs a fact.
+const OUTLINE_STOP = new Set(['what', 'this', 'project', 'is', 'key', 'by', 'the', 'and', 'a', 'of', 'code', 'approach', 'cross', 'cutting']);
+const OUTLINE_ALIASES = {
+    stack: ['tech', 'technology', 'dependency', 'dependencies'], setup: ['prerequisite', 'requirement', 'install', 'installation', 'environment', 'env', 'getting'],
+    commands: ['build', 'run', 'script', 'usage'], files: ['entry', 'entrypoint'], architecture: ['layer', 'module', 'structure', 'design'],
+    patterns: ['idiom'], operational: ['gotcha', 'pitfall', 'caveat', 'runtime'], secrets: ['credential', 'configuration'],
+    conventions: ['style'], testing: ['test'], artifact: ['skill'],
+};
+const stem = (w) => w.toLowerCase().replace(/ing$/, '').replace(/s$/, '');
+// Equal stems, or a prefix of four letters or more (`config` / `configuration`) - a shorter one (`run` / `runtime`) lies.
+const stemMatch = (a, b) => { const [s, l] = a.length <= b.length ? [a, b] : [b, a]; return s === l || (s.length >= 4 && l.startsWith(s)); };
+function outlineSections(template)
+{
+    const block = stripComments(normalize(template || '')).comments.find((c) => /Authoring outline/.test(c)) || '';
+    return [...block.matchAll(/^\s*(\d+)\.\s+(.+?)\s+-\s/gm)].map((m) => ({ n: Number(m[1]), title: m[2].trim() }));
+}
+function outlineMain(root, targets, { out, err, template = null })
+{
+    const sections = outlineSections(template);
+    if (!sections.length) { err('agents-md-check: the template\'s authoring outline is unreadable - no section list to compare against\n'); return 2; }
+    if (!targets.length) { out('agents-md-check: no AGENTS.md or CLAUDE.md in this project\n'); return 0; }
+    for (const file of targets)
+    {
+        let text;
+        try { text = fs.readFileSync(path.join(root, file), 'utf8'); }
+        catch (e) { err(`agents-md-check: ${file} unreadable (${e.code || e.message})\n`); return 2; }
+        const lines = stripComments(normalize(text)).live.split('\n');
+        const heads = [];
+        let intro = 0;
+        let seenH1 = false;
+        lines.forEach((line, i) =>
+        {
+            const h = /^\s{0,3}(#{1,6})\s+(.*)$/.exec(line);
+            if (h && h[1] === '#') { seenH1 = true; return; }
+            if (h) { heads.push({ n: i + 1, text: line.trim(), words: h[2].split(/[^A-Za-z]+/).filter(Boolean).map(stem) }); return; }
+            if (seenH1 && !heads.length && !intro && line.trim() && !line.trim().startsWith('@')) intro = i + 1;
+        });
+        for (const s of sections)
+        {
+            let where = null;
+            if (s.n === 1) where = intro ? `line ${intro}` : null;
+            const keys = s.title.split(/[^A-Za-z]+/).filter((w) => w && !OUTLINE_STOP.has(w.toLowerCase()));
+            const want = [...keys, ...keys.flatMap((w) => OUTLINE_ALIASES[w.toLowerCase()] || [])].map(stem);
+            if (!where && s.n === 1) want.push(...['overview', 'about', 'purpose', 'introduction'].map(stem));
+            const head = where ? null : heads.find((h) => h.words.some((w) => want.some((x) => stemMatch(w, x))));
+            if (head) where = `line ${head.n} '${head.text}'`;
+            out(`${file}: outline ${s.n}. ${s.title} - ${where ? `has (${where})` : 'lacks'}\n`);
+        }
     }
     return 0;
 }

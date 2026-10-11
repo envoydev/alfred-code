@@ -43,7 +43,10 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   on: every named path exists, every command's program resolves on PATH or in the project, no
   placeholder, `TODO` or template text is left, the `## Rules` list matches `.claude/rules/` (a `rule` row: a named
   rule with no file, or - once the list enumerates the install's rules - a file it neither names nor globs; usage audit
-  2026-10-10), and an installer seed still unfilled is named (`--list` marks it). Validate runs the check for drift. Its rows are heuristic (measured 2026-09-26
+  2026-10-10), and an installer seed still unfilled is named (`--list` marks it). A name in a list of glob patterns is a
+  pattern, a path its own line places in the parent directory is read from there, and a line pointing at a generated
+  rule is no template text (audit 2026-10-11 SD04: 4 of 4 rows false in six sessions); `--outline` lists each outline
+  section a file holds or lacks, the improve pass's compare. Validate runs the check for drift. Its rows are heuristic (measured 2026-09-26
   over four real projects: 39 rows with 1 true, 7 rows once the shapes behind the rest were fixed), so
   no ask marks a check-driven fix recommended - the skill offers each one and the user picks; a stale path whose new
   target the run confirmed on disk is a verified fix, not a check row, and joins the recommended option (usage audit
