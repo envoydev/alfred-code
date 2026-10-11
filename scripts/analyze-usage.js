@@ -221,6 +221,12 @@ const CHECK_WINDOW = 40;    // tool calls a check may sit before a commit and st
 // root's server folders count (the default `.alfred`: serena's index and language servers, the browser
 // profiles, a project memory database) - its docs do not.
 const BUILD_DIR_RE = /(?:^|[\/\\])(?:node_modules|bin|obj|dist|coverage|TestResults|target|__pycache__|\.venv|venv|vendor|\.git|\.angular|\.nuget|\.serena|\.playwright|\.alfred-memory|\.alfred[\/\\](?:serena|browser)|\.next|\.nuxt|\.gradle|\.idea|\.vs)(?:[\/\\]|$)|(?:^|[\/\\])(?:package-lock\.json|yarn\.lock|pnpm-lock\.yaml|packages\.lock\.json|Cargo\.lock|poetry\.lock|composer\.lock)$|\.(?:log|min\.js|min\.css|map)$/;
+// A SCRIPT a project keeps under such a folder is its source, not build output: `dist/register_service.bat`, run by two
+// project files' PostBuild steps and named in the run book, scored a build-dir read and fed the avoidable share (audit
+// 2026-10-11, session d56562c7). A dependency tree's own scripts are still the dependency's.
+const SCRIPT_EXT_RE = /\.(?:bat|cmd|ps1|psm1|sh|bash)$/i;
+const DEPENDENCY_TREE_RE = /(?:^|[\/\\])(?:node_modules|vendor|\.venv|venv|\.nuget|__pycache__|\.git)(?:[\/\\]|$)/;
+const isBuildDirRead = (p) => BUILD_DIR_RE.test(p) && !(SCRIPT_EXT_RE.test(p) && !DEPENDENCY_TREE_RE.test(p));
 // The first file a dump verb names - the same read routed through the shell.
 // The shell route: Bash, PowerShell and Monitor (shell-writes.js SHELL_TOOLS - Monitor runs its command under Bash's rules; 2.1.5 final review R8).
 const isShellTool = (name) => name === 'Bash' || name === 'PowerShell' || name === 'Monitor';
@@ -2445,7 +2451,7 @@ async function analyzeTranscript(file, window) {
           else if (isShellTool(c.name) && typeof i.command === 'string') readTarget = shellReadTarget(maskHeredocs(i.command));
           if (readTarget) {
             info.readTarget = readTarget;
-            if (BUILD_DIR_RE.test(readTarget)) info.buildDir = true;
+            if (isBuildDirRead(readTarget)) info.buildDir = true;
             // One file, one key: a relative shell read and an absolute Read of it are the same file (516e653d keyed
             // OrderCompletionHandler.cs twice), resolved against the call's own cwd.
             const key = resolveAt(typeof o.cwd === 'string' && o.cwd ? String(o.cwd).replace(/\\/g, '/') : null, readTarget) || readTarget;

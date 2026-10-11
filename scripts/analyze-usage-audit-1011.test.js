@@ -348,3 +348,25 @@ test('d56562c7#2: offsetting edits read DIFFERS by paragraph, and an expanded pl
     assert.strictEqual(row('tool-run').verdict, 'same', 'a placeholder the harness expanded to a Windows path is no edit');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// d56562c7#3: `cat dist/register_service.bat` - a service-registration script two project files' PostBuild steps call -
+// scored a build-dir read (~626 tok) and fed the avoidable share the TOKEN VERDICT sums.
+test('d56562c7#3: a script under a build-looking folder is source, not a build-dir read; a dependency tree\'s script still is', () => {
+  const dir = tmp();
+  try {
+    const rows = [
+      human(T(0), 'go'),
+      asst('m1', T(1), [
+        sh('b1', 'cat dist/register_service.bat'),
+        sh('b2', 'cat bin/run.sh'),
+        tool('b3', 'Read', { file_path: 'C:\\work\\app\\dist\\Deploy.PS1' }),
+        sh('b4', 'cat node_modules/pkg/install.sh'),
+        sh('b5', 'cat dist/app.js'),
+        sh('b6', 'cat obj/project.assets.json'),
+      ]),
+      ...['b1', 'b2', 'b3', 'b4', 'b5', 'b6'].map((id) => res(T(2), id, 'x'.repeat(100))),
+    ];
+    const b = run([write(dir, rows)]).main.efficiency.buildDirReads;
+    assert.deepStrictEqual([b.calls, Object.keys(b.paths).sort()], [3, ['dist/app.js', 'node_modules/pkg/install.sh', 'obj/project.assets.json']]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
