@@ -42,7 +42,7 @@ Resolve the Execution modes question above NOW, via AskUserQuestion, before anyt
 For each location: a path must exist (relative resolved from the project root), a URL must look like a git remote. An invalid location is reported and skipped, never silently dropped. Note each relation hint - it travels to the agent as a prior, not a verdict.
 
 ### 2. FAN OUT - one analyzer seat per sibling, in parallel
-Dispatch all seats in a single message. Each dispatch prompt carries: the HOST project's root and identity (name + package/assembly ids - read them once from the manifest files first), ONE sibling location, and its hint if given. The agents write no files; their final messages - one YAML entry + evidence + uncertainty each - are your merge input. An agent returning UNVERIFIED fields is a valid result: both tiers record what could not be read.
+Dispatch all seats in a single message. Each dispatch prompt carries: the HOST project's root and identity (name + package/assembly ids - read them once from the manifest files first), ONE sibling location, its hint if given, and the `read_at:` its entry already carries in the doc (a re-capture starts from what changed since). The agents write no files; their final messages - one YAML entry + evidence + uncertainty each - are your merge input. An agent returning UNVERIFIED fields is a valid result: both tiers record what could not be read.
 
 ### 3. MERGE - write <docs-path>/related-projects/RELATED-PROJECTS.md
 `<docs-path>/related-projects/` is a docs domain like every other - it carries its own `watch.json`, so
@@ -54,14 +54,15 @@ the repo rather than leaving it to memory. Nothing here is `notOwned` either - t
 author of `RELATED-PROJECTS.md`, so an ordinary write (or an ordinary `docs.js set` on a branch) is
 always allowed, unlike `decisions/`. Before the write, check for the legacy layout (`## Old installs`).
 
-Consolidate into one doc - apply the `markdown-style` skill so it reads as a
-quick reference. Shape:
+Consolidate into one doc, a quick reference whose shape is fixed verbatim in
+`references/artifact-shapes.md` - no formatting skill loads for it (the docs root belongs to the skill
+that writes it). Shape:
 
 1. The `Captured: <branch>@<short-sha>, <date>` lifecycle stamp, then one opening line - what the doc is: the durable orientation detail for cross-repo work; the always-loaded awareness minimum lives in the generated rule; dynamic findings go to the shared `alfred-memory` MCP instead, tagged with the sibling's own name, never here. Stamp nuance for THIS doc: the entries describe the SIBLING repos as read on that date - the date is the staleness signal (siblings drift on their own), while this repo's branch matters little; re-running the capture for a sibling upserts its entry, which is this doc's whole update path.
 2. **One `##` heading per sibling**, `<!-- id: <slug> -->` and deliberately NO `covers:` - nothing
    in this repo's code should trigger a re-read of a sibling's own characterization (`docs.js lint`
    notes a section that declares no `covers:`, but never fails on one). Each heading carries the
-   house schema entry as a fenced YAML block (location, relation, first_read, seam, its own
+   house schema entry as a fenced YAML block (location, relation, first_read, seam, the seat's `read_at:`, its own
    `captured:` stamp) followed by a short evidence note: what grounds the relation and seam (the
    located files, both sides), plus any uncertainty or UNVERIFIED marker carried over verbatim. Keep
    each note lean - orientation, not an audit.

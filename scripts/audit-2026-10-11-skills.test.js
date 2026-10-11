@@ -171,6 +171,33 @@ test('177c5743#5: a documentation plan has its own card - target, change, eviden
     assert.match(flat(pw), /four fields in place of `files`, `anchors`, `traps`, `test`, `acceptance` and `log_points`/);
 });
 
+// ------------------------------------------------------------------ SD15 - the related-projects capture
+
+// d9035363#3: the seats stamped the sibling's branch@sha against their agent file (the brief asked for it) and ran 12
+// read-only git calls; the prior doc's missing sibling sha forced a date-based drift reconstruction (5 Bash calls).
+test('d9035363#3: the analyzer stamps the sibling\'s read_at and may read its git history, never mutate it', () =>
+{
+    const seat = flat(read('stack/agents/related-project-analyzer.md'));
+    assert.match(seat, /`Bash` reaches it only through READ-ONLY git - `git -C <sibling> rev-parse \| log \| diff \| ls-files \| show`/);
+    assert.match(seat, /\*\*Bash does nothing else\*\*: the read-only git above, the clone and its `rm -rf <scratch>\/<name>` cleanup/);
+    assert.match(seat, /no checkout, fetch, pull, reset or stash/);
+    assert.match(seat, /read_at: <sibling branch>@<short sha> \| n\/a - not a git checkout/);
+    assert.match(seat, /the house schema minus `captured:` \(the caller stamps that per entry at merge, from the host's branch and sha - never you\)/, 'captured: stays the host stamp');
+    const shapes = flat(read('stack/skills/capture-related-projects/references/artifact-shapes.md'));
+    assert.match(shapes, /read_at: main@9f8e7d6 captured: develop@a1b2c3d, 2026-07-24/);
+    assert.match(shapes, /`read_at:` is the other side's provenance: the SIBLING's own `<branch>@<short-sha>`/);
+    const skill = flat(read('stack/skills/capture-related-projects/SKILL.md'));
+    assert.match(skill, /the `read_at:` its entry already carries in the doc \(a re-capture starts from what changed since\)/);
+});
+
+// d9035363#4: the skill said apply markdown-style to the doc; the markdown-docs rule says the generated docs root takes no load.
+test('d9035363#4: the related-projects doc loads no formatting skill - its shape is fixed in artifact-shapes.md', () =>
+{
+    const skill = read('stack/skills/capture-related-projects/SKILL.md');
+    assert.doesNotMatch(skill, /markdown-style/);
+    assert.match(flat(skill), /a quick reference whose shape is fixed verbatim in `references\/artifact-shapes\.md` - no formatting skill loads for it/);
+});
+
 // 177c5743#4: 29 fork seats spent ~61.6M of ~69.2M input tokens re-reading the parent; seats $20.44 against main $17.73.
 test('177c5743#4: the mode choice prices a fork against a briefed seat', () =>
 {
