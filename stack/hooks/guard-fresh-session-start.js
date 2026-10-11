@@ -303,13 +303,13 @@ function livePlan() {
     fs.closeSync(fd);
     const lines = buf.toString('utf8').split('\n');
     for (let i = lines.length - 1; i >= 0; i--) {
-      if (!lines[i].includes('"tool_use"') || !lines[i].includes('plans/')) continue;
+      if (!lines[i].includes('"tool_use"') || !/plans[\\/]/.test(lines[i])) continue;
       let o;
       try { o = JSON.parse(lines[i]); } catch { continue; }
       const blocks = (o && o.message && Array.isArray(o.message.content)) ? o.message.content : [];
       for (let j = blocks.length - 1; j >= 0; j--) {
         const input = blocks[j] && blocks[j].type === 'tool_use' ? blocks[j].input || {} : {};
-        const hit = String(input.file_path || input.command || '').match(/[^\s'"]*plans\/[^\s'"]+\.md/g);
+        const hit = String(input.file_path || input.command || '').match(/[^\s'"]*plans[\\/][^\s'"]+\.md/g);
         if (hit) return hit[hit.length - 1];
       }
     }

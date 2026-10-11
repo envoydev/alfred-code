@@ -206,6 +206,14 @@ test('compact-state: a slash flow is named with its body path, and the compact s
     assert.match(fs.readFileSync(r.state, 'utf8'), /^active flow: none found$/m);
 });
 
+test('compact-state: a Windows plan path - backslashes, as Claude Code writes file_path there - is the live plan (gate, Windows leg)', () =>
+{
+    const p = project();
+    const tp = p.transcript([toolUse('Edit', { file_path: 'C:\\r\\.alfred\\docs\\plans\\2026-10-11-live.md', old_string: 'a', new_string: 'b' })]);
+    p.run({ hook_event_name: 'PreCompact', trigger: 'auto', transcript_path: tp });
+    assert.match(fs.readFileSync(p.state, 'utf8'), /^live plan: C:\\r\\\.alfred\\docs\\plans\\2026-10-11-live\.md$/m);
+});
+
 test('compact-state: an automatic compaction records its context, and the trigger is held under it (C08)', () =>
 {
     const p = project();

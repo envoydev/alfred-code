@@ -2349,14 +2349,15 @@ function flowLine(line, at, state) {
   // Where the newest ANSWERED ask sits: the first stop is the ask with no answer since the newest marker, and the close
   // the one with none since the plan's Completed stamp (audit 2026-10-10, the T4 cross-track receipts).
   if (isUser && line.includes('"tool_result"') && ANY_ANSWER_RE.test(line)) state.askAt = at;
-  if (isAssistant && line.includes('Completed:') && line.includes('plans/') && line.includes('"tool_use"')) {
+  // Either separator: a Windows file_path reads `plans\\` in the raw row and `plans\` parsed (gate, Windows leg, 2026-10-11).
+  if (isAssistant && line.includes('Completed:') && /plans[\\/]/.test(line) && line.includes('"tool_use"')) {
     try {
       for (const b of JSON.parse(line).message.content || []) {
         if (!b || b.type !== 'tool_use') continue;
         const input = b.input || {};
         const target = String(input.file_path || input.notebook_path || input.command || '');
         const body = [input.content, input.new_string, input.command, ...(Array.isArray(input.edits) ? input.edits.map((e) => e && e.new_string) : [])].join('\n');
-        if (/plans\//.test(target) && /(?:^|\n)\s*[-*]?\s*\**Completed:/.test(body)) {
+        if (/(?:^|[\\/])plans[\\/]/.test(target) && /(?:^|\n)\s*[-*]?\s*\**Completed:/.test(body)) {
           Object.assign(state, { completed: at, typedAfter: false, typedAfterAt: -1, completedPlan: input.file_path || null, planAfter: false, editAfterAt: -1, editAfterFile: null });
         }
       }
@@ -2381,7 +2382,7 @@ function flowLine(line, at, state) {
         if (/(?:^|[\\/])plans[\\/]/.test(file) && file !== state.completedPlan) state.planAfter = true;
         else if (state.editAfterAt < 0 && file && !PROSE_FILE_RE.test(file) && !/(?:^|[\\/])(?:\.claude|\.alfred|docs)[\\/]/.test(file)) {
           state.editAfterAt = at;
-          state.editAfterFile = require('path').basename(file);
+          state.editAfterFile = file.split(/[\\/]/).pop();
         }
       }
     } catch { /* a cut row */ }

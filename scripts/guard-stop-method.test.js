@@ -754,3 +754,20 @@ test('flow probes: a source edit under a new prompt after the plan\'s Completed 
     flowStop(ok, transcript(ok, [typed('fix the header'), stamp.row, result(stamp.id, 'ok'), ...steps(ok, [['prompt', 'more'], ['edit', 'src/header.css']])]), 'Done.');
     assert.strictEqual(flowProbes(ok, 'post-close-edit').length, 0, 'a new plan, the same turn as the stamp, a prose file, or no flow - nothing');
 });
+
+test('flow probes: a Windows plan path - backslashes, as Claude Code writes file_path there - is read the same (gate, Windows leg)', () => {
+    const root = project();
+    const plan = 'C:\\proj\\.alfred\\docs\\plans\\2026-10-10-cart.md';
+    const stamp = call('Edit', { file_path: plan, old_string: 'Approved: yes', new_string: 'Approved: yes\nCompleted: 2026-10-10' });
+    const head = [typed('<command-name>/task-solve</command-name>'), stamp.row, result(stamp.id, 'ok')];
+    const edit = call('Edit', { file_path: 'C:\\proj\\src\\header.css', old_string: 'a', new_string: 'b' });
+    const tp = transcript(root, [...head, typed('also fix the header colour'), edit.row, result(edit.id, 'ok')]);
+    flowStop(root, tp, 'The header colour is fixed.');
+    const rows = flowProbes(root, 'post-close-edit');
+    assert.strictEqual(rows.length, 1, 'the backslash plan stamp is read');
+    assert.strictEqual(rows[0].detail.file, 'header.css', 'the basename on either separator');
+    const ok = project();
+    const next = call('Write', { file_path: 'C:\\proj\\.alfred\\docs\\plans\\2026-10-11-header.md', content: '# header' });
+    flowStop(ok, transcript(ok, [...head, typed('also fix the header colour'), next.row, result(next.id, 'ok'), edit.row, result(edit.id, 'ok')]), 'Planned and fixed.');
+    assert.strictEqual(flowProbes(ok, 'post-close-edit').length, 0, 'a new backslash plan file covers the edit');
+});
