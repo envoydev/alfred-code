@@ -90,7 +90,8 @@ test('no skill or seat text runs a bare jq', () =>
     const OTHER_TRACK = new Set(['capture-agent-capabilities', 'capture-usage-report', 'habits-adjust-agents-md']);
     const files = [];
     const walk = (dir) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); if (e.isDirectory()) walk(p); else if (/\.md$/.test(e.name)) files.push(p); } };
-    for (const d of fs.readdirSync(path.join(ROOT, 'stack', 'skills'))) if (!OTHER_TRACK.has(d)) walk(path.join(ROOT, 'stack', 'skills', d));
+    for (const d of fs.readdirSync(path.join(ROOT, 'stack', 'skills'), { withFileTypes: true }))
+        if (d.isDirectory() && !OTHER_TRACK.has(d.name)) walk(path.join(ROOT, 'stack', 'skills', d.name));
     walk(path.join(ROOT, 'stack', 'agents'));
     const bare = /(?:^|[|;&(`]\s*|\$\(\s*)jq\b(?!uery)/m;
     const hits = files.filter((f) => bare.test(fs.readFileSync(f, 'utf8').replace(/--jq\b/g, '')));
