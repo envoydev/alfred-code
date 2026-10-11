@@ -522,8 +522,24 @@ test('D1: on seed=shell every command body prints the refusal and runs no twin',
 // spells a stack entry `@envoydev`: it names the key the core is listed under - the resolve line's
 // `key=`. The resolve line's own row filter (`@envoydev$`, the anchored match it derives `key=` from)
 // is the one place the key is spelled.
+// audit 2026-10-11 (sessions 37d7a42c, 902182d2, 1c66b16d): every downloading command reads the whole protocol first,
+// through Bash; a 30,382-byte copy spilled past the Bash tool's output cap to a tool-results file and was read a second
+// time (~8.0k result, +13.6k context carried on every later message), and 28,910 bytes fit by ~1.1k with nothing holding
+// it there. The PowerShell route moved beside it, read only when bash cannot run; the cap keeps a third of headroom.
+const PROTOCOL_CAP = 20000;
+test(`source-protocol.md, read whole by every command, stays under ${PROTOCOL_CAP} chars; the PowerShell route lives beside it`, () => {
+    const protocol = fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'source-protocol.md'), 'utf8');
+    assert.ok(protocol.length <= PROTOCOL_CAP, `source-protocol.md is ${protocol.length} chars, over the ${PROTOCOL_CAP} cap - move a branch out, as the PowerShell route was`);
+    assert.doesNotMatch(protocol, /```powershell/, 'a PowerShell block belongs in source-protocol-powershell.md');
+    assert.match(protocol, /`source-protocol-powershell\.md`/, 'the protocol names where the PowerShell route lives');
+    const ps = fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'source-protocol-powershell.md'), 'utf8');
+    assert.match(ps, /```powershell\n\$TMP = Join-Path/, 'the PowerShell resolve');
+    for (const name of ['init', 'setup', 'update', 'configure', 'validate', 'uninstall'])
+        assert.match(flat(cmdBody(name)), /source-protocol\.md`?[^.]*(?:ONE Bash `cat`|one Bash `cat`)/, `${name} reads the protocol in one Bash cat`);
+});
+
 test('the command bodies read stack entries under the key the core is listed under, never a literal @envoydev', () => {
-    const files = ['references/source-protocol.md', ...fs.readdirSync(path.join(PLUGIN_DIR, 'commands')).map((f) => `commands/${f}`)];
+    const files = ['references/source-protocol.md', 'references/source-protocol-powershell.md', ...fs.readdirSync(path.join(PLUGIN_DIR, 'commands')).map((f) => `commands/${f}`)];
     for (const file of files)
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, file), 'utf8');

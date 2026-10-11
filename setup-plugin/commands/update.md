@@ -178,7 +178,7 @@ If the user redirects mid-answer and this ask is displaced, re-offer it ONCE whe
 is handled, then proceed on their answer.
 
 **THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing** - the shared contract lives at
-`${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`; read it first and hold the whole run to
+`${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`; read it first, in ONE Bash `cat`, and hold the whole run to
 it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none, use every tool from that snapshot, hand it back
 with `--source` in the install step, and remove `$TMP` on EVERY exit path (fast, slow, blocker,
 or a user 'no'). The protocol's 'Narrate, don't trace' section governs every tool call: quiet

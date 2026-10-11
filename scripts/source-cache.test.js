@@ -81,7 +81,9 @@ function plantPluginCache(home, { version = VERSION, marketplace = 'envoydev', p
 // So run the protocol's OWN snippets against a planted cache and assert they land on: the newest
 // valid entry, the half-written one rejected, nothing fetched.
 function protocolSnippet(lang, index) {
-    const md = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'references', 'source-protocol.md'), 'utf8');
+    // The PowerShell route lives beside the protocol (audit 2026-10-11: the whole-file read spilled past the Bash output cap).
+    const file = lang === 'powershell' ? 'source-protocol-powershell.md' : 'source-protocol.md';
+    const md = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'references', file), 'utf8');
     const blocks = [...md.matchAll(/```(bash|powershell)\n([\s\S]*?)```/g)].filter(m => m[1] === lang);
     assert.ok(blocks[index], `source-protocol.md has no ${lang} block #${index}`);
     return blocks[index][2];

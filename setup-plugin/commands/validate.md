@@ -38,7 +38,7 @@ per message with no ask at all, and one of them authored its own prose decision 
 to the user.
 
 **THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing but a newer release** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`
-before step 1 and hold the whole run to it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none, use
+in ONE Bash `cat` before step 1 and hold the whole run to it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none, use
 `stack-select.js` / the graph / `recommendations.json` / the installer from that snapshot, hand
 the installer `--source "$TMP/repo"` in step 11, and remove `$TMP` per the 'Clean up' section on
 EVERY exit path. Its 'Narrate, don't trace' section governs every tool call: one quiet call per
