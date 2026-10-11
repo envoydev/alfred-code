@@ -370,3 +370,66 @@ test('d56562c7#3: a script under a build-looking folder is source, not a build-d
     assert.deepStrictEqual([b.calls, Object.keys(b.paths).sort()], [3, ['dist/app.js', 'node_modules/pkg/install.sh', 'obj/project.assets.json']]);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// cc87fa6c#3: the install stamp post-dated the session (a later update rewrote it), so the vintage block named no
+// version the session LOADED; ~8 calls went on deriving it by hand from the loaded text.
+test('cc87fa6c#3: the ledger row carries the stack version its hook ran from, and the vintage block names it when no stamp predates the session', () => {
+  const dir = tmp();
+  try {
+    const hookSrc = path.join(__dirname, '..', 'stack', 'hooks', 'instrument-tool-usage.js');
+    const log = path.join(dir, 'ledger.jsonl');
+    const place = (rel) => { const to = path.join(dir, rel); fs.mkdirSync(path.dirname(to), { recursive: true }); fs.copyFileSync(hookSrc, to); return to; };
+    const fire = (hook) => require('node:child_process').spawnSync(process.execPath, [hook], { encoding: 'utf8',
+      input: JSON.stringify({ tool_name: 'Read', tool_input: { file_path: 'C:\\work\\app\\a.ts' }, session_id: 's1' }),
+      env: { ...process.env, ALFRED_CODE_INSTRUMENT: '1', ALFRED_CODE_INSTRUMENT_LOG: log } }).status;
+    const manifest = (root, body) => {
+      fs.mkdirSync(path.join(dir, root, 'setup-plugin', '.claude-plugin'), { recursive: true });
+      fs.writeFileSync(path.join(dir, root, 'setup-plugin', '.claude-plugin', 'plugin.json'), body);
+    };
+    // the plugin route: the manifest two folders above the hook
+    manifest('plug', JSON.stringify({ name: 'alfred-code', version: '9.8.7' }));
+    assert.strictEqual(fire(place('plug/stack/hooks/instrument-tool-usage.js')), 0);
+    // the copy route: the stamp beside `.claude/hooks/`
+    fs.mkdirSync(path.join(dir, 'proj', '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'proj', '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 9.6.5\ninstalled: 2026-07-01T00:00:00Z\n');
+    assert.strictEqual(fire(place('proj/.claude/hooks/instrument-tool-usage.js')), 0);
+    // another plugin's manifest, a torn one and no file at all name nothing, and the row is still written
+    manifest('other', JSON.stringify({ name: 'other', version: '1.0.0' }));
+    assert.strictEqual(fire(place('other/stack/hooks/instrument-tool-usage.js')), 0);
+    manifest('torn', '{"name": "alfred-code", "vers');
+    assert.strictEqual(fire(place('torn/stack/hooks/instrument-tool-usage.js')), 0);
+    assert.strictEqual(fire(place('bare/hooks/instrument-tool-usage.js')), 0);
+    // this checkout's own hook reads its own manifest
+    assert.strictEqual(fire(hookSrc), 0);
+    const own = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version;
+    const hrows = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepStrictEqual(hrows.map((r) => r.version), ['9.8.7', '9.6.5', null, null, null, own]);
+    assert.strictEqual(Object.keys(hrows[0]).pop(), 'version', 'added after the pinned fields');
+
+    // the analyzer: a session whose stamp was written after it, its ledger naming 2.2.2 on 2 of 3 rows
+    const claude = path.join(dir, 'install', '.claude');
+    fs.mkdirSync(path.join(claude, 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(claude, 'rules', 'a.md'), '# a\n');
+    const file = write(dir, [human(T(0), 'go'), asst('m1', T(1), [tool('r1', 'Read', { file_path: 'C:\\work\\app\\a.ts' })]), res(T(2), 'r1', 'x')]);
+    const ledger = (vers) => write(dir, vers.map((v, i) => ({ ts: T(1 + i), session: 's1', tool: 'Read', detail: 'a.ts', cwd: WIN_CWD,
+      tool_use_id: i ? null : 'r1', agent_id: null, ...(v ? { version: v } : {}) })), 'ledger-in.jsonl');
+    const md = (args) => text([file, '--report-md', '--inventory', claude, ...args]);
+    fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'sha: abcdef1234567890\nversion: 2.3.0\ninstalled: 2026-07-16T00:00:00Z\n');
+    const after = md(['--hook-log', ledger(['2.2.2', '2.2.2', null])]);
+    assert.match(after, /\| Stack install \| v2\.3\.0 \(abcdef123456\), stamped 2026-07-16T00:00:00Z - INSTALLED AFTER this session/);
+    assert.match(after, /\| Stack loaded \| v2\.2\.2 on 2 of 3 rows - the tool-usage ledger's `version`/);
+    // no stamp: the install row points at the ledger's version instead of UNKNOWN; a mid-session update is two spans
+    fs.rmSync(path.join(claude, 'alfred-code.stamp'));
+    const gone = md(['--hook-log', ledger(['2.2.2', '2.3.0', '2.3.0'])]);
+    assert.match(gone, /\| Stack install \| no `alfred-code\.stamp` reachable - the Stack loaded row names the version this session's hooks ran from \|/);
+    assert.ok(gone.includes(`| Stack loaded | v2.2.2 on 1 of 3 rows (${T(1)} → ${T(1)}), v2.3.0 on 2 of 3 rows (${T(2)} → ${T(3)}) -`));
+    assert.match(text([file, '--hook-log', ledger(['2.2.2', '2.3.0', '2.3.0'])]), /stack loaded: v2\.2\.2 on 1 of 3 rows/);
+    // a ledger from a hook older than the field, and no ledger at all: UNKNOWN, unchanged
+    for (const args of [['--hook-log', ledger([null, null])], []]) {
+      const old = md(args);
+      assert.match(old, /the install version this session loaded is UNKNOWN/);
+      assert.doesNotMatch(old, /Stack loaded/);
+    }
+    assert.deepStrictEqual(run([file, '--hook-log', ledger(['2.2.2', null])]).hookLog.versions, { '2.2.2': { rows: 1, firstTs: T(1), lastTs: T(1) } });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

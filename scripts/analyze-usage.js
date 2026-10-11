@@ -3101,15 +3101,23 @@ async function analyzeSubagents(sessionFile, window) {
 async function analyzeHookLog(file) {
   const byTool = {}; let rows = 0; let firstTs = null; let lastTs = null;
   const rowsIdx = [];   // { ts, tool } per row - the per-side join needs the rows, not their count
+  // The stack version each row's hook ran from (audit 2026-10-11 SD14): the one record of the install a session
+  // LOADED that survives a later install rewriting the stamp. A row from a hook older than the field carries none.
+  const versions = {};
   await readJsonl(file, (o) => {
     if (!o.tool) return;
     rows++;
     if (o.ts) { if (!firstTs || o.ts < firstTs) firstTs = o.ts; if (!lastTs || o.ts > lastTs) lastTs = o.ts; rowsIdx.push({ ts: o.ts, tool: o.tool, id: o.tool_use_id || null, detail: o.detail || null }); }
+    if (typeof o.version === 'string' && o.version) {
+      const v = versions[o.version] || (versions[o.version] = { rows: 0, firstTs: null, lastTs: null });
+      v.rows += 1;
+      if (o.ts) { if (!v.firstTs || o.ts < v.firstTs) v.firstTs = o.ts; if (!v.lastTs || o.ts > v.lastTs) v.lastTs = o.ts; }
+    }
     const t = byTool[o.tool] || (byTool[o.tool] = { calls: 0, details: {} });
     t.calls += 1;
     if (o.detail) t.details[o.detail] = (t.details[o.detail] || 0) + 1;
   });
-  return { rows, byTool, firstTs, lastTs, rowsIdx };
+  return { rows, byTool, firstTs, lastTs, rowsIdx, versions };
 }
 
 // ---------- report ----------
@@ -4124,6 +4132,8 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
       const top = Object.entries(t.details).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([d, n]) => `${d}×${n}`).join(', ');
       console.log(`  ${pad(tool, 28)} ${rpad(t.calls, 5)}  ${top}`);
     }
+    const ledgerVer = ledgerVersionText(hookLog);
+    if (ledgerVer) console.log(`  stack loaded: ${ledgerVer} (the hook's own read of the install it ran from)`);
     const j = hookJoinStats(main, agents, hookLog, agg.tools);
     if (j.coverage) {
       console.log(`  coverage: ledger window ${hookLog.firstTs} → ${hookLog.lastTs} spans ~${j.coverage.pct}% of the session`);
@@ -4146,8 +4156,18 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
 // sections at the end are the only judgment surface.
 // The vintage block: machine-written, so 'the session broke rule X' is checked against the text
 // the session LOADED instead of the text on disk today.
-function vintageMarkdown(invUse, main, out) {
+// The versions the tool-usage ledger's rows name, in the order they ran: `v2.2.2 on 40 of 40 rows`, a mid-session update
+// as two spans. Null when no row carries one (no ledger, or a hook older than the field).
+function ledgerVersionText(hookLog) {
+  const vs = Object.entries((hookLog && hookLog.versions) || {}).sort((a, b) => String(a[1].firstTs || '').localeCompare(String(b[1].firstTs || '')));
+  if (!vs.length) return null;
+  const span = (r) => (vs.length > 1 && r.firstTs && r.lastTs ? ` (${r.firstTs} → ${r.lastTs})` : '');
+  return vs.map(([ver, r]) => `v${ver} on ${r.rows} of ${hookLog.rows} rows${span(r)}`).join(', ');
+}
+
+function vintageMarkdown(invUse, main, out, hookLog) {
   const v = invUse && invUse.vintage;
+  const ledgerVer = ledgerVersionText(hookLog);
   out.push('## Session vintage', '');
   out.push('_The install this session ran on, not the one on disk today. Every claim that the session broke a rule, skipped a step or ignored a clause is checked against THESE rows: a `DIFFERS` row means the current source is not what the session read, and the claim must quote the loaded body instead._', '');
   out.push('| | |', '|---|---|');
@@ -4158,9 +4178,14 @@ function vintageMarkdown(invUse, main, out) {
     const rel = st.installed && main.lastTs ? (st.installed > main.lastTs ? 'INSTALLED AFTER this session - what is on disk was never what this session loaded'
       : installedDuring(st.installed, main.firstTs, main.lastTs) ? `INSTALLED DURING this session at ${st.installed} - rows before it ran on the prior install` : 'installed before this session ran') : 'install date unknown';
     out.push(`| Stack install | v${st.version || '?'} (${st.sha ? st.sha.slice(0, 12) : 'sha unknown'}), stamped ${when} - ${rel} |`);
+  } else if (ledgerVer) {
+    out.push('| Stack install | no `alfred-code.stamp` reachable - the Stack loaded row names the version this session\'s hooks ran from |');
   } else {
     out.push('| Stack install | no `alfred-code.stamp` reachable - the install version this session loaded is UNKNOWN, do not assume today\'s |');
   }
+  // Written by the instrumentation hook on each call, from the plugin it ran from - so it holds when the stamp is gone
+  // or post-dates the session (audit 2026-10-11 SD14, session cc87fa6c).
+  if (ledgerVer) out.push(`| Stack loaded | ${ledgerVer} - the tool-usage ledger's \`version\`, read by the hook from the install it ran from |`);
   out.push(`| Inventory source | ${(v && v.inventoryWhy) || (invUse && invUse.source.skills_agents_rules) || '-'} |`, '');
   const rows = (v && v.rows) || [];
   if (!rows.length) {
@@ -4261,7 +4286,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
   out.push(`| Hook ledger | ${hookLog ? `joined (${hookLog.rows} rows)` : 'absent - identity attribution unavailable, not inferred'} |`, '');
   if (extraFacts.length) out.push('', ...extraFacts, '');
 
-  vintageMarkdown(invUse, main, out);
+  vintageMarkdown(invUse, main, out, hookLog);
 
   out.push('## Tokens (deduped per API message; ctx/msg = avg context re-sent per call)', '');
   out.push('| scope | input | cache-write | cache-read | output | msgs | ctx/msg |', '|---|---|---|---|---|---|---|');

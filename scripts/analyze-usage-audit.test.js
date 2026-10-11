@@ -287,7 +287,7 @@ test('C07: the ledger row carries tool_use_id and agent_id, and the join reads i
     assert.strictEqual(fire({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1', cwd: '/x', tool_use_id: 'toolu_1', agent_id: 'ag1' }), 0);
     assert.strictEqual(fire({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1' }), 0);
     const hrows = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-    assert.deepStrictEqual(Object.keys(hrows[0]), ['ts', 'session', 'tool', 'detail', 'cwd', 'tool_use_id', 'agent_id'], 'the five pinned fields first, unchanged, then the two added');
+    assert.deepStrictEqual(Object.keys(hrows[0]), ['ts', 'session', 'tool', 'detail', 'cwd', 'tool_use_id', 'agent_id', 'version'], 'the five pinned fields first, unchanged, then the three added');
     assert.deepStrictEqual([hrows[0].tool_use_id, hrows[0].agent_id, hrows[0].detail], ['toolu_1', 'ag1', 'c.ts']);
     assert.deepStrictEqual([hrows[1].tool_use_id, hrows[1].agent_id], [null, null], 'a payload without them writes null');
 

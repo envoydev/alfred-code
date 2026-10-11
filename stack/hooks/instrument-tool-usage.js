@@ -52,6 +52,22 @@ const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0
 // of its shape.
 const hint = (s, cap = 60) => String(s).replace(new RegExp(SECRET_SHAPE.source, 'g'), '[redacted]').slice(0, cap);
 
+// The stack version this hook ran from, read from disk once per call, never from the model: the plugin route's own
+// manifest two folders up (`<plugin root>/setup-plugin/.claude-plugin/plugin.json`), else the copy route's install
+// stamp beside its `.claude/hooks/` folder, else null. A report then names the install a session LOADED when the stamp
+// is gone or was rewritten after it (audit 2026-10-11 SD14: ~8 calls spent deriving one by hand).
+function stackVersion(fs, path) {
+  try {
+    const m = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8'));
+    if (m && m.name === 'alfred-code' && m.version) return String(m.version).slice(0, 40);
+  } catch { /* not the plugin route */ }
+  try {
+    const v = /^version:[ \t]*(\S+)/m.exec(fs.readFileSync(path.join(__dirname, '..', 'alfred-code.stamp'), 'utf8'));
+    if (v) return v[1].slice(0, 40);
+  } catch { /* no stamp beside a copied hook */ }
+  return null;
+}
+
 let raw = '';
 process.stdin.on('data', (d) => (raw += d));
 process.stdin.on('end', () => {
@@ -112,6 +128,7 @@ process.stdin.on('end', () => {
       // subagent the call ran in, null in the main session.
       tool_use_id: ev.tool_use_id || null,
       agent_id: ev.agent_id || null,
+      version: stackVersion(fs, path),
     };
     const dir = process.env.CLAUDE_PROJECT_DIR || ev.cwd || '.';
     // one ledger per session/agent id - the filename matches the transcript's id for the --hook-log join
