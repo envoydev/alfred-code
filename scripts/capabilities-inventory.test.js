@@ -717,3 +717,86 @@ test('policy: a skill is not loaded only for a question the code or the conversa
     assert.ok(skill.includes('never to answer a question the code or the conversation already answers'), 'the policy line');
     assert.ok(!/never to answer a question\.\s/.test(skill), 'the unqualified form is gone');
 });
+
+// Audit 2026-10-11 SD07 (sessions 7be545ce, ce9d4811, both Windows): the Plugins line dropped a plugin the project enables
+// (a case-exact projectPath compare) and stamped another `enabled` while the CLI listed it disabled (the first row that
+// passed the filter decided) - both into the always-on rule, both through --verify. These run on EVERY OS: the input is
+// the Windows shape itself, never a POSIX stand-in.
+const CI = require(SCRIPT);
+
+test('SD07 7be545ce#1: a Windows projectPath is this project whatever its drive or folder case and separators', () =>
+{
+    const rows = CI.parsePluginList(JSON.stringify([
+        { id: 'csharp-lsp@claude-plugins-official', scope: 'project', enabled: true, projectPath: 'c:\\Users\\dev\\Source\\App' },
+        { id: 'csharp-lsp@claude-plugins-official', scope: 'project', enabled: false, projectPath: 'C:\\Users\\dev\\Source\\Other' },
+        { id: 'csharp-lsp@claude-plugins-official', scope: 'project', enabled: false, projectPath: 'C:\\Users\\dev\\Source\\Third' },
+        { id: 'claude-hud@claude-hud', scope: 'user', enabled: true },
+    ]), 'C:/Users/Dev/source/app/');
+    assert.deepStrictEqual(rows.map((r) => [r.name, r.state, r.skipped]), [['claude-hud', 'enabled', 0], ['csharp-lsp', 'enabled', 2]]);
+    assert.strictEqual(CI.projectKey('c:\\Users\\dev\\Source\\App'), CI.projectKey('C:/Users/Dev/source/app/'));
+    assert.notStrictEqual(CI.projectKey('/Repo'), CI.projectKey('/repo'), 'a POSIX path keeps its case: another case is another folder there');
+});
+
+test('SD07 ce9d4811#2: the narrowest row decides, and an `enabled` that is no boolean is no answer', () =>
+{
+    const rows = CI.parsePluginList(JSON.stringify([
+        { id: 'csharp-lsp@claude-plugins-official', scope: 'user', enabled: true },
+        { id: 'csharp-lsp@claude-plugins-official', scope: 'project', enabled: false, projectPath: 'C:\\Work\\App' },
+        { id: 'odd@m', scope: 'project', projectPath: 'C:\\Work\\App' },
+    ]), 'C:\\Work\\App');
+    assert.deepStrictEqual(rows.map((r) => [r.name, r.state, r.scope]), [['csharp-lsp', 'disabled', 'project'], ['odd', 'unclear', 'project']]);
+});
+
+test('SD07 7be545ce#1 ce9d4811#2: the settings cross-check states a disagreement and a settings-only plugin, each as a flag', () =>
+{
+    const settings = new Map([
+        ['csharp-lsp', { on: true, file: 'settings.json', own: true }],
+        ['typescript-lsp', { on: true, file: 'settings.local.json', own: true }],
+        ['account-only', { on: true, file: 'account settings.json', own: false }],
+        ['claude-hud', { on: true, file: 'account settings.json', own: false }],
+    ]);
+    const { rows, flags } = CI.crossCheckPlugins([
+        { name: 'claude-hud', state: 'enabled' },
+        { name: 'csharp-lsp', state: 'disabled', enabled: false },
+        { name: 'odd', state: 'unclear', enabled: 'yes' },
+    ], settings);
+    assert.deepStrictEqual(rows.map((r) => `${r.name} (${r.state})`), [
+        'claude-hud (enabled)',
+        'csharp-lsp (state unclear: CLI disabled / settings enabled in settings.json)',
+        'odd (state unclear: CLI enabled="yes" / settings none)',
+        'typescript-lsp (enabled in .claude/settings.local.json - no CLI row for this path)',
+    ]);
+    assert.strictEqual(flags.length, 3);
+    assert.match(flags[2], /^typescript-lsp: \.claude\/settings\.local\.json enables it, and `claude plugin list` has no row for this path/);
+    const line = rows.map((r) => `${r.name} (${r.state})`).join(', ');
+    assert.deepStrictEqual([...CI.pluginEntries(line).keys()], ['claude-hud', 'csharp-lsp', 'odd', 'typescript-lsp'], 'the line splits back into its entries');
+});
+
+test('SD07: the inventory prints each deciding row and the flags; a settings-only plugin is on the Plugins line', { skip: posixOnly }, () =>
+{
+    const root = project('sd07-inventory');
+    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'csharp-lsp@claude-plugins-official': true } }), -100);
+    const bin = stubCli(path.join(TMP, 'sd07-cli'), { plugins: JSON.stringify([
+        { id: 'superpowers@x', scope: 'user', enabled: true },
+        { id: 'csharp-lsp@claude-plugins-official', scope: 'project', enabled: true, projectPath: '/some/other/repo' },
+    ]) });
+    const { out } = run([], { cwd: root, bin });
+    assert.match(out, /^ {2}csharp-lsp \(enabled in \.claude\/settings\.json - no CLI row for this path\), superpowers \(enabled\)$/m);
+    assert.match(out, /^ {2}decided by superpowers: enabled - row user, no projectPath$/m);
+    assert.match(out, /^FLAG: {6}csharp-lsp: \.claude\/settings\.json enables it/m);
+    assert.match(out, /\/ plugins 2$/m);
+});
+
+test('SD07 ce9d4811#2: --verify fails a Plugins line a fresh probe contradicts, and passes the one it confirms', { skip: posixOnly }, () =>
+{
+    const root = project('sd07-verify');
+    const bin = stubCli(path.join(TMP, 'sd07-verify-cli'), { plugins: JSON.stringify([{ id: 'superpowers@x', scope: 'user', enabled: false }]) });
+    const rule = write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), validRule());
+    const bad = run(['--verify', rule], { cwd: root, bin });
+    assert.strictEqual(bad.status, 1, bad.out);
+    assert.match(bad.out, /plugins:\s+FAIL - the Plugins line contradicts a fresh `claude plugin list` - superpowers: rule enabled, now disabled/);
+    fs.writeFileSync(rule, validRule().replace('superpowers (enabled)', 'superpowers (disabled)'));
+    const good = run(['--verify', rule], { cwd: root, bin });
+    assert.match(good.out, /plugins:\s+ok - 1 plugin\(s\), as a fresh `claude plugin list` reads them/);
+    assert.match(run(['--verify', rule], { cwd: root }).out, /plugins:\s+ok - not compared - CLI absent/);
+});

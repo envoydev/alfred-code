@@ -74,8 +74,9 @@ different report fields.
 The verify parses the frontmatter with node - never PyYAML, which is missing on machines where a run
 died on ModuleNotFoundError and still reported 'frontmatter parses' off a weaker check - and checks
 there is no `paths:` key, that the policy-rev stamp and the policy block came over
-verbatim, that the inventory headings are present, and that every MCP row carries its `first call:`
-line. `node "<caps>" --verify .claude/rules/alfred-project-agent-capabilities.md` re-runs it alone.
+verbatim, that the inventory headings are present, that every MCP row carries its `first call:`
+line, and - run alone - that the Plugins line matches a fresh `claude plugin list`.
+`node "<caps>" --verify .claude/rules/alfred-project-agent-capabilities.md` re-runs it alone.
 
 The block below is a COPY TARGET the script fills, never prose to retype: each `<...>` slot from its
 own printed lines, every `<docs-path>` with the LITERAL `DOCS ROOT` value (the generated rule is a
@@ -142,7 +143,7 @@ Flags:      <one row each, or `none`>
 Then the prose, short - four things, each its own line so none of them is skimmed past:
 
 - **Say `Live from:` the one way it is true on BOTH branches** - an always-on rule loads at session start, not retroactively, so this one governs from the next session and its guidance starts applying at the next `/clear`. It is UNCONDITIONAL and identical whether or not anything was written, and there is no next-run line: a capture is suggested only where its output is stale.
-- **The flags are MECHANICAL - read them off the block, do not eyeball them**: the script's `seat families` line against its path-scoped rule rows is the convention-rule cross-check (a family whose stack no rule names); and a slash-only skill whose seats are not installed is the second.
+- **The flags are MECHANICAL - read them off the block, do not eyeball them**: the script's `seat families` line against its path-scoped rule rows is the convention-rule cross-check (a family whose stack no rule names); a slash-only skill whose seats are not installed is the second; and each `FLAG:` line - a plugin whose CLI row and settings disagree, or one this project's settings enable with no CLI row for this path - is a row as it stands (its `decided by` line names the row the state came from).
 - **Never infer causation from a machine-global listing** - state observed facts plainly ('typescript-lsp: listed disabled'), and never assert WHY something is installed or disabled: `claude plugin list` is machine-global, so install-scope causation read off it is a guess.
 - **Say that the rule is MACHINE-LOCAL, not committed** - the installers tell every project to gitignore `.claude/*` and re-include only `.claude/AGENTS.md`, so this file is untracked, a fresh clone does not carry it, and the command has to be re-run there.
 

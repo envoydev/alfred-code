@@ -257,9 +257,11 @@ function deniedSeats(projectRoot)
 
 // ---------------------------------------------------------------- the CLI probes
 
-function claude(args, timeoutMs)
+// Run from the project root: `plugin list` reports `enabled` for the directory it runs in, and `mcp list` reads that
+// directory's project scope - a run with `--project` elsewhere would otherwise read the caller's folder.
+function claude(args, timeoutMs, cwd)
 {
-    const r = spawnSync(`claude ${args.join(' ')}`, { shell: true, encoding: 'utf8', timeout: timeoutMs, windowsHide: true });
+    const r = spawnSync(`claude ${args.join(' ')}`, { shell: true, encoding: 'utf8', timeout: timeoutMs, windowsHide: true, ...(cwd && statOf(cwd) ? { cwd } : {}) });
     if (r.error && r.error.code === 'ETIMEDOUT') return { ok: false, reason: `timed out at ${Math.round(timeoutMs / 1000)}s` };
     if (r.signal) return { ok: false, reason: `killed (${r.signal})` };
     const out = `${r.stdout || ''}`;
@@ -295,11 +297,30 @@ function parseMcpList(out)
     return rows;
 }
 
-function parsePluginList(out, projectRoot)
+// A project path as the listing's `projectPath` is compared: a Windows drive path case-blind, separators and a trailing
+// one folded (`c:\WINDOWS\...` and `C:/Windows/.../` are one folder - the file system says so), a POSIX one through
+// realpath and case-exact. Audit 2026-10-11 SD07, session 7be545ce: a case-exact compare dropped the project's own row
+// and the refresh wrote that drop into the always-on rule. The installer's plugin reader folds the same way.
+const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+function projectKey(p, platform = process.platform)
 {
-    const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
-    const here = real(projectRoot);
+    const s = String(p);
+    if (/^[A-Za-z]:[\\/]/.test(s)) return path.win32.resolve(platform === 'win32' ? real(s) : s).toLowerCase();
+    return real(s);
+}
+// The install scopes, narrowest first: a plugin at several is decided by its narrowest row here, as enabledPlugins
+// precedence decides it (local over project over user). A row naming no scope ranks by its projectPath.
+const SCOPES = ['local', 'project', 'user', 'managed'];
+const scopeRank = (row) => (SCOPES.includes(row.scope) ? SCOPES.indexOf(row.scope) : (row.projectPath ? 1 : 2));
+// `enabled` is a boolean on every CLI that prints --json; anything else is no answer, never 'enabled' (ce9d4811: the
+// first row that passed the path filter decided, and a non-false value read as enabled).
+const stateOf = (enabled) => (enabled === true ? 'enabled' : enabled === false ? 'disabled' : 'unclear');
+
+function parsePluginList(out, projectRoot, { platform = process.platform } = {})
+{
+    const here = projectKey(projectRoot, platform);
     const byName = new Map();
+    const skipped = new Map();
     let rows = null;
     try
     {
@@ -313,12 +334,17 @@ function parsePluginList(out, projectRoot)
         {
             if (!e || typeof e !== 'object') continue;
             const name = String(e.id || e.name || '').split('@')[0];
+            if (!name) continue;
             // The listing is machine-global: a row carrying another repo's projectPath is a sibling's.
-            if (!name || (e.projectPath && real(String(e.projectPath)) !== here)) continue;
+            if (e.projectPath && projectKey(String(e.projectPath), platform) !== here) { skipped.set(name, (skipped.get(name) || 0) + 1); continue; }
             // `mcpServers` is on the rows of a plugin that declares a server, keyed by server name.
             const servers = e.mcpServers && typeof e.mcpServers === 'object' && !Array.isArray(e.mcpServers) ? Object.keys(e.mcpServers) : null;
-            if (!byName.has(name)) byName.set(name, { state: e.enabled === false ? 'disabled' : 'enabled', installPath: e.installPath ? String(e.installPath) : null, servers });
+            const row = { state: stateOf(e.enabled), enabled: e.enabled, installPath: e.installPath ? String(e.installPath) : null, servers,
+                scope: e.scope ? String(e.scope) : null, projectPath: e.projectPath ? String(e.projectPath) : null };
+            const prev = byName.get(name);
+            if (!prev || scopeRank(row) < scopeRank(prev)) byName.set(name, row);
         }
+        for (const [name, row] of byName) row.skipped = skipped.get(name) || 0;
     }
     else
     {
@@ -335,6 +361,52 @@ function parsePluginList(out, projectRoot)
     }
     return [...byName].map(([name, row]) => ({ name, ...row })).sort((a, b) => a.name.localeCompare(b.name));
 }
+
+// The deciding row per plugin, said: its scope and whose path, and how many other projects' rows were skipped - so a
+// state on the Plugins line is a read row, never an inference (ce9d4811, 7be545ce).
+const decidingRow = (p) => `${p.name}: ${p.state} - row ${p.scope || 'no scope'}${p.projectPath ? ', this project\'s path' : ', no projectPath'}`
+    + `${p.skipped ? `; ${p.skipped} other project row(s) skipped` : ''}`;
+
+// The plugin rows checked against what the settings say (local over project over user, `enabledPlugins`), so a
+// disagreement prints as one instead of the CLI's word alone: a row whose state the settings contradict, or whose
+// `enabled` is no boolean, is `state unclear: CLI <x> / settings <y>`; a plugin THIS project's settings enable that no
+// row for this path carries is listed as exactly that (7be545ce: csharp-lsp vanished from the rule with no row at all).
+// Each one is a FLAG line. No commas inside a state: the Plugins line is comma-separated.
+function crossCheckPlugins(rows, settings)
+{
+    const flags = [];
+    const out = rows.map((p) =>
+    {
+        const s = settings.get(p.name);
+        const said = s ? `${s.on ? 'enabled' : 'disabled'} in ${s.file}` : 'none';
+        if (p.state === 'unclear' || (s && p.state !== (s.on ? 'enabled' : 'disabled') && (p.state === 'enabled' || p.state === 'disabled')))
+        {
+            const cli = p.state === 'unclear' ? `enabled=${JSON.stringify(p.enabled)}` : p.state;
+            flags.push(`${p.name}: the CLI row says ${cli}, the settings say ${said} - state unclear, read neither as the answer`);
+            return { ...p, state: `state unclear: CLI ${cli} / settings ${said}` };
+        }
+        return p;
+    });
+    for (const [name, s] of settings)
+    {
+        if (!s.on || !s.own || out.some((p) => p.name === name)) continue;
+        out.push({ name, state: `enabled in .claude/${s.file} - no CLI row for this path`, installPath: null, servers: null });
+        flags.push(`${name}: .claude/${s.file} enables it, and \`claude plugin list\` has no row for this path - installed for another project only, or not at all`);
+    }
+    return { rows: out.sort((a, b) => a.name.localeCompare(b.name)), flags };
+}
+
+// The plugin probe, parsed, checked against the settings, and the Plugins line it gives - one home, read by the
+// inventory and by --verify, so the rule and its check say the same thing.
+function probePlugins(projectRoot)
+{
+    const probe = claude(['plugin', 'list', '--json'], 30000, projectRoot);
+    const parsed = probe.ok ? parsePluginList(probe.out, projectRoot) : [];
+    const checked = probe.ok ? crossCheckPlugins(parsed, settingsPluginState(projectRoot)) : { rows: [], flags: [] };
+    return { probe, parsed, checked, line: checked.rows.map((p) => `${p.name} (${p.state})`).join(', ') || 'none' };
+}
+// `name (state)` entries of a Plugins line, as a map; a state never holds a comma, so the split is exact.
+const pluginEntries = (line) => new Map(String(line).split(/,\s+(?=[^,()]+\s\()/).map((e) => /^(.+?)\s\((.*)\)$/.exec(e.trim())).filter(Boolean).map((m) => [m[1], m[2]]));
 
 // ---------------------------------------------------------------- the routing map
 
@@ -469,6 +541,26 @@ function settingsPlugins(projectRoot)
         if (map && typeof map === 'object' && !Array.isArray(map)) for (const [id, on] of Object.entries(map)) merged.set(String(id).split('@')[0], on === true);
     }
     return merged;
+}
+
+// `enabledPlugins` as the settings resolve it for this project - the account file, then the project's settings.json, then
+// its settings.local.json, the later winning - each value with the file that set it; `own` marks the project's two.
+function settingsPluginState(projectRoot, env = process.env)
+{
+    const state = new Map();
+    const account = path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json');
+    const files = [[account, 'account settings.json', false],
+        [path.join(projectRoot, '.claude', 'settings.json'), 'settings.json', true],
+        [path.join(projectRoot, '.claude', 'settings.local.json'), 'settings.local.json', true]];
+    for (const [file, label, own] of files)
+    {
+        let map = null;
+        try { map = JSON.parse(readText(file) || 'null'); }
+        catch { map = null; }
+        map = map && typeof map === 'object' ? map.enabledPlugins : null;
+        if (map && typeof map === 'object' && !Array.isArray(map)) for (const [id, on] of Object.entries(map)) state.set(String(id).split('@')[0], { on: on === true, file: label, own });
+    }
+    return state;
 }
 
 // The servers the enabled plugins provide, one per server name. The CLI's listing is the authority
@@ -677,8 +769,11 @@ function inventory(projectRoot)
         if (pre.hits.length > 3) sub(`... and ${pre.hits.length - 3} more`);
     }
 
-    const pluginProbe = claude(['plugin', 'list', '--json'], 30000);
-    const pluginRows = pluginProbe.ok ? parsePluginList(pluginProbe.out, projectRoot) : [];
+    const plugins = probePlugins(projectRoot);
+    const pluginProbe = plugins.probe;
+    // The layers and the servers count a plugin the CLI did not call disabled, as before; only the printed state is
+    // checked against the settings (a CLI with no boolean `enabled` must not lose the core's seats).
+    const pluginRows = plugins.parsed.map((p) => (p.state === 'unclear' ? { ...p, state: 'enabled' } : p));
 
     let skills = scanSkills(path.join(projectRoot, '.claude', 'skills'));
     let seats = scanAgents(path.join(projectRoot, '.claude', 'agents'));
@@ -734,7 +829,7 @@ function inventory(projectRoot)
         try { registered = Object.keys(JSON.parse(mcpRaw).mcpServers || {}).sort(); }
         catch (err) { mcpNote = `.mcp.json UNREADABLE (${err.message}) - report it as unreadable`; }
     }
-    const live = claude(['mcp', 'list'], 45000);
+    const live = claude(['mcp', 'list'], 45000, projectRoot);
     const liveRows = live.ok ? parseMcpList(live.out) : [];
     // A registration wins its name: the CLI ranks the project, local and user scopes above a plugin.
     const provided = pluginServers(projectRoot, pluginProbe, pluginRows, map).filter((s) => !registered.includes(s.server));
@@ -755,14 +850,16 @@ function inventory(projectRoot)
     if (!pluginProbe.ok) say('PLUGINS', `${pluginProbe.reason} - OMIT the Plugins section from the rule rather than guess`);
     else
     {
-        say('PLUGINS', `${pluginRows.length} after dedupe (state only - \`claude plugin list\` is machine-global, so it never says WHY)`);
-        facts.pluginsLine = pluginRows.map((p) => `${p.name} (${p.state})`).join(', ') || 'none';
+        say('PLUGINS', `${plugins.checked.rows.length} after dedupe (state only - \`claude plugin list\` is machine-global, so it never says WHY)`);
+        facts.pluginsLine = plugins.line;
         sub(facts.pluginsLine);
+        for (const p of plugins.parsed) if (p.scope !== undefined) sub(`decided by ${decidingRow(p)}`);
+        for (const f of plugins.checked.flags) say('FLAG', `${f} - a Flags: row of the report`);
     }
     // The report's Inventory line, ready-made: MCP is every server that reaches the session through a registration
     // or an enabled plugin (one routing target each), the other two figures beside it (audit 2026-10-10, session
     // b91d6135: three printed figures, one hand-summed `MCP 6`).
-    facts.inventoryLine = `skills ${skills.length} / seats ${seats.length} / rules ${rules.length} / MCP ${registered.length + provided.length} (${registered.length} in .mcp.json + ${provided.length} from plugins; ${live.ok ? `${liveRows.length} live` : 'live list unavailable'}) / plugins ${pluginProbe.ok ? pluginRows.length : 'CLI absent'}`;
+    facts.inventoryLine = `skills ${skills.length} / seats ${seats.length} / rules ${rules.length} / MCP ${registered.length + provided.length} (${registered.length} in .mcp.json + ${provided.length} from plugins; ${live.ok ? `${liveRows.length} live` : 'live list unavailable'}) / plugins ${pluginProbe.ok ? plugins.checked.rows.length : 'CLI absent'}`;
     say('INVENTORY', facts.inventoryLine);
     return { out, say, facts };
 }
@@ -852,7 +949,7 @@ function writeRule(projectRoot, refresh)
     removeLegacy(projectRoot, say);
     console.log(out.splice(0).join('\n'));
     const result = {};
-    const code = verify(projectRoot, facts.rulePath, result);
+    const code = verify(projectRoot, facts.rulePath, result, { pluginsLine: facts.pluginsLine });
     return finish(`${live === null ? 'created' : 'refreshed'} - ${bytes} bytes`, result.verdict, code);
 }
 
@@ -896,7 +993,8 @@ function compare(projectRoot, bodyArg)
     return 0;
 }
 
-function verify(projectRoot, ruleArg, result = {})
+// `known.pluginsLine` is the line a --write run just composed from its own probe; a bare --verify probes afresh.
+function verify(projectRoot, ruleArg, result = {}, known = {})
 {
     const rulePath = path.resolve(ruleArg);
     const text = readText(rulePath);
@@ -946,6 +1044,25 @@ function verify(projectRoot, ruleArg, result = {})
             : bad.length ? `${bad.length} of ${rows.length} carry no 'first call:' - ${bad.map((r) => (/^- `([^`]+)`/.exec(r) || [, r.slice(0, 40)])[1]).join(', ')}`
                 : `${rows.length} of ${rows.length} carry their 'first call:' line`);
 
+    // The Plugins line against a fresh probe (ce9d4811: the rule said `csharp-lsp (enabled)` while the CLI listed every row
+    // disabled, and VERIFY passed). A rule with no Plugins section, or no CLI to ask, has nothing to compare.
+    const pluginsAt = /^## Plugins\r?\n([^\r\n]*)/m.exec(text);
+    if (pluginsAt)
+    {
+        const fresh = known.pluginsLine !== undefined && known.pluginsLine !== null
+            ? { ok: true, line: known.pluginsLine } : (() => { const p = probePlugins(projectRoot); return { ok: p.probe.ok, line: p.line, reason: p.probe.reason }; })();
+        if (!fresh.ok) line('plugins', true, `not compared - ${fresh.reason}`);
+        else
+        {
+            const said = pluginEntries(pluginsAt[1]);
+            const now = pluginEntries(fresh.line);
+            const off = [...new Set([...said.keys(), ...now.keys()])].sort()
+                .filter((n) => said.get(n) !== now.get(n)).map((n) => `${n}: rule ${said.get(n) || 'absent'}, now ${now.get(n) || 'absent'}`);
+            line('plugins', off.length === 0, off.length ? `the Plugins line contradicts a fresh \`claude plugin list\` - ${off.join('; ')}; re-run with --write --refresh`
+                : `${now.size} plugin(s), as a fresh \`claude plugin list\` reads them`);
+        }
+    }
+
     result.verdict = fails.length ? `FAIL (${fails.length} check(s): ${fails.join(', ')})` : 'PASS';
     console.log(`VERIFY:        ${result.verdict}`);
     return fails.length ? 1 : 0;
@@ -988,4 +1105,4 @@ if (require.main === module)
     process.exitCode = main();
 }
 
-module.exports = { dataRoot, fillSlots, routingMap, routingRow, pluginRoutingRow, routingRowsFor };
+module.exports = { dataRoot, fillSlots, routingMap, routingRow, pluginRoutingRow, routingRowsFor, parsePluginList, projectKey, crossCheckPlugins, settingsPluginState, pluginEntries };
