@@ -1212,3 +1212,43 @@ test('configure step 1: the inventory comes from the preflight, the close is one
     assert.match(flat(body), /walk\.md` AT step 3, never earlier/);
     assert.strictEqual(askBlocks(body).length, SETUP_ASK_TEMPLATES['setup-plugin/commands/configure.md'], 'configure.md\'s asks are pinned');
 });
+
+// Audit 2026-10-11 (SD01, session 5f9fec85): configure step 10's settings read went through `jq` (absent on Git for
+// Windows, exit 127) and `--presence` (a length, never the mode), and the step's 'account: <mode>' line never appeared.
+// Both texts now name ONE reader; it must survive the secret guard's redacted view of a credential-bearing file and
+// print `unset` for an absent key or file.
+test('setup and configure read permissions.defaultMode with the same stdin reader, and it survives the secret guard', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+    const { spawnSync } = require('node:child_process');
+    const os = require('node:os');
+    const reader = (rel) => {
+        const m = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', rel), 'utf8').replace(/\s*\n\s*/g, ' ').match(/`(cat "<file>" \| node -e '[^']+')`/);
+        assert.ok(m, `${rel} names the stdin reader`);
+        return m[1];
+    };
+    const cmd = reader('configure.md');
+    assert.strictEqual(reader('setup.md'), cmd, 'one reader in both texts');
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'setup-reader-')));
+    try {
+        const token = 'sntrys_' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0';
+        const f = path.join(dir, 'settings.json');
+        const read = () => {
+            const command = cmd.replace('<file>', 'settings.json');
+            const g = spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-secret-value.js')],
+                { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd: dir }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+            assert.notStrictEqual(g.status, 2, g.stderr);
+            let ran = command;
+            try { ran = JSON.parse(g.stdout).hookSpecificOutput.updatedInput.command || command; } catch { /* passed as written */ }
+            const r = spawnSync('sh', ['-c', ran], { cwd: dir, encoding: 'utf8' });
+            assert.ok(!`${r.stdout}${r.stderr}`.includes(token), 'no credential value printed');
+            return r.stdout;
+        };
+        fs.writeFileSync(f, JSON.stringify({ permissions: { defaultMode: 'acceptEdits' }, env: { SENTRY_ACCESS_TOKEN: token } }, null, 2));
+        assert.strictEqual(read(), 'acceptEdits\n', 'a credential-bearing file still yields its mode');
+        fs.writeFileSync(f, JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: token } }));
+        assert.strictEqual(read(), 'unset\n', 'an absent key');
+        fs.writeFileSync(f, '{ not json');
+        assert.strictEqual(read(), 'unset\n', 'an unreadable file');
+        fs.rmSync(f);
+        assert.strictEqual(read(), 'unset\n', 'a missing file');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

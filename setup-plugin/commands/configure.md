@@ -346,7 +346,9 @@ question there at 4 options, already spent on rules+agents+skills / hooks / MCPs
 environment). Read the account settings.json (`~/.claude/settings.json`, or the `--space` profile's)
 `permissions.defaultMode` and whether the project's own scope file (`.claude/settings.local.json` at
 local scope, else `.claude/settings.json`) already sets one - report both in one line (`account:
-auto · project: unset`). Ask ONE
+auto · project: unset`). Read the key with ONE call per file, the file piped into a stdin reader -
+`cat "<file>" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let v;try{v=(JSON.parse(s).permissions||{}).defaultMode}catch{}console.log(v||"unset")})'` -
+it prints the mode, or `unset` for an absent key or a missing or unreadable file. The secret guard serves a settings file that holds a credential as a redacted view, which still parses; `jq` is absent on Git for Windows, and `--presence` prints only a length. Ask ONE
 AskUserQuestion: **keep it as it is** (recommended - leave the project's `permissions` block
 untouched, whatever it currently holds) or **set the default for this project** (write/overwrite
 `permissions.defaultMode` in that scope file only, pre-filled with the account's current value,
