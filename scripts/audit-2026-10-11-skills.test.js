@@ -2,6 +2,7 @@
 // Usage audit 2026-10-11 (31 Windows sessions of a consuming project), the skills and agents track. One file for the
 // track's pins, so the parallel apply branches never collide in a shared test file. Each block names its finding.
 const test = require('node:test');
+require('./hook-test-env').isolateHookSuite({ ownTmp: true });
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
