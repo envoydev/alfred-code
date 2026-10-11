@@ -155,7 +155,7 @@ const { FRESH_OFF, ctxThreshold, worthResuming } = fresh;
 // single-short-step line, a resume would recover too little (the engine's own worthResuming - audit 2026-10-10 C26,
 // 758ce661: 120k carry over a 90k floor, the unconditional ask cost two turns), nobody is at the terminal (a live
 // AUTO waiver included), or it has denied twice; a hold past 12h is stale. A seat's call is the parent's work in
-// flight, never held. One `compact-hold` row records how it ended.
+// flight, never held. One `compact-hold` row (`idle-hold` on the idle route) records how it ended.
 const SHORT_STEP_RE = /\b(?:single|one) short step\b/i;
 function shortStepSince(from) {
   try {
@@ -177,13 +177,26 @@ function shortStepSince(from) {
   } catch { /* unreadable - not stated */ }
   return false;
 }
+// The idle route's hold (audit 2026-10-11 SD11) waits for WORK: a shell command that writes nothing (no write target, no
+// git write, by shell-writes.js's reader) is the reading a question needs, so it passes and keeps the hold standing.
+function writesNothing(command) {
+  try {
+    const sw = require(nodePath.join(__dirname, 'shell-writes.js'));
+    const scan = sw.scanShell(String(command || ''));
+    return !!String(command || '').trim() && !scan.targets.some((t) => t.raw !== '/dev/null') && !(scan.gitWrites && scan.gitWrites.length)
+      && !(scan.unread && scan.unread.length);
+  } catch { return false; }
+}
 function compactHold() {
   let hold;
   try { hold = JSON.parse(fs.readFileSync(compactHoldFile(), 'utf8')); } catch { return; }
   if (payload.agent_id || !hold || typeof hold !== 'object') return;
+  const idle = hold.route === 'idle';
+  if (idle && /^(?:Bash|PowerShell|Monitor)$/.test(String(payload.tool_name || '')) && writesNothing((payload.tool_input || {}).command)) return;
+  const kind = idle ? 'idle-hold' : 'compact-hold';
   const release = (outcome, detail) => {
     try { fs.unlinkSync(compactHoldFile()); } catch { /* already gone */ }
-    ledgerRow({ mode: 'probe', kind: 'compact-hold', reason: `probe: post-compaction hold released - ${outcome}`, detail: { outcome, ...(detail || {}) } });
+    ledgerRow({ mode: 'probe', kind, reason: `probe: ${idle ? 'idle-gap' : 'post-compaction'} hold released - ${outcome}`, detail: { outcome, ...(detail || {}) } });
   };
   const since = Number(hold.size) || 0;
   if (Date.now() - (Date.parse(hold.at) || 0) > 12 * 3600 * 1000) return release('stale');
@@ -195,9 +208,20 @@ function compactHold() {
   if (ctx > 0 && !worthResuming(ctx)) return release('not-worth-resuming', { ctx, floor });
   if ((Number(hold.denied) || 0) >= 2) return release('denied-twice', { ctx, floor });
   try { fs.writeFileSync(compactHoldFile(), JSON.stringify({ ...hold, denied: (Number(hold.denied) || 0) + 1 })); } catch { /* the cap still ends it */ }
-  global.BLOCK_DETAIL = { branch: 'compact-hold', ctx, floor };
+  global.BLOCK_DETAIL = { branch: kind, ctx, floor };
   const carry = ctx > 0 ? `now carries ~${Math.round(ctx / 1000)}k tokens per message` : 'has no post-compaction context reading yet';
   const start = floor ? `~${Math.round(floor / 1000)}k, this session's own first message` : 'this install\'s cold floor';
+  if (idle) {
+    process.stderr.write(
+      `Held once: this session sat idle ${Number(hold.gapH) || 'over the set'}h before this turn, its prompt cache went cold, and the\n`
+      + `fresh-session choice offered at the prompt has not been put to the user yet. It ${carry}; a fresh session\n`
+      + `restarts at ${start}. Before this first change, put the choice to the user as ONE AskUserQuestion:\n`
+      + `'Resume in a fresh session (Recommended)' quoting those two numbers (end the turn with the paste-ready resume\n`
+      + `block and the plan or state file it resumes from), or continue here. If the remaining work is a single short\n`
+      + `step, say so in one line - 'single short step: <what>' - and retry this call.`,
+    );
+    process.exit(2);
+  }
   process.stderr.write(
     `Held once: this session AUTO-COMPACTED and the fresh-session choice has not been put to the user yet. It ${carry};\n`
     + `a fresh session restarts at ${start}. The compaction summary's closing line - continue 'without asking the user\n`
@@ -265,6 +289,17 @@ function idleGapOffer() {
     return;
   }
   try { fs.writeFileSync(marker, String(last.at)); } catch { /* a lost marker offers twice at most */ }
+  // The injection alone is spent on the first prompt even when that prompt is a question answered from context, and a
+  // work prompt minutes later went unasked (audit 2026-10-11 SD11: fdce35ae ran 98 messages at 238.6k-412.6k, 2ca8e8ee
+  // carried 342k-390k a message for 47). So the gap also leaves the compaction route's one-shot hold, marked `idle`:
+  // the first CHANGING call after it is denied once with the numbers until an ask is answered (released as that hold
+  // is - the single-short-step line, too little to recover, nobody at the terminal, two denials, 12h). A reading shell
+  // call passes it. A compaction hold already standing is kept.
+  try {
+    if (!fs.existsSync(compactHoldFile())) {
+      fs.writeFileSync(compactHoldFile(), JSON.stringify({ at: new Date().toISOString(), size: fresh.transcriptSize(), denied: 0, route: 'idle', gapH: detail.gapH }));
+    }
+  } catch { /* no hold - the injection below still goes out */ }
   sweepOffers();
   ledgerRow({ mode: 'probe', kind: 'idle-gap-offer', reason: 'probe: the fresh-session offer injected at a prompt after an idle gap', detail });
   const start = floor ? `~${Math.round(floor / 1000)}k, this session's own first message` : 'this install\'s cold floor';

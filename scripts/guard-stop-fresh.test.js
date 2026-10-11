@@ -584,8 +584,16 @@ test('guard-stop-contract: a fresh-session ask answered this turn is not asked a
   // the nearby stalls still get the offer
   assert.equal(fresh('fa-other', ask('t4', 'Which module first?', ['Api (Recommended)', 'Web']), answer('t4', 'Api (Recommended)')), 2, 'an unrelated ask');
   assert.equal(fresh('fa-open', ask('t5', 'Where should the capture run?', ['Fresh session (Recommended)', 'Continue here'])), 2, 'an ask never answered');
-  assert.equal(stop(transcript('fa-earlier', [floor, ask('t6', 'Where should the capture run?', ['Fresh session (Recommended)', 'Continue here']),
-    answer('t6', 'Continue here'), typed('now the next module'), closeRow(CLOSE)])), 2, 'an ask answered in an EARLIER turn');
+  // An ask answered in an EARLIER turn counts as the last offer at the carry it was made at (audit 2026-10-11 SD11,
+  // 7f8803eb: 'Continue in fresh session' answered at 435.6k, the next turn's close carrying the asked-for resume prompt
+  // was blocked at 438.8k and the re-ask denied by the user): re-offered only past the 1.5x re-offer step.
+  const askAt = (id, ctx) => { const row = ask(id, 'Where should the capture run?', ['Fresh session (Recommended)', 'Continue here']); row.message.usage = { cache_read_input_tokens: ctx }; return row; };
+  assert.equal(stop(transcript('fa-earlier', [floor, askAt('t6', 200000), answer('t6', 'Continue here'), typed('now the next module'), closeRow(CLOSE)])), 2,
+    'an ask answered in an EARLIER turn at well under the carry: offered again');
+  assert.equal(stop(transcript('fa-earlier-near', [floor, askAt('t8', 435642), answer('t8', 'Fresh session (Recommended)'), typed('create me a prompt for the next session'), closeRow(CLOSE)])), 0,
+    '7f8803eb: answered one typed turn back at nearly this carry - not asked again');
+  assert.equal(stop(transcript('fa-earlier-bare', [floor, ask('t9', 'Where should the capture run?', ['Fresh session (Recommended)', 'Continue here']), answer('t9', 'Continue here'), typed('next'), closeRow(CLOSE)])), 2,
+    'an earlier ask with no readable carry sets no step');
   const feedback = typed('Stop hook feedback:\n[guard-stop-contract.js]: The work in this turn is finished ...');
   assert.equal(fresh('fa-after-block', feedback, ask('t7', 'Where should we continue?', ['Resume in a fresh session (Recommended)', 'Continue here']),
     answer('t7', 'Continue here')), 0, "the hook's own feedback row is no typed prompt");

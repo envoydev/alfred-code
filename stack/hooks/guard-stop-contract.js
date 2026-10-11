@@ -1933,7 +1933,9 @@ if (payload.hook_event_name === 'Stop') {
       breadcrumb('Stop: fresh-session offer skipped, a fresh-session ask was answered this turn');
       process.exit(0);
     }
-    const since = lastBlockCtx();
+    // The last offer is this hook's own block OR the newest fresh-session ask answered in any turn (audit 2026-10-11
+    // SD11, 7f8803eb): the choice made one typed turn back is not re-asked before the carry grows past the step.
+    const since = Math.max(lastBlockCtx(), typeof fresh.freshAskAnsweredCtx === 'function' ? fresh.freshAskAnsweredCtx() : 0);
     if (since && ctx < since * REOFFER_GROWTH) {
       breadcrumb(`Stop: fresh-session offer skipped, ctx ${ctx} has not grown ${REOFFER_GROWTH}x since ${since}`);
       process.exit(0);

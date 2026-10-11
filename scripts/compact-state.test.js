@@ -382,6 +382,54 @@ test('compact-state: the prompt ending an idle gap past the clock hours is offer
     assert.strictEqual(project().run('garbage', env).status, 0, 'garbage stdin never blocks');
 });
 
+// Audit 2026-10-11 SD11: the injection was spent on the first prompt after the gap even when that prompt was a question
+// answered from context, and the work prompt minutes later went unasked (fdce35ae: 98 messages at 238.6k-412.6k;
+// 2ca8e8ee: 47 at 342k-390k). The gap leaves the compaction route's hold, marked idle: reads pass, the first change is held.
+test('compact-state: the idle gap leaves a hold the first change meets, released as the compaction hold is (audit 2026-10-11 SD11)', () =>
+{
+    const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
+    const SHELL = path.join(HOOKS, 'shell-guards.js');
+    const FILES = path.join(HOOKS, 'file-guards.js');
+    const env = { ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'idle-hold-')) };
+    const ago = (h) => new Date(Date.now() - h * 3600000).toISOString();
+    const rows = (carry = 289900) => [{ ...usageRow('f', { cache_creation_input_tokens: 77600 }), timestamp: ago(20) }, { ...usageRow('l', { cache_read_input_tokens: carry }), timestamp: ago(19) }];
+    const setup = (more = {}, carry) => {
+        const p = project();
+        const tp = p.transcript(rows(carry));
+        const offer = p.run({ hook_event_name: 'UserPromptSubmit', prompt: 'is the export done?', transcript_path: tp }, { ...env, ...more });
+        const via = (hook, tool, input) => p.run({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, transcript_path: tp }, { ...env, ...more }, hook);
+        return { p, tp, offer, via, edit: () => via(FILES, 'Edit', { file_path: path.join(p.root, 'a.txt'), old_string: 'a', new_string: 'b' }) };
+    };
+    const s = setup();
+    assert.match(startText(s.offer), /sat idle 19\.0h/, 'the injection still goes out');
+    assert.strictEqual(s.via(SHELL, 'Bash', { command: 'git status --short; git log --oneline -3 2>/dev/null' }).status, 0, 'a reading shell call answers a question unheld');
+    assert.strictEqual(s.via(FILES, 'Read', { file_path: path.join(s.p.root, 'a.txt') }).status, 0, 'a read is never held');
+    assert.strictEqual(s.p.run({ hook_event_name: 'UserPromptSubmit', prompt: 'ok, go ahead and fix it', transcript_path: s.tp }, env).stdout, '', 'the work prompt is not injected again');
+    const held = s.edit();
+    assert.strictEqual(held.status, 2, 'fdce35ae: the work prompt\'s first change is held');
+    assert.match(held.stderr, /sat idle 19(?:\.0)?h/);
+    assert.match(held.stderr, /~290k tokens per message/);
+    assert.match(held.stderr, /~78k, this session's own first message/);
+    assert.strictEqual(s.via(SHELL, 'Bash', { command: 'echo x > a.txt' }).status, 2, 'a writing shell call is a change');
+    assert.strictEqual(s.edit().status, 0, 'two denials, then it gives way');
+    const a = setup();
+    fs.appendFileSync(a.tp, JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'q1', content: 'Your questions have been answered: "Fresh?"="Continue here"' }] } }) + '\n');
+    assert.strictEqual(a.edit().status, 0, 'an ask answered after the gap releases it');
+    const t = setup();
+    fs.appendFileSync(t.tp, JSON.stringify({ type: 'assistant', message: { id: 'z', content: [{ type: 'text', text: 'single short step: fix the typo' }] } }) + '\n');
+    assert.strictEqual(t.edit().status, 0, 'the single-short-step line releases it');
+    assert.strictEqual(setup({ ALFRED_CODE_UNATTENDED: '1' }).edit().status, 0, 'nobody at the terminal: no hold');
+    assert.strictEqual(setup({}, 100000).edit().status, 0, 'a carry mostly the cold floor: no offer, no hold');
+    assert.strictEqual(setup({ ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }).edit().status, 0, 'the route off: no hold');
+    const c = project();
+    const tc = c.transcript([...rows(), boundary('auto', 300000)]);
+    c.run({ hook_event_name: 'SessionStart', source: 'compact', transcript_path: tc }, env);
+    fs.appendFileSync(tc, JSON.stringify({ ...usageRow('b', { cache_read_input_tokens: 300000 }), timestamp: ago(19) }) + '\n');
+    c.run({ hook_event_name: 'UserPromptSubmit', prompt: 'next', transcript_path: tc }, env);
+    assert.match(c.run({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: { file_path: path.join(c.root, 'a.txt') }, transcript_path: tc }, env, FILES).stderr,
+        /AUTO-COMPACTED/, 'a compaction hold already standing is kept');
+});
+
 // Audit 2026-10-10 C19, b35afe70: spec-check printed `path: gated`, the plan was written and task-verify-plan ran 8s
 // later with no stop; the one stop the user saw in 38 minutes was the approval.
 test('gated stops: a gated cycle\'s gate and build skills wait for a stop after the step before them (C19)', () =>

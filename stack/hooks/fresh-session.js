@@ -372,6 +372,38 @@ function freshAskAnsweredThisTurn() {
     return false;
   }
 }
+// The context, in tokens, at the NEWEST answered AskUserQuestion that put the fresh-session choice - in any turn of the
+// newest 8MB - read from the usage of the model call that made the ask; 0 when there is none. The Stop offer counts it
+// as its own last offer, so a choice answered one typed turn back is not asked again until the carry grows past the
+// re-offer step (audit 2026-10-11 SD11, session 7f8803eb: 'Continue in fresh session' answered, the next turn's close
+// carrying the asked-for resume prompt was blocked and the re-ask denied by the user, 878.8k cache-read).
+function freshAskAnsweredCtx() {
+  try {
+    const lines = transcriptText(0, 8 * 1024 * 1024).split('\n');
+    const answered = new Set();
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i].trim()) continue;
+      let o;
+      try { o = JSON.parse(lines[i]); } catch { continue; }
+      if (!o || !o.message || !Array.isArray(o.message.content)) continue;
+      const c = o.message.content;
+      if (o.type === 'user') {
+        for (const b of c) {
+          if (b && b.type === 'tool_result' && ANSWERED_RE.test(typeof b.content === 'string' ? b.content
+            : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('') : '')) answered.add(b.tool_use_id);
+        }
+        continue;
+      }
+      if (o.type !== 'assistant') continue;
+      if (!c.some((b) => b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && answered.has(b.id) && FRESH_ASK_RE.test(JSON.stringify(b.input || {})))) continue;
+      const u = o.message.usage || {};
+      return (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
+    }
+    return 0;
+  } catch {
+    return 0;
+  }
+}
 // Was any ask answered (or declined) in the transcript past byte `from` - the size an offer recorded?
 function askAnsweredSince(from) {
   return /Your questions have been answered:|The user answered:|The user (?:declined|chose not) to answer/i.test(transcriptText(from, 8 * 1024 * 1024));
@@ -381,5 +413,5 @@ module.exports = {
   use, freshAt, FRESH_AT_200K, FRESH_AT_1M, FRESH_AT_DEFAULT, FRESH_OFF, sessionModelId, tableWindow,
   envWindow, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, worthResuming, contextNow, lowestTrigger,
   autoCompactWindow, recordCompactPoint, observedCompaction, compactPointsFile,
-  transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, askAnsweredSince,
+  transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, freshAskAnsweredCtx, askAnsweredSince,
 };

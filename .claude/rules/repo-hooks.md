@@ -521,7 +521,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     the next model call), and the model id read widens to 8MB and takes the harness's `model` attachment row. A key matches its id, a dated snapshot, a Bedrock version, the `[1m]` suffix and a provider prefix, never a point release: `claude-opus-5-5` took `claude-opus-5`'s row until every model got its own (2.1.5 M6, which added Opus 4.5 and Sonnet 4.5 at 200K). A trigger at or above its window is clamped
     inside it, and `_DEFAULT` must stay below the smallest window it can land on. The offer fires only
     when a resume recovers something (carry minus the session's first-message floor >= 40% of carry),
-    re-arms at 1.5x growth, and never mid-response. A long-idle or long-span session takes the same
+    re-arms at 1.5x growth - counted from its own block or the newest fresh-session ask answered in ANY turn, at that
+    ask's carry (`fresh-session.js` `freshAskAnsweredCtx`; audit 2026-10-11 SD11, 7f8803eb) - and never mid-response. A long-idle or long-span session takes the same
     offer under the window (`ALFRED_CODE_FRESH_SESSION_AFTER_HOURS`, default 2, unseeded, `0` off). The offer waits
     while work this session launched is still out (it said 'the work in this turn is finished' 3s after a verifier left).
   - `guard-fresh-session-start.js` - denies the MODEL's own PreToolUse `Skill` call on a
@@ -561,7 +562,11 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `UserPromptSubmit` carries only the idle-gap offer: the prompt that ends a gap past the clock route's
     `ALFRED_CODE_FRESH_SESSION_AFTER_HOURS` since the last reply injects the ask once per gap (`guard-fresh-idle-*`), with
     the carry and cold floor, when a resume recovers enough - never for a task notice, a seat, a carry past a compaction
-    or nobody at the terminal (audit 2026-10-10 C09: a next-day resume ran 14 messages at 289.9k unoffered).
+    or nobody at the terminal (audit 2026-10-10 C09: a next-day resume ran 14 messages at 289.9k unoffered). The
+    injection was spent on a question answered from context (audit 2026-10-11 SD11, fdce35ae / 2ca8e8ee), so the gap
+    also leaves the compaction route's one-shot hold marked `idle` (a compaction hold already standing is kept): a
+    shell call that writes nothing passes it, and the first CHANGING call is denied with the numbers (`idle-hold`
+    rows), released exactly as the compaction hold is.
   - `guard-cross-project-write.js` (PreToolUse `Write`/`Edit`/`MultiEdit`/`NotebookEdit` + the shell route) - a write outside
     the project root is blocked (file tools and shell routes: redirection, `tee`, in-place `sed`/`perl`,
     `cp`/`mv` destination, `rm`/`mkdir`/`chmod`, `git -C <other>` mutating, `cd <other>` then a write);
