@@ -43,6 +43,15 @@ const policyBlock = () => {
     while (end < lines.length && !lines[end].startsWith('## ')) end += 1;
     return flat(lines.slice(at + 2, end).join('\n'));
 };
+// ---- SD16: the security review reads the full change set without moving the index ------------------------------------
+test('SD16 42951e5b#3: the review read is git diff HEAD plus each untracked file against /dev/null - never add -N or reset', () => {
+    const t = flat(read('stack/rules/alfred-security.md'));
+    assert.match(t, /`git diff HEAD`, plus `git diff --no-index -- \/dev\/null <file>` for each file `git ls-files -o --exclude-standard` lists, each named, never a loop \(the secret guard masks only a named dump\)/);
+    assert.match(t, /never `git add -N` or `git reset` for it \(a mixed reset mid-merge drops MERGE_HEAD\)/);
+    assert.doesNotMatch(t, /git add -N \. && git diff HEAD; git reset -q/, 'no rule prescribes the reset recipe');
+    for (const f of fs.readdirSync(path.join(ROOT, 'stack', 'rules'))) assert.doesNotMatch(read(`stack/rules/${f}`), /git add -N \.[^`]*git reset/, `${f} prescribes add -N + reset`);
+});
+
 test('SD07 2ca8e8ee#10 42951e5b#6 fdce35ae#8: a named skill not installed here is offered through configure, never borrowed', () => {
     const p = policyBlock();
     assert.match(p, /A skill the user names that is not installed here \(`Unknown skill`\): say so and offer `\/alfred-code:configure` to add it - never load another project's or a plugin cache's copy/);
