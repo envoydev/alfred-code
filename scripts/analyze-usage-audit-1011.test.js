@@ -265,3 +265,26 @@ test('7f8803eb#8: an image is priced on arrival AND as the cache-read it is carr
     assert.match(text([file, '--report-md']), /then CARRIED ~4\.0k tok of cache-read/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// bca100bd#7: `grep -c '<a line naming a doc path>' .claude/AGENTS.md` read AGENTS.md, and GENERATED DOCS scored the doc
+// named inside the PATTERN as read ('+1r via Bash') - a doc that no longer sat at that path.
+test('bca100bd#7: a doc path inside a grep pattern is no read; the files grep reads still are', () => {
+  const dir = tmp();
+  try {
+    const cmds = [
+      "grep -c 'Run book: `.claude/docs/project-capabilities/PROJECT-CAPABILITIES.md`' .claude/AGENTS.md",
+      'grep -n Foo .alfred/docs/architecture/ARCHITECTURE.md',
+      "grep -e 'docs/x' -e '.alfred/docs/a/B.md' .alfred/docs/c/C.md",
+      "cat .alfred/docs/d/D.md | grep -c '.alfred/docs/e/E.md'",
+      "rg -l -g '*.md' '.alfred/docs/f/F.md' src",
+      'grep -f .alfred/docs/g/G.md src/',
+      "grep -A 3 '.alfred/docs/h/H.md' .alfred/docs/i/I.md",
+      "git -C repo grep -n --regexp='.alfred/docs/j/J.md' -- .alfred/docs/k/K.md",
+    ];
+    const rows = [human(T(0), 'go'), asst('m1', T(1), cmds.map((c, k) => sh(`g${k}`, c))), ...cmds.map((c, k) => res(T(2), `g${k}`, 'hit'))];
+    const touches = run([write(dir, rows)]).main.docTouches;
+    const read = Object.keys(touches).filter((k) => touches[k].bashReads).sort();
+    assert.deepStrictEqual(read, ['architecture/ARCHITECTURE.md', 'c/C.md', 'd/D.md', 'g/G.md', 'i/I.md', 'k/K.md'],
+      'the pattern operands (the capabilities doc, B, E, F, H, J) are text grep searches for, never a file it reads');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

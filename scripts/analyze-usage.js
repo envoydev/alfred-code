@@ -629,6 +629,78 @@ function loopOnlyProbes(seg, cmd) {
   const v = m[1];
   return !new RegExp(`\\b${DOC_READ_VERB}\\b[^;&|\\n]*\\$\\{?${v}\\b`).test(body);
 }
+// Where a grep-family command's PATTERN operands sit in its text, as [start, end) offsets: every `-e` / `--regexp`
+// value, else the first operand that is no option and no option's value. A `-f FILE` value is a file the command reads,
+// so it is no pattern. Words are read quote-aware, up to the first unquoted pipe or separator.
+const GREP_HEAD_RE = /^(?:(?:\S*[/\\])?(grep|egrep|fgrep|rg|ag|ack)(?:\.exe)?|git\s+(?:-[Cc]\s+\S+\s+|-\S+\s+)*grep)(?=\s|$)/;
+const GREP_VALUE_SHORT = { grep: 'efmABCdD', rg: 'efgtTABCmjMrEd', git: 'efABCmO' };
+const GREP_VALUE_LONG = /^--(?:regexp|file|max-count|after-context|before-context|context|devices|directories|label|include|exclude|exclude-dir|exclude-from|glob|iglob|type|type-not|type-add|type-clear|threads|max-columns|replace|encoding|max-depth|pre|pre-glob|sort|sortr|max-filesize|path-separator|colors?|context-separator|field-match-separator|field-context-separator|ignore-file|engine|binary-files|open-files-in-pager)$/;
+function grepPatternSpans(head) {
+  const h = String(head || '');
+  const hm = GREP_HEAD_RE.exec(h);
+  if (!hm) return [];
+  const valueShort = GREP_VALUE_SHORT[hm[1] === 'rg' ? 'rg' : hm[1] ? 'grep' : 'git'];
+  const words = [];
+  let i = hm[0].length;
+  while (i < h.length) {
+    while (i < h.length && /\s/.test(h[i])) i += 1;
+    if (i >= h.length || /[|;&]/.test(h[i])) break;
+    const start = i;
+    let val = '';
+    while (i < h.length && !/[\s|;&]/.test(h[i])) {
+      const c = h[i];
+      if (c === "'") { const j = h.indexOf("'", i + 1); const e = j < 0 ? h.length : j; val += h.slice(i + 1, e); i = e + 1; }
+      else if (c === '"') { let j = i + 1; while (j < h.length && h[j] !== '"') j += h[j] === '\\' ? 2 : 1; val += h.slice(i + 1, Math.min(j, h.length)); i = j + 1; }
+      else if (c === '\\') { val += h[i + 1] || ''; i += 2; }
+      else { val += c; i += 1; }
+    }
+    words.push({ start, end: Math.min(i, h.length), val });
+  }
+  const spans = [];
+  const take = (k) => { if (words[k]) spans.push([words[k].start, words[k].end]); };
+  let positional = null, endOpts = false, explicit = false;
+  for (let k = 0; k < words.length; k += 1) {
+    const v = words[k].val;
+    if (/^\d*[<>]/.test(v)) { if (/^\d*(?:[<>]+|>&)$/.test(v)) k += 1; continue; }   // a redirection and its target
+    if (!endOpts && v === '--') { endOpts = true; continue; }
+    if (!endOpts && v.startsWith('--')) {
+      const eq = v.indexOf('=');
+      const name = eq >= 0 ? v.slice(0, eq) : v;
+      if (name === '--regexp') { explicit = true; if (eq >= 0) take(k); else { take(k + 1); k += 1; } }
+      else if (eq < 0 && GREP_VALUE_LONG.test(name)) k += 1;
+      continue;
+    }
+    if (!endOpts && v.length > 1 && v.startsWith('-')) {
+      const letters = v.slice(1);
+      for (let x = 0; x < letters.length; x += 1) {
+        if (!valueShort.includes(letters[x])) continue;
+        const attached = x + 1 < letters.length;
+        if (letters[x] === 'e') { explicit = true; if (attached) take(k); else { take(k + 1); k += 1; } }
+        else if (!attached) k += 1;
+        break;
+      }
+      continue;
+    }
+    if (!positional) positional = words[k];
+  }
+  if (!explicit && positional) spans.push([positional.start, positional.end]);
+  return spans;
+}
+// The pipe stages of one segment, quote-aware, each as [offset, text].
+function pipeStages(seg) {
+  const s = String(seg || '');
+  const out = [];
+  let from = 0, q = null;
+  for (let i = 0; i < s.length; i += 1) {
+    const c = s[i];
+    if (q) { if (c === q) q = null; else if (c === '\\' && q === '"') i += 1; continue; }
+    if (c === "'" || c === '"') q = c;
+    else if (c === '\\') i += 1;
+    else if (c === '|' && s[i + 1] !== '|' && s[i - 1] !== '|') { out.push([from, s.slice(from, i)]); from = i + 1; }
+  }
+  out.push([from, s.slice(from)]);
+  return out;
+}
 // A runtime handed a doc path as an argument, with a script that reads its argv and writes a file.
 const RUNTIME_HEAD_RE = /^(?:python[\d.]*|node|perl|ruby|deno|bun)(?=\s|$)/;
 const ARGV_READ_RE = /\bsys\.argv\b|\bprocess\.argv\b|\bARGV\b|\$ARGV\b/;
@@ -2477,7 +2549,16 @@ async function analyzeTranscript(file, window) {
               const probe = DOC_PROBE_HEAD_RE.test(head) || loopOnlyProbes(seg, docShell);
               // An in-place edit is a write, never a read (`sed -i '' 's/.../' <plan>`, `perl -0pi -e ...`).
               const inPlace = IN_PLACE_HEAD_RE.test(head);
+              // A grep's PATTERN is text it searches for, never a file it reads: `grep -c '<a line naming a doc>'
+              // AGENTS.md` read AGENTS.md and scored the named doc a read (audit 2026-10-11, session bca100bd).
+              const patterns = pipeStages(seg).flatMap(([from, stage]) => {
+                const sh = segmentHead(stage);
+                const off = from + stage.length - sh.length;
+                return grepPatternSpans(sh).map(([a, b]) => [a + off, b + off]);
+              });
               for (const pm of seg.matchAll(docPathRe)) {
+                const at = pm.index + pm[0].length - pm[1].length;
+                if (patterns.some(([a, b]) => at >= a && at < b)) continue;
                 const p = pm[1].replace(/[/:,.]+$/, ''); // a trailing separator is punctuation, not the name
                 if (p.includes('$')) continue; // unexpanded variable - not a literal doc path
                 if (/[*?\[]/.test(p)) continue; // a GLOB names no one document
