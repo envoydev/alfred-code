@@ -101,3 +101,53 @@ test('5b9ce9c5#7: a call joined by any pass is covered whatever its stamp; only 
     assert.match(out, /joined: 2 call\(s\) - 2 by tool_use_id.*; 1 of them stamped outside the ledger window by hook lag, counted covered/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// 2ca8e8ee#8: 5 `hook_cancelled` rows with `timedOut: true` against the 10s cap - the instrumentation hook x3 (46.1s),
+// the layer-table gate and the stop contract on an ask (17.1s, so its shape gate never ran) - and the analyzer read
+// none: the call whose instrumentation timed out printed as UNJOINED with the guess 'rejected before PreToolUse'.
+test('2ca8e8ee#8: cancelled hook runs make a per-hook timeout row, and a timed-out instrumentation hook is named as the unjoined call\'s cause', () => {
+  const dir = tmp();
+  try {
+    const cancel = (ts, id, file, ms, tool, timedOut = true, event = 'PreToolUse') => ({ type: 'attachment', timestamp: ts, attachment: {
+      type: 'hook_cancelled', hookName: tool ? `${event}:${tool}` : event, toolUseID: id, hookEvent: event, command: `node "\${CLAUDE_PLUGIN_ROOT}/stack/hooks/${file}"`,
+      durationMs: ms, ...(timedOut ? { timedOut: true, timeoutMs: 10000 } : {}) } });
+    const rows = [
+      human(T(0), 'go'),
+      asst('m0', T(0), [tool('r0', 'Read', { file_path: 'C:\\work\\app\\a.cs' })]),
+      res(T(1), 'r0', 'x'),
+      asst('m1', T(5), [sh('b1', 'dotnet build', { description: 'Build' })]),
+      cancel(T(56), 'b1', 'instrument-tool-usage.js', 46143, 'Bash'),
+      res(T(57), 'b1', 'ok'),
+      asst('m2', T(60), [tool('q1', 'AskUserQuestion', { questions: [{ question: 'Go?', options: [{ label: 'Yes (Recommended)' }, { label: 'No' }] }] })]),
+      cancel(T(72), 'q1', 'instrument-tool-usage.js', 11639, 'AskUserQuestion'),
+      cancel(T(72), 'q1', 'guard-layer-table.js', 11944, 'AskUserQuestion'),
+      cancel(T(77), 'q1', 'guard-stop-contract.js', 17123, 'AskUserQuestion'),
+      res(T(80), 'q1', 'User has answered your questions: "Go?"="Yes (Recommended)".'),
+      cancel(T(81), null, 'monitor-session.js', 900, null, false, 'UserPromptSubmit'),
+      asst('m3', T(90), [sh('b2', 'git status', { description: 'Status' })]),
+      res(T(91), 'b2', 'x'),
+    ];
+    const file = write(dir, rows);
+    const ledger = path.join(dir, 'tools-usage.jsonl');
+    fs.writeFileSync(ledger, [
+      { ts: '2026-07-15T07:00:00.200Z', session: 's', tool: 'Read', detail: 'a.cs', cwd: WIN_CWD, tool_use_id: 'r0', agent_id: null },
+      { ts: '2026-07-15T07:01:30.200Z', session: 's', tool: 'Bash', detail: 'Status', cwd: WIN_CWD, tool_use_id: 'b2', agent_id: null },
+    ].map(line).join(''));
+    const j = run([file, '--hook-log', ledger]);
+    assert.deepStrictEqual(j.main.hookTimeouts['instrument-tool-usage.js'], { timedOut: 2, cancelled: 0, maxMs: 46143, timeoutMs: 10000, events: { 'PreToolUse Bash': 1, 'PreToolUse AskUserQuestion': 1 } });
+    assert.deepStrictEqual([j.main.hookTimeouts['monitor-session.js'].timedOut, j.main.hookTimeouts['monitor-session.js'].cancelled], [0, 1]);
+    assert.deepStrictEqual(j.hookLog.coverage.unmatchedCalls.map((c) => [c.tool, c.cause]), [
+      ['Bash', 'its instrumentation hook was cancelled at its timeout after 46.1s - no row was written'],
+      ['AskUserQuestion', 'its instrumentation hook was cancelled at its timeout after 11.6s - no row was written'],
+    ]);
+    const out = text([file, '--hook-log', ledger]);
+    assert.match(out, /HOOK TIMEOUTS/);
+    assert.match(out, /instrument-tool-usage\.js +2 +46\.1s of a 10s cap +PreToolUse Bash, PreToolUse AskUserQuestion/);
+    assert.match(out, /guard-stop-contract\.js +1 +17\.1s of a 10s cap +PreToolUse AskUserQuestion/);
+    assert.match(out, /Bash@2026-07-15T07:00:05\.000Z \(its instrumentation hook was cancelled at its timeout after 46\.1s - no row was written\)/);
+    const md = text([file, '--hook-log', ledger, '--report-md']);
+    assert.match(md, /### Hook timeouts/);
+    assert.match(md, /\| guard-layer-table\.js \| 1 \|  \| 11\.9s of a 10s cap \| PreToolUse AskUserQuestion \|/);
+    assert.match(md, /\| monitor-session\.js \| 0 \| 1 \| 0\.9s \| UserPromptSubmit \|/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

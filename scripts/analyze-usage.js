@@ -1671,6 +1671,8 @@ async function analyzeTranscript(file, window) {
     harnessDenials: 0,           // denials that are the HARNESS's, not a stack hook's - kept out of hook-blk
     denialsByHook: {},           // hook file name (or '(unattributed)') -> denials attributed to it
     rewritesByHook: {},          // hook file name -> calls whose input it REWROTE (`updatedInput`)
+    hookTimeouts: {},            // hook file name -> { timedOut, cancelled, maxMs, timeoutMs, events } - `hook_cancelled` rows
+    hookCancelsByCall: {},       // tool_use id -> [{ hook, ms, timedOut }] - the cancels a call's own hooks took
     topResults: [],              // the N biggest tool results, each with the call's own label
     peakCtx: 0,                  // largest per-message context carried, and where
     peakCtxAt: null,
@@ -1942,6 +1944,19 @@ async function analyzeTranscript(file, window) {
             const k = hookCommandKey(cmd);
             const e = s.hookCommands[k] || (s.hookCommands[k] = { n: 0, firstTs: o.timestamp || null });
             e.n += 1;
+          }
+          // A hook the harness CANCELLED - at its timeout (`timedOut`) or otherwise - gave no verdict: a PreToolUse gate that
+          // times out does not gate, and the instrumentation hook writes no ledger row, so its call reads UNJOINED (audit
+          // 2026-10-11, session 2ca8e8ee: 5 timeouts against the 10s cap, one the stop contract's ask-shape gate).
+          if (at.type === 'hook_cancelled' && !foreign) {
+            const hook = hookFileOf(at);
+            const e = s.hookTimeouts[hook] || (s.hookTimeouts[hook] = { timedOut: 0, cancelled: 0, maxMs: 0, timeoutMs: null, events: {} });
+            if (at.timedOut) e.timedOut += 1; else e.cancelled += 1;
+            if (Number(at.durationMs) > e.maxMs) e.maxMs = Number(at.durationMs);
+            if (at.timeoutMs != null) e.timeoutMs = Number(at.timeoutMs);
+            const ev = [at.hookEvent || String(at.hookName || '').split(':')[0] || '?', String(at.hookName || '').split(':')[1] || ''].filter(Boolean).join(' ');
+            e.events[ev] = (e.events[ev] || 0) + 1;
+            if (at.toolUseID) (s.hookCancelsByCall[at.toolUseID] = s.hookCancelsByCall[at.toolUseID] || []).push({ hook, ms: Number(at.durationMs) || null, timedOut: !!at.timedOut });
           }
           // A PreToolUse hook that answers `hookSpecificOutput.updatedInput` REWROTE the call: what ran is not what the
           // model wrote, so an error on that call is the rewrite's first suspect (audit 2026-10-11, session ae38c08f: a
@@ -2819,6 +2834,23 @@ function rewriteLine(main, agents, tools) {
   return `${n} call(s) ran with input a PreToolUse hook REWROTE (updatedInput): ${hooks}${errs.length ? `; ${errs.length} of them errored - ${errs.join(', ')}: open the rewrite on that call's toolUseID before attributing the error to the model` : ''}`;
 }
 
+// Hook runs the harness cancelled, main and seats, one row per hook: timed out, cancelled otherwise, the longest run and
+// the cap, and the event / tool each fired on. Both renderers print it; a timed-out gate's verdict was dropped.
+function hookTimeoutRows(main, agents) {
+  const by = {};
+  for (const x of [main, ...agents.map((a) => a.stats)]) {
+    for (const [hook, e] of Object.entries(x.hookTimeouts || {})) {
+      const r = by[hook] || (by[hook] = { hook, timedOut: 0, cancelled: 0, maxMs: 0, timeoutMs: null, events: {} });
+      r.timedOut += e.timedOut; r.cancelled += e.cancelled; r.maxMs = Math.max(r.maxMs, e.maxMs || 0);
+      if (e.timeoutMs != null) r.timeoutMs = e.timeoutMs;
+      for (const [ev, n] of Object.entries(e.events || {})) r.events[ev] = (r.events[ev] || 0) + n;
+    }
+  }
+  return Object.values(by).sort((a, b) => b.timedOut - a.timedOut || b.cancelled - a.cancelled)
+    .map((r) => ({ ...r, where: Object.entries(r.events).sort((a, b) => b[1] - a[1]).map(([ev, n]) => `${ev}${n > 1 ? ` x${n}` : ''}`).join(', '),
+      longest: `${(r.maxMs / 1000).toFixed(1)}s${r.timeoutMs ? ` of a ${Math.round(r.timeoutMs / 1000)}s cap` : ''}` }));
+}
+
 function summarizeCauses(pending, imageTok = 0) {
   const by = {};
   let images = 0;
@@ -3513,11 +3545,19 @@ function hookJoinStats(main, agents, hookLog, tools) {
   // batched call runs. Calls take rows in order, so two Edits of one file pair first with first (d37841e9: 'Check for
   // legacy capabilities rule files' 869ms late read as an UNJOINED call plus an orphan row naming that same text).
   let matchedByDetail = 0;
+  // A call whose own instrumentation hook the harness cancelled has no row because the hook never wrote one - name that
+  // cause, which the transcript records, instead of leaving only the 'rejected before PreToolUse' guess.
+  const cancels = {};
+  for (const src of [main, ...agents.map((a) => a.stats)]) Object.assign(cancels, src.hookCancelsByCall || {});
+  const causeOf = (c) => {
+    const x = c.id && (cancels[c.id] || []).find((k) => k.hook === 'instrument-tool-usage.js');
+    return x ? `its instrumentation hook was cancelled${x.timedOut ? ' at its timeout' : ''}${x.ms ? ` after ${(x.ms / 1000).toFixed(1)}s` : ''} - no row was written` : null;
+  };
   const spanOf = (c) => [ms(c.ts) - HOOK_LATENCY_MS, (c.resultTs ? ms(c.resultTs) : ms(c.ts) + 60000) + HOOK_LATENCY_MS];
   const inSpan = (x, [lo, hi]) => x.ms >= lo && x.ms <= hi;
   for (const { c, ambiguous } of timeLeft) {
     // two rows equally close by time stay a tie: a detail pass would only pick one of the same two
-    if (ambiguous) { unmatchedCalls.push({ ts: c.ts, tool: c.tool, ambiguous }); ambiguousCalls += 1; continue; }
+    if (ambiguous) { unmatchedCalls.push({ ts: c.ts, tool: c.tool, ambiguous, cause: causeOf(c) }); ambiguousCalls += 1; continue; }
     const span = spanOf(c);
     const cands = rowsIdx.filter((x) => !x.used && !x.id && x.tool === c.tool && (x.detail || null) === (c.detail || null) && inSpan(x, span)).sort((a, b) => a.ms - b.ms);
     // A tool that names no detail (SendMessage, TodoWrite) joins only when its run holds one such row and no other
@@ -3525,7 +3565,7 @@ function hookJoinStats(main, agents, hookLog, tools) {
     const lone = !c.detail && cands.length === 1 && !timeLeft.some((o) => o.c !== c && o.c.tool === c.tool && inSpan(cands[0], spanOf(o.c)));
     const r = c.detail ? cands[0] : lone ? cands[0] : null;
     if (r) { r.used = true; matchedByDetail += 1; joinedByTime.add(c); continue; }
-    unmatchedCalls.push({ ts: c.ts, tool: c.tool, ambiguous });
+    unmatchedCalls.push({ ts: c.ts, tool: c.tool, ambiguous, cause: causeOf(c) });
     if (ambiguous) ambiguousCalls += 1;
   }
   const unmatchedRows = rowsIdx.filter((r) => !r.used).map((r) => ({ ts: r.ts, tool: r.tool }));
@@ -3841,6 +3881,14 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
       }
     }
   }
+  {
+    const hto = hookTimeoutRows(main, agents);
+    if (hto.length) {
+      console.log('\nHOOK TIMEOUTS (hook runs the harness CANCELLED - each one gave no verdict: a PreToolUse gate that times out does not gate, and the call runs on)');
+      console.log(`  ${pad('hook', 32)} ${rpad('timed-out', 9)} ${rpad('cancelled', 9)} ${pad('longest run', 22)} event / tool`);
+      for (const r of hto) console.log(`  ${pad(r.hook, 32)} ${rpad(r.timedOut, 9)} ${rpad(r.cancelled || '', 9)} ${pad(r.longest, 22)} ${r.where}`);
+    }
+  }
   if (main.topResults && main.topResults.length) {
     console.log('\n  biggest single results (the call is named, so nothing has to be mapped back by hand):');
     for (const r of main.topResults.slice(0, 8)) {
@@ -3894,7 +3942,7 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
       console.log(`  cross-check: ${j.coverage.callPct}% of tool calls are inside the ledger window - ${j.coverage.inWin} of ${j.coverage.calls}${j.coverage.calls !== j.trTools ? ` (${j.trTools} in the file; the rest belong to the fork prefix)` : ''} - vs ${hookLog.rows} ledger rows`);
       if (j.coverage.outside > 0) console.log(`  ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (${j.coverage.tailCalls} after its last row${j.coverage.tailCalls === 0 ? ' - a quiet tail, not lost coverage' : ''}) - two causes, both real: a ledger wired mid-session legitimately misses the head, and a call the HARNESS rejected before PreToolUse (a classifier denial, a schema failure) never reaches a hook at all and can have no row`);
       console.log(`  joined: ${j.coverage.matchedCalls} call(s) - ${j.coverage.matchedById} by tool_use_id, ${j.coverage.matchedByTime} by tool + timestamp within ${j.coverage.latencyMs}ms, ${j.coverage.matchedByDetail} by detail (same tool and detail, between the call and its result)${j.coverage.lagJoined ? `; ${j.coverage.lagJoined} of them stamped outside the ledger window by hook lag, counted covered` : ''}`);
-      if (j.coverage.unmatchedCallCount) console.log('  ' + j.coverage.unmatchedCallCount + ' in-window call(s) UNJOINED - no row carrying its tool_use_id, none of the same tool within ' + j.coverage.latencyMs + 'ms, none naming its detail before its result' + (j.coverage.ambiguousCalls ? ` (${j.coverage.ambiguousCalls} of them ambiguous: two rows of that tool sit equally close)` : '') + ': ' + j.coverage.unmatchedCalls.map((c) => c.tool + '@' + c.ts + (c.ambiguous ? ' (ambiguous)' : '')).join(', ') + ' - a call the harness rejected before PreToolUse leaves no row, so unjoined is reported rather than guessed');
+      if (j.coverage.unmatchedCallCount) console.log('  ' + j.coverage.unmatchedCallCount + ' in-window call(s) UNJOINED - no row carrying its tool_use_id, none of the same tool within ' + j.coverage.latencyMs + 'ms, none naming its detail before its result' + (j.coverage.ambiguousCalls ? ` (${j.coverage.ambiguousCalls} of them ambiguous: two rows of that tool sit equally close)` : '') + ': ' + j.coverage.unmatchedCalls.map((c) => c.tool + '@' + c.ts + (c.ambiguous ? ' (ambiguous)' : '') + (c.cause ? ` (${c.cause})` : '')).join(', ') + ' - a call the harness rejected before PreToolUse leaves no row, so unjoined is reported rather than guessed');
       if (j.coverage.unmatchedRowCount) console.log('  ' + j.coverage.unmatchedRowCount + ' ledger row(s) with no transcript call: ' + j.coverage.unmatchedRows.map((c) => c.tool + '@' + c.ts).join(', ') + ' - an ask or a call the transcript never wrote');
       if (j.coverage.unmatched > 0) console.log(`  ${j.coverage.unmatched} in-window call${j.coverage.unmatched === 1 ? '' : 's'} with no ledger row - check each call's own tool_result for a Blocked:/error string (harness-level blocks and input-validation failures never reach PreToolUse) before calling it a gap`);
     } else {
@@ -4123,6 +4171,16 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
   }
   out.push('');
   {
+    const hto = hookTimeoutRows(main, agents);
+    if (hto.length) {
+      out.push('### Hook timeouts', '');
+      out.push('Hook runs the harness CANCELLED - each one gave no verdict: a PreToolUse gate that times out does not gate, and the call runs on.', '');
+      out.push('| hook | timed out | cancelled | longest run | event / tool |', '|---|---|---|---|---|');
+      for (const r of hto) out.push(`| ${r.hook} | ${r.timedOut} | ${r.cancelled || ''} | ${r.longest} | ${r.where} |`);
+      out.push('');
+    }
+  }
+  {
     const errs = Object.entries(agg.tools).filter(([, t]) => (t.errorTs || []).length);
     if (errs.length) {
       out.push('### Errors, by when they landed', '');
@@ -4169,7 +4227,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
       out.push(`- Cross-check: ${j.coverage.callPct}% of tool calls are inside the ledger window - ${j.coverage.inWin} of ${j.coverage.calls}${j.coverage.calls !== j.trTools ? ` (${j.trTools} in the file; the rest belong to the fork prefix)` : ''} - vs ${hookLog.rows} ledger rows.`);
       if (j.coverage.outside > 0) out.push(`- ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (${j.coverage.tailCalls} after its last row${j.coverage.tailCalls === 0 ? ' - a quiet tail, not lost coverage' : ''}) - two causes, both real: a ledger wired mid-session legitimately misses the head, and a call the HARNESS rejected before PreToolUse (a classifier denial, a schema failure) never reaches a hook and can have no row.`);
       out.push(`- joined: ${j.coverage.matchedCalls} call(s) - ${j.coverage.matchedById} by \`tool_use_id\`, ${j.coverage.matchedByTime} by tool + timestamp within ${j.coverage.latencyMs}ms, ${j.coverage.matchedByDetail} by detail (same tool and detail, between the call and its result)${j.coverage.lagJoined ? `; ${j.coverage.lagJoined} of them stamped outside the ledger window by hook lag, counted covered` : ''}`);
-      if (j.coverage.unmatchedCallCount) out.push('- ' + j.coverage.unmatchedCallCount + ' in-window call(s) UNJOINED - no row carrying its `tool_use_id`, none of the same tool within ' + j.coverage.latencyMs + 'ms, none naming its detail before its result' + (j.coverage.ambiguousCalls ? ` (${j.coverage.ambiguousCalls} ambiguous: two rows of that tool sit equally close)` : '') + ': ' + j.coverage.unmatchedCalls.map((c) => c.tool + '@' + c.ts + (c.ambiguous ? ' (ambiguous)' : '')).join(', ') + ' - an unjoinable call is reported unjoined, never joined to a neighbouring row. A call the harness rejected before PreToolUse leaves no row at all.');
+      if (j.coverage.unmatchedCallCount) out.push('- ' + j.coverage.unmatchedCallCount + ' in-window call(s) UNJOINED - no row carrying its `tool_use_id`, none of the same tool within ' + j.coverage.latencyMs + 'ms, none naming its detail before its result' + (j.coverage.ambiguousCalls ? ` (${j.coverage.ambiguousCalls} ambiguous: two rows of that tool sit equally close)` : '') + ': ' + j.coverage.unmatchedCalls.map((c) => c.tool + '@' + c.ts + (c.ambiguous ? ' (ambiguous)' : '') + (c.cause ? ` (${c.cause})` : '')).join(', ') + ' - an unjoinable call is reported unjoined, never joined to a neighbouring row. A call the harness rejected before PreToolUse leaves no row at all.');
       if (j.coverage.unmatchedRowCount) out.push('- ' + j.coverage.unmatchedRowCount + ' ledger row(s) with no transcript call: ' + j.coverage.unmatchedRows.map((c) => c.tool + '@' + c.ts).join(', ') + ' - an ask or a call the transcript never wrote.');
       if (j.coverage.unmatched > 0) out.push(`- ${j.coverage.unmatched} in-window call${j.coverage.unmatched === 1 ? '' : 's'} with no ledger row - check each call's own tool_result for a Blocked:/error string (harness-level blocks and input-validation failures never reach PreToolUse) before calling it a gap.`);
     } else {
