@@ -50,6 +50,12 @@ test('SD10 d56562c7#1: an offer to make a change goes through AskUserQuestion; a
     assert.doesNotMatch(t, /an offer to MAKE a change is fine/);
 });
 
+// ---- SD09: the hook ledgers are evidence, never regenerable ---------------------------------------------------------
+test('SD09 d9035363#5: a docs cleanup keeps the hook ledgers and flow/ state, or its ask names the loss', () => {
+    const t = flat(read('stack/rules/alfred-docs-root.md').replace(/<!--[\s\S]*?-->/g, ''));
+    assert.match(t, /The hooks' ledgers \(`tools-usage\/`, `hook-blocks\/`, `history\/`\) are the only record of what ran and what the guards denied, and `flow\/` is live per-session state: a cleanup keeps them, or its ask names that loss - never 'regenerable'\./);
+});
+
 // ---- SD13: Windows shell idioms (Git Bash ships no jq; MSYS path conversion; PowerShell from Bash) -----------------
 test('SD13 177c5743#3 e90a1845#2 42951e5b#7 7f8803eb#9: JSON through node -e, rev:path with conversion off, PowerShell from a .ps1', () => {
     const nav = flat(read('stack/rules/alfred-navigation.md'));
