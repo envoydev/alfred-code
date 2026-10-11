@@ -844,7 +844,14 @@ function preToolUse(input, root, docs, state) {
   }
   if (!isWrite) return;
   const inRoots = (p) => roots.some((x) => p === x || p.startsWith(`${x}/`));
-  const targets = wrote.filter(inRoots);
+  let targets = wrote.filter(inRoots);
+  // A run artifact is no source change (audit 2026-10-11 SD09, session 5f9fec85: `rm -f` of a git-ignored `.trx` under
+  // a test project's TestResults/ was held and a 3,606-char section pasted beside it). A path git ignores, or one under a
+  // TestResults/ folder, leaves the hold's targets; a tracked file is never ignored, so its edit is still held.
+  if (targets.length) {
+    const ignored = new Set(String(docs.git(['check-ignore', '--stdin'], { input: targets.join('\n'), stdio: ['pipe', 'pipe', 'ignore'] }) || '').split('\n').filter(Boolean));
+    targets = targets.filter((p) => !ignored.has(p) && !/(?:^|\/)TestResults\//.test(p));
+  }
   if (!targets.length) { attribute(); return; }
   const allow = () => {
     attribute();
@@ -938,7 +945,10 @@ function askLines(docs, files, refs) {
     '',
     '  Yes -> reply: docs ok',
     `  No  -> rewrite ${one ? 'the section' : 'each section your change made untrue'}, then run`,
-    ...refs.map((r) => `           ${READ} set ${r.id} --expect ${r.hash}`),
+    // where the new text comes from (audit 2026-10-11 SD09, session 2ca8e8ee: the model grepped and read docs.js twice to
+    // find out, ~1.0M): a file on stdin, as `show` prints the section
+    ...refs.map((r) => `           ${READ} set ${r.id} --expect ${r.hash} < <file holding its new text>`),
+    `         (the section's new text as \`show\` prints it - from a file as above, or piped in)`,
     ...tail,
   ];
 }
@@ -989,6 +999,40 @@ function finishAsk(docs, files, asks, warnings = [], closing = []) {
   return parts.join('\n');
 }
 
+// The IDLE spans of this session: gaps of at least 10 minutes between two consecutive transcript rows, when no model
+// call and no tool of this session ran. An unclaimed change whose file was last written well inside one was made
+// outside the session - the user's own edit in an IDE during a break (audit 2026-10-11 SD09, session fdce35ae: 'you
+// changed Directory.Build.props' for a version bump made in a 4h33m gap). The newest 32MB of the transcript is read; a
+// file written within 30s of either edge, or with no transcript, stays the session's.
+const IDLE_GAP_MS = 10 * 60 * 1000;
+const IDLE_EDGE_MS = 30 * 1000;
+function idleSpans(transcriptPath) {
+  try {
+    const size = fs.statSync(transcriptPath).size;
+    const from = Math.max(0, size - 32 * 1024 * 1024);
+    const fd = fs.openSync(transcriptPath, 'r');
+    const buf = Buffer.alloc(size - from);
+    try { fs.readSync(fd, buf, 0, buf.length, from); } finally { fs.closeSync(fd); }
+    const times = [];
+    for (const m of buf.toString('utf8').matchAll(/"timestamp"\s*:\s*"([^"]+)"/g)) { const t = Date.parse(m[1]); if (Number.isFinite(t)) times.push(t); }
+    times.sort((a, b) => a - b);
+    const spans = [];
+    for (let i = 1; i < times.length; i++) if (times[i] - times[i - 1] >= IDLE_GAP_MS) spans.push([times[i - 1] + IDLE_EDGE_MS, times[i] - IDLE_EDGE_MS]);
+    return spans;
+  } catch { return []; }
+}
+function changedWhileIdle(root, files, transcriptPath) {
+  const spans = transcriptPath ? idleSpans(transcriptPath) : [];
+  if (!spans.length) return new Set();
+  const out = new Set();
+  for (const f of files) {
+    let t;
+    try { t = fs.statSync(path.join(root, f)).mtimeMs; } catch { continue; }
+    if (spans.some(([a, b]) => t > a && t < b)) out.add(f);
+  }
+  return out;
+}
+
 // The same check for work done outside any subagent - and the only cover skills have, since a skill has no end
 // event of its own and its work lands here.
 function stop(input, root, docs, state) {
@@ -1012,7 +1056,11 @@ function stop(input, root, docs, state) {
     // later change to a section a seat answered for earlier.
     const mine = new Set(loadAgent(input.session_id, MAIN_ACTOR).wrote || []);
     const seats = otherActorWrites(input.session_id, MAIN_ACTOR);
-    const files = changed.files.filter((f) => mine.has(f) || !seats.has(f));
+    const claimed = changed.files.filter((f) => mine.has(f) || !seats.has(f));
+    // an unclaimed change made while the session sat idle is the user's own, outside this session: logged, not asked
+    const outside = changedWhileIdle(root, claimed.filter((f) => !mine.has(f)), input.transcript_path);
+    if (outside.size) log(root, input, { event: 'changed-outside-session', files: [...outside].slice(0, 5) });
+    const files = claimed.filter((f) => !outside.has(f));
     const dirs = changed.dirs.filter((d) => files.some((f) => f.startsWith(`${d}/`)));
     if (!files.length && !dirs.length) return;
     hits = docs.watchHits(files, dirs);

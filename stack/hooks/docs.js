@@ -1770,15 +1770,41 @@ function snapshot() {
 // file the session never touched). A commit a checkout, pull or merge brought in was made before the snapshot, and a
 // merge commit's diff is what it brought, so neither counts; the tree diff stays the outer bound, so a change made and
 // reverted stays out. A snapshot taken before this (no `at`), or a range git cannot list, keeps the whole diff.
+// The committer clock alone cannot tell a replay (audit 2026-10-11 SD09, sessions cc87fa6c / e7c8cbb6: a `rebase` and a
+// `pull` brought commits whose committer time is after the snapshot, and the Stop ask said 'you changed' files the
+// session never edited). HEAD's reflog since the snapshot says how each commit arrived: a `commit` entry (plain, amend,
+// initial) is the session's own; a rebase / pull --rebase / cherry-pick pick is a replay, its own only when the commit
+// was AUTHORED after the snapshot (the session's own work moved onto a new base); a pull, merge, checkout or reset brings
+// commits no entry names. With no reflog entry since the snapshot (logging off, a ref moved by a tool) the clock decides.
+function reflogSince(at) {
+  const out = git(['reflog', 'show', '--date=unix', '--format=%H%x09%gd%x09%gs', 'HEAD']);
+  if (out === null) return null;
+  const own = new Set();
+  const replay = new Set();
+  let any = false;
+  for (const line of out.split('\n')) {
+    const [sha, gd, gs] = line.split('\t');
+    const t = Number((/@\{(\d+)\}$/.exec(gd || '') || [])[1]);
+    if (!sha || !Number.isFinite(t)) continue;
+    if (t < at) break; // newest first
+    any = true;
+    if (/^commit\b/.test(gs || '')) own.add(sha);
+    else if (/^(?:rebase|pull --rebase)\b[^:]*\(pick\)|^cherry-pick\b/.test(gs || '')) replay.add(sha);
+  }
+  return any ? { own, replay } : null;
+}
 function ownCommitFiles(snap, range) {
   if (!range.length || !Number.isFinite(snap.at)) return range;
-  const listed = git(['rev-list', '--no-merges', '--format=%ct', `${snap.head}..HEAD`]);
+  const listed = git(['rev-list', '--no-merges', '--format=%ct %at', `${snap.head}..HEAD`]);
   if (listed === null) return range;
+  const log = reflogSince(snap.at);
   const shas = [];
   const lines = listed.split('\n');
   for (let i = 0; i + 1 < lines.length; i += 2) {
     const sha = (/^commit ([0-9a-f]{7,64})$/.exec(lines[i]) || [])[1];
-    if (sha && Number(lines[i + 1]) >= snap.at) shas.push(sha);
+    const [ct, at] = String(lines[i + 1] || '').split(' ').map(Number);
+    if (!sha) continue;
+    if (log ? log.own.has(sha) || (log.replay.has(sha) && at >= snap.at) : ct >= snap.at) shas.push(sha);
   }
   if (!shas.length) return [];
   const touched = new Set((git(['show', '--name-only', '--format=', ...shas.slice(0, 500)]) || '').split('\n').filter(Boolean));
