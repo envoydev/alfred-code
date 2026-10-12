@@ -85,14 +85,32 @@ test('A4: the three flow skills each carry ask templates, and every one passes c
     }
 });
 
-test('A4: a flow close recommends Hold, and a picked commit still runs the whole checkpoint', () => {
+// The user's ruling 2026-10-13 (usage audit 2026-10-10, session 0824440b: the closes recommended Hold and the user overrode
+// it 3 of 3 times): a LOCAL commit takes the mark - it stays on this machine and `git reset --soft HEAD~1` undoes it - and
+// every push or publish ask recommends holding, since it leaves the machine. One rule, every ask that offers either.
+test('A4: a commit ask recommends the local commit and a push or publish ask recommends holding, in every skill', () => {
     for (const name of ['task-solve', 'task-solve-cross']) {
         const text = skillText(name);
         const close = asks(text).find((a) => a.options.some((o) => /^Commit/.test(o)));
         assert.ok(close, `${name}: a close ask that offers the commit`);
-        assert.match(close.options.find((o) => /\(Recommended\)$/.test(o)), /^Hold - review the diff first/, `${name}: Hold is the recommendation`);
+        assert.deepStrictEqual(close.options[0], 'Commit now (Recommended)', `${name}: the local commit is the recommendation, listed first`);
         assert.match(flat(text), /habits-commit-checkpoint/, `${name}: a picked commit runs the checkpoint`);
     }
+    let commits = 0, pushes = 0;
+    for (const name of fs.readdirSync(SKILLS)) {
+        const dir = path.join(SKILLS, name);
+        if (!fs.statSync(dir).isDirectory()) continue;
+        const files = [path.join(dir, 'SKILL.md')];
+        if (fs.existsSync(path.join(dir, 'references'))) for (const f of fs.readdirSync(path.join(dir, 'references'))) files.push(path.join(dir, 'references', f));
+        for (const f of files.filter((x) => x.endsWith('.md') && fs.existsSync(x))) {
+            for (const a of asks(fs.readFileSync(f, 'utf8'))) {
+                const marked = a.options.find((o) => /\(Recommended\)$/.test(o));
+                if (a.options.some((o) => /^Commit now\b/.test(o))) { commits += 1; assert.strictEqual(marked, 'Commit now (Recommended)', `${f}: ${a.question}`); }
+                if (a.options.some((o) => /^(Push now|Publish)\b/.test(o))) { pushes += 1; assert.strictEqual(marked, 'Hold - push later (Recommended)', `${f}: ${a.question}`); }
+            }
+        }
+    }
+    assert.ok(commits >= 3 && pushes >= 2, `the walk found the asks (commit ${commits}, push ${pushes})`);
 });
 
 test('A4: the stop-contract hook\'s pending-close push offers no commit', () => {

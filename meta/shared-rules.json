@@ -2109,19 +2109,19 @@
       ]
     },
     "loop-close-commit-ask": {
-      "_note": "The loop close-out commit decision goes through AskUserQuestion - Hold recommended and listed first, a picked commit running habits-commit-checkpoint whole (the flows' close template; the commit guard blocks a commit with no receipt) - never a prose 'your call' bullet. Verbatim in all three loops because each installs alone.",
+      "_note": "The loop close-out commit decision goes through AskUserQuestion - the local commit recommended and listed first, Hold second (the user's ruling 2026-10-13: a commit stays on this machine and is undone with git reset --soft HEAD~1; a push is held), a picked commit running habits-commit-checkpoint whole (the flows' close template; the commit guard blocks a commit with no receipt) - never a prose 'your call' bullet. Verbatim in all three loops because each installs alone.",
       "owner": {
         "file": "stack/skills/loop-architecture-quality/SKILL.md",
-        "marker": "'Hold - review the diff first (Recommended)' / 'Commit now', which runs `habits-commit-checkpoint` whole - never a prose 'your call' bullet"
+        "marker": "'Commit now (Recommended)', which runs `habits-commit-checkpoint` whole / 'Hold - review the diff first' - never a prose 'your call' bullet"
       },
       "sites": [
         {
           "file": "stack/skills/loop-test-coverage/SKILL.md",
-          "marker": "'Hold - review the diff first (Recommended)' / 'Commit now', which runs `habits-commit-checkpoint` whole - never a prose 'your call' bullet"
+          "marker": "'Commit now (Recommended)', which runs `habits-commit-checkpoint` whole / 'Hold - review the diff first' - never a prose 'your call' bullet"
         },
         {
           "file": "stack/skills/loop-quality/SKILL.md",
-          "marker": "'Hold - review the diff first (Recommended)' / 'Commit now', which runs `habits-commit-checkpoint` whole - never a prose 'your call' bullet"
+          "marker": "'Commit now (Recommended)', which runs `habits-commit-checkpoint` whole / 'Hold - review the diff first' - never a prose 'your call' bullet"
         }
       ]
     },

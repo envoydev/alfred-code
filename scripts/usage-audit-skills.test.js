@@ -104,8 +104,8 @@ test('C20 a6a24815#2: the step-4 stop opens on the gate\'s own verdict line, nev
 
 test('C20 a6a24815#3 + C09 e6a68237#5: the close puts the diff and the next scope in two questions, the next one recommending a fresh session', () => {
     const all = asks(solveText());
-    const diff = all.find((a) => a.options.includes('Hold - review the diff first (Recommended)'));
-    assert.deepStrictEqual(diff.options, ['Hold - review the diff first (Recommended)', 'Commit now'], 'no third fork beside the diff');
+    const diff = all.find((a) => a.options.includes('Commit now (Recommended)'));
+    assert.deepStrictEqual(diff.options, ['Commit now (Recommended)', 'Hold - review the diff first'], 'no third fork beside the diff');
     const next = all.find((a) => /^Next: /.test(a.question));
     assert.ok(next, 'the next-scope question is its own template');
     assert.match(next.question, /It opens a NEW cycle in a NEW plan file\./);

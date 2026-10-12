@@ -72,9 +72,10 @@ test('C5: a loop re-issues a capture call the fresh-session guard blocked, never
     assert.deepStrictEqual(registryFindings('loop-blocked-capture-retry'), []);
 });
 
-// C6, D6, MATERIAL loop-*:63/67/55: the close's commit ask is the flows' template - Hold recommended, a commit runs the checkpoint.
-test('C6: every loop close recommends Hold and routes a picked commit through the commit checkpoint', () => {
-    const ask = "AskUserQuestion - 'Hold - review the diff first (Recommended)' / 'Commit now', which runs `habits-commit-checkpoint` whole - never a prose 'your call' bullet";
+// C6, D6, MATERIAL loop-*:63/67/55: the close's commit ask is the flows' template - the local commit recommended (the user's
+// ruling 2026-10-13), a commit runs the checkpoint.
+test('C6: every loop close recommends the local commit and routes it through the commit checkpoint', () => {
+    const ask = "AskUserQuestion - 'Commit now (Recommended)', which runs `habits-commit-checkpoint` whole / 'Hold - review the diff first' - never a prose 'your call' bullet";
     for (const name of LOOPS) {
         const text = flat(skill(name));
         assert.doesNotMatch(text, /\(commit now \/ hold\)/, `${name}: the unmarked, commit-first ask is gone`);
@@ -83,7 +84,7 @@ test('C6: every loop close recommends Hold and routes a picked commit through th
     for (const name of ['loop-architecture-quality', 'loop-quality']) {
         const mech = flat(read(`stack/skills/${name}/references/loop-mechanics.md`));
         assert.doesNotMatch(mech, /commit now \/ hold/, `${name}/loop-mechanics.md: the report rules name the same ask`);
-        assert.match(mech, /'Hold - review the diff first \(Recommended\)' \/ 'Commit now'/);
+        assert.match(mech, /'Commit now \(Recommended\)', which runs `habits-commit-checkpoint` whole \/ 'Hold - review the diff first'/);
     }
     assert.doesNotMatch(shared()['loop-close-commit-ask']._note, /commit now \/ hold/, 'the registry note describes the new shape');
     assert.deepStrictEqual(registryFindings('loop-close-commit-ask'), []);

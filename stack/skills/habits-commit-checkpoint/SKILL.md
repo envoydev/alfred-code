@@ -38,12 +38,14 @@ On any non-trivial diff, before committing or presenting, in order:
 5. **Ask.** No commit words from the user this conversation: name the paths (the scope derived fresh,
    as the git baseline spells it) and anything still owed, then put ONE AskUserQuestion; a picked
    option is the receipt's `answered:` line. Words the user already typed for THIS commit skip it -
-   they are the `authorized:` line.
+   they are the `authorized:` line. The local commit takes the mark - it stays on this machine and
+   `git reset --soft HEAD~1` undoes it; when the question names anything still owed, 'Show the diff first'
+   takes the mark instead, listed first:
 
    ```ask
    Commit <N files - the session's own paths> on <branch>? <VERIFIED phrase | still owed: <gate>>.
-   - 'Show the diff first (Recommended)' - print the stat and the diff, then ask again; nothing is committed yet
-   - 'Commit now' - stage exactly the named paths and commit them under the receipt
+   - 'Commit now (Recommended)' - stage exactly the named paths and commit them under the receipt
+   - 'Show the diff first' - print the stat and the diff, then ask again; nothing is committed yet
    - 'Hold' - nothing is committed and no receipt is written
    ```
 
@@ -190,12 +192,12 @@ in here, so it is required and never counted against the working tree.
    option is the receipt's `answered: <the chosen label>` line. Words the user already typed for THIS
    publish skip the ask - they are the `authorized:` line. A red the receipt's `live-probe:` records
    on a check CI also runs is named in the question - 'CI runs <check>, red here' - and 'Hold - fix
-   the red first' takes the mark, listed first:
+   the red first' replaces the plain Hold. Holding takes the mark, since a publish leaves the machine:
 
    ```ask
    Publish <the commit set> to <remote>/<branch>? It leaves this machine for CI and everyone on the branch.
-   - 'Publish (Recommended)' - push or merge exactly the set named above
-   - 'Hold' - nothing leaves the machine and no receipt is written
+   - 'Hold - push later (Recommended)' - nothing leaves the machine and no receipt is written
+   - 'Publish' - push or merge exactly the set named above
    ```
 
 2. Write the receipt as its own call.

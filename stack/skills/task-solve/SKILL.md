@@ -211,13 +211,12 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    under AUTO the user's first sight of them.
    *Stop* - this stop is where the close-out decisions live: anything PENDING (an uncommitted diff, an
    unpushed commit, a deferred item, a cross-repo follow-up) goes into the ask; only a cycle with nothing
-   pending ends on the report alone. An uncommitted diff is held for the user's review - a commit waits
-   for their word (`alfred-git.md`):
+   pending ends on the report alone. An uncommitted diff waits for the user's pick (`alfred-git.md`):
 
    ```ask
-   The feature is done and verified; the diff is uncommitted. Hold it for your review first.
-   - 'Hold - review the diff first (Recommended)' - nothing is committed; the diff stays as it is
-   - 'Commit now' - runs `habits-commit-checkpoint` in full, then commits
+   The feature is done and verified; the diff is uncommitted. Commit it on this machine?
+   - 'Commit now (Recommended)' - runs `habits-commit-checkpoint` in full, then commits
+   - 'Hold - review the diff first' - nothing is committed; the diff stays as it is
    ```
 
    A deferred item or follow-up is a SECOND question in the same AskUserQuestion call, never an

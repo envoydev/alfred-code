@@ -108,12 +108,12 @@ Each dispatch brief stays lean and capability-wired: the seat's terseness discip
 
 At close-out (any mode), add **doc-drift awareness** - one line at most in the user-facing close, the user decides, never auto-run. The close also names what this run started to build, test, or verify and still has up - a Docker container or compose stack, seeded integration-test data, a dev server, a background watcher - and puts tear-down-vs-keep through AskUserQuestion in the same close (teardown recommended for the disposable; `none` said plainly; what the run did not start is never touched).
 
-An uncommitted diff is held for the user's review - a commit waits for their word (`alfred-git.md`), and a picked commit runs `habits-commit-checkpoint` whole, after the integration gate signed off. The close's two questions, in one AskUserQuestion call:
+An uncommitted diff waits for the user's pick (`alfred-git.md`), and a picked commit runs `habits-commit-checkpoint` whole, after the integration gate signed off. The close's two questions, in one AskUserQuestion call:
 
 ```ask
-The lanes landed and the final gate signed off; the diff is uncommitted. Hold it for your review first.
-- 'Hold - review the diff first (Recommended)' - nothing is committed; the diff stays as it is
-- 'Commit now' - runs `habits-commit-checkpoint` in full, then commits
+The lanes landed and the final gate signed off; the diff is uncommitted. Commit it on this machine?
+- 'Commit now (Recommended)' - runs `habits-commit-checkpoint` in full, then commits
+- 'Hold - review the diff first' - nothing is committed; the diff stays as it is
 ```
 
 ```ask
