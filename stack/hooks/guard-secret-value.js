@@ -894,9 +894,10 @@ function maskFormatText(text, file, mask, count) {
 
 // ---- the project's sensitive data: where it is, and the run that uses it -------------------------
 // `<data root>/.sensitive-data` (ALFRED_CODE_DATA_PATH, default .alfred) in the checkout the command runs in, else in the
-// main worktree beside it - a gitignored file a new worktree does not have. Its values never reach the chat: a Read is
-// blocked and a shell dump is masked (the 'sensitive' kind above), and a command that needs them runs through
-// --with-sensitive, which puts them in that command's environment and masks every one in its output.
+// main worktree beside it - a gitignored file a new worktree does not have. Its values are kept out of the chat by accident:
+// a Read is blocked and a shell dump is masked (the 'sensitive' kind above), and a command that needs them runs through
+// --with-sensitive, which puts them in that command's environment and masks each one's EXACT text in its output - an
+// encoded, split or reversed print is not caught, so this is leak protection, never a wall against a deliberate read.
 function sensitiveFile(start = process.cwd()) {
   const raw = String(envOf(process.env, 'DATA_PATH') || '').trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
   const root = raw && !pathMod.isAbsolute(raw) && !raw.split('/').includes('..') ? raw : '.alfred';
@@ -1302,7 +1303,7 @@ if (payload.hook_event_name === 'SessionStart') {
       if (r.status === 1) exposed = ` WARNING: git does not ignore ${rel} (or it is tracked) - a commit publishes every value; tell the user to add it to .gitignore, and to untrack it with git rm --cached if it is tracked.`;
     } catch { /* no git: nothing to commit it with */ }
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext:
-      `Sensitive data: ${rel} holds ${keys.join(', ')} - values the chat never sees (a Read is blocked, a dump is masked; never ask the user to paste one). A command that needs them: node "${__filename}" --with-sensitive -- "<command line>" - they are in its environment, and each prints as <KEY> in its output.${exposed}` } }));
+      `Sensitive data: ${rel} holds ${keys.join(', ')} - kept out of the chat: a Read is blocked and a printed value is masked, but only its exact text, so never print one in another form (encoded, split, reversed) and never ask the user to paste one. A command that needs them: node "${__filename}" --with-sensitive -- "<command line>" - they are in its environment, and each prints as <KEY> in its output.${exposed}` } }));
   }
   process.exit(0);
 }

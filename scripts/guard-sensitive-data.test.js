@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Suite for the project's sensitive data in stack/hooks/guard-secret-value.js: `<data root>/.sensitive-data`, a dotenv the
-// user fills by hand (the user's ruling of 2026-10-13). Its values never reach the chat - a Read is blocked, a shell dump
-// becomes the redacted view, a source / copy / print is refused - and a command that needs them runs through
-// `--with-sensitive`, which puts them in its environment and masks each in its output. The session starts with its KEYS.
+// user fills by hand (the user's ruling of 2026-10-13). Its values are kept out of the chat by accident - a Read is blocked, a
+// shell dump becomes the redacted view, a source / copy / print is refused - and a command that needs them runs through
+// `--with-sensitive`, which puts them in its environment and masks each one's exact text in its output (an encoded
+// print is not caught - the twin-parser case below reads values back as hex through it). The session starts with its KEYS.
 'use strict';
 const test = require('node:test');
 require('./hook-test-env').isolateHookSuite();

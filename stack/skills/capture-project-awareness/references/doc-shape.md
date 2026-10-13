@@ -114,7 +114,7 @@ whatever its key:
 
 ```dotenv
 # The project's sensitive data - fill the values by hand. Never commit this file, never paste a value into chat.
-# Agents never see a value: they check it for presence, and a command that needs one runs through --with-sensitive.
+# Agents check it for presence; a command that needs a value runs through --with-sensitive, which masks it in the output.
 APP_TEST_USER=
 APP_TEST_PASSWORD=
 ```

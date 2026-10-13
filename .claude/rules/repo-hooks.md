@@ -355,7 +355,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     probed: `source` then `echo` and a `cp` then `cat` both leaked before it). The run that USES the values:
     `node <guard> --with-sensitive -- "<command line>"` puts them in that command's environment (the file wins over an
     inherited value - the run asked for the project's) and prints each value of 4+ characters as `<KEY>` in its stdout and
-    stderr, line-buffered; the exit code is the command's. SessionStart (its own manifest row, silent with no store, an
+    stderr, line-buffered - its EXACT text only: an encoded, split or reversed print is not caught, so it is leak protection
+    against accidents, never a wall against a deliberate read (the session-start line says so and forbids the transform); the exit code is the command's. SessionStart (its own manifest row, silent with no store, an
     empty or an unparseable one) says the KEYS and that command line, plus a warning when `git check-ignore` exits 1 (not
     ignored, or tracked). The launchers read the same file through `data-root.js readSensitive` (a twin parser - the hooks
     ship apart from `stack/mcp` on the copy route; `guard-sensitive-data.test.js` holds both to one fixture), where the
