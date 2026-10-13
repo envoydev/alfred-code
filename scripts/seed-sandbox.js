@@ -133,6 +133,9 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
     for (const k of ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY']) delete env[k];
     // uv's own cut-off variable changes what the copy route registers (M24) - a case sets it through `env`.
     delete env.UV_EXCLUDE_NEWER;
+    // So do the SDK paths mobile-control's notes read, the shell's over a settings file's - and GitHub's ubuntu and macOS
+    // runner images set ANDROID_HOME and JAVA_HOME (the 2.4.0 release CI: a settings-file case read the runner's SDK).
+    for (const k of ['ANDROID_HOME', 'ANDROID_SDK_ROOT', 'JAVA_HOME']) delete env[k];
     scrubStackEnv(env);
     // The memory model pre-warm starts the service the snapshot declares (~166MB on a cold machine): off in the
     // sandbox unless a case switches it on with its own stand-in for uvx.
