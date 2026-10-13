@@ -38,12 +38,12 @@ Read it at step 1, before the tier is named.
   an observable, the evidence tier, every digest's key lines, the hypotheses with their verdicts,
   the proven cause, and the stamps this run adds (`Tier`, `Gathered`, `Cause`, `Outcome`). On any
   conflict with memory or the chat, the file wins.
-- **The navigation-server note** (`write_memory` named `<slug>/diagnosis`) is the working cursor: current
+- **The handoff note** (an `alfred-memory` row tagged `note:<slug>/diagnosis`, stored as `alfred-memory.md` says) is the working cursor: current
   step, chosen mode, resume pointer, the error signature and its proven fix once found - that
   last part is the reusable half, keyed to the signature, never a dump of the log.
 
-**On invocation, resume before starting:** `list_memories` -> `read_memory` the slug's note (or
-an equivalent direct read of `<data root>/serena/memories/`, `.alfred` by default) and read the findings file's stamps. A run
+**On invocation, resume before starting:** `memory_list` with the tags `note:<slug>/diagnosis` and the project tag,
+`tag_match: 'all'` - the newest row is the cursor - and read the findings file's stamps. A run
 mid-flight resumes at its cursor - never re-run a step already stamped. A run between steps 2
 and 3 looks like:
 

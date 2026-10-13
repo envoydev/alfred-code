@@ -188,8 +188,8 @@ dependencies) leaves session-side state describing the OLD tree. Worth pasting t
 
 ```text
 I switched branches and the structure changed. Re-run dependency install if needed, restart the
-language server, re-index for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --exclude-newer 2026-09-29T23:59:59Z --from serena-agent@1.7.0 serena project index` - on Windows the spelling above), and check
-whether the navigation-server memories still describe this branch accurately.
+language server, re-index for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --exclude-newer 2026-09-29T23:59:59Z --from serena-agent@1.7.0 serena project index` - on Windows the spelling above), and purge
+any handoff note a run left behind (`node .claude/hooks/memory.js handoff` lists them).
 ```
 
 The architecture docs handle a branch switch themselves: under `local` versioning the docs hook

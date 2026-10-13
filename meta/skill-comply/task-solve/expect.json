@@ -8,7 +8,7 @@
     "max_turns": 40,
     "stacks": ["javascript"],
     "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "Agent", "AskUserQuestion",
-      "mcp__plugin_alfred-navigation_alfred-navigation__list_memories", "mcp__plugin_alfred-navigation_alfred-navigation__read_memory", "mcp__plugin_alfred-navigation_alfred-navigation__write_memory",
+      "mcp__plugin_alfred-memory_alfred-memory__memory_list", "mcp__plugin_alfred-memory_alfred-memory__memory_store", "mcp__plugin_alfred-memory_alfred-memory__memory_delete",
       "mcp__plugin_alfred-navigation_alfred-navigation__find_symbol", "mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview", "mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols"],
     "selection": {
       "skills": ["task-solve", "task-design", "task-verify-plan", "task-implement", "task-verify-code", "javascript"],
@@ -34,11 +34,8 @@
           "type": "tool_order",
           "name": "the cycle note looked up before the design step",
           "before": { "any": [
-            { "tool": "mcp__plugin_alfred-navigation_alfred-navigation__list_memories" },
-            { "tool": "mcp__plugin_alfred-navigation_alfred-navigation__read_memory" },
-            { "field": "command", "text_match": "serena/memories" },
-            { "tool": "Glob", "text_match": "serena/memories" },
-            { "tool": "Read", "text_match": "serena/memories" }
+            { "tool": "mcp__plugin_alfred-memory_alfred-memory__memory_list" },
+            { "field": "command", "text_match": "memory\\.js handoff" }
           ] },
           "after": { "ref": "design" }
         }

@@ -369,20 +369,21 @@ test('a status-less seat return is a seat death in every orchestrator that route
     assert.match(routing, /route it as a seat death/, 'the routing bullet itself carries the route');
 });
 
-// 2.1.6 review B3: a solve run lists its own feature's folder at resume, never the whole store, and its close
-// purges the whole feature - a pre-2.1.6 run's flat notes included - and counts what is left with the trio
-// protocol's own line, kept in the step mechanics (read at step 3) since the body sits at its 18,000-char cap.
-test('solve resumes by the feature topic and closes on the counted purge', () =>
+// 2.1.6 review B3: a solve run lists its own feature's notes at resume, never the whole store, and its close
+// purges the whole feature and counts what is left with the trio protocol's own line, kept in the step mechanics
+// (read at step 3) since the body sits at its cap. Since the user's 2026-10-13 ruling the notes are alfred-memory
+// rows, so the resume and the purge go by the `handoff:<feature>` tag plus the project tag.
+test('solve resumes by the feature tag and closes on the counted purge', () =>
 {
     const solve = flat(skill('task-solve'));
-    assert.match(solve, /\*\*On invocation, resume before starting:\*\* `list_memories` with `topic: '<feature>'`/);
+    assert.match(solve, /\*\*On invocation, resume before starting:\*\* `memory_list` with the tags `handoff:<feature>` and the project tag, `tag_match: 'all'`/);
     assert.doesNotMatch(solve, /Delete or archive the cycle note/);
-    assert.match(solve, /`mcp__plugin_alfred-navigation_alfred-navigation__delete_memory` each note under `topic: '<feature>'` plus a pre-2\.1\.6 run's flat `<feature>__\*` - then the purge count \(`references\/step-mechanics\.md`\)/);
+    assert.match(solve, /`mcp__plugin_alfred-memory_alfred-memory__memory_delete` with `tags: \['handoff:<feature>', 'project:<name>'\]`, `tag_match: 'all'` - then the purge count \(`references\/step-mechanics\.md`\)/);
     // Usage audit 2026-10-10 (C20): the receipt rides the close stop's Result field, where the stop check reads.
     assert.match(solve, /The close stop's `Result:` line carries the receipts - `Completed <date>, memories purged: <names\|none>`/);
     const line = (text) => (/The purge is counted, not claimed\.\*\* At close, from the project root: `([^`]+)`/.exec(text) || [])[1];
     const own = line(flat(read('stack/skills/task-solve/references/step-mechanics.md')));
-    assert.ok(own, 'the step mechanics carry the purge count line');
+    assert.strictEqual(own, 'node .claude/hooks/memory.js handoff <feature>', 'the step mechanics carry the purge count line');
     assert.strictEqual(own, line(flat(read('stack/skills/task-solve-cross/references/domain-trio-protocol.md'))), 'the same line as the trio protocol');
 });
 

@@ -950,6 +950,12 @@
       "note": "push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired"
     },
     {
+      "file": "memory-session.js",
+      "matcher": "@SubagentStart",
+      "event": "",
+      "note": "the project's memory tag line for a dispatched subagent - SessionStart context never reaches one, and a seat stores and reads its handoff note under that tag"
+    },
+    {
       "file": "monitor-session.js",
       "matcher": "@PostToolUse",
       "event": "",

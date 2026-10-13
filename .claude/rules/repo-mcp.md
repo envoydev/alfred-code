@@ -176,7 +176,9 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   stack's own context, `stack/mcp/navigation-context.yml` (2.1.4, I12 - ruling 'Keep rename + safe
   delete'): serena 1.7.0's `claude-code` context (its six exclusions, `single_project`, structured output
   off) plus `replace_content`, `replace_in_files`, `replace_symbol_body`, `insert_after_symbol`,
-  `insert_before_symbol` and `onboarding` off - writes no Edit/Write-matched hook sees - with
+  `insert_before_symbol` and `onboarding` off - writes no Edit/Write-matched hook sees - and, since the user's
+  2026-10-13 ruling ('Serena is just for navigation'), its six memory tools off too (a seat's handoff note is an
+  `alfred-memory` row tagged `handoff`), with
   `rename_symbol` and `safe_delete_symbol` kept, and a prompt that sends edits to the harness tools
   (never calling Edit forbidden). serena reads `--context <path>` as a custom context file
   (`context_mode.py`: a separator or a `.yml` suffix). The plugin entry keeps `--context claude-code` and

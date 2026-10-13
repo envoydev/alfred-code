@@ -307,14 +307,16 @@ const yamlList = (text, key) =>
     }
     return out;
 };
-test('the stack serena context: upstream claude-code exclusions kept, the five edit tools and onboarding off, rename and safe delete on (I12)', () =>
+test('the stack serena context: upstream claude-code exclusions kept, the five edit tools, onboarding and the memory tools off, rename and safe delete on (I12)', () =>
 {
     const text = fs.readFileSync(SERENA_CONTEXT, 'utf8');
     const excluded = yamlList(text, 'excluded_tools');
     const upstream = ['create_text_file', 'read_file', 'execute_shell_command', 'find_file', 'list_dir', 'search_for_pattern'];
     const ruled = ['replace_content', 'replace_in_files', 'replace_symbol_body', 'insert_after_symbol', 'insert_before_symbol', 'onboarding'];
-    assert.deepStrictEqual([...excluded].sort(), [...upstream, ...ruled].sort(), excluded.join(','));
-    for (const kept of ['rename_symbol', 'safe_delete_symbol', 'find_symbol', 'write_memory', 'read_memory']) assert.ok(!excluded.includes(kept), `${kept} must stay on`);
+    // The user's 2026-10-13 ruling: the server is navigation only - every note goes to alfred-memory.
+    const memory = ['write_memory', 'read_memory', 'list_memories', 'edit_memory', 'rename_memory', 'delete_memory'];
+    assert.deepStrictEqual([...excluded].sort(), [...upstream, ...ruled, ...memory].sort(), excluded.join(','));
+    for (const kept of ['rename_symbol', 'safe_delete_symbol', 'find_symbol']) assert.ok(!excluded.includes(kept), `${kept} must stay on`);
     assert.match(text, /^single_project: true$/m);
     assert.match(text, /^structured_tool_output: false$/m);
     assert.match(text, /^tool_description_overrides: \{\}$/m);
@@ -323,7 +325,8 @@ test('the stack serena context: upstream claude-code exclusions kept, the five e
     assert.match(prompt, /\bEdit\b/, 'the prompt sends edits to the harness Edit tool');
     assert.match(prompt, /rename_symbol/);
     assert.match(prompt, /safe_delete_symbol/);
-    assert.match(prompt, /write_memory/, 'the seat handoff stays on this server');
+    assert.doesNotMatch(prompt, /write_memory/, 'the seat handoff left this server');
+    assert.match(prompt, /goes through the alfred-memory MCP/, 'the prompt sends notes to alfred-memory');
     assert.ok(!/—/.test(text), 'house voice: no em-dash');
 });
 

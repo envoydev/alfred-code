@@ -197,7 +197,7 @@ test('I21: the always-on surface skips manual-only descriptions and prices the g
     assert.equal(s.manualOnly, 1);
     const fixed = '## Usage policy (fixed - stamped verbatim, every run)\n- P1'.length + '- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - LOCKED. first call: see the baselines.'.length;
     assert.equal(s.generated, fixed, 'the policy section (its stamp comment is stripped) plus the locked-server row');
-    assert.equal(s.total, s.rules + s.agents + s.skills + s.generated);
+    assert.equal(s.total, s.rules + s.agents + s.agentTools + s.skills + s.generated);
 });
 
 // Audit 2026-10-10 C28 (session 8f44a003): the dispatcher lists each seat with its '(Tools: ...)' suffix - 33,635
@@ -213,8 +213,10 @@ test('C28: the always-on surface measures each seat\'s listed tools suffix and p
     fs.mkdirSync(path.join(base, 'skills'), { recursive: true });
     const s = alwaysOnSurface({ rulesDir: path.join(base, 'rules'), agentsDir: path.join(base, 'agents'), skillsDir: path.join(base, 'skills'), capabilitiesDir: path.join(base, 'caps') });
     assert.equal(s.agentTools, ' (Tools: Read, Bash)'.length + ' (Tools: Read, Grep)'.length + ' (Tools: *)'.length, 'inline, a YAML list joined, and none as *');
-    assert.equal(s.total, s.rules + s.agents + s.skills + s.generated, 'outside the cap until the seats\' grants narrow');
-    assert.match(alwaysOnParts(s), new RegExp(`\\(not counted: agent tools lists ${s.agentTools}, listed beside each description\\)$`));
+    // The user's 2026-10-13 ruling ('Count them, cap 80k'): the suffix is part of the capped total.
+    assert.equal(s.total, s.rules + s.agents + s.agentTools + s.skills + s.generated, 'the tools suffix is inside the cap');
+    assert.match(alwaysOnParts(s), new RegExp(`agent tools lists ${s.agentTools} \\(listed beside each description\\)`));
+    assert.ok(!alwaysOnParts(s).includes('not counted'), 'nothing measured is left out of the total');
 });
 
 test('I21: the lint comment no longer claims ~10% headroom, and CLAUDE.md states what check 33 counts', () =>
@@ -225,7 +227,8 @@ test('I21: the lint comment no longer claims ~10% headroom, and CLAUDE.md states
     assert.ok(!md.includes('pathless rules 25,090'), 'the whole-file figure is gone');
     assert.ok(md.includes('frontmatter and HTML comments stripped'), 'CLAUDE.md says the rules are counted as injected');
     assert.ok(md.includes('a `disable-model-invocation` skill\'s is not in context'), 'CLAUDE.md says the manual-only descriptions are skipped');
-    assert.ok(md.includes('fails over 70,000 chars'), 'the limit itself stays');
+    assert.ok(md.includes('fails over 80,000 chars'), 'the limit itself stays');
+    assert.match(lint, /const ALWAYS_ON_MAX = 80000;/, 'the cap is 80,000 since the tools lists count (2026-10-13)');
 });
 
 // ------------------------------------------------------------------ I23
@@ -302,12 +305,15 @@ test('I12: the navigation rule and the locked row keep rename and safe delete, e
 {
     const nav = squash(read('stack/rules/alfred-navigation.md'));
     assert.ok(!nav.includes('symbol edits and the memory handoff stay on the navigation server'), 'the old edit routing is gone');
-    const line = 'keeps symbol lookup, `rename_symbol`, `safe_delete_symbol` and the seat memory handoff';
+    const line = 'keeps symbol lookup, `rename_symbol` and `safe_delete_symbol`';
     assert.ok(nav.includes(line), 'alfred-navigation.md');
     assert.ok(nav.includes('every other edit goes through Edit / Write'), 'alfred-navigation.md');
     const map = squash(routingMapText());
     assert.ok(map.includes(line) && map.includes('every other edit goes through Edit / Write'), 'the template row');
     assert.ok(!map.includes('symbol-level editor'), 'the row no longer sells the server as an editor');
+    // The user's 2026-10-13 ruling: the navigation server is navigation only, every note goes to alfred-memory.
+    assert.ok(!nav.includes('seat memory handoff') && !map.includes('seat memory handoff'), 'no seat handoff left on the navigation server');
+    assert.ok(map.includes('its memory tools are off, every note goes to `alfred-memory`'), 'the template row routes notes to alfred-memory');
 });
 
 // ------------------------------------------------------------------ I45 + I10 (prose half)

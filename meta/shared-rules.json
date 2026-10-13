@@ -64,163 +64,163 @@
       ]
     },
     "memory-handoff-mechanism": {
-      "_note": "The navigation server's per-project memory handoff: name-addressed, local, never the shared memory MCP. Owner reference defines it; every seat restates it inline.",
+      "_note": "The seat memory handoff through the alfred-memory MCP (the user's 2026-10-13 ruling: the navigation server is navigation only, its memory tools off): read by exact tags, never searched - the project tag fences the project, the run tag the run. Owner reference defines it; every seat restates it inline.",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/capability-reuse.md",
-        "marker": "Navigation-server memory is local to this project and addressed by name, not searched"
+        "marker": "Handoff notes are read by exact tags, never searched"
       },
       "sites": [
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/aspnet-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/dotnet-build-error-resolver.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/issue-diagnoser-runtime.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/issue-diagnoser-ci.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/security-auditor.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         }
       ]
     },
@@ -371,7 +371,7 @@
       ]
     },
     "orient-docs-durable-truth": {
-      "_note": "Committed docs are the durable truth, the navigation-server note only the transient handoff.",
+      "_note": "Committed docs are the durable truth, the alfred-memory handoff note only the transient handoff.",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/capability-reuse.md",
         "marker": "the durable map lives in the docs, the transient handoff in the note"
@@ -379,99 +379,99 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/issue-diagnoser-runtime.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/issue-diagnoser-ci.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/security-auditor.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         }
       ]
     },
@@ -2842,7 +2842,7 @@
       ]
     },
     "trio-note-naming-grammar-restated": {
-      "_note": "The navigation-server note naming grammar (<feature>/<contract_version>/<seat>/<task>, each / a folder list_memories' topic filters by - 2.1.6) minted by the orchestrator - owned by the trio protocol's memory-hygiene bullet, restated operatively in solve-task's dispatch-prompt step.",
+      "_note": "The handoff note naming grammar (<feature>/<contract_version>/<seat>/<task>, carried as the alfred-memory row's note:<name> tag beside handoff:<feature>/<contract_version>) minted by the orchestrator - owned by the trio protocol's memory-hygiene bullet, restated operatively in solve-task's dispatch-prompt step.",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
         "marker": "<feature>/<contract_version>/<seat>"
@@ -2892,7 +2892,7 @@
       ]
     },
     "memories-purge-count": {
-      "_note": "The purge receipt made a FACT: at close the orchestrator counts what is left of <data root>/serena/memories/<feature>/ plus a pre-2.1.6 run's flat <feature>__* notes (and a 2.0.0 .serena/memories) with one node line (2.1.6 review B2: a find-based line read 0 wherever a foreign find came first on PATH - Windows' find.exe), and above zero the close is not done. task-solve's step mechanics carry the same line for its close, since it never loads the protocol and its body sits at the 18,000-char cap. Lives in the trio protocol's bookkeeping, so it rides every vendored copy; pinned on its own marker because domain-trio-protocol-vendored checks only one sentence of the whole file.",
+      "_note": "The purge receipt made a FACT: at close the orchestrator runs `node .claude/hooks/memory.js handoff <feature>`, which reads the memory database itself and prints the number of this project's handoff:<feature> rows left plus an older release's navigation-server notes still on disk (<data root>/serena/memories/<feature>/, a pre-2.1.6 flat <feature>__*, a 2.0.0 .serena/memories) - an unreadable database prints no number and exits 1, so a count is never guessed; above zero the close is not done. task-solve's step mechanics carry the same line for its close, since it never loads the protocol and its body sits at its cap. Lives in the trio protocol's bookkeeping, so it rides every vendored copy; pinned on its own marker because domain-trio-protocol-vendored checks only one sentence of the whole file.",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
         "marker": "The purge is counted, not claimed"
@@ -3668,7 +3668,7 @@
       ]
     },
     "flow-state-two-layers-resume": {
-      "_note": "Flow state lives in two layers (the ledger file + the navigation-server note) and every invocation resumes from them before starting anew. Owned by the solve-task flow; restated in the diagnosis flow.",
+      "_note": "Flow state lives in two layers (the ledger file + the alfred-memory handoff note) and every invocation resumes from them before starting anew. Owned by the solve-task flow; restated in the diagnosis flow.",
       "owner": {
         "file": "stack/skills/task-solve/SKILL.md",
         "marker": "On invocation, resume before starting"
@@ -4453,159 +4453,159 @@
       ]
     },
     "seat-start-memory-read": {
-      "_note": "The trio memory bus START step - list_memories with the run's <feature>/<contract_version> topic, then read_memory the notes it lists - in every dispatched seat that hands off through navigation-server memory. Owner aspnet-implementer (the reference twin); since 2.1.6 serena 1.7.0's topic filters by folder, so the server returns the run's notes and the seat matches no pattern. Then 'the notes it lists' (implementers, verifiers, security-auditor - every note of the run, as before) or 'the one note it lists under your own seat name' (designers, resolvers, diagnosers, integration-reviewer - their own earlier pass, as before; a run's whole folder measured p95 17,535 chars, max 42,082 over 39 local runs). The marker is the shared head.",
+      "_note": "The trio memory bus START step - memory_list on the alfred-memory MCP with exact tags and tag_match 'all' - in every dispatched seat that hands off through it (the user's 2026-10-13 ruling moved the bus off the navigation server). Owner aspnet-implementer (the reference twin). Then 'the notes it lists' with handoff:<feature>/<contract_version> plus the project tag (implementers, verifiers, security-auditor - every note of the run) or 'the newest note it lists' with note:<own note name> plus the project tag (designers, resolvers, diagnosers, integration-reviewer - their own earlier pass; a run's whole note set measured p95 17,535 chars, max 42,082 over 39 local runs, so they never list the run). The marker is the shared head.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+        "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/security-auditor.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/dotnet-build-error-resolver.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/issue-diagnoser-ci.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/issue-diagnoser-runtime.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         }
       ]
     },
@@ -4613,44 +4613,44 @@
       "_note": "An implementer writes its memory note the moment production edits land with tests pending, so a killed seat leaves a resume brief (measured: four implementers died in one outage window before HAND-OFF). Restated in every *-implementer.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+        "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         }
       ]
     },
@@ -5945,7 +5945,7 @@
       ]
     },
     "verifier-memory-before-report": {
-      "_note": "A seat writes any memory BEFORE it composes the report, then delivers the report as its final hand-off - through SubagentHandback when its tools include it (Claude Code gives that tool to every locally run, non-fork subagent in auto mode and delivers only what goes through it - tools-reference, v2.1.271+; the 2026-09-29 agents audit counted 188 of 205 local seat runs reporting through it), else as its last message; nothing after it, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then write_memory, then a pointer close forced a resend). 13 copies: the ten trio verifiers and the three support seats whose structured return IS the deliverable.",
+      "_note": "A seat writes any memory BEFORE it composes the report, then delivers the report as its final hand-off - through SubagentHandback when its tools include it (Claude Code gives that tool to every locally run, non-fork subagent in auto mode and delivers only what goes through it - tools-reference, v2.1.271+; the 2026-09-29 agents audit counted 188 of 205 local seat runs reporting through it), else as its last message; nothing after it, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then the note write, then a pointer close forced a resend). 13 copies: the ten trio verifiers and the three support seats whose structured return IS the deliverable.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
         "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
@@ -6090,15 +6090,15 @@
       ]
     },
     "navigation-edit-tools": {
-      "_note": "Which edits stay on the navigation server (the user's 2026-09-29 ruling on audit I12, 'Keep rename + safe delete'): symbol lookup, rename_symbol, safe_delete_symbol and the seat memory handoff; every other edit goes through Edit / Write, because the navigation server's text-edit tools bypassed config protection, the docs hold, the turn-edit list and the done-gate probe (41 such calls measured in main sessions). The launcher switches those tools off; the always-on rule and the generated capabilities rule's locked-server row say the same thing, so a session never reads the old routing in one of them.",
+      "_note": "Which edits stay on the navigation server (the user's 2026-09-29 ruling on audit I12, 'Keep rename + safe delete'): symbol lookup, rename_symbol and safe_delete_symbol (the seat memory handoff left it on the user's 2026-10-13 ruling - every note goes to alfred-memory); every other edit goes through Edit / Write, because the navigation server's text-edit tools bypassed config protection, the docs hold, the turn-edit list and the done-gate probe (41 such calls measured in main sessions). The launcher switches those tools off; the always-on rule and the generated capabilities rule's locked-server row say the same thing, so a session never reads the old routing in one of them.",
       "owner": {
         "file": "stack/rules/alfred-navigation.md",
-        "marker": "keeps symbol lookup, `rename_symbol`, `safe_delete_symbol` and the seat memory handoff"
+        "marker": "keeps symbol lookup, `rename_symbol` and `safe_delete_symbol`"
       },
       "sites": [
         {
           "file": "stack/skills/capture-agent-capabilities/references/generated-rule-template.md",
-          "marker": "keeps symbol lookup, `rename_symbol`, `safe_delete_symbol` and the seat memory handoff, and every other edit goes through Edit / Write"
+          "marker": "keeps symbol lookup, `rename_symbol` and `safe_delete_symbol`, and every other edit goes through Edit / Write"
         }
       ]
     },

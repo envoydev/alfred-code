@@ -8,6 +8,8 @@
 // own selectForSession degrades to an empty selection there), selects nothing, and the push is then the
 // tag and search lines alone. Fully silent only with no registration, garbage stdin, or any other error -
 // exit 0 throughout, since a session start that cannot be enriched must never be a session start that fails.
+// SubagentStart gets the tag line alone: SessionStart context never reaches a dispatched seat, and a seat's
+// handoff note is stored and read under that tag (alfred-memory.md) - the hook states it, the seat never guesses it.
 'use strict';
 const os = require('os');
 
@@ -67,7 +69,8 @@ async function main() {
   let cursorOff = false;
   try { cursorOff = require('./hook-prelude.js').cursorStandDown(input, __filename); } catch { /* no prelude: run */ }
   if (cursorOff) return;
-  if (input.hook_event_name !== 'SessionStart') return;
+  const event = input.hook_event_name;
+  if (event !== 'SessionStart' && event !== 'SubagentStart') return;
   const memory = require('./memory.js');
   const home = os.homedir();
   // Re-verify 3 S3: the project the session's directory belongs to (memory.js projectRootOf) - CLAUDE_PROJECT_DIR names the
@@ -78,6 +81,7 @@ async function main() {
   process.env.CLAUDE_PROJECT_DIR = checkout;
   const dbPath = memory.registeredDbPath(root, { home });
   if (!dbPath) return; // no memory server registered for this project - nothing to push
+  if (event === 'SubagentStart') return emit('SubagentStart', `This project's memory tag: project:${memory.projectName(root)}`);
   const level = memory.levelOfPath(dbPath, { home, projectRoot: root }) || 'unknown';
   const project = memory.projectName(root);
   // related-projects is read through docs.js's own docs-root resolution (ALFRED_CODE_DOCS_PATH in the

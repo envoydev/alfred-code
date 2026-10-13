@@ -82,17 +82,19 @@ The memory levels and stores, where the docs root and the data root live, and th
   when its new vector is still not unit length. `memory.js duplicates` reports same-content pairs and
   deletes nothing.
 
-- **Three memory stores and one record, don't conflate:** the `memory` MCP is the SHARED memory - preferences,
+- **Two memory stores and one record, don't conflate:** the `memory` MCP is the SHARED memory - preferences,
   corrections, project facts and agent lessons, searchable by meaning, one database per chosen
-  level (global/scoped/project) read by every Claude account and Cursor at that level; the navigation server's
-  per-project memory (`<data root>/serena/memories/`) is the EPHEMERAL handoff bus between agents within one
-  feature, never a place for what should outlast it; Claude's own built-in memory (`MEMORY.md` +
+  level (global/scoped/project) read by every Claude account and Cursor at that level - and, since the user's
+  2026-10-13 ruling ('Serena is just for navigation, for memory it's only alfred memory'), the EPHEMERAL handoff bus
+  between agents within one feature too: rows tagged `handoff`, read by exact tags, purged at the run's close, never
+  re-sent by the session-start push (`memory.js` `isHandoff`), and never a place for what should outlast the run. The
+  navigation server's six memory tools are off in `navigation-context.yml`; Claude's own built-in memory (`MEMORY.md` +
   `memory/*.md`) is SWITCHED OFF (`autoMemoryEnabled: false`) by the install when the project has no
   notes, else by `/alfred-code:init` after a one-time import of its existing notes into the `memory` MCP - it has no search and is not shared
   with Cursor, which is why the MCP replaces it rather than sitting beside it. Which repos are
   related lives in the generated `.claude/rules/alfred-project-related-context.md` (the
   `/capture-related-projects` skill), not memory. The session HISTORY (`<docs-path>/history/`,
-  `history-session.js`) is the fourth, machine-local and never shared: what each session did and what
+  `history-session.js`) is the third, machine-local and never shared: what each session did and what
   the user ruled, script-written, read back at the next start on the same branch - a record, not memory.
 - **The docs root lives outside `.claude/`** (2.0.0, the user's decision of 2026-09-26). Claude Code
   protects `.claude/` (only `.claude/worktrees` is exempt): a write there is prompted in default and
@@ -172,6 +174,6 @@ The memory levels and stores, where the docs root and the data root live, and th
   update (`docs.migrateDocsDomains`, absent-only: `PROJECT-CODE-STYLE.md`, `architecture/ASSESSMENT.md`, and the
   orientation doc from `related-context/` or loose at the root, its pre-folder home), and each generated rule naming
   the old path is re-pointed whenever the doc sits only at its new home - the project's own AGENTS.md / CLAUDE.md is
-  named, never rewritten (2026-10-10: a moved doc would leave the always-on pointer dangling). Navigation-server memory (`<feature>/<contract_version>/<seat>`, each `/` a
-  folder serena's `list_memories` `topic` filters by - 2.1.6; never the `memory` MCP) is the EPHEMERAL inter-seat bus; anything that must survive a fresh clone
+  named, never rewritten (2026-10-10: a moved doc would leave the always-on pointer dangling). The seat handoff note (`<feature>/<contract_version>/<seat>`, an `alfred-memory`
+  row tagged `note:<name>` and `handoff:<feature>/<contract_version>`) is the EPHEMERAL inter-seat bus; anything that must survive a fresh clone
   belongs in the committed docs.

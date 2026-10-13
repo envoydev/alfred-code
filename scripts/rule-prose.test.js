@@ -185,7 +185,8 @@ test('rules F5 + F16: the navigation rule says one thing per line, in plain word
     assert.match(nav, /- A language the navigation server's `project\.yml` \(`<data root>\/serena\/`\) does not list takes the fallback from its first call\. -/);
     assert.match(nav, /- A large JSON \/ YAML \/ lock \/ fixture file is queried/);
     assert.ok(!nav.includes('check the tool list before an edit call'), 'F16');
-    assert.ok(nav.includes('confirm an edit tool is in the tool list before calling it'), 'F16');
+    // F16's edit-tool line named the server's memory edit tools; they are off since the user's 2026-10-13 ruling.
+    assert.ok(nav.includes('- The navigation server is navigation only: its memory tools are off'), 'F16 superseded');
 });
 
 test('rules F6: the compaction section carries the name the docs give it', () =>

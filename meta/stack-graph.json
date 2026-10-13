@@ -290,7 +290,9 @@
       "plugins": []
     },
     "issue-diagnoser": {
-      "mcps": [],
+      "mcps": [
+        "alfred-memory"
+      ],
       "plugins": []
     },
     "issue-signatures-ci": {
@@ -308,15 +310,21 @@
       "plugins": []
     },
     "loop-architecture-quality": {
-      "mcps": [],
+      "mcps": [
+        "alfred-memory"
+      ],
       "plugins": []
     },
     "loop-quality": {
-      "mcps": [],
+      "mcps": [
+        "alfred-memory"
+      ],
       "plugins": []
     },
     "loop-test-coverage": {
-      "mcps": [],
+      "mcps": [
+        "alfred-memory"
+      ],
       "plugins": []
     },
     "markdown-style": {
@@ -340,7 +348,9 @@
       "plugins": []
     },
     "task-build-from-scratch": {
-      "mcps": [],
+      "mcps": [
+        "alfred-memory"
+      ],
       "plugins": []
     },
     "task-design": {
@@ -352,11 +362,15 @@
       "plugins": []
     },
     "task-solve": {
-      "mcps": [],
+      "mcps": [
+        "alfred-memory"
+      ],
       "plugins": []
     },
     "task-solve-cross": {
-      "mcps": [],
+      "mcps": [
+        "alfred-memory"
+      ],
       "plugins": []
     },
     "task-verify-code": {
@@ -922,6 +936,7 @@
       "skills": [],
       "agents": [],
       "mcps": [
+        "alfred-memory",
         "alfred-navigation"
       ],
       "plugins": [],

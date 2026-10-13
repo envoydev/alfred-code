@@ -2410,9 +2410,11 @@ function main()
     try
     {
         alwaysOn = alwaysOnSurface({ rulesDir: CLAUDE_RULES_DIR, agentsDir: AGENTS_DIR, skillsDir: SKILLS_DIR });
-        // The ceiling sits about 40% over the measured surface (48,977 on 2026-09-30): a budget to
-        // DEFEND, not a target to grow into. Raising it is a deliberate edit with a reason, which is the point.
-        const ALWAYS_ON_MAX = 70000;
+        // A budget to DEFEND, not a target to grow into; raising it is a deliberate edit with a reason, which is the
+        // point. 70,000 sat about 40% over the measured surface (48,977 on 2026-09-30); 80,000 since the seats'
+        // '(Tools: ...)' listing counts (the user's 2026-10-13 ruling, 'Count them, cap 80k': 76,449 measured, the
+        // tools lists 21,955 of it after the navigation server's memory tools left every grant).
+        const ALWAYS_ON_MAX = 80000;
         if (alwaysOn.total > ALWAYS_ON_MAX)
         {
             flag(`always-on surface ${alwaysOn.total} chars (~${Math.round(alwaysOn.total / 4000)}k tokens) is over the ${ALWAYS_ON_MAX} budget`

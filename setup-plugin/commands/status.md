@@ -335,7 +335,7 @@ It prints ONE `turn-check: advise - ...` line or nothing. A printed line goes un
 as-is; nothing printed means no row. The switch is the user's - never set it from here.
 
 **Generated docs & data** - the capture output under the docs root from the general table, plus
-The navigation server's local memory:
+the seat handoff notes still in the memory database (`node .claude/hooks/memory.js handoff` - its first line is the count, and an older release's navigation-server notes are in it too; exit 1 prints no row):
 
 | artifact | present | captured | file updated |
 |---|---|---|---|
@@ -347,7 +347,7 @@ The navigation server's local memory:
 | related-projects/RELATED-PROJECTS.md | no | - | - |
 | test-coverage/COVERAGE.md | yes | (bar 85%) | 2026-07-25 |
 | loops/ | yes | 3 prompt files | 2026-07-24 |
-| <data root>/serena/memories/ | yes | 4 notes | 2026-07-25 |
+| handoff notes (alfred-memory) | yes | 4 notes | - |
 
 `captured` is the doc's own `Captured:` stamp line read from the file (the related-projects doc
 stamps per entry - show the newest); the two `quality/` docs carry no `Captured:` stamp at all -

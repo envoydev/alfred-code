@@ -1,5 +1,5 @@
 # THE NAVIGATION SERVER'S CONTEXT - serena-agent 1.7.0's own `claude-code` context
-# (src/serena/resources/config/contexts/claude-code.yml at the v1.7.0 tag), with a house prompt and six
+# (src/serena/resources/config/contexts/claude-code.yml at the v1.7.0 tag), with a house prompt and twelve
 # more tools off. The line below is that upstream file's hash: scripts/refresh-mcp-pins.js refuses a serena bump
 # whose claude-code.yml hashes otherwise, until this file is re-diffed against it and the line re-recorded (R7).
 # upstream: serena-agent 1.7.0 claude-code.yml sha256 78403573e7c71fe70b82253cb12a19b99b5c48f9702ea671f64257ad0e59c492
@@ -10,6 +10,8 @@
 # hook matched on Edit / Write (the config-protection guard, the docs hold, the turn's edit list, the done
 # gate). The five plain writers are off; rename_symbol and safe_delete_symbol stay - reference-aware
 # refactors a hand edit cannot match. onboarding is off: the capture skills own the project's orientation.
+# The six memory tools are off (the user's 2026-10-13 ruling: this server is navigation only, memory is the
+# alfred-memory MCP alone) - a seat's handoff note is an alfred-memory row tagged `handoff` (alfred-memory.md).
 #
 # The plugin route: serena-launch.js swaps the entry's `--context claude-code` for this file beside it. The
 # full copy route: the installer copies it to the project's `.claude/navigation-context.yml` and registers
@@ -29,8 +31,8 @@ prompt: |
   - Two reference-aware refactors stay on this server: rename_symbol renames a symbol across the
     codebase, and safe_delete_symbol deletes one only when nothing still uses it. Prefer them to editing
     every usage by hand.
-  - The seat handoff: write_memory, read_memory and list_memories carry the named note one agent leaves
-    for the next within a feature. Nothing that must outlast the feature belongs here.
+  - This server keeps no memory in this install: its memory tools are not served, and a note one agent
+    leaves for the next goes through the alfred-memory MCP.
 
   Load only the tools the task needs through the tool search, not every tool at once. Where Serena's own
   manual below names replace_symbol_body, insert_after_symbol, insert_before_symbol, replace_content or
@@ -44,13 +46,19 @@ excluded_tools:
   - find_file
   - list_dir
   - search_for_pattern
-  # the house's six: the plain writers no hook sees, and onboarding
+  # the house's twelve: the plain writers no hook sees, onboarding, and every memory tool
   - replace_content
   - replace_in_files
   - replace_symbol_body
   - insert_after_symbol
   - insert_before_symbol
   - onboarding
+  - write_memory
+  - read_memory
+  - list_memories
+  - edit_memory
+  - rename_memory
+  - delete_memory
 
 tool_description_overrides: {}
 

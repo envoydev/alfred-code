@@ -74,8 +74,8 @@ session the only orchestrator:
   (the dispatch hook blocks an unstamped implementer) - and DELETE it when the fan-out completes,
   before the step-5 stop: a live stamp can authorize an unrelated dispatch for up to 8h.
 - **The contract version.** MINT it - `<the plan's Approved: date>-<plan slug>` - and put it in EVERY
-  dispatch prompt verbatim, with the seat's memory-handoff line:
-  `mcp__plugin_alfred-navigation_alfred-navigation__write_memory('<feature>/<contract_version>/<seat>/<task>', ...)`.
+  dispatch prompt verbatim, with the seat's literal note name and this project's memory tag:
+  `note: <feature>/<contract_version>/<seat>/<task>`, `project:<name>` (the seat stores its note under both - `alfred-memory.md`).
 - **The card's docs anchors ride the brief** - the `docs.js where <file>` section ids the design
   read for the card's files - so the seat reads those sections instead of re-orienting or skipping
   it (measured: 0 docs reads in 18 of 18 seat transcripts whose briefs named none).
@@ -117,13 +117,13 @@ this flow. The user can inspect the diff themselves at this stop before answerin
 
 ## The step-6 memory purge
 
-**The purge is counted, not claimed.** At close, from the project root: `node -e "const fs=require('fs');const f=process.argv[1];let n=0;function walk(d,rel){let es=[];try{es=fs.readdirSync(d,{withFileTypes:true})}catch(e){return}for(const e of es){const r=rel?rel+'/'+e.name:e.name;if(e.isDirectory())walk(d+'/'+e.name,r);else if(e.name.endsWith('.md')){if(r.startsWith(f+'/'))n++;else if(r.startsWith(f+'__'))n++}}}walk((process.env.ALFRED_CODE_DATA_PATH||'.alfred')+'/serena/memories','');walk('.serena/memories','');console.log(n)" <feature>` with the feature's slug - it counts what is left of the feature's navigation-server notes (the `<feature>/` folder, the cycle note included, and a pre-2.1.6 run's flat `<feature>__*` notes), in node so no `find` first on PATH decides it. Above zero the close is not done - delete the rest, then count again.
+**The purge is counted, not claimed.** At close, from the project root: `node .claude/hooks/memory.js handoff <feature>` with the feature's slug - its first line counts what is left of the feature's handoff notes (this project's `handoff:<feature>` rows, and an older release's navigation-server notes still on disk, each listed below it), read from the memory database, so no recollection decides it; an unreadable database prints no number and exits 1. Above zero the close is not done - delete the rest, then count again.
 
 ## The sibling hand-off - step 6
 
 A change a sibling repo must follow is written as a task card under
-`<docs-path>/cross-project-tasks/` (the cross-project write guard blocks the sibling's tree), or a
-navigation-server note, after reading the sibling's actual source. The close then prints it beside
+`<docs-path>/cross-project-tasks/` (the cross-project write guard blocks the sibling's tree), or an
+`alfred-memory` note, after reading the sibling's actual source. The close then prints it beside
 the card as ONE fenced markdown block ready to paste into the sibling's session - first line
 `Open in: <the sibling's root>`, then the card's text - so nobody has to ask for it inline (measured:
 the 12th 'write it here as markdown' ask in one project, each a full-context turn). A reply drafted for
