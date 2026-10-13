@@ -27,6 +27,9 @@ const { pythonRequest, userExcludeNewer } = require('../../stack/mcp/uv-python.j
 const { serenaHomeFor, copyRouteProject } = require('../../stack/mcp/serena-launch.js');
 const dataRoot = require('../../stack/mcp/data-root.js');
 const { copyRouteExclude, platformOf, prereqNotes, DESKTOP_OS } = require('../../stack/mcp/desktop-launch.js');
+const { copyRouteEnv: mobileCopyEnv, prereqNotes: mobileNotes } = require('../../stack/mcp/mobile-launch.js');
+// The optional servers whose prerequisites a run says once, on the run that brings one in (prereqNotes).
+const NOTED = (name) => Boolean(DESKTOP_OS[name]) || name === 'mobile-control';
 const mcp = require('./mcp.js');
 const copy = require('./copy.js');
 const settings = require('./settings.js');
@@ -647,7 +650,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
 
         // --- the two entries assembled at install time -----------------------------
         const pins = args.printPlan
-            ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', WINDOWS_CONTROL_PIN: '', MACOS_CONTROL_PIN: '', MEMORY_BACKEND: 'sqlite_vec', UV_EXCLUDE_FLAG: '', UV_EXCLUDE_NEWER: '' }
+            ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', WINDOWS_CONTROL_PIN: '', MACOS_CONTROL_PIN: '', MOBILE_CONTROL_PIN: '', MEMORY_BACKEND: 'sqlite_vec', UV_EXCLUDE_FLAG: '', UV_EXCLUDE_NEWER: '' }
             : (() =>
             {
                 const file = readJson(path.join(resolved.dir, 'meta', 'mcp-pins.json'));
@@ -740,7 +743,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             ...Object.fromEntries(dataRoot.ENGINES.map((e) => [`BROWSER_DIR_${e.toUpperCase()}`, liveOf(dataRoot.engineServer(e))])),
             SERENA_PIN: pins.SERENA_PIN, PW_PIN: pins.PW_PIN, UV_EXCLUDE_FLAG: pins.UV_EXCLUDE_FLAG, UV_EXCLUDE_NEWER: pins.UV_EXCLUDE_NEWER,
             MEMORY_PIN: pins.MEMORY_PIN, MEMORY_BACKEND: pins.MEMORY_BACKEND,
-            WINDOWS_CONTROL_PIN: pins.WINDOWS_CONTROL_PIN, MACOS_CONTROL_PIN: pins.MACOS_CONTROL_PIN,
+            WINDOWS_CONTROL_PIN: pins.WINDOWS_CONTROL_PIN, MACOS_CONTROL_PIN: pins.MACOS_CONTROL_PIN, MOBILE_CONTROL_PIN: pins.MOBILE_CONTROL_PIN,
+            // mobile-control's safe defaults (the user's own value where set) and output dirs under the data root, which the
+            // plugin route's launcher sets at each start - the copy route registers no launcher (stack/mcp/mobile-launch.js).
+            ...mobileCopyEnv({ env: cliEnv, projectDir: projectRoot, root: dataInfo.root,
+                log: lists.mcps.some((e) => String(e).split('|')[0] === 'mobile-control') ? (line) => log(`  mobile: ${line}`) : () => {} }),
             // windows-control's tool gate on the copy route, which registers no launcher: the list the
             // launcher would pass, as Windows-MCP's own WINDOWS_MCP_EXCLUDE_TOOLS.
             WINDOWS_CONTROL_EXCLUDE: copyRouteExclude({ env: cliEnv, projectDir: projectRoot,
@@ -1464,7 +1471,7 @@ function installPlugins(ctx)
     const blind = !listingRead(raw);
     // Under an old name too (windows-desktop): a rename brings no server into the project, so its notes stay unsaid.
     const nowName = (n) => mcp.currentMcp(n, ctx.manifest.renamed.mcps);
-    if (ctx.routes.mcps) ctx.desktopHeld = new Set(rows.filter((r) => r.marketplace === ctx.market && DESKTOP_OS[nowName(r.name)]).map((r) => nowName(r.name)));
+    if (ctx.routes.mcps) ctx.desktopHeld = new Set(rows.filter((r) => r.marketplace === ctx.market && NOTED(nowName(r.name))).map((r) => nowName(r.name)));
     const engines = playwrightMoves(ctx, { blind, rows });
     // R107 / R111: what the copy route registers in .mcp.json after this layer must never also load as
     // a plugin. On the full copy route the stack's own rows go off (the core and the locked three) -
@@ -1484,8 +1491,8 @@ function installPlugins(ctx)
     const lockedSuccessor = (n) => mcp.isLocked(mcp.currentMcp(n, ctx.manifest.renamed.mcps));
     const legacyEngines = copyRoute ? ctx.legacyMcps.filter((n) => !lockedSuccessor(n)) : [];
     const legacyLocked = copyRoute ? ctx.legacyMcps.filter(lockedSuccessor) : [];
-    // I8: a desktop server the copy route registers loses its plugin row the engine way.
-    const engineOff = !ctx.routes.mcps && !blind ? plugins.engineStandDown({ ...stand, engines: pwEngines(ctx), desktop: desktopKept(ctx), hereOnly: copyRoute, legacy: legacyEngines }).off : [];
+    // I8: a desktop server (and mobile-control) the copy route registers loses its plugin row the engine way.
+    const engineOff = !ctx.routes.mcps && !blind ? plugins.engineStandDown({ ...stand, engines: pwEngines(ctx), desktop: soloKept(ctx), hereOnly: copyRoute, legacy: legacyEngines }).off : [];
     const standDown = () => { if (copyRoute && !blind) ctx.standDown.now = [...engineOff, ...plugins.copyRouteStandDown({ ...stand, locked: [...mcp.LOCKED, ...legacyLocked] })]; };
     let set = plugins.pluginSet({
         routes: ctx.routes, thirdParty: ctx.lists.plugins,
@@ -1513,7 +1520,7 @@ function installPlugins(ctx)
     const rescoped = !blind
         ? plugins.moveScoped({
             plugins: set, rows, scope: ctx.cliScope, scopes, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note,
-            engines: [...pwEngines(ctx).map((e) => `${dataRoot.engineServer(e)}@${ctx.market}`), ...desktopKept(ctx).map((n) => `${n}@${ctx.market}`)],
+            engines: [...pwEngines(ctx).map((e) => `${dataRoot.engineServer(e)}@${ctx.market}`), ...soloKept(ctx).map((n) => `${n}@${ctx.market}`)],
         })
         : [];
     for (const row of listing)
@@ -1593,7 +1600,7 @@ function installPlugins(ctx)
     hudLine();
 }
 
-// The desktop servers' prerequisites (stack/mcp/desktop-launch.js prereqNotes), said ONCE: on the run
+// The desktop servers' and mobile-control's prerequisites (each launcher's prereqNotes), said ONCE: on the run
 // that brings a server into this project - its plugin row, or on the copy route its registration, was not
 // there before - never on every update after it. No claude CLI installs nothing, so nothing is said.
 function desktopNotes(ctx)
@@ -1603,8 +1610,11 @@ function desktopNotes(ctx)
     for (const entry of ctx.lists.mcps)
     {
         const name = String(entry).split('|')[0];
-        if (!DESKTOP_OS[name] || ctx.desktopHeld.has(name)) continue;
-        for (const line of prereqNotes(name, { uvx, exclude: ctx.tokens.WINDOWS_CONTROL_EXCLUDE })) ctx.log(line);
+        if (!NOTED(name) || ctx.desktopHeld.has(name)) continue;
+        const lines = name === 'mobile-control'
+            ? mobileNotes({ env: ctx.env, projectDir: ctx.projectRoot, route: ctx.routes.mcps ? 'plugin' : 'copy' })
+            : prereqNotes(name, { uvx, exclude: ctx.tokens.WINDOWS_CONTROL_EXCLUDE });
+        for (const line of lines) ctx.log(line);
     }
 }
 
@@ -1615,7 +1625,7 @@ function blindStandDown(ctx, copyRoute)
     const at = plugins.standDownScope(ctx.cliScope);
     const cmds = [
         ...(copyRoute ? [BRAND.core, ...mcp.LOCKED].map((n) => `claude plugin disable ${n}@${ctx.market} --scope ${at}`) : []),
-        ...[...pwEngines(ctx).map(dataRoot.engineServer), ...desktopKept(ctx)].map((name) => (copyRoute && at !== ctx.cliScope
+        ...[...pwEngines(ctx).map(dataRoot.engineServer), ...soloKept(ctx)].map((name) => (copyRoute && at !== ctx.cliScope
             ? `claude plugin disable ${name}@${ctx.market} --scope ${at}`
             : `claude plugin uninstall ${name}@${ctx.market} --scope ${ctx.cliScope}`)),
     ];
@@ -1974,7 +1984,7 @@ function installMcps(ctx)
                     ? '  playwright is registered at user scope - if an earlier stack run added it and no other project uses it: claude mcp remove playwright -s user; if you added it yourself, keep it'
                     : `  !! mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`);
     ctx.desktopHeld = new Set([...registeredBefore, ...Object.keys(mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers)]
-        .filter((n) => DESKTOP_OS[n]));
+        .filter(NOTED));
     // I12: the navigation registration names the stack's serena context, copied first - the registration
     // and the verify pass below both read the token.
     if (live.some((e) => e.split('|')[0] === 'alfred-navigation')) ctx.tokens.SERENA_CONTEXT = navigationContext(ctx);
@@ -2689,8 +2699,10 @@ const registeredEngines = (mcpFile, { legacy = true } = {}) => [...new Set(Objec
     .filter(Boolean))];
 
 const pwEngines = (ctx) => ctx.lists.mcps.map((e) => dataRoot.engineOfServer(String(e).split('|')[0])).filter(Boolean);
-// The desktop servers this run keeps - the OS gate has already left out one this machine cannot run.
-const desktopKept = (ctx) => ctx.lists.mcps.map((e) => String(e).split('|')[0]).filter((name) => Object.hasOwn(DESKTOP_OS, name));
+// The optional one-plugin servers this run keeps beside the engines - the desktop servers (the OS gate has already left
+// out one this machine cannot run) and mobile-control. Each goes the engine way on the copy route (engineStandDown) and
+// moves to the scope the user gave it (moveScoped).
+const soloKept = (ctx) => ctx.lists.mcps.map((e) => String(e).split('|')[0]).filter(NOTED);
 
 const pinFiles = (ctx) => pinsLayer.pinFiles({
     projectRoot: ctx.projectRoot, skillsDir: ctx.skillsDir,

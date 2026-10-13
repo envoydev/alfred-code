@@ -85,6 +85,7 @@ Each stack has three seats: a **designer** plans the change, an **implementer** 
 | memory | keep your preferences and corrections across sessions |
 | browser (Playwright MCP) | open the app and check it, for web stacks |
 | windows-control, macos-control | drive desktop apps - opt-in, on their own OS only |
+| mobile-control (appium-mcp) | drive Android and iOS apps on an emulator, simulator or device - opt-in |
 
 ## Commands
 

@@ -58,7 +58,7 @@ const REMOVED = new Map([
 // account), this project (the run's own scope; `project` when the run is a user-scope one) or local (this checkout
 // alone). Never managed: no run installs there. The required ones - the core and the three alfred- servers -
 // follow --scope. `browser` names every engine at once.
-const SCOPED_ITEMS = [...PW_ENGINES.map((e) => `${e}-control`), 'windows-control', 'macos-control', 'typescript-lsp', 'csharp-lsp', 'claude-hud'];
+const SCOPED_ITEMS = [...PW_ENGINES.map((e) => `${e}-control`), 'windows-control', 'macos-control', 'mobile-control', 'typescript-lsp', 'csharp-lsp', 'claude-hud'];
 const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 
 const ALIASES = new Map([['--playwright-browsers', '--browsers'], ['--playwright-enabled', '--browser-enabled'], ['--docs-move', '--data-move']]);

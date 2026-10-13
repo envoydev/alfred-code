@@ -59,7 +59,7 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   seeded everywhere; the rest arrive by proof - a stack whose surface always has them, an evidence
   signal, or the user's pick. The names are ROLES; prose names the role and gives the upstream once
   where a reader needs it ('the navigation server (Serena)'). A backticked `browser` is no graph edge
-  (`stack-graph.js` MCP_COMMON_WORDS): the word is too common to prove a need. Catalog of 6 names, 9 plugins:
+  (`stack-graph.js` MCP_COMMON_WORDS): the word is too common to prove a need. Catalog of 7 names, 10 plugins:
   - `browser` (Playwright MCP) - seeded for web-angular / ionic / extension, evidence-proven elsewhere. One catalog
     entry, expanded after the selection into ONE PLUGIN per kept browser (`<engine>-control` for chrome,
     msedge, firefox, webkit, each started through `stack/mcp/browser-launch.js` with `--browser <engine>` + profile
@@ -123,6 +123,23 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     macOS `Snapshot` / `Wait` - the pinned wheels' readOnlyHint tools that look at the desktop), named in `tools:`
     and described in the body, so no graph edge pulls the opt-in server into an install; a stack that seeds a
     server no seat of it holds is listed main-thread-only in `scripts/seat-grants.test.js` (browser-extension's browser).
+  - `mobile-control` (appium-mcp, the user's call of 2026-10-13) - drives Android and iOS apps on an emulator, a
+    simulator or a device through Appium's embedded UiAutomator2 / XCUITest drivers. Every OS, seeded by no stack,
+    `active: false` (opt-in, like the desktop pair), an npx package so no Python and no cut-off; Node 22+ (its engines
+    floor - the launcher refuses an older Node in one line). The plugin route starts `stack/mcp/mobile-launch.js`: the SDK
+    paths come from the environment (`ANDROID_HOME`, `JAVA_HOME` - the shell or a settings file's `env`, which reach a
+    server process, code.claude.com/docs/en/settings-reference 'Values reach subprocesses') and are looked up ONLY when unset
+    (`ANDROID_SDK_ROOT`, Android Studio's SDK place and bundled JBR, macOS `java_home`) - never written into a
+    registration, since a committed `.mcp.json` would hand one machine's paths to every teammate. iOS needs Xcode,
+    which Appium finds itself. Safe defaults where the user set nothing: `NO_UI=true`, `ALLOW_REMOTE_APP_URLS=false`,
+    `REMOTE_SERVER_URL_ALLOW_REGEX` admitting localhost / 127.0.0.1 / [::1] only (the whole URL is matched, so
+    `localhost.evil.com` is refused); a boolean other than true / false - which appium-mcp refuses to start on - keeps
+    the default. `SCREENSHOTS_DIR` / `PAGE_SOURCES_DIR` go under `<data root>/mobile-control`. The copy route registers
+    the same values (`mobile-launch.js copyRouteEnv`, resolved at install, the dirs relative to ROOT_BOOT's cwd) and
+    no SDK path. Its plugin row goes the engine way on the copy route and takes its own scope (`soloKept`); its
+    prerequisites are said once, on the run that brings it in. Tools: the pinned server's own `tools/list`
+    (`refresh-mcp-pins.js --only mobile-control`, which moves no other pin and keeps the uvx cut-off day); `appium_ai`
+    registers only with `AI_VISION_ENABLED=true` and a vision key, so it is not listed. No seat holds its tools.
   - plus `alfred-navigation` (Serena), `alfred-documentation` (Context7, the hosted remote only - its `Context7-API-Key` header, the name
     Context7 documents (2.1.5 M25: a proxy may drop a header name with an underscore, and a keyed user with it), expands
     `CONTEXT7_API_KEY` from the ACCOUNT settings.json `env`, keyless = the free tier) and `alfred-memory`. 2.0.0 cut `angular-cli`,

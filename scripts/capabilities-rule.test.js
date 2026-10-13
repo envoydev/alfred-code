@@ -333,3 +333,15 @@ test('I10: the Windows row says FileSystem is off and App launch_executable is d
     assert.ok(row.includes('`FileSystem`'), row);
     assert.ok(row.includes('`launch_executable`') && row.includes('`<docs-path>/flow/DESKTOP-EXEC-ALLOW`'), row);
 });
+
+// 2026-10-13: mobile-control (appium-mcp) - its row's output dirs are the launcher's, under the resolved data root.
+test('mobile-control: the row names its output dirs under the resolved data root and the registration\'s tool spelling', () =>
+{
+    const { root, home } = project('mobile-row', { servers: ['mobile-control'] });
+    const rows = rowsOf(run([], { cwd: root, home }).out);
+    assert.strictEqual(rows.length, 1, rows.join('\n'));
+    assert.ok(rows[0].startsWith('- `mobile-control` - the mobile server (appium-mcp)'), rows[0]);
+    for (const dir of ['page-sources', 'screenshots']) assert.ok(rows[0].includes(`\`.alfred/mobile-control/${dir}/\``), rows[0]);
+    assert.match(rows[0], /ToolSearch select:mcp__mobile-control__appium_session_management,mcp__mobile-control__appium_find_element,/);   // mcp-fixture: the registration spelling a copy-route row is re-spelled to
+    assert.doesNotMatch(rows[0], /<data root>|<server>|<engine>/, rows[0]);
+});

@@ -17,7 +17,7 @@ const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const FLOATING = /[\w@/.-]+@latest\b/;
-const PINNED = { browser: '@playwright/mcp', 'alfred-navigation': 'serena-agent', 'alfred-memory': 'mcp-memory-service', 'windows-control': 'windows-mcp', 'macos-control': 'macos-mcp' };
+const PINNED = { browser: '@playwright/mcp', 'alfred-navigation': 'serena-agent', 'alfred-memory': 'mcp-memory-service', 'windows-control': 'windows-mcp', 'macos-control': 'macos-mcp', 'mobile-control': 'appium-mcp' };
 
 test('no shipped MCP launch line runs a package on @latest - manifest or generated plugin entries', () =>
 {
@@ -48,6 +48,13 @@ test('the release pins cover every package server, and the generator spells a pi
     // A pin that never resolved ships unpinned - npx then takes the newest, which is what @latest
     // said out loud; the fallback is the same, only the default moved.
     assert.deepStrictEqual(args({ browser: { version: null } }), ['--package', '@playwright/mcp']);
+    // mobile-control starts its launcher with the npx package at the pin; the copy route's row spells the same token.
+    const mobile = mcpServerShapes({ pins: { 'mobile-control': { version: '1.2.3', spelling: '@<v>' } } })['mobile-control'].servers['mobile-control'].args;
+    assert.deepStrictEqual(mobile.slice(1), ['--package', 'appium-mcp@1.2.3']);
+    assert.match(mobile[0], /\/stack\/mcp\/mobile-launch\.js$/);
+    const row = JSON.parse(read('meta/stack-manifest.json')).mcps.find((r) => r.name === 'mobile-control');
+    assert.match(row.args, /npx -y appium-mcp@MOBILE_CONTROL_PIN@$/);
+    assert.strictEqual(mcp.resolvePins({ pins: { 'mobile-control': { version: '1.2.3', spelling: '@<v>' } } }).MOBILE_CONTROL_PIN, '@1.2.3');
 });
 
 test('the seed takes each pin from the release, never from a registry', () =>
@@ -160,7 +167,7 @@ test('M38 every shipped serena index command names the release pin and the cut-o
 // an editing tool that context would then serve unwatched. The shipped YAML records the upstream file's sha256; the
 // refresh keeps the navigation pin where it is until the new release's claude-code.yml hashes the same - i.e. until
 // someone re-diffs the stack's file against it and records the new hash.
-async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = true, lists = {}, pinsRaw = null, committed = {} } = {})
+async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = true, lists = {}, pinsRaw = null, committed = {}, argv = ['--write'], npm = {} } = {})
 {
     const os = require('node:os');
     const { main } = require('./refresh-mcp-pins.js');
@@ -175,14 +182,15 @@ async function refreshRun({ navigation = '9.9.9', context = 'same', recorded = t
     fs.writeFileSync(contextFile, `${recorded ? `# upstream: serena-agent 1.7.0 claude-code.yml sha256 ${sha}\n` : ''}name: alfred-code\n`);
     const out = [];
     const current = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'mcp-pins.json'), 'utf8')).pins;
-    const rc = await main(['--write'], {
+    const listed = [];
+    const rc = await main(argv, {
         pinsFile, toolsFile, contextFile, log: (l) => out.push(l), today: () => '2026-10-01',
-        npmLatest: () => current.browser.version,
+        npmLatest: (pkg) => (Object.hasOwn(npm, pkg) ? npm[pkg] : Object.values(current).find((r) => r.package === pkg).version),
         pypiLatest: (pkg) => (pkg === 'serena-agent' ? navigation : Object.values(current).find((r) => r.package === pkg).version),
         upstreamContext: () => (context === 'same' ? upstream : context),
-        listTools: (name) => (Object.hasOwn(lists, name) ? lists[name] : null),
+        listTools: (name) => { listed.push(name); return Object.hasOwn(lists, name) ? lists[name] : null; },
     });
-    const result = { rc, text: out.join('\n'), pins: JSON.parse(fs.readFileSync(pinsFile, 'utf8')), tools: JSON.parse(fs.readFileSync(toolsFile, 'utf8')) };
+    const result = { rc, listed, text: out.join('\n'), pins: JSON.parse(fs.readFileSync(pinsFile, 'utf8')), tools: JSON.parse(fs.readFileSync(toolsFile, 'utf8')) };
     fs.rmSync(dir, { recursive: true, force: true });
     return result;
 }
@@ -225,6 +233,26 @@ test('M31 refresh-mcp-pins: --write records each server\'s tool names, and keeps
     assert.strictEqual(got.tools.servers.browser.version, JSON.parse(read('meta/mcp-pins.json')).pins.browser.version);
     assert.deepStrictEqual(got.tools.servers["alfred-memory"].tools, ['kept_tool'], 'an unlisted server keeps what it had');
     assert.match(got.text, /tools alfred-memory: NOT CHECKED/);
+});
+
+// 2026-10-13: a server joins the catalog through --only - its own row resolved and listed, every other pin, tool list and
+// the uvx cut-off day as committed. A PyPI row is refused there: its pin must not pass the shared cut-off.
+test('refresh-mcp-pins --only: the named npm row moves alone; a PyPI row is refused and nothing is written', async () =>
+{
+    const committed = JSON.parse(read('meta/mcp-pins.json'));
+    const got = await refreshRun({ argv: ['--write', '--only', 'mobile-control'], npm: { 'appium-mcp': '9.0.0', '@playwright/mcp': '9.9.9' }, lists: { 'mobile-control': ['appium_screenshot'] } });
+    assert.strictEqual(got.rc, 0, got.text);
+    assert.strictEqual(got.pins.pins['mobile-control'].version, '9.0.0');
+    assert.strictEqual(got.pins.pins.browser.version, committed.pins.browser.version, 'a pin not named stays');
+    assert.strictEqual(got.pins.pins['alfred-navigation'].version, committed.pins['alfred-navigation'].version, 'the PyPI bump the registry offers is not taken');
+    assert.strictEqual(got.pins.refreshed, committed.refreshed, 'the cut-off day stays');
+    assert.deepStrictEqual(got.listed, ['mobile-control'], 'only the named server is listed');
+    assert.deepStrictEqual(got.tools.servers['mobile-control'], { version: '9.0.0', tools: ['appium_screenshot'] });
+    assert.deepStrictEqual(got.tools.servers['alfred-memory'].tools, ['kept_tool'], 'another server keeps its list');
+    const refused = await refreshRun({ argv: ['--write', '--only', 'alfred-memory'] });
+    assert.strictEqual(refused.rc, 1);
+    assert.match(refused.text, /--only takes npm rows .* alfred-memory refused/);
+    assert.deepStrictEqual(refused.pins, committed, 'nothing was written');
 });
 
 test('M31 meta/mcp-tools.json lists every pinned server at its pin, and the desktop launcher\'s gate names the same Windows tools', () =>

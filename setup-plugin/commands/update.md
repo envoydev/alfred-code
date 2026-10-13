@@ -30,7 +30,7 @@ old name its current one); the rules keep it. The three locked MCP servers take 
 goes, and on the copy route each `.mcp.json` key is re-keyed with its memory database kept. Update carries every
 pick, seat deny, `skillOverrides` value and instruction file across, prunes each old copy (`skill pruned (retired
 upstream)`) - a copy edited since the stack wrote it is kept and named, the user's to merge - and prints one
-`renamed:` line each. An optional item (a browser engine, a desktop server, an LSP, claude-hud) stays at the scope
+`renamed:` line each. An optional item (a browser engine, a desktop server, mobile-control, an LSP, claude-hud) stays at the scope
 it is installed at; only configure moves it. Report the `renamed:`, `pruned` and `!!` lines.
 
 **Renamed in 2.1.0.** Three more skills took `habits-*` names (the last skill rows of the table below); the plugin
@@ -446,7 +446,7 @@ route a registration of the stack's own at the other account-file scope is refre
 [<scope>]: <name>`). This command moves nothing between scopes and removes no pick: it passes the stamp's own
 `--scope`, never `--scope-of`, and a `--drop` only to carry a renamed item's switch-off - scope changes and
 removals are setup's and configure's. What it does remove is what the release itself retired or renamed,
-because an id the catalog drops stops loading at once (docs/plugin-cli-evidence.md S25). Every optional item (a browser engine, a desktop server, an LSP, claude-hud) is updated where it is installed and never moved - `/alfred-code:configure` is the one place its scope changes (2.2.0); claude-hud is an optional pick since 2.2.0, so an install that never picked it gains none. On EVERY run where claude-hud is installed - this run or already - and no settings file this project reads has a `statusLine` yet, the run logs `claude-hud has no status line yet - run /alfred-code:init to set it up` - paste that line verbatim and name `/alfred-code:init` in the close. A server the 2.0.0 cut removed (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`, `context7-local`)
+because an id the catalog drops stops loading at once (docs/plugin-cli-evidence.md S25). Every optional item (a browser engine, a desktop server, mobile-control, an LSP, claude-hud) is updated where it is installed and never moved - `/alfred-code:configure` is the one place its scope changes (2.2.0); claude-hud is an optional pick since 2.2.0, so an install that never picked it gains none. On EVERY run where claude-hud is installed - this run or already - and no settings file this project reads has a `statusLine` yet, the run logs `claude-hud has no status line yet - run /alfred-code:init to set it up` - paste that line verbatim and name `/alfred-code:init` in the close. A server the 2.0.0 cut removed (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`, `context7-local`)
 is uninstalled by its stack spec only - a same-named plugin from another marketplace and a row at another
 scope are kept and logged with the uninstall command that removes them - and each removal prints its `add it back:`
 line; pass the removals, their add-back lines and every kept row's line through verbatim in the close-out. A pruned

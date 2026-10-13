@@ -32,6 +32,12 @@
       "registry": "pypi",
       "spelling": "==<v>",
       "version": "0.4.6"
+    },
+    "mobile-control": {
+      "package": "appium-mcp",
+      "registry": "npm",
+      "spelling": "@<v>",
+      "version": "1.97.1"
     }
   }
 }

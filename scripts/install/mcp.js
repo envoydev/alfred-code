@@ -338,10 +338,10 @@ function verifyUser({ expects = [], scope, getShape, reregister, owned = () => t
 //
 // The memory pin is spelled `==<ver>` INSIDE the extras brackets, not `@<ver>` like the others,
 // which have no extras suffix to sit next to - each row names its own spelling. The desktop servers
-// take `==<ver>` too (`--from windows-mcp==<ver>`).
+// take `==<ver>` too (`--from windows-mcp==<ver>`); mobile-control is an npx package, `@<ver>`.
 const PIN_ROWS = {
     browser: ['PW_PIN', '@<v>'], 'alfred-navigation': ['SERENA_PIN', '@<v>'], 'alfred-memory': ['MEMORY_PIN', '==<v>'],
-    'windows-control': ['WINDOWS_CONTROL_PIN', '==<v>'], 'macos-control': ['MACOS_CONTROL_PIN', '==<v>'],
+    'windows-control': ['WINDOWS_CONTROL_PIN', '==<v>'], 'macos-control': ['MACOS_CONTROL_PIN', '==<v>'], 'mobile-control': ['MOBILE_CONTROL_PIN', '@<v>'],
 };
 
 function resolvePins({ pins, refreshed, own = '', log = () => {} })

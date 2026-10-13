@@ -988,3 +988,107 @@ test('S3 launchers: started in a subdirectory, or under another folder\'s CLAUDE
     }
     assert.strictEqual(fs.existsSync(path.join(sub, '.alfred')), false, 'nothing is created under the launch directory');
 });
+
+// ------------------------------------------------------------------ mobile-control (appium-mcp), 2026-10-13
+const MOBILE = path.join(ROOT, 'stack/mcp/mobile-launch.js');
+const mobile = require('../stack/mcp/mobile-launch.js');
+const MOBILE_KEYS = ['ANDROID_HOME', 'JAVA_HOME', 'NO_UI', 'ALLOW_REMOTE_APP_URLS', 'REMOTE_SERVER_URL_ALLOW_REGEX', 'SCREENSHOTS_DIR', 'PAGE_SOURCES_DIR'];
+function envRecorder(name)
+{
+    const dir = path.join(TMP, `${name}-rec-bin`);
+    fs.mkdirSync(dir, { recursive: true });
+    const record = path.join(TMP, `${name}-rec.json`);
+    fs.writeFileSync(path.join(dir, 'npx'), `#!/usr/bin/env node\nconst keys = ${JSON.stringify(MOBILE_KEYS)};\nrequire('fs').writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), env: Object.fromEntries(keys.map((k) => [k, process.env[k] ?? null])) }));\n`, { mode: 0o755 });
+    return { PATH: dir + path.delimiter + process.env.PATH, got: () => JSON.parse(fs.readFileSync(record, 'utf8')) };
+}
+
+test('mobile-launch: npx gets the pinned package, the safe defaults, and output dirs under the data root', POSIX, () =>
+{
+    const { dir } = project('mobile-run');
+    const rec = envRecorder('mobile-run');
+    const r = spawnSync(process.execPath, [MOBILE, '--package', 'appium-mcp@1.97.1'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const real = fs.realpathSync(dir);
+    const got = rec.got();
+    assert.deepStrictEqual(got.argv, ['-y', 'appium-mcp@1.97.1']);
+    assert.strictEqual(fs.realpathSync(got.cwd), real, 'the server starts at the project');
+    assert.deepStrictEqual([got.env.NO_UI, got.env.ALLOW_REMOTE_APP_URLS, got.env.REMOTE_SERVER_URL_ALLOW_REGEX], ['true', 'false', mobile.LOCAL_ONLY]);
+    assert.strictEqual(got.env.SCREENSHOTS_DIR, path.join(real, '.alfred', 'mobile-control', 'screenshots'));
+    assert.strictEqual(got.env.PAGE_SOURCES_DIR, path.join(real, '.alfred', 'mobile-control', 'page-sources'));
+    assert.ok(fs.existsSync(path.join(dir, '.alfred', '.gitignore')), 'the root ignores what lands under it before the server writes');
+    assert.match(r.stderr, /no Android SDK found - Android needs ANDROID_HOME/, 'an empty HOME holds no SDK, and the line says so');
+});
+
+test('mobile-launch: the user\'s own values win - the shell, then a settings file; a boolean appium-mcp would refuse keeps the default', POSIX, () =>
+{
+    const { dir } = project('mobile-own', { local: { ALLOW_REMOTE_APP_URLS: 'true', REMOTE_SERVER_URL_ALLOW_REGEX: '^https://hub\\.example\\.com/', ANDROID_HOME: '/from/settings/sdk' } });
+    const rec = envRecorder('mobile-own');
+    const r = spawnSync(process.execPath, [MOBILE, '--package', 'appium-mcp@1.97.1', '--', '--extra'], { cwd: dir, encoding: 'utf8',
+        env: { ...BARE, PATH: rec.PATH, HOME: dir, NO_UI: 'yes', SCREENSHOTS_DIR: '/tmp/my-shots', JAVA_HOME: '/from/shell/jdk' } });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const got = rec.got();
+    assert.deepStrictEqual(got.argv, ['-y', 'appium-mcp@1.97.1', '--extra'], 'arguments after -- reach the server');
+    assert.strictEqual(got.env.ALLOW_REMOTE_APP_URLS, 'true');
+    assert.strictEqual(got.env.REMOTE_SERVER_URL_ALLOW_REGEX, '^https://hub\\.example\\.com/');
+    assert.strictEqual(got.env.ANDROID_HOME, '/from/settings/sdk', 'a settings file\'s value is taken as set, never looked up');
+    assert.strictEqual(got.env.JAVA_HOME, '/from/shell/jdk');
+    assert.strictEqual(got.env.SCREENSHOTS_DIR, '/tmp/my-shots');
+    assert.strictEqual(got.env.NO_UI, 'true', 'yes is no boolean appium-mcp starts on');
+    assert.match(r.stderr, /NO_UI=yes is not true or false/);
+    assert.doesNotMatch(r.stderr, /ANDROID_HOME unset|JAVA_HOME unset/);
+});
+
+test('mobile-launch: an unset SDK path is looked up - ANDROID_SDK_ROOT, then Android Studio\'s place; the JDK by java_home, then the bundled JBR', () =>
+{
+    const home = '/h';
+    const dirs = (...p) => (q) => p.includes(q);
+    const none = () => false;
+    const sdk = (over) => mobile.androidHome({ env: {}, platform: 'darwin', home, isDir: none, ...over });
+    assert.deepStrictEqual(sdk({ env: { ANDROID_HOME: '/a' } }), { value: '/a', from: 'set' });
+    assert.deepStrictEqual(sdk({ env: { ANDROID_SDK_ROOT: '/r' } }), { value: '/r', from: 'ANDROID_SDK_ROOT' });
+    assert.deepStrictEqual(sdk({ isDir: dirs('/h/Library/Android/sdk') }), { value: '/h/Library/Android/sdk', from: 'default' });
+    assert.deepStrictEqual(sdk({ platform: 'linux', isDir: dirs('/h/Android/Sdk') }), { value: '/h/Android/Sdk', from: 'default' });
+    assert.deepStrictEqual(sdk({ platform: 'win32', env: { LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local' }, isDir: dirs('C:\\Users\\u\\AppData\\Local\\Android\\Sdk') }),
+        { value: 'C:\\Users\\u\\AppData\\Local\\Android\\Sdk', from: 'default' });
+    assert.deepStrictEqual(sdk({}), { value: '', from: null }, 'nothing found');
+    const jdk = (over) => mobile.javaHome({ env: {}, platform: 'darwin', home, isDir: none, tool: () => '', ...over });
+    assert.deepStrictEqual(jdk({ env: { JAVA_HOME: '/j' } }), { value: '/j', from: 'set' });
+    assert.deepStrictEqual(jdk({ tool: () => '/Library/Java/jdk', isDir: dirs('/Library/Java/jdk') }), { value: '/Library/Java/jdk', from: 'java_home' });
+    const jbr = '/Applications/Android Studio.app/Contents/jbr/Contents/Home';
+    assert.deepStrictEqual(jdk({ isDir: dirs(jbr) }), { value: jbr, from: 'studio' });
+    assert.deepStrictEqual(jdk({ platform: 'linux', tool: () => assert.fail('java_home is macOS only'), isDir: dirs('/opt/android-studio/jbr') }), { value: '/opt/android-studio/jbr', from: 'studio' });
+    assert.deepStrictEqual(jdk({}), { value: '', from: null });
+});
+
+test('mobile-launch: an older Node is refused in one line, and an entry with no --package says so', () =>
+{
+    assert.strictEqual(mobile.main(['--package', 'appium-mcp@1.97.1'], { node: '20.11.1' }), 1);
+    assert.strictEqual(mobile.main([], { node: '22.0.0' }), 2);
+    const r = spawnSync(process.execPath, [MOBILE], { env: BARE, encoding: 'utf8' });
+    assert.strictEqual(r.status, 2);
+    assert.match(r.stderr, /--package <spec> is required/);
+});
+
+test('mobile-launch: the copy route registers the same values, its dirs relative to the project root, and no SDK path', () =>
+{
+    const { dir } = project('mobile-copy', { settings: { ALLOW_REMOTE_APP_URLS: 'true' } });
+    const got = mobile.copyRouteEnv({ env: {}, projectDir: dir, root: '.data' });
+    assert.deepStrictEqual(got, { MOBILE_NO_UI: 'true', MOBILE_REMOTE_APPS: 'true', MOBILE_REMOTE_ALLOW: mobile.LOCAL_ONLY,
+        MOBILE_SCREENSHOTS: '.data/mobile-control/screenshots', MOBILE_PAGE_SOURCES: '.data/mobile-control/page-sources' });
+    assert.ok(!Object.keys(got).some((k) => /ANDROID|JAVA/.test(k)), 'a committed .mcp.json never carries one machine\'s SDK path');
+});
+
+test('mobile-launch: the prerequisites say Node, the SDK paths found or missing, and iOS by OS', () =>
+{
+    const notes = (over) => mobile.prereqNotes({ env: {}, platform: 'darwin', home: '/h', node: '24.1.0', isDir: () => false, tool: () => '', ...over }).join('\n');
+    const bare = notes({});
+    assert.doesNotMatch(bare, /needs Node 22/);
+    assert.match(bare, /ANDROID_HOME: not found\) and a JDK \(JAVA_HOME: not found\) \(the launcher looks each up only when it is unset\)/);
+    assert.match(bare, /!! mobile: set ANDROID_HOME and JAVA_HOME .*settings\.local\.json `env` \(machine-local\)/);
+    assert.match(bare, /iOS needs Xcode/);
+    const set = notes({ env: { ANDROID_HOME: '/a', JAVA_HOME: '/j' }, platform: 'linux', route: 'copy' });
+    assert.match(set, /ANDROID_HOME: \/a\) and a JDK \(JAVA_HOME: \/j\), adb/);
+    assert.doesNotMatch(set, /!! mobile: set ANDROID_HOME/);
+    assert.match(set, /iOS needs macOS with Xcode; on this machine it drives Android only/);
+    assert.match(notes({ node: '20.11.1' }), /!! mobile: mobile-control needs Node 22 or newer .* this machine runs 20\.11\.1/);
+});

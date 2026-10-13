@@ -291,9 +291,9 @@ const { ENGINES: PW_ENGINES } = require('../stack/mcp/data-root.js');
 // check 53 fails on any entry that breaks it.
 //
 // The names are the ROLE (2.0.0, the user's rename), `alfred-` prefixed for the locked three (2.2.0): alfred-navigation,
-// alfred-documentation, alfred-memory, one <engine>-control per browser, and windows-control / macos-control. The upstream each one runs -
-// Serena, Context7, Playwright MCP, Windows-MCP, MacOS-MCP - is named once in its description, where a
-// reader needs it.
+// alfred-documentation, alfred-memory, one <engine>-control per browser, windows-control / macos-control and mobile-control. The
+// upstream each one runs - Serena, Context7, Playwright MCP, Windows-MCP, MacOS-MCP, appium-mcp - is named once in its
+// description, where a reader needs it.
 
 function mcpServerShapes(options = {})
 {
@@ -395,6 +395,18 @@ function mcpServerShapes(options = {})
                     command: 'node',
                     args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'macos-control', '--package', `macos-mcp${suffix('macos-control')}`, ...cut, '--', 'serve'],
                     env: DESKTOP_ENV,
+                },
+            },
+        },
+        // --- the mobile server: an npx package, so no Python and no cut-off -----------------------
+        // The launcher looks up an unset ANDROID_HOME / JAVA_HOME, puts the output dirs under the data root and keeps the
+        // safe defaults where the user set nothing (stack/mcp/mobile-launch.js).
+        'mobile-control': {
+            description: 'The mobile server (appium-mcp), as a plugin: drives Android and iOS apps on an emulator, a simulator or a real device through Appium\'s embedded UiAutomator2 and XCUITest drivers (sessions, find, tap, type, gestures, screenshots). Needs Node 22+; Android needs the Android SDK and a JDK (ANDROID_HOME / JAVA_HOME, looked up when unset), iOS needs macOS with Xcode. Started through a launcher that puts screenshots and page sources under the project\'s data root (<data root>/mobile-control) and refuses app URLs and remote Appium servers unless the user sets ALLOW_REMOTE_APP_URLS / REMOTE_SERVER_URL_ALLOW_REGEX.',
+            servers: {
+                'mobile-control': {
+                    command: 'node',
+                    args: [`${root}/stack/mcp/mobile-launch.js`, '--package', `appium-mcp${suffix('mobile-control')}`],
                 },
             },
         },

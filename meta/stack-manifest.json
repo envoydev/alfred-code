@@ -1057,6 +1057,12 @@
         "desktop-automation"
       ],
       "note": "the macOS desktop server (MacOS-MCP): drives native macOS apps through the Accessibility API; macOS only, addable, seeded by no stack; opt-in (active: false); needs Accessibility and Screen Recording for the terminal and the uv-managed Python"
+    },
+    {
+      "name": "mobile-control",
+      "active": false,
+      "args": "-e NO_UI=@MOBILE_NO_UI@ -e ALLOW_REMOTE_APP_URLS=@MOBILE_REMOTE_APPS@ -e REMOTE_SERVER_URL_ALLOW_REGEX=@MOBILE_REMOTE_ALLOW@ -e SCREENSHOTS_DIR=@MOBILE_SCREENSHOTS@ -e PAGE_SOURCES_DIR=@MOBILE_PAGE_SOURCES@ -- node -e @ROOT_BOOT@ -- checkout npx -y appium-mcp@MOBILE_CONTROL_PIN@",
+      "note": "the mobile server (appium-mcp): drives Android and iOS apps on an emulator, a simulator or a device through Appium's embedded UiAutomator2 / XCUITest drivers; addable, seeded by no stack; opt-in (active: false); Node 22+; the Android SDK and a JDK come from ANDROID_HOME / JAVA_HOME where Claude Code starts (the plugin route's launcher, stack/mcp/mobile-launch.js, looks each up only when unset), iOS needs macOS with Xcode; app URLs refused and a local Appium server only unless the user sets ALLOW_REMOTE_APP_URLS / REMOTE_SERVER_URL_ALLOW_REGEX; screenshots and page sources under <data root>/mobile-control"
     }
   ],
   "retired": {

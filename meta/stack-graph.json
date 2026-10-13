@@ -1199,6 +1199,7 @@
       "alfred-navigation",
       "browser",
       "macos-control",
+      "mobile-control",
       "windows-control"
     ],
     "plugins": [

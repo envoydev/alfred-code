@@ -301,8 +301,11 @@ the machine's own apps, so the table offers each on its own OS only and neither 
 `skipped: mcp <name> - ...` line on stderr instead of a row; say it in one line under the table. Picking
 either is opt-in consent to a server that clicks through the user's own desktop with their full rights,
 so the question names that in one line; the installer prints what each needs (English display language
-and matching privilege on Windows, the Accessibility and Screen Recording grants on macOS). Those six
-are the whole catalog. A server 2.0.0 cut (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`,
+and matching privilege on Windows, the Accessibility and Screen Recording grants on macOS). `mobile-control`
+(appium-mcp) drives Android and iOS apps on an emulator, a simulator or a device, on every OS; seeded by no stack,
+it is offered as a plain row everywhere and asked in FRESH only for a mobile app (an Ionic or Capacitor stack, or
+an `android/` or `ios/` folder at the root) - the installer prints what it needs (Node 22+, the Android SDK and a
+JDK through ANDROID_HOME / JAVA_HOME, Xcode for iOS). Those seven are the whole catalog. A server 2.0.0 cut (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`,
 `context7-local`) is offered nowhere: the run uninstalls the stack's own copy and prints the `claude
 mcp add` line that brings it back as the user's own.
 
@@ -327,6 +330,12 @@ MCPs: alfred-navigation, alfred-documentation and alfred-memory always install. 
 Add <windows-control | macos-control>? It clicks through your desktop apps with your full rights.
 - 'Leave it out (Recommended)' - opt-in only; recommend 'Add' instead when WPF or WinForms is confirmed on Windows
 - 'Add the desktop server' - needs the OS grants the installer prints (Accessibility and Screen Recording on macOS)
+```
+
+```ask
+Add mobile-control (Appium)? It drives Android and iOS apps on an emulator, a simulator or a device.
+- 'Leave it out (Recommended)' - opt-in only, and its 32 tools load in every session; recommend 'Add' instead when an emulator, simulator or device is at hand for this app
+- 'Add the mobile server' - needs Node 22+, and the Android SDK and a JDK (ANDROID_HOME / JAVA_HOME) or Xcode on macOS
 ```
 
 Ask only the rows this OS and selection have. In DELTA the browser and desktop questions read the live
@@ -393,7 +402,7 @@ DELTA takes the two layer questions above (add, drop) like every layer.
 
 **Where each optional item installs - the last ask of the walk.** The core and the three `alfred-` servers
 follow the run's scope. Every OTHER kept item - each kept browser engine (`<engine>-control`), a kept desktop
-server, a kept LSP, `claude-hud` - goes where the user chooses, item by item: `project` (this project only,
+server, `mobile-control`, a kept LSP, `claude-hud` - goes where the user chooses, item by item: `project` (this project only,
 the default for every one), `global` (every project on this account loads it) or `local` (this checkout only,
 never shared through the repo). Never `managed`: that scope is the admin's, and no run installs there. Nothing
 kept that is optional: ask nothing. FRESH has no install, so every item starts at `project`:

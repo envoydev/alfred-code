@@ -154,10 +154,11 @@ const NON_SKILL_TOKENS = new Set([
     // file-naming style term backticked in the typescript style reference - a
     // convention name, not a house skill.
     'kebab-case',
-    // the two desktop MCP server names, keyed in the capability capture's routing map (a row is found by
+    // the desktop and mobile MCP server names, keyed in the capability capture's routing map (a row is found by
     // its backticked name) - servers, not skills.
     'windows-control',
     'macos-control',
+    'mobile-control',
 ]);
 
 const findings = [];
@@ -1174,7 +1175,8 @@ const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
 // The setup / configure walk's layer asks are templates too (2026-09-29: a walk with whole-layer verdicts only left every
 // per-row change to typing). Pinned per file like the flow skills, so a layer ask dropped back to prose goes red.
 const SETUP_ASK_TEMPLATES = {
-    'setup-plugin/references/walk.md': 12,
+    // +1: the mobile-control ask (2026-10-13).
+    'setup-plugin/references/walk.md': 13,
     'setup-plugin/commands/setup.md': 2,
     // +2: step 1's closing ask, one template per case (audit 2026-10-11, session a9e06780).
     'setup-plugin/commands/configure.md': 6,

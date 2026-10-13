@@ -241,6 +241,27 @@
       }
     },
     {
+      "name": "mobile-control",
+      "source": "./",
+      "description": "The mobile server (appium-mcp), as a plugin: drives Android and iOS apps on an emulator, a simulator or a real device through Appium's embedded UiAutomator2 and XCUITest drivers (sessions, find, tap, type, gestures, screenshots). Needs Node 22+; Android needs the Android SDK and a JDK (ANDROID_HOME / JAVA_HOME, looked up when unset), iOS needs macOS with Xcode. Started through a launcher that puts screenshots and page sources under the project's data root (<data root>/mobile-control) and refuses app URLs and remote Appium servers unless the user sets ALLOW_REMOTE_APP_URLS / REMOTE_SERVER_URL_ALLOW_REGEX.",
+      "version": "2.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "mobile-control": {
+          "command": "node",
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/mobile-launch.js",
+            "--package",
+            "appium-mcp@1.97.1"
+          ]
+        }
+      }
+    },
+    {
       "name": "alfred-code",
       "source": "./",
       "description": "The Claude Code stack, guided: setup installs it from scratch into a project, init bootstraps it once after the restart (services, memory, captures, AGENTS.md), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables; uninstall removes what the install ledger says the stack wrote, and nothing of the user's.",

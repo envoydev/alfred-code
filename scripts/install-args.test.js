@@ -419,6 +419,7 @@ test('install-args: --scope-of gives an optional item its own scope; the require
         fails(['install', '--scope-of', `${item}=global`], /--scope-of: '.*' has no scope of its own - one of browser, .*the core and the alfred- servers follow --scope/);
     const c = ok(['install', '--scope-of', 'claude-hud=local', '--scope-of', 'chrome-control=Local']);
     assert.deepStrictEqual(c.scopeOf, { 'claude-hud': 'local', 'chrome-control': 'local' }, 'local is a scope of its own');
+    assert.deepStrictEqual(ok(['install', '--scope-of', 'mobile-control=global']).scopeOf, { 'mobile-control': 'user' }, 'mobile-control takes its own scope (2026-10-13)');
     // managed is the admin's - no run installs there, so it is no answer.
     for (const bad of ['claude-hud', 'claude-hud=managed', 'claude-hud=', '=project'])
         fails(['install', '--scope-of', bad], /--scope-of takes '<item>=<global\|project\|local>'/);

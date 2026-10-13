@@ -693,7 +693,7 @@ function restoreStoodDown({ record = [], plugins = [], isOn, cli, log = () => {}
 // `stood-down` record, which the switch back enables (restoreStoodDown). One already off here, or off
 // at user scope, calls nothing. Returns `{ gone, off }`.
 //
-// I8: THE DESKTOP SERVERS the copy route registers go the same way - `desktop` names each one this run
+// I8: THE DESKTOP SERVERS (and mobile-control) the copy route registers go the same way - `desktop` names each one this run
 // registers in .mcp.json (the OS gate already left out one this machine cannot run). Left enabled, its
 // plugin row ran Windows-MCP or MacOS-MCP a second time beside the registration: two UI-automation
 // servers on one desktop and two tool sets. The plugin route installs it back from the MCP picks.

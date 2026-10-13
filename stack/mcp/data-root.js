@@ -38,6 +38,8 @@ const LEGACY = { serena: '.serena', browser: '.playwright', memory: LEGACY_MEMOR
 // Where 2.1.0 to 2.3.x kept every engine's profile under the root, one folder for all of them: <root>/browser/<engine>.
 // Each engine has its own <root>/<engine>-control now, and the shared folder goes once the last profile left it.
 const SHARED_BROWSER = 'browser';
+// mobile-control's screenshots, recordings and saved page sources (stack/mcp/mobile-launch.js).
+const MOBILE_FOLDER = 'mobile-control';
 
 // ------------------------------------------------------------------ the setting
 
@@ -75,6 +77,7 @@ function layout(root = DATA_ROOT_DEFAULT)
         serena: `${root}/serena`,
         serenaHome: `${root}/serena/home`,
         browser: (engine) => `${root}/${engineServer(engine)}`,
+        mobile: `${root}/${MOBILE_FOLDER}`,
         memory: `${root}/${MEMORY_FOLDER}`,
         memoryDb: `${root}/${MEMORY_FOLDER}/memory.db`,
     };
@@ -552,7 +555,7 @@ function ensureSerenaConfig(homeAbs, folder = `${DATA_ROOT_DEFAULT}/serena`)
 }
 
 module.exports = {
-    DATA_ROOT_DEFAULT, MEMORY_FOLDER, LEGACY_MEMORY_FOLDER, ENGINES, LEGACY, SHARED_BROWSER, engineServer, engineOfServer, ENGINE_SERVER, sharedBrowserOf, isRelayout,
+    DATA_ROOT_DEFAULT, MEMORY_FOLDER, LEGACY_MEMORY_FOLDER, MOBILE_FOLDER, ENGINES, LEGACY, SHARED_BROWSER, engineServer, engineOfServer, ENGINE_SERVER, sharedBrowserOf, isRelayout,
     checkDataPath, dataRootOf, layout, targetOf, rootOfPlace, legacyOf,
     DATA_IGNORE_HEAD, dataIgnoreText, ensureRootIgnore,
     memoryDbFor, memoryLevelOf, legacyTwinOf, homeTwinOf, liveMemoryDb,

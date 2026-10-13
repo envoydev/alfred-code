@@ -8,6 +8,11 @@
 //
 //   node scripts/refresh-mcp-pins.js            # report what would change, write nothing
 //   node scripts/refresh-mcp-pins.js --write    # resolve and write meta/mcp-pins.json and meta/mcp-tools.json
+//   node scripts/refresh-mcp-pins.js --write --only mobile-control   # resolve the named npm rows alone
+//
+// `--only <name>[,<name>]` resolves and lists the named servers and keeps every other pin, tool list and the
+// `refreshed` day as committed - how a server joins the catalog without moving the others. A uvx (PyPI) row is
+// refused there: its pin must not be newer than the shared cut-off, which only a whole refresh moves.
 //
 // Offline or a dead registry is NOT a failure: the row keeps the pin it had, and the report says
 // which ones could not be checked. A row that never resolved carries `null`, which the generator
@@ -48,6 +53,7 @@ const PACKAGES = {
     'alfred-memory': { registry: 'pypi', package: 'mcp-memory-service', spelling: '==<v>' },
     'windows-control': { registry: 'pypi', package: 'windows-mcp',      spelling: '==<v>' },
     'macos-control':   { registry: 'pypi', package: 'macos-mcp',        spelling: '==<v>' },
+    'mobile-control':  { registry: 'npm',  package: 'appium-mcp',       spelling: '@<v>' },
 };
 
 function npmLatest(pkg)
@@ -241,7 +247,9 @@ const DESKTOP_TOOL = /@mcp\.tool\(\s*name\s*=\s*['"]([A-Za-z0-9_-]+)['"]/g;
 
 // Each pinned server's tool names, at the pin and the release cut-off: serena's own full list, the stdio servers'
 // tools/list (the browser with every optional capability on), the hosted documentation server's tools/list, and
-// the desktop servers' `@mcp.tool(name=...)` names read from the wheel - they run only on their own OS.
+// the desktop servers' `@mcp.tool(name=...)` names read from the wheel - they run only on their own OS. mobile-control's
+// tools/list needs no device: its session tool connects only when called. appium_ai is left out - it registers only
+// with AI_VISION_ENABLED=true and a vision API key, which the stack never sets.
 async function listTools(name, row, { cutoff = '' } = {})
 {
     const v = row && row.version;
@@ -262,6 +270,9 @@ async function listTools(name, row, { cutoff = '' } = {})
         if (name === 'browser')
             return await stdioTools('npx', ['-y', `@playwright/mcp@${v}`, '--caps', 'vision,pdf,devtools', '--headless', '--isolated', '--output-dir', scratch]);
         if (name === 'alfred-documentation') return await httpTools('https://mcp.context7.com/mcp');
+        if (name === 'mobile-control')
+            return await stdioTools('npx', ['-y', `appium-mcp@${v}`], { env: { ...process.env, NO_UI: 'true', ALLOW_REMOTE_APP_URLS: 'false',
+                SCREENSHOTS_DIR: scratch, PAGE_SOURCES_DIR: scratch, AI_VISION_ENABLED: 'false' } });
         if (name === 'windows-control' || name === 'macos-control')
         {
             const files = wheelFiles(PACKAGES[name].package, v, (f) => f.endsWith('.py'));
@@ -284,12 +295,29 @@ async function main(argv, deps = {})
         pinsFile: PINS, toolsFile: TOOLS, contextFile: CONTEXT, today: () => new Date().toISOString().slice(0, 10), ...deps,
     };
     const write = argv.includes('--write');
+    const at = argv.indexOf('--only');
+    const only = at >= 0 ? String(argv[at + 1] || '').split(',').map((n) => n.trim()).filter(Boolean) : null;
     const current = readPins(d.pinsFile);
+    if (only)
+    {
+        const bad = only.filter((n) => !Object.hasOwn(PACKAGES, n) || PACKAGES[n].registry !== 'npm');
+        if (!only.length || bad.length)
+        {
+            d.log(`--only takes npm rows of PACKAGES (${Object.keys(PACKAGES).filter((n) => PACKAGES[n].registry === 'npm').join(', ')}) - ${bad.join(', ') || 'none named'} refused: a PyPI pin moves with the shared cut-off, so refresh them all`);
+            return 1;
+        }
+    }
     const pins = {};
     const report = [];
     let refused = false;
     for (const [name, spec] of Object.entries(PACKAGES))
     {
+        if (only && !only.includes(name))
+        {
+            const kept = (current.pins && current.pins[name]) || null;
+            pins[name] = { package: spec.package, registry: spec.registry, spelling: spec.spelling, version: kept ? kept.version : null };
+            continue;
+        }
         const was = (current.pins && current.pins[name] && current.pins[name].version) || null;
         const now = spec.registry === 'npm' ? d.npmLatest(spec.package) : d.pypiLatest(spec.package);
         // Unreachable keeps the committed pin: a refresh run on a plane must not unpin the stack.
@@ -307,7 +335,7 @@ async function main(argv, deps = {})
     }
     d.log(report.join('\n'));
     if (!write) { d.log('\nnothing written - re-run with --write to commit these pins'); return refused ? 1 : 0; }
-    const refreshed = d.today();
+    const refreshed = only && current.refreshed ? current.refreshed : d.today();
     const out = {
         generatedBy: 'refresh-mcp-pins',
         note: 'The MCP runtime versions the generated plugin entries pin to, and (refreshed) the day that is the uvx servers\' dependency cut-off: each starts with --exclude-newer <refreshed>T23:59:59Z, so the whole tree is fixed, not only the top package. Refreshed deliberately with `node scripts/refresh-mcp-pins.js --write`, never during an install or by hand - a pin newer than the cut-off would not resolve. A null version ships unpinned.',
@@ -321,7 +349,7 @@ async function main(argv, deps = {})
     try { tools = JSON.parse(fs.readFileSync(d.toolsFile, 'utf8')); } catch { tools = {}; }
     const servers = { ...((tools && tools.servers) || {}) };
     const lines = [];
-    for (const name of TOOL_SERVERS)
+    for (const name of TOOL_SERVERS.filter((n) => !only || only.includes(n)))
     {
         const row = pins[name] || { version: null };
         const got = await d.listTools(name, row, { cutoff: excludeNewerOf(refreshed) });
