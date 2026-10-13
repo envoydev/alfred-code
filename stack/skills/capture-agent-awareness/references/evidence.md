@@ -1,4 +1,4 @@
-# capture-agent-capabilities - evidence appendix
+# capture-agent-awareness - evidence appendix
 
 The measured anecdotes behind this skill's rules, kept out of the run-time body so every session stops paying
 for them. Audit material: read it to learn WHY a rule is shaped the way it is, never to run the skill.
@@ -51,7 +51,7 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 - **Every count comes from the command that produced the list** - measured: four audited sessions miscounted the seats, every one of them off by one and every one of them LOW (17 vs 18, 18 vs 19, 21 vs 22).
 - **`Live from:` is UNCONDITIONAL** - the report line once carried a `Next run:` field for the same reason (measured: a first-act run that recommended nothing chained a second orchestration run 3 minutes later and wrote off 205.9k tokens).
 - **Say the `Live from:` line the one way it is true on both branches** - measured: the un-scripted version got it wrong in 4 of 5 audited runs - two called a first-act session 'mid-session', and one told the user a rule written 90 seconds in was 'live for the rest of it'.
-- **No `Next run:` field** - removed 2026-09-14: filled from 'the command they named', it named `/capture-agent-capabilities` itself after a run the user had just typed, and the user ruled that a skill is suggested only when its output is stale. Chaining runs into one session (measured: three chained orchestration runs, every context spike above 320k) is `guard-fresh-session-start.js`'s to catch, not a report line's.
+- **No `Next run:` field** - removed 2026-09-14: filled from 'the command they named', it named `/capture-agent-awareness` itself after a run the user had just typed, and the user ruled that a skill is suggested only when its output is stale. Chaining runs into one session (measured: three chained orchestration runs, every context spike above 320k) is `guard-fresh-session-start.js`'s to catch, not a report line's.
 - **The flags are MECHANICAL - compute them, never eyeball them** - measured: the prose form was missed by a run that had the evidence in front of it.
 - **`ls .claude/rules/` and report a seat family with no convention rule** - measured: a run asserted that cross-check having never listed the directory.
 - **Never assert WHY a plugin is installed or disabled without the per-project records** - measured: a 'rides the stack closure, inert' claim was confidently wrong - the plugin belonged to a sibling repo - and cost a user challenge plus 5 corrective calls.

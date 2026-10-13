@@ -84,11 +84,11 @@ test('the checkpoint review read keeps a merge and the index, reads a brand-new 
 // ------------------------------------------------------------------ JSON on Windows (SD13 contract, the skill texts)
 
 // Git for Windows ships no jq (e90a1845 and 177c5743 hit exit 127): a skill or seat that parses JSON says `node -e`.
-// `gh ... --jq` is gh's own built-in filter and needs no jq binary. The capture-agent-capabilities, capture-usage-report and
+// `gh ... --jq` is gh's own built-in filter and needs no jq binary. The capture-agent-awareness, capture-usage-report and
 // habits-adjust-agents-md folders are pinned by usage-audit-sd-t5.test.js: their prose says 'never `jq`', which this pattern reads as a call.
 test('no skill or seat text runs a bare jq', () =>
 {
-    const OTHER_TRACK = new Set(['capture-agent-capabilities', 'capture-usage-report', 'habits-adjust-agents-md']);
+    const OTHER_TRACK = new Set(['capture-agent-awareness', 'capture-usage-report', 'habits-adjust-agents-md']);
     const files = [];
     const walk = (dir) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); if (e.isDirectory()) walk(p); else if (/\.md$/.test(e.name)) files.push(p); } };
     for (const d of fs.readdirSync(path.join(ROOT, 'stack', 'skills'), { withFileTypes: true }))
@@ -213,13 +213,13 @@ test('d9035363#1: the zero-drift exit greps its generated rule for a path and re
     assert.ok(cmd, 'the exit names its check command');
     assert.match(flat(skill), /rewrite that rule alone to its template in `references\/doc-shapes\.md` \(the one load this exit takes\) and add `rule regenerated - <the hit, or absent>`/);
     assert.doesNotMatch(skill, /no write, no rule regeneration/);
-    const template = (/## \.claude\/rules\/alfred-project-architecture\.md[\s\S]*?```markdown\n([\s\S]*?)```/.exec(read('stack/skills/capture-architecture/references/doc-shapes.md')) || [])[1];
+    const template = (/## \.claude\/rules\/alfred-architecture\.md[\s\S]*?```markdown\n([\s\S]*?)```/.exec(read('stack/skills/capture-architecture/references/doc-shapes.md')) || [])[1];
     assert.ok(template, 'doc-shapes carries the rule template');
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'sd-arch-rule-'));
     try
     {
         fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
-        const rule = path.join(repo, '.claude', 'rules', 'alfred-project-architecture.md');
+        const rule = path.join(repo, '.claude', 'rules', 'alfred-architecture.md');
         const runCheck = () => require('node:child_process').spawnSync('sh', ['-c', cmd], { cwd: repo, encoding: 'utf8' });
         fs.writeFileSync(rule, '# Architecture\r\n\r\nRead `.alfred/docs/architecture/ARCHITECTURE.md`; the findings are in `.alfred/docs/architecture/ASSESSMENT.md`.\r\n');
         const old = runCheck();

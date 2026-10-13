@@ -213,7 +213,7 @@ test('the slash route is UserPromptExpansion, its matcher naming every orchestra
     assert.match(src, /if \(EVENT === 'UserPromptSubmit'\) \{\s*idleGapOffer\(\);\s*process\.exit\(0\);\s*\}/, 'and that route is the idle gap alone');
     const orchestration = new RegExp(src.match(/^const ORCHESTRATION = \/(.+)\/;$/m)[1]);
     const names = ['loop-quality', 'loop-architecture-quality', 'loop-test-coverage', 'capture-architecture',
-        'capture-project-capabilities', 'task-solve', 'task-solve-cross', 'task-verify-code', 'issue-diagnoser',
+        'capture-project-awareness', 'task-solve', 'task-solve-cross', 'task-verify-code', 'issue-diagnoser',
         'security-review', 'alfred-code:init', 'alfred-code:setup', 'alfred-code:update', 'alfred-code:configure', 'alfred-code:validate'];
     for (const n of names) {
         assert.ok(orchestration.test(n), `${n} is one the hook judges`);

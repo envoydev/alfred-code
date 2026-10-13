@@ -31,7 +31,7 @@
       "mcps": [],
       "plugins": []
     },
-    "capture-agent-capabilities": {
+    "capture-agent-awareness": {
       "mcps": [],
       "plugins": []
     },
@@ -55,7 +55,7 @@
       "mcps": [],
       "plugins": []
     },
-    "capture-project-capabilities": {
+    "capture-project-awareness": {
       "mcps": [],
       "plugins": []
     },

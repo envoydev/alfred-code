@@ -119,11 +119,11 @@ for a carried seat).
 |---|---|---|
 | alfred-git | always-on | stack |
 | typescript-conventions | paths: `**/*.ts`, `**/*.tsx` | stack |
-| alfred-project-architecture | always-on | GENERATED |
+| alfred-architecture | always-on | GENERATED |
 | project-code-style | paths: `**/*.js` | GENERATED |
 
 `scope` comes from the `paths:` frontmatter (absent = always-on). `origin`: `GENERATED` for the
-capture-written rules (`alfred-project-*.md`, `project-code-style.md`), `stack` otherwise,
+capture-written rules (`alfred-architecture.md`, `alfred-related-context.md`, `alfred-agent-awareness.md`, `alfred-project-awareness.md`, `project-code-style.md`), `stack` otherwise,
 `user-authored` when clearly neither.
 
 Then ONE extra line under that table - the always-on FLOOR this install pays, because nothing

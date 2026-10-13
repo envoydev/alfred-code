@@ -164,7 +164,7 @@ test('guard-stop-contract: a suggestion close that says nothing is pending on th
   // it), and the one line that resolves it is the disclaimer - without it the same card stays blocked.
   const card = 'Install complete - 9 skills, 4 agents, 11 hooks.\n\nSuggested next steps:\n'
     + '1. Reload the session - the next step everything else depends on; nothing installed this run is live until the MCPs connect.\n'
-    + '2. `/capture-agent-capabilities` - so the generated rule reflects the final inventory.\n\n'
+    + '2. `/capture-agent-awareness` - so the generated rule reflects the final inventory.\n\n'
     + 'Nothing is pending on this run - these are yours to run when you choose.';
   const sug = transcript('sug', [assistantRow('m6', card)]);
   assert.equal(run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: sug }), 0, 'the disclaimer line makes the close a finished one');
@@ -2457,7 +2457,7 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
     assert.equal(slash.status, 0, 'the slash route never denies');
     assert.match(injected(slash), /Do NOT start the run yet/, '... it injects the ask instead');
     assert.equal(JSON.parse(slash.stdout).hookSpecificOutput.hookEventName, 'UserPromptExpansion', 'answered on its own event');
-    assert.match(injected(upe('capture-agent-capabilities', hot)), /Do NOT start the run yet/, 'a capture is a run');
+    assert.match(injected(upe('capture-agent-awareness', hot)), /Do NOT start the run yet/, 'a capture is a run');
     assert.match(injected(upe('alfred-code:update', hot)), /Do NOT start the run yet/, 'the guided plugin walks are orchestration too');
     assert.match(injected(upe('update', hot, undefined, { typed: 'alfred-code:update' })), /Do NOT start the run yet/,
         'a plugin command named bare takes its namespace from the typed prompt');

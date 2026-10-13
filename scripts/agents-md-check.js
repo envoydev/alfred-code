@@ -243,9 +243,12 @@ function patternSpans(line, spans)
 // A line that places what it names in the parent directory ('exists at the parent directory', 'one level up') is read
 // from there as well (audit 2026-10-11 SD04: a run script beside the repo raised a row on every run of four sessions).
 const PARENT_DIR = /\bparent\s+(?:directory|folder|dir)\b|\b(?:one|a)\s+(?:level|folder|directory)\s+(?:up|above)\b/i;
-// A line naming a generated rule (`alfred-project-*.md`, `project-*.md`) points at it, as the outline asks - its words
-// are no copied authoring text (audit 2026-10-11 SD04, session 6288ad94: a correct pointer reworded to silence the row).
-const GENERATED_RULE_REF = /(?:^|[\s`/])(?:alfred-)?project-[a-z0-9-]+\.md\b/;
+// A line naming a generated rule points at it, as the outline asks - its words are no copied authoring text (audit
+// 2026-10-11 SD04, session 6288ad94: a correct pointer reworded to silence the row). The generated rules by name
+// (scripts/install/selection.js GENERATED_RULES, renamed 2026-10-13) plus the `alfred-project-*` / `project-*` spellings
+// before them - a bare `alfred-*` stem is the shipped baseline's, never generated.
+const GENERATED_STEM = '(?:alfred-(?:architecture|related-context|agent-awareness)|(?:alfred-)?project-[a-z0-9-]+)';
+const GENERATED_RULE_REF = new RegExp(`(?:^|[\\s\`/])${GENERATED_STEM}\\.md\\b`);
 
 // True when the clause holding columns [from, to) of `prose` denies what it names.
 function denied(prose, from, to)
@@ -412,12 +415,12 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
 
     // The `## Rules` list against `.claude/rules/` (usage audit 2026-10-10, 65abb00a: an improve pass missed an unlisted
     // rule and twice called the table stale, both against the folder it never compared). A named rule file the folder
-    // lacks is a `rule` row whatever git ignores; a GENERATED name (`alfred-project-*`, `project-*`) waits for its
+    // lacks is a `rule` row whatever git ignores; a GENERATED name (GENERATED_STEM) waits for its
     // capture, as the template seeds them first. Unnamed files count only once the list ENUMERATES - names a rule the
     // install copies - since the template covers the rest by pattern (`alfred-*`, 'the other path-scoped rules').
     const RULES_DIR = path.join(root, '.claude', 'rules');
     const hasRules = (() => { try { return fs.statSync(RULES_DIR).isDirectory(); } catch { return false; } })();
-    const generatedRule = (stem) => /^(alfred-)?project-/.test(stem);
+    const generatedRule = (stem) => new RegExp(`^${GENERATED_STEM}$`).test(stem);
     const globRe = (g) => new RegExp(`^${g.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
     let rules = null;
     // A span in the Rules list: true when it was a rule name this check answered, so the path check skips it.

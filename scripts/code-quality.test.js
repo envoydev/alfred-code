@@ -90,7 +90,7 @@ test('the capture is a copy and its seat rides the core, placed by the rule that
 
     // The loop invokes the capture as a Skill call, so it carries no disable-model-invocation - and the
     // generated usage policy lists it with the orchestration skills, marked as the by-design exception.
-    const inventory = read('stack/skills/capture-agent-capabilities/scripts/capabilities-inventory.js');
+    const inventory = read('stack/skills/capture-agent-awareness/scripts/capabilities-inventory.js');
     const set = /const MODEL_INVOCABLE_BY_DESIGN = new Set\(\[([^\]]*)\]\)/.exec(inventory);
     assert.ok(set && set[1].includes("'capture-code-quality'"), 'the capture is model-invocable by design');
 });
@@ -373,7 +373,7 @@ function orchestration()
 
 test('every skill the inventory calls orchestration is on the fresh-session guard\'s roster', () =>
 {
-    const inventory = read('stack/skills/capture-agent-capabilities/scripts/capabilities-inventory.js');
+    const inventory = read('stack/skills/capture-agent-awareness/scripts/capabilities-inventory.js');
     const set = /const MODEL_INVOCABLE_BY_DESIGN = new Set\(\[([^\]]*)\]\)/.exec(inventory);
     assert.ok(set, 'the inventory names its model-invocable orchestration skills');
     const names = [...set[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);

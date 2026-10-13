@@ -34,7 +34,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "capture-architecture",
-      "note": "deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule alfred-project-architecture.md; manual /-only"
+      "note": "deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule alfred-architecture.md; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -73,18 +73,18 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "capture-agent-capabilities",
-      "note": "deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule alfred-project-agent-capabilities.md; manual /-only"
+      "name": "capture-agent-awareness",
+      "note": "deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule alfred-agent-awareness.md; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "capture-project-capabilities",
-      "note": "deliberate run-book capture - reads the repo first (the first-look scan, launch configs, compose, README), asks only for the gaps (start and reach, login and where the credentials live, flows and edge cases, before-you-run and debugging), writes docs/project-capabilities/PROJECT-CAPABILITIES.md (its own docs domain) + the generated pointer rule alfred-project-run-book.md; credentials by location, never by value; manual /-only"
+      "name": "capture-project-awareness",
+      "note": "deliberate run-book capture - reads the repo first (the first-look scan, launch configs, compose, README), asks only for the gaps (start and reach, login and where the credentials live, flows and edge cases, before-you-run and debugging), writes docs/project-capabilities/PROJECT-CAPABILITIES.md (its own docs domain) + the generated pointer rule alfred-project-awareness.md; credentials by location, never by value; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
       "name": "capture-related-projects",
-      "note": "deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule alfred-project-related-context.md + docs/related-projects/RELATED-PROJECTS.md (its own docs domain; docs/related-context/ stays the plain drop box for every other sibling-repo paper); manual /-only"
+      "note": "deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule alfred-related-context.md + docs/related-projects/RELATED-PROJECTS.md (its own docs domain; docs/related-context/ stays the plain drop box for every other sibling-repo paper); manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -807,7 +807,7 @@
     },
     {
       "file": "guard-fresh-session-start.js",
-      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
+      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
       "event": "",
       "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling, so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only)"
     },
@@ -1101,12 +1101,14 @@
       "explain-code-tutor",
       "plugin-authoring",
       "alfred-capture-agent-capabilities",
+      "capture-agent-capabilities",
       "alfred-capture-architecture",
       "alfred-capture-architecture-quality",
       "alfred-capture-code-quality",
       "alfred-capture-code-style",
       "alfred-capture-first-look",
       "alfred-capture-project-capabilities",
+      "capture-project-capabilities",
       "alfred-capture-related-projects",
       "alfred-capture-test-coverage",
       "alfred-capture-usage-report",
@@ -1209,7 +1211,7 @@
       "project-code-style-analyzer": "capture-code-style",
       "project-test-coverage-analyzer": "capture-test-coverage",
       "project-related-context": "capture-related-projects",
-      "project-agent-capabilities": "capture-agent-capabilities",
+      "project-agent-capabilities": "capture-agent-awareness",
       "project-stack-usage-analyzer": "capture-usage-report",
       "project-first-look": "capture-first-look",
       "project-quality-loop": "loop-quality",
@@ -1221,13 +1223,15 @@
       "alfred-capture-stack-usage": "capture-usage-report",
       "create-ticket": "habits-create-ticket",
       "explain-code-tutor": "habits-explain-code",
-      "alfred-capture-agent-capabilities": "capture-agent-capabilities",
+      "alfred-capture-agent-capabilities": "capture-agent-awareness",
+      "capture-agent-capabilities": "capture-agent-awareness",
       "alfred-capture-architecture": "capture-architecture",
       "alfred-capture-architecture-quality": "capture-architecture-quality",
       "alfred-capture-code-quality": "capture-code-quality",
       "alfred-capture-code-style": "capture-code-style",
       "alfred-capture-first-look": "capture-first-look",
-      "alfred-capture-project-capabilities": "capture-project-capabilities",
+      "alfred-capture-project-capabilities": "capture-project-awareness",
+      "capture-project-capabilities": "capture-project-awareness",
       "alfred-capture-related-projects": "capture-related-projects",
       "alfred-capture-test-coverage": "capture-test-coverage",
       "alfred-capture-usage-report": "capture-usage-report",

@@ -1,5 +1,5 @@
 ---
-name: capture-project-capabilities
+name: capture-project-awareness
 description: "Use when asked to capture the project capabilities or run book - how to build, start and log in to the app. Manual, /-only. Not for the tools inventory."
 disable-model-invocation: true
 ---
@@ -14,7 +14,7 @@ guessing. Two artifacts come out:
 
 1. `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` - the run book, a docs domain with its own
    `watch.json`. `references/doc-shape.md` is its shape and write protocol.
-2. `.claude/rules/alfred-project-run-book.md` - the generated pathless pointer rule, from
+2. `.claude/rules/alfred-project-awareness.md` - the generated pathless pointer rule, from
    `references/run-book-rule.template.md`.
 
 The repo answers first; the user fills only what the repo cannot show. There is no judgment to spend
@@ -23,8 +23,8 @@ beyond that, so the skill carries no model pin: the session's own model runs it.
 ## When to use
 
 - The deliberate run-book capture: how to build, start, reach and log in to the app, the flows and edge cases a manual check exercises, the debug entry points - so an agent can run the app and hand-verify a change. Re-run to refresh.
-- It reads the repo first, asks only for the gaps, and writes `project-capabilities/PROJECT-CAPABILITIES.md` under the docs root plus the generated pointer rule `alfred-project-run-book.md`; a credential is recorded by where it lives, never by value.
-- Not the installed-tools inventory (the agent-capabilities capture), the architecture map or the code style.
+- It reads the repo first, asks only for the gaps, and writes `project-capabilities/PROJECT-CAPABILITIES.md` under the docs root plus the generated pointer rule `alfred-project-awareness.md`; a credential is recorded by where it lives, never by value.
+- Not the installed-tools inventory (the agent-awareness capture), the architecture map or the code style.
 
 ## Credentials - the hard rule
 
@@ -135,7 +135,7 @@ node .claude/hooks/docs.js watch <one file DISCOVER cited>
 Name the template only when this run just wrote it - one the user already filled holds the values by design and is never read. The grep prints nothing - a hit (file, line and key, the `sed` cuts the value off the screen; an env line, a YAML `KEY: value` copied from a compose file and a lower-case `password:` key all count, a `<placeholder>` does not) is a value in the doc or the template: replace it with where it lives,
 and treat it as a pasted value (above). A `PROBLEM` line from the lint is fixed before the report. The watch names the sections that file feeds - none named means a `watch.json` glob is wrong, fixed before the report.
 
-### 4. RULE - write .claude/rules/alfred-project-run-book.md
+### 4. RULE - write .claude/rules/alfred-project-awareness.md
 
 Generated from `references/run-book-rule.template.md` with `__DOC_PATH__` replaced by the LITERAL docs root (`alfred-docs-root.md` names it; a rule is static text and cannot resolve the setting at load). A REPLACE, never a delete: READ the existing rule first, then Write the fresh one over it. Verify: `grep -c __DOC_PATH__` prints 0 and `wc -c` stays at or under 300 - the rule loads in every session and every subagent. It stays out of the installer's catalog, so an update never overwrites it.
 
@@ -151,7 +151,7 @@ Unknown:      <the sections or lines still unknown, or `none`>
 Credentials:  <where each account's credentials live, by name only | template at <path>, ignored: yes | no login>
 Value check:  <no hit | <n> hit(s) replaced with where the value lives>
 Watch:        <the cited file> -> <the sections it names>
-Rule:         <created | regenerated> - .claude/rules/alfred-project-run-book.md, <n> bytes
+Rule:         <created | regenerated> - .claude/rules/alfred-project-awareness.md, <n> bytes
 ```
 
 No re-paste of the doc - point to the file.

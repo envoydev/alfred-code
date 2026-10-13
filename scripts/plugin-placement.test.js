@@ -60,7 +60,7 @@ test('formerCore is the always closure: the skills and seats the core carried be
     const former = formerCore();
     assert.deepStrictEqual(former.skills, [...want.skills].sort());
     assert.deepStrictEqual(former.agents, [...want.agents].sort());
-    for (const s of ['habits-done-gate', 'capture-agent-capabilities', 'task-solve-cross', 'habits-adjust-agents-md'])
+    for (const s of ['habits-done-gate', 'capture-agent-awareness', 'task-solve-cross', 'habits-adjust-agents-md'])
         assert.ok(former.skills.includes(s), `${s} is always-closure, so the former core carried it`);
     assert.ok(former.agents.includes('security-auditor') && former.agents.includes('integration-reviewer'));
     assert.ok(!former.agents.includes('aspnet-implementer'), 'a stack seat was library then');

@@ -87,10 +87,10 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   until-green loop is the runaway the cap is for; every other seat had too few runs, so none. Lint check 15d fails a
   seat with a `## Loop` section and no cap. Captures are deliberate-only
   (`capture-architecture` writes `architecture/ARCHITECTURE.md` and
-  `alfred-project-architecture.md`; the findings go to `capture-architecture-quality`
+  `alfred-architecture.md`; the findings go to `capture-architecture-quality`
   (`quality/ASSESSMENT.md`), the code's to `capture-code-quality` (`quality/CODE-ASSESSMENT.md`), and the
-  run book to `capture-project-capabilities` (`project-capabilities/PROJECT-CAPABILITIES.md` and
-  `alfred-project-run-book.md` - how to build, start, reach, log into and hand-check the app, which the
+  run book to `capture-project-awareness` (`project-capabilities/PROJECT-CAPABILITIES.md` and
+  `alfred-project-awareness.md` - how to build, start, reach, log into and hand-check the app, which the
   ten verifiers, `issue-diagnoser-runtime`, `evidence-gatherer` and `integration-reviewer` read
   before they run it, pinned as `run-book-read-first`); never in a build flow).
   `task-solve-cross` is the single entry-point orchestrator (single-stack vertical per
@@ -108,14 +108,14 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   `__DOCS_ROOT__` on every run),
   memory (what belongs in the shared `memory` MCP, when to save it, and to search before asking or
   reading - locks the server in the way `alfred-navigation` locks the navigation server).
-  Skill/agent usage policy + MCP routing live in the GENERATED `alfred-project-agent-capabilities.md`.
+  Skill/agent usage policy + MCP routing live in the GENERATED `alfred-agent-awareness.md`.
   Thirteen path-scoped: `markdown-docs.md`, `skill-authoring.md`, the repair routers
   (`dotnet-repair-agents.md`, `angular-repair-agents.md`) and nine convention rules, each
   glob-attaching ONE file family to its house-style skill. Every convention rule uses the imperative form pinned as
   `convention-rule-first-action` in shared-rules.json, and the load receipt pinned as `convention-rule-load-receipt`
   in the same eleven files (`scripts/rule-prose.test.js` fails a mismatch) - a new one copies both, never paraphrases them.
   The `baseline-` prefix is retired (2.1.6, the user's ruling): the seven shipped rules and the generated
-  `project-*` ones are `alfred-*` (`alfred-git`, `alfred-project-run-book`, ...), and `baseline-*` names live only in
+  `project-*` ones are `alfred-*` (`alfred-git`, `alfred-project-awareness`, ...), and `baseline-*` names live only in
   `retired.rules`, `renamed.rules`, the migration code and its tests, and the `docs/*-evidence.md` history. An update over
   an older install prunes the seven old library copies by the `retired` list (the existing policy: by name, hand-edited
   or not, one `rule pruned (retired upstream)` line each) and writes the new ones - an old copy the stamp holds no hash

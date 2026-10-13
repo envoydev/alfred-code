@@ -8,7 +8,7 @@ description: "Use when asked to capture, document or refresh the architecture ma
 You are the architect seat for this run: you build the project's architecture picture by reasoning over cheap digests, and you record it as two artifacts.
 
 - `<docs-path>/architecture/ARCHITECTURE.md` - the structure map.
-- `.claude/rules/alfred-project-architecture.md` - the generated always-on awareness rule.
+- `.claude/rules/alfred-architecture.md` - the generated always-on awareness rule.
 
 The reading is delegated - architecture-analyzer characterizes one module per dispatch and returns a compact digest - but the judgment is NOT: you aggregate, reconcile, and evaluate in-session, then write the docs yourself.
 
@@ -27,7 +27,7 @@ Read `references/doc-shapes.md` (the map's required shape and the write protocol
 
 ## Execution modes
 
-**The cheapest run is decided first: a zero-drift UPDATE exits before anything else loads.** Where the docs and a `Captured:` stamp already exist, run `git diff --name-only <stamp-sha>..HEAD` and `git status --porcelain` BEFORE reading on. An empty diff against a clean tree (no `+dirty` on the stamp) means the docs already describe this commit - but first check the one file the docs' own drift cannot show, the generated rule: `grep -nE '[^[:space:]]+\.md' .claude/rules/alfred-project-architecture.md`. The current template names no path, so a hit is an older release's rule pointing at docs that may have moved, and an absent file is a rule lost: rewrite that rule alone to its template in `references/doc-shapes.md` (the one load this exit takes) and add `rule regenerated - <the hit, or absent>`. Then report `docs current at <branch>@<short-sha>, captured <date> - no drift, nothing rewritten` and stop - no other reference loads, no vocabulary skills, no gather, no doc write. Everything below is for a FIRST capture or a run with real drift.
+**The cheapest run is decided first: a zero-drift UPDATE exits before anything else loads.** Where the docs and a `Captured:` stamp already exist, run `git diff --name-only <stamp-sha>..HEAD` and `git status --porcelain` BEFORE reading on. An empty diff against a clean tree (no `+dirty` on the stamp) means the docs already describe this commit - but first check the one file the docs' own drift cannot show, the generated rule: `grep -nE '[^[:space:]]+\.md' .claude/rules/alfred-architecture.md`. The current template names no path, so a hit is an older release's rule pointing at docs that may have moved, and an absent file is a rule lost: rewrite that rule alone to its template in `references/doc-shapes.md` (the one load this exit takes) and add `rule regenerated - <the hit, or absent>`. Then report `docs current at <branch>@<short-sha>, captured <date> - no drift, nothing rewritten` and stop - no other reference loads, no vocabulary skills, no gather, no doc write. Everything below is for a FIRST capture or a run with real drift.
 
 The dispatch decision then keys off FIRST RUN vs UPDATE, not preference - pick once, hold for the run:
 
@@ -77,7 +77,7 @@ What the write lands:
 - After the write, run `node .claude/hooks/docs.js lint architecture`: fix every architecture PROBLEM row before the report. Another domain's row (a plain `lint` prints every domain) is named in the report, never fixed here.
 - **Measure after the write.** After the write, measure the doc against doc-shapes' stated target - the map is read at every dispatch's orientation, so its weight is paid on every seat. On the overlay route measure with `node .claude/hooks/docs.js toc <file>`, which sums the sections THIS branch reads, overlays applied; `wc -l` on the mainline file there measures text that does not hold the branch's sections at all, so the budget decision would be taken on the wrong doc. Everywhere else `wc -l` the file. Over target, run the spill pass NOW - this run owns the doc, and no other flow will; an overrun this run genuinely cannot resolve is said plainly in the REPORT step, for the next capture to pick up.
 
-### 6. RULE - write .claude/rules/alfred-project-architecture.md
+### 6. RULE - write .claude/rules/alfred-architecture.md
 The trigger tier, generated from the fresh capture - a valid PATHLESS rule (frontmatter with a `description:` and NO `paths:`), to the template in `references/doc-shapes.md`. The orientation itself reaches every session and subagent through the docs hook's start block, and where the docs live and how to read them by section are the navigation baseline's, so this rule names no path and restates neither - it says only that the capture ran and when to read it: REPLACE it wholesale (READ the existing rule first so the Write is legal - an `rm` is denied by the auto-mode classifier), then `wc -c` it and re-trim anything over **300 bytes**, reporting the count on the `Rule:` line. Generated, never copied: the installer's catalog must not list this rule, and no install ledger records it, so `/alfred-code:update` never touches it.
 
 ### 7. REPORT

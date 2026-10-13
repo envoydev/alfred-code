@@ -463,7 +463,7 @@ const linesOf = (text, pick) => String(text).split(/\r?\n/).map(pick).filter(Boo
 
 // Names from the related-projects domain (shape: stack/skills/capture-related-projects/references/artifact-shapes.md):
 // `<docsRoot>/related-projects/RELATED-PROJECTS.md` first - one '## <name>' heading per sibling - else
-// the generated awareness rule `.claude/rules/alfred-project-related-context.md` (a 'name:' field per
+// the generated awareness rule `.claude/rules/alfred-related-context.md` (a 'name:' field per
 // sibling entry). Neither PRESENT (not neither non-empty) -> []; the doc wins whenever it exists at all,
 // so an emptied doc is read as "no siblings", never silently backed by a stale rule copy.
 function relatedProjects(projectRoot, docsRoot) {
@@ -472,7 +472,7 @@ function relatedProjects(projectRoot, docsRoot) {
     try { return linesOf(fs.readFileSync(docFile, 'utf8'), headingName); } catch { return []; }
   }
   // The 2.x line reads the pre-2.1.6 name too: an install the update has not moved yet still holds it.
-  const ruleFile = ['alfred-project-related-context.md', 'baseline-project-related-context.md']
+  const ruleFile = ['alfred-related-context.md', 'baseline-project-related-context.md']
     .map((n) => path.join(projectRoot, '.claude', 'rules', n)).find((f) => fs.existsSync(f));
   if (ruleFile) {
     try { return linesOf(fs.readFileSync(ruleFile, 'utf8'), ruleFieldName); } catch { return []; }

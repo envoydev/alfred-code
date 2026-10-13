@@ -171,10 +171,10 @@ missing one); do not shuffle it. A later re-run is yours to type: all but the tw
    orient. Runs after the navigation-server index above, because the capture navigates by symbol.
 3. `/capture-code-style` - captures how the codebase really writes each language and
    generates the path-scoped project-code-style rule.
-4. `/capture-project-capabilities` - the run book: how to build, start, reach and log into the
+4. `/capture-project-awareness` - the run book: how to build, start, reach and log into the
    app, the flows and edge cases a manual check exercises, where debugging starts. It reads the repo
    first and asks only for the gaps; credentials are recorded by where they live, never by value.
-5. `/capture-agent-capabilities` - LAST, so the generated usage-policy rule reflects the final
+5. `/capture-agent-awareness` - LAST, so the generated usage-policy rule reflects the final
    inventory including anything the captures above added.
 
 Optional, whenever you want the coverage picture: `/capture-test-coverage` - it
@@ -201,7 +201,7 @@ Which one this install uses is `ALFRED_CODE_DOCS_VERSIONING` in the settings.jso
 ## Done looks like
 
 A restarted session where the MCPs answer, every stack plugin reads enabled, the generated rules exist under `.claude/rules/`
-(`alfred-project-agent-capabilities.md` plus the captures' awareness rules), the docs root
+(`alfred-agent-awareness.md` plus the captures' awareness rules), the docs root
 holds the architecture / code-style docs the seats orient from, and `autoMemoryEnabled` reads
 `false` - the shared memory carries what Claude's own notes used to. From here, work normally - the
 stack routes itself.

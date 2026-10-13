@@ -108,7 +108,7 @@ test('derive: generated project-owned files and the engine modules are NOT items
     // The captures rewrite alfred-project-* and project-code-style; docs.js / memory.js are
     // engines and hook-prelude.js the shared gate module - none of them is a hook.
     const dir = target({
-        rules: ['alfred-security', 'alfred-project-agent-capabilities', 'project-code-style'],
+        rules: ['alfred-security', 'alfred-agent-awareness', 'project-code-style'],
         hooks: ['docs-session', 'docs', 'memory', 'hook-prelude', 'fresh-session', 'shell-writes', 'hidden-chars', 'shell-guards', 'file-guards'],
     });
     const lines = sel.deriveFromDisk({ claudeDir: dir, knownPlugins: [] });

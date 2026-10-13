@@ -126,7 +126,7 @@ so Cursor and an install not yet updated reach the same file; until then the lev
 
 Then ONE AskUserQuestion with those three options, `global` marked Recommended - the whole point of
 shared memory. Picking `project` while this project's related-projects domain names sibling repos
-(`.claude/rules/alfred-project-related-context.md`) means their memories are not visible from
+(`.claude/rules/alfred-related-context.md`) means their memories are not visible from
 here - one caveat line in the close.
 
 Apply it with the init-only entry point - no reinstall; under `.claude/` only the settings key and the
@@ -162,7 +162,7 @@ here.
 `capture-related-projects` takes its sibling list as arguments: ONE AskUserQuestion first - type the
 siblings via Other in the capture's own form (`<name> - <local path or git URL>`, several separated
 by commas), or 'none - skip it' (recommended only when the repo names no sibling). 'none' skips the
-capture. `capture-agent-capabilities` runs LAST, so its generated rule reflects everything the
+capture. `capture-agent-awareness` runs LAST, so its generated rule reflects everything the
 captures above added; its own precheck decides whether the rule needs regenerating.
 
 ## 6. AGENTS.md - the user's call

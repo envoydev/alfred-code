@@ -37,7 +37,7 @@ test('SD04 5b9ce9c5#3 6288ad94#8 bca100bd#5: check rows alone still get the ask,
 // ---- SD07: a library skill the user names that this project does not carry -----------------------------------------
 // The stamped usage policy is the one always-on text every project's capabilities rule carries.
 const policyBlock = () => {
-    const lines = read('stack/skills/capture-agent-capabilities/SKILL.md').split('\n');
+    const lines = read('stack/skills/capture-agent-awareness/SKILL.md').split('\n');
     const at = lines.findIndex((l) => l.startsWith('## Usage policy (fixed'));
     let end = at + 2;
     while (end < lines.length && !lines[end].startsWith('## ')) end += 1;
@@ -75,7 +75,7 @@ test('SD13 177c5743#3 e90a1845#2 42951e5b#7 7f8803eb#9: JSON through node -e, re
     assert.match(nav, /queried \(a `node -e` projection - Git for Windows ships no `jq` - or `grep -n`, then a ranged Read\)/);
     assert.match(nav, /prefix a `git show <rev>:<path>` with `MSYS2_ARG_CONV_EXCL='\*'`, or path conversion rewrites it/);
     assert.match(nav, /run PowerShell as a quoted-heredoc \(`<<'EOF'`\) `\.ps1` via `-File "\$\(cygpath -w <file>\)"`, never a double-quoted `-Command` \(Bash expands its `\$_`\)/);
-    for (const rel of ['stack/rules', 'stack/skills/capture-usage-report', 'stack/skills/capture-agent-capabilities', 'stack/skills/habits-adjust-agents-md'])
+    for (const rel of ['stack/rules', 'stack/skills/capture-usage-report', 'stack/skills/capture-agent-awareness', 'stack/skills/habits-adjust-agents-md'])
     {
         const walk = (dir) => fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(`${dir}/${e.name}`) : e.name.endsWith('.md') ? [`${dir}/${e.name}`] : []));
         for (const f of walk(rel)) assert.doesNotMatch(read(f), /\bjq\s+(-[a-z]+\s+)?'/, `${f} prescribes a jq command`);

@@ -114,7 +114,7 @@ Skills you start by name. Every install has these.
 | `/task-version-upgrade` | A breaking upgrade, like .NET 10 |
 | `/capture-first-look` | A quick map of an unfamiliar project |
 | `/capture-architecture` | Write or refresh the architecture docs |
-| `/capture-project-capabilities` | A run book: build, start, log in |
+| `/capture-project-awareness` | A run book: build, start, log in |
 | `/loop-quality` | Find and fix code-quality issues in rounds |
 
 Add what you want after the name:

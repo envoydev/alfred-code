@@ -233,7 +233,7 @@ account-wide registration, so `project` is safe there too.
 Pre-select the level just read back, and ask ONE AskUserQuestion: keep it, or change to the
 other one(s) shown. Picking or keeping `project` while this project's related-projects domain
 already names sibling repos (`<docs-path>/related-projects/RELATED-PROJECTS.md`, or the generated
-`alfred-project-related-context.md`) means those projects' memories are not visible from this
+`alfred-related-context.md`) means those projects' memories are not visible from this
 one - name that in the post-check, not here. Changing level never copies or deletes a database -
 it re-points the registration, and the installer prints
 `memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`; read that line verbatim
@@ -466,7 +466,7 @@ route (browser = every `browser-<engine>` server) - always with its scope, since
 and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
 it for every project'), since account-wide and project-local are different consents and the wrong
 `--scope` fails with `not installed in project scope`. 'removals: none' when nothing was dropped;
-(3) the follow-through line - telling the USER to re-run `/capture-agent-capabilities` (when
+(3) the follow-through line - telling the USER to re-run `/capture-agent-awareness` (when
 installed, and ONLY when this run added or removed a skill, agent, MCP server or plugin - the
 inventory that rule lists; a run that changed only env or settings names none) so the generated awareness rule reflects the new inventory (the skill is manual-only,
 `disable-model-invocation` - a Skill call from this run is blocked; the line is addressed to the
@@ -521,11 +521,11 @@ and apply it with `--apply gitignore` or `--apply exclude`, reporting the `appli
 `none (...)` line is not reported.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-capabilities`
+follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-awareness`
 (when installed and this run changed the inventory it lists), a manual-only capture whose output this
 run made stale, the navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
-matters ('`/capture-agent-capabilities` - the selection changed, so the generated rule still
+matters ('`/capture-agent-awareness` - the selection changed, so the generated rule still
 names what this project dropped'). No AskUserQuestion over them: the walk's asks end with the
 installer (a write still gets its consent ask where it happens - step 13's AGENTS.md reconcile),
 and the closing ask over follow-ups was dropped as friction - the user's call, made knowing a

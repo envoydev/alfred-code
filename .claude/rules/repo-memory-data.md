@@ -92,7 +92,7 @@ The memory levels and stores, where the docs root and the data root live, and th
   `memory/*.md`) is SWITCHED OFF (`autoMemoryEnabled: false`) by the install when the project has no
   notes, else by `/alfred-code:init` after a one-time import of its existing notes into the `memory` MCP - it has no search and is not shared
   with Cursor, which is why the MCP replaces it rather than sitting beside it. Which repos are
-  related lives in the generated `.claude/rules/alfred-project-related-context.md` (the
+  related lives in the generated `.claude/rules/alfred-related-context.md` (the
   `/capture-related-projects` skill), not memory. The session HISTORY (`<docs-path>/history/`,
   `history-session.js`) is the third, machine-local and never shared: what each session did and what
   the user ruled, script-written, read back at the next start on the same branch - a record, not memory.
@@ -116,7 +116,7 @@ The memory levels and stores, where the docs root and the data root live, and th
   move below: `update-preflight.js` names it in its `data-move: offer` line, update asks move (recommended)
   or keep, and the answer is `--data-move move|keep`. Move: one step, `git mv` for tracked files (history kept, staged as
   renames), a rename for the rest, every file put back on any failure, the key re-pointed and the rule
-  re-stamped - with every generated pointer rule (`alfred-project-*`, `project-code-style`) that names the
+  re-stamped - with every generated pointer rule (`selection.js` GENERATED_RULES, `project-code-style`) that names the
   old root, which a capture baked in literally (`selection.respellDocsRoot`, M11) - a restart named. Keep: the key becomes the user's own value, out of the ledger; a 2.1 keep writes `data-move: kept` and no
   update offers again, while a 2.0.0 keep (no such line) is offered once more, marked `yours=yes` - never answered by
   an unattended run (2.1.7, the user's ruling of 2026-10-06: all of the stack's data belongs under the data root). No answer: nothing moves, and an absent key is written back as the old root so
@@ -165,7 +165,7 @@ The memory levels and stores, where the docs root and the data root live, and th
   style lives in `<docs-path>/code-style/CODE-STYLE.md` + the path-scoped `project-code-style.md` rule
   (owned by `capture-code-style`). The run book lives in
   `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` (owned by
-  `capture-project-capabilities`, repo facts first, the user's answers for the gaps): a
+  `capture-project-awareness`, repo facts first, the user's answers for the gaps): a
   credential appears there only as WHERE it lives - an env var, a vault item, or a key in the
   `credentials.local.env` template the capture writes empty and gitignores in its own folder - never
   as a value. The findings (`quality/ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the

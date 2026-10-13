@@ -16,8 +16,8 @@ ends on the deterministic check; by hand, the steps are:
    filling this file never re-runs one whose file exists. A row whose file is missing takes its capture, in the post-install
    order: /capture-related-projects ONLY when this project has sibling repos (a standalone repo
    drops that row instead), then /capture-architecture, /capture-code-style,
-   /capture-project-capabilities, then
-   /capture-agent-capabilities LAST, so its generated inventory reflects the final install. All but
+   /capture-project-awareness, then
+   /capture-agent-awareness LAST, so its generated inventory reflects the final install. All but
    /capture-architecture are slash-only: the user types them - a model Skill call is refused.
 If the repo already has a root AGENTS.md (for other agent tooling), it IS the project's file: the
 installer seeds nothing beside it, and it is improved in place, never replaced by this template. Claude
@@ -58,7 +58,7 @@ map, a dependency rule's why - plus a pointer to its sections, never a second co
 2. Stack - languages, frameworks and key libraries at their EXACT versions ('EF Core 10', not
    'EF Core'), test stack + coverage gate, the LSP plugin for the primary language(s). MCP routing
    is NOT hand-filled here - it lives in the generated
-   .claude/rules/alfred-project-agent-capabilities.md (user-run /capture-agent-capabilities; if
+   .claude/rules/alfred-agent-awareness.md (user-run /capture-agent-awareness; if
    that skill was not installed, a lean hand-filled routing list here is the fallback).
 3. Setup - what a machine needs before build and test work: the SDK / runtime versions (a
    global.json or .nvmrc pin), Docker for the integration tests, the services a test run starts, and
@@ -99,8 +99,8 @@ running it.
 
 | Rule | What it governs |
 |---|---|
-| `.claude/rules/alfred-project-agent-capabilities.md` (GENERATED - user-run /capture-agent-capabilities after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |
-| `.claude/rules/alfred-project-architecture.md` (GENERATED - run /capture-architecture) | architecture capture marker - the docs exist, read them before a structural change; where they live is the navigation baseline's, the orientation itself arrives through the docs hook |
-| `.claude/rules/alfred-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /capture-related-projects with their paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
-| `.claude/rules/alfred-project-run-book.md` (GENERATED - user-run /capture-project-capabilities) | run book pointer - where `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` lives: how to build, start, log into and hand-check the app, read before a manual check |
+| `.claude/rules/alfred-agent-awareness.md` (GENERATED - user-run /capture-agent-awareness after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |
+| `.claude/rules/alfred-architecture.md` (GENERATED - run /capture-architecture) | architecture capture marker - the docs exist, read them before a structural change; where they live is the navigation baseline's, the orientation itself arrives through the docs hook |
+| `.claude/rules/alfred-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /capture-related-projects with their paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
+| `.claude/rules/alfred-project-awareness.md` (GENERATED - user-run /capture-project-awareness) | run book pointer - where `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` lives: how to build, start, log into and hand-check the app, read before a manual check |
 | `.claude/rules/project-code-style.md` (GENERATED - user-run /capture-code-style; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/code-style/CODE-STYLE.md` |

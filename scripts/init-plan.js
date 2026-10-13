@@ -53,13 +53,13 @@ const MACHINE_BROWSERS = {
     msedge: { need: 'Microsoft Edge', bins: ['msedge', 'microsoft-edge'] },
 };
 const CAPTURES = [
-    { skill: 'capture-related-projects', seat: 'related-project-analyzer', output: () => '.claude/rules/alfred-project-related-context.md' },
+    { skill: 'capture-related-projects', seat: 'related-project-analyzer', output: () => '.claude/rules/alfred-related-context.md' },
     { skill: 'capture-architecture', seat: 'architecture-analyzer', output: (docs) => `${docs}/architecture/ARCHITECTURE.md` },
     { skill: 'capture-code-style', seat: 'code-style-analyzer', output: (docs) => `${docs}/code-style/CODE-STYLE.md` },
     // The run book: no seat - it reads the repo and asks for the gaps in the main session.
-    { skill: 'capture-project-capabilities', seat: null, output: (docs) => `${docs}/project-capabilities/PROJECT-CAPABILITIES.md` },
+    { skill: 'capture-project-awareness', seat: null, output: (docs) => `${docs}/project-capabilities/PROJECT-CAPABILITIES.md` },
     // Its own precheck decides whether the generated rule is current - always run when installed.
-    { skill: 'capture-agent-capabilities', seat: null, output: null },
+    { skill: 'capture-agent-awareness', seat: null, output: null },
 ];
 
 // Playwright's own registry location (PLAYWRIGHT_BROWSERS_PATH, else the per-OS cache dir).

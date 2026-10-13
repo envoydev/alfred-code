@@ -338,7 +338,7 @@ test('check 29: the capabilities usage policy carries a stamp that matches its o
     const fs = require('node:fs');
     const path = require('node:path');
     const { paths } = require('./lint-skills.js');
-    const file = path.join(paths.SKILLS_DIR, 'capture-agent-capabilities', 'SKILL.md');
+    const file = path.join(paths.SKILLS_DIR, 'capture-agent-awareness', 'SKILL.md');
     const lines = fs.readFileSync(file, 'utf8').split('\n');
     const start = lines.findIndex((l) => l.startsWith('## Usage policy (fixed'));
     assert.ok(start >= 0, 'the stamped block is still where the lint and the skill both look for it');

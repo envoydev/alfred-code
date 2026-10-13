@@ -1,5 +1,5 @@
 'use strict';
-// capture-project-capabilities - the project's run book for a manual check: how to build, start,
+// capture-project-awareness - the project's run book for a manual check: how to build, start,
 // reach and log in to the app, the flows to exercise, the edge cases and the debug entry points. Pinned
 // here: the doc's sections, the no-secret rule (the doc names WHERE a credential lives, never a value),
 // the generated pointer rule's template, the seats that read the run book before running the app, and
@@ -12,7 +12,7 @@ const { repo } = require('./docs-fixture.js');
 const { lintAskTemplates } = require('./lint-skills.js');
 
 const ROOT = path.join(__dirname, '..');
-const SKILL = 'capture-project-capabilities';
+const SKILL = 'capture-project-awareness';
 const DIR = path.join(ROOT, 'stack', 'skills', SKILL);
 const read = (rel) => fs.readFileSync(path.join(DIR, rel), 'utf8');
 const squash = (s) => s.replace(/\s+/g, ' ');
@@ -33,7 +33,7 @@ const VALUE_RE = /(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z
 test('deliberate-only: the user types it, and the fresh-session guard lists it as an orchestration run', () =>
 {
     const front = body().split('---')[1];
-    assert.match(front, /^name: capture-project-capabilities$/m);
+    assert.match(front, /^name: capture-project-awareness$/m);
     assert.match(front, /^disable-model-invocation: true$/m);
     const hook = fs.readFileSync(path.join(ROOT, 'stack', 'hooks', 'guard-fresh-session-start.js'), 'utf8');
     const src = /^const ORCHESTRATION = \/(.*)\/;$/m.exec(hook)[1];
@@ -143,7 +143,7 @@ test('the generated rule: a pathless pointer to the run book, stamped with the l
     }
     // The skill's RULE step bakes it and checks both facts.
     const skill = squash(body());
-    assert.ok(skill.includes('.claude/rules/alfred-project-run-book.md'));
+    assert.ok(skill.includes('.claude/rules/alfred-project-awareness.md'));
     assert.match(skill, /`__DOC_PATH__` replaced by the LITERAL docs root/);
     assert.match(skill, /`grep -c __DOC_PATH__` prints 0 and `wc -c` stays at or under 300/);
 });

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// capabilities-inventory.js - the whole of /capture-agent-capabilities in ONE node pass: the precheck,
+// capabilities-inventory.js - the whole of /capture-agent-awareness in ONE node pass: the precheck,
 // the full inventory with a printed COUNT per layer (skills, seats, rules, MCP, plugins), the LIVE
 // `claude mcp list`, the MCP routing rows, and with --write the rule composed from the skill's copy
 // target, the compare, the write on differs, the legacy rule's removal, the post-write verify and the
@@ -7,7 +7,7 @@
 // replaces measured 4m13s on Git Bash).
 //
 // Usage, from the project root:
-//   node .claude/skills/capture-agent-capabilities/scripts/capabilities-inventory.js --write [--refresh]
+//   node .claude/skills/capture-agent-awareness/scripts/capabilities-inventory.js --write [--refresh]
 //   node .../capabilities-inventory.js                                  the inventory alone, nothing written
 //   node .../capabilities-inventory.js --body <composed-rule-file|->     the compare verdict for a hand-composed body
 //   node .../capabilities-inventory.js --verify <rule-file>             exits 1 on failure
@@ -24,7 +24,7 @@ const { spawnSync } = require('node:child_process');
 
 const SKILL_DIR = path.resolve(__dirname, '..');
 const TEMPLATE_REL = 'references/generated-rule-template.md';
-const RULE_REL = '.claude/rules/alfred-project-agent-capabilities.md';
+const RULE_REL = '.claude/rules/alfred-agent-awareness.md';
 // The 1.x project-capabilities skill's output, superseded by this rule and removed by the run that writes it.
 const LEGACY_RULE_REL = '.claude/rules/baseline-project-capabilities.md';
 // The orchestration skills that carry NO `disable-model-invocation` by design, so the architecture, code-quality
@@ -743,7 +743,7 @@ function inventory(projectRoot)
     const slots = { dataRoot: dataRoot(projectRoot), docsRoot: docs.value };
     const skillPolicy = policyBlock(readText(path.join(SKILL_DIR, 'SKILL.md')));
 
-    out.push('=== capture-agent-capabilities - inventory (one node pass, no per-skill fork) ===');
+    out.push('=== capture-agent-awareness - inventory (one node pass, no per-skill fork) ===');
     say('PROJECT', projectRoot);
     say('DOCS ROOT', `${docs.value}  (from ${docs.from}) - every \`<docs-path>\` in the template is this literal`);
     facts.captured = `${today()} from ${stamp || 'no stamp'}`;

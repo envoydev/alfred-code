@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 You drive the deliberate capture of a project's related repositories, and you own both tiers of the house related-projects model:
 
-1. `.claude/rules/alfred-project-related-context.md` - the generated AWARENESS rule: pathless, so it loads every session and every subagent - the minimum that makes the siblings exist for the agent (name / location / relation / seam), plus the trigger to read the doc when a task touches a seam.
+1. `.claude/rules/alfred-related-context.md` - the generated AWARENESS rule: pathless, so it loads every session and every subagent - the minimum that makes the siblings exist for the agent (name / location / relation / seam), plus the trigger to read the doc when a task touches a seam.
 2. `<docs-path>/related-projects/RELATED-PROJECTS.md` - the on-demand ORIENTATION doc: the full entries including `first_read` and the evidence behind each relation and seam, read when actually working near a seam. Its folder `<docs-path>/related-projects/` is a docs domain holding ONLY this doc, its `references/` and its `watch.json` - this capture is the sole author. Nothing else belongs in that folder - other sibling-repo docs go where the docs-root baseline files them. A location outside the docs root takes the user's explicit approval first, per the docs-root baseline.
 
 Both are generated files; a re-run refreshes both in place. The rule's name is deliberately NOT in the stack installer's catalog (and never may be - a copy would overwrite the generated one) and no installer ledger records either file, so `/alfred-code:update` never touches them. Whether git carries the doc follows `node .claude/hooks/docs.js status`, never a default: `mode: git` - committed and versioned per branch, so it ships with the repo; `mode: overlay` - kept out of git, so a fresh clone re-runs the capture. The rule ships only where the project commits `.claude/rules/`.
@@ -24,7 +24,7 @@ Which related projects should this capture map? Type local paths or git URLs via
 ## When to use
 
 - Passing local paths or git URLs: it analyzes what you name, it never scans.
-- Characterizes each sibling and writes BOTH tiers: the always-on awareness rule `.claude/rules/alfred-project-related-context.md` (name / location / relation / seam per sibling) and the on-demand orientation doc `related-projects/RELATED-PROJECTS.md` under the docs root. Re-run to refresh - entries upserted, unlisted ones kept.
+- Characterizes each sibling and writes BOTH tiers: the always-on awareness rule `.claude/rules/alfred-related-context.md` (name / location / relation / seam per sibling) and the on-demand orientation doc `related-projects/RELATED-PROJECTS.md` under the docs root. Re-run to refresh - entries upserted, unlisted ones kept.
 - Not this repo's own architecture (capture-architecture), and not dynamic cross-repo findings (those go to the shared `alfred-memory` MCP, tagged with the sibling's name).
 
 ## Execution modes
@@ -72,7 +72,7 @@ example, and the generated rule below - plus the per-entry provenance rule that 
 branch-born seam readable, and the write mechanics for a mainline write versus a feature branch's
 overlay. Read it before writing either file.
 
-### 4. RULE - write .claude/rules/alfred-project-related-context.md
+### 4. RULE - write .claude/rules/alfred-related-context.md
 The awareness tier, generated from the same entries - a valid PATHLESS rule (frontmatter with a `description:` and NO `paths:`, so it is always-on). Keep it to the awareness minimum; describe edges, not roles:
 
 The body is the copy target in `references/artifact-shapes.md` - take it verbatim and fill only
@@ -85,10 +85,10 @@ Create `.claude/rules/` when absent. The rule is regenerate-only: entries come f
 **Re-run is an upsert, keyed by `location`, in BOTH files.** A sibling passed this run: its entry (and doc note) rewritten from the fresh report. An existing entry whose location was NOT passed: kept exactly as-is (removal is a manual edit - report which entries you left untouched so stale ones are visible). Both files converge; they never accumulate duplicates, and their entry sets never drift apart - the same run writes both.
 
 ### 5. REPORT
-Check before reporting: `node .claude/hooks/docs.js lint related-projects` (fix every PROBLEM row), `grep -c '^paths:' .claude/rules/alfred-project-related-context.md` prints 0, and `test -e <sibling>/<first_read>` for every `first_read` path - a first_read never lists a doc that was not verified to exist. Then the close, one line per field:
+Check before reporting: `node .claude/hooks/docs.js lint related-projects` (fix every PROBLEM row), `grep -c '^paths:' .claude/rules/alfred-related-context.md` prints 0, and `test -e <sibling>/<first_read>` for every `first_read` path - a first_read never lists a doc that was not verified to exist. Then the close, one line per field:
 
 ```
-Rule:       <created | refreshed> - .claude/rules/alfred-project-related-context.md, <n> entries, no paths key
+Rule:       <created | refreshed> - .claude/rules/alfred-related-context.md, <n> entries, no paths key
 Doc:        <created | refreshed> - <docs-path>/related-projects/RELATED-PROJECTS.md, rewritten <names>, kept <names>
 Skipped:    <invalid or UNVERIFIED locations, or none>
 first_read: <n> of <n> verified

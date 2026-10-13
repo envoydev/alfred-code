@@ -57,7 +57,7 @@ test('M79: a generated rule survives update because no ledger records it, not be
 
 // ---- M80: the plugin cache can be newer than the library copy -------------------------------------------------
 test('M80: the newest cache entry is not claimed to be the release these copies came from', () => {
-    for (const name of ['capture-first-look', 'habits-adjust-agents-md', 'capture-agent-capabilities']) {
+    for (const name of ['capture-first-look', 'habits-adjust-agents-md', 'capture-agent-awareness']) {
         const text = flat(skill(name));
         assert.doesNotMatch(text, /(NEWEST|newest plugin-cache entry) is the one this skill came from/i, `${name}: the skew window makes it false`);
         assert.match(text, /after a core update it can be newer/, `${name}: says when it differs`);
@@ -66,7 +66,7 @@ test('M80: the newest cache entry is not claimed to be the release these copies 
 
 // ---- M81: agent-capabilities' rename note and its plugin-route sentence ---------------------------------------
 test('M81: agent-capabilities names its 1.x name apart from the run-book capture, and the current plugin route', () => {
-    const text = flat(skill('capture-agent-capabilities'));
+    const text = flat(skill('capture-agent-awareness'));
     assert.doesNotMatch(text, /This skill was renamed from project-capabilities/);
     assert.match(text, /the 1\.x project-capabilities skill \(this one's old name, not the run-book capture\)/i);
     assert.doesNotMatch(text, /which on that route is only the items no plugin holds/, 'every skill is a copy since 2.1.0');
@@ -181,12 +181,12 @@ test('M91: adjust-agents-md is titled as the habit it is, and explain-code opens
 // ---- M92: the greenfield close names every missing capture in the template's order -------------------------------
 test('M92: build-from-scratch Next run names the run book and the capabilities capture, the latter last', () => {
     const line = (skill('task-build-from-scratch').match(/^Next run: .*$/m) || [''])[0];
-    const order = ['/capture-architecture', '/capture-code-style', '/capture-project-capabilities', '/capture-agent-capabilities'];
+    const order = ['/capture-architecture', '/capture-code-style', '/capture-project-awareness', '/capture-agent-awareness'];
     const at = order.map((c) => line.indexOf(c));
     assert.ok(at.every((i) => i > 0), `every capture named: ${line}`);
     assert.deepStrictEqual([...at].sort((a, b) => a - b), at, 'in the template\'s post-install order, agent-capabilities last');
     assert.match(line, /PROJECT-CAPABILITIES\.md/);
-    assert.match(line, /alfred-project-agent-capabilities\.md/);
+    assert.match(line, /alfred-agent-awareness\.md/);
 });
 
 // ---- M93: the over-build tags are this capture's own ---------------------------------------------------------
@@ -238,7 +238,7 @@ test('M97: alfred-docs-root names diagnoses/ and project-capabilities/', () => {
     assert.match(line, /`diagnoses\/`/);
     assert.match(line, /`project-capabilities\/PROJECT-CAPABILITIES\.md`/);
     assert.match(flat(skill('issue-diagnoser')), /diagnoses\//, 'the folder the diagnoser writes');
-    assert.match(flat(skill('capture-project-capabilities')), /project-capabilities\/PROJECT-CAPABILITIES\.md/);
+    assert.match(flat(skill('capture-project-awareness')), /project-capabilities\/PROJECT-CAPABILITIES\.md/);
 });
 
 // ---- M98: the vendored trio protocol's pointers into the owner's folder are the pinned exception ----------------

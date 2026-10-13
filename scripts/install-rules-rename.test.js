@@ -15,6 +15,8 @@ const SEL = `skill markdown-style\nrule markdown-docs\n${SHIPPED.map((n) => `rul
 // The install is the walk's; the update is what /alfred-code:update runs - the read-back of what is on disk.
 const UPDATE = (scope = 'project') => ['--scope', scope, '--installed-only'];
 const GENERATED = ['agent-capabilities', 'related-context', 'architecture', 'run-book'];
+// The name each generated pointer carries since the 2026-10-13 rename (selection.js GENERATED_RULES).
+const NOW = { 'agent-capabilities': 'alfred-agent-awareness', 'related-context': 'alfred-related-context', architecture: 'alfred-architecture', 'run-book': 'alfred-project-awareness' };
 const body = (n) => `---\ndescription: generated ${n}\n---\n\n${n} body - kept byte for byte\n`;
 
 const rulesOf = (repo) => path.join(repo, '.claude', 'rules');
@@ -80,14 +82,14 @@ for (const scope of ['project', 'user', 'local'])
         for (const g of GENERATED)
         {
             assert.ok(!(`baseline-project-${g}.md` in r.files), `baseline-project-${g}.md was not moved`);
-            assert.strictEqual(r.files[`alfred-project-${g}.md`], body(g), `alfred-project-${g}.md is not the old content`);
+            assert.strictEqual(r.files[`${NOW[g]}.md`], body(g), `${NOW[g]}.md is not the old content`);
         }
         assert.strictEqual(r.files['baseline-mine.md'], 'my own rule\n', "the user's own baseline- file was touched");
     assert.strictEqual(r.files['baseline-project-notes.md'], 'my own project rule\n', "the user's own baseline-project- file was moved or touched");
         assert.strictEqual(r.files['project-code-style.md'], body('code-style'));
         assert.ok(!/not found in the stack source|drift|unlisted/.test(out), `noise from the update: ${out}`);
         assert.ok(/rule pruned \(retired upstream\): baseline-git\.md/.test(out), `no prune line: ${out}`);
-        assert.ok(/alfred-project-run-book\.md/.test(out), `no move line: ${out}`);
+        assert.ok(/alfred-project-awareness\.md/.test(out), `no move line: ${out}`);
     });
 }
 
@@ -151,7 +153,7 @@ for (const [label, unstamp] of [['a garbled library-rules line', (t) => t.replac
         assert.match(outs[1], /!! rule kept: baseline-security\.md.*yours/, 'the kept copy is named');
         assert.match(outs[1], /rule pruned \(retired upstream\): baseline-git\.md/, outs[1]);
         assert.strictEqual(r.files['baseline-mine.md'], 'my own rule\n', 'a retired-looking name with no successor is never touched');
-        assert.strictEqual(r.files['alfred-project-run-book.md'], body('run-book'));
+        assert.strictEqual(r.files['alfred-project-awareness.md'], body('run-book'));
     });
 }
 
@@ -267,7 +269,7 @@ test('an empty rules folder holding only an old generated file: the file moves, 
             fs.writeFileSync(path.join(rulesOf(repo), 'baseline-project-run-book.md'), body('run-book'));
         },
     });
-    assert.strictEqual(r.files['alfred-project-run-book.md'], body('run-book'));
+    assert.strictEqual(r.files['alfred-project-awareness.md'], body('run-book'));
     assert.ok(!('baseline-project-run-book.md' in r.files));
 });
 
@@ -295,7 +297,7 @@ test('the seeded AGENTS.md rows naming the old rule files are re-spelled, the us
         },
     });
     for (const n of ['git', 'interaction', 'docs-root']) assert.ok(steps[1].includes(`.claude/rules/alfred-${n}.md`), `alfred-${n}.md not written into AGENTS.md`);
-    for (const g of GENERATED) assert.ok(steps[1].includes(`.claude/rules/alfred-project-${g}.md`), `alfred-project-${g}.md not written into AGENTS.md`);
+    for (const g of GENERATED) assert.ok(steps[1].includes(`.claude/rules/${NOW[g]}.md`), `${NOW[g]}.md not written into AGENTS.md`);
     assert.ok(!/baseline-(git|interaction|docs-root|project-)/.test(steps[1]), 'an old stack rule path survived in AGENTS.md');
     assert.ok(steps[1].includes('.claude/rules/baseline-mine.md'), "the user's own rule row was re-spelled");
     assert.strictEqual(steps[2], steps[1]);
@@ -346,7 +348,7 @@ const bothExist = (mode) => seedRun(['install', 'update'], SEL, {
         if (i !== 0) return;
         makeOld(repo);
         const oldF = path.join(rulesOf(repo), 'baseline-project-run-book.md');
-        const newF = path.join(rulesOf(repo), 'alfred-project-run-book.md');
+        const newF = path.join(rulesOf(repo), 'alfred-project-awareness.md');
         fs.writeFileSync(newF, mode === 'same' ? body('run-book') : 'newer capture\n');
         const t = Date.now() / 1000;
         fs.utimesSync(oldF, t - (mode === 'old-newer' ? 0 : 3600), t - (mode === 'old-newer' ? 0 : 3600));
@@ -360,15 +362,67 @@ test('both generated files exist, the old byte-identical or older: the supersede
     {
         const { result: r, out } = bothExist(mode);
         assert.ok(!('baseline-project-run-book.md' in r.files), `${mode}: the old file survived`);
-        assert.strictEqual(r.files['alfred-project-run-book.md'], mode === 'same' ? body('run-book') : 'newer capture\n');
-        assert.ok(/alfred-project-run-book\.md/.test(out) && /superseded/.test(out), `${mode}: the delete was not said: ${out}`);
+        assert.strictEqual(r.files['alfred-project-awareness.md'], mode === 'same' ? body('run-book') : 'newer capture\n');
+        assert.ok(/alfred-project-awareness\.md/.test(out) && /superseded/.test(out), `${mode}: the delete was not said: ${out}`);
     }
 });
 
 test('both generated files exist and the old one is NEWER and different: it is kept and named, both stay', POSIX_ONLY, () =>
 {
     const { result: r, out } = bothExist('old-newer');
-    assert.strictEqual(r.files['alfred-project-run-book.md'], 'newer capture\n');
+    assert.strictEqual(r.files['alfred-project-awareness.md'], 'newer capture\n');
     assert.strictEqual(r.files['baseline-project-run-book.md'], body('run-book'));
-    assert.ok(/!!/.test(out) && /alfred-project-run-book\.md/.test(out), `the clash was not named: ${out}`);
+    assert.ok(/!!/.test(out) && /alfred-project-awareness\.md/.test(out), `the clash was not named: ${out}`);
+});
+
+// 2026-10-13: the alfred-project-<x> names (2.1.6 to 2.3.x) move to the user's new names on update, byte for byte, and a
+// seeded AGENTS.md row naming one follows; a project's own alfred-project-notes.md is no file of ours.
+test('update over a 2.3.x install: each alfred-project-<x>.md moves to its new name, byte for byte, the project\'s own file stays', POSIX_ONLY, () =>
+{
+    const { result: r, out } = seedRun(['install', 'update', 'update'], SEL, {
+        args: [[], UPDATE(), UPDATE()], inspect: snap,
+        each: (repo, i) =>
+        {
+            if (i !== 0) return;
+            for (const g of GENERATED) fs.writeFileSync(path.join(rulesOf(repo), `alfred-project-${g}.md`), body(g));
+            fs.writeFileSync(path.join(rulesOf(repo), 'alfred-project-notes.md'), 'my own project rule\n');
+        },
+    });
+    for (const g of GENERATED)
+    {
+        assert.ok(!(`alfred-project-${g}.md` in r.files), `alfred-project-${g}.md was not moved`);
+        assert.strictEqual(r.files[`${NOW[g]}.md`], body(g), `${NOW[g]}.md is not the old content`);
+    }
+    assert.strictEqual(r.files['alfred-project-notes.md'], 'my own project rule\n', "the user's own alfred-project- file was moved or touched");
+    assert.ok(!/moved: rule/.test(out), `the second update moved again: ${out}`);
+});
+
+test('a project holding both legacy spellings: the 2.3.x file moves, the older 2.1.5 one is judged against it and removed', POSIX_ONLY, () =>
+{
+    const { result: r, out } = seedRun(['install', 'update'], SEL, {
+        args: [[], UPDATE()], inspect: snap,
+        each: (repo, i) =>
+        {
+            if (i !== 0) return;
+            const old = path.join(rulesOf(repo), 'baseline-project-run-book.md');
+            const mid = path.join(rulesOf(repo), 'alfred-project-run-book.md');
+            fs.writeFileSync(old, body('run-book'));
+            fs.writeFileSync(mid, 'the 2.3.x capture\n');
+            const t = Date.now() / 1000;
+            fs.utimesSync(old, t - 3600, t - 3600);
+        },
+    });
+    assert.strictEqual(r.files['alfred-project-awareness.md'], 'the 2.3.x capture\n', 'the newer capture won');
+    assert.ok(!('alfred-project-run-book.md' in r.files) && !('baseline-project-run-book.md' in r.files), Object.keys(r.files).join(', '));
+    assert.ok(/superseded/.test(out), `the removal was not said: ${out}`);
+});
+
+test('the generated set is named, never a prefix: no shipped rule takes a generated name, and every generated name is excluded', () =>
+{
+    const { GENERATED_RULES, RULE_EXCLUDE } = require('./install/selection.js');
+    assert.deepStrictEqual(GENERATED_RULES, NOW);
+    for (const f of fs.readdirSync(path.join(__dirname, '..', 'stack', 'rules')))
+        assert.ok(!RULE_EXCLUDE.test(f.replace(/\.md$/, '')), `${f} is a shipped rule under a generated name`);
+    for (const n of [...Object.values(NOW), 'project-code-style', ...GENERATED.map((g) => `alfred-project-${g}`)]) assert.ok(RULE_EXCLUDE.test(n), n);
+    for (const n of ['alfred-memory', 'alfred-project-notes', 'alfred-navigation']) assert.ok(!RULE_EXCLUDE.test(n), `${n} is not generated`);
 });

@@ -519,19 +519,19 @@ profile), output to `$TMP/select.out` - then:
   NAMES that scope ('enabled at USER scope - removing it removes it for every
   project'), since account-wide and project-local are different consents.
 - **Check the generated rule's stamped policy against this release, mechanically.** The usage-policy
-  block inside `.claude/rules/alfred-project-agent-capabilities.md` ships verbatim from the skill
+  block inside `.claude/rules/alfred-agent-awareness.md` ships verbatim from the skill
   and is never re-fetched, so a project can carry a two-release-old policy with nothing to notice it.
   One comparison:
 
   ```bash
-  grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/alfred-project-agent-capabilities.md
-  grep -m1 -o 'policy-rev: [0-9a-f]*' "$TMP/repo/stack/skills/capture-agent-capabilities/SKILL.md"
+  grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/alfred-agent-awareness.md
+  grep -m1 -o 'policy-rev: [0-9a-f]*' "$TMP/repo/stack/skills/capture-agent-awareness/SKILL.md"
   ```
 
   Equal - say `capabilities policy: current`. Different, or the project's rule carries no rev at all
   (written before the stamp existed) - report it as a finding with both values and name the re-run as
   the fix. No rule on disk is not a finding here; it is the capture never having run.
-- Then name `/capture-agent-capabilities` (when installed) in the post-check report as the
+- Then name `/capture-agent-awareness` (when installed) in the post-check report as the
   USER's next step, so the generated awareness rule reflects the reconciled inventory - the
   skill is manual-only (`disable-model-invocation`), a Skill call from this run is denied by `guard-fresh-session-start.js`;
   never attempt it. `alfred-code.stamp` is rewritten ONLY by an installer invocation - the apply step's
@@ -540,11 +540,11 @@ profile), output to `$TMP/select.out` - then:
   fabricated install time that every later stamp compare then trusts (measured: one run did exactly this).
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-capabilities`
+follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-awareness`
 (when installed and this run added or removed something it lists), a manual-only capture whose
 output this run made stale, the navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
-matters ('`/capture-agent-capabilities` - validate added 3 skills, so the generated rule's
+matters ('`/capture-agent-awareness` - validate added 3 skills, so the generated rule's
 inventory is short'). No AskUserQuestion over them: the walk's asks end with the installer (a
 write still gets its consent ask where it happens), and the closing ask over follow-ups was
 dropped as friction - the user's call, made knowing a prose next step was ignored 3 of 3 in one

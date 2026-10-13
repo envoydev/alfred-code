@@ -1,5 +1,5 @@
 ---
-description: "FAST refresh of an existing Alfred Code install - no selection questions (one ask only when the release adds an item this install would not otherwise carry): bring everything currently installed to the newest release, MCP runtimes and plugins included (MCPs re-registered at the release's own pins, then VERIFIED against the manifest shape and repaired where a registration drifted - `claude mcp add` over an existing name exits 0 without writing, so a stale entry used to survive every update; `claude plugin update` per installed stack plugin, at the scope the plugin is actually installed at) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only reads the install back and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated alfred-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. Works with no newer plugin: the snapshot's own pins move the library copies, hooks and MCPs. NOT for choosing items to add or drop beyond what the release itself added - that is the sibling configure command; not a first install - that is setup."
+description: "FAST refresh of an existing Alfred Code install - no selection questions (one ask only when the release adds an item this install would not otherwise carry): bring everything currently installed to the newest release, MCP runtimes and plugins included (MCPs re-registered at the release's own pins, then VERIFIED against the manifest shape and repaired where a registration drifted - `claude mcp add` over an existing name exits 0 without writing, so a stale entry used to survive every update; `claude plugin update` per installed stack plugin, at the scope the plugin is actually installed at) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only reads the install back and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated rules (alfred-architecture, alfred-related-context, alfred-agent-awareness, alfred-project-awareness, project-code-style) can never be touched. One confirmation before anything is deleted. Works with no newer plugin: the snapshot's own pins move the library copies, hooks and MCPs. NOT for choosing items to add or drop beyond what the release itself added - that is the sibling configure command; not a first install - that is setup."
 disable-model-invocation: true
 ---
 
@@ -43,10 +43,16 @@ docs they write keep their paths (`<docs-path>/architecture/`, `code-style/`, `t
 `related-projects/`, `quality/`, `loops/`).
 **Renamed in 2.1.6.** The seven shipped rules and the generated ones lost their `baseline-` prefix for
 `alfred-` (`baseline-git.md` -> `alfred-git.md`, `baseline-project-related-context.md` ->
-`alfred-project-related-context.md`). Update prunes each old library copy (`rule pruned (retired
+`alfred-related-context.md`). Update prunes each old library copy (`rule pruned (retired
 upstream)`), writes the new one, and MOVES each generated file with its content kept (`moved: rule ...`) -
 their captures do not re-run by themselves. Report both kinds of line; a `!!` line means the old and the new
 generated file both exist, and the old one is the user's to remove.
+**Renamed after 2.3.0.** The generated rules take their awareness names - `alfred-project-architecture.md` ->
+`alfred-architecture.md`, `alfred-project-related-context.md` -> `alfred-related-context.md`,
+`alfred-project-agent-capabilities.md` -> `alfred-agent-awareness.md`, `alfred-project-run-book.md` ->
+`alfred-project-awareness.md` - each MOVED with its content kept, and the two captures that write them are
+`/capture-agent-awareness` and `/capture-project-awareness` (the run book's doc keeps its path,
+`<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md`).
 `/loop-quality` now works a code-quality assessment by tier, with the `loops/`
 prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project may rely on.
 
@@ -68,7 +74,7 @@ prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project
 | `/project-code-style-analyzer` | `/capture-code-style` |
 | `/project-test-coverage-analyzer` | `/capture-test-coverage` |
 | `/project-related-context` | `/capture-related-projects` |
-| `/project-agent-capabilities` | `/capture-agent-capabilities` |
+| `/project-agent-capabilities` | `/capture-agent-awareness` |
 | `/project-stack-usage-analyzer` | `/capture-usage-report` |
 | `/project-first-look` | `/capture-first-look` |
 | `/project-quality-loop` | `/loop-quality` |
@@ -82,13 +88,15 @@ prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project
 | `/explain-code-tutor` | `/habits-explain-code` |
 | seat `ci-failure-diagnoser` | seat `issue-diagnoser-ci` |
 | seat `runtime-failure-diagnoser` | seat `issue-diagnoser-runtime` |
-| `/alfred-capture-agent-capabilities` | `/capture-agent-capabilities` |
+| `/capture-agent-capabilities` | `/capture-agent-awareness` |
+| `/capture-project-capabilities` | `/capture-project-awareness` |
+| `/alfred-capture-agent-capabilities` | `/capture-agent-awareness` |
 | `/alfred-capture-architecture` | `/capture-architecture` |
 | `/alfred-capture-architecture-quality` | `/capture-architecture-quality` |
 | `/alfred-capture-code-quality` | `/capture-code-quality` |
 | `/alfred-capture-code-style` | `/capture-code-style` |
 | `/alfred-capture-first-look` | `/capture-first-look` |
-| `/alfred-capture-project-capabilities` | `/capture-project-capabilities` |
+| `/alfred-capture-project-capabilities` | `/capture-project-awareness` |
 | `/alfred-capture-related-projects` | `/capture-related-projects` |
 | `/alfred-capture-test-coverage` | `/capture-test-coverage` |
 | `/alfred-capture-usage-report` | `/capture-usage-report` |
@@ -231,7 +239,7 @@ It prints, in order:
   so it can never answer 'what changed'.
 - `changed-here: skills=<n> agents=<n> rules=<n> hooks=<n>` - the part of that delta THIS install carries (a
   copy on disk, a seat on the core no deny names, a hook the plugin route carries and `ALFRED_CODE_HOOKS_OFF`
-  does not name). Step 7 names THIS as the refresh, and it gates the `/capture-agent-capabilities`
+  does not name). Step 7 names THIS as the refresh, and it gates the `/capture-agent-awareness`
   suggestion (measured: a close named 'skills=10 agents=44' as this install's refresh where the installer
   copied 9 of the 10 and the install enables 21 seats).
 - `migration: <id><TAB><detect kind>` per DETECTED entry, or `migrations: none detected`, each
@@ -704,7 +712,7 @@ what was taken, what stays off or was left, each by name), step 6's `agents-md:`
   this project stopped needing is validate's whole-stack-absent pass, unmentioned by this command.
 
 The run rewrote `alfred-code.stamp` - the next update or configure diffs from here. Name
-`/capture-agent-capabilities` (when installed) as the USER's next step when step 2's `changed-here:`
+`/capture-agent-awareness` (when installed) as the USER's next step when step 2's `changed-here:`
 line shows `skills=` or `agents=` above 0 (this install's half - a change to a skill it never copied
 stales nothing it carries) - the generated rule stamps each skill's first sentence,
 which drifts with content-only updates (measured: a 'roster unchanged, rule still accurate' skip
@@ -728,7 +736,7 @@ frontmatter. Do not lean on the harness for it: measured both ways, one update r
 refused and another slipped through. The report line is the mechanism.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-capabilities`
+follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-awareness`
 (when installed and the step-2 gate above fires), a manual-only capture whose output is stale, the
 Navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
@@ -739,7 +747,7 @@ ran without them with nothing reporting it) -
 every other follow-up runs against the session that is still holding the OLD ones, and a card that
 ranks a capture above it tells the user to re-capture an inventory that is not loaded yet (measured:
 a run that replaced two guard hooks and re-registered all four servers listed the re-capture first,
-and the user ran that first) ('`/capture-agent-capabilities` - the update refreshed 12 skill files, so the generated
+and the user ran that first) ('`/capture-agent-awareness` - the update refreshed 12 skill files, so the generated
 rule's stamped sentences are stale'). A follow-up that is itself a deliberate run - any of the
 captures, a loop - carries a fresh-session note beside it: 'run it in a fresh session; started
 here it re-sends this walk's history on every one of its turns'. Under a restart row the note reads 'run it
@@ -773,8 +781,8 @@ the close-out, not silently ignored.
 
 ## Do not
 - Never delete anything the upstream diff or the migrations catalog did not name - user-authored
-  skills/agents/rules/hooks and the generated `alfred-project-*.md` / `project-code-style.md`
-  rules appear in neither; if a candidate is in neither list, it stays.
+  skills/agents/rules/hooks and the generated rules (`alfred-architecture.md`, `alfred-related-context.md`, `alfred-agent-awareness.md`, `alfred-project-awareness.md`,
+  `project-code-style.md`) appear in neither; if a candidate is in neither list, it stays.
 - Never install an addition the step-2 ask did not take, and never remove an MCP or plugin the
   diff did not retire - dropping by choice, and adopting anything the release did not add, is
   the sibling `configure` command.

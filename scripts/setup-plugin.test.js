@@ -145,7 +145,7 @@ test('init: the bootstrap order - read, plan, one machine ask, memory, captures 
     assert.match(flat(init), /follow it inline, start to finish - never a Skill call/);
     // The five captures, in the brief's order, are the SCRIPT's table - the body cites the script.
     const { CAPTURES } = require('./init-plan.js');
-    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), ['capture-related-projects', 'capture-architecture', 'capture-code-style', 'capture-project-capabilities', 'capture-agent-capabilities']);
+    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), ['capture-related-projects', 'capture-architecture', 'capture-code-style', 'capture-project-awareness', 'capture-agent-awareness']);
     assert.deepStrictEqual(CAPTURES.map((c) => c.seat), ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer', null, null]);
     assert.ok(!/sentry/i.test(init), 'no sentry step (R28)');
     assert.ok(!/allowed-tools/.test(init.split('---')[1]), 'no command carries allowed-tools');

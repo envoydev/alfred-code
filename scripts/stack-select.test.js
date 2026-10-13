@@ -62,9 +62,9 @@ test('a rule pulls its skills', () => {
 test('a kept rule makes its mcp required; the capabilities skill locks none', () => {
     const c = computeClosure(graph, { rules: ['alfred-navigation'] });
     assert.ok(c.mcps.includes('alfred-navigation'), 'the alfred-navigation rule genuinely depends on its server');
-    // The routing-map mentions in capture-agent-capabilities are subject matter, not needs -
+    // The routing-map mentions in capture-agent-awareness are subject matter, not needs -
     // picking it must never lock the whole MCP baseline into an install.
-    const cap = computeClosure(graph, { skills: ['capture-agent-capabilities'] });
+    const cap = computeClosure(graph, { skills: ['capture-agent-awareness'] });
     assert.deepStrictEqual(cap.mcps, [], 'the capabilities skill pulls no MCPs');
 });
 

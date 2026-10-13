@@ -1276,7 +1276,7 @@
           "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
         },
         {
-          "file": "stack/skills/capture-project-capabilities/SKILL.md",
+          "file": "stack/skills/capture-project-awareness/SKILL.md",
           "marker": "Captured: <branch>@<short-sha>, <date>"
         }
       ]
@@ -1719,11 +1719,11 @@
           "marker": "deliberately NOT in the stack installer's catalog"
         },
         {
-          "file": "stack/skills/capture-agent-capabilities/SKILL.md",
+          "file": "stack/skills/capture-agent-awareness/SKILL.md",
           "marker": "stays out of the installer's catalog"
         },
         {
-          "file": "stack/skills/capture-project-capabilities/SKILL.md",
+          "file": "stack/skills/capture-project-awareness/SKILL.md",
           "marker": "It stays out of the installer's catalog"
         }
       ]
@@ -2039,7 +2039,7 @@
       ]
     },
     "capabilities-refresh-user-run": {
-      "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except capture-architecture and capture-architecture-quality carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one - except /alfred-code:init (R30), which runs the captures the install lists by READING each SKILL.md and following it inline: still never a Skill call. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by capture-agent-capabilities' usage policy.",
+      "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except capture-architecture and capture-architecture-quality carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one - except /alfred-code:init (R30), which runs the captures the install lists by READING each SKILL.md and following it inline: still never a Skill call. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by capture-agent-awareness' usage policy.",
       "owner": {
         "file": "setup-plugin/commands/update.md",
         "marker": "Never invoke it from this run - the skill is manual-only"
@@ -2062,7 +2062,7 @@
           "marker": "the assistant cannot invoke one on your behalf"
         },
         {
-          "file": "stack/skills/capture-agent-capabilities/SKILL.md",
+          "file": "stack/skills/capture-agent-awareness/SKILL.md",
           "marker": "is the USER's to type - never call it yourself"
         }
       ]
@@ -2175,7 +2175,7 @@
     "capture-docs-engine-write-route": {
       "_note": "How a capture lands its doc through the docs engine: a first capture writes the file whole, because `docs.js set` refuses a file that does not exist yet (stack/hooks/docs.js `no such doc file`); a re-run lands each changed section through `docs.js set`, and the ENGINE picks in place (mainline, no git, git versioning) or the branch overlay - the capture never checks the mode. Two copies once said both 'writes directly' and 'calls set unconditionally' (audit 2026-10-08 C9), so a first capture on an overlay branch failed. Owned by the run-book capture's doc shape; restated in the code-style and related-projects write mechanics.",
       "owner": {
-        "file": "stack/skills/capture-project-capabilities/references/doc-shape.md",
+        "file": "stack/skills/capture-project-awareness/references/doc-shape.md",
         "marker": "and into this branch's overlay otherwise - the capture never decides which"
       },
       "sites": [
@@ -3997,7 +3997,7 @@
       "_note": "The generated capabilities rule carries the usage policy VERBATIM from the skill and is never re-fetched - only a user re-run regenerates it - so a project can carry a two-release-old policy with nothing to notice it (measured: one project's rule still described the fresh-session gate as '40% of the context window, 150k floor', retired at 0.2.70). The `<!-- policy-rev: ... -->` content stamp is what makes that detectable, and the comparison lives in the two commands that can see both sides: validate runs the two greps and reports a finding, update reads the `policy-rev:` row update-preflight.js prints (the hand-run pair was re-confirmed 3 extra times in one audited run, ~275k tokens) and makes it a second trigger for the re-run row. The skill owns the stamp itself; lint check 29 recomputes it when the block moves.",
       "owner": {
         "file": "setup-plugin/commands/validate.md",
-        "marker": "grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/alfred-project-agent-capabilities.md"
+        "marker": "grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/alfred-agent-awareness.md"
       },
       "sites": [
         {
@@ -4005,7 +4005,7 @@
           "marker": "`policy-rev: stale ...` (the installed usage-policy rule's stamped revision is behind the shipped"
         },
         {
-          "file": "stack/skills/capture-agent-capabilities/SKILL.md",
+          "file": "stack/skills/capture-agent-awareness/SKILL.md",
           "marker": "`/alfred-code:validate` compares a project's stamp against the snapshot's"
         }
       ]
@@ -5414,12 +5414,12 @@
       "_note": "The post-install capture ORDER and its manual-only property: the four deliberate captures run related-context (only where the project has siblings) -> architecture -> code-style -> agent-capabilities LAST, the order init-plan.js CAPTURES runs, so the generated inventory reflects the final install, and the user types them because they carry disable-model-invocation. It lives in two homes because each one reaches a different reader at a different moment - the reference the guided walks open, and the seeded CLAUDE.md the adopter fills in. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to print this same order in their own next-steps log as a third and fourth home; the Node seed never carried this text (the walk's own report covers it).",
       "owner": {
         "file": "setup-plugin/references/post-install.md",
-        "marker": "`/capture-agent-capabilities` - LAST, so the generated usage-policy rule reflects the final inventory"
+        "marker": "`/capture-agent-awareness` - LAST, so the generated usage-policy rule reflects the final inventory"
       },
       "sites": [
         {
           "file": "stack/AGENTS.template.md",
-          "marker": "/capture-agent-capabilities LAST, so its generated inventory reflects the final install"
+          "marker": "/capture-agent-awareness LAST, so its generated inventory reflects the final install"
         }
       ]
     },
@@ -5562,7 +5562,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/capture-agent-capabilities/SKILL.md",
+          "file": "stack/skills/capture-agent-awareness/SKILL.md",
           "marker": "Do NOT `rm` it first"
         },
         {
@@ -5570,7 +5570,7 @@
           "marker": "READ the existing rule first (it is short), then Write the fresh one over it"
         },
         {
-          "file": "stack/skills/capture-project-capabilities/SKILL.md",
+          "file": "stack/skills/capture-project-awareness/SKILL.md",
           "marker": "READ the existing rule first, then Write the fresh one over it"
         }
       ]
@@ -6097,7 +6097,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/capture-agent-capabilities/references/generated-rule-template.md",
+          "file": "stack/skills/capture-agent-awareness/references/generated-rule-template.md",
           "marker": "keeps symbol lookup, `rename_symbol` and `safe_delete_symbol`, and every other edit goes through Edit / Write"
         }
       ]
@@ -6622,9 +6622,9 @@
       ]
     },
     "run-book-read-first": {
-      "_note": "The run book is read before a seat builds, starts, logs into or hand-checks the app. The generated pointer rule (alfred-project-run-book.md, from the capture's template) is canonical and reaches every session and subagent once the capture ran; the seats that run the app restate it as a step, because a seat dispatched before the capture ran still needs to know where the doc will be. The seat line leaves 'build' to the generated rule (2.1.5 M60): the resolvers and implementers build too and carry no seat line.",
+      "_note": "The run book is read before a seat builds, starts, logs into or hand-checks the app. The generated pointer rule (alfred-project-awareness.md, from the capture's template) is canonical and reaches every session and subagent once the capture ran; the seats that run the app restate it as a step, because a seat dispatched before the capture ran still needs to know where the doc will be. The seat line leaves 'build' to the generated rule (2.1.5 M60): the resolvers and implementers build too and carry no seat line.",
       "owner": {
-        "file": "stack/skills/capture-project-capabilities/references/run-book-rule.template.md",
+        "file": "stack/skills/capture-project-awareness/references/run-book-rule.template.md",
         "marker": "read it before you build, start, log into or hand-check the app"
       },
       "sites": [
@@ -6827,7 +6827,7 @@
           "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
         },
         {
-          "file": "stack/skills/capture-agent-capabilities/scripts/capabilities-inventory.js",
+          "file": "stack/skills/capture-agent-awareness/scripts/capabilities-inventory.js",
           "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
         },
         {

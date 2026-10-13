@@ -183,24 +183,24 @@ test('policy-rev: none when the generated rule is not installed', () => {
 test('policy-rev: current when the stamped rev matches the shipped skill; stale otherwise', () => {
     const { snap, install, fixtureFile } = scaffold();
     fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
-    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'capture-agent-capabilities'), { recursive: true });
-    fs.writeFileSync(path.join(install, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), 'policy-rev: abc123\nsome text');
-    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-capabilities', 'SKILL.md'), 'policy-rev: abc123\nsome text');
+    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'capture-agent-awareness'), { recursive: true });
+    fs.writeFileSync(path.join(install, '.claude', 'rules', 'alfred-agent-awareness.md'), 'policy-rev: abc123\nsome text');
+    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-awareness', 'SKILL.md'), 'policy-rev: abc123\nsome text');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: current$/m);
 
-    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-capabilities', 'SKILL.md'), 'policy-rev: def456\nsome text');
+    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-awareness', 'SKILL.md'), 'policy-rev: def456\nsome text');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: stale installed=abc123 snapshot=def456$/m);
 
-    fs.writeFileSync(path.join(install, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), 'no rev stamped here');
+    fs.writeFileSync(path.join(install, '.claude', 'rules', 'alfred-agent-awareness.md'), 'no rev stamped here');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: stale installed=none snapshot=def456$/m, 'a rule with no rev at all IS the mismatch, nothing further to check');
 });
 
 test('policy-rev: an install still holding the pre-2.1.6 file name is read, not reported as none', () => {
     const { snap, install, fixtureFile } = scaffold();
     fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
-    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'capture-agent-capabilities'), { recursive: true });
+    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'capture-agent-awareness'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), 'policy-rev: abc123\nsome text');
-    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-capabilities', 'SKILL.md'), 'policy-rev: abc123\nsome text');
+    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-awareness', 'SKILL.md'), 'policy-rev: abc123\nsome text');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: current$/m);
 });
 

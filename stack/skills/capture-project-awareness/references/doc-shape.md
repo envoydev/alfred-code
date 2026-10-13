@@ -20,7 +20,7 @@ credentials template with its `.gitignore`.
 ## The skeleton
 
 Fill every `<...>`; a line the repo and the user left open reads
-`unknown - re-run /capture-project-capabilities to fill it`. Each fact the repo gave ends with its
+`unknown - re-run /capture-project-awareness to fill it`. Each fact the repo gave ends with its
 source in parentheses. Keep it a quick reference - short lines, commands in code spans.
 
 ```markdown

@@ -91,7 +91,7 @@ test('M68: the browser-only screenshot line leaves the always-on navigation rule
 {
     const nav = injected('alfred-navigation');
     assert.ok(!/screenshot/i.test(nav), 'the browser row owns screenshot readback');
-    const row = read('stack/skills/capture-agent-capabilities/references/generated-rule-template.md').split('\n').find((l) => l.startsWith('- `browser` - '));
+    const row = read('stack/skills/capture-agent-awareness/references/generated-rule-template.md').split('\n').find((l) => l.startsWith('- `browser` - '));
     assert.ok(row && row.includes('never the iteration loop'), 'the browser row carries the mid-loop rule');
     assert.ok(nav.includes('Git Bash'), 'the Windows line stays: a per-OS rule copy would differ between teammates');
 });
@@ -120,7 +120,7 @@ test('M71: several FIRST actions due at once load together', () =>
 test('M72: the generated architecture rule carries only its trigger - where the docs live is the baselines\'', () =>
 {
     const shapes = read('stack/skills/capture-architecture/references/doc-shapes.md');
-    const at = shapes.indexOf('## .claude/rules/alfred-project-architecture.md');
+    const at = shapes.indexOf('## .claude/rules/alfred-architecture.md');
     const block = /```markdown\n([\s\S]*?)```/.exec(shapes.slice(at))[1];
     const body = squash(injectedRuleText(block)).trim();
     assert.ok(!body.includes('<docs-path>'), `the body restates the root the navigation baseline names: ${body}`);
@@ -161,7 +161,7 @@ test('rules F3: the AGENTS template restates none of the seven always-on rules -
     const rulesSection = text.slice(text.indexOf('\n## Rules'));
     for (const name of ['interaction', 'quality-gates', 'security', 'git', 'navigation', 'docs-root', 'memory'])
         assert.ok(!rulesSection.includes(`| \`.claude/rules/alfred-${name}.md\` |`), `alfred-${name}.md has a template row`);
-    for (const generated of ['alfred-project-agent-capabilities', 'alfred-project-architecture', 'alfred-project-related-context', 'alfred-project-run-book', 'project-code-style'])
+    for (const generated of ['alfred-agent-awareness', 'alfred-architecture', 'alfred-related-context', 'alfred-project-awareness', 'project-code-style'])
         assert.ok(rulesSection.includes(`| \`.claude/rules/${generated}.md\` (GENERATED`), `${generated}.md keeps its GENERATED row`);
 });
 
