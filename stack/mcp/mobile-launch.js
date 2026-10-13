@@ -43,19 +43,21 @@ const BOOLEAN = new Set(['NO_UI', 'ALLOW_REMOTE_APP_URLS']);
 const exists = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
 
 // Where Android Studio puts the SDK on each OS (its default; the SDK Manager can move it).
+// Each place is spelled for the platform it names (path.posix / path.win32), never the host's: found by the Windows
+// gate leg, where the darwin case came back with backslashes.
 function defaultSdk({ platform, home, env })
 {
-    if (platform === 'darwin') return path.join(home, 'Library', 'Android', 'sdk');
+    if (platform === 'darwin') return path.posix.join(home, 'Library', 'Android', 'sdk');
     if (platform === 'win32') return env.LOCALAPPDATA ? path.win32.join(env.LOCALAPPDATA, 'Android', 'Sdk') : null;
-    return path.join(home, 'Android', 'Sdk');
+    return path.posix.join(home, 'Android', 'Sdk');
 }
 
 // The JDK Android Studio bundles (jbr), on each OS's default install place.
 function studioJbr({ platform, home, env })
 {
-    if (platform === 'darwin') return ['/Applications/Android Studio.app/Contents/jbr/Contents/Home', path.join(home, 'Applications', 'Android Studio.app', 'Contents', 'jbr', 'Contents', 'Home')];
+    if (platform === 'darwin') return ['/Applications/Android Studio.app/Contents/jbr/Contents/Home', path.posix.join(home, 'Applications', 'Android Studio.app', 'Contents', 'jbr', 'Contents', 'Home')];
     if (platform === 'win32') return [env.ProgramFiles && path.win32.join(env.ProgramFiles, 'Android', 'Android Studio', 'jbr')].filter(Boolean);
-    return ['/opt/android-studio/jbr', path.join(home, 'android-studio', 'jbr')];
+    return ['/opt/android-studio/jbr', path.posix.join(home, 'android-studio', 'jbr')];
 }
 
 // macOS's own JDK lookup; '' when none is installed or the tool is absent.
