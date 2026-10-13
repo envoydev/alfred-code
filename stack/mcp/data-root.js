@@ -466,22 +466,28 @@ function sensitivePlaceOf({ projectDir, root = DATA_ROOT_DEFAULT })
 // guard-secret-value.js (DOTENV_LINE, unquote - the hooks ship apart from this folder on the copy route); a test holds
 // the two to the same fixture.
 const SENSITIVE_LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/;
+// Notepad's 'Unicode' is UTF-16 LE with a BOM; anything else reads as UTF-8, its BOM dropped.
+const isUtf16 = (buf) => buf[0] === 0xff && buf[1] === 0xfe;
+const dotenvText = (buf) => (isUtf16(buf) ? buf.subarray(2).toString('utf16le') : buf.toString('utf8').replace(/^\uFEFF/, ''));
+// Every KEY=value line: { key, value (unquoted), line (as written) }; a later line for a key wins, as dotenv reads it.
+function dotenvPairs(text)
+{
+    const out = [];
+    for (const line of text.split(/\r?\n/))
+    {
+        if (/^\s*#/.test(line)) continue;
+        const m = line.match(SENSITIVE_LINE);
+        if (m) out.push({ key: m[1], value: m[2].trim().replace(/^(["'])(.*)\1$/, '$2'), line: line.trim() });
+    }
+    return out;
+}
 function readSensitive({ projectDir, root = DATA_ROOT_DEFAULT })
 {
     const file = sensitivePlaceOf({ projectDir, root });
     let buf;
     try { buf = fs.readFileSync(file); }
     catch { return {}; }
-    // Notepad's 'Unicode' is UTF-16 LE with a BOM; anything else reads as UTF-8, its BOM dropped.
-    const text = buf[0] === 0xff && buf[1] === 0xfe ? buf.subarray(2).toString('utf16le') : buf.toString('utf8').replace(/^\uFEFF/, '');
-    const out = {};
-    for (const line of text.split(/\r?\n/))
-    {
-        if (/^\s*#/.test(line)) continue;
-        const m = line.match(SENSITIVE_LINE);
-        if (m) out[m[1]] = m[2].trim().replace(/^(["'])(.*)\1$/, '$2');
-    }
-    return out;
+    return Object.fromEntries(dotenvPairs(dotenvText(buf)).map((p) => [p.key, p.value]));
 }
 
 // A launcher's child environment with the project's sensitive data in it: a variable already set (the shell, a settings
@@ -492,6 +498,74 @@ function withSensitive(env, { projectDir, root } = {})
     const values = readSensitive({ projectDir, root: root || dataRootOf({ env, projectDir }).root });
     const added = Object.keys(values).filter((k) => !Object.hasOwn(env, k));
     return { env: { ...env, ...Object.fromEntries(added.map((k) => [k, values[k]])) }, count: added.length };
+}
+
+// The capture's own credentials file before 2026-10-13 (`<docs>/project-capabilities/credentials.local.env`): one
+// credential home now, so an install moves its pairs into the store - the values read and written here, never printed -
+// and re-points the run book's line at the store. Nothing moves when the store holds a key with ANOTHER value (both
+// stay, the keys are named), when git would commit the store, or when the store is not a file. The store is written
+// before the old file goes, so a failed delete only leaves a move the next run finishes. The folder's .gitignore line
+// stays: a capture of the other stack may write the file again.
+// { state: 'absent' | 'moved' | 'empty' | 'clash' | 'exposed' | 'blocked' | 'failed', from, to, keys, added, repointed, why }.
+const OLD_CREDENTIALS = 'credentials.local.env';
+function adoptCredentials({ projectDir, root = DATA_ROOT_DEFAULT, docsPath = `${DATA_ROOT_DEFAULT}/docs`, check = gitIgnores })
+{
+    const folder = path.resolve(projectDir, String(docsPath), 'project-capabilities');   // a docs root the user set may be absolute
+    const fromAbs = path.join(folder, OLD_CREDENTIALS);
+    const rel = (p) => path.relative(projectDir, p).split(path.sep).join('/');
+    const toAbs = path.join(projectDir, ...root.split('/'), SENSITIVE_FILE);
+    const at = { from: rel(fromAbs), to: rel(toAbs) };
+    if (!isFile(fromAbs)) return { state: 'absent', ...at };
+    let pairs;
+    try { pairs = dotenvPairs(dotenvText(fs.readFileSync(fromAbs))); }
+    catch (err) { return { state: 'failed', ...at, why: err.code || err.message }; }
+    const last = new Map(pairs.map((p) => [p.key, p]));
+    if (!last.size) return { state: 'empty', ...at };
+    if (fs.existsSync(toAbs) && !isFile(toAbs)) return { state: 'blocked', ...at, why: `${at.to} is not a file` };
+    let buf = null;
+    try { buf = isFile(toAbs) ? fs.readFileSync(toAbs) : null; }
+    catch (err) { return { state: 'failed', ...at, why: err.code || err.message }; }
+    const have = buf ? Object.fromEntries(dotenvPairs(dotenvText(buf)).map((p) => [p.key, p.value])) : {};
+    const keys = [...last.keys()];
+    const clash = keys.filter((k) => Object.hasOwn(have, k) && have[k] !== last.get(k).value);
+    if (clash.length) return { state: 'clash', ...at, keys: clash };
+    try { ensureRootIgnore({ projectDir, root }); }
+    catch (err) { return { state: 'failed', ...at, why: `${root}/.gitignore: ${err.code || err.message}` }; }
+    if (check(projectDir, at.to) === false) return { state: 'exposed', ...at };
+    const added = keys.filter((k) => !Object.hasOwn(have, k));
+    try
+    {
+        if (added.length)
+        {
+            const lines = [`# from ${at.from}, moved by the alfred-code installer`, ...added.map((k) => last.get(k).line)].join('\n') + '\n';
+            if (!buf) fs.writeFileSync(toAbs, lines, { mode: 0o600 });
+            else if (isUtf16(buf))
+            {
+                const text = dotenvText(buf);
+                fs.writeFileSync(toAbs, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(`${text}${text && !text.endsWith('\n') ? '\n' : ''}${lines}`, 'utf16le')]));
+            }
+            else fs.appendFileSync(toAbs, `${buf.length && buf[buf.length - 1] !== 0x0a ? '\n' : ''}${lines}`);
+        }
+        fs.rmSync(fromAbs);
+    }
+    catch (err) { return { state: 'failed', ...at, why: err.code || err.message }; }
+    // The run book names the file by a path ending in its name, backticked or bare: each spelling becomes the store's.
+    let repointed = 0;
+    const book = path.join(folder, 'PROJECT-CAPABILITIES.md');
+    try
+    {
+        const text = fs.readFileSync(book, 'utf8');
+        const next = text.replace(/(?:[\w.\-<>]+\/)*credentials\.local\.env\b/g, () => { repointed += 1; return at.to; });
+        if (repointed) writeText(book, next);
+    }
+    catch { /* no run book, or one the next capture rewrites */ }
+    return { state: 'moved', ...at, keys, added, repointed };
+}
+// git's answer for a path: true ignored, false not ignored (or tracked), null no repository / no git.
+function gitIgnores(projectDir, rel)
+{
+    const r = require('node:child_process').spawnSync('git', ['check-ignore', '-q', '--', rel], { cwd: projectDir, stdio: 'ignore', timeout: 10000 });
+    return r.status === 0 ? true : r.status === 1 ? false : null;
 }
 
 // ------------------------------------------------------------------ the move plan and the pending record
@@ -622,7 +696,7 @@ function ensureSerenaConfig(homeAbs, folder = `${DATA_ROOT_DEFAULT}/serena`)
 }
 
 module.exports = {
-    DATA_ROOT_DEFAULT, MEMORY_FOLDER, LEGACY_MEMORY_FOLDER, MOBILE_FOLDER, SENSITIVE_FILE, sensitivePlaceOf, readSensitive, withSensitive, ENGINES, LEGACY, SHARED_BROWSER, engineServer, engineOfServer, ENGINE_SERVER, sharedBrowserOf, isRelayout,
+    DATA_ROOT_DEFAULT, MEMORY_FOLDER, LEGACY_MEMORY_FOLDER, MOBILE_FOLDER, SENSITIVE_FILE, sensitivePlaceOf, readSensitive, withSensitive, adoptCredentials, ENGINES, LEGACY, SHARED_BROWSER, engineServer, engineOfServer, ENGINE_SERVER, sharedBrowserOf, isRelayout,
     checkDataPath, dataRootOf, layout, targetOf, rootOfPlace, legacyOf,
     DATA_IGNORE_HEAD, dataIgnoreText, ensureRootIgnore,
     memoryDbFor, memoryLevelOf, legacyTwinOf, homeTwinOf, liveMemoryDb,

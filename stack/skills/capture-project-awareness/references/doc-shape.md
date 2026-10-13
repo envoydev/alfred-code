@@ -121,7 +121,8 @@ APP_TEST_PASSWORD=
 
 The data root's own `.gitignore` covers the file - nothing is added to any `.gitignore`. The doc's `Credentials
 live in` line names the file and each key. A `credentials.local.env` an older capture wrote in
-`project-capabilities/` keeps working where it is; moving its values is the user's, by hand.
+`project-capabilities/` is moved into the store by the next install or update, which re-points this line; a key the
+store already holds with another value stops that move until the user drops it from one file.
 
 ## Write mechanics
 

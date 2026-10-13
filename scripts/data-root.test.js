@@ -331,6 +331,86 @@ test('sensitive data: a launch takes the store where nothing else set the key, a
     assert.strictEqual(dr.sensitivePlaceOf({ projectDir: p, root: '.none' }), null);
 });
 
+// The capture's credentials file before 2026-10-13 moves into the store (the user's call: one credential home, by update).
+const CAP = (p, docs = '.alfred/docs') => path.join(p, ...docs.split('/'), 'project-capabilities');
+const IGNORED = () => true;
+function oldCapture(p, { cred = 'ADMIN_EMAIL=me@x.io\nADMIN_PASSWORD="pa55 w0rd"\n', docs = '.alfred/docs' } = {})
+{
+    put(path.join(CAP(p, docs), 'credentials.local.env'), cred);
+    put(path.join(CAP(p, docs), '.gitignore'), 'credentials.local.env\n');
+    put(path.join(CAP(p, docs), 'PROJECT-CAPABILITIES.md'), `## Reach and log in\n- Credentials live in: \`${docs}/project-capabilities/credentials.local.env\`, key \`ADMIN_PASSWORD\`\n- see credentials.local.env\n`);
+}
+
+test('old credentials: a run book\'s credentials.local.env moves into a new store, the run book re-pointed, the folder ignore kept', () =>
+{
+    const p = fresh('adopt-new');
+    oldCapture(p);
+    const r = dr.adoptCredentials({ projectDir: p, check: IGNORED });
+    assert.deepStrictEqual(r, { state: 'moved', from: '.alfred/docs/project-capabilities/credentials.local.env', to: '.alfred/.sensitive-data', keys: ['ADMIN_EMAIL', 'ADMIN_PASSWORD'], added: ['ADMIN_EMAIL', 'ADMIN_PASSWORD'], repointed: 2 });
+    const store = path.join(p, '.alfred', '.sensitive-data');
+    assert.deepStrictEqual(dr.readSensitive({ projectDir: p }), { ADMIN_EMAIL: 'me@x.io', ADMIN_PASSWORD: 'pa55 w0rd' }, 'the values as written, quotes and all');
+    if (process.platform !== 'win32') assert.strictEqual(fs.statSync(store).mode & 0o777, 0o600, 'a new store is the user\'s alone');
+    assert.ok(fs.readFileSync(path.join(p, '.alfred', '.gitignore'), 'utf8').startsWith(dr.DATA_IGNORE_HEAD), 'the root ignores it');
+    assert.ok(!fs.existsSync(path.join(CAP(p), 'credentials.local.env')));
+    assert.strictEqual(fs.readFileSync(path.join(CAP(p), '.gitignore'), 'utf8'), 'credentials.local.env\n');
+    const book = fs.readFileSync(path.join(CAP(p), 'PROJECT-CAPABILITIES.md'), 'utf8');
+    assert.match(book, /Credentials live in: `\.alfred\/\.sensitive-data`, key `ADMIN_PASSWORD`/);
+    assert.doesNotMatch(book, /credentials\.local\.env/);
+    assert.deepStrictEqual(dr.adoptCredentials({ projectDir: p, check: IGNORED }).state, 'absent', 'a re-run finds nothing to move');
+});
+
+test('old credentials: an existing store keeps its lines; a key it holds with the same value is no clash, one with another value stops the move', () =>
+{
+    const p = fresh('adopt-append');
+    oldCapture(p, { cred: 'ADMIN_EMAIL=me@x.io\r\nADMIN_PASSWORD=old\r\nADMIN_PASSWORD=pw2\r\n' });
+    put(path.join(p, '.alfred', '.sensitive-data'), 'API_TOKEN=tok\nADMIN_EMAIL=me@x.io');
+    const r = dr.adoptCredentials({ projectDir: p, check: IGNORED });
+    assert.deepStrictEqual([r.state, r.added], ['moved', ['ADMIN_PASSWORD']], 'CRLF read; the later line for a key wins');
+    assert.strictEqual(fs.readFileSync(path.join(p, '.alfred', '.sensitive-data'), 'utf8'),
+        'API_TOKEN=tok\nADMIN_EMAIL=me@x.io\n# from .alfred/docs/project-capabilities/credentials.local.env, moved by the alfred-code installer\nADMIN_PASSWORD=pw2\n');
+    const q = fresh('adopt-clash');
+    oldCapture(q);
+    put(path.join(q, '.alfred', '.sensitive-data'), 'ADMIN_PASSWORD=different\n');
+    assert.deepStrictEqual(dr.adoptCredentials({ projectDir: q, check: IGNORED }), { state: 'clash', from: '.alfred/docs/project-capabilities/credentials.local.env', to: '.alfred/.sensitive-data', keys: ['ADMIN_PASSWORD'] });
+    assert.strictEqual(fs.readFileSync(path.join(q, '.alfred', '.sensitive-data'), 'utf8'), 'ADMIN_PASSWORD=different\n', 'neither side touched');
+    assert.ok(fs.existsSync(path.join(CAP(q), 'credentials.local.env')));
+    assert.match(fs.readFileSync(path.join(CAP(q), 'PROJECT-CAPABILITIES.md'), 'utf8'), /credentials\.local\.env/, 'the run book still names where the values are');
+});
+
+test('old credentials: nothing moves into a store git would commit, a store that is a folder, or out of a file with no pairs', () =>
+{
+    const p = fresh('adopt-exposed');
+    oldCapture(p);
+    assert.strictEqual(dr.adoptCredentials({ projectDir: p, check: () => false }).state, 'exposed');
+    assert.ok(fs.existsSync(path.join(CAP(p), 'credentials.local.env')) && !fs.existsSync(path.join(p, '.alfred', '.sensitive-data')));
+    assert.strictEqual(dr.adoptCredentials({ projectDir: p, check: () => null }).state, 'moved', 'no repository: nothing to commit it to');
+    const q = fresh('adopt-dir');
+    oldCapture(q);
+    fs.mkdirSync(path.join(q, '.alfred', '.sensitive-data'), { recursive: true });
+    assert.strictEqual(dr.adoptCredentials({ projectDir: q, check: IGNORED }).state, 'blocked');
+    const e = fresh('adopt-empty');
+    oldCapture(e, { cred: '# nothing here\n\n' });
+    assert.strictEqual(dr.adoptCredentials({ projectDir: e, check: IGNORED }).state, 'empty');
+    assert.ok(fs.existsSync(path.join(CAP(e), 'credentials.local.env')), 'left as it is');
+    assert.strictEqual(dr.adoptCredentials({ projectDir: fresh('adopt-none'), check: IGNORED }).state, 'absent');
+});
+
+test('old credentials: empty values carry as keys to fill; a custom docs root and data root; a UTF-16 store stays UTF-16', () =>
+{
+    const p = fresh('adopt-custom');
+    oldCapture(p, { cred: 'APP_TEST_USER=\nAPP_TEST_PASSWORD=\n', docs: 'docs' });
+    const r = dr.adoptCredentials({ projectDir: p, root: 'var/data', docsPath: 'docs', check: IGNORED });
+    assert.deepStrictEqual([r.state, r.to, r.repointed], ['moved', 'var/data/.sensitive-data', 2]);
+    assert.deepStrictEqual(dr.readSensitive({ projectDir: p, root: 'var/data' }), { APP_TEST_USER: '', APP_TEST_PASSWORD: '' });
+    const w = fresh('adopt-utf16');
+    oldCapture(w);
+    put(path.join(w, '.alfred', '.sensitive-data'), Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('WIDE=one\r\n', 'utf16le')]));
+    assert.strictEqual(dr.adoptCredentials({ projectDir: w, check: IGNORED }).state, 'moved');
+    const buf = fs.readFileSync(path.join(w, '.alfred', '.sensitive-data'));
+    assert.deepStrictEqual([buf[0], buf[1]], [0xff, 0xfe], 'still UTF-16 LE');
+    assert.deepStrictEqual(dr.readSensitive({ projectDir: w }), { WIDE: 'one', ADMIN_EMAIL: 'me@x.io', ADMIN_PASSWORD: 'pa55 w0rd' });
+});
+
 // 2026-10-13 (the user's call): no shared browser folder - each engine's profile is <root>/<engine>-control. A
 // profile 2.1.0-2.3.x kept in the root's own <root>/browser/<engine> is a relayout inside the root: a plan row the
 // installer never offers, and the folder goes with its last engine.

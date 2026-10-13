@@ -172,7 +172,10 @@ The memory levels and stores, where the docs root and the data root live, and th
   `capture-project-awareness`, repo facts first, the user's answers for the gaps): a
   credential appears there only as WHERE it lives - an env var, a vault item, or a key in the
   project's `<data root>/.sensitive-data` (the capture writes its keys empty only when the file is absent) - never
-  as a value. The findings (`quality/ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the
+  as a value. The capture's own `credentials.local.env` before 2026-10-13 is moved into that store by every install
+  run (`data-root.js adoptCredentials`, the user's call: one credential home, by update) - the values read and written
+  by the installer, never printed, the run book's line re-pointed; a key the store holds with another value, a store
+  git would commit (`git check-ignore`) or one that is not a file moves nothing and is said every run until fixed. The findings (`quality/ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the
   two `*-quality` captures) are the opposite of durable - recomputed fresh every run, so
   `quality/` carries no `watch.json` and is no docs domain. A doc an older capture left at a former home moves on
   update (`docs.migrateDocsDomains`, absent-only: `PROJECT-CODE-STYLE.md`, `architecture/ASSESSMENT.md`, and the

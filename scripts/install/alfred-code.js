@@ -23,7 +23,7 @@ const { createSource, compareVersions } = require('./source.js');
 const { loadManifest, stackNames, stackOwnName } = require('./manifest.js');
 const selection = require('./selection.js');
 const plugins = require('./plugins.js');
-const { pythonRequest, userExcludeNewer } = require('../../stack/mcp/uv-python.js');
+const { pythonRequest, userExcludeNewer, settingFrom } = require('../../stack/mcp/uv-python.js');
 const { serenaHomeFor, copyRouteProject } = require('../../stack/mcp/serena-launch.js');
 const dataRoot = require('../../stack/mcp/data-root.js');
 const { copyRouteExclude, platformOf, prereqNotes, DESKTOP_OS } = require('../../stack/mcp/desktop-launch.js');
@@ -948,6 +948,30 @@ function runLayers(ctx)
     mcp.keepMcpOrder({ mcpFile: ctx.mcpFile, before: mcpBefore });
 }
 
+// The run book's old credentials file goes into the project's sensitive data (data-root.js adoptCredentials): one line,
+// keys by name and never a value; a clash or a store git would commit moves nothing and is said every run until fixed.
+// Two docs roots are looked in: this run's (settings.json's at project scope, R98) and the one a session reads, where
+// settings.local.json wins - a capture writes the run book under the latter.
+function adoptCredentials(ctx, root, docsPath)
+{
+    const norm = (p) => String(p || '').trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+    const session = settingFrom({ env: process.env, projectDir: ctx.projectRoot, suffix: 'DOCS_PATH' });
+    for (const at of [...new Set([docsPath, session].map(norm).filter(Boolean))]) adoptCredentialsAt(ctx, root, at);
+}
+function adoptCredentialsAt(ctx, root, docsPath)
+{
+    const { projectRoot, log } = ctx;
+    const r = dataRoot.adoptCredentials({ projectDir: projectRoot, root, docsPath });
+    if (r.state === 'moved')
+        log(`  sensitive data: ${r.from} -> ${r.to} (${r.added.length ? `${r.added.join(', ')} added` : 'every key already there'}${r.added.length < r.keys.length ? `, ${r.keys.filter((k) => !r.added.includes(k)).join(', ')} already there` : ''})${r.repointed ? '; the run book names it now' : ''}`);
+    else if (r.state === 'clash')
+        log(`  !! sensitive data: ${r.from} not moved - ${r.to} holds ${r.keys.join(', ')} with another value; keep one value per key (drop it from one file), then run /alfred-code:update`);
+    else if (r.state === 'exposed')
+        log(`  !! sensitive data: ${r.from} not moved - git would commit ${r.to}; ignore it (the data root's .gitignore is the project's own), then run /alfred-code:update`);
+    else if (r.state === 'empty') log(`  sensitive data: ${r.from} holds no KEY=value line - left as it is`);
+    else if (r.state === 'blocked' || r.state === 'failed') log(`  !! sensitive data: ${r.from} not moved (${r.why}) - the next run tries again`);
+}
+
 // The data root's own files, once the docs root is settled: its `.gitignore` (docs.ensureDataIgnore - the
 // docs stay visible to git, everything else is machine state), serena's project.yml seeded where serena
 // reads it this run (the root, or a 2.0.0 .serena its launcher has not moved yet) and its home config
@@ -958,8 +982,10 @@ function dataRootLayer(ctx, docsPath)
 {
     const { projectRoot, log, note } = ctx;
     const root = ctx.dataInfo.root;
+    let ignoreOk = true;
     try { docs.ensureDataIgnore({ projectRoot, root, docsPath, log }); }
-    catch (err) { note(`${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore, keeping its docs/ folder visible`); }
+    catch (err) { ignoreOk = false; note(`${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore, keeping its docs/ folder visible`); }
+    if (ignoreOk) adoptCredentials(ctx, root, docsPath);
     const navigation = ctx.lists.mcps.some((e) => e.startsWith('alfred-navigation|'));
     const serenaDir = ctx.liveOf('serena');
     serena.seedProject({ projectRoot, selected: navigation, dir: serenaDir, root, log });

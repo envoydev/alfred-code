@@ -616,3 +616,60 @@ test('sensitive data: a store alone holds the root - --data-path without --data-
     assert.strictEqual(both.result.text('.alfred/.sensitive-data'), 'K=old\n');
     assert.strictEqual(both.result.text('.data/.sensitive-data'), 'K=new\n', 'neither side touched');
 });
+
+// The run book's credentials file from before 2026-10-13 moves into the store on any run, both routes - keys named,
+// values never printed - and the run book names the store; a re-run says nothing; a clash is said and moves nothing.
+test('old credentials: an update moves credentials.local.env into the store and re-points the run book; a re-run is quiet', POSIX_ONLY, () =>
+{
+    const CAP = (repo) => path.join(repo, '.alfred', 'docs', 'project-capabilities');
+    const old = (repo) =>
+    {
+        put(path.join(CAP(repo), 'credentials.local.env'), 'ADMIN_EMAIL=me@x.io\nADMIN_PASSWORD=pa55-w0rd-xyz\n');
+        put(path.join(CAP(repo), '.gitignore'), 'credentials.local.env\n');
+        put(path.join(CAP(repo), 'PROJECT-CAPABILITIES.md'), '- Credentials live in: `.alfred/docs/project-capabilities/credentials.local.env`, key `ADMIN_PASSWORD`\n');
+    };
+    for (const [route, env] of [['plugin', {}], ['copy', COPY_ENV]])
+    {
+        const { steps, outs } = seedRun(['install', 'update', 'update'], SELECTION, {
+            prepare: prep, env, args: [['--scope', 'project'], UPDATE, UPDATE],
+            each: (repo, i) =>
+            {
+                if (i === 0) old(repo);
+                return { store: read(path.join(repo, '.alfred', '.sensitive-data')), cred: fs.existsSync(path.join(CAP(repo), 'credentials.local.env')), book: read(path.join(CAP(repo), 'PROJECT-CAPABILITIES.md')) };
+            },
+        });
+        // The install itself already moves a file present before it ran; here the file lands after it, so the first update moves it.
+        assert.ok(steps[0].cred, route);
+        assert.match(outs[1], /sensitive data: \.alfred\/docs\/project-capabilities\/credentials\.local\.env -> \.alfred\/\.sensitive-data \(ADMIN_EMAIL, ADMIN_PASSWORD added\); the run book names it now/, `${route}:\n${outs[1]}`);
+        assert.match(steps[1].store, /^ADMIN_PASSWORD=pa55-w0rd-xyz$/m, route);
+        assert.ok(!steps[1].cred, route);
+        assert.strictEqual(steps[1].book, '- Credentials live in: `.alfred/.sensitive-data`, key `ADMIN_PASSWORD`\n', route);
+        assert.ok(!outs.join('\n').includes('pa55-w0rd-xyz') && !outs.join('\n').includes('me@x.io'), `${route}: a value was printed`);
+        assert.doesNotMatch(outs[2], /sensitive data:/, `${route}: the re-run says nothing`);
+        assert.deepStrictEqual(steps[2], steps[1], route);
+    }
+    const clash = seedRun(['install', 'update', 'update'], SELECTION, {
+        prepare: prep, env: COPY_ENV, args: [['--scope', 'project'], UPDATE, UPDATE],
+        each: (repo, i) => { if (i === 0) { old(repo); put(path.join(repo, '.alfred', '.sensitive-data'), 'ADMIN_PASSWORD=another\n'); } return read(path.join(repo, '.alfred', '.sensitive-data')); },
+    });
+    for (const i of [1, 2]) assert.match(clash.outs[i], /!! sensitive data: \.alfred\/docs\/project-capabilities\/credentials\.local\.env not moved - \.alfred\/\.sensitive-data holds ADMIN_PASSWORD with another value/, clash.outs[i]);
+    assert.strictEqual(clash.steps[2], 'ADMIN_PASSWORD=another\n');
+});
+
+// Found by the temp-project matrix: a docs root only settings.local.json names is the one a session (and so the capture)
+// writes the run book under, while this run's docs root is settings.json's at project scope (R98) - the file there moved
+// nowhere. Both roots are looked in.
+test('old credentials: a run book under a docs root only settings.local.json names is moved too', POSIX_ONLY, () =>
+{
+    const { steps, outs } = seedRun(['install', 'update'], SELECTION, {
+        prepare: (repo) => { prep(repo); put(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'handbook' } })); },
+        env: COPY_ENV, args: [['--scope', 'project'], UPDATE],
+        each: (repo, i) =>
+        {
+            if (i === 0) put(path.join(repo, 'handbook', 'project-capabilities', 'credentials.local.env'), 'ADMIN_PASSWORD=pa55-w0rd-xyz\n');
+            return read(path.join(repo, '.alfred', '.sensitive-data'));
+        },
+    });
+    assert.match(outs[1], /sensitive data: handbook\/project-capabilities\/credentials\.local\.env -> \.alfred\/\.sensitive-data \(ADMIN_PASSWORD added\)/, outs[1]);
+    assert.match(steps[1] || '', /^ADMIN_PASSWORD=pa55-w0rd-xyz$/m);
+});
