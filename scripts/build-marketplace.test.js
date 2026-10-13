@@ -146,7 +146,7 @@ test('mergeHooks keeps one group per matcher, the first block\'s hooks first', (
 const RETIRED_ALIAS_NAMES = [...Object.keys(require('./install/manifest.js').loadManifest(path.join(__dirname, '..')).renamed.mcps)
     .flatMap((old) => (old === 'playwright' ? ['chrome', 'msedge', 'firefox', 'webkit'].map((e) => `${old}-${e}`) : [old]))];
 test('no RETIRED alias is generated or listed: the renamed MCP ids are gone', () => {
-    assert.strictEqual(RETIRED_ALIAS_NAMES.length, 9, 'serena, context7, the four playwright engines and the three 2.2.0 ids');
+    assert.strictEqual(RETIRED_ALIAS_NAMES.length, 11, 'serena, context7, the four playwright engines, the three 2.2.0 ids and the two desktop servers (2026-10-13)');
     for (const name of RETIRED_ALIAS_NAMES) assert.strictEqual(shippedBy[name], undefined, `${name} is still listed`);
     assert.strictEqual(SHIPPED.plugins.filter((p) => /^RETIRED/.test(p.description || '')).length, 0, 'no RETIRED row at all');
     assert.ok(!('aliasEntries' in require('./build-marketplace.js')) && !('mcpAliasEntries' in require('./build-marketplace.js')), 'no generator is left to bring one back');
@@ -243,14 +243,14 @@ test('the three locked MCP plugins ship standalone, one server each, depending o
 
 // The desktop servers drive the machine's own apps: each one plugin, one server of its own name, a
 // droppable pick that depends on nothing (I7), started through the launcher that pins the Python and
-// refuses on the other OS. windows-desktop ships with shell, registry, process and file-system control
+// refuses on the other OS. windows-control ships with shell, registry, process and file-system control
 // switched off (I10: FileSystem writes, moves and deletes where no house guard looks).
 test('the two desktop MCP plugins: one server each, launched through desktop-launch.js at the release pin', () => {
     const pins = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins;
     const cut = ['--exclude-newer', `${JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).refreshed}T23:59:59Z`];
     const want = {
-        'windows-desktop': ['--server', 'windows-desktop', '--package', `windows-mcp==${pins['windows-desktop'].version}`, ...cut, '--', 'serve', '--exclude-tools', 'PowerShell,Registry,Process,FileSystem'],
-        'macos-desktop': ['--server', 'macos-desktop', '--package', `macos-mcp==${pins['macos-desktop'].version}`, ...cut, '--', 'serve'],
+        'windows-control': ['--server', 'windows-control', '--package', `windows-mcp==${pins['windows-control'].version}`, ...cut, '--', 'serve', '--exclude-tools', 'PowerShell,Registry,Process,FileSystem'],
+        'macos-control': ['--server', 'macos-control', '--package', `macos-mcp==${pins['macos-control'].version}`, ...cut, '--', 'serve'],
     };
     for (const [name, args] of Object.entries(want))
     {
@@ -283,7 +283,7 @@ test('no generated MCP entry declares a dependency - none may block a core disab
 // lifespan: windows-mcp 0.8.5 and macos-mcp 0.4.6 __main__.py, default 'true'). A server driving the
 // user's own desktop starts with it off.
 test('the two desktop MCP plugins start their upstream with its telemetry off', () => {
-    for (const name of ['windows-desktop', 'macos-desktop'])
+    for (const name of ['windows-control', 'macos-control'])
         assert.deepStrictEqual(shippedBy[name].mcpServers[name].env, { ANONYMIZED_TELEMETRY: 'false' }, `${name} must pass ANONYMIZED_TELEMETRY=false`);
 });
 
@@ -293,7 +293,7 @@ test('M24 each uvx MCP entry hands its launcher the release cut-off, and the bro
 {
     const pins = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8'));
     const cutoff = `${pins.refreshed}T23:59:59Z`;
-    for (const name of ['alfred-navigation', 'alfred-memory', 'windows-desktop', 'macos-desktop'])
+    for (const name of ['alfred-navigation', 'alfred-memory', 'windows-control', 'macos-control'])
     {
         const args = shippedBy[name].mcpServers[name].args;
         const at = args.indexOf('--exclude-newer');

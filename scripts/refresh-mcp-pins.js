@@ -46,8 +46,8 @@ const PACKAGES = {
     // The memory pin is spelled '==<v>' INSIDE the extras brackets ('mcp-memory-service[sqlite]==<v>'),
     // not '@<v>' like the others, which have no extras suffix to sit next to.
     'alfred-memory': { registry: 'pypi', package: 'mcp-memory-service', spelling: '==<v>' },
-    'windows-desktop': { registry: 'pypi', package: 'windows-mcp',      spelling: '==<v>' },
-    'macos-desktop':   { registry: 'pypi', package: 'macos-mcp',        spelling: '==<v>' },
+    'windows-control': { registry: 'pypi', package: 'windows-mcp',      spelling: '==<v>' },
+    'macos-control':   { registry: 'pypi', package: 'macos-mcp',        spelling: '==<v>' },
 };
 
 function npmLatest(pkg)
@@ -262,7 +262,7 @@ async function listTools(name, row, { cutoff = '' } = {})
         if (name === 'browser')
             return await stdioTools('npx', ['-y', `@playwright/mcp@${v}`, '--caps', 'vision,pdf,devtools', '--headless', '--isolated', '--output-dir', scratch]);
         if (name === 'alfred-documentation') return await httpTools('https://mcp.context7.com/mcp');
-        if (name === 'windows-desktop' || name === 'macos-desktop')
+        if (name === 'windows-control' || name === 'macos-control')
         {
             const files = wheelFiles(PACKAGES[name].package, v, (f) => f.endsWith('.py'));
             const names = files ? [...new Set(Object.values(files).flatMap((t) => [...t.matchAll(DESKTOP_TOOL)].map((m) => m[1])))] : [];

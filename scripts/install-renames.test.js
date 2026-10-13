@@ -259,7 +259,7 @@ test('respellRenamed (I2): the longest old name wins, and a shorter one inside i
 // spellings are built, never typed: lint 54 and 59 read this file.
 const pluginTool = (n, t) => `mcp__plugin_${n}_${n}__${t}`;
 const bareTool = (n, t) => `mcp_${'_'}${n}__${t}`;
-test('respellRenamed: a generated rule\'s old MCP tool spellings and routing keys follow the 2.0.0 and 2.2.0 renames straight to today\'s names, and a second run changes nothing', () =>
+test('respellRenamed: a generated rule\'s old MCP tool spellings and routing keys follow the 2.0.0, 2.2.0 and 2026-10-13 renames straight to today\'s names, and a second run changes nothing', () =>
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-docs-'));
     try
@@ -270,6 +270,7 @@ test('respellRenamed: a generated rule\'s old MCP tool spellings and routing key
             `- \`context7\` - first call: \`ToolSearch select:${pluginTool('context7', 'query-docs')}\``,
             `- \`playwright-firefox\` - registered: \`${bareTool('playwright-firefox', 'browser_snapshot')}\``,
             `- \`memory\` - \`${pluginTool('memory', 'memory_search')}\`, and my own \`serena-notes\` stay`,
+            `- \`windows-desktop\` - first call: \`ToolSearch select:${pluginTool('windows-desktop', 'Snapshot')}\`; registered: \`${bareTool('macos-desktop', 'Snapshot')}\``,
             '',
         ].join('\n');
         const after = [
@@ -278,6 +279,7 @@ test('respellRenamed: a generated rule\'s old MCP tool spellings and routing key
             `- \`alfred-documentation\` - first call: \`ToolSearch select:${pluginTool('alfred-documentation', 'query-docs')}\``,
             `- \`browser-firefox\` - registered: \`${bareTool('browser-firefox', 'browser_snapshot')}\``,
             `- \`alfred-memory\` - \`${pluginTool('alfred-memory', 'memory_search')}\`, and my own \`serena-notes\` stay`,
+            `- \`windows-control\` - first call: \`ToolSearch select:${pluginTool('windows-control', 'Snapshot')}\`; registered: \`${bareTool('macos-control', 'Snapshot')}\``,
             '',
         ].join('\n');
         write(dir, '.claude/rules/alfred-agent-awareness.md', before);
@@ -286,7 +288,7 @@ test('respellRenamed: a generated rule\'s old MCP tool spellings and routing key
         run();
         const read = () => fs.readFileSync(path.join(dir, '.claude/rules/alfred-agent-awareness.md'), 'utf8');
         assert.strictEqual(read(), after);
-        assert.deepStrictEqual(logs, ['  renamed: .claude/rules/alfred-agent-awareness.md - 9 old MCP tool or server name(s) re-spelled to the new names']);
+        assert.deepStrictEqual(logs, ['  renamed: .claude/rules/alfred-agent-awareness.md - 12 old MCP tool or server name(s) re-spelled to the new names']);
         logs.length = 0;
         run();
         assert.strictEqual(read(), after, 'a second run changes nothing');

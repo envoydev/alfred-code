@@ -971,7 +971,7 @@ test('read-back (2.1.0): a stamp missing its `seats-route:` line never reads a s
 test('planInventory: scopes - global for a user row, project and local as such, the narrowest when at several, required items none', () =>
 {
     const r = (name, scope, version = '1.0.0') => ({ name, marketplace: 'm', version, scope, enabled: true });
-    const inv = sel.planInventory({ lists: {}, listing: [r('claude-hud', 'user'), r('claude-hud', 'project'), r('browser-webkit', 'local'), r('windows-desktop', 'user'),
+    const inv = sel.planInventory({ lists: {}, listing: [r('claude-hud', 'user'), r('claude-hud', 'project'), r('browser-webkit', 'local'), r('windows-control', 'user'),
         r('alfred-navigation', 'user'), r('alfred-code', 'user'), r('typescript-lsp', 'project', '')] });
-    assert.deepStrictEqual(inv.scopes, { 'claude-hud': 'project', 'browser-webkit': 'local', 'windows-desktop': 'global' }, 'a row with no version is not installed');
+    assert.deepStrictEqual(inv.scopes, { 'claude-hud': 'project', 'browser-webkit': 'local', 'windows-control': 'global' }, 'a row with no version is not installed');
 });

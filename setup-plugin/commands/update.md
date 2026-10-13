@@ -52,7 +52,10 @@ generated file both exist, and the old one is the user's to remove.
 `alfred-project-agent-capabilities.md` -> `alfred-agent-awareness.md`, `alfred-project-run-book.md` ->
 `alfred-project-awareness.md` - each MOVED with its content kept, and the two captures that write them are
 `/capture-agent-awareness` and `/capture-project-awareness` (the run book's doc keeps its path,
-`<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md`).
+`<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md`). The desktop servers are `windows-control` and
+`macos-control` (were `windows-desktop` / `macos-desktop`): update swaps the plugin with its on/off kept, re-spells
+their tools in the generated rules, and `ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE` is the gate key - the old
+`ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` is still read while the new one is unset, with a line saying to rename it.
 `/loop-quality` now works a code-quality assessment by tier, with the `loops/`
 prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project may rely on.
 

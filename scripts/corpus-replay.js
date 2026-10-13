@@ -59,8 +59,8 @@ const ROUTES = [
   // matches: both desktop servers' launchers on both routes. The copy route's bare server spelling is built here,
   // never written - lint check 54 fails on it as literal text.
   { hook: 'guard-desktop-exec.js', event: 'PreToolUse', deny: true,
-    pattern: '^mcp__(plugin_windows-desktop_)?windows-desktop__App$|^mcp__(plugin_macos-desktop_)?macos-desktop__Shell$',
-    tools: ['mcp__plugin_windows-desktop_windows-desktop__App', `mcp__${'windows-desktop'}__App`, 'mcp__plugin_macos-desktop_macos-desktop__Shell', `mcp__${'macos-desktop'}__Shell`] },
+    pattern: '^mcp__(plugin_windows-control_)?windows-control__App$|^mcp__(plugin_macos-control_)?macos-control__Shell$',
+    tools: ['mcp__plugin_windows-control_windows-control__App', `mcp__${'windows-control'}__App`, 'mcp__plugin_macos-control_macos-control__Shell', `mcp__${'macos-control'}__Shell`] },
   { hook: 'guard-stop-contract.js', event: 'Stop', deny: true },
   // One job per recorded shell call's RESULT: an error result is the PostToolUseFailure payload, any
   // other the PostToolUse one. Each job is its own session, so the rate is the per-run upper bound -

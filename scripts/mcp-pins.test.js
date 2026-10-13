@@ -17,7 +17,7 @@ const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const FLOATING = /[\w@/.-]+@latest\b/;
-const PINNED = { browser: '@playwright/mcp', 'alfred-navigation': 'serena-agent', 'alfred-memory': 'mcp-memory-service', 'windows-desktop': 'windows-mcp', 'macos-desktop': 'macos-mcp' };
+const PINNED = { browser: '@playwright/mcp', 'alfred-navigation': 'serena-agent', 'alfred-memory': 'mcp-memory-service', 'windows-control': 'windows-mcp', 'macos-control': 'macos-mcp' };
 
 test('no shipped MCP launch line runs a package on @latest - manifest or generated plugin entries', () =>
 {
@@ -238,5 +238,5 @@ test('M31 meta/mcp-tools.json lists every pinned server at its pin, and the desk
     }
     assert.ok(tools["alfred-documentation"] && tools["alfred-documentation"].tools.includes('query-docs'), 'the hosted documentation server is listed');
     const { WINDOWS_TOOLS } = require('../stack/mcp/desktop-launch.js');
-    assert.deepStrictEqual([...WINDOWS_TOOLS].sort(), [...tools['windows-desktop'].tools].sort());
+    assert.deepStrictEqual([...WINDOWS_TOOLS].sort(), [...tools['windows-control'].tools].sort());
 });

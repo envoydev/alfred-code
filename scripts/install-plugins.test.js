@@ -2309,6 +2309,49 @@ test('rename: a failed install removes nothing; a failed removal is said with it
     assert.deepStrictEqual(official.calls, [], 'the official serena is the user\'s own');
 });
 
+// 2026-10-13 (the user's ruling): windows-desktop and macos-desktop are windows-control and macos-control. A desktop
+// server is opt-in, so its swap keeps the user's own on/off - the settings file's word, never an enable answer, which
+// names browser engines only - and one this run no longer carries goes the way a dropped engine does.
+test('rename: an old desktop server is swapped with its on/off kept; one this run does not carry goes', () =>
+{
+    const renamed = { 'windows-desktop': 'windows-control', 'macos-desktop': 'macos-control' };
+    const set = ['alfred-code@envoydev', 'windows-control@envoydev', 'macos-control@envoydev'];
+    const on = cli();
+    P.migrateRenamed({ rows: [oldRow('windows-desktop')], renamed, set, market: 'envoydev', scope: 'project', engines: { on: ['browser-chrome@envoydev'] }, cli: on });
+    assert.deepStrictEqual(on.calls, ['plugin install windows-control@envoydev --scope project -y', 'plugin uninstall windows-desktop@envoydev --scope project -y'],
+        'on before, on after - an engine answer never switches a desktop server');
+    const off = cli();
+    const isOn = (spec) => ({ 'macos-desktop@envoydev': false })[spec];
+    P.migrateRenamed({ rows: [oldRow('macos-desktop')], renamed, set, market: 'envoydev', scope: 'project', isOn, cli: off });
+    assert.deepStrictEqual(off.calls, ['plugin install macos-control@envoydev --scope project -y', 'plugin disable macos-control@envoydev --scope project',
+        'plugin uninstall macos-desktop@envoydev --scope project -y'], 'left off in the settings file: arrives off');
+    const gone = cli();
+    P.migrateRenamed({ rows: [oldRow('windows-desktop')], renamed, set: ['alfred-code@envoydev'], market: 'envoydev', scope: 'project', cli: gone });
+    assert.deepStrictEqual(gone.calls, ['plugin uninstall windows-desktop@envoydev --scope project -y'], 'not carried: removed, nothing installed');
+});
+
+// The set lacks a desktop server the user parked, and one this machine's OS gate left out while a teammate's project-scope
+// row enables it. Either way the row is the state: on the plugin route (`keep`) the successor takes its place with its
+// on/off - a parked one arrives off, a teammate's stays on - and one at another scope is only named.
+test('rename: a parked or OS-gated desktop row the set lacks is swapped with its on/off where keep says so', () =>
+{
+    const renamed = { 'windows-desktop': 'windows-control', 'macos-desktop': 'macos-control' };
+    const keep = (name) => name === 'windows-control' || name === 'macos-control';
+    const parked = cli();
+    P.migrateRenamed({ rows: [oldRow('macos-desktop', { enabled: false })], renamed, set: ['alfred-code@envoydev'], market: 'envoydev', scope: 'project', keep, cli: parked });
+    assert.deepStrictEqual(parked.calls, ['plugin install macos-control@envoydev --scope project -y', 'plugin disable macos-control@envoydev --scope project',
+        'plugin uninstall macos-desktop@envoydev --scope project -y'], 'parked stays parked under the new name');
+    const gated = cli();
+    P.migrateRenamed({ rows: [oldRow('windows-desktop')], renamed, set: ['alfred-code@envoydev'], market: 'envoydev', scope: 'project', keep, cli: gated });
+    assert.deepStrictEqual(gated.calls, ['plugin install windows-control@envoydev --scope project -y', 'plugin uninstall windows-desktop@envoydev --scope project -y'],
+        'a teammate\'s enabled row stays enabled');
+    const elsewhere = cli();
+    const logs = [];
+    P.migrateRenamed({ rows: [oldRow('windows-desktop', { scope: 'user' })], renamed, set: ['alfred-code@envoydev'], market: 'envoydev', scope: 'project', keep, cli: elsewhere, log: (m) => logs.push(m) });
+    assert.deepStrictEqual(elsewhere.calls, [], 'another scope is not this run\'s');
+    assert.match(logs.join('\n'), /windows-desktop@envoydev is installed at user scope, not this run's - renamed windows-control and not carried here/);
+});
+
 // The seed end to end: an install made before the rename (its stamp spells the browser lines the old
 // way, its listing holds the old ids, firefox left off in the settings file) is updated. The old rows
 // are swapped at their own scope - the user-scope context7 at user scope - each new one before its old

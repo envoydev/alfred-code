@@ -296,7 +296,7 @@ the navigation server and the documentation server are. `browser` is droppable: 
 and browser-extension stacks, pre-selected elsewhere only when the evidence scan matched it, and in
 DELTA preserved across runs like any direct pick (`raw.json` carries it). The two desktop servers drive
 the machine's own apps, so the table offers each on its own OS only and neither on Linux:
-`windows-desktop` (Windows-MCP) on Windows, seeded on the WPF and WinForms stacks, and `macos-desktop`
+`windows-control` (Windows-MCP) on Windows, seeded on the WPF and WinForms stacks, and `macos-control`
 (MacOS-MCP) on macOS, seeded by no stack - a plain add. A seed this OS cannot run comes back as one
 `skipped: mcp <name> - ...` line on stderr instead of a row; say it in one line under the table. Picking
 either is opt-in consent to a server that clicks through the user's own desktop with their full rights,
@@ -324,7 +324,7 @@ MCPs: alfred-navigation, alfred-documentation and alfred-memory always install. 
 ```
 
 ```ask
-Add <windows-desktop | macos-desktop>? It clicks through your desktop apps with your full rights.
+Add <windows-control | macos-control>? It clicks through your desktop apps with your full rights.
 - 'Leave it out (Recommended)' - opt-in only; recommend 'Add' instead when WPF or WinForms is confirmed on Windows
 - 'Add the desktop server' - needs the OS grants the installer prints (Accessibility and Screen Recording on macOS)
 ```

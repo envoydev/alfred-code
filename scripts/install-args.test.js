@@ -411,8 +411,8 @@ test('install-args: --playwright-browsers and --playwright-enabled still read, a
 test('install-args: --scope-of gives an optional item its own scope; the required ones take none', () =>
 {
     assert.deepStrictEqual(ok(['install']).scopeOf, {}, 'no choice made: the run decides');
-    const a = ok(['install', '--scope-of', 'claude-hud=global', '--scope-of=csharp-lsp=project', '--scope-of', 'Windows-Desktop=User']);
-    assert.deepStrictEqual(a.scopeOf, { 'claude-hud': 'user', 'csharp-lsp': 'project', 'windows-desktop': 'user' }, 'global and user are one, the spelling is case-free');
+    const a = ok(['install', '--scope-of', 'claude-hud=global', '--scope-of=csharp-lsp=project', '--scope-of', 'Windows-Control=User']);
+    assert.deepStrictEqual(a.scopeOf, { 'claude-hud': 'user', 'csharp-lsp': 'project', 'windows-control': 'user' }, 'global and user are one, the spelling is case-free');
     const b = ok(['install', '--scope-of', 'browser=global', '--scope-of', 'browser-webkit=project']);
     assert.deepStrictEqual(b.scopeOf, { 'browser-chrome': 'user', 'browser-firefox': 'user', 'browser-msedge': 'user', 'browser-webkit': 'project' }, 'browser is every engine; a later engine line wins for its own');
     for (const item of ['alfred-code', 'alfred-navigation', 'alfred-memory', 'alfred-documentation', 'superpowers'])

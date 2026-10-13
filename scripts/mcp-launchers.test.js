@@ -435,13 +435,13 @@ test('memory-launch: uvx gets the same Python pin ahead of the package', POSIX, 
 });
 
 // ------------------------------------------------------------------ desktop-launch.js
-// The two desktop servers drive THIS machine's own apps: windows-desktop (Windows-MCP) on Windows,
-// macos-desktop (MacOS-MCP) on macOS. The OS is forced through ALFRED_CODE_PLATFORM so every case runs
+// The two desktop servers drive THIS machine's own apps: windows-control (Windows-MCP) on Windows,
+// macos-control (MacOS-MCP) on macOS. The OS is forced through ALFRED_CODE_PLATFORM so every case runs
 // on any host.
 const DESKTOP = path.join(ROOT, 'stack/mcp/desktop-launch.js');
 // I10: the shipped entry's own argv - FileSystem (write, copy, move, delete) joins the default gate.
-const WIN_ARGS = entryArgs('windows-desktop');
-const MAC_ARGS = ['--server', 'macos-desktop', '--package', 'macos-mcp==0.4.6', '--', 'serve'];
+const WIN_ARGS = entryArgs('windows-control');
+const MAC_ARGS = ['--server', 'macos-control', '--package', 'macos-mcp==0.4.6', '--', 'serve'];
 
 function desktopRun(name, args, { env = {}, settings } = {})
 {
@@ -454,7 +454,7 @@ function desktopRun(name, args, { env = {}, settings } = {})
     return { ...res, argv };
 }
 
-test('desktop-launch: windows-desktop gets the Python pin, the pinned package, serve and the safe tool gate, in order', POSIX, () =>
+test('desktop-launch: windows-control gets the Python pin, the pinned package, serve and the safe tool gate, in order', POSIX, () =>
 {
     const got = desktopRun('desktop-win', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32' } });
     assert.strictEqual(got.status, 0, got.stderr);
@@ -462,25 +462,40 @@ test('desktop-launch: windows-desktop gets the Python pin, the pinned package, s
     assert.strictEqual(got.stdout, '', 'stdout is the MCP stream - the launcher writes nothing there');
 });
 
-test('desktop-launch: ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE replaces the list, and none passes no gate at all', POSIX, () =>
+test('desktop-launch: ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE replaces the list, and none passes no gate at all', POSIX, () =>
 {
-    const one = desktopRun('desktop-win-one', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'PowerShell' } });
+    const one = desktopRun('desktop-win-one', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'PowerShell' } });
     assert.deepStrictEqual(one.argv.slice(6), ['windows-mcp', 'serve', '--exclude-tools', 'PowerShell']);
-    const none = desktopRun('desktop-win-none', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } });
+    const none = desktopRun('desktop-win-none', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'none' } });
     assert.deepStrictEqual(none.argv.slice(6), ['windows-mcp', 'serve'], 'none must pass no --exclude-tools, so the user\'s own Windows-MCP config applies');
-    const empty = desktopRun('desktop-win-empty', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: '' } });
+    const empty = desktopRun('desktop-win-empty', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: '' } });
     assert.deepStrictEqual(empty.argv.slice(8), ['--exclude-tools', 'PowerShell,Registry,Process,FileSystem'], 'an empty override is no override');
 });
 
 test('desktop-launch: the override is read from the PROJECT settings a plugin server never gets as env', POSIX, () =>
 {
-    const got = desktopRun('desktop-win-proj', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32' }, settings: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } });
+    const got = desktopRun('desktop-win-proj', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32' }, settings: { ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'none' } });
     assert.deepStrictEqual(got.argv.slice(6), ['windows-mcp', 'serve']);
 });
 
-test('desktop-launch: macos-desktop runs serve on the pin, and the Windows gate never reaches it', POSIX, () =>
+// 2026-10-13: the key followed the server's rename (windows-desktop -> windows-control). One the user set under the old
+// spelling - in the shell or a settings file - still decides while the new one is unset, and is named as renamed; the
+// new one wins when both are set. A lifted gate never closes quietly on an update, an open one never opens.
+test('desktop-launch: the old WINDOWS_DESKTOP_EXCLUDE is still read while the new key is unset, named as renamed; the new key wins', POSIX, () =>
 {
-    const got = desktopRun('desktop-mac', MAC_ARGS, { env: { ALFRED_CODE_PLATFORM: 'darwin', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'Shell' } });
+    const shell = desktopRun('desktop-win-oldkey', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } });
+    assert.deepStrictEqual(shell.argv.slice(6), ['windows-mcp', 'serve'], 'the old none still lifts the gate');
+    assert.match(shell.stderr, /ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE read as ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE - the server is windows-control now/);
+    const file = desktopRun('desktop-win-oldfile', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32' }, settings: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'PowerShell' } });
+    assert.deepStrictEqual(file.argv.slice(6), ['windows-mcp', 'serve', '--exclude-tools', 'PowerShell'], 'a settings file\'s old key too');
+    const both = desktopRun('desktop-win-bothkeys', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none', ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'Registry' } });
+    assert.deepStrictEqual(both.argv.slice(6), ['windows-mcp', 'serve', '--exclude-tools', 'Registry'], 'the new key wins');
+    assert.doesNotMatch(both.stderr, /read as/, 'and no rename line then');
+});
+
+test('desktop-launch: macos-control runs serve on the pin, and the Windows gate never reaches it', POSIX, () =>
+{
+    const got = desktopRun('desktop-mac', MAC_ARGS, { env: { ALFRED_CODE_PLATFORM: 'darwin', ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'Shell' } });
     assert.strictEqual(got.status, 0, got.stderr);
     assert.deepStrictEqual(got.argv, ['--python', '3.13', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve']);
 });
@@ -504,20 +519,20 @@ test('desktop-launch: the wrong-OS line names the local-scope disable, for this 
 {
     const got = desktopRun('desktop-win-on-mac-line', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'darwin' } });
     assert.strictEqual(got.status, 1);
-    assert.match(got.stderr, /not started - keep it off on this machine only: claude plugin disable windows-desktop@envoydev --scope local\n$/);
+    assert.match(got.stderr, /not started - keep it off on this machine only: claude plugin disable windows-control@envoydev --scope local\n$/);
     assert.doesNotMatch(got.stderr, /\/plugin/, 'the /plugin toggle writes the scope the entry sits at - a project one reaches every teammate');
-    const cached = path.join(TMP, 'cache-copy', 'plugins', 'cache', 'acme-key', 'windows-desktop', '2.0.0', 'stack', 'mcp');
+    const cached = path.join(TMP, 'cache-copy', 'plugins', 'cache', 'acme-key', 'windows-control', '2.0.0', 'stack', 'mcp');
     fs.mkdirSync(cached, { recursive: true });
     for (const f of ['desktop-launch.js', 'uv-python.js']) fs.copyFileSync(path.join(ROOT, 'stack/mcp', f), path.join(cached, f));
     let stderr = '';
     try { execFileSync(process.execPath, [path.join(cached, 'desktop-launch.js'), ...WIN_ARGS], { env: { ...BARE, ALFRED_CODE_PLATFORM: 'linux' }, stdio: 'pipe', encoding: 'utf8' }); }
     catch (err) { stderr = String(err.stderr || ''); }
-    assert.match(stderr, /claude plugin disable windows-desktop@acme-key --scope local/, 'the marketplace key is the cache folder the launcher runs from');
+    assert.match(stderr, /claude plugin disable windows-control@acme-key --scope local/, 'the marketplace key is the cache folder the launcher runs from');
 });
 
 test('desktop-launch: a hand-edited entry with no --server or --package says so instead of launching something else', () =>
 {
-    for (const args of [['--package', 'windows-mcp==0.8.5', '--', 'serve'], ['--server', 'windows-desktop', '--', 'serve'], ['--server', 'linux-desktop', '--package', 'x==1']])
+    for (const args of [['--package', 'windows-mcp==0.8.5', '--', 'serve'], ['--server', 'windows-control', '--', 'serve'], ['--server', 'linux-desktop', '--package', 'x==1']])
     {
         let code = 0;
         try { execFileSync(process.execPath, [DESKTOP, ...args], { env: { ...BARE, ALFRED_CODE_PLATFORM: 'win32' }, stdio: 'pipe' }); }
@@ -544,13 +559,13 @@ const PINS_FILE = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'mcp-pins.j
 const CUTOFF = `${PINS_FILE.refreshed}T23:59:59Z`;
 test('M24 uvx launchers: the shipped entry\'s --exclude-newer cut-off reaches uvx right after the Python pin', POSIX, () =>
 {
-    const cases = [['alfred-navigation', SERENA], ['alfred-memory', LAUNCH], ['windows-desktop', DESKTOP], ['macos-desktop', DESKTOP]];
+    const cases = [['alfred-navigation', SERENA], ['alfred-memory', LAUNCH], ['windows-control', DESKTOP], ['macos-control', DESKTOP]];
     for (const [name, launcher] of cases)
     {
         const { dir, acct } = project(`cutoff-${name}`, { settings: { ALFRED_CODE_MEMORY_DB: path.join(TMP, `cutoff-${name}-db`, 'memory.db') } });
         fs.mkdirSync(path.join(dir, '.git'), { recursive: true });
         const uvx = stubUvx(`cutoff-${name}`);
-        const platform = name === 'windows-desktop' ? 'win32' : 'darwin';
+        const platform = name === 'windows-control' ? 'win32' : 'darwin';
         execFileSync(process.execPath, [launcher, ...entryArgs(name)], { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, CLAUDE_CONFIG_DIR: acct, ALFRED_CODE_PLATFORM: platform }, stdio: 'pipe' });
         const argv = uvx.argv().argv;
         assert.deepStrictEqual(argv.slice(0, 4), ['--python', '3.13', '--exclude-newer', CUTOFF], `${name}: ${argv.join(' ')}`);
@@ -578,7 +593,7 @@ test('M24 uvx launchers: a UV_EXCLUDE_NEWER only a settings file names reaches u
     const db = path.join(TMP, 'cutoff-file-db', 'memory.db');
     const cases = [['alfred-navigation', SERENA, { settings: { UV_EXCLUDE_NEWER: 'false' } }, 'false'],
         ['alfred-memory', LAUNCH, { settings: { ALFRED_CODE_MEMORY_DB: db }, local: { UV_EXCLUDE_NEWER: '2026-01-15' } }, '2026-01-15'],
-        ['macos-desktop', DESKTOP, { account: { UV_EXCLUDE_NEWER: 'false' } }, 'false']];
+        ['macos-control', DESKTOP, { account: { UV_EXCLUDE_NEWER: 'false' } }, 'false']];
     for (const [name, launcher, files, want] of cases)
     {
         const { dir, acct } = project(`cutoff-file-${name}`, files);
@@ -598,11 +613,11 @@ test('M24 uvx launchers: a UV_EXCLUDE_NEWER only a settings file names reaches u
 // the environment lifts the whole gate (windows-mcp 0.8.5 __main__.py _apply_tool_filter, the --tools envvar).
 test('M41 desktop-launch: an override is checked against the pinned tool names - case mended, an unknown name said and dropped', POSIX, () =>
 {
-    const mended = desktopRun('desktop-win-case', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'powershell,Registry,NoSuchTool' } });
+    const mended = desktopRun('desktop-win-case', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'powershell,Registry,NoSuchTool' } });
     assert.strictEqual(mended.status, 0, mended.stderr);
     assert.deepStrictEqual(mended.argv.slice(-2), ['--exclude-tools', 'PowerShell,Registry']);
     assert.match(mended.stderr, /NoSuchTool is no Windows-MCP tool/);
-    const junk = desktopRun('desktop-win-junk', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'nothing-real' } });
+    const junk = desktopRun('desktop-win-junk', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'nothing-real' } });
     assert.deepStrictEqual(junk.argv.slice(-2), ['--exclude-tools', 'PowerShell,Registry,Process,FileSystem'], 'an override naming no real tool keeps the safe default, never an open gate');
 });
 
@@ -618,11 +633,11 @@ test('M41 desktop-launch: a WINDOWS_MCP_TOOLS in the environment never reaches W
 test('desktop gate: each server runs on its own OS only, and an unknown platform override is ignored', () =>
 {
     const { offeredOn, platformOf, DESKTOP_OS } = require(DESKTOP);
-    assert.deepStrictEqual(DESKTOP_OS, { 'windows-desktop': 'win32', 'macos-desktop': 'darwin' });
-    assert.strictEqual(offeredOn('windows-desktop', 'win32'), true);
-    assert.strictEqual(offeredOn('windows-desktop', 'darwin'), false);
-    assert.strictEqual(offeredOn('macos-desktop', 'darwin'), true);
-    assert.strictEqual(offeredOn('macos-desktop', 'linux'), false);
+    assert.deepStrictEqual(DESKTOP_OS, { 'windows-control': 'win32', 'macos-control': 'darwin' });
+    assert.strictEqual(offeredOn('windows-control', 'win32'), true);
+    assert.strictEqual(offeredOn('windows-control', 'darwin'), false);
+    assert.strictEqual(offeredOn('macos-control', 'darwin'), true);
+    assert.strictEqual(offeredOn('macos-control', 'linux'), false);
     assert.strictEqual(offeredOn('browser', 'linux'), true, 'a server that is no desktop server runs anywhere');
     assert.strictEqual(platformOf({ ALFRED_CODE_PLATFORM: 'win32' }), 'win32');
     assert.strictEqual(platformOf({ ALFRED_CODE_PLATFORM: 'beos' }), process.platform);
@@ -914,7 +929,7 @@ test('S3 launchers: started in a subdirectory, or under another folder\'s CLAUDE
 {
     const home = path.join(TMP, 's3-home');
     fs.mkdirSync(home, { recursive: true });
-    const { dir, acct } = project('s3-root', { settings: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'PowerShell' } });
+    const { dir, acct } = project('s3-root', { settings: { ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'PowerShell' } });
     const real = fs.realpathSync(dir);
     const projectDb = path.join(real, '.alfred', '.alfred-memory', 'memory.db');
     fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: projectDb } }));

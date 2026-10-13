@@ -99,9 +99,11 @@ else process.exit(1);
 // array with one entry PER STEP, for a case whose steps need different `--source` snapshots or
 // different flags (only an array of arrays switches `args` to per-step). A per-step entry may be a
 // function of (repo, work), called just before its step runs - for flags built from an earlier step.
+// `seed` is the installer each step runs - this tree's by default, or one per step, so an update over an older
+// install runs that install with the older tree's own installer, as a real one was.
 // `failOk` keeps a run that exits non-zero (a refusal) from throwing: the tree still reaches `inspect`,
 // and the last run's exit status and stderr come back as `code` and `err`.
-function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, args = [], prepare = () => {}, inspect = () => null, each = () => null, failOk = false, account = false } = {})
+function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, seed = SEED, args = [], prepare = () => {}, inspect = () => null, each = () => null, failOk = false, account = false } = {})
 {
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-sandbox-'));
     const repo = path.join(work, 'repo');
@@ -158,7 +160,7 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
             const src = sourceAt(i);
             try
             {
-                outs.push(execFileSync(process.execPath, [SEED, act, '--selection', path.join(work, 'sel.txt'), ...(src ? ['--source', src] : []), ...argsAt(i)],
+                outs.push(execFileSync(process.execPath, [Array.isArray(seed) ? seed[i] : seed, act, '--selection', path.join(work, 'sel.txt'), ...(src ? ['--source', src] : []), ...argsAt(i)],
                     { cwd: repo, env: envAt(i), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
                 code = 0;
                 err = '';

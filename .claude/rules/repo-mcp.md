@@ -87,11 +87,11 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     (RCE-equivalent) through their `disallowedTools`, which Claude Code applies before `tools` resolves
     (code.claude.com/docs/en/sub-agents). The data root's own `.gitignore` keeps the profiles out of
     git (they hold session cookies); a 2.0.0 `.playwright/<engine>` still in use gets `.playwright/.gitignore` (`*`).
-  - `windows-desktop` (Windows-MCP) and `macos-desktop` (MacOS-MCP) - each drives the machine's OWN
+  - `windows-control` (Windows-MCP) and `macos-control` (MacOS-MCP) - each drives the machine's OWN
     desktop apps, so each installs on its own OS only and neither on Linux (`stack/mcp/desktop-launch.js`
     is the one home of which OS each drives; the walk's table, `--missing` / `--redundant`, the installer
-    and the launcher all read it). windows-desktop is seeded for the WPF and WinForms stacks there;
-    macos-desktop is seeded by no stack. Both manifest rows ship `active: false` - in the catalog, never
+    and the launcher all read it). windows-control is seeded for the WPF and WinForms stacks there;
+    macos-control is seeded by no stack. Both manifest rows ship `active: false` - in the catalog, never
     in a run that names no selection - because a server that clicks through the user's desktop with
     their full rights is opt-in. A server left out is named in one line, a row another machine enabled at
     project scope is left as it is - that line and the launcher's own refusal name `claude plugin disable
@@ -100,7 +100,7 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     display language and matching privilege on Windows, the Accessibility and Screen Recording grants
     on macOS, uv when missing). Windows-MCP starts with `--exclude-tools PowerShell,Registry,Process,FileSystem`
     (2.1.4, I10: FileSystem writes, moves and deletes where no house guard looks);
-    `ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` replaces the list (`none` lifts it) - read by the launcher from
+    `ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE` replaces the list (`none` lifts it) - read by the launcher from
     the shell and the three settings files, and on the copy route resolved into Windows-MCP's own
     `WINDOWS_MCP_EXCLUDE_TOOLS`; each name is checked against the pinned tool list (`desktop-launch.js WINDOWS_TOOLS`,
     held equal to `meta/mcp-tools.json`: case mended, an unknown one named and dropped, a list naming none keeps the
@@ -132,13 +132,15 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   - **The MCP renames** (`meta/stack-manifest.json` `renamed.mcps`, the one table, each old name mapped straight to
     today's - `currentMcp` is single-step): 2.0.0 made `serena`, `context7` and `playwright-<engine>` `navigation`,
     `documentation` and `browser-<engine>`; 2.2.0 (the user's call, 2026-10-06) made `navigation`, `documentation` and
-    `memory` `alfred-navigation`, `alfred-documentation` and `alfred-memory`, plugin and server alike. The old ids were
+    `memory` `alfred-navigation`, `alfred-documentation` and `alfred-memory`, plugin and server alike; 2026-10-13 (the user's
+    call) made `windows-desktop` and `macos-desktop` `windows-control` and `macos-control`, the gate key with them
+    (`ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` is still read while the new one is unset, named as renamed). The old ids were
     listed as RETIRED aliases through 2.2.0 and are UNLISTED from 2.2.1 (the user's ruling of 2026-10-06, every install
     updated), the old tool spellings leaving every seat grant with them; the
     memory readers take either server name (`MEMORY_SERVERS`, `stack/hooks/memory.js` and `scripts/install/memory.js`). An install still on an old id
     no longer loads it once the marketplace refreshes (S25) and gets it back on its next update. Update swaps each old row at THIS run's scope
     (`plugins.migrateRenamed`): the successor installed there first, then the old id removed - an
-    engine keeps its on/off, a locked server comes on. An old row at ANOTHER scope serves the projects
+    engine or desktop server keeps its on/off, a locked server comes on. An old row at ANOTHER scope serves the projects
     there, whose not-yet-updated files still spell the old tools, so it is stood down instead: the
     successor installed at this run's scope, the old id disabled for this project only (`disable
     --scope project`, or `local`), and one `!!` line naming its uninstall for once every project there

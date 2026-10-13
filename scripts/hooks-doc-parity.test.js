@@ -61,9 +61,9 @@ test('I10: the desktop gate is one wired hook, counted everywhere the hooks are 
   const rows = manifestRows().filter((r) => r.file === 'guard-desktop-exec.js');
   assert.strictEqual(rows.length, 1);
   const re = new RegExp(rows[0].matcher);
-  for (const name of ['mcp__plugin_windows-desktop_windows-desktop__App', `mcp__${'windows-desktop'}__App`, 'mcp__plugin_macos-desktop_macos-desktop__Shell', `mcp__${'macos-desktop'}__Shell`])
+  for (const name of ['mcp__plugin_windows-control_windows-control__App', `mcp__${'windows-control'}__App`, 'mcp__plugin_macos-control_macos-control__Shell', `mcp__${'macos-control'}__Shell`])
     assert.ok(re.test(name), name);
-  for (const name of ['mcp__plugin_windows-desktop_windows-desktop__Click', 'mcp__plugin_macos-desktop_macos-desktop__App', `mcp__${'windows-desktop'}__AppX`])
+  for (const name of ['mcp__plugin_windows-control_windows-control__Click', 'mcp__plugin_macos-control_macos-control__App', `mcp__${'windows-control'}__AppX`])
     assert.ok(!re.test(name), `${name} is not matched`);
   assert.match(claude(), /`stack\/hooks\/` - eighteen hooks/);
   assert.match(claude(), /all eighteen, generated from the manifest's `hooks\[\]`/);

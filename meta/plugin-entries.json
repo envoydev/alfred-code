@@ -155,7 +155,7 @@
             ]
           },
           {
-            "matcher": "^mcp__(plugin_windows-desktop_)?windows-desktop__App$|^mcp__(plugin_macos-desktop_)?macos-desktop__Shell$",
+            "matcher": "^mcp__(plugin_windows-control_)?windows-control__App$|^mcp__(plugin_macos-control_)?macos-control__Shell$",
             "hooks": [
               {
                 "type": "command",

@@ -1,6 +1,6 @@
 ---
 name: desktop-automation
-description: "Use when driving a native desktop app through the windows-desktop or macos-desktop server - click, type, read a Snapshot. Not for web pages or the app code."
+description: "Use when driving a native desktop app through the windows-control or macos-control server - click, type, read a Snapshot. Not for web pages or the app code."
 ---
 
 # Desktop automation - observe, one action, verify
@@ -10,15 +10,15 @@ whatever window is in front, and nothing undoes it. So the run looks before ever
 after it, and it drives only the UI the user asked about.
 
 Where the harness defers MCP tools (Claude Code), load them before the first call:
-`ToolSearch select:mcp__plugin_windows-desktop_windows-desktop__Snapshot,mcp__plugin_windows-desktop_windows-desktop__Click,mcp__plugin_windows-desktop_windows-desktop__Type,mcp__plugin_windows-desktop_windows-desktop__WaitFor,mcp__plugin_windows-desktop_windows-desktop__Screenshot`,
-plus the other `mcp__plugin_windows-desktop_windows-desktop__*` names the session's own listing shows, on Windows, and on macOS
-`ToolSearch select:mcp__plugin_macos-desktop_macos-desktop__Snapshot,mcp__plugin_macos-desktop_macos-desktop__Click,mcp__plugin_macos-desktop_macos-desktop__Type,mcp__plugin_macos-desktop_macos-desktop__App`,
-plus the other `mcp__plugin_macos-desktop_macos-desktop__*` names the session's own listing shows.
+`ToolSearch select:mcp__plugin_windows-control_windows-control__Snapshot,mcp__plugin_windows-control_windows-control__Click,mcp__plugin_windows-control_windows-control__Type,mcp__plugin_windows-control_windows-control__WaitFor,mcp__plugin_windows-control_windows-control__Screenshot`,
+plus the other `mcp__plugin_windows-control_windows-control__*` names the session's own listing shows, on Windows, and on macOS
+`ToolSearch select:mcp__plugin_macos-control_macos-control__Snapshot,mcp__plugin_macos-control_macos-control__Click,mcp__plugin_macos-control_macos-control__Type,mcp__plugin_macos-control_macos-control__App`,
+plus the other `mcp__plugin_macos-control_macos-control__*` names the session's own listing shows.
 Only one of the two servers is ever installed - each runs on its own OS only.
 
 ## When to use
 
-Use when driving a native desktop app through the windows-desktop (Windows-MCP) or macos-desktop (MacOS-MCP) server - clicking, typing or checking UI in a WPF, WinForms, Win32, UWP, Office, Explorer, Java or native macOS app, or reading a Snapshot or Click result from one.
+Use when driving a native desktop app through the windows-control (Windows-MCP) or macos-control (MacOS-MCP) server - clicking, typing or checking UI in a WPF, WinForms, Win32, UWP, Office, Explorer, Java or native macOS app, or reading a Snapshot or Click result from one.
 
 Covers the observe, one action, verify loop; which app types give semantic control and which fall back to coordinates; the dialogs never to drive (elevation, credentials, payment, delete); keeping to the UI instead of shell, registry or file-system tools; and the setup failures (English display language, privilege level, Accessibility and Screen Recording).
 

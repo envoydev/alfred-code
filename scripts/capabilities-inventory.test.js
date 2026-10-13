@@ -516,7 +516,7 @@ const PLUGIN_LIST = JSON.stringify([
     { id: 'alfred-memory@envoydev', enabled: true, mcpServers: { 'alfred-memory': {} } },
     { id: 'browser-chrome@envoydev', enabled: true, mcpServers: { 'browser-chrome': {} } },
     { id: 'browser-firefox@envoydev', enabled: false, mcpServers: { 'browser-firefox': {} } },
-    { id: 'windows-desktop@envoydev', enabled: true, mcpServers: { 'windows-desktop': {} }, projectPath: '/nowhere/else' },
+    { id: 'windows-control@envoydev', enabled: true, mcpServers: { 'windows-control': {} }, projectPath: '/nowhere/else' },
     { id: 'csharp-lsp@claude-plugins-official', enabled: true },
 ]);
 

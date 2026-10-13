@@ -312,7 +312,7 @@ test('monitor: a Read of a file that changed between reads is a new input, and a
 // menu Click between other Clicks, drew the repeat row while the screen changed under it.
 test('monitor: an MCP call\'s repeat count restarts after an action on the same server; an observation between keeps it', () =>
 {
-    const W = (name) => `mcp__plugin_windows-desktop_windows-desktop__${name}`;
+    const W = (name) => `mcp__plugin_windows-control_windows-control__${name}`;
     const s = session();
     for (let i = 0; i < 5; i++) { s.call(W('Screenshot'), {}); s.call(W('Click'), { loc: [100 + i, 200] }); }
     assert.strictEqual(s.rows().filter((r) => r.kind === 'repeat').length, 0, 'the measured case: a Screenshot after each Click is a new look');
@@ -321,8 +321,8 @@ test('monitor: an MCP call\'s repeat count restarts after an action on the same 
     assert.strictEqual(s.rows().filter((r) => r.kind === 'repeat').length, 0, 'a menu Click between other Clicks restarts');
     const t = session();
     // the copy route's spelling, deliberately (mcp-fixture)
-    for (let i = 0; i < 5; i++) { t.call('mcp__windows-desktop__Click', { loc: [10, 10] }); t.call('mcp__windows-desktop__Snapshot', {}); } // mcp-fixture
-    assert.deepStrictEqual(t.rows().filter((r) => r.kind === 'repeat').map((r) => r.tool), ['mcp__windows-desktop__Click'], 'the same Click with only Snapshots between is the loop'); // mcp-fixture
+    for (let i = 0; i < 5; i++) { t.call('mcp__windows-control__Click', { loc: [10, 10] }); t.call('mcp__windows-control__Snapshot', {}); } // mcp-fixture
+    assert.deepStrictEqual(t.rows().filter((r) => r.kind === 'repeat').map((r) => r.tool), ['mcp__windows-control__Click'], 'the same Click with only Snapshots between is the loop'); // mcp-fixture
     const u = session();
     for (let i = 0; i < 5; i++) { u.call(W('Screenshot'), {}); u.call('Bash', { command: `echo ${i}` }); u.call('mcp__other__do_thing', { i }); }
     assert.strictEqual(u.rows().filter((r) => r.kind === 'repeat').length, 1, 'a shell call or another server between restarts nothing');
@@ -335,7 +335,7 @@ test('monitor: an MCP call\'s repeat count restarts after an action on the same 
 // them) was prose only; 4 of 53 Clicks broke it.
 test('monitor: a desktop action right after another, no Snapshot between, writes one unobserved-action row', () =>
 {
-    const W = (name) => `mcp__plugin_windows-desktop_windows-desktop__${name}`;
+    const W = (name) => `mcp__plugin_windows-control_windows-control__${name}`;
     const s = session();
     s.call(W('Snapshot'), {});
     s.call(W('Click'), { label: 3 });
@@ -352,10 +352,10 @@ test('monitor: a desktop action right after another, no Snapshot between, writes
     s.call(W('Shortcut'), { keys: 'ctrl+s' });
     assert.strictEqual(s.rows().length, 2, 'a shell call between observes nothing on the screen');
     s.call(W('WaitFor'), { name: 'Saved' });
-    s.call('mcp__macos-desktop__Click', { x: 1, y: 2 }, { agent_id: 'agent-c' }); // mcp-fixture: the copy route's spelling
+    s.call('mcp__macos-control__Click', { x: 1, y: 2 }, { agent_id: 'agent-c' }); // mcp-fixture: the copy route's spelling
     s.call(W('Click'), { label: 6 });
     assert.strictEqual(s.rows().length, 2, 'a WaitFor observes, and a subagent\'s action is its own');
-    s.call('mcp__macos-desktop__Click', { x: 3, y: 4 }, { agent_id: 'agent-c' }); // mcp-fixture
+    s.call('mcp__macos-control__Click', { x: 3, y: 4 }, { agent_id: 'agent-c' }); // mcp-fixture
     rows = s.rows();
     assert.strictEqual(rows.length, 3);
     assert.strictEqual(rows[2].detail.actor, 'agent-c');

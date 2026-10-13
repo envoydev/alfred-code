@@ -1,6 +1,6 @@
-# macos-desktop - MacOS-MCP on macOS
+# macos-control - MacOS-MCP on macOS
 
-The server behind macos-desktop, the two grants it cannot work without, and what their absence looks
+The server behind macos-control, the two grants it cannot work without, and what their absence looks
 like. Checked against MacOS-MCP 0.4.6, the release the stack pins; macOS 12 or later.
 
 ## Tools

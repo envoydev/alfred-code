@@ -39,7 +39,7 @@ test('I45: macos.md says a missing grant stops the start, and the skip switch is
 test('I45: the installer\'s macOS prerequisite line names the failed start first', () =>
 {
     const { prereqNotes } = require('../stack/mcp/desktop-launch.js');
-    const lines = prereqNotes('macos-desktop').join('\n');
+    const lines = prereqNotes('macos-control').join('\n');
     assert.match(lines, /a server that fails to connect at start while System Settings opens is missing a grant - its log names which; a black vision snapshot means Screen Recording is missing/);
     assert.doesNotMatch(lines, /an empty snapshot means Accessibility is missing/);
 });
@@ -168,19 +168,19 @@ test('SD08: the Observe step picks the look by the question and names the scale 
     assert.match(skill, /MacOS-MCP has no Screenshot tool: its image is Snapshot with vision/);
     assert.match(skill, /`WINDOWS_MCP_SCREENSHOT_SCALE` \(0\.1 to 1\.0, default 1\.0 - full size\)[^.]*the stack seeds no value/);
     assert.match(skill, /no Snapshot, Screenshot or WaitFor between/);
-    assert.match(skill, /windows-desktop__WaitFor,mcp__plugin_windows-desktop_windows-desktop__Screenshot`/, 'the Windows ToolSearch line loads Screenshot');
+    assert.match(skill, /windows-control__WaitFor,mcp__plugin_windows-control_windows-control__Screenshot`/, 'the Windows ToolSearch line loads Screenshot');
     const win = flat(read('stack/skills/desktop-automation/references/windows.md'));
     assert.match(win, /The stack seeds no value: how far a 1080p and a 4K desktop can shrink and stay readable is not measured yet\./);
 });
 
-test('SD08: the windows-desktop entry seeds no screenshot scale on either route, and its note names the knob', () =>
+test('SD08: the windows-control entry seeds no screenshot scale on either route, and its note names the knob', () =>
 {
     const manifest = JSON.parse(read('meta/stack-manifest.json'));
-    const row = manifest.mcps.find((m) => m.name === 'windows-desktop');
+    const row = manifest.mcps.find((m) => m.name === 'windows-control');
     assert.doesNotMatch(row.args, /SCREENSHOT_SCALE/, 'observe-first: no seeded value until a readability measurement');
     assert.match(row.note, /WINDOWS_MCP_SCREENSHOT_SCALE \(0\.1-1\.0\) is set in the shell that starts Claude Code - the stack seeds no value/);
     const { DESKTOP_ENV } = require('../stack/mcp/desktop-launch.js');
     assert.ok(!Object.keys(DESKTOP_ENV).some((k) => /SCALE/.test(k)), 'the plugin entry env seeds none either');
-    const html = read('docs/alfred-code.html').split('\n').find((l) => l.startsWith('  ["windows-desktop", "MCP server"'));
+    const html = read('docs/alfred-code.html').split('\n').find((l) => l.startsWith('  ["windows-control", "MCP server"'));
     assert.match(html, /WINDOWS_MCP_SCREENSHOT_SCALE \(0\.1-1\.0\)[^.]*the stack seeds no value/);
 });

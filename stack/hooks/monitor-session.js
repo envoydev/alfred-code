@@ -57,7 +57,7 @@ function mcpParts(tool)
 // MCP call acts on what the server drives.
 const OBSERVE_NAME = /^(?:browser_)?(?:snapshot|screenshot|take_screenshot|wait|get|list|read|find|search|query|show|describe|fetch|view|inspect|resolve)/i;
 const observes = (parts) => OBSERVE_NAME.test(parts.name);
-const DESKTOP_SERVER = /^(?:windows|macos)-desktop$/;
+const DESKTOP_SERVER = /^(?:windows|macos)-control$/;
 
 // The log's text as rows; a line that is not a row is skipped.
 function parseLog(text)

@@ -390,7 +390,7 @@ test('in a repo never set up the protective guards stay live and write nothing; 
         const secret = fireIn('guard-secret-value.js', dir, { file_path: path.join(dir, 'config.json') }, 'Read');
         assert.strictEqual(secret.status, 2, `a credential file read blocked: ${secret.stderr}`);
         // Final review IM2: the desktop Shell is a shell no shell guard sees - `rm -rf ~` ran there while Bash's was blocked.
-        const shell = fireIn('guard-desktop-exec.js', dir, { command: 'rm -rf ~' }, 'mcp__plugin_macos-desktop_macos-desktop__Shell');
+        const shell = fireIn('guard-desktop-exec.js', dir, { command: 'rm -rf ~' }, 'mcp__plugin_macos-control_macos-control__Shell');
         assert.strictEqual(shell.status, 2, `the macOS desktop Shell blocked: ${shell.stderr}`);
         assert.ok(!fs.existsSync(path.join(dir, '.claude')) && !fs.existsSync(path.join(dir, '.alfred')), 'four blocks, no block row - nothing written into a repo never set up');
 

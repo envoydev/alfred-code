@@ -81,7 +81,7 @@ function computeClosure(graph, raw)
 }
 
 // THE DESKTOP SERVERS BY OS (stack/mcp/desktop-launch.js owns which OS each drives). A walk never offers
-// windows-desktop off Windows, macos-desktop off macOS, or either on Linux: the servers are taken out of
+// windows-control off Windows, macos-control off macOS, or either on Linux: the servers are taken out of
 // a selection before its closure, and out of every recommendation a table, --missing or --redundant is
 // computed from - so a wpf seed read on a Mac is named once and never pre-selected or reported missing.
 function gateMcps(names, platform)

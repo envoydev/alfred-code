@@ -115,12 +115,12 @@ test('install-stamp: mcp-held records the held picks, and its reader drops what 
 {
     const p = project();
     assert.doesNotMatch(write(p).text, /^mcp-held:/m, 'no line with none held');
-    const { dest, text } = write(p, { mcpHeld: [{ scope: 'local', name: 'macos-desktop' }, { scope: 'user', name: 'browser-chrome' }, { scope: 'project', name: 'macos-desktop' }] });
-    assert.match(text, /^mcp-held: local:macos-desktop,user:browser-chrome,project:macos-desktop$/m);
+    const { dest, text } = write(p, { mcpHeld: [{ scope: 'local', name: 'macos-control' }, { scope: 'user', name: 'browser-chrome' }, { scope: 'project', name: 'macos-control' }] });
+    assert.match(text, /^mcp-held: local:macos-control,user:browser-chrome,project:macos-control$/m);
     const { readMcpHeld } = require('./install/stamp.js');
-    assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-desktop' }, { scope: 'user', name: 'browser-chrome' }, { scope: 'project', name: 'macos-desktop' }]);
-    fs.writeFileSync(dest, text.replace(/^mcp-held: .*$/m, 'mcp-held: local:macos-desktop, project:navigation,global:x,user:../x,local:,user:memory'));
-    assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-desktop' }, { scope: 'project', name: 'navigation' }, { scope: 'user', name: 'memory' }]);
+    assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-control' }, { scope: 'user', name: 'browser-chrome' }, { scope: 'project', name: 'macos-control' }]);
+    fs.writeFileSync(dest, text.replace(/^mcp-held: .*$/m, 'mcp-held: local:macos-control, project:navigation,global:x,user:../x,local:,user:memory'));
+    assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-control' }, { scope: 'project', name: 'navigation' }, { scope: 'user', name: 'memory' }]);
     assert.deepStrictEqual(readMcpHeld(path.join(p.base, 'absent.stamp')), []);
 });
 

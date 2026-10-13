@@ -255,7 +255,7 @@ test('M40 both desktop ToolSearch lines say the session\'s listing names more to
 {
     const skill = read('stack/skills/desktop-automation/SKILL.md');
     const rule = read('stack/skills/capture-agent-awareness/references/generated-rule-template.md');
-    for (const server of ['windows-desktop', 'macos-desktop'])
+    for (const server of ['windows-control', 'macos-control'])
     {
         assert.match(skill, new RegExp(`plus the other \`mcp__plugin_${server}_${server}__\\*\` names the session's own listing shows`), server);
         const row = rule.split('\n').find((l) => l.startsWith(`- \`${server}\``));

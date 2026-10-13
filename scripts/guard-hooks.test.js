@@ -4242,8 +4242,8 @@ test('every hook-blocks ledger file is named from a sanitised session id', () =>
 // executable with caller-given args (wheel windows_mcp/tools/app.py:90 at 0.8.5) - and MacOS-MCP's `Shell` runs a
 // shell command no shell guard sees. Both spellings: the plugin route's and the copy route's (built at run time -
 // lint check 54 bans the bare server spelling as literal text).
-const WIN_APP = ['mcp__plugin_windows-desktop_windows-desktop__App', `mcp__${'windows-desktop'}__App`];
-const MAC_SHELL = ['mcp__plugin_macos-desktop_macos-desktop__Shell', `mcp__${'macos-desktop'}__Shell`];
+const WIN_APP = ['mcp__plugin_windows-control_windows-control__App', `mcp__${'windows-control'}__App`];
+const MAC_SHELL = ['mcp__plugin_macos-control_macos-control__Shell', `mcp__${'macos-control'}__Shell`];
 function desktopRun(root, tool_name, tool_input, extra = {}) {
   return spawnSync(process.execPath, [path.join(HOOKS, 'guard-desktop-exec.js')], {
     input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'desk', tool_name, tool_input, ...extra }), encoding: 'utf8',
@@ -4266,7 +4266,7 @@ test('guard-desktop-exec: App launch_executable and every macOS Shell call are d
     assert.equal(r.status, 2, `${tool}`);
     assert.match(r.stderr, /Bash tool/, 'the command goes back to the shell route the guards see');
   }
-  for (const tool of ['mcp__plugin_windows-desktop_windows-desktop__Click', 'mcp__plugin_macos-desktop_macos-desktop__App', 'Bash'])
+  for (const tool of ['mcp__plugin_windows-control_windows-control__Click', 'mcp__plugin_macos-control_macos-control__App', 'Bash'])
     assert.equal(desktopRun(root, tool, { mode: 'launch_executable', command: 'ls' }).status, 0, `${tool} is not this guard's`);
   const rows = fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'desk.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.equal(rows.length, WIN_APP.length + MAC_SHELL.length, 'one ledger row per block');

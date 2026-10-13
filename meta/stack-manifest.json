@@ -399,7 +399,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "desktop-automation",
-      "note": "driving a native desktop app through windows-desktop / macos-desktop: observe, one action, verify; app-type quality; dialogs never driven; the OS setup failures - arrives with either desktop server"
+      "note": "driving a native desktop app through windows-control / macos-control: observe, one action, verify; app-type quality; dialogs never driven; the OS setup failures - arrives with either desktop server"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -873,7 +873,7 @@
     },
     {
       "file": "guard-desktop-exec.js",
-      "matcher": "^mcp__(plugin_windows-desktop_)?windows-desktop__App$|^mcp__(plugin_macos-desktop_)?macos-desktop__Shell$",
+      "matcher": "^mcp__(plugin_windows-control_)?windows-control__App$|^mcp__(plugin_macos-control_)?macos-control__Shell$",
       "event": "",
       "note": "the desktop servers' process launchers, both routes' spellings: deny Windows-MCP App with mode launch_executable (any executable, caller-given args - the server excludes by tool name, never by mode) and every MacOS-MCP Shell call (a shell command no shell guard sees); App's launch / switch / resize pass; the DESKTOP-EXEC-ALLOW receipt (App, Shell, an executable, or *) honours a wanted launch"
     },
@@ -1041,18 +1041,18 @@
       "note": "the documentation server (Context7): up-to-date library/framework/SDK docs (beats recalled API knowledge) - the hosted server only since 2.0.0 (the local npx transport was cut, R32)"
     },
     {
-      "name": "windows-desktop",
+      "name": "windows-control",
       "active": false,
-      "args": "-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_DESKTOP_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from windows-mcp@WINDOWS_DESKTOP_PIN@ windows-mcp serve",
+      "args": "-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_CONTROL_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from windows-mcp@WINDOWS_CONTROL_PIN@ windows-mcp serve",
       "skills": [
         "desktop-automation"
       ],
-      "note": "the Windows desktop server (Windows-MCP): drives native Windows apps through UI Automation; Windows only, seeded for wpf / winforms there; opt-in (active: false - never in a no-selection run); PowerShell, Registry, Process and FileSystem off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE says otherwise (WINDOWS_MCP_TOOLS registered empty, so an inherited one never overrides the list); App's launch_executable mode is denied by a house guard unless DESKTOP-EXEC-ALLOW allows it; screenshots arrive at Windows-MCP's full size unless WINDOWS_MCP_SCREENSHOT_SCALE (0.1-1.0) is set in the shell that starts Claude Code - the stack seeds no value until a readability measurement (observe-first)"
+      "note": "the Windows desktop server (Windows-MCP): drives native Windows apps through UI Automation; Windows only, seeded for wpf / winforms there; opt-in (active: false - never in a no-selection run); PowerShell, Registry, Process and FileSystem off unless ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE says otherwise (WINDOWS_MCP_TOOLS registered empty, so an inherited one never overrides the list); App's launch_executable mode is denied by a house guard unless DESKTOP-EXEC-ALLOW allows it; screenshots arrive at Windows-MCP's full size unless WINDOWS_MCP_SCREENSHOT_SCALE (0.1-1.0) is set in the shell that starts Claude Code - the stack seeds no value until a readability measurement (observe-first)"
     },
     {
-      "name": "macos-desktop",
+      "name": "macos-control",
       "active": false,
-      "args": "-e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from macos-mcp@MACOS_DESKTOP_PIN@ macos-mcp serve",
+      "args": "-e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from macos-mcp@MACOS_CONTROL_PIN@ macos-mcp serve",
       "skills": [
         "desktop-automation"
       ],
@@ -1283,7 +1283,9 @@
       "playwright": "browser",
       "navigation": "alfred-navigation",
       "documentation": "alfred-documentation",
-      "memory": "alfred-memory"
+      "memory": "alfred-memory",
+      "windows-desktop": "windows-control",
+      "macos-desktop": "macos-control"
     }
   }
 }

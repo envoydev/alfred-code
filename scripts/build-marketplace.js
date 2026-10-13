@@ -291,7 +291,7 @@ const { ENGINES: PW_ENGINES } = require('../stack/mcp/data-root.js');
 // check 53 fails on any entry that breaks it.
 //
 // The names are the ROLE (2.0.0, the user's rename), `alfred-` prefixed for the locked three (2.2.0): alfred-navigation,
-// alfred-documentation, alfred-memory, one browser-<engine> per browser, and windows-desktop / macos-desktop. The upstream each one runs -
+// alfred-documentation, alfred-memory, one browser-<engine> per browser, and windows-control / macos-control. The upstream each one runs -
 // Serena, Context7, Playwright MCP, Windows-MCP, MacOS-MCP - is named once in its description, where a
 // reader needs it.
 
@@ -377,23 +377,23 @@ function mcpServerShapes(options = {})
         // --- the desktop servers: each drives the machine's own apps, so each ships for ONE OS -----
         // The launcher pins the Python, refuses on the other OS and applies the tool-gate override
         // (stack/mcp/desktop-launch.js); the installer offers each only on its own OS.
-        'windows-desktop': {
-            description: `The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (3.13) and refuses on another OS; ${DEFAULT_EXCLUDE.split(',').join(', ')} stay off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE names another list (none = every tool).`,
+        'windows-control': {
+            description: `The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (3.13) and refuses on another OS; ${DEFAULT_EXCLUDE.split(',').join(', ')} stay off unless ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE names another list (none = every tool).`,
             servers: {
-                'windows-desktop': {
+                'windows-control': {
                     command: 'node',
-                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'windows-desktop', '--package', `windows-mcp${suffix('windows-desktop')}`, ...cut,
+                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'windows-control', '--package', `windows-mcp${suffix('windows-control')}`, ...cut,
                         '--', 'serve', '--exclude-tools', DEFAULT_EXCLUDE],
                     env: DESKTOP_ENV,
                 },
             },
         },
-        'macos-desktop': {
+        'macos-control': {
             description: 'The macOS desktop server (MacOS-MCP), as a plugin: drives native macOS apps through the Accessibility API (snapshot, click, type, shortcut). macOS only; it needs Accessibility and Screen Recording granted to the terminal or IDE running Claude Code and to the uv-managed Python it runs on. Started through a launcher that pins the Python (3.13) and refuses on another OS.',
             servers: {
-                'macos-desktop': {
+                'macos-control': {
                     command: 'node',
-                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'macos-desktop', '--package', `macos-mcp${suffix('macos-desktop')}`, ...cut, '--', 'serve'],
+                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'macos-control', '--package', `macos-mcp${suffix('macos-control')}`, ...cut, '--', 'serve'],
                     env: DESKTOP_ENV,
                 },
             },

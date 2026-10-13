@@ -21,13 +21,13 @@
       "spelling": "==<v>",
       "version": "11.14.0"
     },
-    "windows-desktop": {
+    "windows-control": {
       "package": "windows-mcp",
       "registry": "pypi",
       "spelling": "==<v>",
       "version": "0.8.5"
     },
-    "macos-desktop": {
+    "macos-control": {
       "package": "macos-mcp",
       "registry": "pypi",
       "spelling": "==<v>",

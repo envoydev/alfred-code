@@ -463,35 +463,35 @@ test('pins: each is spelled as its row says - memory ==<ver> inside the extras b
     assert.strictEqual(pins.PW_PIN, `@${rel.browser.version}`);
     assert.strictEqual(pins.MEMORY_BACKEND, 'sqlite_vec');
     // The desktop servers run `uvx --from windows-mcp==<ver>` / `macos-mcp==<ver>` on the copy route.
-    assert.strictEqual(pins.WINDOWS_DESKTOP_PIN, `==${rel['windows-desktop'].version}`);
-    assert.strictEqual(pins.MACOS_DESKTOP_PIN, `==${rel['macos-desktop'].version}`);
+    assert.strictEqual(pins.WINDOWS_CONTROL_PIN, `==${rel['windows-control'].version}`);
+    assert.strictEqual(pins.MACOS_CONTROL_PIN, `==${rel['macos-control'].version}`);
 });
 
-// The copy route registers no launcher, so windows-desktop's tool gate reaches Windows-MCP as its own
+// The copy route registers no launcher, so windows-control's tool gate reaches Windows-MCP as its own
 // WINDOWS_MCP_EXCLUDE_TOOLS, resolved at install time from the same setting the launcher reads.
-test('copy route: windows-desktop registers with the release pin and the tool gate as Windows-MCP\'s own env, both desktop servers with telemetry off', () =>
+test('copy route: windows-control registers with the release pin and the tool gate as Windows-MCP\'s own env, both desktop servers with telemetry off', () =>
 {
     const manifest = require('./install/manifest.js').loadManifest(path.join(__dirname, '..'));
-    const row = manifest.catalogs.mcps.find((e) => e.startsWith('windows-desktop|'));
-    const mac = manifest.catalogs.mcps.find((e) => e.startsWith('macos-desktop|'));
+    const row = manifest.catalogs.mcps.find((e) => e.startsWith('windows-control|'));
+    const mac = manifest.catalogs.mcps.find((e) => e.startsWith('macos-control|'));
     assert.ok(row && mac, 'both desktop servers are catalog rows');
     const { copyRouteExclude } = require('../stack/mcp/desktop-launch.js');
-    const tokens = { UV_PYTHON: '3.13', WINDOWS_DESKTOP_PIN: '==0.8.5', MACOS_DESKTOP_PIN: '==0.4.6', WINDOWS_DESKTOP_EXCLUDE: copyRouteExclude({ env: {} }),
+    const tokens = { UV_PYTHON: '3.13', WINDOWS_CONTROL_PIN: '==0.8.5', MACOS_CONTROL_PIN: '==0.4.6', WINDOWS_CONTROL_EXCLUDE: copyRouteExclude({ env: {} }),
         UV_EXCLUDE_FLAG: '--exclude-newer', UV_EXCLUDE_NEWER: '2026-09-29T23:59:59Z' };
-    const argv = mcp.registerSpec({ name: 'windows-desktop', args: row.slice(row.indexOf('|') + 1), scope: 'project', tokens });
+    const argv = mcp.registerSpec({ name: 'windows-control', args: row.slice(row.indexOf('|') + 1), scope: 'project', tokens });
     // I10: FileSystem (write, copy, move, delete) is off on this route too. M41: WINDOWS_MCP_TOOLS (Windows-MCP's
     // --tools, which OVERRIDES --exclude-tools) is registered EMPTY - click reads an empty variable as unset - so
     // one inherited from the shell never lifts the gate.
-    assert.deepStrictEqual(argv, ['mcp', 'add', '--scope', 'project', 'windows-desktop', '-e', 'WINDOWS_MCP_EXCLUDE_TOOLS=PowerShell,Registry,Process,FileSystem',
+    assert.deepStrictEqual(argv, ['mcp', 'add', '--scope', 'project', 'windows-control', '-e', 'WINDOWS_MCP_EXCLUDE_TOOLS=PowerShell,Registry,Process,FileSystem',
         '-e', 'WINDOWS_MCP_TOOLS=', '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve']);
-    assert.deepStrictEqual(mcp.registerSpec({ name: 'macos-desktop', args: mac.slice(mac.indexOf('|') + 1), scope: 'project', tokens }),
-        ['mcp', 'add', '--scope', 'project', 'macos-desktop', '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'],
+    assert.deepStrictEqual(mcp.registerSpec({ name: 'macos-control', args: mac.slice(mac.indexOf('|') + 1), scope: 'project', tokens }),
+        ['mcp', 'add', '--scope', 'project', 'macos-control', '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'],
         'the upstream telemetry is off on the copy route too');
-    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } }), '', 'none leaves Windows-MCP its own config');
-    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'PowerShell' } }), 'PowerShell');
+    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'none' } }), '', 'none leaves Windows-MCP its own config');
+    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'PowerShell' } }), 'PowerShell');
     // M41: the copy route's override is checked like the launcher's - case mended, a list of no real tool is the default.
-    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'powershell' } }), 'PowerShell');
-    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'bogus' } }), 'PowerShell,Registry,Process,FileSystem');
+    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'powershell' } }), 'PowerShell');
+    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'bogus' } }), 'PowerShell,Registry,Process,FileSystem');
     assert.strictEqual(mcp.identityOf({ command: 'uvx', args: ['--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve'] }), 'stdio:windows-mcp');
 });
 
@@ -501,7 +501,7 @@ test('the desktop servers are shipped but never in the no-selection default', ()
 {
     const manifest = require('./install/manifest.js').loadManifest(path.join(__dirname, '..'));
     const names = (list) => list.map((e) => e.split('|')[0]);
-    for (const name of ['windows-desktop', 'macos-desktop'])
+    for (const name of ['windows-control', 'macos-control'])
     {
         assert.ok(names(manifest.catalogs.mcps).includes(name), `${name} is not in the shipped catalog`);
         assert.ok(!names(manifest.mcps).includes(name), `${name} is in the default list a bare install takes`);
@@ -1250,10 +1250,10 @@ for (const scope of ['local', 'user'])
         const OWN = { type: 'stdio', command: 'uvx', args: ['macos-mcp', 'serve', '--my-flag'], env: { MY_OWN: '1' } };
         const acct = (work) => path.join(work, 'acct', '.claude.json');
         const holderOf = (data, repo) => (scope === 'user' ? data : ((data.projects || {})[fs.realpathSync(repo)] || {}));
-        const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+        const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp macos-control\n', {
             env: { ...MCP_COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, account: true,
-            prepare: (repo, work) => (scope === 'user' ? accountMcp(work, { 'macos-desktop': OWN })
-                : accountMcp(work, {}, { [fs.realpathSync(repo)]: { mcpServers: { 'macos-desktop': OWN } } })),
+            prepare: (repo, work) => (scope === 'user' ? accountMcp(work, { 'macos-control': OWN })
+                : accountMcp(work, {}, { [fs.realpathSync(repo)]: { mcpServers: { 'macos-control': OWN } } })),
             args: [['--scope', scope], ['--scope', scope, '--installed-only'], ['--scope', scope, '--installed-only']],
             each: (repo, i) =>
             {
@@ -1261,13 +1261,13 @@ for (const scope of ['local', 'user'])
                 const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
                 const data = JSON.parse(fs.readFileSync(acct(work), 'utf8'));
                 const step = {
-                    reg: (holderOf(data, repo).mcpServers || {})['macos-desktop'],
+                    reg: (holderOf(data, repo).mcpServers || {})['macos-control'],
                     held: (/^mcp-held: *(.*)$/m.exec(stamp) || [])[1] ?? null,
-                    ledgered: new RegExp(`\\b${scope}:macos-desktop=`).test((/^managed-mcp:(.*)$/m.exec(stamp) || [])[1] || ''),
+                    ledgered: new RegExp(`\\b${scope}:macos-control=`).test((/^managed-mcp:(.*)$/m.exec(stamp) || [])[1] || ''),
                     calls: stepCalls(repo),
                 };
                 // After the second run the user takes the remove command the line gave them.
-                if (i === 1) { delete holderOf(data, repo).mcpServers['macos-desktop']; fs.writeFileSync(acct(work), JSON.stringify(data, null, 2)); }
+                if (i === 1) { delete holderOf(data, repo).mcpServers['macos-control']; fs.writeFileSync(acct(work), JSON.stringify(data, null, 2)); }
                 return step;
             },
         });
@@ -1275,14 +1275,14 @@ for (const scope of ['local', 'user'])
         for (const [i, step] of [install, heldUpdate].entries())
         {
             assert.deepStrictEqual(step.reg, OWN, `run ${i} touched the user's own registration:\n${step.calls.join('\n')}\n${outs[i]}`);
-            assert.ok(!step.calls.some((c) => /^mcp (add|remove) .*macos-desktop/.test(c)), `run ${i}:\n${step.calls.join('\n')}`);
-            assert.strictEqual(step.held, `${scope}:macos-desktop`, `run ${i} left the pick out of the record:\n${outs[i]}`);
+            assert.ok(!step.calls.some((c) => /^mcp (add|remove) .*macos-control/.test(c)), `run ${i}:\n${step.calls.join('\n')}`);
+            assert.strictEqual(step.held, `${scope}:macos-control`, `run ${i} left the pick out of the record:\n${outs[i]}`);
             assert.strictEqual(step.ledgered, false, `run ${i} ledgered the user's own registration`);
-            const lines = outs[i].split('\n').filter((l) => /mcp macos-desktop: the .*registration is not the one the stack wrote/.test(l));
+            const lines = outs[i].split('\n').filter((l) => /mcp macos-control: the .*registration is not the one the stack wrote/.test(l));
             assert.strictEqual(lines.length, 1, `run ${i} did not name it in one line:\n${outs[i]}`);
-            assert.match(lines[0], new RegExp(`stays a pick in this install's record: once you remove yours \\(claude mcp remove macos-desktop -s ${scope}\\), /alfred-code:update registers the stack's`), lines[0]);
+            assert.match(lines[0], new RegExp(`stays a pick in this install's record: once you remove yours \\(claude mcp remove macos-control -s ${scope}\\), /alfred-code:update registers the stack's`), lines[0]);
         }
-        assert.ok(freed.calls.some((c) => new RegExp(`^mcp add --scope ${scope} macos-desktop `).test(c)), `the update after the name freed did not register the stack's:\n${freed.calls.join('\n')}\n${outs[2]}`);
+        assert.ok(freed.calls.some((c) => new RegExp(`^mcp add --scope ${scope} macos-control `).test(c)), `the update after the name freed did not register the stack's:\n${freed.calls.join('\n')}\n${outs[2]}`);
         assert.notDeepStrictEqual(freed.reg, undefined, outs[2]);
         assert.strictEqual(freed.reg.env.ANONYMIZED_TELEMETRY, 'false', JSON.stringify(freed.reg));
         assert.strictEqual(freed.ledgered, true, outs[2]);
@@ -1327,7 +1327,7 @@ test('seed install (full copy route): the locked three are registered in .mcp.js
 test('seed update (full copy route): a .mcp.json with a BOM reads like one without - the pick stays, its trust entry stays, a drifted row is still repaired (matrix F-BOM)', POSIX_ONLY, () =>
 {
     const BOM = '\uFEFF';
-    const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+    const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-control\n', {
         env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, args: [[], ['--installed-only'], ['--installed-only'], ['--installed-only']],
         each: (repo, i) =>
         {
@@ -1338,21 +1338,21 @@ test('seed update (full copy route): a .mcp.json with a BOM reads like one witho
             if (i === 2)
             {
                 const data = JSON.parse(raw.replace(/^\uFEFF/, ''));
-                data.mcpServers['macos-desktop'].args = ['drifted'];
+                data.mcpServers['macos-control'].args = ['drifted'];
                 fs.writeFileSync(file, BOM + JSON.stringify(data, null, 2));
             }
             return step;
         },
     });
-    assert.ok(steps[0].trusted.includes('macos-desktop'), `install:\n${outs[0]}`);
+    assert.ok(steps[0].trusted.includes('macos-control'), `install:\n${outs[0]}`);
     for (const i of [1, 2, 3])
     {
         assert.strictEqual(steps[i].bom, true, `run ${i}: the BOM is kept`);
-        assert.ok(steps[i].trusted.includes('macos-desktop'), `run ${i} dropped the trust entry:\n${outs[i]}`);
+        assert.ok(steps[i].trusted.includes('macos-control'), `run ${i} dropped the trust entry:\n${outs[i]}`);
         assert.doesNotMatch(outs[i], /dropped enabledMcpjsonServers entry/, `run ${i}:\n${outs[i]}`);
         assert.strictEqual(/mcps=(\d+)/.exec(outs[i])[1], /mcps=(\d+)/.exec(outs[0])[1], `run ${i} read a different MCP list:\n${outs[i]}`);
     }
-    assert.match(outs[3], /mcp repaired: macos-desktop/, `the drifted row under a BOM was not repaired:\n${outs[3]}`);
+    assert.match(outs[3], /mcp repaired: macos-control/, `the drifted row under a BOM was not repaired:\n${outs[3]}`);
 });
 
 // Matrix FAIL F-OWN (2.1.6): the held rule (a pick whose name the user's own registration holds is kept, named with its
@@ -1360,7 +1360,7 @@ test('seed update (full copy route): a .mcp.json with a BOM reads like one witho
 // user's own `.mcp.json` row ('mcp repaired: ... was stdio node my-desktop.js'), also on 2.1.5. The row is the user's when the
 // ledger does not list the name (no ledger: when it is not the stack's exact shape); a row the ledger lists is the stack's,
 // so an edit to it is still repaired (the documented drift repair).
-for (const [pick, extra] of [['macos-desktop', []], ['browser-chrome', ['--browsers', 'chrome']]])
+for (const [pick, extra] of [['macos-control', []], ['browser-chrome', ['--browsers', 'chrome']]])
 {
     test(`seed install + update (full copy route, project scope): the user's own .mcp.json ${pick} row is kept, named and held, and the update after it frees registers the stack's (matrix F-OWN)`, POSIX_ONLY, () =>
     {
@@ -1408,7 +1408,7 @@ for (const [pick, extra] of [['macos-desktop', []], ['browser-chrome', ['--brows
 
 // The plugin route registers nothing in .mcp.json, so the user's own row under a pick's name is left as it is and named once;
 // the pick is carried by its plugin row, so no `mcp-held:` line is needed there.
-for (const [pick, extra] of [['macos-desktop', []], ['browser-chrome', ['--browsers', 'chrome']]])
+for (const [pick, extra] of [['macos-control', []], ['browser-chrome', ['--browsers', 'chrome']]])
 {
     test(`seed install + update (plugin route, project scope): the user's own .mcp.json ${pick} row is kept and named once, never rewritten (matrix F-OWN)`, POSIX_ONLY, () =>
     {
@@ -1429,20 +1429,20 @@ for (const [pick, extra] of [['macos-desktop', []], ['browser-chrome', ['--brows
 
 test('seed update (full copy route, project scope): a ledgered row edited by the user is still repaired, and a row the ledger does not list is the user\'s (matrix F-OWN o3)', POSIX_ONLY, () =>
 {
-    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nmcp macos-control\n', {
         env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, args: [[], ['--installed-only']],
         each: (repo, i) =>
         {
             const file = path.join(repo, '.mcp.json');
             const data = jsonAt(repo, '.mcp.json');
-            const step = { row: data.mcpServers['macos-desktop'], nav: data.mcpServers['alfred-navigation'] };
-            if (i === 0) { data.mcpServers['macos-desktop'].args = ['drifted']; fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
+            const step = { row: data.mcpServers['macos-control'], nav: data.mcpServers['alfred-navigation'] };
+            if (i === 0) { data.mcpServers['macos-control'].args = ['drifted']; fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
             return step;
         },
     });
-    assert.match(outs[1], /mcp repaired: macos-desktop/, outs[1]);
+    assert.match(outs[1], /mcp repaired: macos-control/, outs[1]);
     assert.notDeepStrictEqual(steps[1].row.args, ['drifted']);
-    assert.doesNotMatch(outs[1], /macos-desktop: the project-scope registration is not the one the stack wrote/, outs[1]);
+    assert.doesNotMatch(outs[1], /macos-control: the project-scope registration is not the one the stack wrote/, outs[1]);
 });
 
 for (const scope of ['user', 'local'])
@@ -1779,7 +1779,7 @@ test('accountLoss: unreadable now, a corrupted backup after the stamp, or none o
     const precise = { ms: at, precise: true };
     const second = { ms: Date.parse('2026-09-29T10:00:05Z'), precise: false };
     const backup = (ms) => ({ file: `/c/backups/.claude.json.corrupted.${ms}`, ms });
-    const recorded = { 'alfred-navigation': 'h1', 'macos-desktop': 'h2' };
+    const recorded = { 'alfred-navigation': 'h1', 'macos-control': 'h2' };
     const held = { 'alfred-navigation': {} };
     assert.deepStrictEqual(mcp.accountLoss({ unreadable: true, stamped: precise, recorded, held }), { lost: true, why: 'unreadable', backup: '' });
     // (b) in milliseconds: 100 ms after the stamp was written is a later replacement; the run's own, 1 ms before, is not.
@@ -1815,10 +1815,10 @@ test('registrationsAt: the account file says whether it holds this project\'s en
 test('stackAuthored: the release\'s cut-off with a pinned package, the desktop servers\' telemetry off, an engine\'s profile and --no-webmcp where the stamp lists it', () =>
 {
     const uvx = (from, env = {}) => ({ type: 'stdio', command: 'uvx', args: ['--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', from, 'macos-mcp', 'serve'], env });
-    assert.strictEqual(mcp.stackAuthored('macos-desktop', uvx('macos-mcp==0.4.6', { ANONYMIZED_TELEMETRY: 'false' })), true);
-    assert.strictEqual(mcp.stackAuthored('macos-desktop', uvx('macos-mcp==0.4.6')), false, 'no telemetry mark');
-    assert.strictEqual(mcp.stackAuthored('macos-desktop', uvx('macos-mcp', { ANONYMIZED_TELEMETRY: 'false' })), false, 'no pin');
-    assert.strictEqual(mcp.stackAuthored('macos-desktop', { type: 'stdio', command: 'uvx', args: ['macos-mcp', 'serve', '--my-flag'], env: { MY_OWN: '1' } }), false, 'the user\'s own');
+    assert.strictEqual(mcp.stackAuthored('macos-control', uvx('macos-mcp==0.4.6', { ANONYMIZED_TELEMETRY: 'false' })), true);
+    assert.strictEqual(mcp.stackAuthored('macos-control', uvx('macos-mcp==0.4.6')), false, 'no telemetry mark');
+    assert.strictEqual(mcp.stackAuthored('macos-control', uvx('macos-mcp', { ANONYMIZED_TELEMETRY: 'false' })), false, 'no pin');
+    assert.strictEqual(mcp.stackAuthored('macos-control', { type: 'stdio', command: 'uvx', args: ['macos-mcp', 'serve', '--my-flag'], env: { MY_OWN: '1' } }), false, 'the user\'s own');
     assert.strictEqual(mcp.stackAuthored('alfred-memory', { command: 'uvx', args: ['--exclude-newer', '2026-09-29T23:59:59Z', '--with', 'numpy', '--from', 'mcp-memory-service[sqlite]==11.14.0', 'memory', 'server'] }), true);
     const pw = (dir, extra = ['--no-webmcp']) => ({ command: 'npx', args: ['-y', '@playwright/mcp@0.0.83', '--user-data-dir', dir, ...extra, '--browser', 'firefox'] });
     assert.strictEqual(mcp.stackAuthored('browser-firefox', pw('${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox'), { engines: ['firefox'] }), true);
@@ -1834,22 +1834,22 @@ test('exactStack: the release template\'s words and env keys, free only where a 
 {
     const catalog = ['alfred-navigation|-e SERENA_HOME=@SERENA_HOME@ -- node -e @ROOT_BOOT@ -- checkout uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false @SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@',
         'browser|-- node -e @ROOT_BOOT@ -- checkout npx -y @playwright/mcp@PW_PIN@ --user-data-dir @BROWSER_DIR@ --output-dir @BROWSER_DIR@/output --no-webmcp',
-        'macos-desktop|-e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from macos-mcp@MACOS_DESKTOP_PIN@ macos-mcp serve',
+        'macos-control|-e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from macos-mcp@MACOS_CONTROL_PIN@ macos-mcp serve',
         'alfred-documentation|@HTTP@'];
     const remotes = { 'alfred-documentation': mcp.CONTEXT7_REMOTE };
     const exact = (name, entry) => mcp.exactStack(name, entry, { catalog, remotes });
     const mac = (args, env = { ANONYMIZED_TELEMETRY: 'false' }) => ({ type: 'stdio', command: 'uvx', args, env });
     const macArgs = ['--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'];
-    assert.strictEqual(exact('macos-desktop', mac(macArgs)), true);
-    assert.strictEqual(exact('macos-desktop', mac(['--python', '3.14', '--exclude-newer', '2026-10-30T00:00:00Z', '--from', 'macos-mcp==0.5.0', 'macos-mcp', 'serve'])), true, 'a pin, a date and the python are free');
-    assert.strictEqual(exact('macos-desktop', mac(['--python', '3.13', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'])), true, 'no cut-off (the user set UV_EXCLUDE_NEWER=false)');
-    assert.strictEqual(exact('macos-desktop', mac(macArgs, { ANONYMIZED_TELEMETRY: 'false', MACOS_MCP_SKIP_PERMISSION_CHECK: '1' })), false, 'tRmReadd: an env key of the user\'s own');
-    assert.strictEqual(exact('macos-desktop', mac(macArgs, {})), false, 'an env key of the stack\'s missing');
-    assert.strictEqual(exact('macos-desktop', mac(macArgs, { ANONYMIZED_TELEMETRY: 'true' })), false, 'a literal env value changed');
-    assert.strictEqual(exact('macos-desktop', mac([...macArgs, '--verbose'])), false, 'a flag of the user\'s own');
-    assert.strictEqual(exact('macos-desktop', mac(['--python', '3.13', '--with', 'extra', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'])), false, 'no token soaks up an added flag pair');
-    assert.strictEqual(exact('macos-desktop', mac(['--python', '3.13', '--exclude-newer', '7 days', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'])), false, 'a cut-off that is no date');
-    assert.strictEqual(exact('macos-desktop', { command: 'cmd', args: ['/c', 'uvx', ...macArgs], env: { ANONYMIZED_TELEMETRY: 'false' } }), true, 'the Windows cmd /c wrapper');
+    assert.strictEqual(exact('macos-control', mac(macArgs)), true);
+    assert.strictEqual(exact('macos-control', mac(['--python', '3.14', '--exclude-newer', '2026-10-30T00:00:00Z', '--from', 'macos-mcp==0.5.0', 'macos-mcp', 'serve'])), true, 'a pin, a date and the python are free');
+    assert.strictEqual(exact('macos-control', mac(['--python', '3.13', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'])), true, 'no cut-off (the user set UV_EXCLUDE_NEWER=false)');
+    assert.strictEqual(exact('macos-control', mac(macArgs, { ANONYMIZED_TELEMETRY: 'false', MACOS_MCP_SKIP_PERMISSION_CHECK: '1' })), false, 'tRmReadd: an env key of the user\'s own');
+    assert.strictEqual(exact('macos-control', mac(macArgs, {})), false, 'an env key of the stack\'s missing');
+    assert.strictEqual(exact('macos-control', mac(macArgs, { ANONYMIZED_TELEMETRY: 'true' })), false, 'a literal env value changed');
+    assert.strictEqual(exact('macos-control', mac([...macArgs, '--verbose'])), false, 'a flag of the user\'s own');
+    assert.strictEqual(exact('macos-control', mac(['--python', '3.13', '--with', 'extra', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'])), false, 'no token soaks up an added flag pair');
+    assert.strictEqual(exact('macos-control', mac(['--python', '3.13', '--exclude-newer', '7 days', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'])), false, 'a cut-off that is no date');
+    assert.strictEqual(exact('macos-control', { command: 'cmd', args: ['/c', 'uvx', ...macArgs], env: { ANONYMIZED_TELEMETRY: 'false' } }), true, 'the Windows cmd /c wrapper');
     const boot = require('../stack/hooks/memory.js').ROOT_BOOT;
     const pw = (engine, dir, extra = []) => ({ type: 'stdio', command: 'node', args: ['-e', boot, '--', 'checkout', 'npx', '-y', '@playwright/mcp@0.0.83', '--browser', engine, '--user-data-dir', dir, '--output-dir', `${dir}/output`, '--no-webmcp', ...extra], env: {} });
     assert.strictEqual(exact('browser-firefox', pw('firefox', '.alfred/browser/firefox')), true, 'this release\'s anchored row');
@@ -1869,12 +1869,12 @@ test('exactStack: the release template\'s words and env keys, free only where a 
     assert.strictEqual(exact('alfred-documentation', { type: 'http', url: 'https://mcp.context7.com/mcp', headers: { 'Context7-API-Key': 'abc', 'X-Own': '1' } }), false);
     assert.strictEqual(exact('alfred-documentation', { type: 'http', url: 'https://example.com/mcp' }), false);
     assert.strictEqual(exact('unknown', mac(macArgs)), false, 'a name no catalog row serves');
-    const win = ['windows-desktop|-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_DESKTOP_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ --from windows-mcp@WINDOWS_DESKTOP_PIN@ windows-mcp serve'];
+    const win = ['windows-control|-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_CONTROL_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ --from windows-mcp@WINDOWS_CONTROL_PIN@ windows-mcp serve'];
     const winEntry = (env) => ({ command: 'uvx', args: ['--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve'], env: { WINDOWS_MCP_TOOLS: '', ANONYMIZED_TELEMETRY: 'false', ...env } });
-    assert.strictEqual(mcp.exactStack('windows-desktop', winEntry({ WINDOWS_MCP_EXCLUDE_TOOLS: '' }), { catalog: win }), true, 'a token env value resolved to nothing (none)');
-    assert.strictEqual(mcp.exactStack('windows-desktop', winEntry({ WINDOWS_MCP_EXCLUDE_TOOLS: 'PowerShell,Registry,Process' }), { catalog: win }), true);
-    assert.strictEqual(mcp.exactStack('windows-desktop', { ...winEntry({ WINDOWS_MCP_EXCLUDE_TOOLS: '' }), env: { WINDOWS_MCP_TOOLS: 'Click', ANONYMIZED_TELEMETRY: 'false', WINDOWS_MCP_EXCLUDE_TOOLS: '' } }, { catalog: win }), false, 'a literal empty env value set');
-    assert.strictEqual(exact('macos-desktop', null), false);
+    assert.strictEqual(mcp.exactStack('windows-control', winEntry({ WINDOWS_MCP_EXCLUDE_TOOLS: '' }), { catalog: win }), true, 'a token env value resolved to nothing (none)');
+    assert.strictEqual(mcp.exactStack('windows-control', winEntry({ WINDOWS_MCP_EXCLUDE_TOOLS: 'PowerShell,Registry,Process' }), { catalog: win }), true);
+    assert.strictEqual(mcp.exactStack('windows-control', { ...winEntry({ WINDOWS_MCP_EXCLUDE_TOOLS: '' }), env: { WINDOWS_MCP_TOOLS: 'Click', ANONYMIZED_TELEMETRY: 'false', WINDOWS_MCP_EXCLUDE_TOOLS: '' } }, { catalog: win }), false, 'a literal empty env value set');
+    assert.strictEqual(exact('macos-control', null), false);
     // The anchor is the launcher, never the server: identityOf reads the command after it.
     assert.strictEqual(mcp.identityOf(pw('firefox', '.alfred/browser/firefox')), 'stdio:@playwright/mcp');
     assert.strictEqual(mcp.identityOf(nav([])), 'stdio:serena-agent');
@@ -2259,16 +2259,18 @@ const RENAMED = require('./install/manifest.js').loadManifest(path.join(__dirnam
 test('rename: an old MCP name reads as its new one, an engine by its prefix, anything else as it is', () =>
 {
     assert.deepStrictEqual(RENAMED, { serena: 'alfred-navigation', context7: 'alfred-documentation', playwright: 'browser',
-        navigation: 'alfred-navigation', documentation: 'alfred-documentation', memory: 'alfred-memory' }, 'each old name maps straight to today\'s');
+        navigation: 'alfred-navigation', documentation: 'alfred-documentation', memory: 'alfred-memory',
+        'windows-desktop': 'windows-control', 'macos-desktop': 'macos-control' }, 'each old name maps straight to today\'s');
     const cur = (n) => mcp.currentMcp(n, RENAMED);
     assert.strictEqual(cur('serena'), 'alfred-navigation');
     assert.strictEqual(cur('context7'), 'alfred-documentation');
     assert.strictEqual(cur('playwright'), 'browser');
     assert.strictEqual(cur('playwright-firefox'), 'browser-firefox');
     for (const role of ['navigation', 'documentation', 'memory']) assert.strictEqual(cur(role), `alfred-${role}`, role);
+    for (const os of ['windows', 'macos']) assert.strictEqual(cur(`${os}-desktop`), `${os}-control`, `${os}: the desktop servers' 2026-10-13 names`);
     for (const same of ['alfred-navigation', 'browser-chrome', 'alfred-memory', 'context7-local', 'playwright-extra', 'mine'])
         assert.strictEqual(cur(same), same, same);
-    assert.deepStrictEqual(mcp.renamedFrom(RENAMED).sort(), ['context7', 'documentation', 'memory', 'navigation', 'playwright-chrome', 'playwright-firefox', 'playwright-msedge', 'playwright-webkit', 'serena'],
+    assert.deepStrictEqual(mcp.renamedFrom(RENAMED).sort(), ['context7', 'documentation', 'macos-desktop', 'memory', 'navigation', 'playwright-chrome', 'playwright-firefox', 'playwright-msedge', 'playwright-webkit', 'serena', 'windows-desktop'],
         'the plugin and server names an older install can hold - the bare 1.x `playwright` is its own legacy name, not one of these');
     assert.deepStrictEqual(mcp.renamedFrom({}), []);
 });
@@ -2399,9 +2401,9 @@ const DEPS_CLI = `exec "${process.execPath}" "${DEPS_STUB}" "$@"`;
 
 test('seed update (full copy route): an enabled desktop row another machine committed does not block the core\'s stand-down (I7)', POSIX_ONLY, () =>
 {
-    // macOS: windows-desktop is left out of this run by the OS gate, so nothing stands it down - its row
+    // macOS: windows-control is left out of this run by the OS gate, so nothing stands it down - its row
     // stays enabled at project scope, as a teammate on Windows committed it.
-    const rows = [...STACK_ROWS('envoydev'), { id: 'windows-desktop@envoydev', version: '2.1.3', scope: 'project', enabled: true }];
+    const rows = [...STACK_ROWS('envoydev'), { id: 'windows-control@envoydev', version: '2.1.3', scope: 'project', enabled: true }];
     const { calls, out } = seedRun(['install', 'update'], 'skill markdown-style\n', {
         plugins: JSON.stringify(rows), tools: { claude: DEPS_CLI },
         env: [{ ALFRED_CODE_PLATFORM: 'darwin' }, { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }],
@@ -2416,37 +2418,37 @@ test('seed update (full copy route): an enabled desktop row another machine comm
 // I8: R111 stood the copy route's playwright engines down, and nothing did the same for a desktop server,
 // so a project switched onto the MCP copy route ran the plugin's server AND the .mcp.json registration -
 // two UI-automation servers on one desktop. A desktop name the copy route registers now goes the engine way.
-const DESKTOP_ROW = (over = {}) => ({ id: 'windows-desktop@envoydev', version: '2.1.3', scope: 'project', enabled: true, ...over });
-test('seed update --installed-only (MCP copy route): a windows-desktop plugin row is uninstalled before its .mcp.json registration (I8)', POSIX_ONLY, () =>
+const DESKTOP_ROW = (over = {}) => ({ id: 'windows-control@envoydev', version: '2.1.3', scope: 'project', enabled: true, ...over });
+test('seed update --installed-only (MCP copy route): a windows-control plugin row is uninstalled before its .mcp.json registration (I8)', POSIX_ONLY, () =>
 {
     const { calls, out, result } = seedRun('update', 'skill markdown-style\n', {
         plugins: JSON.stringify([...STACK_ROWS('envoydev'), DESKTOP_ROW()]),
-        env: { ...MCP_COPY_ENV, ALFRED_CODE_PLATFORM: 'win32' }, args: ['--installed-only', '--add', 'mcp windows-desktop'],
+        env: { ...MCP_COPY_ENV, ALFRED_CODE_PLATFORM: 'win32' }, args: ['--installed-only', '--add', 'mcp windows-control'],
         inspect: (repo) => Object.keys(jsonAt(repo, '.mcp.json').mcpServers || {}),
     });
-    assert.ok(result.includes('windows-desktop'), `windows-desktop not registered: ${result.join(',')}\n${out}`);
-    const moves = calls.filter((c) => /^plugin (install|uninstall|disable|enable|update) windows-desktop/.test(c));
-    assert.deepStrictEqual(moves, ['plugin uninstall windows-desktop@envoydev --scope project -y'], `${moves.join('\n')}\n${out}`);
-    const gone = calls.indexOf('plugin uninstall windows-desktop@envoydev --scope project -y');
-    assert.ok(calls.findIndex((c) => /^mcp add .*windows-desktop/.test(c)) > gone, `registered before its plugin row went:\n${calls.join('\n')}`);
-    assert.match(out, /plugin uninstalled \[project\]: windows-desktop@envoydev \(the copy route registers it in \.mcp\.json/);
+    assert.ok(result.includes('windows-control'), `windows-control not registered: ${result.join(',')}\n${out}`);
+    const moves = calls.filter((c) => /^plugin (install|uninstall|disable|enable|update) windows-control/.test(c));
+    assert.deepStrictEqual(moves, ['plugin uninstall windows-control@envoydev --scope project -y'], `${moves.join('\n')}\n${out}`);
+    const gone = calls.indexOf('plugin uninstall windows-control@envoydev --scope project -y');
+    assert.ok(calls.findIndex((c) => /^mcp add .*windows-control/.test(c)) > gone, `registered before its plugin row went:\n${calls.join('\n')}`);
+    assert.match(out, /plugin uninstalled \[project\]: windows-control@envoydev \(the copy route registers it in \.mcp\.json/);
 });
 
-test('seed update --scope user (full copy route): a user-scope windows-desktop row is switched off in this project only and recorded as stood down (I8, C11)', POSIX_ONLY, () =>
+test('seed update --scope user (full copy route): a user-scope windows-control row is switched off in this project only and recorded as stood down (I8, C11)', POSIX_ONLY, () =>
 {
     const rows = ['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.1.3', scope: 'user', enabled: true }))
         .concat(DESKTOP_ROW({ scope: 'user' }));
     const { calls, out, result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
         plugins: JSON.stringify(rows), env: [{ ALFRED_CODE_PLATFORM: 'win32' }, { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'win32' }],
-        args: [['--scope', 'user'], ['--installed-only', '--scope', 'user', '--add', 'mcp windows-desktop']],
+        args: [['--scope', 'user'], ['--installed-only', '--scope', 'user', '--add', 'mcp windows-control']],
         // Only the second run's CLI calls are this case's evidence.
         each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'claude-calls.log'), ''); return null; },
         inspect: (repo) => ({ servers: Object.keys(jsonAt(repo, '.mcp.json').mcpServers || {}), stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8') }),
     });
-    assert.ok(result.servers.includes('windows-desktop'), `${result.servers.join(',')}\n${out}`);
-    const moves = calls.filter((c) => /^plugin (install|uninstall|disable|enable) windows-desktop/.test(c));
-    assert.deepStrictEqual(moves, ['plugin disable windows-desktop@envoydev --scope project'], `the user-scope row serves every other project - never uninstalled:\n${moves.join('\n')}\n${out}`);
-    assert.match(result.stamp, /^stood-down:.*project:windows-desktop@envoydev/m, result.stamp);
+    assert.ok(result.servers.includes('windows-control'), `${result.servers.join(',')}\n${out}`);
+    const moves = calls.filter((c) => /^plugin (install|uninstall|disable|enable) windows-control/.test(c));
+    assert.deepStrictEqual(moves, ['plugin disable windows-control@envoydev --scope project'], `the user-scope row serves every other project - never uninstalled:\n${moves.join('\n')}\n${out}`);
+    assert.match(result.stamp, /^stood-down:.*project:windows-control@envoydev/m, result.stamp);
 });
 
 // I11: Playwright MCP 0.0.82 collects and exposes the tools a visited PAGE registers through WebMCP by
@@ -2687,10 +2689,10 @@ test(`seed install + update (${route}, ${scope} scope): the user's own project-s
 {
     const OWN = { command: 'node', args: ['my-desktop.js'] };
     const OWN_CHROME = { command: 'node', args: ['my-chrome.js'] };
-    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp browser\nmcp macos-desktop\n', {
+    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp browser\nmcp macos-control\n', {
         env: { ...routeEnv, ALFRED_CODE_PLATFORM: 'darwin' }, account: true,
         args: [['--scope', scope, '--browsers', 'chrome'], ['--scope', scope, '--installed-only', '--browsers', 'chrome'], ['--scope', scope, '--installed-only', '--browsers', 'chrome']],
-        prepare: (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { 'macos-desktop': OWN, 'browser-chrome': OWN_CHROME } }, null, 2)),
+        prepare: (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { 'macos-control': OWN, 'browser-chrome': OWN_CHROME } }, null, 2)),
         each: (repo) => ({
             rows: jsonAt(repo, '.mcp.json').mcpServers,
             held: (/^mcp-held: *(.*)$/m.exec(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) || [])[1] ?? null,
@@ -2699,12 +2701,12 @@ test(`seed install + update (${route}, ${scope} scope): the user's own project-s
     });
     for (const [i, step] of steps.entries())
     {
-        assert.deepStrictEqual(step.rows, { 'macos-desktop': OWN, 'browser-chrome': OWN_CHROME }, `run ${i} touched the user's rows:\n${outs[i]}`);
-        assert.deepStrictEqual(step.held.split(',').sort(), ['project:browser-chrome', 'project:macos-desktop'], `run ${i} did not record the holds:\n${outs[i]}`);
-        assert.ok(!step.calls.some((c) => /^mcp add .*(macos-desktop|browser-chrome)/.test(c)), `run ${i} registered over the user's row:\n${step.calls.join('\n')}`);
-        for (const name of ['macos-desktop', 'browser-chrome'])
+        assert.deepStrictEqual(step.rows, { 'macos-control': OWN, 'browser-chrome': OWN_CHROME }, `run ${i} touched the user's rows:\n${outs[i]}`);
+        assert.deepStrictEqual(step.held.split(',').sort(), ['project:browser-chrome', 'project:macos-control'], `run ${i} did not record the holds:\n${outs[i]}`);
+        assert.ok(!step.calls.some((c) => /^mcp add .*(macos-control|browser-chrome)/.test(c)), `run ${i} registered over the user's row:\n${step.calls.join('\n')}`);
+        for (const name of ['macos-control', 'browser-chrome'])
             assert.match(outs[i], new RegExp(`mcp ${name}: the project-scope registration is not the one the stack wrote.*claude mcp remove ${name} -s project`), `run ${i}:\n${outs[i]}`);
-        assert.doesNotMatch(outs[i], /claude mcp remove (macos-desktop|browser-chrome) -s (local|user)/, `run ${i} named the wrong scope`);
+        assert.doesNotMatch(outs[i], /claude mcp remove (macos-control|browser-chrome) -s (local|user)/, `run ${i} named the wrong scope`);
     }
     assert.strictEqual(/mcps=(\d+)/.exec(outs[2])[1], /mcps=(\d+)/.exec(outs[1])[1], `the second update changed the MCP list (a pick was dropped):\n${outs[2]}`);
 });
@@ -2717,7 +2719,7 @@ for (const scope of ['project', 'user'])
 {
     test(`seed update x3 (full copy route, ${scope} scope, a stamp with no ledger): a stack row with an added flag is held, never ledgered, and stays the user's on every update (delta F-LEDGER)`, POSIX_ONLY, () =>
     {
-        const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+        const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-control\n', {
             env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' },
             args: [['--scope', scope], ['--scope', scope, '--installed-only'], ['--scope', scope, '--installed-only'], ['--scope', scope, '--installed-only']],
             each: (repo, i) =>
@@ -2725,16 +2727,16 @@ for (const scope of ['project', 'user'])
                 const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
                 const file = path.join(repo, '.mcp.json');
                 const step = {
-                    args: jsonAt(repo, '.mcp.json').mcpServers['macos-desktop'].args,
+                    args: jsonAt(repo, '.mcp.json').mcpServers['macos-control'].args,
                     held: (/^mcp-held: *(.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] ?? null,
-                    ledgered: new RegExp(`(^|[ ,])macos-desktop=`).test((/^managed-mcp:(.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] || ''),
+                    ledgered: new RegExp(`(^|[ ,])macos-control=`).test((/^managed-mcp:(.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] || ''),
                 };
                 if (i === 0)
                 {
                     // A 1.x-style stamp: no ledger. The user's row is the stack's with one flag appended.
                     fs.writeFileSync(stampFile, fs.readFileSync(stampFile, 'utf8').replace(/^managed-mcp:.*\n/m, ''));
                     const data = jsonAt(repo, '.mcp.json');
-                    data.mcpServers['macos-desktop'].args.push('--my-own-flag');
+                    data.mcpServers['macos-control'].args.push('--my-own-flag');
                     fs.writeFileSync(file, JSON.stringify(data, null, 2));
                 }
                 return step;
@@ -2743,7 +2745,7 @@ for (const scope of ['project', 'user'])
         for (const i of [1, 2, 3])
         {
             assert.strictEqual(steps[i].args[steps[i].args.length - 1], '--my-own-flag', `update ${i} overwrote the user's flag:\n${outs[i]}`);
-            assert.strictEqual(steps[i].held, `project:macos-desktop`, `update ${i}:\n${outs[i]}`);
+            assert.strictEqual(steps[i].held, `project:macos-control`, `update ${i}:\n${outs[i]}`);
             assert.strictEqual(steps[i].ledgered, false, `update ${i} ledgered a held row`);
         }
     });
@@ -2758,13 +2760,13 @@ for (const kind of ['garbage', 'bom+garbage', 'eacces'])
     {
         let good = '';
         const trustedNow = (repo) => jsonAt(repo, '.claude/settings.json').enabledMcpjsonServers || [];
-        const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+        const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-control\n', {
             env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, args: [[], ['--installed-only'], ['--installed-only'], ['--installed-only']],
             each: (repo, i) =>
             {
                 const file = path.join(repo, '.mcp.json');
                 const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
-                const step = { trusted: trustedNow(repo), ledgered: /(^|[ ,])macos-desktop=/.test((/^managed-mcp:(.*)$/m.exec(stamp) || [])[1] || ''), file: (() => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } })() };
+                const step = { trusted: trustedNow(repo), ledgered: /(^|[ ,])macos-control=/.test((/^managed-mcp:(.*)$/m.exec(stamp) || [])[1] || ''), file: (() => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } })() };
                 if (i === 0)
                 {
                     good = fs.readFileSync(file, 'utf8');
@@ -2778,13 +2780,13 @@ for (const kind of ['garbage', 'bom+garbage', 'eacces'])
         const broken = kind === 'eacces' ? null : `${kind === 'garbage' ? '' : '\uFEFF'}{"a": [1,2, garbage`;
         for (const i of [1, 2])
         {
-            assert.ok(steps[i].trusted.includes('macos-desktop'), `update ${i} dropped the approval:\n${outs[i]}`);
+            assert.ok(steps[i].trusted.includes('macos-control'), `update ${i} dropped the approval:\n${outs[i]}`);
             assert.strictEqual(steps[i].ledgered, true, `update ${i} dropped the ledger row`);
             assert.strictEqual(outs[i].split('\n').filter((l) => /\.mcp\.json could not be read.*stay as the stamp recorded/.test(l)).length, 1, `update ${i} did not say so in one line:\n${outs[i]}`);
             if (broken !== null) assert.strictEqual(steps[i].file, broken, `update ${i} rewrote the unreadable file`);
         }
         assert.strictEqual(/mcps=(\d+)/.exec(outs[1])[1], /mcps=(\d+)/.exec(outs[0])[1], `update 1 read fewer picks:\n${outs[1]}`);
-        assert.ok(steps[3].trusted.includes('macos-desktop'), `the restored file did not bring the approval back:\n${outs[3]}`);
+        assert.ok(steps[3].trusted.includes('macos-control'), `the restored file did not bring the approval back:\n${outs[3]}`);
         assert.strictEqual(/mcps=(\d+)/.exec(outs[3])[1], /mcps=(\d+)/.exec(outs[0])[1], `the update after the restore:\n${outs[3]}`);
     });
 }

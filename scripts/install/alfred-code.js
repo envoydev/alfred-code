@@ -647,7 +647,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
 
         // --- the two entries assembled at install time -----------------------------
         const pins = args.printPlan
-            ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', WINDOWS_DESKTOP_PIN: '', MACOS_DESKTOP_PIN: '', MEMORY_BACKEND: 'sqlite_vec', UV_EXCLUDE_FLAG: '', UV_EXCLUDE_NEWER: '' }
+            ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', WINDOWS_CONTROL_PIN: '', MACOS_CONTROL_PIN: '', MEMORY_BACKEND: 'sqlite_vec', UV_EXCLUDE_FLAG: '', UV_EXCLUDE_NEWER: '' }
             : (() =>
             {
                 const file = readJson(path.join(resolved.dir, 'meta', 'mcp-pins.json'));
@@ -740,11 +740,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             ...Object.fromEntries(dataRoot.ENGINES.map((e) => [`BROWSER_DIR_${e.toUpperCase()}`, liveOf(`browser-${e}`)])),
             SERENA_PIN: pins.SERENA_PIN, PW_PIN: pins.PW_PIN, UV_EXCLUDE_FLAG: pins.UV_EXCLUDE_FLAG, UV_EXCLUDE_NEWER: pins.UV_EXCLUDE_NEWER,
             MEMORY_PIN: pins.MEMORY_PIN, MEMORY_BACKEND: pins.MEMORY_BACKEND,
-            WINDOWS_DESKTOP_PIN: pins.WINDOWS_DESKTOP_PIN, MACOS_DESKTOP_PIN: pins.MACOS_DESKTOP_PIN,
-            // windows-desktop's tool gate on the copy route, which registers no launcher: the list the
+            WINDOWS_CONTROL_PIN: pins.WINDOWS_CONTROL_PIN, MACOS_CONTROL_PIN: pins.MACOS_CONTROL_PIN,
+            // windows-control's tool gate on the copy route, which registers no launcher: the list the
             // launcher would pass, as Windows-MCP's own WINDOWS_MCP_EXCLUDE_TOOLS.
-            WINDOWS_DESKTOP_EXCLUDE: copyRouteExclude({ env: cliEnv, projectDir: projectRoot,
-                log: lists.mcps.some((e) => String(e).split('|')[0] === 'windows-desktop') ? (line) => log(`  desktop: ${line}`) : () => {} }),
+            WINDOWS_CONTROL_EXCLUDE: copyRouteExclude({ env: cliEnv, projectDir: projectRoot,
+                log: lists.mcps.some((e) => String(e).split('|')[0] === 'windows-control') ? (line) => log(`  desktop: ${line}`) : () => {} }),
         };
         // The one remote server the copy route registers: documentation (Context7), the hosted transport only (2.0.0).
         const remotes = { 'alfred-documentation': mcp.CONTEXT7_REMOTE };
@@ -1459,7 +1459,9 @@ function installPlugins(ctx)
     const listing = plugins.parsePluginList(raw, ctx.projectRoot, { byMarketplace: true });
     const rows = plugins.parsePluginList(raw, ctx.projectRoot, { everyScope: true });
     const blind = !listingRead(raw);
-    if (ctx.routes.mcps) ctx.desktopHeld = new Set(rows.filter((r) => r.marketplace === ctx.market && DESKTOP_OS[r.name]).map((r) => r.name));
+    // Under an old name too (windows-desktop): a rename brings no server into the project, so its notes stay unsaid.
+    const nowName = (n) => mcp.currentMcp(n, ctx.manifest.renamed.mcps);
+    if (ctx.routes.mcps) ctx.desktopHeld = new Set(rows.filter((r) => r.marketplace === ctx.market && DESKTOP_OS[nowName(r.name)]).map((r) => nowName(r.name)));
     const engines = playwrightMoves(ctx, { blind, rows });
     // R107 / R111: what the copy route registers in .mcp.json after this layer must never also load as
     // a plugin. On the full copy route the stack's own rows go off (the core and the locked three) -
@@ -1474,9 +1476,11 @@ function installPlugins(ctx)
     // C11: at user scope on the full copy route an engine's user-scope row is switched off here only, and
     // joins the core's in the stamp's stood-down record.
     // The 2.0.0 rename: on the full copy route an old id is stood down with its successor's name - the
-    // core is off there, so no swap runs (plugins.migrateRenamed); on a plugin route it is swapped below.
-    const legacyEngines = copyRoute ? ctx.legacyMcps.filter((n) => n.startsWith('playwright-')) : [];
-    const legacyLocked = copyRoute ? ctx.legacyMcps.filter((n) => !n.startsWith('playwright-')) : [];
+    // core is off there, so no swap runs (plugins.migrateRenamed); on a plugin route it is swapped below. An old
+    // engine or desktop id goes the engine way, an old locked one the core's.
+    const lockedSuccessor = (n) => mcp.isLocked(mcp.currentMcp(n, ctx.manifest.renamed.mcps));
+    const legacyEngines = copyRoute ? ctx.legacyMcps.filter((n) => !lockedSuccessor(n)) : [];
+    const legacyLocked = copyRoute ? ctx.legacyMcps.filter(lockedSuccessor) : [];
     // I8: a desktop server the copy route registers loses its plugin row the engine way.
     const engineOff = !ctx.routes.mcps && !blind ? plugins.engineStandDown({ ...stand, engines: pwEngines(ctx), desktop: desktopKept(ctx), hereOnly: copyRoute, legacy: legacyEngines }).off : [];
     const standDown = () => { if (copyRoute && !blind) ctx.standDown.now = [...engineOff, ...plugins.copyRouteStandDown({ ...stand, locked: [...mcp.LOCKED, ...legacyLocked] })]; };
@@ -1533,7 +1537,8 @@ function installPlugins(ctx)
     // install would otherwise run both. A
     // listing the run could not read shows no old row: the ids a pre-rename stamp implies are named.
     const renamedMove = plugins.corePluginOn(ctx.routes) && !blind
-        ? plugins.migrateRenamed({ rows, renamed: ctx.manifest.renamed.mcps, set, market: ctx.market, scope: ctx.cliScope, engines, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note })
+        ? plugins.migrateRenamed({ rows, renamed: ctx.manifest.renamed.mcps, set, market: ctx.market, scope: ctx.cliScope, engines, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note,
+            keep: (name) => Boolean(ctx.routes.mcps) && Object.hasOwn(DESKTOP_OS, name) })
         : { fresh: [], gone: [] };
     if (blind && predatesRename(ctx))
         ctx.log(`  !! the plugin listing could not be read, and this install predates the 2.0.0 rename - an old id still installed loads beside its successor; check /plugin, or: ${ctx.legacyMcps.map((n) => `claude plugin uninstall ${n}@${ctx.market} --scope ${ctx.cliScope}`).join('; ')}`);
@@ -1596,7 +1601,7 @@ function desktopNotes(ctx)
     {
         const name = String(entry).split('|')[0];
         if (!DESKTOP_OS[name] || ctx.desktopHeld.has(name)) continue;
-        for (const line of prereqNotes(name, { uvx, exclude: ctx.tokens.WINDOWS_DESKTOP_EXCLUDE })) ctx.log(line);
+        for (const line of prereqNotes(name, { uvx, exclude: ctx.tokens.WINDOWS_CONTROL_EXCLUDE })) ctx.log(line);
     }
 }
 
@@ -1816,6 +1821,10 @@ function navigationContext(ctx)
 function installMcps(ctx)
 {
     if (!ctx.hasClaude) return;
+    // The servers registered before this run removes anything, read under today's names: a desktop server registered
+    // under its old one (windows-desktop) is no server this run brings in, so desktopNotes stays quiet for it.
+    const registeredBefore = Object.keys(mcp.registrationsAt({ scope: mcp.registrationScope(ctx.routes, ctx.cliScope), mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers)
+        .map((n) => mcp.currentMcp(n, ctx.manifest.renamed.mcps));
     // The admin's MCP config is read-only to this run (mcp.adminMcp): a server it provides is never registered over,
     // removed or denied, and a managed-mcp.json leaves nothing else loading - the stack's plugin servers included.
     ctx.admin = mcp.adminMcp({ env: ctx.env });
@@ -1961,7 +1970,8 @@ function installMcps(ctx)
                 ctx.log(name === 'playwright'
                     ? '  playwright is registered at user scope - if an earlier stack run added it and no other project uses it: claude mcp remove playwright -s user; if you added it yourself, keep it'
                     : `  !! mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`);
-    ctx.desktopHeld = new Set(Object.keys(mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers).filter((n) => DESKTOP_OS[n]));
+    ctx.desktopHeld = new Set([...registeredBefore, ...Object.keys(mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers)]
+        .filter((n) => DESKTOP_OS[n]));
     // I12: the navigation registration names the stack's serena context, copied first - the registration
     // and the verify pass below both read the token.
     if (live.some((e) => e.split('|')[0] === 'alfred-navigation')) ctx.tokens.SERENA_CONTEXT = navigationContext(ctx);

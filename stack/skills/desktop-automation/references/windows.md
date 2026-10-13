@@ -1,6 +1,6 @@
-# windows-desktop - Windows-MCP on Windows
+# windows-control - Windows-MCP on Windows
 
-The server behind windows-desktop, what it needs from the machine, and the switches around it.
+The server behind windows-control, what it needs from the machine, and the switches around it.
 Checked against Windows-MCP 0.8.5, the release the stack pins.
 
 ## Tools
@@ -27,7 +27,7 @@ on. What stays on: the observe, input and wait tools, `App`, `Clipboard`, `Scrap
 Windows-MCP gates by tool name, never by mode, so `App` stays whole - and its `launch_executable` mode
 starts any program (`powershell.exe -Command ...` included): a house guard denies that mode unless the
 user allowed it in `<docs-path>/flow/DESKTOP-EXEC-ALLOW`, while `launch`, `switch` and `resize` pass.
-`ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` replaces the list - `none` lifts it, a list of its own
+`ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE` replaces the list - `none` lifts it, a list of its own
 (`PowerShell` alone, or one that adds `App` on a non-English machine) takes its place. It is read from the shell that starts Claude Code, then the
 project's `settings.local.json`, its `settings.json` and the account settings `env`; the server reads
 it at start, so reconnect it from `/mcp` after a change. Windows-MCP matches the names case-sensitively and

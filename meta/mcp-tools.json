@@ -59,7 +59,7 @@
         "resolve-library-id"
       ]
     },
-    "macos-desktop": {
+    "macos-control": {
       "version": "0.4.6",
       "tools": [
         "App",
@@ -166,7 +166,7 @@
         "write_memory"
       ]
     },
-    "windows-desktop": {
+    "windows-control": {
       "version": "0.8.5",
       "tools": [
         "App",

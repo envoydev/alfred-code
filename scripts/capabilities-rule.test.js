@@ -139,8 +139,8 @@ test('I20: routingRow leaves no slot outside the first call names', () =>
     const rows = [
         routingRow('browser-webkit', map, slots),
         pluginRoutingRow('browser-msedge', 'browser-msedge', map, slots),
-        routingRow('windows-desktop', map, slots),
-        pluginRoutingRow('macos-desktop', 'macos-desktop', map, slots),
+        routingRow('windows-control', map, slots),
+        pluginRoutingRow('macos-control', 'macos-control', map, slots),
     ];
     for (const row of rows) assert.doesNotMatch(row.split('first call:')[0], /<[a-z][a-z -]*>/, row);
     assert.ok(rows[0].includes('`data/x/browser/webkit/output/`'), rows[0]);
@@ -150,7 +150,7 @@ test('I20: routingRow leaves no slot outside the first call names', () =>
 
 test('I20: the rows\' docs root follows a local-scope install\'s settings.local.json over settings.json', () =>
 {
-    const { root, home } = project('docs-root-local', { servers: ['windows-desktop'], settings: { env: { ALFRED_CODE_DOCS_PATH: 'shared/docs' } }, local: { env: { ALFRED_CODE_DOCS_PATH: 'var/data/docs' } } });
+    const { root, home } = project('docs-root-local', { servers: ['windows-control'], settings: { env: { ALFRED_CODE_DOCS_PATH: 'shared/docs' } }, local: { env: { ALFRED_CODE_DOCS_PATH: 'var/data/docs' } } });
     const { out } = run([], { cwd: root, home });
     assert.match(out, /DOCS ROOT: var\/data\/docs\s+\(from ALFRED_CODE_DOCS_PATH in \.claude\/settings\.local\.json env\)/);
     const [row] = rowsOf(out);
@@ -320,7 +320,7 @@ test('I12: the navigation rule and the locked row keep rename and safe delete, e
 
 test('I45: the macOS row leads with the failed start, and an empty snapshot only past the skip switch', () =>
 {
-    const row = squash(routingMapText().split('\n').find((l) => l.startsWith('- `macos-desktop`')));
+    const row = squash(routingMapText().split('\n').find((l) => l.startsWith('- `macos-control`')));
     assert.ok(!row.includes('an empty snapshot means the Accessibility grant is missing'), row);
     assert.ok(row.includes('fails to connect at start') && row.includes('System Settings opens'), row);
     assert.ok(row.includes('`MACOS_MCP_SKIP_PERMISSION_CHECK=1`'), row);
@@ -329,7 +329,7 @@ test('I45: the macOS row leads with the failed start, and an empty snapshot only
 
 test('I10: the Windows row says FileSystem is off and App launch_executable is denied without the receipt', () =>
 {
-    const row = squash(routingMapText().split('\n').find((l) => l.startsWith('- `windows-desktop`')));
+    const row = squash(routingMapText().split('\n').find((l) => l.startsWith('- `windows-control`')));
     assert.ok(row.includes('`FileSystem`'), row);
     assert.ok(row.includes('`launch_executable`') && row.includes('`<docs-path>/flow/DESKTOP-EXEC-ALLOW`'), row);
 });

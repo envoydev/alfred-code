@@ -1198,8 +1198,8 @@
       "alfred-memory",
       "alfred-navigation",
       "browser",
-      "macos-desktop",
-      "windows-desktop"
+      "macos-control",
+      "windows-control"
     ],
     "plugins": [
       "claude-hud",
@@ -1229,12 +1229,12 @@
     ]
   },
   "mcps": {
-    "windows-desktop": {
+    "windows-control": {
       "skills": [
         "desktop-automation"
       ]
     },
-    "macos-desktop": {
+    "macos-control": {
       "skills": [
         "desktop-automation"
       ]

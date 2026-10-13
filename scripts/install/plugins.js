@@ -856,7 +856,8 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], market =
 
 // THE MCP RENAMES (meta/stack-manifest.json `renamed.mcps`): 2.0.0 made serena, context7 and
 // playwright-<engine> navigation, documentation and browser-<engine>, and 2.2.0 made navigation, documentation
-// and memory alfred-navigation, alfred-documentation and alfred-memory. An install made before one
+// and memory alfred-navigation, alfred-documentation and alfred-memory, and 2026-10-13 made windows-desktop and
+// macos-desktop windows-control and macos-control. An install made before one
 // holds the old rows; each one this run's set carries a successor for, at THIS run's scope, is SWAPPED
 // there - the new one installed first, so a failed install leaves the old server running, then the old
 // one removed, so the same server never loads twice after the run. An old row at ANOTHER scope serves
@@ -867,12 +868,16 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], market =
 // line naming its uninstall for when every project there has updated. The new one already there (a
 // re-run after a partial one) is not installed again, and an old id already off here is not disabled
 // again. A browser engine keeps the user's own on/off (the settings file's word at the old row's
-// scope, or this run's enable answer); a locked server comes on, the way update enables a parked one.
+// scope, or this run's enable answer), a desktop server the settings file's word; a locked server comes on, the
+// way update enables a parked one.
 // An old one whose successor this run does not carry (a dropped engine, the MCP copy route's engines)
-// goes at this run's scope only - one at another scope is named with its command. Only this stack's
+// goes at this run's scope only - one at another scope is named with its command - except where `keep` says
+// the row itself is the state to carry: a desktop server on the plugin route is missing from the set when the
+// user parked it (switched off) or this machine's OS gate left it out while a teammate's project-scope row
+// enables it, and either way the successor takes the old row's place with its on/off. Only this stack's
 // marketplace: the official catalog ships a `serena` too. Returns `{ fresh, gone }`: the specs
 // installed here, and the old rows removed.
-function migrateRenamed({ rows = [], renamed = {}, set = [], market = BRAND.marketplace, scope, engines = NO_ENGINES, isOn = () => undefined, cli, log = () => {}, note = () => {} })
+function migrateRenamed({ rows = [], renamed = {}, set = [], market = BRAND.marketplace, scope, engines = NO_ENGINES, keep = () => false, isOn = () => undefined, cli, log = () => {}, note = () => {} })
 {
     const { currentMcp, renamedFrom } = require('./mcp.js');
     const olds = renamedFrom(renamed);
@@ -893,7 +898,7 @@ function migrateRenamed({ rows = [], renamed = {}, set = [], market = BRAND.mark
         const at = row.scope || scope;
         // The admin's old id stays as it is - no run uninstalls or switches a managed row; named once.
         if (isManaged(at)) { log(`  ${leftAt(oldSpec, at)} - renamed ${newName}; ask your admin to move the managed setting to ${newSpec}`); continue; }
-        if (!set.includes(newSpec))
+        if (!set.includes(newSpec) && !(keep(newName) && at === scope))
         {
             if (at !== scope) { log(`  ${oldSpec} is installed at ${at} scope, not this run's - renamed ${newName} and not carried here; kept for the projects that use it: claude plugin uninstall ${oldSpec} --scope ${at}`); continue; }
             if (drop(oldSpec, at)) { log(`  renamed: plugin ${oldSpec} removed [${at}] - renamed ${newSpec}, which this run does not carry`); out.gone.push(row); }
@@ -914,7 +919,8 @@ function migrateRenamed({ rows = [], renamed = {}, set = [], market = BRAND.mark
             here.add(newName);
             out.fresh.push(newSpec);
             const engine = /^browser-/.test(newName);
-            if (engine && !(engines.on ? engines.on.includes(newSpec) : wasOn)) switchOff(newSpec, scope, { cli, log, note });
+            const desktop = Object.hasOwn(require('../../stack/mcp/desktop-launch.js').DESKTOP_OS, newName);
+            if (engine ? !(engines.on ? engines.on.includes(newSpec) : wasOn) : desktop && !wasOn) switchOff(newSpec, scope, { cli, log, note });
         }
         if (at !== scope) { standDownRenamed({ oldSpec, newSpec, at, here: standDownScope(scope), wasOn, isOn, cli, log, note }); continue; }
         if (drop(oldSpec, at)) { log(`  renamed: plugin ${oldSpec} -> ${newSpec} [${at}]`); out.gone.push(row); }

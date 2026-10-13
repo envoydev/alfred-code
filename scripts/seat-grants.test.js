@@ -57,10 +57,10 @@ test('I13: a seat whose own body sends it to the documentation server holds the 
 // readOnlyHint=True, less the tools that do not look at the desktop (Scrape fetches a URL; Windows'
 // DisplayInventory and Wait add nothing a verifier needs): windows-mcp 0.8.5 Snapshot / Screenshot /
 // WaitFor, macos-mcp 0.4.6 Snapshot / Wait (it has no Screenshot and no WaitFor).
-const OBSERVE = { 'windows-desktop': ['Snapshot', 'Screenshot', 'WaitFor'], 'macos-desktop': ['Snapshot', 'Wait'] };
+const OBSERVE = { 'windows-control': ['Snapshot', 'Screenshot', 'WaitFor'], 'macos-control': ['Snapshot', 'Wait'] };
 const DESKTOP_SEATS = ['evidence-gatherer', 'winforms-verifier', 'wpf-verifier'];
 const desktopGrant = (server, tool) => `mcp__plugin_${server}_${server}__${tool}`;
-const desktopTools = (seat) => tools(seat).filter((t) => /^mcp__plugin_(windows|macos)-desktop_/.test(t));
+const desktopTools = (seat) => tools(seat).filter((t) => /^mcp__plugin_(windows|macos)-control_/.test(t));
 
 test('I14: the three observe seats hold exactly the read-only observe tools of both desktop servers', () =>
 {
@@ -84,7 +84,7 @@ test('I14: each observe seat names the desktop server by what it does, with the 
         const text = body(seat);
         // a backticked server name is a graph edge: it would pull the opt-in desktop server into every
         // install that picks the seat (evidence-gatherer is an always seat)
-        assert.doesNotMatch(text, /`(windows|macos)-desktop`/, `${seat}: described, never named`);
+        assert.doesNotMatch(text, /`(windows|macos)-control`/, `${seat}: described, never named`);
         assert.match(squash(text), /drives this machine's own desktop apps/, `${seat}: the described cite`);
         const site = pinned.find((c) => c.file === `stack/agents/${seat}.md` && /desktop|view|form/.test(c.marker));
         assert.ok(site, `${seat}: a desktop absence clause pinned under optional-mcp-absence`);

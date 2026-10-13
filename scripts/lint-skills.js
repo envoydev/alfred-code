@@ -156,8 +156,8 @@ const NON_SKILL_TOKENS = new Set([
     'kebab-case',
     // the two desktop MCP server names, keyed in the capability capture's routing map (a row is found by
     // its backticked name) - servers, not skills.
-    'windows-desktop',
-    'macos-desktop',
+    'windows-control',
+    'macos-control',
 ]);
 
 const findings = [];

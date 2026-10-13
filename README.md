@@ -84,7 +84,7 @@ Each stack has three seats: a **designer** plans the change, an **implementer** 
 | documentation (Context7) | read current library docs instead of guessing from memory |
 | memory | keep your preferences and corrections across sessions |
 | browser (Playwright MCP) | open the app and check it, for web stacks |
-| windows-desktop, macos-desktop | drive desktop apps - opt-in, on their own OS only |
+| windows-control, macos-control | drive desktop apps - opt-in, on their own OS only |
 
 ## Commands
 

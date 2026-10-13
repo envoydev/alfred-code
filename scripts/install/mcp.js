@@ -344,7 +344,7 @@ function verifyUser({ expects = [], scope, getShape, reregister, owned = () => t
 // take `==<ver>` too (`--from windows-mcp==<ver>`).
 const PIN_ROWS = {
     browser: ['PW_PIN', '@<v>'], 'alfred-navigation': ['SERENA_PIN', '@<v>'], 'alfred-memory': ['MEMORY_PIN', '==<v>'],
-    'windows-desktop': ['WINDOWS_DESKTOP_PIN', '==<v>'], 'macos-desktop': ['MACOS_DESKTOP_PIN', '==<v>'],
+    'windows-control': ['WINDOWS_CONTROL_PIN', '==<v>'], 'macos-control': ['MACOS_CONTROL_PIN', '==<v>'],
 };
 
 function resolvePins({ pins, refreshed, own = '', log = () => {} })
@@ -799,7 +799,7 @@ function stackAuthored(name, entry, { engines = [] } = {})
             && new RegExp(`(^|[\\\\/])browser[\\\\/]${engine[1]}$`).test(after('--user-data-dir').replace(/[\\/]+$/, ''));
     if (!/^\d{4}-\d{2}-\d{2}/.test(after('--exclude-newer')) || !/^[^=\s]+==[^=\s]+$/.test(after('--from'))) return false;
     const env = entry.env && typeof entry.env === 'object' ? entry.env : {};
-    return !/-desktop$/.test(name) || env.ANONYMIZED_TELEMETRY === 'false';
+    return !/^(?:windows|macos)-(?:control|desktop)$/.test(name) || env.ANONYMIZED_TELEMETRY === 'false';
 }
 
 // Re-verify 3 S1 / S4 / S7: a registration no ledger row vouches for is the stack's only in the release template's EXACT

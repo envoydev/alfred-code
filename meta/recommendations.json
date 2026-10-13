@@ -184,7 +184,7 @@
     "dotnet-repair-agents"
    ],
    "mcps": [
-    "windows-desktop"
+    "windows-control"
    ],
    "plugins": [
     "csharp-lsp"
@@ -215,7 +215,7 @@
     "dotnet-repair-agents"
    ],
    "mcps": [
-    "windows-desktop"
+    "windows-control"
    ],
    "plugins": [
     "csharp-lsp"
