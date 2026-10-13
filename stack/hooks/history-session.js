@@ -64,7 +64,7 @@ async function main() {
   } else if (event === 'SessionStart') {
     const entry = H.upsert(root, payload);
     H.prune(H.historyDir(root), 200, 180);
-    const block = entry ? H.renderStartBlock(H.lastForBranch(root, entry.branch, 3, entry.session), BLOCK_CAP) : '';
+    const block = entry ? H.renderStartBlock(H.lastForBranch(root, entry.branch, 3, entry.session), BLOCK_CAP, root) : '';
     if (block) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: block } }));
   }
 }

@@ -82,6 +82,10 @@ if (cursorOff) process.exit(0);
           hook: path.basename(__filename),
           event: payload.hook_event_name || payload.tool_name || '',
           tool: payload.tool_name || '',
+          // WHO was blocked and on which call: a seat's block is its own row (audit 2026-10-10 C07, 0498718d - seat
+          // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
+          agent: payload.agent_id || null,
+          tool_use_id: payload.tool_use_id || null,
           reason: last.split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
@@ -180,8 +184,9 @@ if (PUSH_GATE_ON) {
 }
 
 // --- add -N without a chained reset -------------------------------------------------------
-// alfred-git.md:9 mandates the scope survey as ONE Bash call with the reset chained on the
-// end: `git add -N . && git diff HEAD --stat; git reset -q`. A bare `git add -N .` left its
+// alfred-git.md:9 derives the scope with a survey that never moves the index (`git diff HEAD --stat; git ls-files -o
+// --exclude-standard`): the older `git add -N . && ...; git reset -q` unstaged a session's own `git rm` deletions (audit
+// 2026-10-10, session f24eb967). A bare `git add -N .` left its
 // intent-to-add entries open across 6 more Bash calls in one measured session, ending in an
 // 8-call fsck/dangling-blob forensic chase and an unrequested re-stage that flipped a partially
 // staged file to fully staged. Independent of commit/push - it fires on its own. Scoped to the
@@ -189,16 +194,37 @@ if (PUSH_GATE_ON) {
 // is a deliberate staging move with one file's entry to clear, not the survey this rule is about.
 const addN = calls.find((c) => c.sub === 'add' && c.argv.some((a) => a === '-N' || a === '--intent-to-add')
   && c.argv.every((a) => a.startsWith('-') || a === '.'));
+const INDEX_FREE_SURVEY = 'git diff HEAD --stat; git ls-files -o --exclude-standard';
 if (addN && !calls.some((c) => c.sub === 'reset')) {
   process.stderr.write(
     `Blocked: ${actText(addN)} with no git reset in the same call - intent-to-add entries stay\n` +
     `open across every Bash call after this one until something clears them (measured: 6 calls open,\n` +
     `an 8-call fsck/dangling-blob chase, and an unrequested re-stage that flipped a partially staged\n` +
-    `file to fully staged). Chain the reset onto the SAME call, the shape alfred-git.md:9 gives:\n` +
-    `  git add -N . && git diff HEAD --stat; git reset -q\n` +
-    `Retry with the reset included.`,
+    `file to fully staged). Survey the scope without touching the index - the tracked diff, then the\n` +
+    `untracked files:\n` +
+    `  ${INDEX_FREE_SURVEY}\n` +
+    `(alfred-git.md's survey - a reset after -N would unstage work already staged).`,
   );
   process.exit(2);
+}
+// A bare `git reset -q` resets the WHOLE index, so chained after the survey it unstages every hunk the user had staged
+// (audit 2026-10-10: a read-only verifier seat ran it in session 05c925e9; in f24eb967 it unstaged a `git rm` and cost
+// an amend). Judged only when the index holds staged work: the survey that leaves the index alone passes it.
+const bareReset = addN && calls.find((c) => c.sub === 'reset' && c.at > addN.at && c.argv.every((a) => /^-(?:q|-quiet|-mixed)$/.test(a)));
+if (bareReset) {
+  let staged = false;
+  try {
+    execFileSync('git', ['diff', '--cached', '--quiet'], { cwd: gitRead.callDir(addN), timeout: 5000, stdio: 'ignore' });
+  } catch (e) { staged = e && e.status === 1; }
+  if (staged) {
+    process.stderr.write(
+      `Blocked: ${actText(bareReset)} after ${actText(addN)} resets the WHOLE index, and the index holds staged work\n` +
+      `now - the survey would unstage it. Survey without touching the index:\n` +
+      `  ${INDEX_FREE_SURVEY}\n` +
+      `or reset only the paths -N added: git reset -q -- <those paths>.`,
+    );
+    process.exit(2);
+  }
 }
 
 // Every `git add` in the command - judged below against what was untracked before the session started, so a bare
@@ -261,10 +287,18 @@ const docsPrefix = () => {
 // git add that would sweep it in is blocked below. The record for this HEAD first; a commit made since the session
 // started has none yet, so the newest record stands - a path it lists that is still untracked is still not the change,
 // and one it lists that got committed no longer matters. No record at all - an older install, no SessionStart - is an
-// empty set.
+// empty set. Before either: the record this session's first start used, named in `untracked-session-<sid>` (audit
+// 2026-10-10 C09), so a HEAD the session moved never hands it another session's snapshot.
 let preExistingCache;
 function preExistingRecord() {
   const dir = path.resolve(root, docsRootEnv(), 'flow');
+  const sid = String((payload && payload.session_id) || '').replace(/[^\w.-]/g, '_');
+  if (sid) {
+    try {
+      const named = path.basename(fs.readFileSync(path.join(dir, `untracked-session-${sid}`), 'utf8').trim());
+      if (named.startsWith('untracked-at-start-') && fs.existsSync(path.join(dir, named))) return path.join(dir, named);
+    } catch { /* no pointer - an older start */ }
+  }
   let head = '';
   try { head = git('rev-parse --verify -q HEAD'); } catch { head = ''; }
   const own = path.join(dir, `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
@@ -463,43 +497,187 @@ function consentIn(text, gate) {
   return ownHit || (genericHit && !otherHit);
 }
 
-// The transcript tail, read once and shared by the two checks that need it. 256KB is the same
-// window every other guard reads; a receipt is minted within a turn or two of its evidence.
-let _tail;
-function tail() {
-  if (_tail !== undefined) return _tail;
-  _tail = '';
+// The SESSION's transcript, streamed once and shared by the checks that need it. A fixed 256KB tail missed a verify
+// Skill call 265KB-1.33MB back and told three sessions 'no Skill call ran in this session' (audit 2026-10-10, sessions
+// 229e2715, 84eedb4b x2, 9a4ef375); a receipt's evidence can sit anywhere in the session, so the whole file is read, line
+// by line, newest 64MB at most (a work count, never time). One pass collects what the checks ask: whether a Skill ran,
+// every AskUserQuestion option label the assistant wrote, and the user's own typed turns.
+const TRANSCRIPT_SCAN_MAX = 64 * 1024 * 1024;
+const SKILL_RAN_RE = /"name"\s*:\s*"Skill"|<command-name>\/(?:[\w-]+:)?(?:(?:alfred|project)-[\w-]+|(?:capture|habits|issue|loop|task)-[\w-]+)<\/command-name>/;
+const normQuote = (t) => String(t).replace(/\s*\(recommended\)\s*$/i, '').replace(/\s+/g, ' ').trim().toLowerCase();
+// A review the checkpoint names: the house verify skills and loops, /security-review, or a verifier / reviewer seat.
+const REVIEW_SKILL = /(?:^|:)(?:(?:project-|task-)?verify-(?:code|plan)|quality-loop|(?:alfred-)?loop-(?:quality|architecture-quality|test-coverage)|security-review)$/i;
+const REVIEW_SEAT = /verifier|reviewer/i;
+let _scan;
+function transcriptScan() {
+  if (_scan) return _scan;
+  // reviews: when each review started (ms); answers: each AskUserQuestion answer, its labels and when it landed.
+  _scan = { skillRan: false, labels: new Set(), typed: [], reviews: [], answers: [] };
+  const tp = payload.transcript_path;
+  if (!tp) return _scan;
+  let fd;
   try {
-    const tp = payload.transcript_path;
-    if (tp) {
-      const size = fs.statSync(tp).size;
-      const start = Math.max(0, size - 256 * 1024);
-      const fd = fs.openSync(tp, 'r');
-      const buf = Buffer.alloc(size - start);
-      fs.readSync(fd, buf, 0, buf.length, start);
-      fs.closeSync(fd);
-      _tail = buf.toString('utf8');
+    const size = fs.statSync(tp).size;
+    fd = fs.openSync(tp, 'r');
+    let pos = Math.max(0, size - TRANSCRIPT_SCAN_MAX);
+    let carry = pos > 0 ? null : '';
+    const CHUNK = 4 * 1024 * 1024;
+    const buf = Buffer.alloc(CHUNK);
+    const tsOf = (row) => { const t = Date.parse(row && row.timestamp); return Number.isFinite(t) ? t : 0; };
+    const onLine = (line) => {
+      if (!_scan.skillRan && SKILL_RAN_RE.test(line)) _scan.skillRan = true;
+      if (line.length < 1024 * 1024 && (/"name"\s*:\s*"(?:Skill|Agent|Task)"/.test(line) || line.includes('"answers"'))) {
+        let row = null;
+        try { row = JSON.parse(line); } catch { row = null; }
+        const c = row && row.message && row.message.content;
+        if (row && row.type === 'assistant' && Array.isArray(c)) {
+          for (const b of c) {
+            if (!b || b.type !== 'tool_use' || !b.input) continue;
+            const named = b.name === 'Skill' ? String(b.input.skill || b.input.command || '') : /^(?:Agent|Task)$/.test(b.name) ? String(b.input.subagent_type || '') : '';
+            if (named && (b.name === 'Skill' ? REVIEW_SKILL.test(named.trim()) : REVIEW_SEAT.test(named))) _scan.reviews.push(tsOf(row));
+          }
+        }
+        const answers = row && row.toolUseResult && row.toolUseResult.answers;
+        if (answers && typeof answers === 'object') {
+          const labels = [];
+          for (const a of Object.values(answers)) for (const one of [a, ...String(a).split(/,\s*/)]) if (normQuote(one)) labels.push(normQuote(one));
+          if (labels.length) _scan.answers.push({ ts: tsOf(row), labels, text: Object.values(answers).map(String).join(', ') });
+        }
+      }
+      if (line.includes('"label"')) {
+        for (const m of line.matchAll(/"label"\s*:\s*"((?:[^"\\]|\\.)*)"/g)) {
+          let lbl;
+          try { lbl = JSON.parse(`"${m[1]}"`); } catch { lbl = m[1]; }
+          _scan.labels.add(normQuote(lbl));
+        }
+      }
+      // A turn the user TYPED: a user row whose content is text, never a tool_result (an ask's answer is the
+      // harness's row) and never a meta row (a skill body, a command expansion).
+      if (/"type"\s*:\s*"user"/.test(line) && !line.includes('"tool_result"') && line.length < 256 * 1024) {
+        let row;
+        try { row = JSON.parse(line); } catch { return; }
+        if (!row || row.type !== 'user' || row.isMeta) return;
+        const c = row.message && row.message.content;
+        const text = typeof c === 'string' ? c
+          : Array.isArray(c) ? c.filter((p) => p && p.type === 'text').map((p) => p.text).join('\n') : '';
+        if (text && !/^\s*<(?:command-name|local-command|bash-|task-notification)/.test(text)) _scan.typed.push(normQuote(text));
+        // a review the user TYPED as a slash command is a review run too
+        const typedSkill = /<command-name>\/?([\w:-]+)<\/command-name>/.exec(text);
+        if (typedSkill && REVIEW_SKILL.test(typedSkill[1])) _scan.reviews.push(tsOf(row));
+      }
+    };
+    while (pos < size) {
+      const n = fs.readSync(fd, buf, 0, Math.min(CHUNK, size - pos), pos);
+      if (n <= 0) break;
+      pos += n;
+      const text = buf.toString('utf8', 0, n);
+      const lines = text.split('\n');
+      // the first line of a cut-in read is a torn row - dropped
+      if (carry === null) { lines.shift(); carry = ''; }
+      lines[0] = carry + lines[0];
+      carry = lines.pop();
+      for (const l of lines) onLine(l);
     }
-  } catch { _tail = ''; }
-  return _tail;
+    if (carry) onLine(carry);
+  } catch { /* unreadable: nothing collected */ }
+  try { if (fd !== undefined) fs.closeSync(fd); } catch { /* closed */ }
+  return _scan;
 }
 // Is this exact string one of the assistant's own AskUserQuestion option labels? Compared with the
 // `(Recommended)` marker STRIPPED, because the harness stores the marked label as the user's answer
-// (correction 3) - so the marker's presence proves nothing either way.
+// (correction 3) - so the marker's presence proves nothing either way. A quote the user TYPED in a turn of
+// their own is their words even when a label spells it too (audit 2026-10-10, session f24eb967: the user typed
+// 'commit and push' after an ask had offered 'Commit and push', and the receipt quoting it was refused).
 function isOwnOptionLabel(span) {
-  const norm = (t) => String(t).replace(/\s*\(recommended\)\s*$/i, '').trim().toLowerCase();
-  const want = norm(span);
+  const want = normQuote(span);
   if (!want) return false;
-  for (const m of tail().matchAll(/"label"\s*:\s*"((?:[^"\\]|\\.)*)"/g)) {
-    let lbl;
-    try { lbl = JSON.parse(`"${m[1]}"`); } catch { lbl = m[1]; }
-    if (norm(lbl) === want) return true;
+  const s = transcriptScan();
+  if (!s.labels.has(want)) return false;
+  return !s.typed.some((t) => t.includes(want));
+}
+// The session's latest ask answer, for a denial that names what the receipt should carry: a receipt quoted the user's
+// typo ('commit and oush to develop') while the picked option sat in the transcript (audit 2026-10-10, session bda299a8).
+function answerHint() {
+  const a = transcriptScan().answers;
+  if (!a.length) return '';
+  const last = a[a.length - 1].text.replace(/\s+/g, ' ').trim().slice(0, 80);
+  return ` - this session's latest ask was answered "${last}"; a picked option is written \`answered: ${last}\``;
+}
+// When the latest answer carrying `label` landed, or 0 when no answer carries it.
+function answeredAt(label) {
+  const want = normQuote(String(label).replace(/^option\s+\d+\s*/i, '').replace(/["'\u201c\u2018\u201d\u2019]/g, ''));
+  let at = 0;
+  for (const a of transcriptScan().answers) if (a.ts > at && a.labels.includes(want)) at = a.ts;
+  return at;
+}
+
+// Did a Skill run in THIS session? The tool-usage ledger (instrument-tool-usage.js, when switched on) records every
+// Skill row under the session id, so it answers first; the whole-session transcript scan answers otherwise. A skill
+// the user TYPED writes no Skill call, only the harness's `<command-name>` row, and it is as much a run of that
+// skill as the model's own call (measured: slash-run loops, zero Skill events).
+function ledgerSkillRan() {
+  const sid = String(payload.session_id || '').replace(/[^A-Za-z0-9._-]/g, '');
+  if (!sid) return false;
+  const logs = new Set();
+  const own = envOf(process.env, 'INSTRUMENT_LOG');
+  if (own) logs.add(path.resolve(own));
+  for (const base of [projectDir, payload.cwd, root].filter(Boolean)) logs.add(path.resolve(base, docsRoot, 'tools-usage', `${sid}.jsonl`));
+  for (const f of logs) {
+    let text = '';
+    try { text = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    for (const line of text.split('\n')) {
+      if (!line.includes('"Skill"')) continue;
+      let row;
+      try { row = JSON.parse(line); } catch { continue; }
+      if (row && row.tool === 'Skill' && (!row.session || row.session === payload.session_id)) return true;
+    }
   }
   return false;
 }
-// A skill the user TYPED writes no Skill call, only the harness's `<command-name>` row, and it is
-// as much a run of that skill as the model's own call (measured: slash-run loops, zero Skill events).
-const skillCallRan = () => /"name"\s*:\s*"Skill"|<command-name>\/(?:[\w-]+:)?(?:(?:alfred|project)-[\w-]+|(?:capture|habits|issue|loop|task)-[\w-]+)<\/command-name>/.test(tail());
+const skillCallRan = () => ledgerSkillRan() || transcriptScan().skillRan;
+
+// The paths a spec: line names (`spec: 2 files - src/a.cs, src/b.cs`), as written: a word carrying a `/` or a file
+// extension. A count-only spec (`spec: 3 files - the fixtures`) names none.
+function specPaths(spec) {
+  return String(spec || '').split(/[\s,;()]+/).map((w) => w.replace(/^[`'"]+|[`'".:]+$/g, ''))
+    .filter((w) => w && !/^\d+$/.test(w) && (/[\w*-]\/[\w*.-]|\/$/.test(w) || /^[\w.*-]+\.[A-Za-z][A-Za-z0-9]{0,7}$/.test(w)));
+}
+// Why a head: that names an ANCESTOR of HEAD does not cover this act - or null when it does: no merge since it (a
+// merge brings in work no review saw), every commit since it made after the receipt was written (under this review,
+// never one that was already there), and every file those commits and this act take in inside the reviewed set - the
+// paths spec: names, or, when it gives only a count, no more files than that count.
+function batchProblem(h, spec, opts) {
+  const top = gitTop || root;
+  const run = (args) => execFileSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: top, timeout: 5000, maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).toString('utf8');
+  const different = 'the review ran against a different commit';
+  try { run(['merge-base', '--is-ancestor', h, 'HEAD']); } catch { return different; }
+  const fresh = 'review the tree as it stands and write head: as the output of git rev-parse HEAD';
+  const files = new Set();
+  try {
+    if (run(['rev-list', '--merges', `${h}..HEAD`]).trim()) return `a merge landed since it and brings in work the review never saw - ${fresh}`;
+    const floor = opts && opts.receiptMtimeMs ? Math.floor(opts.receiptMtimeMs / 1000) - 2 : 0;
+    if (floor && run(['log', '--format=%ct', `${h}..HEAD`]).split('\n').some((t) => t && Number(t) < floor)) {
+      return `a commit since it was made before this receipt was written, so the review never covered it - ${fresh}`;
+    }
+    for (const f of run(['diff', '--name-only', '-z', h, 'HEAD']).split('\0')) if (f) files.add(f);
+  } catch { return different; }
+  if (opts && opts.countAgainstTree) {
+    try { const s = commitSet(); for (const f of s.tracked.keys()) files.add(f); for (const f of s.untracked) files.add(f); } catch { /* unborn or unreadable: the commits alone */ }
+  }
+  const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
+  const docsRel = path.relative(top, real(path.resolve(real(root), docsRootEnv()))).split(path.sep).join('/');
+  if (docsRel && !docsRel.startsWith('..') && !path.isAbsolute(docsRel)) for (const f of [...files]) if (f.startsWith(`${docsRel}/`)) files.delete(f);
+  const listed = specPaths(spec);
+  const count = /(\d+)\s*files?\b/i.exec(String(spec || ''));
+  if (listed.length && (!count || listed.length >= Number(count[1]))) {
+    const covered = (f) => listed.some((p) => p === f || (p.endsWith('/') && f.startsWith(p)) || f.endsWith(`/${p}`));
+    const outside = [...files].filter((f) => !covered(f));
+    return outside.length ? `the commits since it and this act take in ${outside.slice(0, 5).join(', ')}${outside.length > 5 ? ', ...' : ''}, which spec: never names - ${fresh}` : null;
+  }
+  if (!count) return `${different} - a receipt covering a batch of commits names its reviewed set in spec: (<N> files, or the paths)`;
+  if (files.size > Number(count[1])) return `the commits since it plus this act take in ${files.size} files, more than the ${count[1]} its spec: covered - ${fresh}`;
+  return null;
+}
 
 // One judge, two routes. The receipt written as its own file and the receipt written inside the
 // same command as the act are the SAME document, so they answer to the same contract - otherwise
@@ -552,16 +730,25 @@ function judgeReceipt(body, opts) {
         : 'commit verb left standing (commit, land, or a publish that takes the commit with it)';
       r.problem = authorized.length > CONSENT_QUOTE_CAP
         ? `the authorized: quote runs past ${CONSENT_QUOTE_CAP} characters - a consent is the user's own answer, quoted; this is no answer`
-        : `the authorized: quote (${JSON.stringify(authorized).slice(0, 60)}) carries no ${verbs} - a negation, a stop, a deferral or 'myself' in its clause refuses the verb; it records the user saying something, not the user asking for THIS act`;
+        : `the authorized: quote (${JSON.stringify(authorized).slice(0, 60)}) carries no ${verbs} - a negation, a stop, a deferral or 'myself' in its clause refuses the verb; it records the user saying something, not the user asking for THIS act${answerHint()}`;
       return r;
     }
     if (isOwnOptionLabel(authorized)) {
-      r.problem = 'the authorized: quote is character-identical to an option label THIS run wrote - that is the model\'s sentence, not the user\'s. Consent given by picking an option is spelled `answered: <the chosen label>` instead';
+      r.problem = `the authorized: quote is character-identical to an option label THIS run wrote - that is the model's sentence, not the user's. Consent given by picking an option is spelled \`answered: <the chosen label>\` instead${answerHint()}`;
       return r;
     }
   } else if (answered) {
     if (!answered.replace(/^option\s+\d+\s*/i, '').replace(/["'“‘”’]/g, '').trim()) {
-      r.problem = 'the answered: line names no option';
+      r.problem = `the answered: line names no option${answerHint()}`;
+      return r;
+    }
+    // The ask must come AFTER a review: a commit ask answered before any review ran consented on 'suite and format pass'
+    // alone, the review then running behind the answer (audit 2026-10-10, session a3d497f8). Judged only when the answer
+    // and a review are both in the transcript; a review that ran before the answer passes, a re-review after it too.
+    const at = answeredAt(answered);
+    const reviews = transcriptScan().reviews.filter((t) => t > 0);
+    if (at && reviews.length && Math.min(...reviews) > at) {
+      r.problem = `the answered: ask (${answered.slice(0, 60)}) was answered before any review ran in this session - the commit ask comes after the review and names anything still owed; ask again now that the review has run`;
       return r;
     }
   } else {
@@ -584,11 +771,19 @@ function judgeReceipt(body, opts) {
     r.problem = `head: ${head.slice(0, 40)} names no commit sha - write the output of git rev-parse HEAD`;
     return r;
   }
-  if (realHead && !realHead.startsWith(h) && !h.startsWith(realHead)) {
-    r.problem = `head: ${head} is not this repo's HEAD (${realHead.slice(0, 12)}) - the review ran against a different commit`;
-    return r;
-  }
   const spec = field('spec');
+  if (realHead && !realHead.startsWith(h) && !h.startsWith(realHead)) {
+    // One receipt covers a reviewed BATCH (habits-commit-checkpoint: clear it 'after the LAST commit'): commit 1 moves
+    // HEAD, and demanding head: == HEAD sent three sessions to sed-rewrite head: to a sha the review never ran against
+    // (audit 2026-10-10, sessions 516e653d, 84eedb4b, ab61627f). A head: that is an ANCESTOR of HEAD still names the
+    // reviewed tree, and passes when every commit since it, plus what this act takes in, stays inside what the review
+    // covered.
+    const batch = batchProblem(h, spec, opts);
+    if (batch) {
+      r.problem = `head: ${head} is not this repo's HEAD (${realHead.slice(0, 12)}) - ${batch}`;
+      return r;
+    }
+  }
   if (!spec) {
     r.problem = 'no spec: line naming the file set reviewed (measured: a receipt asserted a review of a 17-file diff in which 9 files had been read)';
     return r;
@@ -609,6 +804,59 @@ function judgeReceipt(body, opts) {
     r.problem = 'no live-probe line - a VERIFIED review states what it actually ran, either the quoted output or `NOT RUN - <reason>` (spelled live-probe, live probe or live_probe)';
     return r;
   }
+  // The formatter CHECK over what the commit takes in (COMMIT-GATE only): the checkpoint formatted only the files the
+  // session edited, and a commit shipped an unformatted inherited file that held CI's format gate red for 29.5h (audit
+  // 2026-10-10, session e6a68237). The receipt records the check and its verdict, `format: <check command> - clean over
+  // <N> staged files`; a quoted user waiver on the line (`format: skipped - "<their words>"`) stands in for it.
+  if (opts && opts.gate === 'COMMIT-GATE') {
+    const fmt = field('format');
+    const fmtQuote = quotedOf(fmt);
+    const fmtWaived = fmtQuote && (WAIVER_WORDS.test(fmtQuote) || WAIVER_WORDS_CYR.test(fmtQuote)) && !isOwnOptionLabel(fmtQuote);
+    if (!fmtWaived && (!fmt || !/\bclean\b/i.test(fmt))) {
+      r.problem = `${fmt ? `format: ${fmt.slice(0, 60)} carries no clean verdict` : 'no format: line'} - a commit receipt records the formatter CHECK run over every staged file, \`format: <the check command> - clean over <N> staged files\` (a project with no formatter: \`format: none configured - clean over <N> staged files\`; the user's own waiver: \`format: skipped - "<their words>"\`)`;
+      return r;
+    }
+    // The review's verdict travels with the receipt: two sessions' reviews closed in prose and no Findings field reached
+    // the user (audit 2026-10-10, sessions 349e4825, a3d497f8). `findings: <count by severity | none>`, or the user's
+    // quoted waiver, the format: rule.
+    const fnd = field('findings');
+    const fndQuote = quotedOf(fnd);
+    const fndWaived = fndQuote && (WAIVER_WORDS.test(fndQuote) || WAIVER_WORDS_CYR.test(fndQuote)) && !isOwnOptionLabel(fndQuote);
+    // a findings line that says the review was skipped is a waiver, and a waiver is the user's quoted words
+    if (!fndWaived && (!(fnd && fnd.replace(/[-:\s]/g, '')) || /\b(?:skip(?:s|ped)?|waived?|not\s+run)\b/i.test(fnd))) {
+      r.problem = `${fnd && fnd.replace(/[-:\s]/g, '') ? `findings: ${fnd.slice(0, 60)} skips the review with no quoted waiver` : 'no findings: line'} - a commit receipt carries the review's Findings field, copied: \`findings: <a count by severity, or none>\` (the user's own waiver: \`findings: skipped - "<their words>"\`)`;
+      return r;
+    }
+    // The security half covers what the commit takes in: a receipt claimed a review over the full 11-file diff while the
+    // security diff read 4 (audit 2026-10-10, session 390aebcb). `security: ... - over <N> files` is held to the set.
+    const secOver = /\bover\s+(\d+)\s*files?\b/i.exec(field('security') || '');
+    if (secOver) {
+      let actual = 0;
+      try { actual = commitSet().count; } catch { actual = 0; }
+      if (actual && Number(secOver[1]) < actual) {
+        r.problem = `security: covered ${secOver[1]} file(s) but this commit takes in ${actual} - the security half reads the FULL change set, untracked files included`;
+        return r;
+      }
+    }
+    // A staged file changed AFTER the receipt was written: the review never saw that version - a fix delta committed
+    // under the review it was meant to get again (audit 2026-10-10, session f450ea64). The receipt's own write time is
+    // the review's latest moment; 2s of clock slack.
+    if (opts.receiptMtimeMs) {
+      const later = [];
+      try {
+        const set = commitSet();
+        for (const f of [...set.tracked.keys(), ...set.untracked]) {
+          let m = 0;
+          try { m = fs.statSync(path.resolve(set.top || gitTop || root, f)).mtimeMs; } catch { continue; }
+          if (m > opts.receiptMtimeMs + 2000) later.push(f);
+        }
+      } catch { /* unreadable: nothing judged */ }
+      if (later.length) {
+        r.problem = `${later.slice(0, 3).join(', ')}${later.length > 3 ? ` and ${later.length - 3} more` : ''} changed after this receipt was written - the review never saw that version; review the delta again (the same reviewer) and rewrite the receipt`;
+        return r;
+      }
+    }
+  }
   // The probe's SCOPE (push only - opts.touchedProjects is set only for PUSH-GATE): a receipt
   // naming one project's narrow run passed both gates once and CI broke right after the push.
   // Required only when the probe actually ran something AND the commit set going out touches
@@ -616,7 +864,9 @@ function judgeReceipt(body, opts) {
   // diff names nothing extra.
   const probeLine = (bodyText.match(/^\s*live[-\s_]?probe\s*:?[ \t]*(.*)$/im) || [])[1] || '';
   const probeRan = !/\bNOT RUN\b/i.test(probeLine);
-  if (opts && opts.touchedProjects && opts.touchedProjects.length && probeRan) {
+  // More than one project: a single-project push names its scope by the project itself (audit 2026-10-10, sessions
+  // bda299a8 and bba03dad: `length` alone demanded the line on three one-project pushes, against this comment).
+  if (opts && opts.touchedProjects && opts.touchedProjects.length > 1 && probeRan) {
     const scope = field('scope');
     if (!scope) {
       r.problem = `this push touches ${opts.touchedProjects.join(', ')} - no scope: line names what the probe covered (workspace, or the project list it ran)`;
@@ -654,17 +904,19 @@ function judgeReceipt(body, opts) {
 
 // touchedProjects is computed only for PUSH-GATE - it drives the diff-vs-upstream git call the
 // scope check needs, and a COMMIT-GATE receipt is never judged against it.
-const receiptOpts = (name) => ({
+const receiptOpts = (name, receiptMtimeMs = 0) => ({
   gate: name,
   countAgainstTree: name === 'COMMIT-GATE',
   touchedProjects: name === 'PUSH-GATE' ? pushTouchedProjects() : null,
+  receiptMtimeMs,
 });
 function readReceipt(name, notBeforeMs = 0) {
   const gate = path.resolve(root, docsRoot, 'flow', name);
   let stale = false;
   let body = '';
+  let mtimeMs = 0;
   try {
-    const mtimeMs = fs.statSync(gate).mtimeMs;
+    mtimeMs = fs.statSync(gate).mtimeMs;
     const age = Date.now() - mtimeMs;
     if (age > MAX_RECEIPT_AGE_MS || (notBeforeMs && mtimeMs < notBeforeMs)) stale = true;
     else body = fs.readFileSync(gate, 'utf8');
@@ -672,7 +924,7 @@ function readReceipt(name, notBeforeMs = 0) {
     // absent or unreadable - no gate receipt
   }
   if (stale) return { gate, stale, waived: false, verified: false, problem: null };
-  return { gate, stale, ...judgeReceipt(body, receiptOpts(name)) };
+  return { gate, stale, ...judgeReceipt(body, receiptOpts(name, mtimeMs)) };
 }
 // An atomic write-receipt-then-act command carries its own receipt: the gate file is
 // written (with a VERIFIED/WAIVED line in the same command text) before git runs. Blocking
@@ -1299,6 +1551,21 @@ function stagedFindings() {
   }
 }
 if (carriesOwnReceipt('COMMIT-GATE', commitMatch.index)) process.exit(0);
+// A SCRATCH commit is no project history: git runs in a checkout other than the project's own, on a DETACHED HEAD, under
+// the temp dir or the harness's scratch root (audit 2026-10-11 SD16, session 2ca8e8ee: a throwaway replay commit in a
+// detached scratch worktree was held for the project's receipt). The staged scan above still ran; a branch, the
+// project's own tree or a path outside the temp roots is gated as before.
+if (commitMatch.call && gitTop && !(projectDir && gitTop === topOf(projectDir))) {
+  const UID = typeof process.getuid === 'function' ? process.getuid() : null;
+  const realOr = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
+  const tmpRoots = [require('os').tmpdir(), ...(UID != null ? [`/tmp/claude-${UID}`, `/private/tmp/claude-${UID}`] : [])].map(realOr);
+  const under = tmpRoots.some((d) => gitTop === d || gitTop.startsWith(d.endsWith(path.sep) ? d : d + path.sep));
+  let detached = false;
+  if (under) {
+    try { execFileSync('git', ['symbolic-ref', '-q', 'HEAD'], { cwd: gitTop, timeout: 5000, stdio: 'ignore' }); } catch (e) { detached = !!e && e.status === 1; }
+  }
+  if (under && detached) process.exit(0);
+}
 // Trivial-diff exemption: total churn across this session's change - this commit plus what the session's
 // earlier trivial commits took in (barSet, above; the whole uncommitted tree when no session start can be read).
 // A chained `git add && git commit` stages mid-command, so the commit's set reads the add's own paths.
@@ -1341,6 +1608,8 @@ process.stderr.write(
     `  head: <git rev-parse HEAD>\n` +
     `  spec: <N files - the set the review covered>\n` +
     `  live-probe: <what you actually ran, or NOT RUN - <reason>>\n` +
+    `  format: <the formatter CHECK command run over the staged files> - clean over <N> staged files\n` +
+    `  findings: <the review's Findings field - a count by severity, or none>\n` +
     `The VERIFIED line proves the review ran; the authorized line proves the user asked for the\n` +
     `commit, and its quote must carry a commit verb and must not be an option label this run\n` +
     `wrote (measured: a self-written VERIFIED receipt passed this gate on a commit no user\n` +
@@ -1349,6 +1618,7 @@ process.stderr.write(
     `WAIVED - "<their words, verbatim>" instead; never fabricate either quote, and 'commit\n` +
     `it' alone is an instruction to commit, not a waiver of the review. Do not split a real\n` +
     `change into tiny commits to slip under this gate's trivial-diff exemption. Clear the\n` +
-    `file once the commit lands (after the LAST commit when one receipt covers a batch).`,
+    `file once the commit lands (after the LAST commit when one receipt covers a batch - its head: stays the sha the\n` +
+    `review ran against, and each later commit of the batch passes while it takes in only files spec: covered).`,
 );
 process.exit(2);

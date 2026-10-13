@@ -58,7 +58,7 @@ const REMOVED = new Map([
 // account), this project (the run's own scope; `project` when the run is a user-scope one) or local (this checkout
 // alone). Never managed: no run installs there. The required ones - the core and the three alfred- servers -
 // follow --scope. `browser` names every engine at once.
-const SCOPED_ITEMS = [...PW_ENGINES.map((e) => `browser-${e}`), 'windows-desktop', 'macos-desktop', 'typescript-lsp', 'csharp-lsp', 'claude-hud'];
+const SCOPED_ITEMS = [...PW_ENGINES.map((e) => `${e}-control`), 'windows-control', 'macos-control', 'mobile-control', 'typescript-lsp', 'csharp-lsp', 'claude-hud'];
 const SCOPE_OF = /^([a-z0-9-]+)=(global|user|project|local)$/;
 
 const ALIASES = new Map([['--playwright-browsers', '--browsers'], ['--playwright-enabled', '--browser-enabled'], ['--docs-move', '--data-move']]);
@@ -113,7 +113,7 @@ function parseArgs(argv)
             const value = lower(eq > -1 && name !== arg ? arg.slice(eq + 1) : argv[++i]).trim();
             const m = SCOPE_OF.exec(value);
             if (!m) fail(`--scope-of takes '<item>=<global|project|local>' (got '${value}')`);
-            const items = m[1] === 'browser' ? PW_ENGINES.map((e) => `browser-${e}`) : [m[1]];
+            const items = m[1] === 'browser' ? PW_ENGINES.map((e) => `${e}-control`) : [m[1]];
             if (!items.every((n) => SCOPED_ITEMS.includes(n)))
                 fail(`--scope-of: '${m[1]}' has no scope of its own - one of browser, ${SCOPED_ITEMS.join(', ')}; the core and the alfred- servers follow --scope`);
             for (const n of items) out.scopeOf[n] = m[2] === 'project' || m[2] === 'local' ? m[2] : 'user';

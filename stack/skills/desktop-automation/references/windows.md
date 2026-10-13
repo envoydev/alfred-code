@@ -1,6 +1,6 @@
-# windows-desktop - Windows-MCP on Windows
+# windows-control - Windows-MCP on Windows
 
-The server behind windows-desktop, what it needs from the machine, and the switches around it.
+The server behind windows-control, what it needs from the machine, and the switches around it.
 Checked against Windows-MCP 0.8.5, the release the stack pins.
 
 ## Tools
@@ -8,7 +8,8 @@ Checked against Windows-MCP 0.8.5, the release the stack pins.
 - **Observe:** `Snapshot` (windows, focused app, interactive elements with labels and coordinates,
   scrollable areas; `use_vision=True` adds an annotated screenshot, `use_dom=True` reads a browser's
   page instead of its chrome, `use_ui_tree=False` skips the tree for speed, `display=[0]` limits it
-  to one monitor), `Screenshot` (image only, no tree), `DisplayInventory` (monitors, resolution, DPI).
+  to one monitor), `Screenshot` (the image plus a short desktop and window summary, no tree;
+  `display=[0]` limits it too), `DisplayInventory` (monitors, resolution, DPI).
 - **Act:** `Click`, `Type`, `Scroll`, `Move` (also drag) - each by coordinates or by an element label
   from the snapshot; `Shortcut` (key combinations, `ctrl+s`), `MultiSelect`, `MultiEdit`.
 - **Wait:** `WaitFor` (polls the accessibility tree until a text, window, element or focus condition
@@ -26,7 +27,7 @@ on. What stays on: the observe, input and wait tools, `App`, `Clipboard`, `Scrap
 Windows-MCP gates by tool name, never by mode, so `App` stays whole - and its `launch_executable` mode
 starts any program (`powershell.exe -Command ...` included): a house guard denies that mode unless the
 user allowed it in `<docs-path>/flow/DESKTOP-EXEC-ALLOW`, while `launch`, `switch` and `resize` pass.
-`ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` replaces the list - `none` lifts it, a list of its own
+`ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE` replaces the list - `none` lifts it, a list of its own
 (`PowerShell` alone, or one that adds `App` on a non-English machine) takes its place. It is read from the shell that starts Claude Code, then the
 project's `settings.local.json`, its `settings.json` and the account settings `env`; the server reads
 it at start, so reconnect it from `/mcp` after a change. Windows-MCP matches the names case-sensitively and
@@ -47,7 +48,12 @@ a way around a blocked step.
   it.
 - **Screenshot size.** `WINDOWS_MCP_SCREENSHOT_SCALE` (0.1 to 1.0, default 1.0) shrinks every
   screenshot; 0.5 keeps a 4K or multi-monitor desktop readable and cheap. Set it in the shell that
-  starts Claude Code - a plugin server gets no project settings `env` key.
+  starts Claude Code - a plugin server gets no project settings `env` key. An image costs its area in
+  28x28-pixel patches, capped per model (platform.claude.com vision docs, read 2026-10-11): a
+  1728x1046 screenshot is about 2.4k tokens at 1.0, 1.4k at 0.75 and 0.6k at 0.5, and every later
+  turn re-sends it - 56 full-size screenshots were about a third of one session's cache reads (audit
+  2026-10-11). The stack seeds no value: how far a 1080p and a 4K desktop can shrink and stay
+  readable is not measured yet.
 - **First start.** uvx downloads Python and Windows-MCP the first time; a timeout on that start clears
   with one reconnect from `/mcp`. uv must be on PATH.
 - **Telemetry - off.** Windows-MCP sends anonymous usage events unless `ANONYMIZED_TELEMETRY` is

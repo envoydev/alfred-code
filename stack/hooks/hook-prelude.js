@@ -57,6 +57,24 @@ const os = require('node:os');
 const homeDir = () => { try { return os.homedir() || process.env.HOME || ''; } catch { return process.env.HOME || ''; } };
 const path = require('node:path');
 
+// STDOUT AND STDERR BLOCK. Node writes a pipe ASYNCHRONOUSLY on macOS, and process.exit() drops whatever the
+// pipe has not taken yet: measured 2026-10-10, the secret guard's rewrite of a 100 KB command reached its reader
+// as the first 65,536 bytes on Node 22.16 and 22.23 alike (8,192 on 22.16 for a smaller write), unparseable - so
+// the harness ran the call unredacted. Every hook and CLI here exits through process.exit, so the streams are
+// made blocking before the first write, as Node already makes a terminal: a write returns once the pipe holds
+// it. A file and a Linux pipe are synchronous anyway. `_handle.setBlocking` is libuv's uv_stream_set_blocking,
+// the call the set-blocking package makes; a stream without it keeps Node's default. Every hook loads this
+// file first, so loading it is the call; a CLI makes it in its main block.
+function blockingStdio(streams = [process.stdout, process.stderr])
+{
+    for (const s of streams)
+    {
+        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }
+        catch { /* a stream that cannot block keeps Node's default */ }
+    }
+}
+blockingStdio();
+
 // The wiring the installers write, in both spellings that shipped: quoted (current) and bare
 // (through 0.2.4x). Only a `$CLAUDE_PROJECT_DIR/.claude/hooks/<file>` command counts - a user
 // running their own copy of a same-named hook from their own path is NOT this hook's twin, and the
@@ -261,12 +279,52 @@ function transcriptEntrypoint(file)
     return null;
 }
 
+// A live AUTO waiver is nobody at the terminal too (audit 2026-10-10 C08 / C09). The user's 'take every recommended
+// option' is written to <docs>/flow/APPROVAL with an `AUTO - "<their words>"` first line, and the dispatch guard reads
+// it as consent for THIS session only: under 8h old and not written before the session's transcript was born (a
+// birthtime equal to the ctime is a filesystem's fallback, unknown - the age cap still holds). While it is live a
+// person-directed ask has nobody to answer it - measured: a fresh-session Stop block demanding an ask while three
+// seats ran under AUTO (9a4ef375), and a post-compaction 'ask the user' that a literal follower would have ended an
+// overnight run on (c6142301). The project root is the env's or the payload's own cwd, never this process's cwd.
+const AUTO_STAMP_MAX_MS = 8 * 60 * 60 * 1000;
+function autoStampLive(input, env)
+{
+    try
+    {
+        const source = env || process.env;
+        const payload = input && typeof input === 'object' ? input : {};
+        const root = source.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' ? payload.cwd : '');
+        if (!root) return false;
+        const gate = path.resolve(root, envOf(source, 'DOCS_PATH') || '.alfred/docs', 'flow', 'APPROVAL');
+        const stamp = fs.statSync(gate);
+        if (!stamp.isFile() || Date.now() - stamp.mtimeMs > AUTO_STAMP_MAX_MS) return false;
+        if (typeof payload.transcript_path === 'string' && payload.transcript_path)
+        {
+            try
+            {
+                const t = fs.statSync(payload.transcript_path);
+                const born = t.birthtimeMs && t.birthtimeMs !== t.ctimeMs ? t.birthtimeMs : 0;
+                if (born && stamp.mtimeMs < born) return false;
+            }
+            catch { /* no transcript - the age cap decides */ }
+        }
+        const fd = fs.openSync(gate, 'r');
+        const head = Buffer.alloc(512);
+        let n = 0;
+        try { n = fs.readSync(fd, head, 0, head.length, 0); }
+        finally { fs.closeSync(fd); }
+        return /^\s*AUTO\b/.test(head.toString('utf8', 0, n).split('\n')[0]);
+    }
+    catch { return false; }
+}
+
 function unattended(input, env)
 {
     try
     {
         const source = env || process.env;
         if (String(source.ALFRED_CODE_UNATTENDED || '').trim() === '1') return true;
+        if (autoStampLive(input, source)) return true;
         // The CLI's own answer first (review A, M8): 2.1.283 sets CLAUDE_CODE_ENTRYPOINT to sdk-cli in print mode,
         // rewriting an inherited cli, and keeps an SDK launch's own value - one read, no torn row, and right for a
         // resumed session before its first new row. Set to anything, it decides; unset, the transcript does.
@@ -338,7 +396,33 @@ function stopMarkerFile(hook, input, env)
     return path.join(dir, `alfred-stop-held-${baseName(hook)}-${part(input.hook_event_name)}-${part(input.session_id || 'nosession')}-${part(input.agent_id || 'main')}`);
 }
 
-function stopHeldThisCycle(hook, input, env)
+// opts.workSince (opt-in, the stop contract): a continuation that made a TOOL CALL after this hook's own block is new
+// work, and its close is judged again - the marker is cleared and the cycle reopens (audit 2026-10-11 SD10, session
+// 31da645f: after a prose-ask block the continuation ran an ask, a Skill, an Edit and a check, then closed on a new
+// prose question nothing judged). A rewritten close with no call between stays held, so the once-per-close guard holds.
+function toolCallSince(transcriptPath, sinceMs)
+{
+    const size = fs.statSync(transcriptPath).size;
+    const from = Math.max(0, size - 2 * 1024 * 1024);
+    const fd = fs.openSync(transcriptPath, 'r');
+    const buf = Buffer.alloc(size - from);
+    try { fs.readSync(fd, buf, 0, buf.length, from); } finally { fs.closeSync(fd); }
+    const lines = buf.toString('utf8').split('\n');
+    for (let i = lines.length - 1; i >= 0; i -= 1)
+    {
+        const line = lines[i];
+        if (!line.includes('"tool_use"') || !line.includes('"assistant"')) continue;
+        let o;
+        try { o = JSON.parse(line); } catch { continue; }
+        if (!o || o.type !== 'assistant' || !o.message || !Array.isArray(o.message.content)) continue;
+        const at = Date.parse(o.timestamp || '');
+        if (!Number.isFinite(at) || at <= sinceMs) continue;
+        if (o.message.content.some((b) => b && b.type === 'tool_use')) return true;
+    }
+    return false;
+}
+
+function stopHeldThisCycle(hook, input, env, opts)
 {
     if (!input || typeof input !== 'object' || !input.stop_hook_active)
     {
@@ -348,7 +432,26 @@ function stopHeldThisCycle(hook, input, env)
     try
     {
         const file = stopMarkerFile(hook, input, env);
-        if (fs.existsSync(file)) return true;
+        if (fs.existsSync(file))
+        {
+            if (opts && opts.workSince && input.hook_event_name === 'Stop' && typeof input.transcript_path === 'string')
+            {
+                let reopen = false;
+                // the block's time is the ISO stamp markStopHeld wrote (a coarse-mtime file system rounds the mtime down)
+                try
+                {
+                    const stamped = Date.parse(fs.readFileSync(file, 'utf8').trim());
+                    reopen = toolCallSince(input.transcript_path, Math.max(fs.statSync(file).mtimeMs, Number.isFinite(stamped) ? stamped : 0));
+                }
+                catch { /* unreadable: held */ }
+                if (reopen)
+                {
+                    fs.rmSync(file, { force: true });
+                    return false;
+                }
+            }
+            return true;
+        }
         fs.accessSync(path.dirname(file), fs.constants.W_OK);
         return false;
     }
@@ -365,14 +468,23 @@ function markStopHeld(hook, input, env)
 // `trivial-*` - was never pruned. sweepStale removes the FILES in `dir` named with `prefix` and untouched for 7 days,
 // once per (dir, prefix) per process, inside a 50ms budget of its own (the docs-session sweep's pattern: a bounded,
 // fail-silent pass a hook makes when it writes its own state). A file exactly at the cutoff is kept.
+// The pass runs at most once a DAY per (dir, prefix) across processes: a stamp beside the state records the last one,
+// so a hook call pays one stat, not a listing of the temp dir. Measured 2026-10-09: the two listings a Stop made of a
+// 52,840-entry macOS temp dir were 78ms of a 136ms hook (47ms with the stamp), and the budget never bounded the listing.
 const STALE_MS = 7 * 24 * 3600 * 1000;
 const STALE_BUDGET_MS = 50;
+const SWEEP_EVERY_MS = 24 * 3600 * 1000;
 const sweptStale = new Set();
-function sweepStale(dir, prefix, { now = Date.now(), maxAgeMs = STALE_MS } = {})
+const sweepStamp = (dir, prefix) => path.join(dir, `.alfred-sweep-${String(prefix).replace(/[^\w-]/g, '_')}`);
+function sweepStale(dir, prefix, { now = Date.now(), maxAgeMs = STALE_MS, everyMs = SWEEP_EVERY_MS } = {})
 {
     const key = `${dir}\u0000${prefix}`;
     if (!dir || !prefix || sweptStale.has(key)) return 0;
     sweptStale.add(key);
+    const stamp = sweepStamp(dir, prefix);
+    try { if (now - fs.statSync(stamp).mtimeMs < everyMs) return 0; } catch { /* no stamp yet - this call sweeps */ }
+    // Claimed before the pass, so parallel hooks do not all list the dir; a dir that takes no stamp holds none of our state.
+    try { fs.writeFileSync(stamp, ''); const t = new Date(now); fs.utimesSync(stamp, t, t); } catch { return 0; }
     const deadline = Date.now() + STALE_BUDGET_MS;
     let removed = 0;
     try
@@ -462,4 +574,4 @@ function scanBudget(limits = {})
 // the stop contract's ask deny and the answer-length Stop block, which disagreed ([\u2014\u2013] vs [\u2014\u2015], audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, capLog, STALE_MS };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };

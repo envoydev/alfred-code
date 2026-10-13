@@ -57,7 +57,7 @@ test('M79: a generated rule survives update because no ledger records it, not be
 
 // ---- M80: the plugin cache can be newer than the library copy -------------------------------------------------
 test('M80: the newest cache entry is not claimed to be the release these copies came from', () => {
-    for (const name of ['capture-first-look', 'habits-adjust-agents-md', 'capture-agent-capabilities']) {
+    for (const name of ['capture-first-look', 'habits-adjust-agents-md', 'capture-agent-awareness']) {
         const text = flat(skill(name));
         assert.doesNotMatch(text, /(NEWEST|newest plugin-cache entry) is the one this skill came from/i, `${name}: the skew window makes it false`);
         assert.match(text, /after a core update it can be newer/, `${name}: says when it differs`);
@@ -66,7 +66,7 @@ test('M80: the newest cache entry is not claimed to be the release these copies 
 
 // ---- M81: agent-capabilities' rename note and its plugin-route sentence ---------------------------------------
 test('M81: agent-capabilities names its 1.x name apart from the run-book capture, and the current plugin route', () => {
-    const text = flat(skill('capture-agent-capabilities'));
+    const text = flat(skill('capture-agent-awareness'));
     assert.doesNotMatch(text, /This skill was renamed from project-capabilities/);
     assert.match(text, /the 1\.x project-capabilities skill \(this one's old name, not the run-book capture\)/i);
     assert.doesNotMatch(text, /which on that route is only the items no plugin holds/, 'every skill is a copy since 2.1.0');
@@ -181,12 +181,12 @@ test('M91: adjust-agents-md is titled as the habit it is, and explain-code opens
 // ---- M92: the greenfield close names every missing capture in the template's order -------------------------------
 test('M92: build-from-scratch Next run names the run book and the capabilities capture, the latter last', () => {
     const line = (skill('task-build-from-scratch').match(/^Next run: .*$/m) || [''])[0];
-    const order = ['/capture-architecture', '/capture-code-style', '/capture-project-capabilities', '/capture-agent-capabilities'];
+    const order = ['/capture-architecture', '/capture-code-style', '/capture-project-awareness', '/capture-agent-awareness'];
     const at = order.map((c) => line.indexOf(c));
     assert.ok(at.every((i) => i > 0), `every capture named: ${line}`);
     assert.deepStrictEqual([...at].sort((a, b) => a - b), at, 'in the template\'s post-install order, agent-capabilities last');
     assert.match(line, /PROJECT-CAPABILITIES\.md/);
-    assert.match(line, /alfred-project-agent-capabilities\.md/);
+    assert.match(line, /alfred-agent-awareness\.md/);
 });
 
 // ---- M93: the over-build tags are this capture's own ---------------------------------------------------------
@@ -238,7 +238,7 @@ test('M97: alfred-docs-root names diagnoses/ and project-capabilities/', () => {
     assert.match(line, /`diagnoses\/`/);
     assert.match(line, /`project-capabilities\/PROJECT-CAPABILITIES\.md`/);
     assert.match(flat(skill('issue-diagnoser')), /diagnoses\//, 'the folder the diagnoser writes');
-    assert.match(flat(skill('capture-project-capabilities')), /project-capabilities\/PROJECT-CAPABILITIES\.md/);
+    assert.match(flat(skill('capture-project-awareness')), /project-capabilities\/PROJECT-CAPABILITIES\.md/);
 });
 
 // ---- M98: the vendored trio protocol's pointers into the owner's folder are the pinned exception ----------------
@@ -303,7 +303,7 @@ test('M103: version-upgrade\'s approval gate is two ask templates, the mark fixe
     const text = skill('task-version-upgrade');
     assert.doesNotMatch(flat(text), /\(recommended when no user-level question is open\)/, 'a conditional mark leaves one state unmarked');
     const all = asks(text);
-    const approve = all.find((a) => a.options[0] === 'Approve - execute the stages (Recommended)');
+    const approve = all.find((a) => a.options[0] === 'Approve - execute through the seats (Recommended)');
     const plan = all.find((a) => a.options[0] === 'Just the plan (Recommended)');
     assert.ok(approve, 'no open question: approve is recommended');
     assert.ok(plan, 'a user-level question open: just the plan is recommended');
@@ -369,19 +369,21 @@ test('a status-less seat return is a seat death in every orchestrator that route
     assert.match(routing, /route it as a seat death/, 'the routing bullet itself carries the route');
 });
 
-// 2.1.6 review B3: a solve run lists its own feature's folder at resume, never the whole store, and its close
-// purges the whole feature - a pre-2.1.6 run's flat notes included - and counts what is left with the trio
-// protocol's own line, kept in the step mechanics (read at step 3) since the body sits at its 18,000-char cap.
-test('solve resumes by the feature topic and closes on the counted purge', () =>
+// 2.1.6 review B3: a solve run lists its own feature's notes at resume, never the whole store, and its close
+// purges the whole feature and counts what is left with the trio protocol's own line, kept in the step mechanics
+// (read at step 3) since the body sits at its cap. Since the user's 2026-10-13 ruling the notes are alfred-memory
+// rows, so the resume and the purge go by the `handoff:<feature>` tag plus the project tag.
+test('solve resumes by the feature tag and closes on the counted purge', () =>
 {
     const solve = flat(skill('task-solve'));
-    assert.match(solve, /\*\*On invocation, resume before starting:\*\* `list_memories` with `topic: '<feature>'`/);
+    assert.match(solve, /\*\*On invocation, resume before starting:\*\* `memory_list` with the tags `handoff:<feature>` and the project tag, `tag_match: 'all'`/);
     assert.doesNotMatch(solve, /Delete or archive the cycle note/);
-    assert.match(solve, /`mcp__plugin_alfred-navigation_alfred-navigation__delete_memory` each note under `topic: '<feature>'` \(cycle and seat notes\) plus a pre-2\.1\.6 run's flat `<feature>__\*`/);
-    assert.match(solve, /in the close report, then the purge count \(`references\/step-mechanics\.md`\)/);
+    assert.match(solve, /`mcp__plugin_alfred-memory_alfred-memory__memory_delete` with `tags: \['handoff:<feature>', 'project:<name>'\]`, `tag_match: 'all'` - then the purge count \(`references\/step-mechanics\.md`\)/);
+    // Usage audit 2026-10-10 (C20): the receipt rides the close stop's Result field, where the stop check reads.
+    assert.match(solve, /The close stop's `Result:` line carries the receipts - `Completed <date>, memories purged: <names\|none>`/);
     const line = (text) => (/The purge is counted, not claimed\.\*\* At close, from the project root: `([^`]+)`/.exec(text) || [])[1];
     const own = line(flat(read('stack/skills/task-solve/references/step-mechanics.md')));
-    assert.ok(own, 'the step mechanics carry the purge count line');
+    assert.strictEqual(own, 'node .claude/hooks/memory.js handoff <feature>', 'the step mechanics carry the purge count line');
     assert.strictEqual(own, line(flat(read('stack/skills/task-solve-cross/references/domain-trio-protocol.md'))), 'the same line as the trio protocol');
 });
 

@@ -99,9 +99,11 @@ else process.exit(1);
 // array with one entry PER STEP, for a case whose steps need different `--source` snapshots or
 // different flags (only an array of arrays switches `args` to per-step). A per-step entry may be a
 // function of (repo, work), called just before its step runs - for flags built from an earlier step.
+// `seed` is the installer each step runs - this tree's by default, or one per step, so an update over an older
+// install runs that install with the older tree's own installer, as a real one was.
 // `failOk` keeps a run that exits non-zero (a refusal) from throwing: the tree still reaches `inspect`,
 // and the last run's exit status and stderr come back as `code` and `err`.
-function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, args = [], prepare = () => {}, inspect = () => null, each = () => null, failOk = false, account = false } = {})
+function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, seed = SEED, args = [], prepare = () => {}, inspect = () => null, each = () => null, failOk = false, account = false } = {})
 {
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-sandbox-'));
     const repo = path.join(work, 'repo');
@@ -131,6 +133,9 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
     for (const k of ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY']) delete env[k];
     // uv's own cut-off variable changes what the copy route registers (M24) - a case sets it through `env`.
     delete env.UV_EXCLUDE_NEWER;
+    // So do the SDK paths mobile-control's notes read, the shell's over a settings file's - and GitHub's ubuntu and macOS
+    // runner images set ANDROID_HOME and JAVA_HOME (the 2.4.0 release CI: a settings-file case read the runner's SDK).
+    for (const k of ['ANDROID_HOME', 'ANDROID_SDK_ROOT', 'JAVA_HOME']) delete env[k];
     scrubStackEnv(env);
     // The memory model pre-warm starts the service the snapshot declares (~166MB on a cold machine): off in the
     // sandbox unless a case switches it on with its own stand-in for uvx.
@@ -158,7 +163,7 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
             const src = sourceAt(i);
             try
             {
-                outs.push(execFileSync(process.execPath, [SEED, act, '--selection', path.join(work, 'sel.txt'), ...(src ? ['--source', src] : []), ...argsAt(i)],
+                outs.push(execFileSync(process.execPath, [Array.isArray(seed) ? seed[i] : seed, act, '--selection', path.join(work, 'sel.txt'), ...(src ? ['--source', src] : []), ...argsAt(i)],
                     { cwd: repo, env: envAt(i), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
                 code = 0;
                 err = '';

@@ -234,6 +234,9 @@ test('guard-secret-value: a block appends one ledger row naming the hook and nev
   assert.equal(bash('echo $SENTRY_ACCESS_TOKEN', { ALFRED_CODE_DOCS_PATH: ledger }), REWRITE);
   assert.deepStrictEqual(rowsOf().slice(1).map((r) => [r.mode, r.detail.branch]), [['rewrite', 'env-stage'], ['rewrite', 'variable']],
     'the environment and the variable forms are counted the same way');
+  // audit 2026-10-10 C09 (f24eb967): the permission mode a rewrite met is counted, so an auto-mode stall rate can be read
+  assert.equal(verdict(run({ tool_name: 'Bash', tool_input: { command: `cat ${f.secret}` }, session_id: 'suite', permission_mode: 'auto' }, { ALFRED_CODE_DOCS_PATH: ledger })), REWRITE);
+  assert.deepStrictEqual(rowsOf().map((r) => r.detail.permissionMode), [undefined, undefined, undefined, 'auto'], 'only a payload carrying the mode names it');
   assert.equal(bash(`curl -H "Authorization: Bearer ${FAKE_JWT}" https://example.test/api`, { ALFRED_CODE_DOCS_PATH: ledger }), 2);
   const blocks = rowsOf().filter((r) => !r.mode);
   assert.equal(blocks.length, 1);
@@ -405,13 +408,25 @@ test('guard-secret-value --presence: reports set (N chars) or absent, never a va
   assert.doesNotMatch(r.stdout + r.stderr, new RegExp(FAKE_TOKEN));
   assert.equal(presence(f.secret).stdout, 'SENTRY_SLUG=set (4 chars)\nSENTRY_ACCESS_TOKEN=set (40 chars)\n', 'no keys: every env key, in file order');
   assert.equal(presence(f.dotenv, 'API_KEY', 'DB_HOST').stdout, 'API_KEY=set (6 chars)\nDB_HOST=set (9 chars)\n', 'dotenv');
-  assert.equal(presence(f.emptyDotenv, 'API_KEY').stdout, 'API_KEY=absent\n', 'an empty value is absent');
+  assert.equal(presence(f.emptyDotenv, 'API_KEY').stdout, 'API_KEY=empty (present, no value)\n', 'an empty value is present with no value, never absent (audit 2026-10-10, session f24eb967)');
   assert.equal(presence(f.mcp, 'CONTEXT7_API_KEY').stdout, 'CONTEXT7_API_KEY=absent\n', 'no env block and no top-level key');
   const missing = presence(path.join(f.dir, 'nope.json'), 'SENTRY_SLUG');
   assert.equal(missing.status, 0);
   assert.equal(missing.stdout, `# ${path.join(f.dir, 'nope.json')}: not found\nSENTRY_SLUG=absent\n`);
   const tilde = presence('~/.this-file-does-not-exist-guard-secret-value.json', 'X');
   assert.match(tilde.stdout, /^# .*\.this-file-does-not-exist-guard-secret-value\.json: not found\nX=absent\n$/, '~ is expanded');
+});
+
+test('every page naming the presence read names its three answers (audit 2026-10-10, session f24eb967)', () => {
+  // The guard prints KEY=empty for a key present with no value; a page listing only set / absent sent a reader to call it absent.
+  const repo = path.join(__dirname, '..');
+  const pages = ['configure', 'setup', 'status', 'update', 'validate'].map((c) => path.join('setup-plugin', 'commands', `${c}.md`))
+    .concat([path.join('docs', 'alfred-code.html'), path.join('meta', 'shared-rules.json')]);
+  for (const rel of pages) {
+    const text = fs.readFileSync(path.join(repo, rel), 'utf8');
+    if (!/KEY=absent/.test(text)) continue;
+    assert.match(text, /KEY=empty \(present, no value\)/, `${rel} names set and absent but not empty`);
+  }
 });
 
 test('guard-secret-value: a CRLF dotenv file - the Windows-authored spelling - is read like an LF one', () => {
@@ -1420,7 +1435,9 @@ test('guard-secret-value: a command that also CHANGES something is blocked, neve
   // A splice keeps every other segment running as written, so a build BESIDE the read is no dropped step; one the
   // rewrite would drop - beside a second read of the file, which forces the whole-command form - still blocks.
   assert.equal(rewritten(`cat ${f.secret} && npm run build`), `node "${HOOK}" --redacted "${f.secret}" && npm run build`, 'a build after the dump is kept');
-  assert.equal(bash(`cat ${f.secret} && grep -c SENTRY ${f.secret} && npm run build`), 2, 'a build the whole-command rewrite would drop');
+  // a second read that PRINTS the file forces the whole-command form; a count of it no longer does (audit 2026-10-11 SD01)
+  assert.equal(bash(`cat ${f.secret} && head -1 ${f.secret} && npm run build`), 2, 'a build the whole-command rewrite would drop');
+  assert.equal(bash(`cat ${f.secret} && grep -c SENTRY ${f.secret} && npm run build`), REWRITE, 'a count beside the read is kept, and so is the build');
   assert.equal(bash(`jq .env ${f.secret} | tee ${path.join(f.dir, 'copy.json')}`), 2, 'a tee into a file writes as it prints');
   assert.equal(bash(`echo $SENTRY_ACCESS_TOKEN && rm -rf ${path.join(f.dir, 'gone')}`), 2, 'the variable rewrite would drop steps the same way');
   assert.equal(rewritten('env && curl https://example.test'), `node "${HOOK}" --redacted-env && curl https://example.test`,
@@ -1439,7 +1456,9 @@ test('guard-secret-value: a narrow read of a credential file keeps its own filte
   assert.equal(rewritten(`jq -r '.env.SENTRY_SLUG' "${f.secret}"`), `${view(f.secret)} --note-to-stderr | jq -r '.env.SENTRY_SLUG'`, 'a quoted file operand');
   assert.equal(rewritten(`head -3 ${f.secret} | tail -1`), `${view(f.secret)} --note-to-stderr | head -3 | tail -1`, 'the rest of the pipeline is kept');
   assert.equal(rewritten(`cat ${f.secret}`), view(f.secret), 'a whole-file dump is still the whole view');
-  assert.equal(rewritten(`grep SENTRY ${f.secret} ${f.dotenv}`), view(f.secret), 'two files: the view of the first, as before');
+  // audit 2026-10-11 SD01 (ce9d4811): two credential files - each searched through its own view, never the first alone
+  assert.equal(rewritten(`grep SENTRY ${f.secret} ${f.dotenv}`), `{ ${view(f.secret)} --note-to-stderr | grep -H --label="${f.secret}" SENTRY; `
+    + `${view(f.dotenv)} --note-to-stderr | grep -H --label="${f.dotenv}" SENTRY; }`, 'two files: a view each');
   const pw = updatedCommand(run({ tool_name: 'PowerShell', tool_input: { command: `grep -n SENTRY_SLUG ${f.secret}` }, session_id: 'suite' }));
   assert.equal(pw, `node '${HOOK}' --redacted '${f.secret}'`, 'the PowerShell tool keeps the whole view, PowerShell-quoted');
   // run for real: the note goes to stderr, the filter sees only the masked file
@@ -1778,6 +1797,37 @@ test('I2: a git command that prints file content is piped through the stream red
     assert.equal(bash(c), 0, `${c} passes untouched`);
 });
 
+// Audit 2026-10-11, session 42951e5b (the index-safe review read): the per-file `git diff --no-index -- /dev/null <file>`
+// over a `git ls-files -o` listing ran unmasked inside a `while read` loop and behind xargs - the git pass judged only a
+// stage whose first word was git.
+test('a git dump in a loop body or behind xargs takes the stream redactor where it stands', () => {
+  const dir = fs.mkdtempSync(path.join(TMP, 'loop-'));
+  const g = (...a) => spawnSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', ...a], { cwd: dir, encoding: 'utf8' });
+  g('init', '-q'); fs.writeFileSync(path.join(dir, 'a.txt'), 'x\n'); g('add', '-A'); g('commit', '-qm', 's');
+  fs.writeFileSync(path.join(dir, '.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
+  fs.writeFileSync(path.join(dir, 'new.js'), 'const a = 1;\n');
+  const at = (command) => updatedCommand(run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd: dir }));
+  const list = 'git ls-files -o --exclude-standard';
+  const cases = [
+    [`${list} | while read f; do git diff --no-index -- /dev/null "$f"; done`, `${list} | while read f; do git diff --no-index -- /dev/null "$f" | ${REDACTOR}; done`],
+    [`${list} | while IFS= read -r f; do git diff --no-index -- /dev/null "$f" || true; done`, `${list} | while IFS= read -r f; do git diff --no-index -- /dev/null "$f" | ${REDACTOR} || true; done`],
+    [`for f in $(${list}); do git diff --no-index -- /dev/null "$f"; done`, `for f in $(${list}); do git diff --no-index -- /dev/null "$f" | ${REDACTOR}; done`],
+    [`${list} | xargs -I{} git diff --no-index -- /dev/null {}`, `${list} | xargs -I{} git diff --no-index -- /dev/null {} | ${REDACTOR}`],
+    [`${list} -z | xargs -0 -n1 git diff --no-index -- /dev/null`, `${list} -z | xargs -0 -n1 git diff --no-index -- /dev/null | ${REDACTOR}`],
+  ];
+  for (const [command, want] of cases) {
+    const got = at(command);
+    assert.equal(got, want, command);
+    const ran = spawnSync('bash', ['-c', got], { cwd: dir, encoding: 'utf8' });
+    assert.ok(!ran.stdout.includes(FAKE_TOKEN), `the rewritten command prints no credential: ${command}\n${ran.stdout}`);
+    assert.match(ran.stdout, /\+API_TOKEN=<set \(40 chars\)>/, `the masked line: ${command}`);
+    assert.match(ran.stdout, /\+const a = 1;/, `the other file reads as written: ${command}`);
+  }
+  // a condition keeps its own exit status: a pipe would replace the status it tests
+  assert.equal(at(`if git diff --no-index -- /dev/null "$f"; then echo same; fi`), null, 'an if condition is left as written');
+  assert.equal(at(`${list} | xargs git diff --no-index --stat -- /dev/null`), null, 'a summary form prints no content');
+});
+
 test('I2: the stream redactor masks credential values, URL passwords and PEM bodies line by line', () => {
   const pem = ['-----BEGIN RSA PRIVATE KEY-----', 'MIIEowIBAAKCAQEA0000', 'abcdabcdabcd', '-----END RSA PRIVATE KEY-----'];
   const input = ['diff --git a/.env b/.env', '--- a/.env', '+++ b/.env', '-API_TOKEN=old', `+API_TOKEN=${FAKE_TOKEN}`, ' DB_HOST=localhost',
@@ -1880,7 +1930,7 @@ test('F1: a recursive search that would print a credential line is piped through
   fs.mkdirSync(path.join(dir, 'src'));
   fs.writeFileSync(path.join(dir, 'src', 'app.js'), 'const API_KEY_NAME = 1;\n');
   const v = (c) => verdict(at(dir, c));
-  assert.equal(updatedCommand(at(dir, 'grep -rn API_KEY .')), `grep -rn API_KEY . | ${REDACT_GREP}`, 'the walk reaches .env, so it is piped');
+  assert.equal(updatedCommand(at(dir, 'grep -rn API_KEY .')), `grep -rn API_KEY . | ${REDACT_GREP} --literals`, 'the walk reaches .env, so it is piped - masking quoted literals too, since the pattern names a key');
   assert.equal(v('grep -rn password cred'), REWRITE, 'a yaml credential under a named directory');
   assert.equal(v('rg -n password cred'), REWRITE, 'ripgrep walks too');
   assert.equal(v('grep -rn API_KEY src'), 0, 'a directory whose matches carry no credential runs as written');
@@ -2069,8 +2119,8 @@ test('guard-secret-value: the session commands beside a credential read run as w
 
 test('guard-secret-value: the read form of a git, claude or platform verb is read-only; its writing form still blocks when dropped', () => {
   const f = fixtures();
-  // a second read of the file forces the whole-command rewrite, so the third step is DROPPED and judged
-  const dropped = (step) => bash(`cat ${f.secret}; grep -c SENTRY ${f.secret}; ${step}`);
+  // a second read that prints the file forces the whole-command rewrite, so the third step is DROPPED and judged
+  const dropped = (step) => bash(`cat ${f.secret}; head -1 ${f.secret}; ${step}`);
   const reads = ['cygpath -w /tmp', 'uname -a', 'whoami', 'hostname', 'hostname -s', 'git check-ignore -v .alfred', 'git hash-object x.txt',
     'git ls-remote origin', 'git remote', 'git remote -v', 'git remote get-url origin', 'git remote show origin', 'git config --get user.name',
     'git config --get-all remote.origin.url', 'git config --list', 'git config -l --show-origin', 'git config get user.name', 'git branch', 'git branch -vv',
@@ -2124,8 +2174,8 @@ test('guard-secret-value: a separator inside $(...) or backticks belongs to the 
   // the substitution is still judged: a read inside it, a write inside it once dropped, an unclosed one
   assert.notEqual(bash(`echo $(cat ${f.secret} && true)`), 0, 'a printed substitution reading the file');
   assert.notEqual(bash(`echo $(cat ${f.secret}; ls`), 0, 'an unclosed substitution falls back to the blind split');
-  assert.equal(bash(`cat ${f.secret}; grep -c SENTRY ${f.secret}; ${lead}`), REWRITE, 'read-only inside, once dropped');
-  assert.equal(bash(`cat ${f.secret}; grep -c SENTRY ${f.secret}; R=$(touch x || true)`), 2, 'changing inside, once dropped');
+  assert.equal(bash(`cat ${f.secret}; head -1 ${f.secret}; ${lead}`), REWRITE, 'read-only inside, once dropped');
+  assert.equal(bash(`cat ${f.secret}; head -1 ${f.secret}; R=$(touch x || true)`), 2, 'changing inside, once dropped');
 });
 
 test('guard-secret-value: the presence read spelled through a variable the command assigns is this guard, not an opaque script', () => {
@@ -2168,4 +2218,258 @@ test('guard-secret-value: a field named exactly `key` counts only with a credent
   // the other credential names are judged as before - a short value under apiKey is still live
   assert.equal(read(w('api.json', JSON.stringify({ apiKey: 'abc123' }))), 2, 'apiKey');
   assert.equal(read(w('secret.env', 'SECRET_KEY=abc123\n')), 2, 'SECRET_KEY');
+});
+
+// 2026-10-10: the rewrite of a command past the pipe buffer reached the harness cut at 65,536 bytes (8,192 on Node
+// 22.16) on macOS - unparseable, so the original call ran and printed the file raw. The prelude's blockingStdio.
+test('guard-secret-value: the rewrite of a 100 KB command reaches the harness whole', () => {
+  const f = fixtures();
+  const tail = 'x'.repeat(100000);
+  const out = rewritten(`cat ${f.dotenv}; echo ${tail}`);
+  assert.ok(out, 'the rewrite parsed');
+  assert.ok(out.includes('--redacted') && out.endsWith(`echo ${tail}`), `rewritten whole: ${String(out).slice(0, 120)}...`);
+});
+
+// ---- audit 2026-10-10 C12: the credential guard's false positives and lossy rewrites -----------------------------------
+function c12Project() {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'c12-')));
+  fs.writeFileSync(path.join(dir, '.sentryclirc'), `[auth]\ntoken=${FAKE_TOKEN}\n`);
+  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: FAKE_TOKEN, DOCS_ROOT: '.alfred' } }, null, 2));
+  fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ env: { DOCS_ROOT: 'docs-local' } }, null, 2));
+  fs.writeFileSync(path.join(dir, 'login.json'), JSON.stringify({ accessToken: FAKE_TOKEN }));
+  fs.mkdirSync(path.join(dir, 'src'));
+  fs.writeFileSync(path.join(dir, 'src', 'a.ts'), '/** doc */\nexport const a = 1;\n');
+  fs.writeFileSync(path.join(dir, 'src', 'Base.cs'), 'await LoginAsync("demo@example.com", "Hunter2Demo!", ct);\n');
+  return dir;
+}
+
+test('audit 2026-10-10 C12: a runtime heredoc body never globs - a JSDoc `/**` or a backticked `**` names no credential file', () => {
+  const dir = c12Project();
+  const v = (c) => verdict(at(dir, c));
+  // the replayed shapes: a python edit whose strings carry `/**`, `*/` and a backticked `**` (7fae0c39, adaa2ef3, f450ea64,
+  // 9a4ef375, bda299a8) - each was blocked as a credential WRITE naming .sentryclirc
+  assert.equal(v("python3 -I - <<'PY'\nnew='''  /** x */\nopen(p,'w').write(new)\nPY"), 0, 'a JSDoc opener in a triple-quoted string');
+  assert.equal(v("python3 - <<'PY'\np='docs/x.md'\ns='use `**` for bold and \\'/**\\' globs'\nopen(p,'w').write(s)\nPY"), 0, 'a backticked ** and a quoted /**');
+  assert.equal(v("python3 - <<'PY'\np='src/a.ts'\nnew='''/**\n * the client's view, the server's view\n */'''\nopen(p,'w').write(new)\nPY"), 0, 'apostrophes in a JSDoc block');
+  assert.equal(v('node -e "const s = \'/** doc */\'; require(\'fs\').writeFileSync(\'src/a.ts\', s)"'), 0, 'an inline runtime string');
+  // what still counts: the file named, a glob the code itself expands, a shell glob
+  assert.equal(v("python3 - <<'PY'\nprint(open('.sentryclirc').read())\nPY"), REWRITE, 'the file named in the body');
+  assert.equal(v("python3 - <<'PY'\nimport glob\nfor f in glob.glob('.sentry*'): print(open(f).read())\nPY"), REWRITE, 'a glob the code expands');
+  assert.equal(v('cat .sentry*'), REWRITE, 'a shell glob');
+  assert.equal(v("python3 - <<'PY'\ns=open('.sentryclirc').read()\nopen('.sentryclirc','w').write(s)\nPY"), 2, 'a write naming the file still blocks');
+});
+
+test('audit 2026-10-10 C12: --presence tells a key written with no value from a missing key', () => {
+  const dir = c12Project();
+  const f = path.join(dir, 'appsettings.json');
+  fs.writeFileSync(f, JSON.stringify({ Jwt: { Key: '' }, Firebase: { ProjectId: null, Type: 'service_account' } }));
+  assert.equal(presence(f, 'Jwt.Key', 'Firebase.ProjectId', 'Firebase.Type', 'Firebase.Missing').stdout,
+    'Jwt.Key=empty (present, no value)\nFirebase.ProjectId=empty (present, no value)\nFirebase.Type=set (15 chars)\nFirebase.Missing=absent\n');
+});
+
+test('audit 2026-10-10 C12: a credential a variable holds and a request header uses is no print', () => {
+  const dir = c12Project();
+  const v = (c) => verdict(at(dir, c));
+  const reader = 'T=$(python3 -c "import json;print(json.load(open(\'login.json\'))[\'accessToken\'])")';
+  assert.equal(v(`${reader}; curl -s -H "Authorization: Bearer $T" https://example.test/api`), 0, 'held, then used in a header (ca65b406)');
+  assert.equal(v(`${reader}; gh api user -H "Authorization: token $T"`), 0, 'held, then a flag to gh');
+  assert.notEqual(v(`${reader}; echo $T`), 0, 'held, then printed');
+  assert.notEqual(v(`${reader}; curl -v -H "Authorization: Bearer $T" https://example.test/api`), 0, 'curl -v prints the header');
+  assert.notEqual(v(`set -x; ${reader}; curl -s -H "Authorization: Bearer $T" https://example.test/api`), 0, 'a trace prints the expansion');
+  assert.notEqual(v(`${reader}; python3 -c "import sys;print(sys.argv[1])" "$T"`), 0, 'handed to a runtime');
+  assert.notEqual(v('T=$(cat login.json >&2); curl -s https://example.test/api'), 0, 'the reader prints to stderr');
+});
+
+test('audit 2026-10-10 C12: a grep over a credential file and others searches each, the credential one through its view', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = c12Project();
+  const out = updatedCommand(at(dir, "grep -n 'DOCS_ROOT' settings.json settings.local.json"));
+  assert.ok(out && out.includes('--redacted') && out.includes('--label="settings.json"') && out.includes('settings.local.json'), String(out));
+  const r = spawnSync('sh', ['-c', out], { cwd: dir, encoding: 'utf8' });
+  assert.match(r.stdout, /^settings\.json:\d+:.*\.alfred/m, 'the credential file, through its view, with its name');
+  assert.match(r.stdout, /^settings\.local\.json:\d+:.*docs-local/m, 'the other file, as written (65abb00a)');
+  assert.ok(!r.stdout.includes(FAKE_TOKEN));
+  // a second credential file among the others is searched through its own view (audit 2026-10-11 SD01, ce9d4811)
+  const two = String(updatedCommand(at(dir, 'grep -n token settings.json .sentryclirc')));
+  assert.ok(two.includes('--label="settings.json"') && two.includes('--label=".sentryclirc"'), two);
+});
+
+// ---- audit 2026-10-11 SD01: a rewrite must never change what the command reads ----------------------------------------
+// A grep that walks reads the files no operand names. The narrowed read kept `-rn` on the filter it piped the view into, so
+// the filter walked the cwd and printed the credential file raw (session ae38c08f, reproduced on develop 94211763); ugrep,
+// the Bash tool's own grep, also walks a directory operand with no `-r` and reads `-NUM` as a depth.
+test('audit 2026-10-11 SD01: a narrowed read of a credential file carries no recursion option - the filter reads the view only', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = c12Project();
+  for (const flags of ['-rn', '-Rn', '-n --recursive', '-n --dereference-recursive', '-n -d recurse', '-n -drecurse', '-n --directories recurse',
+    '-n --directories=recurse', '-nr', '-rni', '-3n', '-n --depth=2']) {
+    const c = `grep ${flags} SENTRY settings.json`;
+    const out = updatedCommand(at(dir, c));
+    assert.ok(out && out.includes('--redacted'), `${c} -> ${out}`);
+    const filter = out.slice(out.indexOf('|') + 1);
+    assert.ok(!/\s-[A-Za-z]*[rR]|--recursive|recurse|--depth|\s-\d/.test(filter), `${c}: the filter still walks: ${filter}`);
+    // run where the cwd holds the credential file, the walk's target
+    const r = spawnSync('sh', ['-c', out], { cwd: dir, encoding: 'utf8' });
+    assert.ok(!r.stdout.includes(FAKE_TOKEN), `${c} printed the credential raw:\n${r.stdout}`);
+    assert.match(r.stdout, /SENTRY_ACCESS_TOKEN": "<set \(40 chars\)>/, `${c} still answers through the view`);
+  }
+  // what stays: the filter's own options, a quoted pattern and a redirection
+  assert.ok(String(updatedCommand(at(dir, "grep -rni -C 2 'sentry_access' settings.json 2>/dev/null"))).endsWith("| grep -ni -C 2 'sentry_access' 2>/dev/null"));
+  assert.ok(String(updatedCommand(at(dir, 'grep -n -e -r settings.json'))).includes("--redacted"), 'a pattern spelled -r after -e is no flag');
+});
+
+test('audit 2026-10-11 SD01: every spelling of a walk is probed - and a clean search or a plain read still runs as written', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = c12Project();
+  fs.mkdirSync(path.join(dir, 'notes'));
+  fs.writeFileSync(path.join(dir, 'notes', 'a.md'), 'SENTRY is the error tracker\n');
+  const v = (c) => verdict(at(dir, c));
+  for (const c of ['grep -rC2 SENTRY .', 'grep -nr2 SENTRY .', 'grep -drecurse SENTRY .', 'grep --directories recurse SENTRY .',
+    'grep -3 SENTRY', 'grep --depth=2 SENTRY', 'grep -n SENTRY .', 'grep -n SENTRY notes .', 'grep -rn SENTRY settings.local.json .']) {
+    const out = updatedCommand(at(dir, c));
+    assert.ok(out && out.includes('--redact-stdin --grep'), `${c} walks and must be piped: ${out}`);
+    const r = spawnSync('sh', ['-c', out], { cwd: dir, encoding: 'utf8' });
+    assert.ok(!r.stdout.includes(FAKE_TOKEN), `${c} printed a credential:\n${r.stdout}`);
+  }
+  // the probe walks a directory operand the way ugrep does, so a clean one still runs as written - no new prompt
+  assert.equal(v('grep -n SENTRY notes'), 0, 'a directory holding no credential');
+  assert.equal(v('grep -rn SENTRY notes'), 0);
+  assert.equal(v('grep -n SENTRY notes/a.md'), 0, 'a plain file');
+  assert.equal(v('for f in notes/a.md; do grep -n SENTRY "$f"; done'), 0, 'a loop over plain files');
+  assert.equal(v('grep -n SENTRY "$SOME_FILE"'), 0, 'an unexpanded operand with no recursion stays a plain read');
+  assert.equal(v('grep -rli SENTRY .'), 0, 'names only');
+  assert.equal(v('grep -rc SENTRY .'), 0, 'counts only');
+});
+
+test('audit 2026-10-11 SD01: a grep over several operands searches every one - a view per credential file, the rest as written, the unsearched named', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = c12Project();
+  // the replayed shape (ce9d4811): the key sits in the plain project file, beside the credential file
+  fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ enabledPlugins: { 'csharp-lsp@official': true } }, null, 2));
+  const sh = (c) => { const out = updatedCommand(at(dir, c)); assert.ok(out, `${c} was not rewritten`); return { out, r: spawnSync('sh', ['-c', out], { cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: dir } }) }; };
+  // two credential files and a plain one: three searches, each labelled
+  let { out, r } = sh('grep -n "csharp-lsp\\|DOCS_ROOT\\|token" settings.json .sentryclirc settings.local.json');
+  assert.match(r.stdout, /^settings\.json:\d+:.*DOCS_ROOT/m, out);
+  assert.match(r.stdout, /^\.sentryclirc:\d+:token=<set \(40 chars\)>/m, out);
+  assert.match(r.stdout, /^settings\.local\.json:\d+:.*csharp-lsp/m, 'the planted key is found, never reported absent');
+  assert.ok(!r.stdout.includes(FAKE_TOKEN), r.stdout);
+  // a glob and a missing operand: the glob's plain file is searched, the missing one keeps grep's own honest error
+  ({ out, r } = sh('grep -rn "csharp-lsp" settings*.json "$HOME/missing.json"'));
+  assert.match(r.stdout, /settings\.local\.json:\d+:.*csharp-lsp/, out);
+  assert.match(r.stderr, /missing\.json/, 'the missing file is reported by grep, not dropped');
+  assert.ok(!r.stdout.includes(FAKE_TOKEN));
+  // an operand this guard cannot expand, and a directory, are searched by nothing - and the note says so
+  ({ out, r } = sh('grep -n DOCS_ROOT settings.json "$NOT_SET_HERE/x.json" src'));
+  assert.match(r.stdout, /DOCS_ROOT/);
+  assert.match(r.stderr, /not searched - \$NOT_SET_HERE\/x\.json, src/, r.stderr);
+  assert.ok(!/\$NOT_SET/.test(out), 'the note spells the dollar as printf octal, never a variable this guard would re-judge');
+  assert.equal(verdict(at(dir, 'grep -q DOCS_ROOT settings.json settings.local.json')), 0, 'a quiet grep prints nothing');
+  // an option this reader cannot vouch for: the whole view, never a guessed argv
+  ({ out } = sh('grep -n -Q DOCS_ROOT settings.json settings.local.json'));
+  assert.ok(out.includes('--redacted') && !out.includes('| grep'), out);
+});
+
+test('audit 2026-10-10 C12: a loop over files is viewed file by file and its other steps run, the env scan included', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = c12Project();
+  const out = updatedCommand(at(dir, 'for f in settings.json settings.local.json; do echo "== $f"; cat "$f"; done; env | grep -i compact'));
+  assert.ok(out && /^for f in settings\.json settings\.local\.json; do echo "== \$f"; node "[^"]+" --redacted "\$f"; done; node "[^"]+" --redacted-env --note-to-stderr \| grep -i compact$/.test(out), String(out));
+  const r = spawnSync('sh', ['-c', out], { cwd: dir, encoding: 'utf8', env: { ...process.env, COMPACT_PROBE: 'on' } });
+  assert.match(r.stdout, /== settings\.local\.json[\s\S]*docs-local/, 'the second file is printed too (7491ab75)');
+  assert.match(r.stdout, /COMPACT_PROBE=on/, 'the env scan ran');
+  assert.ok(!r.stdout.includes(FAKE_TOKEN));
+});
+
+test('audit 2026-10-10 C12: a search that names a credential masks quoted literals on its lines; the walk pipe keeps grep status and label', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = c12Project();
+  const out = updatedCommand(at(dir, "grep -rn -i 'password\\|LoginAsync' src"));
+  assert.ok(out && out.endsWith('--redact-stdin --grep --literals'), String(out));
+  const r = spawnSync('sh', ['-c', out], { cwd: dir, encoding: 'utf8' });
+  assert.ok(!r.stdout.includes('Hunter2Demo!') && r.stdout.includes('demo@example.com'), `the positional password is masked, the email kept (81264f0d):\n${r.stdout}`);
+  // a quoted glob in a flag is no shell expansion, and l / c / q anywhere in a cluster prints no line (a3d497f8, db6c1ae1)
+  assert.equal(verdict(at(dir, "grep -rn --include='*.ts' doc src")), 0, 'probed clean, so run as written');
+  assert.equal(verdict(at(dir, 'grep -rli token .')), 0, 'names only');
+  assert.equal(verdict(at(dir, 'grep -rlin token .')), 0, 'names only');
+  // an empty search through the pipe exits 1 like grep (db6c1ae1)
+  const empty = updatedCommand(at(dir, 'D=src; grep -rn ZZZ_NOT_THERE $D; echo "rc=$?"'));
+  assert.ok(empty && empty.includes('--redact-stdin --grep'), String(empty));
+  assert.match(spawnSync('sh', ['-c', empty], { cwd: dir, encoding: 'utf8' }).stdout, /rc=1/);
+  // a walk rewrite is counted as a walk, never as git (f6c591fa, 81264f0d, b35afe70, a3d497f8)
+  const ledger = path.join(TMP, `ledger-c12-${Date.now()}`);
+  const w = run({ tool_name: 'Bash', tool_input: { command: 'grep -rn token .' }, session_id: 'suite', cwd: dir }, { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_DOCS_PATH: ledger });
+  assert.ok(updatedCommand(w));
+  const rows = fs.readFileSync(path.join(ledger, 'hook-blocks', 'suite.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.deepStrictEqual(rows.map((x) => x.detail.branch), ['walk-stage']);
+});
+
+test('audit 2026-10-11 SD01: a heredoc-written DATA file handed to a script is data - only the runtime\'s script operand is code', () => {
+  const dir = c12Project();
+  const v = (c) => verdict(at(dir, c));
+  // the replayed shape (ae38c08f): a fill that names a settings file, then the assembler run on it
+  const fill = 'SP=.; mkdir -p "$SP/fills"; cat > "$SP/fills/a.md" <<\'EOF\'\n# notes\nthe guard reads settings.json for the env block\nit\'s a data file\nEOF\n';
+  assert.equal(v(`${fill}node "$SP/assemble.js" $B "$SP/fills/a.md"`), 0, 'an argument after the script is data');
+  assert.equal(v(`${fill}python3 tools/fill.py "$SP/fills/a.md"`), 0, 'for any runtime');
+  assert.equal(v(`${fill}node -e "console.log(process.argv[1])" "$SP/fills/a.md"`), 0, 'beside inline code');
+  // what stays code: the file the runtime or shell RUNS, past its options, and a code file a loader may run
+  const js = 'cat > run.js <<\'EOF\'\nconsole.log(require("fs").readFileSync("settings.json", "utf8"))\nEOF\n';
+  assert.equal(v(`${js}node run.js`), REWRITE, 'the script operand');
+  assert.equal(v(`${js}node --max-old-space-size 4096 run.js extra`), REWRITE, 'past an option and its value');
+  assert.equal(v(`${js}node loader.js run.js`), REWRITE, 'a code file passed to a loader');
+  assert.notEqual(v('cat > run.sh <<\'EOF\'\ncat settings.json\nEOF\nbash run.sh'), 0, 'a shell script');
+  assert.equal(v('cat > run.py <<\'EOF\'\nprint(open("settings.json").read())\nEOF\npython3 -u run.py'), REWRITE, 'python past -u');
+});
+
+test('audit 2026-10-11 SD01: the dropped-steps note lists the command\'s steps, never a heredoc body\'s lines', () => {
+  const f = fixtures();
+  const out = rewritten(`cat <<'EOF'\nfirst body line\nsecond body line\nEOF\ncat ${f.secret}`);
+  assert.match(out, /^echo "# credential guard: 1 other step\(s\) of this command were dropped/, out.slice(0, 200));
+  assert.ok(!/body line/.test(out), `the body is no step: ${out.slice(0, 300)}`);
+});
+
+const gitRepo = (dir, add) => {
+  const g = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  g('init', '-q'); g('config', 'user.email', 't@example.com'); g('config', 'user.name', 't');
+  g('add', ...add); g('commit', '-qm', 'init');
+};
+
+test('audit 2026-10-11 SD01: a sibling step that names the credential file but prints none of it is kept - the read is spliced', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = c12Project();
+  gitRepo(dir, ['settings.local.json']);
+  // the replayed shape (5f9fec85 L399): tracked? ignored? ever committed? then the one key - nine steps were dropped
+  const steps = 'git ls-files --error-unmatch settings.json >/dev/null 2>&1; echo "tracked rc=$?"; git check-ignore -q settings.json; '
+    + 'echo "ignored rc=$?"; git log --oneline -S SENTRY_ACCESS_TOKEN -- settings.json | wc -l; '
+    + 'git show HEAD:settings.json 2>/dev/null | grep -c -E SENTRY; echo "head rc=${PIPESTATUS[0]}"; ';
+  const out = updatedCommand(at(dir, `${steps}grep -n DOCS_ROOT settings.json`));
+  assert.ok(out && out.startsWith('git ls-files --error-unmatch settings.json') && !/were dropped/.test(out), String(out).slice(0, 300));
+  const r = spawnSync('bash', ['-c', out], { cwd: dir, encoding: 'utf8' });
+  assert.match(r.stdout, /tracked rc=1/, r.stdout);
+  assert.match(r.stdout, /ignored rc=1/);
+  assert.match(r.stdout, /DOCS_ROOT/);
+  assert.ok(!r.stdout.includes(FAKE_TOKEN));
+  // what still forces the whole view: a sibling that PRINTS the file, or a git call that prints its lines
+  for (const sib of ['git blame settings.json', 'git show HEAD:settings.json', 'cat .sentryclirc']) {
+    const whole = String(updatedCommand(at(dir, `${sib}; grep -n DOCS_ROOT settings.json`)));
+    assert.ok(!whole.startsWith(`${sib};`), `${sib} must not run unmasked beside the view: ${whole.slice(0, 200)}`);
+  }
+});
+
+// The route a non-credential key of a credential file is read by (5f9fec85: `--presence` answered `set (4 chars)` for the
+// permission mode, by its never-a-value contract): the file piped into a reader becomes the redacted view piped into it,
+// and the view prints a non-credential value as written.
+test('audit 2026-10-11 SD01: a key of a credential file is read through the view - cat into a stdin reader', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = c12Project();
+  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ permissions: { defaultMode: 'auto' }, env: { SENTRY_ACCESS_TOKEN: FAKE_TOKEN } }, null, 2));
+  const reader = 'node -e \'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log((JSON.parse(s).permissions||{}).defaultMode||"unset"))\'';
+  const out = updatedCommand(at(dir, `cat settings.json | ${reader}`));
+  assert.ok(out && out.includes('--redacted') && out.endsWith(reader), String(out));
+  const r = spawnSync('sh', ['-c', out], { cwd: dir, encoding: 'utf8' });
+  assert.equal(r.stdout, 'auto\n');
+  assert.equal(presence(path.join(dir, 'settings.json'), 'permissions.defaultMode').stdout, 'permissions.defaultMode=set (4 chars)\n', 'the presence read keeps its contract');
+});
+
+test('audit 2026-10-11 SD01: git grep over a tracked credential file is probed like any git read', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const dir = c12Project();
+  gitRepo(dir, ['.']);
+  const out = updatedCommand(at(dir, 'git grep -n SENTRY'));
+  assert.ok(out && out.includes('--redact-stdin'), String(out));
+  const r = spawnSync('sh', ['-c', out], { cwd: dir, encoding: 'utf8' });
+  assert.ok(!r.stdout.includes(FAKE_TOKEN), r.stdout);
+  assert.match(r.stdout, /settings\.json:\d+:.*SENTRY_ACCESS_TOKEN/);
+  assert.equal(verdict(at(dir, 'git grep -n DOCS_ROOT_NOT_HERE')), 0, 'a clean git grep runs as written');
+  assert.equal(verdict(at(dir, 'git grep -l SENTRY')), 0, 'names only');
 });

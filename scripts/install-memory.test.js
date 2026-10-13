@@ -892,7 +892,7 @@ test('seed install and update (full copy route, project scope): the anchored reg
             const elsewhere = path.join(work, 'elsewhere');
             fs.mkdirSync(elsewhere, { recursive: true });
             const started = {};
-            for (const name of ['alfred-memory', 'alfred-navigation', 'browser-chrome'])
+            for (const name of ['alfred-memory', 'alfred-navigation', 'chrome-control'])
             {
                 const e = servers[name];
                 started[name] = [{}, { CLAUDE_PROJECT_DIR: elsewhere }].map((inherited) =>
@@ -919,13 +919,13 @@ test('seed install and update (full copy route, project scope): the anchored reg
     });
     const { before, after, out, servers, started, real, engineDb, work } = steps[1];
     // The documentation row's key header is the account env's by design; the three project-anchored rows carry no variable.
-    const text = JSON.stringify([servers["alfred-memory"], servers["alfred-navigation"], servers['browser-chrome']]);
+    const text = JSON.stringify([servers["alfred-memory"], servers["alfred-navigation"], servers['chrome-control']]);
     assert.doesNotMatch(text, /\$\{/, 'no parse-time variable in a project-anchored registration');
     assert.ok(work.every((w) => !text.includes(w)), `a registration names this machine's path: ${text}`);
-    for (const [name, anchor] of [['alfred-memory', 'project'], ['alfred-navigation', 'checkout'], ['browser-chrome', 'checkout']])
+    for (const [name, anchor] of [['alfred-memory', 'project'], ['alfred-navigation', 'checkout'], ['chrome-control', 'checkout']])
         assert.deepStrictEqual([servers[name].command, ...servers[name].args.slice(0, 4)], ['node', '-e', engine.ROOT_BOOT, '--', anchor], name);
     // The emitted rows, whole, hold no character cmd.exe reads: a row may reach cmd.exe on Windows (re-verify 3).
-    for (const name of ['alfred-memory', 'alfred-navigation', 'browser-chrome'])
+    for (const name of ['alfred-memory', 'alfred-navigation', 'chrome-control'])
     {
         const words = [servers[name].command, ...servers[name].args, ...Object.values(servers[name].env || {})];
         const bad = words.filter((w) => /["%^&|<>!\r\n]/.test(w));
@@ -935,7 +935,7 @@ test('seed install and update (full copy route, project scope): the anchored reg
     for (const run of started["alfred-memory"]) assert.deepStrictEqual([run.cwd, run.db], [real, engineDb], 'the server opens the database the engine names');
     assert.strictEqual(engineDb, path.join(real, '.alfred', '.alfred-memory', 'memory.db'));
     for (const run of started["alfred-navigation"]) assert.deepStrictEqual([run.cwd, run.context, run.home], [real, path.join(real, '.claude', 'navigation-context.yml'), path.join(real, '.alfred', 'serena', 'home')]);
-    for (const run of started['browser-chrome']) assert.deepStrictEqual([run.cwd, run.profile], [real, path.join(real, '.alfred', 'browser', 'chrome')]);
+    for (const run of started['chrome-control']) assert.deepStrictEqual([run.cwd, run.profile], [real, path.join(real, '.alfred', 'chrome-control')]);
     assert.strictEqual(after.mcp, before.mcp, `the second checkout rewrote .mcp.json:\n${out}`);
     assert.strictEqual(after.stamp, before.stamp, 'the second checkout changed the stamp beyond its time lines');
     assert.strictEqual(after.key, after.secondDb, 'the second checkout\'s machine-local key names its own database');

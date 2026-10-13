@@ -33,6 +33,9 @@ function scaffold({ migrations = [], settings = null, stamp = 'sha: aaa111\nvers
     fs.copyFileSync(path.join(__dirname, 'stamp-compare.js'), path.join(snap, 'scripts', 'stamp-compare.js'));
     fs.copyFileSync(path.join(__dirname, 'install', 'source.js'), path.join(snap, 'scripts', 'install', 'source.js'));
     fs.copyFileSync(path.join(__dirname, 'install', 'brand.js'), path.join(snap, 'scripts', 'install', 'brand.js'));
+    // The compare makes its stdio blocking through the prelude a release snapshot carries beside it.
+    fs.mkdirSync(path.join(snap, 'stack', 'hooks'), { recursive: true });
+    fs.copyFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js'), path.join(snap, 'stack', 'hooks', 'hook-prelude.js'));
     fs.writeFileSync(path.join(snap, 'RELEASE-SOURCE'), 'sha: bbb222\nversion: 0.2.70\n');
     fs.writeFileSync(path.join(snap, 'meta', 'migrations.json'), JSON.stringify({ _comment: 'x'.repeat(2000), migrations }));
 
@@ -180,28 +183,28 @@ test('policy-rev: none when the generated rule is not installed', () => {
 test('policy-rev: current when the stamped rev matches the shipped skill; stale otherwise', () => {
     const { snap, install, fixtureFile } = scaffold();
     fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
-    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'capture-agent-capabilities'), { recursive: true });
-    fs.writeFileSync(path.join(install, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), 'policy-rev: abc123\nsome text');
-    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-capabilities', 'SKILL.md'), 'policy-rev: abc123\nsome text');
+    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'capture-agent-awareness'), { recursive: true });
+    fs.writeFileSync(path.join(install, '.claude', 'rules', 'alfred-agent-awareness.md'), 'policy-rev: abc123\nsome text');
+    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-awareness', 'SKILL.md'), 'policy-rev: abc123\nsome text');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: current$/m);
 
-    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-capabilities', 'SKILL.md'), 'policy-rev: def456\nsome text');
+    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-awareness', 'SKILL.md'), 'policy-rev: def456\nsome text');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: stale installed=abc123 snapshot=def456$/m);
 
-    fs.writeFileSync(path.join(install, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), 'no rev stamped here');
+    fs.writeFileSync(path.join(install, '.claude', 'rules', 'alfred-agent-awareness.md'), 'no rev stamped here');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: stale installed=none snapshot=def456$/m, 'a rule with no rev at all IS the mismatch, nothing further to check');
 });
 
 test('policy-rev: an install still holding the pre-2.1.6 file name is read, not reported as none', () => {
     const { snap, install, fixtureFile } = scaffold();
     fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
-    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'capture-agent-capabilities'), { recursive: true });
+    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'capture-agent-awareness'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), 'policy-rev: abc123\nsome text');
-    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-capabilities', 'SKILL.md'), 'policy-rev: abc123\nsome text');
+    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'capture-agent-awareness', 'SKILL.md'), 'policy-rev: abc123\nsome text');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: current$/m);
 });
 
-test('--log mode: restart yes on mcps=<n> above 0 in the installer log, and names each !! line', () => {
+test('--log mode: restart yes on a repaired registration in the installer log, and names each !! line', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-log-'));
     const log = path.join(dir, 'install.log');
     fs.writeFileSync(log, [
@@ -231,6 +234,50 @@ test('--log mode: restart no and no warn lines on a clean, MCP-less, hook-less r
     const { out } = run(['--log', log]);
     assert.match(out, /^restart: no$/m);
     assert.doesNotMatch(out, /^warn: /m);
+});
+
+// audit 2026-10-10, session 229e2715: `restart: yes` on an update that changed nothing the session holds. The summary's
+// `mcps=<n>` is the selection's size, printed on every run (measured 3 on the plugin route and on the MCP copy route
+// alike), and the delta's `--hooks 3` counted although the stamp read `hooks-route: plugin` and the session already ran
+// that release's hooks from the plugin cache.
+const SNAP_VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version;
+function logCase(lines, { route = 'plugin', running = SNAP_VERSION } = {})
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-log-'));
+    const log = path.join(dir, 'install.log');
+    fs.writeFileSync(log, ['==>   installed/refreshed this run - skills=31, plugins=0, mcps=3, hooks=18, agents=0, rules=9', ...lines].join('\n'));
+    fs.mkdirSync(path.join(dir, 'project', '.claude'), { recursive: true });
+    if (route) fs.writeFileSync(path.join(dir, 'project', '.claude', 'alfred-code.stamp'), `version: ${SNAP_VERSION}\nhooks-route: ${route}\n`);
+    const plugin = path.join(dir, 'cache', 'alfred-code', String(running));
+    if (running) { fs.mkdirSync(path.join(plugin, 'setup-plugin', '.claude-plugin'), { recursive: true }); fs.writeFileSync(path.join(plugin, 'setup-plugin', '.claude-plugin', 'plugin.json'), JSON.stringify({ version: running })); }
+    return (extra = []) => (/^restart: (yes|no)$/m.exec(run(['--log', log, '--root', path.join(dir, 'project'), ...(running ? ['--running', plugin] : []), ...extra]).out) || [])[1];
+}
+
+test('--log mode: the summary\'s selection count alone is no restart', () => {
+    assert.strictEqual(logCase([])(), 'no', 'mcps=3 is the selection, not a registration');
+    assert.strictEqual(logCase(['==>   plugin alfred-code: 2.2.2 (already newest)', '==> plugin update [project]: alfred-code@envoydev'])(), 'no');
+});
+
+test('--log mode: every line that changed what the session loaded is a restart', () => {
+    for (const line of [
+        '==> mcp [project]: alfred-navigation', '==>   mcp repaired: alfred-memory (local scope)', '==>   mcp pruned: browser',
+        '==>   mcp removed: chrome-control (.mcp.json)', '==> mcp refreshed [user]: alfred-memory (this release\'s shape)',
+        '==> plugin install [project]: alfred-navigation@envoydev', '==> plugin enable [project]: alfred-memory@envoydev (installed but disabled)',
+        '==>   !! plugin disabled [local]: chrome-control@envoydev (the copy route registers it)', '==> plugin uninstalled [project]: typescript-lsp@claude-plugins-official (no longer picked)',
+        '==> plugin moved [local -> project]: claude-hud@claude-hud', '==>   plugin pruned (retired upstream) [project]: ponytail@ponytail',
+        '==>   renamed: plugin navigation@envoydev -> alfred-navigation@envoydev [project]', '==>   plugin alfred-navigation: 2.2.1 -> 2.2.2',
+        '==>   plugin claude-hud: 0.0.9 (installed this run)',
+    ]) assert.strictEqual(logCase([line])(), 'yes', line);
+});
+
+test('--log mode: a hook delta owes a restart only where the session does not already run those hooks', () => {
+    assert.strictEqual(logCase([])(['--hooks', '3']), 'no', 'plugin route, the session on the snapshot\'s release: the new hooks are live');
+    assert.strictEqual(logCase([], { running: '0.0.1' })(['--hooks', '3']), 'yes', 'the session loaded another release');
+    assert.strictEqual(logCase([], { running: '0.0.1' })(), 'yes', 'another release: its commands and server plugins are older too');
+    assert.strictEqual(logCase([], { route: 'copy' })(['--hooks', '3']), 'yes', 'the copy route\'s hooks are copies, not the plugin\'s');
+    assert.strictEqual(logCase([], { route: null })(['--hooks', '3']), 'yes', 'no stamp: the route is unknown');
+    assert.strictEqual(logCase([], { running: null })(['--hooks', '3']), 'yes', 'no --running: the session\'s release is unknown');
+    assert.strictEqual(logCase([])(['--hooks', '0']), 'no');
 });
 
 test('a FIRED migration carries everything the caller acts on, so the catalog is never opened', () => {
@@ -616,4 +663,145 @@ test('data-move: an unstamped legacy install is offered the move; a tree with no
     const legacy = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
     assert.strictEqual(legacy.code, 2, 'still no stamp to compare');
     assert.match(legacy.out, /^data-move: offer \.alfred\tfrom=\.claude\/docs\tdocs=1 serena=no browser=none memory=no$/m, legacy.out);
+});
+
+// audit 2026-10-11, session 5b9ce9c5: the close named the release delta ('changed: skills=10 agents=44') as this
+// install's refresh while the installer copied 9 of the 10 skills and the install enabled 21 seats. `changed-here:`
+// is the part this install carries - a copy on disk, a seat on the core no deny names, a hook the plugin route carries
+// and HOOKS_OFF does not name - and the release's own `changed:` line stays as it was.
+test('changed-here: the release delta narrowed to what this install carries, on the plugin and the copy route', () => {
+    const fixture = { files: [
+        { status: 'modified', filename: 'stack/skills/csharp/SKILL.md' },
+        { status: 'modified', filename: 'stack/skills/dotnet/SKILL.md' },
+        { status: 'modified', filename: 'stack/agents/code-reviewer.md' },
+        { status: 'modified', filename: 'stack/agents/security-auditor.md' },
+        { status: 'modified', filename: 'stack/rules/markdown-docs.md' },
+        { status: 'modified', filename: 'stack/rules/web-conventions.md' },
+        { status: 'modified', filename: 'stack/hooks/guard-secret-value.js' },
+        { status: 'modified', filename: 'stack/hooks/guard-catastrophic-rm.js' },
+        { status: 'modified', filename: 'stack/hooks/model-windows.json' },
+    ] };
+    const lay = (install) => {
+        fs.mkdirSync(path.join(install, '.claude', 'skills', 'csharp'), { recursive: true });
+        fs.writeFileSync(path.join(install, '.claude', 'skills', 'csharp', 'SKILL.md'), '---\nname: csharp\n---\n');
+        fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
+        fs.writeFileSync(path.join(install, '.claude', 'rules', 'markdown-docs.md'), '# r\n');
+        fs.mkdirSync(path.join(install, '.claude', 'hooks'), { recursive: true });
+        fs.writeFileSync(path.join(install, '.claude', 'hooks', 'model-windows.json'), '{}');
+    };
+    const plugin = scaffold({ fixture, stamp: 'sha: aaa111\nversion: 0.2.60\nseats-route: plugin\nhooks-route: plugin\n',
+        settings: { permissions: { deny: ['Agent(alfred-code:security-auditor)'] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-catastrophic-rm' } } });
+    lay(plugin.install);
+    const p = run(['--snapshot', plugin.snap, '--root', plugin.install, '--fixture', plugin.fixtureFile]).out;
+    assert.match(p, /^changed: skills=2 agents=2 rules=2 hooks=3 template=no$/m, 'the release delta is unchanged');
+    assert.match(p, /^changed-here: skills=1 agents=1 rules=1 hooks=2$/m, p);
+    const copy = scaffold({ fixture, stamp: 'sha: aaa111\nversion: 0.2.60\nseats-route: copy\nhooks-route: copy\n', settings: { env: {} } });
+    lay(copy.install);
+    fs.mkdirSync(path.join(copy.install, '.claude', 'agents'), { recursive: true });
+    fs.writeFileSync(path.join(copy.install, '.claude', 'agents', 'code-reviewer.md'), '---\nname: code-reviewer\n---\n');
+    fs.writeFileSync(path.join(copy.install, '.claude', 'hooks', 'guard-secret-value.js'), '// copy\n');
+    const c = run(['--snapshot', copy.snap, '--root', copy.install, '--fixture', copy.fixtureFile]).out;
+    assert.match(c, /^changed-here: skills=1 agents=1 rules=1 hooks=2$/m, 'the copy route counts copies on disk only');
+});
+
+// audit 2026-10-11, session b3f8193f: the compare API caps at 300 files (`TRUNCATED`), and the 8 renames past the cap
+// never reached the ask - it named 26 renamed skill copies, and the installer pruned 34. Every old name of the
+// snapshot's `renamed` map whose copy is on disk is a rename row, listed by the compare or not.
+test('new items: a rename the truncated compare never listed is still a renamed row when its old copy is on disk', () => {
+    const { loadManifest } = require('./install/manifest.js');
+    const renamed = loadManifest(path.join(__dirname, '..')).renamed;
+    const [[oldA, toA], [oldB, toB]] = Object.entries(renamed.skills).filter(([, to]) => to.startsWith('task-')).slice(0, 2);
+    const files = [{ status: 'renamed', filename: `stack/skills/${toA}/SKILL.md`, previous_filename: `stack/skills/${oldA}/SKILL.md` }];
+    for (let i = 0; i < 300; i++) files.push({ status: 'modified', filename: `stack/skills/csharp/references/f${i}.md` });
+    const { snap, install, fixtureFile } = scaffold({ fixture: { files } });
+    fs.writeFileSync(path.join(snap, 'meta', 'stack-manifest.json'), JSON.stringify({ renamed }));
+    for (const old of [oldA, oldB])
+    {
+        fs.mkdirSync(path.join(install, '.claude', 'skills', old), { recursive: true });
+        fs.writeFileSync(path.join(install, '.claude', 'skills', old, 'SKILL.md'), `---\nname: ${old}\n---\n`);
+    }
+    const listing = path.join(install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
+    const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
+    assert.strictEqual(code, 0, out);
+    assert.match(out, /^TRUNCATED/m, 'the fixture is past the compare cap');
+    for (const [old, to] of [[oldA, toA], [oldB, toB]])
+        assert.match(out, new RegExp(`^new: skill ${to}\\t\\S+\\t.*from=${old}\\told-on-disk`, 'm'), `${old} -> ${to}:\n${out}`);
+});
+
+// audit 2026-10-11, session b3f8193f: the close stated 'Renamed: 35 skills' and 'the 26 old skill copies' from memory,
+// against 34 of each in the log. `--log` prints the installer's own counts, the pruned items by name.
+test('--log mode: the installer\'s renamed and pruned lines are counted, the pruned ones named', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-log-'));
+    const log = path.join(dir, 'install.log');
+    fs.writeFileSync(log, [
+        '==> renamed: skill old-solve -> new-solve',
+        '==> renamed: skill old-design -> new-design',
+        '==> renamed: agent old-seat -> new-seat',
+        '==>   renamed: .claude/AGENTS.md - 3 old skill or seat name(s) re-spelled to the new names',
+        '==>   skill pruned (retired upstream): old-solve',
+        '==>   skill pruned (retired upstream): old-design',
+        '==>   skill kept (retired upstream, tracked in git): plugin-authoring',
+        '==>   plugin pruned (retired upstream) [project]: ponytail@ponytail',
+    ].join('\n'));
+    const { out } = run(['--log', log]);
+    assert.match(out, /^renamed: 3 \(skill=2 agent=1\)$/m, out);
+    assert.match(out, /^pruned: 3 \(skill=2 plugin=1\) - skill old-solve, old-design; plugin ponytail@ponytail$/m, out);
+    fs.writeFileSync(log, '==>   installed/refreshed this run - skills=12, plugins=6, mcps=0, hooks=0, agents=11, rules=9');
+    const quiet = run(['--log', log]).out;
+    assert.match(quiet, /^renamed: none$/m);
+    assert.match(quiet, /^pruned: none$/m);
+});
+
+// audit 2026-10-11, session b3f8193f: the installer only NAMES an old stack name in the project's own AGENTS.md, and
+// step 6 spliced it with a hand `sed -i` after an ask that showed no diff. `--respell` prints that edit line by line
+// from the snapshot's own renamed map, and `--apply` writes exactly those lines - the same hits the `!!` line counted.
+test('--respell: the project\'s own instruction file gets a per-line plan, and --apply writes only those lines', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-respell-'));
+    try {
+        const renamed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).renamed;
+        const [from, to] = Object.entries(renamed.skills).find(([, n]) => n === 'capture-code-quality');
+        const own = [`# Notes`, `Run /${from} after a big change.`, `Keep scripts/${from}.sh as it is.`, `Untouched line.`, ''].join('\r\n');
+        fs.mkdirSync(path.join(dir, '.claude'));
+        fs.writeFileSync(path.join(dir, '.claude', 'AGENTS.md'), own);
+        const dry = run(['--respell', '--root', dir]).out;
+        assert.match(dry, new RegExp(`^respell: \\.claude/AGENTS\\.md:2  ${from} -> ${to}$`, 'm'), dry);
+        assert.match(dry, new RegExp(`^- Run /${from} after a big change\\.$`, 'm'));
+        assert.match(dry, new RegExp(`^\\+ Run /${to} after a big change\\.$`, 'm'));
+        assert.match(dry, /^respell: 1 line\(s\) in 1 file\(s\)$/m, 'a name inside a path is no hit');
+        assert.strictEqual(fs.readFileSync(path.join(dir, '.claude', 'AGENTS.md'), 'utf8'), own, 'a dry run writes nothing');
+        // the installer's `!!` line counts the same hits the plan lists
+        const logs = [];
+        require('./install/selection.js').respellRenamed({ projectRoot: dir, renamed, log: (m) => logs.push(m), note: () => {} });
+        assert.ok(logs.some((l) => l.includes('.claude/AGENTS.md is yours and names 1 old stack name(s)') && l.includes('update-preflight.js --respell')), logs.join('\n'));
+        const applied = run(['--respell', '--apply', '--root', dir]).out;
+        assert.match(applied, /^respelled: \.claude\/AGENTS\.md - 1 line\(s\)$/m, applied);
+        assert.strictEqual(fs.readFileSync(path.join(dir, '.claude', 'AGENTS.md'), 'utf8'), own.replace(`/${from} `, `/${to} `), 'that line alone, CRLF kept');
+        assert.match(run(['--respell', '--root', dir]).out, /^respell: none$/m, 'a second run has nothing to do');
+        fs.rmSync(path.join(dir, '.claude', 'AGENTS.md'));
+        assert.match(run(['--respell', '--root', dir]).out, /^respell: none$/m, 'no instruction file is nothing to do');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// audit 2026-10-11, session a9e06780: configure step 1's inventory, rendered from the read-back so its shape is fixed and
+// the layer-table gate can prove the paste by its last line.
+test('--inventory: the six rows in order with counts, plugins with their scope, and the total line last', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-inv-'));
+    try {
+        const file = path.join(dir, 'installed.json');
+        fs.writeFileSync(file, '\uFEFF' + JSON.stringify({ skills: ['b', 'a'], agents: [], rules: ['r1'], hooks: ['h1', 'h2'], mcps: ['browser'],
+            plugins: [{ name: 'claude-hud', scope: 'user' }], plugins_disabled: ['x'], left_out: ['agent y'] }));
+        const lines = run(['--inventory', file]).out.trim().split('\n');
+        assert.deepStrictEqual(lines, [
+            '| category | count | items |', '|---|---|---|',
+            '| rules | 1 | r1 |', '| agents | 0 | - |', '| skills | 2 | b, a |', '| hooks | 2 | h1, h2 |', '| mcps | 1 | browser |',
+            '| plugins | 1 | claude-hud [user] |',
+            'total: 7 installed, 1 switched off, 1 plugin(s) parked',
+        ]);
+        fs.writeFileSync(file, 'garbage');
+        const bad = run(['--inventory', file]);
+        assert.strictEqual(bad.code, 1);
+        assert.match(bad.out, /^inventory: .* could not be read - re-run the step-1 read-back$/m);
+        assert.strictEqual(run(['--inventory', path.join(dir, 'missing.json')]).code, 1, 'a missing file is no empty inventory');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

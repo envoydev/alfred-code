@@ -21,7 +21,8 @@
 //   promote <branch> | --merged     fold a branch's overrides into mainline, section by section, three ways
 //   prune [branch]                  drop one branch's overlay, or overlays of branches gone for 30 days
 //   lint [domain]                   metadata and budget problems (exit 1 when any); a domain limits the rows to it
-//   seed-ids                        give every section a stable id (idempotent)
+//   seed-ids                        give every section a stable id (idempotent); one `ids added: <file> (+n)` line
+//                                   per file rewritten, then the total
 //   watch <path...> [--dir <dir...>]  which watch.json entries these changed paths (and new folders) hit
 //   adr new '<title>' | adr index   allocate the next decision record under decisions/ and rewrite the DECISIONS.md
 //                                   index table from the records (index alone: the table only)
@@ -276,6 +277,25 @@ function where(paths, limit = 3) {
   }
   for (const s of broad) { if (out.length >= limit) break; take(s); }
   return out;
+}
+
+// The sections whose OWN text (subsections aside) names one of these repo paths verbatim - the surest sign a section
+// states a fact about that file, a count or a shape (audit 2026-10-10 C23, session f6c591fa: the watch entry's three
+// sections stated no count for the changed contract, and the two naming it with a count were never offered). History
+// is never offered; the most paths named first, then the shorter text.
+function namingSections(files, limit = 3) {
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const want = [...new Set(files)].filter((f) => typeof f === 'string' && f.length > 3 && !f.endsWith('/'))
+    .map((f) => ({ f, re: new RegExp(`(?<![\\w./-])${esc(f)}(?![\\w/-]|\\.\\w)`) }));
+  if (!want.length) return [];
+  const out = [];
+  for (const s of allSections()) {
+    if (s.history) continue;
+    const own = s.text.slice(0, s.ownChars);
+    const named = want.filter((w) => own.includes(w.f) && w.re.test(own)).map((w) => w.f);
+    if (named.length) out.push({ id: s.id, domain: fileDomain(s.file), files: named, chars: s.chars });
+  }
+  return out.sort((a, b) => b.files.length - a.files.length || a.chars - b.chars).slice(0, limit);
 }
 
 // The block is paid for by every session, so every claim in it that CAN be checked against the repo is checked:
@@ -1545,7 +1565,9 @@ function lint(domain) {
   return { problems, notes };
 }
 
-function seedIds() {
+// `onFile(file, n)` hears each file it rewrote (audit 2026-10-11, session d9035363: the CLI printed only a total, so
+// the usage analyzer could not name the 13 ids it wrote into two files).
+function seedIds(onFile = () => {}) {
   let added = 0;
   for (const f of docFiles()) {
     const lines = fs.readFileSync(f, 'utf8').split('\n');
@@ -1565,7 +1587,7 @@ function seedIds() {
       out.push(`<!-- id: ${id} -->`);
       here++;
     }
-    if (here) fs.writeFileSync(f, out.join('\n'));
+    if (here) { fs.writeFileSync(f, out.join('\n')); onFile(f, here); }
     added += here;
   }
   return added;
@@ -1743,13 +1765,59 @@ function snapshot() {
     const parts = f.split('/');
     for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'));
   }
-  return { head: git(['rev-parse', 'HEAD']), dirty, dirs: [...dirs].slice(0, 20000) };
+  return { head: git(['rev-parse', 'HEAD']), at: Math.floor(Date.now() / 1000), dirty, dirs: [...dirs].slice(0, 20000) };
+}
+
+// Of the files the tree diff since the snapshot's HEAD names, only those a commit made SINCE the snapshot touched (audit
+// 2026-10-10 C23, session 349e4825: a checkout brought staging's own commit in, and the Stop ask said 'you changed' a
+// file the session never touched). A commit a checkout, pull or merge brought in was made before the snapshot, and a
+// merge commit's diff is what it brought, so neither counts; the tree diff stays the outer bound, so a change made and
+// reverted stays out. A snapshot taken before this (no `at`), or a range git cannot list, keeps the whole diff.
+// The committer clock alone cannot tell a replay (audit 2026-10-11 SD09, sessions cc87fa6c / e7c8cbb6: a `rebase` and a
+// `pull` brought commits whose committer time is after the snapshot, and the Stop ask said 'you changed' files the
+// session never edited). HEAD's reflog since the snapshot says how each commit arrived: a `commit` entry (plain, amend,
+// initial) is the session's own; a rebase / pull --rebase / cherry-pick pick is a replay, its own only when the commit
+// was AUTHORED after the snapshot (the session's own work moved onto a new base); a pull, merge, checkout or reset brings
+// commits no entry names. With no reflog entry since the snapshot (logging off, a ref moved by a tool) the clock decides.
+function reflogSince(at) {
+  const out = git(['reflog', 'show', '--date=unix', '--format=%H%x09%gd%x09%gs', 'HEAD']);
+  if (out === null) return null;
+  const own = new Set();
+  const replay = new Set();
+  let any = false;
+  for (const line of out.split('\n')) {
+    const [sha, gd, gs] = line.split('\t');
+    const t = Number((/@\{(\d+)\}$/.exec(gd || '') || [])[1]);
+    if (!sha || !Number.isFinite(t)) continue;
+    if (t < at) break; // newest first
+    any = true;
+    if (/^commit\b/.test(gs || '')) own.add(sha);
+    else if (/^(?:rebase|pull --rebase)\b[^:]*\(pick\)|^cherry-pick\b/.test(gs || '')) replay.add(sha);
+  }
+  return any ? { own, replay } : null;
+}
+function ownCommitFiles(snap, range) {
+  if (!range.length || !Number.isFinite(snap.at)) return range;
+  const listed = git(['rev-list', '--no-merges', '--format=%ct %at', `${snap.head}..HEAD`]);
+  if (listed === null) return range;
+  const log = reflogSince(snap.at);
+  const shas = [];
+  const lines = listed.split('\n');
+  for (let i = 0; i + 1 < lines.length; i += 2) {
+    const sha = (/^commit ([0-9a-f]{7,64})$/.exec(lines[i]) || [])[1];
+    const [ct, at] = String(lines[i + 1] || '').split(' ').map(Number);
+    if (!sha) continue;
+    if (log ? log.own.has(sha) || (log.replay.has(sha) && at >= snap.at) : ct >= snap.at) shas.push(sha);
+  }
+  if (!shas.length) return [];
+  const touched = new Set((git(['show', '--name-only', '--format=', ...shas.slice(0, 500)]) || '').split('\n').filter(Boolean));
+  return range.filter((f) => touched.has(f));
 }
 
 function changedSince(snap) {
   const out = new Set();
   if (!snap) return { files: [], dirs: [] };
-  if (snap.head) for (const f of (git(['diff', '--name-only', `${snap.head}..HEAD`]) || '').split('\n').filter(Boolean)) out.add(f);
+  if (snap.head) for (const f of ownCommitFiles(snap, (git(['diff', '--name-only', `${snap.head}..HEAD`]) || '').split('\n').filter(Boolean))) out.add(f);
   const before = snap.dirty || {};
   const listed = new Set(porcelainPaths());
   // Every path is hashed ONCE: what is dirty now, plus what was dirty at snapshot time and is not listed any more
@@ -1878,7 +1946,7 @@ function adrNew(title) {
 module.exports = {
   ROOT, DOCS_ROOT, DOCS, BLOCK_FILE, BRANCHES, domains, domainDir, resetDomains,
   git, tracked, VERSIONING_KEYS, docsMode, gitVersioned, versioningMismatch, hasGit, branch, isMainline, safe, overlayDir, docFiles, relKey, key, findFile, parseRef, isHistory,
-  parse, sections, allSections, where, show, toc, matches, outgrownFiles, stale,
+  parse, sections, allSections, where, namingSections, show, toc, matches, outgrownFiles, stale,
   set, writeBaseMeta, refreshBaseMeta, readMeta, mainlineRefs, porcelainPaths, blobOf, blobsOf, overlayOwner,
   stripStamp, stampLineOf, withStamp, conflictView,
   overlayNames, mergedBranches, promote, autoPromote, deletedUnmerged, prune, status,
@@ -1886,6 +1954,18 @@ module.exports = {
   sectionHash, firstSentence, askRef, protectedRef, shownFrom, adrRecords, adrIndex, adrNew, orientationState,
 };
 if (require.main !== module) return;
+
+// stdout and stderr block, so a pipe gets every byte before process.exit (macOS writes a pipe async) - the
+// prelude's blockingStdio, inline because this engine ships without the prelude beside it on one route (blocking-stdio in meta/shared-rules.json).
+function blockingStdio(streams = [process.stdout, process.stderr])
+{
+    for (const s of streams)
+    {
+        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }
+        catch { /* a stream that cannot block keeps Node's default */ }
+    }
+}
+blockingStdio();
 
 const cmd = process.argv[2];
 const args = process.argv.slice(3);
@@ -1982,7 +2062,8 @@ const commands = {
     console.log(`${problems.length} problems, ${notes.length} notes`);
     process.exit(problems.length ? 1 : 0);
   },
-  'seed-ids': () => console.log(`${seedIds()} ids added`),
+  // one `ids added: <file> (+n)` line per file rewritten, then the total - the line analyze-usage.js reads
+  'seed-ids': () => console.log(`${seedIds((f, n) => console.log(`ids added: ${shown(f)} (+${n})`))} ids added`),
   watch: () => {
     const w = loadWatch();
     if (w.missing) { console.log('no watch.json in any domain - run a docs capture to write one'); return; }

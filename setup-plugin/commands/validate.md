@@ -38,7 +38,7 @@ per message with no ask at all, and one of them authored its own prose decision 
 to the user.
 
 **THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing but a newer release** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`
-before step 1 and hold the whole run to it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none, use
+in ONE Bash `cat` before step 1 and hold the whole run to it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none, use
 `stack-select.js` / the graph / `recommendations.json` / the installer from that snapshot, hand
 the installer `--source "$TMP/repo"` in step 11, and remove `$TMP` per the 'Clean up' section on
 EVERY exit path. Its 'Narrate, don't trace' section governs every tool call: one quiet call per
@@ -51,7 +51,7 @@ state .`, which reads the install records the hooks read (`alfred-code.stamp`, a
 `hooks/docs.js`) in this repo, its git top level or a worktree's main
 checkout - never `.claude/skills` or `.claude/agents`, which a plugin-route install may not have:
 `not-installed` -> stop and route to `/alfred-code:setup`; `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:validate from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to
-`/alfred-code:update`, which reads its picks off disk and writes the stamp first; `installed` / `initialised` -> go on. `<scope>` below is `node "$TMP/repo/scripts/install/stamp.js" scope .` -
+`/alfred-code:update`, which reads its picks off disk and writes the stamp first; `installed` / `initialised` -> go on. Every installer call below carries its scope inline, `--scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)"` -
 the same script, reading the stamp, a `global` line as `user`, anything else as `project` - passed to every
 installer call so the read-back and the apply read and write the settings file that scope uses
 (`.claude/settings.local.json` laid over `.claude/settings.json` at local scope; at project and user
@@ -89,7 +89,7 @@ it (a hand inventory unioned what the plugin entries carry, and the apply switch
 back on). One call from the snapshot, on every OS and seed - a `--print-plan` run writes nothing:
 
 ```bash
-node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1
+node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1
 ```
 
 `$TMP/installed.json` is the `--installed` input for the walk: `{rules, agents, skills, hooks, mcps,
@@ -490,7 +490,7 @@ profile), output to `$TMP/select.out` - then:
   closure re-requires but no accepted add names - report it as staying off) and `keep-parked plugin
   <name>` (a parked plugin the read-back would enable - a `--drop` whenever the installer runs, no
   reason on its own to run it). Otherwise:
-  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--browsers <csv> --browser-enabled <csv|none>] 2>&1 | tee "$TMP/install.log"`
+  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope "$(node "$TMP/repo/scripts/install/stamp.js" scope .)" --installed-only [--add '<line>']... [--drop '<line>']... [--browsers <csv> --browser-enabled <csv|none>] 2>&1 | tee "$TMP/install.log"`
   - one `--add` per `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted,
   applied on top of the same read-back, so nothing the reconcile did not touch moves. Never
   `--selection` on this seed: that route neither removes nor disables what the reconcile dropped,
@@ -502,7 +502,7 @@ profile), output to `$TMP/select.out` - then:
   nothing (the installer reads its browsers back from the stamp, and switches none). A server 2.0.0 cut is no reconcile row: the run uninstalls the stack's own copy and prints
   its `add it back:` line - pass it through. Presence, never the value - run this
   and paste its lines as-is: `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
-  (the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked. The installer closes the selection and copies the added artifacts; already-installed
+  (the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)`, `KEY=empty (present, no value)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked. The installer closes the selection and copies the added artifacts; already-installed
   ones are simply re-laid, harmless. Show the prereq report first; never install past a blocker.
 - **Removes**: on the Node seed the `--drop` lines ARE the removal, applied by that run: a core
   seat is denied, a hook on the plugin route is named in `ALFRED_CODE_HOOKS_OFF`, a copied or
@@ -513,25 +513,25 @@ profile), output to `$TMP/select.out` - then:
   report it as kept, with the reason; a stack entry enabled at a broader scope is switched off for this
   scope alone, a narrower or managed one is named, never switched. Two removals the installer never makes, each with its command shown first:
   `claude mcp remove <name> -s <its scope>` for an MCP on the copy route (browser = every
-  `browser-<engine>` server), and
+  `<engine>-control` server), and
   `claude plugin uninstall <name> --scope <the scope step 1 recorded for it>` (2.2.0: no plugin rides
   beside the core any more - claude-hud is a pick like the LSP pair). The removal ask that proposed it
   NAMES that scope ('enabled at USER scope - removing it removes it for every
   project'), since account-wide and project-local are different consents.
 - **Check the generated rule's stamped policy against this release, mechanically.** The usage-policy
-  block inside `.claude/rules/alfred-project-agent-capabilities.md` ships verbatim from the skill
+  block inside `.claude/rules/alfred-agent-awareness.md` ships verbatim from the skill
   and is never re-fetched, so a project can carry a two-release-old policy with nothing to notice it.
   One comparison:
 
   ```bash
-  grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/alfred-project-agent-capabilities.md
-  grep -m1 -o 'policy-rev: [0-9a-f]*' "$TMP/repo/stack/skills/capture-agent-capabilities/SKILL.md"
+  grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/alfred-agent-awareness.md
+  grep -m1 -o 'policy-rev: [0-9a-f]*' "$TMP/repo/stack/skills/capture-agent-awareness/SKILL.md"
   ```
 
   Equal - say `capabilities policy: current`. Different, or the project's rule carries no rev at all
   (written before the stamp existed) - report it as a finding with both values and name the re-run as
   the fix. No rule on disk is not a finding here; it is the capture never having run.
-- Then name `/capture-agent-capabilities` (when installed) in the post-check report as the
+- Then name `/capture-agent-awareness` (when installed) in the post-check report as the
   USER's next step, so the generated awareness rule reflects the reconciled inventory - the
   skill is manual-only (`disable-model-invocation`), a Skill call from this run is denied by `guard-fresh-session-start.js`;
   never attempt it. `alfred-code.stamp` is rewritten ONLY by an installer invocation - the apply step's
@@ -540,11 +540,11 @@ profile), output to `$TMP/select.out` - then:
   fabricated install time that every later stamp compare then trusts (measured: one run did exactly this).
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-capabilities`
+follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-awareness`
 (when installed and this run added or removed something it lists), a manual-only capture whose
 output this run made stale, the navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
-matters ('`/capture-agent-capabilities` - validate added 3 skills, so the generated rule's
+matters ('`/capture-agent-awareness` - validate added 3 skills, so the generated rule's
 inventory is short'). No AskUserQuestion over them: the walk's asks end with the installer (a
 write still gets its consent ask where it happens), and the closing ask over follow-ups was
 dropped as friction - the user's call, made knowing a prose next step was ignored 3 of 3 in one
@@ -552,7 +552,7 @@ audited session, which is why the reason rides beside every step. Close with thi
 'Nothing is pending on this run - these are yours to run when you choose.' The stop-contract
 guard reads that sentence as a finished close; without it a 'done + next step' card is blocked
 as a stall and the guard demands the very ask this paragraph removes.
-The line is CONDITIONAL: print it only when the card carries nothing OWED. A still-required user action - revoke the old token, fill in a credential, run a rotation - IS pending, so name it and put the close through the ask instead (measured: one close stated 'Still owed: revoke the old token in Sentry's dashboard' and this line in the same message).
+The line is CONDITIONAL: print it only when the card carries nothing OWED. A still-required user action - revoke the old token, fill in a credential, run a rotation - IS pending, so name it and put the close through the ask instead (measured: one close stated 'Still owed: revoke the old token in Sentry's dashboard' and this line in the same message). An item the user DEFERRED through an AskUserQuestion answer in this run ('Acknowledge and defer') is not owed: list it on ONE line that starts `Deferred by you:` and close with the line above - the stop-contract guard does not count that line as pending (audit 2026-10-11, session 6288ad94: a close listing a deferred rotation as 'Still owed from you' was blocked, and the retry cost 142.0k cache-read).
 
 
 ## 12. Post-check
@@ -613,12 +613,21 @@ node "$TMP/repo/scripts/agents-md-check.js" --root .
 Paste the output byte-for-byte in the same fenced block (`agents-md-check: clean (...)` or `no
 AGENTS.md or CLAUDE.md in this project` is the whole paste). Each row is `<file>:<line> <kind>: ...` - a named path
 that is gone, a command whose program is not on PATH, a placeholder or TODO left, or a line still
-carrying the template's authoring text. Rows get ONE AskUserQuestion with NO option marked
-recommended - the check is heuristic, and a row can be correct text it could not resolve (a folder
-under a prefixed name, a program a script installs), so each row is the user's read: 'Review them with
-`/habits-adjust-agents-md`' (its improve mode shows every change before writing) or 'Leave them'.
+carrying the template's authoring text. Rows get ONE ask, leaving them marked and first - the check is
+heuristic, a row can be correct text it could not resolve (a folder under a prefixed name, a program a
+script installs), and the approver takes the first option (audit 2026-10-11, session 6288ad94: 'Review'
+listed first and unmarked was taken, and the review of 4 rows that were all false positives cost ~825k):
+
+```ask
+Review the AGENTS.md check rows above?
+- 'Leave them (Recommended)' - nothing is written; a row comes back on the next run until its line carries the keep marker
+- 'Review them with /habits-adjust-agents-md' - its improve mode shows every change before writing, and a row you keep gets the keep marker
+```
+
 Never edit an instruction file from this command; a `command` row on a program only another OS runs is the
-user's call, not a fix.
+user's call, not a fix. A left row comes back on the next run; a line the user keeps for good carries
+`<!-- agents-md-check: keep -->` at its end (the skill's improve mode writes it on the user's word), and
+the check raises no row on it again.
 
 Then the Stop build check advisory, from this project's session transcripts and its done-gate probe
 rows:

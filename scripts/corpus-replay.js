@@ -43,6 +43,7 @@ const UPE_MATCHER = (() => {
     return row ? new RegExp(row.matcher.slice('@UserPromptExpansion:'.length)) : null;
   } catch { return null; }
 })();
+const HOLD_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Agent', 'Task', 'Bash', 'PowerShell', 'Monitor'];
 const ROUTES = [
   { hook: 'guard-protected-force-push.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell', 'Monitor'], deny: true },
   { hook: 'guard-catastrophic-rm.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell', 'Monitor'], deny: true },
@@ -58,8 +59,8 @@ const ROUTES = [
   // matches: both desktop servers' launchers on both routes. The copy route's bare server spelling is built here,
   // never written - lint check 54 fails on it as literal text.
   { hook: 'guard-desktop-exec.js', event: 'PreToolUse', deny: true,
-    pattern: '^mcp__(plugin_windows-desktop_)?windows-desktop__App$|^mcp__(plugin_macos-desktop_)?macos-desktop__Shell$',
-    tools: ['mcp__plugin_windows-desktop_windows-desktop__App', `mcp__${'windows-desktop'}__App`, 'mcp__plugin_macos-desktop_macos-desktop__Shell', `mcp__${'macos-desktop'}__Shell`] },
+    pattern: '^mcp__(plugin_windows-control_)?windows-control__App$|^mcp__(plugin_macos-control_)?macos-control__Shell$',
+    tools: ['mcp__plugin_windows-control_windows-control__App', `mcp__${'windows-control'}__App`, 'mcp__plugin_macos-control_macos-control__Shell', `mcp__${'macos-control'}__Shell`] },
   { hook: 'guard-stop-contract.js', event: 'Stop', deny: true },
   // One job per recorded shell call's RESULT: an error result is the PostToolUseFailure payload, any
   // other the PostToolUse one. Each job is its own session, so the rate is the per-run upper bound -
@@ -80,6 +81,10 @@ const ROUTES = [
   { hook: 'guard-fresh-session-start.js', event: 'PreCompact', deny: false },
   // Injects the budget on EVERY prompt by design - 100% is correct here, not a false-positive rate.
   { hook: 'guard-answer-length.js', event: 'UserPromptSubmit', deny: false, always: true },
+  // Audit 2026-10-10 C09 / C15: the post-compaction hold, the idle-gap offer and the typed-answer probe (declared below).
+  { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: HOLD_TOOLS, deny: true, needsTranscript: true },
+  { hook: 'guard-fresh-session-start.js', event: 'UserPromptSubmit', deny: false },
+  { hook: 'guard-answer-length.js', event: 'PostToolUse', deny: false, probe: 'ask-answer-typed', noShell: true },
 ];
 // A route can be silent on the corpus for two very different reasons: the gate is broken, or the
 // thing it guards simply never happened. Only the second is acceptable, and declaring it here is
@@ -124,7 +129,21 @@ const UNEXERCISED = {
   // replay has no verdict and no injection to count; what it writes is pinned in compact-state.test.js.
   'guard-fresh-session-start.js::PreCompact':
     'writes COMPACT-STATE and prints nothing - no verdict to replay; the snapshot is pinned in compact-state.test.js',
+  // Wired 2026-10-10 (audit C09). The idle-gap offer reads the clock against the transcript's last reply, so a replay on
+  // a later day would read every prompt as idle; it is pinned in compact-state.test.js.
+  'guard-fresh-session-start.js::UserPromptSubmit':
+    'judged against the wall clock, so a later replay reads every prompt as idle; the offer is pinned in compact-state.test.js',
+  // Wired 2026-10-10 (audit C15 / C07). The replay builds a PostToolUse payload for shell calls only; the typed-answer
+  // probe is pinned in guard-answer-length.test.js.
+  'guard-answer-length.js::PostToolUse':
+    'the replay builds PostToolUse payloads for shell calls only; the typed-answer probe is pinned in guard-answer-length.test.js',
 };
+// Wired 2026-10-10 (audit C09): the post-compaction hold denies only after a compact start wrote its marker, which a
+// per-call replay never runs; the hold is pinned in compact-state.test.js.
+for (const tool of HOLD_TOOLS) {
+  UNEXERCISED[`guard-fresh-session-start.js::PreToolUse:${tool}`] =
+    'the hold needs the marker a SessionStart compact writes, which a per-call replay never runs; pinned in compact-state.test.js';
+}
 
 const routeId = (r, tool) => `${r.hook}::${r.event}${tool ? ':' + tool : ''}`;
 
@@ -232,7 +251,7 @@ function extract(files, opts) {
             : Array.isArray(b.content) ? b.content.map((x) => (x && typeof x.text === 'string' ? x.text : '')).join('\n') : '';
           const event = b.is_error === true ? 'PostToolUseFailure' : 'PostToolUse';
           for (const r of ROUTES) {
-            if (r.event !== event) continue;
+            if (r.event !== event || r.noShell) continue;
             const key = routeId(r) + '|' + sha(JSON.stringify([use.name, use.input, text.slice(-512), cwd]));
             const payload = { hook_event_name: event, session_id: `replay-${sha(key).slice(0, 12)}`, tool_name: use.name, tool_input: use.input || {}, cwd,
               ...(event === 'PostToolUseFailure' ? { error: text.slice(0, 4096) } : { tool_response: { stdout: text.slice(-4096), stderr: '', interrupted: false } }) };
@@ -492,4 +511,7 @@ async function main() {
 
 // The test pins ROUTES against the installer's wiring; running as a script still calls main().
 module.exports = { ROUTES, UNEXERCISED, extract };
-if (require.main === module) main();
+if (require.main === module) {
+  require('../stack/hooks/hook-prelude.js').blockingStdio();
+  main();
+}

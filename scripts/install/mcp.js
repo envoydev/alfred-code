@@ -32,33 +32,30 @@ const { excludeNewerOf, cutoffFor } = require('../../stack/mcp/uv-python.js');
 
 // The three that can never be dropped - see R7 above.
 const LOCKED = ['alfred-navigation', 'alfred-documentation', 'alfred-memory'];
-const { ENGINES: PW_ENGINES } = require('../../stack/mcp/data-root.js');
-// Every name the browser server was registered under: the 1.x single `playwright`, the
-// `playwright-<engine>` servers 2.0.0 renamed, and one `browser-<engine>` per engine.
-const PW_SERVERS = ['playwright', ...PW_ENGINES.map((e) => `playwright-${e}`), ...PW_ENGINES.map((e) => `browser-${e}`)];
+const { ENGINES: PW_ENGINES, engineServer, engineOfServer } = require('../../stack/mcp/data-root.js');
+// Every name the browser server was registered under: the 1.x single `playwright`, the `playwright-<engine>`
+// servers 2.0.0 renamed, the `browser-<engine>` ones 2026-10-13 renamed, and one `<engine>-control` per engine.
+const PW_SERVERS = ['playwright', ...PW_ENGINES.map((e) => `playwright-${e}`), ...PW_ENGINES.map((e) => `browser-${e}`), ...PW_ENGINES.map(engineServer)];
+// An engine's server under its name or its 2.0.0 one (`<engine>-control`, `browser-<engine>`) as its engine - the two a
+// stack registration's shape is read for; undefined for any other name.
+const anyEngineOf = (name) => engineOfServer(name) || (/^browser-(chrome|msedge|firefox|webkit)$/.exec(String(name)) || [])[1];
 
 // THE MCP RENAMES (meta/stack-manifest.json `renamed.mcps`, old -> new; 2.0.0 gave the servers role names,
-// 2.2.0 the `alfred-` prefix - each old name maps straight to today's): an MCP name an older release
-// used reads as the name it goes by now - the plugin and its server alike, a browser engine by its
-// prefix (`playwright-chrome` -> `browser-chrome`). Any other name comes back as it is.
+// 2.2.0 the `alfred-` prefix, 2026-10-13 the `-control` names - each old name maps straight to today's, an
+// engine's per engine): an MCP name an older release used reads as the name it goes by now - the plugin and its
+// server alike (`browser-chrome` and `playwright-chrome` -> `chrome-control`). Any other name comes back as it is.
 function currentMcp(name, renamed = {})
 {
     const text = String(name);
-    if (Object.hasOwn(renamed, text)) return renamed[text];
-    const m = /^(.+)-(chrome|msedge|firefox|webkit)$/.exec(text);
-    return m && Object.hasOwn(renamed, m[1]) ? `${renamed[m[1]]}-${m[2]}` : text;
+    return Object.hasOwn(renamed || {}, text) ? renamed[text] : text;
 }
 
-// Every plugin and server name the rename left behind: each old name, and for the one that expands
-// per engine (the browser) each old engine name instead - the bare 1.x `playwright` is its own legacy
-// registration (PW_SERVERS), never a plugin. What an older install can still hold.
+// Every plugin and server name the renames left behind - what an older install can still hold. The bare 1.x
+// `playwright` (renamed to the catalog's `browser` row, which expands per engine) is its own legacy registration
+// (PW_SERVERS), never a plugin.
 function renamedFrom(renamed = {})
 {
-    const out = [];
-    for (const [from, to] of Object.entries(renamed || {}))
-        if (to === 'browser') out.push(...PW_ENGINES.map((e) => `${from}-${e}`));
-        else out.push(from);
-    return out;
+    return Object.entries(renamed || {}).filter(([, to]) => to !== 'browser').map(([from]) => from);
 }
 
 const isLocked = (name) => LOCKED.includes(name);
@@ -84,7 +81,7 @@ function retiredMcps({ routes, catalog = [], authored = [], legacy = [] })
         return out;
     }
     for (const entry of catalog) out.push(typeof entry === 'string' ? entry.split('|')[0] : entry.name);
-    out.push(...PW_ENGINES.map((e) => `browser-${e}`));
+    out.push(...PW_ENGINES.map(engineServer));
     return out;
 }
 
@@ -341,10 +338,10 @@ function verifyUser({ expects = [], scope, getShape, reregister, owned = () => t
 //
 // The memory pin is spelled `==<ver>` INSIDE the extras brackets, not `@<ver>` like the others,
 // which have no extras suffix to sit next to - each row names its own spelling. The desktop servers
-// take `==<ver>` too (`--from windows-mcp==<ver>`).
+// take `==<ver>` too (`--from windows-mcp==<ver>`); mobile-control is an npx package, `@<ver>`.
 const PIN_ROWS = {
     browser: ['PW_PIN', '@<v>'], 'alfred-navigation': ['SERENA_PIN', '@<v>'], 'alfred-memory': ['MEMORY_PIN', '==<v>'],
-    'windows-desktop': ['WINDOWS_DESKTOP_PIN', '==<v>'], 'macos-desktop': ['MACOS_DESKTOP_PIN', '==<v>'],
+    'windows-control': ['WINDOWS_CONTROL_PIN', '==<v>'], 'macos-control': ['MACOS_CONTROL_PIN', '==<v>'], 'mobile-control': ['MOBILE_CONTROL_PIN', '@<v>'],
 };
 
 function resolvePins({ pins, refreshed, own = '', log = () => {} })
@@ -412,7 +409,7 @@ function expandPlaywright({ mcps = [], browsers = [], registered = [] })
     {
         const [name, args] = [String(entry).split('|')[0], String(entry).slice(String(entry).indexOf('|') + 1)];
         if (name !== 'browser') { out.push(entry); continue; }
-        for (const engine of kept) out.push(`browser-${engine}|${pwArgsFor(args, engine)}`);
+        for (const engine of kept) out.push(`${engineServer(engine)}|${pwArgsFor(args, engine)}`);
     }
     return { mcps: out, browsers: kept };
 }
@@ -464,7 +461,7 @@ function playwrightLive({ kept = [], prior = {}, live = () => undefined })
 // run did. The stamp still records each as installed-off, so a later enable answer registers it.
 function mcpjsonSwitch({ routes = {}, scope = 'project', kept = [], enabled = [], apply = false, registered = [] })
 {
-    const name = (e) => `browser-${e}`;
+    const name = engineServer;
     const gone = PW_SERVERS.filter((n) => routes.mcps || !kept.map(name).includes(n));
     const off = routes.mcps ? [] : kept.filter((e) => !enabled.includes(e));
     if (routes.mcps) return { disable: [], enable: gone, off, unregistered: [] };
@@ -483,7 +480,7 @@ function mcpjsonSwitch({ routes = {}, scope = 'project', kept = [], enabled = []
 function mcpjsonTrusted({ routes = {}, scope = 'project', mcps = [], off = [] })
 {
     if (routes.mcps || scope !== 'project') return [];
-    const offNames = off.map((e) => `browser-${e}`);
+    const offNames = off.map(engineServer);
     return bareNamedMcps({ routes, mcps }).filter((n) => !offNames.includes(n));
 }
 
@@ -494,7 +491,7 @@ function playwrightDrop({ routes, browsers = [] })
 {
     if (routes.mcps) return [];
     if (!browsers.length) return [];
-    const keep = new Set(browsers.map((b) => `browser-${b}`));
+    const keep = new Set(browsers.map(engineServer));
     return PW_SERVERS.filter((name) => !keep.has(name));
 }
 
@@ -786,20 +783,21 @@ function accountLoss({ unreadable = false, backups = [], stamped = { ms: NaN, pr
 // Review 2.1.6 (the user's ruling): marks only the stack's own registration carries - never the package name alone
 // (identityOf), which a server the user added with the same upstream shares. A uvx server: the release's dependency
 // cut-off (`--exclude-newer <date>`) with a pinned `--from <pkg>==<ver>`, and for a desktop server its telemetry off
-// (`ANONYMIZED_TELEMETRY=false`); a browser engine: its profile under the data root (`--user-data-dir .../browser/<engine>`)
-// with `--no-webmcp`, and only an engine the stamp's `browser-engines:` lists (`engines`).
+// (`ANONYMIZED_TELEMETRY=false`); a browser engine, under its name or its 2.0.0 one: its profile under the data root
+// (`--user-data-dir .../<engine>-control`, or the 2.1.0 shared `.../browser/<engine>`) with `--no-webmcp`, and only an
+// engine the stamp lists (`engines`).
 function stackAuthored(name, entry, { engines = [] } = {})
 {
     if (!entry || typeof entry !== 'object') return false;
     const args = Array.isArray(entry.args) ? entry.args.map(String) : [];
     const after = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] || '' : ''; };
-    const engine = /^browser-(\w+)$/.exec(name);
+    const engine = anyEngineOf(name);
     if (engine)
-        return engines.includes(engine[1]) && args.includes('--no-webmcp')
-            && new RegExp(`(^|[\\\\/])browser[\\\\/]${engine[1]}$`).test(after('--user-data-dir').replace(/[\\/]+$/, ''));
+        return engines.includes(engine) && args.includes('--no-webmcp')
+            && new RegExp(`(^|[\\\\/])(?:${engine}-control|browser[\\\\/]${engine})$`).test(after('--user-data-dir').replace(/[\\/]+$/, ''));
     if (!/^\d{4}-\d{2}-\d{2}/.test(after('--exclude-newer')) || !/^[^=\s]+==[^=\s]+$/.test(after('--from'))) return false;
     const env = entry.env && typeof entry.env === 'object' ? entry.env : {};
-    return !/-desktop$/.test(name) || env.ANONYMIZED_TELEMETRY === 'false';
+    return !/^(?:windows|macos)-(?:control|desktop)$/.test(name) || env.ANONYMIZED_TELEMETRY === 'false';
 }
 
 // Re-verify 3 S1 / S4 / S7: a registration no ledger row vouches for is the stack's only in the release template's EXACT
@@ -846,7 +844,7 @@ function ownProfile(dir, projectRoot)
 function exactStack(name, entry, { catalog = [], remotes = {}, projectRoot = '', boots = STACK_BOOTS } = {})
 {
     if (!entry || typeof entry !== 'object') return false;
-    const engine = /^browser-(\w+)$/.exec(name);
+    const engine = anyEngineOf(name);
     const row = catalog.map(String).find((e) => e.split('|')[0] === (engine ? 'browser' : name));
     if (!row) return false;
     let args = row.slice(row.indexOf('|') + 1);
@@ -860,7 +858,7 @@ function exactStack(name, entry, { catalog = [], remotes = {}, projectRoot = '',
             && Object.keys(wantHeaders).every((k) => shapeNorm(headers[k]) === shapeNorm(wantHeaders[k]));
     }
     if (entry.url || entry.type === 'http' || entry.type === 'sse') return false;
-    if (engine) args = pwArgsFor(args, engine[1]);
+    if (engine) args = pwArgsFor(args, engine);
     // The template split as wantFor splits a registration: its env pairs, then the command words.
     const want = wantFor({ kind: 'stdio', words: String(args).split(/\s+/).filter(Boolean) });
     const env = entry.env && typeof entry.env === 'object' ? entry.env : {};
@@ -873,7 +871,7 @@ function exactStack(name, entry, { catalog = [], remotes = {}, projectRoot = '',
     if (!wordsMatch(serverWords(want).map(wordMatcher), words)) return false;
     if (!engine) return true;
     const dir = words[words.indexOf('--user-data-dir') + 1] || '';
-    return ownProfile(dir, projectRoot) && new RegExp(`(^|[\\\\/])(browser|\\.playwright)[\\\\/]${engine[1]}$`).test(dir.replace(/[\\/]+$/, ''));
+    return ownProfile(dir, projectRoot) && new RegExp(`(^|[\\\\/])(?:${engine}-control|(?:browser|\\.playwright)[\\\\/]${engine})$`).test(dir.replace(/[\\/]+$/, ''));
 }
 
 // What takes a plugin-carried server's place. Claude Code connects to a server ONCE, from the highest

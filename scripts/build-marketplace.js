@@ -291,9 +291,9 @@ const { ENGINES: PW_ENGINES } = require('../stack/mcp/data-root.js');
 // check 53 fails on any entry that breaks it.
 //
 // The names are the ROLE (2.0.0, the user's rename), `alfred-` prefixed for the locked three (2.2.0): alfred-navigation,
-// alfred-documentation, alfred-memory, one browser-<engine> per browser, and windows-desktop / macos-desktop. The upstream each one runs -
-// Serena, Context7, Playwright MCP, Windows-MCP, MacOS-MCP - is named once in its description, where a
-// reader needs it.
+// alfred-documentation, alfred-memory, one <engine>-control per browser, windows-control / macos-control and mobile-control. The
+// upstream each one runs - Serena, Context7, Playwright MCP, Windows-MCP, MacOS-MCP, appium-mcp - is named once in its
+// description, where a reader needs it.
 
 function mcpServerShapes(options = {})
 {
@@ -304,9 +304,9 @@ function mcpServerShapes(options = {})
     const browsers = {};
     for (const engine of PW_ENGINES)
     {
-        const name = `browser-${engine}`;
+        const name = `${engine}-control`;
         browsers[name] = {
-            description: `The browser server (Playwright MCP) driving ${engine}, as a plugin: a real ${engine} browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/${engine}, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.`,
+            description: `The browser server (Playwright MCP) driving ${engine}, as a plugin: a real ${engine} browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/${engine}-control, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.`,
             servers: {
                 [name]: {
                     // The launcher, not npx directly: the profile's place is the project's data root
@@ -377,24 +377,36 @@ function mcpServerShapes(options = {})
         // --- the desktop servers: each drives the machine's own apps, so each ships for ONE OS -----
         // The launcher pins the Python, refuses on the other OS and applies the tool-gate override
         // (stack/mcp/desktop-launch.js); the installer offers each only on its own OS.
-        'windows-desktop': {
-            description: `The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (3.13) and refuses on another OS; ${DEFAULT_EXCLUDE.split(',').join(', ')} stay off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE names another list (none = every tool).`,
+        'windows-control': {
+            description: `The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (3.13) and refuses on another OS; ${DEFAULT_EXCLUDE.split(',').join(', ')} stay off unless ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE names another list (none = every tool).`,
             servers: {
-                'windows-desktop': {
+                'windows-control': {
                     command: 'node',
-                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'windows-desktop', '--package', `windows-mcp${suffix('windows-desktop')}`, ...cut,
+                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'windows-control', '--package', `windows-mcp${suffix('windows-control')}`, ...cut,
                         '--', 'serve', '--exclude-tools', DEFAULT_EXCLUDE],
                     env: DESKTOP_ENV,
                 },
             },
         },
-        'macos-desktop': {
+        'macos-control': {
             description: 'The macOS desktop server (MacOS-MCP), as a plugin: drives native macOS apps through the Accessibility API (snapshot, click, type, shortcut). macOS only; it needs Accessibility and Screen Recording granted to the terminal or IDE running Claude Code and to the uv-managed Python it runs on. Started through a launcher that pins the Python (3.13) and refuses on another OS.',
             servers: {
-                'macos-desktop': {
+                'macos-control': {
                     command: 'node',
-                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'macos-desktop', '--package', `macos-mcp${suffix('macos-desktop')}`, ...cut, '--', 'serve'],
+                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'macos-control', '--package', `macos-mcp${suffix('macos-control')}`, ...cut, '--', 'serve'],
                     env: DESKTOP_ENV,
+                },
+            },
+        },
+        // --- the mobile server: an npx package, so no Python and no cut-off -----------------------
+        // The launcher looks up an unset ANDROID_HOME / JAVA_HOME, puts the output dirs under the data root and keeps the
+        // safe defaults where the user set nothing (stack/mcp/mobile-launch.js).
+        'mobile-control': {
+            description: 'The mobile server (appium-mcp), as a plugin: drives Android and iOS apps on an emulator, a simulator or a real device through Appium\'s embedded UiAutomator2 and XCUITest drivers (sessions, find, tap, type, gestures, screenshots). Needs Node 22+; Android needs the Android SDK and a JDK (ANDROID_HOME / JAVA_HOME, looked up when unset), iOS needs macOS with Xcode. Started through a launcher that puts screenshots and page sources under the project\'s data root (<data root>/mobile-control) and refuses app URLs and remote Appium servers unless the user sets ALLOW_REMOTE_APP_URLS / REMOTE_SERVER_URL_ALLOW_REGEX.',
+            servers: {
+                'mobile-control': {
+                    command: 'node',
+                    args: [`${root}/stack/mcp/mobile-launch.js`, '--package', `appium-mcp${suffix('mobile-control')}`],
                 },
             },
         },
@@ -522,6 +534,7 @@ function main(argv)
 
 if (require.main === module)
 {
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
     try { process.exit(main(process.argv.slice(2))); }
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }

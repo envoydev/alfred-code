@@ -1,5 +1,5 @@
 ---
-description: "FAST refresh of an existing Alfred Code install - no selection questions (one ask only when the release adds an item this install would not otherwise carry): bring everything currently installed to the newest release, MCP runtimes and plugins included (MCPs re-registered at the release's own pins, then VERIFIED against the manifest shape and repaired where a registration drifted - `claude mcp add` over an existing name exits 0 without writing, so a stale entry used to survive every update; `claude plugin update` per installed stack plugin, at the scope the plugin is actually installed at) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only reads the install back and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated alfred-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. Works with no newer plugin: the snapshot's own pins move the library copies, hooks and MCPs. NOT for choosing items to add or drop beyond what the release itself added - that is the sibling configure command; not a first install - that is setup."
+description: "FAST refresh of an existing Alfred Code install - no selection questions (one ask only when the release adds an item this install would not otherwise carry): bring everything currently installed to the newest release, MCP runtimes and plugins included (MCPs re-registered at the release's own pins, then VERIFIED against the manifest shape and repaired where a registration drifted - `claude mcp add` over an existing name exits 0 without writing, so a stale entry used to survive every update; `claude plugin update` per installed stack plugin, at the scope the plugin is actually installed at) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only reads the install back and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated rules (alfred-architecture, alfred-related-context, alfred-agent-awareness, alfred-project-awareness, project-code-style) can never be touched. One confirmation before anything is deleted. Works with no newer plugin: the snapshot's own pins move the library copies, hooks and MCPs. NOT for choosing items to add or drop beyond what the release itself added - that is the sibling configure command; not a first install - that is setup."
 disable-model-invocation: true
 ---
 
@@ -30,7 +30,7 @@ old name its current one); the rules keep it. The three locked MCP servers take 
 goes, and on the copy route each `.mcp.json` key is re-keyed with its memory database kept. Update carries every
 pick, seat deny, `skillOverrides` value and instruction file across, prunes each old copy (`skill pruned (retired
 upstream)`) - a copy edited since the stack wrote it is kept and named, the user's to merge - and prints one
-`renamed:` line each. An optional item (a browser engine, a desktop server, an LSP, claude-hud) stays at the scope
+`renamed:` line each. An optional item (a browser engine, a desktop server, mobile-control, an LSP, claude-hud) stays at the scope
 it is installed at; only configure moves it. Report the `renamed:`, `pruned` and `!!` lines.
 
 **Renamed in 2.1.0.** Three more skills took `habits-*` names (the last skill rows of the table below); the plugin
@@ -43,10 +43,22 @@ docs they write keep their paths (`<docs-path>/architecture/`, `code-style/`, `t
 `related-projects/`, `quality/`, `loops/`).
 **Renamed in 2.1.6.** The seven shipped rules and the generated ones lost their `baseline-` prefix for
 `alfred-` (`baseline-git.md` -> `alfred-git.md`, `baseline-project-related-context.md` ->
-`alfred-project-related-context.md`). Update prunes each old library copy (`rule pruned (retired
+`alfred-related-context.md`). Update prunes each old library copy (`rule pruned (retired
 upstream)`), writes the new one, and MOVES each generated file with its content kept (`moved: rule ...`) -
 their captures do not re-run by themselves. Report both kinds of line; a `!!` line means the old and the new
 generated file both exist, and the old one is the user's to remove.
+**Renamed after 2.3.0.** The generated rules take their awareness names - `alfred-project-architecture.md` ->
+`alfred-architecture.md`, `alfred-project-related-context.md` -> `alfred-related-context.md`,
+`alfred-project-agent-capabilities.md` -> `alfred-agent-awareness.md`, `alfred-project-run-book.md` ->
+`alfred-project-awareness.md` - each MOVED with its content kept, and the two captures that write them are
+`/capture-agent-awareness` and `/capture-project-awareness` (the run book's doc keeps its path,
+`<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md`). The desktop servers are `windows-control` and
+`macos-control` (were `windows-desktop` / `macos-desktop`): update swaps the plugin with its on/off kept, re-spells
+their tools in the generated rules, and `ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE` is the gate key - the old
+`ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` is still read while the new one is unset, with a line saying to rename it.
+Each browser server is `<engine>-control` (was `browser-<engine>`): update swaps the plugin with its on/off kept,
+and the profile moves from `.alfred/browser/<engine>` to `.alfred/<engine>-control` at that server's next start,
+unasked - `.alfred/browser` goes once its last engine has moved.
 `/loop-quality` now works a code-quality assessment by tier, with the `loops/`
 prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project may rely on.
 
@@ -68,7 +80,7 @@ prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project
 | `/project-code-style-analyzer` | `/capture-code-style` |
 | `/project-test-coverage-analyzer` | `/capture-test-coverage` |
 | `/project-related-context` | `/capture-related-projects` |
-| `/project-agent-capabilities` | `/capture-agent-capabilities` |
+| `/project-agent-capabilities` | `/capture-agent-awareness` |
 | `/project-stack-usage-analyzer` | `/capture-usage-report` |
 | `/project-first-look` | `/capture-first-look` |
 | `/project-quality-loop` | `/loop-quality` |
@@ -82,13 +94,15 @@ prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project
 | `/explain-code-tutor` | `/habits-explain-code` |
 | seat `ci-failure-diagnoser` | seat `issue-diagnoser-ci` |
 | seat `runtime-failure-diagnoser` | seat `issue-diagnoser-runtime` |
-| `/alfred-capture-agent-capabilities` | `/capture-agent-capabilities` |
+| `/capture-agent-capabilities` | `/capture-agent-awareness` |
+| `/capture-project-capabilities` | `/capture-project-awareness` |
+| `/alfred-capture-agent-capabilities` | `/capture-agent-awareness` |
 | `/alfred-capture-architecture` | `/capture-architecture` |
 | `/alfred-capture-architecture-quality` | `/capture-architecture-quality` |
 | `/alfred-capture-code-quality` | `/capture-code-quality` |
 | `/alfred-capture-code-style` | `/capture-code-style` |
 | `/alfred-capture-first-look` | `/capture-first-look` |
-| `/alfred-capture-project-capabilities` | `/capture-project-capabilities` |
+| `/alfred-capture-project-capabilities` | `/capture-project-awareness` |
 | `/alfred-capture-related-projects` | `/capture-related-projects` |
 | `/alfred-capture-test-coverage` | `/capture-test-coverage` |
 | `/alfred-capture-usage-report` | `/capture-usage-report` |
@@ -129,9 +143,15 @@ grep over its log. It runs identically on the cheap tier and costs about a THIRD
 `model:` key CAN pin a skill's run to a tier (the Claude Code skills frontmatter reference lists
 `model` and `effort` beside `allowed-tools`), and this command deliberately carries none: a pin
 every install inherits is a behaviour change that ships with its own evidence, and `/model` is the
-USER's command. So when this session is on an expensive tier, say it ONCE in the opening line - 'this walk is scripted;
-`/model sonnet` runs it for about a third' - and continue either way. Never ask about it, never
-repeat it.
+USER's command. So on an expensive tier when a cheap one is available, step 0 is a STOP, not an ask: the
+opening line is the whole turn - 'this walk is scripted: `/model sonnet`, then `/alfred-code:update` again,
+runs it for about a third; `/alfred-code:update` again on this model runs it here' - and the turn ends
+before the snapshot is resolved (audit 2026-10-11, session 37d7a42c: the run went on on Opus after the
+hint, 245.9k cache-read and 83.1k cache-write over 3 messages, and the user interrupted it and ran it
+again on Sonnet). A second `/alfred-code:update` in this session goes ahead on whatever tier it finds, with
+no line. An unattended launch picks its model up front and has nobody to switch it: on the expensive tier
+make the first call `printf 'unattended=%s\n' "${ALFRED_CODE_UNATTENDED:-}"`, and on `unattended=1` log
+`unattended: tier -> run here` and go on instead of stopping.
 
 **House voice in every line this run emits** - narration, tables and the asks alike: single
 dashes, never em-dashes, and single quotes in prose. A fresh or refreshed install may have no
@@ -140,29 +160,25 @@ the voice can come from (measured: a first-run narration line opened with an em-
 surface where the rule forbidding it cannot yet exist).
 
 **This run needs NO conversation context**, so it is the cheapest thing in the stack to move -
-but only out of a session that is actually loaded. Measure before you ask: this session's own
-per-message context is `input + cache_read + cache_creation` off the last assistant message in the
-transcript. Ask ONLY when that figure is past the same trigger `guard-fresh-session-start.js` uses
-- the tier's own absolute trigger, `ALFRED_CODE_FRESH_SESSION_200K` (default 150,000) or
-`ALFRED_CODE_FRESH_SESSION_1M` (default 400,000), or `ALFRED_CODE_FRESH_SESSION_DEFAULT`
-(default 300,000) when the window is neither of those two sizes or cannot be read at all - which
-one applies comes from the session model's row in `.claude/hooks/model-windows.json`, else
-`ALFRED_CODE_DEFAULT_CONTEXT_WINDOW` - or when that hook has already injected
-the ask into this turn. Below the trigger, or when the figure cannot be read at all, SKIP the ask
-silently and go to step 1: an ask with no measurement behind it is the failure this replaced
-(measured: it fired on the FIRST message of a brand-new session, twice in one run, and could quote
-no number when the user challenged it). Never author the decision in prose either way - and below the trigger that means NO line at
-all: not 'context is low, proceeding', not a one-clause aside. The only visible output of a
-skipped step 0 is that step 1 starts.
+but only out of a session that is actually loaded, and the measuring is the hook's, never yours.
+`guard-fresh-session-start.js` reads this session's per-message context against its tier's trigger (and
+whether a guided run already ran in this session) and, when a move pays, injects a note into this very
+turn that quotes the figure and says 'Do NOT start the run yet'. With that note, step 0 is its ask.
+Without it, step 0 does not exist: never measure, never mention it - no 'step 0 skipped', no 'fresh
+session', no 'context is low, proceeding' - the first line you write is step 1's (audit 2026-10-11,
+session bca100bd: 'Step 0 skipped (fresh session)' on the first message of a fresh session, the line
+this clause forbids; a model-side measurement fired on the FIRST message of a brand-new session before).
+Where the stack's hooks stand down (a legacy install before its first stamp, `hook_profile: minimal`)
+no note comes, and the walk runs here.
 
-When it does fire, put the choice through AskUserQuestion - run here anyway vs run in a fresh
+When the note comes, put the choice through AskUserQuestion - run here anyway vs run in a fresh
 session (recommended). One ordering rule for every ask in this run: **never lead with an option
 the harness has already refused.** Once an installer invocation has come back denied, the
 recommended answer becomes 'you run it yourself' with the command to paste, and the settings rule
 that would pre-authorize it named beside it - re-offering the denied path as the recommendation
 buys a second identical denial (measured, and it drew the only free-text complaint in that
 session). The fast path is ~10k tokens on its own, but every one of its messages
-re-sends whatever this session already carries, so state the figure you measured and the ~10k
+re-sends whatever this session already carries, so state the figure the note quotes and the ~10k
 budget beside it. Never quote a figure measured in another session: the number that used to sit
 here was ~2x over on lifetime cache-read and ~4.8x over on the tail when it was next checked.
 
@@ -178,7 +194,7 @@ If the user redirects mid-answer and this ask is displaced, re-offer it ONCE whe
 is handled, then proceed on their answer.
 
 **THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing** - the shared contract lives at
-`${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`; read it first and hold the whole run to
+`${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`; read it first, in ONE Bash `cat`, and hold the whole run to
 it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none, use every tool from that snapshot, hand it back
 with `--source` in the install step, and remove `$TMP` on EVERY exit path (fast, slow, blocker,
 or a user 'no'). The protocol's 'Narrate, don't trace' section governs every tool call: quiet
@@ -224,10 +240,14 @@ It prints, in order:
 - `status<TAB>path` lines (`modified`/`added`/`removed`, `renamed` with `<- old-path`) filtered
   to stack-owned paths; the diff is what has been RELEASED since the stamp - work still on
   `develop` is invisible by design, never diff against it.
-- `changed: skills=<n> agents=<n> rules=<n> hooks=<n> template=<yes|no>` - the delta bucketed by
-  install class. This is what step 7 names as refreshed, and what gates the
-  `/capture-agent-capabilities` suggestion; the installer's log tail counts every file it
-  COPIED, which is all of them on every run, so it can never answer 'what changed'.
+- `changed: skills=<n> agents=<n> rules=<n> hooks=<n> template=<yes|no>` - the RELEASE's delta bucketed by
+  install class; the installer's log tail counts every file it COPIED, which is all of them on every run,
+  so it can never answer 'what changed'.
+- `changed-here: skills=<n> agents=<n> rules=<n> hooks=<n>` - the part of that delta THIS install carries (a
+  copy on disk, a seat on the core no deny names, a hook the plugin route carries and `ALFRED_CODE_HOOKS_OFF`
+  does not name). Step 7 names THIS as the refresh, and it gates the `/capture-agent-awareness`
+  suggestion (measured: a close named 'skills=10 agents=44' as this install's refresh where the installer
+  copied 9 of the 10 and the install enables 21 seats).
 - `migration: <id><TAB><detect kind>` per DETECTED entry, or `migrations: none detected`, each
   followed by its own indented `why:` / `then:` / `remove:` / `unwire:` / `env-rename:` /
   `env-rename-prefix:` / `env-remove:` / `env-reset:` lines - everything you act on. A detected entry joins the prune list labeled
@@ -280,17 +300,21 @@ prefix entry, `env: <key> removed (retired)`. New variables the release introduc
 catalog entry at all - the same pass seeds them absent-only - but report those too, as
 `env: <key> seeded (<value>)`, reading the file after the run rather than assuming.
 
-**Build the prune list** from the compare's `removed` lines (a `stack/...` path gone entirely
-maps to its installed artifact; a path still present in the snapshot is a move WITHIN the item,
-not a removal), every `new:` row carrying `old-on-disk` (its old copy is pruned whatever the
-verdict - an arriving rename leaves the old copy behind too; a `renamed` row's new name is carried
-by `--add`, a rename being the same item continuing, never an adoption choice), and the detected
-migrations. Three outputs decide the path:
+**Build the prune list** from the detected migrations alone - the removals step 5 makes by hand. The
+installer prunes every copy the release retired or renamed ITSELF (the manifest's `retired` names, and
+only a copy the stack's own record holds - the stamp's hash, the ledger, a name only the stack uses; a
+project's own is kept and named), on the fast path and the pruning path alike, whatever step 4's
+answer - so a compare `removed` line or a `new:` row carrying `old-on-disk` is reported at step 7 from the
+`--log` call's `pruned:` line, never offered as a choice the installer would not honour (measured: a
+'Refresh only' option promised the old copies would stay, and the installer pruned all 34). A
+`renamed` row's new name is carried by `--add`, a rename being the same item continuing. The rename rows
+come from the snapshot's `renamed` map as well as the compare, so a `TRUNCATED` compare still lists
+every rename whose old copy is on disk. Two outputs decide the path:
 
-- **Prune list EMPTY** -> step 3, the fast path. This includes `no-stamp` (exit 2 - no baseline,
-  pruning impossible, refreshing unaffected), `compare-unreachable` (exit 3 - same), and a
-  `TRUNCATED` line, third after the version + base lines (the removal list cannot be trusted complete - never prune from a
-  possibly-partial diff; route the reconcile to `configure` in the report). Say which applied.
+- **Prune list EMPTY** -> step 3, the fast path. Say which compare signal applied, if any: `no-stamp`
+  (exit 2 - no baseline, refreshing unaffected), `compare-unreachable` (exit 3 - same), or a
+  `TRUNCATED` line, third after the version + base lines (the file list may be incomplete - route the
+  reconcile to `configure` in the report).
 - **Prune list NON-EMPTY** -> step 4, the pruning path.
 
 **New items - ONE ask, and only when a `new:` line says `offer`.** Put every offer through one
@@ -331,7 +355,10 @@ count, run without the flag (the old places stay in effect, except one a server 
 new place serves, and the log's `still holds data` line names the leftover to remove or merge), and the
 next update offers again once they are cleared. After a move the log carries `docs root: moved ...` and `data root: ...` lines (what
 moved now, what waits for a server's next start), the `--log` call prints `restart: yes`, and until that
-restart this session writes the docs under the NEW root - its loaded rule text still names the old one.
+restart this session's hooks keep writing under the OLD root - they read it from the environment the session
+started with - and its loaded rule text still names the old one (audit 2026-10-11, session bca100bd: the
+monitor hook re-created `<old root>/flow/` after the move). Say so in the close, with the one action it
+leaves: after the restart, a `flow/` file left under the old root is this session's record and safe to delete.
 Unattended, both asks take their Recommended option - the move overwrites nothing (a conflict already
 stops it) and adding the recommended items only adds - each logged as one `unattended: <question> ->
 <choice>` line; a `yours=yes` offer is the exception, a value the user once kept: pass no `--data-move`,
@@ -395,9 +422,9 @@ or the adoption alone.
 **Give that call a 10-minute timeout, and read its exit code.** A full refresh runs past the Bash
 tool's own default on a cold machine, and a timed-out call is BACKGROUNDED, not failed: the run then
 pays turns re-finding its own installer (measured: 3 recovery turns, one of them loading a tool
-schema it never called). Pass `timeout: 600000` on the call. The `tee` means `$?` is the pipe's own
-exit code, not the installer's - append `; echo "install exit: ${PIPESTATUS[0]}"` and read THAT
-number. A NON-ZERO exit stops the run - report the log's last lines verbatim as a blocker with the
+schema it never called). Pass `timeout: 600000` on the call. The `tee` makes `$?` the pipe's own
+exit code, not the installer's - open the call with `set -o pipefail;`, append `; echo "install exit: $?"`
+and read THAT number (`${PIPESTATUS[0]}` reads empty in zsh, the macOS Bash tool's shell). A NON-ZERO exit stops the run - report the log's last lines verbatim as a blocker with the
 fix they name, and never continue to the prune, the close, or ad-hoc repair work: the measured
 breach spent 14 messages and 1.69M tokens on improvised forensics after exit 1 and then changed 226
 files under the user's `.claude` with no ask.
@@ -413,23 +440,23 @@ the log), because `claude mcp add` over a name the preceding `remove` did not cl
 exists' and exits 0 - which is how consuming projects kept a stale stdio registration through update after
 update. Servers the project added by hand are never touched. Plugins are updated
 at EVERY scope the listing says they are installed at - `local`, `project`, `user` and the admin's `managed`
-row, the one call that scope takes (`plugin update [<scope>]: <entry>`, one line per scope) - and their versions are read back, so the log names
+row, the one call that scope takes (`plugin update [<scope>]: <entry>`, one line per scope; a stack row the resolve already took to the snapshot's release logs `plugin current [<scope>]` and is not spawned again) - and their versions are read back, so the log names
 each one as `x -> y`, `installed this run` or `already newest` instead of asserting a refresh. On the MCP copy
 route a registration of the stack's own at the other account-file scope is refreshed there too (`mcp refreshed
 [<scope>]: <name>`). This command moves nothing between scopes and removes no pick: it passes the stamp's own
 `--scope`, never `--scope-of`, and a `--drop` only to carry a renamed item's switch-off - scope changes and
 removals are setup's and configure's. What it does remove is what the release itself retired or renamed,
-because an id the catalog drops stops loading at once (docs/plugin-cli-evidence.md S25). Every optional item (a browser engine, a desktop server, an LSP, claude-hud) is updated where it is installed and never moved - `/alfred-code:configure` is the one place its scope changes (2.2.0); claude-hud is an optional pick since 2.2.0, so an install that never picked it gains none. On EVERY run where claude-hud is installed - this run or already - and no settings file this project reads has a `statusLine` yet, the run logs `claude-hud has no status line yet - run /alfred-code:init to set it up` - paste that line verbatim and name `/alfred-code:init` in the close. A server the 2.0.0 cut removed (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`, `context7-local`)
+because an id the catalog drops stops loading at once (docs/plugin-cli-evidence.md S25). Every optional item (a browser engine, a desktop server, mobile-control, an LSP, claude-hud) is updated where it is installed and never moved - `/alfred-code:configure` is the one place its scope changes (2.2.0); claude-hud is an optional pick since 2.2.0, so an install that never picked it gains none. On EVERY run where claude-hud is installed - this run or already - and no settings file this project reads has a `statusLine` yet, the run logs `claude-hud has no status line yet - run /alfred-code:init to set it up` - paste that line verbatim and name `/alfred-code:init` in the close. A server the 2.0.0 cut removed (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`, `context7-local`)
 is uninstalled by its stack spec only - a same-named plugin from another marketplace and a row at another
 scope are kept and logged with the uninstall command that removes them - and each removal prints its `add it back:`
 line; pass the removals, their add-back lines and every kept row's line through verbatim in the close-out. A pruned
 `context7-local` also logs `context7-local removed - if you ran /mcp disable context7 for it, run /mcp enable context7`
 - paste that line too, since the hosted server stays disabled by the user's own earlier command
 otherwise. The browser server keeps its browsers the same
-way: every browser the stamp's `browser-engines:` names is updated in place, never installed over (a legacy single `playwright` server
+way: every browser the stamp's `control-engines:` names is updated in place, never installed over (a legacy single `playwright` server
 migrates to `browser-<its --browser>`, none = `chrome`), a `firefox` / `webkit` build is downloaded again
 at the release's pin, and no browser is switched on or off - the user's `/plugin` toggle stands. One the user uninstalled by hand
-comes back as the stamp's `browser-enabled:` last left it; a disabled browser the stamp does not name stays parked.
+comes back as the stamp's `control-enabled:` last left it; a disabled browser the stamp does not name stays parked.
 
 **ONE post-install read.** When the installer returns, everything the report needs is in its log,
 so take it in a single call - never a tail, never a second grep. A tail is ~75% static boilerplate,
@@ -458,17 +485,19 @@ The RESTART row and any fail-soft `!!` are not judged from that dump - they are 
 breath, by the script that already prints `changed:`:
 
 ```bash
-node "$TMP/repo/scripts/update-preflight.js" --log "$TMP/install.log" --hooks <step 2's changed: hooks=N>
+node "$TMP/repo/scripts/update-preflight.js" --log "$TMP/install.log" --hooks <step 2's changed: hooks=N> --running "${CLAUDE_PLUGIN_ROOT}"
 ```
 
-Paste `restart: yes|no` and every `warn: <line>` it prints verbatim - step 7 below reads them, not
-the raw grep.
+Paste `restart: yes|no`, every `warn: <line>`, and its `renamed:` / `pruned:` lines verbatim - step 7 below reads them, not
+the raw grep. `--running` is the release this session loaded: a session already on the snapshot's release
+runs its plugin-route hooks, so the hook delta owes no restart there; the summary's `mcps=` is the
+selection's size and never counts (measured: `restart: yes` on an update that changed nothing loaded).
 
 Presence, never the value - the line above already carries the installer's own `KEY=` presence
 output on most runs. Run this ONLY when that grep returned no `KEY=` line, and paste its lines
 as-is:
 `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
-(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
+(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)`, `KEY=empty (present, no value)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
 
 CONTEXT7_API_KEY never travels through the chat - when it is missing and the user wants one, offer
 this copy-ready command, so the value goes from the user's clipboard into the file without
@@ -514,20 +543,23 @@ and that is their decision to make, not one to leave unsaid. Then:
 The installer reads the install back itself (`--installed-only`), so the ask below needs only the
 compare.
 
-Show the version delta, the refresh counts by category, and the NAMED prune list (migrations
-included, with their why). Ask ONE question through AskUserQuestion: proceed with refresh +
-prune (recommended), or refresh only. Nothing is ever deleted silently; 'refresh only' means
-step 3's installer run instead, then the report. For example:
+Show the version delta, the refresh counts by category (step 2's `changed-here:`), and the NAMED prune
+list - each detected migration with its why. Ask ONE question through AskUserQuestion: proceed with
+refresh + prune (recommended), or refresh only. The answer governs those removals alone: 'refresh only'
+means step 3's installer run and no migration removal, while the copies the release retired or renamed go
+either way - the installer prunes the stack's own on both answers, so the ask says so in one clause and
+never offers to keep them. For example:
 
 ```
 alfred-code 0.1.0 -> 0.2.0 - refresh: 12 skills, 9 agents, 6 rules, 3 hooks
-prune: .claude/rules/web-conventions.md (renamed upstream; typescript-conventions.md carried over)
+prune: .claude/hooks/inject-code-style.js (migration: style delivery moved to a generated rule)
 ```
 
 On 'proceed': run the installer exactly as in step 3 - its `--add` already carries every `renamed`
 row's new name (the old copy is on disk, the new one is not yet, so the read-back alone would lose
 it) and every offer the step-2 ask took. A removed name needs no flag - this release
-does not ship it, so the read-back cannot carry it - and step 5 deletes its files. Never rebuild the
+does not ship it, so the read-back cannot carry it - and the installer prunes its copy; step 5 deletes only
+what the migrations name. Never rebuild the
 selection from a disk inventory on the Node seed: on the plugin routes `.claude/` holds only the
 library copies, and a selection built from it switches off every seat an enabled entry carries (the Phase 8
 read-back exists for exactly that). The first update past 2.1.0 is the one that moves an install
@@ -557,15 +589,42 @@ never regex, never touching other wiring). A migration's `then` line goes in the
 as a next step - run nothing on the user's behalf.
 
 ## 6. Reconcile the project's AGENTS.md
-Read `$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` and follow it inline with
+Run the check first and paste its output - its rows (a named path that no longer exists, a command that does
+not resolve, the template's own text still live) are this step's facts, whatever the reading below finds:
+
+```bash
+node "$TMP/repo/scripts/agents-md-check.js" --root .
+```
+
+Then read `$TMP/repo/stack/skills/habits-adjust-agents-md/SKILL.md` - the whole body, never a heading
+diff (measured: a run that skipped it and diffed the `## ` headings left every improve-mode check unrun) - and follow it inline with
 `<stack>` = the `$TMP/repo` path, pasted as a literal, exactly as the sibling `configure` command's step 13: its improve mode adds the
 sections the template gained and OFFERS a fix for what its check reports (never in the recommended
 option - a check row is heuristic, applied only when the user picks it), this run's own part is the rules
 table for what it pruned, the project's own prose is never overwritten, and every change is shown
 before writing.
-The installer has already re-spelled every renamed skill or seat name the stack wrote into
-`AGENTS.md`, `.claude/AGENTS.md` and the generated rules (one `renamed: <file> - <n> ...` line per
-file) - report those lines, and leave the names to it.
+The installer re-spells the renamed skill and seat names only where the stack wrote them - an instruction
+file it seeded and still holds at its hash, and the generated rules (one `renamed: <file> - <n> ...` line per
+file) - report those lines. A file that is the project's own it only NAMES, and step 3's `--log` call carries
+that as `warn: !! <file> is yours and names <n> old stack name(s) ...`. Never splice those by hand (audit
+2026-10-11, session b3f8193f: a hand `sed -i` after an ask that showed no diff, on a file git did not track).
+Print the edit instead:
+
+```bash
+node "$TMP/repo/scripts/update-preflight.js" --respell --root .
+```
+
+`respell: none` asks nothing. Otherwise paste its `respell:` / `-` / `+` lines verbatim in a fenced block - they
+are the diff - and ask once:
+
+```ask
+Re-spell the old stack names in <file> as shown above?
+- 'Re-spell them (Recommended)' - each line exactly as the plan shows it, and nothing else in the file
+- 'Leave them' - the file keeps the old names, which no longer resolve to a skill or seat
+```
+
+On a yes, the same call with `--apply` writes those lines alone and prints `respelled: <file> - <n> line(s)`
+- report it. Unattended, take the Recommended option and log it.
 The installer has also dealt with the seeded file's name: an unedited `.claude/CLAUDE.md` it seeded is
 moved to `.claude/AGENTS.md` (`git mv` where git tracks it), and so is the user's own on step 2's
 rename answer (`--rename-claude-md`); without that answer an edited one, or any when an AGENTS.md
@@ -579,21 +638,28 @@ skipped, and not validate, which touches only the rules table. Measured: a user 
 verbatim, five and a half minutes apart. The compare is a 75-line file against a 116-line one, so
 cost is not the argument; when it comes back clean, say so in one clause and write nothing.
 
+The step closes on ONE receipt line, which step 7 repeats verbatim: `agents-md: compare <clean|N additions> -
+check <N rows>` - the sections the compare offered (`clean` when none) and the rows the check printed (`0
+rows` when none). A close with no receipt is a step 6 that did not run (audit 2026-10-11, session 5b9ce9c5:
+the check ran, the compare never did, and nothing in the close showed it).
+
 ## 7. Post-check
 Every line below is READ from something already in context - step 2's preflight output, the one
 post-install grep, and the step-3 `update-preflight.js --log` call. Nothing here is stated from
 memory, and nothing needs another call.
 
-Report the version delta, then what actually CHANGED: step 2's `changed: skills=<n> agents=<n>
-rules=<n> hooks=<n> template=<yes|no>` line, naming the paths from the compare's own
-`status<TAB>path` rows. Do NOT report the installer's copy counts as the delta - it re-copies every
-installed file on every run, so its `installed/refreshed this run - skills=N` is the SELECTION size,
-not the change; an audited close named the two refreshed rules and omitted the two hooks that were
-the entire upstream delta, because it read the log tail instead of the compare. Then the pruned
-items by name, the REPAIRED line when the installer logged any (`mcp repaired: <name>` rows and the
+Report the version delta, then what THIS install refreshed: step 2's `changed-here: skills=<n> agents=<n>
+rules=<n> hooks=<n>` line (the release's own `changed:` beside it when they differ - 'skills 9 here of the
+release's 10'), naming the paths from the compare's own `status<TAB>path` rows. Do NOT report the
+installer's copy counts as the delta - it re-copies every installed file on every run, so its
+`installed/refreshed this run - skills=N` is the SELECTION size, not the change; an audited close named the
+two refreshed rules and omitted the two hooks that were the entire upstream delta, because it read the log
+tail instead of the compare. Then the `--log` call's `renamed:` and `pruned:` lines, VERBATIM - the
+installer's own counts with the pruned items by name, never a count from memory or from the step-4 ask
+(measured: a close said 'Renamed: 35' and 'the 26 old skill copies' against 34 and 34 in the log), the REPAIRED line when the installer logged any (`mcp repaired: <name>` rows and the
 plugin version moves - these are the drift the run corrected, and a user who has been carrying a
 stale registration needs to see it named), the ENVIRONMENT line, the NEW-ITEMS line (what arrived,
-what was taken, what stays off or was left, each by name), and the restart line.
+what was taken, what stays off or was left, each by name), step 6's `agents-md:` receipt, and the restart line.
 
 - **ENVIRONMENT** - the installer prints one line per env change, named by the file the scope
   writes (`settings.json env: <old> renamed to <new>`, or `settings.local.json env: ...` for a key
@@ -652,8 +718,9 @@ what was taken, what stays off or was left, each by name), and the restart line.
   this project stopped needing is validate's whole-stack-absent pass, unmentioned by this command.
 
 The run rewrote `alfred-code.stamp` - the next update or configure diffs from here. Name
-`/capture-agent-capabilities` (when installed) as the USER's next step when step 2's `changed:`
-line shows `skills=` or `agents=` above 0 - the generated rule stamps each skill's first sentence,
+`/capture-agent-awareness` (when installed) as the USER's next step when step 2's `changed-here:`
+line shows `skills=` or `agents=` above 0 (this install's half - a change to a skill it never copied
+stales nothing it carries) - the generated rule stamps each skill's first sentence,
 which drifts with content-only updates (measured: a 'roster unchanged, rule still accurate' skip
 left 7 of 10 stamped sentences stale and the user caught it manually). Gate it on THAT number and
 nothing else: keyed on 'the release refreshed any installed skill or agent file' the clause was
@@ -675,21 +742,24 @@ frontmatter. Do not lean on the harness for it: measured both ways, one update r
 refused and another slipped through. The report line is the mechanism.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-capabilities`
+follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-awareness`
 (when installed and the step-2 gate above fires), a manual-only capture whose output is stale, the
 Navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
-matters. **When this run re-registered an MCP or replaced a hook file, the RESTART is row one** - with
+matters. **When step 3's `--log` call printed `restart: yes`, the RESTART is row one** - with
 `claude mcp list` named beside it as the one command that confirms the servers actually connected
 (a registration is not a connection: measured, two stdio servers timed out at 30s and the session
 ran without them with nothing reporting it) -
 every other follow-up runs against the session that is still holding the OLD ones, and a card that
 ranks a capture above it tells the user to re-capture an inventory that is not loaded yet (measured:
 a run that replaced two guard hooks and re-registered all four servers listed the re-capture first,
-and the user ran that first) ('`/capture-agent-capabilities` - the update refreshed 12 skill files, so the generated
+and the user ran that first) ('`/capture-agent-awareness` - the update refreshed 12 skill files, so the generated
 rule's stamped sentences are stale'). A follow-up that is itself a deliberate run - any of the
 captures, a loop - carries a fresh-session note beside it: 'run it in a fresh session; started
-here it re-sends this walk's history on every one of its turns'. The guard cannot help with this
+here it re-sends this walk's history on every one of its turns'. Under a restart row the note reads 'run it
+in the session the restart opens' instead - one action, not two the user can order wrongly (measured: a
+card naming 'a fresh session' beside a separate restart row had `/clear` satisfy it, the capture start
+before the restart, and the user abandon it and run it again after restarting). The guard cannot help with this
 one - a scripted update ends far below its trigger by design - and measured, two deliberate runs
 chained in one session cost about twice what the second cost run fresh. No AskUserQuestion over them - and read that narrowly:
 **it forbids an ask about the FOLLOW-UPS, nothing else.** The step-3 adoption ask for an added
@@ -717,8 +787,8 @@ the close-out, not silently ignored.
 
 ## Do not
 - Never delete anything the upstream diff or the migrations catalog did not name - user-authored
-  skills/agents/rules/hooks and the generated `alfred-project-*.md` / `project-code-style.md`
-  rules appear in neither; if a candidate is in neither list, it stays.
+  skills/agents/rules/hooks and the generated rules (`alfred-architecture.md`, `alfred-related-context.md`, `alfred-agent-awareness.md`, `alfred-project-awareness.md`,
+  `project-code-style.md`) appear in neither; if a candidate is in neither list, it stays.
 - Never install an addition the step-2 ask did not take, and never remove an MCP or plugin the
   diff did not retire - dropping by choice, and adopting anything the release did not add, is
   the sibling `configure` command.
@@ -731,7 +801,8 @@ the close-out, not silently ignored.
   back and CONTINUED - the fallback is the designed behaviour, and the line usually says so.
   Report it; never re-run the installer end to end to feel sure. Measured: one run did, at about
   half the session's total cost, and changed nothing.
-- Never run this walk on the expensive tier when a cheap one is available. It is script
-  orchestration - a preflight, an installer invocation, a grep and a report - not reasoning: the
-  same scripted walk cost 3x on a 1M-window opus session as on sonnet in the same project, for the
-  same output.
+- Never start this walk on the expensive tier when a cheap one is available - step 0's tier stop ends
+  the first invocation's turn before the snapshot; a second invocation in the session, or an
+  unattended launch, goes ahead. It is script orchestration - a preflight, an installer invocation, a
+  grep and a report - not reasoning: the same scripted walk cost 3x on a 1M-window opus session as on
+  sonnet in the same project, for the same output.

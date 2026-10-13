@@ -90,6 +90,10 @@ if (cursorOff) process.exit(0);
           hook: path.basename(__filename),
           event: payload.hook_event_name || payload.tool_name || '',
           tool: payload.tool_name || '',
+          // WHO was blocked and on which call: a seat's block is its own row (audit 2026-10-10 C07, 0498718d - seat
+          // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
+          agent: payload.agent_id || null,
+          tool_use_id: payload.tool_use_id || null,
           reason: last.split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
@@ -125,6 +129,35 @@ const isImplementer = houseSeat !== null && /-implementer$/.test(houseSeat);
 // M9: in a repo never set up only a core implementer (`alfred-code:<stack>-implementer`) is judged - a bare
 // name there is the project's own agent, since the stack copied nothing into it.
 if (unsetRepo && !(isImplementer && seat.includes(':'))) process.exit(0);
+
+// LOG-ONLY (audit 2026-10-10, session f24eb967): the main session's FIRST dispatch with no execution verdict before it - no
+// `Execution: route ...` line in the assistant's text and no habits-execution-strategy load - writes one `mode: probe` row,
+// the rate a gate would be weighed on. Read from the transcript's newest 8MB; never a verdict, never a throw.
+if (!unsetRepo && !payload.agent_id && typeof payload.transcript_path === 'string' && payload.transcript_path) {
+  try {
+    const tp = payload.transcript_path;
+    const size = fs.statSync(tp).size;
+    const want = Math.min(size, 8 * 1024 * 1024);
+    const fd = fs.openSync(tp, 'r');
+    const buf = Buffer.alloc(want);
+    try { fs.readSync(fd, buf, 0, want, size - want); } finally { fs.closeSync(fd); }
+    const text = buf.toString('utf8');
+    const ids = new Set([...text.matchAll(/"id"\s*:\s*"([^"]+)"\s*,\s*"name"\s*:\s*"(?:Agent|Task)"/g)].map((m) => m[1]));
+    if (payload.tool_use_id) ids.delete(payload.tool_use_id);
+    const first = payload.tool_use_id ? ids.size === 0 : ids.size <= 1;
+    const verdict = text.split('\n').some((l) => (/"type"\s*:\s*"assistant"/.test(l) && /\bExecution:\s*route\b/.test(l))
+      || /"skill"\s*:\s*"[^"]*habits-execution-strategy"|<command-name>\/?(?:[\w-]+:)?habits-execution-strategy</.test(l));
+    if (first && !verdict) {
+      const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+      const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
+        ts: new Date().toISOString(), hook: path.basename(__filename), event: payload.hook_event_name || '', tool: payload.tool_name || '',
+        mode: 'probe', reason: 'probe: dispatch without an Execution: verdict', detail: { branch: 'no-execution-verdict', seat },
+      }) + '\n');
+    }
+  } catch { /* a probe never changes the verdict */ }
+}
 
 // 2.1.5 M48: the two diagnosers hold `Agent` to fan out evidence gatherers, and a subagent's `Agent(<type>)`
 // list is ignored (code.claude.com/docs/en/sub-agents, verified 2026-09-29), so a read-only diagnoser could

@@ -32,12 +32,22 @@ const { USER_OFF_WINS, corePluginOn, rowsOn } = require('./plugins.js');
 const { currentMcp } = require('./mcp.js');
 const { stackNames } = require('./manifest.js');
 
+// The rules a capture GENERATES into a project, by name - a list, never a prefix: the 2026-10-13 rename (the user's
+// to-do: the alfred-project-* rules to alfred-*, the run book to alfred-project-awareness, agent capabilities to
+// alfred-agent-awareness) left them beside the shipped alfred-*.md baseline, so a pattern would take one for the
+// other. Keyed by the name the stack generated first (`baseline-project-<key>`, then `alfred-project-<key>`), which
+// moveGeneratedRules carries forward; project-code-style is capture-code-style's and never moved.
+const GENERATED_RULES = { 'agent-capabilities': 'alfred-agent-awareness', 'related-context': 'alfred-related-context', architecture: 'alfred-architecture', 'run-book': 'alfred-project-awareness' };
+const GENERATED_RULE_NAMES = Object.keys(GENERATED_RULES);
+// Newest legacy spelling first: a project holding both moves the newer file, and the older one is judged against it.
+const LEGACY_GENERATED = GENERATED_RULE_NAMES.flatMap((key) => [[`alfred-project-${key}`, GENERATED_RULES[key]], [`baseline-project-${key}`, GENERATED_RULES[key]]]);
+const GENERATED_FILES = new Set([...Object.values(GENERATED_RULES), 'project-code-style', ...LEGACY_GENERATED.filter(([old]) => old.startsWith('alfred-project-')).map(([old]) => old)]);
 // A generated, project-owned file is not a stack item: the captures rewrite those.
-const RULE_EXCLUDE = /^(alfred-project-.*|project-code-style)$/;
+const RULE_EXCLUDE = { test: (name) => GENERATED_FILES.has(name) };
 // docs.js / memory.js / history.js / fresh-session.js / shell-writes.js / hidden-chars.js are ENGINES, hook-prelude.js the shared gate
 // module and shell-guards.js / file-guards.js the dispatchers that run the picked shell and file guards - none is a hook item.
 const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|history|hook-prelude|fresh-session|shell-writes|hidden-chars|shell-guards|file-guards)$/;
-const PW_ENGINE = /^browser-(chrome|msedge|firefox|webkit)$/;
+const { ENGINE_SERVER: PW_ENGINE, engineServer } = require('../../stack/mcp/data-root.js');
 const { ENGINES: PW_ORDER } = require('../../stack/mcp/data-root.js');
 const engineOf = (name) => (PW_ENGINE.exec(String(name)) || [])[1];
 
@@ -243,7 +253,7 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers
     const stored = renameDeny(settings && typeof settings === 'object' ? settings : {}, { ...renaming, sharedOnly: sharedOnlyDeny });
     const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
-    // The browser engines the last install INSTALLED (the stamp's `browser-engines:`): a
+    // The browser engines the last install INSTALLED (the stamp's `control-engines:`): a
     // disabled row of one is the user's choice to leave it off (R67), still installed and kept, never
     // a parked entry - and the listing's flag is no evidence either way (S22). On every route (R116):
     // a switch onto the copy route has no registration yet, and read from .mcp.json alone it dropped
@@ -484,10 +494,10 @@ function renameDeny(settings, opts = {})
 }
 
 // R128 (Task 22 fix round 1): the names the stack itself wrote into a project - its seeded AGENTS.md
-// and the generated rules (`alfred-project-*.md`, `project-code-style.md`) - follow a rename, so no
+// and the generated rules (GENERATED_RULES, `project-code-style.md`) - follow a rename, so no
 // session reads a command that no longer exists. Every run, on disk: each old skill or seat name is
 // re-spelled as a whole token, longest first, never inside a longer name - so a file name that embeds
-// one (`alfred-project-related-context.md`) stays. Only the stack's own files are rewritten - the generated rules and
+// one (`alfred-related-context.md`) stays. Only the stack's own files are rewritten - the generated rules and
 // a seed the ledger still holds; the user's own AGENTS.md / CLAUDE.md is named, never touched. The per-file line
 // says how many, and a second run finds nothing.
 // The 2.0.0 MCP rename in the same files: a tool spelling (the plugin form, or the bare one a copy-route
@@ -508,46 +518,49 @@ function mcpRespellPairs(renamedMcps = {}, engines = [])
     }
     const first = engines.find((e) => PW_ENGINES.includes(e)) || 'chrome';
     for (const [from, to] of Object.entries(renamedMcps || {}))
-        if (to === 'browser') out[`mcp__${from}__`] = `mcp__${to}-${first}__`;
+        if (to === 'browser') out[`mcp__${from}__`] = `mcp__${engineServer(first)}__`;
     return out;
 }
 
-// The rules a capture GENERATED into the project (`alfred-project-*`, `project-code-style`) - never a
-// catalog rule, never one of the project's own.
+// The instruction files a project may hold - a seed of the stack's only while its ledger row still matches, else the
+// project's own.
+const instructionFiles = (projectRoot) => ['AGENTS.md', '.claude/AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md'].map((r) => path.join(projectRoot, ...r.split('/')));
+
+// The rules a capture GENERATED into the project (GENERATED_RULES, an alfred-project-* one an update has not moved yet,
+// project-code-style) - never a catalog rule, never one of the project's own.
 function generatedRules(projectRoot)
 {
     const rules = path.join(projectRoot, '.claude', 'rules');
-    try { return fs.readdirSync(rules).filter((f) => /^(alfred-project-.+|project-code-style)\.md$/.test(f)).sort().map((f) => path.join(rules, f)); }
+    try { return fs.readdirSync(rules).filter((f) => f.endsWith('.md') && GENERATED_FILES.has(f.slice(0, -3))).sort().map((f) => path.join(rules, f)); }
     catch { return []; }
 }
 
-// 2.1.6: the generated rules dropped the `baseline-` prefix. Their captures never re-run by themselves, so
-// an existing `baseline-project-<x>.md` MOVES to `alfred-project-<x>.md` with its content kept (a rename of
-// the file, never a copy or a rewrite). Only the four names the stack ever generated: a project's own
-// `baseline-project-notes.md` is no file of ours. A file already there under the new name is a newer
-// capture and wins; the old one stays and is named, since two of them would both load.
-const GENERATED_RULE_NAMES = ['agent-capabilities', 'related-context', 'architecture', 'run-book'];
+// 2.1.6: the generated rules dropped the `baseline-` prefix; 2026-10-13 they took the names in GENERATED_RULES. Their
+// captures never re-run by themselves, so an existing `alfred-project-<key>.md` or `baseline-project-<key>.md` MOVES to
+// its current name with its content kept (a rename of the file, never a copy or a rewrite). Only the names the stack
+// ever generated: a project's own `alfred-project-notes.md` is no file of ours. A file already there under the new name
+// is a newer capture and wins; the old one stays and is named, since two of them would both load.
 function moveGeneratedRules({ projectRoot, log = () => {}, note = () => {} })
 {
     const rules = path.join(projectRoot, '.claude', 'rules');
     let moved = 0;
-    for (const name of GENERATED_RULE_NAMES)
+    for (const [old, now] of LEGACY_GENERATED)
     {
-        const from = path.join(rules, `baseline-project-${name}.md`);
-        const to = path.join(rules, `alfred-project-${name}.md`);
+        const from = path.join(rules, `${old}.md`);
+        const to = path.join(rules, `${now}.md`);
         if (!fs.existsSync(from)) continue;
         if (fs.existsSync(to))
         {
             // A capture already wrote the new name: the old file is what it superseded when it is byte-identical or no newer.
             let superseded = false;
             try { superseded = fs.readFileSync(from).equals(fs.readFileSync(to)) || fs.statSync(from).mtimeMs <= fs.statSync(to).mtimeMs; } catch { /* unreadable: keep and warn */ }
-            if (!superseded) { log(`  !! .claude/rules/baseline-project-${name}.md is newer than alfred-project-${name}.md and differs - both load; merge what you need, then remove the old one`); continue; }
-            try { fs.rmSync(from); log(`  removed: rule baseline-project-${name}.md - superseded by the alfred-project-${name}.md already there`); }
-            catch (err) { note(`.claude/rules/baseline-project-${name}.md is superseded by alfred-project-${name}.md but could not be removed (${err.message}) - remove it by hand`); }
+            if (!superseded) { log(`  !! .claude/rules/${old}.md is newer than ${now}.md and differs - both load; merge what you need, then remove the old one`); continue; }
+            try { fs.rmSync(from); log(`  removed: rule ${old}.md - superseded by the ${now}.md already there`); }
+            catch (err) { note(`.claude/rules/${old}.md is superseded by ${now}.md but could not be removed (${err.message}) - remove it by hand`); }
             continue;
         }
-        try { fs.renameSync(from, to); moved += 1; log(`  moved: rule baseline-project-${name}.md -> alfred-project-${name}.md (content kept)`); }
-        catch (err) { note(`.claude/rules/baseline-project-${name}.md could not be moved to alfred-project-${name}.md (${err.message}) - rename it by hand`); }
+        try { fs.renameSync(from, to); moved += 1; log(`  moved: rule ${old}.md -> ${now}.md (content kept)`); }
+        catch (err) { note(`.claude/rules/${old}.md could not be moved to ${now}.md (${err.message}) - rename it by hand`); }
     }
     return moved;
 }
@@ -578,26 +591,81 @@ function respellDocsRoot({ projectRoot, from, to, log = () => {}, note = () => {
 // `owned(rel)` says an instruction file is the stack's own seed (the ledger still holds it at its hash); every
 // other AGENTS.md / CLAUDE.md is the project's, so an old name in it is only named, never rewritten. `onWrite(rel)`
 // hears each owned instruction file this run rewrote, so the ledger keeps it.
-function respellRenamed({ projectRoot, renamed, engines = [], owned = () => false, onWrite = () => {}, log = () => {}, note = () => {} })
+// The old -> new pairs and the patterns both re-spellings read: `re` / `mcpRe` for a file the stack wrote, and the
+// narrower `nameRe` / `toolRe` for the project's own instruction file. Null when no rename applies.
+function respellPatterns(renamed, engines = [])
 {
     // A rule is named in a seeded AGENTS.md by its path (`.claude/rules/baseline-git.md`), so its pairs are the
     // file names without the extension; the four generated pointers moved by moveGeneratedRules follow the same way.
     const rules = Object.fromEntries(Object.entries((renamed && renamed.rules) || {}).map(([o, n]) => [o.replace(/\.md$/, ''), n.replace(/\.md$/, '')]));
-    const generated = Object.fromEntries(GENERATED_RULE_NAMES.map((g) => [`baseline-project-${g}`, `alfred-project-${g}`]));
+    const generated = Object.fromEntries(LEGACY_GENERATED);
     const pairs = { ...((renamed && renamed.skills) || {}), ...((renamed && renamed.agents) || {}), ...rules, ...generated };
     const olds = Object.keys(pairs).sort((a, b) => b.length - a.length);
     const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const mcpPairs = mcpRespellPairs((renamed && renamed.mcps) || {}, engines);
     const mcpOlds = Object.keys(mcpPairs).sort((a, b) => b.length - a.length);
-    if (!olds.length && !mcpOlds.length) return 0;
+    if (!olds.length && !mcpOlds.length) return null;
     const re = olds.length ? new RegExp(`(?<![A-Za-z0-9_-])(${olds.map(escape).join('|')})(?![A-Za-z0-9_-])`, 'g') : null;
     const mcpRe = mcpOlds.length ? new RegExp(mcpOlds.map(escape).join('|'), 'g') : null;
     // The project's own file: a name inside a path (`scripts/<name>.sh`) or a backticked word is no hit.
     const nameRe = olds.length ? new RegExp(`(?<![A-Za-z0-9_.-])(?<![A-Za-z0-9_.-]/)(${olds.map(escape).join('|')})(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, 'g') : null;
     const toolOlds = mcpOlds.filter((o) => o.startsWith('mcp__'));
     const toolRe = toolOlds.length ? new RegExp(toolOlds.map(escape).join('|'), 'g') : null;
+    return { pairs, mcpPairs, re, mcpRe, nameRe, toolRe };
+}
+
+// audit 2026-10-11, session b3f8193f: the installer only NAMES an old stack name in the project's own instruction file
+// (`!! <file> is yours ...`), and update's step 6 then spliced it by hand with no diff shown. This is that edit as a
+// plan: every line the narrow patterns hit, before and after, so the ask quotes it as its diff and `apply` writes
+// exactly those lines - the same hits the `!!` line counted, nothing else. A line ending (`\r`) and every other
+// line are kept byte for byte.
+function respellOwnPlan({ projectRoot, renamed, engines = [], files = null })
+{
+    const p = respellPatterns(renamed, engines);
+    const plan = [];
+    if (!p || (!p.nameRe && !p.toolRe)) return plan;
+    for (const file of files || instructionFiles(projectRoot))
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        const rel = path.relative(projectRoot, file).split(path.sep).join('/');
+        const lines = text.split('\n');
+        lines.forEach((before, i) =>
+        {
+            const names = [];
+            let after = p.nameRe ? before.replace(p.nameRe, (old) => { names.push([old, p.pairs[old]]); return p.pairs[old]; }) : before;
+            if (p.toolRe) after = after.replace(p.toolRe, (old) => { names.push([old, p.mcpPairs[old]]); return p.mcpPairs[old]; });
+            if (after !== before) plan.push({ file: rel, line: i + 1, before, after, names });
+        });
+    }
+    return plan;
+}
+
+function respellOwnApply({ projectRoot, plan })
+{
+    const byFile = new Map();
+    for (const row of plan) byFile.set(row.file, [...(byFile.get(row.file) || []), row]);
+    const done = [];
+    for (const [rel, rows] of byFile)
+    {
+        const file = path.join(projectRoot, ...rel.split('/'));
+        const lines = fs.readFileSync(file, 'utf8').split('\n');
+        // A line that no longer reads as planned (edited since the dry run) is left alone and named.
+        const stale = rows.filter((r) => lines[r.line - 1] !== r.before);
+        for (const r of rows) if (lines[r.line - 1] === r.before) lines[r.line - 1] = r.after;
+        fs.writeFileSync(file, lines.join('\n'));
+        done.push({ file: rel, lines: rows.length - stale.length, stale: stale.map((r) => r.line) });
+    }
+    return done;
+}
+
+function respellRenamed({ projectRoot, renamed, engines = [], owned = () => false, onWrite = () => {}, log = () => {}, note = () => {} })
+{
+    const patterns = respellPatterns(renamed, engines);
+    if (!patterns) return 0;
+    const { pairs, mcpPairs, re, mcpRe, nameRe, toolRe } = patterns;
     const rel = (file) => path.relative(projectRoot, file).split(path.sep).join('/');
-    const instructions = ['AGENTS.md', '.claude/AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md'].map((r) => path.join(projectRoot, ...r.split('/')));
+    const instructions = instructionFiles(projectRoot);
     let total = 0;
     for (const file of [...instructions, ...generatedRules(projectRoot)])
     {
@@ -607,7 +675,7 @@ function respellRenamed({ projectRoot, renamed, engines = [], owned = () => fals
         if (instructions.includes(file) && !owned(name))
         {
             const hits = [...new Set([...(nameRe ? text.matchAll(nameRe) : []), ...(toolRe ? text.matchAll(toolRe) : [])].map((m) => m[0]))];
-            if (hits.length) log(`  !! ${name} is yours and names ${hits.length} old stack name(s) (${hits.slice(0, 5).join(', ')}${hits.length > 5 ? ', ...' : ''}) - re-spell them by hand where they mean the stack's`);
+            if (hits.length) log(`  !! ${name} is yours and names ${hits.length} old stack name(s) (${hits.slice(0, 5).join(', ')}${hits.length > 5 ? ', ...' : ''}) - /alfred-code:update shows each line and re-spells it on your yes (update-preflight.js --respell)`);
             continue;
         }
         let n = 0;
@@ -634,7 +702,7 @@ function respellRenamed({ projectRoot, renamed, engines = [], owned = () => fals
 // name the core does not carry, and every line that is not a plain name list, is left as written.
 function respellRosterSeats({ projectRoot, core, seats = [], log = () => {}, note = () => {} })
 {
-    const file = path.join(projectRoot, '.claude', 'rules', 'alfred-project-agent-capabilities.md');
+    const file = path.join(projectRoot, '.claude', 'rules', 'alfred-agent-awareness.md');
     let text;
     try { text = fs.readFileSync(file, 'utf8'); } catch { return 0; }
     const carried = new Set(seats);
@@ -662,9 +730,47 @@ function respellRosterSeats({ projectRoot, core, seats = [], log = () => {}, not
     }
     if (!changed) return 0;
     try { fs.writeFileSync(file, lines.join('\n')); }
-    catch (err) { note(`.claude/rules/alfred-project-agent-capabilities.md names ${changed} seat(s) the core answers under ${core}:<seat> and could not be re-spelled (${err.message}) - re-run /capture-agent-capabilities`); return 0; }
-    log(`  roster: alfred-project-agent-capabilities.md - ${changed} seat name(s) re-spelled to how they resolve (${core}:<seat> on the core, bare for a kept project copy)`);
+    catch (err) { note(`.claude/rules/alfred-agent-awareness.md names ${changed} seat(s) the core answers under ${core}:<seat> and could not be re-spelled (${err.message}) - re-run /capture-agent-awareness`); return 0; }
+    log(`  roster: alfred-agent-awareness.md - ${changed} seat name(s) re-spelled to how they resolve (${core}:<seat> on the core, bare for a kept project copy)`);
     return changed;
+}
+
+// THE ROUTE'S TOOL SPELLING AND THE BROWSER'S OUTPUT DIR. A capture never re-runs by itself, so a rule written
+// before 2.1.0 still names what the project had then: the copy route's bare `mcp__<server>__` and the browser's
+// single `.playwright/output/` (2026-10-10: a project's screenshots landed in `.playwright/output/` at its root,
+// because its rule told the model to prefix a filename with it). Two things in the generated rules follow this run:
+// - a server in `plugin` (one this run serves as a plugin, with no `.mcp.json` registration of its name) takes the
+//   plugin spelling `mcp__plugin_<server>_<server>__` - the bare one names no tool, so the row's first call loads
+//   nothing. The reverse, plugin to bare for a registration, is the copy route's downconvert.
+// - in an `<engine>-control` row, each backticked `.../output/` dir takes `outputs[engine]`, the dir a capture names now.
+function respellMcpRows({ projectRoot, plugin = [], outputs = {}, log = () => {}, note = () => {} })
+{
+    const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const toolRe = plugin.length ? new RegExp(`(?<![A-Za-z0-9_])mcp__(${plugin.map(escape).join('|')})__`, 'g') : null;
+    const rowRe = /^\s*[-*]\s+`(chrome|msedge|firefox|webkit)-control`/;
+    const dirRe = /`(?:[A-Za-z0-9_.-]+\/)+output\/`/g;
+    let total = 0;
+    for (const file of generatedRules(projectRoot))
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        let tools = 0;
+        let dirs = 0;
+        const out = (toolRe ? text.replace(toolRe, (full, server) => { tools += 1; return `mcp__plugin_${server}_${server}__`; }) : text)
+            .split('\n').map((line) =>
+            {
+                const want = outputs[(rowRe.exec(line) || [])[1]];
+                return want ? line.replace(dirRe, (dir) => (dir === `\`${want}\`` ? dir : (dirs += 1, `\`${want}\``))) : line;
+            }).join('\n');
+        if (out === text) continue;
+        const name = path.basename(file);
+        try { fs.writeFileSync(file, out); }
+        catch (err) { note(`.claude/rules/${name} names ${tools + dirs} stale MCP tool name(s) or browser output dir(s) and could not be re-spelled (${err.message}) - re-run /capture-agent-awareness`); continue; }
+        total += tools + dirs;
+        if (tools) log(`  route: ${name} - ${tools} MCP tool name(s) re-spelled to the plugin spelling (mcp__plugin_<server>_<server>__) their servers answer to`);
+        if (dirs) log(`  browser: ${name} - ${dirs} output dir(s) re-stamped to the engine's dir under the data root`);
+    }
+    return total;
 }
 
 // `--add`: the items the user said yes to (update's new-item ask, configure's add), on top of the
@@ -843,6 +949,6 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 }
 
 module.exports = {
-    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, respellRenamed, respellRosterSeats, respellDocsRoot, generatedRules, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
-    adoptHooks, adoptAlways, readBack, planInventory, itemScopes, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, FORMER_PLUGINS,
+    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, moveGeneratedRules, respellRenamed, respellOwnPlan, respellOwnApply, respellRosterSeats, respellMcpRows, respellDocsRoot, generatedRules, instructionFiles, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    adoptHooks, adoptAlways, readBack, planInventory, itemScopes, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, GENERATED_RULES, FORMER_PLUGINS,
 };

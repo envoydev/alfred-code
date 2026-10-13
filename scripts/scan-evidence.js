@@ -17,8 +17,23 @@ const LAYERS = ['skills', 'mcps', 'plugins'];
 // Every signal kind an entry may carry, in the order the scan tries them - the lint rejects any other.
 const SIGNAL_KINDS = ['packages', 'files', 'csprojContent', 'content'];
 
+// Inside git, the files git keeps - tracked, plus untracked it does not ignore - so an ignored tool cache (a
+// mutation-test sandbox, a CLI build cache, a browser profile) is never read as a module (audit 2026-10-10,
+// session f10cb06a); the skip-list and the depth cap hold either way. Outside git, or where git lists nothing
+// (an ignored root), the folder walk.
 function walk(root)
 {
+    const r = rt.spawnCommand('git', ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024 });
+    const listed = r && r.status === 0 ? String(r.stdout || '').split('\0').filter(Boolean) : [];
+    if (listed.length)
+    {
+        return listed.filter(rel =>
+        {
+            const seg = rel.split('/');
+            return seg.length <= MAX_DEPTH + 1 && !seg.slice(0, -1).some(d => SKIP_DIRS.has(d));
+        }).map(rel => path.join(root, rel)).filter(f => { try { return fs.statSync(f).isFile(); } catch { return false; } }).sort();
+    }
     const files = [];
     (function rec(dir, depth)
     {
@@ -302,6 +317,36 @@ function extensions(root, files)
     }).filter(Boolean);
 }
 
+// An Nx workspace (an `nx.json` at the root) declares its projects in `project.json` files: each one's own targets
+// are its build / test / serve commands and its build options name the entry. A `project.json` with no `nx.json`, or
+// a target only a plugin would infer, is not declared here and is never guessed.
+function nxProjects(root, files)
+{
+    if (!files.includes(path.join(root, 'nx.json'))) return { runner: null, projects: [] };
+    let rootPkg = {};
+    try { rootPkg = JSON.parse(readCapped(path.join(root, 'package.json'))) || {}; }
+    catch { rootPkg = {}; }
+    const runner = { npm: 'npx nx', pnpm: 'pnpm nx', yarn: 'yarn nx', bun: 'bunx nx' }[packageManager(root, root, rootPkg)] || 'npx nx';
+    const projects = files.filter(f => path.basename(f) === 'project.json').map(f =>
+    {
+        let j;
+        try { j = JSON.parse(readCapped(f)); }
+        catch { return null; }
+        if (!j || typeof j !== 'object') return null;
+        const abs = path.dirname(f);
+        const dir = relPosix(root, abs) || '.';
+        const targets = j.targets && typeof j.targets === 'object' ? j.targets : {};
+        const o = ((targets.build || {}).options) || {};
+        const entry = [o.browser, o.main].filter(e => typeof e === 'string' && e)
+            .map(e => e.replace(/\{projectRoot\}/g, dir).replace(/\{workspaceRoot\}\/?/g, ''))
+            .flatMap(e => [path.join(root, e), path.join(abs, e)]).find(p => fs.existsSync(p));
+        return { dir, name: typeof j.name === 'string' && j.name ? j.name : path.basename(abs), type: j.projectType || 'project', targets: Object.keys(targets), entry: entry ? relPosix(root, entry) : null };
+    }).filter(Boolean);
+    // applications first, then by folder
+    projects.sort((a, b) => (a.type === 'application' ? 0 : 1) - (b.type === 'application' ? 0 : 1) || (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
+    return { runner, projects };
+}
+
 // The capture stamp every doc under the docs root opens with, from git itself; a tree outside git says so.
 function captureLine(root)
 {
@@ -326,7 +371,13 @@ function orientation(root)
     const projects = dotnetProjects(root, files);
     const packages = nodePackages(root, files);
     const exts = extensions(root, files);
-    if (!projects.length && !packages.length && !exts.length) return null;
+    const nx = nxProjects(root, files);
+    if (!projects.length && !packages.length && !exts.length && !nx.projects.length) return null;
+    const nxRow = (target) =>
+    {
+        const has = nx.projects.filter(p => p.targets.includes(target));
+        return [...(has.length > 1 ? [`\`${nx.runner} run-many -t ${target}\``] : []), ...has.map(p => `\`${nx.runner} ${target} ${p.name}\``)];
+    };
     const depth = f => relPosix(root, f).split('/').length;
     const slns = files.filter(f => /\.slnx?$/.test(f));
     const top = slns.filter(f => depth(f) === Math.min(...slns.map(depth))).map(f => relPosix(root, f));
@@ -337,24 +388,28 @@ function orientation(root)
     const frameworks = [...new Set(projects.map(p => kinds[p.kind]).filter(Boolean))];
     const stack = [
         ...(projects.length ? [`${tfms.join(', ') || '.NET'} (C#)${frameworks.length ? ` - ${frameworks.join(', ')}` : ''}`] : []),
+        ...(nx.projects.length ? [`Nx workspace (${nx.projects.length} project${nx.projects.length === 1 ? '' : 's'})`] : []),
         ...packages.map(p => `${p.dir ? `\`${p.dir}/\` ` : ''}${p.label}`),
         ...exts.map(e => `${e.dir ? `\`${e.dir}/\` ` : ''}browser extension (MV${e.version})`),
     ];
     const modules = [
         ...projects.map(p => `\`${p.dir}\` (${p.kind})`),
+        ...nx.projects.map(p => `\`${p.dir}\` (nx ${p.type})`),
         ...packages.map(p => `\`${p.dir || '.'}\` (package)`),
         ...exts.map(e => `\`${e.dir || '.'}\` (extension)`),
     ];
     const build = [
         ...(top.length ? top.map(s => `\`dotnet build ${s}\``) : (runnable.length ? runnable : projects.filter(p => p.kind !== 'test')).map(p => `\`dotnet build ${p.rel}\``)),
+        ...nxRow('build'),
         ...packages.map(p => p.build).filter(Boolean),
     ];
     const test = [
         ...(tests.length ? (top.length ? top.map(s => `\`dotnet test ${s}\``) : tests.map(p => `\`dotnet test ${p.rel}\``)) : []),
+        ...nxRow('test'),
         ...packages.map(p => p.test).filter(Boolean),
     ];
-    const run = [...runnable.map(p => `\`dotnet run --project ${p.rel}\``), ...packages.map(p => p.run).filter(Boolean)];
-    const entries = [...runnable.map(p => p.entry).filter(Boolean), ...packages.flatMap(p => p.entries), ...exts.flatMap(e => e.entries)].map(e => `\`${e}\``);
+    const run = [...runnable.map(p => `\`dotnet run --project ${p.rel}\``), ...nxRow('serve'), ...packages.map(p => p.run).filter(Boolean)];
+    const entries = [...new Set([...runnable.map(p => p.entry).filter(Boolean), ...nx.projects.map(p => p.entry).filter(Boolean), ...packages.flatMap(p => p.entries), ...exts.flatMap(e => e.entries)])].map(e => `\`${e}\``);
     const compose = (rowCap, moduleCap) =>
     {
         const cap = (list, n) => (list.length > n ? [...list.slice(0, n), `(+${list.length - n} more)`] : list);
@@ -430,4 +485,8 @@ function main(argv)
 
 module.exports = { scan, matchesPackage, basenameMatches, majorOf, findVersionConflicts, orientation, PROVISIONAL, SIGNAL_KINDS };
 
-if (require.main === module) main(process.argv.slice(2));
+if (require.main === module)
+{
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
+    main(process.argv.slice(2));
+}

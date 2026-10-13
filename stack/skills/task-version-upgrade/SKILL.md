@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Project Version Upgrade - Plan, Approve, Execute (Deliberate)
 
-You drive a breaking version event - framework, runtime, or load-bearing package - from detection to a verified upgrade: enumerate what actually breaks, sequence it foundation-first, get the user's approval on the plan, then execute it stage by stage with a gate after every stage. Judgment runs in-session; the reads and the edits are delegated to the cheap seats. This skill carries NO `model` pin for that judgment, deliberately: a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings, so a multi-turn run returns to the session model (measured: invocations ran on the session model, while agent-level pins in the same session held exactly), so check the session model at run start: when it is not Opus, say so in the first thing the user sees, so the switch to `/model` Opus can happen before the plan is reasoned.
+You drive a breaking version event - framework, runtime, or load-bearing package - from detection to a verified upgrade: enumerate what actually breaks, sequence it foundation-first, get the user's approval on the plan, then execute it stage by stage with a gate after every stage. Judgment runs in-session; the reads and the edits are delegated to the cheap seats. This skill carries NO `model` pin and asks for no model switch: the plan is reasoned on the session's model (a skill-level pin lasts only for the turn it activates in; measured: Sonnet at xhigh planned a .NET 8 to 10 upgrade as well as Opus did, at the same cost).
 
 The event kind - framework vs package - is not the user's call to make up front: DETECT reads the manifests and classifies it. The workflow is identical either way; only the breaking-change surface differs. A routine minor/patch bump with no breaking changes needs none of this - say so and exit.
 
@@ -38,30 +38,31 @@ Green baseline first - build + tests green, zero pending EF migrations, before a
 Cross the surface against located usage: a breaking change nothing uses is not a task. Split engine-applied vs hand edits. Sequence foundation-first per the playbooks (SDK pin -> TFM -> framework packages in lockstep -> code edits on .NET; one major at a time with `ng update` + the peer matrix on Angular). Each stage carries: its edits, its verification command, its rollback point. Genuinely user-level calls (accept a new major's baseline, drop a deprecated dependency) go to the gate as questions, never guessed. **Hard cap: 2 planning passes.**
 
 ### 4. APPROVAL GATE
-Present the staged plan, then put the gate through AskUserQuestion as ONE call - free text stays available via Other, and the PLAN step's user-level calls join the same call as their own questions (plain-text options where the harness lacks the tool). With no user-level call open:
+PRINT the staged plan in the chat first - every stage with its edits, its verification command and its rollback point - in the same turn as the gate: an approval over a plan the chat never showed approves nothing. Load `habits-execution-strategy` (the Skill tool); its `Execution:` line is the mode reason, and stages that share files read `serial`. Then put the gate through AskUserQuestion as ONE call - free text stays available via Other, and the PLAN step's user-level calls join the same call as their own questions (plain-text options where the harness lacks the tool). With no user-level call open:
 
 ```ask
-The staged plan is ready: <n> stages, each with its verification and rollback point. Execute it stage by stage.
-- 'Approve - execute the stages (Recommended)' - each stage runs and gates green before the next
+The staged plan above: <n> stages, each with its verification and rollback point. Execute it stage by stage <through the seats | in this session>: <the Execution: line's reason>.
+- 'Approve - execute through the seats (Recommended)' - each stage goes to the implementer seat and gates green before the next
+- 'Approve - execute in this session' - the stages run in order here, no seat; each still gates green
 - 'Just the plan' - exit here and hand over the plan
 - 'Stop - changes needed' - say what changes in Other
 ```
 
-With a user-level call still open, executing would guess its answer, so the plan is the recommendation:
+The mark moves to 'in this session' when the verdict reads `serial`; the run never drops the seats on its own call. With a user-level call still open, executing would guess its answer, so the plan is the recommendation:
 
 ```ask
-The staged plan is ready, but <n> user-level call(s) are open. Take the plan and settle them first.
+The staged plan above is ready, but <n> user-level call(s) are open. Take the plan and settle them first.
 - 'Just the plan (Recommended)' - exit here with the plan; the open calls are yours to settle
-- 'Approve - execute the stages' - run the stages on the answers given in this same call
+- 'Approve - execute the stages' - run the stages on the answers given in this same call, in the mode the verdict names
 - 'Stop - changes needed' - say what changes in Other
 ```
 
-Auto mode (explicitly requested) proceeds without the pause.
+Auto mode (explicitly requested) proceeds without the pause, in the mode the verdict names.
 
 ### 5. EXECUTE - stage by stage
 Before the first implementer dispatch, write the approval gate file `<docs-path>/flow/APPROVAL` - first line `APPROVED <plan id> - "<the user's words, verbatim>"` from the gate's approving answer, or `AUTO - "<their words, verbatim>"` from the auto-mode invocation - the dispatch hook blocks an unstamped implementer; delete the file when the run completes. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool. Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it. A relative write follows whatever cwd the shell drifted to and the dispatch then bounces. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and put the choice through AskUserQuestion (retry the stamp, or run this stage inline) rather than retrying blind or dispatching around the gate.
 
-Per stage, in the plan's order: dispatch the domain **implementer (sonnet/medium)** with the stage as a scoped brief (trivial manifest bumps: edit inline); run the stage's verification (build + tests); a red routes to the matching **resolver (sonnet/high)** for that stack - the seat covering build errors, or the one covering test failures, matched from your installed agents; with none matching, resolve the red inline and say so; gate green before the next stage. Hard stops, auto mode included: a resolver returning BLOCKED_CONTRACT_CHANGE, a stage that stays red after its resolver pass, or reality contradicting the plan - stop and put it through ONE AskUserQuestion - 'Re-plan from this stage (Recommended)' / 'Roll back to the last stage's rollback point' / 'Stop here' - never push through or skip a stage gate.
+Per stage, in the plan's order, in the mode the gate's answer chose: through the seats, dispatch the domain **implementer (sonnet/medium)** with the stage as a scoped brief (trivial manifest bumps: edit inline); in this session, make the stage's edits here (no approval stamp needed - nothing dispatches); run the stage's verification (build + tests); a red routes to the matching **resolver (sonnet/high)** for that stack - the seat covering build errors, or the one covering test failures, matched from your installed agents; with none matching, resolve the red inline and say so; gate green before the next stage. Hard stops, auto mode included: a resolver returning BLOCKED_CONTRACT_CHANGE, a stage that stays red after its resolver pass, or reality contradicting the plan - stop and put it through ONE AskUserQuestion - 'Re-plan from this stage (Recommended)' / 'Roll back to the last stage's rollback point' / 'Stop here' - never push through or skip a stage gate.
 
 ### 6. VERIFY + REPORT
 Full suite green at the end; on a large upgrade, optionally the domain **verifier (sonnet/xhigh)** over the assembled result. Report: current -> target, stages landed and what each changed, runtime-break checks done, anything deferred or user-declined, the rollback points. If the run stopped early: which stage, why, and the state it left. Shaped like:

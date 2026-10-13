@@ -52,8 +52,10 @@ const FRESH_OFF = FRESH_AT_200K === 0 && FRESH_AT_1M === 0 && FRESH_AT_DEFAULT =
 // ONE rule: the session's model id is looked up in `model-windows.json`, shipped beside this hook
 // and replaced on every update, so a new model arrives with the release that lists it. A model the
 // table does not list takes ALFRED_CODE_DEFAULT_CONTEXT_WINDOW (seeded 300000); with that unset or
-// garbage, no window is known and the DEFAULT trigger applies. Nothing else decides - not a
-// `[1m]`/`[200k]` id suffix, not the carry, not a compaction. Those inferences each fixed one case
+// garbage, no window is known and the DEFAULT trigger applies. Two MEASURED facts can only lower it (audit
+// 2026-10-10 C08): the install's own auto-compact window when a setting names it, and the lowest compaction point
+// this project recorded for the model (autoCompactWindow / observedCompaction below). Nothing else decides - not a
+// `[1m]`/`[200k]` id suffix, not the carry. Those inferences each fixed one case
 // and broke another (Sonnet 5 runs 1M on a bare id, so the suffix read offered a resume at ~252k),
 // and a window that moves with the session's own history cannot be predicted by the person who set
 // it. The table holds the API maximum from the Claude models docs; a session that runs smaller than
@@ -61,24 +63,31 @@ const FRESH_OFF = FRESH_AT_200K === 0 && FRESH_AT_1M === 0 && FRESH_AT_DEFAULT =
 // The id is the main transcript's last `message.model` - subagents write their own files, so a
 // Haiku helper cannot answer for the session - else the settings `model` when it is a full id.
 // Measured: the PreToolUse payload carries no model and no window, and no env var names either.
+// Right after a compaction the harness re-attaches 0.4-0.6MB (invoked skill bodies, the instructions, the agent
+// listing) before the next assistant row, so a 512KB tail held no model and the window fell to the DEFAULT tier
+// (audit 2026-10-10 C08: 180,000 for a 1M session in 6 ledgers). The read widens once to 8MB, and the harness's
+// own `model` attachment row (`identity.modelId`, re-written after every compaction) answers as well.
 function sessionModelId() {
   try {
     const p = payload.transcript_path;
     if (p) {
       const size = fs.statSync(p).size;
-      const start = Math.max(0, size - 512 * 1024);
-      const fd = fs.openSync(p, 'r');
-      const buf = Buffer.alloc(size - start);
-      fs.readSync(fd, buf, 0, buf.length, start);
-      fs.closeSync(fd);
-      const lines = buf.toString('utf8').split('\n');
-      for (let i = lines.length - 1; i >= 0; i--) {
-        if (!lines[i].includes('"model"')) continue;
-        try {
-          const o = JSON.parse(lines[i]);
-          const m = o.type === 'assistant' && o.message && o.message.model;
-          if (m && m !== '<synthetic>') return String(m);
-        } catch { /* partial first line of the tail - skip */ }
+      for (const span of [512 * 1024, 8 * 1024 * 1024]) {
+        const start = Math.max(0, size - span);
+        const fd = fs.openSync(p, 'r');
+        const buf = Buffer.alloc(size - start);
+        try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
+        const lines = buf.toString('utf8').split('\n');
+        for (let i = lines.length - 1; i >= 0; i--) {
+          if (!lines[i].includes('"model"') && !lines[i].includes('"modelId"')) continue;
+          try {
+            const o = JSON.parse(lines[i]);
+            const m = o.type === 'assistant' ? o.message && o.message.model
+              : o.type === 'attachment' && o.attachment && o.attachment.type === 'model' ? o.attachment.identity && o.attachment.identity.modelId : null;
+            if (m && m !== '<synthetic>') return String(m);
+          } catch { /* partial first line of the tail - skip */ }
+        }
+        if (start === 0) break;
       }
     }
   } catch { /* unreadable transcript - try settings */ }
@@ -117,9 +126,85 @@ function envWindow() {
   const n = parseInt(envOf(process.env, 'DEFAULT_CONTEXT_WINDOW'), 10);
   return n >= 100000 ? n : null;
 }
+// The install's own AUTO-COMPACT window, when it is set (code.claude.com/docs/en/model-config, 'Set the auto-compact
+// window': 'how full the context window can get before Claude Code compacts'; settings-reference `autoCompactWindow` /
+// `modelSettings`). Read in the documented order: the environment variable (both spellings the docs use), then each
+// settings file from the highest scope down - a `modelSettings` entry for this session's model before that file's
+// top-level key. A top-level key in the USER file is skipped: the docs scope it to Opus 5, Fable 5.1 and earlier
+// models, and a newer model keeps its own tuned window, which no file names - the compaction record below measures it.
+// 'auto', garbage or a value outside 100K-1M is no window. This only ever LOWERS the window: the harness caps the
+// auto-compact window at the model's own.
+function autoCompactWindow() {
+  const valid = (v) => { const n = typeof v === 'number' ? v : /^\d+$/.test(String(v || '').trim()) ? parseInt(v, 10) : NaN; return n >= 100000 && n <= 1000000 ? n : null; };
+  for (const k of ['CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_CODE_AUTOCOMPACT_WINDOW']) {
+    const n = valid(process.env[k]);
+    if (n) return n;
+  }
+  try {
+    const path = require('path');
+    const os = require('os');
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir() || '', '.claude');
+    const id = String(sessionModelId() || '').toLowerCase();
+    const files = [[path.join(root, '.claude', 'settings.local.json'), true], [path.join(root, '.claude', 'settings.json'), true], [path.join(account, 'settings.json'), false]];
+    for (const [file, topLevelApplies] of files) {
+      let s;
+      try { s = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { continue; }
+      if (!s || typeof s !== 'object') continue;
+      const per = s.modelSettings && typeof s.modelSettings === 'object' && id
+        ? Object.entries(s.modelSettings).find(([k]) => k.toLowerCase() === id || id.endsWith(`/${k.toLowerCase()}`) || id.endsWith(`.${k.toLowerCase()}`)) : null;
+      const n = valid(per && per[1] && per[1].autoCompactWindow) || (topLevelApplies ? valid(s.autoCompactWindow) : null);
+      if (n) return n;
+    }
+  } catch { /* no root, no home */ }
+  return null;
+}
+// The compaction points this PROJECT has measured: each automatic compaction leaves its context in
+// `<docs>/flow/compact-points.json` (guard-fresh-session-start.js writes it at PreCompact and at the compact start), and
+// the lowest one for this session's model in the last 30 days is a fact about where the harness compacts here - which
+// the model's row cannot know (audit 2026-10-10 C08: 29 compactions of one project at 300-400k against a 400k trigger,
+// so neither the Stop offer nor the monitor's note could fire before the harness compacted).
+const COMPACT_POINTS_DAYS = 30;
+function compactPointsFile() {
+  const path = require('path');
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+  return path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs', 'flow', 'compact-points.json');
+}
+function readCompactPoints() {
+  try {
+    const rows = JSON.parse(fs.readFileSync(compactPointsFile(), 'utf8'));
+    return Array.isArray(rows) ? rows.filter((r) => r && typeof r === 'object' && Number(r.tokens) >= 50000 && typeof r.model === 'string') : [];
+  } catch { return []; }
+}
+function recordCompactPoint(tokens, model) {
+  try {
+    const n = Math.round(Number(tokens));
+    if (!(n >= 50000) || !model) return false;
+    const cut = Date.now() - COMPACT_POINTS_DAYS * 86400000;
+    const rows = readCompactPoints().filter((r) => Date.parse(r.at) >= cut);
+    rows.push({ at: new Date().toISOString(), session: String(payload.session_id || ''), model: String(model).toLowerCase(), tokens: n });
+    const file = compactPointsFile();
+    fs.mkdirSync(require('path').dirname(file), { recursive: true });
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(rows.slice(-40), null, 1) + '\n');
+    fs.renameSync(tmp, file);
+    return true;
+  } catch { return false; }
+}
+function observedCompaction() {
+  const id = String(sessionModelId() || '').toLowerCase();
+  if (!id) return null;
+  const cut = Date.now() - COMPACT_POINTS_DAYS * 86400000;
+  const seen = readCompactPoints().filter((r) => r.model === id && Date.parse(r.at) >= cut).map((r) => Number(r.tokens));
+  return seen.length ? Math.min(...seen) : null;
+}
 let _knownWindow;
 function knownWindow() {
-  if (_knownWindow === undefined) _knownWindow = tableWindow() || envWindow();
+  if (_knownWindow === undefined) {
+    const table = tableWindow() || envWindow();
+    const acw = autoCompactWindow();
+    _knownWindow = acw && (!table || acw < table) ? acw : table;
+  }
   return _knownWindow;
 }
 // The trigger this session is judged against. The two named tiers each own a variable; every
@@ -136,6 +221,10 @@ function ctxThreshold() {
   // fire is the gate not existing. Honour the number that was set up to the point it goes
   // unreachable, then clamp it back inside the window.
   if (at > 0 && window && at >= window) at = Math.floor(window * 0.9);
+  // ... and a trigger the harness's MEASURED compaction point sits under is the same unreachable gate: it is held at
+  // 90% of the lowest automatic compaction this project recorded for this model. The seeded tier numbers are untouched.
+  const seen = at > 0 ? observedCompaction() : null;
+  if (seen && at >= seen * 0.9) at = Math.floor(seen * 0.9);
   return at > 0 ? at : null;   // 0 = this trigger's offer is switched off
 }
 // --- what a resume would actually RECOVER: the session's own cold floor ----------------------
@@ -194,6 +283,12 @@ function contextNow(tail = 64 * 1024) {
     fs.closeSync(fd);
     const lines = buf.toString('utf8').split('\n');
     for (let i = lines.length - 1; i >= 0; i--) {
+      // A compaction boundary ends the read: a usage row above it is the PRE-compaction context, and reading it 12s after
+      // the compaction reported 315,542 where the real context was 98,553 (audit 2026-10-10 C08) - unknown until the
+      // first assistant row after the boundary lands.
+      if (lines[i].includes('"compact_boundary"')) {
+        try { if (JSON.parse(lines[i]).subtype === 'compact_boundary') return 0; } catch { /* a cut row - read on */ }
+      }
       if (!lines[i].includes('"usage"')) continue;
       try {
         const o = JSON.parse(lines[i]);
@@ -244,6 +339,9 @@ function isTypedTurn(o) {
 // 'Resume in a fresh session', and after 'Implement' the phase Skill call was denied with the same question. The
 // choice is made either way - 'Continue here' included. A Stop hook's own feedback row is no typed prompt. Fail-open.
 const FRESH_ASK_RE = /(?:fresh session|new session|fresh chat)/i;
+// Both answer wordings: a picked option, and a free-text one ('The user answered:' - 7 of 12 answers in audit
+// 2026-10-10 session 4f1c2ebb, whose 4-second acknowledgement the Stop branch then blocked).
+const ANSWERED_RE = /^\s*(?:Your questions have been answered:|The user answered:)/;
 function freshAskAnsweredThisTurn() {
   try {
     const lines = transcriptText().split('\n');
@@ -257,7 +355,7 @@ function freshAskAnsweredThisTurn() {
       if (o.type === 'user') {
         if (Array.isArray(c)) {
           for (const b of c) {
-            if (b && b.type === 'tool_result' && /^Your questions have been answered:/.test(typeof b.content === 'string' ? b.content
+            if (b && b.type === 'tool_result' && ANSWERED_RE.test(typeof b.content === 'string' ? b.content
               : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('') : '')) answered.add(b.tool_use_id);
           }
         }
@@ -274,13 +372,46 @@ function freshAskAnsweredThisTurn() {
     return false;
   }
 }
+// The context, in tokens, at the NEWEST answered AskUserQuestion that put the fresh-session choice - in any turn of the
+// newest 8MB - read from the usage of the model call that made the ask; 0 when there is none. The Stop offer counts it
+// as its own last offer, so a choice answered one typed turn back is not asked again until the carry grows past the
+// re-offer step (audit 2026-10-11 SD11, session 7f8803eb: 'Continue in fresh session' answered, the next turn's close
+// carrying the asked-for resume prompt was blocked and the re-ask denied by the user, 878.8k cache-read).
+function freshAskAnsweredCtx() {
+  try {
+    const lines = transcriptText(0, 8 * 1024 * 1024).split('\n');
+    const answered = new Set();
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i].trim()) continue;
+      let o;
+      try { o = JSON.parse(lines[i]); } catch { continue; }
+      if (!o || !o.message || !Array.isArray(o.message.content)) continue;
+      const c = o.message.content;
+      if (o.type === 'user') {
+        for (const b of c) {
+          if (b && b.type === 'tool_result' && ANSWERED_RE.test(typeof b.content === 'string' ? b.content
+            : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('') : '')) answered.add(b.tool_use_id);
+        }
+        continue;
+      }
+      if (o.type !== 'assistant') continue;
+      if (!c.some((b) => b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && answered.has(b.id) && FRESH_ASK_RE.test(JSON.stringify(b.input || {})))) continue;
+      const u = o.message.usage || {};
+      return (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.input_tokens || 0);
+    }
+    return 0;
+  } catch {
+    return 0;
+  }
+}
 // Was any ask answered (or declined) in the transcript past byte `from` - the size an offer recorded?
 function askAnsweredSince(from) {
-  return /Your questions have been answered:|The user (?:declined|chose not) to answer/i.test(transcriptText(from, 8 * 1024 * 1024));
+  return /Your questions have been answered:|The user answered:|The user (?:declined|chose not) to answer/i.test(transcriptText(from, 8 * 1024 * 1024));
 }
 
 module.exports = {
   use, freshAt, FRESH_AT_200K, FRESH_AT_1M, FRESH_AT_DEFAULT, FRESH_OFF, sessionModelId, tableWindow,
   envWindow, knownWindow, ctxThreshold, MIN_RECOVERABLE_SHARE, coldFloor, worthResuming, contextNow, lowestTrigger,
-  transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, askAnsweredSince,
+  autoCompactWindow, recordCompactPoint, observedCompaction, compactPointsFile,
+  transcriptSize, isTypedTurn, freshAskAnsweredThisTurn, freshAskAnsweredCtx, askAnsweredSince,
 };

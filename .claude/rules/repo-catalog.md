@@ -41,10 +41,16 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   every change shown first, a separate part getting its own `<part>/AGENTS.md`) - `/alfred-code:init`,
   `update` and `configure` follow it inline; and `scripts/agents-md-check.js` (AGENTS.md and any CLAUDE.md the project keeps) is the verdict it closes
   on: every named path exists, every command's program resolves on PATH or in the project, no
-  placeholder, `TODO` or template text is left, and an installer seed still unfilled is named
-  (`--list` marks it). Validate runs the check for drift. Its rows are heuristic (measured 2026-09-26
+  placeholder, `TODO` or template text is left, the `## Rules` list matches `.claude/rules/` (a `rule` row: a named
+  rule with no file, or - once the list enumerates the install's rules - a file it neither names nor globs; usage audit
+  2026-10-10), and an installer seed still unfilled is named (`--list` marks it). A name in a list of glob patterns is a
+  pattern, a path its own line places in the parent directory is read from there, and a line pointing at a generated
+  rule is no template text (audit 2026-10-11 SD04: 4 of 4 rows false in six sessions); `--outline` lists each outline
+  section a file holds or lacks, the improve pass's compare. Validate runs the check for drift. Its rows are heuristic (measured 2026-09-26
   over four real projects: 39 rows with 1 true, 7 rows once the shapes behind the rest were fixed), so
-  no ask marks a check-driven fix recommended - the skill offers each one and the user picks.
+  no ask marks a check-driven fix recommended - the skill offers each one and the user picks; a stale path whose new
+  target the run confirmed on disk is a verified fix, not a check row, and joins the recommended option (usage audit
+  2026-10-10).
 
 - `stack/agents/` - 44 subagents, all in the core plugin (2.1.0), each one the selection did not pick
   denied as `Agent(alfred-code:<seat>)` (a seat whose preloaded skills were not copied is never picked);
@@ -81,10 +87,10 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   until-green loop is the runaway the cap is for; every other seat had too few runs, so none. Lint check 15d fails a
   seat with a `## Loop` section and no cap. Captures are deliberate-only
   (`capture-architecture` writes `architecture/ARCHITECTURE.md` and
-  `alfred-project-architecture.md`; the findings go to `capture-architecture-quality`
+  `alfred-architecture.md`; the findings go to `capture-architecture-quality`
   (`quality/ASSESSMENT.md`), the code's to `capture-code-quality` (`quality/CODE-ASSESSMENT.md`), and the
-  run book to `capture-project-capabilities` (`project-capabilities/PROJECT-CAPABILITIES.md` and
-  `alfred-project-run-book.md` - how to build, start, reach, log into and hand-check the app, which the
+  run book to `capture-project-awareness` (`project-capabilities/PROJECT-CAPABILITIES.md` and
+  `alfred-project-awareness.md` - how to build, start, reach, log into and hand-check the app, which the
   ten verifiers, `issue-diagnoser-runtime`, `evidence-gatherer` and `integration-reviewer` read
   before they run it, pinned as `run-book-read-first`); never in a build flow).
   `task-solve-cross` is the single entry-point orchestrator (single-stack vertical per
@@ -102,17 +108,19 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
   `__DOCS_ROOT__` on every run),
   memory (what belongs in the shared `memory` MCP, when to save it, and to search before asking or
   reading - locks the server in the way `alfred-navigation` locks the navigation server).
-  Skill/agent usage policy + MCP routing live in the GENERATED `alfred-project-agent-capabilities.md`.
+  Skill/agent usage policy + MCP routing live in the GENERATED `alfred-agent-awareness.md`.
   Thirteen path-scoped: `markdown-docs.md`, `skill-authoring.md`, the repair routers
   (`dotnet-repair-agents.md`, `angular-repair-agents.md`) and nine convention rules, each
   glob-attaching ONE file family to its house-style skill. Every convention rule uses the imperative form pinned as
   `convention-rule-first-action` in shared-rules.json, and the load receipt pinned as `convention-rule-load-receipt`
   in the same eleven files (`scripts/rule-prose.test.js` fails a mismatch) - a new one copies both, never paraphrases them.
   The `baseline-` prefix is retired (2.1.6, the user's ruling): the seven shipped rules and the generated
-  `project-*` ones are `alfred-*` (`alfred-git`, `alfred-project-run-book`, ...), and `baseline-*` names live only in
+  `project-*` ones are `alfred-*` (`alfred-git`, `alfred-project-awareness`, ...), and `baseline-*` names live only in
   `retired.rules`, `renamed.rules`, the migration code and its tests, and the `docs/*-evidence.md` history. An update over
   an older install prunes the seven old library copies by the `retired` list (the existing policy: by name, hand-edited
-  or not, one `rule pruned (retired upstream)` line each) and writes the new ones; the disk read-back maps a leftover old
+  or not, one `rule pruned (retired upstream)` line each) and writes the new ones - an old copy the stamp holds no hash
+  for goes only when its successor is recorded and its text is one the stack shipped (`scripts/install/retired-rules.js`,
+  audit 2026-10-10 C10), so an edited one stays; the disk read-back maps a leftover old
   name to the new one through `renamed.rules` (`selection.renameLines`), so no `not found in the stack source` note. The four generated files
   (`agent-capabilities`, `related-context`, `architecture`, `run-book`) are MOVED with their content kept
   (`selection.moveGeneratedRules`, before the docs-root re-stamp) because their captures never re-run by themselves - a

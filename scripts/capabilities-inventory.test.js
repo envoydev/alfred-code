@@ -10,8 +10,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const SCRIPT = path.join(__dirname, '..', 'stack', 'skills', 'capture-agent-capabilities', 'scripts', 'capabilities-inventory.js');
-const SKILL_MD = path.join(__dirname, '..', 'stack', 'skills', 'capture-agent-capabilities', 'SKILL.md');
+const SCRIPT = path.join(__dirname, '..', 'stack', 'skills', 'capture-agent-awareness', 'scripts', 'capabilities-inventory.js');
+const SKILL_MD = path.join(__dirname, '..', 'stack', 'skills', 'capture-agent-awareness', 'SKILL.md');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'capabilities-inventory-'));
 // The CLI stubs are POSIX shell: a Windows run has no way to put a fake `claude` on PATH that
 // `spawnSync(..., {shell:true})` would resolve, so those cases say so instead of passing blind.
@@ -59,7 +59,7 @@ const skillFile = (name, { slashOnly = false, description = 'Does a thing. And t
 function project(name, opts = {})
 {
     const root = path.join(TMP, name);
-    for (const [dir, s] of Object.entries(opts.skills || { 'capture-agent-capabilities': { slashOnly: true }, 'markdown-author': {} }))
+    for (const [dir, s] of Object.entries(opts.skills || { 'capture-agent-awareness': { slashOnly: true }, 'markdown-author': {} }))
     {
         write(path.join(root, '.claude', 'skills', dir, 'SKILL.md'), skillFile(dir, s), -100);
     }
@@ -69,9 +69,9 @@ function project(name, opts = {})
     }
     write(path.join(root, '.claude', 'rules', 'alfred-navigation.md'), '---\n---\n\n# nav\n', -100);
     write(path.join(root, '.claude', 'rules', 'markdown-docs.md'), '---\npaths: ["**/*.md"]\n---\n\n# md\n', -100);
-    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'alfred-navigation': {}, 'alfred-documentation': {}, 'alfred-memory': {}, 'browser-chrome': {} } }, null, 2), -100);
+    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'alfred-navigation': {}, 'alfred-documentation': {}, 'alfred-memory': {}, 'chrome-control': {} } }, null, 2), -100);
     write(path.join(root, '.claude', 'alfred-code.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\n', -100);
-    if (opts.rule !== false) write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), opts.rule || '---\ndescription: generated\n---\n\n# This project\'s capabilities\n\nCaptured: 2026-09-01 from 0.2.79@abcdef1\n', 0);
+    if (opts.rule !== false) write(path.join(root, '.claude', 'rules', 'alfred-agent-awareness.md'), opts.rule || '---\ndescription: generated\n---\n\n# This project\'s capabilities\n\nCaptured: 2026-09-01 from 0.2.79@abcdef1\n', 0);
     return root;
 }
 
@@ -109,7 +109,7 @@ test('inventory: every layer prints its own count, including the .claude/rules l
 {
     const root = project('inventory', {
         skills: {
-            'capture-agent-capabilities': { slashOnly: true, description: 'The deliberate capabilities capture. Use when the user asks to capture the project capabilities.' },
+            'capture-agent-awareness': { slashOnly: true, description: 'The deliberate capabilities capture. Use when the user asks to capture the project capabilities.' },
             'capture-architecture': { description: 'Captures the architecture. A long second sentence.' },
             'markdown-author': {},
         },
@@ -121,7 +121,7 @@ test('inventory: every layer prints its own count, including the .claude/rules l
     const { out } = run([], { cwd: root, bin });
 
     assert.match(out, /SKILLS:\s+3 total, 2 orchestration \(1 model-invocable-by-design\)/);
-    assert.match(out, /\/capture-agent-capabilities - The deliberate capabilities capture$/m);
+    assert.match(out, /\/capture-agent-awareness - The deliberate capabilities capture$/m);
     assert.match(out, /\/capture-architecture - .*\(model-invocable-by-design\)/);
     assert.match(out, /SEATS:\s+3 total/);
     assert.match(out, /seat families \(1\): aspnet/);
@@ -156,15 +156,15 @@ test('inventory: the MCP block is the LIVE list, not .mcp.json alone, and every 
 test('inventory: a browser engine server gets the catalog row with its own registered name', { skip: posixOnly }, () =>
 {
     const root = project('browser');
-    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'browser-chrome': {} } }), -100);
+    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'chrome-control': {} } }), -100);
     const { out } = run([], { cwd: root, bin: stubCli(path.join(TMP, 'pw-cli')) });
-    assert.match(out, /browser-chrome\s+registered .*routing: browser/);
-    assert.match(out, /- `browser-chrome` - the browser server \(Playwright MCP\): drive a browser/);
+    assert.match(out, /chrome-control\s+registered .*routing: browser/);
+    assert.match(out, /- `chrome-control` - the browser server \(Playwright MCP\): drive a browser/);
     // A .mcp.json server's tools are `mcp__<name>__<tool>` - the plugin spelling finds nothing there
     // (R63). The bare name is assembled here so lint check 54 never reads it as shipped text.
-    const bare = `mcp_${'_browser-chrome__'}`;
+    const bare = `mcp_${'_chrome-control__'}`;
     assert.ok(out.includes(`${bare}browser_snapshot`), 'the catalog row is re-spelled for the registration');
-    assert.doesNotMatch(out, /mcp__plugin_browser-chrome_browser-chrome__/);
+    assert.doesNotMatch(out, /mcp__plugin_chrome-control_chrome-control__/);
 });
 
 // Every add-back line of the 2.0.0 MCP cut registers into .mcp.json, and those servers carry no
@@ -326,7 +326,7 @@ test('compare: an identical body is `identical - DO NOT WRITE`, a changed one na
     const changed = write(path.join(TMP, 'body-changed.md'), body.replace('aspnet-implementer', 'aspnet-implementer, aspnet-verifier'));
     const differs = run(['--body', changed], { cwd: root });
     assert.equal(differs.status, 0);
-    assert.match(differs.out, /COMPARE:\s+differs - WRITE \.claude\/rules\/alfred-project-agent-capabilities\.md in ONE call/);
+    assert.match(differs.out, /COMPARE:\s+differs - WRITE \.claude\/rules\/alfred-agent-awareness\.md in ONE call/);
     assert.match(differs.out, /sections changed: ## Subagent seats/);
 });
 
@@ -364,7 +364,7 @@ function policyFrom(skillText, docsRoot)
 
 const validRule = (docsRoot = '.alfred/docs') => [
     '---',
-    'description: Project capabilities awareness - generated by /capture-agent-capabilities; edit via a re-run, not by hand.',
+    'description: Project capabilities awareness - generated by /capture-agent-awareness; edit via a re-run, not by hand.',
     '---',
     '',
     '# This project\'s capabilities',
@@ -375,7 +375,7 @@ const validRule = (docsRoot = '.alfred/docs') => [
     policyFrom(fs.readFileSync(SKILL_MD, 'utf8'), docsRoot),
     '',
     '## Orchestration skills (slash-only - invisible until invoked)',
-    '/capture-agent-capabilities - The deliberate capabilities capture',
+    '/capture-agent-awareness - The deliberate capabilities capture',
     '',
     '## Subagent seats',
     'aspnet-implementer, aspnet-verifier',
@@ -392,7 +392,7 @@ const validRule = (docsRoot = '.alfred/docs') => [
 test('--verify: a well-formed rule passes, parsed by node and never by PyYAML', { skip: posixOnly }, () =>
 {
     const root = project('verify-ok');
-    const rule = write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), validRule());
+    const rule = write(path.join(root, '.claude', 'rules', 'alfred-agent-awareness.md'), validRule());
     const { status, out } = run(['--verify', rule], { cwd: root });
     assert.match(out, /frontmatter:\s+ok - parsed by node/);
     assert.match(out, /policy-rev:\s+ok/);
@@ -405,7 +405,7 @@ test('--verify: a well-formed rule passes, parsed by node and never by PyYAML', 
 test('--verify: broken frontmatter exits non-zero and says which line broke it', { skip: posixOnly }, () =>
 {
     const root = project('verify-fm');
-    const rule = write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), validRule().replace('---\n\n# This project', '\n\n# This project'));
+    const rule = write(path.join(root, '.claude', 'rules', 'alfred-agent-awareness.md'), validRule().replace('---\n\n# This project', '\n\n# This project'));
     const { status, out } = run(['--verify', rule], { cwd: root });
     assert.match(out, /frontmatter:\s+FAIL/);
     assert.match(out, /VERIFY:\s+FAIL/);
@@ -415,7 +415,7 @@ test('--verify: broken frontmatter exits non-zero and says which line broke it',
 test('--verify: a `paths:` key makes the pathless rule a scoped one, and fails', { skip: posixOnly }, () =>
 {
     const root = project('verify-paths');
-    const rule = write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), validRule().replace('description: Project', 'paths: ["**/*.md"]\ndescription: Project'));
+    const rule = write(path.join(root, '.claude', 'rules', 'alfred-agent-awareness.md'), validRule().replace('description: Project', 'paths: ["**/*.md"]\ndescription: Project'));
     const { status, out } = run(['--verify', rule], { cwd: root });
     assert.match(out, /paths key:\s+FAIL - present/);
     assert.equal(status, 1, out);
@@ -424,7 +424,7 @@ test('--verify: a `paths:` key makes the pathless rule a scoped one, and fails',
 test('--verify: an MCP row with no `first call:` exits non-zero and names the server', { skip: posixOnly }, () =>
 {
     const root = project('verify-mcp');
-    const rule = write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'),
+    const rule = write(path.join(root, '.claude', 'rules', 'alfred-agent-awareness.md'),
         validRule().replace('- `context7` - docs. first call: `ToolSearch select:mcp__plugin_alfred-documentation_alfred-documentation__query-docs`.', '- `playwright` - browser checks, only for that target.'));
     const { status, out } = run(['--verify', rule], { cwd: root });
     assert.match(out, /mcp rows:\s+FAIL - 1 of 2 carry no 'first call:' - playwright/);
@@ -437,12 +437,12 @@ test('--verify: a hand-edited policy block fails, and a resolved <docs-path> doe
     const root = project('verify-policy');
     const edited = validRule().replace('never to answer a question', 'never to answer questions');
     assert.notStrictEqual(edited, validRule(), 'the fixture edit landed on a sentence the policy block still carries');
-    const ruleA = write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), edited);
+    const ruleA = write(path.join(root, '.claude', 'rules', 'alfred-agent-awareness.md'), edited);
     assert.match(run(['--verify', ruleA], { cwd: root }).out, /policy block:\s+FAIL - differs from the skill at line \d+/);
 
     // the one slot that is not a slot: `<docs-path>` resolved to this project's docs root
     write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/ai' } }), -100);
-    const ruleB = write(path.join(root, '.claude', 'rules', 'alfred-project-agent-capabilities.md'), validRule('docs/ai'));
+    const ruleB = write(path.join(root, '.claude', 'rules', 'alfred-agent-awareness.md'), validRule('docs/ai'));
     const { status, out } = run(['--verify', ruleB], { cwd: root });
     assert.match(out, /policy block:\s+ok - \d+ lines, verbatim from the skill \(`<docs-path>` resolved to docs\/ai\)/);
     assert.equal(status, 0, out);
@@ -463,7 +463,7 @@ test('report: the docs root is resolved and printed, so `<docs-path>` is never l
     const { out } = run([], { cwd: root });
     assert.match(out, /DOCS ROOT: docs\/ai\s+\(from ALFRED_CODE_DOCS_PATH in \.claude\/settings\.json env\)/);
     assert.match(out, /CAPTURED:\s+\d{4}-\d{2}-\d{2} from 0\.2\.79@abcdef1/);
-    assert.match(out, /COMPARE:\s+no --body yet/);
+    assert.match(out, /COMPARE:\s+no verdict yet/);
 });
 
 // Every update rewrites the stamp, a no-op one included: a newer stamp alone read as drift after each update, and
@@ -514,9 +514,9 @@ const PLUGIN_LIST = JSON.stringify([
     { id: 'alfred-navigation@envoydev', enabled: true, mcpServers: { 'alfred-navigation': {} } },
     { id: 'alfred-documentation@envoydev', enabled: true, mcpServers: { 'alfred-documentation': {} } },
     { id: 'alfred-memory@envoydev', enabled: true, mcpServers: { 'alfred-memory': {} } },
-    { id: 'browser-chrome@envoydev', enabled: true, mcpServers: { 'browser-chrome': {} } },
-    { id: 'browser-firefox@envoydev', enabled: false, mcpServers: { 'browser-firefox': {} } },
-    { id: 'windows-desktop@envoydev', enabled: true, mcpServers: { 'windows-desktop': {} }, projectPath: '/nowhere/else' },
+    { id: 'chrome-control@envoydev', enabled: true, mcpServers: { 'chrome-control': {} } },
+    { id: 'firefox-control@envoydev', enabled: false, mcpServers: { 'firefox-control': {} } },
+    { id: 'windows-control@envoydev', enabled: true, mcpServers: { 'windows-control': {} }, projectPath: '/nowhere/else' },
     { id: 'csharp-lsp@claude-plugins-official', enabled: true },
 ]);
 
@@ -535,9 +535,9 @@ test('inventory: every server an enabled plugin provides gets its routing row in
     assert.match(out, /alfred-documentation\s+plugin\s+live: not in the live list/);
     assert.doesNotMatch(out, /plugin:alfred-navigation:alfred-navigation.*reaches the session from the account or the harness/, 'a plugin server is not an account connector');
     const rows = routingRows(out);
-    assert.deepStrictEqual(rows.map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`alfred-navigation`, `alfred-documentation`, `alfred-memory`', '`browser-chrome`'],
+    assert.deepStrictEqual(rows.map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`alfred-navigation`, `alfred-documentation`, `alfred-memory`', '`chrome-control`'],
         'one row per enabled plugin server, the locked ones on one - never a disabled one, another project\'s, or a plugin with no server');
-    assert.match(rows[1], /first call: `ToolSearch select:mcp__plugin_browser-chrome_browser-chrome__browser_snapshot/, 'plugin spelling');
+    assert.match(rows[1], /first call: `ToolSearch select:mcp__plugin_chrome-control_chrome-control__browser_snapshot/, 'plugin spelling');
     assert.match(rows[0], /first call: the `ToolSearch select:` line its baseline names/, 'the locked row points at the baselines\' load lines');
 });
 
@@ -584,15 +584,127 @@ test('--verify: a rule built from plugin-provided rows passes', { skip: posixOnl
 // tool, which print mode refused ('you haven't granted it yet'); it recovered through a heredoc and
 // emitted the body twice. The body goes under the docs root's flow/ folder instead - inside the project,
 // where acceptEdits lets the Write land, and out of git through the docs root's own .gitignore.
-test('report: the composed body is written under <docs root>/flow/, and the skill says the same path', { skip: posixOnly }, () =>
+// Audit 2026-10-10 (C06, session b91d6135): the read-template, compose, compare and write turns copied the script's own
+// lines by hand - ~281k of 467k context tokens - and the report hand-summed three MCP figures into one. --write does it
+// all from the skill's copy target, and the report's Inventory line is printed ready-made.
+test('report: the plain inventory writes nothing and points at --write; the skill runs --write and composes nothing', { skip: posixOnly }, () =>
 {
     const root = project('body-path');
-    assert.match(run([], { cwd: root }).out, /COMPARE:\s+no --body yet - compose the rule body, write it to \`\.alfred\/docs\/flow\/capabilities-body\.md\`/);
-    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/ai' } }), -100);
-    assert.match(run([], { cwd: root }).out, /write it to \`docs\/ai\/flow\/capabilities-body\.md\`/, 'the resolved root, not the default');
+    const before = fs.readFileSync(path.join(root, '.claude', 'rules', 'alfred-agent-awareness.md'), 'utf8');
+    assert.match(run([], { cwd: root }).out, /COMPARE:\s+no verdict yet - `--write` composes the rule from these lines/);
+    assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'rules', 'alfred-agent-awareness.md'), 'utf8'), before, 'the plain run writes nothing');
     const skill = fs.readFileSync(SKILL_MD, 'utf8');
-    assert.match(skill, /\/flow\/capabilities-body\.md/, 'the skill names the same file');
-    assert.doesNotMatch(skill, /Write the composed body to a scratch file/, 'no free choice of a temp dir');
+    assert.match(skill, /node "\$CAPS" --write\n```/, 'the resolve block runs the whole capture');
+    assert.doesNotMatch(skill, /compose the\s+WHOLE body in-session/, 'no in-session compose');
+    assert.doesNotMatch(skill, /capabilities-body\.md/, 'no hand-composed body file');
+    assert.doesNotMatch(skill, /delete it in the same run\./, 'the legacy rule is the script\'s to remove');
+});
+
+const RULE = (root) => path.join(root, '.claude', 'rules', 'alfred-agent-awareness.md');
+const reportLines = (out) => Object.fromEntries(out.split('\n').filter((l) => /^(Rule|Verify|Inventory|Drift): {2,}/.test(l)).map((l) => [l.split(':')[0], l.replace(/^\w+:\s+/, '')]));
+
+test('--write: a first capture composes the rule from the copy target, verifies it and prints the report lines', { skip: posixOnly }, () =>
+{
+    const root = project('write-first', { rule: false });
+    const plain = run([], { cwd: root }).out;
+    const r = run(['--write'], { cwd: root });
+    assert.strictEqual(r.status, 0, r.out);
+    const rule = fs.readFileSync(RULE(root), 'utf8');
+    assert.match(r.out, /COMPARE:\s+differs - no rule yet, WRITTEN \.claude\/rules\/alfred-agent-awareness\.md \(\d+ bytes\)/);
+    assert.match(r.out, /VERIFY:\s+PASS/);
+    assert.doesNotMatch(rule, /<the script's|<docs-path>|<data root>/, 'every slot filled');
+    assert.match(rule, /^Captured: \d{4}-\d{2}-\d{2} from 0\.2\.79@abcdef1$/m);
+    assert.ok(rule.includes(policyFrom(fs.readFileSync(SKILL_MD, 'utf8'), '.alfred/docs')), 'the policy block, stamp included, verbatim');
+    assert.match(rule, /^## Orchestration skills.*\n\/capture-agent-awareness - Does a thing$/m, 'the printed orchestration row');
+    assert.match(rule, /^## Subagent seats\naspnet-implementer, aspnet-verifier, security-auditor$/m, 'the printed SEATS line');
+    for (const row of routingRows(plain)) assert.ok(rule.includes(row), `the printed routing row: ${row.slice(0, 60)}`);
+    assert.doesNotMatch(rule, /^## Plugins/m, 'the CLI is absent, so no Plugins section');
+    const rep = reportLines(r.out);
+    assert.match(rep.Rule, /^created - \d+ bytes$/);
+    assert.strictEqual(rep.Verify, 'PASS');
+    assert.strictEqual(rep.Inventory, 'skills 2 / seats 3 / rules 2 / MCP 4 (4 in .mcp.json + 0 from plugins; live list unavailable) / plugins CLI absent');
+    assert.strictEqual(rep.Drift, 'first capture - no rule before this run');
+
+    // A re-run over the rule it wrote is identical, and leaves the file alone - its mtime included.
+    touch(RULE(root), 0);
+    const again = run(['--write'], { cwd: root });
+    assert.match(again.out, /COMPARE:\s+identical - not rewritten/);
+    assert.match(reportLines(again.out).Rule, /^unchanged, not rewritten - \d+ bytes$/);
+    assert.strictEqual(reportLines(again.out).Verify, 'not run - nothing written');
+    assert.strictEqual(fs.statSync(RULE(root)).mtimeMs, (BASE + 0) * 1000, 'not rewritten');
+    assert.strictEqual(fs.readFileSync(RULE(root), 'utf8'), rule);
+});
+
+test('--write: with the CLI, the Plugins section and the plugin counts come off the printed lines', { skip: posixOnly }, () =>
+{
+    const root = project('write-cli', { rule: false });
+    const bin = stubCli(path.join(TMP, 'write-cli-bin'), {
+        mcp: 'context7: https://mcp.context7.com/mcp (HTTP) - ✔ Connected',
+        plugins: JSON.stringify([{ id: 'superpowers@x', enabled: true }, { id: 'claude-hud@y', enabled: false }]),
+    });
+    const r = run(['--write'], { cwd: root, bin });
+    assert.strictEqual(r.status, 0, r.out);
+    assert.match(fs.readFileSync(RULE(root), 'utf8'), /^## Plugins\nclaude-hud \(disabled\), superpowers \(enabled\)\n$/m);
+    assert.strictEqual(reportLines(r.out).Inventory, 'skills 2 / seats 3 / rules 2 / MCP 4 (4 in .mcp.json + 0 from plugins; 1 live) / plugins 2');
+});
+
+test('--write: an empty precheck writes only under --refresh; drift writes and names the changed sections', { skip: posixOnly }, () =>
+{
+    const root = project('write-refresh');
+    const stub = fs.readFileSync(RULE(root), 'utf8');
+    const held = run(['--write'], { cwd: root });
+    assert.match(held.out, /PRECHECK:\s+empty/);
+    assert.match(held.out, /COMPARE:\s+differs \(sections changed: .*## Subagent seats.*\) - NOT WRITTEN: the precheck is empty/);
+    assert.strictEqual(fs.readFileSync(RULE(root), 'utf8'), stub, 'nothing written without --refresh');
+    assert.match(reportLines(held.out).Rule, /\(precheck empty\)$/);
+    assert.strictEqual(reportLines(held.out).Drift, 'none - PRECHECK empty');
+
+    const refreshed = run(['--write', '--refresh'], { cwd: root });
+    assert.match(refreshed.out, /COMPARE:\s+differs - WRITTEN .*the whole file .*sections changed: /);
+    assert.match(reportLines(refreshed.out).Rule, /^refreshed - \d+ bytes$/);
+    assert.strictEqual(reportLines(refreshed.out).Drift, 'none in the tree - a --refresh run');
+    assert.strictEqual(refreshed.status, 0, refreshed.out);
+
+    // A seat added after the capture is drift: written without --refresh.
+    touch(RULE(root), 0);
+    write(path.join(root, '.claude', 'agents', 'data-verifier.md'), '---\nname: data-verifier\n---\n', 500);
+    const drift = run(['--write'], { cwd: root });
+    assert.match(drift.out, /COMPARE:\s+differs - WRITTEN .*sections changed: ## Subagent seats$/m);
+    assert.match(reportLines(drift.out).Drift, /^1 file\(s\): \.claude\/agents\/data-verifier\.md$/);
+    assert.match(fs.readFileSync(RULE(root), 'utf8'), /^aspnet-implementer, aspnet-verifier, data-verifier, security-auditor$/m);
+});
+
+test('--write: the legacy 1.x rule is removed in the same run, and no source is a refusal that writes nothing', { skip: posixOnly }, () =>
+{
+    const root = project('write-legacy', { rule: false });
+    const legacy = write(path.join(root, '.claude', 'rules', 'baseline-project-capabilities.md'), '# old\n', -100);
+    const r = run(['--write'], { cwd: root });
+    assert.match(r.out, /LEGACY:\s+removed \.claude\/rules\/baseline-project-capabilities\.md/);
+    assert.ok(!fs.existsSync(legacy));
+    assert.doesNotMatch(run(['--write'], { cwd: root }).out, /LEGACY:/, 'nothing to remove, no line');
+
+    const empty = project('write-nothing');
+    const stub = fs.readFileSync(RULE(empty), 'utf8');
+    fs.rmSync(path.join(empty, '.claude', 'skills'), { recursive: true, force: true });
+    fs.rmSync(path.join(empty, '.claude', 'agents'), { recursive: true, force: true });
+    const refused = run(['--write', '--refresh'], { cwd: empty });
+    assert.strictEqual(refused.status, 1);
+    assert.match(refused.out, /WRITE:\s+refused - no local skills or seats/);
+    assert.strictEqual(fs.readFileSync(RULE(empty), 'utf8'), stub, 'a good rule is never replaced by an empty one');
+});
+
+test('--write: a copy target with a slot the script does not fill writes nothing', { skip: posixOnly }, () =>
+{
+    // The script reads the SKILL.md beside it, so a copied skill dir with an extra slot stands in for a broken release.
+    const dir = path.join(TMP, 'broken-skill');
+    fs.cpSync(path.dirname(SKILL_MD), dir, { recursive: true });
+    const md = path.join(dir, 'SKILL.md');
+    fs.writeFileSync(md, fs.readFileSync(md, 'utf8').replace('## MCP routing\n', '## MCP routing\n<the script\'s NEW slot>\n'));
+    const root = project('write-broken', { rule: false });
+    const r = spawnSync(process.execPath, [path.join(dir, 'scripts', 'capabilities-inventory.js'), '--write'], { cwd: root, encoding: 'utf8', env: { PATH: path.join(TMP, 'empty-bin'), HOME: TMP } });
+    assert.strictEqual(r.status, 1);
+    assert.match(r.stdout, /COMPOSE:\s+FAIL - the copy target holds a slot this script does not fill: <the script's NEW slot>/);
+    assert.ok(!fs.existsSync(RULE(root)), 'nothing written');
 });
 
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -604,4 +716,87 @@ test('policy: a skill is not loaded only for a question the code or the conversa
     const skill = fs.readFileSync(SKILL_MD, 'utf8').replace(/\s+/g, ' ');
     assert.ok(skill.includes('never to answer a question the code or the conversation already answers'), 'the policy line');
     assert.ok(!/never to answer a question\.\s/.test(skill), 'the unqualified form is gone');
+});
+
+// Audit 2026-10-11 SD07 (sessions 7be545ce, ce9d4811, both Windows): the Plugins line dropped a plugin the project enables
+// (a case-exact projectPath compare) and stamped another `enabled` while the CLI listed it disabled (the first row that
+// passed the filter decided) - both into the always-on rule, both through --verify. These run on EVERY OS: the input is
+// the Windows shape itself, never a POSIX stand-in.
+const CI = require(SCRIPT);
+
+test('SD07 7be545ce#1: a Windows projectPath is this project whatever its drive or folder case and separators', () =>
+{
+    const rows = CI.parsePluginList(JSON.stringify([
+        { id: 'csharp-lsp@claude-plugins-official', scope: 'project', enabled: true, projectPath: 'c:\\Users\\dev\\Source\\App' },
+        { id: 'csharp-lsp@claude-plugins-official', scope: 'project', enabled: false, projectPath: 'C:\\Users\\dev\\Source\\Other' },
+        { id: 'csharp-lsp@claude-plugins-official', scope: 'project', enabled: false, projectPath: 'C:\\Users\\dev\\Source\\Third' },
+        { id: 'claude-hud@claude-hud', scope: 'user', enabled: true },
+    ]), 'C:/Users/Dev/source/app/');
+    assert.deepStrictEqual(rows.map((r) => [r.name, r.state, r.skipped]), [['claude-hud', 'enabled', 0], ['csharp-lsp', 'enabled', 2]]);
+    assert.strictEqual(CI.projectKey('c:\\Users\\dev\\Source\\App'), CI.projectKey('C:/Users/Dev/source/app/'));
+    assert.notStrictEqual(CI.projectKey('/Repo'), CI.projectKey('/repo'), 'a POSIX path keeps its case: another case is another folder there');
+});
+
+test('SD07 ce9d4811#2: the narrowest row decides, and an `enabled` that is no boolean is no answer', () =>
+{
+    const rows = CI.parsePluginList(JSON.stringify([
+        { id: 'csharp-lsp@claude-plugins-official', scope: 'user', enabled: true },
+        { id: 'csharp-lsp@claude-plugins-official', scope: 'project', enabled: false, projectPath: 'C:\\Work\\App' },
+        { id: 'odd@m', scope: 'project', projectPath: 'C:\\Work\\App' },
+    ]), 'C:\\Work\\App');
+    assert.deepStrictEqual(rows.map((r) => [r.name, r.state, r.scope]), [['csharp-lsp', 'disabled', 'project'], ['odd', 'unclear', 'project']]);
+});
+
+test('SD07 7be545ce#1 ce9d4811#2: the settings cross-check states a disagreement and a settings-only plugin, each as a flag', () =>
+{
+    const settings = new Map([
+        ['csharp-lsp', { on: true, file: 'settings.json', own: true }],
+        ['typescript-lsp', { on: true, file: 'settings.local.json', own: true }],
+        ['account-only', { on: true, file: 'account settings.json', own: false }],
+        ['claude-hud', { on: true, file: 'account settings.json', own: false }],
+    ]);
+    const { rows, flags } = CI.crossCheckPlugins([
+        { name: 'claude-hud', state: 'enabled' },
+        { name: 'csharp-lsp', state: 'disabled', enabled: false },
+        { name: 'odd', state: 'unclear', enabled: 'yes' },
+    ], settings);
+    assert.deepStrictEqual(rows.map((r) => `${r.name} (${r.state})`), [
+        'claude-hud (enabled)',
+        'csharp-lsp (state unclear: CLI disabled / settings enabled in settings.json)',
+        'odd (state unclear: CLI enabled="yes" / settings none)',
+        'typescript-lsp (enabled in .claude/settings.local.json - no CLI row for this path)',
+    ]);
+    assert.strictEqual(flags.length, 3);
+    assert.match(flags[2], /^typescript-lsp: \.claude\/settings\.local\.json enables it, and `claude plugin list` has no row for this path/);
+    const line = rows.map((r) => `${r.name} (${r.state})`).join(', ');
+    assert.deepStrictEqual([...CI.pluginEntries(line).keys()], ['claude-hud', 'csharp-lsp', 'odd', 'typescript-lsp'], 'the line splits back into its entries');
+});
+
+test('SD07: the inventory prints each deciding row and the flags; a settings-only plugin is on the Plugins line', { skip: posixOnly }, () =>
+{
+    const root = project('sd07-inventory');
+    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'csharp-lsp@claude-plugins-official': true } }), -100);
+    const bin = stubCli(path.join(TMP, 'sd07-cli'), { plugins: JSON.stringify([
+        { id: 'superpowers@x', scope: 'user', enabled: true },
+        { id: 'csharp-lsp@claude-plugins-official', scope: 'project', enabled: true, projectPath: '/some/other/repo' },
+    ]) });
+    const { out } = run([], { cwd: root, bin });
+    assert.match(out, /^ {2}csharp-lsp \(enabled in \.claude\/settings\.json - no CLI row for this path\), superpowers \(enabled\)$/m);
+    assert.match(out, /^ {2}decided by superpowers: enabled - row user, no projectPath$/m);
+    assert.match(out, /^FLAG: {6}csharp-lsp: \.claude\/settings\.json enables it/m);
+    assert.match(out, /\/ plugins 2$/m);
+});
+
+test('SD07 ce9d4811#2: --verify fails a Plugins line a fresh probe contradicts, and passes the one it confirms', { skip: posixOnly }, () =>
+{
+    const root = project('sd07-verify');
+    const bin = stubCli(path.join(TMP, 'sd07-verify-cli'), { plugins: JSON.stringify([{ id: 'superpowers@x', scope: 'user', enabled: false }]) });
+    const rule = write(path.join(root, '.claude', 'rules', 'alfred-agent-awareness.md'), validRule());
+    const bad = run(['--verify', rule], { cwd: root, bin });
+    assert.strictEqual(bad.status, 1, bad.out);
+    assert.match(bad.out, /plugins:\s+FAIL - the Plugins line contradicts a fresh `claude plugin list` - superpowers: rule enabled, now disabled/);
+    fs.writeFileSync(rule, validRule().replace('superpowers (enabled)', 'superpowers (disabled)'));
+    const good = run(['--verify', rule], { cwd: root, bin });
+    assert.match(good.out, /plugins:\s+ok - 1 plugin\(s\), as a fresh `claude plugin list` reads them/);
+    assert.match(run(['--verify', rule], { cwd: root }).out, /plugins:\s+ok - not compared - CLI absent/);
 });

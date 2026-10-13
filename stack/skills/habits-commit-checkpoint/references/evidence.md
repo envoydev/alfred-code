@@ -3,7 +3,7 @@
 An audit appendix, not a run-time load: read it when a rule in SKILL.md looks like ceremony, never
 as part of a commit.
 
-## The five receipt lines
+## The receipt lines
 
 Each line closed a measured way the receipt passed while recording nothing.
 
@@ -16,6 +16,35 @@ Each line closed a measured way the receipt passed while recording nothing.
   been read.
 - `live-probe:` - it ran the thing. One asserted a passing review with no build or test output at
   all.
+- `format:` (usage audit 2026-10-10, session e6a68237) - the formatter half had covered only the
+  files the session edited: a 34-file commit whose formatter runs covered 4 shipped an inherited
+  unformatted file, and the CI format gate stayed red for 29.5 h until a fixup the next day. The
+  CHECK now runs over every staged path and the guard reads its `clean` verdict.
+- `findings:` (sessions 349e4825, a3d497f8, f6c591fa) - three reviews ran and none of their named
+  fields reached an assistant text; the substance sat only in the receipt, and one commit ask went
+  out before its review ran.
+
+## The publish half (usage audit 2026-10-10)
+
+- Typed words skip the ask (349e4825): 'commit current changes and push them' was re-confirmed by
+  an ask the user answered in 6 s, at ~157k context.
+- A recorded red is named in the ask, and CI is watched once (bba03dad, e6a68237): three develop
+  pushes went out over a typecheck red the receipt's own `live-probe:` line recorded; develop stayed
+  red for five runs and blocked deploy-staging until the user asked why. Elsewhere a format red went
+  unseen for the 66 minutes the session stayed open, and was fixed the next day.
+
+## The security half (usage audit 2026-10-10)
+
+- Explicit-only dispatch (229e2715): inside the solve flow, 'Close and commit' named no seat, and
+  the checkpoint dispatched a general-purpose security seat anyway (17 messages, $1.14).
+- The file count (390aebcb): a receipt claimed an 'inline security review over the full 11-file
+  diff' while the security diff covered 4 files; the membership handler never went through it.
+- The index-safe read (usage audit 2026-10-11, session 42951e5b): the old review recipe
+  `git add -N . && git diff HEAD; git reset -q`, run mid-merge, dropped `MERGE_HEAD`; the merge state was
+  rebuilt by hand (387.0k). Its replacement names each untracked file because, measured against the
+  stack's secret guard on 2026-10-11, a `while read` loop or an `xargs` over `git ls-files -o` printed an
+  untracked `.env` key raw, while the same `git diff --no-index -- /dev/null .env` named in the command
+  was rewritten and masked.
 
 ## Why the receipt is its own tool call
 

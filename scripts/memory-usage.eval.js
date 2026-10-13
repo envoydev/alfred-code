@@ -802,5 +802,6 @@ module.exports = {
 };
 
 if (require.main === module) {
+  require('../stack/hooks/hook-prelude.js').blockingStdio();
   main().catch((err) => { console.error(err && err.stack ? err.stack : err); process.exitCode = 1; });
 }

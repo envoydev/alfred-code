@@ -223,7 +223,7 @@ test('install-entry: --print-plan prints the six resolved lists and exits 0, wri
         assert.match(r.out, new RegExp(`^plan ${list}: \\S`, 'm'), `the plan named no ${list}`);
     // The playwright row is expanded into its engines BEFORE the plan is printed, so the dry run
     // reports the servers a real run would register, not the catalog row they come from.
-    assert.match(r.out, /^plan mcps: .*browser-chrome/m);
+    assert.match(r.out, /^plan mcps: .*chrome-control/m);
     assert.ok(!/^plan mcps: .*(^| )playwright\|/m.test(r.out), 'the unexpanded catalog row reached the plan');
 });
 
@@ -236,7 +236,7 @@ test('install-entry: --browser-enabled naming an engine this run does not instal
     assert.ok(!/^plan /m.test(r.out), 'the refused run still printed a plan');
     const all = run(['install', '--source', ROOT, '--print-plan', '--browsers', 'chrome,firefox', '--browser-enabled', 'all']);
     assert.strictEqual(all.code, 0, all.err);
-    assert.match(all.out, /^plan mcps: .*browser-chrome.*browser-firefox/m);
+    assert.match(all.out, /^plan mcps: .*chrome-control.*firefox-control/m);
 });
 
 test('install-entry: --print-plan resolves NO runtime versions - a dry run makes no network call', () =>
@@ -385,7 +385,7 @@ test('install-entry: --print-plan --plan-out writes the inventory JSON and names
     assert.match(r.out, /^plan answered: hooks=yes agents=yes$/m);
     const got = JSON.parse(fs.readFileSync(inv, 'utf8'));
     for (const k of ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins', 'plugins_disabled']) assert.ok(Array.isArray(got[k]), k);
-    assert.ok(got.mcps.includes('browser') && !got.mcps.some((m) => m.startsWith('browser-')), 'the engines fold back onto the catalog row');
+    assert.ok(got.mcps.includes('browser') && !got.mcps.some((m) => m.match(/^(?:chrome|msedge|firefox|webkit)-control$/)), 'the engines fold back onto the catalog row');
     assert.ok(!fs.existsSync(path.join(ENTRY_CWD, '.claude')), 'the dry run wrote into the project');
 });
 
@@ -411,14 +411,15 @@ test('install-args: --playwright-browsers and --playwright-enabled still read, a
 test('install-args: --scope-of gives an optional item its own scope; the required ones take none', () =>
 {
     assert.deepStrictEqual(ok(['install']).scopeOf, {}, 'no choice made: the run decides');
-    const a = ok(['install', '--scope-of', 'claude-hud=global', '--scope-of=csharp-lsp=project', '--scope-of', 'Windows-Desktop=User']);
-    assert.deepStrictEqual(a.scopeOf, { 'claude-hud': 'user', 'csharp-lsp': 'project', 'windows-desktop': 'user' }, 'global and user are one, the spelling is case-free');
-    const b = ok(['install', '--scope-of', 'browser=global', '--scope-of', 'browser-webkit=project']);
-    assert.deepStrictEqual(b.scopeOf, { 'browser-chrome': 'user', 'browser-firefox': 'user', 'browser-msedge': 'user', 'browser-webkit': 'project' }, 'browser is every engine; a later engine line wins for its own');
+    const a = ok(['install', '--scope-of', 'claude-hud=global', '--scope-of=csharp-lsp=project', '--scope-of', 'Windows-Control=User']);
+    assert.deepStrictEqual(a.scopeOf, { 'claude-hud': 'user', 'csharp-lsp': 'project', 'windows-control': 'user' }, 'global and user are one, the spelling is case-free');
+    const b = ok(['install', '--scope-of', 'browser=global', '--scope-of', 'webkit-control=project']);
+    assert.deepStrictEqual(b.scopeOf, { 'chrome-control': 'user', 'firefox-control': 'user', 'msedge-control': 'user', 'webkit-control': 'project' }, 'browser is every engine; a later engine line wins for its own');
     for (const item of ['alfred-code', 'alfred-navigation', 'alfred-memory', 'alfred-documentation', 'superpowers'])
         fails(['install', '--scope-of', `${item}=global`], /--scope-of: '.*' has no scope of its own - one of browser, .*the core and the alfred- servers follow --scope/);
-    const c = ok(['install', '--scope-of', 'claude-hud=local', '--scope-of', 'browser-chrome=Local']);
-    assert.deepStrictEqual(c.scopeOf, { 'claude-hud': 'local', 'browser-chrome': 'local' }, 'local is a scope of its own');
+    const c = ok(['install', '--scope-of', 'claude-hud=local', '--scope-of', 'chrome-control=Local']);
+    assert.deepStrictEqual(c.scopeOf, { 'claude-hud': 'local', 'chrome-control': 'local' }, 'local is a scope of its own');
+    assert.deepStrictEqual(ok(['install', '--scope-of', 'mobile-control=global']).scopeOf, { 'mobile-control': 'user' }, 'mobile-control takes its own scope (2026-10-13)');
     // managed is the admin's - no run installs there, so it is no answer.
     for (const bad of ['claude-hud', 'claude-hud=managed', 'claude-hud=', '=project'])
         fails(['install', '--scope-of', bad], /--scope-of takes '<item>=<global\|project\|local>'/);

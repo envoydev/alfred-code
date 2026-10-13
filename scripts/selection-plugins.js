@@ -42,7 +42,7 @@ function parseSelectionText(raw)
 // exactly like the plugin - which is what makes each tool `mcp__plugin_<n>_<n>__<tool>` for a
 // single `<n>`, and what keeps a project from loading a server it did not pick (all of a plugin's
 // servers load together). So the mapping is the IDENTITY, and the one expanded family is expanded
-// BEFORE it reaches here: the caller passes `browser-chrome`, not `browser`.
+// BEFORE it reaches here: the caller passes `chrome-control`, not `browser`.
 function mcpPlugin(server)
 {
     return String(server);
@@ -127,6 +127,7 @@ function main(argv)
 
 if (require.main === module)
 {
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
     try { process.exit(main(process.argv.slice(2))); }
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }

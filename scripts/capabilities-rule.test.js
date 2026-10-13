@@ -14,7 +14,7 @@ const { spawnSync } = require('node:child_process');
 const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const squash = (text) => text.replace(/\s+/g, ' ');
-const CAPS_DIR = 'stack/skills/capture-agent-capabilities';
+const CAPS_DIR = 'stack/skills/capture-agent-awareness';
 const SCRIPT = path.join(ROOT, CAPS_DIR, 'scripts', 'capabilities-inventory.js');
 const TEMPLATE = `${CAPS_DIR}/references/generated-rule-template.md`;
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'capabilities-rule-'));
@@ -48,10 +48,10 @@ function routingMapText()
 }
 
 // A project the script can inventory with no CLI on PATH: its servers come from .mcp.json.
-function project(name, { servers = ['alfred-navigation', 'alfred-documentation', 'alfred-memory', 'browser-chrome'], settings, local, account } = {})
+function project(name, { servers = ['alfred-navigation', 'alfred-documentation', 'alfred-memory', 'chrome-control'], settings, local, account } = {})
 {
     const root = path.join(TMP, name);
-    write(path.join(root, '.claude', 'skills', 'capture-agent-capabilities', 'SKILL.md'), '---\nname: capture-agent-capabilities\ndescription: "x"\ndisable-model-invocation: true\n---\n');
+    write(path.join(root, '.claude', 'skills', 'capture-agent-awareness', 'SKILL.md'), '---\nname: capture-agent-awareness\ndescription: "x"\ndisable-model-invocation: true\n---\n');
     write(path.join(root, '.claude', 'agents', 'aspnet-verifier.md'), '---\nname: aspnet-verifier\n---\n');
     write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: Object.fromEntries(servers.map((s) => [s, {}])) }));
     if (settings) write(path.join(root, '.claude', 'settings.json'), JSON.stringify(settings));
@@ -90,19 +90,19 @@ test('I19: alfred-security says a Read deny covers the shell file commands Claud
 
 test('I20: the browser row names the resolved data root and engine, never the slots', () =>
 {
-    const { root, home } = project('data-root-default', { servers: ['browser-chrome', 'browser-firefox'] });
+    const { root, home } = project('data-root-default', { servers: ['chrome-control', 'firefox-control'] });
     const rows = rowsOf(run([], { cwd: root, home }).out);
     assert.equal(rows.length, 2, rows.join('\n'));
-    assert.ok(rows[0].includes('`.alfred/browser/chrome/output/`'), rows[0]);
-    assert.ok(rows[1].includes('`.alfred/browser/firefox/output/`'), rows[1]);
+    assert.ok(rows[0].includes('`.alfred/chrome-control/output/`'), rows[0]);
+    assert.ok(rows[1].includes('`.alfred/firefox-control/output/`'), rows[1]);
     for (const row of rows) assert.doesNotMatch(row, /<data root>|<engine>|<server>|<docs-path>/, row);
 });
 
 test('I20: the data root follows ALFRED_CODE_DATA_PATH, settings.local.json over settings.json', () =>
 {
-    const { root, home } = project('data-root-local', { servers: ['browser-chrome'], settings: { env: { ALFRED_CODE_DATA_PATH: 'data/shared' } }, local: { env: { ALFRED_CODE_DATA_PATH: 'data/mine' } } });
+    const { root, home } = project('data-root-local', { servers: ['chrome-control'], settings: { env: { ALFRED_CODE_DATA_PATH: 'data/shared' } }, local: { env: { ALFRED_CODE_DATA_PATH: 'data/mine' } } });
     const [row] = rowsOf(run([], { cwd: root, home }).out);
-    assert.ok(row.includes('`data/mine/browser/chrome/output/`'), row);
+    assert.ok(row.includes('`data/mine/chrome-control/output/`'), row);
 });
 
 test('I20: the script resolves the data root the way stack/mcp/data-root.js does', () =>
@@ -137,20 +137,20 @@ test('I20: routingRow leaves no slot outside the first call names', () =>
     const map = routingMap();
     const slots = { dataRoot: 'data/x', docsRoot: 'data/x/docs' };
     const rows = [
-        routingRow('browser-webkit', map, slots),
-        pluginRoutingRow('browser-msedge', 'browser-msedge', map, slots),
-        routingRow('windows-desktop', map, slots),
-        pluginRoutingRow('macos-desktop', 'macos-desktop', map, slots),
+        routingRow('webkit-control', map, slots),
+        pluginRoutingRow('msedge-control', 'msedge-control', map, slots),
+        routingRow('windows-control', map, slots),
+        pluginRoutingRow('macos-control', 'macos-control', map, slots),
     ];
     for (const row of rows) assert.doesNotMatch(row.split('first call:')[0], /<[a-z][a-z -]*>/, row);
-    assert.ok(rows[0].includes('`data/x/browser/webkit/output/`'), rows[0]);
-    assert.ok(rows[1].includes('`data/x/browser/msedge/output/`'), rows[1]);
+    assert.ok(rows[0].includes('`data/x/webkit-control/output/`'), rows[0]);
+    assert.ok(rows[1].includes('`data/x/msedge-control/output/`'), rows[1]);
     assert.ok(rows[2].includes('data/x/docs/flow/DESKTOP-EXEC-ALLOW'), rows[2]);
 });
 
 test('I20: the rows\' docs root follows a local-scope install\'s settings.local.json over settings.json', () =>
 {
-    const { root, home } = project('docs-root-local', { servers: ['windows-desktop'], settings: { env: { ALFRED_CODE_DOCS_PATH: 'shared/docs' } }, local: { env: { ALFRED_CODE_DOCS_PATH: 'var/data/docs' } } });
+    const { root, home } = project('docs-root-local', { servers: ['windows-control'], settings: { env: { ALFRED_CODE_DOCS_PATH: 'shared/docs' } }, local: { env: { ALFRED_CODE_DOCS_PATH: 'var/data/docs' } } });
     const { out } = run([], { cwd: root, home });
     assert.match(out, /DOCS ROOT: var\/data\/docs\s+\(from ALFRED_CODE_DOCS_PATH in \.claude\/settings\.local\.json env\)/);
     const [row] = rowsOf(out);
@@ -160,7 +160,7 @@ test('I20: the rows\' docs root follows a local-scope install\'s settings.local.
 test('I20: --verify fails a rule still holding an unresolved slot', () =>
 {
     const { root, home } = project('verify-slot');
-    const rule = write(path.join(root, 'rule.md'), '---\ndescription: generated\n---\n\n# x\n\n## Orchestration skills\n\n## Subagent seats\n\n## MCP routing\n- `browser-chrome` - screenshots land in `<data root>/browser/<engine>/output/`. first call: `ToolSearch select:x`.\n');
+    const rule = write(path.join(root, 'rule.md'), '---\ndescription: generated\n---\n\n# x\n\n## Orchestration skills\n\n## Subagent seats\n\n## MCP routing\n- `chrome-control` - screenshots land in `<data root>/browser/<engine>/output/`. first call: `ToolSearch select:x`.\n');
     const { status, out } = run(['--verify', rule], { cwd: root, home });
     assert.match(out, /slots:\s+FAIL - unresolved <data root>, <engine>/);
     assert.equal(status, 1, out);
@@ -197,7 +197,26 @@ test('I21: the always-on surface skips manual-only descriptions and prices the g
     assert.equal(s.manualOnly, 1);
     const fixed = '## Usage policy (fixed - stamped verbatim, every run)\n- P1'.length + '- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - LOCKED. first call: see the baselines.'.length;
     assert.equal(s.generated, fixed, 'the policy section (its stamp comment is stripped) plus the locked-server row');
-    assert.equal(s.total, s.rules + s.agents + s.skills + s.generated);
+    assert.equal(s.total, s.rules + s.agents + s.agentTools + s.skills + s.generated);
+});
+
+// Audit 2026-10-10 C28 (session 8f44a003): the dispatcher lists each seat with its '(Tools: ...)' suffix - 33,635
+// of the listing's 45,027 chars - and check 33 measured none of it.
+test('C28: the always-on surface measures each seat\'s listed tools suffix and prints it beside the capped parts', () =>
+{
+    const { alwaysOnSurface, alwaysOnParts } = require('./always-on-surface.js');
+    const base = path.join(TMP, 'surface-tools');
+    write(path.join(base, 'rules', 'r.md'), 'R\n');
+    write(path.join(base, 'agents', 'inline.md'), '---\nname: inline\ndescription: "d"\ntools: Read, Bash\n---\n');
+    write(path.join(base, 'agents', 'listed.md'), '---\nname: listed\ndescription: "d"\ntools:\n  - Read\n  - "Grep"\n---\n');
+    write(path.join(base, 'agents', 'none.md'), '---\nname: none\ndescription: "d"\n---\n');
+    fs.mkdirSync(path.join(base, 'skills'), { recursive: true });
+    const s = alwaysOnSurface({ rulesDir: path.join(base, 'rules'), agentsDir: path.join(base, 'agents'), skillsDir: path.join(base, 'skills'), capabilitiesDir: path.join(base, 'caps') });
+    assert.equal(s.agentTools, ' (Tools: Read, Bash)'.length + ' (Tools: Read, Grep)'.length + ' (Tools: *)'.length, 'inline, a YAML list joined, and none as *');
+    // The user's 2026-10-13 ruling ('Count them, cap 80k'): the suffix is part of the capped total.
+    assert.equal(s.total, s.rules + s.agents + s.agentTools + s.skills + s.generated, 'the tools suffix is inside the cap');
+    assert.match(alwaysOnParts(s), new RegExp(`agent tools lists ${s.agentTools} \\(listed beside each description\\)`));
+    assert.ok(!alwaysOnParts(s).includes('not counted'), 'nothing measured is left out of the total');
 });
 
 test('I21: the lint comment no longer claims ~10% headroom, and CLAUDE.md states what check 33 counts', () =>
@@ -208,7 +227,8 @@ test('I21: the lint comment no longer claims ~10% headroom, and CLAUDE.md states
     assert.ok(!md.includes('pathless rules 25,090'), 'the whole-file figure is gone');
     assert.ok(md.includes('frontmatter and HTML comments stripped'), 'CLAUDE.md says the rules are counted as injected');
     assert.ok(md.includes('a `disable-model-invocation` skill\'s is not in context'), 'CLAUDE.md says the manual-only descriptions are skipped');
-    assert.ok(md.includes('fails over 70,000 chars'), 'the limit itself stays');
+    assert.ok(md.includes('fails over 80,000 chars'), 'the limit itself stays');
+    assert.match(lint, /const ALWAYS_ON_MAX = 80000;/, 'the cap is 80,000 since the tools lists count (2026-10-13)');
 });
 
 // ------------------------------------------------------------------ I23
@@ -260,7 +280,7 @@ test('I24: the report prints one locked-server row, and --verify passes a rule b
     const rows = rowsOf(out);
     assert.equal(rows.length, 2, rows.join('\n'));
     assert.equal(rows.filter((r) => /^- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - /.test(r)).length, 1, rows.join('\n'));
-    assert.equal(rows.filter((r) => /^- `browser-chrome` - /.test(r)).length, 1, rows.join('\n'));
+    assert.equal(rows.filter((r) => /^- `chrome-control` - /.test(r)).length, 1, rows.join('\n'));
     const partial = rowsOf(run([], { cwd: project('locked-partial', { servers: ['alfred-memory', 'alfred-navigation'] }).root, home }).out);
     assert.deepStrictEqual(partial.map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`alfred-navigation`, `alfred-memory`'], 'a locked server the install lacks is not named');
 
@@ -269,7 +289,7 @@ test('I24: the report prints one locked-server row, and --verify passes a rule b
     const rule = write(path.join(root, 'composed.md'), [
         '---', 'description: generated', '---', '', '# This project\'s capabilities', '', 'Captured: 2026-09-29 from 2.1.3@abcdef1', '',
         '## Usage policy (fixed - stamped verbatim, every run)', skill[at], policyBlock(), '',
-        '## Orchestration skills (slash-only - invisible until invoked)', '/capture-agent-capabilities - x', '',
+        '## Orchestration skills (slash-only - invisible until invoked)', '/capture-agent-awareness - x', '',
         '## Subagent seats', 'aspnet-verifier', '', '## MCP routing', ...rows, '',
     ].join('\n'));
     const verified = run(['--verify', rule], { cwd: root, home });
@@ -285,19 +305,22 @@ test('I12: the navigation rule and the locked row keep rename and safe delete, e
 {
     const nav = squash(read('stack/rules/alfred-navigation.md'));
     assert.ok(!nav.includes('symbol edits and the memory handoff stay on the navigation server'), 'the old edit routing is gone');
-    const line = 'keeps symbol lookup, `rename_symbol`, `safe_delete_symbol` and the seat memory handoff';
+    const line = 'keeps symbol lookup, `rename_symbol` and `safe_delete_symbol`';
     assert.ok(nav.includes(line), 'alfred-navigation.md');
     assert.ok(nav.includes('every other edit goes through Edit / Write'), 'alfred-navigation.md');
     const map = squash(routingMapText());
     assert.ok(map.includes(line) && map.includes('every other edit goes through Edit / Write'), 'the template row');
     assert.ok(!map.includes('symbol-level editor'), 'the row no longer sells the server as an editor');
+    // The user's 2026-10-13 ruling: the navigation server is navigation only, every note goes to alfred-memory.
+    assert.ok(!nav.includes('seat memory handoff') && !map.includes('seat memory handoff'), 'no seat handoff left on the navigation server');
+    assert.ok(map.includes('its memory tools are off, every note goes to `alfred-memory`'), 'the template row routes notes to alfred-memory');
 });
 
 // ------------------------------------------------------------------ I45 + I10 (prose half)
 
 test('I45: the macOS row leads with the failed start, and an empty snapshot only past the skip switch', () =>
 {
-    const row = squash(routingMapText().split('\n').find((l) => l.startsWith('- `macos-desktop`')));
+    const row = squash(routingMapText().split('\n').find((l) => l.startsWith('- `macos-control`')));
     assert.ok(!row.includes('an empty snapshot means the Accessibility grant is missing'), row);
     assert.ok(row.includes('fails to connect at start') && row.includes('System Settings opens'), row);
     assert.ok(row.includes('`MACOS_MCP_SKIP_PERMISSION_CHECK=1`'), row);
@@ -306,7 +329,19 @@ test('I45: the macOS row leads with the failed start, and an empty snapshot only
 
 test('I10: the Windows row says FileSystem is off and App launch_executable is denied without the receipt', () =>
 {
-    const row = squash(routingMapText().split('\n').find((l) => l.startsWith('- `windows-desktop`')));
+    const row = squash(routingMapText().split('\n').find((l) => l.startsWith('- `windows-control`')));
     assert.ok(row.includes('`FileSystem`'), row);
     assert.ok(row.includes('`launch_executable`') && row.includes('`<docs-path>/flow/DESKTOP-EXEC-ALLOW`'), row);
+});
+
+// 2026-10-13: mobile-control (appium-mcp) - its row's output dirs are the launcher's, under the resolved data root.
+test('mobile-control: the row names its output dirs under the resolved data root and the registration\'s tool spelling', () =>
+{
+    const { root, home } = project('mobile-row', { servers: ['mobile-control'] });
+    const rows = rowsOf(run([], { cwd: root, home }).out);
+    assert.strictEqual(rows.length, 1, rows.join('\n'));
+    assert.ok(rows[0].startsWith('- `mobile-control` - the mobile server (appium-mcp)'), rows[0]);
+    for (const dir of ['page-sources', 'screenshots']) assert.ok(rows[0].includes(`\`.alfred/mobile-control/${dir}/\``), rows[0]);
+    assert.match(rows[0], /ToolSearch select:mcp__mobile-control__appium_session_management,mcp__mobile-control__appium_find_element,/);   // mcp-fixture: the registration spelling a copy-route row is re-spelled to
+    assert.doesNotMatch(rows[0], /<data root>|<server>|<engine>/, rows[0]);
 });

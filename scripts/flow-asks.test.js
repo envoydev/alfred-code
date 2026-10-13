@@ -77,22 +77,40 @@ test('A4: check 61 counts each flow skill\'s templates in SKILL.md itself, so re
 });
 
 test('A4: the three flow skills each carry ask templates, and every one passes check 61', () => {
-    assert.deepStrictEqual([...ASK_FLOW_SKILLS].sort(), ['issue-diagnoser', 'task-solve', 'task-solve-cross']);
+    assert.deepStrictEqual([...ASK_FLOW_SKILLS].sort(), ['habits-adjust-agents-md', 'issue-diagnoser', 'task-solve', 'task-solve-cross']);
     for (const name of ASK_FLOW_SKILLS) {
         const found = asks(skillText(name));
-        assert.ok(found.length >= 2, `${name}: ${found.length} ask template(s)`);
+        assert.ok(found.length >= (name === 'habits-adjust-agents-md' ? 1 : 2), `${name}: ${found.length} ask template(s)`);
         for (const a of found) assert.strictEqual(a.options.filter((o) => /\(Recommended\)$/.test(o)).length, 1, `${name}: ${a.question}`);
     }
 });
 
-test('A4: a flow close recommends Hold, and a picked commit still runs the whole checkpoint', () => {
+// The user's ruling 2026-10-13 (usage audit 2026-10-10, session 0824440b: the closes recommended Hold and the user overrode
+// it 3 of 3 times): a LOCAL commit takes the mark - it stays on this machine and `git reset --soft HEAD~1` undoes it - and
+// every push or publish ask recommends holding, since it leaves the machine. One rule, every ask that offers either.
+test('A4: a commit ask recommends the local commit and a push or publish ask recommends holding, in every skill', () => {
     for (const name of ['task-solve', 'task-solve-cross']) {
         const text = skillText(name);
         const close = asks(text).find((a) => a.options.some((o) => /^Commit/.test(o)));
         assert.ok(close, `${name}: a close ask that offers the commit`);
-        assert.match(close.options.find((o) => /\(Recommended\)$/.test(o)), /^Hold - review the diff first/, `${name}: Hold is the recommendation`);
+        assert.deepStrictEqual(close.options[0], 'Commit now (Recommended)', `${name}: the local commit is the recommendation, listed first`);
         assert.match(flat(text), /habits-commit-checkpoint/, `${name}: a picked commit runs the checkpoint`);
     }
+    let commits = 0, pushes = 0;
+    for (const name of fs.readdirSync(SKILLS)) {
+        const dir = path.join(SKILLS, name);
+        if (!fs.statSync(dir).isDirectory()) continue;
+        const files = [path.join(dir, 'SKILL.md')];
+        if (fs.existsSync(path.join(dir, 'references'))) for (const f of fs.readdirSync(path.join(dir, 'references'))) files.push(path.join(dir, 'references', f));
+        for (const f of files.filter((x) => x.endsWith('.md') && fs.existsSync(x))) {
+            for (const a of asks(fs.readFileSync(f, 'utf8'))) {
+                const marked = a.options.find((o) => /\(Recommended\)$/.test(o));
+                if (a.options.some((o) => /^Commit now\b/.test(o))) { commits += 1; assert.strictEqual(marked, 'Commit now (Recommended)', `${f}: ${a.question}`); }
+                if (a.options.some((o) => /^(Push now|Publish)\b/.test(o))) { pushes += 1; assert.strictEqual(marked, 'Hold - push later (Recommended)', `${f}: ${a.question}`); }
+            }
+        }
+    }
+    assert.ok(commits >= 3 && pushes >= 2, `the walk found the asks (commit ${commits}, push ${pushes})`);
 });
 
 test('A4: the stop-contract hook\'s pending-close push offers no commit', () => {
@@ -124,7 +142,7 @@ test('A5: the build bar - a model change never leaves its task without its migra
 // Pilot 3: the gate changed the plan in 1 of 4 feature cells, and the steps before the build cost $0.95-1.65 a cell.
 test('full spec: the solve flow states the checklist, runs the check script and pins the merged ask', () => {
     const { ASK_FLOW_TEMPLATES } = require('./lint-skills.js');
-    assert.deepStrictEqual(ASK_FLOW_TEMPLATES, { 'task-solve': 6, 'task-solve-cross': 5, 'issue-diagnoser': 4 });
+    assert.deepStrictEqual(ASK_FLOW_TEMPLATES, { 'task-solve': 9, 'task-solve-cross': 5, 'issue-diagnoser': 4, 'habits-adjust-agents-md': 2 });
     for (const name of ['task-solve', 'task-solve-cross']) {
         const core = fs.readFileSync(path.join(SKILLS, name, 'SKILL.md'), 'utf8');
         assert.match(core, /scripts\/spec-check\.js/, `${name}: the check is a script, not a judgment`);

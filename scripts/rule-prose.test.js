@@ -91,7 +91,7 @@ test('M68: the browser-only screenshot line leaves the always-on navigation rule
 {
     const nav = injected('alfred-navigation');
     assert.ok(!/screenshot/i.test(nav), 'the browser row owns screenshot readback');
-    const row = read('stack/skills/capture-agent-capabilities/references/generated-rule-template.md').split('\n').find((l) => l.startsWith('- `browser` - '));
+    const row = read('stack/skills/capture-agent-awareness/references/generated-rule-template.md').split('\n').find((l) => l.startsWith('- `browser` - '));
     assert.ok(row && row.includes('never the iteration loop'), 'the browser row carries the mid-loop rule');
     assert.ok(nav.includes('Git Bash'), 'the Windows line stays: a per-OS rule copy would differ between teammates');
 });
@@ -120,7 +120,7 @@ test('M71: several FIRST actions due at once load together', () =>
 test('M72: the generated architecture rule carries only its trigger - where the docs live is the baselines\'', () =>
 {
     const shapes = read('stack/skills/capture-architecture/references/doc-shapes.md');
-    const at = shapes.indexOf('## .claude/rules/alfred-project-architecture.md');
+    const at = shapes.indexOf('## .claude/rules/alfred-architecture.md');
     const block = /```markdown\n([\s\S]*?)```/.exec(shapes.slice(at))[1];
     const body = squash(injectedRuleText(block)).trim();
     assert.ok(!body.includes('<docs-path>'), `the body restates the root the navigation baseline names: ${body}`);
@@ -161,7 +161,7 @@ test('rules F3: the AGENTS template restates none of the seven always-on rules -
     const rulesSection = text.slice(text.indexOf('\n## Rules'));
     for (const name of ['interaction', 'quality-gates', 'security', 'git', 'navigation', 'docs-root', 'memory'])
         assert.ok(!rulesSection.includes(`| \`.claude/rules/alfred-${name}.md\` |`), `alfred-${name}.md has a template row`);
-    for (const generated of ['alfred-project-agent-capabilities', 'alfred-project-architecture', 'alfred-project-related-context', 'alfred-project-run-book', 'project-code-style'])
+    for (const generated of ['alfred-agent-awareness', 'alfred-architecture', 'alfred-related-context', 'alfred-project-awareness', 'project-code-style'])
         assert.ok(rulesSection.includes(`| \`.claude/rules/${generated}.md\` (GENERATED`), `${generated}.md keeps its GENERATED row`);
 });
 
@@ -185,7 +185,8 @@ test('rules F5 + F16: the navigation rule says one thing per line, in plain word
     assert.match(nav, /- A language the navigation server's `project\.yml` \(`<data root>\/serena\/`\) does not list takes the fallback from its first call\. -/);
     assert.match(nav, /- A large JSON \/ YAML \/ lock \/ fixture file is queried/);
     assert.ok(!nav.includes('check the tool list before an edit call'), 'F16');
-    assert.ok(nav.includes('confirm an edit tool is in the tool list before calling it'), 'F16');
+    // F16's edit-tool line named the server's memory edit tools; they are off since the user's 2026-10-13 ruling.
+    assert.ok(nav.includes('- The navigation server is navigation only: its memory tools are off'), 'F16 superseded');
 });
 
 test('rules F6: the compaction section carries the name the docs give it', () =>
@@ -249,4 +250,181 @@ test('rules F12 + F13: the commit header and the memory verify clause are each s
     assert.match(vcs, /\*\*Header\*\* - one line, one of two shapes: the ticket id \(`PROJ-142`\) or a Conventional-Commits subject/);
     const memory = injected('alfred-memory');
     assert.strictEqual((memory.match(/verified before use/g) || []).length, 1, memory);
+});
+
+test('agents F03: a seat whose tools: list names a locked server\'s tools calls them directly - live probe 2026-10-09', () =>
+{
+    const clause = 'A seat whose `tools:` list names them has them loaded already - it calls them directly, with no ToolSearch.';
+    for (const name of ['alfred-navigation', 'alfred-memory'])
+        assert.ok(injected(name).includes(clause), name);
+    assert.ok(injected('alfred-quality-gates').includes('then the query (a seat whose `tools:` list names them calls them directly)'));
+});
+
+// ------------------------------------------------------------------ audit 2026-10-10 C14
+
+// The Bash tool runs zsh on macOS: `${PIPESTATUS[0]}` reads empty there, so a shipped instruction that prescribes it
+// loses every exit status it was meant to read (measured in 9 sessions, 22 of 22 reads blank).
+test('C14: no shipped instruction prescribes the bash-only PIPESTATUS read; the navigation rule teaches the zsh-safe forms', () =>
+{
+    const hits = [];
+    const walk = (dir) =>
+    {
+        for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }))
+        {
+            const rel = `${dir}/${e.name}`;
+            if (e.isDirectory()) walk(rel);
+            else if (/\.md$/.test(e.name) && /PIPESTATUS/.test(read(rel).split('`${PIPESTATUS[0]}` reads empty').join(''))) hits.push(rel);
+        }
+    };
+    for (const dir of ['stack', 'setup-plugin']) walk(dir);
+    assert.deepStrictEqual(hits, [], 'a shipped text tells the model to read ${PIPESTATUS[0]}');
+    const nav = injected('alfred-navigation');
+    assert.match(nav, /Read `\$\?` on the very next line, with `set -o pipefail` before a pipe/);
+    assert.match(nav, /a bare word opening with `=`[^.]*quote it, `echo '====='`/);
+    assert.match(nav, /never word-splits `\$VAR`/);
+    assert.match(nav, /a path glob that may match nothing with `find <dir> -name '<pat>'`/);
+});
+
+// ------------------------------------------------------------------ audit 2026-10-10 C22
+
+test('C22: Angular specs route to angular-testing, EF migrations attach the SQL rule, and the markdown carve-out leads', () =>
+{
+    const ng = injected('angular-conventions');
+    assert.match(ng, /Writing or changing a spec file \(`\*\.spec\.ts`\) loads `angular-testing` in the same action/);
+    const graph = JSON.parse(read('meta/stack-graph.json'));
+    assert.ok(graph.rules['angular-conventions'].skills.includes('angular-testing'), 'the rule pulls the skill it names');
+    assert.deepStrictEqual(pathsOf('sql-conventions'), ['**/*.sql', '**/Migrations/*.cs']);
+    assert.match(injected('sql-conventions'), /An EF migration \(`Migrations\/\*\.cs`\) is schema work: the same first action adds the migration-safety skill/);
+    const md = injected('markdown-docs');
+    const carve = md.indexOf('The generated docs root is NOT governed here');
+    assert.ok(carve >= 0 && carve < md.indexOf('the FIRST action after this rule attaches'), 'the carve-out comes before the first action');
+    assert.match(md, /A plan, flow note or capture under `<docs-path>`[^:]*a `\.md` you only READ take no load/);
+});
+
+// ------------------------------------------------------------------ audit 2026-10-10 C23
+
+// The Bash tool's `grep` is a shell function running ugrep with `--ignore-files`; a `local` docs root's own
+// .gitignore is `*`, so a recursive grep over it printed nothing (bba03dad, three dead calls, ~0.92M).
+test('C23: the docs-root rule names the ignore-honouring grep and the two searches that see the root', () =>
+{
+    assert.match(injected('alfred-docs-root'), /Search the root with `docs\.js` or `\/usr\/bin\/grep -r`, never a bare `grep -r`: the Bash tool's `grep` honours `\.gitignore`/);
+});
+
+// ------------------------------------------------------------------ audit 2026-10-10 C29
+
+// 229e2715: the restart verdict needs the release the session loaded; its step 6 ran the AGENTS.md compare as a
+// `## ` heading diff, never the check. 0cdb0c1d: 'a fresh session' beside a separate restart row let /clear satisfy it.
+test('C29: update passes the running plugin root, runs the AGENTS.md check itself, and folds the capture into the restart', () =>
+{
+    const update = squash(read('setup-plugin/commands/update.md'));
+    assert.match(update, /update-preflight\.js" --log "\$TMP\/install\.log" --hooks <step 2's changed: hooks=N> --running "\$\{CLAUDE_PLUGIN_ROOT\}"/);
+    const six = update.slice(update.indexOf('## 6. Reconcile'), update.indexOf('## 7. Post-check'));
+    const check = six.indexOf('agents-md-check.js" --root .');
+    assert.ok(check >= 0 && check < six.indexOf('habits-adjust-agents-md/SKILL.md'), 'the check runs before the skill read');
+    assert.match(update, /When step 3's `--log` call printed `restart: yes`, the RESTART is row one/);
+    assert.match(update, /Under a restart row the note reads 'run it in the session the restart opens' instead/);
+});
+
+// ------------------------------------------------------------------ audit 2026-10-10 C26 / C13
+
+// 390aebcb: a recommended option the session could not carry out ('Open a new gated cycle' - a command only the user
+// runs) was picked and handed back, a stop block and two messages later. f450ea64: a two-option ask marked neither.
+test('C26: a blocking ask marks one option (Recommended), lists it first, and labels the user\'s own action', () =>
+{
+    assert.match(injected('alfred-interaction'), /concrete options, the recommended one marked \(Recommended\) and listed first, and an option only the user can carry out \(a manual-only command, `\/clear`, an input only they hold\) names their action in its label/);
+});
+
+// 9a4ef375 / 0498718d: implementer seats made 85% and 96% of their source edits as shell writes, which the Write|Edit
+// hooks never see; the navigation rule sanctioned any anchor-counted splice beside 'every other edit goes through Edit / Write'.
+test('C13: a splice is for a mechanical rename, and every implementer routes source edits through Edit / Write', () =>
+{
+    assert.match(injected('alfred-navigation'), /A splice \(`sed -i`, an in-place python or perl replace\) is for a mechanical rename across many sites, never an edit Edit \/ Write can make/);
+    const entry = registry()['implementer-edit-route'];
+    assert.ok(entry, 'the bullet is pinned');
+    const seats = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).filter((f) => f.endsWith('-implementer.md')).map((f) => `stack/agents/${f}`);
+    assert.deepStrictEqual(homes(entry).map((h) => h.file).sort(), seats.sort(), 'every implementer seat, and only those, carries it');
+    for (const seat of seats)
+    {
+        const lines = read(seat).split('\n');
+        const at = lines.findIndex((l) => l.includes(entry.owner.marker));
+        assert.ok(at > 0 && lines[at - 1].startsWith('- You usually share ONE working tree'), `${seat}: the bullet follows the shared-tree bullet`);
+    }
+});
+
+// ------------------------------------------------------------------ audit 2026-10-10 C17
+
+// f24eb967: the scope survey `git add -N . && git diff HEAD --stat; git reset -q` unstaged the session's own `git rm`
+// deletions, so the commit took 1 of 3 files. The survey the rule names is RUN here, over a staged deletion, a staged
+// edit and an untracked file: the index must come out as it went in, and the untracked file must be listed.
+test('C17: the commit-ask scope survey lists untracked files and leaves the index as it found it', { skip: process.platform === 'win32' && 'runs the survey through sh' }, () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const os = require('node:os');
+    const survey = (/derived FRESH - `([^`]+)`/.exec(injected('alfred-git')) || [])[1];
+    assert.ok(survey, 'the rule names its survey command');
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'c17-survey-'));
+    try
+    {
+        const git = (...a) => execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', ...a], { cwd: repo, encoding: 'utf8' });
+        git('init', '-q');
+        for (const f of ['a.md', 'b.md', 'c.md']) fs.writeFileSync(path.join(repo, f), `${f}\n`);
+        git('add', '.');
+        git('commit', '-qm', 'base');
+        git('rm', '-q', 'a.md', 'b.md');
+        fs.writeFileSync(path.join(repo, 'c.md'), 'changed\n');
+        git('add', 'c.md');
+        fs.writeFileSync(path.join(repo, 'new.md'), 'new\n');
+        const staged = git('diff', '--cached', '--name-status');
+        const out = execFileSync('sh', ['-c', survey], { cwd: repo, encoding: 'utf8' });
+        assert.strictEqual(git('diff', '--cached', '--name-status'), staged, 'the survey moved the index');
+        assert.match(out, /^new\.md$/m, 'the untracked file is listed');
+        assert.match(out, /a\.md/, 'the staged deletion is in the survey');
+    }
+    finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
+
+// ------------------------------------------------------------------ audit 2026-10-10 C12
+
+// 4f1c2ebb: 'a pasted one may still do the job asked' beside 'Never ... pass a pasted secret to a tool' - the session
+// took the first, dug the value out of its own transcript after compaction and wrote it to a file. 84eedb4b: a seed
+// password from the project's docs was echoed unprompted, and a password the run created was echoed again.
+test('C12: a pasted secret serves its one call only, and a documented seed is cited, never echoed', () =>
+{
+    const sec = injected('alfred-security');
+    assert.match(sec, /a pasted one may do the job it was pasted for, inline in that one call, and is never written to a file or recovered from the transcript later/);
+    assert.ok(!sec.includes('pass a pasted secret to a tool'), 'the contradicting clause is gone');
+    assert.match(sec, /A documented dev seed is cited by file:line and key, never echoed; an account the run creates at the user's ask is reported once, when made\./);
+});
+
+// ------------------------------------------------------------------ audit 2026-10-10 C25 / C07 / C31
+
+// a3d497f8: Monitor loaded for a single background suite whose exit re-invoked the model anyway (~168k cache read).
+// 3b53e0e8: a foreground `until ... sleep` loop on a sentinel that never matched ran its full 600 s.
+// 68da4b6b: one red spec run took six calls to read - three re-runs and empty greps (~886k cache read).
+// fbfc2de4: a parity question answered 'Yes' from three ledger greps; the user re-asked, and the check found a regression.
+test('C25 / C31 / C07: one background command needs no Monitor, a red run is logged once, a completeness verdict scopes itself', () =>
+{
+    const gates = injected('alfred-quality-gates');
+    assert.match(gates, /One `run_in_background` command whose end is all that matters needs nothing more - its exit re-invokes you; .*a condition inside a run or across several arms the `Monitor` tool when you start it/);
+    assert.match(gates, /never a foreground `until` \/ `while` sleep loop/);
+    assert.match(gates, /A red test or build run is captured once to a scratch log \(`<cmd> > <scratch>\/run\.log 2>&1; tail -n 60 <scratch>\/run\.log`\); every later look greps that log, never a re-run\./);
+    assert.match(gates, /A verdict that something is complete against a reference \(parity with another app, everything a spec lists\) leads with what its evidence covers/);
+});
+
+// ------------------------------------------------------------------ audit 2026-10-10, T4 cross-track (seats)
+
+// e499fc94: 0 docs reads in 18 of 18 seat transcripts under an unconditional START clause; the brief now carries the
+// card's docs anchors. a6a24815: 'lint + typecheck green' over 2 prettier-dirty specs the project's CI fails on.
+test('T4 cross-track: every seat\'s START reads the brief\'s docs anchors first, and every verifier runs the format check', () =>
+{
+    const agents = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).filter((f) => f.endsWith('.md')).map((f) => `stack/agents/${f}`);
+    const start = registry()['seat-start-docs-anchors'];
+    const orienting = agents.filter((f) => read(f).includes('Orient from the project docs at START'));
+    assert.strictEqual(orienting.length, 24);
+    assert.deepStrictEqual(homes(start).map((h) => h.file).sort(), orienting.sort(), 'every orienting seat reads the anchors first');
+    assert.ok(!orienting.some((f) => read(f).includes('Orient from the project docs at START - `<docs-path>')), 'no unconditional clause is left');
+    const format = registry()['verifier-format-check'];
+    assert.deepStrictEqual(homes(format).map((h) => h.file).sort(), agents.filter((f) => f.endsWith('-verifier.md')).sort());
+    for (const f of agents.filter((a) => a.endsWith('-verifier.md')))
+        assert.ok(read(f).split('\n').some((l) => /^1\. /.test(l) && l.includes(format.owner.marker)), `${f}: the format check rides check 1`);
 });

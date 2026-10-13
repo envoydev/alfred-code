@@ -32,6 +32,7 @@ const path = require('node:path');
 const { parseJson } = require('./json-file.js');
 const { BRAND, alwaysOn, marketOf, marketKey } = require('./brand.js');
 const { envOf } = require('../../stack/hooks/hook-prelude.js');
+const { engineServer, engineOfServer } = require('../../stack/mcp/data-root.js');
 
 // 2.2.0: no plugin is pinned to a scope any more - each OPTIONAL item (a browser engine, a desktop server, an
 // LSP, claude-hud) goes where the user chose it (`--scope-of`, `itemScope` below), the required ones follow the
@@ -202,12 +203,26 @@ function scopesOf(rows, spec, fallback = '')
 // enable or block it everywhere, so a second row would change nothing but the version it loads.
 const adminOwned = (rows, spec) => scopesOf(rows, spec).some(isManaged);
 
+// A stack row already at the snapshot's own release needs no `plugin update`: the source step (the protocol's
+// resolve, or refreshStackSource) updated every stack entry before the run read its snapshot, the snapshot IS the
+// newest entry, and every marketplace entry ships at the one release version. Updating it again spawned the CLI
+// once more per row for 'already at the latest version' (audit 2026-10-11, session 5b9ce9c5: six rows, on a machine
+// where the resolve alone ran 240.8 s). `release` is `{ market, version }`; no version read skips nothing.
+function atRelease(rows, spec, scope, release)
+{
+    if (!release || !release.version || !release.market) return false;
+    const [name, market] = String(spec).split('@');
+    if (market !== release.market) return false;
+    return (rows || []).some((r) => r.name === name && r.marketplace === market && r.scope === scope && r.version === release.version);
+}
+
 // Update `spec` at every scope it is installed at - the admin's managed row included, the one call
-// that scope takes. Returns the scopes updated.
-function updateEvery(spec, at, { cli, log = () => {}, quiet = true })
+// that scope takes - except a scope whose stack row is at the snapshot's release already. Returns the scopes.
+function updateEvery(spec, at, { cli, log = () => {}, quiet = true, rows = [], release = null })
 {
     for (const scope of at)
     {
+        if (atRelease(rows, spec, scope, release)) { log(`plugin current [${scope}]: ${spec} (already ${release.version}, the snapshot's release)`); continue; }
         log(`plugin update [${scope}]: ${spec}`);
         cli(['plugin', 'update', spec, '--scope', scope, '-y'], quiet ? { quiet: true } : undefined);
     }
@@ -426,12 +441,12 @@ function switchOff(spec, scope, { cli, log, note })
 // S28). It is updated at its own scope, and switched only to the user's answer - at this run's scope
 // only, since one at another scope is every project's install there. A switch the settings file shows
 // already made is skipped: a no-op enable or disable exits 1 (S28), which would read as a failure.
-function engineInPlace(spec, { scope, scopes = {}, before, rows = [], engines, cli, log, note })
+function engineInPlace(spec, { scope, scopes = {}, before, rows = [], engines, release = null, cli, log, note })
 {
     const at = fieldOf(before, spec, 'version') ? scopeFor(spec, scope, before, scopes) : ((engines.presentScope || {})[spec] || scopeFor(spec, scope, [], scopes));
     // Updated at every scope it is installed at; switched only where this project loads it (`at`, the narrowest).
     const every = scopesOf(rows, spec);
-    updateEvery(spec, every.includes(at) ? every : [at, ...every], { cli, log, quiet: false });
+    updateEvery(spec, every.includes(at) ? every : [at, ...every], { cli, log, quiet: false, rows, release });
     if (!engines.on) return;
     const want = engines.on.includes(spec);
     const verb = want ? 'enable' : 'disable';
@@ -482,7 +497,7 @@ function uninstallEngines({ specs = [], rows = [], blind = false, scope, cli, lo
 // `engineInPlace` way when installed, and is switched off right after its install when the user chose
 // it off (`engines`, above). `rows` (every scope's, parsePluginList everyScope) names each scope an installed
 // plugin is updated at; `pinned` sends a required plugin to a scope of its own (`requiredScopes`).
-function installPlugins({ plugins, scope, scopes = {}, pinned = {}, marketplaces = [], before = [], rows = before, fresh = [], refreshed = new Set(), engines = NO_ENGINES, cli, log = () => {}, note = () => {} })
+function installPlugins({ plugins, scope, scopes = {}, pinned = {}, marketplaces = [], before = [], rows = before, fresh = [], refreshed = new Set(), engines = NO_ENGINES, release = null, cli, log = () => {}, note = () => {} })
 {
     cli(['plugin', 'marketplace', 'add', OFFICIAL_MARKETPLACE], { quiet: true });
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
@@ -493,13 +508,13 @@ function installPlugins({ plugins, scope, scopes = {}, pinned = {}, marketplaces
     for (const spec of plugins)
     {
         if (fresh.includes(spec)) continue;
-        if (enginePresent(spec, before, engines)) { engineInPlace(spec, { scope, scopes, before, rows, engines, cli, log, note }); continue; }
+        if (enginePresent(spec, before, engines)) { engineInPlace(spec, { scope, scopes, before, rows, engines, release, cli, log, note }); continue; }
         const every = scopesOf(rows, spec);
         // The admin's install (a managed row) is updated there and never doubled at another scope.
         if (adminOwned(rows, spec))
         {
             log(`plugin [managed]: ${spec} - installed by your organization's managed settings, updated only`);
-            updateEvery(spec, every, { cli, log });
+            updateEvery(spec, every, { cli, log, rows, release });
             continue;
         }
         // An optional item already installed is refreshed where it lives, never doubled at the run's scope (2.2.0);
@@ -508,7 +523,7 @@ function installPlugins({ plugins, scope, scopes = {}, pinned = {}, marketplaces
         if (offByUser(spec, before))
         {
             log(`plugin [${scopeFor(spec, scope, before, scopes)}]: ${spec} is disabled - kept off, updated only`);
-            updateEvery(spec, every.length ? every : [scopeFor(spec, scope, before, scopes)], { cli });
+            updateEvery(spec, every.length ? every : [scopeFor(spec, scope, before, scopes)], { cli, rows, release });
             continue;
         }
         log(`plugin [${pscope}]: ${spec}`);
@@ -516,7 +531,7 @@ function installPlugins({ plugins, scope, scopes = {}, pinned = {}, marketplaces
         // which is every guided run.
         if (!cli(['plugin', 'install', spec, '--scope', pscope, '-y'], { expect: 'reported' })) { note(`plugin ${spec} failed`); continue; }
         if (fieldOf(before, spec, 'version'))
-            updateEvery(spec, every.length ? every : [scopeFor(spec, scope, before, scopes)], { cli });
+            updateEvery(spec, every.length ? every : [scopeFor(spec, scope, before, scopes)], { cli, rows, release });
         else if (engines.off.includes(spec)) switchOff(spec, pscope, { cli, log, note });
     }
 }
@@ -678,7 +693,7 @@ function restoreStoodDown({ record = [], plugins = [], isOn, cli, log = () => {}
 // `stood-down` record, which the switch back enables (restoreStoodDown). One already off here, or off
 // at user scope, calls nothing. Returns `{ gone, off }`.
 //
-// I8: THE DESKTOP SERVERS the copy route registers go the same way - `desktop` names each one this run
+// I8: THE DESKTOP SERVERS (and mobile-control) the copy route registers go the same way - `desktop` names each one this run
 // registers in .mcp.json (the OS gate already left out one this machine cannot run). Left enabled, its
 // plugin row ran Windows-MCP or MacOS-MCP a second time beside the registration: two UI-automation
 // servers on one desktop and two tool sets. The plugin route installs it back from the MCP picks.
@@ -686,9 +701,10 @@ function engineStandDown({ rows = [], market = BRAND.marketplace, scope, engines
 {
     const gone = [];
     const off = [];
-    // `legacy`: the full copy route's old `playwright-<engine>` ids (the 2.0.0 rename) - whichever are
-    // installed, since no swap runs with the core off; they go the same way as the engines kept here.
-    const names = [...engines.map((e) => `browser-${e}`), ...desktop, ...legacy];
+    // `legacy`: the full copy route's old engine and desktop ids (the renames: playwright-<engine>, browser-<engine>,
+    // windows-desktop, macos-desktop) - whichever are installed, since no swap runs with the core off; they go the same
+    // way as the engines kept here.
+    const names = [...engines.map(engineServer), ...desktop, ...legacy];
     const on = new Set(rowsOn({ rows, names, market, isOn }));
     const ours = names.flatMap((name) => rows.filter((r) => r.name === name && r.marketplace === market));
     const at = standDownScope(scope);
@@ -842,7 +858,8 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], market =
 
 // THE MCP RENAMES (meta/stack-manifest.json `renamed.mcps`): 2.0.0 made serena, context7 and
 // playwright-<engine> navigation, documentation and browser-<engine>, and 2.2.0 made navigation, documentation
-// and memory alfred-navigation, alfred-documentation and alfred-memory. An install made before one
+// and memory alfred-navigation, alfred-documentation and alfred-memory, and 2026-10-13 made browser-<engine>,
+// windows-desktop and macos-desktop <engine>-control, windows-control and macos-control. An install made before one
 // holds the old rows; each one this run's set carries a successor for, at THIS run's scope, is SWAPPED
 // there - the new one installed first, so a failed install leaves the old server running, then the old
 // one removed, so the same server never loads twice after the run. An old row at ANOTHER scope serves
@@ -853,12 +870,16 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], market =
 // line naming its uninstall for when every project there has updated. The new one already there (a
 // re-run after a partial one) is not installed again, and an old id already off here is not disabled
 // again. A browser engine keeps the user's own on/off (the settings file's word at the old row's
-// scope, or this run's enable answer); a locked server comes on, the way update enables a parked one.
+// scope, or this run's enable answer), a desktop server the settings file's word; a locked server comes on, the
+// way update enables a parked one.
 // An old one whose successor this run does not carry (a dropped engine, the MCP copy route's engines)
-// goes at this run's scope only - one at another scope is named with its command. Only this stack's
+// goes at this run's scope only - one at another scope is named with its command - except where `keep` says
+// the row itself is the state to carry: a desktop server on the plugin route is missing from the set when the
+// user parked it (switched off) or this machine's OS gate left it out while a teammate's project-scope row
+// enables it, and either way the successor takes the old row's place with its on/off. Only this stack's
 // marketplace: the official catalog ships a `serena` too. Returns `{ fresh, gone }`: the specs
 // installed here, and the old rows removed.
-function migrateRenamed({ rows = [], renamed = {}, set = [], market = BRAND.marketplace, scope, engines = NO_ENGINES, isOn = () => undefined, cli, log = () => {}, note = () => {} })
+function migrateRenamed({ rows = [], renamed = {}, set = [], market = BRAND.marketplace, scope, engines = NO_ENGINES, keep = () => false, isOn = () => undefined, cli, log = () => {}, note = () => {} })
 {
     const { currentMcp, renamedFrom } = require('./mcp.js');
     const olds = renamedFrom(renamed);
@@ -879,7 +900,7 @@ function migrateRenamed({ rows = [], renamed = {}, set = [], market = BRAND.mark
         const at = row.scope || scope;
         // The admin's old id stays as it is - no run uninstalls or switches a managed row; named once.
         if (isManaged(at)) { log(`  ${leftAt(oldSpec, at)} - renamed ${newName}; ask your admin to move the managed setting to ${newSpec}`); continue; }
-        if (!set.includes(newSpec))
+        if (!set.includes(newSpec) && !(keep(newName) && at === scope))
         {
             if (at !== scope) { log(`  ${oldSpec} is installed at ${at} scope, not this run's - renamed ${newName} and not carried here; kept for the projects that use it: claude plugin uninstall ${oldSpec} --scope ${at}`); continue; }
             if (drop(oldSpec, at)) { log(`  renamed: plugin ${oldSpec} removed [${at}] - renamed ${newSpec}, which this run does not carry`); out.gone.push(row); }
@@ -899,8 +920,9 @@ function migrateRenamed({ rows = [], renamed = {}, set = [], market = BRAND.mark
             }
             here.add(newName);
             out.fresh.push(newSpec);
-            const engine = /^browser-/.test(newName);
-            if (engine && !(engines.on ? engines.on.includes(newSpec) : wasOn)) switchOff(newSpec, scope, { cli, log, note });
+            const engine = Boolean(engineOfServer(newName));
+            const desktop = Object.hasOwn(require('../../stack/mcp/desktop-launch.js').DESKTOP_OS, newName);
+            if (engine ? !(engines.on ? engines.on.includes(newSpec) : wasOn) : desktop && !wasOn) switchOff(newSpec, scope, { cli, log, note });
         }
         if (at !== scope) { standDownRenamed({ oldSpec, newSpec, at, here: standDownScope(scope), wasOn, isOn, cli, log, note }); continue; }
         if (drop(oldSpec, at)) { log(`  renamed: plugin ${oldSpec} -> ${newSpec} [${at}]`); out.gone.push(row); }
@@ -939,20 +961,20 @@ function extraMarketplaces(rows, set)
 // install: switched off after when the user chose it off. Every plugin is updated at EACH scope it is installed
 // at (`rows`, every scope's) - the admin's managed row included, the one call that scope takes - while an
 // enable runs only where this project loads it, never at managed scope.
-function updatePlugins({ plugins, scope, scopes = {}, pinned = {}, marketplaces = [], before = [], rows = before, after, fresh = [], restored = [], refreshed = new Set(), engines = NO_ENGINES, cli, log = () => {}, note = () => {} })
+function updatePlugins({ plugins, scope, scopes = {}, pinned = {}, marketplaces = [], before = [], rows = before, after, fresh = [], restored = [], refreshed = new Set(), engines = NO_ENGINES, release = null, cli, log = () => {}, note = () => {} })
 {
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
     refreshMarketplaces({ plugins, cli, refreshed });
     for (const spec of plugins)
     {
         if (fresh.includes(spec)) continue;
-        if (enginePresent(spec, before, engines)) { engineInPlace(spec, { scope, scopes, before, rows, engines, cli, log, note }); continue; }
+        if (enginePresent(spec, before, engines)) { engineInPlace(spec, { scope, scopes, before, rows, engines, release, cli, log, note }); continue; }
         const pscope = fieldOf(before, spec, 'version') ? scopeFor(spec, scope, before, scopes) : (pinned[bareName(spec)] || scopeFor(spec, scope, before, scopes));
         const every = scopesOf(rows, spec);
         if (adminOwned(rows, spec))
         {
             log(`plugin [managed]: ${spec} - installed by your organization's managed settings, updated only`);
-            updateEvery(spec, every, { cli, log, quiet: false });
+            updateEvery(spec, every, { cli, log, quiet: false, rows, release });
             continue;
         }
         if (!fieldOf(before, spec, 'version'))
@@ -970,7 +992,7 @@ function updatePlugins({ plugins, scope, scopes = {}, pinned = {}, marketplaces 
             // already enabled at <scope> scope' (measured on 2.1.282, project and user scope - M8, R132).
             cli(['plugin', 'enable', spec, '--scope', pscope], { expect: /is already enabled/ });
         }
-        updateEvery(spec, every.includes(pscope) ? every : [pscope, ...every], { cli, log, quiet: false });
+        updateEvery(spec, every.includes(pscope) ? every : [pscope, ...every], { cli, log, quiet: false, rows, release });
     }
 
     const now = typeof after === 'function' ? after() : (after || []);
@@ -1000,11 +1022,77 @@ function parseMarketplaces(json)
     catch { return []; }
 }
 
+// The plugins THIS project's settings switch on that no install record reaches (audit 2026-10-10, session 758ce661: a
+// project's settings enabled a browser engine, the capabilities rule listed it, and the only record was another
+// project's - the session had no browser tools and nothing said why). The settings' word is effectiveOn's, over the
+// three files the CLI writes; a record reaches when parsePluginList keeps it (this project's own, or an account-wide
+// one). `listing` is `claude plugin list --json`'s text. Each entry: the spec, the file that switches it on, and how
+// many other projects hold a record of it.
+function unreachedPlugins({ listing, projectRoot, configDir })
+{
+    const claudeDir = path.join(projectRoot, '.claude');
+    const files = { local: path.join(claudeDir, 'settings.local.json'), project: path.join(claudeDir, 'settings.json'), user: path.join(configDir, 'settings.json') };
+    const enabledIn = (file) =>
+    {
+        try { const e = parseJson(fs.readFileSync(file, 'utf8')).enabledPlugins; return e && typeof e === 'object' && !Array.isArray(e) ? e : {}; }
+        catch { return {}; }
+    };
+    const enabled = Object.fromEntries(Object.entries(files).map(([scope, file]) => [scope, enabledIn(file)]));
+    const isOn = (spec, scope) => (typeof enabled[scope][spec] === 'boolean' ? enabled[scope][spec] : undefined);
+    let rows = [];
+    try { const data = JSON.parse(listing); rows = Array.isArray(data) ? data : (data && Array.isArray(data.installed) ? data.installed : []); }
+    catch { rows = []; }
+    // parsePluginList's reach - a row with no projectPath is account-wide, one with a projectPath is that project's -
+    // with the path compared as given and as the file system resolves it (macOS /var is /private/var).
+    const real = (p) => { try { return fs.realpathSync(p); } catch { return p; } };
+    const here = new Set([projectKey(projectRoot), projectKey(real(projectRoot))]);
+    const ours = (pp) => here.has(projectKey(pp)) || here.has(projectKey(real(pp)));
+    const reached = new Set(rows.filter((r) => r && r.id && (!r.projectPath || ours(String(r.projectPath)))).map((r) => String(r.id)));
+    const out = [];
+    for (const spec of [...new Set(Object.values(enabled).flatMap((e) => Object.keys(e)))].sort())
+    {
+        if (effectiveOn(isOn, spec) !== true || reached.has(spec)) continue;
+        const scope = ['local', 'project', 'user'].find((s) => isOn(spec, s) !== undefined);
+        const elsewhere = rows.filter((r) => r && r.id === spec && r.projectPath && !ours(String(r.projectPath))).length;
+        out.push({ spec, file: files[scope], elsewhere });
+    }
+    return out;
+}
+
 module.exports = {
     OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, USER_OFF_WINS, CORE_DEP_PLUGINS, HUD_SPEC, itemScope, scopedItem, moveScoped,
-    SCOPES, isManaged, scopeRank, overrideScope, scopesOf, adminOwned, requiredScopes, leftAt, effectiveOn, withEffective,
+    SCOPES, isManaged, scopeRank, overrideScope, scopesOf, adminOwned, atRelease, requiredScopes, leftAt, effectiveOn, withEffective,
     pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateRenamed,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, retirementDue, updatePlugins, extraMarketplaces, uninstallEngines,
-    copyRouteStandDown, restoreStoodDown, standDownScope, engineStandDown, rowsOn, moveLocalRows, hudStatusLineMissing,
+    copyRouteStandDown, restoreStoodDown, standDownScope, engineStandDown, rowsOn, moveLocalRows, hudStatusLineMissing, unreachedPlugins,
 };
+
+// `node scripts/install/plugins.js unreached [projectRoot] [--listing <file>]` - /alfred-code:status's read: one
+// `unreached: <spec>\t<settings file>\t<why>` line per plugin the settings switch on that loads nothing here, else
+// `unreached: none`. Without --listing it asks `claude plugin list --json`; a listing it cannot read says so.
+if (require.main === module)
+{
+    require('../../stack/hooks/hook-prelude.js').blockingStdio();
+    const argv = process.argv.slice(2);
+    const at = argv.indexOf('--listing');
+    const listingFile = at >= 0 ? argv[at + 1] : null;
+    const [cmd, root] = at >= 0 ? [...argv.slice(0, at), ...argv.slice(at + 2)] : argv;
+    if (cmd !== 'unreached') { console.error('usage: plugins.js unreached [projectRoot] [--listing <file>]'); process.exit(2); }
+    const projectRoot = path.resolve(root || '.');
+    let listing = '';
+    try { listing = listingFile ? fs.readFileSync(listingFile, 'utf8') : require('./runtime.js').capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot }); }
+    catch { listing = ''; }
+    let readable = false;
+    try { const data = JSON.parse(listing); readable = Array.isArray(data) || Boolean(data && Array.isArray(data.installed)); }
+    catch { readable = false; }
+    if (!readable) { console.log('unreached: unknown - the plugin listing could not be read'); process.exit(0); }
+    const { accountDir } = require('./stamp.js');
+    const found = unreachedPlugins({ listing, projectRoot, configDir: accountDir() });
+    for (const u of found)
+    {
+        const file = path.relative(projectRoot, u.file).startsWith('..') ? u.file : path.relative(projectRoot, u.file).split(path.sep).join('/');
+        console.log(`unreached: ${u.spec}\t${file}\t${u.elsewhere ? `installed for ${u.elsewhere} other project(s) only` : 'no install record'} - switched on, loads nothing here; /alfred-code:configure adds it back, or: claude plugin install ${u.spec} --scope project`);
+    }
+    if (!found.length) console.log('unreached: none');
+}

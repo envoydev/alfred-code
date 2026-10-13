@@ -1,5 +1,5 @@
 ---
-name: capture-project-capabilities
+name: capture-project-awareness
 description: "Use when asked to capture the project capabilities or run book - how to build, start and log in to the app. Manual, /-only. Not for the tools inventory."
 disable-model-invocation: true
 ---
@@ -14,7 +14,7 @@ guessing. Two artifacts come out:
 
 1. `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` - the run book, a docs domain with its own
    `watch.json`. `references/doc-shape.md` is its shape and write protocol.
-2. `.claude/rules/alfred-project-run-book.md` - the generated pathless pointer rule, from
+2. `.claude/rules/alfred-project-awareness.md` - the generated pathless pointer rule, from
    `references/run-book-rule.template.md`.
 
 The repo answers first; the user fills only what the repo cannot show. There is no judgment to spend
@@ -23,13 +23,13 @@ beyond that, so the skill carries no model pin: the session's own model runs it.
 ## When to use
 
 - The deliberate run-book capture: how to build, start, reach and log in to the app, the flows and edge cases a manual check exercises, the debug entry points - so an agent can run the app and hand-verify a change. Re-run to refresh.
-- It reads the repo first, asks only for the gaps, and writes `project-capabilities/PROJECT-CAPABILITIES.md` under the docs root plus the generated pointer rule `alfred-project-run-book.md`; a credential is recorded by where it lives, never by value.
-- Not the installed-tools inventory (the agent-capabilities capture), the architecture map or the code style.
+- It reads the repo first, asks only for the gaps, and writes `project-capabilities/PROJECT-CAPABILITIES.md` under the docs root plus the generated pointer rule `alfred-project-awareness.md`; a credential is recorded by where it lives, never by value.
+- Not the installed-tools inventory (the agent-awareness capture), the architecture map or the code style.
 
 ## Credentials - the hard rule
 
 Never ask for a credential's VALUE, and the doc never holds one - not in an ask, not in the doc, not in
-the report. The doc records the login steps and WHERE it lives - an environment variable, a key in a gitignored local file, a vault item - and the user puts the value there by hand. A value the user pastes anyway is never written anywhere: redact it as `<redacted>`, record only where it should live, and follow the security baseline's credential rule (the rotation ask). A seat that needs the value to log in checks the file for presence (the secret guard's `--presence`) and goes through that guard's one ask before it types it.
+the report. The doc records the login steps and WHERE it lives - an environment variable, a key in a gitignored local file (the project's sensitive data, `<data root>/.sensitive-data`, first), a vault item - and the user puts the value there by hand. A value the user pastes anyway is never written anywhere: redact it as `<redacted>`, record only where it should live, and follow the security baseline's credential rule (the rotation ask). A seat that needs the value to log in checks the file for presence (the secret guard's `--presence`) and goes through that guard's one ask before it types it; a command that needs it runs through the guard's `--with-sensitive`.
 
 ## Execution modes
 
@@ -95,7 +95,7 @@ How is the app started and reached for a manual check? The repo shows: <start co
 
 ```ask
 How does an agent log in? The repo shows: <a login route, an auth config - or no login>. Never type a password here - via Other, type the login steps, the account's role and WHERE its credentials already live (an env var, a file and key, a vault item).
-- 'A test account - create the credentials template for me to fill (Recommended)' - an empty `credentials.local.env`, gitignored; the doc points at it
+- 'A test account - add its keys to the project's sensitive data for me to fill (Recommended)' - its keys, empty, in `<data root>/.sensitive-data`, gitignored; the doc points at them
 - 'No login - the app is open' - the section says so
 - 'Unknown for now' - the section says unknown; the next capture asks again
 ```
@@ -114,28 +114,32 @@ What must be up or known before a run, and where does debugging start? The repo 
 
 ### 3. WRITE - the run book, to references/doc-shape.md
 
-Read `references/doc-shape.md` now: the skeleton, the `covers:` and `watch.json` rules, the credentials
-template and how a refresh lands on a branch. Write under `<docs-path>/project-capabilities/` only; the
+Read `references/doc-shape.md` now: the skeleton, the `covers:` and `watch.json` rules, the keys for the
+sensitive data and how a refresh lands on a branch. Write under `<docs-path>/project-capabilities/` only; the
 doc opens with the `Captured: <branch>@<short-sha>, <date>` stamp (`+dirty` on an uncommitted tree).
 Every repo fact cites its file; every gap nobody filled says `unknown` and names this capture.
 
-When the login answer asked for the template, write it and prove it is ignored before anything else
-reads the folder: `git check-ignore -q <docs-path>/project-capabilities/credentials.local.env` exits 0.
-Any other exit is a file git would commit - delete the file you just wrote, report it, and point the doc
-at an environment variable instead. Outside git there is nothing to commit it to; say so.
+When the login answer asked for the keys, they go in the project's sensitive data, `<data root>/.sensitive-data`
+(`.alfred` unless `ALFRED_CODE_DATA_PATH` names another root). Prove it is ignored BEFORE writing:
+`git check-ignore -q <data root>/.sensitive-data` exits 0 - the root's own `.gitignore` covers it. Any other exit
+writes nothing: the doc points at an environment variable and the report names `/alfred-code:update`, which writes
+that `.gitignore`. Outside git there is nothing to commit it to; say so. Absent, Write it with the keys empty
+(`references/doc-shape.md`). Present, it is the user's - never read, rewritten or appended to (the secret guard
+refuses each); the session's `Sensitive data:` line lists its keys, and a key the doc needs that it lacks is a
+`KEY=` line the report hands the user to add.
 
 Then three checks, all before the report:
 
 ```bash
-grep -nE '(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z0-9_]*[:=][[:space:]]*[^[:space:]<]' "<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md" "<docs-path>/project-capabilities/credentials.local.env" | sed -E 's/((PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z0-9_]*)[:=].*/\1/'
+grep -HnE '(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z0-9_]*[:=][[:space:]]*[^[:space:]<]' "<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md" | sed -E 's/((PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z0-9_]*)[:=].*/\1/'
 node .claude/hooks/docs.js lint
 node .claude/hooks/docs.js watch <one file DISCOVER cited>
 ```
 
-Name the template only when this run just wrote it - one the user already filled holds the values by design and is never read. The grep prints nothing - a hit (file, line and key, the `sed` cuts the value off the screen; an env line, a YAML `KEY: value` copied from a compose file and a lower-case `password:` key all count, a `<placeholder>` does not) is a value in the doc or the template: replace it with where it lives,
+The sensitive data is never in the grep - it holds the values by design. The grep prints nothing - a hit (file, line and key, the `sed` cuts the value off the screen; an env line, a YAML `KEY: value` copied from a compose file and a lower-case `password:` key all count, a `<placeholder>` does not) is a value in the doc: replace it with where it lives,
 and treat it as a pasted value (above). A `PROBLEM` line from the lint is fixed before the report. The watch names the sections that file feeds - none named means a `watch.json` glob is wrong, fixed before the report.
 
-### 4. RULE - write .claude/rules/alfred-project-run-book.md
+### 4. RULE - write .claude/rules/alfred-project-awareness.md
 
 Generated from `references/run-book-rule.template.md` with `__DOC_PATH__` replaced by the LITERAL docs root (`alfred-docs-root.md` names it; a rule is static text and cannot resolve the setting at load). A REPLACE, never a delete: READ the existing rule first, then Write the fresh one over it. Verify: `grep -c __DOC_PATH__` prints 0 and `wc -c` stays at or under 300 - the rule loads in every session and every subagent. It stays out of the installer's catalog, so an update never overwrites it.
 
@@ -148,10 +152,10 @@ Doc:          <created | refreshed> - <docs-path>/project-capabilities/PROJECT-C
 From repo:    <the files DISCOVER read the facts from>
 Asked:        <each question asked with the answer's label, or `none - the repo settled every gap`>
 Unknown:      <the sections or lines still unknown, or `none`>
-Credentials:  <where each account's credentials live, by name only | template at <path>, ignored: yes | no login>
+Credentials:  <where each account's credentials live, by name only | keys in <data root>/.sensitive-data, ignored: yes | no login>
 Value check:  <no hit | <n> hit(s) replaced with where the value lives>
 Watch:        <the cited file> -> <the sections it names>
-Rule:         <created | regenerated> - .claude/rules/alfred-project-run-book.md, <n> bytes
+Rule:         <created | regenerated> - .claude/rules/alfred-project-awareness.md, <n> bytes
 ```
 
 No re-paste of the doc - point to the file.

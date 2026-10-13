@@ -96,7 +96,7 @@ function alwaysOnSurface({
     rulesDir = path.join(STACK, 'rules'),
     agentsDir = path.join(STACK, 'agents'),
     skillsDir = path.join(STACK, 'skills'),
-    capabilitiesDir = path.join(skillsDir, 'capture-agent-capabilities'),
+    capabilitiesDir = path.join(skillsDir, 'capture-agent-awareness'),
 } = {})
 {
     const read = (file) => fs.readFileSync(file, 'utf8');
@@ -109,7 +109,14 @@ function alwaysOnSurface({
         rules += injectedRuleText(text).length;
     }
     let agents = 0;
-    for (const f of fs.readdirSync(agentsDir)) if (f.endsWith('.md')) agents += frontmatterValue(frontmatterOf(read(path.join(agentsDir, f))), 'description').length;
+    let agentTools = 0;
+    for (const f of fs.readdirSync(agentsDir))
+    {
+        if (!f.endsWith('.md')) continue;
+        const fm = frontmatterOf(read(path.join(agentsDir, f)));
+        agents += frontmatterValue(fm, 'description').length;
+        if (fm.trim()) agentTools += listedTools(fm).length;   // a file with no frontmatter is no seat
+    }
     let skills = 0;
     let manualOnly = 0;
     for (const e of fs.readdirSync(skillsDir, { withFileTypes: true }))
@@ -123,10 +130,27 @@ function alwaysOnSurface({
     const readSoft = (file) => { try { return read(file); } catch { return ''; } };
     const fixed = capabilitiesFixedText(readSoft(path.join(capabilitiesDir, 'SKILL.md')), readSoft(path.join(capabilitiesDir, 'references', 'generated-rule-template.md')));
     const generated = fixed.policy.length + fixed.locked.length;
-    return { rules, agents, skills, manualOnly, generated, total: rules + agents + skills + generated };
+    return { rules, agents, agentTools, skills, manualOnly, generated, total: rules + agents + agentTools + skills + generated };
+}
+
+// The dispatcher lists each seat as `- <plugin>:<name>: <description> (Tools: <tools>)` - the `tools:` value
+// verbatim (a YAML list joined with ', '), `*` when the seat names none. That suffix is sent beside every
+// description on every message (audit 2026-10-10, session 8f44a003: 33,635 of the listing's 45,027 chars), so
+// it is part of `total` - the user's 2026-10-13 ruling ('Count them, cap 80k'), taken with the navigation
+// server's memory tools leaving every seat's grant.
+function listedTools(frontmatter)
+{
+    let tools = frontmatterValue(frontmatter, 'tools');
+    if (!tools)
+    {
+        const m = /^tools:[ \t]*\r?\n((?:[ \t]+-[ \t]+.*(?:\r?\n|$))+)/m.exec(frontmatter);
+        tools = m ? m[1].split(/\r?\n/).map((l) => l.replace(/^\s*-\s*/, '').trim().replace(/^(["'])(.*)\1$/, '$2')).filter(Boolean).join(', ') : '*';
+    }
+    return ` (Tools: ${tools})`;
 }
 
 const alwaysOnParts = (s) => `pathless rules ${s.rules} (as injected), agent descriptions ${s.agents}, skill descriptions ${s.skills}`
-    + ` (${s.manualOnly} manual-only not in context), generated capabilities fixed text ${s.generated}`;
+    + ` (${s.manualOnly} manual-only not in context), generated capabilities fixed text ${s.generated}`
+    + `, agent tools lists ${s.agentTools} (listed beside each description)`;
 
-module.exports = { frontmatterOf, frontmatterValue, injectedRuleText, capabilitiesFixedText, alwaysOnSurface, alwaysOnParts };
+module.exports = { frontmatterOf, frontmatterValue, injectedRuleText, capabilitiesFixedText, alwaysOnSurface, alwaysOnParts, listedTools };

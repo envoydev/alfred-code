@@ -28,7 +28,7 @@ const manifestRows = () => JSON.parse(read('meta/stack-manifest.json')).hooks;
 
 test('I1: CLAUDE.md names the Monitor route and the widened dispatcher matcher', () => {
   const text = claude();
-  assert.match(text, /The eight guards with a\s+`Bash\|PowerShell\|Monitor` row are wired as ONE hook/);
+  assert.match(text, /The nine guards with a\s+`Bash\|PowerShell\|Monitor` row are wired as ONE hook/);
   assert.doesNotMatch(text, /The eight guards with a\s+`Bash\|PowerShell` row/);
   for (const row of manifestRows().filter((r) => !r.matcher.startsWith('@') && /(^|\|)Bash(\||$)/.test(r.matcher)))
     assert.strictEqual(row.matcher, 'Bash|PowerShell|Monitor', `${row.file}: every shell row names Monitor`);
@@ -44,7 +44,7 @@ test('I2: CLAUDE.md states the comparison verbs and the probed git redactor', ()
 test('I3: the ask wiring is no longer described as injection-only, never denying', () => {
   const text = claude();
   assert.doesNotMatch(text, /INJECTION-ONLY, never denying: PreToolUse `AskUserQuestion`/);
-  assert.match(text, /the one DENY is the ask's own house voice/);
+  assert.match(text, /the one DENY, once per ask text, is the ask's own SHAPE - its house voice/);
   const note = manifestRows().find((r) => r.file === 'guard-stop-contract.js' && r.matcher === 'AskUserQuestion').note;
   assert.doesNotMatch(note, /never denies|INJECT context into the ask being built/);
   assert.match(note, /DENY once per ask text/);
@@ -61,9 +61,9 @@ test('I10: the desktop gate is one wired hook, counted everywhere the hooks are 
   const rows = manifestRows().filter((r) => r.file === 'guard-desktop-exec.js');
   assert.strictEqual(rows.length, 1);
   const re = new RegExp(rows[0].matcher);
-  for (const name of ['mcp__plugin_windows-desktop_windows-desktop__App', `mcp__${'windows-desktop'}__App`, 'mcp__plugin_macos-desktop_macos-desktop__Shell', `mcp__${'macos-desktop'}__Shell`])
+  for (const name of ['mcp__plugin_windows-control_windows-control__App', `mcp__${'windows-control'}__App`, 'mcp__plugin_macos-control_macos-control__Shell', `mcp__${'macos-control'}__Shell`])
     assert.ok(re.test(name), name);
-  for (const name of ['mcp__plugin_windows-desktop_windows-desktop__Click', 'mcp__plugin_macos-desktop_macos-desktop__App', `mcp__${'windows-desktop'}__AppX`])
+  for (const name of ['mcp__plugin_windows-control_windows-control__Click', 'mcp__plugin_macos-control_macos-control__App', `mcp__${'windows-control'}__AppX`])
     assert.ok(!re.test(name), `${name} is not matched`);
   assert.match(claude(), /`stack\/hooks\/` - eighteen hooks/);
   assert.match(claude(), /all eighteen, generated from the manifest's `hooks\[\]`/);

@@ -119,11 +119,11 @@ for a carried seat).
 |---|---|---|
 | alfred-git | always-on | stack |
 | typescript-conventions | paths: `**/*.ts`, `**/*.tsx` | stack |
-| alfred-project-architecture | always-on | GENERATED |
+| alfred-architecture | always-on | GENERATED |
 | project-code-style | paths: `**/*.js` | GENERATED |
 
 `scope` comes from the `paths:` frontmatter (absent = always-on). `origin`: `GENERATED` for the
-capture-written rules (`alfred-project-*.md`, `project-code-style.md`), `stack` otherwise,
+capture-written rules (`alfred-architecture.md`, `alfred-related-context.md`, `alfred-agent-awareness.md`, `alfred-project-awareness.md`, `project-code-style.md`), `stack` otherwise,
 `user-authored` when clearly neither.
 
 Then ONE extra line under that table - the always-on FLOOR this install pays, because nothing
@@ -198,7 +198,7 @@ On the copy route the set is joined against the scope file's `hooks` block:
 | instrument-tool-usage.js | yes (env-gated, off) | .* |
 
 **MCPs** - the ROUTE decides the set: with a `<server>@<key>` MCP entry in the plugins listing the
-installed set is those entry NAMES folded back onto the catalog (`browser-<engine>` ->
+installed set is those entry NAMES folded back onto the catalog (`<engine>-control` ->
 `browser`, everything else is already its catalog name); without any such entry (the full copy
 route), the server names in `<root>/.mcp.json`, or at `user` scope the account's registrations.
 The `health` column is ONE `claude mcp list` call, which checks every server it lists: copy its
@@ -213,12 +213,12 @@ listed`. No CLI: the banner + `claude CLI unavailable - skipped` for the column.
 | alfred-navigation | stdio | node .../serena-launch.js ... --project-from-cwd | ✔ Connected |
 | alfred-memory | stdio | node .../memory-launch.js | ✔ Connected |
 | alfred-documentation | http | https://mcp.context7.com/mcp | ✔ Connected |
-| browser-firefox | stdio | node .../browser-launch.js --package @playwright/mcp@<pin> --browser firefox | ✘ Failed to connect |
+| firefox-control | stdio | node .../browser-launch.js --package @playwright/mcp@<pin> --browser firefox | ✘ Failed to connect |
 
 `target` is the command or URL, middle-truncated to keep the row one line; on the plugin route it
 is the entry's own declaration. The browser server has one server per installed browser
-(`browser-<engine>`), and any number can be on together; which are on is the user's `/plugin`
-toggle (the stamp's `browser-enabled:` is their last answer, not the live state). Never print
+(`<engine>-control`), and any number can be on together; which are on is the user's `/plugin`
+toggle (the stamp's `control-enabled:` is their last answer, not the live state). Never print
 env values embedded in a registration - show `${VAR}` literally as written.
 
 `alfred-memory` is locked like `alfred-navigation` and `alfred-documentation` (every install carries it). Add ONE line under
@@ -248,7 +248,7 @@ machine's Node)`.
 | plugin | version | scope | enabled | health |
 |---|---|---|---|---|
 | alfred-code@<key> | 2.0.0 | project | yes | ok |
-| browser-webkit@<key> | 2.0.0 | project | yes | plugin-not-found |
+| webkit-control@<key> | 2.0.0 | project | yes | plugin-not-found |
 
 `enabled` is the row's own `enabled` field. A disabled row is REPORTED, never dropped: a stack
 plugin that is installed but parked is invisible to every inventory that filters the listing down
@@ -258,6 +258,13 @@ reported nothing to do. `health` is `ok` when the row's `errors` list is empty o
 It is the only place a plugin that cannot load says so: a row the catalog no longer lists reads
 `enabled: true` in settings, loads nothing, and shows the failure nowhere but this field
 (`docs/plugin-cli-evidence.md` S13, S25).
+
+A row whose `projectPath` names another project is that project's install, not this one's - leave it out. Then
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/install/plugins.js" unreached .` names what the settings switch on and no
+record reaches here: each `unreached: <spec>\t<file>\t<why>` line is one more row - version and scope `-`, enabled
+`yes (<file>)`, health `not installed for this project`, the line's command in the close. `unreached: none` adds
+nothing; `unreached: unknown` adds the line under the table (measured: a project's settings enabled a browser
+engine whose only record was another project's, and the session searched for its tools three times).
 
 **Environment** - the install's knobs, one row each, from the STACK VIEW (`settings.local.json` over
 `settings.json` key by key, at every scope):
@@ -290,7 +297,7 @@ Presence, never the value - run this and paste its lines as-is:
 `node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
 (the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is
 not a variable). The guard ships in the running core plugin, so it is always there when this
-command is. Output is `KEY=set (N chars)` or `KEY=absent`; any other key the table marks secret is
+command is. Output is `KEY=set (N chars)`, `KEY=empty (present, no value)` or `KEY=absent`; any other key the table marks secret is
 read the same way, one `--presence <file> <KEY>` call per file - never by reading the file another
 way.
 
@@ -328,7 +335,7 @@ It prints ONE `turn-check: advise - ...` line or nothing. A printed line goes un
 as-is; nothing printed means no row. The switch is the user's - never set it from here.
 
 **Generated docs & data** - the capture output under the docs root from the general table, plus
-The navigation server's local memory:
+the seat handoff notes still in the memory database (`node .claude/hooks/memory.js handoff` - its first line is the count, and an older release's navigation-server notes are in it too; exit 1 prints no row):
 
 | artifact | present | captured | file updated |
 |---|---|---|---|
@@ -340,7 +347,7 @@ The navigation server's local memory:
 | related-projects/RELATED-PROJECTS.md | no | - | - |
 | test-coverage/COVERAGE.md | yes | (bar 85%) | 2026-07-25 |
 | loops/ | yes | 3 prompt files | 2026-07-24 |
-| <data root>/serena/memories/ | yes | 4 notes | 2026-07-25 |
+| handoff notes (alfred-memory) | yes | 4 notes | - |
 
 `captured` is the doc's own `Captured:` stamp line read from the file (the related-projects doc
 stamps per entry - show the newest); the two `quality/` docs carry no `Captured:` stamp at all -

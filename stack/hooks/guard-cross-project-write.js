@@ -88,6 +88,10 @@ if (cursorOff) process.exit(0);
           hook: path.basename(__filename),
           event: payload.hook_event_name || payload.tool_name || '',
           tool: payload.tool_name || '',
+          // WHO was blocked and on which call: a seat's block is its own row (audit 2026-10-10 C07, 0498718d - seat
+          // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
+          agent: payload.agent_id || null,
+          tool_use_id: payload.tool_use_id || null,
           reason: last.split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
@@ -245,12 +249,48 @@ const receiptRoots = (() => {
 // --space install's memory writes were blocked (reproduced).
 const spacePrefix = HOME ? real(HOME) + path.sep + '.claude-' : null;
 const spaceOk = spacePrefix && !fold(ROOT).startsWith(fold(spacePrefix));
+// A LINKED WORKTREE of this project's own repository is the project (audit 2026-10-11 SD16, session 42951e5b: two Edits
+// in a `git worktree add` sibling the session had just made were blocked as another project, and the ask that followed
+// ended in the worktree's removal - 569.1k). Judged from the files git itself writes, no git call: the nearest folder
+// holding `.git` above the target, its `.git` FILE's `gitdir:` line, and that gitdir's `commondir` - the common git dir
+// must be this ROOT's own.
+function commonGitDir(dir) {
+  try {
+    const dotGit = path.join(dir, '.git');
+    const st = fs.statSync(dotGit);
+    if (st.isDirectory()) return fold(real(dotGit));
+    const m = /^gitdir:\s*(.+?)\s*$/m.exec(fs.readFileSync(dotGit, 'utf8'));
+    if (!m) return null;
+    const gitdir = path.resolve(dir, nativePath(m[1]));
+    let common = gitdir;
+    try { common = path.resolve(gitdir, nativePath(fs.readFileSync(path.join(gitdir, 'commondir'), 'utf8').trim())); } catch { /* a gitdir with no commondir is its own */ }
+    return fold(real(common));
+  } catch { return null; }
+}
+function gitTopOf(p) {
+  let dir = p;
+  for (let i = 0; i < 64; i++) {
+    if (holdsGit(dir)) return dir;
+    const up = path.dirname(dir);
+    if (up === dir) return null;
+    dir = up;
+  }
+  return null;
+}
+let rootCommon;
+function sameRepoWorktree(t) {
+  if (rootCommon === undefined) { const top = gitTopOf(ROOT); rootCommon = top ? commonGitDir(top) : null; }
+  if (!rootCommon) return false;
+  const top = gitTopOf(t);
+  return !!top && commonGitDir(top) === rootCommon;
+}
 function allowed(target) {
   const t = realish(target);
   if (inside(t, ROOT)) return true;
   if (effectiveAllow.some((d) => inside(t, d))) return true;
   if (receiptRoots.some((d) => inside(t, d))) return true; // the user's 'allow' for this session
   if (spaceOk && fold(t).startsWith(fold(spacePrefix))) return true;
+  if (sameRepoWorktree(t)) return true;
 
   return false;
 }
@@ -347,71 +387,6 @@ function block(what, shown, abs = shown) {
   process.exit(2);
 }
 
-// --- fork-liveness PROBE - log-only, denies nothing ------------------------------------------
-// A backgrounded turn continues under a NEW session id whose transcript opens as a copy of the
-// parent's rows, and the user keeps talking to the OTHER copy. Measured once: the background copy
-// ran five test cycles, killed the user's Word five times and edited the same method as the
-// foreground for 15 minutes after the foreground's user had said stop - 10.44M cache-read, one
-// edit collision. This branch appends a `mode: probe` row to the hook-blocks ledger whenever a
-// mutating call runs while another session of the SAME LINEAGE - an ancestor whose id this
-// transcript carries, or a sibling whose transcript carries one of those ids - touched its own
-// transcript within FORK_LIVE_MS. A copied row carries the id twice - `sessionId` rewritten to the
-// fork's own, `session_id` keeping the original (measured: 387 of 1,093 rows in one fork carried a
-// parent's id, none by the camel-case key) - so both keys are read. The rows are read for a week
-// before any denial is built on them: a backgrounded turn has no user to end a denial in an ask,
-// and two deliberate sessions from one fork point would be held. Head-only reads keep it at a few
-// ms per call; the head is 1MB because a fork's first rows can be the parent's whole compaction
-// summary (measured: the first foreign id sat past 64KB in one fork).
-const FORK_LIVE_MS = 60 * 1000;
-const FORK_HEAD_BYTES = 1024 * 1024;
-const SESSION_ID_RE = /"session_?[iI]d":"([0-9a-f]{8}-[0-9a-f-]{27})"/g;
-const PROBE_SHELL = /\b(?:taskkill|pkill|killall|kill)\b|\b(?:dotnet|npm|pnpm|yarn|cargo|mvn|gradle|make|pytest|go)\s+(?:test|build|run)\b|\bgit\s+(?:-c\s+\S+\s+)*(?:checkout|restore|reset|clean|stash|commit|push|merge|rebase|cherry-pick|revert)\b|(?:^|[\s;&|(])(?:rm|mv|cp|mkdir|rmdir|touch|chmod|tee)\b|\bsed\s+(?:-[a-zA-Z]*i|--in-place)/;
-function forkProbe(what, shown) {
-  try {
-    const tp = String(payload.transcript_path || '');
-    const own = String(payload.session_id || '');
-    if (!tp || !own || !fs.existsSync(tp)) return;
-    const dir = path.dirname(tp);
-    const head = (p) => {
-      const fd = fs.openSync(p, 'r');
-      const b = Buffer.alloc(FORK_HEAD_BYTES);
-      const n = fs.readSync(fd, b, 0, b.length, 0);
-      fs.closeSync(fd);
-      return b.toString('utf8', 0, n);
-    };
-    const idsIn = (text) => { const s = new Set(); for (const m of text.matchAll(SESSION_ID_RE)) s.add(m[1]); return s; };
-    const now = Date.now();
-    const ancestors = [...idsIn(head(tp))].filter((id) => id !== own);
-    if (!ancestors.length) return;   // not a fork - nothing shares this conversation
-    const lineage = new Set([own, ...ancestors]);
-    const live = [];
-    for (const f of fs.readdirSync(dir)) {
-      if (!f.endsWith('.jsonl') || f === path.basename(tp)) continue;
-      const p = path.join(dir, f);
-      let age;
-      try { age = now - fs.statSync(p).mtimeMs; } catch { continue; }
-      if (age > FORK_LIVE_MS) continue;
-      const id = f.slice(0, -6);
-      const related = ancestors.includes(id) ? 'ancestor'
-        : [...idsIn(head(p))].some((x) => lineage.has(x)) ? 'sibling' : null;
-      if (related) live.push({ id, relation: related, ageMs: Math.round(age) });
-    }
-    if (!live.length) return;
-    const dirOut = path.resolve(root, docsRootEnv(), 'hook-blocks');
-    fs.mkdirSync(dirOut, { recursive: true });
-    fs.appendFileSync(path.join(dirOut, own + '.jsonl'), JSON.stringify({
-      ts: new Date().toISOString(),
-      hook: path.basename(__filename),
-      event: payload.hook_event_name || payload.tool_name || '',
-      tool: payload.tool_name || '',
-      mode: 'probe',
-      kind: 'fork-liveness',
-      reason: 'probe: ' + what + ' while a live ' + live[0].relation + ' session of this conversation (' + live[0].id + ', ' + live[0].ageMs + 'ms ago) - logged, not denied',
-      detail: { what: String(shown).slice(0, 200), live },
-    }) + '\n');
-  } catch { /* a probe never changes a verdict and never throws */ }
-}
-
 const input = payload.tool_input || {};
 const tool = payload.tool_name;
 
@@ -419,7 +394,6 @@ if (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit' || tool === 'Not
   const target = input.file_path || input.notebook_path;
   if (!target) process.exit(0);
   const abs = resolveTarget(String(target));
-  forkProbe(tool + ' of a file', target);
   if (!allowed(abs)) block(`${tool} of a file`, String(target), abs);
   process.exit(0);
 }
@@ -438,7 +412,6 @@ const rawCommand = String(input.command || '');
 const scan = shell.scanShell(rawCommand, { cwd: SHELL_CWD, aliases: true });
 const command = scan.command;
 if (!command.trim()) process.exit(0);
-if (PROBE_SHELL.test(command)) forkProbe('a shell mutation', command.slice(0, 160));
 
 const { isVar } = shell;
 // One normaliser per run: shell.anchorAt caches its compiled anchor by this function, so a fresh closure per write recompiled it each time.
@@ -448,7 +421,7 @@ const anchorAt = (index) => shell.anchorAt(scan.cds, index, SHELL_CWD, anchorNor
 // is resolved at all - an explicitly out-of-tree spelling (absolute, ~-rooted, reaching up with
 // `..`), or any relative path once a `cd` has moved the anchor. A bare relative path with the
 // anchor still at the project root is this project's own file - the case that must never block.
-function judge(rawIn, index, what) {
+function judge(rawIn, index, what, verb) {
   const raw = scan.expandVars(rawIn);
   if (isVar(raw)) return; // an unexpanded variable - cannot judge, don't guess
   const base = anchorAt(index);
@@ -463,6 +436,19 @@ function judge(rawIn, index, what) {
   const expanded = nativePath(expandTilde(raw));
   if (!path.isAbsolute(expanded) && base === null) return; // relative from an unknown anchor
   const abs = resolveTarget(expanded, base);
+  // A removal unlinks a symbolic link itself, never what it points at (audit 2026-10-10 C31, session 0d070bcc: `rm -f`
+  // of the session's own scratch link to a sibling repo was blocked as a write into that repo, and the denial offered to
+  // open the sibling). The link is judged where it LIVES - its folder resolved, its own name kept - unless a trailing
+  // slash makes the shell follow it. Seeded into realish's cache, so the verdict and a denial's names read the same path.
+  if (verb === 'rm' && !/[\\/]\.?$/.test(raw)) {
+    let link = false;
+    try { link = fs.lstatSync(abs).isSymbolicLink(); } catch { link = false; }
+    if (link) {
+      const at = path.join(realish(path.dirname(abs)), path.basename(abs));
+      realishSeen.set(abs, at);
+      realishSeen.set(at, at);
+    }
+  }
   // A target whose own leading segment is a GLOB names no project, and the denial then built its
   // remedy out of the fabricated name - 'finish YOUR side against the current behaviour of `*`'.
   // Nothing can be handed off to a repo that cannot be named, so this passes rather than blocks. Asked only of a write
@@ -477,7 +463,7 @@ function judge(rawIn, index, what) {
 // that resolves inside the project - the overwhelming majority, relative paths included - never
 // reaches the check, so the false-positive surface is limited to commands genuinely writing out
 // of tree. The interpreter-script writes come last, as a literal path only.
-for (const t of scan.targets) judge(t.raw, t.index, t.what);
+for (const t of scan.targets) judge(t.raw, t.index, t.what, t.verb);
 
 // A bare `git <mutating>` after a `cd` out of tree writes THAT checkout - the same event as
 // `git -C <dir>`, spelled the way a session actually spells it (reproduced: passed).
@@ -507,5 +493,29 @@ for (const u of unread) {
     `The receipt is honoured for this session only, under 8h.`,
   );
   process.exit(2);
+}
+
+// LOG-ONLY: an interpreter script writing a source file of THIS project - the shell route around Edit / Write, which the
+// edit hooks never see (audit 2026-10-10: 0498718d's 14 seats made 116 python heredoc writes against 5 Edit / Write calls;
+// 349e4825 12 against 2). One `mode: probe` row per command, the rate a notice would be decided on; never a verdict.
+const SOURCE_EXT = /\.(?:cs|csx|fs|vb|ts|tsx|mts|cts|js|jsx|mjs|cjs|py|rb|go|rs|java|kt|kts|swift|php|vue|svelte|html?|s?css|less|xaml|razor|cshtml|sql|sh|ps1|json|ya?ml|xml|csproj|props|targets)$/i;
+const interp = scan.targets.filter((t) => t.verb === 'interpreter');
+const own = interp.filter((t) => t.unknown || (SOURCE_EXT.test(String(t.raw)) && (() => {
+  const raw = scan.expandVars(String(t.raw));
+  if (isVar(raw)) return false;
+  const base = anchorAt(t.index);
+  const abs = resolveTarget(nativePath(expandTilde(raw)), base || ROOT);
+  return inside(abs, ROOT);
+})()));
+if (own.length) {
+  try {
+    const dir = path.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks');
+    fs.mkdirSync(dir, { recursive: true });
+    const exts = [...new Set(own.filter((t) => !t.unknown).map((t) => (String(t.raw).match(/\.[^./]+$/) || [''])[0].toLowerCase()))];
+    fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
+      ts: new Date().toISOString(), hook: path.basename(__filename), event: payload.hook_event_name || '', tool,
+      mode: 'probe', reason: 'probe: interpreter-write', detail: { branch: 'interpreter-write', files: own.length, unknown: own.some((t) => t.unknown), exts, agent: payload.agent_id ? 'seat' : 'main' },
+    }) + '\n');
+  } catch { /* a probe never changes the verdict */ }
 }
 process.exit(0);

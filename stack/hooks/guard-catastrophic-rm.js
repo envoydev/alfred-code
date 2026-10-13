@@ -487,8 +487,9 @@ function gitPlan(verb, args, config, isRev)
 
 // What a plan destroys, read from git itself: [{ kind, rows, targets, named }] - `rows` the lines the
 // denial lists, `targets` what a DISCARD-ALLOW line must cover, `named` when the command named paths.
-// `run(argv)` is git in the call's own directory; it throws when git cannot answer.
-function readLoss(plan, run, gitCwd)
+// `run(argv)` is git in the call's own directory; it throws when git cannot answer. `opAborted`: the same command aborts
+// a merge, rebase, cherry-pick, revert or am in progress here before this call (below).
+function readLoss(plan, run, gitCwd, opAborted = false)
 {
     const lines = (out) => out.split('\n').filter(Boolean);
     const wouldPrune = (argv) => lines(run(argv)).filter((l) => /^would prune\b/.test(l));
@@ -567,7 +568,12 @@ function readLoss(plan, run, gitCwd)
         }
         catch { clash = new Set(loose); }
     }
-    const lost = recs.filter((r) => (r.xy === '??' ? clash.has(r.file) : r.xy !== '!!'));
+    // A row the aborted operation made is not the user's work: git refuses to start one with the index off HEAD, so a
+    // staged-only row or an unmerged one is the operation's, and its abort drops it before this call runs (audit
+    // 2026-10-10 C17, session 349e4825: `git merge --abort && git reset --hard origin/staging` was denied over the
+    // conflicted merge's 37 index rows; split, the reset found 0). A row the work tree also changes is still judged.
+    const opRow = (xy) => /^(?:DD|AU|UD|UA|DU|AA|UU)$/.test(xy) || (/^[MADRCT]$/.test(xy[0]) && xy[1] === ' ');
+    const lost = recs.filter((r) => (r.xy === '??' ? clash.has(r.file) : r.xy !== '!!') && !(opAborted && opRow(r.xy)));
     return [{
         kind: 'tree',
         rows: lost.map((r) => `${r.xy} ${r.orig ? `${r.orig} -> ` : ''}${r.file}`),
@@ -622,6 +628,10 @@ function main()
                         hook: path.basename(__filename),
                         event: payload.hook_event_name || payload.tool_name || '',
                         tool: payload.tool_name || '',
+                        // WHO was blocked and on which call: a seat's block is its own row (audit 2026-10-10 C07, 0498718d - seat
+                        // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
+                        agent: payload.agent_id || null,
+                        tool_use_id: payload.tool_use_id || null,
                         reason: last.split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
@@ -722,9 +732,26 @@ function main()
     const budget = shellWrites.newRun().budget;
     const overCap = []; // the destructive calls past the cap: read conservatively below
     const gitIn = (gitCwd) => (argv) => execFileSync('git', argv, { cwd: gitCwd, timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, LC_ALL: 'C' } }).toString();
+    // An abort earlier in the command, of an operation really in progress in that repo (its state file is there now),
+    // keyed by the repo's top level - the reset after it is judged without that operation's rows (readLoss).
+    const ABORTS = { merge: ['MERGE_HEAD'], 'cherry-pick': ['CHERRY_PICK_HEAD'], revert: ['REVERT_HEAD'], rebase: ['rebase-merge', 'rebase-apply'], am: ['rebase-apply'] };
+    const aborted = new Set();
+    const topOf = (gitCwd) => { try { return gitIn(gitCwd)(['rev-parse', '--show-toplevel']).trim(); } catch { return null; } };
     for (const call of read.calls)
     {
         const verb = call.sub;
+        if (verb && ABORTS[verb] && (call.argv || []).includes('--abort'))
+        {
+            const gitCwd = read.callDir(call);
+            try
+            {
+                const run = gitIn(gitCwd);
+                const top = topOf(gitCwd);
+                if (top && ABORTS[verb].some((n) => fs.existsSync(path.resolve(gitCwd, run(['rev-parse', '--git-path', n]).trim())))) aborted.add(top);
+            }
+            catch { /* no repo, no operation - nothing changes */ }
+            continue;
+        }
         if (!verb || !LOSS_VERBS.has(verb)) continue; // `git add`, `git status`, `git log`: nothing to lose, no git spawned
         if (!budget.judge()) { overCap.push(call); continue; }
         const gitCwd = read.callDir(call);
@@ -744,7 +771,7 @@ function main()
         const plan = gitPlan(verb, call.argv, call.config, isRev);
         if (!plan) continue;
         // A git that cannot answer (not a repo, git absent) is no loss - never block on our own failure.
-        try { losses.push(...readLoss(plan, run, gitCwd)); }
+        try { losses.push(...readLoss(plan, run, gitCwd, aborted.size > 0 && aborted.has(topOf(gitCwd)))); }
         catch { /* nothing read, nothing claimed */ }
     }
     // Past the cap each call is still read as one whole-tree discard where it runs - and now ALSO by its own plan when

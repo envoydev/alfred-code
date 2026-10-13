@@ -59,13 +59,13 @@
    "habits-root-cause",
    "habits-skill-writing",
    "habits-test-first",
-   "capture-agent-capabilities",
+   "capture-agent-awareness",
    "capture-architecture",
    "capture-architecture-quality",
    "loop-architecture-quality",
    "capture-code-quality",
    "capture-code-style",
-   "capture-project-capabilities",
+   "capture-project-awareness",
    "habits-commit-checkpoint",
    "issue-diagnoser",
    "capture-first-look",
@@ -184,7 +184,7 @@
     "dotnet-repair-agents"
    ],
    "mcps": [
-    "windows-desktop"
+    "windows-control"
    ],
    "plugins": [
     "csharp-lsp"
@@ -215,7 +215,7 @@
     "dotnet-repair-agents"
    ],
    "mcps": [
-    "windows-desktop"
+    "windows-control"
    ],
    "plugins": [
     "csharp-lsp"

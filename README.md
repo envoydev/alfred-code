@@ -65,6 +65,7 @@ Open a `.cs`, `.ts` or template file and the matching house style attaches on it
 | `git push --force` to `main`, `master` or `develop` | blocks it |
 | `git reset --hard` over uncommitted work | blocks it and names what would be lost |
 | `cat .env` | shows the keys, with the values masked |
+| read the project's secrets in `.alfred/.sensitive-data` | can't read the file, and a printed value is masked (its exact text - leak protection, not a wall) - a command that needs one gets it in its environment |
 | commit a large change that was never reviewed | blocks it until the review runs |
 | loosen `.eslintrc` so a failing check passes | blocks it - fix the code, not the check |
 | write into another repository | blocks it and writes a task card instead |
@@ -84,7 +85,8 @@ Each stack has three seats: a **designer** plans the change, an **implementer** 
 | documentation (Context7) | read current library docs instead of guessing from memory |
 | memory | keep your preferences and corrections across sessions |
 | browser (Playwright MCP) | open the app and check it, for web stacks |
-| windows-desktop, macos-desktop | drive desktop apps - opt-in, on their own OS only |
+| windows-control, macos-control | drive desktop apps - opt-in, on their own OS only |
+| mobile-control (appium-mcp) | drive Android and iOS apps on an emulator, simulator or device - opt-in |
 
 ## Commands
 
@@ -114,7 +116,7 @@ Skills you start by name. Every install has these.
 | `/task-version-upgrade` | A breaking upgrade, like .NET 10 |
 | `/capture-first-look` | A quick map of an unfamiliar project |
 | `/capture-architecture` | Write or refresh the architecture docs |
-| `/capture-project-capabilities` | A run book: build, start, log in |
+| `/capture-project-awareness` | A run book: build, start, log in |
 | `/loop-quality` | Find and fix code-quality issues in rounds |
 
 Add what you want after the name:

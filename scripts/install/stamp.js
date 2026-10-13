@@ -31,9 +31,9 @@
 // release moved into an entry this project has not enabled would drop out; these two lines carry it
 // across (derive-state's `stampCarried`, which honours a parked entry and a denied seat).
 //
-// `browser-engines` is the browser engines this run INSTALLED, and `browser-enabled` the ones the user
-// chose to enable (R67) - `playwright-browsers` / `playwright-enabled` before the 2.0.0 rename, read as
-// the fallback. An engine left disabled is still installed, and the listing's
+// `control-engines` is the browser engines this run INSTALLED, and `control-enabled` the ones the user
+// chose to enable (R67) - `browser-engines` / `browser-enabled` before the 2026-10-13 rename, and
+// `playwright-browsers` / `playwright-enabled` before the 2.0.0 one, read as the fallback. An engine left disabled is still installed, and the listing's
 // project-scope flag can read a stale false anyway (S22), so these lines, never the flag, are what the
 // next run reads: the installed set to keep (and to uninstall from, when a run keeps fewer), and the
 // last choice an engine installed again is switched back to.
@@ -100,8 +100,8 @@ const { stampFile } = require('./brand.js');
 const splitPick = (entry) => { const [name, home = ''] = String(entry).split('@'); return { name, home: home || null }; };
 
 // A browser engine server belongs to its FAMILY: the always-list names `browser`, and an
-// install carrying `browser-firefox` is carrying it.
-const family = (name) => String(name).replace(/^browser-.*/, 'browser');
+// install carrying `firefox-control` is carrying it.
+const family = (name) => String(name).replace(/^(?:chrome|msedge|firefox|webkit)-control$/, 'browser');
 
 const { readJson, parseJson } = require('./json-file.js');
 
@@ -266,8 +266,8 @@ function renderStamp(fields)
         `installed-always-mcps: ${alwaysMcps.join(',')}`,
         `picked-skills: ${(picked.skills || []).join(',')}`,
         `picked-agents: ${(picked.agents || []).join(',')}`,
-        `browser-engines: ${(playwright || []).join(',')}`,
-        ...(Array.isArray(playwrightEnabled) ? [`browser-enabled: ${playwrightEnabled.join(',')}`] : []),
+        `control-engines: ${(playwright || []).join(',')}`,
+        ...(Array.isArray(playwrightEnabled) ? [`control-enabled: ${playwrightEnabled.join(',')}`] : []),
         ...(stoodDown.length ? [`stood-down: ${stoodDown.map((e) => `${e.scope}:${e.spec}`).join(',')}`] : []),
         ...(mcpHeld.length ? [`mcp-held: ${mcpHeld.map((e) => `${e.scope}:${e.name}`).join(',')}`] : []),
         ...(mcpDenied.length ? [`mcp-denied: ${mcpDenied.map((e) => `${e.scope}:${e.name}`).join(',')}`] : []),
@@ -421,12 +421,13 @@ function readSeatsRoute(file)
     return route === 'copy' || route === 'plugin' ? route : null;
 }
 
-// The browser engines the last install installed (or, with `browser-enabled`, enabled), in the
+// The browser engines the last install installed (or, with `control-enabled`, enabled), in the
 // one canonical order - [] when it recorded none, null when the stamp has no such line (no stamp, or
-// one from before the line): nothing recorded. A stamp written before the 2.0.0 rename spells the lines
-// `playwright-browsers` / `playwright-enabled`: read as the fallback, the new line winning where both are.
+// one from before the line): nothing recorded. A stamp written before a rename spells the lines the old way -
+// `browser-engines` / `browser-enabled` (2.0.0 to the 2026-10-13 rename, its engines installed as browser-<engine>),
+// `playwright-browsers` / `playwright-enabled` before: read as the fallback, the newest line winning.
 const { ENGINES: PW_ORDER } = require('../../stack/mcp/data-root.js');
-const BROWSER_LINES = { engines: ['browser-engines', 'playwright-browsers'], enabled: ['browser-enabled', 'playwright-enabled'] };
+const BROWSER_LINES = { engines: ['control-engines', 'browser-engines', 'playwright-browsers'], enabled: ['control-enabled', 'browser-enabled', 'playwright-enabled'] };
 function readEngineLine(text, line)
 {
     const m = new RegExp(`^${line}:(.*)$`, 'm').exec(text);
@@ -440,7 +441,13 @@ function readBrowserLines(file)
 {
     let text = '';
     try { text = fs.readFileSync(file, 'utf8'); } catch { return { browsers: null, enabled: null, legacy: false }; }
-    const read = ([now, old]) => { const v = readEngineLine(text, now); return v !== null ? { v, old: false } : { v: readEngineLine(text, old), old: true }; };
+    const read = ([now, ...olds]) =>
+    {
+        const v = readEngineLine(text, now);
+        if (v !== null) return { v, old: false };
+        for (const old of olds) { const w = readEngineLine(text, old); if (w !== null) return { v: w, old: true }; }
+        return { v: null, old: true };
+    };
     const engines = read(BROWSER_LINES.engines);
     const enabled = read(BROWSER_LINES.enabled);
     return { browsers: engines.v, enabled: enabled.v, legacy: engines.v !== null && engines.old };
@@ -688,6 +695,7 @@ module.exports = {
 // install used, one word.
 if (require.main === module)
 {
+    require('../../stack/hooks/hook-prelude.js').blockingStdio();
     const [cmd, root] = process.argv.slice(2);
     const at = path.resolve(root || '.');
     if (cmd === 'scope') { console.log(installScope(at)); process.exit(0); }

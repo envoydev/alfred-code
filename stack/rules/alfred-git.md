@@ -5,8 +5,8 @@ description: House baseline - git, pull requests, and the pre-commit checkpoint.
 # Git and pull requests
 
 - Branch `<type>/<short-description>` or `<type>/<ticket-id>`.
-- Do NOT commit or push until the user explicitly says to, however done the task looks. Show the diff for review first.
-- The scope at a commit ask is derived FRESH - `git add -N . && git diff HEAD --stat; git reset -q`, ONE Bash call with the reset chained, so untracked files count and no intent-to-add entry outlives it - and the ask names anything still owed on the diff (a gate not run, a review skipped).
+- Do NOT commit or push until the user explicitly says to, however done the task looks - a picked ask option is that word. A commit ask recommends the local commit (`git reset --soft HEAD~1` undoes it) and offers the diff first; with anything still owed, and for every push or publish, holding takes the mark.
+- The scope at a commit ask is derived FRESH - `git diff HEAD --stat; git ls-files -o --exclude-standard`, which counts untracked files and never moves the index (a `git reset` after `git add -N` unstages work already staged) - and the ask names anything still owed on the diff (a gate not run, a review skipped).
 - Never mention yourself: no AI/assistant attribution in commits, branches, or PR text (deliberate override of the platform default).
 - One logical change per PR, under 400 LOC; the body says what / why / how to test, links the ticket, and carries screenshots if UI.
 - Squash or rebase, no merge commits on feature branches; prefer `--force-with-lease`; know the undo before non-trivial git (rebase, cherry-pick, recovery).

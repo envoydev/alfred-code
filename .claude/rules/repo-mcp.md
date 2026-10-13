@@ -59,14 +59,14 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   seeded everywhere; the rest arrive by proof - a stack whose surface always has them, an evidence
   signal, or the user's pick. The names are ROLES; prose names the role and gives the upstream once
   where a reader needs it ('the navigation server (Serena)'). A backticked `browser` is no graph edge
-  (`stack-graph.js` MCP_COMMON_WORDS): the word is too common to prove a need. Catalog of 6 names, 9 plugins:
+  (`stack-graph.js` MCP_COMMON_WORDS): the word is too common to prove a need. Catalog of 7 names, 10 plugins:
   - `browser` (Playwright MCP) - seeded for web-angular / ionic / extension, evidence-proven elsewhere. One catalog
-    entry, expanded after the selection into ONE PLUGIN per kept browser (`browser-chrome|msedge|firefox|
-    webkit`, each started through `stack/mcp/browser-launch.js` with `--browser <engine>` + profile
-    `<data root>/browser/<engine>` - a 2.0.0 `.playwright/<engine>` serves until its move; firefox/webkit downloaded at the
+    entry, expanded after the selection into ONE PLUGIN per kept browser (`<engine>-control` for chrome,
+    msedge, firefox, webkit, each started through `stack/mcp/browser-launch.js` with `--browser <engine>` + profile
+    `<data root>/<engine>-control` - an older `.playwright/<engine>` (2.0.0) or `<data root>/browser/<engine>` (2.1.0-2.3.x) serves until its move; firefox/webkit downloaded at the
     release pin) - not one plugin declaring four, which would load four copies of the tool schemas every
     session. Setup/configure ask `--browsers` (install) and `--browser-enabled` (absent: all
-    on at install, none flipped by update); the stamp's two lines (`browser-engines:`, `browser-enabled:`) are the record on EVERY route (a
+    on at install, none flipped by update); the stamp's two lines (`control-engines:`, `control-enabled:`) are the record on EVERY route (a
     switch onto the copy route carries them over, R116), and a stamped engine a run drops is
     uninstalled. On the copy route an engine's plugin row is uninstalled, on or off - except at user
     scope on the FULL copy route (C11): there the engine registers in THIS project's `.mcp.json`
@@ -87,11 +87,11 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     (RCE-equivalent) through their `disallowedTools`, which Claude Code applies before `tools` resolves
     (code.claude.com/docs/en/sub-agents). The data root's own `.gitignore` keeps the profiles out of
     git (they hold session cookies); a 2.0.0 `.playwright/<engine>` still in use gets `.playwright/.gitignore` (`*`).
-  - `windows-desktop` (Windows-MCP) and `macos-desktop` (MacOS-MCP) - each drives the machine's OWN
+  - `windows-control` (Windows-MCP) and `macos-control` (MacOS-MCP) - each drives the machine's OWN
     desktop apps, so each installs on its own OS only and neither on Linux (`stack/mcp/desktop-launch.js`
     is the one home of which OS each drives; the walk's table, `--missing` / `--redundant`, the installer
-    and the launcher all read it). windows-desktop is seeded for the WPF and WinForms stacks there;
-    macos-desktop is seeded by no stack. Both manifest rows ship `active: false` - in the catalog, never
+    and the launcher all read it). windows-control is seeded for the WPF and WinForms stacks there;
+    macos-control is seeded by no stack. Both manifest rows ship `active: false` - in the catalog, never
     in a run that names no selection - because a server that clicks through the user's desktop with
     their full rights is opt-in. A server left out is named in one line, a row another machine enabled at
     project scope is left as it is - that line and the launcher's own refusal name `claude plugin disable
@@ -100,7 +100,7 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     display language and matching privilege on Windows, the Accessibility and Screen Recording grants
     on macOS, uv when missing). Windows-MCP starts with `--exclude-tools PowerShell,Registry,Process,FileSystem`
     (2.1.4, I10: FileSystem writes, moves and deletes where no house guard looks);
-    `ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` replaces the list (`none` lifts it) - read by the launcher from
+    `ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE` replaces the list (`none` lifts it) - read by the launcher from
     the shell and the three settings files, and on the copy route resolved into Windows-MCP's own
     `WINDOWS_MCP_EXCLUDE_TOOLS`; each name is checked against the pinned tool list (`desktop-launch.js WINDOWS_TOOLS`,
     held equal to `meta/mcp-tools.json`: case mended, an unknown one named and dropped, a list naming none keeps the
@@ -123,6 +123,23 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     macOS `Snapshot` / `Wait` - the pinned wheels' readOnlyHint tools that look at the desktop), named in `tools:`
     and described in the body, so no graph edge pulls the opt-in server into an install; a stack that seeds a
     server no seat of it holds is listed main-thread-only in `scripts/seat-grants.test.js` (browser-extension's browser).
+  - `mobile-control` (appium-mcp, the user's call of 2026-10-13) - drives Android and iOS apps on an emulator, a
+    simulator or a device through Appium's embedded UiAutomator2 / XCUITest drivers. Every OS, seeded by no stack,
+    `active: false` (opt-in, like the desktop pair), an npx package so no Python and no cut-off; Node 22+ (its engines
+    floor - the launcher refuses an older Node in one line). The plugin route starts `stack/mcp/mobile-launch.js`: the SDK
+    paths come from the environment (`ANDROID_HOME`, `JAVA_HOME` - the shell or a settings file's `env`, which reach a
+    server process, code.claude.com/docs/en/settings-reference 'Values reach subprocesses') and are looked up ONLY when unset
+    (`ANDROID_SDK_ROOT`, Android Studio's SDK place and bundled JBR, macOS `java_home`) - never written into a
+    registration, since a committed `.mcp.json` would hand one machine's paths to every teammate. iOS needs Xcode,
+    which Appium finds itself. Safe defaults where the user set nothing: `NO_UI=true`, `ALLOW_REMOTE_APP_URLS=false`,
+    `REMOTE_SERVER_URL_ALLOW_REGEX` admitting localhost / 127.0.0.1 / [::1] only (the whole URL is matched, so
+    `localhost.evil.com` is refused); a boolean other than true / false - which appium-mcp refuses to start on - keeps
+    the default. `SCREENSHOTS_DIR` / `PAGE_SOURCES_DIR` go under `<data root>/mobile-control`. The copy route registers
+    the same values (`mobile-launch.js copyRouteEnv`, resolved at install, the dirs relative to ROOT_BOOT's cwd) and
+    no SDK path. Its plugin row goes the engine way on the copy route and takes its own scope (`soloKept`); its
+    prerequisites are said once, on the run that brings it in. Tools: the pinned server's own `tools/list`
+    (`refresh-mcp-pins.js --only mobile-control`, which moves no other pin and keeps the uvx cut-off day); `appium_ai`
+    registers only with `AI_VISION_ENABLED=true` and a vision key, so it is not listed. No seat holds its tools.
   - plus `alfred-navigation` (Serena), `alfred-documentation` (Context7, the hosted remote only - its `Context7-API-Key` header, the name
     Context7 documents (2.1.5 M25: a proxy may drop a header name with an underscore, and a keyed user with it), expands
     `CONTEXT7_API_KEY` from the ACCOUNT settings.json `env`, keyless = the free tier) and `alfred-memory`. 2.0.0 cut `angular-cli`,
@@ -132,13 +149,19 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   - **The MCP renames** (`meta/stack-manifest.json` `renamed.mcps`, the one table, each old name mapped straight to
     today's - `currentMcp` is single-step): 2.0.0 made `serena`, `context7` and `playwright-<engine>` `navigation`,
     `documentation` and `browser-<engine>`; 2.2.0 (the user's call, 2026-10-06) made `navigation`, `documentation` and
-    `memory` `alfred-navigation`, `alfred-documentation` and `alfred-memory`, plugin and server alike. The old ids were
+    `memory` `alfred-navigation`, `alfred-documentation` and `alfred-memory`, plugin and server alike; 2026-10-13 (the user's
+    call) made `windows-desktop` and `macos-desktop` `windows-control` and `macos-control`, the gate key with them
+    (`ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` is still read while the new one is unset, named as renamed), and each
+    `browser-<engine>` `<engine>-control`, with no shared folder: a profile moves from `<data root>/browser/<engine>` to
+    `<data root>/<engine>-control` at the server's next start, unasked (a relayout inside the root, `data-root.js isRelayout`),
+    the emptied `browser/` removed by the last move, and the stamp lines are `control-engines:` / `control-enabled:`
+    (`browser-*` and `playwright-*` read as the fallback). The catalog name `browser` stays the selection token. The old ids were
     listed as RETIRED aliases through 2.2.0 and are UNLISTED from 2.2.1 (the user's ruling of 2026-10-06, every install
     updated), the old tool spellings leaving every seat grant with them; the
     memory readers take either server name (`MEMORY_SERVERS`, `stack/hooks/memory.js` and `scripts/install/memory.js`). An install still on an old id
     no longer loads it once the marketplace refreshes (S25) and gets it back on its next update. Update swaps each old row at THIS run's scope
     (`plugins.migrateRenamed`): the successor installed there first, then the old id removed - an
-    engine keeps its on/off, a locked server comes on. An old row at ANOTHER scope serves the projects
+    engine or desktop server keeps its on/off, a locked server comes on. An old row at ANOTHER scope serves the projects
     there, whose not-yet-updated files still spell the old tools, so it is stood down instead: the
     successor installed at this run's scope, the old id disabled for this project only (`disable
     --scope project`, or `local`), and one `!!` line naming its uninstall for once every project there
@@ -147,7 +170,12 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     go on every route by the stack's own shape (the user's own server under an old name is kept), the
     approval lists follow, the read-back and selection lines read old names under the new ones, and
     the generated project files are re-spelled (`selection.respellRenamed`; a seeded AGENTS.md / CLAUDE.md only while the ledger
-    still holds it at its hash - the user's own is named, never rewritten). The old flags
+    still holds it at its hash - the user's own is named, never rewritten). A capture never re-runs by itself, so
+    each update also re-spells the generated rules' routing rows to the route this run serves (`selection.respellMcpRows`):
+    a bare `mcp__<server>__` of a server on the plugin route with no registration of its name takes the plugin
+    spelling (the copy route's downconvert is the reverse), and an `<engine>-control` row's backticked `.../output/`
+    dir takes `<data root>/<engine>-control/output/`, the dir a fresh capture names (2026-10-10: a pre-2.1.0 rule
+    kept a project writing screenshots to the repo root's `.playwright/output/`). The old flags
     (`--playwright-browsers`, `--playwright-enabled`) and stamp lines (`playwright-browsers:`,
     `playwright-enabled:`) are read for one release.
 
@@ -171,7 +199,9 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   stack's own context, `stack/mcp/navigation-context.yml` (2.1.4, I12 - ruling 'Keep rename + safe
   delete'): serena 1.7.0's `claude-code` context (its six exclusions, `single_project`, structured output
   off) plus `replace_content`, `replace_in_files`, `replace_symbol_body`, `insert_after_symbol`,
-  `insert_before_symbol` and `onboarding` off - writes no Edit/Write-matched hook sees - with
+  `insert_before_symbol` and `onboarding` off - writes no Edit/Write-matched hook sees - and, since the user's
+  2026-10-13 ruling ('Serena is just for navigation'), its six memory tools off too (a seat's handoff note is an
+  `alfred-memory` row tagged `handoff`), with
   `rename_symbol` and `safe_delete_symbol` kept, and a prompt that sends edits to the harness tools
   (never calling Edit forbidden). serena reads `--context <path>` as a custom context file
   (`context_mode.py`: a separator or a `.yml` suffix). The plugin entry keeps `--context claude-code` and

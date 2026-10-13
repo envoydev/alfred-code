@@ -12,7 +12,9 @@ loaded, or that they were already in context - the receipt is what makes the loa
 
 Covers components, services, directives, pipes, guards, resolvers, modules, routes, and templates -
 an Ionic/Capacitor app shares the same conventions (a bespoke layout outside `src/app` / `src/lib`:
-load the skill yourself). Skip one-line tweaks.
+load the skill yourself). Skip one-line tweaks. Writing or changing a spec file (`*.spec.ts`) loads
+`angular-testing` in the same action, before the first spec edit lands (measured: 0 loads over 3 to 22
+spec edits in 8 sessions with this rule attached and the conventions skill loaded).
 
 In an Ionic/Capacitor workspace (`ionic.config.json` / `capacitor.config.*` present) the
 Ionic/Capacitor conventions skill - the one covering Ionic Angular UI, the Capacitor lifecycle and

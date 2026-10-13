@@ -40,7 +40,7 @@ function bodyAfterFrontmatter(text)
 // Every distinct backticked token in the text (content between a pair of
 // backticks, trimmed). Catalog membership - not a shape regex - decides what is
 // an edge, so single-word MCPs (`navigation`, `documentation`) resolve as well as
-// hyphenated ones (`browser-chrome`). Tokenized LINE BY LINE - a markdown inline-code
+// hyphenated ones (`chrome-control`). Tokenized LINE BY LINE - a markdown inline-code
 // span never crosses a line, so scanning each line independently prevents a stray
 // or odd backtick count (including a ```` ```bash ```` fence line) from desyncing
 // the open/close pairing into later lines.
@@ -109,12 +109,12 @@ function hookCatalog(raw)
 const MCP_COMMON_WORDS = new Set(['browser']);
 
 // Skills whose backticked MCP/plugin mentions are SUBJECT MATTER, not dependencies.
-// capture-agent-capabilities documents the house routing map for every server so the
+// capture-agent-awareness documents the house routing map for every server so the
 // generated rule can be stamped from it - selecting it must never lock the whole MCP
 // baseline into an install (the skill inventories what IS installed; it calls nothing).
 // desktop-automation teaches BOTH desktop servers, one per OS: its mentions of them are the subject, and
 // the edge runs the other way (each server brings the skill - the graph's `mcps` block, below).
-const DOC_MENTION_SKILLS = new Set(['capture-agent-capabilities', 'desktop-automation']);
+const DOC_MENTION_SKILLS = new Set(['capture-agent-awareness', 'desktop-automation']);
 
 // Rule body mentions that are NOT dependencies: conditional loads ('in an Ionic
 // workspace also load `ionic`') and routing-away prose ('EF logic routes through
@@ -284,6 +284,7 @@ module.exports = { buildStackGraph, serialize, GRAPH_FILE, readCommitted, plugin
 
 if (require.main === module)
 {
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
     const out = serialize(buildStackGraph());
     if (process.argv.includes('--write'))
     {

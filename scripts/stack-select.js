@@ -81,7 +81,7 @@ function computeClosure(graph, raw)
 }
 
 // THE DESKTOP SERVERS BY OS (stack/mcp/desktop-launch.js owns which OS each drives). A walk never offers
-// windows-desktop off Windows, macos-desktop off macOS, or either on Linux: the servers are taken out of
+// windows-control off Windows, macos-control off macOS, or either on Linux: the servers are taken out of
 // a selection before its closure, and out of every recommendation a table, --missing or --redundant is
 // computed from - so a wpf seed read on a Mac is named once and never pre-selected or reported missing.
 function gateMcps(names, platform)
@@ -558,7 +558,7 @@ const parkedPlugins = inv => ((inv && Array.isArray(inv.plugins_disabled)) ? inv
 // off (a denied seat, an item of a parked entry) as `left_out` lines - on disk, never MISSING.
 const leftOutOf = (inv, layer) => ((inv && Array.isArray(inv.left_out)) ? inv.left_out : [])
     .map(String).filter(l => l.startsWith(`${layer.replace(/s$/, '')} `)).map(l => l.slice(l.indexOf(' ') + 1));
-// A parked MCP entry (`browser-chrome`) is that server switched off here.
+// A parked MCP entry (`chrome-control`) is that server switched off here.
 const offHere = (inv, layer) => [
     ...(layer === 'plugins' ? parkedPlugins(inv) : []),
     ...(layer === 'mcps' ? manifestMcps(parkedPlugins(inv)) : []),
@@ -617,11 +617,12 @@ function findEvidenceGaps(catalog, found, installed)
 // writes `plugins` as {name,scope} (an uninstall is scope-addressed), and a bare-name compare
 // matched none of those objects - every installed plugin read as missing (measured).
 // The installer expands the ONE manifest entry `browser` into a server per browser engine
-// (browser-chrome, -msedge, -firefox, -webkit); every name read from an install maps back to it.
+// (chrome-control, msedge-, firefox-, webkit-control; browser-<engine> before the 2026-10-13 rename); every name read
+// from an install maps back to it.
 // From 1.0.0 those names are also PLUGIN names, one per engine, so the same fold serves the plugin
 // route.
 const manifestMcpName = n => String(n)
-    .replace(/^browser-(chrome|msedge|firefox|webkit)$/, 'browser');
+    .replace(/^(?:browser-(?:chrome|msedge|firefox|webkit)|(?:chrome|msedge|firefox|webkit)-control)$/, 'browser');
 const manifestMcps = list => [...new Set(list.map(manifestMcpName))];
 
 function normalizeInventory(inv)
@@ -846,4 +847,8 @@ function main(argv)
 
 module.exports = { computeClosure, gateMcps, gateRecs, normalizeInventory, evaluatePrereqs, detectEnvironment, onPath, browserCandidates, browsersOption, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
 
-if (require.main === module) main(process.argv.slice(2));
+if (require.main === module)
+{
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
+    main(process.argv.slice(2));
+}

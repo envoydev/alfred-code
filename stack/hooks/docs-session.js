@@ -267,6 +267,8 @@ function main() {
   if (cursorOff) return;
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   process.env.CLAUDE_PROJECT_DIR = root;
+  // before the domain gate: a plan file lives under the docs root whether or not a domain does
+  if (event === 'PreToolUse' && stampedPlanWrite(input, root)) return;
   if (event === 'SessionStart') {
     const stranded = sweepStrandedRoot(root);
     if (stranded !== null) log(root, input, { event: 'stranded-root', from: LEGACY_DOCS_ROOT, files: stranded });
@@ -303,7 +305,11 @@ function main() {
 // fresh snapshot. guard-ungated-commit.js reads the same key: out of the receipt's count, and a git add that would
 // sweep one in is blocked unless the user names it. Root-relative, spelled as git lists them with core.quotePath=false,
 // at most UNTRACKED_CAP paths (past it a path reads as the change's own), and a record past SWEEP_MS goes when the
-// next one is written.
+// next one is written. Only a session's FIRST start (`source` startup, clear, or none) may take a snapshot, and it
+// names the record it used in `untracked-session-<sid>`: a compact or resume start reuses that record and never
+// snapshots, since a HEAD the session itself moved has no record yet and a snapshot then lists the session's own new
+// files as pre-existing (audit 2026-10-10 C09, session c6142301: 7 of its own files, and the commit guard would have
+// blocked their git add). guard-ungated-commit.js reads the session's pointer first.
 const UNTRACKED_CAP = 20000;
 
 // A docs move (`--data-move move`) can leave the old default behind holding hook state: the move's own tool call
@@ -352,10 +358,23 @@ function recordUntracked(input, root) {
   let file;
   let list;
   try {
-    let head = '';
-    try { head = require('child_process').execFileSync('git', ['rev-parse', '--verify', '-q', 'HEAD'], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { /* no commit yet, or no repo - ls-files below tells them apart */ }
-    file = path.resolve(root, docsRootEnv(), 'flow', `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
+    const flow = path.resolve(root, docsRootEnv(), 'flow');
+    const sid = String(input.session_id || '').replace(/[^\w.-]/g, '_');
+    const pointer = sid ? path.join(flow, `untracked-session-${sid}`) : '';
+    const later = input.source === 'compact' || input.source === 'resume';
+    if (later && pointer) {
+      try {
+        const named = path.basename(fs.readFileSync(pointer, 'utf8').trim());
+        if (named.startsWith('untracked-at-start-') && fs.existsSync(path.join(flow, named))) file = path.join(flow, named);
+      } catch { /* no pointer - an older start, or none */ }
+    }
+    if (!file) {
+      let head = '';
+      try { head = require('child_process').execFileSync('git', ['rev-parse', '--verify', '-q', 'HEAD'], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { /* no commit yet, or no repo - ls-files below tells them apart */ }
+      file = path.join(flow, `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
+    }
     if (fs.existsSync(file)) list = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
+    else if (later) return '';
     else {
       const out = require('child_process').execFileSync('git', ['-c', 'core.quotePath=false', 'ls-files', '--others', '--exclude-standard', '-z'],
         { cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).toString('utf8');
@@ -366,6 +385,7 @@ function recordUntracked(input, root) {
       fs.writeFileSync(file, list.map((f) => `${f}\n`).join(''));
       sweepRecords(path.dirname(file));
     }
+    if (pointer && !later) fs.writeFileSync(pointer, `${path.basename(file)}\n`);
   } catch { return ''; }
   if (!list.length) return '';
   const rel = toPosix(path.relative(root, file));
@@ -374,7 +394,7 @@ function recordUntracked(input, root) {
 function sweepRecords(dir, now = Date.now()) {
   try {
     for (const f of fs.readdirSync(dir)) {
-      if (!f.startsWith('untracked-at-start-')) continue;
+      if (!f.startsWith('untracked-at-start-') && !f.startsWith('untracked-session-')) continue;
       const full = path.join(dir, f);
       if (now - fs.statSync(full).mtimeMs > SWEEP_MS) fs.rmSync(full, { force: true });
     }
@@ -477,6 +497,16 @@ function resolveHit(docs, h, id) {
 // it has more than one matching entry - deliberately kept, not a side effect to undo: breadth across
 // entries (naming more DIFFERENT decisions) is worth more at the cap than depth into the one that sorted
 // first. A project with only one matching entry per hit sees no change at all.
+// A section whose own text names a file a watch entry hit, verbatim, answers before the entries' sections (audit
+// 2026-10-10 C23, session f6c591fa): each is a queue of its own ahead of theirs, so the round-robin below takes it
+// first. Only the files already hit are matched, so the ask fires exactly when it did before.
+function namedFirst(docs, hits) {
+  if (typeof docs.namingSections !== 'function') return hits;
+  let named = [];
+  try { named = docs.namingSections(hits.flatMap((h) => h.files), ASK_SECTIONS); } catch { return hits; }
+  return [...named.map((n) => ({ kind: 'names the file', files: n.files, sections: [n.id], domain: n.domain })), ...hits];
+}
+
 function sectionRefs(docs, hits, limit, exclude = () => false) {
   const seenAsk = new Set();
   const seenWarn = new Set();
@@ -595,7 +625,7 @@ function subagentStop(input, root, docs) {
   if (!hits.length) return;
   // Dedupe on the pair (agent, section), never the section alone: two agents in one run often touch the same
   // section, and the second is the one most likely to notice the first's rewrite only covered half the change.
-  const { asks, warnings } = sectionRefs(docs, hits, ASK_SECTIONS, (id) => a.asked.includes(id));
+  const { asks, warnings } = sectionRefs(docs, namedFirst(docs, hits), ASK_SECTIONS, (id) => a.asked.includes(id));
   if (!asks.length && !warnings.length) return;
   const files = [...new Set(hits.flatMap((h) => h.files))];
   const reason = finishAsk(docs, files, asks, warnings, SEAT_REPORT_LAST);
@@ -650,9 +680,14 @@ function projectWrites(command) {
   }
   return out;
 }
+// An interpreter write through a computed path is UNKNOWN_SOURCE_WRITE; a `$NAME` target is expanded from the same
+// command's assignment, and one still holding a `$` names no file - it filled COMPACT-STATE's 'files written' with
+// `$S/demo.pw` and `$G` (audit 2026-10-10, sessions 68da4b6b, 758ce661).
 function writeTargets(command) {
   if (!shellReader) return [];
-  const out = shellReader.scanShell(String(command), {}).targets.map((t) => t.raw).filter((t) => t && !t.startsWith('/dev/null'));
+  const scan = shellReader.scanShell(String(command), {});
+  const out = scan.targets.map((t) => (t.unknown ? UNKNOWN_SOURCE_WRITE : scan.expandVars(String(t.raw || ''))))
+    .filter((t) => t && !t.startsWith('/dev/null') && (t === UNKNOWN_SOURCE_WRITE || !t.includes('$')));
   return [...new Set([...out, ...projectWrites(command)])];
 }
 const relative = (root, paths) => [...new Set(paths.map((p) => toPosix(path.relative(root, path.resolve(root, p.replace(/^['"]|['"]$/g, ''))))).filter((p) => p && !p.startsWith('..')))];
@@ -725,6 +760,57 @@ function blockRow(root, input, reason) {
   } catch {}
 }
 
+// A plan stamped `Completed:` is a record (task-solve's CLOSE): new scope after it opens a NEW plan file, or runs under a
+// stated `ungated: <why>`. Four form fixes were written into a stamped plan and counted as that cycle's files (audit
+// 2026-10-10, session 84eedb4b). A write to `<docs-path>/plans/<name>.md` carrying a Completed stamp is denied unless
+// every line it adds or removes is a stamp line (Gated / Approved / Conformance / Completed / Status / Deviations /
+// Result) - an Edit by its strings, a Write against the file on disk, a shell write always (its change cannot be read).
+const STAMP_LINE = /^\s*(?:[>*-]\s*)*\**\s*(?:Gated|Approved|Conformance|Completed|Status|Deviations|Result)\b/i;
+const COMPLETED_STAMP = /^\s*(?:[>*-]\s*)*\**\s*Completed\**\s*:/im;
+function stampedPlanWrite(input, root) {
+  const name = input.tool_name || '';
+  const t = input.tool_input || {};
+  const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
+  const plansDir = real(path.resolve(root, docsRootEnv(), 'plans'));
+  const isPlan = (abs) => /\.md$/i.test(abs) && real(path.dirname(abs)) === plansDir;
+  const textOf = (abs) => { try { return fs.readFileSync(abs, 'utf8'); } catch { return null; } };
+  const lineCounts = (str) => { const m = new Map(); for (const l of String(str || '').split(/\r?\n/)) m.set(l, (m.get(l) || 0) + 1); return m; };
+  const onlyStamps = (before, after) => {
+    const a = lineCounts(before);
+    const b = lineCounts(after);
+    const moved = (x, y) => [...x].every(([l, n]) => (y.get(l) || 0) >= n || !l.trim() || STAMP_LINE.test(l));
+    return moved(a, b) && moved(b, a);
+  };
+  let hit = null;
+  if (/^(?:Edit|Write|MultiEdit)$/.test(name) && typeof t.file_path === 'string' && t.file_path) {
+    const abs = path.resolve(root, t.file_path);
+    const text = isPlan(abs) ? textOf(abs) : null;
+    if (text != null && COMPLETED_STAMP.test(text)) {
+      const edits = name === 'Edit' ? [t] : name === 'MultiEdit' ? (Array.isArray(t.edits) ? t.edits : []) : null;
+      const ok = edits ? edits.every((e) => e && onlyStamps(e.old_string, e.new_string)) : onlyStamps(text, t.content);
+      if (!ok) hit = abs;
+    }
+  } else if (isShellTool(name) && typeof t.command === 'string') {
+    const base = typeof input.cwd === 'string' && input.cwd ? input.cwd : root;
+    for (const w of writeTargets(t.command)) {
+      if (w === UNKNOWN_SOURCE_WRITE) continue;
+      const abs = path.resolve(base, w.replace(/^['"]|['"]$/g, ''));
+      const text = isPlan(abs) ? textOf(abs) : null;
+      if (text != null && COMPLETED_STAMP.test(text)) { hit = abs; break; }
+    }
+  }
+  if (!hit) return false;
+  const rel = toPosix(path.relative(root, hit));
+  const reason = `Blocked: ${rel} is stamped Completed: - a stamped plan is the record of a closed cycle, never appended to.\n`
+    + 'New scope after Completed: is a NEW cycle in a NEW plan file (task-solve from step 1), or work stated to run outside\n'
+    + 'the cycle in one `ungated: <why>` line. Only a stamp line (Gated, Approved, Conformance, Completed, Status, Deviations)\n'
+    + 'may change in this file, through the Edit tool.';
+  log(root, input, { event: 'stamped-plan', target: rel });
+  blockRow(root, input, reason);
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
+  return true;
+}
+
 function preToolUse(input, root, docs, state) {
   const paths = toolPaths(input, root);
   // One root per domain, not one hardcoded architecture/ - a project documented only in code-style/ must still
@@ -758,7 +844,14 @@ function preToolUse(input, root, docs, state) {
   }
   if (!isWrite) return;
   const inRoots = (p) => roots.some((x) => p === x || p.startsWith(`${x}/`));
-  const targets = wrote.filter(inRoots);
+  let targets = wrote.filter(inRoots);
+  // A run artifact is no source change (audit 2026-10-11 SD09, session 5f9fec85: `rm -f` of a git-ignored `.trx` under
+  // a test project's TestResults/ was held and a 3,606-char section pasted beside it). A path git ignores, or one under a
+  // TestResults/ folder, leaves the hold's targets; a tracked file is never ignored, so its edit is still held.
+  if (targets.length) {
+    const ignored = new Set(String(docs.git(['check-ignore', '--stdin'], { input: targets.join('\n'), stdio: ['pipe', 'pipe', 'ignore'] }) || '').split('\n').filter(Boolean));
+    targets = targets.filter((p) => !ignored.has(p) && !/(?:^|\/)TestResults\//.test(p));
+  }
   if (!targets.length) { attribute(); return; }
   const allow = () => {
     attribute();
@@ -766,7 +859,7 @@ function preToolUse(input, root, docs, state) {
     saveState(input.session_id, state);
     if (state.edits === 1) log(root, input, { event: 'first-edit', target: targets[0], consulted: state.consults.length > 0 });
   };
-  if (envOf(process.env, 'DOCS_GATE') === '0' || state.consults.length) { allow(); return; }
+  if (envOf(process.env, 'DOCS_GATE') === '0' || state.consults.length || state.candidates) { allow(); return; }
   // Nothing under the docs root can be read by section, so a hold would only point at an empty list.
   let readable = true;
   try { readable = docs.docFiles().length > 0; } catch {}
@@ -778,11 +871,31 @@ function preToolUse(input, root, docs, state) {
   saveState(input.session_id, state);
   let hits = [];
   try { hits = docs.where(targets, 3); } catch {}
+  // Only a section that DECLARES a cover of the target is pasted, and only a code-style one is called the convention
+  // (audit 2026-10-10 C03 / C23: a word match on a cover-less section was pasted as 'the convention this change
+  // follows' for a test helper - ab61627f, f24eb967 - and a module-size inventory for a one-line fix - 8f44a003). A
+  // covering code-style section is preferred; word-only hits are named as candidates, and the hold does not repeat.
+  const covering = hits.filter((h) => { try { return h.covers && h.covers.length > 0 && docs.matches(h.covers, targets[0]); } catch { return false; } });
+  let styleDir = null;
+  try { styleDir = docs.domainDir('code-style'); } catch {}
+  const isStyle = (h) => Boolean(styleDir && h.file && !path.relative(styleDir, h.file).startsWith('..'));
+  const first = covering.find(isStyle) || covering[0];
+  const shown = (h) => `${h.id} (${h.chars} chars, \`${READ} show ${h.id}\`)`;
   let reason;
   if (!hits.length) {
     reason = `Docs not read yet in this session. Before changing ${targets[0]}, see what is documented: ${READ} files`;
+  } else if (!first) {
+    state.candidates = true;
+    saveState(input.session_id, state);
+    reason = [
+      `Docs not read yet in this session. No section declares ${targets[0]}; these name its words:`,
+      ...hits.map((h) => `  ${shown(h)}`),
+      '',
+      'Read one if it bears on this change; otherwise make the change as it is - this hold does not repeat.',
+    ].join('\n');
   } else {
-    const [first, ...rest] = hits;
+    const alsoCovering = covering.filter((h) => h !== first);
+    const words = hits.filter((h) => !covering.includes(h));
     const body = first.text.length > INLINE_CHARS ? `${first.text.slice(0, INLINE_CHARS)}\n... (${first.text.length - INLINE_CHARS} more chars: \`${READ} show ${first.id}\`)` : first.text;
     state.consults.push(first.id);
     saveState(input.session_id, state);
@@ -790,11 +903,12 @@ function preToolUse(input, root, docs, state) {
     reason = [
       `Docs not read yet in this session. ${first.id} covers ${targets[0]} - here it is:`,
       '', body, '',
-      ...(rest.length ? [`Also covering it: ${rest.map((h) => `${h.id} (${h.chars} chars, \`${READ} show ${h.id}\`)`).join(', ')}`, ''] : []),
-      'That is the convention this change follows. Now make the change.',
+      ...(alsoCovering.length ? [`Also covering it: ${alsoCovering.map(shown).join(', ')}`, ''] : []),
+      ...(words.length ? [`Naming its words: ${words.map(shown).join(', ')}`, ''] : []),
+      isStyle(first) ? 'That is the convention this change follows. Now make the change.' : 'That is the documented context for this path. Now make the change.',
     ].join('\n');
   }
-  log(root, input, { event: 'hold', target: targets[0], offered: hits.map((h) => h.id) });
+  log(root, input, { event: 'hold', target: targets[0], offered: hits.map((h) => h.id), via: first ? 'cover' : hits.length ? 'words' : 'none' });
   blockRow(root, input, reason);
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
 }
@@ -831,7 +945,10 @@ function askLines(docs, files, refs) {
     '',
     '  Yes -> reply: docs ok',
     `  No  -> rewrite ${one ? 'the section' : 'each section your change made untrue'}, then run`,
-    ...refs.map((r) => `           ${READ} set ${r.id} --expect ${r.hash}`),
+    // where the new text comes from (audit 2026-10-11 SD09, session 2ca8e8ee: the model grepped and read docs.js twice to
+    // find out, ~1.0M): a file on stdin, as `show` prints the section
+    ...refs.map((r) => `           ${READ} set ${r.id} --expect ${r.hash} < <file holding its new text>`),
+    `         (the section's new text as \`show\` prints it - from a file as above, or piped in)`,
     ...tail,
   ];
 }
@@ -882,6 +999,40 @@ function finishAsk(docs, files, asks, warnings = [], closing = []) {
   return parts.join('\n');
 }
 
+// The IDLE spans of this session: gaps of at least 10 minutes between two consecutive transcript rows, when no model
+// call and no tool of this session ran. An unclaimed change whose file was last written well inside one was made
+// outside the session - the user's own edit in an IDE during a break (audit 2026-10-11 SD09, session fdce35ae: 'you
+// changed Directory.Build.props' for a version bump made in a 4h33m gap). The newest 32MB of the transcript is read; a
+// file written within 30s of either edge, or with no transcript, stays the session's.
+const IDLE_GAP_MS = 10 * 60 * 1000;
+const IDLE_EDGE_MS = 30 * 1000;
+function idleSpans(transcriptPath) {
+  try {
+    const size = fs.statSync(transcriptPath).size;
+    const from = Math.max(0, size - 32 * 1024 * 1024);
+    const fd = fs.openSync(transcriptPath, 'r');
+    const buf = Buffer.alloc(size - from);
+    try { fs.readSync(fd, buf, 0, buf.length, from); } finally { fs.closeSync(fd); }
+    const times = [];
+    for (const m of buf.toString('utf8').matchAll(/"timestamp"\s*:\s*"([^"]+)"/g)) { const t = Date.parse(m[1]); if (Number.isFinite(t)) times.push(t); }
+    times.sort((a, b) => a - b);
+    const spans = [];
+    for (let i = 1; i < times.length; i++) if (times[i] - times[i - 1] >= IDLE_GAP_MS) spans.push([times[i - 1] + IDLE_EDGE_MS, times[i] - IDLE_EDGE_MS]);
+    return spans;
+  } catch { return []; }
+}
+function changedWhileIdle(root, files, transcriptPath) {
+  const spans = transcriptPath ? idleSpans(transcriptPath) : [];
+  if (!spans.length) return new Set();
+  const out = new Set();
+  for (const f of files) {
+    let t;
+    try { t = fs.statSync(path.join(root, f)).mtimeMs; } catch { continue; }
+    if (spans.some(([a, b]) => t > a && t < b)) out.add(f);
+  }
+  return out;
+}
+
 // The same check for work done outside any subagent - and the only cover skills have, since a skill has no end
 // event of its own and its work lands here.
 function stop(input, root, docs, state) {
@@ -905,13 +1056,17 @@ function stop(input, root, docs, state) {
     // later change to a section a seat answered for earlier.
     const mine = new Set(loadAgent(input.session_id, MAIN_ACTOR).wrote || []);
     const seats = otherActorWrites(input.session_id, MAIN_ACTOR);
-    const files = changed.files.filter((f) => mine.has(f) || !seats.has(f));
+    const claimed = changed.files.filter((f) => mine.has(f) || !seats.has(f));
+    // an unclaimed change made while the session sat idle is the user's own, outside this session: logged, not asked
+    const outside = changedWhileIdle(root, claimed.filter((f) => !mine.has(f)), input.transcript_path);
+    if (outside.size) log(root, input, { event: 'changed-outside-session', files: [...outside].slice(0, 5) });
+    const files = claimed.filter((f) => !outside.has(f));
     const dirs = changed.dirs.filter((d) => files.some((f) => f.startsWith(`${d}/`)));
     if (!files.length && !dirs.length) return;
     hits = docs.watchHits(files, dirs);
   } catch { return; }
   if (!hits.length) return;
-  const { asks, warnings } = sectionRefs(docs, hits, ASK_SECTIONS);
+  const { asks, warnings } = sectionRefs(docs, namedFirst(docs, hits), ASK_SECTIONS);
   if (!asks.length && !warnings.length) return;
   const files = [...new Set(hits.flatMap((h) => h.files))];
   // Nobody at the terminal (hook-prelude.js unattended): the ask would only turn the final answer into

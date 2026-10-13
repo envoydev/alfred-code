@@ -296,4 +296,8 @@ function main(argv)
 
 module.exports = { planFor, applyTargets, backupOnce, report, leaves, atPath, setLeaf, readDoc, readJson, main };
 
-if (require.main === module) process.exit(main(process.argv.slice(2)));
+if (require.main === module)
+{
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
+    process.exit(main(process.argv.slice(2)));
+}

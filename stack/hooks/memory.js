@@ -33,6 +33,13 @@
 //   reembed --restore <backup> [--db <file>] [--root <dir>]
 //                          stores again every backed-up row that is missing, and gives back the dates
 //                          of every one that lost them - through the service. A re-run changes nothing.
+//   handoff [feature] [--db <file>] [--root <dir>]
+//                          the trio purge count: the number of seat handoff notes left for <feature> (no
+//                          feature: every one of this project's) on its first line - live rows tagged
+//                          `handoff:<feature>` (`handoff`) plus this project's tag, and
+//                          an older release's navigation-server notes still on disk - then one `row <name>` /
+//                          `legacy <path>` line each. Exit 1, no number, when the database cannot be read: a
+//                          count is never guessed.
 // Levels -> db (FACT-SCHEMA / cross-task-facts.md): global ~/.alfred-memory/memory.db; scoped
 // ~/.alfred-memory/memory_<space>.db (no space: memory_default.db); project
 // <project>/<data root>/.alfred-memory/memory.db (ALFRED_CODE_DATA_PATH, default .alfred). The 2.0.0 folder
@@ -456,7 +463,7 @@ const linesOf = (text, pick) => String(text).split(/\r?\n/).map(pick).filter(Boo
 
 // Names from the related-projects domain (shape: stack/skills/capture-related-projects/references/artifact-shapes.md):
 // `<docsRoot>/related-projects/RELATED-PROJECTS.md` first - one '## <name>' heading per sibling - else
-// the generated awareness rule `.claude/rules/alfred-project-related-context.md` (a 'name:' field per
+// the generated awareness rule `.claude/rules/alfred-related-context.md` (a 'name:' field per
 // sibling entry). Neither PRESENT (not neither non-empty) -> []; the doc wins whenever it exists at all,
 // so an emptied doc is read as "no siblings", never silently backed by a stale rule copy.
 function relatedProjects(projectRoot, docsRoot) {
@@ -465,7 +472,7 @@ function relatedProjects(projectRoot, docsRoot) {
     try { return linesOf(fs.readFileSync(docFile, 'utf8'), headingName); } catch { return []; }
   }
   // The 2.x line reads the pre-2.1.6 name too: an install the update has not moved yet still holds it.
-  const ruleFile = ['alfred-project-related-context.md', 'baseline-project-related-context.md']
+  const ruleFile = ['alfred-related-context.md', 'baseline-project-related-context.md']
     .map((n) => path.join(projectRoot, '.claude', 'rules', n)).find((f) => fs.existsSync(f));
   if (ruleFile) {
     try { return linesOf(fs.readFileSync(ruleFile, 'utf8'), ruleFieldName); } catch { return []; }
@@ -537,6 +544,9 @@ function readMemoryRows(dbPath, query = MEMORY_QUERY) {
 const oneLine = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
 const splitTags = (tags) => String(tags || '').split(',').map((t) => t.trim()).filter(Boolean);
 const isAgentTagged = (tags) => tags.some((t) => t.startsWith('agent:'));
+// A seat's handoff note (alfred-memory.md): one run's working state, read by exact tags and purged at the run's close -
+// never a memory the session-start block re-sends.
+const isHandoff = (tags) => tags.some((t) => t === 'handoff' || t.startsWith('handoff:'));
 const matchesProject = (tags, name) => tags.includes(`project:${name}`) || tags.includes(name);
 
 // The service validates memory_type against its OWN built-in vocabulary and silently stores anything
@@ -577,7 +587,7 @@ const redactSecrets = (text) => String(text).replace(new RegExp(SECRET_SHAPE.sou
 
 // The four selection groups, in order, newest first within each (the SQL query already orders every
 // row newest-first, and each group below is a single pass over that same order, so 'newest first'
-// holds within a group without a separate sort), `agent:`-tagged rows dropped entirely, a row picked
+// holds within a group without a separate sort), `agent:`-tagged and `handoff` rows dropped entirely, a row picked
 // by an earlier group never repeated by a later one:
 //   1. YOUNG preferences and corrections (under YOUNG_DAYS old) - memory_type
 //      preference_signal/user_correction, tagged to THIS project ('project:<project>' or bare
@@ -602,7 +612,7 @@ function selectForSession(dbPath, { project = '', related = [], capBytes = 4096,
   const rows = readMemoryRows(dbPath);
   if (!rows) return empty;
 
-  const tagged = rows.map((row) => ({ row, tags: splitTags(row.tags) })).filter((r) => !isAgentTagged(r.tags));
+  const tagged = rows.map((row) => ({ row, tags: splitTags(row.tags) })).filter((r) => !isAgentTagged(r.tags) && !isHandoff(r.tags));
   const seen = new Set();
   const picked = [];
   const take = (predicate, key) => {
@@ -1186,6 +1196,48 @@ function cliDuplicates(args) {
   return 0;
 }
 
+// The trio protocol's 'purge is counted, not claimed': what is left of one feature's seat handoff notes. The rows are
+// this project's own (its tag beside `handoff:<feature>`, exact tag match - `handoff:a` never counts `handoff:a-2`); the
+// legacy files are an older release's navigation-server notes (`<data root>/serena/memories/<feature>/`, a pre-2.1.6
+// run's flat `<feature>__*`, a 2.0.0 `.serena/memories`), walked in node so no `find` on PATH decides the number.
+const HANDOFF_QUERY = 'SELECT tags FROM memories WHERE deleted_at IS NULL ORDER BY created_at DESC';
+function handoffLeft(rows, feature, project) {
+  const tag = feature ? `handoff:${feature}` : 'handoff';
+  return rows.map((row) => splitTags(row.tags))
+    .filter((tags) => tags.includes(tag) && matchesProject(tags, project))
+    .map((tags) => { const note = tags.find((t) => t.startsWith('note:')); return note ? note.slice(5) : '(unnamed)'; });
+}
+function legacyHandoffNotes(checkout, feature, env = process.env) {
+  const found = [];
+  const walk = (dir, rel) => {
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(path.join(dir, e.name), r);
+      else if (e.name.endsWith('.md') && (!feature || r.startsWith(`${feature}/`) || r.startsWith(`${feature}__`))) found.push(path.join(dir, e.name));
+    }
+  };
+  walk(path.resolve(checkout, env.ALFRED_CODE_DATA_PATH || '.alfred', 'serena', 'memories'), '');
+  walk(path.join(checkout, '.serena', 'memories'), '');
+  return found;
+}
+function cliHandoff(args) {
+  const opts = cliArgs(args);
+  const feature = opts.positional[0] || '';
+  const { checkout, project: projectRoot } = projectRootOf(opts.root || process.env.CLAUDE_PROJECT_DIR || process.cwd());
+  const dbPath = opts.db ? path.resolve(opts.db) : registeredDbPath(projectRoot);
+  if (!dbPath) { process.stderr.write('memory handoff: no memory database registered for this project - name one with --db <file>\n'); return 1; }
+  const rows = readMemoryRows(dbPath, HANDOFF_QUERY);
+  if (!rows) { process.stderr.write(`memory handoff: could not read ${dbPath} - no count\n`); return 1; }
+  const names = handoffLeft(rows, feature, projectName(projectRoot));
+  const legacy = legacyHandoffNotes(checkout, feature);
+  console.log(String(names.length + legacy.length));
+  for (const name of names) console.log(`row ${name}`);
+  for (const file of legacy) console.log(`legacy ${file}`);
+  return 0;
+}
+
 const NO_SERVER = 'no memory server found for this project - no registration, and no alfred-memory@envoydev plugin installed for it';
 
 // The registered server, pointed at the database this run judges.
@@ -1368,12 +1420,25 @@ async function cliWarm(args) {
 
 module.exports = {
   pathForLevel, levelOfPath, registeredDbPath, settingsDbState, expandProjectDir, projectName, relatedProjects, selectForSession, MEMORY_FRAME,
+  handoffLeft, legacyHandoffNotes,
   projectRootOf, gitTopOf, runAtRoot, ROOT_BOOT, FORMER_ROOT_BOOTS, memoryEnvPath,
   contentHash, exportRows, serviceEntry, storeThroughService, parseJsonl, INIT_TIMEOUT_MS, OVERALL_TIMEOUT_MS,
   modelCached, warmModel, MODEL_MARKER, WARM_TIMEOUT_MS,
 };
 
+// stdout and stderr block, so a pipe gets every byte before process.exit (macOS writes a pipe async) - the
+// prelude's blockingStdio, inline because this engine ships without the prelude beside it on one route (blocking-stdio in meta/shared-rules.json).
+function blockingStdio(streams = [process.stdout, process.stderr])
+{
+    for (const s of streams)
+    {
+        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }
+        catch { /* a stream that cannot block keeps Node's default */ }
+    }
+}
+
 if (require.main === module) {
+  blockingStdio();
   const [, , cmd, ...args] = process.argv;
   try {
     if (cmd === 'level') {
@@ -1395,6 +1460,8 @@ if (require.main === module) {
       return;
     } else if (cmd === 'duplicates') {
       process.exit(cliDuplicates(args));
+    } else if (cmd === 'handoff') {
+      process.exit(cliHandoff(args));
     } else if (cmd === 'warm') {
       cliWarm(args).then((code) => process.exit(code), (err) => { console.log(`memory warm: failed - ${err && err.message ? err.message : err}`); process.exit(1); });
       return;

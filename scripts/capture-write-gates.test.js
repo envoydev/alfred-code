@@ -15,7 +15,7 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const squash = (s) => s.replace(/\s+/g, ' ');
 
 const ROUTE_FILES = [
-    'stack/skills/capture-project-capabilities/references/doc-shape.md',
+    'stack/skills/capture-project-awareness/references/doc-shape.md',
     'stack/skills/capture-code-style/references/doc-shape.md',
     'stack/skills/capture-related-projects/references/artifact-shapes.md',
 ];
@@ -98,7 +98,7 @@ test('audit 2026-10-08: each capture close is a literal template with its post-w
     const look = read('stack/skills/capture-first-look/SKILL.md');
     for (const field of ['File:', 'Stack:', 'Modules:', 'Not declared:', 'Lint:', 'Replaced by:'])
         assert.match(look, new RegExp(`^${field} +`, 'm'), `first-look close carries ${field}`);
-    const caps = read('stack/skills/capture-project-capabilities/SKILL.md');
+    const caps = read('stack/skills/capture-project-awareness/SKILL.md');
     assert.ok(caps.includes('node .claude/hooks/docs.js watch <one file DISCOVER cited>') && /^Watch: +</m.test(caps), 'the run book checks its watch globs');
 });
 
@@ -126,7 +126,7 @@ test('audit 2026-10-08: the usage audit quotes the fresh-session seeds the env c
 });
 
 test('audit 2026-10-08: the inventory marks every capture a loop invokes as model-invocable by design', () => {
-    const inv = read('stack/skills/capture-agent-capabilities/scripts/capabilities-inventory.js');
+    const inv = read('stack/skills/capture-agent-awareness/scripts/capabilities-inventory.js');
     const set = /const MODEL_INVOCABLE_BY_DESIGN = new Set\(\[([^\]]*)\]\)/.exec(inv);
     const names = [...set[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
     for (const loop of ['loop-architecture-quality', 'loop-quality', 'loop-test-coverage'])

@@ -307,14 +307,16 @@ const yamlList = (text, key) =>
     }
     return out;
 };
-test('the stack serena context: upstream claude-code exclusions kept, the five edit tools and onboarding off, rename and safe delete on (I12)', () =>
+test('the stack serena context: upstream claude-code exclusions kept, the five edit tools, onboarding and the memory tools off, rename and safe delete on (I12)', () =>
 {
     const text = fs.readFileSync(SERENA_CONTEXT, 'utf8');
     const excluded = yamlList(text, 'excluded_tools');
     const upstream = ['create_text_file', 'read_file', 'execute_shell_command', 'find_file', 'list_dir', 'search_for_pattern'];
     const ruled = ['replace_content', 'replace_in_files', 'replace_symbol_body', 'insert_after_symbol', 'insert_before_symbol', 'onboarding'];
-    assert.deepStrictEqual([...excluded].sort(), [...upstream, ...ruled].sort(), excluded.join(','));
-    for (const kept of ['rename_symbol', 'safe_delete_symbol', 'find_symbol', 'write_memory', 'read_memory']) assert.ok(!excluded.includes(kept), `${kept} must stay on`);
+    // The user's 2026-10-13 ruling: the server is navigation only - every note goes to alfred-memory.
+    const memory = ['write_memory', 'read_memory', 'list_memories', 'edit_memory', 'rename_memory', 'delete_memory'];
+    assert.deepStrictEqual([...excluded].sort(), [...upstream, ...ruled, ...memory].sort(), excluded.join(','));
+    for (const kept of ['rename_symbol', 'safe_delete_symbol', 'find_symbol']) assert.ok(!excluded.includes(kept), `${kept} must stay on`);
     assert.match(text, /^single_project: true$/m);
     assert.match(text, /^structured_tool_output: false$/m);
     assert.match(text, /^tool_description_overrides: \{\}$/m);
@@ -323,7 +325,8 @@ test('the stack serena context: upstream claude-code exclusions kept, the five e
     assert.match(prompt, /\bEdit\b/, 'the prompt sends edits to the harness Edit tool');
     assert.match(prompt, /rename_symbol/);
     assert.match(prompt, /safe_delete_symbol/);
-    assert.match(prompt, /write_memory/, 'the seat handoff stays on this server');
+    assert.doesNotMatch(prompt, /write_memory/, 'the seat handoff left this server');
+    assert.match(prompt, /goes through the alfred-memory MCP/, 'the prompt sends notes to alfred-memory');
     assert.ok(!/—/.test(text), 'house voice: no em-dash');
 });
 
@@ -432,13 +435,13 @@ test('memory-launch: uvx gets the same Python pin ahead of the package', POSIX, 
 });
 
 // ------------------------------------------------------------------ desktop-launch.js
-// The two desktop servers drive THIS machine's own apps: windows-desktop (Windows-MCP) on Windows,
-// macos-desktop (MacOS-MCP) on macOS. The OS is forced through ALFRED_CODE_PLATFORM so every case runs
+// The two desktop servers drive THIS machine's own apps: windows-control (Windows-MCP) on Windows,
+// macos-control (MacOS-MCP) on macOS. The OS is forced through ALFRED_CODE_PLATFORM so every case runs
 // on any host.
 const DESKTOP = path.join(ROOT, 'stack/mcp/desktop-launch.js');
 // I10: the shipped entry's own argv - FileSystem (write, copy, move, delete) joins the default gate.
-const WIN_ARGS = entryArgs('windows-desktop');
-const MAC_ARGS = ['--server', 'macos-desktop', '--package', 'macos-mcp==0.4.6', '--', 'serve'];
+const WIN_ARGS = entryArgs('windows-control');
+const MAC_ARGS = ['--server', 'macos-control', '--package', 'macos-mcp==0.4.6', '--', 'serve'];
 
 function desktopRun(name, args, { env = {}, settings } = {})
 {
@@ -451,7 +454,7 @@ function desktopRun(name, args, { env = {}, settings } = {})
     return { ...res, argv };
 }
 
-test('desktop-launch: windows-desktop gets the Python pin, the pinned package, serve and the safe tool gate, in order', POSIX, () =>
+test('desktop-launch: windows-control gets the Python pin, the pinned package, serve and the safe tool gate, in order', POSIX, () =>
 {
     const got = desktopRun('desktop-win', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32' } });
     assert.strictEqual(got.status, 0, got.stderr);
@@ -459,25 +462,40 @@ test('desktop-launch: windows-desktop gets the Python pin, the pinned package, s
     assert.strictEqual(got.stdout, '', 'stdout is the MCP stream - the launcher writes nothing there');
 });
 
-test('desktop-launch: ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE replaces the list, and none passes no gate at all', POSIX, () =>
+test('desktop-launch: ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE replaces the list, and none passes no gate at all', POSIX, () =>
 {
-    const one = desktopRun('desktop-win-one', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'PowerShell' } });
+    const one = desktopRun('desktop-win-one', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'PowerShell' } });
     assert.deepStrictEqual(one.argv.slice(6), ['windows-mcp', 'serve', '--exclude-tools', 'PowerShell']);
-    const none = desktopRun('desktop-win-none', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } });
+    const none = desktopRun('desktop-win-none', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'none' } });
     assert.deepStrictEqual(none.argv.slice(6), ['windows-mcp', 'serve'], 'none must pass no --exclude-tools, so the user\'s own Windows-MCP config applies');
-    const empty = desktopRun('desktop-win-empty', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: '' } });
+    const empty = desktopRun('desktop-win-empty', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: '' } });
     assert.deepStrictEqual(empty.argv.slice(8), ['--exclude-tools', 'PowerShell,Registry,Process,FileSystem'], 'an empty override is no override');
 });
 
 test('desktop-launch: the override is read from the PROJECT settings a plugin server never gets as env', POSIX, () =>
 {
-    const got = desktopRun('desktop-win-proj', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32' }, settings: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } });
+    const got = desktopRun('desktop-win-proj', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32' }, settings: { ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'none' } });
     assert.deepStrictEqual(got.argv.slice(6), ['windows-mcp', 'serve']);
 });
 
-test('desktop-launch: macos-desktop runs serve on the pin, and the Windows gate never reaches it', POSIX, () =>
+// 2026-10-13: the key followed the server's rename (windows-desktop -> windows-control). One the user set under the old
+// spelling - in the shell or a settings file - still decides while the new one is unset, and is named as renamed; the
+// new one wins when both are set. A lifted gate never closes quietly on an update, an open one never opens.
+test('desktop-launch: the old WINDOWS_DESKTOP_EXCLUDE is still read while the new key is unset, named as renamed; the new key wins', POSIX, () =>
 {
-    const got = desktopRun('desktop-mac', MAC_ARGS, { env: { ALFRED_CODE_PLATFORM: 'darwin', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'Shell' } });
+    const shell = desktopRun('desktop-win-oldkey', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } });
+    assert.deepStrictEqual(shell.argv.slice(6), ['windows-mcp', 'serve'], 'the old none still lifts the gate');
+    assert.match(shell.stderr, /ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE read as ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE - the server is windows-control now/);
+    const file = desktopRun('desktop-win-oldfile', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32' }, settings: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'PowerShell' } });
+    assert.deepStrictEqual(file.argv.slice(6), ['windows-mcp', 'serve', '--exclude-tools', 'PowerShell'], 'a settings file\'s old key too');
+    const both = desktopRun('desktop-win-bothkeys', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none', ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'Registry' } });
+    assert.deepStrictEqual(both.argv.slice(6), ['windows-mcp', 'serve', '--exclude-tools', 'Registry'], 'the new key wins');
+    assert.doesNotMatch(both.stderr, /read as/, 'and no rename line then');
+});
+
+test('desktop-launch: macos-control runs serve on the pin, and the Windows gate never reaches it', POSIX, () =>
+{
+    const got = desktopRun('desktop-mac', MAC_ARGS, { env: { ALFRED_CODE_PLATFORM: 'darwin', ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'Shell' } });
     assert.strictEqual(got.status, 0, got.stderr);
     assert.deepStrictEqual(got.argv, ['--python', '3.13', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve']);
 });
@@ -501,20 +519,20 @@ test('desktop-launch: the wrong-OS line names the local-scope disable, for this 
 {
     const got = desktopRun('desktop-win-on-mac-line', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'darwin' } });
     assert.strictEqual(got.status, 1);
-    assert.match(got.stderr, /not started - keep it off on this machine only: claude plugin disable windows-desktop@envoydev --scope local\n$/);
+    assert.match(got.stderr, /not started - keep it off on this machine only: claude plugin disable windows-control@envoydev --scope local\n$/);
     assert.doesNotMatch(got.stderr, /\/plugin/, 'the /plugin toggle writes the scope the entry sits at - a project one reaches every teammate');
-    const cached = path.join(TMP, 'cache-copy', 'plugins', 'cache', 'acme-key', 'windows-desktop', '2.0.0', 'stack', 'mcp');
+    const cached = path.join(TMP, 'cache-copy', 'plugins', 'cache', 'acme-key', 'windows-control', '2.0.0', 'stack', 'mcp');
     fs.mkdirSync(cached, { recursive: true });
     for (const f of ['desktop-launch.js', 'uv-python.js']) fs.copyFileSync(path.join(ROOT, 'stack/mcp', f), path.join(cached, f));
     let stderr = '';
     try { execFileSync(process.execPath, [path.join(cached, 'desktop-launch.js'), ...WIN_ARGS], { env: { ...BARE, ALFRED_CODE_PLATFORM: 'linux' }, stdio: 'pipe', encoding: 'utf8' }); }
     catch (err) { stderr = String(err.stderr || ''); }
-    assert.match(stderr, /claude plugin disable windows-desktop@acme-key --scope local/, 'the marketplace key is the cache folder the launcher runs from');
+    assert.match(stderr, /claude plugin disable windows-control@acme-key --scope local/, 'the marketplace key is the cache folder the launcher runs from');
 });
 
 test('desktop-launch: a hand-edited entry with no --server or --package says so instead of launching something else', () =>
 {
-    for (const args of [['--package', 'windows-mcp==0.8.5', '--', 'serve'], ['--server', 'windows-desktop', '--', 'serve'], ['--server', 'linux-desktop', '--package', 'x==1']])
+    for (const args of [['--package', 'windows-mcp==0.8.5', '--', 'serve'], ['--server', 'windows-control', '--', 'serve'], ['--server', 'linux-desktop', '--package', 'x==1']])
     {
         let code = 0;
         try { execFileSync(process.execPath, [DESKTOP, ...args], { env: { ...BARE, ALFRED_CODE_PLATFORM: 'win32' }, stdio: 'pipe' }); }
@@ -541,13 +559,13 @@ const PINS_FILE = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'mcp-pins.j
 const CUTOFF = `${PINS_FILE.refreshed}T23:59:59Z`;
 test('M24 uvx launchers: the shipped entry\'s --exclude-newer cut-off reaches uvx right after the Python pin', POSIX, () =>
 {
-    const cases = [['alfred-navigation', SERENA], ['alfred-memory', LAUNCH], ['windows-desktop', DESKTOP], ['macos-desktop', DESKTOP]];
+    const cases = [['alfred-navigation', SERENA], ['alfred-memory', LAUNCH], ['windows-control', DESKTOP], ['macos-control', DESKTOP]];
     for (const [name, launcher] of cases)
     {
         const { dir, acct } = project(`cutoff-${name}`, { settings: { ALFRED_CODE_MEMORY_DB: path.join(TMP, `cutoff-${name}-db`, 'memory.db') } });
         fs.mkdirSync(path.join(dir, '.git'), { recursive: true });
         const uvx = stubUvx(`cutoff-${name}`);
-        const platform = name === 'windows-desktop' ? 'win32' : 'darwin';
+        const platform = name === 'windows-control' ? 'win32' : 'darwin';
         execFileSync(process.execPath, [launcher, ...entryArgs(name)], { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, CLAUDE_CONFIG_DIR: acct, ALFRED_CODE_PLATFORM: platform }, stdio: 'pipe' });
         const argv = uvx.argv().argv;
         assert.deepStrictEqual(argv.slice(0, 4), ['--python', '3.13', '--exclude-newer', CUTOFF], `${name}: ${argv.join(' ')}`);
@@ -575,7 +593,7 @@ test('M24 uvx launchers: a UV_EXCLUDE_NEWER only a settings file names reaches u
     const db = path.join(TMP, 'cutoff-file-db', 'memory.db');
     const cases = [['alfred-navigation', SERENA, { settings: { UV_EXCLUDE_NEWER: 'false' } }, 'false'],
         ['alfred-memory', LAUNCH, { settings: { ALFRED_CODE_MEMORY_DB: db }, local: { UV_EXCLUDE_NEWER: '2026-01-15' } }, '2026-01-15'],
-        ['macos-desktop', DESKTOP, { account: { UV_EXCLUDE_NEWER: 'false' } }, 'false']];
+        ['macos-control', DESKTOP, { account: { UV_EXCLUDE_NEWER: 'false' } }, 'false']];
     for (const [name, launcher, files, want] of cases)
     {
         const { dir, acct } = project(`cutoff-file-${name}`, files);
@@ -595,11 +613,11 @@ test('M24 uvx launchers: a UV_EXCLUDE_NEWER only a settings file names reaches u
 // the environment lifts the whole gate (windows-mcp 0.8.5 __main__.py _apply_tool_filter, the --tools envvar).
 test('M41 desktop-launch: an override is checked against the pinned tool names - case mended, an unknown name said and dropped', POSIX, () =>
 {
-    const mended = desktopRun('desktop-win-case', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'powershell,Registry,NoSuchTool' } });
+    const mended = desktopRun('desktop-win-case', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'powershell,Registry,NoSuchTool' } });
     assert.strictEqual(mended.status, 0, mended.stderr);
     assert.deepStrictEqual(mended.argv.slice(-2), ['--exclude-tools', 'PowerShell,Registry']);
     assert.match(mended.stderr, /NoSuchTool is no Windows-MCP tool/);
-    const junk = desktopRun('desktop-win-junk', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'nothing-real' } });
+    const junk = desktopRun('desktop-win-junk', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'nothing-real' } });
     assert.deepStrictEqual(junk.argv.slice(-2), ['--exclude-tools', 'PowerShell,Registry,Process,FileSystem'], 'an override naming no real tool keeps the safe default, never an open gate');
 });
 
@@ -615,11 +633,11 @@ test('M41 desktop-launch: a WINDOWS_MCP_TOOLS in the environment never reaches W
 test('desktop gate: each server runs on its own OS only, and an unknown platform override is ignored', () =>
 {
     const { offeredOn, platformOf, DESKTOP_OS } = require(DESKTOP);
-    assert.deepStrictEqual(DESKTOP_OS, { 'windows-desktop': 'win32', 'macos-desktop': 'darwin' });
-    assert.strictEqual(offeredOn('windows-desktop', 'win32'), true);
-    assert.strictEqual(offeredOn('windows-desktop', 'darwin'), false);
-    assert.strictEqual(offeredOn('macos-desktop', 'darwin'), true);
-    assert.strictEqual(offeredOn('macos-desktop', 'linux'), false);
+    assert.deepStrictEqual(DESKTOP_OS, { 'windows-control': 'win32', 'macos-control': 'darwin' });
+    assert.strictEqual(offeredOn('windows-control', 'win32'), true);
+    assert.strictEqual(offeredOn('windows-control', 'darwin'), false);
+    assert.strictEqual(offeredOn('macos-control', 'darwin'), true);
+    assert.strictEqual(offeredOn('macos-control', 'linux'), false);
     assert.strictEqual(offeredOn('browser', 'linux'), true, 'a server that is no desktop server runs anywhere');
     assert.strictEqual(platformOf({ ALFRED_CODE_PLATFORM: 'win32' }), 'win32');
     assert.strictEqual(platformOf({ ALFRED_CODE_PLATFORM: 'beos' }), process.platform);
@@ -728,7 +746,7 @@ test('browser-launch: npx gets the pinned package, the engine, and a profile and
     const real = fs.realpathSync(dir);
     // I11: --no-webmcp - a page the browser opens never adds tools of its own to the session.
     assert.deepStrictEqual(rec.got().argv, ['-y', '@playwright/mcp@0.0.82', '--browser', 'firefox',
-        '--user-data-dir', path.join(real, '.alfred', 'browser', 'firefox'), '--output-dir', path.join(real, '.alfred', 'browser', 'firefox', 'output'), '--no-webmcp']);
+        '--user-data-dir', path.join(real, '.alfred', 'firefox-control'), '--output-dir', path.join(real, '.alfred', 'firefox-control', 'output'), '--no-webmcp']);
 });
 
 test('browser-launch: a 2.0.0 profile keeps serving until a move is agreed, then moves at start unless a browser holds it', POSIX, () =>
@@ -745,14 +763,41 @@ test('browser-launch: a 2.0.0 profile keeps serving until a move is agreed, then
         return { dataDir: argv[argv.indexOf('--user-data-dir') + 1], argv };
     };
     assert.strictEqual(run('browser-move-1').dataDir, path.join(real, '.playwright', 'chrome'), 'no move agreed: the old profile, where it is');
-    stamp(dir, ['data-pending: browser-chrome .playwright/chrome -> .alfred/browser/chrome']);
+    stamp(dir, ['data-pending: chrome-control .playwright/chrome -> .alfred/chrome-control']);
     fs.symlinkSync('host-1', path.join(dir, '.playwright', 'chrome', 'SingletonLock'));
     assert.strictEqual(run('browser-move-2').dataDir, path.join(real, '.playwright', 'chrome'), 'a running browser holds it: not this start');
     fs.unlinkSync(path.join(dir, '.playwright', 'chrome', 'SingletonLock'));
     const moved = run('browser-move-3');
-    assert.strictEqual(moved.dataDir, path.join(real, '.alfred', 'browser', 'chrome'));
-    assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', 'browser', 'chrome', 'Default', 'Cookies'), 'utf8'), 'session', 'the login moved with the profile');
+    assert.strictEqual(moved.dataDir, path.join(real, '.alfred', 'chrome-control'));
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', 'chrome-control', 'Default', 'Cookies'), 'utf8'), 'session', 'the login moved with the profile');
     assert.strictEqual(moved.argv[moved.argv.length - 1], '--isolated-no', 'arguments after -- reach the server unchanged');
+});
+
+// 2026-10-13: no shared browser folder. A profile 2.1.0-2.3.x kept at .alfred/browser/<engine> serves where it is until
+// its line is recorded, then moves to .alfred/<engine>-control at start; the emptied .alfred/browser goes with the last
+// engine. A pending line a 2.3.x install wrote (browser-<engine>, to .alfred/browser/<engine>) is read as today's move.
+test('browser-launch: a profile in the shared .alfred/browser folder serves, then moves to .alfred/<engine>-control; a 2.3.x pending line still moves', POSIX, () =>
+{
+    const { dir } = project('browser-shared');
+    put(path.join(dir, '.alfred', 'browser', 'chrome', 'Default', 'Cookies'), 'shared');
+    put(path.join(dir, '.playwright', 'firefox', 'prefs.js'), 'old');
+    const real = fs.realpathSync(dir);
+    const run = (name, engine) =>
+    {
+        const rec = stubRecorder(name, 'npx');
+        execFileSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.82', '--browser', engine],
+            { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
+        const argv = rec.got().argv;
+        return argv[argv.indexOf('--user-data-dir') + 1];
+    };
+    assert.strictEqual(run('browser-shared-1', 'chrome'), path.join(real, '.alfred', 'browser', 'chrome'), 'no line yet: the profile serves where it is');
+    stamp(dir, ['data-pending: chrome-control .alfred/browser/chrome -> .alfred/chrome-control',
+        'data-pending: browser-firefox .playwright/firefox -> .alfred/browser/firefox']);
+    assert.strictEqual(run('browser-shared-2', 'chrome'), path.join(real, '.alfred', 'chrome-control'));
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', 'chrome-control', 'Default', 'Cookies'), 'utf8'), 'shared');
+    assert.ok(!fs.existsSync(path.join(dir, '.alfred', 'browser')), 'the emptied shared folder is gone');
+    assert.strictEqual(run('browser-shared-3', 'firefox'), path.join(real, '.alfred', 'firefox-control'), 'the 2.3.x line moves to the engine\'s own folder');
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', 'firefox-control', 'prefs.js'), 'utf8'), 'old');
 });
 
 test('browser-launch: an entry with no --package or no --browser says so instead of launching something else', () =>
@@ -829,9 +874,9 @@ test('I1 browser-launch: a never-used engine on a 2.0.0 project gets the data ro
     const rec = stubRecorder('i1-browser', 'npx');
     execFileSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.82', '--browser', 'chrome'],
         { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
-    put(path.join(dir, '.alfred', 'browser', 'chrome', 'Default', 'Cookies'), 'session');   // what Playwright writes next
+    put(path.join(dir, '.alfred', 'chrome-control', 'Default', 'Cookies'), 'session');   // what Playwright writes next
     assert.ok(fs.existsSync(path.join(dir, '.alfred', '.gitignore')), 'the launcher wrote the root\'s .gitignore');
-    assert.ok(ignored(dir, '.alfred/browser/chrome/Default/Cookies'), 'the session cookies are ignored');
+    assert.ok(ignored(dir, '.alfred/chrome-control/Default/Cookies'), 'the session cookies are ignored');
     assert.ok(!ignored(dir, '.alfred/docs/architecture/ARCHITECTURE.md'), 'the docs stay visible to git');
     assert.ok(!ignored(dir, '.alfred/.gitignore'), 'the ignore file re-includes itself, so a teammate\'s clone inherits it');
 });
@@ -911,7 +956,7 @@ test('S3 launchers: started in a subdirectory, or under another folder\'s CLAUDE
 {
     const home = path.join(TMP, 's3-home');
     fs.mkdirSync(home, { recursive: true });
-    const { dir, acct } = project('s3-root', { settings: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'PowerShell' } });
+    const { dir, acct } = project('s3-root', { settings: { ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'PowerShell' } });
     const real = fs.realpathSync(dir);
     const projectDb = path.join(real, '.alfred', '.alfred-memory', 'memory.db');
     fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: projectDb } }));
@@ -932,7 +977,7 @@ test('S3 launchers: started in a subdirectory, or under another folder\'s CLAUDE
         const br = stubRecorder('s3-browser', 'npx');
         execFileSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.83', '--browser', 'chrome'], { cwd: sub, env: env(br), stdio: 'pipe' });
         const argv = br.got().argv;
-        assert.deepStrictEqual([argv[argv.indexOf('--user-data-dir') + 1], br.got().cwd], [path.join(real, '.alfred', 'browser', 'chrome'), real], `browser ${said}`);
+        assert.deepStrictEqual([argv[argv.indexOf('--user-data-dir') + 1], br.got().cwd], [path.join(real, '.alfred', 'chrome-control'), real], `browser ${said}`);
         const se = stubRecorder('s3-serena', 'uvx');
         execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server', '--project-from-cwd'], { cwd: sub, env: env(se), stdio: 'pipe' });
         // serena's home stays relative (Windows cmd.exe cuts an absolute one at a space), so serena starts AT the project.
@@ -942,4 +987,159 @@ test('S3 launchers: started in a subdirectory, or under another folder\'s CLAUDE
         assert.deepStrictEqual(dk.argv().argv.slice(-2), ['--exclude-tools', 'PowerShell'], `desktop ${said}: the project's own override`);
     }
     assert.strictEqual(fs.existsSync(path.join(sub, '.alfred')), false, 'nothing is created under the launch directory');
+});
+
+// ------------------------------------------------------------------ mobile-control (appium-mcp), 2026-10-13
+const MOBILE = path.join(ROOT, 'stack/mcp/mobile-launch.js');
+const mobile = require('../stack/mcp/mobile-launch.js');
+const MOBILE_KEYS = ['ANDROID_HOME', 'JAVA_HOME', 'NO_UI', 'ALLOW_REMOTE_APP_URLS', 'REMOTE_SERVER_URL_ALLOW_REGEX', 'SCREENSHOTS_DIR', 'PAGE_SOURCES_DIR'];
+function envRecorder(name)
+{
+    const dir = path.join(TMP, `${name}-rec-bin`);
+    fs.mkdirSync(dir, { recursive: true });
+    const record = path.join(TMP, `${name}-rec.json`);
+    fs.writeFileSync(path.join(dir, 'npx'), `#!/usr/bin/env node\nconst keys = ${JSON.stringify(MOBILE_KEYS)};\nrequire('fs').writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), env: Object.fromEntries(keys.map((k) => [k, process.env[k] ?? null])) }));\n`, { mode: 0o755 });
+    return { PATH: dir + path.delimiter + process.env.PATH, got: () => JSON.parse(fs.readFileSync(record, 'utf8')) };
+}
+
+test('mobile-launch: npx gets the pinned package, the safe defaults, and output dirs under the data root', POSIX, () =>
+{
+    const { dir } = project('mobile-run');
+    const rec = envRecorder('mobile-run');
+    const r = spawnSync(process.execPath, [MOBILE, '--package', 'appium-mcp@1.97.1'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const real = fs.realpathSync(dir);
+    const got = rec.got();
+    assert.deepStrictEqual(got.argv, ['-y', 'appium-mcp@1.97.1']);
+    assert.strictEqual(fs.realpathSync(got.cwd), real, 'the server starts at the project');
+    assert.deepStrictEqual([got.env.NO_UI, got.env.ALLOW_REMOTE_APP_URLS, got.env.REMOTE_SERVER_URL_ALLOW_REGEX], ['true', 'false', mobile.LOCAL_ONLY]);
+    assert.strictEqual(got.env.SCREENSHOTS_DIR, path.join(real, '.alfred', 'mobile-control', 'screenshots'));
+    assert.strictEqual(got.env.PAGE_SOURCES_DIR, path.join(real, '.alfred', 'mobile-control', 'page-sources'));
+    assert.ok(fs.existsSync(path.join(dir, '.alfred', '.gitignore')), 'the root ignores what lands under it before the server writes');
+    assert.match(r.stderr, /no Android SDK found - Android needs ANDROID_HOME/, 'an empty HOME holds no SDK, and the line says so');
+});
+
+test('mobile-launch: the user\'s own values win - the shell, then a settings file; a boolean appium-mcp would refuse keeps the default', POSIX, () =>
+{
+    const { dir } = project('mobile-own', { local: { ALLOW_REMOTE_APP_URLS: 'true', REMOTE_SERVER_URL_ALLOW_REGEX: '^https://hub\\.example\\.com/', ANDROID_HOME: '/from/settings/sdk' } });
+    const rec = envRecorder('mobile-own');
+    const r = spawnSync(process.execPath, [MOBILE, '--package', 'appium-mcp@1.97.1', '--', '--extra'], { cwd: dir, encoding: 'utf8',
+        env: { ...BARE, PATH: rec.PATH, HOME: dir, NO_UI: 'yes', SCREENSHOTS_DIR: '/tmp/my-shots', JAVA_HOME: '/from/shell/jdk' } });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const got = rec.got();
+    assert.deepStrictEqual(got.argv, ['-y', 'appium-mcp@1.97.1', '--extra'], 'arguments after -- reach the server');
+    assert.strictEqual(got.env.ALLOW_REMOTE_APP_URLS, 'true');
+    assert.strictEqual(got.env.REMOTE_SERVER_URL_ALLOW_REGEX, '^https://hub\\.example\\.com/');
+    assert.strictEqual(got.env.ANDROID_HOME, '/from/settings/sdk', 'a settings file\'s value is taken as set, never looked up');
+    assert.strictEqual(got.env.JAVA_HOME, '/from/shell/jdk');
+    assert.strictEqual(got.env.SCREENSHOTS_DIR, '/tmp/my-shots');
+    assert.strictEqual(got.env.NO_UI, 'true', 'yes is no boolean appium-mcp starts on');
+    assert.match(r.stderr, /NO_UI=yes is not true or false/);
+    assert.doesNotMatch(r.stderr, /ANDROID_HOME unset|JAVA_HOME unset/);
+});
+
+test('mobile-launch: an unset SDK path is looked up - ANDROID_SDK_ROOT, then Android Studio\'s place; the JDK by java_home, then the bundled JBR', () =>
+{
+    const home = '/h';
+    const dirs = (...p) => (q) => p.includes(q);
+    const none = () => false;
+    const sdk = (over) => mobile.androidHome({ env: {}, platform: 'darwin', home, isDir: none, ...over });
+    assert.deepStrictEqual(sdk({ env: { ANDROID_HOME: '/a' } }), { value: '/a', from: 'set' });
+    assert.deepStrictEqual(sdk({ env: { ANDROID_SDK_ROOT: '/r' } }), { value: '/r', from: 'ANDROID_SDK_ROOT' });
+    assert.deepStrictEqual(sdk({ isDir: dirs('/h/Library/Android/sdk') }), { value: '/h/Library/Android/sdk', from: 'default' });
+    assert.deepStrictEqual(sdk({ platform: 'linux', isDir: dirs('/h/Android/Sdk') }), { value: '/h/Android/Sdk', from: 'default' });
+    assert.deepStrictEqual(sdk({ platform: 'win32', env: { LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local' }, isDir: dirs('C:\\Users\\u\\AppData\\Local\\Android\\Sdk') }),
+        { value: 'C:\\Users\\u\\AppData\\Local\\Android\\Sdk', from: 'default' });
+    assert.deepStrictEqual(sdk({}), { value: '', from: null }, 'nothing found');
+    const jdk = (over) => mobile.javaHome({ env: {}, platform: 'darwin', home, isDir: none, tool: () => '', ...over });
+    assert.deepStrictEqual(jdk({ env: { JAVA_HOME: '/j' } }), { value: '/j', from: 'set' });
+    assert.deepStrictEqual(jdk({ tool: () => '/Library/Java/jdk', isDir: dirs('/Library/Java/jdk') }), { value: '/Library/Java/jdk', from: 'java_home' });
+    const jbr = '/Applications/Android Studio.app/Contents/jbr/Contents/Home';
+    assert.deepStrictEqual(jdk({ isDir: dirs(jbr) }), { value: jbr, from: 'studio' });
+    assert.deepStrictEqual(jdk({ platform: 'linux', tool: () => assert.fail('java_home is macOS only'), isDir: dirs('/opt/android-studio/jbr') }), { value: '/opt/android-studio/jbr', from: 'studio' });
+    assert.deepStrictEqual(jdk({}), { value: '', from: null });
+});
+
+test('mobile-launch: an older Node is refused in one line, and an entry with no --package says so', () =>
+{
+    assert.strictEqual(mobile.main(['--package', 'appium-mcp@1.97.1'], { node: '20.11.1' }), 1);
+    assert.strictEqual(mobile.main([], { node: '22.0.0' }), 2);
+    const r = spawnSync(process.execPath, [MOBILE], { env: BARE, encoding: 'utf8' });
+    assert.strictEqual(r.status, 2);
+    assert.match(r.stderr, /--package <spec> is required/);
+});
+
+test('mobile-launch: the copy route registers the same values, its dirs relative to the project root, and no SDK path', () =>
+{
+    const { dir } = project('mobile-copy', { settings: { ALLOW_REMOTE_APP_URLS: 'true' } });
+    const got = mobile.copyRouteEnv({ env: {}, projectDir: dir, root: '.data' });
+    assert.deepStrictEqual(got, { MOBILE_NO_UI: 'true', MOBILE_REMOTE_APPS: 'true', MOBILE_REMOTE_ALLOW: mobile.LOCAL_ONLY,
+        MOBILE_SCREENSHOTS: '.data/mobile-control/screenshots', MOBILE_PAGE_SOURCES: '.data/mobile-control/page-sources' });
+    assert.ok(!Object.keys(got).some((k) => /ANDROID|JAVA/.test(k)), 'a committed .mcp.json never carries one machine\'s SDK path');
+});
+
+test('mobile-launch: the prerequisites say Node, the SDK paths found or missing, and iOS by OS', () =>
+{
+    const notes = (over) => mobile.prereqNotes({ env: {}, platform: 'darwin', home: '/h', node: '24.1.0', isDir: () => false, tool: () => '', ...over }).join('\n');
+    const bare = notes({});
+    assert.doesNotMatch(bare, /needs Node 22/);
+    assert.match(bare, /ANDROID_HOME: not found\) and a JDK \(JAVA_HOME: not found\) \(the launcher looks each up only when it is unset\)/);
+    assert.match(bare, /!! mobile: set ANDROID_HOME and JAVA_HOME .*settings\.local\.json `env` \(machine-local\)/);
+    assert.match(bare, /iOS needs Xcode/);
+    const set = notes({ env: { ANDROID_HOME: '/a', JAVA_HOME: '/j' }, platform: 'linux', route: 'copy' });
+    assert.match(set, /ANDROID_HOME: \/a\) and a JDK \(JAVA_HOME: \/j\), adb/);
+    assert.doesNotMatch(set, /!! mobile: set ANDROID_HOME/);
+    assert.match(set, /iOS needs macOS with Xcode; on this machine it drives Android only/);
+    assert.match(notes({ node: '20.11.1' }), /!! mobile: mobile-control needs Node 22 or newer .* this machine runs 20\.11\.1/);
+});
+
+// ------------------------------------------------------------------ the project's sensitive data (2026-10-13)
+// Every launcher hands the project's <data root>/.sensitive-data to its server, where nothing else set the key - the
+// shell and a settings file's env win, dotenv's own rule. One stderr line counts them; no value is ever printed.
+function keyRecorder(name, bin, keys)
+{
+    const dir = path.join(TMP, `${name}-keys-bin`);
+    fs.mkdirSync(dir, { recursive: true });
+    const record = path.join(TMP, `${name}-keys.json`);
+    fs.writeFileSync(path.join(dir, bin), `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(record)}, JSON.stringify(Object.fromEntries(${JSON.stringify(keys)}.map((k) => [k, process.env[k] ?? null]))));\n`, { mode: 0o755 });
+    return { PATH: dir + path.delimiter + process.env.PATH, got: () => JSON.parse(fs.readFileSync(record, 'utf8')) };
+}
+const STORE_TEXT = 'API_TOKEN="tok-abcdef123456"\nDB_HOST=db.internal\nALLOW_REMOTE_APP_URLS=true\n';
+const STORE_KEYS = ['API_TOKEN', 'DB_HOST', 'ALLOW_REMOTE_APP_URLS'];
+
+test('sensitive data: serena (runUvx), the browser and the mobile launcher each hand the store to their server; the shell wins', POSIX, () =>
+{
+    const launches = [
+        ['serena', 'uvx', SERENA, ['--package', 'serena-agent@1.7.0']],
+        ['browser', 'npx', BROWSER, ['--package', '@playwright/mcp@0.0.82', '--browser', 'chrome']],
+        ['mobile', 'npx', MOBILE, ['--package', 'appium-mcp@1.97.1']],
+    ];
+    for (const [name, bin, script, args] of launches)
+    {
+        const { dir } = project(`sensitive-${name}`);
+        put(path.join(dir, '.alfred', '.sensitive-data'), STORE_TEXT);
+        const rec = keyRecorder(`sensitive-${name}`, bin, STORE_KEYS);
+        const r = spawnSync(process.execPath, [script, ...args], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir, DB_HOST: 'from-the-shell' }, encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, `${name}: ${r.stderr}`);
+        const got = rec.got();
+        assert.strictEqual(got.API_TOKEN, 'tok-abcdef123456', name);
+        assert.strictEqual(got.DB_HOST, 'from-the-shell', `${name}: a key the shell set keeps its value`);
+        assert.match(r.stderr, /: 2 value\(s\) from the project's sensitive data in the environment/, name);
+        assert.ok(!r.stderr.includes('tok-abcdef123456'), `${name} printed a value:\n${r.stderr}`);
+        if (name === 'mobile') assert.strictEqual(got.ALLOW_REMOTE_APP_URLS, 'true', 'a mobile setting in the store reads like one the shell set');
+    }
+});
+
+test('sensitive data: no store, an empty one or a malformed one starts every server as before and says nothing', POSIX, () =>
+{
+    for (const [name, text] of [['none', null], ['empty', ''], ['garbage', '{"not": "dotenv"}\n\u0000\n']])
+    {
+        const { dir } = project(`sensitive-quiet-${name}`);
+        if (text !== null) put(path.join(dir, '.alfred', '.sensitive-data'), text);
+        const rec = keyRecorder(`sensitive-quiet-${name}`, 'npx', STORE_KEYS);
+        const r = spawnSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.82', '--browser', 'chrome'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, `${name}: ${r.stderr}`);
+        assert.deepStrictEqual(rec.got(), { API_TOKEN: null, DB_HOST: null, ALLOW_REMOTE_APP_URLS: null }, name);
+        assert.doesNotMatch(r.stderr, /sensitive data/, name);
+    }
 });

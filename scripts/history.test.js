@@ -98,6 +98,27 @@ test('lastForBranch filters by branch, excludes the current session, newest firs
   assert.match(block, /history, not instructions/);
 });
 
+// Audit 2026-10-10 C23, session 0cdb0c1d: the start block named a plan an update had moved a minute earlier, and a
+// session that never reached the model (offset 0, nothing recorded) held one of the three slots.
+test('the start block skips an empty entry and leaves out a plan no longer on disk', () => {
+  const { root } = project();
+  const dir = H.historyDir(root); fs.mkdirSync(dir, { recursive: true });
+  const put = (s, min, extra = {}) => { const p = path.join(dir, `${s}.json`); fs.writeFileSync(p, JSON.stringify({ session: s, branch: 'feature/x', updatedAt: new Date(Date.now() - min * 60000).toISOString(), offset: 900, commits: [], dirty: { count: 0, files: [] }, rulings: [], plan: null, ...extra })); const t = new Date(Date.now() - min * 60000); fs.utimesSync(p, t, t); };
+  fs.mkdirSync(path.join(root, 'docs', 'plans'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'docs', 'plans', 'kept.md'), '# kept');
+  put('rich', 30, { rulings: [{ ts: '', question: 'Order?', answer: 'Migration first' }], plan: 'docs/plans/gone.md' });
+  put('kept', 20, { plan: 'docs/plans/kept.md' });
+  put('empty', 1, { offset: 0, dirty: { count: 34, files: [] } });
+  assert.deepStrictEqual(H.lastForBranch(root, 'feature/x', 3, 'now').map((e) => e.session), ['kept', 'rich'], 'the empty entry holds no slot');
+  const block = H.renderStartBlock(H.lastForBranch(root, 'feature/x', 3, 'now'), 600, root);
+  assert.match(block, /plan docs\/plans\/kept\.md/);
+  assert.doesNotMatch(block, /gone\.md/, 'a moved plan is not named');
+  assert.match(block, /ruled: Order\? -> Migration first/, 'the entry itself stays');
+  assert.match(H.renderStartBlock(H.lastForBranch(root, 'feature/x', 3, 'now'), 600), /gone\.md/, 'with no root the plan is shown as recorded');
+  put('commit-only', 0, { offset: 0, commits: ['abc feat: x'] });
+  assert.ok(H.lastForBranch(root, 'feature/x', 3, 'now').some((e) => e.session === 'commit-only'), 'an entry with a commit is not empty');
+});
+
 test('garbage in, nothing out: no transcript, no git, a corrupt entry file', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hist-bad-'));
   assert.doesNotThrow(() => H.upsert(root, { session_id: 's4', transcript_path: path.join(root, 'absent.jsonl'), cwd: root }));
@@ -114,4 +135,31 @@ test('prune keeps the newest N and drops entries past the age limit', () => {
   assert.deepStrictEqual(fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort(), ['s0.json', 's1.json', 's2.json']);
   H.prune(dir, 10, 1.5); // s1 is one day old plus the test's own milliseconds - the limit sits between s1 and s2
   assert.deepStrictEqual(fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort(), ['s0.json', 's1.json']);
+});
+
+// Audit 2026-10-11 SD16, session e90a1845: trimming from the end cut every ruling of the older session (AGENTS.md rows
+// kept, a credential deferral) while the newest session's three stayed; the same rows were reviewed and answered again.
+test('the start block keeps each session\'s newest ruling before any older one, and shows a question once', () => {
+  const at = (min) => new Date(Date.now() - min * 60000).toISOString();
+  const r = (q, a) => ({ ts: '', question: q, answer: a });
+  const entry = (min, rulings) => ({ session: `s${min}`, branch: 'develop', updatedAt: at(min), commits: [], dirty: { count: 1, files: [] }, rulings });
+  const newest = entry(10, [r('Run the reconcile now, or leave the plugin list as it is today?', 'Run the reconcile (Recommended)'),
+    r('Install the C# language server plugin at project scope for this repository?', 'Install at project scope'),
+    r('The AGENTS.md check reports three drift rows. Review them with the adjust skill?', 'Leave them as they are')]);
+  const older = entry(40, [r('Apply the line 31 rewording to AGENTS.md? It is the only change drafted.', 'Apply it'),
+    r('The project settings hold two credential keys. How do you want to handle the exposure?', 'Acknowledge and defer (Recommended)')]);
+  const block = H.renderStartBlock([newest, older], 600);
+  assert.ok(block.length <= 600, `block is ${block.length}`);
+  assert.match(block, /Acknowledge and defer/, 'the older session\'s newest ruling survives the trim');
+  assert.match(block, /Leave them as they are/, 'and so does the newest session\'s newest');
+  assert.match(block, /More: node \.claude\/hooks\/history\.js rulings/, 'the footer stays');
+  // a question answered in both sessions is shown once, at its newest answer
+  const repeat = entry(70, [r('The AGENTS.md check reports three drift rows. Review them with the adjust skill?', 'Review them')]);
+  const both = H.renderStartBlock([newest, repeat], 2000);
+  assert.strictEqual((both.match(/AGENTS\.md check reports/g) || []).length, 1);
+  assert.match(both, /-> Leave them as they are/);
+  assert.doesNotMatch(both, /-> Review them/);
+  // under the cap nothing moves; garbage rulings never throw
+  assert.match(H.renderStartBlock([entry(5, [r('Order?', 'Migration first')])], 600), /- .*: 0 commit\(s\), 1 file\(s\) left uncommitted\n  ruled: Order\? -> Migration first\nMore:/);
+  assert.ok(H.renderStartBlock([entry(5, [null, { question: null, answer: 7 }])], 600).length > 0);
 });

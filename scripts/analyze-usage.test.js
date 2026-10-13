@@ -816,7 +816,7 @@ test('hook-blocks: a root-cause probe is resolved against the transcript after t
   agent('a5', [tool('y1', 'Bash', { command: 'npm test' }), result('y1', red), tool('y2', 'Write', { file_path: '/tmp/probe.js', content: '1' }), result('y2')]);
   fs.appendFileSync(path.join(blocks, 'session.jsonl'), redRow('y1', { agent: 'a5' }));
   const { hookBlocks } = run([file, '--hook-blocks', blocks]);
-  assert.deepStrictEqual(hookBlocks.rootCause, { streaks: 8, beforeFix: 1, inContext: 1, preloaded: 1, afterFix: 1, missed: 1, noFix: 2, unmatched: 1 });
+  assert.deepStrictEqual(hookBlocks.rootCause, { streaks: 8, beforeFix: 1, inContext: 1, preloaded: 1, afterFix: 1, missed: 1, noFix: 2, unmatched: 1, intended: 0, testFirstRed: 0 });
   const text = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
   assert.match(text, /ROOT CAUSE \(probe\): 8 red streak\(s\) - 1 loaded before the fix, 1 already in context, 1 preloaded by the seat, 1 loaded after the fix, 1 MISSED, 2 with no fix after, 1 unmatched/);
 });
@@ -905,7 +905,7 @@ test('hook-blocks: directory mode sums the probe rows of each session it reads, 
   fs.writeFileSync(path.join(blocks, 's-other.jsonl'), doneRow({}));
   const out = run([dir, '--hook-blocks', blocks]);
   assert.deepStrictEqual(out.probes.doneGate, { claims: 3, ran: 1, unrun: 2, byRule: 0, noTests: 1, skillLoaded: 0, inContext: 0, missed: 1 });
-  assert.deepStrictEqual(out.probes.rootCause, { streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0 });
+  assert.deepStrictEqual(out.probes.rootCause, { streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0, intended: 0, testFirstRed: 0 });
   const text = execFileSync('node', [SCRIPT, dir, '--hook-blocks', blocks], { encoding: 'utf8' });
   assert.match(text, /DONE GATE \(probe\): 3 done claim\(s\)/);
   assert.ok(!('probes' in run([dir])), 'no --hook-blocks, no probe tally');
@@ -1173,6 +1173,21 @@ test('scorecard: corrections are the hook\'s marker test, not a short turn after
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// Audit 2026-10-11 SD14, session 5f9fec85: the pinned copy carries the owner's wh-clause lookbehind, so the saved share
+// and the hook's probe rate judge a request like 'check how it should be wired' the same way - no correction.
+test('scorecard: a weak "it should" inside a wh-clause is no correction; standing alone it still is', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+  const endTurn = (id, ts, text) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
+  const prompts = ['check how it should be wired', 'find out which branch this should go to', 'it should be the staging branch', 'Check the log. It should be empty'];
+  let a = scHuman(scT(0), 'start') + endTurn('a0', scT(1), 'Ready.');
+  prompts.forEach((p, i) => { a += scHuman(scT(2 + 2 * i), p) + endTurn(`a${i + 1}`, scT(3 + 2 * i), 'Done.'); });
+  const fa = path.join(dir, 'a.jsonl');
+  fs.writeFileSync(fa, a);
+  const ea = run([fa]).main.efficiency;
+  assert.deepStrictEqual(ea.correctionsUnsaved, [scT(6), scT(8)], 'only the two standing-alone markers');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('scorecard: a correction is saved when a memory store follows within three replies, and unsaved otherwise', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
   const endTurn = (id, ts, text) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
@@ -1219,6 +1234,27 @@ test('scorecard: a correction is saved when a memory store follows within three 
   assert.match(rtxt, /^\s+a\s.*\s2\/3\s*$/m);
   assert.match(rtxt, /^\s+TOTAL\s.*\s3\/5\s*$/m);
   assert.match(rtxt, /^corrections saved to memory over 2 sessions: 3 of 5; 2 unsaved \(40%\)$/m);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('scorecard: a correction typed into an ask waits on a save like a typed prompt; an offered label never does (audit 2026-10-10 C15, 4f1c2ebb)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+  const endTurn = (id, ts, text) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
+  const store = (id, ts) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `t${id}`, name: 'mcp__plugin_alfred-memory_alfred-memory__memory_store', input: { content: 'a lesson' } }]) + toolRes(ts, `t${id}`, 'stored');
+  const questions = [{ question: 'Ship it?', header: 'Ship', multiSelect: false, options: [{ label: 'Ship (Recommended)', description: 'a' }, { label: 'Hold', description: 'b' }] }];
+  const ask = (id, ts, answer, structured) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'tool_use', id: `q${id}`, name: 'AskUserQuestion', input: { questions } }])
+    + line({ type: 'user', timestamp: ts, message: { content: [{ type: 'tool_result', tool_use_id: `q${id}`, content: `User has answered your questions: "Ship it?"="${answer}". You can now continue.` }] },
+      ...(structured ? { toolUseResult: { questions, answers: { 'Ship it?': answer } } } : {}) });
+  // a: typed correction (text form), saved next reply; a typed correction (structured form), never saved; an offered label.
+  let a = scHuman(scT(0), 'go') + ask('a1', scT(1), 'why you bother me, just ship it') + store('a2', scT(2)) + endTurn('a3', scT(3), 'Saved.');
+  a += scHuman(scT(4), 'next') + ask('a4', scT(5), 'no, I said hold the release', true) + endTurn('a5', scT(6), 'Held.');
+  a += scHuman(scT(7), 'x') + endTurn('a6', scT(8), 'ok') + scHuman(scT(9), 'y') + endTurn('a7', scT(10), 'ok') + scHuman(scT(11), 'z') + endTurn('a8', scT(12), 'ok');
+  a += scHuman(scT(13), 'w') + ask('a9', scT(14), 'Hold') + endTurn('a10', scT(15), 'Holding.');
+  const fa = path.join(dir, 'a.jsonl');
+  fs.writeFileSync(fa, a);
+  const ea = run([fa]).main.efficiency;
+  assert.strictEqual(ea.correctionsSaved, 1, 'the text-form typed correction, saved in the next reply');
+  assert.deepStrictEqual(ea.correctionsUnsaved, [scT(5)], 'the structured-form typed correction, never saved; the offered label is no correction');
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -1721,7 +1757,7 @@ test('--check-report prints one row per judgment number that cites no machine ro
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// Speech-direct reports (2026-10-05): every one carrying the analyzer's own 'AFTER this session's last row <ISO date>'
+// A consuming project's reports (2026-10-05): every one carrying the analyzer's own 'AFTER this session's last row <ISO date>'
 // printed 'locator out of range ... row 2026' three times.
 test('--check-report reads no date as a locator, and checks only the judgment lines an author wrote', () => {
   const dir = tmp();
@@ -1800,16 +1836,17 @@ test('hook join: two ledger rows equally close to one call leave it UNJOINED, ne
   const file = fixture(dir, [bash('t1', 'echo one'), result('t1')]);
   const ledger = path.join(dir, 'tools-usage.jsonl');
   fs.writeFileSync(ledger, [
-    line({ ts: '2026-07-15T06:59:59.900Z', tool: 'Bash', detail: 'a' }),
-    line({ ts: '2026-07-15T07:00:00.100Z', tool: 'Bash', detail: 'b' }),
+    // both rows name the call's own detail (`echo one`, the verb fallback), so neither time nor detail tells them apart
+    line({ ts: '2026-07-15T06:59:59.900Z', tool: 'Bash', detail: 'echo one' }),
+    line({ ts: '2026-07-15T07:00:00.100Z', tool: 'Bash', detail: 'echo one' }),
   ].join(''));
   const cov = run([file, '--hook-log', ledger]).hookLog.coverage;
-  assert.strictEqual(cov.matchedCalls, 0, 'the ledger carries no tool_use_id, so neither row wins');
+  assert.strictEqual(cov.matchedCalls, 0, 'the rows carry no tool_use_id, so neither row wins');
   assert.strictEqual(cov.ambiguousCalls, 1);
   assert.strictEqual(cov.unmatchedCalls[0].ambiguous, true);
   const md = execFileSync('node', [SCRIPT, file, '--hook-log', ledger, '--report-md'], { encoding: 'utf8' });
   assert.match(md, /UNJOINED/);
-  assert.match(md, /no `tool_use_id`/);
+  assert.match(md, /no row carrying its `tool_use_id`/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -2093,8 +2130,8 @@ test('MCP failures: a server error counts per server across main and seats; a gu
   //       serena get_symbols_overview ok | context7 query-docs ERROR (MCP timeout)
   //       context7 resolve-library-id: a guard denial -> REJECTED, never ran
   //       memory memory_search: an InputValidationError -> REJECTED by the harness, never ran
-  //       browser-chrome browser_click: the user declined -> an answer, not a failure
-  // seat: serena find_symbol ERROR | browser-firefox browser_navigate ok
+  //       chrome-control browser_click: the user declined -> an answer, not a failure
+  // seat: serena find_symbol ERROR | firefox-control browser_navigate ok
   // hand count: 9 calls, 3 server errors (serena 2 of 4, context7 1 of 2), 2 rejected
   const dir = tmp();
   const file = path.join(dir, 'session.jsonl');
@@ -2106,7 +2143,7 @@ test('MCP failures: a server error counts per server across main and seats; a gu
     navCall('e4', mcpName('documentation', 'query-docs'), { query: 'x' }),
     navCall('e5', mcpName('documentation', 'resolve-library-id'), { libraryName: 'y' }),
     navCall('e6', mcpName('memory', 'memory_search'), {}),
-    navCall('e7', mcpName('browser-chrome', 'browser_click'), { element: 'OK' }),
+    navCall('e7', mcpName('chrome-control', 'browser_click'), { element: 'OK' }),
   ], {
     e2: { text: 'Error executing tool find_symbol: language server not running', error: true },
     e4: { text: 'MCP error -32001: Request timed out', error: true },
@@ -2118,7 +2155,7 @@ test('MCP failures: a server error counts per server across main and seats; a gu
   fs.mkdirSync(sub);
   navTranscript(path.join(sub, 'agent-s1.jsonl'), [
     navCall('f1', mcpName('navigation', 'find_symbol'), { name_path: 'C' }),
-    navCall('f2', mcpName('browser-firefox', 'browser_navigate'), { query: 'z' }),
+    navCall('f2', mcpName('firefox-control', 'browser_navigate'), { query: 'z' }),
   ], { f1: { text: 'Error executing tool find_symbol: timeout', error: true } });
   const { main, agents } = run([file]);
   assert.strictEqual(main.mcp.navigation.errors, 1);
@@ -2126,7 +2163,7 @@ test('MCP failures: a server error counts per server across main and seats; a gu
   assert.strictEqual(main.mcp.documentation.rejected, 1, 'a guard denial is a rejection, not a server failure');
   assert.strictEqual(main.mcp.memory.errors, 0);
   assert.strictEqual(main.mcp.memory.rejected, 1, 'a schema failure never reached the server');
-  assert.strictEqual(main.mcp['browser-chrome'].errors, 0, 'a decline is an answer');
+  assert.strictEqual(main.mcp['chrome-control'].errors, 0, 'a decline is an answer');
   assert.strictEqual(agents[0].stats.mcp.navigation.errors, 1);
   const txt = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
   assert.match(txt, /MCP failures\s+3 of 9 MCP call\(s\) returned an error: navigation 2\/4, documentation 1\/2; 2 more rejected before the server ran \(a guard or the harness\)/);

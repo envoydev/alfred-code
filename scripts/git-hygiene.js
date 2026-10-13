@@ -115,5 +115,9 @@ function main()
     }
 }
 
-if (require.main === module) process.exitCode = main();
+if (require.main === module)
+{
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
+    process.exitCode = main();
+}
 module.exports = { dataRootOffer, applyIgnore };

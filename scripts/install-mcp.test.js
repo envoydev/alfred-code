@@ -64,7 +64,7 @@ test('R7: on the plugin route the seed registers NOTHING and retires the whole c
     for (const name of ['alfred-navigation', 'alfred-documentation', 'alfred-memory', 'browser', 'old-server'])
         assert.ok(retired.includes(name), `${name} was not retired: ${retired.join(',')}`);
     // The four engine spellings an earlier release wrote are retired by name - they are not catalog rows.
-    for (const e of mcp.PW_ENGINES) assert.ok(retired.includes(`browser-${e}`), retired.join(','));
+    for (const e of mcp.PW_ENGINES) assert.ok(retired.includes(`${e}-control`), retired.join(','));
     assert.deepStrictEqual(mcp.bareNamedMcps({ routes: ROUTES(), mcps: CATALOG }), []);
 });
 
@@ -240,9 +240,11 @@ test('verify-user: a server the account config does not expose is skipped, not r
 
 test('playwright: the engines this run does not keep are dropped, and the plugin route drops none', () =>
 {
-    // The 1.x single `playwright` and the four names 2.0.0 renamed go whatever the run keeps.
+    // The 1.x single `playwright` and every older engine spelling (2.0.0's `playwright-<engine>`, 2.3.x's
+    // `browser-<engine>`) go whatever the run keeps - a kept engine registers under its `<engine>-control` name.
     assert.deepStrictEqual(mcp.playwrightDrop({ routes: COPY, browsers: ['chrome'] }),
-        ['playwright', 'playwright-chrome', 'playwright-msedge', 'playwright-firefox', 'playwright-webkit', 'browser-msedge', 'browser-firefox', 'browser-webkit']);
+        ['playwright', 'playwright-chrome', 'playwright-msedge', 'playwright-firefox', 'playwright-webkit',
+            'browser-chrome', 'browser-msedge', 'browser-firefox', 'browser-webkit', 'msedge-control', 'firefox-control', 'webkit-control']);
     assert.deepStrictEqual(mcp.playwrightDrop({ routes: ROUTES(), browsers: ['chrome'] }), []);
     assert.deepStrictEqual(mcp.playwrightDrop({ routes: COPY, browsers: [] }), []);
 });
@@ -284,8 +286,8 @@ test('playwright: the one manifest row becomes one entry per kept engine, each w
     const out = mcp.expandPlaywright({ mcps: ['alfred-navigation|-- uvx serena', row], browsers: ['chrome', 'firefox'] });
     assert.deepStrictEqual(out.mcps, [
         'alfred-navigation|-- uvx serena',
-        'browser-chrome|-- npx -y @playwright/mcp@0.0.80 --browser chrome --user-data-dir .playwright/chrome',
-        'browser-firefox|-- npx -y @playwright/mcp@0.0.80 --browser firefox --user-data-dir .playwright/firefox',
+        'chrome-control|-- npx -y @playwright/mcp@0.0.80 --browser chrome --user-data-dir .playwright/chrome',
+        'firefox-control|-- npx -y @playwright/mcp@0.0.80 --browser firefox --user-data-dir .playwright/firefox',
     ]);
 });
 
@@ -463,35 +465,35 @@ test('pins: each is spelled as its row says - memory ==<ver> inside the extras b
     assert.strictEqual(pins.PW_PIN, `@${rel.browser.version}`);
     assert.strictEqual(pins.MEMORY_BACKEND, 'sqlite_vec');
     // The desktop servers run `uvx --from windows-mcp==<ver>` / `macos-mcp==<ver>` on the copy route.
-    assert.strictEqual(pins.WINDOWS_DESKTOP_PIN, `==${rel['windows-desktop'].version}`);
-    assert.strictEqual(pins.MACOS_DESKTOP_PIN, `==${rel['macos-desktop'].version}`);
+    assert.strictEqual(pins.WINDOWS_CONTROL_PIN, `==${rel['windows-control'].version}`);
+    assert.strictEqual(pins.MACOS_CONTROL_PIN, `==${rel['macos-control'].version}`);
 });
 
-// The copy route registers no launcher, so windows-desktop's tool gate reaches Windows-MCP as its own
+// The copy route registers no launcher, so windows-control's tool gate reaches Windows-MCP as its own
 // WINDOWS_MCP_EXCLUDE_TOOLS, resolved at install time from the same setting the launcher reads.
-test('copy route: windows-desktop registers with the release pin and the tool gate as Windows-MCP\'s own env, both desktop servers with telemetry off', () =>
+test('copy route: windows-control registers with the release pin and the tool gate as Windows-MCP\'s own env, both desktop servers with telemetry off', () =>
 {
     const manifest = require('./install/manifest.js').loadManifest(path.join(__dirname, '..'));
-    const row = manifest.catalogs.mcps.find((e) => e.startsWith('windows-desktop|'));
-    const mac = manifest.catalogs.mcps.find((e) => e.startsWith('macos-desktop|'));
+    const row = manifest.catalogs.mcps.find((e) => e.startsWith('windows-control|'));
+    const mac = manifest.catalogs.mcps.find((e) => e.startsWith('macos-control|'));
     assert.ok(row && mac, 'both desktop servers are catalog rows');
     const { copyRouteExclude } = require('../stack/mcp/desktop-launch.js');
-    const tokens = { UV_PYTHON: '3.13', WINDOWS_DESKTOP_PIN: '==0.8.5', MACOS_DESKTOP_PIN: '==0.4.6', WINDOWS_DESKTOP_EXCLUDE: copyRouteExclude({ env: {} }),
+    const tokens = { UV_PYTHON: '3.13', WINDOWS_CONTROL_PIN: '==0.8.5', MACOS_CONTROL_PIN: '==0.4.6', WINDOWS_CONTROL_EXCLUDE: copyRouteExclude({ env: {} }),
         UV_EXCLUDE_FLAG: '--exclude-newer', UV_EXCLUDE_NEWER: '2026-09-29T23:59:59Z' };
-    const argv = mcp.registerSpec({ name: 'windows-desktop', args: row.slice(row.indexOf('|') + 1), scope: 'project', tokens });
+    const argv = mcp.registerSpec({ name: 'windows-control', args: row.slice(row.indexOf('|') + 1), scope: 'project', tokens });
     // I10: FileSystem (write, copy, move, delete) is off on this route too. M41: WINDOWS_MCP_TOOLS (Windows-MCP's
     // --tools, which OVERRIDES --exclude-tools) is registered EMPTY - click reads an empty variable as unset - so
     // one inherited from the shell never lifts the gate.
-    assert.deepStrictEqual(argv, ['mcp', 'add', '--scope', 'project', 'windows-desktop', '-e', 'WINDOWS_MCP_EXCLUDE_TOOLS=PowerShell,Registry,Process,FileSystem',
+    assert.deepStrictEqual(argv, ['mcp', 'add', '--scope', 'project', 'windows-control', '-e', 'WINDOWS_MCP_EXCLUDE_TOOLS=PowerShell,Registry,Process,FileSystem',
         '-e', 'WINDOWS_MCP_TOOLS=', '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve']);
-    assert.deepStrictEqual(mcp.registerSpec({ name: 'macos-desktop', args: mac.slice(mac.indexOf('|') + 1), scope: 'project', tokens }),
-        ['mcp', 'add', '--scope', 'project', 'macos-desktop', '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'],
+    assert.deepStrictEqual(mcp.registerSpec({ name: 'macos-control', args: mac.slice(mac.indexOf('|') + 1), scope: 'project', tokens }),
+        ['mcp', 'add', '--scope', 'project', 'macos-control', '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'],
         'the upstream telemetry is off on the copy route too');
-    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } }), '', 'none leaves Windows-MCP its own config');
-    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'PowerShell' } }), 'PowerShell');
+    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'none' } }), '', 'none leaves Windows-MCP its own config');
+    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'PowerShell' } }), 'PowerShell');
     // M41: the copy route's override is checked like the launcher's - case mended, a list of no real tool is the default.
-    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'powershell' } }), 'PowerShell');
-    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'bogus' } }), 'PowerShell,Registry,Process,FileSystem');
+    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'powershell' } }), 'PowerShell');
+    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: 'bogus' } }), 'PowerShell,Registry,Process,FileSystem');
     assert.strictEqual(mcp.identityOf({ command: 'uvx', args: ['--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve'] }), 'stdio:windows-mcp');
 });
 
@@ -501,7 +503,7 @@ test('the desktop servers are shipped but never in the no-selection default', ()
 {
     const manifest = require('./install/manifest.js').loadManifest(path.join(__dirname, '..'));
     const names = (list) => list.map((e) => e.split('|')[0]);
-    for (const name of ['windows-desktop', 'macos-desktop'])
+    for (const name of ['windows-control', 'macos-control'])
     {
         assert.ok(names(manifest.catalogs.mcps).includes(name), `${name} is not in the shipped catalog`);
         assert.ok(!names(manifest.mcps).includes(name), `${name} is in the default list a bare install takes`);
@@ -566,7 +568,7 @@ const STACK_PW = (e) => ({ type: 'stdio', command: 'npx', args: ['-y', '@playwri
 // Re-verify 3 S4 / S7: with no ledger row at a scope, a local- or user-scope registration is the stack's only in the release
 // template's exact shape - here a v2.1.5 one, an older pin and no anchor.
 const STACK_PW_EXACT = (e) => ({ type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@0.0.80', '--browser', e,
-    '--user-data-dir', `\${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/${e}`, '--output-dir', `\${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/${e}/output`, '--no-webmcp'], env: {} });
+    '--user-data-dir', `\${CLAUDE_PROJECT_DIR:-.}/.alfred/${e}-control`, '--output-dir', `\${CLAUDE_PROJECT_DIR:-.}/.alfred/${e}-control/output`, '--no-webmcp'], env: {} });
 
 for (const [route, env] of [['plugin', {}], ['copy', COPY_ENV]])
 {
@@ -918,16 +920,16 @@ test('seed update (full copy route): the switch stamps what it copied as picked 
 // chosen state (install-plugins.test.js, 'an engine uninstalled by hand comes back').
 const PW_ROWS = [
     ...STACK_ROWS('envoydev'),
-    { id: 'browser-chrome@envoydev', version: '1.0.0', scope: 'project', enabled: true },
-    { id: 'browser-firefox@envoydev', version: '1.0.0', scope: 'user', enabled: true },
-    { id: 'browser-webkit@envoydev', version: '1.0.0', scope: 'project', enabled: false },
-    { id: 'browser-chrome@a-fork', version: '1.0.0', scope: 'project', enabled: true },
+    { id: 'chrome-control@envoydev', version: '1.0.0', scope: 'project', enabled: true },
+    { id: 'firefox-control@envoydev', version: '1.0.0', scope: 'user', enabled: true },
+    { id: 'webkit-control@envoydev', version: '1.0.0', scope: 'project', enabled: false },
+    { id: 'chrome-control@a-fork', version: '1.0.0', scope: 'project', enabled: true },
 ];
 const pwProject = (repo) =>
 {
     fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
     fs.writeFileSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md'), '# rule\n');
-    fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 2.0.0\nbrowser-engines: chrome,firefox,webkit\nbrowser-enabled: chrome,firefox\n');
+    fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 2.0.0\ncontrol-engines: chrome,firefox,webkit\ncontrol-enabled: chrome,firefox\n');
 };
 const MCP_COPY_ENV = { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' };
 
@@ -939,18 +941,18 @@ for (const [route, env] of [['MCP copy route', MCP_COPY_ENV], ['full copy route'
             plugins: JSON.stringify(PW_ROWS), env, args: ['--playwright-browsers', 'chrome,firefox,webkit'], prepare: pwProject,
             inspect: (repo) => Object.keys(JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers || {}),
         });
-        for (const e of ['chrome', 'firefox', 'webkit']) assert.ok(result.includes(`browser-${e}`), `browser-${e} not registered: ${result.join(',')}\n${out}`);
-        const engineMoves = calls.filter((c) => /^plugin (install|uninstall|disable|enable) browser-/.test(c));
+        for (const e of ['chrome', 'firefox', 'webkit']) assert.ok(result.includes(`${e}-control`), `${e}-control not registered: ${result.join(',')}\n${out}`);
+        const engineMoves = calls.filter((c) => /^plugin (install|uninstall|disable|enable) (?:chrome|msedge|firefox|webkit)-control/.test(c));
         // R116: the row left off goes too - the stamp is then the one record the switch back reads. Scope rule 5: on the
         // full copy route the user-scope row is switched off for this project alone; on the MCP copy route it is named.
-        const firefox = route === 'full copy route' ? ['plugin disable browser-firefox@envoydev --scope project'] : [];
-        assert.deepStrictEqual(engineMoves, ['plugin uninstall browser-chrome@envoydev --scope project -y', ...firefox, 'plugin uninstall browser-webkit@envoydev --scope project -y'], `${engineMoves.join('\n')}\n${out}`);
-        const gone = calls.indexOf('plugin uninstall browser-chrome@envoydev --scope project -y');
-        assert.ok(calls.findIndex((c) => /^mcp add .*browser-/.test(c)) > gone, `an engine was registered before its plugin went:\n${calls.join('\n')}`);
-        assert.match(out, /plugin uninstalled \[project\]: browser-chrome@envoydev \(the copy route registers it in \.mcp\.json/);
+        const firefox = route === 'full copy route' ? ['plugin disable firefox-control@envoydev --scope project'] : [];
+        assert.deepStrictEqual(engineMoves, ['plugin uninstall chrome-control@envoydev --scope project -y', ...firefox, 'plugin uninstall webkit-control@envoydev --scope project -y'], `${engineMoves.join('\n')}\n${out}`);
+        const gone = calls.indexOf('plugin uninstall chrome-control@envoydev --scope project -y');
+        assert.ok(calls.findIndex((c) => /^mcp add .*(?:chrome|msedge|firefox|webkit)-control/.test(c)) > gone, `an engine was registered before its plugin went:\n${calls.join('\n')}`);
+        assert.match(out, /plugin uninstalled \[project\]: chrome-control@envoydev \(the copy route registers it in \.mcp\.json/);
         assert.match(out, route === 'full copy route'
-            ? /!! plugin disabled \[project\]: browser-firefox@envoydev \(the copy route registers it in \.mcp\.json; this project only - the user-scope install stays on for every other project\)/
-            : /browser-firefox@envoydev is enabled at user scope, not this run's - .*to switch it off for this project alone: claude plugin disable browser-firefox@envoydev --scope project/);
+            ? /!! plugin disabled \[project\]: firefox-control@envoydev \(the copy route registers it in \.mcp\.json; this project only - the user-scope install stays on for every other project\)/
+            : /firefox-control@envoydev is enabled at user scope, not this run's - .*to switch it off for this project alone: claude plugin disable firefox-control@envoydev --scope project/);
         const stackDisables = calls.filter((c) => /^plugin disable (alfred-code|alfred-navigation|alfred-documentation|alfred-memory)@/.test(c));
         assert.strictEqual(stackDisables.length, route === 'full copy route' ? 4 : 0, `${stackDisables.join('\n')}`);
     });
@@ -967,12 +969,12 @@ for (const [route, env] of [['MCP copy route', MCP_COPY_ENV], ['full copy route'
 // disabledMcpjsonServers in settings)'). The list moves only when the user's enable choice does.
 const PW3_ROWS = (over = {}) => [
     ...STACK_ROWS('envoydev'),
-    ...['chrome', 'firefox', 'webkit'].map((e) => ({ id: `browser-${e}@envoydev`, version: '2.0.0', scope: 'project', enabled: e !== 'webkit', ...(over[e] || {}) })),
+    ...['chrome', 'firefox', 'webkit'].map((e) => ({ id: `${e}-control@envoydev`, version: '2.0.0', scope: 'project', enabled: e !== 'webkit', ...(over[e] || {}) })),
 ];
 const jsonAt = (repo, rel) => { try { return JSON.parse(fs.readFileSync(path.join(repo, rel), 'utf8')); } catch { return {}; } };
 const pwState = (repo, settingsFile = 'settings.json') => ({
-    stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8').split('\n').filter((l) => /^browser-(engines|enabled):/.test(l)),
-    mcp: Object.keys(jsonAt(repo, '.mcp.json').mcpServers || {}).filter((n) => n.startsWith('browser-')),
+    stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8').split('\n').filter((l) => /^control-(engines|enabled):/.test(l)),
+    mcp: Object.keys(jsonAt(repo, '.mcp.json').mcpServers || {}).filter((n) => n.match(/^(?:chrome|msedge|firefox|webkit)-control$/)),
     disabled: jsonAt(repo, `.claude/${settingsFile}`).disabledMcpjsonServers,
     settings: fs.readFileSync(path.join(repo, '.claude', settingsFile), 'utf8'),
 });
@@ -984,8 +986,8 @@ const stepCalls = (repo) =>
     fs.writeFileSync(log, '');
     return calls;
 };
-const engineMovesOf = (calls) => calls.filter((c) => /^plugin (install|uninstall|disable|enable) browser-/.test(c));
-const PW_STAMP = ['browser-engines: chrome,firefox,webkit', 'browser-enabled: chrome,firefox'];
+const engineMovesOf = (calls) => calls.filter((c) => /^plugin (install|uninstall|disable|enable) (?:chrome|msedge|firefox|webkit)-control/.test(c));
+const PW_STAMP = ['control-engines: chrome,firefox,webkit', 'control-enabled: chrome,firefox'];
 
 test('seed update: an --installed-only switch onto the MCP copy route keeps the stamp\'s engine lines, and the switch back installs each as last chosen (R116 g)', POSIX_ONLY, () =>
 {
@@ -1004,19 +1006,19 @@ test('seed update: an --installed-only switch onto the MCP copy route keeps the 
     });
     const [toCopy, back] = steps;
     assert.deepStrictEqual(toCopy.stamp, PW_STAMP, `the switch blanked the record:\n${outs[0]}`);
-    assert.deepStrictEqual(toCopy.mcp, ['browser-chrome', 'browser-firefox', 'browser-webkit'], outs[0]);
-    assert.deepStrictEqual(toCopy.disabled, ['browser-webkit'], 'the engine left off loads on the copy route');
+    assert.deepStrictEqual(toCopy.mcp, ['chrome-control', 'firefox-control', 'webkit-control'], outs[0]);
+    assert.deepStrictEqual(toCopy.disabled, ['webkit-control'], 'the engine left off loads on the copy route');
     // Every stamped engine's row goes, the one left off included: the stamp is then the one record the
     // switch back reads, and a row left installed would override a choice the user made on the copy route.
-    assert.deepStrictEqual(engineMovesOf(toCopy.calls), ['chrome', 'firefox', 'webkit'].map((e) => `plugin uninstall browser-${e}@envoydev --scope project -y`), outs[0]);
+    assert.deepStrictEqual(engineMovesOf(toCopy.calls), ['chrome', 'firefox', 'webkit'].map((e) => `plugin uninstall ${e}-control@envoydev --scope project -y`), outs[0]);
     assert.deepStrictEqual(back.stamp, PW_STAMP, `the switch back lost the record:\n${outs[1]}`);
     assert.deepStrictEqual(engineMovesOf(back.calls), [
-        'plugin install browser-chrome@envoydev --scope project -y',
-        'plugin install browser-firefox@envoydev --scope project -y',
-        'plugin install browser-webkit@envoydev --scope project -y',
-        'plugin disable browser-webkit@envoydev --scope project',
+        'plugin install chrome-control@envoydev --scope project -y',
+        'plugin install firefox-control@envoydev --scope project -y',
+        'plugin install webkit-control@envoydev --scope project -y',
+        'plugin disable webkit-control@envoydev --scope project',
     ], outs[1]);
-    assert.ok(back.calls.includes('mcp remove browser-webkit -s project'), back.calls.join('\n'));
+    assert.ok(back.calls.includes('mcp remove webkit-control -s project'), back.calls.join('\n'));
     assert.strictEqual(back.disabled, undefined, 'a disabledMcpjsonServers entry for a server no longer registered is dead config');
 });
 
@@ -1028,10 +1030,10 @@ test('seed install (MCP copy route): an engine installed but not enabled is regi
         each: (repo) => pwState(repo),
     });
     const [first, update, again] = steps;
-    assert.deepStrictEqual(first.mcp, ['browser-chrome', 'browser-webkit'], outs[0]);
-    assert.deepStrictEqual(first.disabled, ['browser-webkit'], outs[0]);
+    assert.deepStrictEqual(first.mcp, ['chrome-control', 'webkit-control'], outs[0]);
+    assert.deepStrictEqual(first.disabled, ['webkit-control'], outs[0]);
     assert.match(outs[0], /browser: webkit left off - disabledMcpjsonServers keeps it from loading/);
-    assert.deepStrictEqual(first.stamp, ['browser-engines: chrome,webkit', 'browser-enabled: chrome']);
+    assert.deepStrictEqual(first.stamp, ['control-engines: chrome,webkit', 'control-enabled: chrome']);
     // The first update adopts the locked three (the sandbox listing has no core row) - its own change;
     // the list and the stamp hold from the install on, and the next re-run changes nothing at all.
     assert.deepStrictEqual(update.disabled, first.disabled, outs[1]);
@@ -1061,12 +1063,12 @@ test('seed update (MCP copy route): an engine the user enables stays enabled acr
         },
     });
     const [, kept, answeredOff, answeredOn] = steps;
-    assert.ok(!(kept.disabled || []).includes('browser-webkit'), `a re-run switched the user's engine back off:\n${outs[1]}`);
-    assert.deepStrictEqual(kept.stamp, ['browser-engines: chrome,webkit', 'browser-enabled: chrome,webkit'], 'the stamp keeps the live choice');
-    assert.deepStrictEqual(answeredOff.disabled, ['browser-webkit'], outs[2]);
-    assert.deepStrictEqual(answeredOff.stamp, ['browser-engines: chrome,webkit', 'browser-enabled: chrome']);
-    assert.ok(!(answeredOn.disabled || []).includes('browser-webkit'), outs[3]);
-    assert.deepStrictEqual(answeredOn.stamp, ['browser-engines: chrome,webkit', 'browser-enabled: chrome,webkit']);
+    assert.ok(!(kept.disabled || []).includes('webkit-control'), `a re-run switched the user's engine back off:\n${outs[1]}`);
+    assert.deepStrictEqual(kept.stamp, ['control-engines: chrome,webkit', 'control-enabled: chrome,webkit'], 'the stamp keeps the live choice');
+    assert.deepStrictEqual(answeredOff.disabled, ['webkit-control'], outs[2]);
+    assert.deepStrictEqual(answeredOff.stamp, ['control-engines: chrome,webkit', 'control-enabled: chrome']);
+    assert.ok(!(answeredOn.disabled || []).includes('webkit-control'), outs[3]);
+    assert.deepStrictEqual(answeredOn.stamp, ['control-engines: chrome,webkit', 'control-enabled: chrome,webkit']);
 });
 
 // M1 (R132): the run READS a rejection from settings.json, settings.local.json and the account file,
@@ -1088,10 +1090,10 @@ test('seed update (MCP copy route): an enable answer takes the engine out of set
             {
                 // The approval dialog's rejection of webkit, beside a key of the user's own; firefox is
                 // rejected in the account file.
-                fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), `${JSON.stringify({ disabledMcpjsonServers: ['browser-webkit'], permissions: { allow: ['Bash(ls)'] } }, null, 2)}\n`);
+                fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), `${JSON.stringify({ disabledMcpjsonServers: ['webkit-control'], permissions: { allow: ['Bash(ls)'] } }, null, 2)}\n`);
                 const acct = jsonAt(path.dirname(account), 'settings.json');
                 fs.mkdirSync(path.dirname(account), { recursive: true });
-                fs.writeFileSync(account, `${JSON.stringify({ ...acct, disabledMcpjsonServers: ['browser-firefox'] }, null, 2)}\n`);
+                fs.writeFileSync(account, `${JSON.stringify({ ...acct, disabledMcpjsonServers: ['firefox-control'] }, null, 2)}\n`);
             }
             return state;
         },
@@ -1100,11 +1102,11 @@ test('seed update (MCP copy route): an enable answer takes the engine out of set
     assert.deepStrictEqual(answered.local, undefined, `the local rejection survived the enable answer:\n${outs[1]}`);
     // C8: `env` is the machine's memory path, which settings.local.json holds at every scope.
     assert.deepStrictEqual(answered.localKeys, ['permissions', 'env'], 'the user\'s own local key went');
-    assert.ok(!(answered.disabled || []).includes('browser-webkit'), outs[1]);
-    assert.match(outs[1], /settings\.local\.json: disabledMcpjsonServers - browser-webkit/);
-    assert.match(outs[1], /browser-firefox is still rejected by .*acct\/settings\.json's disabledMcpjsonServers/);
-    assert.match(answered.account, /"browser-firefox"/, 'the account file was edited');
-    assert.deepStrictEqual(again.stamp, ['browser-engines: chrome,firefox,webkit', 'browser-enabled: chrome,webkit'], `the next run flipped the stamp:\n${outs[2]}`);
+    assert.ok(!(answered.disabled || []).includes('webkit-control'), outs[1]);
+    assert.match(outs[1], /settings\.local\.json: disabledMcpjsonServers - webkit-control/);
+    assert.match(outs[1], /firefox-control is still rejected by .*acct\/settings\.json's disabledMcpjsonServers/);
+    assert.match(answered.account, /"firefox-control"/, 'the account file was edited');
+    assert.deepStrictEqual(again.stamp, ['control-engines: chrome,firefox,webkit', 'control-enabled: chrome,webkit'], `the next run flipped the stamp:\n${outs[2]}`);
 });
 
 test('seed update --print-plan (MCP copy route): the walk pre-selects the LIVE on/off - disabledMcpjsonServers, not the stamp (R116 j)', POSIX_ONLY, () =>
@@ -1118,16 +1120,16 @@ test('seed update --print-plan (MCP copy route): the walk pre-selects the LIVE o
             {
                 fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
                 fs.writeFileSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md'), '# rule\n');
-                fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), `sha: abc\nversion: 2.0.0\nbrowser-engines: chrome,webkit\nbrowser-enabled: ${stampEnabled}\n`);
+                fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), `sha: abc\nversion: 2.0.0\ncontrol-engines: chrome,webkit\ncontrol-enabled: ${stampEnabled}\n`);
                 const server = (e) => ({ command: 'npx', args: ['-y', '@playwright/mcp@0.0.82', '--browser', e] });
-                fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { 'browser-chrome': server('chrome'), 'browser-webkit': server('webkit') } }));
+                fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { 'chrome-control': server('chrome'), 'webkit-control': server('webkit') } }));
                 fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ disabledMcpjsonServers: disabled }));
             },
             inspect: (repo) => JSON.parse(fs.readFileSync(path.join(path.dirname(repo), 'plan.json'), 'utf8')).browser,
         });
         return result;
     };
-    assert.deepStrictEqual(planFor(['browser-webkit'], 'chrome,webkit'), { installed: ['chrome', 'webkit'], enabled: ['chrome'] });
+    assert.deepStrictEqual(planFor(['webkit-control'], 'chrome,webkit'), { installed: ['chrome', 'webkit'], enabled: ['chrome'] });
     assert.deepStrictEqual(planFor([], 'chrome'), { installed: ['chrome', 'webkit'], enabled: ['chrome', 'webkit'] });
 });
 
@@ -1135,7 +1137,7 @@ test('seed update --print-plan (MCP copy route): the walk pre-selects the LIVE o
 // disabledMcpjsonServers rejects only .mcp.json servers - so there the registration IS the enable. An
 // engine left off is NOT registered (an earlier registration of it is removed), the stamp still records it
 // installed-off, its browser is still downloaded, and a later enable answer registers it.
-const engineAdds = (calls) => calls.filter((c) => /^mcp add /.test(c)).map((c) => (/\bbrowser-(chrome|msedge|firefox|webkit)\b/.exec(c) || [])[1]).filter(Boolean);
+const engineAdds = (calls) => calls.filter((c) => /^mcp add /.test(c)).map((c) => (/\b(chrome|msedge|firefox|webkit)-control\b/.exec(c) || [])[1]).filter(Boolean);
 for (const scope of ['user', 'local'])
 {
     test(`seed install + update (MCP copy route, ${scope} scope): an engine left off is not registered, the stamp keeps it installed-off, and no /mcp line is printed (R124 l)`, POSIX_ONLY, () =>
@@ -1145,8 +1147,8 @@ for (const scope of ['user', 'local'])
             env: MCP_COPY_ENV,
             // A-M2 / re-verify 3 S4: a local- or user-scope removal takes only a registration the stack vouches for - with no
             // ledger, the release template's exact shape - so the earlier webkit registration is laid out in the account file.
-            prepare: (repo, work) => (scope === 'user' ? accountMcp(work, { 'browser-webkit': STACK_PW_EXACT('webkit') })
-                : accountMcp(work, {}, { [fs.realpathSync(repo)]: { mcpServers: { 'browser-webkit': STACK_PW_EXACT('webkit') } } })),
+            prepare: (repo, work) => (scope === 'user' ? accountMcp(work, { 'webkit-control': STACK_PW_EXACT('webkit') })
+                : accountMcp(work, {}, { [fs.realpathSync(repo)]: { mcpServers: { 'webkit-control': STACK_PW_EXACT('webkit') } } })),
             args: [['--scope', scope, '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'], ['--scope', scope, '--installed-only']],
             each: (repo) => ({ ...pwState(repo, settingsFile), calls: stepCalls(repo) }),
         });
@@ -1154,11 +1156,11 @@ for (const scope of ['user', 'local'])
         {
             // The recording stub answers `mcp get`, so an install reads every name as configured already
             // and adds none; an update removes and re-adds, so its adds are the whole registration.
-            const looked = [...new Set(step.calls.filter((c) => /^mcp get browser-/.test(c)).map((c) => c.split(' ')[2]))];
-            assert.deepStrictEqual(i === 0 ? looked : engineAdds(step.calls), i === 0 ? ['browser-chrome'] : ['chrome'],
+            const looked = [...new Set(step.calls.filter((c) => /^mcp get (?:chrome|msedge|firefox|webkit)-control/.test(c)).map((c) => c.split(' ')[2]))];
+            assert.deepStrictEqual(i === 0 ? looked : engineAdds(step.calls), i === 0 ? ['chrome-control'] : ['chrome'],
                 `step ${i} registered an engine left off:\n${step.calls.join('\n')}\n${outs[i]}`);
-            assert.ok(step.calls.includes(`mcp remove browser-webkit -s ${scope}`), `step ${i} left an earlier webkit registration in place:\n${step.calls.join('\n')}`);
-            assert.deepStrictEqual(step.stamp, ['browser-engines: chrome,webkit', 'browser-enabled: chrome'], `step ${i}: ${outs[i]}`);
+            assert.ok(step.calls.includes(`mcp remove webkit-control -s ${scope}`), `step ${i} left an earlier webkit registration in place:\n${step.calls.join('\n')}`);
+            assert.deepStrictEqual(step.stamp, ['control-engines: chrome,webkit', 'control-enabled: chrome'], `step ${i}: ${outs[i]}`);
             assert.strictEqual(step.disabled, undefined, 'no settings key reaches a local- or user-scope registration');
             assert.doesNotMatch(outs[i], /run \/mcp and disable/, `step ${i} named a /mcp switch for an engine it did not register`);
             assert.match(outs[i], new RegExp(`browser: webkit left off - not registered at ${scope} scope`), outs[i]);
@@ -1174,17 +1176,17 @@ test('seed update (MCP copy route, user scope): a later enable answer registers 
         // A-M2 / re-verify 3 S4: the registrations the account holds, in the stack's exact shape; the stand-in CLI keeps the
         // account file as the real one does, so the ledger each run writes is the one the next reads.
         account: true,
-        prepare: (repo, work) => accountMcp(work, { 'browser-chrome': STACK_PW_EXACT('chrome'), 'browser-webkit': STACK_PW_EXACT('webkit') }),
+        prepare: (repo, work) => accountMcp(work, { 'chrome-control': STACK_PW_EXACT('chrome'), 'webkit-control': STACK_PW_EXACT('webkit') }),
         args: [['--scope', 'user', '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'],
             ['--scope', 'user', '--installed-only', '--playwright-enabled', 'all'], ['--scope', 'user', '--installed-only', '--playwright-enabled', 'chrome']],
         each: (repo) => ({ ...pwState(repo), calls: stepCalls(repo) }),
     });
     const [, on, off] = steps;
     assert.deepStrictEqual(engineAdds(on.calls), ['chrome', 'webkit'], `the enable did not register webkit:\n${on.calls.join('\n')}\n${outs[1]}`);
-    assert.deepStrictEqual(on.stamp, ['browser-engines: chrome,webkit', 'browser-enabled: chrome,webkit']);
+    assert.deepStrictEqual(on.stamp, ['control-engines: chrome,webkit', 'control-enabled: chrome,webkit']);
     assert.deepStrictEqual(engineAdds(off.calls), ['chrome'], outs[2]);
-    assert.ok(off.calls.includes('mcp remove browser-webkit -s user'), off.calls.join('\n'));
-    assert.deepStrictEqual(off.stamp, ['browser-engines: chrome,webkit', 'browser-enabled: chrome']);
+    assert.ok(off.calls.includes('mcp remove webkit-control -s user'), off.calls.join('\n'));
+    assert.deepStrictEqual(off.stamp, ['control-engines: chrome,webkit', 'control-enabled: chrome']);
 });
 
 // Re-verify 4 T1 (aMcpUser, bMcpUser): the MCP copy route with the core on registers each browser engine at USER scope, so
@@ -1199,7 +1201,7 @@ test('seed install (MCP copy route, user scope): the browser row runs no engine 
         inspect: (repo) =>
         {
             const work = path.dirname(repo);
-            const row = JSON.parse(fs.readFileSync(path.join(work, 'acct', '.claude.json'), 'utf8')).mcpServers['browser-chrome'];
+            const row = JSON.parse(fs.readFileSync(path.join(work, 'acct', '.claude.json'), 'utf8')).mcpServers['chrome-control'];
             const mark = path.join(work, 'planted-ran');
             const plant = (dir) =>
             {
@@ -1236,7 +1238,7 @@ test('seed install (MCP copy route, user scope): the browser row runs no engine 
     assert.strictEqual(result.row.args[0], '-e', `the user-scope row is not anchored: ${JSON.stringify(result.row)}`);
     assert.strictEqual(result.ran, false, 'a planted engine ran');
     assert.deepStrictEqual(result.started.map((s) => s.cwd), result.roots);
-    assert.deepStrictEqual(result.started.map((s) => s.profile), result.roots.map((r) => path.join(r, '.alfred', 'browser', 'chrome')));
+    assert.deepStrictEqual(result.started.map((s) => s.profile), result.roots.map((r) => path.join(r, '.alfred', 'chrome-control')));
 });
 
 // Re-verify 4 T7 (xOwnNew, s7b): a pick whose name the user's own local- or user-scope registration holds is kept as
@@ -1250,10 +1252,10 @@ for (const scope of ['local', 'user'])
         const OWN = { type: 'stdio', command: 'uvx', args: ['macos-mcp', 'serve', '--my-flag'], env: { MY_OWN: '1' } };
         const acct = (work) => path.join(work, 'acct', '.claude.json');
         const holderOf = (data, repo) => (scope === 'user' ? data : ((data.projects || {})[fs.realpathSync(repo)] || {}));
-        const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+        const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp macos-control\n', {
             env: { ...MCP_COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, account: true,
-            prepare: (repo, work) => (scope === 'user' ? accountMcp(work, { 'macos-desktop': OWN })
-                : accountMcp(work, {}, { [fs.realpathSync(repo)]: { mcpServers: { 'macos-desktop': OWN } } })),
+            prepare: (repo, work) => (scope === 'user' ? accountMcp(work, { 'macos-control': OWN })
+                : accountMcp(work, {}, { [fs.realpathSync(repo)]: { mcpServers: { 'macos-control': OWN } } })),
             args: [['--scope', scope], ['--scope', scope, '--installed-only'], ['--scope', scope, '--installed-only']],
             each: (repo, i) =>
             {
@@ -1261,13 +1263,13 @@ for (const scope of ['local', 'user'])
                 const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
                 const data = JSON.parse(fs.readFileSync(acct(work), 'utf8'));
                 const step = {
-                    reg: (holderOf(data, repo).mcpServers || {})['macos-desktop'],
+                    reg: (holderOf(data, repo).mcpServers || {})['macos-control'],
                     held: (/^mcp-held: *(.*)$/m.exec(stamp) || [])[1] ?? null,
-                    ledgered: new RegExp(`\\b${scope}:macos-desktop=`).test((/^managed-mcp:(.*)$/m.exec(stamp) || [])[1] || ''),
+                    ledgered: new RegExp(`\\b${scope}:macos-control=`).test((/^managed-mcp:(.*)$/m.exec(stamp) || [])[1] || ''),
                     calls: stepCalls(repo),
                 };
                 // After the second run the user takes the remove command the line gave them.
-                if (i === 1) { delete holderOf(data, repo).mcpServers['macos-desktop']; fs.writeFileSync(acct(work), JSON.stringify(data, null, 2)); }
+                if (i === 1) { delete holderOf(data, repo).mcpServers['macos-control']; fs.writeFileSync(acct(work), JSON.stringify(data, null, 2)); }
                 return step;
             },
         });
@@ -1275,14 +1277,14 @@ for (const scope of ['local', 'user'])
         for (const [i, step] of [install, heldUpdate].entries())
         {
             assert.deepStrictEqual(step.reg, OWN, `run ${i} touched the user's own registration:\n${step.calls.join('\n')}\n${outs[i]}`);
-            assert.ok(!step.calls.some((c) => /^mcp (add|remove) .*macos-desktop/.test(c)), `run ${i}:\n${step.calls.join('\n')}`);
-            assert.strictEqual(step.held, `${scope}:macos-desktop`, `run ${i} left the pick out of the record:\n${outs[i]}`);
+            assert.ok(!step.calls.some((c) => /^mcp (add|remove) .*macos-control/.test(c)), `run ${i}:\n${step.calls.join('\n')}`);
+            assert.strictEqual(step.held, `${scope}:macos-control`, `run ${i} left the pick out of the record:\n${outs[i]}`);
             assert.strictEqual(step.ledgered, false, `run ${i} ledgered the user's own registration`);
-            const lines = outs[i].split('\n').filter((l) => /mcp macos-desktop: the .*registration is not the one the stack wrote/.test(l));
+            const lines = outs[i].split('\n').filter((l) => /mcp macos-control: the .*registration is not the one the stack wrote/.test(l));
             assert.strictEqual(lines.length, 1, `run ${i} did not name it in one line:\n${outs[i]}`);
-            assert.match(lines[0], new RegExp(`stays a pick in this install's record: once you remove yours \\(claude mcp remove macos-desktop -s ${scope}\\), /alfred-code:update registers the stack's`), lines[0]);
+            assert.match(lines[0], new RegExp(`stays a pick in this install's record: once you remove yours \\(claude mcp remove macos-control -s ${scope}\\), /alfred-code:update registers the stack's`), lines[0]);
         }
-        assert.ok(freed.calls.some((c) => new RegExp(`^mcp add --scope ${scope} macos-desktop `).test(c)), `the update after the name freed did not register the stack's:\n${freed.calls.join('\n')}\n${outs[2]}`);
+        assert.ok(freed.calls.some((c) => new RegExp(`^mcp add --scope ${scope} macos-control `).test(c)), `the update after the name freed did not register the stack's:\n${freed.calls.join('\n')}\n${outs[2]}`);
         assert.notDeepStrictEqual(freed.reg, undefined, outs[2]);
         assert.strictEqual(freed.reg.env.ANONYMIZED_TELEMETRY, 'false', JSON.stringify(freed.reg));
         assert.strictEqual(freed.ledgered, true, outs[2]);
@@ -1305,13 +1307,13 @@ test('seed install (MCP copy route): enabledMcpjsonServers names only the engine
     const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nmcp browser\n', {
         env: MCP_COPY_ENV,
         args: [['--playwright-browsers', 'chrome,firefox,webkit', '--playwright-enabled', 'chrome,firefox'], ['--installed-only']],
-        prepare: withTrust('settings.json', ['alfred-navigation', 'mine', 'browser-webkit']),
+        prepare: withTrust('settings.json', ['alfred-navigation', 'mine', 'webkit-control']),
         each: (repo) => ({ trusted: trusted(repo), disabled: pwState(repo).disabled }),
     });
     for (const [i, step] of steps.entries())
     {
-        assert.deepStrictEqual(step.trusted, ['mine', 'browser-chrome', 'browser-firefox'], `step ${i}:\n${outs[i]}`);
-        assert.deepStrictEqual(step.disabled, ['browser-webkit'], `step ${i}`);
+        assert.deepStrictEqual(step.trusted, ['mine', 'chrome-control', 'firefox-control'], `step ${i}:\n${outs[i]}`);
+        assert.deepStrictEqual(step.disabled, ['webkit-control'], `step ${i}`);
     }
 });
 
@@ -1327,7 +1329,7 @@ test('seed install (full copy route): the locked three are registered in .mcp.js
 test('seed update (full copy route): a .mcp.json with a BOM reads like one without - the pick stays, its trust entry stays, a drifted row is still repaired (matrix F-BOM)', POSIX_ONLY, () =>
 {
     const BOM = '\uFEFF';
-    const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+    const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-control\n', {
         env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, args: [[], ['--installed-only'], ['--installed-only'], ['--installed-only']],
         each: (repo, i) =>
         {
@@ -1338,21 +1340,21 @@ test('seed update (full copy route): a .mcp.json with a BOM reads like one witho
             if (i === 2)
             {
                 const data = JSON.parse(raw.replace(/^\uFEFF/, ''));
-                data.mcpServers['macos-desktop'].args = ['drifted'];
+                data.mcpServers['macos-control'].args = ['drifted'];
                 fs.writeFileSync(file, BOM + JSON.stringify(data, null, 2));
             }
             return step;
         },
     });
-    assert.ok(steps[0].trusted.includes('macos-desktop'), `install:\n${outs[0]}`);
+    assert.ok(steps[0].trusted.includes('macos-control'), `install:\n${outs[0]}`);
     for (const i of [1, 2, 3])
     {
         assert.strictEqual(steps[i].bom, true, `run ${i}: the BOM is kept`);
-        assert.ok(steps[i].trusted.includes('macos-desktop'), `run ${i} dropped the trust entry:\n${outs[i]}`);
+        assert.ok(steps[i].trusted.includes('macos-control'), `run ${i} dropped the trust entry:\n${outs[i]}`);
         assert.doesNotMatch(outs[i], /dropped enabledMcpjsonServers entry/, `run ${i}:\n${outs[i]}`);
         assert.strictEqual(/mcps=(\d+)/.exec(outs[i])[1], /mcps=(\d+)/.exec(outs[0])[1], `run ${i} read a different MCP list:\n${outs[i]}`);
     }
-    assert.match(outs[3], /mcp repaired: macos-desktop/, `the drifted row under a BOM was not repaired:\n${outs[3]}`);
+    assert.match(outs[3], /mcp repaired: macos-control/, `the drifted row under a BOM was not repaired:\n${outs[3]}`);
 });
 
 // Matrix FAIL F-OWN (2.1.6): the held rule (a pick whose name the user's own registration holds is kept, named with its
@@ -1360,14 +1362,14 @@ test('seed update (full copy route): a .mcp.json with a BOM reads like one witho
 // user's own `.mcp.json` row ('mcp repaired: ... was stdio node my-desktop.js'), also on 2.1.5. The row is the user's when the
 // ledger does not list the name (no ledger: when it is not the stack's exact shape); a row the ledger lists is the stack's,
 // so an edit to it is still repaired (the documented drift repair).
-for (const [pick, extra] of [['macos-desktop', []], ['browser-chrome', ['--browsers', 'chrome']]])
+for (const [pick, extra] of [['macos-control', []], ['chrome-control', ['--browsers', 'chrome']]])
 {
     test(`seed install + update (full copy route, project scope): the user's own .mcp.json ${pick} row is kept, named and held, and the update after it frees registers the stack's (matrix F-OWN)`, POSIX_ONLY, () =>
     {
         const OWN = { command: 'node', args: ['my-desktop.js'] };
         const MINE = { type: 'stdio', command: 'node', args: ['mine.js'] };
         const rowsOf = (repo) => jsonAt(repo, '.mcp.json').mcpServers || {};
-        const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], `skill markdown-style\nmcp ${pick.startsWith('browser') ? 'browser' : pick}\n`, {
+        const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], `skill markdown-style\nmcp ${pick.endsWith('-control') && !pick.startsWith('macos') ? 'browser' : pick}\n`, {
             env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, args: [extra, ['--installed-only', ...extra], ['--installed-only', ...extra], ['--installed-only', ...extra]],
             prepare: (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { [pick]: OWN, mine: MINE } }, null, 2)),
             each: (repo, i) =>
@@ -1408,12 +1410,12 @@ for (const [pick, extra] of [['macos-desktop', []], ['browser-chrome', ['--brows
 
 // The plugin route registers nothing in .mcp.json, so the user's own row under a pick's name is left as it is and named once;
 // the pick is carried by its plugin row, so no `mcp-held:` line is needed there.
-for (const [pick, extra] of [['macos-desktop', []], ['browser-chrome', ['--browsers', 'chrome']]])
+for (const [pick, extra] of [['macos-control', []], ['chrome-control', ['--browsers', 'chrome']]])
 {
     test(`seed install + update (plugin route, project scope): the user's own .mcp.json ${pick} row is kept and named once, never rewritten (matrix F-OWN)`, POSIX_ONLY, () =>
     {
         const OWN = { command: 'node', args: ['my-desktop.js'] };
-        const { steps, outs } = seedRun(['install', 'update'], `skill markdown-style\nmcp ${pick.startsWith('browser') ? 'browser' : pick}\n`, {
+        const { steps, outs } = seedRun(['install', 'update'], `skill markdown-style\nmcp ${pick.endsWith('-control') && !pick.startsWith('macos') ? 'browser' : pick}\n`, {
             env: { ALFRED_CODE_PLATFORM: 'darwin' }, args: [extra, ['--installed-only', ...extra]],
             prepare: (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { [pick]: OWN } }, null, 2)),
             each: (repo) => ({ row: jsonAt(repo, '.mcp.json').mcpServers[pick], held: /^mcp-held:/m.test(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) }),
@@ -1429,20 +1431,20 @@ for (const [pick, extra] of [['macos-desktop', []], ['browser-chrome', ['--brows
 
 test('seed update (full copy route, project scope): a ledgered row edited by the user is still repaired, and a row the ledger does not list is the user\'s (matrix F-OWN o3)', POSIX_ONLY, () =>
 {
-    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nmcp macos-control\n', {
         env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, args: [[], ['--installed-only']],
         each: (repo, i) =>
         {
             const file = path.join(repo, '.mcp.json');
             const data = jsonAt(repo, '.mcp.json');
-            const step = { row: data.mcpServers['macos-desktop'], nav: data.mcpServers['alfred-navigation'] };
-            if (i === 0) { data.mcpServers['macos-desktop'].args = ['drifted']; fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
+            const step = { row: data.mcpServers['macos-control'], nav: data.mcpServers['alfred-navigation'] };
+            if (i === 0) { data.mcpServers['macos-control'].args = ['drifted']; fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
             return step;
         },
     });
-    assert.match(outs[1], /mcp repaired: macos-desktop/, outs[1]);
+    assert.match(outs[1], /mcp repaired: macos-control/, outs[1]);
     assert.notDeepStrictEqual(steps[1].row.args, ['drifted']);
-    assert.doesNotMatch(outs[1], /macos-desktop: the project-scope registration is not the one the stack wrote/, outs[1]);
+    assert.doesNotMatch(outs[1], /macos-control: the project-scope registration is not the one the stack wrote/, outs[1]);
 });
 
 for (const scope of ['user', 'local'])
@@ -1453,7 +1455,7 @@ for (const scope of ['user', 'local'])
         const { result, out } = seedRun('install', 'skill markdown-style\nmcp browser\n', {
             env: MCP_COPY_ENV,
             args: ['--scope', scope, '--playwright-browsers', 'chrome'],
-            prepare: withTrust(file, ['alfred-navigation', 'mine', 'browser-chrome']),
+            prepare: withTrust(file, ['alfred-navigation', 'mine', 'chrome-control']),
             inspect: (repo) => trusted(repo, file),
         });
         assert.deepStrictEqual(result, ['mine'], out);
@@ -1478,11 +1480,11 @@ test('seed install + update --scope user (full copy route): every stack server l
     {
         const userCalls = step.calls.filter((c) => /^mcp (add|remove) .*(--scope user|-s user)/.test(c));
         assert.deepStrictEqual(userCalls, [], `step ${i} registered at user scope:\n${userCalls.join('\n')}\n${outs[i]}`);
-        for (const name of ['alfred-navigation', 'alfred-memory', 'alfred-documentation', 'browser-chrome'])
+        for (const name of ['alfred-navigation', 'alfred-memory', 'alfred-documentation', 'chrome-control'])
             assert.ok(step.mcp[name], `step ${i}: ${name} is not in this project's .mcp.json: ${Object.keys(step.mcp).join(',')}\n${outs[i]}`);
         // Project-relative, the server started at its project through ROOT_BOOT: every checkout's own (re-verify 2 R3, 3 S2).
         assert.strictEqual(step.mcp['alfred-memory'].env.MCP_MEMORY_SQLITE_PATH, '.alfred/.alfred-memory/memory.db', 'the project-level database is this project\'s, whichever checkout reads it');
-        for (const name of ['alfred-navigation', 'alfred-memory', 'alfred-documentation', 'browser-chrome']) assert.ok((step.trusted || []).includes(name), `step ${i}: ${name} is not pre-approved`);
+        for (const name of ['alfred-navigation', 'alfred-memory', 'alfred-documentation', 'chrome-control']) assert.ok((step.trusted || []).includes(name), `step ${i}: ${name} is not pre-approved`);
         assert.match(step.stamp, /^scope: user$/m);
         assert.match(outs[i], /mcp: alfred-navigation still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run \/alfred-code:update: claude mcp remove alfred-navigation -s user/, outs[i]);
         assert.doesNotMatch(outs[i], /mcp: [^\n]*memory still registered at user scope/, 'another server under the stack\'s name is not the stack\'s');
@@ -1495,7 +1497,7 @@ test('seed install + update --scope user (full copy route): every stack server l
 // `playwright`, stayed at user scope with nothing said. Each is named with its command like C10's stale
 // names, and never removed (another user-scope install may still load it); a server of the user's own
 // under a dropped engine's name gets the kept line instead.
-// M-F5-1 (re-review follow-up): `browser-webkit` is not live (this run only keeps chrome), so a foreign
+// M-F5-1 (re-review follow-up): `webkit-control` is not live (this run only keeps chrome), so a foreign
 // registration under it is noise, not something the user must act on - its kept line loses the `!!`.
 // M-F5-2 (re-review follow-up): `playwright`'s identity is the package name only (mcp.identityOf), which
 // cannot tell the stack's 1.x registration apart from the user's own `npx @playwright/mcp` under the same
@@ -1507,17 +1509,17 @@ test('seed update --scope user (full copy route): a dropped engine and a legacy 
         prepare: (repo, work) =>
         {
             pwProject(repo);
-            accountMcp(work, { 'browser-webkit': STACK_PW('webkit'), playwright: STACK_PW('chrome'), 'browser-firefox': { type: 'stdio', command: 'node', args: ['my-firefox.js'], env: {} } });
+            accountMcp(work, { 'webkit-control': STACK_PW('webkit'), playwright: STACK_PW('chrome'), 'firefox-control': { type: 'stdio', command: 'node', args: ['my-firefox.js'], env: {} } });
         },
     });
     const still = (name) => (out.match(new RegExp(`!! mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`, 'g')) || []).length;
-    assert.strictEqual(still('browser-webkit'), 1, `browser-webkit:\n${out}`);
+    assert.strictEqual(still('webkit-control'), 1, `webkit-control:\n${out}`);
     assert.strictEqual(still('playwright'), 0, 'the bare name cannot be told from the user\'s own - it must never claim stack authorship (M-F5-2)');
     assert.strictEqual((out.match(/playwright is registered at user scope - if an earlier stack run added it and no other project uses it: claude mcp remove playwright -s user; if you added it yourself, keep it/g) || []).length, 1, out);
     assert.doesNotMatch(out, /!! playwright is registered at user scope/, 'the ambiguous bare name is never marked (M-F5-2)');
-    assert.strictEqual(still('browser-firefox'), 0, 'a server of the user\'s own is not the stack\'s stale registration');
-    assert.strictEqual((out.match(/!! mcp browser-firefox: the user-scope registration is not the stack's/g) || []).length, 0, 'a dropped, non-live engine\'s kept line carries no actionable marker (M-F5-1)');
-    assert.strictEqual((out.match(/mcp browser-firefox: the user-scope registration is not the stack's \(another server under the same name\) - kept; if it should go: claude mcp remove browser-firefox -s user/g) || []).length, 1, 'the kept line itself still logs, unmarked (M-F5-1)');
+    assert.strictEqual(still('firefox-control'), 0, 'a server of the user\'s own is not the stack\'s stale registration');
+    assert.strictEqual((out.match(/!! mcp firefox-control: the user-scope registration is not the stack's/g) || []).length, 0, 'a dropped, non-live engine\'s kept line carries no actionable marker (M-F5-1)');
+    assert.strictEqual((out.match(/mcp firefox-control: the user-scope registration is not the stack's \(another server under the same name\) - kept; if it should go: claude mcp remove firefox-control -s user/g) || []).length, 1, 'the kept line itself still logs, unmarked (M-F5-1)');
     assert.deepStrictEqual(calls.filter((c) => /^mcp remove .* -s user$/.test(c)), [], `a user-scope registration was removed:\n${calls.join('\n')}`);
 });
 
@@ -1526,7 +1528,7 @@ test('seed update --scope user (full copy route): a dropped engine and a legacy 
 // line, and the switch back enables it there.
 test('seed update --scope user (full copy route): a user-scope playwright engine is switched off in this project only, and the switch back enables it (C11)', POSIX_ONLY, () =>
 {
-    const rows = [...USER_ROWS(), { id: 'browser-chrome@envoydev', version: '2.0.0', scope: 'user', enabled: true }];
+    const rows = [...USER_ROWS(), { id: 'chrome-control@envoydev', version: '2.0.0', scope: 'user', enabled: true }];
     const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nrule markdown-docs\nmcp browser\n', {
         plugins: JSON.stringify(rows),
         env: [{}, COPY_ENV, COPY_ENV, {}],
@@ -1534,18 +1536,18 @@ test('seed update --scope user (full copy route): a user-scope playwright engine
         each: (repo, i) =>
         {
             const state = { calls: stepCalls(repo), stood: stoodDownLine(repo) };
-            if (i === 1) settingsWord(repo, { ...offWord(), 'browser-chrome@envoydev': false });
+            if (i === 1) settingsWord(repo, { ...offWord(), 'chrome-control@envoydev': false });
             return state;
         },
     });
     const [, down, again, back] = steps;
-    assert.ok(!down.calls.some((c) => /^plugin uninstall browser-chrome@envoydev --scope user/.test(c)), `the account's engine was uninstalled:\n${down.calls.join('\n')}`);
-    assert.ok(down.calls.includes('plugin disable browser-chrome@envoydev --scope project'), `${down.calls.join('\n')}\n${outs[1]}`);
-    assert.match(down.stood, /project:browser-chrome@envoydev/, down.stood);
+    assert.ok(!down.calls.some((c) => /^plugin uninstall chrome-control@envoydev --scope user/.test(c)), `the account's engine was uninstalled:\n${down.calls.join('\n')}`);
+    assert.ok(down.calls.includes('plugin disable chrome-control@envoydev --scope project'), `${down.calls.join('\n')}\n${outs[1]}`);
+    assert.match(down.stood, /project:chrome-control@envoydev/, down.stood);
     assert.deepStrictEqual(again.calls.filter((c) => /^plugin (disable|enable|uninstall) /.test(c)), [], `a re-run switched something:\n${outs[2]}`);
     assert.strictEqual(again.stood, down.stood);
-    assert.ok(back.calls.includes('plugin enable browser-chrome@envoydev --scope project'), `${back.calls.join('\n')}\n${outs[3]}`);
-    assert.ok(!steps.some((st) => st.calls.some((c) => /^plugin (disable|enable|uninstall) browser-chrome@envoydev --scope user/.test(c))), 'the user-scope engine was switched');
+    assert.ok(back.calls.includes('plugin enable chrome-control@envoydev --scope project'), `${back.calls.join('\n')}\n${outs[3]}`);
+    assert.ok(!steps.some((st) => st.calls.some((c) => /^plugin (disable|enable|uninstall) chrome-control@envoydev --scope user/.test(c))), 'the user-scope engine was switched');
 });
 
 // F7 (R22g, F1 G): C10 put the user-scope full copy route's servers in THIS project's .mcp.json, but a
@@ -1562,7 +1564,7 @@ const MCPJSON_CLI = ['printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
     'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; exit 0; fi',
     `if [ "$1" = "mcp" ] && [ "$2" = "remove" ] && [ "$4" = "-s" ] && [ "$5" = "project" ]; then exec "${process.execPath}" -e '${REMOVE_FROM_MCPJSON}' "$3"; fi`,
     'exit 0'].join('\n');
-const LEFT_BY_C10 = ['alfred-documentation', 'alfred-memory', 'alfred-navigation', 'browser-chrome'];
+const LEFT_BY_C10 = ['alfred-documentation', 'alfred-memory', 'alfred-navigation', 'chrome-control'];
 // After the full copy route's run, the user adds a server of their own to .mcp.json and approves it.
 const handAdded = (repo) =>
 {
@@ -1580,7 +1582,7 @@ const projectRemovesOf = (calls) => calls.filter((c) => /^mcp remove .* -s proje
 
 test('seed update --scope user: the switch back from the full copy route prunes the stack servers C10 put in this project\'s .mcp.json, keeps a hand-added one, and calls nothing at user scope (F7, R22g)', POSIX_ONLY, () =>
 {
-    const rows = [...USER_ROWS(), { id: 'browser-chrome@envoydev', version: '2.0.0', scope: 'user', enabled: true }];
+    const rows = [...USER_ROWS(), { id: 'chrome-control@envoydev', version: '2.0.0', scope: 'user', enabled: true }];
     const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nrule markdown-docs\nmcp browser\n', {
         plugins: JSON.stringify(rows), tools: { claude: MCPJSON_CLI },
         env: [COPY_ENV, {}, {}],
@@ -1622,7 +1624,7 @@ test('seed update --scope user: leaving the full copy route for the MCP copy rou
     assert.deepStrictEqual(mcpCopy.mcp, ['mine'], `stack servers left in this project's .mcp.json:\n${mcpCopy.calls.join('\n')}\n${outs[1]}`);
     assert.deepStrictEqual(projectRemovesOf(mcpCopy.calls).sort(), LEFT_BY_C10.map((n) => `mcp remove ${n} -s project`), outs[1]);
     const adds = mcpCopy.calls.filter((c) => /^mcp add /.test(c));
-    assert.deepStrictEqual(adds.map((c) => c.split(' ').slice(0, 5).join(' ')), ['mcp add --scope user browser-chrome'], `${adds.join('\n')}\n${outs[1]}`);
+    assert.deepStrictEqual(adds.map((c) => c.split(' ').slice(0, 5).join(' ')), ['mcp add --scope user chrome-control'], `${adds.join('\n')}\n${outs[1]}`);
 });
 
 // F7 ruling: that prune never removes the user's own server. A stack name in .mcp.json goes only when the
@@ -1687,11 +1689,11 @@ test('seed update --scope user (plugin route): only a stack-shaped user-scope re
         prepare: (repo, work) =>
         {
             pwProject(repo);
-            accountMcp(work, { 'alfred-navigation': STACK_SERENA, 'browser-webkit': STACK_PW('webkit'), 'alfred-documentation': { type: 'http', url: 'https://docs.example.test/mcp' } });
+            accountMcp(work, { 'alfred-navigation': STACK_SERENA, 'webkit-control': STACK_PW('webkit'), 'alfred-documentation': { type: 'http', url: 'https://docs.example.test/mcp' } });
         },
     });
     const removes = calls.filter((c) => /^mcp remove /.test(c));
-    assert.deepStrictEqual(removes.sort(), ['mcp remove alfred-navigation -s user', 'mcp remove browser-webkit -s user'], `${removes.join('\n')}\n${out}`);
+    assert.deepStrictEqual(removes.sort(), ['mcp remove alfred-navigation -s user', 'mcp remove webkit-control -s user'], `${removes.join('\n')}\n${out}`);
     assert.strictEqual((out.match(/mcp alfred-documentation: the user-scope registration is not the stack's \(another server under the same name\) - kept; if it should go: claude mcp remove alfred-documentation -s user/g) || []).length, 1, out);
     assert.doesNotMatch(out, /docs\.example\.test/, 'a registration of the user\'s own is never printed');
 });
@@ -1739,7 +1741,7 @@ test('identityOf / stackIdentities: a registration is the stack\'s by the packag
     const rows = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'retired-plugins.json'), 'utf8')).plugins;
     const ids = mcp.stackIdentities({ catalog, remotes: { 'alfred-documentation': mcp.CONTEXT7_REMOTE }, tokens: { PW_PIN: '@0.0.82' }, retiredRows: rows });
     assert.ok(ids['alfred-navigation'].has('stdio:serena-agent'), [...ids['alfred-navigation']].join(','));
-    assert.ok(ids['browser-webkit'].has('stdio:@playwright/mcp') && ids.playwright.has('stdio:@playwright/mcp'));
+    assert.ok(ids['webkit-control'].has('stdio:@playwright/mcp') && ids.playwright.has('stdio:@playwright/mcp'));
     assert.deepStrictEqual([...ids['alfred-documentation']].sort(), ['http:https://mcp.context7.com/mcp']);
     assert.deepStrictEqual([...ids.context7].sort(), ['stdio:@upstash/context7-mcp'], 'the 1.x local transport under the old name');
     assert.deepStrictEqual([...ids.sentry], ['http:https://mcp.sentry.dev/mcp/${SENTRY_SLUG}'], 'the add-back url is the user\'s, never the stack\'s');
@@ -1779,7 +1781,7 @@ test('accountLoss: unreadable now, a corrupted backup after the stamp, or none o
     const precise = { ms: at, precise: true };
     const second = { ms: Date.parse('2026-09-29T10:00:05Z'), precise: false };
     const backup = (ms) => ({ file: `/c/backups/.claude.json.corrupted.${ms}`, ms });
-    const recorded = { 'alfred-navigation': 'h1', 'macos-desktop': 'h2' };
+    const recorded = { 'alfred-navigation': 'h1', 'macos-control': 'h2' };
     const held = { 'alfred-navigation': {} };
     assert.deepStrictEqual(mcp.accountLoss({ unreadable: true, stamped: precise, recorded, held }), { lost: true, why: 'unreadable', backup: '' });
     // (b) in milliseconds: 100 ms after the stamp was written is a later replacement; the run's own, 1 ms before, is not.
@@ -1815,16 +1817,16 @@ test('registrationsAt: the account file says whether it holds this project\'s en
 test('stackAuthored: the release\'s cut-off with a pinned package, the desktop servers\' telemetry off, an engine\'s profile and --no-webmcp where the stamp lists it', () =>
 {
     const uvx = (from, env = {}) => ({ type: 'stdio', command: 'uvx', args: ['--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', from, 'macos-mcp', 'serve'], env });
-    assert.strictEqual(mcp.stackAuthored('macos-desktop', uvx('macos-mcp==0.4.6', { ANONYMIZED_TELEMETRY: 'false' })), true);
-    assert.strictEqual(mcp.stackAuthored('macos-desktop', uvx('macos-mcp==0.4.6')), false, 'no telemetry mark');
-    assert.strictEqual(mcp.stackAuthored('macos-desktop', uvx('macos-mcp', { ANONYMIZED_TELEMETRY: 'false' })), false, 'no pin');
-    assert.strictEqual(mcp.stackAuthored('macos-desktop', { type: 'stdio', command: 'uvx', args: ['macos-mcp', 'serve', '--my-flag'], env: { MY_OWN: '1' } }), false, 'the user\'s own');
+    assert.strictEqual(mcp.stackAuthored('macos-control', uvx('macos-mcp==0.4.6', { ANONYMIZED_TELEMETRY: 'false' })), true);
+    assert.strictEqual(mcp.stackAuthored('macos-control', uvx('macos-mcp==0.4.6')), false, 'no telemetry mark');
+    assert.strictEqual(mcp.stackAuthored('macos-control', uvx('macos-mcp', { ANONYMIZED_TELEMETRY: 'false' })), false, 'no pin');
+    assert.strictEqual(mcp.stackAuthored('macos-control', { type: 'stdio', command: 'uvx', args: ['macos-mcp', 'serve', '--my-flag'], env: { MY_OWN: '1' } }), false, 'the user\'s own');
     assert.strictEqual(mcp.stackAuthored('alfred-memory', { command: 'uvx', args: ['--exclude-newer', '2026-09-29T23:59:59Z', '--with', 'numpy', '--from', 'mcp-memory-service[sqlite]==11.14.0', 'memory', 'server'] }), true);
     const pw = (dir, extra = ['--no-webmcp']) => ({ command: 'npx', args: ['-y', '@playwright/mcp@0.0.83', '--user-data-dir', dir, ...extra, '--browser', 'firefox'] });
-    assert.strictEqual(mcp.stackAuthored('browser-firefox', pw('${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox'), { engines: ['firefox'] }), true);
-    assert.strictEqual(mcp.stackAuthored('browser-firefox', pw('${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox'), { engines: ['chrome'] }), false, 'the stamp does not list it');
-    assert.strictEqual(mcp.stackAuthored('browser-firefox', pw('${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox', []), { engines: ['firefox'] }), false, 'no --no-webmcp');
-    assert.strictEqual(mcp.stackAuthored('browser-firefox', { command: 'npx', args: ['@playwright/mcp@latest', '--browser', 'firefox', '--isolated'] }, { engines: ['firefox'] }), false, 'the user\'s own');
+    assert.strictEqual(mcp.stackAuthored('firefox-control', pw('${CLAUDE_PROJECT_DIR:-.}/.alfred/firefox-control'), { engines: ['firefox'] }), true);
+    assert.strictEqual(mcp.stackAuthored('firefox-control', pw('${CLAUDE_PROJECT_DIR:-.}/.alfred/firefox-control'), { engines: ['chrome'] }), false, 'the stamp does not list it');
+    assert.strictEqual(mcp.stackAuthored('firefox-control', pw('${CLAUDE_PROJECT_DIR:-.}/.alfred/firefox-control', []), { engines: ['firefox'] }), false, 'no --no-webmcp');
+    assert.strictEqual(mcp.stackAuthored('firefox-control', { command: 'npx', args: ['@playwright/mcp@latest', '--browser', 'firefox', '--isolated'] }, { engines: ['firefox'] }), false, 'the user\'s own');
 });
 
 // Re-verify 3 S1 / S4 / S7: a registration the ledger does not vouch for is the stack's only in the release template's EXACT
@@ -1834,33 +1836,33 @@ test('exactStack: the release template\'s words and env keys, free only where a 
 {
     const catalog = ['alfred-navigation|-e SERENA_HOME=@SERENA_HOME@ -- node -e @ROOT_BOOT@ -- checkout uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false @SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@',
         'browser|-- node -e @ROOT_BOOT@ -- checkout npx -y @playwright/mcp@PW_PIN@ --user-data-dir @BROWSER_DIR@ --output-dir @BROWSER_DIR@/output --no-webmcp',
-        'macos-desktop|-e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from macos-mcp@MACOS_DESKTOP_PIN@ macos-mcp serve',
+        'macos-control|-e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from macos-mcp@MACOS_CONTROL_PIN@ macos-mcp serve',
         'alfred-documentation|@HTTP@'];
     const remotes = { 'alfred-documentation': mcp.CONTEXT7_REMOTE };
     const exact = (name, entry) => mcp.exactStack(name, entry, { catalog, remotes });
     const mac = (args, env = { ANONYMIZED_TELEMETRY: 'false' }) => ({ type: 'stdio', command: 'uvx', args, env });
     const macArgs = ['--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'];
-    assert.strictEqual(exact('macos-desktop', mac(macArgs)), true);
-    assert.strictEqual(exact('macos-desktop', mac(['--python', '3.14', '--exclude-newer', '2026-10-30T00:00:00Z', '--from', 'macos-mcp==0.5.0', 'macos-mcp', 'serve'])), true, 'a pin, a date and the python are free');
-    assert.strictEqual(exact('macos-desktop', mac(['--python', '3.13', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'])), true, 'no cut-off (the user set UV_EXCLUDE_NEWER=false)');
-    assert.strictEqual(exact('macos-desktop', mac(macArgs, { ANONYMIZED_TELEMETRY: 'false', MACOS_MCP_SKIP_PERMISSION_CHECK: '1' })), false, 'tRmReadd: an env key of the user\'s own');
-    assert.strictEqual(exact('macos-desktop', mac(macArgs, {})), false, 'an env key of the stack\'s missing');
-    assert.strictEqual(exact('macos-desktop', mac(macArgs, { ANONYMIZED_TELEMETRY: 'true' })), false, 'a literal env value changed');
-    assert.strictEqual(exact('macos-desktop', mac([...macArgs, '--verbose'])), false, 'a flag of the user\'s own');
-    assert.strictEqual(exact('macos-desktop', mac(['--python', '3.13', '--with', 'extra', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'])), false, 'no token soaks up an added flag pair');
-    assert.strictEqual(exact('macos-desktop', mac(['--python', '3.13', '--exclude-newer', '7 days', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'])), false, 'a cut-off that is no date');
-    assert.strictEqual(exact('macos-desktop', { command: 'cmd', args: ['/c', 'uvx', ...macArgs], env: { ANONYMIZED_TELEMETRY: 'false' } }), true, 'the Windows cmd /c wrapper');
+    assert.strictEqual(exact('macos-control', mac(macArgs)), true);
+    assert.strictEqual(exact('macos-control', mac(['--python', '3.14', '--exclude-newer', '2026-10-30T00:00:00Z', '--from', 'macos-mcp==0.5.0', 'macos-mcp', 'serve'])), true, 'a pin, a date and the python are free');
+    assert.strictEqual(exact('macos-control', mac(['--python', '3.13', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'])), true, 'no cut-off (the user set UV_EXCLUDE_NEWER=false)');
+    assert.strictEqual(exact('macos-control', mac(macArgs, { ANONYMIZED_TELEMETRY: 'false', MACOS_MCP_SKIP_PERMISSION_CHECK: '1' })), false, 'tRmReadd: an env key of the user\'s own');
+    assert.strictEqual(exact('macos-control', mac(macArgs, {})), false, 'an env key of the stack\'s missing');
+    assert.strictEqual(exact('macos-control', mac(macArgs, { ANONYMIZED_TELEMETRY: 'true' })), false, 'a literal env value changed');
+    assert.strictEqual(exact('macos-control', mac([...macArgs, '--verbose'])), false, 'a flag of the user\'s own');
+    assert.strictEqual(exact('macos-control', mac(['--python', '3.13', '--with', 'extra', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'])), false, 'no token soaks up an added flag pair');
+    assert.strictEqual(exact('macos-control', mac(['--python', '3.13', '--exclude-newer', '7 days', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'])), false, 'a cut-off that is no date');
+    assert.strictEqual(exact('macos-control', { command: 'cmd', args: ['/c', 'uvx', ...macArgs], env: { ANONYMIZED_TELEMETRY: 'false' } }), true, 'the Windows cmd /c wrapper');
     const boot = require('../stack/hooks/memory.js').ROOT_BOOT;
     const pw = (engine, dir, extra = []) => ({ type: 'stdio', command: 'node', args: ['-e', boot, '--', 'checkout', 'npx', '-y', '@playwright/mcp@0.0.83', '--browser', engine, '--user-data-dir', dir, '--output-dir', `${dir}/output`, '--no-webmcp', ...extra], env: {} });
-    assert.strictEqual(exact('browser-firefox', pw('firefox', '.alfred/browser/firefox')), true, 'this release\'s anchored row');
-    const old = pw('firefox', '${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox');
+    assert.strictEqual(exact('firefox-control', pw('firefox', '.alfred/firefox-control')), true, 'this release\'s anchored row');
+    const old = pw('firefox', '${CLAUDE_PROJECT_DIR:-.}/.alfred/firefox-control');
     old.command = 'npx'; old.args = old.args.slice(5);
-    assert.strictEqual(exact('browser-firefox', old), true, 'v2.1.5\'s unanchored row with its path prefix');
-    assert.strictEqual(exact('browser-firefox', pw('firefox', '.playwright/firefox')), true, 'a 2.0.0 profile not moved yet');
-    assert.strictEqual(exact('browser-firefox', pw('firefox', '/home/me/profiles/ff')), false, 'oNewPlain: a profile of the user\'s own');
-    assert.strictEqual(exact('browser-firefox', pw('firefox', '.alfred/browser/firefox', ['--isolated'])), false, 'oNewMarks: the stack\'s marks plus a flag');
-    assert.strictEqual(exact('browser-firefox', pw('chrome', '.alfred/browser/chrome')), false, 'another engine under the name');
-    assert.strictEqual(exact('browser-firefox', { type: 'stdio', command: 'npx', args: ['@playwright/mcp@latest', '--browser', 'firefox', '--isolated'] }), false);
+    assert.strictEqual(exact('firefox-control', old), true, 'v2.1.5\'s unanchored row with its path prefix');
+    assert.strictEqual(exact('firefox-control', pw('firefox', '.playwright/firefox')), true, 'a 2.0.0 profile not moved yet');
+    assert.strictEqual(exact('firefox-control', pw('firefox', '/home/me/profiles/ff')), false, 'oNewPlain: a profile of the user\'s own');
+    assert.strictEqual(exact('firefox-control', pw('firefox', '.alfred/firefox-control', ['--isolated'])), false, 'oNewMarks: the stack\'s marks plus a flag');
+    assert.strictEqual(exact('firefox-control', pw('chrome', '.alfred/chrome-control')), false, 'another engine under the name');
+    assert.strictEqual(exact('firefox-control', { type: 'stdio', command: 'npx', args: ['@playwright/mcp@latest', '--browser', 'firefox', '--isolated'] }), false);
     const nav = (tail) => ({ type: 'stdio', command: 'node', args: ['-e', boot, '--', 'checkout', 'uvx', '--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'serena-agent==1.7.0', 'serena', 'start-mcp-server', '--context', '.claude/navigation-context.yml', '--enable-web-dashboard', 'false', ...tail], env: { SERENA_HOME: '.alfred/serena/home' } });
     assert.strictEqual(exact('alfred-navigation', nav(['--project-from-cwd'])), true);
     assert.strictEqual(exact('alfred-navigation', nav(['--project', '.'])), true);
@@ -1869,14 +1871,14 @@ test('exactStack: the release template\'s words and env keys, free only where a 
     assert.strictEqual(exact('alfred-documentation', { type: 'http', url: 'https://mcp.context7.com/mcp', headers: { 'Context7-API-Key': 'abc', 'X-Own': '1' } }), false);
     assert.strictEqual(exact('alfred-documentation', { type: 'http', url: 'https://example.com/mcp' }), false);
     assert.strictEqual(exact('unknown', mac(macArgs)), false, 'a name no catalog row serves');
-    const win = ['windows-desktop|-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_DESKTOP_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ --from windows-mcp@WINDOWS_DESKTOP_PIN@ windows-mcp serve'];
+    const win = ['windows-control|-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_CONTROL_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ --from windows-mcp@WINDOWS_CONTROL_PIN@ windows-mcp serve'];
     const winEntry = (env) => ({ command: 'uvx', args: ['--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve'], env: { WINDOWS_MCP_TOOLS: '', ANONYMIZED_TELEMETRY: 'false', ...env } });
-    assert.strictEqual(mcp.exactStack('windows-desktop', winEntry({ WINDOWS_MCP_EXCLUDE_TOOLS: '' }), { catalog: win }), true, 'a token env value resolved to nothing (none)');
-    assert.strictEqual(mcp.exactStack('windows-desktop', winEntry({ WINDOWS_MCP_EXCLUDE_TOOLS: 'PowerShell,Registry,Process' }), { catalog: win }), true);
-    assert.strictEqual(mcp.exactStack('windows-desktop', { ...winEntry({ WINDOWS_MCP_EXCLUDE_TOOLS: '' }), env: { WINDOWS_MCP_TOOLS: 'Click', ANONYMIZED_TELEMETRY: 'false', WINDOWS_MCP_EXCLUDE_TOOLS: '' } }, { catalog: win }), false, 'a literal empty env value set');
-    assert.strictEqual(exact('macos-desktop', null), false);
+    assert.strictEqual(mcp.exactStack('windows-control', winEntry({ WINDOWS_MCP_EXCLUDE_TOOLS: '' }), { catalog: win }), true, 'a token env value resolved to nothing (none)');
+    assert.strictEqual(mcp.exactStack('windows-control', winEntry({ WINDOWS_MCP_EXCLUDE_TOOLS: 'PowerShell,Registry,Process' }), { catalog: win }), true);
+    assert.strictEqual(mcp.exactStack('windows-control', { ...winEntry({ WINDOWS_MCP_EXCLUDE_TOOLS: '' }), env: { WINDOWS_MCP_TOOLS: 'Click', ANONYMIZED_TELEMETRY: 'false', WINDOWS_MCP_EXCLUDE_TOOLS: '' } }, { catalog: win }), false, 'a literal empty env value set');
+    assert.strictEqual(exact('macos-control', null), false);
     // The anchor is the launcher, never the server: identityOf reads the command after it.
-    assert.strictEqual(mcp.identityOf(pw('firefox', '.alfred/browser/firefox')), 'stdio:@playwright/mcp');
+    assert.strictEqual(mcp.identityOf(pw('firefox', '.alfred/firefox-control')), 'stdio:@playwright/mcp');
     assert.strictEqual(mcp.identityOf(nav([])), 'stdio:serena-agent');
 });
 
@@ -1892,16 +1894,16 @@ test('exactStack: an engine profile must be this project\'s own, and an anchored
     const boot = require('../stack/hooks/memory.js').ROOT_BOOT;
     const pw = (dir, code = boot) => ({ type: 'stdio', command: 'node', args: ['-e', code, '--', 'checkout', 'npx', '-y', '@playwright/mcp@0.0.83', '--browser', 'firefox', '--user-data-dir', dir, '--output-dir', `${dir}/output`, '--no-webmcp'], env: {} });
     const exact = (name, entry) => mcp.exactStack(name, entry, { catalog, projectRoot });
-    assert.strictEqual(exact('browser-firefox', pw('.alfred/browser/firefox')), true, 'relative: the project\'s own');
-    assert.strictEqual(exact('browser-firefox', pw(path.join(projectRoot, '.alfred', 'browser', 'firefox'))), true, 'absolute under the project');
-    assert.strictEqual(exact('browser-firefox', pw('${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox')), true, 'v2.1.5\'s project-dir prefix');
-    assert.strictEqual(exact('browser-firefox', pw('/Users/me/profiles/browser/firefox')), false, 'a folder of the user\'s own ending browser/firefox');
-    assert.strictEqual(exact('browser-firefox', pw(path.resolve('/work/other/.alfred/browser/firefox'))), false, 'another project\'s profile');
-    assert.strictEqual(exact('browser-firefox', pw(path.resolve('/work/proj-two/.alfred/browser/firefox'))), false, 'a sibling sharing the name\'s prefix');
-    assert.strictEqual(exact('browser-firefox', pw('../other/.alfred/browser/firefox')), false, 'a relative path leaving the project');
+    assert.strictEqual(exact('firefox-control', pw('.alfred/firefox-control')), true, 'relative: the project\'s own');
+    assert.strictEqual(exact('firefox-control', pw(path.join(projectRoot, '.alfred', 'firefox-control'))), true, 'absolute under the project');
+    assert.strictEqual(exact('firefox-control', pw('${CLAUDE_PROJECT_DIR:-.}/.alfred/firefox-control')), true, 'v2.1.5\'s project-dir prefix');
+    assert.strictEqual(exact('firefox-control', pw('/Users/me/profiles/firefox-control')), false, 'a folder of the user\'s own ending firefox-control');
+    assert.strictEqual(exact('firefox-control', pw(path.resolve('/work/other/.alfred/firefox-control'))), false, 'another project\'s profile');
+    assert.strictEqual(exact('firefox-control', pw(path.resolve('/work/proj-two/.alfred/firefox-control'))), false, 'a sibling sharing the name\'s prefix');
+    assert.strictEqual(exact('firefox-control', pw('../other/.alfred/firefox-control')), false, 'a relative path leaving the project');
     const own = "require('/home/me/mine.js').runAtRoot(process.argv.slice(1))";
-    assert.strictEqual(exact('browser-firefox', pw('.alfred/browser/firefox', own)), false, 'anchor code of the user\'s own naming runAtRoot');
-    assert.strictEqual(mcp.identityOf(pw('.alfred/browser/firefox', own)), 'stdio:@playwright/mcp', 'identity still reads the server after any anchor');
+    assert.strictEqual(exact('firefox-control', pw('.alfred/firefox-control', own)), false, 'anchor code of the user\'s own naming runAtRoot');
+    assert.strictEqual(mcp.identityOf(pw('.alfred/firefox-control', own)), 'stdio:@playwright/mcp', 'identity still reads the server after any anchor');
     const nav = (code) => ({ type: 'stdio', command: 'node', args: ['-e', code, '--', 'checkout', 'uvx', '--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'serena-agent==1.7.0', 'serena', 'start-mcp-server', '--context', '.claude/navigation-context.yml', '--enable-web-dashboard', 'false', '--project-from-cwd'], env: { SERENA_HOME: '.alfred/serena/home' } });
     assert.strictEqual(exact('alfred-navigation', nav(boot)), true);
     assert.strictEqual(exact('alfred-navigation', nav(own)), false, 'navigation under code of the user\'s own');
@@ -1923,7 +1925,7 @@ test('shadowingRegistrations: a registration above the plugins that replaces a p
     const rows = mcp.shadowingRegistrations({
         plugins: ['alfred-navigation', 'alfred-documentation', 'alfred-memory'],
         scopes: {
-            user: { docs7: ctx7, 'alfred-navigation': STACK_SERENA, mine: { command: 'node', args: ['my-server.js'] }, 'browser-chrome': STACK_PW('chrome') },
+            user: { docs7: ctx7, 'alfred-navigation': STACK_SERENA, mine: { command: 'node', args: ['my-server.js'] }, 'chrome-control': STACK_PW('chrome') },
             project: { 'alfred-documentation': { type: 'stdio', command: 'npx', args: ['-y', '@upstash/context7-mcp'] } },
             local: { 'alfred-memory': { type: 'stdio', command: 'uvx', args: ['--from', 'mcp-memory-service[sqlite]==11.0.0', 'memory', 'server'] } },
         },
@@ -2038,7 +2040,7 @@ const OWN_SHAPE_CLI = ['printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
 for (const [label, account, reregistered] of [
     ['an unreadable account file', '{not json', false],
     ['no account file while the CLI holds a registration', null, false],
-    ['a stack-shaped registration (the control)', JSON.stringify({ mcpServers: { 'browser-chrome': STACK_PW_EXACT('chrome') } }), true],
+    ['a stack-shaped registration (the control)', JSON.stringify({ mcpServers: { 'chrome-control': STACK_PW_EXACT('chrome') } }), true],
 ])
 {
     test(`seed update --scope user (MCP copy route): the verify pass with ${label} re-registers only the stack's own (N4)`, POSIX_ONLY, () =>
@@ -2052,18 +2054,18 @@ for (const [label, account, reregistered] of [
                 if (account !== null) { fs.mkdirSync(path.join(work, 'acct'), { recursive: true }); fs.writeFileSync(path.join(work, 'acct', '.claude.json'), account); }
             },
         });
-        const removes = calls.filter((c) => /^mcp remove browser-chrome -s user$/.test(c));
-        const skipped = (out.match(/!! mcp browser-chrome: the user-scope registration differs from the stack's shape and is not known to be the stack's own - not re-registered, so nothing of yours is removed; if it should go: claude mcp remove browser-chrome -s user, then re-run/g) || []).length;
-        assert.ok(calls.some((c) => /^mcp get browser-chrome$/.test(c)), `the verify pass never read the shape:\n${calls.join('\n')}`);
+        const removes = calls.filter((c) => /^mcp remove chrome-control -s user$/.test(c));
+        const skipped = (out.match(/!! mcp chrome-control: the user-scope registration differs from the stack's shape and is not known to be the stack's own - not re-registered, so nothing of yours is removed; if it should go: claude mcp remove chrome-control -s user, then re-run/g) || []).length;
+        assert.ok(calls.some((c) => /^mcp get chrome-control$/.test(c)), `the verify pass never read the shape:\n${calls.join('\n')}`);
         if (reregistered)
         {
-            assert.ok(removes.length > 0 && /shape drifted at user scope: browser-chrome - re-registering/.test(out), `the stack's own drifted registration was not re-registered:\n${calls.join('\n')}\n${out}`);
+            assert.ok(removes.length > 0 && /shape drifted at user scope: chrome-control - re-registering/.test(out), `the stack's own drifted registration was not re-registered:\n${calls.join('\n')}\n${out}`);
             assert.strictEqual(skipped, 0, out);
             return;
         }
         assert.deepStrictEqual(removes, [], `a registration not known to be the stack's was removed:\n${calls.join('\n')}\n${out}`);
         assert.strictEqual(skipped, 1, out);
-        assert.doesNotMatch(out, /shape drifted at user scope: browser-chrome|could not be brought to the current shape/, out);
+        assert.doesNotMatch(out, /shape drifted at user scope: chrome-control|could not be brought to the current shape/, out);
     });
 }
 
@@ -2133,8 +2135,8 @@ test('seed install (plugin route): the skills are copied, no seat is, and every 
 });
 
 // F7 (F1 D, pre-existing since 1.3.0): every engine was re-spelled as `playwright`, a name no run
-// registers, so a copied seat kept `mcp__plugin_browser-chrome_browser-chrome__*` while the run
-// registered `browser-chrome` bare - the seat lost playwright on the copy route. Each engine the run
+// registers, so a copied seat kept `mcp__plugin_chrome-control_chrome-control__*` while the run
+// registered `chrome-control` bare - the seat lost playwright on the copy route. Each engine the run
 // registers bare takes its own bare name; an engine it does not register (not kept, or left off at user
 // scope, where the registration is the enable) keeps the plugin spelling. The mixed-pair line names the
 // engines for the same reason. Bare spellings are BUILT, never typed (lint check 54).
@@ -2156,7 +2158,7 @@ for (const [route, env, scope, registered] of [
         for (const seat of SEATS)
             for (const engine of mcp.PW_ENGINES)
             {
-                const server = `browser-${engine}`;
+                const server = `${engine}-control`;
                 const bare = registered.includes(engine);
                 assert.ok(result[seat].includes(bare ? bareTools(server) : pluginTools(server)), `${seat}: ${server} is not spelled ${bare ? 'bare' : 'as the plugin'}:\n${result[seat]}\n${out}`);
                 assert.ok(!result[seat].includes(bare ? pluginTools(server) : bareTools(server)), `${seat}: ${server} kept the other spelling:\n${result[seat]}`);
@@ -2164,7 +2166,7 @@ for (const [route, env, scope, registered] of [
     });
 }
 
-for (const [scope, named] of [['project', 'browser-chrome browser-webkit'], ['user', 'browser-chrome']])
+for (const [scope, named] of [['project', 'chrome-control webkit-control'], ['user', 'chrome-control']])
 {
     test(`seed install (MCP copy route, skills on the plugin route, ${scope} scope): the mixed-pair line names the engines registered bare (F7, observation 2)`, POSIX_ONLY, () =>
     {
@@ -2252,23 +2254,29 @@ test('mcp ledger: removeManaged takes a recorded unchanged entry, keeps an edite
 });
 
 // --- the 2.0.0 rename (navigation, documentation, browser) ----------------------------------------
-// An older install names the servers serena, context7 and playwright-<engine>. The manifest's
-// `renamed.mcps` is the one table; a browser engine is renamed by its prefix.
+// An older install names the servers serena, context7 and playwright-<engine> (2.3.x: browser-<engine>). The
+// manifest's `renamed.mcps` is the one table, each engine's old names a row of their own.
 const RENAMED = require('./install/manifest.js').loadManifest(path.join(__dirname, '..')).renamed.mcps;
 
-test('rename: an old MCP name reads as its new one, an engine by its prefix, anything else as it is', () =>
+test('rename: an old MCP name reads as its new one, an engine by its own row, anything else as it is', () =>
 {
     assert.deepStrictEqual(RENAMED, { serena: 'alfred-navigation', context7: 'alfred-documentation', playwright: 'browser',
-        navigation: 'alfred-navigation', documentation: 'alfred-documentation', memory: 'alfred-memory' }, 'each old name maps straight to today\'s');
+        navigation: 'alfred-navigation', documentation: 'alfred-documentation', memory: 'alfred-memory',
+        'windows-desktop': 'windows-control', 'macos-desktop': 'macos-control',
+        ...Object.fromEntries(mcp.PW_ENGINES.flatMap((e) => [[`playwright-${e}`, `${e}-control`], [`browser-${e}`, `${e}-control`]])) },
+        'each old name maps straight to today\'s');
     const cur = (n) => mcp.currentMcp(n, RENAMED);
     assert.strictEqual(cur('serena'), 'alfred-navigation');
     assert.strictEqual(cur('context7'), 'alfred-documentation');
     assert.strictEqual(cur('playwright'), 'browser');
-    assert.strictEqual(cur('playwright-firefox'), 'browser-firefox');
+    assert.strictEqual(cur('playwright-firefox'), 'firefox-control');
+    for (const e of mcp.PW_ENGINES) assert.strictEqual(cur(`browser-${e}`), `${e}-control`, `${e}: the engines' 2026-10-13 names`);
     for (const role of ['navigation', 'documentation', 'memory']) assert.strictEqual(cur(role), `alfred-${role}`, role);
-    for (const same of ['alfred-navigation', 'browser-chrome', 'alfred-memory', 'context7-local', 'playwright-extra', 'mine'])
+    for (const os of ['windows', 'macos']) assert.strictEqual(cur(`${os}-desktop`), `${os}-control`, `${os}: the desktop servers' 2026-10-13 names`);
+    for (const same of ['alfred-navigation', 'chrome-control', 'alfred-memory', 'context7-local', 'playwright-extra', 'browser-extra', 'mine'])
         assert.strictEqual(cur(same), same, same);
-    assert.deepStrictEqual(mcp.renamedFrom(RENAMED).sort(), ['context7', 'documentation', 'memory', 'navigation', 'playwright-chrome', 'playwright-firefox', 'playwright-msedge', 'playwright-webkit', 'serena'],
+    assert.deepStrictEqual(mcp.renamedFrom(RENAMED).sort(), ['browser-chrome', 'browser-firefox', 'browser-msedge', 'browser-webkit', 'context7', 'documentation', 'macos-desktop', 'memory', 'navigation',
+        'playwright-chrome', 'playwright-firefox', 'playwright-msedge', 'playwright-webkit', 'serena', 'windows-desktop'],
         'the plugin and server names an older install can hold - the bare 1.x `playwright` is its own legacy name, not one of these');
     assert.deepStrictEqual(mcp.renamedFrom({}), []);
 });
@@ -2290,7 +2298,7 @@ test('rename: an old name is the stack\'s by its successor\'s shape - the packag
     const ids = mcp.stackIdentities({ catalog, remotes: { 'alfred-documentation': mcp.CONTEXT7_REMOTE }, tokens: { PW_PIN: '@0.0.82' }, retiredRows: [], renamed: RENAMED });
     assert.ok(ids.serena.has('stdio:serena-agent'), [...(ids.serena || [])].join(','));
     assert.deepStrictEqual([...ids.context7].sort(), ['http:https://mcp.context7.com/mcp', 'stdio:@upstash/context7-mcp']);
-    for (const e of mcp.PW_ENGINES) assert.ok(ids[`playwright-${e}`].has('stdio:@playwright/mcp'), e);
+    for (const e of mcp.PW_ENGINES) for (const old of [`playwright-${e}`, `browser-${e}`]) assert.ok(ids[old].has('stdio:@playwright/mcp'), old);
     // A registration the user made under an old name, of another server, is not the stack's.
     assert.ok(!ids.serena.has(mcp.identityOf({ command: 'node', args: ['my-serena.js'] })));
 });
@@ -2299,7 +2307,7 @@ test('rename: the copy route drops the old engine names whatever it keeps, and c
 {
     const dropped = mcp.playwrightDrop({ routes: COPY, browsers: ['chrome'] });
     for (const e of mcp.PW_ENGINES) assert.ok(dropped.includes(`playwright-${e}`), `${e}: ${dropped.join(',')}`);
-    assert.ok(!dropped.includes('browser-chrome'), 'the kept engine stays');
+    assert.ok(!dropped.includes('chrome-control'), 'the kept engine stays');
     const sw = mcp.mcpjsonSwitch({ routes: COPY, scope: 'project', kept: ['chrome', 'firefox'], enabled: ['chrome'], apply: false, registered: ['chrome', 'firefox'] });
     assert.ok(sw.enable.includes('playwright-firefox'), 'an old name left in disabledMcpjsonServers leaves it');
     assert.deepStrictEqual(sw.disable, [], 'no answer: the list moves only for an engine registered now');
@@ -2329,12 +2337,12 @@ test('seed update (full copy route) over a pre-rename install: the old registrat
     const removes = calls.filter((c) => /^mcp remove /.test(c));
     for (const old of ['serena', 'context7', 'playwright-chrome', 'playwright-firefox'])
         assert.ok(removes.includes(`mcp remove ${old} -s project`), `${old} was not removed:\n${removes.join('\n')}\n${out}`);
-    assert.deepStrictEqual(Object.keys(result.mcp).sort(), ['alfred-documentation', 'alfred-memory', 'alfred-navigation', 'browser-chrome', 'browser-firefox', 'mine'], out);
+    assert.deepStrictEqual(Object.keys(result.mcp).sort(), ['alfred-documentation', 'alfred-memory', 'alfred-navigation', 'chrome-control', 'firefox-control', 'mine'], out);
     assert.deepStrictEqual(result.mcp.mine, OLD_COPY.mine, 'the user\'s own server is untouched');
-    assert.deepStrictEqual([...result.settings.enabledMcpjsonServers].sort(), ['alfred-documentation', 'alfred-memory', 'alfred-navigation', 'browser-chrome', 'mine'], 'the approvals follow the rename; the user\'s own stays');
-    assert.deepStrictEqual(result.settings.disabledMcpjsonServers, ['browser-firefox'], 'firefox stays off, under its new name');
-    assert.match(result.stamp, /^browser-engines: chrome,firefox$/m);
-    assert.match(result.stamp, /^browser-enabled: chrome$/m);
+    assert.deepStrictEqual([...result.settings.enabledMcpjsonServers].sort(), ['alfred-documentation', 'alfred-memory', 'alfred-navigation', 'chrome-control', 'mine'], 'the approvals follow the rename; the user\'s own stays');
+    assert.deepStrictEqual(result.settings.disabledMcpjsonServers, ['firefox-control'], 'firefox stays off, under its new name');
+    assert.match(result.stamp, /^control-engines: chrome,firefox$/m);
+    assert.match(result.stamp, /^control-enabled: chrome$/m);
 });
 
 test('seed update (full copy route): the user\'s own server under an old name is theirs - kept, named once with its remove command', POSIX_ONLY, () =>
@@ -2399,9 +2407,9 @@ const DEPS_CLI = `exec "${process.execPath}" "${DEPS_STUB}" "$@"`;
 
 test('seed update (full copy route): an enabled desktop row another machine committed does not block the core\'s stand-down (I7)', POSIX_ONLY, () =>
 {
-    // macOS: windows-desktop is left out of this run by the OS gate, so nothing stands it down - its row
+    // macOS: windows-control is left out of this run by the OS gate, so nothing stands it down - its row
     // stays enabled at project scope, as a teammate on Windows committed it.
-    const rows = [...STACK_ROWS('envoydev'), { id: 'windows-desktop@envoydev', version: '2.1.3', scope: 'project', enabled: true }];
+    const rows = [...STACK_ROWS('envoydev'), { id: 'windows-control@envoydev', version: '2.1.3', scope: 'project', enabled: true }];
     const { calls, out } = seedRun(['install', 'update'], 'skill markdown-style\n', {
         plugins: JSON.stringify(rows), tools: { claude: DEPS_CLI },
         env: [{ ALFRED_CODE_PLATFORM: 'darwin' }, { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }],
@@ -2416,37 +2424,37 @@ test('seed update (full copy route): an enabled desktop row another machine comm
 // I8: R111 stood the copy route's playwright engines down, and nothing did the same for a desktop server,
 // so a project switched onto the MCP copy route ran the plugin's server AND the .mcp.json registration -
 // two UI-automation servers on one desktop. A desktop name the copy route registers now goes the engine way.
-const DESKTOP_ROW = (over = {}) => ({ id: 'windows-desktop@envoydev', version: '2.1.3', scope: 'project', enabled: true, ...over });
-test('seed update --installed-only (MCP copy route): a windows-desktop plugin row is uninstalled before its .mcp.json registration (I8)', POSIX_ONLY, () =>
+const DESKTOP_ROW = (over = {}) => ({ id: 'windows-control@envoydev', version: '2.1.3', scope: 'project', enabled: true, ...over });
+test('seed update --installed-only (MCP copy route): a windows-control plugin row is uninstalled before its .mcp.json registration (I8)', POSIX_ONLY, () =>
 {
     const { calls, out, result } = seedRun('update', 'skill markdown-style\n', {
         plugins: JSON.stringify([...STACK_ROWS('envoydev'), DESKTOP_ROW()]),
-        env: { ...MCP_COPY_ENV, ALFRED_CODE_PLATFORM: 'win32' }, args: ['--installed-only', '--add', 'mcp windows-desktop'],
+        env: { ...MCP_COPY_ENV, ALFRED_CODE_PLATFORM: 'win32' }, args: ['--installed-only', '--add', 'mcp windows-control'],
         inspect: (repo) => Object.keys(jsonAt(repo, '.mcp.json').mcpServers || {}),
     });
-    assert.ok(result.includes('windows-desktop'), `windows-desktop not registered: ${result.join(',')}\n${out}`);
-    const moves = calls.filter((c) => /^plugin (install|uninstall|disable|enable|update) windows-desktop/.test(c));
-    assert.deepStrictEqual(moves, ['plugin uninstall windows-desktop@envoydev --scope project -y'], `${moves.join('\n')}\n${out}`);
-    const gone = calls.indexOf('plugin uninstall windows-desktop@envoydev --scope project -y');
-    assert.ok(calls.findIndex((c) => /^mcp add .*windows-desktop/.test(c)) > gone, `registered before its plugin row went:\n${calls.join('\n')}`);
-    assert.match(out, /plugin uninstalled \[project\]: windows-desktop@envoydev \(the copy route registers it in \.mcp\.json/);
+    assert.ok(result.includes('windows-control'), `windows-control not registered: ${result.join(',')}\n${out}`);
+    const moves = calls.filter((c) => /^plugin (install|uninstall|disable|enable|update) windows-control/.test(c));
+    assert.deepStrictEqual(moves, ['plugin uninstall windows-control@envoydev --scope project -y'], `${moves.join('\n')}\n${out}`);
+    const gone = calls.indexOf('plugin uninstall windows-control@envoydev --scope project -y');
+    assert.ok(calls.findIndex((c) => /^mcp add .*windows-control/.test(c)) > gone, `registered before its plugin row went:\n${calls.join('\n')}`);
+    assert.match(out, /plugin uninstalled \[project\]: windows-control@envoydev \(the copy route registers it in \.mcp\.json/);
 });
 
-test('seed update --scope user (full copy route): a user-scope windows-desktop row is switched off in this project only and recorded as stood down (I8, C11)', POSIX_ONLY, () =>
+test('seed update --scope user (full copy route): a user-scope windows-control row is switched off in this project only and recorded as stood down (I8, C11)', POSIX_ONLY, () =>
 {
     const rows = ['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.1.3', scope: 'user', enabled: true }))
         .concat(DESKTOP_ROW({ scope: 'user' }));
     const { calls, out, result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
         plugins: JSON.stringify(rows), env: [{ ALFRED_CODE_PLATFORM: 'win32' }, { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'win32' }],
-        args: [['--scope', 'user'], ['--installed-only', '--scope', 'user', '--add', 'mcp windows-desktop']],
+        args: [['--scope', 'user'], ['--installed-only', '--scope', 'user', '--add', 'mcp windows-control']],
         // Only the second run's CLI calls are this case's evidence.
         each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'claude-calls.log'), ''); return null; },
         inspect: (repo) => ({ servers: Object.keys(jsonAt(repo, '.mcp.json').mcpServers || {}), stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8') }),
     });
-    assert.ok(result.servers.includes('windows-desktop'), `${result.servers.join(',')}\n${out}`);
-    const moves = calls.filter((c) => /^plugin (install|uninstall|disable|enable) windows-desktop/.test(c));
-    assert.deepStrictEqual(moves, ['plugin disable windows-desktop@envoydev --scope project'], `the user-scope row serves every other project - never uninstalled:\n${moves.join('\n')}\n${out}`);
-    assert.match(result.stamp, /^stood-down:.*project:windows-desktop@envoydev/m, result.stamp);
+    assert.ok(result.servers.includes('windows-control'), `${result.servers.join(',')}\n${out}`);
+    const moves = calls.filter((c) => /^plugin (install|uninstall|disable|enable) windows-control/.test(c));
+    assert.deepStrictEqual(moves, ['plugin disable windows-control@envoydev --scope project'], `the user-scope row serves every other project - never uninstalled:\n${moves.join('\n')}\n${out}`);
+    assert.match(result.stamp, /^stood-down:.*project:windows-control@envoydev/m, result.stamp);
 });
 
 // I11: Playwright MCP 0.0.82 collects and exposes the tools a visited PAGE registers through WebMCP by
@@ -2459,9 +2467,9 @@ test('seed install (MCP copy route): every browser engine registers with --no-we
     });
     for (const e of ['chrome', 'firefox'])
     {
-        const server = result[`browser-${e}`];
-        assert.ok(server, `browser-${e} not registered:\n${out}`);
-        assert.ok(server.args.includes('--no-webmcp'), `browser-${e}: ${server.args.join(' ')}`);
+        const server = result[`${e}-control`];
+        assert.ok(server, `${e}-control not registered:\n${out}`);
+        assert.ok(server.args.includes('--no-webmcp'), `${e}-control: ${server.args.join(' ')}`);
     }
 });
 
@@ -2687,10 +2695,10 @@ test(`seed install + update (${route}, ${scope} scope): the user's own project-s
 {
     const OWN = { command: 'node', args: ['my-desktop.js'] };
     const OWN_CHROME = { command: 'node', args: ['my-chrome.js'] };
-    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp browser\nmcp macos-desktop\n', {
+    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp browser\nmcp macos-control\n', {
         env: { ...routeEnv, ALFRED_CODE_PLATFORM: 'darwin' }, account: true,
         args: [['--scope', scope, '--browsers', 'chrome'], ['--scope', scope, '--installed-only', '--browsers', 'chrome'], ['--scope', scope, '--installed-only', '--browsers', 'chrome']],
-        prepare: (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { 'macos-desktop': OWN, 'browser-chrome': OWN_CHROME } }, null, 2)),
+        prepare: (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { 'macos-control': OWN, 'chrome-control': OWN_CHROME } }, null, 2)),
         each: (repo) => ({
             rows: jsonAt(repo, '.mcp.json').mcpServers,
             held: (/^mcp-held: *(.*)$/m.exec(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) || [])[1] ?? null,
@@ -2699,12 +2707,12 @@ test(`seed install + update (${route}, ${scope} scope): the user's own project-s
     });
     for (const [i, step] of steps.entries())
     {
-        assert.deepStrictEqual(step.rows, { 'macos-desktop': OWN, 'browser-chrome': OWN_CHROME }, `run ${i} touched the user's rows:\n${outs[i]}`);
-        assert.deepStrictEqual(step.held.split(',').sort(), ['project:browser-chrome', 'project:macos-desktop'], `run ${i} did not record the holds:\n${outs[i]}`);
-        assert.ok(!step.calls.some((c) => /^mcp add .*(macos-desktop|browser-chrome)/.test(c)), `run ${i} registered over the user's row:\n${step.calls.join('\n')}`);
-        for (const name of ['macos-desktop', 'browser-chrome'])
+        assert.deepStrictEqual(step.rows, { 'macos-control': OWN, 'chrome-control': OWN_CHROME }, `run ${i} touched the user's rows:\n${outs[i]}`);
+        assert.deepStrictEqual(step.held.split(',').sort(), ['project:chrome-control', 'project:macos-control'], `run ${i} did not record the holds:\n${outs[i]}`);
+        assert.ok(!step.calls.some((c) => /^mcp add .*(macos-control|chrome-control)/.test(c)), `run ${i} registered over the user's row:\n${step.calls.join('\n')}`);
+        for (const name of ['macos-control', 'chrome-control'])
             assert.match(outs[i], new RegExp(`mcp ${name}: the project-scope registration is not the one the stack wrote.*claude mcp remove ${name} -s project`), `run ${i}:\n${outs[i]}`);
-        assert.doesNotMatch(outs[i], /claude mcp remove (macos-desktop|browser-chrome) -s (local|user)/, `run ${i} named the wrong scope`);
+        assert.doesNotMatch(outs[i], /claude mcp remove (macos-control|chrome-control) -s (local|user)/, `run ${i} named the wrong scope`);
     }
     assert.strictEqual(/mcps=(\d+)/.exec(outs[2])[1], /mcps=(\d+)/.exec(outs[1])[1], `the second update changed the MCP list (a pick was dropped):\n${outs[2]}`);
 });
@@ -2717,7 +2725,7 @@ for (const scope of ['project', 'user'])
 {
     test(`seed update x3 (full copy route, ${scope} scope, a stamp with no ledger): a stack row with an added flag is held, never ledgered, and stays the user's on every update (delta F-LEDGER)`, POSIX_ONLY, () =>
     {
-        const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+        const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-control\n', {
             env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' },
             args: [['--scope', scope], ['--scope', scope, '--installed-only'], ['--scope', scope, '--installed-only'], ['--scope', scope, '--installed-only']],
             each: (repo, i) =>
@@ -2725,16 +2733,16 @@ for (const scope of ['project', 'user'])
                 const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
                 const file = path.join(repo, '.mcp.json');
                 const step = {
-                    args: jsonAt(repo, '.mcp.json').mcpServers['macos-desktop'].args,
+                    args: jsonAt(repo, '.mcp.json').mcpServers['macos-control'].args,
                     held: (/^mcp-held: *(.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] ?? null,
-                    ledgered: new RegExp(`(^|[ ,])macos-desktop=`).test((/^managed-mcp:(.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] || ''),
+                    ledgered: new RegExp(`(^|[ ,])macos-control=`).test((/^managed-mcp:(.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] || ''),
                 };
                 if (i === 0)
                 {
                     // A 1.x-style stamp: no ledger. The user's row is the stack's with one flag appended.
                     fs.writeFileSync(stampFile, fs.readFileSync(stampFile, 'utf8').replace(/^managed-mcp:.*\n/m, ''));
                     const data = jsonAt(repo, '.mcp.json');
-                    data.mcpServers['macos-desktop'].args.push('--my-own-flag');
+                    data.mcpServers['macos-control'].args.push('--my-own-flag');
                     fs.writeFileSync(file, JSON.stringify(data, null, 2));
                 }
                 return step;
@@ -2743,7 +2751,7 @@ for (const scope of ['project', 'user'])
         for (const i of [1, 2, 3])
         {
             assert.strictEqual(steps[i].args[steps[i].args.length - 1], '--my-own-flag', `update ${i} overwrote the user's flag:\n${outs[i]}`);
-            assert.strictEqual(steps[i].held, `project:macos-desktop`, `update ${i}:\n${outs[i]}`);
+            assert.strictEqual(steps[i].held, `project:macos-control`, `update ${i}:\n${outs[i]}`);
             assert.strictEqual(steps[i].ledgered, false, `update ${i} ledgered a held row`);
         }
     });
@@ -2758,13 +2766,13 @@ for (const kind of ['garbage', 'bom+garbage', 'eacces'])
     {
         let good = '';
         const trustedNow = (repo) => jsonAt(repo, '.claude/settings.json').enabledMcpjsonServers || [];
-        const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-desktop\n', {
+        const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp macos-control\n', {
             env: { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }, args: [[], ['--installed-only'], ['--installed-only'], ['--installed-only']],
             each: (repo, i) =>
             {
                 const file = path.join(repo, '.mcp.json');
                 const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
-                const step = { trusted: trustedNow(repo), ledgered: /(^|[ ,])macos-desktop=/.test((/^managed-mcp:(.*)$/m.exec(stamp) || [])[1] || ''), file: (() => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } })() };
+                const step = { trusted: trustedNow(repo), ledgered: /(^|[ ,])macos-control=/.test((/^managed-mcp:(.*)$/m.exec(stamp) || [])[1] || ''), file: (() => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } })() };
                 if (i === 0)
                 {
                     good = fs.readFileSync(file, 'utf8');
@@ -2778,13 +2786,13 @@ for (const kind of ['garbage', 'bom+garbage', 'eacces'])
         const broken = kind === 'eacces' ? null : `${kind === 'garbage' ? '' : '\uFEFF'}{"a": [1,2, garbage`;
         for (const i of [1, 2])
         {
-            assert.ok(steps[i].trusted.includes('macos-desktop'), `update ${i} dropped the approval:\n${outs[i]}`);
+            assert.ok(steps[i].trusted.includes('macos-control'), `update ${i} dropped the approval:\n${outs[i]}`);
             assert.strictEqual(steps[i].ledgered, true, `update ${i} dropped the ledger row`);
             assert.strictEqual(outs[i].split('\n').filter((l) => /\.mcp\.json could not be read.*stay as the stamp recorded/.test(l)).length, 1, `update ${i} did not say so in one line:\n${outs[i]}`);
             if (broken !== null) assert.strictEqual(steps[i].file, broken, `update ${i} rewrote the unreadable file`);
         }
         assert.strictEqual(/mcps=(\d+)/.exec(outs[1])[1], /mcps=(\d+)/.exec(outs[0])[1], `update 1 read fewer picks:\n${outs[1]}`);
-        assert.ok(steps[3].trusted.includes('macos-desktop'), `the restored file did not bring the approval back:\n${outs[3]}`);
+        assert.ok(steps[3].trusted.includes('macos-control'), `the restored file did not bring the approval back:\n${outs[3]}`);
         assert.strictEqual(/mcps=(\d+)/.exec(outs[3])[1], /mcps=(\d+)/.exec(outs[0])[1], `the update after the restore:\n${outs[3]}`);
     });
 }

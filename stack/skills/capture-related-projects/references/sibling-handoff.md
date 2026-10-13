@@ -18,6 +18,11 @@ replacing it, one section per task:
   version floor). If it is not stated here, both sides will guess differently.
 - **How that side verifies it** - the test or check that proves it landed.
 
+The card reaches the sibling's session through the user, so the report prints it too: ONE fenced
+markdown block, ready to paste there, its first line `Open in: <the sibling's root>`, then the
+section just written - a path alone sends the user back to ask for the text (measured: the 12th
+'write it here as markdown' ask in one project, each a full-context turn).
+
 Then finish YOUR side against the other project's CURRENT behaviour, or state plainly what stays
 blocked until the card is done. Do not leave this project half-changed against a version of the
 sibling that does not exist yet.

@@ -149,6 +149,38 @@ test('monitor: the context note fires at 80% of the fresh-session trigger, once 
     assert.strictEqual(at.rows().length, 1, 'the context note fired twice in one session');
 });
 
+test('monitor: right after a compaction the context note reads neither the stale carry nor the wrong tier (audit 2026-10-10 C08)', () =>
+{
+    // 758ce661 / adaa2ef3 / 7fae0c39: 0.4-0.6MB of re-attached rows pushed every assistant row out of the 512KB model
+    // read (window -> DEFAULT tier) while the usage read returned the PRE-compaction carry - '176% of 180000' noted at a
+    // real 120k, and the once-per-session note spent.
+    const s = session();
+    const tp = path.join(s.root, 't.jsonl');
+    const asst = (id, usage) => JSON.stringify({ type: 'assistant', message: { id, model: 'claude-opus-5-5', content: [{ type: 'text', text: 'ok' }], usage } });
+    const attach = (kb, i) => JSON.stringify({ type: 'attachment', attachment: { type: 'invoked_skills', content: 'x'.repeat(kb * 1024) }, n: i });
+    fs.writeFileSync(tp, [asst('f', { cache_creation_input_tokens: 40000 }), asst('a', { cache_read_input_tokens: 316849 }),
+        JSON.stringify({ type: 'system', subtype: 'compact_boundary', compactMetadata: { trigger: 'auto', preTokens: 317321 } }),
+        ...[0, 1, 2, 3, 4].map((i) => attach(120, i)),
+        JSON.stringify({ type: 'attachment', attachment: { type: 'model', identity: { modelId: 'claude-opus-5-5' } } })].join('\n') + '\n');
+    s.call('Read', { file_path: 'a' }, { transcript_path: tp });
+    assert.strictEqual(s.rows().length, 0, 'no usage row since the compaction - the context is unknown, nothing noted');
+    const fresh = require('../stack/hooks/fresh-session.js');
+    const saved = { ...process.env };
+    try
+    {
+        process.env.CLAUDE_CONFIG_DIR = BASE_ENV.CLAUDE_CONFIG_DIR;
+        process.env.CLAUDE_PROJECT_DIR = s.root;
+        delete process.env.ALFRED_CODE_FRESH_SESSION_1M;
+        fresh.use({ transcript_path: tp, cwd: s.root });
+        assert.strictEqual(fresh.sessionModelId(), 'claude-opus-5-5', 'the model attachment row answers past the re-attached rows');
+        assert.strictEqual(fresh.knownWindow(), 1000000);
+        assert.strictEqual(fresh.contextNow(), 0, 'the pre-compaction usage is never read across the boundary');
+        fs.appendFileSync(tp, asst('b', { cache_read_input_tokens: 120127 }) + '\n');
+        assert.strictEqual(fresh.contextNow(), 120127, 'the first post-compaction row is read');
+    }
+    finally { process.env = saved; }
+});
+
 test('monitor: a subagent never takes the context note, and a switched-off trigger gives none', () =>
 {
     const sub = session();
@@ -250,4 +282,85 @@ test('monitor: a new turn sweeps other sessions\' logs past 7 days, and keeps a 
     assert.ok(!fs.existsSync(old), 'eight days old is swept');
     assert.ok(fs.existsSync(fresh) && fs.existsSync(other), 'six days old, and a file with another prefix, are kept');
     assert.ok(fs.existsSync(s.stateFile), 'this session\'s own log was written');
+});
+
+// Audit 2026-10-10 C25, 758ce661: five Reads of one screenshot, re-shot by a shell command before each, drew the repeat
+// note; and a background gate's completion notice, arriving as a prompt, emptied the turn log mid-turn.
+test('monitor: a Read of a file that changed between reads is a new input, and a task notice opens no turn', () =>
+{
+    const s = session();
+    const shot = path.join(s.root, 'shot.jpg');
+    for (let i = 0; i < 5; i++)
+    {
+        fs.writeFileSync(shot, 'x'.repeat(10 + i));
+        fs.utimesSync(shot, new Date(), new Date(Date.now() + i * 1000));
+        s.call('Read', { file_path: shot });
+    }
+    assert.strictEqual(s.rows().length, 0, 'a regenerated file read five times is five inputs');
+    const same = path.join(s.root, 'same.js');
+    fs.writeFileSync(same, 'const a = 1;\n');
+    for (let i = 0; i < 5; i++) s.call('Read', { file_path: same });
+    assert.strictEqual(s.rows().filter((r) => r.kind === 'repeat').length, 1, 'an unchanged file read five times is still a repeat');
+    const t = session();
+    for (let i = 0; i < 3; i++) t.call('Bash', { command: 'git status' });
+    t.hook({ hook_event_name: 'UserPromptSubmit', prompt: '<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>' });
+    for (let i = 0; i < 2; i++) t.call('Bash', { command: 'git status' });
+    assert.strictEqual(t.rows().filter((r) => r.kind === 'repeat').length, 1, 'the notice did not empty the turn log');
+});
+
+// Audit 2026-10-11 SD08, sessions fdce35ae / 7f8803eb: an input-less Screenshot after each Click, and a fixed-coordinate
+// menu Click between other Clicks, drew the repeat row while the screen changed under it.
+test('monitor: an MCP call\'s repeat count restarts after an action on the same server; an observation between keeps it', () =>
+{
+    const W = (name) => `mcp__plugin_windows-control_windows-control__${name}`;
+    const s = session();
+    for (let i = 0; i < 5; i++) { s.call(W('Screenshot'), {}); s.call(W('Click'), { loc: [100 + i, 200] }); }
+    assert.strictEqual(s.rows().filter((r) => r.kind === 'repeat').length, 0, 'the measured case: a Screenshot after each Click is a new look');
+    s.prompt();
+    for (let i = 0; i < 5; i++) { s.call(W('Click'), { loc: [1875, 54] }); s.call(W('Snapshot'), {}); s.call(W('Click'), { loc: [1700, 90 + i * 20] }); s.call(W('Snapshot'), {}); }
+    assert.strictEqual(s.rows().filter((r) => r.kind === 'repeat').length, 0, 'a menu Click between other Clicks restarts');
+    const t = session();
+    // the copy route's spelling, deliberately (mcp-fixture)
+    for (let i = 0; i < 5; i++) { t.call('mcp__windows-control__Click', { loc: [10, 10] }); t.call('mcp__windows-control__Snapshot', {}); } // mcp-fixture
+    assert.deepStrictEqual(t.rows().filter((r) => r.kind === 'repeat').map((r) => r.tool), ['mcp__windows-control__Click'], 'the same Click with only Snapshots between is the loop'); // mcp-fixture
+    const u = session();
+    for (let i = 0; i < 5; i++) { u.call(W('Screenshot'), {}); u.call('Bash', { command: `echo ${i}` }); u.call('mcp__other__do_thing', { i }); }
+    assert.strictEqual(u.rows().filter((r) => r.kind === 'repeat').length, 1, 'a shell call or another server between restarts nothing');
+    const v = session();
+    for (let i = 0; i < 5; i++) { v.call(W('Screenshot'), {}); v.call(W('Click'), { loc: [i, i] }, { agent_id: 'agent-b' }); }
+    assert.strictEqual(v.rows().filter((r) => r.kind === 'repeat').length, 1, 'a subagent\'s action does not restart the main session\'s count');
+});
+
+// Audit 2026-10-11 SD08, session fdce35ae: desktop-automation's hard rule (never two actions without a Snapshot between
+// them) was prose only; 4 of 53 Clicks broke it.
+test('monitor: a desktop action right after another, no Snapshot between, writes one unobserved-action row', () =>
+{
+    const W = (name) => `mcp__plugin_windows-control_windows-control__${name}`;
+    const s = session();
+    s.call(W('Snapshot'), {});
+    s.call(W('Click'), { label: 3 });
+    s.call(W('Snapshot'), {});
+    s.call(W('Type'), { label: 4, text: 'x' });
+    assert.strictEqual(s.rows().length, 0, 'act, observe, act is the loop');
+    s.call(W('Click'), { label: 5 });
+    let rows = s.rows();
+    assert.deepStrictEqual(rows.map((r) => r.kind), ['unobserved-action']);
+    assert.strictEqual(rows[0].mode, 'monitor');
+    assert.strictEqual(rows[0].detail.previous, 'Type');
+    assert.match(rows[0].reason, /two desktop actions with no Snapshot between them \(Type, then Click\)/);
+    s.call('Bash', { command: 'ls' });
+    s.call(W('Shortcut'), { keys: 'ctrl+s' });
+    assert.strictEqual(s.rows().length, 2, 'a shell call between observes nothing on the screen');
+    s.call(W('WaitFor'), { name: 'Saved' });
+    s.call('mcp__macos-control__Click', { x: 1, y: 2 }, { agent_id: 'agent-c' }); // mcp-fixture: the copy route's spelling
+    s.call(W('Click'), { label: 6 });
+    assert.strictEqual(s.rows().length, 2, 'a WaitFor observes, and a subagent\'s action is its own');
+    s.call('mcp__macos-control__Click', { x: 3, y: 4 }, { agent_id: 'agent-c' }); // mcp-fixture
+    rows = s.rows();
+    assert.strictEqual(rows.length, 3);
+    assert.strictEqual(rows[2].detail.actor, 'agent-c');
+    const i = session({ ALFRED_CODE_MONITOR: 'inject' });
+    i.call(W('Click'), { label: 1 });
+    assert.match(i.call(W('Type'), { label: 2, text: 'y' }), /Session monitor: two desktop actions with no Snapshot between them/);
+    assert.strictEqual(i.call('mcp__plugin_alfred-navigation_alfred-navigation__rename_symbol', { name: 'A' }), '', 'another server\'s action is no desktop action');
 });

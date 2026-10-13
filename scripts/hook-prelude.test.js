@@ -390,7 +390,7 @@ test('in a repo never set up the protective guards stay live and write nothing; 
         const secret = fireIn('guard-secret-value.js', dir, { file_path: path.join(dir, 'config.json') }, 'Read');
         assert.strictEqual(secret.status, 2, `a credential file read blocked: ${secret.stderr}`);
         // Final review IM2: the desktop Shell is a shell no shell guard sees - `rm -rf ~` ran there while Bash's was blocked.
-        const shell = fireIn('guard-desktop-exec.js', dir, { command: 'rm -rf ~' }, 'mcp__plugin_macos-desktop_macos-desktop__Shell');
+        const shell = fireIn('guard-desktop-exec.js', dir, { command: 'rm -rf ~' }, 'mcp__plugin_macos-control_macos-control__Shell');
         assert.strictEqual(shell.status, 2, `the macOS desktop Shell blocked: ${shell.stderr}`);
         assert.ok(!fs.existsSync(path.join(dir, '.claude')) && !fs.existsSync(path.join(dir, '.alfred')), 'four blocks, no block row - nothing written into a repo never set up');
 
@@ -673,6 +673,63 @@ test('stop chain: own continuation stands down, a sibling one is judged, a fresh
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// Audit 2026-10-11 SD10, session 31da645f: after its own prose-ask block the stop contract's continuation ran an ask, a
+// Skill, an Edit and a check, then closed on a new prose question no hook judged. opts.workSince reopens the cycle when
+// the continuation made a tool call after the hook's block; a rewritten close with no call between stays held.
+test('stop chain: workSince reopens the cycle only after a tool call made since the hook\'s own block', () => {
+    const { stopHeldThisCycle, markStopHeld, stopMarkerFile } = require(PRELUDE);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stop-work-'));
+    const env = { ALFRED_CODE_HOOK_LOG_DIR: dir };
+    try {
+        const tp = path.join(dir, 't.jsonl');
+        const row = (ms, content) => JSON.stringify({ type: 'assistant', timestamp: new Date(ms).toISOString(), message: { id: `m${ms}`, content } });
+        const cont = { hook_event_name: 'Stop', session_id: 's1', stop_hook_active: true, transcript_path: tp };
+        const marked = () => { markStopHeld('guard-a', cont, env); return fs.statSync(stopMarkerFile('guard-a', cont, env)).mtimeMs; };
+        let at = marked();
+        fs.writeFileSync(tp, [row(at - 5000, [{ type: 'tool_use', id: 'old', name: 'Bash', input: {} }]), row(at - 1000, [{ type: 'text', text: 'Want me to go on?' }]),
+            row(at + 2000, [{ type: 'text', text: 'Rewritten close.' }])].join('\n') + '\n');
+        assert.strictEqual(stopHeldThisCycle('guard-a', cont, env, { workSince: true }), true, 'a close rewritten with no call between stays held');
+        fs.appendFileSync(tp, row(at + 3000, [{ type: 'tool_use', id: 'new', name: 'Edit', input: {} }]) + '\n');
+        assert.strictEqual(stopHeldThisCycle('guard-a', cont, env), true, 'without the option the old reading holds');
+        assert.strictEqual(stopHeldThisCycle('guard-a', { ...cont, hook_event_name: 'SubagentStop' }, env, { workSince: true }), false, 'a SubagentStop has its own marker');
+        assert.strictEqual(stopHeldThisCycle('guard-a', cont, env, { workSince: true }), false, 'a tool call after the block reopens the cycle');
+        assert.ok(!fs.existsSync(stopMarkerFile('guard-a', cont, env)), '... and clears the marker, so the next block marks afresh');
+        at = marked();
+        fs.writeFileSync(tp, '{torn');
+        assert.strictEqual(stopHeldThisCycle('guard-a', cont, env, { workSince: true }), true, 'a garbage transcript stays held');
+        assert.strictEqual(stopHeldThisCycle('guard-a', { ...cont, transcript_path: path.join(dir, 'gone.jsonl') }, env, { workSince: true }), true, 'a missing one too');
+        assert.strictEqual(stopHeldThisCycle('guard-a', { ...cont, transcript_path: 7 }, env, { workSince: true }), true, 'and a malformed path');
+        assert.ok(at > 0);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// 2026-10-09: the sweep listed the whole temp dir on every hook call - 78ms of a 136ms Stop over a 52,840-entry temp
+// dir. A stamp beside the state gates the pass to once a day per dir and prefix, across processes.
+test('sweepStale lists the dir at most once a day per prefix across processes - a stamp gates it', () =>
+{
+    const fresh = () => { delete require.cache[require.resolve(PRELUDE)]; return require(PRELUDE); };
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-stamp-'));
+    try
+    {
+        const { STALE_MS, SWEEP_EVERY_MS, sweepStamp } = fresh();
+        const now = Date.now();
+        const plant = (name) => { const f = path.join(dir, name); fs.writeFileSync(f, 'x'); const t = new Date(now - STALE_MS * 2); fs.utimesSync(f, t, t); return f; };
+        const first = plant('guard-y-one');
+        assert.strictEqual(fresh().sweepStale(dir, 'guard-y-', { now }), 1, 'no stamp yet: the first process sweeps');
+        const stamp = sweepStamp(dir, 'guard-y-');
+        assert.ok(fs.existsSync(stamp) && !path.basename(stamp).startsWith('guard-y-'), 'the stamp is written, outside the prefix it sweeps');
+        assert.ok(!fs.existsSync(first));
+        const second = plant('guard-y-two');
+        assert.strictEqual(fresh().sweepStale(dir, 'guard-y-', { now: now + SWEEP_EVERY_MS - 60000 }), 0, 'a new process within the day pays one stat');
+        assert.ok(fs.existsSync(second), '... and lists nothing');
+        assert.strictEqual(fresh().sweepStale(dir, 'guard-z-', { now }), 0, 'another prefix keeps its own stamp (nothing of its own here)');
+        assert.ok(fs.existsSync(sweepStamp(dir, 'guard-z-')));
+        assert.strictEqual(fresh().sweepStale(dir, 'guard-y-', { now: now + SWEEP_EVERY_MS }), 1, 'a day on, the next process sweeps again');
+        assert.ok(!fs.existsSync(second));
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); fresh(); }
+});
+
 // Audit 2026-10-08 S9: the hooks' per-session state was never pruned.
 test('sweepStale removes only its prefix\'s files past 7 days, once per dir and prefix; capLog keeps the newest lines', () =>
 {
@@ -695,6 +752,7 @@ test('sweepStale removes only its prefix\'s files past 7 days, once per dir and 
         plant('guard-x-later', STALE_MS * 2);
         assert.strictEqual(sweepStale(dir, 'guard-x-'), 0, 'once per dir and prefix in a process');
         assert.strictEqual(sweepStale(path.join(dir, 'gone'), 'guard-x-'), 0, 'a missing dir is no error');
+        assert.ok(!fs.existsSync(path.join(dir, 'gone')), '... and a missing dir is never created for the stamp');
         const log = path.join(dir, 'a.log');
         fs.writeFileSync(log, Array.from({ length: 2000 }, (_, i) => `row ${i}`).join('\n') + '\n');
         assert.strictEqual(capLog(log, 4096, 1024), true);
@@ -703,4 +761,47 @@ test('sweepStale removes only its prefix\'s files past 7 days, once per dir and 
         assert.strictEqual(capLog(log, 4096, 1024), false, 'a log under the cap is left alone');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// 2026-10-10: Node writes a pipe ASYNCHRONOUSLY on macOS, and process.exit() dropped what the pipe had not taken -
+// 8,192 bytes reached the reader on Node 22.16, 65,536 on 22.23 - so the secret guard's rewrite of a 100 KB command
+// arrived unparseable and the call ran unredacted. The prelude makes both streams blocking as it loads.
+test('blockingStdio: a process that loads the prelude, or carries its pinned inline copy, gets every byte through a pipe before process.exit', () =>
+{
+    const write = 'process.stdout.write("x".repeat(300000)); process.stderr.write("y".repeat(300000)); process.exit(0);';
+    const inline = require('../meta/shared-rules.json').rules['blocking-stdio'].owner.marker;
+    for (const [name, pre] of [['prelude', `require(${JSON.stringify(PRELUDE)});`], ['inline copy', `${inline}\nblockingStdio();`]])
+    {
+        const r = spawnSync(process.execPath, ['-e', pre + write], { encoding: 'utf8', maxBuffer: 1 << 24 });
+        assert.deepStrictEqual([r.status, r.stdout.length, r.stderr.length], [0, 300000, 300000], name);
+    }
+});
+
+// The sweep that keeps it so: every file that writes and then calls process.exit blocks first - a hook by loading
+// the prelude, any other entry by calling blockingStdio(). A launcher hands its stdio to a long-lived server, a
+// fixture is a test's fake server, and the sandbox's exits are its stub's source text.
+test('blockingStdio: every entry that writes and calls process.exit makes stdio blocking first', () =>
+{
+    const ROOT = path.join(__dirname, '..');
+    const exempt = (rel) => /\.test\.js$/.test(rel) || /^stack\/mcp\//.test(rel) || /^scripts\/fixtures\//.test(rel)
+        || rel === 'scripts/seed-sandbox.js' || rel === 'stack/hooks/hook-prelude.js';
+    const files = [];
+    const walk = (dir) =>
+    {
+        for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }))
+        {
+            const rel = `${dir}/${e.name}`;
+            if (e.isDirectory()) { if (e.name !== 'node_modules') walk(rel); }
+            else if (e.name.endsWith('.js') && !exempt(rel)) files.push(rel);
+        }
+    };
+    for (const dir of ['scripts', 'stack', 'setup-plugin']) walk(dir);
+    const missing = files.filter((rel) =>
+    {
+        const code = fs.readFileSync(path.join(ROOT, rel), 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+        if (!/process\.exit\(/.test(code) || !/process\.std(?:out|err)\.write|console\.(?:log|error)/.test(code)) return false;
+        return !/blockingStdio\(\)/.test(code) && !/require\((?:'\.\/hook-prelude\.js'|PRELUDE)\)/.test(code);
+    });
+    assert.ok(files.length > 50, `the sweep found ${files.length} files`);
+    assert.deepStrictEqual(missing, []);
 });

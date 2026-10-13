@@ -23,6 +23,8 @@
 //   because a Stop block cannot unsay text the user already read - it can only add more.
 // SessionStart wiring: re-emits the budget as additionalContext whenever the harness rebuilds the
 //   context (startup, resume, clear, compact) - a compaction drops the UserPromptSubmit injection.
+// PostToolUse AskUserQuestion wiring: an answer typed into an ask's Other field is the user speaking through a tool
+//   result - one probe row, the correction test over it, and a note to open a path it names (audit 2026-10-10 C15).
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
 
@@ -93,6 +95,10 @@ if (cursorOff) process.exit(0);
           hook: path.basename(__filename),
           event: payload.hook_event_name || payload.tool_name || '',
           tool: payload.tool_name || '',
+          // WHO was blocked and on which call: a seat's block is its own row (audit 2026-10-10 C07, 0498718d - seat
+          // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
+          agent: payload.agent_id || null,
+          tool_use_id: payload.tool_use_id || null,
           reason: last.split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose
@@ -271,7 +277,7 @@ function correctionStreak(currentPrompt) {
 // The Cyrillic stems are bounded by a non-letter lookbehind (JS \b is ASCII-only); too few Cyrillic
 // turns exist in the corpus to measure them.
 const CORRECTION_STRONG_RE = /^\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\b|(?:^|[.,;:!?]\s*|\b(?:but|and|please|pls|so|then|also|just)\s+)(?:do not|don'?t|dont|never|stop \w+ing)\b|\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\b|\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\b(?! (?:cannot|can'?t|can not|couldn'?t)\b)|\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\b|\b(?:still|again) (?:there|broken|fail\w*|wrong|the same|red|happen\w*|error\w*|doesn'?t|does not|isn'?t|is not|not)\b|\bsame (?:error|issue|problem|bug)\b|\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\b|\bnot what i\b|\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\b|\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\b|\bnot working\b|\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\b/i;
-const CORRECTION_WEAK_RE = /^\W*but\b|^\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\b\W*but\b|^\W*stop\b|\binstead\b|\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\b/i;
+const CORRECTION_WEAK_RE = /^\W*but\b|^\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\b\W*but\b|^\W*stop\b|\binstead\b|(?<!\b(?:what|which|how|whether|where|when|who|why)\b[^.,;:!?\n]{0,60})\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\b/i;
 const CORRECTION_CYR_RE = /(?<![\p{L}])(?:ні(?=[\s,.!]|$)|нет(?=[\s,.!]|$)|не (?:так|те|то)(?![\p{L}])|не ?правильн|не (?:треба|потрібно|надо|нужно|роби|делай)(?![\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав|говорил|просил|сказал)|(?:чому ти|почему ты)(?! не мож)|навіщо ти|зачем ты|коротше|покороче|простіше|проще|забагато|слишком|(?:та сама|та ж|та же|та самая) (?:помилк|ошибк|проблем)|не (?:працює|работает)|(?:досі|все ще|всё ещё|все еще) не(?![\p{L}]))/iu;
 function correctionMarker(text) {
   const t = String(text || '').replace(/[‘’]/g, "'").trim();
@@ -352,8 +358,76 @@ function repeatsLastPrompt(currentPrompt) {
   } catch { return false; }
 }
 
+// --- the answer TYPED into an ask (audit 2026-10-10 C15 / C07) ----------------------------------------------------
+// An answer written into an AskUserQuestion's Other field is the user speaking, but it arrives as a tool result, so the
+// prompt-time readers above never saw it: two corrections typed there ('Why you bother me ... Right now!') logged no
+// correction row and the session's lesson never reached memory (4f1c2ebb), a project fact typed there was neither logged
+// nor saved (8f44a003), and an answer naming a folder was re-read as the hand-off destination and never opened
+// (69dbed46). So each answer that matches none of the offered labels writes one `ask-answer-typed` row, a short one
+// carrying a correction marker also writes the `correction` row (the same test, the same nudge mode), and one naming a
+// path gets a note to open it and restate what it changes before acting. Log and inject only - it never blocks.
+const PATH_IN_ANSWER_RE = /(?:^|[\s'"(`])((?:~|\.{1,2})?\/?(?:[\w.@-]+\/){2,}[\w.@-]*)/;
+// The save line both correction routes inject. A correction often carries a PROJECT FACT (audit 2026-10-10, T5
+// cross-track, 84eedb4b: 'api from develop is for current version' - a branch pairing acted on, never stored, 0
+// memory_store calls), so it names the reference type beside user_correction (alfred-memory.md's three save triggers).
+// A stated preference rides the same line (audit 2026-10-11 SD16, session ce9d4811: 'I do not want it global but per
+// project scope' was never stored and restated 3 minutes later): its type is preference_signal.
+const SAVE_LINE = 'store it with memory_store (user_correction, project tag) before continuing - a preference it states '
+  + '(\'per project, never global\') as preference_signal, and a project fact it states '
+  + '(a branch, an environment, a version pairing) as a reference memory; the tool is deferred, so load it first: '
+  + 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store';
+function typedAnswers(p) {
+  const questions = Array.isArray(p.tool_input && p.tool_input.questions) ? p.tool_input.questions : [];
+  let answers = p.tool_response && typeof p.tool_response === 'object' && p.tool_response.answers && typeof p.tool_response.answers === 'object'
+    ? p.tool_response.answers : null;
+  if (!answers) {
+    // the text form: The user answered: "Q"="A" (one pair per question)
+    const t = typeof p.tool_response === 'string' ? p.tool_response : JSON.stringify(p.tool_response || '');
+    answers = {};
+    for (const m of t.matchAll(/"((?:[^"\\]|\\.)*)"="((?:[^"\\]|\\.)*)"/g)) answers[m[1]] = m[2];
+  }
+  const out = [];
+  for (const [q, a] of Object.entries(answers)) {
+    const answer = String(a || '').trim();
+    if (!answer) continue;
+    const spec = questions.find((x) => x && String(x.question || '').trim() === q.trim());
+    const labels = new Set(((spec && spec.options) || []).map((o) => String((o && o.label) || '').trim()));
+    const parts = spec && spec.multiSelect ? answer.split(/,\s*/) : [answer];
+    if (labels.size && parts.every((x) => labels.has(x.trim()))) continue;
+    out.push({ question: q, answer });
+  }
+  return out;
+}
+if (payload.hook_event_name === 'PostToolUse' && payload.tool_name === 'AskUserQuestion') {
+  const typed = (() => { try { return typedAnswers(payload); } catch { return []; } })();
+  if (!typed.length) process.exit(0);
+  const nudgeMode = String(envOf(process.env, 'CORRECTION_NUDGE') || 'log').trim().toLowerCase();
+  const notes = [];
+  for (const { answer } of typed) {
+    const marker = nudgeMode === '0' || nudgeMode === 'off' || answer.length > STREAK_SHORT ? null : correctionMarker(answer);
+    // a URL is no path to open
+    const named = (answer.replace(/\b\w+:\/\/\S+/g, ' ').match(PATH_IN_ANSWER_RE) || [])[1] || null;
+    ledgerRow({ mode: 'probe', kind: 'ask-answer-typed', reason: 'probe: an ask answered in its own words, not an offered label',
+      detail: { chars: answer.length, correction: marker, path: !!named } });
+    if (marker) {
+      const inject = nudgeMode === 'inject';
+      ledgerRow({ mode: 'probe', kind: 'correction', injected: inject, reason: `probe: a correction typed into an ask - ${inject ? 'save line injected' : 'logged, nothing injected'}`,
+        detail: { marker, chars: answer.length, via: 'ask-answer' } });
+      if (inject) notes.push(`CORRECTION: the answer typed into the ask reads as a correction - ${SAVE_LINE}`);
+    }
+    if (named) {
+      notes.push(`The answer typed into the ask names a path (${named}). Open it before acting, and restate in visible text, one sentence, what the answer changes - a typed answer is often a redirect, and one naming a folder was re-read as a hand-off destination and never opened.`);
+    }
+  }
+  if (notes.length) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: notes.join(' ') } }));
+  process.exit(0);
+}
+
 if (payload.hook_event_name === 'UserPromptSubmit') {
-  const repeat = repeatsLastPrompt(payload.prompt) ? ' VERBATIM RE-ASK: this prompt is identical to ' +
+  // A harness task notice is no user turn: no budget, no correction test (audit 2026-10-10 C25, 758ce661: the 780-char
+  // budget rode a background gate's completion notice, ~195 tokens carried on every later message).
+  if (/^\s*<task-notification>/.test(String(payload.prompt || ''))) process.exit(0);
+  const repeat =repeatsLastPrompt(payload.prompt) ? ' VERBATIM RE-ASK: this prompt is identical to ' +
     'the previous one. The last answer missed - do not re-answer it longer or from a different angle. ' +
     'Ask ONE AskUserQuestion about the goal, with the readings you are choosing between as options ' +
     '(measured: three identical turns, /model and /effort escalated between them, before the run asked).'
@@ -377,9 +451,7 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
       reason: `probe: a correction turn - ${inject ? 'save line injected' : 'logged, nothing injected'}`,
       detail: { marker, chars: String(payload.prompt).trim().length } });
   }
-  const nudge = inject
-    ? ' CORRECTION: this reads as a correction - store it with memory_store (user_correction, project tag) before continuing; the tool is deferred, so load it first: ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store'
-    : '';
+  const nudge = inject ? ` CORRECTION: this reads as a correction - ${SAVE_LINE}` : '';
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: BUDGET_TEXT + extra + repeat + nudge },
   }));

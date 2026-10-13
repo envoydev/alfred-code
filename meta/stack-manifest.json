@@ -34,7 +34,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "capture-architecture",
-      "note": "deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule alfred-project-architecture.md; manual /-only"
+      "note": "deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule alfred-architecture.md; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -73,18 +73,18 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "capture-agent-capabilities",
-      "note": "deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule alfred-project-agent-capabilities.md; manual /-only"
+      "name": "capture-agent-awareness",
+      "note": "deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule alfred-agent-awareness.md; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "capture-project-capabilities",
-      "note": "deliberate run-book capture - reads the repo first (the first-look scan, launch configs, compose, README), asks only for the gaps (start and reach, login and where the credentials live, flows and edge cases, before-you-run and debugging), writes docs/project-capabilities/PROJECT-CAPABILITIES.md (its own docs domain) + the generated pointer rule alfred-project-run-book.md; credentials by location, never by value; manual /-only"
+      "name": "capture-project-awareness",
+      "note": "deliberate run-book capture - reads the repo first (the first-look scan, launch configs, compose, README), asks only for the gaps (start and reach, login and where the credentials live, flows and edge cases, before-you-run and debugging), writes docs/project-capabilities/PROJECT-CAPABILITIES.md (its own docs domain) + the generated pointer rule alfred-project-awareness.md; credentials by location, never by value; manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
       "name": "capture-related-projects",
-      "note": "deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule alfred-project-related-context.md + docs/related-projects/RELATED-PROJECTS.md (its own docs domain; docs/related-context/ stays the plain drop box for every other sibling-repo paper); manual /-only"
+      "note": "deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule alfred-related-context.md + docs/related-projects/RELATED-PROJECTS.md (its own docs domain; docs/related-context/ stays the plain drop box for every other sibling-repo paper); manual /-only"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -399,7 +399,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "desktop-automation",
-      "note": "driving a native desktop app through windows-desktop / macos-desktop: observe, one action, verify; app-type quality; dialogs never driven; the OS setup failures - arrives with either desktop server"
+      "note": "driving a native desktop app through windows-control / macos-control: observe, one action, verify; app-type quality; dialogs never driven; the OS setup failures - arrives with either desktop server"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -758,6 +758,12 @@
       "note": "the THIRD read route: a Grep with output_mode content PRINTS the matching lines - measured live, a blocked Bash read of a settings.json was followed 8s later by a content Grep of the same path that returned its lines (count / files_with_matches modes print no value and pass)"
     },
     {
+      "file": "guard-secret-value.js",
+      "matcher": "@SessionStart",
+      "event": "",
+      "note": "the project's sensitive data (<data root>/.sensitive-data, a dotenv the user fills by hand) by KEY only, and the run that uses it (--with-sensitive) - silent when there is none; every value is a credential there, so a Read is blocked, a dump masked and a source or copy refused"
+    },
+    {
       "file": "guard-unapproved-dispatch.js",
       "matcher": "Task|Agent",
       "event": "",
@@ -785,7 +791,7 @@
       "file": "guard-stop-contract.js",
       "matcher": "AskUserQuestion",
       "event": "",
-      "note": "PreToolUse AskUserQuestion: DENY once per ask text an ask whose own text breaks the house voice (an em- or en-dash, a double quote), carrying the corrected strings; INJECT the judgement notes, which land beside the user's answer and are worded for it - stale scope (an option naming repo/remote/job state with no fresh read this turn: verify before acting, re-ask if it moved), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for the next ask, a live credential. Presence only"
+      "note": "PreToolUse AskUserQuestion: DENY once per ask text an ask whose own shape is wrong - its house voice (an em- or en-dash, a double quote), a fresh-session option quoting no number near the measured carry (both carrying the corrected strings), an option telling the user to type into Other, a single-select question without exactly one (Recommended), a new cycle's first ask with no fresh option; INJECT the judgement notes, which land beside the user's answer and are worded for it - stale scope (an option naming repo/remote/job state with no fresh read this turn: verify before acting, re-ask if it moved), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for the next ask, a live credential. Presence only"
     },
     {
       "file": "guard-stop-contract.js",
@@ -807,7 +813,7 @@
     },
     {
       "file": "guard-fresh-session-start.js",
-      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
+      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
       "event": "",
       "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling, so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only)"
     },
@@ -819,9 +825,33 @@
     },
     {
       "file": "guard-fresh-session-start.js",
+      "matcher": "@UserPromptSubmit",
+      "event": "",
+      "note": "the idle-gap offer: the prompt that ends a gap past ALFRED_CODE_FRESH_SESSION_AFTER_HOURS (the clock route's knob, default 2, 0 off) since the last reply injects the fresh-session ask once per gap, with the carry and cold floor, when a resume recovers enough (audit 2026-10-10 C09: a next-day resume ran 14 messages at 289.9k unoffered). A harness notice, a seat and nobody at the terminal get no offer"
+    },
+    {
+      "file": "guard-fresh-session-start.js",
       "matcher": "@PreCompact",
       "event": "",
-      "note": "before a compaction, write <docs-path>/flow/COMPACT-STATE - the live plan, the open flow stamps with their ages, the files this session wrote - with no model call; the compact SessionStart points at it"
+      "note": "before a compaction, write <docs-path>/flow/COMPACT-STATE - the live plan, the active flow and its body path, the open flow stamps with their ages, the files this session wrote - with no model call; the compact SessionStart points at it"
+    },
+    {
+      "file": "guard-fresh-session-start.js",
+      "matcher": "Agent|Task",
+      "event": "",
+      "note": "the post-compaction hold: after an automatic compaction the first changing call (a dispatch here, the first phase Skill call on the Skill row, an edit or a shell call on the two rows below) is denied once with the measured carry and cold floor until an AskUserQuestion is answered or the turn names a single short step - released when a resume would recover too little, when nobody is at the terminal (a live AUTO waiver included) or after two denials; with no hold pending the hook exits on one file check"
+    },
+    {
+      "file": "guard-fresh-session-start.js",
+      "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+      "event": "",
+      "note": "the post-compaction hold on an edit - this row folds into the file-guard dispatcher, which runs the hook in-process (one process per file call, 2.1.5 M3)"
+    },
+    {
+      "file": "guard-fresh-session-start.js",
+      "matcher": "Bash|PowerShell|Monitor",
+      "event": "",
+      "note": "the post-compaction hold on the shell route - a shell command after an automatic compaction is a change like an edit; this row folds into the shell-guard dispatcher (one process per shell call)"
     },
     {
       "file": "guard-config-protection.js",
@@ -849,7 +879,7 @@
     },
     {
       "file": "guard-desktop-exec.js",
-      "matcher": "^mcp__(plugin_windows-desktop_)?windows-desktop__App$|^mcp__(plugin_macos-desktop_)?macos-desktop__Shell$",
+      "matcher": "^mcp__(plugin_windows-control_)?windows-control__App$|^mcp__(plugin_macos-control_)?macos-control__Shell$",
       "event": "",
       "note": "the desktop servers' process launchers, both routes' spellings: deny Windows-MCP App with mode launch_executable (any executable, caller-given args - the server excludes by tool name, never by mode) and every MacOS-MCP Shell call (a shell command no shell guard sees); App's launch / switch / resize pass; the DESKTOP-EXEC-ALLOW receipt (App, Shell, an executable, or *) honours a wanted launch"
     },
@@ -870,6 +900,12 @@
       "matcher": "@Stop",
       "event": "",
       "note": "Stop event: block a wall-of-text answer (prose past the hard cap, no depth request in the user's message) - re-answer at budget"
+    },
+    {
+      "file": "guard-answer-length.js",
+      "matcher": "@PostToolUse:AskUserQuestion",
+      "event": "",
+      "note": "an answer TYPED into an ask (matching none of the offered labels) is the user speaking: one ask-answer-typed probe row; a short one carrying a correction marker also writes the correction row (the same test and nudge mode as a typed prompt); one naming a path gets a note to open it and restate what it changes before acting (audit 2026-10-10 C15 / C07: corrections typed into asks were never counted, and a folder named in an answer was never opened). Never blocks"
     },
     {
       "file": "docs-session.js",
@@ -918,6 +954,12 @@
       "matcher": "@SessionStart",
       "event": "",
       "note": "push a compact slice of shared memory (own project, cross-project preferences/corrections, related projects) into the session's starting context - engine memory.js copied beside it, not itself wired"
+    },
+    {
+      "file": "memory-session.js",
+      "matcher": "@SubagentStart",
+      "event": "",
+      "note": "the project's memory tag line for a dispatched subagent - SessionStart context never reaches one, and a seat stores and reads its handoff note under that tag"
     },
     {
       "file": "monitor-session.js",
@@ -992,7 +1034,7 @@
     {
       "name": "browser",
       "args": "-- node -e @ROOT_BOOT@ -- checkout npx -y @playwright/mcp@PW_PIN@ --user-data-dir @BROWSER_DIR@ --output-dir @BROWSER_DIR@/output --no-webmcp",
-      "note": "the browser server (Playwright MCP): drive a real browser for visual checks / web app verification - expanded after the selection into one browser-<engine> server per kept browser; --no-webmcp, so a visited page never adds tools of its own"
+      "note": "the browser server (Playwright MCP): drive a real browser for visual checks / web app verification - expanded after the selection into one <engine>-control server per kept browser; --no-webmcp, so a visited page never adds tools of its own"
     },
     {
       "name": "alfred-memory",
@@ -1005,22 +1047,28 @@
       "note": "the documentation server (Context7): up-to-date library/framework/SDK docs (beats recalled API knowledge) - the hosted server only since 2.0.0 (the local npx transport was cut, R32)"
     },
     {
-      "name": "windows-desktop",
+      "name": "windows-control",
       "active": false,
-      "args": "-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_DESKTOP_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from windows-mcp@WINDOWS_DESKTOP_PIN@ windows-mcp serve",
+      "args": "-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_CONTROL_EXCLUDE@ -e WINDOWS_MCP_TOOLS= -e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from windows-mcp@WINDOWS_CONTROL_PIN@ windows-mcp serve",
       "skills": [
         "desktop-automation"
       ],
-      "note": "the Windows desktop server (Windows-MCP): drives native Windows apps through UI Automation; Windows only, seeded for wpf / winforms there; opt-in (active: false - never in a no-selection run); PowerShell, Registry, Process and FileSystem off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE says otherwise (WINDOWS_MCP_TOOLS registered empty, so an inherited one never overrides the list); App's launch_executable mode is denied by a house guard unless DESKTOP-EXEC-ALLOW allows it"
+      "note": "the Windows desktop server (Windows-MCP): drives native Windows apps through UI Automation; Windows only, seeded for wpf / winforms there; opt-in (active: false - never in a no-selection run); PowerShell, Registry, Process and FileSystem off unless ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE says otherwise (WINDOWS_MCP_TOOLS registered empty, so an inherited one never overrides the list); App's launch_executable mode is denied by a house guard unless DESKTOP-EXEC-ALLOW allows it; screenshots arrive at Windows-MCP's full size unless WINDOWS_MCP_SCREENSHOT_SCALE (0.1-1.0) is set in the shell that starts Claude Code - the stack seeds no value until a readability measurement (observe-first)"
     },
     {
-      "name": "macos-desktop",
+      "name": "macos-control",
       "active": false,
-      "args": "-e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from macos-mcp@MACOS_DESKTOP_PIN@ macos-mcp serve",
+      "args": "-e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ @UV_EXCLUDE_FLAG@ @UV_EXCLUDE_NEWER@ --from macos-mcp@MACOS_CONTROL_PIN@ macos-mcp serve",
       "skills": [
         "desktop-automation"
       ],
       "note": "the macOS desktop server (MacOS-MCP): drives native macOS apps through the Accessibility API; macOS only, addable, seeded by no stack; opt-in (active: false); needs Accessibility and Screen Recording for the terminal and the uv-managed Python"
+    },
+    {
+      "name": "mobile-control",
+      "active": false,
+      "args": "-e NO_UI=@MOBILE_NO_UI@ -e ALLOW_REMOTE_APP_URLS=@MOBILE_REMOTE_APPS@ -e REMOTE_SERVER_URL_ALLOW_REGEX=@MOBILE_REMOTE_ALLOW@ -e SCREENSHOTS_DIR=@MOBILE_SCREENSHOTS@ -e PAGE_SOURCES_DIR=@MOBILE_PAGE_SOURCES@ -- node -e @ROOT_BOOT@ -- checkout npx -y appium-mcp@MOBILE_CONTROL_PIN@",
+      "note": "the mobile server (appium-mcp): drives Android and iOS apps on an emulator, a simulator or a device through Appium's embedded UiAutomator2 / XCUITest drivers; addable, seeded by no stack; opt-in (active: false); Node 22+; the Android SDK and a JDK come from ANDROID_HOME / JAVA_HOME where Claude Code starts (the plugin route's launcher, stack/mcp/mobile-launch.js, looks each up only when unset), iOS needs macOS with Xcode; app URLs refused and a local Appium server only unless the user sets ALLOW_REMOTE_APP_URLS / REMOTE_SERVER_URL_ALLOW_REGEX; screenshots and page sources under <data root>/mobile-control"
     }
   ],
   "retired": {
@@ -1065,12 +1113,14 @@
       "explain-code-tutor",
       "plugin-authoring",
       "alfred-capture-agent-capabilities",
+      "capture-agent-capabilities",
       "alfred-capture-architecture",
       "alfred-capture-architecture-quality",
       "alfred-capture-code-quality",
       "alfred-capture-code-style",
       "alfred-capture-first-look",
       "alfred-capture-project-capabilities",
+      "capture-project-capabilities",
       "alfred-capture-related-projects",
       "alfred-capture-test-coverage",
       "alfred-capture-usage-report",
@@ -1173,7 +1223,7 @@
       "project-code-style-analyzer": "capture-code-style",
       "project-test-coverage-analyzer": "capture-test-coverage",
       "project-related-context": "capture-related-projects",
-      "project-agent-capabilities": "capture-agent-capabilities",
+      "project-agent-capabilities": "capture-agent-awareness",
       "project-stack-usage-analyzer": "capture-usage-report",
       "project-first-look": "capture-first-look",
       "project-quality-loop": "loop-quality",
@@ -1185,13 +1235,15 @@
       "alfred-capture-stack-usage": "capture-usage-report",
       "create-ticket": "habits-create-ticket",
       "explain-code-tutor": "habits-explain-code",
-      "alfred-capture-agent-capabilities": "capture-agent-capabilities",
+      "alfred-capture-agent-capabilities": "capture-agent-awareness",
+      "capture-agent-capabilities": "capture-agent-awareness",
       "alfred-capture-architecture": "capture-architecture",
       "alfred-capture-architecture-quality": "capture-architecture-quality",
       "alfred-capture-code-quality": "capture-code-quality",
       "alfred-capture-code-style": "capture-code-style",
       "alfred-capture-first-look": "capture-first-look",
-      "alfred-capture-project-capabilities": "capture-project-capabilities",
+      "alfred-capture-project-capabilities": "capture-project-awareness",
+      "capture-project-capabilities": "capture-project-awareness",
       "alfred-capture-related-projects": "capture-related-projects",
       "alfred-capture-test-coverage": "capture-test-coverage",
       "alfred-capture-usage-report": "capture-usage-report",
@@ -1241,9 +1293,19 @@
       "serena": "alfred-navigation",
       "context7": "alfred-documentation",
       "playwright": "browser",
+      "playwright-chrome": "chrome-control",
+      "playwright-msedge": "msedge-control",
+      "playwright-firefox": "firefox-control",
+      "playwright-webkit": "webkit-control",
+      "browser-chrome": "chrome-control",
+      "browser-msedge": "msedge-control",
+      "browser-firefox": "firefox-control",
+      "browser-webkit": "webkit-control",
       "navigation": "alfred-navigation",
       "documentation": "alfred-documentation",
-      "memory": "alfred-memory"
+      "memory": "alfred-memory",
+      "windows-desktop": "windows-control",
+      "macos-desktop": "macos-control"
     }
   }
 }

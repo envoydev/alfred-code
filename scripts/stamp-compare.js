@@ -98,4 +98,5 @@ async function main()
             console.log(f.status + '\t' + f.filename + (f.previous_filename ? '\t<- ' + f.previous_filename : ''));
 }
 
+require('../stack/hooks/hook-prelude.js').blockingStdio();
 main().catch(e => { console.log('compare-unreachable'); console.error(`stamp-compare: ${e.message}`); process.exit(3); });

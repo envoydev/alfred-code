@@ -41,20 +41,23 @@ const RECEIPT = [
     'VERIFIED task-verify-code over the session expiry diff, security half inline',
     `authorized: "${PROMPT}"`,
     'head: 1a2b3c4',
-    'spec: 4 files - git add -N . && git diff HEAD, the whole change set',
+    'spec: 4 files - git diff HEAD plus the untracked token module, the whole change set',
     'live-probe: npm test - 2 passed',
     'security: auth ok, secrets ok, injection n/a, data-access n/a',
     '',
 ].join('\n');
+// The checkpoint's index-safe review read (usage audit 2026-10-11): the survey, then each untracked file named.
+const REVIEW_READ = ['git diff HEAD; git ls-files -o --exclude-standard', 'git diff --no-index -- /dev/null src/auth/tokens.js || true'];
 const COMMIT = 'git add -A && git commit -q -F - <<\'EOF\'\nfeat(auth): idle sessions expire\nEOF';
 
-function checkpointRun({ format = true, receiptFirst = true, receipt = RECEIPT, editAfterFormat = false } = {})
+function checkpointRun({ format = true, receiptFirst = true, receipt = RECEIPT, editAfterFormat = false, oldRecipe = false } = {})
 {
     const rows = [user(PROMPT), tool('Bash', { command: 'git status --short' })];
     if (format) rows.push(tool('Bash', { command: 'npm run format' }));
     if (editAfterFormat) rows.push(tool('Edit', { file_path: '/work/project/src/auth/session.js', old_string: 'a', new_string: 'b' }));
     rows.push(tool('Skill', { skill: 'task-verify-code' }));
-    rows.push(tool('Bash', { command: 'git add -N . && git diff HEAD; git reset -q' }));
+    rows.push(tool('Bash', { command: oldRecipe ? 'git add -N . && git diff HEAD; git reset -q' : REVIEW_READ[0] }));
+    if (!oldRecipe) rows.push(tool('Bash', { command: REVIEW_READ[1] }));
     rows.push(tool('Bash', { command: 'npm test' }));
     rows.push(say('Security review: auth ok, secrets ok, injection n/a, data-access n/a.'));
     if (!receiptFirst)
@@ -75,6 +78,13 @@ test('a compliant commit-checkpoint trace follows every step', () =>
     assert.deepStrictEqual(failing(r), []);
     assert.strictEqual(r.passed, r.graded);
     assert.strictEqual(r.graded, 9);
+});
+
+// 42951e5b (usage audit 2026-10-11): the add -N / reset recipe dropped MERGE_HEAD mid-merge - it fails its step now.
+test('the old add -N / reset review recipe fails the full-change-set step and only that step', () =>
+{
+    const r = sc.grade(expectOf('habits-commit-checkpoint'), checkpointRun({ oldRecipe: true }), { level: 'plain' });
+    assert.deepStrictEqual(failing(r), ['security-full-change-set']);
 });
 
 test('skipping the formatter fails that step and only that step', () =>
@@ -124,7 +134,7 @@ test('words found only in a harness-written row (a loaded skill body) are not th
 test('a receipt written inside the commit command is not its own call', () =>
 {
     const rows = [user(PROMPT), tool('Bash', { command: 'npm run format' }), tool('Skill', { skill: 'task-verify-code' }),
-        tool('Bash', { command: 'git add -N . && git diff HEAD; git reset -q' }),
+        tool('Bash', { command: REVIEW_READ[0] }), tool('Bash', { command: REVIEW_READ[1] }),
         tool('Bash', { command: `printf '%s' "$R" > .claude/docs/flow/COMMIT-GATE && ${COMMIT}` }),
         tool('Bash', { command: 'rm -f .claude/docs/flow/COMMIT-GATE' })];
     const r = sc.grade(expectOf('habits-commit-checkpoint'), jsonl(rows));
@@ -141,7 +151,7 @@ test('a verifier seat satisfies the review step the same as the in-session skill
 
 // --- solve-task: the size line and the first stop -------------------------------------------------
 
-function solveRun({ sizeFirst = true, size = 'standard', resume = 'mcp__plugin_alfred-navigation_alfred-navigation__list_memories', approve = false } = {})
+function solveRun({ sizeFirst = true, size = 'standard', resume = 'mcp__plugin_alfred-memory_alfred-memory__memory_list', approve = false } = {})
 {
     const sizeRow = say(`Size: ${size} - request validation is input parsing, on the floor whatever the file count.`);
     const rows = [user('<command-name>/task-solve</command-name>\n<command-args>Add request validation to the create-order handler</command-args>')];
@@ -183,10 +193,10 @@ test('skipping the resume check fails it; a self-written Approved stamp fails no
 
 test('an MCP tool counts in both spellings: the plugin route and the registration route', () =>
 {
-    assert.strictEqual(sc.canonical('mcp__plugin_alfred-navigation_alfred-navigation__list_memories'), BARE('alfred-navigation', 'list_memories'));
-    assert.strictEqual(sc.canonical('mcp__plugin_browser-chrome_browser-chrome__browser_navigate'), BARE('browser-chrome', 'browser_navigate'));
+    assert.strictEqual(sc.canonical('mcp__plugin_alfred-memory_alfred-memory__memory_list'), BARE('alfred-memory', 'memory_list'));
+    assert.strictEqual(sc.canonical('mcp__plugin_chrome-control_chrome-control__browser_navigate'), BARE('chrome-control', 'browser_navigate'));
     assert.strictEqual(sc.canonical('Read'), 'Read');
-    const r = sc.grade(expectOf('task-solve'), solveRun({ resume: BARE('alfred-navigation', 'list_memories') }));
+    const r = sc.grade(expectOf('task-solve'), solveRun({ resume: BARE('alfred-memory', 'memory_list') }));
     assert.strictEqual(verdicts(r)['resume-first'], 'PASS');
 });
 
@@ -615,7 +625,7 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
             assert.match(b, /--max-budget-usd 1\.5 --model=claude-sonnet-4-5 > /);
             assert.ok(b.includes(`CLAUDE_CONFIG_DIR=${path.join(out, 'config')}`));
         }
-        assert.ok(billed.some((b) => b.includes(BARE('alfred-navigation', 'list_memories'))), 'the copy route allows the bare spelling');
+        assert.ok(billed.some((b) => b.includes(BARE('alfred-memory', 'memory_list'))), 'the copy route allows the bare spelling');
         const installs = lines.filter((l) => l.includes('alfred-code.js install'));
         assert.strictEqual(installs.length, 18);
         for (const i of installs) assert.match(i, /env -i PATH="\$PATH" .* ALFRED_CODE_SKILLS_VIA_PLUGIN=false ALFRED_CODE_HOOKS_VIA_PLUGIN=false ALFRED_CODE_MCPS_VIA_PLUGIN=false node /);

@@ -65,6 +65,7 @@ function git(cwd, args)
 
 if (require.main === module)
 {
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
     const args = process.argv.slice(2);
     const [repo, dest] = args.length >= 2 ? args : [process.cwd(), args[0]];
     if (!dest) { console.error('usage: clean-export.js [<repo>] <dest>'); process.exit(1); }

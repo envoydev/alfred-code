@@ -199,7 +199,7 @@ test('M58: the six support seats each return a literal status: line', () =>
     assert.ok(squash(body('related-project-analyzer')).includes('Open with a literal `status: CHARACTERIZED | UNVERIFIED` line'));
 });
 
-// --- M60 lives in capture-project-capabilities.test.js (the run-book line's trigger) --------------------
+// --- M60 lives in capture-project-awareness.test.js (the run-book line's trigger) --------------------
 
 // --- M59: the runaway caps are measured, not guessed -------------------------------------------------
 // Turns per run from 802 subagent transcripts on the maintainer's machine (by real path - 537 more were the same

@@ -513,7 +513,7 @@ test('guard-stop-contract: the done half is read over the whole close (2.1.6 re-
   }
 });
 
-// Speech-direct sessions (2026-09-28), each close verbatim or its load-bearing clause.
+// A consuming project's sessions (2026-09-28), each close verbatim or its load-bearing clause.
 test('guard-stop-contract: a bare \'remains\' is a status, only its pending forms are a step (8b5dcb1a)', () => {
   assert.equal(close('Done - `playwright-chrome` removed from `.mcp.json` and `enabledMcpjsonServers`; only `sentry` remains.').status, 0,
     'what is left installed is no pending step');
@@ -584,11 +584,162 @@ test('guard-stop-contract: a fresh-session ask answered this turn is not asked a
   // the nearby stalls still get the offer
   assert.equal(fresh('fa-other', ask('t4', 'Which module first?', ['Api (Recommended)', 'Web']), answer('t4', 'Api (Recommended)')), 2, 'an unrelated ask');
   assert.equal(fresh('fa-open', ask('t5', 'Where should the capture run?', ['Fresh session (Recommended)', 'Continue here'])), 2, 'an ask never answered');
-  assert.equal(stop(transcript('fa-earlier', [floor, ask('t6', 'Where should the capture run?', ['Fresh session (Recommended)', 'Continue here']),
-    answer('t6', 'Continue here'), typed('now the next module'), closeRow(CLOSE)])), 2, 'an ask answered in an EARLIER turn');
+  // An ask answered in an EARLIER turn counts as the last offer at the carry it was made at (audit 2026-10-11 SD11,
+  // 7f8803eb: 'Continue in fresh session' answered at 435.6k, the next turn's close carrying the asked-for resume prompt
+  // was blocked at 438.8k and the re-ask denied by the user): re-offered only past the 1.5x re-offer step.
+  const askAt = (id, ctx) => { const row = ask(id, 'Where should the capture run?', ['Fresh session (Recommended)', 'Continue here']); row.message.usage = { cache_read_input_tokens: ctx }; return row; };
+  assert.equal(stop(transcript('fa-earlier', [floor, askAt('t6', 200000), answer('t6', 'Continue here'), typed('now the next module'), closeRow(CLOSE)])), 2,
+    'an ask answered in an EARLIER turn at well under the carry: offered again');
+  assert.equal(stop(transcript('fa-earlier-near', [floor, askAt('t8', 435642), answer('t8', 'Fresh session (Recommended)'), typed('create me a prompt for the next session'), closeRow(CLOSE)])), 0,
+    '7f8803eb: answered one typed turn back at nearly this carry - not asked again');
+  assert.equal(stop(transcript('fa-earlier-bare', [floor, ask('t9', 'Where should the capture run?', ['Fresh session (Recommended)', 'Continue here']), answer('t9', 'Continue here'), typed('next'), closeRow(CLOSE)])), 2,
+    'an earlier ask with no readable carry sets no step');
   const feedback = typed('Stop hook feedback:\n[guard-stop-contract.js]: The work in this turn is finished ...');
   assert.equal(fresh('fa-after-block', feedback, ask('t7', 'Where should we continue?', ['Resume in a fresh session (Recommended)', 'Continue here']),
     answer('t7', 'Continue here')), 0, "the hook's own feedback row is no typed prompt");
+});
+
+test('guard-stop-contract: the fresh-session offer waits while work this session launched is out (audit 2026-10-10 C09)', () => {
+  // bba03dad: the offer said 'the work in this turn is finished' 3s after a verifier launched; the resume was picked,
+  // the seat killed after one message and re-dispatched later.
+  const tp = transcript('bg-defer', ctxRows('bg-defer', 500000, 'The review seat is out; the build itself is complete.'));
+  const stop = (tasks) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp, background_tasks: tasks }, { env: logEnv() }).status;
+  assert.equal(stop([{ id: 'a1', type: 'subagent', status: 'running', description: 'verify' }]), 0, 'a running seat defers the offer');
+  assert.equal(stop([]), 2, 'an empty registry makes it');
+});
+
+test('guard-stop-contract: an ask that sends the user to type into Other, or marks no recommendation, is sent back once (audit 2026-10-10 C26)', () => {
+  const tp = transcript('ask-c26', [assistantRow('c26', 'ok', { cache_read_input_tokens: 900 })]);
+  // ecea6d56: 'Paste ids in Other (Recommended)' returned only its label three times
+  const other = [{ question: 'The staging Google client ids?', options: [{ label: 'Paste ids in Other (Recommended)', description: 'Type both ids in the Other field' }, { label: 'Defer', description: 'later' }] }];
+  const env = logEnv();
+  const r = askIn(tp, other, env);
+  assert.equal(r.status, 2, 'denied once');
+  assert.match(r.stderr, /returns only its LABEL/);
+  assert.equal(askIn(tp, other, env).status, 0, 're-sent, it passes - never a loop');
+  // bda299a8: two questions with no (Recommended) option
+  const bare = [{ question: 'What should a Manager see?', options: [{ label: 'Hidden entirely', description: 'x' }, { label: 'Read-only', description: 'y' }] }];
+  const u = askIn(tp, bare);
+  assert.equal(u.status, 2);
+  assert.match(u.stderr, /without exactly one option marked '\(Recommended\)'/);
+  assert.equal(askIn(tp, [{ ...bare[0], multiSelect: true }]).status, 0, 'a multi-select question takes no single recommendation');
+  assert.equal(askIn(tp, [{ question: 'Which file?', options: [{ label: 'a.js', description: 'x' }] }]).status, 0, 'one option is nothing to rank');
+  assert.equal(askIn(tp, [{ question: 'Go?', options: [{ label: 'Yes (recommended)', description: 'x' }, { label: 'No', description: 'y' }] }]).status, 0, 'the mark in any case');
+  const second = askIn(tp, [{ question: 'Ship?', options: [{ label: 'Hold', description: 'x' }, { label: 'Ship (Recommended)', description: 'y' }] }]);
+  assert.equal(second.status, 2, 'the marked option goes first');
+  assert.match(second.stderr, /listed first/);
+  // f450ea64 (T5 cross-track): a question that already says why none is recommended is the no-default case stated
+  assert.equal(askIn(tp, [{ ...bare[0], question: 'What should a Manager see? No option is recommended: the two rules contradict.' }]).status, 0,
+    'a question saying why none is recommended passes at once');
+  assert.equal(askIn(tp, [{ question: 'Ship? None is recommended.', options: [{ label: 'Hold (Recommended)', description: 'x' }, { label: 'Ship (Recommended)', description: 'y' }] }]).status, 2,
+    'two marks are still denied');
+});
+
+// Audit 2026-10-11, session 2ca8e8ee: 'The staged plan is ready ... Execute it stage by stage?' with no text block since the
+// prompt, and 'Post this simplified comment ... as shown' after the user's edit request - both approved unseen.
+test('guard-stop-contract: an approval ask over nothing the chat showed since the typed turn is sent back once', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const toolRow = (id) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', id: `tu-${id}`, name: 'Read', input: { file_path: 'a.md' } }] } });
+  const plan = [{ question: 'The staged plan is ready: 6 implementation stages. Execute it stage by stage?', options: [{ label: 'Execute (Recommended)', description: 'stage 1 first' }, { label: 'Hold', description: 'not now' }] }];
+  const tp = transcript('blind-plan', [typed('upgrade the framework'), toolRow('b1'), toolRow('b2')]);
+  const env = logEnv();
+  const r = askIn(tp, plan, env);
+  assert.equal(r.status, 2, 'the measured case: no text since the prompt');
+  assert.match(r.stderr, /an approval of the plan the chat has not shown since the user's last message/);
+  assert.match(r.stderr, /put the plan in your reply text first/);
+  assert.equal(askIn(tp, plan, env).status, 0, 're-sent unchanged, it passes - never a loop');
+  const stages = Array.from({ length: 6 }, (_, i) => `${i + 1}. Stage ${i + 1}: bump the packages of layer ${i + 1}, build, run its tests, rollback point tagged.`).join('\n');
+  assert.equal(askIn(transcript('shown-plan', [typed('upgrade the framework'), toolRow('s1'), assistantRow('s2', `The staged plan:\n${stages}`)]), plan).status, 0,
+    'the stages shown in the reply text first');
+  const post = [{ question: 'Post this simplified comment on the ticket? It goes up as shown.', options: [{ label: 'Post it (Recommended)', description: 'as shown' }, { label: 'Do not post', description: 'hold' }] }];
+  const status = 'Tests: 412 passed, 0 failed. Lint is clean, the build is green on both targets, and the branch is level with its upstream. '.repeat(2);
+  assert.equal(askIn(transcript('blind-post', [typed('make it shorter and drop the second paragraph'), assistantRow('p1', status)]), post).status, 2,
+    'text that does not carry the comment is no showing');
+  const draft = `Here is the comment as it will be posted:\n\n> The crash came from the restore policy running twice on resume. The fix guards the second call and adds a regression test; the release note is in the ticket description. ${'x'.repeat(20)}`;
+  assert.equal(askIn(transcript('shown-post', [typed('make it shorter and drop the second paragraph'), assistantRow('p2', draft)]), post).status, 0, 'the draft shown first');
+  assert.equal(askIn(transcript('blind-other', [typed('what next?'), toolRow('o1')]), oneQ).status, 0, 'an ask that approves nothing');
+  assert.equal(askIn(transcript('blind-untyped', [toolRow('u1')]), plan).status, 0, 'no typed turn to read back to: never a denial');
+});
+
+// Audit 2026-10-11, session 5984019e: a small solve-task run closed and handed off a product change with no verifier load
+// and no review anywhere in its text (task-solve SKILL.md: 'a small close's `Result:` carries `review: <reviewer> - <its verdict>`').
+test('guard-stop-contract: a small solve-task close whose Result line has no review field is sent back once', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const marker = typed('<command-name>/task-solve</command-name>');
+  const close = (result) => [{ question: `Size: small - one file. Result: ${result}. Progress: 3 of 3 steps. Leftovers: none. Close the run?`,
+    options: [{ label: 'Close it (Recommended)', description: 'x' }, { label: 'Keep going', description: 'y' }] }];
+  const tp = transcript('small-close', [marker, assistantRow('a', 'Built and checked.')]);
+  const env = logEnv();
+  const r = askIn(tp, close('restore guard added at src/RetryPolicy.cs'), env);
+  assert.equal(r.status, 2, 'the measured case: no review on the small close');
+  assert.match(r.stderr, /a small solve-task close whose `Result:` line has no `review:` field/);
+  assert.match(r.stderr, /run it, then put `review: <reviewer> - <its verdict>` on the `Result:` line/);
+  assert.equal(askIn(tp, close('restore guard added at src/RetryPolicy.cs'), env).status, 0, 're-sent unchanged, it passes - never a loop');
+  assert.equal(askIn(transcript('small-close-ok', [marker, assistantRow('a', 'Built and checked.')]),
+    close('restore guard added at src/RetryPolicy.cs, review: task-verify-code - PASS, 0 findings')).status, 0, 'the receipt on the Result line');
+  const std = [{ question: 'Size: standard - two modules. Result: spec at docs/plans/x.md. Progress: 1 of 6 steps. Leftovers: none. Go on?',
+    options: [{ label: 'Go on (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }];
+  assert.equal(askIn(transcript('std-close', [marker, assistantRow('a', 'ok')]), std).status, 0, 'a standard stop owes no review here');
+  assert.equal(askIn(transcript('small-noflow', [typed('fix it'), assistantRow('a', 'ok')]), close('fixed')).status, 0, 'no solve-task run in this session');
+});
+
+test('guard-stop-contract: a solve-task stop that owes a receipt is told which one (audit 2026-10-10, T4 cross-track)', () => {
+  const typed = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+  const marker = typed('<command-name>/task-solve</command-name>');
+  const fields = 'Result: spec at docs/plans/x.md. Progress: 1 of 6 steps. Leftovers: none.';
+  const note = (name, rows, q) => {
+    const r = askIn(transcript(name, rows), q);
+    assert.equal(r.status, 0, `${name}: a receipt is a note, never a deny`);
+    try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; }
+  };
+  const goOn = [{ question: 'Next?', options: [{ label: 'Go on (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }];
+  const answered = (id) => [{ type: 'assistant', message: { id: `q-${id}`, content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions: goOn } }] } },
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'Your questions have been answered: "Next?"="Go on (Recommended)". You can now continue.' }] } }];
+  // 3b53e0e8: the first stop went out with no Size line
+  assert.match(note('rc-first', [marker, assistantRow('a', fields)], goOn), /`Size: /);
+  assert.equal(note('rc-first-ok', [marker, assistantRow('a', `Size: standard - two modules. ${fields}`)], goOn), '');
+  assert.doesNotMatch(note('rc-later', [marker, ...answered('u1'), assistantRow('a', fields)], goOn), /Size/, 'a later stop owes no Size');
+  const handOff = [{ question: 'A cycle already closed here. Where?', options: [{ label: 'Resume in a fresh session (Recommended)', description: '~90k here, ~40k fresh' }, { label: 'Continue here', description: 'x' }] }];
+  assert.doesNotMatch(note('rc-handoff', [marker, assistantRow('a', fields, { cache_read_input_tokens: 90000 })], handOff), /Size/, 'the opening hand-off is no stop');
+  // e499fc94: the step-3 approval with no `mechanics: read`
+  const approve = [{ question: 'The plan is gated. Build it in this session: one chat fits.', options: [
+    { label: 'Approve - build in this session (Recommended)', description: 'x' }, { label: 'Approve - dispatch the agent seats', description: 'y' },
+    { label: 'Not yet - changes needed', description: 'z' }] }];
+  assert.match(note('rc-approve', [marker, ...answered('u2'), assistantRow('a', fields)], approve), /mechanics: read/);
+  assert.equal(note('rc-approve-ok', [marker, ...answered('u3'), assistantRow('a', fields.replace('spec at', 'mechanics: read; plan at'))], approve), '');
+  // 390aebcb, 3ce6b036, 49cb4b82: the close with no `memories purged:`
+  const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',
+    input: { file_path: '/p/.alfred/docs/plans/2026-10-08-x.md', old_string: 'Approved:', new_string: 'Approved: yes\nCompleted: 2026-10-08' } }] } };
+  assert.match(note('rc-close', [marker, ...answered('u4'), completed, assistantRow('a', fields)], goOn), /memories purged/);
+  assert.equal(note('rc-close-ok', [marker, ...answered('u5'), completed,
+    assistantRow('a', 'Result: Completed 2026-10-08, memories purged: none. Progress: 6 of 6 steps. Leftovers: none.')], goOn), '');
+  assert.doesNotMatch(note('rc-after-close', [marker, ...answered('u6'), completed, ...answered('u7'), assistantRow('a', fields)], goOn), /memories purged/,
+    'an ask after the close was answered is no close');
+  // a6a24815: the cross close report with no `ceilings:`
+  const cross = typed('<command-name>/task-solve-cross</command-name>');
+  const report = `${fields}\nmode: agents | contract: n/a\nlanes: api - endpoints - SIGNED_OFF\nfinal gate: PASS\npending: none\nleftovers: none\nmemories purged: none`;
+  assert.match(note('rc-cross', [cross, ...answered('u8'), assistantRow('a', report)], goOn), /ceilings:/);
+  assert.equal(note('rc-cross-ok', [cross, ...answered('u9'), assistantRow('a', `${report}\nceilings: none`)], goOn), '');
+  assert.equal(note('rc-noflow', [typed('fix the typo'), assistantRow('a', 'hello')], approve), '', 'a session that never ran the flow owes nothing');
+});
+
+test('guard-stop-contract: a new cycle after a finished one is sent back once without the fresh option (audit 2026-10-10 C08)', () => {
+  // bda299a8: cycle 2's first ask, typed after cycle 1's plan was stamped Completed:, carried no fresh-session option.
+  const completed = { type: 'assistant', message: { id: 'done', content: [{ type: 'tool_use', id: 'w1', name: 'Edit',
+    input: { file_path: '/p/.alfred/docs/plans/2026-10-08-x.md', old_string: 'Approved:', new_string: 'Approved: yes\nCompleted: 2026-10-08' } }] } };
+  const base = [{ type: 'user', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } },
+    assistantRow('f', 'first', { cache_creation_input_tokens: 40000 }), completed];
+  const next = { type: 'user', message: { role: 'user', content: 'now the manager view' } };
+  const hot = assistantRow('h', 'Result: design done. Progress: 1 of 6 steps. Leftovers: none.', { cache_read_input_tokens: 362000 });
+  const q = [{ question: 'Result: design done. Progress: 1 of 6 steps. Leftovers: none. Build it?', options: [{ label: 'Build (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }];
+  const env = logEnv();
+  const r = askIn(transcript('nc-new', [...base, next, hot]), q, env);
+  assert.equal(r.status, 2, 'the new cycle\'s first ask is sent back');
+  assert.match(r.stderr, /Resume in a fresh session \(Recommended\)' quoting ~362k per message here and ~40k for a fresh start/);
+  assert.equal(askIn(transcript('nc-new', [...base, next, hot]), [{ ...q[0], question: `${q[0].question} Now?` }], env).status, 0, 'once per Completed stamp');
+  assert.equal(askIn(transcript('nc-close', [...base, hot]), q, logEnv()).status, 0, 'the finished cycle\'s own close ask, before any new prompt, is left alone');
+  const withFresh = [{ ...q[0], options: [{ label: 'Resume in a fresh session (Recommended)', description: '~362k here, ~40k fresh' }, { label: 'Build here', description: 'x' }] }];
+  assert.equal(askIn(transcript('nc-fresh', [...base, next, hot]), withFresh, logEnv()).status, 0, 'an ask carrying the option passes');
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -612,7 +763,7 @@ const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.addi
 const askIn = (tp, questions, env) => runIn('guard-stop-contract.js',
   { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: tp, tool_input: { questions } },
   { env: env || logEnv() });
-const oneQ = [{ question: 'Which next?', options: [{ label: 'Continue', description: 'carry on here' }, { label: 'Stop', description: 'hold' }] }];
+const oneQ = [{ question: 'Which next?', options: [{ label: 'Continue (Recommended)', description: 'carry on here' }, { label: 'Stop', description: 'hold' }] }];
 const ts = (h) => new Date(Date.UTC(2026, 8, 20, h, 0, 0)).toISOString();
 
 test('guard-stop-contract: the fresh-session note carries the two absolute numbers, not a ratio', () => {
@@ -683,11 +834,12 @@ test('guard-stop-contract: a solve-task stop is reminded of its three named fiel
   ]);
   assert.match(ctxOf(askIn(cycle('sf-bare', 'Task 2 landed, tests green.'), oneQ)), /Result:.*Progress:.*Leftovers:/s,
     'a solve-task stop with no fields anywhere is reminded');
+  // (the first stop also owes its `Size:` receipt - audit 2026-10-10, T4 cross-track)
   assert.equal(ctxOf(askIn(cycle('sf-fields',
-    'Result:    task 2 landed - docs/plans/csv.md\nProgress:  4 of 6 steps\nLeftovers: none'), oneQ)), '',
+    'Size: small - one module\nResult:    task 2 landed - docs/plans/csv.md\nProgress:  4 of 6 steps\nLeftovers: none'), oneQ)), '',
     'the stamped fields clear it');
   assert.equal(ctxOf(askIn(cycle('sf-bold',
-    '**Result:** task 2 landed\n**Progress:** 4 of 6 steps\n**Leftovers:** none'), oneQ)), '',
+    '**Size:** small - one module\n**Result:** task 2 landed\n**Progress:** 4 of 6 steps\n**Leftovers:** none'), oneQ)), '',
     'the markdown-bold variant 5 of 13 sessions actually wrote satisfies the format');
   // M7 (Task 22 fix round 1): on the plugin route the slash command is recorded with its plugin prefix.
   const prefixed = transcript('sf-plugin', [
@@ -701,6 +853,71 @@ test('guard-stop-contract: a solve-task stop is reminded of its three named fiel
     assistantRow('n1', 'Fixed it; the suite is green.', { cache_read_input_tokens: 900 }),
   ]);
   assert.equal(ctxOf(askIn(notACycle, oneQ)), '', 'an ordinary session is never asked for a flow stamp it does not run');
+});
+
+test('guard-stop-contract: a solve-task stop MBs after its slash marker is still a cycle stop (audit 2026-10-10 C01)', () => {
+  // 17 sessions: the marker sat at the transcript's head and the first stop 0.5-3MB later, past the 256KB tail
+  // solveTaskCycle() read - 0 of N stops carried the fields and the note never fired (0 of 12 in 0d070bcc).
+  const pad = (n) => Array.from({ length: n }, (_, i) => ({ type: 'user', message: { role: 'user',
+    content: [{ type: 'tool_result', tool_use_id: `p${i}`, content: 'x'.repeat(100 * 1024) }] } }));
+  const marker = { type: 'user', message: { role: 'user', content: '<command-name>/task-solve</command-name>' } };
+  const far = transcript('sf-far', [marker, ...pad(9), assistantRow('far', 'Design done, the plan is written.', { cache_read_input_tokens: 900 })]);
+  assert.ok(fs.statSync(far).size > 900 * 1024, 'the marker sits ~900KB behind the ask');
+  assert.match(ctxOf(askIn(far, oneQ)), /THREE named fields/, 'a stop far past the marker is still reminded');
+  const env = logEnv();
+  assert.match(ctxOf(askIn(far, oneQ, env)), /THREE named fields/, '... and again from the kept answer');
+  // A marker only QUOTED in a tool result (a sed over a test file, a transcript dump) is no run.
+  const quoted = transcript('sf-quoted', [
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'q1', content: 'fixture: <command-name>/task-solve</command-name>' }] } },
+    assistantRow('q', 'Read the fixture.', { cache_read_input_tokens: 900 }),
+  ]);
+  assert.equal(ctxOf(askIn(quoted, oneQ)), '', 'a quoted marker is not a cycle');
+  // The kept answer reads only what was appended: a miss, then the flow typed later in the same session, is a cycle.
+  const grows = transcript('sf-grows', [{ type: 'user', message: { role: 'user', content: 'fix the test' } }, assistantRow('g1', 'Fixed.', { cache_read_input_tokens: 900 })]);
+  const genv = logEnv();
+  assert.equal(ctxOf(askIn(grows, oneQ, genv)), '', 'no flow yet');
+  fs.appendFileSync(grows, [marker, ...pad(3), assistantRow('g2', 'Design done.', { cache_read_input_tokens: 900 })].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  assert.match(ctxOf(askIn(grows, oneQ, genv)), /THREE named fields/, 'the appended marker is found past the recorded miss');
+  // The fields written INLINE in a one-line question (session 516e653d, 5 of 5 compliant asks) satisfy the contract.
+  const inline = [{ question: 'Size: standard - two modules. Result: design done - docs/plans/x.md. Progress: 1 of 6 steps. Leftovers: none. Continue to the plan audit?',
+    options: [{ label: 'Continue (Recommended)', description: 'run the gate' }, { label: 'Stop', description: 'hold' }] }];
+  assert.equal(ctxOf(askIn(far, inline)), '', 'inline fields after a sentence boundary count');
+});
+
+test('guard-stop-contract: an answer a few calls back is still just answered, in either wording (audit 2026-10-10 C01)', () => {
+  const answer = (id, text) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: text }] } });
+  const ask = (id) => ({ type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input: { questions: oneQ } }], usage: { cache_read_input_tokens: 900 } } });
+  const call = (id, out) => [
+    { type: 'assistant', message: { id: `m-${id}`, content: [{ type: 'tool_use', id, name: 'Bash', input: { command: 'docker desktop stop' } }], usage: { cache_read_input_tokens: 900 } } },
+    answer(id, out),
+  ];
+  const stopOn = (tp, text) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp, last_assistant_message: text }, { env: logEnv() });
+  const closeText = 'Docker has quit. The diff stays as you chose - say the word when you want it committed.';
+  // bc2fa83e: one Bash call (7.6KB of rows) put the answer past the 8KB tail and the restating close was blocked.
+  const oneCall = transcript('aj-one', [
+    { type: 'user', message: { role: 'user', content: 'finish the feature' } }, ask('a1'),
+    answer('a1', 'Your questions have been answered: "Commit now?"="Hold - review the diff first". You can now continue.'),
+    ...call('b1', 'exit=0\n' + 'y'.repeat(12 * 1024)),
+  ]);
+  assert.equal(stopOn(oneCall, closeText).status, 0, 'one call after the answer is still just answered');
+  // 4f1c2ebb: a free-text answer is worded 'The user answered:' - its acknowledgement was blocked 4s later.
+  const freeText = transcript('aj-free', [
+    { type: 'user', message: { role: 'user', content: 'go on' } }, ask('a2'),
+    answer('a2', 'The user answered: "Sign in as the customer?"="Disable automode". Read the answers carefully.'),
+  ]);
+  assert.equal(stopOn(freeText, closeText).status, 0, 'a free-text answer counts');
+  // ... and a decision put in prose after real work since the answer is a new decision, judged as before.
+  const worked = transcript('aj-worked', [
+    { type: 'user', message: { role: 'user', content: 'finish the feature' } }, ask('a3'),
+    answer('a3', 'Your questions have been answered: "Next?"="Build it"'),
+    ...call('c1', 'ok'), ...call('c2', 'ok'), ...call('c3', 'ok'), ...call('c4', 'ok'),
+  ]);
+  assert.equal(stopOn(worked, closeText).status, 2, 'four calls after the answer, the prose decision is held');
+  const newTurn = transcript('aj-turn', [
+    ask('a4'), answer('a4', 'Your questions have been answered: "Next?"="Build it"'),
+    { type: 'user', message: { role: 'user', content: 'and now the docs' } },
+  ]);
+  assert.equal(stopOn(newTurn, closeText).status, 2, 'an answer from before the typed prompt is not this turn\'s');
 });
 
 // ---------------------------------------------------------------------------------------------

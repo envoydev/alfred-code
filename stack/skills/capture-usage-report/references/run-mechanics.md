@@ -44,16 +44,17 @@ A transcript row is one JSONL line, and a single row carries a whole tool result
 tokens for ONE line, and three Reads of the same copy failed on the harness's own 25k cap - the
 last of them at `offset=6, limit=1`, which is a single line. Never Read a transcript copy to find
 something; the analyzer's `--json` answers most of it already. When a specific row is needed,
-extract it with `jq -c` per line and CUT the output - `jq -c` alone still emits the 50k-token row:
+`sed -n` it out, project it with node, never `jq` - Git for Windows ships none (exit 127 in two audited
+sessions) - and CUT the output: the whole row printed back is still the 50k-token row:
 
 ```bash
-sed -n '250p' "<transcript>" | jq -c '{type, ts: .timestamp, role: .message.role}'          # one row, keys only
-jq -c '{type, ts: .timestamp}' "<transcript>" | cut -c1-300 | sed -n '200,260p'             # a window of rows
-sed -n '250p' "<transcript>" | jq -r '.message.content[]? | select(.type=="text") | .text' | cut -c1-2000
-sed -n '250p' "<transcript>" | jq -r '.message.content[]? | select(.type=="tool_use") | .name'
+sed -n '250p' "<transcript>" | node -e "const o=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(JSON.stringify({ type: o.type, ts: o.timestamp, role: (o.message || {}).role }))"
+sed -n '200,260p' "<transcript>" | node -e "for (const l of require('fs').readFileSync(0,'utf8').split('\n').filter(Boolean)) { const o = JSON.parse(l); console.log(o.type, o.timestamp) }"
+sed -n '250p' "<transcript>" | node -e "const o=JSON.parse(require('fs').readFileSync(0,'utf8')); for (const c of [].concat((o.message || {}).content || [])) if (c.type === 'text') console.log(c.text)" | cut -c1-2000
+sed -n '250p' "<transcript>" | node -e "const o=JSON.parse(require('fs').readFileSync(0,'utf8')); for (const c of [].concat((o.message || {}).content || [])) if (c.type === 'tool_use') console.log(c.name)"
 ```
 
-`cut -c` is what bounds the result. A `jq` over a 40MB transcript is seconds; a Read of it is a
+`cut -c` is what bounds the result. A node pass over a 40MB transcript is seconds; a Read of it is a
 denial plus the retry.
 
 ## The ledger test - one command per session, its output quoted

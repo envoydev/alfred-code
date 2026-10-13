@@ -46,6 +46,29 @@ const description = (name) => (/^description:\s*"(.*)"\s*$/m.exec(skill(name)) |
 
 // BLOCKER 4: the pre-commit checkpoint runs its own scoped review of the diff; `/security-review` is the unbounded
 // route it reaches for only when the whole branch is the scope. No stack skill may say the checkpoint runs it.
+// S9, the user's ruling 2026-10-09: dotnet-security stays seeded in the desktop and service stacks and is made
+// desktop-aware, since it is the only security skill those stacks carry.
+// https://learn.microsoft.com/en-us/dotnet/standard/serialization/binaryformatter-security-guide
+// https://learn.microsoft.com/en-us/dotnet/api/system.windows.markup.xamlreader.load (restrictive mode is defense in depth only)
+test('S9: dotnet-security triggers on desktop, console and service apps and maps their boundaries', () =>
+{
+    const body = skill('dotnet-security');
+    const desc = (body.match(/^description:\s*"(.*)"$/m) || [])[1] || '';
+    assert.match(desc, /WPF, WinForms, console, services/, 'the description names the desktop and service apps');
+    assert.ok(desc.length <= 160, `description ${desc.length} chars`);
+    assert.match(squash(body), /A desktop, console or Windows-service app: read `references\/desktop-and-service-apps\.md` first/, 'When to use routes desktop work to its map');
+    const ref = squash(skill('dotnet-security', 'references/desktop-and-service-apps.md'));
+    for (const t of ['BinaryFormatter', 'SoapFormatter', 'NetDataContractSerializer', 'LosFormatter', 'ObjectStateFormatter'])
+        assert.ok(ref.includes(t), `the unsafe formatter ${t} is named`);
+    assert.match(ref, /XamlReader\.Load/, 'runtime XAML is treated as code');
+    assert.match(ref, /DataProtectionScope\.CurrentUser/, 'per-user secrets go to DPAPI');
+    assert.match(ref, /ProcessStartInfo\.ArgumentList/, 'process starts take an argument list');
+    assert.match(ref, /the web-only controls drop out: CORS, antiforgery, HSTS/, 'the browser-only controls are marked out');
+    const seeds = require(path.join(ROOT, 'meta', 'recommendations.json')).stacks;
+    for (const s of ['wpf', 'winforms', 'console', 'windows-service'])
+        assert.ok(seeds[s].skills.includes('dotnet-security'), `${s} keeps dotnet-security seeded`);
+});
+
 test('B4: no stack skill says the pre-commit checkpoint runs /security-review', () =>
 {
     // directories only - a checkout carries OS litter (.DS_Store) beside the skills

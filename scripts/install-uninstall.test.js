@@ -81,7 +81,7 @@ test('removePlugins: the stack\'s rows at project or local scope are uninstalled
     const rows = [
         { name: 'alfred-code', marketplace: 'envoydev', scope: 'project', version: '2.0.0', enabled: true },
         { name: 'alfred-navigation', marketplace: 'envoydev', scope: 'project', version: '2.0.0', enabled: true },
-        { name: 'browser-chrome', marketplace: 'envoydev', scope: 'user', version: '2.0.0', enabled: true },
+        { name: 'chrome-control', marketplace: 'envoydev', scope: 'user', version: '2.0.0', enabled: true },
         { name: 'csharp-lsp', marketplace: 'claude-plugins-official', scope: 'project', version: '1.0.0', enabled: true },
     ];
     const calls = [];
@@ -91,10 +91,10 @@ test('removePlugins: the stack\'s rows at project or local scope are uninstalled
     uninstall.removePlugins({ rows, market: 'envoydev', scope: 'project', thirdParty: ['csharp-lsp@claude-plugins-official'], cli, log: (m) => logs.push(m), note: (m) => logs.push(`NOTE ${m}`) });
     assert.ok(calls.includes('plugin uninstall alfred-code@envoydev --scope project -y'));
     assert.ok(calls.includes('plugin uninstall alfred-navigation@envoydev --scope project -y'));
-    assert.ok(!calls.some((c) => /browser-chrome|csharp-lsp/.test(c)), calls.join('\n'));
+    assert.ok(!calls.some((c) => /chrome-control|csharp-lsp/.test(c)), calls.join('\n'));
     const text = logs.join('\n');
     assert.doesNotMatch(text, /NOTE/, 'a dependency refused first is retried once its dependent is gone');
-    assert.match(text, /browser-chrome@envoydev is installed at user scope - every project on this account loads it, so it is not removed here: claude plugin uninstall browser-chrome@envoydev --scope user/);
+    assert.match(text, /chrome-control@envoydev is installed at user scope - every project on this account loads it, so it is not removed here: claude plugin uninstall chrome-control@envoydev --scope user/);
     assert.match(text, /csharp-lsp@claude-plugins-official .*not removed.*claude plugin uninstall csharp-lsp@claude-plugins-official --scope project/);
 
     const userCalls = [];
@@ -302,14 +302,14 @@ const accountOf = (repo) => { try { return JSON.parse(fs.readFileSync(path.join(
 const localServers = (account) => Object.values(account.projects || {}).map((p) => Object.keys(p.mcpServers || {})).flat().sort();
 
 // X1 (matrix 2.1.4 re-run, observation 1): at PROJECT scope the --installed-only read-back took every .mcp.json name
-// as a pick, so a server of the user's own under a stack name (`macos-desktop` running `node my-desktop.js`) was
+// as a pick, so a server of the user's own under a stack name (`macos-control` running `node my-desktop.js`) was
 // overwritten with the stack's entry on the next update, recorded in managed-mcp and pulled in the desktop skill.
 // Only the names the prior stamp's managed-mcp ledger records at project scope are picks; a stamp with no ledger (a
 // pre-ledger install) keeps reading every name, as it did.
 const PROJECT_COPY = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_PLATFORM: 'darwin' };
 const mcpjsonOf = (repo) => { try { return JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers || {}; } catch { return {}; } };
 const projectState = (repo) => ({
-    entry: mcpjsonOf(repo)['macos-desktop'] || null,
+    entry: mcpjsonOf(repo)['macos-control'] || null,
     skill: fs.existsSync(path.join(repo, '.claude', 'skills', 'desktop-automation')),
     stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
 });
@@ -323,7 +323,7 @@ test('X1 seed update --installed-only (full copy route, project scope): the user
             if (i === 0)
             {
                 const data = JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8'));
-                data.mcpServers['macos-desktop'] = own;
+                data.mcpServers['macos-control'] = own;
                 fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(data, null, 2));
             }
             return projectState(repo);
@@ -332,14 +332,14 @@ test('X1 seed update --installed-only (full copy route, project scope): the user
     const after = steps[1];
     assert.deepStrictEqual(after.entry, own, `the user's server was rewritten:\n${outs[1]}`);
     assert.strictEqual(after.skill, false, `its skill was copied in as if picked:\n${outs[1]}`);
-    assert.doesNotMatch(after.stamp, /macos-desktop/, `it reached the stamp:\n${after.stamp}`);
+    assert.doesNotMatch(after.stamp, /macos-control/, `it reached the stamp:\n${after.stamp}`);
 });
 
 test('X1 seed update --installed-only (full copy route, project scope): a server the stack registered is still read back - with a ledger and without one', POSIX_ONLY, () =>
 {
     for (const preLedger of [false, true])
     {
-        const { steps, outs } = seedRun(['install', 'update'], 'rule markdown-docs\nskill desktop-automation\nmcp macos-desktop\n', {
+        const { steps, outs } = seedRun(['install', 'update'], 'rule markdown-docs\nskill desktop-automation\nmcp macos-control\n', {
             env: PROJECT_COPY, args: [[], ['--installed-only']],
             each: (repo, i) =>
             {
@@ -349,22 +349,22 @@ test('X1 seed update --installed-only (full copy route, project scope): a server
             },
         });
         assert.ok(steps[0].entry && steps[0].skill, `the install itself (preLedger=${preLedger}):\n${outs[0]}`);
-        assert.ok(steps[1].entry, `the update dropped macos-desktop (preLedger=${preLedger}):\n${outs[1]}`);
+        assert.ok(steps[1].entry, `the update dropped macos-control (preLedger=${preLedger}):\n${outs[1]}`);
         assert.strictEqual(steps[1].skill, true, `the update dropped its skill (preLedger=${preLedger}):\n${outs[1]}`);
-        assert.match(steps[1].stamp, /^managed-mcp:.*\bmacos-desktop=/m, `the ledger records it again (preLedger=${preLedger})`);
+        assert.match(steps[1].stamp, /^managed-mcp:.*\bmacos-control=/m, `the ledger records it again (preLedger=${preLedger})`);
     }
 });
 
 // X1, the browser-engine half (review 2.1.5 plugin, MATERIAL 3): the engines .mcp.json registers were read back with no
-// ledger gate, so a user's own `browser-firefox` was overwritten with the stack's npx entry, entered managed-mcp (so
-// uninstall would delete it) and grew the stamp's browser-engines. An engine is read back only when the prior stamp's
-// managed-mcp ledger records its browser-<e> / playwright-<e> name; the stamp's browser-engines stays the record.
+// ledger gate, so a user's own `firefox-control` was overwritten with the stack's npx entry, entered managed-mcp (so
+// uninstall would delete it) and grew the stamp's control-engines. An engine is read back only when the prior stamp's
+// managed-mcp ledger records its <e>-control / browser-<e> / playwright-<e> name; the stamp's control-engines stays the record.
 const engineState = (repo) => ({
-    firefox: mcpjsonOf(repo)['browser-firefox'] || null,
+    firefox: mcpjsonOf(repo)['firefox-control'] || null,
     stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
 });
 const stampLine = (stamp, key) => (stamp.split('\n').find((l) => l.startsWith(`${key}:`)) || '').slice(key.length + 1).trim();
-test('X1 seed update --installed-only (full copy route): the user\'s own browser-<engine> in .mcp.json is never taken as a kept engine - project and user scope', POSIX_ONLY, () =>
+test('X1 seed update --installed-only (full copy route): the user\'s own <engine>-control in .mcp.json is never taken as a kept engine - project and user scope', POSIX_ONLY, () =>
 {
     const own = { command: 'node', args: ['my-ff.js'] };
     for (const scope of ['project', 'user'])
@@ -376,7 +376,7 @@ test('X1 seed update --installed-only (full copy route): the user\'s own browser
                 if (i === 0)
                 {
                     const data = JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8'));
-                    data.mcpServers['browser-firefox'] = own;
+                    data.mcpServers['firefox-control'] = own;
                     fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(data, null, 2));
                 }
                 return engineState(repo);
@@ -385,8 +385,8 @@ test('X1 seed update --installed-only (full copy route): the user\'s own browser
         for (const i of [1, 2])
         {
             assert.deepStrictEqual(steps[i].firefox, own, `${scope}, update ${i}: the user's server was rewritten:\n${outs[i]}`);
-            assert.doesNotMatch(stampLine(steps[i].stamp, 'managed-mcp'), /browser-firefox/, `${scope}, update ${i}: it entered the ledger`);
-            assert.strictEqual(stampLine(steps[i].stamp, 'browser-engines'), 'chrome', `${scope}, update ${i}: browser-engines grew`);
+            assert.doesNotMatch(stampLine(steps[i].stamp, 'managed-mcp'), /firefox-control/, `${scope}, update ${i}: it entered the ledger`);
+            assert.strictEqual(stampLine(steps[i].stamp, 'control-engines'), 'chrome', `${scope}, update ${i}: control-engines grew`);
         }
     }
 });
@@ -401,15 +401,15 @@ test('X1 seed update --installed-only (full copy route): an engine the stack reg
             {
                 // Only .mcp.json and the ledger can answer: the stamp's own browser lines are taken away.
                 const file = path.join(repo, '.claude', 'alfred-code.stamp');
-                const drop = preLedger ? /^(browser-(engines|enabled)|managed-[a-z]+):/ : /^browser-(engines|enabled):/;
+                const drop = preLedger ? /^(control-(engines|enabled)|managed-[a-z]+):/ : /^control-(engines|enabled):/;
                 if (i === 0) fs.writeFileSync(file, fs.readFileSync(file, 'utf8').split('\n').filter((l) => !drop.test(l)).join('\n'));
                 return engineState(repo);
             },
         });
         assert.ok(steps[0].firefox, `the install registered firefox (preLedger=${preLedger}):\n${outs[0]}`);
         assert.ok(steps[1].firefox, `the update dropped firefox (preLedger=${preLedger}):\n${outs[1]}`);
-        assert.strictEqual(stampLine(steps[1].stamp, 'browser-engines'), 'chrome,firefox', `preLedger=${preLedger}\n${outs[1]}`);
-        assert.match(stampLine(steps[1].stamp, 'managed-mcp'), /\bbrowser-firefox=/, `preLedger=${preLedger}`);
+        assert.strictEqual(stampLine(steps[1].stamp, 'control-engines'), 'chrome,firefox', `preLedger=${preLedger}\n${outs[1]}`);
+        assert.match(stampLine(steps[1].stamp, 'managed-mcp'), /\bfirefox-control=/, `preLedger=${preLedger}`);
     }
 });
 
@@ -439,20 +439,20 @@ test('uninstall removes the copy route\'s own local-scope registrations and keep
 });
 
 // Matrix 3d (2.1.4): at local scope the copy route registers in the account's projects[<root>].mcpServers, and the
-// --installed-only read-back read .mcp.json alone - so the first update dropped macos-desktop from the set and
+// --installed-only read-back read .mcp.json alone - so the first update dropped macos-control from the set and
 // re-spelled the copied desktop skill (and evidence-gatherer's grant) to the plugin tools, while the local
 // registration stayed live and nothing served the new spelling.
 test('seed update --installed-only (full copy route, local scope): a local-scope registration is read back as a pick', POSIX_ONLY, () =>
 {
     const skill = (repo) => fs.readFileSync(path.join(repo, '.claude', 'skills', 'desktop-automation', 'SKILL.md'), 'utf8');
-    const { steps, outs } = seedRun(['install', 'update'], 'rule markdown-docs\nskill desktop-automation\nmcp macos-desktop\n', {
+    const { steps, outs } = seedRun(['install', 'update'], 'rule markdown-docs\nskill desktop-automation\nmcp macos-control\n', {
         tools: { claude: RECORDING_CLAUDE },
         env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_PLATFORM: 'darwin' },
         args: [['--scope', 'local'], ['--installed-only', '--scope', 'local']],
-        each: (repo) => ({ servers: localServers(accountOf(repo)), plugin: /mcp__plugin_macos-desktop_/.test(skill(repo)) }),
+        each: (repo) => ({ servers: localServers(accountOf(repo)), plugin: /mcp__plugin_macos-control_/.test(skill(repo)) }),
     });
-    assert.ok(steps[0].servers.includes('macos-desktop') && !steps[0].plugin, `the install itself: ${JSON.stringify(steps[0])}\n${outs[0]}`);
-    assert.ok(steps[1].servers.includes('macos-desktop'), `the update dropped it: ${JSON.stringify(steps[1])}\n${outs[1]}`);
+    assert.ok(steps[0].servers.includes('macos-control') && !steps[0].plugin, `the install itself: ${JSON.stringify(steps[0])}\n${outs[0]}`);
+    assert.ok(steps[1].servers.includes('macos-control'), `the update dropped it: ${JSON.stringify(steps[1])}\n${outs[1]}`);
     assert.strictEqual(steps[1].plugin, false, `the copied skill was re-spelled to the plugin tools:\n${outs[1]}`);
 });
 
@@ -470,11 +470,11 @@ test('seed update --installed-only (full copy route, local scope): the user\'s o
             const account = accountOf(repo);
             if (i === 0)
             {
-                Object.values(account.projects)[0].mcpServers['macos-desktop'] = own;
+                Object.values(account.projects)[0].mcpServers['macos-control'] = own;
                 fs.writeFileSync(path.join(path.dirname(repo), 'acct', '.claude.json'), JSON.stringify(account));
             }
             return {
-                entry: Object.values(accountOf(repo).projects || {})[0].mcpServers['macos-desktop'],
+                entry: Object.values(accountOf(repo).projects || {})[0].mcpServers['macos-control'],
                 skill: fs.existsSync(path.join(repo, '.claude', 'skills', 'desktop-automation')),
                 stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
             };
@@ -483,12 +483,12 @@ test('seed update --installed-only (full copy route, local scope): the user\'s o
     const after = steps[1];
     assert.deepStrictEqual(after.entry, own, `the user's server was rewritten:\n${outs[1]}`);
     assert.strictEqual(after.skill, false, `its skill was copied in as if picked:\n${outs[1]}`);
-    assert.doesNotMatch(after.stamp, /macos-desktop/, `it reached the stamp:\n${after.stamp}`);
+    assert.doesNotMatch(after.stamp, /macos-control/, `it reached the stamp:\n${after.stamp}`);
 });
 
 // Matrix 2.1.5 F1 (case 7e): the claude CLI replaces a corrupt account .claude.json at its first plugin or mcp call
 // and keeps the old one under backups/ (measured on 2.1.284; `--version` leaves it alone). The read-back ran after
-// that call, so it read a fresh, empty file: every local registration read as absent, macos-desktop left the set,
+// that call, so it read a fresh, empty file: every local registration read as absent, macos-control left the set,
 // its skill and evidence-gatherer's grant were re-spelled to plugin tools nothing serves on this route, and the
 // ledger lost its row - so the next update, with a good file again, still left it out. This stub replaces a corrupt
 // file the way the CLI does - the call that meets it prints the CLI's notice and none of its own answer (measured:
@@ -527,13 +527,13 @@ if (['plugin', 'mcp'].includes(process.argv[2]))
 const REPLACING_CLAUDE = [`printf '%s\\n' "$*" >> "$CLAUDE_STUB_LOG"`, `"${process.execPath}" "${REPLACING_STUB}" "$1" || exit 1`,
     ...RECORDING_CLAUDE.split('\n').slice(1)].join('\n');
 const COPY_ROUTE = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_PLATFORM: 'darwin' };
-const DESKTOP_SEL = 'rule markdown-docs\nskill desktop-automation\nagent evidence-gatherer\nmcp macos-desktop\n';
+const DESKTOP_SEL = 'rule markdown-docs\nskill desktop-automation\nagent evidence-gatherer\nmcp macos-control\n';
 const desktopState = (repo) =>
 {
     const read = (...p) => fs.readFileSync(path.join(repo, '.claude', ...p), 'utf8');
     return {
         servers: localServers(accountOf(repo)),
-        respelled: /mcp__plugin_macos-desktop_/.test(read('skills', 'desktop-automation', 'SKILL.md')) || /mcp__plugin_macos-desktop_/.test(read('agents', 'evidence-gatherer.md')),
+        respelled: /mcp__plugin_macos-control_/.test(read('skills', 'desktop-automation', 'SKILL.md')) || /mcp__plugin_macos-control_/.test(read('agents', 'evidence-gatherer.md')),
         ledger: (/^managed-mcp: (.*)$/m.exec(read('alfred-code.stamp')) || [])[1] || '',
     };
 };
@@ -554,15 +554,15 @@ const backdate = (repo) =>
         .replace(/^installed-ms: .*$/m, `installed-ms: ${then.getTime()}`));
 };
 const F1_LINE = /!! mcp: \S*\.claude\.json /;
-// The F1 contract on every corrupt shape and route: both updates keep macos-desktop, its bare spelling and its ledger row,
+// The F1 contract on every corrupt shape and route: both updates keep macos-control, its bare spelling and its ledger row,
 // and the first says the account file once, before its first registration; the second, over a good file, says nothing.
 const assertF1 = (steps, outs, label) =>
 {
     for (const i of [1, 2])
     {
-        assert.ok(steps[i].servers.includes('macos-desktop'), `${label}: update ${i} dropped macos-desktop: ${JSON.stringify(steps[i])}\n${outs[i]}`);
+        assert.ok(steps[i].servers.includes('macos-control'), `${label}: update ${i} dropped macos-control: ${JSON.stringify(steps[i])}\n${outs[i]}`);
         assert.strictEqual(steps[i].respelled, false, `${label}: update ${i} re-spelled the desktop skill or seat to plugin tools:\n${outs[i]}`);
-        assert.match(steps[i].ledger, /local:macos-desktop=/, `${label}: update ${i} lost the ledger row: ${steps[i].ledger}`);
+        assert.match(steps[i].ledger, /local:macos-control=/, `${label}: update ${i} lost the ledger row: ${steps[i].ledger}`);
     }
     const said = outs[1].split('\n').filter((l) => F1_LINE.test(l));
     assert.strictEqual(said.length, 1, `${label}: the account file is said once:\n${outs[1]}`);
@@ -595,12 +595,12 @@ test('seed update --installed-only (full copy route, local scope): an account fi
             return state;
         },
     });
-    assert.ok(steps[0].servers.includes('macos-desktop') && !steps[0].respelled, `the install itself: ${JSON.stringify(steps[0])}\n${outs[0]}`);
+    assert.ok(steps[0].servers.includes('macos-control') && !steps[0].respelled, `the install itself: ${JSON.stringify(steps[0])}\n${outs[0]}`);
     for (const i of [1, 2])
     {
-        assert.ok(steps[i].servers.includes('macos-desktop'), `update ${i} dropped macos-desktop: ${JSON.stringify(steps[i])}\n${outs[i]}`);
+        assert.ok(steps[i].servers.includes('macos-control'), `update ${i} dropped macos-control: ${JSON.stringify(steps[i])}\n${outs[i]}`);
         assert.strictEqual(steps[i].respelled, false, `update ${i} re-spelled the desktop skill or seat to plugin tools:\n${outs[i]}`);
-        assert.match(steps[i].ledger, /local:macos-desktop=/, `update ${i} lost the ledger row: ${steps[i].ledger}`);
+        assert.match(steps[i].ledger, /local:macos-control=/, `update ${i} lost the ledger row: ${steps[i].ledger}`);
     }
     assert.doesNotMatch(outs[1], /adopting mcp alfred-navigation - always shipped by this release and absent here/, outs[1]);
     const said = outs[1].split('\n').filter((l) => /\.claude\.json could not be read/.test(l));
@@ -658,8 +658,8 @@ test('seed update --installed-only (full copy route, local scope): an account fi
         },
     });
     assert.doesNotMatch(outs[1], F1_LINE, `a replacement that never happened was claimed:\n${outs[1]}`);
-    assert.ok(steps[1].servers.includes('macos-desktop') && !steps[1].respelled, `${JSON.stringify(steps[1])}\n${outs[1]}`);
-    assert.match(steps[1].ledger, /local:macos-desktop=/);
+    assert.ok(steps[1].servers.includes('macos-control') && !steps[1].respelled, `${JSON.stringify(steps[1])}\n${outs[1]}`);
+    assert.match(steps[1].ledger, /local:macos-control=/);
 });
 
 test('seed install (full copy route, local scope): a first install over a corrupt account file says it has no stamp to take registrations from', POSIX_ONLY, () =>
@@ -673,7 +673,7 @@ test('seed install (full copy route, local scope): a first install over a corrup
     assert.strictEqual(said.length, 1, out);
     assert.doesNotMatch(said[0], /as its stamp records/, said[0]);
     assert.match(said[0], /no stamp/, said[0]);
-    assert.ok(result.servers.includes('macos-desktop'), `${JSON.stringify(result)}\n${out}`);
+    assert.ok(result.servers.includes('macos-control'), `${JSON.stringify(result)}\n${out}`);
 });
 
 // Review 2.1.6 m3: uninstall over an unreadable account file refused before F1 (its plugin listing met the corrupt file);
@@ -761,7 +761,7 @@ test('uninstall runs once the account file is put back after the CLI replaced it
 });
 
 // Review 2.1.6 re-verify N3: signal (c) read the user's own removal of every stack registration as a lost file and put
-// them all back, the opt-in macos-desktop included. A file the CLI recovered or rewrote has no entry for the project;
+// them all back, the opt-in macos-control included. A file the CLI recovered or rewrote has no entry for the project;
 // a hand removal leaves it. Only the first is taken as a loss, and the line says which it saw.
 test('seed update --installed-only (full copy route, local scope): the user\'s removal of every registration stands; a file with no entry for the project is a loss', POSIX_ONLY, () =>
 {
@@ -773,7 +773,7 @@ test('seed update --installed-only (full copy route, local scope): the user\'s r
         fs.writeFileSync(file, JSON.stringify(account));
     });
     assert.doesNotMatch(removal.outs[1], F1_LINE, `a hand removal read as a lost file:\n${removal.outs[1]}`);
-    assert.ok(!removal.steps[1].servers.includes('macos-desktop'), `the removed opt-in server came back: ${JSON.stringify(removal.steps[1])}`);
+    assert.ok(!removal.steps[1].servers.includes('macos-control'), `the removed opt-in server came back: ${JSON.stringify(removal.steps[1])}`);
     const moved = f1Case((repo, file) =>
     {
         const account = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -790,7 +790,7 @@ test('seed update --installed-only (full copy route, local scope): the user\'s r
 
 // Review 2.1.6 re-verify (aMoved / bMoved and its observation, the every-issue ruling): a project folder moved - or
 // copied - to a new place keeps its settings and stamp, while the account's local entry stays under the OLD path.
-// (a) The stack's registrations come back under the new path, macos-desktop included (no entry for this project: N3's
+// (a) The stack's registrations come back under the new path, macos-control included (no entry for this project: N3's
 // signal). (b) The memory key the stack wrote names the OLD folder's database and read as `custom`; where the ledger shows
 // the stack wrote that value it is this project's own project level, re-pointed to this folder's database (the file
 // moved or was copied with the folder), in both the move and the copy - a path the user set stays `custom`.
@@ -828,7 +828,7 @@ test('seed update --installed-only (full copy route, local scope): a moved or co
         const { steps, outs, calls, result } = movedCase({ copy });
         const { before, db } = steps[0];
         const memoryAdds = calls.slice(before).filter((c) => c.startsWith('mcp add --scope local alfred-memory '));
-        assert.ok(result.servers.includes('macos-desktop'), `copy=${copy}: macos-desktop not back: ${JSON.stringify(result)}\n${outs[1]}`);
+        assert.ok(result.servers.includes('macos-control'), `copy=${copy}: macos-control not back: ${JSON.stringify(result)}\n${outs[1]}`);
         assert.match(outs[1], /holds no entry for this project/, `copy=${copy}`);
         assert.match(outs[1], /memory=project/, `copy=${copy}: ${outs[1]}`);
         assert.strictEqual(memoryAdds.length, 1, memoryAdds.join('\n'));
@@ -859,11 +859,11 @@ const brokenByEarlierRelease = ({ backup = 'after', olderRelease = true, entry =
         {
             const acct = path.join(path.dirname(repo), 'acct');
             const account = accountOf(repo);
-            Object.values(account.projects)[0].mcpServers['macos-desktop'] = entry;
+            Object.values(account.projects)[0].mcpServers['macos-control'] = entry;
             fs.writeFileSync(path.join(acct, '.claude.json'), JSON.stringify(account));
             const stamp = path.join(repo, '.claude', 'alfred-code.stamp');
             let text = fs.readFileSync(stamp, 'utf8').replace(/^(managed-mcp: )(.*)$/m,
-                (line, head, rows) => head + rows.split(',').filter((r) => !r.startsWith('local:macos-desktop=')).join(','));
+                (line, head, rows) => head + rows.split(',').filter((r) => !r.startsWith('local:macos-control=')).join(','));
             // Set up two days ago; a release before this one writes no installed-ms: line.
             // A stamp init never dated (`pending` - measured: a v2.1.5 install's, at local and user scope) is dated by its own
             // file's birth: the stamp is rewritten in place, so that is the first install.
@@ -873,21 +873,21 @@ const brokenByEarlierRelease = ({ backup = 'after', olderRelease = true, entry =
             const at = { after: pending ? Date.now() : Date.now() - DAY, before: Date.now() - 3 * DAY }[backup];
             if (at) { fs.mkdirSync(path.join(acct, 'backups'), { recursive: true }); fs.writeFileSync(path.join(acct, 'backups', `.claude.json.corrupted.${at}`), 'garbage'); }
         }
-        return { ...desktopState(repo), entry: accountOf(repo).projects && Object.values(accountOf(repo).projects)[0].mcpServers['macos-desktop'] };
+        return { ...desktopState(repo), entry: accountOf(repo).projects && Object.values(accountOf(repo).projects)[0].mcpServers['macos-control'] };
     },
 });
-const NAMED = /mcp macos-desktop: .*the stack's own .*\/alfred-code:configure/;
+const NAMED = /mcp macos-control: .*the stack's own .*\/alfred-code:configure/;
 test('seed update --installed-only (full copy route, local scope): a registration an earlier release left out of the ledger is taken back only on every sign together', POSIX_ONLY, () =>
 {
     const { steps, outs } = brokenByEarlierRelease();
-    assert.doesNotMatch(steps[0].ledger, /macos-desktop/, 'the fixture: the earlier run lost the row');
-    assert.ok(steps[1].servers.includes('macos-desktop'), `${JSON.stringify(steps[1])}\n${outs[1]}`);
+    assert.doesNotMatch(steps[0].ledger, /macos-control/, 'the fixture: the earlier run lost the row');
+    assert.ok(steps[1].servers.includes('macos-control'), `${JSON.stringify(steps[1])}\n${outs[1]}`);
     assert.strictEqual(steps[1].respelled, false, `the skill or seat still names plugin tools:\n${outs[1]}`);
-    assert.match(steps[1].ledger, /local:macos-desktop=/, `the ledger row is not back: ${steps[1].ledger}`);
-    assert.match(outs[1], /taking back mcp macos-desktop/, outs[1]);
+    assert.match(steps[1].ledger, /local:macos-control=/, `the ledger row is not back: ${steps[1].ledger}`);
+    assert.match(outs[1], /taking back mcp macos-control/, outs[1]);
     const undated = brokenByEarlierRelease({ pending: true });
-    assert.match(undated.outs[1], /taking back mcp macos-desktop/, `a pending stamp, dated by its own file's birth:\n${undated.outs[1]}`);
-    assert.doesNotMatch(brokenByEarlierRelease({ pending: true, backup: 'before' }).outs[1], /taking back mcp macos-desktop/, 'a backup older than a pending stamp\'s file');
+    assert.match(undated.outs[1], /taking back mcp macos-control/, `a pending stamp, dated by its own file's birth:\n${undated.outs[1]}`);
+    assert.doesNotMatch(brokenByEarlierRelease({ pending: true, backup: 'before' }).outs[1], /taking back mcp macos-control/, 'a backup older than a pending stamp\'s file');
     // Each sign missing on its own: nothing adopted, the entry left exactly as it is.
     for (const [label, opts, named] of [['this release\'s stamp', { olderRelease: false }, true], ['a backup from before the set-up', { backup: 'before' }, true],
         ['no backup', { backup: 'none' }, true], ['another package with the marks', { entry: OTHER_DESKTOP }, false],
@@ -897,8 +897,8 @@ test('seed update --installed-only (full copy route, local scope): a registratio
         ['the stack\'s package and marks plus a flag of the user\'s own', { entry: { ...STACK_DESKTOP, args: [...STACK_DESKTOP.args, '--verbose'] } }, false]])
     {
         const r = brokenByEarlierRelease(opts);
-        assert.doesNotMatch(r.outs[1], /taking back mcp macos-desktop/, `${label}: taken back:\n${r.outs[1]}`);
-        assert.doesNotMatch(r.steps[1].ledger, /macos-desktop/, `${label}: ledgered`);
+        assert.doesNotMatch(r.outs[1], /taking back mcp macos-control/, `${label}: taken back:\n${r.outs[1]}`);
+        assert.doesNotMatch(r.steps[1].ledger, /macos-control/, `${label}: ledgered`);
         assert.deepStrictEqual(r.steps[1].entry, opts.entry || STACK_DESKTOP, `${label}: the entry was rewritten`);
         if (named) assert.match(r.outs[1], NAMED, `${label}: not named:\n${r.outs[1]}`);
         else assert.doesNotMatch(r.outs[1], NAMED, `${label}: another package named as the stack's own`);
@@ -912,7 +912,7 @@ test('seed update --installed-only (full copy route, local scope): a configure d
     const own = { type: 'stdio', command: 'uvx', args: ['--python', '3.13', '--exclude-newer', '2026-09-01T00:00:00Z', '--from', 'macos-mcp==0.4.5', 'macos-mcp', 'serve', '--my-flag'], env: { ANONYMIZED_TELEMETRY: 'false', MY_OWN: '1' } };
     const { steps, outs } = seedRun(['install', 'update', 'update'], DESKTOP_SEL, {
         tools: { claude: RECORDING_CLAUDE }, env: COPY_ROUTE,
-        args: [['--scope', 'local'], ['--installed-only', '--scope', 'local', '--drop', 'mcp macos-desktop'], ['--installed-only', '--scope', 'local']],
+        args: [['--scope', 'local'], ['--installed-only', '--scope', 'local', '--drop', 'mcp macos-control'], ['--installed-only', '--scope', 'local']],
         each: (repo, i) =>
         {
             const acct = path.join(path.dirname(repo), 'acct');
@@ -920,18 +920,18 @@ test('seed update --installed-only (full copy route, local scope): a configure d
             if (i === 1)
             {
                 const account = accountOf(repo);
-                Object.values(account.projects)[0].mcpServers['macos-desktop'] = own;
+                Object.values(account.projects)[0].mcpServers['macos-control'] = own;
                 fs.writeFileSync(path.join(acct, '.claude.json'), JSON.stringify(account));
             }
-            return { ...desktopState(repo), entry: Object.values(accountOf(repo).projects)[0].mcpServers['macos-desktop'] };
+            return { ...desktopState(repo), entry: Object.values(accountOf(repo).projects)[0].mcpServers['macos-control'] };
         },
     });
-    assert.doesNotMatch(outs[2], /taking back mcp macos-desktop/, outs[2]);
+    assert.doesNotMatch(outs[2], /taking back mcp macos-control/, outs[2]);
     assert.deepStrictEqual(steps[2].entry, own, `the user's server was rewritten:\n${outs[2]}`);
-    assert.doesNotMatch(steps[2].ledger, /macos-desktop/);
+    assert.doesNotMatch(steps[2].ledger, /macos-control/);
 });
 
-// Re-verify 3 S1, tDropDown: a configure drop on this release, the user's own macos-desktop (their own cut-off and an env
+// Re-verify 3 S1, tDropDown: a configure drop on this release, the user's own macos-control (their own cut-off and an env
 // key), then one older-release run that rewrites the stamp without `installed-ms:` (a downgrade) and a CLI replacement of
 // the account file - every sign of the take-back but the exact shape. The drop stays: the entry is theirs.
 test('seed update --installed-only (full copy route, local scope): a downgrade run after a drop does not re-arm the take-back over the user\'s own server', POSIX_ONLY, () =>
@@ -939,14 +939,14 @@ test('seed update --installed-only (full copy route, local scope): a downgrade r
     const own = { type: 'stdio', command: 'uvx', args: ['--python', '3.13', '--exclude-newer', '2026-09-01T00:00:00Z', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'], env: { ANONYMIZED_TELEMETRY: 'false', MACOS_MCP_LOG_LEVEL: 'debug' } };
     const { steps, outs } = seedRun(['install', 'update', 'update'], DESKTOP_SEL, {
         tools: { claude: RECORDING_CLAUDE }, env: COPY_ROUTE,
-        args: [['--scope', 'local'], ['--installed-only', '--scope', 'local', '--drop', 'mcp macos-desktop'], ['--installed-only', '--scope', 'local']],
+        args: [['--scope', 'local'], ['--installed-only', '--scope', 'local', '--drop', 'mcp macos-control'], ['--installed-only', '--scope', 'local']],
         each: (repo, i) =>
         {
             const acct = path.join(path.dirname(repo), 'acct');
             if (i === 1)
             {
                 const account = accountOf(repo);
-                Object.values(account.projects)[0].mcpServers['macos-desktop'] = own;
+                Object.values(account.projects)[0].mcpServers['macos-control'] = own;
                 fs.writeFileSync(path.join(acct, '.claude.json'), JSON.stringify(account));
                 // The downgrade: an older release's stamp, no installed-ms: line; set up two days ago.
                 const stamp = path.join(repo, '.claude', 'alfred-code.stamp');
@@ -955,18 +955,18 @@ test('seed update --installed-only (full copy route, local scope): a downgrade r
                 fs.mkdirSync(path.join(acct, 'backups'), { recursive: true });
                 fs.writeFileSync(path.join(acct, 'backups', `.claude.json.corrupted.${Date.now() - DAY}`), 'garbage');
             }
-            return { ...desktopState(repo), entry: Object.values(accountOf(repo).projects)[0].mcpServers['macos-desktop'] };
+            return { ...desktopState(repo), entry: Object.values(accountOf(repo).projects)[0].mcpServers['macos-control'] };
         },
     });
-    assert.doesNotMatch(steps[1].ledger, /macos-desktop/, `the fixture: the drop removed the row\n${outs[1]}`);
-    assert.doesNotMatch(outs[2], /taking back mcp macos-desktop/, outs[2]);
+    assert.doesNotMatch(steps[1].ledger, /macos-control/, `the fixture: the drop removed the row\n${outs[1]}`);
+    assert.doesNotMatch(outs[2], /taking back mcp macos-control/, outs[2]);
     assert.deepStrictEqual(steps[2].entry, own, `the user's server was rewritten:\n${outs[2]}`);
-    assert.doesNotMatch(steps[2].ledger, /macos-desktop/);
+    assert.doesNotMatch(steps[2].ledger, /macos-control/);
 });
 
 // Review 2.1.6 re-verify N4 and the user's ruling: signal (b) compares in milliseconds. The source step's replacement
 // lands in the second the last stamp was written, and one server is put back by hand, so (c) does not hold - (b) alone
-// must take the ledger, or macos-desktop is dropped.
+// must take the ledger, or macos-control is dropped.
 test('seed update --installed-only (full copy route, local scope): a replacement within the stamp\'s own second is caught by (b) alone', POSIX_ONLY, () =>
 {
     const { steps, outs } = f1Case((repo, file) =>
@@ -1009,17 +1009,17 @@ const ownServerCase = (sel, own) => seedRun(['install', 'update', 'update'], sel
     },
 });
 
-test('seed update --installed-only (full copy route, local scope): the user\'s own macos-mcp under macos-desktop is never adopted, rewritten or ledgered', POSIX_ONLY, () =>
+test('seed update --installed-only (full copy route, local scope): the user\'s own macos-mcp under macos-control is never adopted, rewritten or ledgered', POSIX_ONLY, () =>
 {
-    const own = { 'macos-desktop': { type: 'stdio', command: 'uvx', args: ['macos-mcp', 'serve', '--my-flag'], env: { MY_OWN: '1' } } };
+    const own = { 'macos-control': { type: 'stdio', command: 'uvx', args: ['macos-mcp', 'serve', '--my-flag'], env: { MY_OWN: '1' } } };
     const { steps, calls, outs } = ownServerCase('rule markdown-docs\n', own);
     for (const i of [1, 2])
     {
-        assert.deepStrictEqual(steps[i].servers['macos-desktop'], own['macos-desktop'], `update ${i} rewrote the user's server:\n${outs[i]}`);
-        assert.doesNotMatch(stampLine(steps[i].stamp, 'managed-mcp'), /macos-desktop/, `update ${i} ledgered it`);
+        assert.deepStrictEqual(steps[i].servers['macos-control'], own['macos-control'], `update ${i} rewrote the user's server:\n${outs[i]}`);
+        assert.doesNotMatch(stampLine(steps[i].stamp, 'managed-mcp'), /macos-control/, `update ${i} ledgered it`);
         assert.strictEqual(steps[i].skill, '', `update ${i} copied the desktop skill in as if picked:\n${outs[i]}`);
     }
-    assert.ok(!calls.slice(steps[0]).some((c) => /^mcp (add|remove) .*macos-desktop/.test(c)), calls.slice(steps[0]).join('\n'));
+    assert.ok(!calls.slice(steps[0]).some((c) => /^mcp (add|remove) .*macos-control/.test(c)), calls.slice(steps[0]).join('\n'));
 });
 
 // Re-verify 3 S4 (oNewPlain, oNewMarks, tBrowserOffNew): at local scope an engine the stamp keeps installed but left off
@@ -1028,8 +1028,8 @@ test('seed update --installed-only (full copy route, local scope): the user\'s o
 const ledgerOf = (repo) => stampLine(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'), 'managed-mcp');
 const OWN_FIREFOX = {
     plain: { type: 'stdio', command: 'npx', args: ['@playwright/mcp@latest', '--browser', 'firefox', '--user-data-dir', '/home/me/ff'], env: {} },
-    marks: { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@0.0.83', '--browser', 'firefox', '--user-data-dir', '${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox', '--output-dir', '${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox/output', '--no-webmcp', '--isolated'], env: {} },
-    exact: { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@0.0.83', '--browser', 'firefox', '--user-data-dir', '${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox', '--output-dir', '${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox/output', '--no-webmcp'], env: {} },
+    marks: { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@0.0.83', '--browser', 'firefox', '--user-data-dir', '${CLAUDE_PROJECT_DIR:-.}/.alfred/firefox-control', '--output-dir', '${CLAUDE_PROJECT_DIR:-.}/.alfred/firefox-control/output', '--no-webmcp', '--isolated'], env: {} },
+    exact: { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@0.0.83', '--browser', 'firefox', '--user-data-dir', '${CLAUDE_PROJECT_DIR:-.}/.alfred/firefox-control', '--output-dir', '${CLAUDE_PROJECT_DIR:-.}/.alfred/firefox-control/output', '--no-webmcp'], env: {} },
 };
 test('seed update --installed-only (full copy route, local scope): an engine left off keeps the user\'s own registration under its name', POSIX_ONLY, () =>
 {
@@ -1044,21 +1044,21 @@ test('seed update --installed-only (full copy route, local scope): an engine lef
                 if (i === 0)
                 {
                     const account = accountOf(repo);
-                    Object.values(account.projects)[0].mcpServers['browser-firefox'] = own;
+                    Object.values(account.projects)[0].mcpServers['firefox-control'] = own;
                     fs.writeFileSync(file, JSON.stringify(account));
                     return fs.readFileSync(path.join(path.dirname(repo), 'claude-calls.log'), 'utf8').split('\n').filter(Boolean).length;
                 }
-                return { entry: Object.values(accountOf(repo).projects)[0].mcpServers['browser-firefox'], ledger: ledgerOf(repo) };
+                return { entry: Object.values(accountOf(repo).projects)[0].mcpServers['firefox-control'], ledger: ledgerOf(repo) };
             },
         });
         for (const i of [1, 2])
         {
             assert.deepStrictEqual(steps[i].entry, own, `${label}: update ${i} removed or rewrote the user's server:\n${outs[i]}`);
-            assert.doesNotMatch(steps[i].ledger, /browser-firefox/, `${label}: update ${i} ledgered it`);
-            assert.match(outs[i], /mcp browser-firefox: .*claude mcp remove browser-firefox -s local/, `${label}: update ${i} did not name it:\n${outs[i]}`);
-            assert.doesNotMatch(outs[i], /mcp removed: browser-firefox/, `${label}: update ${i}`);
+            assert.doesNotMatch(steps[i].ledger, /firefox-control/, `${label}: update ${i} ledgered it`);
+            assert.match(outs[i], /mcp firefox-control: .*claude mcp remove firefox-control -s local/, `${label}: update ${i} did not name it:\n${outs[i]}`);
+            assert.doesNotMatch(outs[i], /mcp removed: firefox-control/, `${label}: update ${i}`);
         }
-        assert.ok(!calls.slice(steps[0]).some((c) => /^mcp (add|remove) .*browser-firefox/.test(c)), `${label}:\n${calls.slice(steps[0]).join('\n')}`);
+        assert.ok(!calls.slice(steps[0]).some((c) => /^mcp (add|remove) .*firefox-control/.test(c)), `${label}:\n${calls.slice(steps[0]).join('\n')}`);
     }
 });
 
@@ -1071,10 +1071,10 @@ test('seed update --installed-only (full copy route, local scope): an engine swi
         each: (repo, i) => (i === 0 ? calls0(repo) : { servers: localServers(accountOf(repo)), ledger: ledgerOf(repo) }),
     });
     function calls0(repo) { return { n: fs.readFileSync(path.join(path.dirname(repo), 'claude-calls.log'), 'utf8').split('\n').filter(Boolean).length, ledger: ledgerOf(repo) }; }
-    assert.match(steps[0].ledger, /local:browser-firefox=/, 'the fixture: the install ledgered firefox');
-    assert.ok(calls.slice(steps[0].n).includes('mcp remove browser-firefox -s local'), `${calls.slice(steps[0].n).join('\n')}\n${outs[1]}`);
-    assert.ok(!steps[1].servers.includes('browser-firefox'), outs[1]);
-    assert.doesNotMatch(steps[1].ledger, /browser-firefox/);
+    assert.match(steps[0].ledger, /local:firefox-control=/, 'the fixture: the install ledgered firefox');
+    assert.ok(calls.slice(steps[0].n).includes('mcp remove firefox-control -s local'), `${calls.slice(steps[0].n).join('\n')}\n${outs[1]}`);
+    assert.ok(!steps[1].servers.includes('firefox-control'), outs[1]);
+    assert.doesNotMatch(steps[1].ledger, /firefox-control/);
 });
 
 // Re-verify 3 S7 (xOwnFresh): a FRESH local-scope install - no stamp, so no ledger - picking a server whose name the user
@@ -1089,45 +1089,45 @@ test('seed install (full copy route, local scope): a fresh install keeps the use
         prepare: (repo, work) =>
         {
             fs.mkdirSync(path.join(work, 'acct'), { recursive: true });
-            fs.writeFileSync(path.join(work, 'acct', '.claude.json'), JSON.stringify({ projects: { [fs.realpathSync(repo)]: { mcpServers: { 'macos-desktop': own } } } }));
+            fs.writeFileSync(path.join(work, 'acct', '.claude.json'), JSON.stringify({ projects: { [fs.realpathSync(repo)]: { mcpServers: { 'macos-control': own } } } }));
         },
-        each: (repo) => ({ entry: Object.values(accountOf(repo).projects)[0].mcpServers['macos-desktop'], ledger: desktopState(repo).ledger }),
+        each: (repo) => ({ entry: Object.values(accountOf(repo).projects)[0].mcpServers['macos-control'], ledger: desktopState(repo).ledger }),
     });
     for (const i of [0, 1])
     {
         assert.deepStrictEqual(steps[i].entry, own, `run ${i} rewrote the user's server:\n${outs[i]}`);
-        assert.doesNotMatch(steps[i].ledger, /macos-desktop/, `run ${i} ledgered it`);
+        assert.doesNotMatch(steps[i].ledger, /macos-control/, `run ${i} ledgered it`);
         // The install names it; the update's read-back takes no pick the ledger does not record (X1), so it is left unsaid.
-        if (i === 0) assert.match(outs[i], /!! mcp macos-desktop: .*claude mcp remove macos-desktop -s local/, `run ${i} did not name it:\n${outs[i]}`);
-        assert.doesNotMatch(outs[i], /mcp repaired: macos-desktop|shape drifted/, `run ${i}`);
+        if (i === 0) assert.match(outs[i], /!! mcp macos-control: .*claude mcp remove macos-control -s local/, `run ${i} did not name it:\n${outs[i]}`);
+        assert.doesNotMatch(outs[i], /mcp repaired: macos-control|shape drifted/, `run ${i}`);
     }
-    assert.ok(!calls.some((c) => /^mcp (add|remove) .*macos-desktop/.test(c)), calls.join('\n'));
+    assert.ok(!calls.some((c) => /^mcp (add|remove) .*macos-control/.test(c)), calls.join('\n'));
 });
 
-test('seed update --installed-only (full copy route, local scope): the user\'s own Playwright under browser-firefox is never taken as a kept engine', POSIX_ONLY, () =>
+test('seed update --installed-only (full copy route, local scope): the user\'s own Playwright under firefox-control is never taken as a kept engine', POSIX_ONLY, () =>
 {
-    const own = { 'browser-firefox': { type: 'stdio', command: 'npx', args: ['@playwright/mcp@latest', '--browser', 'firefox', '--isolated'], env: { MY_PROFILE: 'work' } } };
+    const own = { 'firefox-control': { type: 'stdio', command: 'npx', args: ['@playwright/mcp@latest', '--browser', 'firefox', '--isolated'], env: { MY_PROFILE: 'work' } } };
     const { steps, calls, outs } = ownServerCase('rule markdown-docs\n', own);
     for (const i of [1, 2])
     {
-        assert.deepStrictEqual(steps[i].servers['browser-firefox'], own['browser-firefox'], `update ${i} rewrote or removed the user's server:\n${outs[i]}`);
-        assert.ok(!steps[i].servers['browser-chrome'], `update ${i} registered a browser the install never picked:\n${outs[i]}`);
-        assert.doesNotMatch(stampLine(steps[i].stamp, 'managed-mcp'), /browser-/, `update ${i} ledgered it`);
-        assert.strictEqual(stampLine(steps[i].stamp, 'browser-engines'), '', `update ${i}: browser-engines grew`);
+        assert.deepStrictEqual(steps[i].servers['firefox-control'], own['firefox-control'], `update ${i} rewrote or removed the user's server:\n${outs[i]}`);
+        assert.ok(!steps[i].servers['chrome-control'], `update ${i} registered a browser the install never picked:\n${outs[i]}`);
+        assert.doesNotMatch(stampLine(steps[i].stamp, 'managed-mcp'), /(?:chrome|msedge|firefox|webkit)-control/, `update ${i} ledgered it`);
+        assert.strictEqual(stampLine(steps[i].stamp, 'control-engines'), '', `update ${i}: control-engines grew`);
     }
-    assert.ok(!calls.slice(steps[0]).some((c) => /^mcp (add|remove) .*browser-/.test(c)), calls.slice(steps[0]).join('\n'));
+    assert.ok(!calls.slice(steps[0]).some((c) => /^mcp (add|remove) .*(?:chrome|msedge|firefox|webkit)-control/.test(c)), calls.slice(steps[0]).join('\n'));
 });
 
 // The same recovery on the plugin route (the temp-project matrix, 2.1.6): the run's first `plugin list --json` met the
 // corrupt file and answered with the CLI's notice, so the read-back found no stack entry - it adopted the locked servers
-// as 'absent here' and left macos-desktop out of that run's set. The recovery is met by a call whose answer is not read.
+// as 'absent here' and left macos-control out of that run's set. The recovery is met by a call whose answer is not read.
 test('seed update --installed-only (plugin route): the call that meets a corrupt account file is not one the read-back reads', POSIX_ONLY, () =>
 {
-    const listing = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory', 'macos-desktop']
+    const listing = JSON.stringify(['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory', 'macos-control']
         .map((n) => ({ id: `${n}@envoydev`, scope: 'project', version: '2.1.5', enabled: true })));
     // The first update adopts what the install's selection left out; the second is the settled read-back the third,
     // over the corrupt file, must equal.
-    const { outs } = seedRun(['install', 'update', 'update', 'update'], 'rule markdown-docs\nskill desktop-automation\nmcp macos-desktop\n', {
+    const { outs } = seedRun(['install', 'update', 'update', 'update'], 'rule markdown-docs\nskill desktop-automation\nmcp macos-control\n', {
         plugins: listing,
         tools: { claude: REPLACING_CLAUDE },
         env: { ALFRED_CODE_PLATFORM: 'darwin' },
@@ -1189,8 +1189,8 @@ const dropState = (repo) =>
     const read = (p) => { try { return fs.readFileSync(path.join(repo, p), 'utf8'); } catch { return ''; } };
     const settingsJson = (() => { try { return JSON.parse(read('.claude/settings.json')); } catch { return {}; } })();
     return {
-        local: (Object.values(accountOf(repo).projects || {})[0] || { mcpServers: {} }).mcpServers?.['macos-desktop'] || null,
-        mcpjson: mcpjsonOf(repo)['macos-desktop'] || null,
+        local: (Object.values(accountOf(repo).projects || {})[0] || { mcpServers: {} }).mcpServers?.['macos-control'] || null,
+        mcpjson: mcpjsonOf(repo)['macos-control'] || null,
         enabled: settingsJson.enabledMcpjsonServers || [],
         ledger: stampLine(read('.claude/alfred-code.stamp'), 'managed-mcp'),
         calls: read('../claude-calls.log').split('\n').filter(Boolean).length,
@@ -1203,20 +1203,20 @@ test('M2 seed update --installed-only --drop (full copy route): a dropped non-br
     {
         const { steps, outs, calls } = seedRun(['install', 'update', 'update'], DESKTOP_SEL, {
             tools: { claude: DROP_CLAUDE }, env: COPY_ROUTE,
-            args: [['--scope', scope], ['--installed-only', '--scope', scope, '--drop', 'mcp macos-desktop'], ['--installed-only', '--scope', scope]],
+            args: [['--scope', scope], ['--installed-only', '--scope', scope, '--drop', 'mcp macos-control'], ['--installed-only', '--scope', scope]],
             each: (repo) => dropState(repo),
         });
         const where = scope === 'local' ? 'local' : 'mcpjson';
-        assert.ok(steps[0][where] && /macos-desktop/.test(steps[0].ledger), `${scope}: the install registered and ledgered it:\n${outs[0]}`);
+        assert.ok(steps[0][where] && /macos-control/.test(steps[0].ledger), `${scope}: the install registered and ledgered it:\n${outs[0]}`);
         for (const i of [1, 2])
         {
-            assert.strictEqual(steps[i][where], null, `${scope}, update ${i}: macos-desktop is still registered:\n${outs[i]}`);
-            assert.doesNotMatch(steps[i].ledger, /macos-desktop/, `${scope}, update ${i}: still in the ledger`);
-            assert.ok(!steps[i].enabled.includes('macos-desktop'), `${scope}, update ${i}: still approved`);
+            assert.strictEqual(steps[i][where], null, `${scope}, update ${i}: macos-control is still registered:\n${outs[i]}`);
+            assert.doesNotMatch(steps[i].ledger, /macos-control/, `${scope}, update ${i}: still in the ledger`);
+            assert.ok(!steps[i].enabled.includes('macos-control'), `${scope}, update ${i}: still approved`);
         }
-        assert.match(outs[1], /mcp removed: macos-desktop/, outs[1]);
-        assert.ok(!calls.slice(steps[1].calls).some((c) => /^mcp add .*macos-desktop/.test(c)), `${scope}: the next update registered it again`);
-        assert.doesNotMatch(outs[2], /(adopting|required|mcp \[\w+\]:).*macos-desktop/, `${scope}: the next update read it back:\n${outs[2]}`);
+        assert.match(outs[1], /mcp removed: macos-control/, outs[1]);
+        assert.ok(!calls.slice(steps[1].calls).some((c) => /^mcp add .*macos-control/.test(c)), `${scope}: the next update registered it again`);
+        assert.doesNotMatch(outs[2], /(adopting|required|mcp \[\w+\]:).*macos-control/, `${scope}: the next update read it back:\n${outs[2]}`);
         assert.strictEqual((/mcps=(\d+)/.exec(outs[2]) || [])[1], (/mcps=(\d+)/.exec(outs[1]) || [])[1], `${scope}: the server count moved`);
     }
 });
@@ -1228,19 +1228,19 @@ test('M2 seed update --installed-only --drop (full copy route): a drop over the 
     {
         const { steps, outs, calls } = seedRun(['install', 'update'], 'rule markdown-docs\n', {
             tools: { claude: DROP_CLAUDE }, env: COPY_ROUTE,
-            args: [['--scope', scope], ['--installed-only', '--scope', scope, '--drop', 'mcp macos-desktop']],
+            args: [['--scope', scope], ['--installed-only', '--scope', scope, '--drop', 'mcp macos-control']],
             each: (repo, i) =>
             {
                 if (i === 0 && scope === 'local')
                 {
                     const account = accountOf(repo);
-                    Object.values(account.projects)[0].mcpServers['macos-desktop'] = own;
+                    Object.values(account.projects)[0].mcpServers['macos-control'] = own;
                     fs.writeFileSync(path.join(path.dirname(repo), 'acct', '.claude.json'), JSON.stringify(account));
                 }
                 if (i === 0 && scope === 'project')
                 {
                     const data = JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8'));
-                    data.mcpServers['macos-desktop'] = own;
+                    data.mcpServers['macos-control'] = own;
                     fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(data, null, 2));
                 }
                 return dropState(repo);
@@ -1248,7 +1248,7 @@ test('M2 seed update --installed-only --drop (full copy route): a drop over the 
         });
         const where = scope === 'local' ? 'local' : 'mcpjson';
         assert.deepStrictEqual(steps[1][where], own, `${scope}: the user's server was removed or rewritten:\n${outs[1]}`);
-        assert.ok(!calls.some((c) => /^mcp remove macos-desktop/.test(c)), `${scope}: ${calls.join('\n')}`);
+        assert.ok(!calls.some((c) => /^mcp remove macos-control/.test(c)), `${scope}: ${calls.join('\n')}`);
     }
 });
 
@@ -1262,8 +1262,8 @@ test('uninstall prints the user-scope registrations\' remove commands and never 
     });
     const uninstallCalls = calls.slice(calls.lastIndexOf('plugin list --json'));
     assert.ok(!uninstallCalls.some((c) => c.startsWith('mcp remove')), uninstallCalls.join('\n'));
-    assert.deepStrictEqual(result, ['browser-chrome'], outs[0]);
-    assert.match(outs[1], /browser-chrome is registered at user scope.*claude mcp remove browser-chrome -s user/);
+    assert.deepStrictEqual(result, ['chrome-control'], outs[0]);
+    assert.match(outs[1], /chrome-control is registered at user scope.*claude mcp remove chrome-control -s user/);
 });
 
 // M4: the kept-data line read ALFRED_CODE_DATA_PATH after the settings pass had removed it, so a custom root was

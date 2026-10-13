@@ -526,10 +526,10 @@ test('ROOT_BOOT: on Windows a checkout row starts its command through cmd.exe as
     const repo = path.join(outer, 'repo');
     fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
     fs.mkdirSync(path.join(repo, 'sub'));
-    const r = spawnSync(process.execPath, ['--require', preload, '-e', m.ROOT_BOOT, '--', 'checkout', 'npx', '-y', '@playwright/mcp@0.0.82', '--user-data-dir', '.alfred/browser/chrome'],
+    const r = spawnSync(process.execPath, ['--require', preload, '-e', m.ROOT_BOOT, '--', 'checkout', 'npx', '-y', '@playwright/mcp@0.0.82', '--user-data-dir', '.alfred/chrome-control'],
       { cwd: path.join(repo, 'sub'), encoding: 'utf8', env: { PATH: process.env.PATH, HOME: path.join(outer, 'home'), ComSpec: comspec } });
     assert.strictEqual(r.status, 0, r.stderr);
-    assert.deepStrictEqual(JSON.parse(fs.readFileSync(record, 'utf8')), { cwd: repo, argv: ['/d', '/s', '/c', '"npx -y @playwright/mcp@0.0.82 --user-data-dir .alfred/browser/chrome"'] });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(record, 'utf8')), { cwd: repo, argv: ['/d', '/s', '/c', '"npx -y @playwright/mcp@0.0.82 --user-data-dir .alfred/chrome-control"'] });
   } finally { rmDir(outer); }
 });
 
@@ -831,7 +831,7 @@ test('relatedProjects reads RELATED-PROJECTS.md headings, else the generated rul
     // The doc wins even when the rule also exists.
     const rulesDir = path.join(root, '.claude', 'rules');
     fs.mkdirSync(rulesDir, { recursive: true });
-    fs.writeFileSync(path.join(rulesDir, 'alfred-project-related-context.md'), '---\ndescription: x\n---\n- name: rule-only-sibling\n  location: ../x\n');
+    fs.writeFileSync(path.join(rulesDir, 'alfred-related-context.md'), '---\ndescription: x\n---\n- name: rule-only-sibling\n  location: ../x\n');
     assert.deepStrictEqual(m.relatedProjects(root, docsRoot), ['acme-billing-api', 'acme-frontend']);
 
     // The doc gone, the rule present - falls back to its 'name:' fields.
@@ -839,9 +839,9 @@ test('relatedProjects reads RELATED-PROJECTS.md headings, else the generated rul
     assert.deepStrictEqual(m.relatedProjects(root, docsRoot), ['rule-only-sibling']);
 
     // An install the 2.1.6 update has not moved yet still holds the rule under its old name; the new one wins when both exist.
-    fs.renameSync(path.join(rulesDir, 'alfred-project-related-context.md'), path.join(rulesDir, 'baseline-project-related-context.md'));
+    fs.renameSync(path.join(rulesDir, 'alfred-related-context.md'), path.join(rulesDir, 'baseline-project-related-context.md'));
     assert.deepStrictEqual(m.relatedProjects(root, docsRoot), ['rule-only-sibling']);
-    fs.writeFileSync(path.join(rulesDir, 'alfred-project-related-context.md'), '---\ndescription: x\n---\n- name: newer-sibling\n');
+    fs.writeFileSync(path.join(rulesDir, 'alfred-related-context.md'), '---\ndescription: x\n---\n- name: newer-sibling\n');
     assert.deepStrictEqual(m.relatedProjects(root, docsRoot), ['newer-sibling']);
   } finally { rmDir(root); }
 });

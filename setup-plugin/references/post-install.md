@@ -79,7 +79,7 @@ touches no committed file). The lines, minus anything the project already covers
 - `.alfred/` - the data root (`ALFRED_CODE_DATA_PATH`), outside `.claude/` because Claude Code prompts
   for every write there: the docs (`.alfred/docs/`), the navigation server's index, handoff notes and
   language servers (`.alfred/serena/`), the browser profiles holding session cookies
-  (`.alfred/browser/<engine>/`) and a project-level memory database (`.alfred/.alfred-memory/`). It
+  (`.alfred/<engine>-control/`) and a project-level memory database (`.alfred/.alfred-memory/`). It
   carries its own `.gitignore`, which keeps everything but `docs/` out of git, so while the docs are
   committed it needs no line here. The docs carry their own, written from `ALFRED_CODE_DOCS_VERSIONING`:
   `local` keeps them out of git, `git` (a fresh project's default) commits them and keeps only the hooks'
@@ -171,10 +171,10 @@ missing one); do not shuffle it. A later re-run is yours to type: all but the tw
    orient. Runs after the navigation-server index above, because the capture navigates by symbol.
 3. `/capture-code-style` - captures how the codebase really writes each language and
    generates the path-scoped project-code-style rule.
-4. `/capture-project-capabilities` - the run book: how to build, start, reach and log into the
+4. `/capture-project-awareness` - the run book: how to build, start, reach and log into the
    app, the flows and edge cases a manual check exercises, where debugging starts. It reads the repo
    first and asks only for the gaps; credentials are recorded by where they live, never by value.
-5. `/capture-agent-capabilities` - LAST, so the generated usage-policy rule reflects the final
+5. `/capture-agent-awareness` - LAST, so the generated usage-policy rule reflects the final
    inventory including anything the captures above added.
 
 Optional, whenever you want the coverage picture: `/capture-test-coverage` - it
@@ -188,8 +188,8 @@ dependencies) leaves session-side state describing the OLD tree. Worth pasting t
 
 ```text
 I switched branches and the structure changed. Re-run dependency install if needed, restart the
-language server, re-index for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --exclude-newer 2026-09-29T23:59:59Z --from serena-agent@1.7.0 serena project index` - on Windows the spelling above), and check
-whether the navigation-server memories still describe this branch accurately.
+language server, re-index for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --exclude-newer 2026-09-29T23:59:59Z --from serena-agent@1.7.0 serena project index` - on Windows the spelling above), and purge
+any handoff note a run left behind (`node .claude/hooks/memory.js handoff` lists them).
 ```
 
 The architecture docs handle a branch switch themselves: under `local` versioning the docs hook
@@ -201,7 +201,7 @@ Which one this install uses is `ALFRED_CODE_DOCS_VERSIONING` in the settings.jso
 ## Done looks like
 
 A restarted session where the MCPs answer, every stack plugin reads enabled, the generated rules exist under `.claude/rules/`
-(`alfred-project-agent-capabilities.md` plus the captures' awareness rules), the docs root
+(`alfred-agent-awareness.md` plus the captures' awareness rules), the docs root
 holds the architecture / code-style docs the seats orient from, and `autoMemoryEnabled` reads
 `false` - the shared memory carries what Claude's own notes used to. From here, work normally - the
 stack routes itself.

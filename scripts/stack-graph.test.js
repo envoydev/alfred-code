@@ -63,12 +63,12 @@ test('the committed stack-graph.json is in sync with a fresh build', () => {
         'run `node scripts/stack-graph.js --write` and commit the result');
 });
 
-test('capture-agent-capabilities documents every MCP without pulling a single edge (doc-mention exception)', () => {
+test('capture-agent-awareness documents every MCP without pulling a single edge (doc-mention exception)', () => {
     // Its body backticks all 8 servers as the routing map it stamps into the generated
     // rule - treating those as dependencies used to lock the whole MCP baseline into any
     // install that picked it. The graph builder strips the edges for doc-mention skills.
-    const s = graph.skills['capture-agent-capabilities'];
-    assert.ok(s, 'capture-agent-capabilities must be in the graph');
+    const s = graph.skills['capture-agent-awareness'];
+    assert.ok(s, 'capture-agent-awareness must be in the graph');
     assert.deepStrictEqual(s.mcps, [], 'no skill->mcp edges - the mentions are subject matter, not needs');
     assert.deepStrictEqual(s.plugins, [], 'no skill->plugin edges either');
 });

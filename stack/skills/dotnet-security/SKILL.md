@@ -1,11 +1,13 @@
 ---
 name: dotnet-security
-description: "Use when hardening, threat-modeling or reviewing a .NET service for vulnerabilities - OWASP Top 10 for ASP.NET Core. Not for sign-in or crypto choices."
+description: "Use when hardening or reviewing a .NET app for vulnerabilities - OWASP Top 10 for ASP.NET Core, WPF, WinForms, console, services. Not for sign-in or crypto."
 ---
 
 # .NET application security - the OWASP Top 10, applied
 
 This is the hardening reference: how the 2021 OWASP Top 10 categories show up in an ASP.NET Core service and what to do about each. OWASP's 2025 revision reshuffles the ranks, folds SSRF into A01, and adds software-supply-chain and exceptional-conditions categories; the mitigations map either way (supply chain under A06 / A08, exceptional conditions under A04 / A05 and the .NET web error-handling skill), so the sections keep the stable 2021 numbering. It is a static checklist you read while writing or reviewing code, and it pairs with the pre-commit security review of the live diff - that review is the moving part, this is the durable map. This skill says where the controls belong in the threat model, not how they are built. Floor is .NET 8 / C# 12.
+
+A WPF, WinForms, console or Windows-service app keeps the same categories behind other boundaries - opened files, IPC, local secrets, process starts, updates - and drops the browser-only controls; that map is `references/desktop-and-service-apps.md`.
 
 On a .NET Framework 4.8 codebase the TLS defaults, `BinaryFormatter` (still shipping there), classic-ASP.NET security headers, and the dependency-audit prerequisites differ - those deltas are in `references/net-framework-48.md`.
 
@@ -14,6 +16,7 @@ The principle under all of it: treat every byte that crossed a trust boundary as
 ## When to use
 
 - Maps the OWASP Top 10 to ASP.NET Core mitigations (IDOR, injection, XSS, CORS, crypto, deserialization, SSRF), reported as a findings table.
+- A desktop, console or Windows-service app: read `references/desktop-and-service-apps.md` first - CORS, antiforgery, HSTS, the response headers and XSS encoding do not apply there, while deserialization of opened files, local secrets, process starts, IPC and update integrity do. Same findings table.
 - Not for building sign-in or picking crypto primitives - those belong to the skills covering .NET authentication (handlers, token validation, cookie and policy configuration) and .NET crypto primitives. Where nothing in your skill list covers one, apply the obligations below and report that wiring UNVERIFIED rather than inventing it.
 
 ## A01 - Broken access control

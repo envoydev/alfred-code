@@ -266,3 +266,66 @@ test('the never-ran denial has its own valve of three', () => {
   assert.strictEqual(run(rows, layerAsk('Rules: install?')).status, 2);
   assert.strictEqual(run([...rows, ...nr(3)], layerAsk('Rules: install?')).status, 0);
 });
+
+// ------------------------------------------------------------------ audit 2026-10-11 SD06
+
+// a9e06780: configure step 1 printed none of its three blocks and asked 'Installed set is shown above' over a collapsed
+// read-back. Its closing ask needs the inventory table to have RUN, and then its `total:` line in the assistant text.
+const step1Ask = layerAsk('Adjust the installed selection? 2.3.0 -> 2.4.0, 3 skills changed.');
+const readBack = call('p1', 'Bash', { command: 'node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope project --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1' });
+const inventory = call('i1', 'Bash', { command: 'node "$TMP/repo/scripts/update-preflight.js" --inventory "$TMP/installed.json"' });
+const invOut = '| category | count | items |\n|---|---|---|\n| rules | 2 | a, b |\ntotal: 2 installed';
+
+test('configure step 1: the closing ask is denied until the inventory ran, then until its total line is pasted', () => {
+  const start = [typed('/alfred-code:configure'), readBack, result('p1', ''), say('[step 1/13 - install status] what is installed · next: areas')];
+  const never = run(start, step1Ask);
+  assert.strictEqual(never.status, 2);
+  assert.match(never.stderr, /install inventory never ran/);
+  assert.match(never.stderr, /update-preflight\.js" --inventory "\$TMP\/installed\.json"/);
+  const ran = run([...start, inventory, result('i1', invOut)], step1Ask);
+  assert.strictEqual(ran.status, 2);
+  assert.match(ran.stderr, /install inventory ran but its output is not in your message/);
+  assert.strictEqual(run([...start, inventory, result('i1', invOut), say('```\n' + invOut + '\n```\n2.3.0 -> 2.4.0')], step1Ask).status, 0);
+});
+
+test('configure step 1: the never-ran denial has its own valve of three, and another ask is not step 1', () => {
+  const nd = (n) => [call(`s${n}`, 'AskUserQuestion', step1Ask), result(`s${n}`, 'alfred-code layer-table gate: the install inventory never ran - x', true)];
+  const rows = [typed('/alfred-code:configure'), readBack, result('p1', ''), ...nd(1), ...nd(2)];
+  assert.strictEqual(run(rows, step1Ask).status, 2);
+  assert.strictEqual(run([...rows, ...nd(3)], step1Ask).status, 0);
+  assert.strictEqual(run([typed('/alfred-code:configure'), readBack, result('p1', '')], layerAsk('Which areas to adjust?')).status, 0);
+});
+
+// 5f9fec85 printed 6 of configure's 13 banners, 6288ad94 2 of validate's 12. Inside a guided run that has printed a
+// banner, every step from the first banner seen to the highest must have printed one.
+const b = (n, of = 13, name = 'x') => say(`[step ${n}/${of} - ${name}] something · next: y`);
+const areas = layerAsk('Which areas to adjust?');
+
+test('banners: a gap in a guided run is denied, naming the missing steps', () => {
+  const r = run([typed('/alfred-code:configure'), b(1), b(2), b(5), b(9)], areas);
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /step banner missing - step 3, 4, 6, 7, 8 of 13 printed none/);
+  assert.match(r.stderr, /\[step 7\/13 - MCPs\] skipped - area not selected/);
+  assert.strictEqual(run([typed('/alfred-code:validate'), b(1, 12), b(2, 12), say('[step 3/12 - rules] nothing to reconcile'), b(4, 12)], areas).status, 0);
+});
+
+test('banners: no banner yet, another command, or a typed prompt mid-walk is not judged', () => {
+  assert.strictEqual(run([typed('/alfred-code:configure'), readBack, result('p1', '')], areas).status, 0, 'no banner printed: nothing to judge');
+  assert.strictEqual(run([typed('/alfred-code:update'), b(1), b(4)], areas).status, 0, 'update has no banner skeleton');
+  assert.strictEqual(run([typed('/alfred-code:configure'), b(1), b(2), typed('wait, keep the hooks'), b(7), b(8)], areas).status, 0, 'the span since the typed prompt starts at its first banner');
+});
+
+test('banners: the gap denial has its own valve of three', () => {
+  const gd = (n) => [call(`g${n}`, 'AskUserQuestion', areas), result(`g${n}`, 'alfred-code layer-table gate: step banner missing - step 3 of 13 printed none', true)];
+  const rows = [typed('/alfred-code:configure'), b(1), b(2), b(4), ...gd(1), ...gd(2)];
+  assert.strictEqual(run(rows, areas).status, 2);
+  assert.strictEqual(run([...rows, ...gd(3)], areas).status, 0);
+});
+
+test('banners: the ask\'s own message is waited for, so a gap it opens is seen and a banner it adds counts', () => {
+  const rows = [typed('/alfred-code:configure'), b(1), b(2)];
+  assert.strictEqual(runWith([...rows, ...own('[step 3/13 - rules] adjust the installed rules · next: agents')]).status, 0);
+  const gap = runWith([...rows, ...own('[step 6/13 - hooks] adjust the installed hooks · next: MCPs')]);
+  assert.strictEqual(gap.status, 2);
+  assert.match(gap.stderr, /step 3, 4, 5 of 13 printed none/);
+});

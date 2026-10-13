@@ -41,8 +41,8 @@ const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 
 // The two tools, on both routes. Built as patterns so the copy route's bare spelling is never literal text
 // (lint check 54 fails on it anywhere under stack/).
-const WIN_APP = /^mcp__(?:plugin_windows-desktop_)?windows-desktop__App$/;
-const MAC_SHELL = /^mcp__(?:plugin_macos-desktop_)?macos-desktop__Shell$/;
+const WIN_APP = /^mcp__(?:plugin_windows-control_)?windows-control__App$/;
+const MAC_SHELL = /^mcp__(?:plugin_macos-control_)?macos-control__Shell$/;
 
 let payload;
 try { payload = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.exit(0); }
@@ -78,6 +78,10 @@ if (!payload || typeof payload !== 'object') process.exit(0);
                         hook: path.basename(__filename),
                         event: payload.hook_event_name || payload.tool_name || '',
                         tool: payload.tool_name || '',
+                        // WHO was blocked and on which call: a seat's block is its own row (audit 2026-10-10 C07, 0498718d - seat
+                        // blocks read as the main session's), and the call id joins the row to the transcript without a clock.
+                        agent: payload.agent_id || null,
+                        tool_use_id: payload.tool_use_id || null,
                         reason: last.split('\n')[0].slice(0, 200),
           // A hook may name the BRANCH that fired and what matched, when it has more than one
           // (`global.BLOCK_DETAIL`, dropped by JSON.stringify when nothing set it). A block whose

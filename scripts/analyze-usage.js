@@ -53,6 +53,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const readline = require('readline');
+const { createHash } = require('crypto');
 const { loadManifest } = require('./install/manifest.js');
 const { parseJson } = require('./install/json-file.js');
 
@@ -66,6 +67,43 @@ const fmt = (n) => {
   return String(Math.round(n));
 };
 const approxTok = (chars) => Math.round(chars / 4);
+const sharePct = (part, whole) => `${((100 * part) / whole).toFixed(1)}%`;
+const ACTIVITY_ROW_TYPES = new Set(['user', 'assistant', 'system', 'attachment']);
+// The stack's orchestration flows and their phases (guard-fresh-session-start.js ORCHESTRATION, skills half): a Skill
+// call of one of these opens a phase; any other skill loaded while one is open serves it.
+const FLOW_SKILL_RE = /^(?:task-(?:solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|loop-[a-z-]+|capture-[a-z-]+|issue-diagnoser)$/;
+const idleTailLine = (main) => (main.idleTail ? `idle tail ${dur(Date.parse(main.idleTail.to) - Date.parse(main.idleTail.from))} after the last turn, to a \`${main.idleTail.rowType || '?'}\` row at ${main.idleTail.to} - not session time` : '');
+// The session-start instruction files, largest first, and any rule loaded under both the old and the new name of a
+// manifest rename (`renamed.rules`), which the session paid for twice.
+function instructionsBreakdown(main) {
+  const files = main.instructionFiles;
+  if (!files || !files.length) return null;
+  const name = (p) => { const m = /\/\.claude\/rules\/(.+)$/.exec(p); return m ? m[1] : p.split('/').slice(-2).join('/'); };
+  const total = files.reduce((n, f) => n + f.chars, 0);
+  const rows = files.slice().sort((a, b) => b.chars - a.chars).map((f) => ({ file: name(f.path), chars: f.chars }));
+  let renamed = {};
+  try { renamed = (loadManifest(path.join(__dirname, '..')).renamed || {}).rules || {}; } catch { renamed = {}; }
+  const have = new Map(rows.map((r) => [r.file.replace(/\.md$/, ''), r]));
+  const twice = Object.entries(renamed).filter(([o, n]) => have.has(o) && have.has(n)).map(([o, n]) => ({ old: `${o}.md`, now: `${n}.md`, chars: have.get(o).chars }));
+  return { files: rows.length, chars: total, rows, twice, twiceChars: twice.reduce((n, t) => n + t.chars, 0) };
+}
+// The part of the floor that is the session's own opening prompt, when the floor is the first message (a later,
+// smaller message - after a compaction - carries no such prompt). Null when it is not, or is under 1k tokens.
+// The standing floor's share of the context the session SENT: floor x messages against every input-side token - cache
+// read, cache write and uncached input, which is what each message's context is made of. Against cache-read alone, a
+// short run whose first floor copy was a cache WRITE printed an impossible '~113% of cache-read' (audit 2026-10-11,
+// session 11b595da: 76.3k x 4 msgs = 305.2k over 269.5k cache-read, with 55.9k of cache-write beside it).
+function floorShare(main) {
+  const t = main.total || {};
+  const sent = (t.cacheRead || 0) + (t.cacheCreate || 0) + (t.input || 0);
+  return sent && main.floorCtx ? Math.min(100, Math.round((100 * main.floorCtx * (t.msgs || 0)) / sent)) : null;
+}
+
+function floorPromptTok(main) {
+  if (!main.floorCtx || main.floorCtx !== main.firstMsgCtx) return null;
+  const tok = approxTok(main.floorPromptChars || 0);
+  return tok >= 1000 && tok < main.floorCtx ? tok : null;
+}
 const dur = (ms) => {
   if (!ms || ms < 0) return '-';
   const m = Math.round(ms / 60000);
@@ -82,6 +120,31 @@ const rpad = (s, w) => String(s).length >= w ? String(s) : ' '.repeat(w - String
 // only its length, so a masked row still says a credential was in the argument.
 const SECRET_SHAPE_G = /(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{16,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/g;
 const PEM_PRIVATE_G = /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/g;
+// The `detail` instrument-tool-usage.js writes for a call, derived from the call's own input the same way, so a ledger
+// row that carries no tool_use_id (every row before the field) still joins by what it names: the skill, the server,
+// the seat, the file's basename, the pattern, the Bash description or its verb. Masked the hook's way, cut at its cap.
+function ledgerDetailOf(tool, input) {
+  const i = input || {};
+  const hint = (v, cap = 60) => String(v).replace(SECRET_SHAPE_G, '[redacted]').slice(0, cap);
+  let d = null;
+  if (tool === 'Skill') d = i.skill || i.name || null;
+  else if (String(tool).startsWith('mcp__')) {
+    const seg = String(tool).split('__')[1] || null;
+    d = seg && seg.startsWith('plugin_') ? (seg.slice(7).split('_').slice(1).join('_') || seg) : seg;
+  } else if (tool === 'Task' || tool === 'Agent') d = i.subagent_type || i.subagentType || (i.description ? hint(i.description) : null);
+  else if (i.file_path) d = String(i.file_path).split(/[/\\]/).pop();
+  else if (i.pattern) d = hint(i.pattern);
+  else if (tool === 'Bash') {
+    if (i.description) d = hint(i.description);
+    else {
+      const tok = String(i.command || '').trim().split(/\s+/).filter(Boolean);
+      const verb = tok[0] && /^[A-Za-z][\w.-]*$/.test(tok[0]) ? tok[0] : null;
+      const sub = verb && tok[1] && /^[a-z][a-z0-9:._-]*$/.test(tok[1]) ? tok[1] : null;
+      d = verb ? (sub ? `${verb} ${sub}` : verb) : null;
+    }
+  }
+  return d == null ? null : hint(d, 200);
+}
 const maskSecrets = (s) => String(s == null ? '' : s)
   .replace(SECRET_SHAPE_G, (m) => `<redacted credential (${m.length} chars)>`)
   .replace(PEM_PRIVATE_G, '<redacted PEM private key>');
@@ -120,7 +183,7 @@ const STREAK_TURNS = 3, STREAK_SHORT = 200, STREAK_LONG = 1500;   // its correct
 // turns the corrections-saved row counts.
 // --- correction-turn test
 const CORRECTION_STRONG_RE = /^\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\b|(?:^|[.,;:!?]\s*|\b(?:but|and|please|pls|so|then|also|just)\s+)(?:do not|don'?t|dont|never|stop \w+ing)\b|\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\b|\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\b(?! (?:cannot|can'?t|can not|couldn'?t)\b)|\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\b|\b(?:still|again) (?:there|broken|fail\w*|wrong|the same|red|happen\w*|error\w*|doesn'?t|does not|isn'?t|is not|not)\b|\bsame (?:error|issue|problem|bug)\b|\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\b|\bnot what i\b|\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\b|\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\b|\bnot working\b|\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\b/i;
-const CORRECTION_WEAK_RE = /^\W*but\b|^\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\b\W*but\b|^\W*stop\b|\binstead\b|\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\b/i;
+const CORRECTION_WEAK_RE = /^\W*but\b|^\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\b\W*but\b|^\W*stop\b|\binstead\b|(?<!\b(?:what|which|how|whether|where|when|who|why)\b[^.,;:!?\n]{0,60})\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\b/i;
 const CORRECTION_CYR_RE = /(?<![\p{L}])(?:ні(?=[\s,.!]|$)|нет(?=[\s,.!]|$)|не (?:так|те|то)(?![\p{L}])|не ?правильн|не (?:треба|потрібно|надо|нужно|роби|делай)(?![\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав|говорил|просил|сказал)|(?:чому ти|почему ты)(?! не мож)|навіщо ти|зачем ты|коротше|покороче|простіше|проще|забагато|слишком|(?:та сама|та ж|та же|та самая) (?:помилк|ошибк|проблем)|не (?:працює|работает)|(?:досі|все ще|всё ещё|все еще) не(?![\p{L}]))/iu;
 function correctionMarker(text) {
   const t = String(text || '').replace(/[‘’]/g, "'").trim();
@@ -128,6 +191,26 @@ function correctionMarker(text) {
   return m ? m[0].trim().slice(0, 40) : null;
 }
 // --- end correction-turn test
+// The answers an AskUserQuestion result carries that match none of the offered labels - typed into the Other field.
+// The structured toolUseResult first, else the text form `"Q"="A"`; a multi-select answer is its labels joined by ', '.
+function typedAskAnswers(questions, result, text) {
+  let answers = result && typeof result === 'object' && result.answers && typeof result.answers === 'object' ? result.answers : null;
+  if (!answers) {
+    answers = {};
+    for (const m of String(text || '').replace(/\\"/g, '"').matchAll(/"((?:[^"\\]|\\.)*)"="((?:[^"\\]|\\.)*)"/g)) answers[m[1]] = m[2];
+  }
+  const out = [];
+  for (const [q, a] of Object.entries(answers)) {
+    const answer = String(a || '').trim();
+    if (!answer) continue;
+    const spec = (questions || []).find((x) => x && String(x.question || '').trim() === q.trim());
+    const labels = new Set(((spec && spec.options) || []).map((x) => String((x && x.label) || '').trim()));
+    const parts = spec && spec.multiSelect ? answer.split(/,\s*/) : [answer];
+    if (labels.size && parts.every((x) => labels.has(x.trim()))) continue;
+    out.push(answer);
+  }
+  return out;
+}
 // A correction counts as saved when a memory store follows within this many replies - the plugin
 // route's name or a registration's (history plan, Gate G2).
 const SAVE_WINDOW = 3;
@@ -138,31 +221,126 @@ const CHECK_WINDOW = 40;    // tool calls a check may sit before a commit and st
 // root's server folders count (the default `.alfred`: serena's index and language servers, the browser
 // profiles, a project memory database) - its docs do not.
 const BUILD_DIR_RE = /(?:^|[\/\\])(?:node_modules|bin|obj|dist|coverage|TestResults|target|__pycache__|\.venv|venv|vendor|\.git|\.angular|\.nuget|\.serena|\.playwright|\.alfred-memory|\.alfred[\/\\](?:serena|browser)|\.next|\.nuxt|\.gradle|\.idea|\.vs)(?:[\/\\]|$)|(?:^|[\/\\])(?:package-lock\.json|yarn\.lock|pnpm-lock\.yaml|packages\.lock\.json|Cargo\.lock|poetry\.lock|composer\.lock)$|\.(?:log|min\.js|min\.css|map)$/;
+// A SCRIPT a project keeps under such a folder is its source, not build output: `dist/register_service.bat`, run by two
+// project files' PostBuild steps and named in the run book, scored a build-dir read and fed the avoidable share (audit
+// 2026-10-11, session d56562c7). A dependency tree's own scripts are still the dependency's.
+const SCRIPT_EXT_RE = /\.(?:bat|cmd|ps1|psm1|sh|bash)$/i;
+const DEPENDENCY_TREE_RE = /(?:^|[\/\\])(?:node_modules|vendor|\.venv|venv|\.nuget|__pycache__|\.git)(?:[\/\\]|$)/;
+const isBuildDirRead = (p) => BUILD_DIR_RE.test(p) && !(SCRIPT_EXT_RE.test(p) && !DEPENDENCY_TREE_RE.test(p));
 // The first file a dump verb names - the same read routed through the shell.
 // The shell route: Bash, PowerShell and Monitor (shell-writes.js SHELL_TOOLS - Monitor runs its command under Bash's rules; 2.1.5 final review R8).
 const isShellTool = (name) => name === 'Bash' || name === 'PowerShell' || name === 'Monitor';
+// A pipe's `| tail -40` or `| head -n +5` names no file: the option itself was taken as the path, and one compaction
+// re-read row printed '7 file(s)' for 1 (audit 2026-10-10, 516e653d: `-30`, `-20`, `-40` keyed as files). An option
+// value may be signed, and a capture that is still an option is no target - the next reading verb is tried.
 function shellReadTarget(cmd) {
-  const m = /(?:^|[;&|(]\s*)(?:cat|head|tail|less|more|bat)\s+(?:-[\w-]+(?:\s+\d+)?\s+)*["']?([^\s"'|;&<>)]+)/.exec(cmd)
-    || /(?:^|[;&|(]\s*)sed\s+-n\s+(?:-e\s+)?["']?[\d,$p;]+["']?\s+["']?([^\s"'|;&<>)]+)/.exec(cmd);
-  if (!m) return null;
-  const p = m[1];
-  if (p.includes('$') || /[*?\[]/.test(p) || p === '-') return null;
-  return p;
+  const res = [/(?:^|[;&|(]\s*)(?:cat|head|tail|less|more|bat)\s+(?:-[\w-]+(?:\s+[+-]?\d+)?\s+)*["']?([^\s"'|;&<>)]+)/g,
+    /(?:^|[;&|(]\s*)sed\s+-n\s+(?:-e\s+)?["']?[\d,$p;]+["']?\s+["']?([^\s"'|;&<>)]+)/g];
+  for (const re of res) {
+    for (const m of String(cmd).matchAll(re)) {
+      const p = m[1];
+      if (/^[-+]/.test(p) || p.includes('$') || /[*?\[]/.test(p)) continue;
+      return p;
+    }
+  }
+  return null;
 }
 // A CHECK is something that returns a pass/fail the session can read: a test run, a build, a lint,
 // a CI status read. A test run is SCOPED when it names one project, one file, one filter.
+// Each kind is read at the COMMAND WORD of a segment (`commandHeads` below), past env assignments, shell keywords and
+// the wrappers a runner rides (`CI=1 npx jest`, `timeout 300 dotnet test`). A path prefix is allowed
+// (`./node_modules/.bin/jest`) and the trailing boundary keeps a FILE NAME out (`jest.config.js`, `pytest.ini`): a
+// config file named on a command line is not a run. Matching anywhere in the segment scored `grep -rn jest
+// node_modules/@nx/jest/...` as a whole-suite test run (audit 2026-10-10, session f10cb06a) - a runner named as an
+// argument is not a run.
+const RUNNER_PATH = String.raw`(?:[\w.@~$/\\-]*[/\\])?`;
 const CHECK_RES = {
-  // The runner is matched ANYWHERE in the segment, never only at its start: `./node_modules/.bin/jest`
-  // and `CI=1 npx jest` are test runs, and the segment-start anchor scored both as no check at all -
-  // which then reads as a session that committed without testing. A path prefix is allowed and the
-  // trailing boundary keeps a FILE NAME out (`jest.config.js`, `pytest.ini`, `vitest-setup.ts`): a
-  // config file named on a command line is not a run.
-  test: /(?:^|[\s;&|(<>])(?:[\w.@/\\-]*[/\\])?(?:dotnet\s+test|npm\s+(?:run\s+)?test\S*|pnpm\s+(?:run\s+)?test\S*|yarn\s+(?:run\s+)?test\S*|npx\s+(?:jest|vitest|mocha|playwright\s+test)|jest|vitest|mocha|ng\s+test|pytest|python3?\s+-m\s+pytest|go\s+test|cargo\s+test|node\s+--test|mvn\s+test|gradle\s+test|phpunit)(?![\w.-])/,
-  build: /(?:^|[;&|(]\s*)(?:dotnet\s+(?:build|publish)|npm\s+run\s+build\S*|pnpm\s+(?:run\s+)?build|yarn\s+(?:run\s+)?build|ng\s+build|npx\s+tsc|tsc|msbuild|cargo\s+build|go\s+build|mvn\s+(?:package|compile|install)|gradle\s+(?:build|assemble))\b/,
-  lint: /(?:^|[;&|(]\s*)(?:npm\s+run\s+lint\S*|pnpm\s+(?:run\s+)?lint|yarn\s+(?:run\s+)?lint|npx\s+eslint|eslint|ng\s+lint|dotnet\s+format|ruff|flake8|golangci-lint|cargo\s+clippy)\b/,
-  ci: /(?:^|[;&|(]\s*)gh\s+(?:run\s+(?:view|watch|list)|pr\s+checks)\b/,
+  test: new RegExp(String.raw`^${RUNNER_PATH}(?:dotnet\s+test|(?:npm|pnpm|yarn)\s+(?:run\s+)?test\S*|jest|vitest|mocha|playwright\s+test|ng\s+test|pytest|python3?\s+-m\s+pytest|go\s+test|cargo\s+test|node\s+--test|mvn\s+test|gradlew?\s+test|phpunit)(?![\w.-])`),
+  build: new RegExp(String.raw`^${RUNNER_PATH}(?:dotnet\s+(?:build|publish)|(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:build|typecheck|type-check)\S*|ng\s+build|tsc|vue-tsc|msbuild|cargo\s+build|go\s+build|mvn\s+(?:package|compile|install)|gradlew?\s+(?:build|assemble))(?![\w.-])`),
+  // A formatter CHECK is a lint (`prettier --check` reads, `--write` rewrites), and so is one of the stack's own
+  // read-only checkers: `agents-md-check: clean` was a claim the scorecard could not see (audit 2026-10-10, 65abb00a).
+  lint: new RegExp(String.raw`^${RUNNER_PATH}(?:(?:npm|pnpm|yarn)\s+(?:run\s+)?(?:lint|format:check)\S*|eslint|ng\s+lint|dotnet\s+format|ruff|flake8|golangci-lint|cargo\s+clippy|stylelint|biome\s+(?:check|lint|ci)|prettier\s+(?:\S+\s+)*?(?:--check|-c|--list-different|-l)(?=\s|$)|node\s+${RUNNER_PATH}(?:agents-md-check|library-check|lint-skills)\.js)(?![\w.-])`),
+  ci: /^gh\s+(?:run\s+(?:view|watch|list)|pr\s+checks)(?![\w.-])/,
 };
 const SCOPED_RE = /--filter[= ]|--test-name-pattern|--testNamePattern|--testPathPattern|\s-t\s|\s-k\s|--grep[= ]|--include[= ]|--run\s+\S|[\w./-]+\.(?:spec|test)\.[cm]?[jt]sx?\b|[\w./-]+_test\.go\b|\btest_\w+\.py\b|::\w|[\w./-]+\.csproj\b|node\s+--test\s+[\w./-]+\.[cm]?js\b|cargo\s+test\s+[\w:]+|go\s+test\s+(?!\.\/\.\.\.)[\w./-]+/;
+// Nx: a monorepo runs every check through one launcher, and with no arm for it every Nx session scored 'test 0 /
+// build 0 / lint 0' and its checked commits as unchecked (audit 2026-10-10: 18 sessions, e.g. 0d070bcc ~70 nx runs).
+// `nx <target> [project]`, `nx run <project>:<target>`, and `nx run-many | affected -t <targets>` - one call can be
+// several kinds (`-t test,lint,typecheck`). A typecheck is a build (`tsc` already is). Scoped: a test file
+// (`--testFile`), or one named project; `affected` and `run-many` over many projects are whole-suite.
+const NX_RE = new RegExp(String.raw`^${RUNNER_PATH}(?:(?:yarn|pnpm)\s+)?nx\s+(.*)$`, 's');
+const NX_OWN_COMMANDS = new Set(['run', 'run-many', 'affected', 'serve', 'graph', 'dep-graph', 'show', 'reset', 'daemon', 'migrate', 'generate', 'g', 'add', 'release', 'init', 'list', 'report', 'format', 'format:write', 'sync', 'sync:check', 'watch', 'exec', 'connect', 'view-logs', 'repair', 'import']);
+function nxTargetKind(target) {
+  const t = String(target || '').toLowerCase();
+  if (/^(?:test|e2e|component-test|unit|unit-test|jest|vitest|test[:-][\w:-]+|[\w-]+[:-]test)$/.test(t)) return 'test';
+  if (/^(?:build|typecheck|type-check|tsc|compile|build[:-][\w:-]+)$/.test(t)) return 'build';
+  if (/^(?:lint|stylelint|format-check|format:check|lint[:-][\w:-]+)$/.test(t)) return 'lint';
+  return null;
+}
+const NX_SCOPED_RE = /--testFile[= ]|--test-file[= ]|--testPathPattern|--testNamePattern|--test-name-pattern|[\w./-]+\.(?:spec|test)\.[cm]?[jt]sx?\b/;
+// -> [{ kind, scoped }] for one Nx command head (code spelling for the words, shell spelling for the scope markers).
+function nxChecks(head, shellHead) {
+  const m = NX_RE.exec(head);
+  if (!m) return null;
+  const words = m[1].trim().split(/\s+/).filter(Boolean);
+  const out = [];
+  const projectsOf = () => {
+    const pm = /(?:^|\s)(?:-p|--projects?)(?:=|\s+)(\S+)/.exec(m[1]);
+    return pm ? pm[1].split(',').filter(Boolean) : [];
+  };
+  const fileScoped = NX_SCOPED_RE.test(shellHead || head);
+  if (m[1].trim() === 'format:check' || words[0] === 'format:check') return [{ kind: 'lint' }];
+  if (words[0] === 'run-many' || words[0] === 'affected' || /^affected:/.test(words[0] || '')) {
+    let targets = [];
+    if (/^affected:/.test(words[0])) targets = [words[0].slice('affected:'.length)];
+    const tm = /(?:^|\s)(?:-t|--targets?)(?:=|\s+)((?:[^\s-][^\s]*)(?:\s+(?![-\d]|\S*[<>&])[^\s]+)*)/.exec(m[1]);
+    if (tm) targets = targets.concat(tm[1].split(/[\s,]+/).filter((t) => /^[\w:-]+$/.test(t)));
+    const one = projectsOf().length === 1 && !/[*!]/.test(projectsOf()[0]);
+    for (const t of targets) {
+      const kind = nxTargetKind(t);
+      if (kind && !out.some((x) => x.kind === kind)) out.push({ kind, scoped: kind === 'test' ? (fileScoped || one) : undefined });
+    }
+    return out;
+  }
+  if (words[0] === 'run') {
+    const parts = String(words[1] || '').split(':');
+    const kind = parts.length >= 2 ? nxTargetKind(parts[1]) : null;
+    return kind ? [{ kind, scoped: kind === 'test' ? true : undefined }] : [];
+  }
+  if (!words[0] || words[0].startsWith('-') || NX_OWN_COMMANDS.has(words[0])) return [];
+  const kind = nxTargetKind(words[0]);
+  if (!kind) return [];
+  const project = words[1] && !words[1].startsWith('-') && /^[\w@./:-]+$/.test(words[1]);
+  return [{ kind, scoped: kind === 'test' ? (fileScoped || !!project) : undefined }];
+}
+// The command word of each segment: split at the shell's own separators (a lone `&` too, never the `&` of `2>&1` /
+// `&>`), then past env assignments, keywords and wrappers. The input is the QUOTE-MASKED command - masking is
+// length-preserving, so the offsets also cut the unmasked spelling the scope markers are read from.
+const SEGMENT_SEP_G = /&&|\|\||[;|\n(){}`]|(?<![<>&])&(?![>&])/g;
+const HEAD_PREFIX_RE = /^(?:\s+|!\s*|(?:if|then|else|elif|do|while|until|time|exec|command|builtin|nohup)\s+|[A-Za-z_]\w*=\S*\s+|timeout(?:\s+-{1,2}[\w-]+(?:=\S+)?)*\s+\d\S*\s+|env(?:\s+-u\s+\S+|\s+-\S+)*\s+|nice(?:\s+-n\s*-?\d+|\s+-\d+)?\s+|stdbuf(?:\s+-\S+)+\s+|(?:caffeinate|unbuffer|xvfb-run|sudo|chronic|setsid)(?:\s+-\S+)*\s+|(?:npx|pnpx|bunx)(?:\s+-[\w-]+)*\s+|(?:pnpm|yarn)\s+(?:exec|dlx)\s+|(?:uv|poetry|pipenv|hatch|pdm|rye)\s+run\s+|bundle\s+exec\s+)/;
+function commandHeads(cmdCode, cmdShell) {
+  const code = String(cmdCode);
+  const shell = String(cmdShell == null ? cmdCode : cmdShell);
+  const out = [];
+  let start = 0;
+  let sep = '';
+  const take = (end, nextSep) => {
+    let off = start;
+    for (let i = 0; i < 16; i += 1) {
+      const m = HEAD_PREFIX_RE.exec(code.slice(off, end));
+      if (!m || !m[0]) break;
+      off += m[0].length;
+    }
+    const head = code.slice(off, end).trimEnd();
+    if (head) out.push({ code: head, shell: shell.slice(off, off + head.length), sepBefore: sep });
+    sep = nextSep;
+  };
+  SEGMENT_SEP_G.lastIndex = 0;
+  let m;
+  while ((m = SEGMENT_SEP_G.exec(code))) { take(m.index, m[0]); start = m.index + m[0].length; }
+  take(code.length, '');
+  return out;
+}
 // A removal's own VERIFICATION tail: `rm -rf "$TMP" && ls "$TMP"`, `rm x; test -f x` - the tail
 // exits non-zero BECAUSE the removal worked, and the whole call's result then arrives as
 // `is_error`. Counting that as a tool error put a clean cleanup step in the errors column, where a
@@ -215,22 +393,88 @@ function locateClass(name, input) {
   return null;
 }
 
-function classifyCheck(cmdCode, cmdShell) {
-  for (const kind of ['test', 'build', 'lint', 'ci']) {
-    if (CHECK_RES[kind].test(cmdCode)) return { kind, scoped: kind === 'test' ? SCOPED_RE.test(cmdShell) : undefined };
+// Every check kind one shell call ran, in the scorecard's order (test, build, lint, ci), each once. A test call is
+// scoped when every test head in it is. `logs` are the files a check head redirected its output into - read later,
+// they are that check's result (below).
+const CHECK_KINDS = ['test', 'build', 'lint', 'ci'];
+const REDIRECT_TARGET_G = /(?:^|[^<>&\d])(?:\d?>>?|&>>?)\s*([^\s<>&;|]+)/g;
+function classifyChecks(cmdCode, cmdShell, bindings) {
+  const found = new Map();
+  const logs = [];
+  let checkBefore = false;
+  for (const h of commandHeads(cmdCode, cmdShell)) {
+    const hits = [];
+    const nx = nxChecks(h.code, h.shell);
+    if (nx) hits.push(...nx);
+    else {
+      for (const kind of CHECK_KINDS) {
+        if (CHECK_RES[kind].test(h.code)) hits.push({ kind, scoped: kind === 'test' ? SCOPED_RE.test(` ${h.shell} `) : undefined });
+      }
+    }
+    if (hits.length) {
+      for (const x of hits) {
+        const cur = found.get(x.kind);
+        if (!cur) found.set(x.kind, { kind: x.kind, scoped: x.scoped });
+        else if (x.kind === 'test') cur.scoped = cur.scoped && x.scoped;
+      }
+      for (const r of h.shell.matchAll(REDIRECT_TARGET_G)) logs.push(expandBound(r[1], bindings));
+      checkBefore = true;
+    } else if (checkBefore && h.sepBefore === '|' && /^tee\s/.test(h.code)) {
+      for (const w of h.shell.split(/\s+/).slice(1)) if (w && !w.startsWith('-')) logs.push(expandBound(w, bindings));
+    } else checkBefore = false;
   }
-  return null;
+  return {
+    kinds: CHECK_KINDS.filter((k) => found.has(k)).map((k) => found.get(k)),
+    logs: logs.map(unquoteWord).filter((p) => p && p !== '/dev/null' && !p.startsWith('&')),
+  };
+}
+// A check run in the BACKGROUND writes its verdict to a log the session reads later, often in another turn: that read
+// is the check's result reaching the session (audit 2026-10-10, f24eb967: `cat $S/format.log; tail -5 $S/suite.log`
+// carried 'format_exit=0' and 'Passed 1650', and the green claim beside it was scored unchecked).
+const LOG_READ_HEAD_RE = /^(?:cat|tail|head|less|more|bat|grep|egrep|rg|awk|sed|wc|jq)\s/;
+function readsCheckLog(cmdCode, cmdShell, bindings, checkLogs) {
+  if (!checkLogs.size) return false;
+  for (const h of commandHeads(cmdCode, cmdShell)) {
+    if (!LOG_READ_HEAD_RE.test(h.code)) continue;
+    for (const w of h.shell.split(/\s+/).slice(1)) {
+      const p = unquoteWord(expandBound(w, bindings));
+      if (p && checkLogs.has(p)) return true;
+    }
+  }
+  return false;
+}
+const unquoteWord = (w) => String(w || '').replace(/^["']|["']$/g, '').replace(/[;,)]+$/, '');
+// `NAME=value` bindings the command makes for itself, so `P=<path>; cat > $P` and `S=<dir>; ... > $S/x.log` read the
+// literal they stand for. Only a binding made in the same command is expanded; anything else stays as written.
+const BINDING_G = /(?:^|[\s;&|(])([A-Za-z_]\w*)=("[^"\n]*"|'[^'\n]*'|[^\s;&|()<>"']+)/g;
+function bindingsOf(cmd) {
+  const out = new Map();
+  for (const m of String(cmd).matchAll(BINDING_G)) out.set(m[1], expandBound(unquoteWord(m[2]), out));
+  return out;
+}
+function expandBound(text, bindings) {
+  if (!bindings || !bindings.size) return String(text);
+  return String(text).replace(/\$\{?([A-Za-z_]\w*)\}?/g, (all, name) => (bindings.has(name) ? bindings.get(name) : all));
 }
 // A GREEN CLAIM: prose saying a check passed. The turn it lands in either ran a check or it did not.
 const GREEN_RE = /\b(?:all\s+(?:\d[\d,]*\s+)?tests?|tests?|test\s+suite|suite|build|lint|linter|typecheck|type-check|checks?|ci)\b[^.!?\n]{0,60}?\b(?:pass(?:es|ed|ing)?|green|succeed(?:s|ed)?|clean|ok)\b|\b\d[\d,]*\s*\/\s*\d[\d,]*\s+(?:tests?\s+)?pass(?:ed|ing)?\b/gi;
+// A suite or test NAMED with its count: 'Parser 716 green', 'Exporter 707 pass', 'Redo passes in full-suite order' -
+// the shapes a stop's `Result:` line takes, which GREEN_RE's keyword list never reads (audit 2026-10-11, session
+// 5984019e: 0 of 9 ask results matched). Case-sensitive on purpose: the name is a capitalised word. A pronoun or article
+// is no name, a transitive 'passes the value' is no result, and a failure count in the same clause makes it no green.
+const GREEN_NAMED_RE = /\b(?!(?:It|This|That|These|Those|The|A|An|He|She|They|We|You|I|Which|Who|What|Where|When|Then|If|And|But|Or|So)\b)[A-Z][A-Za-z0-9_.-]*(?:\s+\d[\d,]*(?:\s*\/\s*\d[\d,]*)?)?\s+(?:pass(?:es|ed)?|green)\b(?!\s+(?:the|a|an|it|its|them|this|that|these|those|through|to|into|along|over|down|back)\b)/g;
+const FAILED_AFTER_RE = /^[^.!?\n;]{0,80}?\b(?:[1-9][\d,]*\s+(?:tests?\s+)?(?:failed|failing|failures?|errors?|red)\b|still\s+(?:red|failing))/i;
 function claimsGreen(prose) {
-  GREEN_RE.lastIndex = 0;
-  let m;
-  while ((m = GREEN_RE.exec(prose))) {
+  const negated = (m, re) => {
     const before = prose.slice(Math.max(0, m.index - 24), m.index);
-    if (/\b(?:not|no|never|n't|until|if|when|once|should|will|would|must|before|fail\w*)\b[^.]{0,20}$/i.test(before)) continue;
-    if (/\b(?:not|n't|never|fail)/i.test(m[0])) continue;
-    return true;
+    if (/\b(?:not|no|never|n't|until|if|when|once|should|will|would|must|before|fail\w*)\b[^.]{0,20}$/i.test(before)) return true;
+    if (/\b(?:not|n't|never|fail)/i.test(m[0])) return true;
+    return re === GREEN_NAMED_RE && FAILED_AFTER_RE.test(prose.slice(m.index + m[0].length));
+  };
+  for (const re of [GREEN_RE, GREEN_NAMED_RE]) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(prose))) if (!negated(m, re)) return true;
   }
   return false;
 }
@@ -333,6 +577,211 @@ function docRelPath(filePath) {
   }
   return null;
 }
+// A docs path that belongs to ANOTHER project: one that climbs out of the cwd (`../<sibling>/.alfred/docs/...`), or an
+// absolute one whose project folder is neither the session's cwd, an ancestor of it (a worktree under the project
+// still reads its own project's docs) nor under it (a worktree or package the session reached by `cd`).
+function foreignDocPath(p, cwd) {
+  const norm = String(p).replace(/\\/g, '/');
+  if (!/^(?:\/|[A-Za-z]:\/)/.test(norm)) return path.posix.normalize(norm).startsWith('../');
+  if (!cwd) return false;
+  let owner = null;
+  for (const pre of docsPrefixes) { const i = norm.indexOf(pre.startsWith('/') ? pre : `/${pre}`); if (i >= 0) { owner = norm.slice(0, i); break; } }
+  if (owner == null) return false;
+  const c = String(cwd).replace(/\\/g, '/').replace(/\/+$/, '');
+  const fold = (x) => (/^[A-Za-z]:\//.test(x) ? x.toLowerCase() : x);
+  const [a, b] = [fold(c), fold(owner)];
+  return !(a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`));
+}
+// A touched path as the project sees it: relative to the session's cwd, or null when it sits OUTSIDE the project (the
+// plugin cache, the temp dir, a sibling repo). A path-scoped rule's glob is the project's, so a file outside it attaches
+// nothing - the proxy scored `markdown-docs.md` used from two plugin-cache Reads (audit 2026-10-11, sessions a9e06780
+// and 5b9ce9c5). Windows spellings compare as one: backslashes, a drive letter in any case, Git Bash's `/c/...`. With no
+// cwd on record an absolute path is judged as written, the reading before this check.
+function projectRelPath(p, cwd) {
+  const winRoot = /^[A-Za-z]:[\\/]/.test(String(cwd || ''));
+  const norm = (x) => {
+    let q = String(x || '').replace(/\\/g, '/');
+    if (winRoot) { const gb = /^\/([A-Za-z])(?=\/|$)/.exec(q); if (gb) q = `${gb[1]}:${q.slice(2) || '/'}`; }
+    return q;
+  };
+  const q = path.posix.normalize(norm(p));
+  if (!/^(?:\/|[A-Za-z]:\/)/.test(q)) return q === '..' || q.startsWith('../') ? null : q.replace(/^\.\//, '');
+  if (!cwd) return q;
+  const root = path.posix.normalize(norm(cwd)).replace(/\/+$/, '');
+  const fold = (x) => (winRoot ? x.toLowerCase() : x);
+  if (fold(q) === fold(root)) return '';
+  return fold(q).startsWith(`${fold(root)}/`) ? q.slice(root.length + 1) : null;
+}
+// The command word of one segment, past the same env assignments, keywords and wrappers the check classifier strips.
+function segmentHead(seg) {
+  let s = String(seg);
+  for (let i = 0; i < 16; i += 1) {
+    const m = HEAD_PREFIX_RE.exec(s);
+    if (!m || !m[0]) break;
+    s = s.slice(m[0].length);
+  }
+  return s;
+}
+const DOC_PROBE_HEAD_RE = /^(?:test|\[\[?|ls|stat|realpath|readlink|du|file|dirname|basename)(?=\s|$)/;
+const IN_PLACE_HEAD_RE = /^(?:g?sed\s+(?:\S+\s+)*?(?:-[a-zA-Z]*i\S*|--in-place\S*)(?=\s|$)|perl\s+(?:\S+\s+)*?-[a-zA-Z0-9]*i[a-zA-Z0-9]*(?=\s|$)|ruby\s+(?:\S+\s+)*?-[a-zA-Z]*i\S*(?=\s|$))/;
+const DOC_READ_VERB = '(?:cat|head|tail|sed|awk|grep|egrep|rg|less|more|bat|nl|wc|diff|jq|python3?|node)';
+// `for p in <paths>; do [ -e "$p" ] ...; done` names each path and reads none: a loop whose body never hands its
+// variable to a reading verb is a probe list.
+function loopOnlyProbes(seg, cmd) {
+  const m = /^\s*for\s+([A-Za-z_]\w*)\s+in\s/.exec(seg);
+  if (!m) return false;
+  const at = String(cmd).indexOf(seg);
+  const rest = at >= 0 ? String(cmd).slice(at + seg.length) : String(cmd);
+  const body = (/\bdo\b([\s\S]*?)\bdone\b/.exec(rest) || [])[1] || '';
+  const v = m[1];
+  return !new RegExp(`\\b${DOC_READ_VERB}\\b[^;&|\\n]*\\$\\{?${v}\\b`).test(body);
+}
+// Where a grep-family command's PATTERN operands sit in its text, as [start, end) offsets: every `-e` / `--regexp`
+// value, else the first operand that is no option and no option's value. A `-f FILE` value is a file the command reads,
+// so it is no pattern. Words are read quote-aware, up to the first unquoted pipe or separator.
+const GREP_HEAD_RE = /^(?:(?:\S*[/\\])?(grep|egrep|fgrep|rg|ag|ack)(?:\.exe)?|git\s+(?:-[Cc]\s+\S+\s+|-\S+\s+)*grep)(?=\s|$)/;
+const GREP_VALUE_SHORT = { grep: 'efmABCdD', rg: 'efgtTABCmjMrEd', git: 'efABCmO' };
+const GREP_VALUE_LONG = /^--(?:regexp|file|max-count|after-context|before-context|context|devices|directories|label|include|exclude|exclude-dir|exclude-from|glob|iglob|type|type-not|type-add|type-clear|threads|max-columns|replace|encoding|max-depth|pre|pre-glob|sort|sortr|max-filesize|path-separator|colors?|context-separator|field-match-separator|field-context-separator|ignore-file|engine|binary-files|open-files-in-pager)$/;
+function grepPatternSpans(head) {
+  const h = String(head || '');
+  const hm = GREP_HEAD_RE.exec(h);
+  if (!hm) return [];
+  const valueShort = GREP_VALUE_SHORT[hm[1] === 'rg' ? 'rg' : hm[1] ? 'grep' : 'git'];
+  const words = [];
+  let i = hm[0].length;
+  while (i < h.length) {
+    while (i < h.length && /\s/.test(h[i])) i += 1;
+    if (i >= h.length || /[|;&]/.test(h[i])) break;
+    const start = i;
+    let val = '';
+    while (i < h.length && !/[\s|;&]/.test(h[i])) {
+      const c = h[i];
+      if (c === "'") { const j = h.indexOf("'", i + 1); const e = j < 0 ? h.length : j; val += h.slice(i + 1, e); i = e + 1; }
+      else if (c === '"') { let j = i + 1; while (j < h.length && h[j] !== '"') j += h[j] === '\\' ? 2 : 1; val += h.slice(i + 1, Math.min(j, h.length)); i = j + 1; }
+      else if (c === '\\') { val += h[i + 1] || ''; i += 2; }
+      else { val += c; i += 1; }
+    }
+    words.push({ start, end: Math.min(i, h.length), val });
+  }
+  const spans = [];
+  const take = (k) => { if (words[k]) spans.push([words[k].start, words[k].end]); };
+  let positional = null, endOpts = false, explicit = false;
+  for (let k = 0; k < words.length; k += 1) {
+    const v = words[k].val;
+    if (/^\d*[<>]/.test(v)) { if (/^\d*(?:[<>]+|>&)$/.test(v)) k += 1; continue; }   // a redirection and its target
+    if (!endOpts && v === '--') { endOpts = true; continue; }
+    if (!endOpts && v.startsWith('--')) {
+      const eq = v.indexOf('=');
+      const name = eq >= 0 ? v.slice(0, eq) : v;
+      if (name === '--regexp') { explicit = true; if (eq >= 0) take(k); else { take(k + 1); k += 1; } }
+      else if (eq < 0 && GREP_VALUE_LONG.test(name)) k += 1;
+      continue;
+    }
+    if (!endOpts && v.length > 1 && v.startsWith('-')) {
+      const letters = v.slice(1);
+      for (let x = 0; x < letters.length; x += 1) {
+        if (!valueShort.includes(letters[x])) continue;
+        const attached = x + 1 < letters.length;
+        if (letters[x] === 'e') { explicit = true; if (attached) take(k); else { take(k + 1); k += 1; } }
+        else if (!attached) k += 1;
+        break;
+      }
+      continue;
+    }
+    if (!positional) positional = words[k];
+  }
+  if (!explicit && positional) spans.push([positional.start, positional.end]);
+  return spans;
+}
+// The pipe stages of one segment, quote-aware, each as [offset, text].
+function pipeStages(seg) {
+  const s = String(seg || '');
+  const out = [];
+  let from = 0, q = null;
+  for (let i = 0; i < s.length; i += 1) {
+    const c = s[i];
+    if (q) { if (c === q) q = null; else if (c === '\\' && q === '"') i += 1; continue; }
+    if (c === "'" || c === '"') q = c;
+    else if (c === '\\') i += 1;
+    else if (c === '|' && s[i + 1] !== '|' && s[i - 1] !== '|') { out.push([from, s.slice(from, i)]); from = i + 1; }
+  }
+  out.push([from, s.slice(from)]);
+  return out;
+}
+// A runtime handed a doc path as an argument, with a script that reads its argv and writes a file.
+const RUNTIME_HEAD_RE = /^(?:python[\d.]*|node|perl|ruby|deno|bun)(?=\s|$)/;
+const ARGV_READ_RE = /\bsys\.argv\b|\bprocess\.argv\b|\bARGV\b|\$ARGV\b/;
+const SCRIPT_WRITE_RE = /\bopen\([^)]*,\s*(?:mode\s*=\s*)?["'][wa]\+?b?["']|\.write_(?:text|bytes)\(|\bwriteFileSync\(|\bFile\.write\(|\bopen\s*\(\s*my\s+\$\w+\s*,\s*["']>/;
+// `node <path>/docs.js <verb> ...` at a command word.
+const DOCS_JS_HEAD_RE = /^node\s+["']?(?:\S*[/\\])?docs\.js["']?\s+(show|toc|set|where|seed-ids|promote|adr)(?=\s|$)/;
+// A tool result as the text the model read: a string, or the text blocks of a block array.
+function plainResult(c) {
+  if (!c) return '';
+  if (typeof c.content === 'string') return c.content;
+  if (Array.isArray(c.content)) return c.content.filter((b) => b && b.type === 'text').map((b) => String(b.text || '')).join('\n');
+  return '';
+}
+// A read whose result says the file - or a folder above it, down to the docs root - is not there read nothing:
+// `ls .alfred/docs/<dir>/ 2>&1; grep ... <dir>/<doc>.md 2>/dev/null` names only the missing folder (audit 2026-10-10,
+// 49cb4b82).
+function missingInResult(text, p) {
+  if (!text || !p) return false;
+  const parts = String(p).replace(/\\/g, '/').split('/');
+  const rootDepth = parts.findIndex((x, i) => docsPrefixes.some((pre) => parts.slice(0, i + 1).join('/').endsWith(pre.replace(/\/+$/, ''))));
+  for (let n = parts.length; n > Math.max(rootDepth, 0); n -= 1) {
+    const esc = parts.slice(0, n).join('/').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const tail = n < parts.length ? '/?' : '';
+    if (new RegExp(`${esc}${tail}['"\`]?:?\\s*(?:No such file|not found|does not exist)|(?:cannot access|cannot open|can't open|No such file or directory:?)\\s*['"\`]?${esc}${tail}['"\`]?(?![\\w./-])`, 'i').test(text)) return true;
+  }
+  return false;
+}
+// A path as seen from where a segment runs: an absolute one as written, a relative one joined to the anchor (a
+// POSIX or a drive-letter cwd). With no anchor, or a `cd` the analyzer cannot follow (`~`, `-`), there is none.
+function resolveAt(anchor, p) {
+  const q = String(p).replace(/\\/g, '/');
+  if (/^(?:\/|[A-Za-z]:\/)/.test(q)) return q;
+  if (!anchor || /^[~-]/.test(q)) return null;
+  if (/^[A-Za-z]:\//.test(anchor)) return path.win32.resolve(anchor, q).replace(/\\/g, '/');
+  return anchor.startsWith('/') ? path.posix.resolve(anchor, q) : null;
+}
+// What a docs.js call read or wrote, from its own output: `show` / `toc` print `<docs path>.md line N` (or a branch
+// version's path) above each section, `set` prints `wrote <ref> into <path>` or `wrote <path> (base kept ...)`, and
+// `where` lists the covering sections - one orientation lookup row. A show of a ref that resolves to nothing prints no
+// path and counts nothing, as docs-session.js reads it.
+const DOCS_WHERE_ROW = '(docs.js where - section lookup)';
+const DOCS_SEED_ROW = '(docs.js seed-ids - section ids added, files not named)';
+const DOCS_PROMOTE_ROW = '(docs.js promote - sections folded into mainline)';
+function docsJsTouches(text, verbs) {
+  const out = [];
+  const seen = new Set();
+  const rel = (p) => docRelPath(`/${String(p).replace(/^\.?\//, '')}`) || docRelPath(p);
+  if (verbs.has('show') || verbs.has('toc')) {
+    for (const m of String(text).matchAll(/(?:^|\n)\s*(\S+\.md) (?:line \d+|\(this branch)/g)) {
+      const r = rel(m[1]);
+      if (r && !seen.has(`r:${r}`)) { seen.add(`r:${r}`); out.push([r, 'bashReads']); }
+    }
+  }
+  if (verbs.has('set')) {
+    for (const m of String(text).matchAll(/\bwrote \S+ into (\S+\.md)|\bwrote (\S+\.md) \(base kept/g)) {
+      const r = rel(m[1] || m[2]);
+      if (r && !seen.has(`w:${r}`)) { seen.add(`w:${r}`); out.push([r, 'bashWrites']); }
+    }
+  }
+  if (verbs.has('where') && /^\S+#\S+ - /m.test(String(text))) out.push([DOCS_WHERE_ROW, 'bashReads']);
+  // The verbs that REWRITE docs without a `set` (audit 2026-10-11, session d9035363: `seed-ids` added 13 section ids to
+  // two docs and the table printed 0 writes). `adr new` names each file it created or rewrote; `seed-ids` names a file
+  // only on a per-file `ids added: <path> (+N)` line, else the run is one row of its own, as a `promote` that folded
+  // sections into mainline is (its result lines name a section, never a path).
+  const write = (r) => { if (r && !seen.has(`w:${r}`)) { seen.add(`w:${r}`); out.push([r, 'bashWrites']); } };
+  if (verbs.has('adr')) for (const m of String(text).matchAll(/^(?:created|index rewritten:|seeded) (\S+\.md)\b/gm)) write(rel(m[1]));
+  if (verbs.has('seed-ids')) {
+    const named = [...String(text).matchAll(/^ids added: (\S+\.md) \(\+\d+\)/gm)];
+    for (const m of named) write(rel(m[1]));
+    if (!named.length && /^([1-9]\d*) ids added$/m.test(String(text))) write(DOCS_SEED_ROW);
+  }
+  if (verbs.has('promote') && /^\S+#\S+: (?:added|merged)\b/m.test(String(text))) write(DOCS_PROMOTE_ROW);
+  return out;
+}
 
 // ---------- installed inventory: what the project HAS, against what a session USED ----------
 // The report measured consumption and never its complement: a 79-skill install could show three
@@ -405,8 +854,29 @@ const skillBodyOf = (text) => String(text || '')
   .replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '')
   .replace(/^Base directory for this skill:.*\r?\n/, '')
   .trim();
+// The copy a session LOADED: the harness appends the run's arguments as `\n\nARGUMENTS: ...` after the body, and a
+// heading in them (a pasted brief) read as a section the source lacks (audit 2026-10-10, ca65b406: a false 'DIFFERS -
+// same sections, -4977 chars' for task-solve). No stack body spells that line, so the first one ends the body.
+const loadedBodyOf = (text) => skillBodyOf(String(text || '').replace(/\n\nARGUMENTS: [\s\S]*$/, ''));
 const headingFingerprint = (text) => String(text || '').split('\n')
   .filter((l) => /^#{1,6}\s/.test(l)).map((l) => l.trim().replace(/\s+/g, ' ')).join(' | ');
+// One short hash per PARAGRAPH, with what the harness expands read as one token on both sides: a `${VAR}` placeholder
+// and any absolute path (the expansion of one) become `<P>`, so only an edit moves a hash. The heading list and the
+// char count missed offsetting edits - a body that lost a sentence, gained a clause and had a line rewritten, 50 chars
+// net, read 'same' (audit 2026-10-11, session d56562c7).
+const EXPANDED_RE = /\$\{[A-Za-z_][A-Za-z0-9_]*\}[^\s`'"()<>\]]*|(?<![\w.~-])(?:[A-Za-z]:)?[\\/][^\s`'"()<>\]]*/g;
+const paraFingerprint = (text) => String(text || '').replace(/\r\n?/g, '\n').split(/\n[ \t]*\n/)
+  .map((p) => p.replace(EXPANDED_RE, '<P>').replace(/\s+/g, ' ').trim()).filter(Boolean)
+  .map((p) => createHash('sha1').update(p).digest('hex').slice(0, 12));
+// Paragraphs one side has and the other lacks, counted as a multiset.
+function paraDelta(a, b) {
+  const left = new Map();
+  for (const h of a || []) left.set(h, (left.get(h) || 0) + 1);
+  let onlyB = 0;
+  for (const h of b || []) { const n = left.get(h) || 0; if (n) left.set(h, n - 1); else onlyB += 1; }
+  const onlyA = [...left.values()].reduce((n, k) => n + k, 0);
+  return { onlyA, onlyB };
+}
 
 function dirEntries(dir) {
   try { return fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
@@ -567,7 +1037,14 @@ function loadPluginLayers(claudeDir) {
   return out;
 }
 
-function resolveInventory(explicitDir, cwd, sessionLastTs) {
+// A stamp written between the session's first and last rows: the session's own update (or one beside it) wrote it,
+// so rows before it ran on the prior install (audit 2026-10-10, 229e2715: a mid-session update read as 'installed
+// before this session ran'). Compared as instants - a stamp carries no milliseconds, a transcript row does.
+function installedDuring(installed, firstTs, lastTs) {
+  const [i, a, b] = [Date.parse(installed), Date.parse(firstTs), Date.parse(lastTs)];
+  return Number.isFinite(i) && Number.isFinite(a) && Number.isFinite(b) && a < i && i <= b;
+}
+function resolveInventory(explicitDir, cwd, sessionLastTs, sessionFirstTs) {
   const tryDir = (d, kind, why) => {
     if (!d) return null;
     const plug = loadPluginLayers(d);
@@ -599,6 +1076,8 @@ function resolveInventory(explicitDir, cwd, sessionLastTs) {
       if (stamp && stamp.installed && sessionLastTs && stamp.installed > sessionLastTs) {
         inv.drifted = true;
         inv.why = `project ${d} - INSTALLED ${stamp.installed} (v${stamp.version || '?'}), AFTER this session's last row ${sessionLastTs}: read at analysis time, not the set the session had`;
+      } else if (stamp && installedDuring(stamp.installed, sessionFirstTs, sessionLastTs)) {
+        inv.why = `project ${d} (the transcript's own cwd) - INSTALLED DURING this session at ${stamp.installed} (v${stamp.version || '?'}): rows before it ran on the prior install`;
       } else if (!stamp) {
         inv.why = `project ${d} (the transcript's own cwd; no alfred-code.stamp - install vintage unknown, the directory is read at ANALYSIS time)`;
       } else {
@@ -621,18 +1100,36 @@ function applySessionRoster(inv, main) {
   if ((!skills || !skills.length) && (!agents || !agents.length)) return inv;
   const out = { ...inv };
   const from = [];
+  // The roster spells a plugin item with its scope (`alfred-code:aspnet-verifier`) or under an older release's name
+  // (a pre-2.2.0 spelling), while every use is keyed through houseBare - so a dispatched seat read unused beside its own
+  // 'observed' row, and its preloads read as slash commands (audit 2026-10-10 C06: 9a4ef375, bc2fa83e, 69dbed46).
+  // Both sides go through the one function, once.
+  const canon = (names) => [...new Set([...names].map(houseBare))];
   if (skills && skills.length) {
     const onDisk = new Map(inv.skills.map((x) => [x.name, x]));
-    out.skills = skills.map((n) => onDisk.get(n) || { name: n, file: null }).sort(byName);
-    from.push(`${skills.length} skills`);
+    const names = canon(skills);
+    out.skills = names.map((n) => onDisk.get(n) || { name: n, file: null }).sort(byName);
+    from.push(`${names.length} skills`);
   }
   if (agents && agents.length) {
     const onDisk = new Map(inv.agents.map((x) => [x.name, x]));
-    out.agents = agents.map((n) => onDisk.get(n) || { name: n, file: null, skills: [] }).sort(byName);
-    from.push(`${agents.length} agent types`);
+    const names = canon(agents);
+    out.agents = names.map((n) => onDisk.get(n) || { name: n, file: null, skills: [] }).sort(byName);
+    from.push(`${names.length} agent types`);
   }
   out.why = `${from.join(' and ')} from the session's own roster (the harness's skill / agent listing in this transcript), the rest from ${inv.why}`;
   return out;
+}
+// The always-on rules the session was GIVEN (its `instructions` attachment) join the disk's rules, so a rule since
+// renamed or removed is still in the session's inventory (f10cb06a: seven `baseline-*` rules invisible).
+function applySessionRules(inv, main) {
+  const files = main.instructionFiles || [];
+  const given = files.map((f) => (/\/\.claude\/rules\/(.+\.md)$/.exec(f.path) || [])[1]).filter(Boolean);
+  if (!given.length) return inv;
+  const have = new Set(inv.rules.map((r) => r.name));
+  const extra = given.filter((n) => !have.has(n)).map((n) => ({ name: n, file: null, globs: [], alwaysOn: true, fromSession: true }));
+  if (!extra.length) return inv;
+  return { ...inv, rules: [...inv.rules, ...extra].sort(byName), why: `${inv.why}; ${extra.length} always-on rule(s) from the session's own instructions record` };
 }
 
 const readJsonOr = (f, dflt) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return dflt; } };
@@ -646,6 +1143,18 @@ const HOOK_INTERPRETER_RE = /^(?:node|bash|sh|zsh|python3?|pwsh|powershell)(?:\.
 function hookCommandKey(cmd) {
   return String(cmd || '').replace(/["']/g, '').replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, '$$$1')
     .replace(/\s+/g, ' ').trim().replace(HOOK_INTERPRETER_RE, '');
+}
+// The hook a `hook_*` attachment ran, by its script's file name (`shell-guards.js`), else the row's own `hookName`.
+function hookFileOf(at) {
+  const files = [...String((at && at.command) || '').matchAll(/([A-Za-z0-9._-]+\.(?:[cm]?js|sh|py|ps1))\b/g)];
+  return files.length ? files[files.length - 1][1] : String((at && at.hookName) || '(unnamed hook)');
+}
+// A hook's stdout as the harness parsed it: one JSON object, or the object a line of text wraps.
+function hookJsonOf(text) {
+  const s = String(text || '').trim();
+  if (!s.includes('{')) return null;
+  try { return JSON.parse(s); } catch { /* text around it */ }
+  try { return JSON.parse(s.slice(s.indexOf('{'), s.lastIndexOf('}') + 1)); } catch { return null; }
 }
 
 // What one install of a plugin declares, read the three ways Claude Code reads it: the plugin's own
@@ -805,17 +1314,29 @@ function buildVintage(inv, main) {
   const bySkill = new Map((inv.skills || []).map((s) => [s.name, s]));
   const rows = [];
   const loaded = main.loadedSkillBodies || {};
+  // A name the session ran under a scope or an older release's spelling is looked up as the install keys it now
+  // (audit 2026-10-10, e499fc94: three pre-rename skills read 'current source unreachable' beside their renamed files).
+  const sourceOf = (name) => {
+    const hits = [name, String(name).split(':').pop(), houseBare(name)].map((n) => bySkill.get(n)).filter(Boolean);
+    return hits.find((e) => e.file) || hits[0];
+  };
   for (const [name, l] of Object.entries(loaded)) {
-    const entry = bySkill.get(name) || bySkill.get(String(name).split(':').pop());
+    // `/init`, `/review` - a harness prompt command expands like a plugin command; only a stack item is graded.
+    if (l.via === 'command' && !sourceOf(name) && !name.includes(':')) continue;
+    const entry = sourceOf(name);
     const file = entry && entry.file ? entry.file : null;
     const body = file ? skillBodyOf(readHead(file)) : '';
-    const cur = body ? { chars: body.length, headings: headingFingerprint(body) } : null;
+    const cur = body ? { chars: body.length, headings: headingFingerprint(body), paras: paraFingerprint(body) } : null;
     const delta = cur ? cur.chars - l.chars : null;
+    // Paragraphs decide when both sides carry them; a body recorded without them falls back to the char tolerance.
+    const pd = cur && l.paras ? paraDelta(l.paras, cur.paras) : null;
+    const changed = pd ? Math.max(pd.onlyA, pd.onlyB) : 0;
     const verdict = !cur ? 'current source unreachable - the loaded body is the only copy'
       : cur.headings !== l.headings ? 'DIFFERS - the current source has different sections'
-        : Math.abs(delta) > Math.max(64, Math.round(0.01 * l.chars)) ? `DIFFERS - same sections, ${delta > 0 ? '+' : ''}${delta} chars in the current source`
-          : 'same';
-    rows.push({ name, how: l.via === 'slash' ? 'slash command' : 'Skill call', loadedChars: l.chars, currentChars: cur ? cur.chars : null, file, verdict, ts: l.ts });
+        : pd ? (changed ? `DIFFERS - same sections, ${changed} of ${l.paras.length} paragraph(s) changed (${delta > 0 ? '+' : ''}${delta} chars) in the current source` : 'same')
+          : Math.abs(delta) > Math.max(64, Math.round(0.01 * l.chars)) ? `DIFFERS - same sections, ${delta > 0 ? '+' : ''}${delta} chars in the current source`
+            : 'same';
+    rows.push({ name, how: l.via === 'slash' || l.via === 'command' ? 'slash command' : 'Skill call', loadedChars: l.chars, currentChars: cur ? cur.chars : null, file, verdict, ts: l.ts });
   }
   // A run whose body never reached the transcript is NOT a match - say so rather than comparing
   // against a source nothing proves the session saw.
@@ -825,8 +1346,8 @@ function buildVintage(inv, main) {
     const how = main.skillInvocations && main.skillInvocations[name] ? 'Skill call' : 'slash command';
     // `/clear`, `/model`, `/exit` are the harness's own commands, not a skill body anything could
     // be graded against - the same discriminator the SKILLS rows use.
-    if (how === 'slash command' && !bySkill.has(name) && !name.includes(':')) continue;
-    rows.push({ name, how, loadedChars: null, currentChars: null, file: (bySkill.get(name) || {}).file || null, verdict: 'body not captured - this transcript carries no loaded copy, so no comparison is possible', ts: null });
+    if (how === 'slash command' && !sourceOf(name) && !name.includes(':')) continue;
+    rows.push({ name, how, loadedChars: null, currentChars: null, file: (sourceOf(name) || {}).file || null, verdict: 'body not captured - this transcript carries no loaded copy, so no comparison is possible', ts: null });
   }
   rows.sort((a, b) => String(a.name).localeCompare(String(b.name)));
   return { stamp: inv.stamp || null, drifted: !!inv.drifted, inventoryWhy: inv.why, rows };
@@ -837,14 +1358,14 @@ function buildVintage(inv, main) {
 // two sessions sharing a cwd can have been offered different sets.
 function inventoryFor(acc, inventoryDir, main) {
   const cwd = main.cwd;
-  const key = `${inventoryDir || ''}|${cwd || ''}|${main.lastTs || ''}`;
+  const key = `${inventoryDir || ''}|${cwd || ''}|${main.firstTs || ''}|${main.lastTs || ''}`;
   let hit = acc.invCache.get(key);
   if (!hit) {
-    const inv = resolveInventory(inventoryDir, cwd, main.lastTs);
+    const inv = resolveInventory(inventoryDir, cwd, main.lastTs, main.firstTs);
     hit = { inv, mcp: loadMcpInventory(inv) };
     acc.invCache.set(key, hit);
   }
-  return { inv: applySessionRoster(hit.inv, main), mcp: hit.mcp };
+  return { inv: applySessionRules(applySessionRoster(hit.inv, main), main), mcp: hit.mcp };
 }
 
 // A stack item's name as the inventory keys it: the house plugin scope stripped (`alfred-code:task-solve`), and an
@@ -965,6 +1486,19 @@ function addSessionUse(acc, main, agents, inventoryDir) {
       noteNs(nsPreload, sk, e.n, e.firstTs);
     }
   }
+  // A seat whose definition is not on disk here (a plugin-served seat, a bundle read on another machine) still proves
+  // its preloads in its own transcript; a seat the frontmatter route above already credited is not counted twice.
+  for (const a of agents) {
+    const t = a.meta && a.meta.agentType;
+    const pre = Object.entries((a.stats && a.stats.preloadedSkills) || {});
+    if (!pre.length) continue;
+    const fm = t && inv.agents.find((x) => x.name === houseBare(t));
+    if (fm && fm.skills && fm.skills.length && dispatched.has(t)) continue;
+    for (const [sk, ts] of pre) {
+      mark(ensure(acc.skills, houseBare(sk)), `preloaded via ${t || 'a seat'}`, 1, ts);
+      noteNs(nsPreload, sk, 1, ts);
+    }
+  }
 
   // --- rules: two direct records, then the glob proxy as the floor under them
   for (const src of srcs) for (const [file, e] of Object.entries(src.ruleAttachments || {})) {
@@ -978,7 +1512,8 @@ function addSessionUse(acc, main, agents, inventoryDir) {
     let n = 0;
     let first = null;
     for (const src of srcs) for (const [p, t] of Object.entries(src.fileTouches || {})) {
-      if (!res.some((re) => re.test(String(p).replace(/\\/g, '/')))) continue;
+      const rel = projectRelPath(p, src.cwd || main.cwd);
+      if (rel == null || !res.some((re) => re.test(rel))) continue;
       n += t.n;
       if (t.firstTs && (!first || t.firstTs < first)) first = t.firstTs;
     }
@@ -1151,6 +1686,36 @@ function maskHeredocs(cmd) {
 const maskQuoted = (cmd) => String(cmd)
   .replace(/'[^'\n]*'/g, (m) => m.replace(/[^\n]/g, 'x'))
   .replace(/"[^"\n]*"/g, (m) => m.replace(/[^\n]/g, 'x'));
+// The check classifier's masker: a quote-state walk, so a quoted span that crosses lines (a `perl -0pi -e '...'`
+// script whose replacement text says `npx nx test <project>`) is text, and a `#` comment is text too - an apostrophe
+// in it never opens a quote. Same length, newlines kept. An unterminated quote leaves the rest as written.
+function maskQuotedShell(cmd) {
+  const s = String(cmd);
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '\\' && i + 1 < s.length) { out += s.slice(i, i + 2); i += 2; continue; }
+    if (c === '#' && (i === 0 || /[\s;&|(]/.test(s[i - 1]))) {
+      const nl = s.indexOf('\n', i);
+      const end = nl < 0 ? s.length : nl;
+      out += 'x'.repeat(end - i);
+      i = end;
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      let j = i + 1;
+      while (j < s.length && s[j] !== c) j += c === '"' && s[j] === '\\' ? 2 : 1;
+      if (j >= s.length) { out += s.slice(i); break; }
+      out += s.slice(i, j + 1).replace(/[^\n]/g, 'x');
+      i = j + 1;
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
 
 // ---------- is this file a FORK, and of which parent? ----------
 // A FORK's transcript opens as a copy of its parent's rows, each copied row keeping the parent's
@@ -1260,10 +1825,16 @@ async function analyzeTranscript(file, window) {
     stopHookBlocks: 0,           // Stop-hook denials: an isMeta user STRING, invisible to is_error
     harnessDenials: 0,           // denials that are the HARNESS's, not a stack hook's - kept out of hook-blk
     denialsByHook: {},           // hook file name (or '(unattributed)') -> denials attributed to it
+    rewritesByHook: {},          // hook file name -> calls whose input it REWROTE (`updatedInput`)
+    hookTimeouts: {},            // hook file name -> { timedOut, cancelled, maxMs, timeoutMs, events } - `hook_cancelled` rows
+    hookCancelsByCall: {},       // tool_use id -> [{ hook, ms, timedOut }] - the cancels a call's own hooks took
     topResults: [],              // the N biggest tool results, each with the call's own label
     peakCtx: 0,                  // largest per-message context carried, and where
     peakCtxAt: null,
     floorCtx: 0,                 // smallest per-message context = the standing inventory
+    preloadedSkills: {},         // skill -> first ts: a seat's frontmatter preload, written as an isMeta command row
+    firstMsgCtx: 0,              // the first message's context, and the user / meta text sent ahead of it - when the
+    floorPromptChars: 0,         // floor IS that first message, the session's own opening prompt is inside it
     modelIdsFull: [],            // model ids WITH their window suffix, from cost-state
     modelIdReminder: null,       // the id the SESSION was told it is running, from its own reminder
     userInterrupts: 0,           // '[Request interrupted by user]' markers - a stop, never an error
@@ -1286,7 +1857,7 @@ async function analyzeTranscript(file, window) {
       buildDirReads: { calls: 0, chars: 0, paths: {} },
       checks: { test: { calls: 0, chars: 0, scoped: 0, whole: 0 }, build: { calls: 0, chars: 0 }, lint: { calls: 0, chars: 0 }, ci: { calls: 0, chars: 0 } },
       commitsChecked: 0, commitsUnchecked: [],
-      greenClaims: 0, unverifiedGreenClaims: [],
+      greenClaims: 0, unverifiedGreenClaims: [], greenClaimsInAsks: 0,
       correctionStreaks: [],     // the hook's strict detector: timestamps where it would fire
       correctionTurns: 0,        // short user turns right after a 1,500+ char answer (assistant rows merged)
       correctionsSaved: 0,       // correction turns (the hook's marker test) followed by a memory store within SAVE_WINDOW replies
@@ -1301,6 +1872,7 @@ async function analyzeTranscript(file, window) {
   const toolById = new Map();
   // doc writes seen in a Bash command, tallied only once the result shows it executed
   const pendingDocTouch = new Map();     // tool_use id -> { name, skill }
+  const pendingDocsJs = new Map();       // tool_use id -> Set of docs.js verbs the call ran (show, toc, set, where)
   const pendingGitActs = new Map();      // tool_use id -> { commits, merges } - released on a non-error result
   const promptParents = new Set();       // parentUuid of a counted user turn - siblings are the same turn
   // The ["…/hooks/<file>.js"] bracket is an ATTRIBUTION signal, never the test for a denial: the
@@ -1324,6 +1896,8 @@ async function analyzeTranscript(file, window) {
     if (!m && ts) (s.unattributedDenials = s.unattributedDenials || []).push(ts);
   };
   let prevCtx = null;
+  let prevMsgReg = null;           // the previous API message's folded usage - its output is in the next context too
+  let liveImgTok = 0;              // measured image tokens still in context - re-sent on every message until a reset
   let pending = [];               // tool results since the previous counted assistant msg
   // One real compaction emits TWO lines (a system compactMetadata + a user isCompactSummary,
   // ms apart) - counting both doubled the number in four audited bundles. Count boundaries;
@@ -1349,6 +1923,7 @@ async function analyzeTranscript(file, window) {
   let toolSeq = 0;                 // tool_use ordinal in this transcript
   const navRecent = [];            // locate class of the last NAV_WINDOW own tool calls
   let lastCheckSeq = -1;           // ordinal of the last test / build / lint / ci-status call
+  const checkLogs = new Set();     // files a check redirected its output into - a later read of one is its result
   let turnHadCheck = false;        // a check ran, or a seat was dispatched, since the last human turn
   const msgText = new Map();       // message.id -> text so far (one message arrives as several rows)
   const turns = [];                // { role, len } - the correction-streak view, as the hook builds it
@@ -1403,6 +1978,7 @@ async function analyzeTranscript(file, window) {
   };
   const openCompactionTracker = (ts) => {
     afterCompaction = true;
+    liveImgTok = 0;                // the summary carries no image
     s.efficiency.compactionRereads.push({ ts: ts || null, before: new Set(readPaths), seen: new Set(), files: 0, chars: 0 });
   };
                                    // call means the user gated a NEW phase - never fold it as
@@ -1410,6 +1986,10 @@ async function analyzeTranscript(file, window) {
                                    // ask-side skill and reported as its cost)
   let lastToolName = null;         // attributes isMeta skill-body injections to spike causes
   let slashPending = null;         // { name } - a slash command whose expansion row has not arrived yet
+  const skillCallIds = new Map();  // Skill tool_use id -> skill: its body arrives as an isMeta row naming that id
+  const callIdxById = new Map();   // tool_use id -> its toolCallIdx entry, which takes the result's timestamp
+  const rewriteOf = new Map();     // tool_use id -> the hooks that rewrote its input before it ran
+  let lastSkillResult = null;      // the Skill call whose result came last, for a body row that names no id
   let prevAssistantNoTool = null;  // ts of an end_turn assistant msg with no tool_use
   s.gitCommits = 0; s.prMerges = 0; s.clearTs = null; s.ccVersion = null;
   s.unheldStopCandidates = [];     // { stopTs, userTs } - free-text user turn right after a
@@ -1427,6 +2007,14 @@ async function analyzeTranscript(file, window) {
     if (foreign) {
       s.forkPrefix.rows += 1;
       if (!s.forkPrefix.sessionIds.includes(origin)) s.forkPrefix.sessionIds.push(origin);
+    }
+    // What the session sent before its first answer - the typed prompt and a slash run's expansion - is the session's
+    // own, not the install's: a /task-solve opening of ~112k chars sat inside a '139.4k standing inventory' that the
+    // report charged to the install (audit 2026-10-10 C06, 8f44a003).
+    if (!foreign && !s.firstMsgCtx && o.type === 'user' && o.message) {
+      const c = o.message.content;
+      s.floorPromptChars += typeof c === 'string' ? c.length
+        : Array.isArray(c) ? c.filter((b) => b && b.type === 'text').reduce((n, b) => n + String(b.text || '').length, 0) : 0;
     }
     if (window && o.timestamp) {
       const ts = Date.parse(o.timestamp);
@@ -1464,6 +2052,26 @@ async function analyzeTranscript(file, window) {
         // (`agent_listing_delta`). That is the installed set AT THE TIME, which the project
         // directory on disk stops being the moment the install moves - the drift that had reports
         // scoring a session against skills it never had.
+        // A prompt the person typed while the model was busy arrives as a `queued_command` attachment, never as a user
+        // row - one authorized a seat dispatch, and the header read 'user prompts 3' over 5 (audit 2026-10-10, bda299a8
+        // and a6a24815). A task notification rides the same attachment and is no person.
+        if (at.type === 'queued_command' && !foreign && at.commandMode !== 'task-notification'
+          && (at.humanTurn === true || (at.origin && at.origin.kind === 'human'))) {
+          const p = at.prompt;
+          const typed = typeof p === 'string' ? p : Array.isArray(p) ? p.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n') : '';
+          s.userPrompts++;
+          s.queuedPrompts = (s.queuedPrompts || 0) + 1;
+          onHumanTurn(typed, o.timestamp || at.timestamp);
+          if (prevAssistantNoTool) { s.unheldStopCandidates.push({ stopTs: prevAssistantNoTool, userTs: o.timestamp || null }); prevAssistantNoTool = null; }
+        }
+        // What the session was GIVEN as standing instructions - each CLAUDE.md / AGENTS.md / always-on rule with its
+        // text - is the session-start `instructions` attachment. The analyzer never read it, so the floor was one number
+        // and a rule loaded under its old and new name was invisible (audit 2026-10-10, d37841e9: 34,059 chars twice).
+        if (at.type === 'instructions' && Array.isArray(at.files) && !foreign && !s.instructionFiles) {
+          s.instructionFiles = at.files.filter((x) => x && typeof x.path === 'string').map((x) => ({
+            path: x.path.replace(/\\/g, '/'), type: x.type || null, chars: typeof x.content === 'string' ? x.content.length : 0,
+          }));
+        }
         if (at.type === 'skill_listing') {
           const names = Array.isArray(at.names) && at.names.length ? at.names
             : [...String(at.content || '').matchAll(/^- ([A-Za-z0-9_:.-]+):/gm)].map((m) => m[1]);
@@ -1479,9 +2087,9 @@ async function analyzeTranscript(file, window) {
           // broke rule X' claim can be checked against - today's SKILL.md is a different document.
           for (const sk of Array.isArray(at.skills) ? at.skills : []) {
             if (!sk || !sk.name) continue;
-            const body = skillBodyOf(sk.content);
+            const body = loadedBodyOf(sk.content);
             if (!body) continue;
-            s.loadedSkillBodies[sk.name] = { chars: body.length, headings: headingFingerprint(body), path: sk.path || null, ts: o.timestamp || null };
+            s.loadedSkillBodies[sk.name] = { chars: body.length, headings: headingFingerprint(body), paras: paraFingerprint(body), path: sk.path || null, ts: o.timestamp || null, via: (s.loadedSkillBodies[sk.name] || {}).via };
           }
         }
         // A hook's run is on record when the row names its command: `hook_success`, the error and
@@ -1493,6 +2101,39 @@ async function analyzeTranscript(file, window) {
             const k = hookCommandKey(cmd);
             const e = s.hookCommands[k] || (s.hookCommands[k] = { n: 0, firstTs: o.timestamp || null });
             e.n += 1;
+          }
+          // A hook the harness CANCELLED - at its timeout (`timedOut`) or otherwise - gave no verdict: a PreToolUse gate that
+          // times out does not gate, and the instrumentation hook writes no ledger row, so its call reads UNJOINED (audit
+          // 2026-10-11, session 2ca8e8ee: 5 timeouts against the 10s cap, one the stop contract's ask-shape gate).
+          if (at.type === 'hook_cancelled' && !foreign) {
+            const hook = hookFileOf(at);
+            const e = s.hookTimeouts[hook] || (s.hookTimeouts[hook] = { timedOut: 0, cancelled: 0, maxMs: 0, timeoutMs: null, events: {} });
+            if (at.timedOut) e.timedOut += 1; else e.cancelled += 1;
+            if (Number(at.durationMs) > e.maxMs) e.maxMs = Number(at.durationMs);
+            if (at.timeoutMs != null) e.timeoutMs = Number(at.timeoutMs);
+            const ev = [at.hookEvent || String(at.hookName || '').split(':')[0] || '?', String(at.hookName || '').split(':')[1] || ''].filter(Boolean).join(' ');
+            e.events[ev] = (e.events[ev] || 0) + 1;
+            if (at.toolUseID) (s.hookCancelsByCall[at.toolUseID] = s.hookCancelsByCall[at.toolUseID] || []).push({ hook, ms: Number(at.durationMs) || null, timedOut: !!at.timedOut });
+          }
+          // A PreToolUse hook that answers `hookSpecificOutput.updatedInput` REWROTE the call: what ran is not what the
+          // model wrote, so an error on that call is the rewrite's first suspect (audit 2026-10-11, session ae38c08f: a
+          // guard's rewrite of 1 of 149 Bash calls caused its error, and the report blamed the model's heredoc).
+          if (at.type === 'hook_success' && !foreign && at.toolUseID && String(at.stdout || '').includes('updatedInput')) {
+            const hso = (hookJsonOf(at.stdout) || {}).hookSpecificOutput;
+            if (hso && hso.updatedInput && typeof hso.updatedInput === 'object') {
+              const hook = hookFileOf(at);
+              const list = rewriteOf.get(at.toolUseID) || [];
+              if (!list.includes(hook)) {
+                if (!list.length) {
+                  const name = (toolById.get(at.toolUseID) || {}).name || String(at.hookName || '').split(':')[1] || null;
+                  const t = name && s.toolCalls[name];
+                  if (t) t.rewrites = (t.rewrites || 0) + 1;
+                }
+                list.push(hook);
+                rewriteOf.set(at.toolUseID, list);
+                s.rewritesByHook[hook] = (s.rewritesByHook[hook] || 0) + 1;
+              }
+            }
           }
         } else if (at.type === 'diagnostics' && Array.isArray(at.files)) {
           // A language server's findings for the files it watched - the `*-lsp` plugins' use, which
@@ -1521,7 +2162,14 @@ async function analyzeTranscript(file, window) {
     }
     if (STYLE_RULE_MARKERS.some((m) => raw.includes(m))) s.styleRuleAttaches++;
     if (STYLE_INJECT_MARKERS.some((m) => raw.includes(m))) s.styleInjections++;
-    if (o.timestamp) { if (!s.firstTs) s.firstTs = o.timestamp; s.lastTs = o.timestamp; }
+    // The session's window is its ACTIVITY - a user, assistant, system or attachment row. A queued `/clear` 3h41m after
+    // the last turn (a `queue-operation` row) stretched 'Session 5h 17m' and read the ledger as covering ~30% of it
+    // (audit 2026-10-10, bc2fa83e); such a tail is kept apart and printed as idle.
+    if (o.timestamp) {
+      if (!s.anyFirstTs) s.anyFirstTs = o.timestamp;
+      if (!s.anyLastTs || o.timestamp >= s.anyLastTs) { s.anyLastTs = o.timestamp; s.anyLastType = o.type || null; }
+      if (ACTIVITY_ROW_TYPES.has(o.type)) { if (!s.firstTs) s.firstTs = o.timestamp; s.lastTs = o.timestamp; }
+    }
     if (!s.ccVersion && o.version) s.ccVersion = o.version;
     // TWO records name the model, and they can DISAGREE: `cost-state.modelUsage` keys off the id
     // the billing rows carry, while the session's own reminder names the id it was STARTED on
@@ -1602,20 +2250,55 @@ async function analyzeTranscript(file, window) {
     // A slash run's body is the isMeta row the expansion writes right after the command (`Base directory for this
     // skill: ...`), never an `invoked_skills` attachment - and a manual-only skill is in no roster, so without it the
     // run read as a harness command (11b595da: 'No skill or slash-command run', 'used 0 of 72').
-    if (slashPending && o.type === 'user' && o.message) {
+    // A Skill CALL's body is the same isMeta row, written after the call's result and naming the call in
+    // `sourceToolUseID` - read only from `invoked_skills` (a compaction's copy), 12 of 14 vintage rows of an
+    // uncompacted session said 'body not captured' over a body the transcript held (audit 2026-10-10 C04).
+    const metaText = (o.type === 'user' && o.isMeta && o.message) ? (() => {
       const c = o.message.content;
-      const txt = Array.isArray(c) ? c.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : '';
+      return typeof c === 'string' ? c : Array.isArray(c) ? c.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : '';
+    })() : '';
+    const callSkill = metaText && /^Base directory for this skill:/.test(metaText)
+      ? (o.sourceToolUseID ? skillCallIds.get(o.sourceToolUseID) : (!slashPending && lastSkillResult)) || null
+      : null;
+    if (callSkill) {
+      const body = loadedBodyOf(metaText);
+      const dir = (/^Base directory for this skill:\s*(.*)/.exec(metaText) || [])[1] || null;
+      if (body) s.loadedSkillBodies[callSkill] = { chars: body.length, headings: headingFingerprint(body), paras: paraFingerprint(body), path: dir && dir.trim(), ts: o.timestamp || null, via: 'skill' };
+      lastSkillResult = null;
+    } else if (slashPending && o.type === 'user' && o.message) {
+      const c = o.message.content;
+      const txt = Array.isArray(c) ? c.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : typeof c === 'string' ? c : '';
       if (o.isMeta && /^Base directory for this skill:/.test(txt)) {
-        const body = skillBodyOf(txt);
+        const body = loadedBodyOf(txt);
         const dir = (/^Base directory for this skill:\s*(.*)/.exec(txt) || [])[1] || null;
         if (body) {
-          s.loadedSkillBodies[slashPending.name] = { chars: body.length, headings: headingFingerprint(body), path: dir && dir.trim(), ts: o.timestamp || null, via: 'slash' };
+          s.loadedSkillBodies[slashPending.name] = { chars: body.length, headings: headingFingerprint(body), paras: paraFingerprint(body), path: dir && dir.trim(), ts: o.timestamp || null, via: 'slash' };
           s.slashSkillRuns[slashPending.name] = true;
         }
         slashPending = null;
+      } else if (o.isMeta && !o.isCompactSummary && txt.trim() && !/^\s*</.test(txt)) {
+        // A COMMAND's expansion carries no `Base directory` line: `/alfred-code:update` loaded 63,950 chars as one isMeta
+        // row and the vintage said no copy existed (audit 2026-10-10, 229e2715). The harness's own rows open with a tag.
+        const body = loadedBodyOf(txt);
+        if (body) s.loadedSkillBodies[slashPending.name] = { chars: body.length, headings: headingFingerprint(body), paras: paraFingerprint(body), path: null, ts: o.timestamp || null, via: 'command' };
+        slashPending = null;
       } else if (!o.isMeta && !raw.includes('<command-name>')) slashPending = null;
     } else if (o.type === 'assistant') slashPending = null;
-    if (o.type === 'user' && o.message && raw.includes('<command-name>')) {
+    if (o.type === 'assistant') lastSkillResult = null;
+    if (o.type === 'user' && o.message && Array.isArray(o.message.content)) {
+      for (const b of o.message.content) if (b && b.type === 'tool_result' && skillCallIds.has(b.tool_use_id)) lastSkillResult = skillCallIds.get(b.tool_use_id);
+    }
+    // A seat's frontmatter `skills:` arrive as isMeta rows spelled like a slash turn plus `<skill-format>true` - a
+    // preload, never a command the session ran (audit 2026-10-10, bc2fa83e: six preloads scored 'slash command x1').
+    const preloadRow = o.type === 'user' && o.isMeta && o.message && raw.includes('<command-name>') && raw.includes('<skill-format>true</skill-format>');
+    if (preloadRow) {
+      const c = o.message.content;
+      const own = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : '';
+      for (const m of own.matchAll(/<command-name>\s*\/?\s*([A-Za-z0-9_:-]+)\s*<\/command-name>/g)) {
+        if (!(m[1] in s.preloadedSkills)) s.preloadedSkills[m[1]] = o.timestamp || null;
+      }
+    }
+    if (!preloadRow && o.type === 'user' && o.message && raw.includes('<command-name>')) {
       const own = typeof o.message.content === 'string' ? o.message.content
         : Array.isArray(o.message.content) ? o.message.content.filter((c) => c.type === 'text').map((c) => c.text || '').join('\n') : '';
       // A LEADING SPACE inside the tag suppressed the match, and a whole guided-command run then
@@ -1639,6 +2322,7 @@ async function analyzeTranscript(file, window) {
         // read as a multi-day session at ~6% ledger coverage when the real work window was
         // ~89 min at ~96% (measured) - record the boundary so printers can show both.
         if (m[1] === 'clear' && o.timestamp) s.clearTs = o.timestamp;
+        if (m[1] === 'clear') liveImgTok = 0;
       }
     }
 
@@ -1667,6 +2351,7 @@ async function analyzeTranscript(file, window) {
           // message and re-paid in full after every compaction. Measured at 3.7%-86.8% of a
           // session's cache-read and 23-48% of its own floor, and no report had a row for it.
           if (ctx > 0 && (s.floorCtx === 0 || ctx < s.floorCtx)) s.floorCtx = ctx;
+          if (ctx > 0 && !foreign && !s.firstMsgCtx) s.firstMsgCtx = ctx;
           // Cache continuity, by Claude Code's OWN definition (its `Prompt cache (main)` status
           // line): a request is a MISS when it re-processed more than 5% and at least 2,000 tokens
           // of what the previous request had cached; the first request after a compaction is an
@@ -1689,8 +2374,23 @@ async function analyzeTranscript(file, window) {
             prevCache = { cr, cc };
             afterCompaction = false;
           }
+          // An image result is billed as pixels, never as its base64 text: what it cost is the context growth of the turn
+          // that carried it, net of the text results and the previous answer's output (audit 2026-10-10, b35afe70: 70
+          // screenshots read as 'Read ~933' and a spike cause '~2 tok', where the growth said ~64k).
+          // The CARRY: every image already in context is re-sent as cache-read on this message too, until a compaction
+          // or a /clear drops it - priced on arrival only, 29 screenshots read '~78.2k tok' where the carry was ~6.5M
+          // (audit 2026-10-11, session 7f8803eb, 12.6% of its cache-read), and no waste analysis named them.
+          if (!foreign && liveImgTok && ctx > 0) s.imageCarryTok = (s.imageCarryTok || 0) + liveImgTok;
+          const imgN = pending.reduce((n, p) => n + (p.images || 0), 0);
+          let imgTok = 0;
+          if (imgN && prevCtx != null && ctx - prevCtx > 0) {
+            const textTok = approxTok(pending.reduce((n, p) => n + p.chars, 0));
+            imgTok = Math.max(0, ctx - prevCtx - textTok - (prevMsgReg ? prevMsgReg.u.out : 0));
+            // a copied fork prefix is the parent's bill: its spike still names the cause, the total does not take it
+            if (!foreign) { s.imageTok = (s.imageTok || 0) + imgTok; s.imagesMeasured = (s.imagesMeasured || 0) + imgN; liveImgTok += imgTok; }
+          }
           if (prevCtx != null && ctx - prevCtx > 0) {
-            s.spikes.push({ ts: o.timestamp, delta: ctx - prevCtx, ctx, causes: summarizeCauses(pending) });
+            s.spikes.push({ ts: o.timestamp, delta: ctx - prevCtx, ctx, causes: summarizeCauses(pending, imgTok) });
           } else if (prevCtx != null && (m.usage.cache_creation_input_tokens || 0) > 20000) {
             // Right after a compaction the context DROPS, so a re-cache of the rebuilt prompt has a
             // negative delta and never entered the accumulator - 279,885 tokens, 17.2% of one
@@ -1700,12 +2400,12 @@ async function analyzeTranscript(file, window) {
               delta: m.usage.cache_creation_input_tokens || 0,
               ctx,
               kind: 'cache-write',
-              causes: summarizeCauses(pending) || 'prompt re-cached after a context reset',
+              causes: summarizeCauses(pending, null) || 'prompt re-cached after a context reset',
             });
           }
           s.spikes.sort((a, b) => b.delta - a.delta);
           if (s.spikes.length > 5) s.spikes.length = 5;
-          prevCtx = ctx; pending = [];
+          prevCtx = ctx; pending = []; prevMsgReg = r;
         }
         r.u.in = Math.max(r.u.in, m.usage.input_tokens || 0);
         r.u.cc = Math.max(r.u.cc, m.usage.cache_creation_input_tokens || 0);
@@ -1721,11 +2421,16 @@ async function analyzeTranscript(file, window) {
         if (c.type !== 'tool_use' || seenToolUse.has(c.id)) continue;
         seenToolUse.add(c.id);
         if (foreign) s.forkPrefix.toolCalls += 1;
-        else if (o.timestamp) { s.toolCallTs.push(o.timestamp); s.toolCallIdx.push({ ts: o.timestamp, tool: c.name }); }
+        else if (o.timestamp) {
+          s.toolCallTs.push(o.timestamp);
+          const ix = { ts: o.timestamp, tool: c.name, id: c.id || null, detail: ledgerDetailOf(c.name, c.input), resultTs: null };
+          s.toolCallIdx.push(ix);
+          if (c.id) callIdxById.set(c.id, ix);
+        }
         const t = s.toolCalls[c.name] || (s.toolCalls[c.name] = { calls: 0, resultChars: 0, errors: 0, firstTs: o.timestamp || null });
         t.calls += 1;
         if (c.input && typeof c.input.file_path === 'string') {
-          const rel = docRelPath(c.input.file_path);
+          const rel = foreignDocPath(c.input.file_path, s.cwd) ? null : docRelPath(c.input.file_path);
           if (rel) {
             const d = s.docTouches[rel] || (s.docTouches[rel] = { reads: 0, writes: 0 });
             if (c.name === 'Read') d.reads += 1;
@@ -1746,10 +2451,13 @@ async function analyzeTranscript(file, window) {
           else if (isShellTool(c.name) && typeof i.command === 'string') readTarget = shellReadTarget(maskHeredocs(i.command));
           if (readTarget) {
             info.readTarget = readTarget;
-            if (BUILD_DIR_RE.test(readTarget)) info.buildDir = true;
+            if (isBuildDirRead(readTarget)) info.buildDir = true;
+            // One file, one key: a relative shell read and an absolute Read of it are the same file (516e653d keyed
+            // OrderCompletionHandler.cs twice), resolved against the call's own cwd.
+            const key = resolveAt(typeof o.cwd === 'string' && o.cwd ? String(o.cwd).replace(/\\/g, '/') : null, readTarget) || readTarget;
             const cur = s.efficiency.compactionRereads[s.efficiency.compactionRereads.length - 1];
-            if (cur && cur.before.has(readTarget) && !cur.seen.has(readTarget)) { cur.seen.add(readTarget); info.reread = true; }
-            readPaths.add(readTarget);
+            if (cur && cur.before.has(key) && !cur.seen.has(key)) { cur.seen.add(key); info.reread = true; }
+            readPaths.add(key);
           }
           // A copied fork prefix is the parent's navigation, counted in the parent's transcript.
           if (!foreign) {
@@ -1781,9 +2489,14 @@ async function analyzeTranscript(file, window) {
         }
         if (c.name === 'Skill' && c.input && c.input.skill) {
           info.skill = c.input.skill;
+          skillCallIds.set(c.id, c.input.skill);
           const sk = s.skillInvocations[c.input.skill] || (s.skillInvocations[c.input.skill] = { calls: 0, injectedChars: 0, firstTs: o.timestamp || null });
           sk.calls += 1;
-          if (activeInvoke && activeInvoke.skill !== c.input.skill && activeInvoke.msgs <= 5 && !askSinceInvoke) {
+          // While a FLOW skill's cycle is open, a reference skill loaded for it - after the flow's own clarify ask, many
+          // messages in - serves that cycle; only another flow skill opens a phase of its own (audit 2026-10-10,
+          // b35afe70: a plugin reference loaded after the design step's ask took 148 of 180 msgs from task-solve).
+          const flowOpen = activeInvoke && FLOW_SKILL_RE.test(houseBare(activeInvoke.skill)) && !FLOW_SKILL_RE.test(houseBare(c.input.skill));
+          if (activeInvoke && activeInvoke.skill !== c.input.skill && (flowOpen || (activeInvoke.msgs <= 5 && !askSinceInvoke))) {
             if (!companionOf[c.input.skill]) companionOf[c.input.skill] = activeInvoke.skill;
           } else {
             activeInvoke = { skill: c.input.skill, msgs: 0 };
@@ -1822,16 +2535,29 @@ async function analyzeTranscript(file, window) {
           // paired tool_result proves the call ran, the same way the doc touches are.
           const cmdCode = maskQuoted(cmdShell);
           info.rmVerifyTail = rmVerifyTail(cmdCode);
-          const check = classifyCheck(cmdCode, cmdShell);
-          if (check) {
-            info.check = check.kind; info.scoped = check.scoped;
+          const bindings = bindingsOf(cmdShell);
+          const checkCode = maskQuotedShell(cmdShell);
+          const checks = classifyChecks(checkCode, cmdShell, bindings);
+          if (checks.kinds.length) {
+            // One call can be several kinds (`nx run-many -t test,lint`): each kind counts the call once, and the
+            // result volume is charged to the first, so the shell-volume share never counts one result twice.
+            info.check = checks.kinds[0].kind;
             lastCheckSeq = toolSeq; turnHadCheck = true;
-            const k = s.efficiency.checks[check.kind];
-            k.calls += 1;
-            if (check.kind === 'test') { if (check.scoped) k.scoped += 1; else k.whole += 1; }
+            for (const ck of checks.kinds) {
+              const k = s.efficiency.checks[ck.kind];
+              k.calls += 1;
+              if (ck.kind === 'test') { info.scoped = ck.scoped; if (ck.scoped) k.scoped += 1; else k.whole += 1; }
+            }
+            for (const p of checks.logs) checkLogs.add(p);
+          } else if (readsCheckLog(checkCode, cmdShell, bindings, checkLogs)) {
+            // the read of a log a check wrote: that check's result reaching the session now
+            lastCheckSeq = toolSeq; turnHadCheck = true;
+            s.efficiency.checkLogReads = (s.efficiency.checkLogReads || 0) + 1;
           }
-          const commits = (cmdCode.match(/(?:^|[;&|(]\s*)git\s+(?:-[\w-]+(?:[= ]\S+)?\s+)*commit\b/g) || []).length;
-          const merges = (cmdCode.match(/(?:^|[;&|(]\s*)gh\s+pr\s+merge\b/g) || []).length;
+          // A newline opens a command as `;` does: `cd <repo>` / `git add ...` / `git commit -F - <<'EOF'` on three lines
+          // counted 0 and printed 'git commits 0' over a receipted commit (audit 2026-10-10 C05: 390aebcb, 49cb4b82, f6c591fa).
+          const commits = (cmdCode.match(/(?:^|[;&|(\n]\s*)git\s+(?:-[\w-]+(?:[= ]\S+)?\s+)*commit\b/g) || []).length;
+          const merges = (cmdCode.match(/(?:^|[;&|(\n]\s*)gh\s+pr\s+merge\b/g) || []).length;
           if (commits || merges) pendingGitActs.set(c.id, { commits, merges, checked: lastCheckSeq >= 0 && toolSeq - lastCheckSeq <= CHECK_WINDOW, ts: o.timestamp || null });
           // Doc traffic routed through Bash (heredocs, printf >, rm -f) is real doc I/O the
           // Write/Edit-only counter missed - a receipt written+cleared via Bash showed
@@ -1849,13 +2575,39 @@ async function analyzeTranscript(file, window) {
             const roots = bashDocRoots();
             const rootAlt = roots.map((r) => r.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
             const docPathRe = new RegExp(`(?:^|[\\s"'\`=(])((?:[^\\s"'\`;|&)]*/)?(?:${rootAlt})[^\\s"'\`;|&)]+)`, 'g');
-            for (const seg of cmdShell.split(/&&|\|\||;|\n/)) {
+            // The command's own bindings are read as the literals they stand for: `P=<plan>; cat > $P` wrote the
+            // session's one plan and the table never listed it (audit 2026-10-10, b35afe70).
+            const docShell = expandBound(cmdShell, bindings);
+            const docStr = expandBound(cmdStr, bindings);
+            // Where each segment runs: the row's cwd, moved by a literal `cd` - so `cd <parent>` then
+            // `<sibling>/.alfred/docs/...` is the sibling's doc (audit 2026-10-10, 49cb4b82).
+            let anchor = typeof o.cwd === 'string' && o.cwd ? String(o.cwd).replace(/\\/g, '/') : null;
+            for (const seg of docShell.split(/&&|\|\||;|\n/)) {
+              const head = segmentHead(seg);
+              const cd = /^cd\s+(["']?)([^\s"'$`]+)\1\s*$/.exec(head.trim());
+              if (cd) { anchor = resolveAt(anchor, cd[2]); continue; }
+              // An existence test names a path and reads none of it: `[ -e "$p" ]`, `test -f`, `ls`, and a `for` list
+              // feeding only such tests (audit 2026-10-10, f10cb06a: seven docs scored a read by one existence loop).
+              const probe = DOC_PROBE_HEAD_RE.test(head) || loopOnlyProbes(seg, docShell);
+              // An in-place edit is a write, never a read (`sed -i '' 's/.../' <plan>`, `perl -0pi -e ...`).
+              const inPlace = IN_PLACE_HEAD_RE.test(head);
+              // A grep's PATTERN is text it searches for, never a file it reads: `grep -c '<a line naming a doc>'
+              // AGENTS.md` read AGENTS.md and scored the named doc a read (audit 2026-10-11, session bca100bd).
+              const patterns = pipeStages(seg).flatMap(([from, stage]) => {
+                const sh = segmentHead(stage);
+                const off = from + stage.length - sh.length;
+                return grepPatternSpans(sh).map(([a, b]) => [a + off, b + off]);
+              });
               for (const pm of seg.matchAll(docPathRe)) {
+                const at = pm.index + pm[0].length - pm[1].length;
+                if (patterns.some(([a, b]) => at >= a && at < b)) continue;
                 const p = pm[1].replace(/[/:,.]+$/, ''); // a trailing separator is punctuation, not the name
                 if (p.includes('$')) continue; // unexpanded variable - not a literal doc path
                 if (/[*?\[]/.test(p)) continue; // a GLOB names no one document
                 const hit = roots.find((r) => p.includes(r));
                 if (!hit) continue;
+                // Another project's docs are not this project's (audit 2026-10-10, 49cb4b82: `../<sibling>/...` cards).
+                if (foreignDocPath(resolveAt(anchor, p) || p, s.cwd)) continue;
                 const rel = p.slice(p.indexOf(hit) + hit.length);
                 // Only a DOCUMENT: keying on every token under the docs root produced 79 rows for
                 // ~6 real documents - directories, globs and trailing punctuation each got a row.
@@ -1871,27 +2623,49 @@ async function analyzeTranscript(file, window) {
                 // variable binding and the pathlib form are matched too.
                 // The binding and its use sit on DIFFERENT lines of a python heredoc, so both
                 // checks run against the whole command, not the segment the path appeared in.
-                const varBound = new RegExp(`(\\w+)\\s*=\\s*(?:pathlib\\.)?(?:Path\\()?["'\`][^"'\`]*${esc}`).exec(cmdStr);
+                const varBound = new RegExp(`(\\w+)\\s*=\\s*(?:pathlib\\.)?(?:Path\\()?["'\`][^"'\`]*${esc}`).exec(docStr);
                 const varWrite = varBound
-                  ? new RegExp(`open\\(\\s*${varBound[1]}\\s*,[^)]*["']w["']|\\b${varBound[1]}\\.write_(text|bytes)\\(|\\bio\\.open\\(\\s*${varBound[1]}\\s*,[^)]*["']w["']`).test(cmdStr)
+                  ? new RegExp(`open\\(\\s*${varBound[1]}\\s*,[^)]*["']w["']|\\b${varBound[1]}\\.write_(text|bytes)\\(|\\bio\\.open\\(\\s*${varBound[1]}\\s*,[^)]*["']w["']`).test(docStr)
                   : false;
+                // A runtime handed the path as an ARGUMENT whose script reads its argv and writes a file:
+                // `python3 - "$P" <<'PY' ... open(p,'w')` - the plan edits of b35afe70 and ecea6d56 read as reads.
+                const argvWrite = !assigned && RUNTIME_HEAD_RE.test(head) && ARGV_READ_RE.test(docStr) && SCRIPT_WRITE_RE.test(docStr);
                 // `rm` CLEARS a receipt - counting it as a write reported a written document that
                 // was in fact deleted; and `mkdir -p <dir>` is neither read nor write of a document.
                 const cleared = new RegExp(`\\brm\\s+(?:-\\w+\\s+)*["']?${esc}`).test(seg);
                 const made = new RegExp(`\\bmkdir\\s+(?:-\\w+\\s+)*["']?${esc}`).test(seg);
-                const isWrite = varWrite || new RegExp(`(>>?\\s*["']?${esc})|(\\btee\\s+(?:-a\\s+)?["']?${esc})|(open\\([^)]*${esc}[^)]*["']w["'])|(${esc}["'\`]?\\s*\\)?\\.write_(text|bytes)\\()`).test(seg);
-                const e = touched.get(rel) || { r: false, w: false, c: false };
+                const isWrite = varWrite || argvWrite || inPlace || new RegExp(`(>>?\\s*["']?${esc})|(\\btee\\s+(?:-a\\s+)?["']?${esc})|(open\\([^)]*${esc}[^)]*["']w["'])|(${esc}["'\`]?\\s*\\)?\\.write_(text|bytes)\\()`).test(seg);
+                const e = touched.get(rel) || { r: false, w: false, c: false, p };
                 if (isWrite) e.w = true;
                 else if (cleared) e.c = true;
-                else if (!made && !assigned) e.r = true;
+                else if (!made && !assigned && !probe) e.r = true;
                 touched.set(rel, e);
               }
             }
             // Held until the paired tool_result proves the command actually ran (below).
             if (touched.size) pendingDocTouch.set(c.id, [...touched.entries()]);
+            // The stack's own section route names no doc path: `docs.js show <file>#<id>` resolves the file itself, so
+            // the RESULT says which document was read or written (audit 2026-10-10 C03: 18 sessions read their
+            // architecture this way and the table listed no architecture row).
+            const djs = new Set();
+            for (const h of commandHeads(checkCode, cmdShell)) {
+              const dm = DOCS_JS_HEAD_RE.exec(h.shell);
+              if (dm) djs.add(dm[1]);
+            }
+            if (djs.size) pendingDocsJs.set(c.id, djs);
           }
         }
         if (c.name === 'AskUserQuestion') askSinceInvoke = true;
+        // An ask is an ANSWER surface too: a flow's stop reports its `Result:` inside the question, never as end_turn
+        // prose, so a conforming run's green claims were never scored (audit 2026-10-11, session 5984019e: 9 asks).
+        if (c.name === 'AskUserQuestion' && !foreign && c.input && Array.isArray(c.input.questions)) {
+          const asked = proseOf(c.input.questions.map((q) => String((q && q.question) || '')).join('\n'));
+          if (asked && claimsGreen(asked)) {
+            const e = s.efficiency;
+            e.greenClaims += 1; e.greenClaimsInAsks = (e.greenClaimsInAsks || 0) + 1;
+            if (!turnHadCheck) e.unverifiedGreenClaims.push(o.timestamp || null);
+          }
+        }
         // What the call was FOR, in the call's own words - the Bash description the model wrote,
         // the file a Read named, the seat a dispatch went to. The report used to print result
         // SIZES with no call beside them, so whoever wrote it hand-mapped char counts back onto
@@ -1911,6 +2685,7 @@ async function analyzeTranscript(file, window) {
           if (c.name.startsWith('mcp__')) return c.name.split('__').slice(2).join('__');
           return '';
         })();
+        if (c.name === 'AskUserQuestion' && c.input && Array.isArray(c.input.questions)) info.questions = c.input.questions;
         toolById.set(c.id, info);
         lastToolName = c.name;
       }
@@ -2003,8 +2778,17 @@ async function analyzeTranscript(file, window) {
         const chars = text.length;
         if (imgs) s.imageResults = (s.imageResults || 0) + imgs;
         const info = toolById.get(c.tool_use_id);
-        pending.push({ name: info ? info.name : '?', chars });
+        const ix = callIdxById.get(c.tool_use_id);
+        if (ix && o.timestamp && !ix.resultTs) ix.resultTs = o.timestamp;
+        pending.push({ name: info ? info.name : '?', chars, images: imgs });
+        if (imgs && info && s.toolCalls[info.name]) s.toolCalls[info.name].images = (s.toolCalls[info.name].images || 0) + imgs;
         if (!info) continue;
+        // A correction TYPED into an ask (its Other field) waits on a save like a typed prompt (audit 2026-10-10 C15,
+        // 4f1c2ebb): guard-answer-length logs it as a `correction` row `via: ask-answer`, so the row reading the
+        // transcript reads it too - the same marker test, the same length cap, an offered label never counted.
+        if (info.name === 'AskUserQuestion' && !c.is_error)
+          for (const a of typedAskAnswers(info.questions, o.toolUseResult, text))
+            if (a.length <= STREAK_SHORT && correctionMarker(a)) pendingSaves.push({ ts: o.timestamp || null, left: SAVE_WINDOW });
         // The biggest individual results, joined to what the call asked for. Kept sorted and
         // capped, so this costs nothing on a long session.
         s.topResults.push({ name: info.name, label: info.label || '', chars, ts: o.timestamp || null, error: !!c.is_error && !info.rmVerifyTail });
@@ -2034,7 +2818,10 @@ async function analyzeTranscript(file, window) {
           /denied by the Claude Code auto mode classifier/i.test(text) ||
           /\bInputValidationError\b/.test(text) ||          // a tool-schema failure, never a PreToolUse event
           /Blocked: sleep\b/.test(text);                    // the Bash tool's own foreground-sleep block
-        const readsAsBlock = c.is_error && (/\bBlocked\b/.test(text) || /\bDo NOT retry\b/i.test(text));
+        // The harness's own prefix for a PreToolUse denial names the event whatever the guard wrote: docs-session's hold
+        // opens 'Docs not read yet' and landed in the errors column, in no denials-by-hook row (audit 2026-10-10 C23:
+        // 81264f0d, a3d497f8, c5000cb1, f24eb967). Its ledger row names the hook (joinUnattributedDenials).
+        const readsAsBlock = c.is_error && (/\bBlocked\b/.test(text) || /\bDo NOT retry\b/i.test(text) || /^\s*(?:\[[^\]]*\]\s*)?PreToolUse:\w+ hook error:/.test(text));
         const isHookBlock = readsAsBlock && !harnessDenial;
         if (isHookBlock) attributeDenial(text, o.timestamp);
         else if (readsAsBlock) s.harnessDenials = (s.harnessDenials || 0) + 1;  // reads as a block, is the harness's
@@ -2045,12 +2832,24 @@ async function analyzeTranscript(file, window) {
             // An occurrence that classified as NOTHING - a bare `VAR=<path>` binding, a `mkdir` of
             // its directory - must not open a row: an all-zero row is one of the 79 the report
             // printed for ~6 real documents.
+            // A read whose result says the file is not there read nothing (audit 2026-10-10: ca65b406 and 49cb4b82
+            // scored `code-style/CODE-STYLE.md +1r` over 'No such file or directory').
+            if (e.r && !e.w && !e.c && missingInResult(plainResult(c), e.p)) continue;
             if (!e.w && !e.c && !e.r) continue;
             const d = s.docTouches[rel] || (s.docTouches[rel] = { reads: 0, writes: 0 });
             if (e.w && !c.is_error) d.bashWrites = (d.bashWrites || 0) + 1;
             else if (e.w && c.is_error) d.bashWritesDenied = (d.bashWritesDenied || 0) + 1;
             if (e.c && !c.is_error) d.cleared = (d.cleared || 0) + 1;
             if (e.r && !e.w && !e.c) d.bashReads = (d.bashReads || 0) + 1;
+          }
+        }
+        const djs = pendingDocsJs.get(c.tool_use_id);
+        if (djs) {
+          pendingDocsJs.delete(c.tool_use_id);
+          for (const [rel, kind] of docsJsTouches(plainResult(c), djs)) {
+            const d = s.docTouches[rel] || (s.docTouches[rel] = { reads: 0, writes: 0 });
+            d[kind] = (d[kind] || 0) + 1;
+            d.docsJs = (d.docsJs || 0) + 1;
           }
         }
         const acts = pendingGitActs.get(c.tool_use_id);
@@ -2091,6 +2890,9 @@ async function analyzeTranscript(file, window) {
             // then. Measured: two errors at 06:57 were reported as the browser phase's, and the
             // browser work did not start until ~07:2x - a whole phase blamed for someone else's.
             if (o.timestamp) (t.errorTs = t.errorTs || []).push(o.timestamp);
+            // The call that errored ran a hook's rewrite of the model's input - name the hook beside the error.
+            const rw = rewriteOf.get(c.tool_use_id);
+            if (rw) (t.rewriteErrors = t.rewriteErrors || []).push({ ts: o.timestamp || null, hooks: rw });
           }
         }
         if (info.skill) s.skillInvocations[info.skill].injectedChars += chars;
@@ -2171,6 +2973,9 @@ async function analyzeTranscript(file, window) {
   // Sets do not survive JSON.stringify - the --json dump is the report's own input.
   s.availableSkills = s.availableSkills ? [...s.availableSkills].sort() : null;
   s.availableAgents = s.availableAgents ? [...s.availableAgents].sort() : null;
+  if (!s.firstTs) { s.firstTs = s.anyFirstTs || null; s.lastTs = s.anyLastTs || null; }
+  if (s.lastTs && s.anyLastTs && Date.parse(s.anyLastTs) > Date.parse(s.lastTs)) s.idleTail = { from: s.lastTs, to: s.anyLastTs, rowType: s.anyLastType };
+  delete s.anyFirstTs; delete s.anyLastTs; delete s.anyLastType;
   s.compactions = compactMeta > 0 ? compactMeta : compactSummary;
   s.efficiency.compactionRereads = s.efficiency.compactionRereads.map((c) => ({ ts: c.ts, candidates: c.before.size, files: c.files, chars: c.chars }));
   // The bill sees calls the transcript never records - the harness's post-turn recap is one - so
@@ -2184,14 +2989,76 @@ async function analyzeTranscript(file, window) {
   return s;
 }
 
-function summarizeCauses(pending) {
+// Image results across main and seats: the count, which tool carried them, and what the context growth of their turns
+// measured - one line both renderers print under the TOOLS table.
+function imageLine(main, agents) {
+  const srcs = [main, ...agents.map((a) => a.stats)];
+  const n = srcs.reduce((k, x) => k + (x.imageResults || 0), 0);
+  if (!n) return null;
+  const tok = srcs.reduce((k, x) => k + (x.imageTok || 0), 0);
+  const measured = srcs.reduce((k, x) => k + (x.imagesMeasured || 0), 0);
   const by = {};
+  for (const x of srcs) for (const [name, t] of Object.entries(x.toolCalls || {})) if (t.images) by[name] = (by[name] || 0) + t.images;
+  const per = Object.entries(by).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ');
+  const carry = srcs.reduce((k, x) => k + (x.imageCarryTok || 0), 0);
+  const cr = srcs.reduce((k, x) => k + ((x.total && x.total.cacheRead) || 0), 0);
+  const carried = carry ? ` - that is their ARRIVAL; then CARRIED ~${fmt(carry)} tok of cache-read, re-sent on every later message until a compaction or /clear dropped them${cr ? ` (${sharePct(carry, cr)} of cache-read)` : ''}` : '';
+  return `images ${n} in tool results (${per}) ~${fmt(tok)} tok, from the context growth of the turns that carried ${measured} of them${carried} - never counted as text in the results column`;
+}
+// Calls whose input a PreToolUse hook REWROTE (`updatedInput`), by hook, and each error such a call returned with the
+// hook named - one line both renderers print under the TOOLS table. Without it an error the rewrite caused read as
+// the model's own (audit 2026-10-11, session ae38c08f).
+function rewriteLine(main, agents, tools) {
+  const n = Object.values(tools).reduce((k, t) => k + (t.rewrites || 0), 0);
+  if (!n) return null;
+  const by = {};
+  for (const x of [main, ...agents.map((a) => a.stats)]) for (const [h, k] of Object.entries(x.rewritesByHook || {})) by[h] = (by[h] || 0) + k;
+  const hooks = Object.entries(by).sort((a, b) => b[1] - a[1]).map(([h, k]) => `${h} ${k}`).join(', ');
+  const errs = Object.entries(tools).flatMap(([name, t]) => (t.rewriteErrors || []).map((e) => `${name}@${String(e.ts || '?').slice(11, 19)} after ${e.hooks.join(' + ')}`));
+  return `${n} call(s) ran with input a PreToolUse hook REWROTE (updatedInput): ${hooks}${errs.length ? `; ${errs.length} of them errored - ${errs.join(', ')}: open the rewrite on that call's toolUseID before attributing the error to the model` : ''}`;
+}
+
+// Hook runs the harness cancelled, main and seats, one row per hook: timed out, cancelled otherwise, the longest run and
+// the cap, and the event / tool each fired on. Both renderers print it; a timed-out gate's verdict was dropped.
+function hookTimeoutRows(main, agents) {
+  const by = {};
+  for (const x of [main, ...agents.map((a) => a.stats)]) {
+    for (const [hook, e] of Object.entries(x.hookTimeouts || {})) {
+      const r = by[hook] || (by[hook] = { hook, timedOut: 0, cancelled: 0, maxMs: 0, timeoutMs: null, events: {} });
+      r.timedOut += e.timedOut; r.cancelled += e.cancelled; r.maxMs = Math.max(r.maxMs, e.maxMs || 0);
+      if (e.timeoutMs != null) r.timeoutMs = e.timeoutMs;
+      for (const [ev, n] of Object.entries(e.events || {})) r.events[ev] = (r.events[ev] || 0) + n;
+    }
+  }
+  return Object.values(by).sort((a, b) => b.timedOut - a.timedOut || b.cancelled - a.cancelled)
+    .map((r) => ({ ...r, where: Object.entries(r.events).sort((a, b) => b[1] - a[1]).map(([ev, n]) => `${ev}${n > 1 ? ` x${n}` : ''}`).join(', '),
+      longest: `${(r.maxMs / 1000).toFixed(1)}s${r.timeoutMs ? ` of a ${Math.round(r.timeoutMs / 1000)}s cap` : ''}` }));
+}
+
+function summarizeCauses(pending, imageTok = 0) {
+  const by = {};
+  let images = 0;
   for (const p of pending) {
     const e = by[p.name] || (by[p.name] = { n: 0, chars: 0 });
     e.n += 1; e.chars += p.chars;
+    images += p.images || 0;
   }
-  return Object.entries(by).sort((a, b) => b[1].chars - a[1].chars).slice(0, 3)
-    .map(([name, e]) => `${name}×${e.n} (~${fmt(approxTok(e.chars))} tok)`).join(', ');
+  const rows = Object.entries(by).map(([name, e]) => [`${name}×${e.n}`, approxTok(e.chars)]);
+  // imageTok null: the growth was not this turn's (a re-cache after a context reset), so the images carry no figure
+  if (images) rows.push([`image×${images}`, imageTok]);
+  return rows.sort((a, b) => (b[1] || 0) - (a[1] || 0)).slice(0, 3)
+    .map(([label, tok]) => (tok == null ? `${label} (pixels, not measured on a re-cache)` : `${label} (~${fmt(tok)} tok${label.startsWith('image×') ? ', from the context growth' : ''})`)).join(', ');
+}
+
+// cost-state sums every model the session billed, its seats included, so the main transcript alone is the wrong
+// subtrahend: one session printed a 66.5M 'untranscribed' gap where main + seats left 17.6M (audit 2026-10-10,
+// e499fc94). The seats' transcripts are subtracted before the remainder is named untranscribed.
+function reconcileUntranscribed(main, agents) {
+  if (!main.costState) return;
+  const seats = agents.reduce((n, a) => n + ((a.stats && a.stats.total && a.stats.total.cacheRead) || 0), 0);
+  const gap = main.costState.cacheRead - main.total.cacheRead - seats;
+  if (gap <= 0) { delete main.untranscribed; return; }
+  main.untranscribed = { cacheRead: gap, contexts: main.peakCtx ? Math.round((10 * gap) / main.peakCtx) / 10 : null, ...(seats ? { seatsCacheRead: seats } : {}) };
 }
 
 // ---------- subagents (the session's <id>/subagents/ directory) ----------
@@ -2234,15 +3101,23 @@ async function analyzeSubagents(sessionFile, window) {
 async function analyzeHookLog(file) {
   const byTool = {}; let rows = 0; let firstTs = null; let lastTs = null;
   const rowsIdx = [];   // { ts, tool } per row - the per-side join needs the rows, not their count
+  // The stack version each row's hook ran from (audit 2026-10-11 SD14): the one record of the install a session
+  // LOADED that survives a later install rewriting the stamp. A row from a hook older than the field carries none.
+  const versions = {};
   await readJsonl(file, (o) => {
     if (!o.tool) return;
     rows++;
-    if (o.ts) { if (!firstTs || o.ts < firstTs) firstTs = o.ts; if (!lastTs || o.ts > lastTs) lastTs = o.ts; rowsIdx.push({ ts: o.ts, tool: o.tool }); }
+    if (o.ts) { if (!firstTs || o.ts < firstTs) firstTs = o.ts; if (!lastTs || o.ts > lastTs) lastTs = o.ts; rowsIdx.push({ ts: o.ts, tool: o.tool, id: o.tool_use_id || null, detail: o.detail || null }); }
+    if (typeof o.version === 'string' && o.version) {
+      const v = versions[o.version] || (versions[o.version] = { rows: 0, firstTs: null, lastTs: null });
+      v.rows += 1;
+      if (o.ts) { if (!v.firstTs || o.ts < v.firstTs) v.firstTs = o.ts; if (!v.lastTs || o.ts > v.lastTs) v.lastTs = o.ts; }
+    }
     const t = byTool[o.tool] || (byTool[o.tool] = { calls: 0, details: {} });
     t.calls += 1;
     if (o.detail) t.details[o.detail] = (t.details[o.detail] || 0) + 1;
   });
-  return { rows, byTool, firstTs, lastTs, rowsIdx };
+  return { rows, byTool, firstTs, lastTs, rowsIdx, versions };
 }
 
 // ---------- report ----------
@@ -2344,15 +3219,15 @@ function computeAggregates(main, agents) {
   let inject = main.styleInjections;
   let attach = main.styleRuleAttaches;
   for (const [rel, d] of Object.entries(main.docTouches)) {
-    const r = docRows[rel] || (docRows[rel] = { main: 0, agents: 0, writes: 0, bashReads: 0, bashWrites: 0 });
-    r.main += d.reads; r.writes += d.writes; r.bashReads += d.bashReads || 0; r.bashWrites += d.bashWrites || 0;
+    const r = docRows[rel] || (docRows[rel] = { main: 0, agents: 0, writes: 0, bashReads: 0, bashWrites: 0, docsJs: 0 });
+    r.main += d.reads; r.writes += d.writes; r.bashReads += d.bashReads || 0; r.bashWrites += d.bashWrites || 0; r.docsJs += d.docsJs || 0;
   }
   for (const a of agents) {
     inject += a.stats.styleInjections;
     attach += a.stats.styleRuleAttaches;
     for (const [rel, d] of Object.entries(a.stats.docTouches)) {
-      const r = docRows[rel] || (docRows[rel] = { main: 0, agents: 0, writes: 0, bashReads: 0, bashWrites: 0 });
-      r.agents += d.reads; r.writes += d.writes; r.bashReads += d.bashReads || 0; r.bashWrites += d.bashWrites || 0;
+      const r = docRows[rel] || (docRows[rel] = { main: 0, agents: 0, writes: 0, bashReads: 0, bashWrites: 0, docsJs: 0 });
+      r.agents += d.reads; r.writes += d.writes; r.bashReads += d.bashReads || 0; r.bashWrites += d.bashWrites || 0; r.docsJs += d.docsJs || 0;
     }
   }
 
@@ -2368,10 +3243,11 @@ function computeAggregates(main, agents) {
   const tools = {};
   for (const src of [main, ...agents.map((a) => a.stats)]) {
     for (const [name, t] of Object.entries(src.toolCalls)) {
-      const e = tools[name] || (tools[name] = { calls: 0, resultChars: 0, errors: 0, hookBlocks: 0, declines: 0, rmVerifyTails: 0, errorTs: [] });
+      const e = tools[name] || (tools[name] = { calls: 0, resultChars: 0, errors: 0, hookBlocks: 0, declines: 0, rmVerifyTails: 0, rewrites: 0, errorTs: [], rewriteErrors: [] });
       e.calls += t.calls; e.resultChars += t.resultChars; e.errors += t.errors; e.hookBlocks += t.hookBlocks || 0;
-      e.declines += t.declines || 0; e.rmVerifyTails += t.rmVerifyTails || 0;
+      e.declines += t.declines || 0; e.rmVerifyTails += t.rmVerifyTails || 0; e.rewrites += t.rewrites || 0;
       if (t.errorTs) e.errorTs = e.errorTs.concat(t.errorTs).sort();
+      if (t.rewriteErrors) e.rewriteErrors = e.rewriteErrors.concat(t.rewriteErrors);
     }
   }
 
@@ -2425,7 +3301,7 @@ function computeAggregates(main, agents) {
 // carried a sibling session's denial). The session being analyzed names its own file, so a
 // directory is narrowed to `<session-id>.jsonl` and, when that is absent, to nothing at all: an
 // empty tally is the truth, a neighbour's rows are not. Pass the file directly to bypass this.
-function readBlockLedger(target, sessionId) {
+function readBlockLedger(target, sessionId, transcript) {
   // `given` separates 'no ledger passed' from 'a ledger with no row for this session' - the second
   // is a measured zero, the first is no measurement at all.
   const out = { rows: 0, byHook: {}, firstTs: null, lastTs: null, rowTs: [], given: !!target };
@@ -2433,8 +3309,14 @@ function readBlockLedger(target, sessionId) {
   let files = [];
   try {
     if (fs.statSync(target).isDirectory()) {
-      const own = sessionId ? path.join(target, `${sessionId}.jsonl`) : null;
-      files = own && fs.existsSync(own) ? [own] : [];
+      // The docs root's `hook-blocks/` folder names a ledger `<sid>.jsonl`; a session bundle keeps it beside the transcript
+      // as `hook-blocks-<sid>.jsonl`. Reading only the first gave a bundle folder a silent measured zero (audit
+      // 2026-10-10, 05c925e9: '0 whole-file denial(s)' over a ledger holding 4) - now neither found says so.
+      // In a bundle `<sid>.jsonl` is the transcript itself, never its ledger.
+      const self = transcript ? path.resolve(transcript) : null;
+      const own = sessionId ? [`hook-blocks-${sessionId}.jsonl`, `${sessionId}.jsonl`].map((n) => path.join(target, n)).find((f) => fs.existsSync(f) && path.resolve(f) !== self) : null;
+      files = own ? [own] : [];
+      if (!own) { out.given = false; out.missing = `no ledger file for ${sessionId || 'this session'} in ${target}`; }
     } else {
       files = [target];
     }
@@ -2464,6 +3346,9 @@ function readBlockLedger(target, sessionId) {
       if (o.ts) out.rowTs.push({ ts: Date.parse(o.ts), hook: o.hook });
       const e = out.byHook[o.hook] || (out.byHook[o.hook] = { blocks: 0, reasons: new Map(), events: new Set(), tools: new Set() });
       e.blocks += 1;
+      // Who was blocked (audit 2026-10-10 C07, 0498718d): the block row carries `agent` - a seat's id, or null for the
+      // main session. A row from before the field has none, and is counted apart, never guessed.
+      if (Object.hasOwn(o, 'agent')) { if (o.agent) { out.seatRows = (out.seatRows || 0) + 1; e.seat = (e.seat || 0) + 1; } else out.mainRows = (out.mainRows || 0) + 1; }
       if (o.event) e.events.add(o.event);
       if (o.tool) e.tools.add(o.tool);   // rows from before the column exist without it - the cell stays empty
       // Keyed by REASON, which carries the file the denial named - two blocks on two different
@@ -2538,7 +3423,7 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
   const newest = findSessionFiles(sessionsDir).filter((f) => !exclude.has(path.basename(f, '.jsonl')))
     .map((f) => ({ f, at: fs.statSync(f).mtimeMs })).sort((a, b) => b.at - a.at).slice(0, TURN_CHECK_WINDOW).map((x) => x.f);
   const doneGate = newDoneGate();
-  for (const f of newest) for (const d of readBlockLedger(blockDir, path.basename(f, '.jsonl')).doneGateRows || []) tallyDoneGate(doneGate, d, () => false);
+  for (const f of newest) for (const d of readBlockLedger(blockDir, path.basename(f, '.jsonl'), f).doneGateRows || []) tallyDoneGate(doneGate, d, () => false);
   const unchecked = doneGate.skillLoaded + doneGate.inContext + doneGate.missed;
   // minimal switches the build check off whatever TURN_CHECK says, so the key it would advise does nothing
   const advise = !on && profile !== 'minimal' && unchecked >= TURN_CHECK_THRESHOLD;
@@ -2556,9 +3441,14 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
 // session's own cwd (the row's `cwd`; a relative path is inside it, resolved through the command's own
 // `cd`s) - a write anywhere else is scratch, and a target behind a variable is not judged. A row with no
 // cwd falls back to reading a temp-dir path as scratch. A call whose result is an error - a denied edit,
-// a failed Skill load - changed nothing and loaded nothing.
-const newRootCause = () => ({ streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0 });
+// a failed Skill load - changed nothing and loaded nothing. A red run the test-first method meant is no
+// streak: with that method in context (loaded earlier in the file, or preloaded by the seat) and a call
+// description that expects red ('expecting the new test red', 'expecting it to fail'), it is counted as
+// intended red, outside the streaks (audit 2026-10-10, session ca65b406: 2 such runs read as streaks).
+const newRootCause = () => ({ streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0, intended: 0, testFirstRed: 0 });
 const ROOT_CAUSE_SKILL_RE = /(?:^|:)(?:alfred-)?habits-root-cause$/;
+const TEST_FIRST_SKILL_RE = /(?:^|:)(?:alfred-)?habits-test-first$/;
+const EXPECTS_RED_RE = /\bexpect(?:s|ed|ing)?\b(?!\s+(?:no|zero|0|none)\b)[^.;\n]*?\b(?:red|fail|fails|failing|failure)\b/i;
 const FIX_EDIT_TOOL_RE = /^(?:Edit|Write|MultiEdit|NotebookEdit)$/;
 const FIX_SKIP_RE = /\.(?:md|mdx|markdown|txt|rst|adoc|log|out|err|tmp|bak)$|(?:^|[\\/])\.claude[\\/]/i;
 const TEMP_PATH_RE = /^\/(?:tmp|dev|private\/tmp)\//;
@@ -2630,32 +3520,36 @@ function toolSequence(file) {
   return seq;
 }
 const preloadCache = new Map();
-function seatPreloads(agentType) {
+function seatPreloads(agentType, skillRe = ROOT_CAUSE_SKILL_RE) {
   const name = String(agentType || '').replace(/^.*:/, '');
   if (!name) return false;
-  if (!preloadCache.has(name)) {
+  const key = `${name}\0${skillRe.source}`;
+  if (!preloadCache.has(key)) {
     let hit = false;
     for (const f of [path.join(__dirname, '..', 'stack', 'agents', `${name}.md`), path.join(process.cwd(), '.claude', 'agents', `${name}.md`)]) {
       try {
         const fm = (fs.readFileSync(f, 'utf8').match(/^---\n([\s\S]*?)\n---/) || [])[1] || '';
         const skills = (fm.match(/^skills:\s*\n((?:\s+-\s+.*\n?)+)/m) || [])[1] || '';
-        if (skills.split('\n').some((l) => ROOT_CAUSE_SKILL_RE.test(l.replace(/^\s*-\s*/, '').trim()))) { hit = true; break; }
+        if (skills.split('\n').some((l) => skillRe.test(l.replace(/^\s*-\s*/, '').trim()))) { hit = true; break; }
       } catch { /* not this home */ }
     }
-    preloadCache.set(name, hit);
+    preloadCache.set(key, hit);
   }
-  return preloadCache.get(name);
+  return preloadCache.get(key);
 }
 function resolveRootCause(details, files) {
   const t = newRootCause();
   if (!details || !details.length) return t;
   const seqs = files.map(toolSequence);
   const isLoad = (st) => !st.error && st.name === 'Skill' && ROOT_CAUSE_SKILL_RE.test(String(st.input.skill || ''));
+  const isTestFirst = (st) => !st.error && st.name === 'Skill' && TEST_FIRST_SKILL_RE.test(String(st.input.skill || ''));
   for (const d of details) {
-    t.streaks += 1;
     let seq = null;
     let at = -1;
     for (const sq of seqs) { at = d.tool_use_id ? sq.findIndex((st) => st.id === d.tool_use_id) : -1; if (at >= 0) { seq = sq; break; } }
+    if (seq && EXPECTS_RED_RE.test(String(seq[at].input.description || ''))
+      && (seq.slice(0, at).some(isTestFirst) || seatPreloads(d.agent_type, TEST_FIRST_SKILL_RE))) { t.intended += 1; continue; }
+    t.streaks += 1;
     if (!seq) { t.unmatched += 1; continue; }
     if (seq.slice(0, at).some(isLoad)) { t.inContext += 1; continue; }
     if (seatPreloads(d.agent_type)) { t.preloaded += 1; continue; }
@@ -2668,8 +3562,16 @@ function resolveRootCause(details, files) {
   }
   return t;
 }
+// The main-session / seat split of a block total; rows written before the `agent` field are named as such.
+const blockSplit = (l) => {
+  const main = l.mainRows || 0, seat = l.seatRows || 0, old = l.rows - main - seat;
+  if (!main && !seat) return '';
+  return ` (${main} main session, ${seat} seat${old ? `, ${old} from rows with no agent field` : ''})`;
+};
 const rootCauseLine = (t) => `ROOT CAUSE (probe): ${t.streaks} red streak(s) - ${t.beforeFix} loaded before the fix, ${t.inContext} already in context, `
-  + `${t.preloaded} preloaded by the seat, ${t.afterFix} loaded after the fix, ${t.missed} MISSED, ${t.noFix} with no fix after, ${t.unmatched} unmatched`;
+  + `${t.preloaded} preloaded by the seat, ${t.afterFix} loaded after the fix, ${t.missed} MISSED, ${t.noFix} with no fix after, ${t.unmatched} unmatched`
+  + (t.intended ? `; ${t.intended} intended red (expected red after habits-test-first, not counted)` : '')
+  + (t.testFirstRed ? `; ${t.testFirstRed} test-first red run(s) logged apart (test-first-red rows, not streaks)` : '');
 // The correction probe (guard-answer-length.js, log-only unless ALFRED_CODE_CORRECTION_NUDGE=inject):
 // one row per correction turn. Whether it was then SAVED is the scorecard's corrections-saved row,
 // read from the transcript with the same test.
@@ -2703,8 +3605,12 @@ function finishProbes(ledger, sessionFile) {
     for (const d of ledger.doneGateRows) tallyDoneGate(ledger.doneGate, d, loadedBefore);
     delete ledger.doneGateRows;
   }
-  if (ledger && ledger.rootCauseRows) {
-    ledger.rootCause = resolveRootCause(ledger.rootCauseRows, sessionTranscriptFiles(sessionFile));
+  // A red-first run the test-first method meant is logged apart as `test-first-red` (guard-stop-contract.js) and never
+  // reaches the streak rows; its count rides the ROOT CAUSE line, so a low MISSED is read beside it (audit 2026-10-10 C16).
+  const testFirstRed = ledger && ledger.probeKinds ? ledger.probeKinds['test-first-red'] || 0 : 0;
+  if (ledger && (ledger.rootCauseRows || testFirstRed)) {
+    ledger.rootCause = resolveRootCause(ledger.rootCauseRows || [], sessionTranscriptFiles(sessionFile));
+    ledger.rootCause.testFirstRed = testFirstRed;
     delete ledger.rootCauseRows;
   }
   return ledger;
@@ -2762,16 +3668,15 @@ function hookJoinStats(main, agents, hookLog, tools) {
   // line this budget exists to remove. 750 clears the measured maximum with room; the window is a
   // tolerance for one hook's own spawn time, not a semantic boundary, so widening it cannot pull
   // in a call from a different phase of the session.
-  // Do NOT widen it further. The ledger row carries no `tool_use_id`, so the join is tool name +
-  // timestamp and nothing else; every extra millisecond buys matches that are guesses. A call this
-  // budget cannot match is reported UNJOINED - a wrong join reads as evidence, an unjoined call
-  // reads as what it is.
+  // Do NOT widen it further. A row written before the ledger gained `tool_use_id` joins by tool name +
+  // timestamp, and every extra millisecond buys matches that are guesses; a late row is joined only by the
+  // detail it names, inside its own call's span (pass 3 below). A call none of the three passes can match is
+  // reported UNJOINED - a wrong join reads as evidence, an unjoined call reads as what it is.
   const HOOK_LATENCY_MS = 750;
   const ms = (ts) => (typeof ts === 'number' ? ts : Date.parse(ts));
   const firstMs = ms(hookLog.firstTs);
   const lastMs = ms(hookLog.lastTs);
   const allTs = [main, ...agents.map((a) => a.stats)].flatMap((src) => src.toolCallTs || []);
-  const inWin = allTs.filter((ts) => ms(ts) >= firstMs - HOOK_LATENCY_MS && ms(ts) <= lastMs + HOOK_LATENCY_MS).length;
   // Anchor coverage to the ACTIVE window (after a mid-file /clear) - the raw span counted a
   // dead 23h50m gap as uncovered session time, reporting ~6% coverage for a ~96%-covered
   // 89-minute work window (measured).
@@ -2782,42 +3687,96 @@ function hookJoinStats(main, agents, hookLog, tools) {
   // A quiet tail (zero calls after the ledger's last row) and a real coverage gap read the
   // same in percentages - count the tail's calls so the report can tell them apart
   // (measured: an idle 38%-of-session tail with 0 tool calls was reported as unlogged activity).
-  // `lastTs + HOOK_LATENCY_MS` on a string CONCATENATES ('...Z' + 250 = '...Z250'), so this was
-  // always false too and the quiet-tail line printed unconditionally.
-  const tailCalls = allTs.filter((ts) => ms(ts) > lastMs + HOOK_LATENCY_MS).length;
-  // CALL coverage leads, wall clock follows: a session whose last hour is one idle await_summary
-  // reads as 38% time-covered and 100% call-covered, and the second number is the true one.
-  const callPct = allTs.length ? Math.round((100 * inWin) / allTs.length) : 100;
   // Per-side join. A call the harness rejects before PreToolUse leaves no ledger row, and a ledger
   // row can have no transcript call (an ask the transcript never wrote) - a count-based 'unmatched'
   // cancels the two into a false 40 vs 40 (measured). Match each in-window call to the nearest
   // unused row of the same tool within the latency budget and list the leftovers on each side.
-  const allCalls = [main, ...agents.map((a) => a.stats)].flatMap((src) => src.toolCallIdx || []);
-  const rowsIdx = (hookLog.rowsIdx || []).map((r) => ({ ts: r.ts, tool: r.tool, ms: ms(r.ts), used: false }));
+  // (a stats object with stamps and no call index - an older dump - still counts its calls by stamp)
+  const allCalls = [main, ...agents.map((a) => a.stats)].flatMap((src) => ((src.toolCallIdx || []).length ? src.toolCallIdx : (src.toolCallTs || []).map((ts) => ({ ts }))));
+  const rowsIdx = (hookLog.rowsIdx || []).map((r) => ({ ts: r.ts, tool: r.tool, id: r.id || null, detail: r.detail || null, ms: ms(r.ts), used: false }));
   const unmatchedCalls = [];
   let matchedCalls = 0;
   let ambiguousCalls = 0;
+  // Pass 1 - the call's own id, which a row written since the ledger gained `tool_use_id` carries: exact, whatever the
+  // lag (audit 2026-10-10 C07: a batched message's calls run after it finishes streaming, up to 12s past their stamps).
+  const byId = new Map(rowsIdx.filter((r) => r.id).map((r) => [r.id, r]));
+  const joinedById = new Set();
   for (const c of allCalls) {
+    const r = c.id ? byId.get(c.id) : null;
+    if (r && !r.used && r.tool === c.tool) { r.used = true; joinedById.add(c); }
+  }
+  const matchedById = joinedById.size;
+  const otherDetail = (c, r) => !!(c.detail && r.detail && c.detail !== r.detail && !/redacted/.test(`${c.detail}${r.detail}`));
+  const timeLeft = [];
+  const joinedByTime = new Set();
+  for (const c of allCalls) {
+    if (joinedById.has(c)) continue;
     const t = ms(c.ts);
-    if (!(t >= firstMs - HOOK_LATENCY_MS && t <= lastMs + HOOK_LATENCY_MS)) continue;
+    // In the window when the call's run - its stamp to its result, where PreToolUse fires - meets the ledger's.
+    const runEnd = c.resultTs ? Math.max(t, ms(c.resultTs)) : t;
+    if (!(runEnd >= firstMs - HOOK_LATENCY_MS && t <= lastMs + HOOK_LATENCY_MS)) continue;
     let best = null;
     let runnerUp = null;
     for (const r of rowsIdx) {
       if (r.used || r.tool !== c.tool) continue;
+      // A row naming another file or description is another call, however close in time (bc2fa83e: four Edits of one
+      // batch took each other's rows by nearest stamp). A masked detail may be spelled apart, so it never excludes.
+      if (otherDetail(c, r)) continue;
       const d = Math.abs(r.ms - t);
       if (d > HOOK_LATENCY_MS) continue;
       if (!best || d < best.d) { runnerUp = best; best = { r, d }; }
       else if (!runnerUp || d < runnerUp.d) runnerUp = { r, d };
     }
     // Two rows of the same tool within 100ms of each other cannot be told apart by time, and the
-    // ledger carries no tool_use_id to break the tie - so neither is joined.
+    // rows carry no tool_use_id to break the tie - so neither is joined.
     const ambiguous = best && runnerUp && Math.abs(runnerUp.d - best.d) <= 100;
-    if (best && !ambiguous) { best.r.used = true; matchedCalls += 1; } else { unmatchedCalls.push({ ts: c.ts, tool: c.tool, ambiguous: !!ambiguous }); if (ambiguous) ambiguousCalls += 1; }
+    if (best && !ambiguous) { best.r.used = true; matchedCalls += 1; joinedByTime.add(c); } else timeLeft.push({ c, ambiguous: !!ambiguous });
+  }
+  // Pass 3 - an older row (no id) the time budget missed: the same tool naming the same detail (the Bash description, the
+  // file's basename, the skill), written between the call and its result - PreToolUse fires in that span, however late a
+  // batched call runs. Calls take rows in order, so two Edits of one file pair first with first (d37841e9: 'Check for
+  // legacy capabilities rule files' 869ms late read as an UNJOINED call plus an orphan row naming that same text).
+  let matchedByDetail = 0;
+  // A call whose own instrumentation hook the harness cancelled has no row because the hook never wrote one - name that
+  // cause, which the transcript records, instead of leaving only the 'rejected before PreToolUse' guess.
+  const cancels = {};
+  for (const src of [main, ...agents.map((a) => a.stats)]) Object.assign(cancels, src.hookCancelsByCall || {});
+  const causeOf = (c) => {
+    const x = c.id && (cancels[c.id] || []).find((k) => k.hook === 'instrument-tool-usage.js');
+    return x ? `its instrumentation hook was cancelled${x.timedOut ? ' at its timeout' : ''}${x.ms ? ` after ${(x.ms / 1000).toFixed(1)}s` : ''} - no row was written` : null;
+  };
+  const spanOf = (c) => [ms(c.ts) - HOOK_LATENCY_MS, (c.resultTs ? ms(c.resultTs) : ms(c.ts) + 60000) + HOOK_LATENCY_MS];
+  const inSpan = (x, [lo, hi]) => x.ms >= lo && x.ms <= hi;
+  for (const { c, ambiguous } of timeLeft) {
+    // two rows equally close by time stay a tie: a detail pass would only pick one of the same two
+    if (ambiguous) { unmatchedCalls.push({ ts: c.ts, tool: c.tool, ambiguous, cause: causeOf(c) }); ambiguousCalls += 1; continue; }
+    const span = spanOf(c);
+    const cands = rowsIdx.filter((x) => !x.used && !x.id && x.tool === c.tool && (x.detail || null) === (c.detail || null) && inSpan(x, span)).sort((a, b) => a.ms - b.ms);
+    // A tool that names no detail (SendMessage, TodoWrite) joins only when its run holds one such row and no other
+    // leftover call of that tool reaches it.
+    const lone = !c.detail && cands.length === 1 && !timeLeft.some((o) => o.c !== c && o.c.tool === c.tool && inSpan(cands[0], spanOf(o.c)));
+    const r = c.detail ? cands[0] : lone ? cands[0] : null;
+    if (r) { r.used = true; matchedByDetail += 1; joinedByTime.add(c); continue; }
+    unmatchedCalls.push({ ts: c.ts, tool: c.tool, ambiguous, cause: causeOf(c) });
+    if (ambiguous) ambiguousCalls += 1;
   }
   const unmatchedRows = rowsIdx.filter((r) => !r.used).map((r) => ({ ts: r.ts, tool: r.tool }));
+  // A call a pass JOINED is covered whatever its stamp: Windows PreToolUse lag ran 788-5,616ms on 6 of 13 calls of one
+  // session, so a joined call stamped before the ledger's first row read 'outside the ledger window' and printed the
+  // false 'wired mid-session' cause (audit 2026-10-11, session 5b9ce9c5). Only an UNJOINED call is judged by its stamp.
+  const joined = (c) => joinedById.has(c) || joinedByTime.has(c);
+  const inTsWindow = (c) => ms(c.ts) >= firstMs - HOOK_LATENCY_MS && ms(c.ts) <= lastMs + HOOK_LATENCY_MS;
+  const inWin = allCalls.filter((c) => joined(c) || inTsWindow(c)).length;
+  const lagJoined = allCalls.filter((c) => joined(c) && !inTsWindow(c)).length;
+  // `lastTs + HOOK_LATENCY_MS` on a string CONCATENATES ('...Z' + 250 = '...Z250'), so this was
+  // always false too and the quiet-tail line printed unconditionally.
+  const tailCalls = allCalls.filter((c) => !joined(c) && ms(c.ts) > lastMs + HOOK_LATENCY_MS).length;
+  // CALL coverage leads, wall clock follows: a session whose last hour is one idle await_summary
+  // reads as 38% time-covered and 100% call-covered, and the second number is the true one.
+  const callPct = allTs.length ? Math.round((100 * inWin) / allTs.length) : 100;
   return { trTools, coverage: {
-    inWin, callPct, pct, calls: allTs.length, outside: allTs.length - inWin, tailCalls, unmatched: Math.max(0, inWin - hookLog.rows),
-    latencyMs: HOOK_LATENCY_MS, matchedCalls, ambiguousCalls,
+    inWin, callPct, pct, calls: allTs.length, outside: allTs.length - inWin, tailCalls, lagJoined, unmatched: Math.max(0, inWin - hookLog.rows),
+    latencyMs: HOOK_LATENCY_MS, matchedCalls: matchedCalls + matchedById + matchedByDetail, matchedById, matchedByTime: matchedCalls, matchedByDetail, ambiguousCalls,
     unmatchedCallCount: unmatchedCalls.length, unmatchedCalls: unmatchedCalls.slice(0, 8),
     unmatchedRowCount: unmatchedRows.length, unmatchedRows: unmatchedRows.slice(0, 8),
   } };
@@ -2874,8 +3833,13 @@ function efficiencyRows(main, agg, blockLedger) {
     }
   }
   if (main.floorCtx) {
-    const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
-    rows.push({ practice: 'standing floor', measured: `~${fmt(main.floorCtx)} tok/msg${share != null ? `, ~${share}% of cache-read` : ''}`, tests: 'the always-on set is the one lever on this number - lint check 33 caps it, /alfred-code:status reports it per install' });
+    const share = floorShare(main);
+    const own = floorPromptTok(main);
+    rows.push({ practice: 'standing floor', measured: `~${fmt(main.floorCtx)} tok/msg${share != null ? `, ~${share}% of the context sent (cache-read + cache-write + input)` : ''}${own ? `, of which the first prompt ~${fmt(own)} (install ~${fmt(main.floorCtx - own)})` : ''}`, tests: 'the always-on set is the one lever on this number - lint check 33 caps it, /alfred-code:status reports it per install' });
+  }
+  if (main.imageResults) {
+    const carry = main.imageCarryTok || 0;
+    rows.push({ practice: 'image carry', measured: `${main.imageResults} image(s) in the main session: ~${fmt(main.imageTok || 0)} tok on arrival (${main.imagesMeasured || 0} measured), ~${fmt(carry)} tok carried as cache-read by the later messages${carry && main.total.cacheRead ? `, ${sharePct(carry, main.total.cacheRead)} of cache-read` : ''}`, tests: 'an image is paid on arrival and again on every later message until a compaction or /clear - a smaller or cropped capture, or reading the UI as text, cuts the carry, not just the arrival' });
   }
   rows.push({
     practice: 'cache continuity',
@@ -2898,13 +3862,13 @@ function efficiencyRows(main, agg, blockLedger) {
     const bashChars = ['Bash', 'PowerShell', 'Monitor'].reduce((n, k) => n + ((agg.tools[k] && agg.tools[k].resultChars) || 0), 0);
     const checkChars = ['test', 'build', 'lint', 'ci'].reduce((n, k) => n + ((c[k] && c[k].chars) || 0), 0);
     const share = bashChars ? Math.round((100 * checkChars) / bashChars) : null;
-    rows.push({ practice: 'test and build runs', measured: `test ${t.calls} (${t.scoped} scoped, ${t.whole} whole-suite) ~${fmt(approxTok(t.chars))} tok; build ${(c.build || {}).calls || 0} ~${fmt(approxTok((c.build || {}).chars || 0))}; lint ${(c.lint || {}).calls || 0} ~${fmt(approxTok((c.lint || {}).chars || 0))}; ci ${(c.ci || {}).calls || 0}${share != null ? ` - ${share}% of shell result volume` : ''}`, tests: 'iterate on ONE test or project, run the whole suite once at the gate; the result chars are what lands in context - a green run needs its summary line, a red run earns its trace' });
+    rows.push({ practice: 'test and build runs', measured: `test ${t.calls} (${t.scoped} scoped, ${t.whole} whole-suite) ~${fmt(approxTok(t.chars))} tok; build ${(c.build || {}).calls || 0} ~${fmt(approxTok((c.build || {}).chars || 0))}; lint ${(c.lint || {}).calls || 0} ~${fmt(approxTok((c.lint || {}).chars || 0))}; ci ${(c.ci || {}).calls || 0}${e.checkLogReads ? `; ${e.checkLogReads} read(s) of a log a check wrote` : ''}${share != null ? ` - ${share}% of shell result volume` : ''}`, tests: 'iterate on ONE test or project, run the whole suite once at the gate; the result chars are what lands in context - a green run needs its summary line, a red run earns its trace' });
   }
   {
     const n = main.gitCommits || 0, k = e.commitsChecked || 0;
     rows.push({ practice: 'checked commits', measured: n ? `${k} of ${n} commit(s) had a test, build, lint or ci-status call in the ${CHECK_WINDOW} tool calls before${(e.commitsUnchecked || []).length ? ` - unchecked at: ${tsList(e.commitsUnchecked)}` : ''}` : 'no commit', tests: 'a check the session can run, before the work is called done - ran, not necessarily green; open the run' });
   }
-  rows.push({ practice: 'green claims', measured: `${(e.unverifiedGreenClaims || []).length} of ${e.greenClaims || 0} claim(s) that a check passed landed in a turn that ran no check${(e.unverifiedGreenClaims || []).length ? ` - at: ${tsList(e.unverifiedGreenClaims)}` : ''}`, tests: "evidence, not assertion - open each turn: a check run in an EARLIER turn, or in a dispatched seat's own transcript, is evidence the regex cannot see" });
+  rows.push({ practice: 'green claims', measured: `${(e.unverifiedGreenClaims || []).length} of ${e.greenClaims || 0} claim(s) that a check passed landed in a turn that ran no check${e.greenClaimsInAsks ? ` (${e.greenClaimsInAsks} of the claims in an ask's question)` : ''}${(e.unverifiedGreenClaims || []).length ? ` - at: ${tsList(e.unverifiedGreenClaims)}` : ''}`, tests: "evidence, not assertion - open each turn: a check run in an EARLIER turn, or in a dispatched seat's own transcript, is evidence the regex cannot see" });
   rows.push({ practice: 'correction streaks', measured: `${(e.correctionStreaks || []).length} streak(s) (${STREAK_TURNS} short user turns in a row, each after a ${fmt(STREAK_LONG)}+ char answer, as guard-answer-length counts them)${(e.correctionStreaks || []).length ? ` at: ${tsList(e.correctionStreaks)}` : ''}; ${e.correctionTurns || 0} of ${e.longAnswered || 0} answer(s) over ${fmt(STREAK_LONG)} chars drew a short (under ${STREAK_SHORT} char) user turn`, tests: 'after two corrections the context holds the failed drafts: the format ask, or /clear with a prompt that carries what was learned; the second number is what the strict walk did not chain' });
   {
     const total = (e.correctionsSaved || 0) + (e.correctionsUnsaved || []).length;
@@ -2918,7 +3882,7 @@ function efficiencyRows(main, agg, blockLedger) {
     // permission route, so it is the fallback and says so.
     const denials = blockLedger && blockLedger.given
       ? `${(blockLedger.byHook[WHOLE_FILE_HOOK] || { blocks: 0 }).blocks} whole-file denial(s) (hook-block ledger)`
-      : `${agg.wholeFileBracket || 0} whole-file denial(s) (transcript bracket - pass --hook-blocks for the ledger)`;
+      : `${agg.wholeFileBracket || 0} whole-file denial(s) (transcript bracket - ${blockLedger && blockLedger.missing ? `${blockLedger.missing}` : 'pass --hook-blocks for the ledger'})`;
     rows.push({ practice: 'navigation', measured: `${n.located} of ${n.reads} source-file read(s) had a locate step in the ${NAV_WINDOW} calls before${n.reads ? ` (${Math.round((100 * n.located) / n.reads)}%)` : ''}; symbol tools ${n.symbolCalls} call(s) against ${n.grepLocated} grep-then-read sequence(s); ${denials}`, tests: 'alfred-navigation, main and seats: locate with serena or the LSP, then read the range - a read with no locate step before it reads to FIND something, a grep-then-read answers a symbol question by name-match, and every whole-file denial is a round trip lost' });
   }
   {
@@ -2957,17 +3921,25 @@ function printInventoryBlock(invUse) {
 function printReport(main, agents, hookLog, window, blockLedger, invUse) {
   const span = main.firstTs && main.lastTs ? new Date(main.lastTs) - new Date(main.firstTs) : null;
   console.log(`Session ${path.basename(main.file, '.jsonl')}  ${main.firstTs || '?'} → ${main.lastTs || '?'} (${dur(span)})${main.ccVersion ? `  Claude Code ${main.ccVersion}` : ''}`);
+  if (main.idleTail) console.log(`  ${idleTailLine(main).replace(/`/g, '')}`);
   if (main.clearTs && main.clearTs > main.firstTs) {
     console.log(`  active window since last /clear: ${main.clearTs} → ${main.lastTs} (${dur(new Date(main.lastTs) - new Date(main.clearTs))}) - use this, not the raw span, for duration claims`);
   }
   if (window) console.log(`windowed: ${window.fromStr || 'start'} → ${window.toStr || 'end'} (subagents dispatched outside the window are excluded)`);
-  console.log(`user prompts ${main.userPrompts} · API messages ${main.total.msgs} · compactions ${main.compactions} · API errors ${main.apiErrors} · git commits ${main.gitCommits || 0}${main.prMerges ? ` (+${main.prMerges} pr-merge)` : ''}`);
+  console.log(`user prompts ${main.userPrompts}${main.queuedPrompts ? ` (${main.queuedPrompts} queued while the model worked)` : ''} · API messages ${main.total.msgs} · compactions ${main.compactions} · API errors ${main.apiErrors} · git commits ${main.gitCommits || 0}${main.prMerges ? ` (+${main.prMerges} pr-merge)` : ''}`);
   // The PEAK is what every threshold in the stack keys off; the average understated it by 17-43%.
   if (main.peakCtx) console.log(`peak ctx ${fmt(main.peakCtx)} per message${main.peakCtxAt ? ` (at ${main.peakCtxAt})` : ''} - the number every fresh-session threshold is measured against, not the average below`);
   if (main.thinkingTokens) console.log(`thinking ${fmt(main.thinkingTokens)} tok (cost-state.modelUsage) - billed, and attributable to no single message: spike residuals close against this, not against tool output`);
   if (main.floorCtx) {
-    const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
-    console.log(`standing inventory ~${fmt(main.floorCtx)} tok/msg (system prompt + tool schemas + CLAUDE.md + always-on rules) - paid on EVERY message${share != null ? `, ~${share}% of cache-read` : ''}, and re-paid in full after every compaction`);
+    const share = floorShare(main);
+    const own = floorPromptTok(main);
+    console.log(`standing inventory ~${fmt(main.floorCtx)} tok/msg (system prompt + tool schemas + CLAUDE.md + always-on rules) - paid on EVERY message${share != null ? `, ~${share}% of the context sent (cache-read + cache-write + input)` : ''}, and re-paid in full after every compaction`);
+    if (own) console.log(`  of which ~${fmt(own)} is the session's own first prompt (typed text + slash expansion, chars/4) - the install's floor is ~${fmt(main.floorCtx - own)}`);
+    const ins = instructionsBreakdown(main);
+    if (ins) {
+      console.log(`  instructions at session start: ${ins.files} file(s), ${ins.chars} chars (~${fmt(approxTok(ins.chars))} tok) - ${ins.rows.slice(0, 8).map((r) => `${r.file} ${r.chars}`).join(', ')}${ins.rows.length > 8 ? `, +${ins.rows.length - 8} more` : ''}`);
+      if (ins.twice.length) console.log(`  LOADED TWICE under a renamed rule's old and new name: ${ins.twice.map((t) => `${t.old} + ${t.now}`).join(', ')} - ~${fmt(approxTok(ins.twiceChars))} tok of the floor is the stale copies`);
+    }
   }
   {
     const src = windowSource(main);
@@ -2976,7 +3948,7 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
     if (il) console.log(il);
   }
   if (main.totalCostUSD != null) console.log(`billed $${Number(main.totalCostUSD).toFixed(2)} (cost-state)`);
-  if (main.untranscribed) console.log('untranscribed calls: cost-state cache-read ' + fmt(main.costState.cacheRead) + ' vs transcript ' + fmt(main.total.cacheRead) + ' - gap ' + fmt(main.untranscribed.cacheRead) + (main.untranscribed.contexts != null ? ' (~' + main.untranscribed.contexts + 'x the peak context)' : '') + ': the harness' + String.fromCharCode(39) + 's post-turn recap call(s) are billed and written to no transcript row - the bundle reconciles to its bill only with this line');
+  if (main.untranscribed) console.log('untranscribed calls: cost-state cache-read ' + fmt(main.costState.cacheRead) + ' vs transcript ' + fmt(main.total.cacheRead) + (main.untranscribed.seatsCacheRead ? ' + seats ' + fmt(main.untranscribed.seatsCacheRead) : '') + ' - gap ' + fmt(main.untranscribed.cacheRead) + (main.untranscribed.contexts != null ? ' (~' + main.untranscribed.contexts + 'x the peak context)' : '') + ': the harness' + String.fromCharCode(39) + 's post-turn recap call(s) are billed and written to no transcript row - the bundle reconciles to its bill only with this line');
   if (main.forkPrefix && main.forkPrefix.msgs) console.log('fork prefix: ' + main.forkPrefix.msgs + ' msgs / ' + fmt(main.forkPrefix.cacheRead) + ' cache-read / ' + main.forkPrefix.toolCalls + ' tool calls carry another session' + String.fromCharCode(39) + 's id (' + main.forkPrefix.sessionIds.join(', ') + ') - a copied prefix of that transcript, counted there; this file' + String.fromCharCode(39) + 's own tail is ' + (main.total.msgs - main.forkPrefix.msgs) + ' msgs / ' + fmt(main.total.cacheRead - main.forkPrefix.cacheRead) + ' cache-read, and the ledger cross-check is judged over that tail only');
   if (main.stopHookBlocks) console.log(`Stop-hook denials ${main.stopHookBlocks} - these arrive as meta user TEXT, not tool results, so they are absent from the hook-blk column below`);
   if (main.harnessDenials) console.log(`Harness denials ${main.harnessDenials} - read as a block (auto-mode classifier, a foreground sleep, a tool-schema failure) but no stack hook ran: excluded from hook-blk, never charge a guard for them`);
@@ -3059,7 +4031,7 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
     console.log('\nGENERATED DOCS (capture-doc consumption; reads = orientation happening, writes = capture/loop maintenance)');
     console.log(`  ${pad('doc', 44)} ${rpad('main-reads', 10)} ${rpad('agent-reads', 11)} ${rpad('writes', 6)}`);
     for (const [rel, r] of Object.entries(agg.docRows).sort((a, b) => (b[1].main + b[1].agents) - (a[1].main + a[1].agents))) {
-      const bash = (r.bashReads || r.bashWrites) ? `  (+${r.bashReads || 0}r/${r.bashWrites || 0}w via Bash)` : '';
+      const bash = (r.bashReads || r.bashWrites) ? `  (+${r.bashReads || 0}r/${r.bashWrites || 0}w via Bash${r.docsJs ? `, ${r.docsJs} by docs.js` : ''})` : '';
       console.log(`  ${pad(rel, 44)} ${rpad(r.main, 10)} ${rpad(r.agents, 11)} ${rpad(r.writes, 6)}${bash}`);
     }
     if (agg.attach) console.log(`  ${pad('(style rule attached on file touch)', 44)} ${rpad('-', 10)} ${rpad('-', 11)} ${rpad('-', 6)}  ×${agg.attach}`);
@@ -3077,18 +4049,22 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
 
   printInventoryBlock(invUse);
 
-  console.log('\nTOOLS (main + subagents; result volume = what lands back in context; declines = the USER answering an ask, never a failure; hook-blk = PreToolUse denials - a denial may be a FALSE POSITIVE, so read the block before scoring it as the gate working)');
-  console.log(`  ${pad('tool', 28)} ${rpad('calls', 5)} ${rpad('results', 9)} ${rpad('errors', 6)} ${rpad('declines', 9)} ${rpad('hook-blk', 8)}`);
+  console.log('\nTOOLS (main + subagents; result volume = what lands back in context; declines = the USER answering an ask, never a failure; hook-blk = PreToolUse denials - a denial may be a FALSE POSITIVE, so read the block before scoring it as the gate working; hook-rw = calls a PreToolUse hook rewrote before they ran)');
+  console.log(`  ${pad('tool', 28)} ${rpad('calls', 5)} ${rpad('results', 9)} ${rpad('errors', 6)} ${rpad('declines', 9)} ${rpad('hook-blk', 8)} ${rpad('hook-rw', 7)}`);
   {
     // Top 15 by result volume, PLUS any dropped row carrying errors or hook blocks - a
     // 100%-error tool must never vanish on low volume (measured: 2/2-error browser_click did).
     const rows = Object.entries(agg.tools).sort((a, b) => b[1].resultChars - a[1].resultChars);
-    const shown = rows.slice(0, 15).concat(rows.slice(15).filter(([, t]) => t.errors > 0 || t.hookBlocks > 0));
+    const shown = rows.slice(0, 15).concat(rows.slice(15).filter(([, t]) => t.errors > 0 || t.hookBlocks > 0 || t.rewrites > 0));
     for (const [name, t] of shown) {
-      console.log(`  ${pad(name, 28)} ${rpad(t.calls, 5)} ${rpad('~' + fmt(approxTok(t.resultChars)), 9)} ${rpad(t.errors, 6)} ${rpad(t.declines || '', 9)} ${rpad(t.hookBlocks || '', 8)}`);
+      console.log(`  ${pad(name, 28)} ${rpad(t.calls, 5)} ${rpad('~' + fmt(approxTok(t.resultChars)), 9)} ${rpad(t.errors, 6)} ${rpad(t.declines || '', 9)} ${rpad(t.hookBlocks || '', 8)} ${rpad(t.rewrites || '', 7)}`);
     }
     const rmv = Object.values(agg.tools).reduce((n, t) => n + (t.rmVerifyTails || 0), 0);
     if (rmv) console.log(`  ${rmv} shell call(s) ended on an ls/test verifying an rm - the non-zero exit there is the removal CONFIRMED, so they are not in the errors column`);
+    const img = imageLine(main, agents);
+    if (img) console.log(`  ${img}`);
+    const rw = rewriteLine(main, agents, agg.tools);
+    if (rw) console.log(`  ${rw}`);
   }
   {
     const errs = Object.entries(agg.tools).filter(([, t]) => (t.errorTs || []).length);
@@ -3096,8 +4072,17 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
       console.log('\n  errors, by WHEN they landed (attribute them to the phase running at that time, never to the loudest one):');
       for (const [name, t] of errs) {
         const ts = t.errorTs.slice(0, 6).map((x) => String(x).slice(11, 19)).join(', ');
-        console.log(`  ${pad(name, 28)} ${rpad(t.errors, 5)} ${ts}${t.errorTs.length > 6 ? ` … +${t.errorTs.length - 6}` : ''}`);
+        const rw = (t.rewriteErrors || []).length;
+        console.log(`  ${pad(name, 28)} ${rpad(t.errors, 5)} ${ts}${t.errorTs.length > 6 ? ` … +${t.errorTs.length - 6}` : ''}${rw ? ` - ${rw} on a call a hook rewrote` : ''}`);
       }
+    }
+  }
+  {
+    const hto = hookTimeoutRows(main, agents);
+    if (hto.length) {
+      console.log('\nHOOK TIMEOUTS (hook runs the harness CANCELLED - each one gave no verdict: a PreToolUse gate that times out does not gate, and the call runs on)');
+      console.log(`  ${pad('hook', 32)} ${rpad('timed-out', 9)} ${rpad('cancelled', 9)} ${pad('longest run', 22)} event / tool`);
+      for (const r of hto) console.log(`  ${pad(r.hook, 32)} ${rpad(r.timedOut, 9)} ${rpad(r.cancelled || '', 9)} ${pad(r.longest, 22)} ${r.where}`);
     }
   }
   if (main.topResults && main.topResults.length) {
@@ -3125,8 +4110,9 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
       for (const [r, n] of reasons.slice(1, 5)) console.log(`  ${pad('', 32)} ${rpad('', 6)} ${rpad('', 22)} ${r}${n > 1 ? ` x${n}` : ''}`);
       if (reasons.length > 5) console.log(`  ${pad('', 32)} ${rpad('', 6)} ${rpad('', 22)} … +${reasons.length - 5} more distinct reason(s)`);
     }
-    console.log(`  ${blockLedger.rows} block(s) total - review each distinct reason on its own; two reasons naming two files are two causes.`);
+    console.log(`  ${blockLedger.rows} block(s) total${blockSplit(blockLedger)} - review each distinct reason on its own; two reasons naming two files are two causes.`);
   }
+  if (blockLedger && blockLedger.missing) console.log(`\nHOOK BLOCKS: ${blockLedger.missing} (looked for <sid>.jsonl and hook-blocks-<sid>.jsonl) - no measurement, never a zero`);
   if (blockLedger && blockLedger.doneGate) console.log('\n' + doneGateLine(blockLedger.doneGate));
   if (blockLedger && blockLedger.rootCause) console.log((blockLedger.doneGate ? '' : '\n') + rootCauseLine(blockLedger.rootCause));
   if (blockLedger && blockLedger.correction) console.log((blockLedger.doneGate || blockLedger.rootCause ? '' : '\n') + correctionLine(blockLedger.correction));
@@ -3146,12 +4132,15 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
       const top = Object.entries(t.details).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([d, n]) => `${d}×${n}`).join(', ');
       console.log(`  ${pad(tool, 28)} ${rpad(t.calls, 5)}  ${top}`);
     }
+    const ledgerVer = ledgerVersionText(hookLog);
+    if (ledgerVer) console.log(`  stack loaded: ${ledgerVer} (the hook's own read of the install it ran from)`);
     const j = hookJoinStats(main, agents, hookLog, agg.tools);
     if (j.coverage) {
       console.log(`  coverage: ledger window ${hookLog.firstTs} → ${hookLog.lastTs} spans ~${j.coverage.pct}% of the session`);
       console.log(`  cross-check: ${j.coverage.callPct}% of tool calls are inside the ledger window - ${j.coverage.inWin} of ${j.coverage.calls}${j.coverage.calls !== j.trTools ? ` (${j.trTools} in the file; the rest belong to the fork prefix)` : ''} - vs ${hookLog.rows} ledger rows`);
       if (j.coverage.outside > 0) console.log(`  ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (${j.coverage.tailCalls} after its last row${j.coverage.tailCalls === 0 ? ' - a quiet tail, not lost coverage' : ''}) - two causes, both real: a ledger wired mid-session legitimately misses the head, and a call the HARNESS rejected before PreToolUse (a classifier denial, a schema failure) never reaches a hook at all and can have no row`);
-      if (j.coverage.unmatchedCallCount) console.log('  ' + j.coverage.unmatchedCallCount + ' in-window call(s) UNJOINED - no ledger row of the same tool within ' + j.coverage.latencyMs + 'ms' + (j.coverage.ambiguousCalls ? ` (${j.coverage.ambiguousCalls} of them ambiguous: two rows of that tool sit equally close and the ledger carries no tool_use_id to tell them apart)` : '') + ': ' + j.coverage.unmatchedCalls.map((c) => c.tool + '@' + c.ts + (c.ambiguous ? ' (ambiguous)' : '')).join(', ') + ' - a call the harness rejected before PreToolUse leaves no row; the join is tool + timestamp only, so unjoined is reported rather than guessed');
+      console.log(`  joined: ${j.coverage.matchedCalls} call(s) - ${j.coverage.matchedById} by tool_use_id, ${j.coverage.matchedByTime} by tool + timestamp within ${j.coverage.latencyMs}ms, ${j.coverage.matchedByDetail} by detail (same tool and detail, between the call and its result)${j.coverage.lagJoined ? `; ${j.coverage.lagJoined} of them stamped outside the ledger window by hook lag, counted covered` : ''}`);
+      if (j.coverage.unmatchedCallCount) console.log('  ' + j.coverage.unmatchedCallCount + ' in-window call(s) UNJOINED - no row carrying its tool_use_id, none of the same tool within ' + j.coverage.latencyMs + 'ms, none naming its detail before its result' + (j.coverage.ambiguousCalls ? ` (${j.coverage.ambiguousCalls} of them ambiguous: two rows of that tool sit equally close)` : '') + ': ' + j.coverage.unmatchedCalls.map((c) => c.tool + '@' + c.ts + (c.ambiguous ? ' (ambiguous)' : '') + (c.cause ? ` (${c.cause})` : '')).join(', ') + ' - a call the harness rejected before PreToolUse leaves no row, so unjoined is reported rather than guessed');
       if (j.coverage.unmatchedRowCount) console.log('  ' + j.coverage.unmatchedRowCount + ' ledger row(s) with no transcript call: ' + j.coverage.unmatchedRows.map((c) => c.tool + '@' + c.ts).join(', ') + ' - an ask or a call the transcript never wrote');
       if (j.coverage.unmatched > 0) console.log(`  ${j.coverage.unmatched} in-window call${j.coverage.unmatched === 1 ? '' : 's'} with no ledger row - check each call's own tool_result for a Blocked:/error string (harness-level blocks and input-validation failures never reach PreToolUse) before calling it a gap`);
     } else {
@@ -3167,8 +4156,18 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
 // sections at the end are the only judgment surface.
 // The vintage block: machine-written, so 'the session broke rule X' is checked against the text
 // the session LOADED instead of the text on disk today.
-function vintageMarkdown(invUse, main, out) {
+// The versions the tool-usage ledger's rows name, in the order they ran: `v2.2.2 on 40 of 40 rows`, a mid-session update
+// as two spans. Null when no row carries one (no ledger, or a hook older than the field).
+function ledgerVersionText(hookLog) {
+  const vs = Object.entries((hookLog && hookLog.versions) || {}).sort((a, b) => String(a[1].firstTs || '').localeCompare(String(b[1].firstTs || '')));
+  if (!vs.length) return null;
+  const span = (r) => (vs.length > 1 && r.firstTs && r.lastTs ? ` (${r.firstTs} → ${r.lastTs})` : '');
+  return vs.map(([ver, r]) => `v${ver} on ${r.rows} of ${hookLog.rows} rows${span(r)}`).join(', ');
+}
+
+function vintageMarkdown(invUse, main, out, hookLog) {
   const v = invUse && invUse.vintage;
+  const ledgerVer = ledgerVersionText(hookLog);
   out.push('## Session vintage', '');
   out.push('_The install this session ran on, not the one on disk today. Every claim that the session broke a rule, skipped a step or ignored a clause is checked against THESE rows: a `DIFFERS` row means the current source is not what the session read, and the claim must quote the loaded body instead._', '');
   out.push('| | |', '|---|---|');
@@ -3176,11 +4175,17 @@ function vintageMarkdown(invUse, main, out) {
   const st = v && v.stamp;
   if (st) {
     const when = st.installed || '?';
-    const rel = st.installed && main.lastTs ? (st.installed > main.lastTs ? 'INSTALLED AFTER this session - what is on disk was never what this session loaded' : 'installed before this session ran') : 'install date unknown';
+    const rel = st.installed && main.lastTs ? (st.installed > main.lastTs ? 'INSTALLED AFTER this session - what is on disk was never what this session loaded'
+      : installedDuring(st.installed, main.firstTs, main.lastTs) ? `INSTALLED DURING this session at ${st.installed} - rows before it ran on the prior install` : 'installed before this session ran') : 'install date unknown';
     out.push(`| Stack install | v${st.version || '?'} (${st.sha ? st.sha.slice(0, 12) : 'sha unknown'}), stamped ${when} - ${rel} |`);
+  } else if (ledgerVer) {
+    out.push('| Stack install | no `alfred-code.stamp` reachable - the Stack loaded row names the version this session\'s hooks ran from |');
   } else {
     out.push('| Stack install | no `alfred-code.stamp` reachable - the install version this session loaded is UNKNOWN, do not assume today\'s |');
   }
+  // Written by the instrumentation hook on each call, from the plugin it ran from - so it holds when the stamp is gone
+  // or post-dates the session (audit 2026-10-11 SD14, session cc87fa6c).
+  if (ledgerVer) out.push(`| Stack loaded | ${ledgerVer} - the tool-usage ledger's \`version\`, read by the hook from the install it ran from |`);
   out.push(`| Inventory source | ${(v && v.inventoryWhy) || (invUse && invUse.source.skills_agents_rules) || '-'} |`, '');
   const rows = (v && v.rows) || [];
   if (!rows.length) {
@@ -3219,8 +4224,14 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
   if (main.peakCtx) extraFacts.push(`- **Peak context** ${fmt(main.peakCtx)} tokens per message${main.peakCtxAt ? ` (at ${main.peakCtxAt})` : ''} - every fresh-session threshold is measured against this, not the average.`);
   if (main.thinkingTokens) extraFacts.push(`- **Thinking** ${fmt(main.thinkingTokens)} tokens (\`cost-state.modelUsage\`) - billed, attributable to no single message.`);
   if (main.floorCtx) {
-    const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
-    extraFacts.push(`- **Standing inventory** ~${fmt(main.floorCtx)} tokens/message (system prompt + tool schemas + CLAUDE.md + always-on rules) - paid on EVERY message${share != null ? `, ~${share}% of cache-read` : ''}, and re-paid in full after every compaction.`);
+    const share = floorShare(main);
+    const own = floorPromptTok(main);
+    const ins = instructionsBreakdown(main);
+    if (ins) {
+      extraFacts.push(`- **Instructions at session start**: ${ins.files} file(s), ${ins.chars} chars (~${fmt(approxTok(ins.chars))} tok) - ${ins.rows.map((r) => `\`${r.file}\` ${r.chars}`).join(', ')}.`);
+      if (ins.twice.length) extraFacts.push(`- **Loaded twice** under a renamed rule's old and new name: ${ins.twice.map((t) => `\`${t.old}\` + \`${t.now}\``).join(', ')} - ~${fmt(approxTok(ins.twiceChars))} tokens of the floor are the stale copies.`);
+    }
+    extraFacts.push(`- **Standing inventory** ~${fmt(main.floorCtx)} tokens/message (system prompt + tool schemas + CLAUDE.md + always-on rules) - paid on EVERY message${share != null ? `, ~${share}% of the context sent (cache-read + cache-write + input)` : ''}, and re-paid in full after every compaction.${own ? ` Of it, ~${fmt(own)} is the session's own first prompt (typed text + slash expansion, chars/4), so the install's floor is ~${fmt(main.floorCtx - own)}.` : ''}`);
   }
   {
     const src = windowSource(main);
@@ -3229,7 +4240,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
     if (il) extraFacts.push(`- **Interrupts** ${il.replace(/^user interrupts /, '')}`);
   }
   if (main.totalCostUSD != null) extraFacts.push(`- **Billed** $${Number(main.totalCostUSD).toFixed(2)} (\`cost-state\`).`);
-  if (main.untranscribed) extraFacts.push('- **Untranscribed calls** cost-state cache-read ' + fmt(main.costState.cacheRead) + ' vs transcript ' + fmt(main.total.cacheRead) + ' - gap ' + fmt(main.untranscribed.cacheRead) + (main.untranscribed.contexts != null ? ' (~' + main.untranscribed.contexts + 'x the peak context)' : '') + ': the harness' + String.fromCharCode(39) + 's post-turn recap call(s) are billed and written to no transcript row.');
+  if (main.untranscribed) extraFacts.push('- **Untranscribed calls** cost-state cache-read ' + fmt(main.costState.cacheRead) + ' vs transcript ' + fmt(main.total.cacheRead) + (main.untranscribed.seatsCacheRead ? ' + seats ' + fmt(main.untranscribed.seatsCacheRead) : '') + ' - gap ' + fmt(main.untranscribed.cacheRead) + (main.untranscribed.contexts != null ? ' (~' + main.untranscribed.contexts + 'x the peak context)' : '') + ': the harness' + String.fromCharCode(39) + 's post-turn recap call(s) are billed and written to no transcript row.');
   if (main.forkPrefix && main.forkPrefix.msgs) extraFacts.push('- **Fork prefix** ' + main.forkPrefix.msgs + ' msgs / ' + fmt(main.forkPrefix.cacheRead) + ' cache-read / ' + main.forkPrefix.toolCalls + ' tool calls carry another session' + String.fromCharCode(39) + 's id (' + main.forkPrefix.sessionIds.join(', ') + ') - a copied prefix, counted under that transcript; this file' + String.fromCharCode(39) + 's own tail is ' + (main.total.msgs - main.forkPrefix.msgs) + ' msgs / ' + fmt(main.total.cacheRead - main.forkPrefix.cacheRead) + ' cache-read.');
   if (main.stopHookBlocks) extraFacts.push(`- **Stop-hook denials** ${main.stopHookBlocks} - meta user TEXT, not tool results, so absent from the \`hook-blk\` column.`);
   if (main.harnessDenials) extraFacts.push(`- **Harness denials** ${main.harnessDenials} - the auto-mode classifier, a foreground \`sleep\`, or a tool-schema failure. They read as a block and no stack hook ran: excluded from \`hook-blk\`, and never charged to a guard.`);
@@ -3255,12 +4266,12 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
 
   out.push('## Environment', '');
   out.push('| | |', '|---|---|');
-  out.push(`| Session window | ${main.firstTs || '?'} → ${main.lastTs || '?'} (${dur(span)}) |`);
+  out.push(`| Session window | ${main.firstTs || '?'} → ${main.lastTs || '?'} (${dur(span)})${main.idleTail ? `; ${idleTailLine(main)}` : ''} |`);
   if (main.clearTs && main.clearTs > main.firstTs) {
     out.push(`| Active window (since last /clear) | ${main.clearTs} → ${main.lastTs} (${dur(new Date(main.lastTs) - new Date(main.clearTs))}) - use this, not the raw span, for duration claims |`);
   }
   if (main.ccVersion) out.push(`| Claude Code (this session's transcript) | ${main.ccVersion} |`);
-  out.push(`| Volume | ${main.userPrompts} user prompts · ${main.total.msgs} API messages · ${main.compactions} compactions · ${main.apiErrors} API errors |`);
+  out.push(`| Volume | ${main.userPrompts} user prompts${main.queuedPrompts ? ` (${main.queuedPrompts} queued while the model worked)` : ''} · ${main.total.msgs} API messages · ${main.compactions} compactions · ${main.apiErrors} API errors |`);
   {
     const evs = (main.apiErrorEvents || []).filter((e) => e.ctx != null);
     if (evs.length) out.push(`| API errors fired at ctx | ${evs.slice(0, 5).map((e) => `~${fmt(e.ctx)}`).join(', ')}${evs.length > 5 ? ` … +${evs.length - 5} more` : ''} - a cluster at high ctx is context pressure, not provider flakiness |`);
@@ -3275,7 +4286,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
   out.push(`| Hook ledger | ${hookLog ? `joined (${hookLog.rows} rows)` : 'absent - identity attribution unavailable, not inferred'} |`, '');
   if (extraFacts.length) out.push('', ...extraFacts, '');
 
-  vintageMarkdown(invUse, main, out);
+  vintageMarkdown(invUse, main, out, hookLog);
 
   out.push('## Tokens (deduped per API message; ctx/msg = avg context re-sent per call)', '');
   out.push('| scope | input | cache-write | cache-read | output | msgs | ctx/msg |', '|---|---|---|---|---|---|---|');
@@ -3333,9 +4344,9 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
   const docEntries = Object.entries(agg.docRows).sort((a, b) => (b[1].main + b[1].agents) - (a[1].main + a[1].agents));
   if (docEntries.length || agg.inject || agg.attach) {
     out.push('## Generated docs (reads = orientation happening, writes = capture/loop maintenance)', '');
-    out.push('_A **lower bound**. This table reads the Bash command text, so doc I/O routed through a script the session WROTE and then ran is invisible to it - measured at 5 reported against >=53 real. When a session writes its own helper, name that script here and treat the counts as a floor._', '');
+    out.push('_A **lower bound**. This table reads the Bash command text, so doc I/O routed through a script the session WROTE and then ran is invisible to it - measured at 5 reported against >=53 real. When a session writes its own helper, name that script here and treat the counts as a floor. A `docs.js` section read or write is counted from the call\'s own output (the file it names), in the via-Bash cell._', '');
     out.push('| doc | main-reads | agent-reads | writes | via Bash (r/w) |', '|---|---|---|---|---|');
-    for (const [rel, r] of docEntries) out.push(`| ${rel} | ${r.main} | ${r.agents} | ${r.writes} | ${(r.bashReads || r.bashWrites) ? `${r.bashReads || 0}/${r.bashWrites || 0}` : ''} |`);
+    for (const [rel, r] of docEntries) out.push(`| ${rel} | ${r.main} | ${r.agents} | ${r.writes} | ${(r.bashReads || r.bashWrites) ? `${r.bashReads || 0}/${r.bashWrites || 0}${r.docsJs ? ` (${r.docsJs} by docs.js)` : ''}` : ''} |`);
     if (agg.attach) out.push(`| (style rule attached on file touch) | - | - | ×${agg.attach} | |`);
     if (agg.inject) out.push(`| (style injected by legacy hook) | - | - | ×${agg.inject} | |`);
     out.push('');
@@ -3356,26 +4367,42 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
 
   out.push('## Tools (main + subagents; result volume = what lands back in context)', '');
   out.push('`hook-blk` = PreToolUse denials. A denial is not automatically the gate working - it may be a FALSE POSITIVE, and a false positive costs the denial text plus the whole retried turn. Read the block before scoring it. (Shipped verbatim over sessions whose blocks were 2 of 2 and 3 of 3 false positives, across 11 bundles.)', '');
-  out.push('| tool | calls | results | errors | declines | hook-blk |', '|---|---|---|---|---|---|');
+  out.push('`hook-rw` = calls a PreToolUse hook REWROTE (`updatedInput`) before they ran - what ran is not what the model wrote.', '');
+  out.push('| tool | calls | results | errors | declines | hook-blk | hook-rw |', '|---|---|---|---|---|---|---|');
   {
     const rows = Object.entries(agg.tools).sort((a, b) => b[1].resultChars - a[1].resultChars);
-    const shown = rows.slice(0, 15).concat(rows.slice(15).filter(([, t]) => t.errors > 0 || t.hookBlocks > 0));
+    const shown = rows.slice(0, 15).concat(rows.slice(15).filter(([, t]) => t.errors > 0 || t.hookBlocks > 0 || t.rewrites > 0));
     for (const [name, t] of shown) {
-      out.push(`| ${name} | ${t.calls} | ~${fmt(approxTok(t.resultChars))} | ${t.errors} | ${t.declines || ''} | ${t.hookBlocks || ''} |`);
+      out.push(`| ${name} | ${t.calls} | ~${fmt(approxTok(t.resultChars))} | ${t.errors} | ${t.declines || ''} | ${t.hookBlocks || ''} | ${t.rewrites || ''} |`);
     }
     const rmv = Object.values(agg.tools).reduce((n, t) => n + (t.rmVerifyTails || 0), 0);
     if (rmv) out.push('', `> ${rmv} shell call(s) ended on an \`ls\`/\`test\` verifying an \`rm\` - the non-zero exit there is the removal CONFIRMED, so they are not counted in the errors column.`);
+    const img = imageLine(main, agents);
+    if (img) out.push('', `> ${img}.`);
+    const rw = rewriteLine(main, agents, agg.tools);
+    if (rw) out.push('', `> ${rw}.`);
   }
   out.push('');
+  {
+    const hto = hookTimeoutRows(main, agents);
+    if (hto.length) {
+      out.push('### Hook timeouts', '');
+      out.push('Hook runs the harness CANCELLED - each one gave no verdict: a PreToolUse gate that times out does not gate, and the call runs on.', '');
+      out.push('| hook | timed out | cancelled | longest run | event / tool |', '|---|---|---|---|---|');
+      for (const r of hto) out.push(`| ${r.hook} | ${r.timedOut} | ${r.cancelled || ''} | ${r.longest} | ${r.where} |`);
+      out.push('');
+    }
+  }
   {
     const errs = Object.entries(agg.tools).filter(([, t]) => (t.errorTs || []).length);
     if (errs.length) {
       out.push('### Errors, by when they landed', '');
       out.push('Attribute each error to the phase that was RUNNING at that time. Measured: two errors at');
       out.push('06:57 were reported as the browser phase\'s, and the browser work started ~07:2x.', '');
-      out.push('| tool | errors | timestamps |', '|---|---|---|');
+      out.push('| tool | errors | timestamps | after a hook rewrite |', '|---|---|---|---|');
       for (const [name, t] of errs) {
-        out.push(`| ${name} | ${t.errors} | ${t.errorTs.slice(0, 6).map((x) => String(x).slice(11, 19)).join(', ')}${t.errorTs.length > 6 ? ` … +${t.errorTs.length - 6}` : ''} |`);
+        const rw = (t.rewriteErrors || []).map((e) => `${String(e.ts || '?').slice(11, 19)} ${e.hooks.join(' + ')}`).join(', ');
+        out.push(`| ${name} | ${t.errors} | ${t.errorTs.slice(0, 6).map((x) => String(x).slice(11, 19)).join(', ')}${t.errorTs.length > 6 ? ` … +${t.errorTs.length - 6}` : ''} | ${rw} |`);
       }
       out.push('');
     }
@@ -3412,7 +4439,8 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
       out.push(`- Coverage: ledger window ${hookLog.firstTs} → ${hookLog.lastTs} spans ~${j.coverage.pct}% of the session.`);
       out.push(`- Cross-check: ${j.coverage.callPct}% of tool calls are inside the ledger window - ${j.coverage.inWin} of ${j.coverage.calls}${j.coverage.calls !== j.trTools ? ` (${j.trTools} in the file; the rest belong to the fork prefix)` : ''} - vs ${hookLog.rows} ledger rows.`);
       if (j.coverage.outside > 0) out.push(`- ${j.coverage.outside} call${j.coverage.outside === 1 ? '' : 's'} outside the ledger window (${j.coverage.tailCalls} after its last row${j.coverage.tailCalls === 0 ? ' - a quiet tail, not lost coverage' : ''}) - two causes, both real: a ledger wired mid-session legitimately misses the head, and a call the HARNESS rejected before PreToolUse (a classifier denial, a schema failure) never reaches a hook and can have no row.`);
-      if (j.coverage.unmatchedCallCount) out.push('- ' + j.coverage.unmatchedCallCount + ' in-window call(s) UNJOINED - no ledger row of the same tool within ' + j.coverage.latencyMs + 'ms' + (j.coverage.ambiguousCalls ? ` (${j.coverage.ambiguousCalls} ambiguous: two rows of that tool sit equally close)` : '') + ': ' + j.coverage.unmatchedCalls.map((c) => c.tool + '@' + c.ts + (c.ambiguous ? ' (ambiguous)' : '')).join(', ') + ' - the ledger carries no `tool_use_id`, so the join is tool name + timestamp only: an unjoinable call is reported unjoined, never joined to a neighbouring row. A call the harness rejected before PreToolUse leaves no row at all.');
+      out.push(`- joined: ${j.coverage.matchedCalls} call(s) - ${j.coverage.matchedById} by \`tool_use_id\`, ${j.coverage.matchedByTime} by tool + timestamp within ${j.coverage.latencyMs}ms, ${j.coverage.matchedByDetail} by detail (same tool and detail, between the call and its result)${j.coverage.lagJoined ? `; ${j.coverage.lagJoined} of them stamped outside the ledger window by hook lag, counted covered` : ''}`);
+      if (j.coverage.unmatchedCallCount) out.push('- ' + j.coverage.unmatchedCallCount + ' in-window call(s) UNJOINED - no row carrying its `tool_use_id`, none of the same tool within ' + j.coverage.latencyMs + 'ms, none naming its detail before its result' + (j.coverage.ambiguousCalls ? ` (${j.coverage.ambiguousCalls} ambiguous: two rows of that tool sit equally close)` : '') + ': ' + j.coverage.unmatchedCalls.map((c) => c.tool + '@' + c.ts + (c.ambiguous ? ' (ambiguous)' : '') + (c.cause ? ` (${c.cause})` : '')).join(', ') + ' - an unjoinable call is reported unjoined, never joined to a neighbouring row. A call the harness rejected before PreToolUse leaves no row at all.');
       if (j.coverage.unmatchedRowCount) out.push('- ' + j.coverage.unmatchedRowCount + ' ledger row(s) with no transcript call: ' + j.coverage.unmatchedRows.map((c) => c.tool + '@' + c.ts).join(', ') + ' - an ask or a call the transcript never wrote.');
       if (j.coverage.unmatched > 0) out.push(`- ${j.coverage.unmatched} in-window call${j.coverage.unmatched === 1 ? '' : 's'} with no ledger row - check each call's own tool_result for a Blocked:/error string (harness-level blocks and input-validation failures never reach PreToolUse) before calling it a gap.`);
     } else {
@@ -3436,7 +4464,9 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
         out.push(`| \`${hook}\` | ${n} | ${where} | ${String(r).replace(/\|/g, '\\|')} |`);
       }
     }
-    out.push('', `${blockLedger.rows} block(s) total.`, '');
+    out.push('', `${blockLedger.rows} block(s) total${blockSplit(blockLedger)}.`, '');
+  } else if (blockLedger && blockLedger.missing) {
+    out.push(`_${blockLedger.missing} (looked for \`<sid>.jsonl\` and \`hook-blocks-<sid>.jsonl\`) - no measurement, never a zero. Pass the ledger file itself._`, '');
   } else {
     out.push('_No ledger rows. That means EITHER no guard fired OR the ledger was never written - say which, do not infer. The transcript alone records which TOOL was denied, never which hook._', '');
     out.push('_This is a QUESTION to answer here, in one line, from the ledger test you ran: `no guard fired` (the ledger path was absent AND the Tools table shows no `hook-blk`), or `ledger absent` (there ARE hook-blk denials and the hook that fired is unavailable). Shipped unanswered, verbatim, in audited bundles._', '');
@@ -3447,8 +4477,8 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
     if (dg) out.push('| probe | claims over an edit | ran after it | excused by a rule | no tests found | skill loaded, unrun | loaded earlier, unrun | MISSED |', '|---|---|---|---|---|---|---|---|',
       `| done gate | ${dg.claims} | ${dg.ran} | ${dg.byRule} | ${dg.noTests} | ${dg.skillLoaded} | ${dg.inContext} | ${dg.missed} |`, '');
     const rc = blockLedger.rootCause;
-    if (rc) out.push('| probe | red streaks | loaded before the fix | in context | preloaded | loaded after the fix | MISSED | no fix after | unmatched |', '|---|---|---|---|---|---|---|---|---|',
-      `| root cause | ${rc.streaks} | ${rc.beforeFix} | ${rc.inContext} | ${rc.preloaded} | ${rc.afterFix} | ${rc.missed} | ${rc.noFix} | ${rc.unmatched} |`, '');
+    if (rc) out.push('| probe | red streaks | loaded before the fix | in context | preloaded | loaded after the fix | MISSED | no fix after | unmatched | intended red (test-first, not counted) |', '|---|---|---|---|---|---|---|---|---|---|',
+      `| root cause | ${rc.streaks} | ${rc.beforeFix} | ${rc.inContext} | ${rc.preloaded} | ${rc.afterFix} | ${rc.missed} | ${rc.noFix} | ${rc.unmatched} | ${rc.intended || 0} |`, '');
     const co = blockLedger.correction;
     if (co) out.push('| probe | correction turns | save line injected | logged only |', '|---|---|---|---|',
       `| correction nudge | ${co.turns} | ${co.injected} | ${co.turns - co.injected} |`, '');
@@ -3569,8 +4599,19 @@ function checkReport(file) {
       }
     });
   }
-  return { file, rows: judgment, badLocators, transcript, transcriptLines };
+  // The skeleton's TOKEN VERDICT asks for `avoidable <N of M tok, P%>`, a measured share; a verdict that says 'small' or
+  // 'none' with no number printed clean (audit 2026-10-10, 229e2715 and b35afe70: the measured share was 1.7%).
+  const verdicts = [];
+  lines.forEach((line, i) => {
+    if (!/TOKEN VERDICT/.test(line) || /^\s*[_>]/.test(line)) return;
+    const after = (/\bavoidable\b([\s\S]*)$/i.exec(line) || [])[1];
+    const share = after != null && AVOIDABLE_SHARE_RE.test(after) && /\d(?:[\d.,]*)\s*%/.test(after);
+    if (!share) verdicts.push({ line: i + 1, text: line.trim().replace(/\s+/g, ' ').slice(0, 120) });
+  });
+  return { file, rows: judgment, badLocators, verdicts, transcript, transcriptLines };
 }
+// `<N> of <M>`: two measured amounts, each a number with an optional unit (`~4.8M of 16.5M`, `672k of 40.2M tok`).
+const AVOIDABLE_SHARE_RE = /~?\$?\d[\d.,]*\s*[kKmMbB]?\s*(?:tok(?:ens)?\s*)?of\s+~?\$?\d[\d.,]*/;
 
 function printCheckReport(res) {
   console.log(`CHECK-REPORT ${res.file}`);
@@ -3580,9 +4621,10 @@ function printCheckReport(res) {
     for (const r of res.rows) console.log(`  ${pad(r.section.slice(0, 28), 28)} ${pad(r.line, 6)} ${pad(r.tok, 10)} ${r.text}`);
   }
   for (const b of res.badLocators) console.log(`  locator out of range  line ${b.line}  ${b.locator} - the transcript has ${res.transcriptLines} rows: ${b.text}`);
-  const n = res.rows.length + res.badLocators.length;
-  if (!n) { console.log('  clean - every number in a judgment section traces to a machine row of this report or carries a resolvable L<n>'); return 0; }
-  console.log(`  ${n} unsourced number(s) - each must quote a machine table row of THIS report or carry an L<n> locator that resolves. The run is not done while this prints a row.`);
+  for (const v of res.verdicts || []) console.log(`  TOKEN VERDICT without a share  line ${v.line} - needs 'avoidable <N> of <M> tok, <P>%' from the rows above: ${v.text}`);
+  const n = res.rows.length + res.badLocators.length + (res.verdicts || []).length;
+  if (!n) { console.log('  clean - every number in a judgment section traces to a machine row of this report or carries a resolvable L<n>, and the TOKEN VERDICT states its avoidable share'); return 0; }
+  console.log(`  ${n} finding(s) - each number must quote a machine table row of THIS report or carry an L<n> locator that resolves, and the TOKEN VERDICT must state 'avoidable <N> of <M> tok, <P>%'. The run is not done while this prints a row.`);
   return 1;
 }
 
@@ -3597,7 +4639,7 @@ function sessionsDirOf(cwd, configDir) {
   return path.join(configDir, 'projects', require('./memory-import.js').slugify(cwd));
 }
 
-module.exports = { houseBare, loadPluginLayers, hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf };
+module.exports = { classifyChecks, commandHeads, maskQuotedShell, houseBare, loadPluginLayers, hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf };
 
 // ---------- entry ----------
 
@@ -3712,11 +4754,12 @@ async function runAnalysis() {
     const probeSum = blockDir ? { doneGate: newDoneGate(), rootCause: newRootCause(), correction: newCorrection(), rationalization: newRationalization() } : null;
     for (const f of files) {
       if (probeSum) {
-        const led = finishProbes(readBlockLedger(blockDir, path.basename(f, '.jsonl')), f);
-        for (const [k, sum] of Object.entries(probeSum)) if (led[k]) for (const n of Object.keys(sum)) sum[n] += led[k][n];
+        const led = finishProbes(readBlockLedger(blockDir, path.basename(f, '.jsonl'), f), f);
+        for (const [k, sum] of Object.entries(probeSum)) if (led[k]) for (const n of Object.keys(sum)) sum[n] += led[k][n] || 0;
       }
       const s = await analyzeTranscript(f, window);
       const agents = await analyzeSubagents(f, window);
+      reconcileUntranscribed(s, agents);
       addSessionUse(acc, s, agents, inventoryDir);
       const at = newTally();
       for (const a of agents) mergeTally(at, a.stats.total);
@@ -3746,7 +4789,7 @@ async function runAnalysis() {
     const unsaved = grandCorr.total - grandCorr.saved;
     console.log(`\ncorrections saved to memory over ${files.length} session${files.length === 1 ? '' : 's'}: ${grandCorr.total ? `${grandCorr.saved} of ${grandCorr.total}; ${unsaved} unsaved (${Math.round((100 * unsaved) / grandCorr.total)}%)` : 'no correction turn'}`);
     if (probeSum && probeSum.doneGate.claims) console.log('\n' + doneGateLine(probeSum.doneGate));
-    if (probeSum && probeSum.rootCause.streaks) console.log((probeSum.doneGate.claims ? '' : '\n') + rootCauseLine(probeSum.rootCause));
+    if (probeSum && (probeSum.rootCause.streaks || probeSum.rootCause.intended || probeSum.rootCause.testFirstRed)) console.log((probeSum.doneGate.claims ? '' : '\n') + rootCauseLine(probeSum.rootCause));
     if (probeSum && probeSum.correction.turns) console.log((probeSum.doneGate.claims || probeSum.rootCause.streaks ? '' : '\n') + correctionLine(probeSum.correction));
     if (probeSum && probeSum.rationalization.closes) console.log((probeSum.doneGate.claims || probeSum.rootCause.streaks || probeSum.correction.turns ? '' : '\n') + rationalizationLine(probeSum.rationalization));
     printInventoryBlock(invUse);
@@ -3756,11 +4799,12 @@ async function runAnalysis() {
 
   const mainStats = await analyzeTranscript(target, window);
   const agents = await analyzeSubagents(target, window);
+  reconcileUntranscribed(mainStats, agents);
   const hookLog = hookFile ? await analyzeHookLog(hookFile) : null;
   // ONE ledger read, handed to every emitter. --report-md and --json used to drop it entirely,
   // so the bundle reports that quote the markdown - the ones the sweeps actually read - carried no
   // guard-block section at all (7 confirmations), while the terminal report had it.
-  const blockLedger = finishProbes(readBlockLedger(blockDir, path.basename(target, '.jsonl')), target);
+  const blockLedger = finishProbes(readBlockLedger(blockDir, path.basename(target, '.jsonl'), target), target);
   const invAcc = newInventoryUse(loadPlugins(pluginsFile));
   addSessionUse(invAcc, mainStats, agents, inventoryDir);
   const invUse = finishInventoryUse(invAcc);
@@ -3785,4 +4829,7 @@ async function runAnalysis() {
 // Run only as a COMMAND. Required as a module (the tests, which need to reach hookJoinStats),
 // it must define its functions and do nothing else - otherwise the require prints the usage
 // line and exits 1 before a single assertion runs.
-if (require.main === module) main().catch((e) => { console.error(e.message); process.exit(1); });
+if (require.main === module) {
+  require('../stack/hooks/hook-prelude.js').blockingStdio();
+  main().catch((e) => { console.error(e.message); process.exit(1); });
+}

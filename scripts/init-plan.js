@@ -53,13 +53,13 @@ const MACHINE_BROWSERS = {
     msedge: { need: 'Microsoft Edge', bins: ['msedge', 'microsoft-edge'] },
 };
 const CAPTURES = [
-    { skill: 'capture-related-projects', seat: 'related-project-analyzer', output: () => '.claude/rules/alfred-project-related-context.md' },
+    { skill: 'capture-related-projects', seat: 'related-project-analyzer', output: () => '.claude/rules/alfred-related-context.md' },
     { skill: 'capture-architecture', seat: 'architecture-analyzer', output: (docs) => `${docs}/architecture/ARCHITECTURE.md` },
     { skill: 'capture-code-style', seat: 'code-style-analyzer', output: (docs) => `${docs}/code-style/CODE-STYLE.md` },
     // The run book: no seat - it reads the repo and asks for the gaps in the main session.
-    { skill: 'capture-project-capabilities', seat: null, output: (docs) => `${docs}/project-capabilities/PROJECT-CAPABILITIES.md` },
+    { skill: 'capture-project-awareness', seat: null, output: (docs) => `${docs}/project-capabilities/PROJECT-CAPABILITIES.md` },
     // Its own precheck decides whether the generated rule is current - always run when installed.
-    { skill: 'capture-agent-capabilities', seat: null, output: null },
+    { skill: 'capture-agent-awareness', seat: null, output: null },
 ];
 
 // Playwright's own registry location (PLAYWRIGHT_BROWSERS_PATH, else the per-OS cache dir).
@@ -164,7 +164,7 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
     const agents = new Set(inv.agents || []);
     const off = new Set(inv.left_out || []);
     const docs = resolveDocsRoot(root).replace(/[\\/]+$/, '');
-    const rel = (p) => (path.relative(root, p).startsWith('..') ? p : path.relative(root, p).split(path.sep).join('/'));
+    const rel = (p) => shownPath(root, p);
     const captures = CAPTURES.map(({ skill, seat, output }) =>
     {
         if (!skills.has(skill) || off.has(`skill ${skill}`)) return { skill, state: 'skip', detail: 'the skill is not installed' };
@@ -209,10 +209,21 @@ function unattended({ machine, captures })
     return lines;
 }
 
-module.exports = { plan, render, probes, browsersDir, CAPTURES, unattended, isUnattended, DESTRUCTIVE_MACHINE };
+// How the plan prints a path: project-relative inside the project, absolute outside it, and forward slashes
+// either way - init reads the plan through Bash, where a backslash is an escape. Outside used to keep the native
+// separators; windows-2025 CI never showed it, because its checkout is on D: and its temp on C:, and a relative
+// path across drives comes back absolute, which took the forward-slash branch. One drive printed `C:\...`.
+function shownPath(root, p, pth = path)
+{
+    const r = pth.relative(root, p);
+    return (r.startsWith('..') || pth.isAbsolute(r) ? p : r).split(pth.sep).join('/');
+}
+
+module.exports = { plan, render, probes, browsersDir, CAPTURES, unattended, isUnattended, DESTRUCTIVE_MACHINE, shownPath };
 
 if (require.main === module)
 {
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
     const argv = process.argv.slice(2);
     const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
     if (argv.includes('--mode')) { console.log(`unattended: ${isUnattended() ? 'on' : 'off'}`); process.exit(0); }

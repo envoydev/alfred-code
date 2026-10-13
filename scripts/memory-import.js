@@ -495,6 +495,7 @@ async function main()
 
 if (require.main === module)
 {
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
     main().then((res) =>
     {
         console.log(`memory import: ${res.message}`);

@@ -82,17 +82,17 @@ test('layout: every kind of data has one place under the root', () =>
     assert.strictEqual(l.docs, '.data/docs');
     assert.strictEqual(l.serena, '.data/serena');
     assert.strictEqual(l.serenaHome, '.data/serena/home');
-    assert.strictEqual(l.browser('firefox'), '.data/browser/firefox');
+    assert.strictEqual(l.browser('firefox'), '.data/firefox-control');
     assert.strictEqual(l.memory, '.data/.alfred-memory');
     assert.strictEqual(l.memoryDb, '.data/.alfred-memory/memory.db');
     assert.strictEqual(dr.targetOf('serena', '.data'), '.data/serena');
-    assert.strictEqual(dr.targetOf('browser-webkit', '.data'), '.data/browser/webkit');
+    assert.strictEqual(dr.targetOf('webkit-control', '.data'), '.data/webkit-control');
     assert.strictEqual(dr.targetOf('memory', '.data'), '.data/.alfred-memory');
     assert.strictEqual(dr.legacyOf('serena'), '.serena');
-    assert.strictEqual(dr.legacyOf('browser-chrome'), '.playwright/chrome');
+    assert.strictEqual(dr.legacyOf('chrome-control'), '.playwright/chrome');
     assert.strictEqual(dr.legacyOf('memory'), '.memory-mcp');
     assert.strictEqual(dr.rootOfPlace('serena', '.data/serena'), '.data');
-    assert.strictEqual(dr.rootOfPlace('browser-chrome', 'x/y/browser/chrome'), 'x/y');
+    assert.strictEqual(dr.rootOfPlace('chrome-control', 'x/y/chrome-control'), 'x/y');
     assert.strictEqual(dr.rootOfPlace('memory', '.alfred/.alfred-memory'), '.alfred');
     assert.strictEqual(dr.rootOfPlace('serena', '.serena'), null, 'a 2.0.0 place has no root');
 });
@@ -229,14 +229,14 @@ test('move plan: a tree holding every kind of data - the old layout and a prior 
     put(path.join(p, '.serena', 'project.yml'), 'project_name: app');
     put(path.join(p, '.serena', 'home', 'serena_config.yml'), 'projects: []');
     put(path.join(p, '.playwright', 'chrome', 'Default', 'Cookies'));
-    put(path.join(p, '.alfred', 'browser', 'firefox', 'prefs.js'));
+    put(path.join(p, '.alfred', 'firefox-control', 'prefs.js'));
     put(path.join(p, '.memory-mcp', 'memory.db'));
-    put(path.join(p, '.data', 'browser', 'webkit', 'x'));          // already at the new root: nothing to do
+    put(path.join(p, '.data', 'webkit-control', 'x'));          // already at the new root: nothing to do
     const rows = dr.dataMovePlan({ projectRoot: p, root: '.data', prior: '.alfred', engines: ['chrome', 'firefox', 'webkit'], memory: true });
     assert.deepStrictEqual(rows, [
         { cls: 'serena', from: '.serena', to: '.data/serena', conflict: false },
-        { cls: 'browser-chrome', from: '.playwright/chrome', to: '.data/browser/chrome', conflict: false },
-        { cls: 'browser-firefox', from: '.alfred/browser/firefox', to: '.data/browser/firefox', conflict: false },
+        { cls: 'chrome-control', from: '.playwright/chrome', to: '.data/chrome-control', conflict: false },
+        { cls: 'firefox-control', from: '.alfred/firefox-control', to: '.data/firefox-control', conflict: false },
         { cls: 'memory', from: '.memory-mcp', to: '.data/.alfred-memory', conflict: false },
     ]);
     assert.deepStrictEqual(dr.dataMovePlan({ projectRoot: p, root: '.data', prior: '.alfred', engines: [], memory: false }).map((r) => r.cls), ['serena'],
@@ -250,11 +250,11 @@ test('move plan: data at both places is a conflict, and an empty target is not',
     put(path.join(p, '.alfred', 'serena', 'project.yml'));
     fs.mkdirSync(path.join(p, '.playwright', 'chrome'), { recursive: true });
     put(path.join(p, '.playwright', 'chrome', 'x'));
-    fs.mkdirSync(path.join(p, '.alfred', 'browser', 'chrome'), { recursive: true });
+    fs.mkdirSync(path.join(p, '.alfred', 'chrome-control'), { recursive: true });
     const rows = dr.dataMovePlan({ projectRoot: p, root: '.alfred', prior: null, engines: ['chrome'], memory: false });
     assert.deepStrictEqual(rows, [
         { cls: 'serena', from: '.serena', to: '.alfred/serena', conflict: true },
-        { cls: 'browser-chrome', from: '.playwright/chrome', to: '.alfred/browser/chrome', conflict: false },
+        { cls: 'chrome-control', from: '.playwright/chrome', to: '.alfred/chrome-control', conflict: false },
     ]);
 });
 
@@ -273,10 +273,206 @@ test('pending lines: rendered and read back; a malformed or foreign line is drop
 {
     const rows = [
         { cls: 'serena', from: '.serena', to: '.alfred/serena' },
-        { cls: 'browser-chrome', from: '.playwright/chrome', to: '.alfred/browser/chrome' },
+        { cls: 'chrome-control', from: '.playwright/chrome', to: '.alfred/chrome-control' },
     ];
     const text = `sha: abc\n${dr.renderPending(rows).join('\n')}\ndata-pending: rm -rf / -> x\ndata-pending: serena ../out -> .alfred/serena\n`;
     assert.deepStrictEqual(dr.readPending(text), rows);
+});
+
+// ------------------------------------------------------------------ the project's sensitive data (2026-10-13)
+
+test('sensitive data: its place is <root>/.sensitive-data; a root change moves the file and nothing else does', () =>
+{
+    assert.strictEqual(dr.layout('.data').sensitive, '.data/.sensitive-data');
+    assert.strictEqual(dr.targetOf('sensitive', '.data'), '.data/.sensitive-data');
+    assert.strictEqual(dr.rootOfPlace('sensitive', 'var/data/.sensitive-data'), 'var/data');
+    assert.strictEqual(dr.legacyOf('sensitive'), null, 'no 2.0.0 place');
+    const p = fresh('sensitive-plan');
+    put(path.join(p, '.alfred', '.sensitive-data'), 'K=v\n');
+    assert.deepStrictEqual(dr.dataMovePlan({ projectRoot: p, root: '.alfred' }), [], 'at its place already');
+    assert.deepStrictEqual(dr.dataMovePlan({ projectRoot: p, root: '.data', prior: '.alfred' }),
+        [{ cls: 'sensitive', from: '.alfred/.sensitive-data', to: '.data/.sensitive-data', conflict: false }]);
+    put(path.join(p, '.data', '.sensitive-data'), 'K=other\n');
+    assert.strictEqual(dr.dataMovePlan({ projectRoot: p, root: '.data', prior: '.alfred' })[0].conflict, true, 'a store at both places');
+    const q = fresh('sensitive-dir');
+    fs.mkdirSync(path.join(q, '.alfred', '.sensitive-data'), { recursive: true });
+    put(path.join(q, '.alfred', '.sensitive-data', 'x'));
+    assert.deepStrictEqual(dr.dataMovePlan({ projectRoot: q, root: '.data', prior: '.alfred' }), [], 'a folder of that name is no store');
+    assert.deepStrictEqual(dr.readPending('data-pending: sensitive .alfred/.sensitive-data -> .data/.sensitive-data\n'),
+        [{ cls: 'sensitive', from: '.alfred/.sensitive-data', to: '.data/.sensitive-data' }]);
+});
+
+test('sensitive data: the move writes the new root\'s .gitignore first and refuses to overwrite a store already there', () =>
+{
+    const p = fresh('sensitive-move');
+    put(path.join(p, '.alfred', '.sensitive-data'), 'K=v\n');
+    assert.deepStrictEqual(dr.movePlace({ projectDir: p, cls: 'sensitive', from: '.alfred/.sensitive-data', to: 'var/data/.sensitive-data' }), { state: 'moved' });
+    assert.strictEqual(fs.readFileSync(path.join(p, 'var', 'data', '.sensitive-data'), 'utf8'), 'K=v\n');
+    assert.ok(!fs.existsSync(path.join(p, '.alfred', '.sensitive-data')));
+    assert.ok(fs.readFileSync(path.join(p, 'var', 'data', '.gitignore'), 'utf8').startsWith(dr.DATA_IGNORE_HEAD), 'the new root ignores it');
+    put(path.join(p, '.alfred', '.sensitive-data'), 'K=new\n');
+    assert.strictEqual(dr.movePlace({ projectDir: p, cls: 'sensitive', from: '.alfred/.sensitive-data', to: 'var/data/.sensitive-data' }).state, 'conflict');
+    assert.strictEqual(fs.readFileSync(path.join(p, 'var', 'data', '.sensitive-data'), 'utf8'), 'K=v\n', 'neither side touched');
+    assert.strictEqual(dr.movePlace({ projectDir: p, cls: 'sensitive', from: '.none/.sensitive-data', to: '.x/.sensitive-data' }).state, 'absent');
+});
+
+test('sensitive data: a launch takes the store where nothing else set the key, and never logs a value', () =>
+{
+    const p = fresh('sensitive-env');
+    assert.deepStrictEqual(dr.withSensitive({ PATH: '/bin' }, { projectDir: p }), { env: { PATH: '/bin' }, count: 0 }, 'no store: the env as it was');
+    put(path.join(p, '.alfred', '.sensitive-data'), '# mine\nAPI_TOKEN="abc-123"\nDB_HOST=db\nPATH=/evil\n');
+    assert.deepStrictEqual(dr.withSensitive({ PATH: '/bin', DB_HOST: 'shell' }, { projectDir: p }),
+        { env: { PATH: '/bin', DB_HOST: 'shell', API_TOKEN: 'abc-123' }, count: 1 }, 'the shell or a settings file wins: dotenv\'s own rule');
+    put(path.join(p, 'var', 'data', '.sensitive-data'), 'OTHER=1\n');
+    assert.deepStrictEqual(dr.withSensitive({}, { projectDir: p, root: 'var/data' }).env, { OTHER: '1' }, 'an explicit root');
+    assert.deepStrictEqual(dr.withSensitive({ ALFRED_CODE_DATA_PATH: 'var/data' }, { projectDir: p }).env, { ALFRED_CODE_DATA_PATH: 'var/data', OTHER: '1' }, 'the root setting');
+    settings(p, { ALFRED_CODE_DATA_PATH: 'var/data' });
+    assert.deepStrictEqual(dr.withSensitive({}, { projectDir: p }).env, { OTHER: '1' }, 'the root a settings file names');
+    assert.strictEqual(dr.sensitivePlaceOf({ projectDir: p, root: '.none' }), null);
+});
+
+// The capture's credentials file before 2026-10-13 moves into the store (the user's call: one credential home, by update).
+const CAP = (p, docs = '.alfred/docs') => path.join(p, ...docs.split('/'), 'project-capabilities');
+const IGNORED = () => true;
+function oldCapture(p, { cred = 'ADMIN_EMAIL=me@x.io\nADMIN_PASSWORD="pa55 w0rd"\n', docs = '.alfred/docs' } = {})
+{
+    put(path.join(CAP(p, docs), 'credentials.local.env'), cred);
+    put(path.join(CAP(p, docs), '.gitignore'), 'credentials.local.env\n');
+    put(path.join(CAP(p, docs), 'PROJECT-CAPABILITIES.md'), `## Reach and log in\n- Credentials live in: \`${docs}/project-capabilities/credentials.local.env\`, key \`ADMIN_PASSWORD\`\n- see credentials.local.env\n`);
+}
+
+test('old credentials: a run book\'s credentials.local.env moves into a new store, the run book re-pointed, the folder ignore kept', () =>
+{
+    const p = fresh('adopt-new');
+    oldCapture(p);
+    const r = dr.adoptCredentials({ projectDir: p, check: IGNORED });
+    assert.deepStrictEqual(r, { state: 'moved', from: '.alfred/docs/project-capabilities/credentials.local.env', to: '.alfred/.sensitive-data', keys: ['ADMIN_EMAIL', 'ADMIN_PASSWORD'], added: ['ADMIN_EMAIL', 'ADMIN_PASSWORD'], repointed: 2 });
+    const store = path.join(p, '.alfred', '.sensitive-data');
+    assert.deepStrictEqual(dr.readSensitive({ projectDir: p }), { ADMIN_EMAIL: 'me@x.io', ADMIN_PASSWORD: 'pa55 w0rd' }, 'the values as written, quotes and all');
+    if (process.platform !== 'win32') assert.strictEqual(fs.statSync(store).mode & 0o777, 0o600, 'a new store is the user\'s alone');
+    assert.ok(fs.readFileSync(path.join(p, '.alfred', '.gitignore'), 'utf8').startsWith(dr.DATA_IGNORE_HEAD), 'the root ignores it');
+    assert.ok(!fs.existsSync(path.join(CAP(p), 'credentials.local.env')));
+    assert.strictEqual(fs.readFileSync(path.join(CAP(p), '.gitignore'), 'utf8'), 'credentials.local.env\n');
+    const book = fs.readFileSync(path.join(CAP(p), 'PROJECT-CAPABILITIES.md'), 'utf8');
+    assert.match(book, /Credentials live in: `\.alfred\/\.sensitive-data`, key `ADMIN_PASSWORD`/);
+    assert.doesNotMatch(book, /credentials\.local\.env/);
+    assert.deepStrictEqual(dr.adoptCredentials({ projectDir: p, check: IGNORED }).state, 'absent', 'a re-run finds nothing to move');
+});
+
+test('old credentials: an existing store keeps its lines; a key it holds with the same value is no clash, one with another value stops the move', () =>
+{
+    const p = fresh('adopt-append');
+    oldCapture(p, { cred: 'ADMIN_EMAIL=me@x.io\r\nADMIN_PASSWORD=old\r\nADMIN_PASSWORD=pw2\r\n' });
+    put(path.join(p, '.alfred', '.sensitive-data'), 'API_TOKEN=tok\nADMIN_EMAIL=me@x.io');
+    const r = dr.adoptCredentials({ projectDir: p, check: IGNORED });
+    assert.deepStrictEqual([r.state, r.added], ['moved', ['ADMIN_PASSWORD']], 'CRLF read; the later line for a key wins');
+    assert.strictEqual(fs.readFileSync(path.join(p, '.alfred', '.sensitive-data'), 'utf8'),
+        'API_TOKEN=tok\nADMIN_EMAIL=me@x.io\n# from .alfred/docs/project-capabilities/credentials.local.env, moved by the alfred-code installer\nADMIN_PASSWORD=pw2\n');
+    const q = fresh('adopt-clash');
+    oldCapture(q);
+    put(path.join(q, '.alfred', '.sensitive-data'), 'ADMIN_PASSWORD=different\n');
+    assert.deepStrictEqual(dr.adoptCredentials({ projectDir: q, check: IGNORED }), { state: 'clash', from: '.alfred/docs/project-capabilities/credentials.local.env', to: '.alfred/.sensitive-data', keys: ['ADMIN_PASSWORD'] });
+    assert.strictEqual(fs.readFileSync(path.join(q, '.alfred', '.sensitive-data'), 'utf8'), 'ADMIN_PASSWORD=different\n', 'neither side touched');
+    assert.ok(fs.existsSync(path.join(CAP(q), 'credentials.local.env')));
+    assert.match(fs.readFileSync(path.join(CAP(q), 'PROJECT-CAPABILITIES.md'), 'utf8'), /credentials\.local\.env/, 'the run book still names where the values are');
+});
+
+test('old credentials: nothing moves into a store git would commit, a store that is a folder, or out of a file with no pairs', () =>
+{
+    const p = fresh('adopt-exposed');
+    oldCapture(p);
+    assert.strictEqual(dr.adoptCredentials({ projectDir: p, check: () => false }).state, 'exposed');
+    assert.ok(fs.existsSync(path.join(CAP(p), 'credentials.local.env')) && !fs.existsSync(path.join(p, '.alfred', '.sensitive-data')));
+    assert.strictEqual(dr.adoptCredentials({ projectDir: p, check: () => null }).state, 'moved', 'no repository: nothing to commit it to');
+    const q = fresh('adopt-dir');
+    oldCapture(q);
+    fs.mkdirSync(path.join(q, '.alfred', '.sensitive-data'), { recursive: true });
+    assert.strictEqual(dr.adoptCredentials({ projectDir: q, check: IGNORED }).state, 'blocked');
+    const e = fresh('adopt-empty');
+    oldCapture(e, { cred: '# nothing here\n\n' });
+    assert.strictEqual(dr.adoptCredentials({ projectDir: e, check: IGNORED }).state, 'empty');
+    assert.ok(fs.existsSync(path.join(CAP(e), 'credentials.local.env')), 'left as it is');
+    assert.strictEqual(dr.adoptCredentials({ projectDir: fresh('adopt-none'), check: IGNORED }).state, 'absent');
+});
+
+test('old credentials: empty values carry as keys to fill; a custom docs root and data root; a UTF-16 store stays UTF-16', () =>
+{
+    const p = fresh('adopt-custom');
+    oldCapture(p, { cred: 'APP_TEST_USER=\nAPP_TEST_PASSWORD=\n', docs: 'docs' });
+    const r = dr.adoptCredentials({ projectDir: p, root: 'var/data', docsPath: 'docs', check: IGNORED });
+    assert.deepStrictEqual([r.state, r.to, r.repointed], ['moved', 'var/data/.sensitive-data', 2]);
+    assert.deepStrictEqual(dr.readSensitive({ projectDir: p, root: 'var/data' }), { APP_TEST_USER: '', APP_TEST_PASSWORD: '' });
+    const w = fresh('adopt-utf16');
+    oldCapture(w);
+    put(path.join(w, '.alfred', '.sensitive-data'), Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('WIDE=one\r\n', 'utf16le')]));
+    assert.strictEqual(dr.adoptCredentials({ projectDir: w, check: IGNORED }).state, 'moved');
+    const buf = fs.readFileSync(path.join(w, '.alfred', '.sensitive-data'));
+    assert.deepStrictEqual([buf[0], buf[1]], [0xff, 0xfe], 'still UTF-16 LE');
+    assert.deepStrictEqual(dr.readSensitive({ projectDir: w }), { WIDE: 'one', ADMIN_EMAIL: 'me@x.io', ADMIN_PASSWORD: 'pa55 w0rd' });
+});
+
+// 2026-10-13 (the user's call): no shared browser folder - each engine's profile is <root>/<engine>-control. A
+// profile 2.1.0-2.3.x kept in the root's own <root>/browser/<engine> is a relayout inside the root: a plan row the
+// installer never offers, and the folder goes with its last engine.
+test('relayout: a profile in the root\'s shared browser folder is a relayout row; a 2.0.0 place or another root\'s is a move', () =>
+{
+    const p = fresh('relayout-plan');
+    put(path.join(p, '.alfred', 'browser', 'chrome', 'Cookies'));
+    put(path.join(p, '.alfred', 'browser', 'firefox', 'prefs.js'));
+    put(path.join(p, '.playwright', 'firefox', 'old.js'));       // the 2.0.0 place: the shared folder is read first
+    put(path.join(p, '.playwright', 'webkit', 'x'));
+    const rows = dr.dataMovePlan({ projectRoot: p, root: '.alfred', engines: ['chrome', 'firefox', 'webkit'] });
+    assert.deepStrictEqual(rows, [
+        { cls: 'chrome-control', from: '.alfred/browser/chrome', to: '.alfred/chrome-control', conflict: false },
+        { cls: 'firefox-control', from: '.alfred/browser/firefox', to: '.alfred/firefox-control', conflict: false },
+        { cls: 'webkit-control', from: '.playwright/webkit', to: '.alfred/webkit-control', conflict: false },
+    ]);
+    assert.deepStrictEqual(rows.map((r) => dr.isRelayout(r, '.alfred')), [true, true, false]);
+
+    const q = fresh('relayout-prior');
+    put(path.join(q, '.old', 'browser', 'chrome', 'Cookies'));
+    const moved = dr.dataMovePlan({ projectRoot: q, root: '.alfred', prior: '.old', engines: ['chrome'] });
+    assert.deepStrictEqual(moved, [{ cls: 'chrome-control', from: '.old/browser/chrome', to: '.alfred/chrome-control', conflict: false }]);
+    assert.strictEqual(dr.isRelayout(moved[0], '.alfred'), false, 'a root change is the user\'s move to agree to');
+    assert.strictEqual(dr.isRelayout({ cls: 'serena', from: '.alfred/browser/serena' }, '.alfred'), false, 'only an engine has a shared place');
+});
+
+test('relayout: the shared folder goes with its last engine, and stays while another engine or a file of the user\'s is there', () =>
+{
+    const p = fresh('relayout-move');
+    put(path.join(p, '.alfred', 'browser', 'chrome', 'Cookies'), 'C');
+    put(path.join(p, '.alfred', 'browser', 'firefox', 'prefs.js'), 'F');
+    const shared = path.join(p, '.alfred', 'browser');
+    assert.strictEqual(dr.movePlace({ projectDir: p, cls: 'chrome-control', from: '.alfred/browser/chrome', to: '.alfred/chrome-control' }).state, 'moved');
+    assert.strictEqual(fs.readFileSync(path.join(p, '.alfred', 'chrome-control', 'Cookies'), 'utf8'), 'C');
+    assert.ok(fs.existsSync(path.join(shared, 'firefox')), 'firefox has not moved yet');
+    assert.strictEqual(dr.movePlace({ projectDir: p, cls: 'firefox-control', from: '.alfred/browser/firefox', to: '.alfred/firefox-control' }).state, 'moved');
+    assert.ok(!fs.existsSync(shared), 'the last engine out clears the shared folder');
+
+    const q = fresh('relayout-keep');
+    put(path.join(q, '.alfred', 'browser', 'chrome', 'Cookies'));
+    put(path.join(q, '.alfred', 'browser', 'notes.txt'), 'mine');
+    dr.movePlace({ projectDir: q, cls: 'chrome-control', from: '.alfred/browser/chrome', to: '.alfred/chrome-control' });
+    assert.strictEqual(fs.readFileSync(path.join(q, '.alfred', 'browser', 'notes.txt'), 'utf8'), 'mine', 'a folder that is not empty is never removed');
+
+    const w = fresh('relayout-legacy');
+    put(path.join(w, '.playwright', 'chrome', 'Cookies'));
+    put(path.join(w, '.playwright', 'firefox', 'x'));
+    dr.movePlace({ projectDir: w, cls: 'chrome-control', from: '.playwright/chrome', to: '.alfred/chrome-control' });
+    assert.ok(fs.existsSync(path.join(w, '.playwright')), 'only the shared folder is cleared by a move');
+});
+
+test('relayout: a pending line an install before the rename wrote reads as the engine\'s move to its own folder', () =>
+{
+    const text = [
+        'data-pending: browser-chrome .playwright/chrome -> .alfred/browser/chrome',
+        'data-pending: browser-firefox .old/browser/firefox -> .data/browser/firefox',
+        'data-pending: browser-opera .playwright/opera -> .alfred/browser/opera',
+    ].join('\n');
+    assert.deepStrictEqual(dr.readPending(text), [
+        { cls: 'chrome-control', from: '.playwright/chrome', to: '.alfred/chrome-control' },
+        { cls: 'firefox-control', from: '.old/browser/firefox', to: '.data/firefox-control' },
+    ], 'an engine the stack never had stays dropped');
 });
 
 // ------------------------------------------------------------------ the launchers' view
@@ -294,10 +490,25 @@ test('live dir: a pending move runs once nothing holds the data; without a pendi
 
     const q = fresh('live-legacy');
     put(path.join(q, '.playwright', 'chrome', 'Cookies'));
-    const legacy = dr.liveDir({ projectDir: q, cls: 'browser-chrome', root: '.alfred', pending: [] });
+    const legacy = dr.liveDir({ projectDir: q, cls: 'chrome-control', root: '.alfred', pending: [] });
     assert.deepStrictEqual({ dir: legacy.dir, state: legacy.state }, { dir: '.playwright/chrome', state: 'legacy' });
     assert.ok(fs.existsSync(path.join(q, '.playwright', 'chrome', 'Cookies')), 'no answer, no move');
     assert.strictEqual(dr.liveDir({ projectDir: fresh('live-fresh'), cls: 'serena', root: '.alfred', pending: [] }).state, 'fresh');
+});
+
+test('live dir: with no pending line the root\'s shared folder serves before the 2.0.0 place; its relayout line moves it', () =>
+{
+    const p = fresh('live-shared');
+    put(path.join(p, '.alfred', 'browser', 'chrome', 'Cookies'), 'S');
+    put(path.join(p, '.playwright', 'chrome', 'Cookies'), 'L');
+    const served = dr.liveDir({ projectDir: p, cls: 'chrome-control', root: '.alfred', pending: [] });
+    assert.deepStrictEqual({ dir: served.dir, state: served.state }, { dir: '.alfred/browser/chrome', state: 'legacy' });
+    const pending = [{ cls: 'chrome-control', from: '.alfred/browser/chrome', to: '.alfred/chrome-control' }];
+    const got = dr.liveDir({ projectDir: p, cls: 'chrome-control', root: '.alfred', pending, busy: dr.profileLocks });
+    assert.deepStrictEqual({ dir: got.dir, state: got.state }, { dir: '.alfred/chrome-control', state: 'moved' });
+    assert.strictEqual(fs.readFileSync(path.join(p, '.alfred', 'chrome-control', 'Cookies'), 'utf8'), 'S');
+    assert.ok(!fs.existsSync(path.join(p, '.alfred', 'browser')), 'the emptied shared folder is gone');
+    assert.strictEqual(dr.liveDir({ projectDir: p, cls: 'chrome-control', root: '.alfred', pending }).state, 'current', 'a re-run finds it in place');
 });
 
 test('live dir: a browser profile a running browser holds stays put this start', () =>
@@ -305,8 +516,8 @@ test('live dir: a browser profile a running browser holds stays put this start',
     const p = fresh('live-busy');
     put(path.join(p, '.playwright', 'chrome', 'Cookies'));
     fs.symlinkSync('host-123', path.join(p, '.playwright', 'chrome', 'SingletonLock'));   // Chromium's lock: a dangling link
-    const pending = [{ cls: 'browser-chrome', from: '.playwright/chrome', to: '.alfred/browser/chrome' }];
-    const got = dr.liveDir({ projectDir: p, cls: 'browser-chrome', root: '.alfred', pending, busy: dr.profileLocks });
+    const pending = [{ cls: 'chrome-control', from: '.playwright/chrome', to: '.alfred/chrome-control' }];
+    const got = dr.liveDir({ projectDir: p, cls: 'chrome-control', root: '.alfred', pending, busy: dr.profileLocks });
     assert.strictEqual(got.state, 'busy');
     assert.strictEqual(got.dir, '.playwright/chrome');
     assert.match(got.why, /SingletonLock/);

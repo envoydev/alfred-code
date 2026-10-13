@@ -48,7 +48,7 @@ prompt (code.claude.com/docs/en/permissions) - an unattended run has nobody to a
 launcher that wants the Read tool to reach them too starts the session with
 `--add-dir "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache" --add-dir "${TMPDIR:-/tmp}"`.
 
-**THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing but a newer release** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md` (through Bash, as above) before step 1 and hold the whole run to it: resolve the snapshot once into `$TMP/repo`, use every tool from that snapshot, and remove `$TMP` per its 'Clean up' section on every exit path. Its 'Narrate, don't trace' section governs every tool call: one quiet call per recompute, no pasted tool output except the plan and the tables named below, one narration line between steps.
+**THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing but a newer release** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md` in ONE Bash `cat` (as above - never in ranges, never twice) before step 1 and hold the whole run to it: resolve the snapshot once into `$TMP/repo`, use every tool from that snapshot, and remove `$TMP` per its 'Clean up' section on every exit path. Its 'Narrate, don't trace' section governs every tool call: one quiet call per recompute, no pasted tool output except the plan and the tables named below, one narration line between steps.
 
 **Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one marked, free text via Other; a prose question or a bare stop-and-wait is invalid. Unattended, no ask is put at all: the Unattended section answers each one.
 
@@ -126,7 +126,7 @@ so Cursor and an install not yet updated reach the same file; until then the lev
 
 Then ONE AskUserQuestion with those three options, `global` marked Recommended - the whole point of
 shared memory. Picking `project` while this project's related-projects domain names sibling repos
-(`.claude/rules/alfred-project-related-context.md`) means their memories are not visible from
+(`.claude/rules/alfred-related-context.md`) means their memories are not visible from
 here - one caveat line in the close.
 
 Apply it with the init-only entry point - no reinstall; under `.claude/` only the settings key and the
@@ -162,7 +162,7 @@ here.
 `capture-related-projects` takes its sibling list as arguments: ONE AskUserQuestion first - type the
 siblings via Other in the capture's own form (`<name> - <local path or git URL>`, several separated
 by commas), or 'none - skip it' (recommended only when the repo names no sibling). 'none' skips the
-capture. `capture-agent-capabilities` runs LAST, so its generated rule reflects everything the
+capture. `capture-agent-awareness` runs LAST, so its generated rule reflects everything the
 captures above added; its own precheck decides whether the rule needs regenerating.
 
 ## 6. AGENTS.md - the user's call

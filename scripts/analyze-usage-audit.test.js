@@ -1,0 +1,659 @@
+'use strict';
+
+// analyze-usage-audit.test.js - the analyzer defects the usage audit of 2026-10-10 measured, one test per
+// defect, each fixture a genericized shape of the transcript rows the audited bundles carried. Every test
+// failed on the analyzer before its fix (ANALYZE_USAGE_SCRIPT points the suite at another copy to show it).
+
+const { test } = require('node:test');
+const assert = require('node:assert');
+const { execFileSync } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const SCRIPT = process.env.ANALYZE_USAGE_SCRIPT || path.join(__dirname, 'analyze-usage.js');
+// C07 spawns the instrumentation hook: the suite takes the containment helper every hook suite carries.
+require('./hook-test-env').isolateHookSuite();
+
+const line = (o) => JSON.stringify(o) + '\n';
+const usage = (input, cc, cr, out) => ({ input_tokens: input, cache_creation_input_tokens: cc, cache_read_input_tokens: cr, output_tokens: out });
+const T = (n) => `2026-07-15T07:${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}.000Z`;
+const asst = (id, ts, content, extra = {}) => ({ type: 'assistant', timestamp: ts, message: { id, model: 'claude-sonnet-5', usage: usage(1, 0, 100, 5), content, ...extra } });
+const tool = (id, name, input) => ({ type: 'tool_use', id, name, input });
+const sh = (id, command, extra = {}) => tool(id, 'Bash', { command, ...extra });
+const res = (ts, id, content, isError) => ({ type: 'user', timestamp: ts, message: { content: [{ type: 'tool_result', tool_use_id: id, content, ...(isError ? { is_error: true } : {}) }] } });
+const human = (ts, text, parent) => ({ type: 'user', timestamp: ts, parentUuid: parent || `p-${ts}`, origin: { kind: 'human' }, message: { content: text } });
+const said = (id, ts, text) => asst(id, ts, [{ type: 'text', text }], { stop_reason: 'end_turn' });
+
+function tmp() { return fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-audit-')); }
+function write(dir, rows, name = 'session.jsonl') {
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, rows.map(line).join(''));
+  return file;
+}
+const run = (args) => JSON.parse(execFileSync('node', [SCRIPT, ...args, '--json'], { encoding: 'utf8' }));
+const text = (args) => execFileSync('node', [SCRIPT, ...args], { encoding: 'utf8' });
+// A pre-rename skill name comes from the manifest's rename map (an old name spelled here would trip the rename guard).
+const OLD_SOLVE = (() => {
+  const { renamed } = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
+  return Object.keys(renamed.skills).find((o) => renamed.skills[o] === 'task-solve' && /^project-/.test(o));
+})();
+
+// C02 - Nx check forms. The shapes are the ones 18 audited Nx sessions ran (`nx test <p> --testFile`,
+// `run-many -t a,b,c -p <p>`, `affected -t test`, `nx build <p>`, `-t lint test --projects=a,b`), each scored
+// 'test 0 / build 0 / lint 0' with its commits unchecked.
+test('C02: Nx targets score as test / build / lint, a runner named as an argument does not, and a commit after them is checked', () => {
+  const dir = tmp();
+  try {
+    const rows = [
+      asst('m1', T(0), [
+        sh('n1', "cd /work/app; npx nx test feature-a --testFile=a.spec.ts 2>&1 | grep -E 'Tests:|FAIL'; echo \"exit $?\""),
+        sh('n2', "npx nx run-many -t test,lint,typecheck -p feature-a 2>&1 | grep -E 'Successfully ran|Failed tasks' | head"),
+        sh('n3', 'npx nx affected -t test --base=HEAD 2>&1 | tail -6'),
+        sh('n4', 'npx nx build consumer 2>&1 | grep -E "ERROR|Successfully"'),
+        sh('n5', 'npx nx run-many -t lint test --projects=ui,home,space 2>&1 | head -20'),
+        sh('n6', 'npx nx run consumer:test'),
+        sh('x1', 'S=/tmp/s; npx nx serve consumer --port 4200 > $S/serve.log 2>&1 &'),
+        sh('x2', "grep -o '\"testFile\"' node_modules/@nx/jest/src/executors/jest/schema.json; grep -l jest libs/ui/project.json"),
+        sh('p1', 'npx prettier --check libs/a.ts'),
+        sh('p2', 'npx prettier --write libs/a.ts'),
+        sh('a1', 'node /opt/stack/scripts/agents-md-check.js'),
+        // a multi-line quoted script and a comment are text, whatever runner they name
+        sh('x3', "f=AGENTS.md && perl -0pi -e '\ns/^old$/npx nx test <project> --testFile=x.spec.ts/m;\ns/a/b/;\n' $f"),
+        sh('x4', "echo start # don't; npm test later\nls"),
+      ]),
+      ...['n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'x1', 'x2', 'p1', 'p2', 'a1', 'x3', 'x4'].map((id) => res(T(1), id, 'ok')),
+      asst('m2', T(2), [sh('g1', 'git commit -m done')]),
+      res(T(3), 'g1', '[main abc] done'),
+    ];
+    const { main } = run([write(dir, rows)]);
+    const c = main.efficiency.checks;
+    assert.strictEqual(c.test.calls, 5, 'n1, n2, n3, n5, n6 - never the serve, never the grep naming jest');
+    assert.strictEqual(c.test.scoped, 3, 'a --testFile run, a one-project run-many, a run <p>:test');
+    assert.strictEqual(c.test.whole, 2, 'affected, and run-many over three projects');
+    assert.strictEqual(c.build.calls, 2, 'the typecheck target and nx build');
+    assert.strictEqual(c.lint.calls, 4, 'two run-many lint targets, prettier --check and the stack checker - never prettier --write');
+    assert.strictEqual(main.efficiency.commitsChecked, 1);
+    assert.deepStrictEqual(main.efficiency.commitsUnchecked, []);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C02 (f24eb967#11): a backgrounded suite writes its verdict to a log; the turn that reads the log has its check.
+test('C02: reading the log a backgrounded check wrote is that check\'s result - the green claim beside it is checked', () => {
+  const dir = tmp();
+  try {
+    const rows = [
+      human(T(0), 'run the gate'),
+      asst('m1', T(1), [sh('b1', 'S=/tmp/scratch; dotnet format App.slnx --verify-no-changes > $S/format.log 2>&1; echo "format_exit=$?" >> $S/format.log; dotnet test App.slnx -v minimal > $S/suite.log 2>&1', { run_in_background: true })]),
+      res(T(2), 'b1', 'Command running in background with ID: b1'),
+      said('m2', T(3), 'Started the format check and the suite in the background.'),
+      human(T(10), 'status?'),
+      asst('m3', T(11), [sh('r1', "S=/tmp/scratch; cat $S/format.log | tail -3; tail -5 $S/suite.log")]),
+      res(T(12), 'r1', 'format_exit=0\nPassed!  - Failed: 0, Passed: 1650'),
+      said('m4', T(13), 'The format check is clean and all 1650 tests pass.'),
+      // a log nobody's check wrote is still no evidence
+      human(T(20), 'and the other one?'),
+      asst('m5', T(21), [sh('r2', 'tail -5 /tmp/other/notes.log')]),
+      res(T(22), 'r2', 'whatever'),
+      said('m6', T(23), 'The build is green.'),
+    ];
+    const { main } = run([write(dir, rows)]);
+    const e = main.efficiency;
+    assert.strictEqual(e.greenClaims, 2);
+    assert.deepStrictEqual(e.unverifiedGreenClaims, [T(23)], 'only the claim with no check and no check log behind it');
+    assert.strictEqual(e.checkLogReads, 1);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C03: the GENERATED DOCS table, against the shapes 18 audited sessions used - the stack's own `docs.js` section route,
+// a path bound to a variable, a runtime fed the path as argv, an in-place edit, a read of a file (or a folder above it)
+// that is not there, another project's docs (by `../`, by absolute path, or relative after a `cd`), and an existence loop.
+test('C03: docs.js show/set/where count from their own output; bound, argv, missing, foreign and probed paths read right', () => {
+  const dir = tmp();
+  try {
+    const cwd = '/work/app';
+    const at = (row) => ({ ...row, cwd });
+    const rows = [
+      at(asst('m1', T(0), [
+        sh('d1', 'node .claude/hooks/docs.js show integrations#five-clients 2>&1 | head -30\nnode .claude/hooks/docs.js show slice-anatomy.md#idioms'),
+        sh('d2', 'node .claude/hooks/docs.js where src/Api/Handlers.cs'),
+        sh('d3', "node .claude/hooks/docs.js set architecture/ARCHITECTURE.md#known-ceilings <<'EOF'\n## Known ceilings\nEOF\necho \"set_exit=$?\""),
+        sh('d4', 'node .claude/hooks/docs.js show nothing-here#x'),
+        sh('v1', "cd /work/app; P=.alfred/docs/plans/2026-01-01-plan.md; cat > $P <<'EOF'\n# Plan\nEOF"),
+        sh('v2', "P=.alfred/docs/plans/2026-01-01-plan.md; python3 - \"$P\" <<'PY'\nimport sys\np=sys.argv[1]; s=open(p).read()\nopen(p,'w').write(s.replace('a','b'))\nPY"),
+        sh('x1', "grep -n '^#' .alfred/docs/code-style/CODE-STYLE.md | head -30"),
+        sh('x2', 'cat ../sibling/.alfred/docs/cross-project-tasks/2026-01-01-card.md'),
+        sh('x3', 'for p in .alfred/docs/architecture/A.md .alfred/docs/quality/Q.md; do [ -e "$p" ] && echo "$p"; done'),
+        sh('x4', 'for p in .alfred/docs/quality/R.md; do cat "$p"; done'),
+        sh('x5', 'ls .alfred/docs/plans/2026-01-01-plan.md'),
+        tool('r1', 'Read', { file_path: '/work/other/.alfred/docs/plans/theirs.md' }),
+        tool('r2', 'Read', { file_path: '/work/app/.alfred/docs/plans/ours.md' }),
+        sh('y1', 'ls .alfred/docs/style/ 2>&1; grep -n x .alfred/docs/style/STYLE.md 2>/dev/null'),
+        sh('y2', 'cd /work && sed -n 29,40p sibling/.alfred/docs/cross-project-tasks/2026-01-02-card.md'),
+        sh('y3', "P=.alfred/docs/plans/2026-01-03-plan.md; sed -i '' 's/a/b/' $P && grep -c b $P"),
+        sh('y4', 'cd .claude/worktrees/w1 && cat .alfred/docs/plans/wt.md'),
+      ])),
+      res(T(1), 'd1', '.alfred/docs/architecture/references/integrations.md line 414\n\n## Five clients\nbody\n\n.alfred/docs/architecture/references/slice-anatomy.md line 12\n\n## Idioms\nbody'),
+      res(T(1), 'd2', 'slice-anatomy#idioms - Three handler idioms (1770 chars)\npersistence#bypass - A second bypass (1492 chars)'),
+      res(T(1), 'd3', 'wrote architecture/ARCHITECTURE.md#known-ceilings into .alfred/docs/architecture/ARCHITECTURE.md\nset_exit=0'),
+      res(T(1), 'd4', 'no such doc file: nothing-here. Known: integrations, slice-anatomy'),
+      res(T(1), 'v1', ''),
+      res(T(1), 'v2', ''),
+      res(T(1), 'x1', 'ugrep: warning: .alfred/docs/code-style/CODE-STYLE.md: No such file or directory'),
+      res(T(1), 'x2', '# card'),
+      res(T(1), 'x3', '.alfred/docs/architecture/A.md'),
+      res(T(1), 'x4', '# R'),
+      res(T(1), 'x5', '.alfred/docs/plans/2026-01-01-plan.md'),
+      res(T(1), 'r1', 'theirs'),
+      res(T(1), 'r2', 'ours'),
+      res(T(1), 'y1', 'ls: .alfred/docs/style/: No such file or directory'),
+      res(T(1), 'y2', '# card'),
+      res(T(1), 'y3', '2'),
+      res(T(1), 'y4', '# wt'),
+    ];
+    const file = write(dir, rows);
+    const docs = run([file]).main.docTouches;
+    assert.deepStrictEqual(docs['architecture/references/integrations.md'], { reads: 0, writes: 0, bashReads: 1, docsJs: 1 });
+    assert.strictEqual(docs['architecture/references/slice-anatomy.md'].bashReads, 1);
+    assert.strictEqual(docs['(docs.js where - section lookup)'].bashReads, 1);
+    assert.strictEqual(docs['architecture/ARCHITECTURE.md'].bashWrites, 1, 'the set wrote the file it names');
+    assert.strictEqual(docs['plans/2026-01-01-plan.md'].bashWrites, 2, 'cat > $P and the argv-fed python write');
+    assert.strictEqual(docs['plans/2026-01-01-plan.md'].bashReads, undefined, 'an ls of it is no read');
+    assert.ok(!('code-style/CODE-STYLE.md' in docs), 'a read of a file that is not there read nothing');
+    assert.ok(!('cross-project-tasks/2026-01-01-card.md' in docs), "another project's card is not this project's doc");
+    assert.ok(!('architecture/A.md' in docs) && !('quality/Q.md' in docs), 'an existence loop reads nothing');
+    assert.strictEqual(docs['quality/R.md'].bashReads, 1, 'a loop that cats its variable reads');
+    assert.ok(!('plans/theirs.md' in docs), "a Read of another project's absolute path is not this project's doc");
+    assert.strictEqual(docs['plans/ours.md'].reads, 1);
+    assert.ok(!('style/STYLE.md' in docs), 'a read under a folder the result says is missing read nothing');
+    assert.ok(!('cross-project-tasks/2026-01-02-card.md' in docs), 'a relative path after cd to the parent is the sibling');
+    assert.deepStrictEqual([docs['plans/2026-01-03-plan.md'].bashWrites, docs['plans/2026-01-03-plan.md'].bashReads], [1, undefined], 'sed -i is a write, and a call that writes a doc counts the write');
+    assert.strictEqual(docs['plans/wt.md'].bashReads, 1, 'a worktree under the project reads its own docs');
+    const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
+    assert.match(md, /\| architecture\/references\/integrations\.md \| 0 \| 0 \| 0 \| 1\/0 \(1 by docs\.js\) \|/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C04: the Session vintage, against an uncompacted session of the current harness - a Skill call's body is an isMeta
+// row naming the call in `sourceToolUseID`, a plugin command's expansion carries no `Base directory` line, the harness
+// appends the run's ARGUMENTS after the body, a pre-rename skill name, and a stamp the session's own update wrote.
+test('C04: vintage reads Skill-call and command bodies from their meta rows, past ARGUMENTS and renames, and dates a mid-session install', () => {
+  const dir = tmp();
+  try {
+    const root = path.join(dir, 'proj');
+    const claude = path.join(root, '.claude');
+    const skill = (name, body) => {
+      fs.mkdirSync(path.join(claude, 'skills', name), { recursive: true });
+      fs.writeFileSync(path.join(claude, 'skills', name, 'SKILL.md'), `---\nname: ${name}\ndescription: "fixture"\n---\n\n${body}`);
+    };
+    skill('habit-x', '# Habit\n\nstep one\n\n## A rule added later\n\nrule\n');
+    skill('task-solve', '# Solve\n\n## Step one\n\ndo it\n');
+    fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), `sha: abcdef1234567890\nversion: 9.9.9\ninstalled: ${T(30).replace('.000', '')}\n`);
+    const meta = (ts, text, extra = {}) => ({ type: 'user', timestamp: ts, cwd: root, isMeta: true, message: { content: [{ type: 'text', text }] }, ...extra });
+    const cmd = (ts, name) => ({ type: 'user', timestamp: ts, cwd: root, parentUuid: `c-${ts}`, origin: { kind: 'slash_command' }, message: { content: `<command-message>${name}</command-message>\n<command-name>/${name}</command-name>` } });
+    const rows = [
+      { ...human(T(0), 'go'), cwd: root },
+      asst('m1', T(1), [tool('k1', 'Skill', { skill: 'habit-x' })]),
+      res(T(2), 'k1', 'Launching skill: habit-x'),
+      meta(T(2), `Base directory for this skill: ${claude}/skills/habit-x\n\n# Habit\n\nstep one\n`, { sourceToolUseID: 'k1' }),
+      asst('m2', T(3), [tool('k2', 'Skill', { skill: `alfred-code:${OLD_SOLVE}`, args: 'brief' })]),
+      res(T(4), 'k2', `Launching skill: alfred-code:${OLD_SOLVE}`),
+      meta(T(4), `Base directory for this skill: ${claude}/skills/task-solve\n\n# Solve\n\n## Step one\n\ndo it\n\nARGUMENTS: # pasted brief\n\n## its own heading\n\n${'x'.repeat(4000)}`, { sourceToolUseID: 'k2' }),
+      said('m3', T(5), 'ok'),
+      cmd(T(10), 'alfred-code:update'),
+      meta(T(10), '# Update\n\nrefresh the install\n'),
+      cmd(T(20), 'init'),
+      meta(T(20), '# Init\n\nwrite a CLAUDE.md\n'),
+      meta(T(21), '<local-command-caveat>Caveat: the messages below were generated by the user while running local commands.</local-command-caveat>'),
+      cmd(T(22), 'model'),
+      said('m4', T(60), 'done'),
+    ];
+    const file = write(dir, rows);
+    const vin = run([file]).inventory.vintage;
+    const row = (n) => vin.rows.find((r) => r.name === n) || {};
+    assert.strictEqual(row('habit-x').how, 'Skill call');
+    assert.strictEqual(row('habit-x').verdict, 'DIFFERS - the current source has different sections', 'the loaded body is compared, not reported absent');
+    assert.strictEqual(row(`alfred-code:${OLD_SOLVE}`).verdict, 'same', 'the pre-rename name finds task-solve, and the ARGUMENTS block is not the body');
+    assert.match(row('alfred-code:update').verdict, /current source unreachable/, "a plugin command's expansion is its loaded body");
+    assert.strictEqual(row('alfred-code:update').how, 'slash command');
+    assert.ok(!vin.rows.some((r) => r.name === 'init' || r.name === 'model'), "the harness's own commands carry no stack body");
+    assert.match(vin.inventoryWhy, /INSTALLED DURING this session at /);
+    const md = text([file, '--report-md']);
+    assert.match(md, /\| Stack install \| v9\.9\.9 .*INSTALLED DURING this session at .* - rows before it ran on the prior install \|/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C06: the inventory join. The harness roster spells a plugin seat with its scope and a skill under the name the
+// session's release gave it; every use is keyed bare and current. And the standing floor is the first message, which
+// carries the session's own opening prompt (8f44a003: a ~112k-char slash load inside a '139.4k' install floor).
+test('C06: scoped and pre-rename roster names join their uses, preloads follow the seat, and the floor nets out the first prompt', () => {
+  const dir = tmp();
+  try {
+    const root = path.join(dir, 'proj');
+    const claude = path.join(root, '.claude');
+    fs.mkdirSync(path.join(claude, 'agents'), { recursive: true });
+    fs.writeFileSync(path.join(claude, 'agents', 'demo-verifier.md'), '---\nname: demo-verifier\ndescription: fixture\nskills:\n  - demo-preload\n---\n\nbody\n');
+    for (const n of ['task-solve', 'demo-preload']) {
+      fs.mkdirSync(path.join(claude, 'skills', n), { recursive: true });
+      fs.writeFileSync(path.join(claude, 'skills', n, 'SKILL.md'), `---\nname: ${n}\ndescription: fixture\n---\n\n# ${n}\n`);
+    }
+    const big = (id, ts, ctx, content) => ({ ...asst(id, ts, content), message: { id, model: 'claude-sonnet-5', usage: usage(1, 0, ctx, 5), content } });
+    const rows = [
+      { ...human(T(0), '/task-solve the brief'), cwd: root },
+      { type: 'user', timestamp: T(0), cwd: root, isMeta: true, message: { content: [{ type: 'text', text: '# Solve\n' + 'x'.repeat(20000) }] } },
+      { type: 'attachment', timestamp: T(0), attachment: { type: 'skill_listing', isInitial: true, names: [`alfred-code:${OLD_SOLVE}`, 'demo-preload'], content: '' } },
+      { type: 'attachment', timestamp: T(0), attachment: { type: 'agent_listing_delta', isInitial: true, addedTypes: ['alfred-code:demo-verifier'], removedTypes: [], addedLines: [] } },
+      big('m1', T(1), 30000, [tool('k1', 'Skill', { skill: `alfred-code:${OLD_SOLVE}` })]),
+      res(T(2), 'k1', 'Launching skill'),
+      big('m2', T(3), 31000, [tool('a1', 'Agent', { subagent_type: 'alfred-code:demo-verifier', description: 'verify', prompt: 'check it' })]),
+      res(T(4), 'a1', 'verified'),
+      { ...said('m3', T(5), 'done'), message: { id: 'm3', model: 'claude-sonnet-5', usage: usage(1, 0, 32000, 5), content: [{ type: 'text', text: 'done' }], stop_reason: 'end_turn' } },
+    ];
+    const file = write(dir, rows);
+    // a plugin-served seat with no definition on disk: its preloads are isMeta rows spelled like a slash turn
+    const sub = path.join(dir, 'session', 'subagents');
+    fs.mkdirSync(sub, { recursive: true });
+    fs.writeFileSync(path.join(sub, 'agent-s1.meta.json'), JSON.stringify({ agentType: 'alfred-code:other-seat' }));
+    fs.writeFileSync(path.join(sub, 'agent-s1.jsonl'), [
+      { type: 'user', timestamp: T(3), message: { content: 'review it' } },
+      { type: 'user', timestamp: T(3), isMeta: true, message: { content: [{ type: 'text', text: '<command-message>demo-preload</command-message>\n<command-name>demo-preload</command-name>\n<skill-format>true</skill-format>' }, { type: 'text', text: 'Base directory for this skill: x\n\n# demo-preload\n' }] } },
+      asst('s1', T(4), [{ type: 'text', text: 'ok' }]),
+    ].map(line).join(''));
+    const { inventory } = run([file]);
+    const row = (list, n) => list.find((r) => r.name === n);
+    assert.strictEqual(row(inventory.agents, 'demo-verifier').used, 'yes', 'the dispatched seat joins its roster row');
+    assert.strictEqual(row(inventory.agents, 'alfred-code:demo-verifier'), undefined, 'no scoped twin left unused');
+    assert.strictEqual(row(inventory.skills, 'task-solve').used, 'yes', 'the pre-rename roster name joins the run');
+    assert.strictEqual(row(inventory.skills, OLD_SOLVE), undefined, 'no pre-rename twin left unused');
+    assert.deepStrictEqual(row(inventory.skills, 'demo-preload').how, ['preloaded via alfred-code:demo-verifier x1', 'preloaded via alfred-code:other-seat x1'],
+      "a frontmatter preload follows the dispatch, and a seat's own preload row is a preload, never a slash command");
+    const out = text([file]);
+    assert.match(out, /standing inventory ~30\.0k tok\/msg/);
+    assert.match(out, /of which ~5\.0k is the session's own first prompt .* the install's floor is ~25\.0k/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C07: the tool ledger. A row gains the call's own `tool_use_id` (and the subagent's `agent_id`) - added fields only,
+// every existing one unchanged - and the analyzer joins by that id first, then tool + time, then the detail a row names
+// between its call and the call's result. Old rows (no id) still join. The calls of one batched message run after it
+// finishes streaming: 31 of one session's calls read UNJOINED beside their own rows (bc2fa83e).
+test('C07: the ledger row carries tool_use_id and agent_id, and the join reads id, then time, then detail', () => {
+  const dir = tmp();
+  try {
+    const hook = path.join(__dirname, '..', 'stack', 'hooks', 'instrument-tool-usage.js');
+    const log = path.join(dir, 'ledger-hook.jsonl');
+    const env = { ...process.env, ALFRED_CODE_INSTRUMENT: '1', ALFRED_CODE_INSTRUMENT_LOG: log };
+    const fire = (payload) => require('node:child_process').spawnSync(process.execPath, [hook], { input: JSON.stringify(payload), encoding: 'utf8', env }).status;
+    assert.strictEqual(fire({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1', cwd: '/x', tool_use_id: 'toolu_1', agent_id: 'ag1' }), 0);
+    assert.strictEqual(fire({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1' }), 0);
+    const hrows = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepStrictEqual(Object.keys(hrows[0]), ['ts', 'session', 'tool', 'detail', 'cwd', 'tool_use_id', 'agent_id', 'version'], 'the five pinned fields first, unchanged, then the three added');
+    assert.deepStrictEqual([hrows[0].tool_use_id, hrows[0].agent_id, hrows[0].detail], ['toolu_1', 'ag1', 'c.ts']);
+    assert.deepStrictEqual([hrows[1].tool_use_id, hrows[1].agent_id], [null, null], 'a payload without them writes null');
+
+    // one batched message: three Edits streamed at T(0), run 8-9s later; a Bash call 1.0s late with its description
+    const ms = (sec, frac) => `2026-07-15T07:00:${String(sec).padStart(2, '0')}.${frac}Z`;
+    const rows = [
+      asst('m1', ms(0, '100'), [tool('e1', 'Edit', { file_path: '/p/a.ts', old_string: 'a', new_string: 'b' }), tool('e2', 'Edit', { file_path: '/p/b.ts', old_string: 'a', new_string: 'b' }), tool('e3', 'Edit', { file_path: '/p/c.ts', old_string: 'a', new_string: 'b' })]),
+      res(ms(9, '500'), 'e1', 'ok'), res(ms(9, '600'), 'e2', 'ok'), res(ms(9, '700'), 'e3', 'ok'),
+      asst('m2', ms(20, '000'), [sh('b1', 'ls docs', { description: 'Check for legacy rule files' })]),
+      res(ms(21, '500'), 'b1', 'x'),
+      asst('m3', ms(30, '000'), [sh('b2', 'git status', { description: 'Show status' })]),
+      res(ms(30, '600'), 'b2', 'x'),
+      asst('m4', ms(40, '000'), [tool('g1', 'Grep', { pattern: 'needle' })]),
+      res(ms(40, '300'), 'g1', 'x'),
+    ];
+    const file = write(dir, rows);
+    const ledger = path.join(dir, 'tools-usage.jsonl');
+    fs.writeFileSync(ledger, [
+      { ts: ms(8, '200'), session: 's', tool: 'Edit', detail: 'a.ts', cwd: '/p', tool_use_id: 'e1', agent_id: null },   // new row: by id
+      { ts: ms(8, '900'), session: 's', tool: 'Edit', detail: 'b.ts', cwd: '/p', tool_use_id: 'e2', agent_id: null },
+      { ts: ms(9, '100'), session: 's', tool: 'Edit', detail: 'c.ts', cwd: '/p' },                                       // old row, 9s late: by detail
+      { ts: ms(21, '100'), session: 's', tool: 'Bash', detail: 'Check for legacy rule files', cwd: '/p' },               // old row, 1.0s late: by detail
+      { ts: ms(30, '200'), session: 's', tool: 'Bash', detail: 'Show status', cwd: '/p' },                               // old row, close: by time
+      { ts: ms(41, '900'), session: 's', tool: 'Grep', detail: 'other', cwd: '/p' },                                     // names another call: orphan
+    ].map(line).join(''));
+    const cov = run([file, '--hook-log', ledger]).hookLog.coverage;
+    assert.deepStrictEqual([cov.matchedById, cov.matchedByTime, cov.matchedByDetail, cov.matchedCalls], [2, 1, 2, 5]);
+    assert.deepStrictEqual(cov.unmatchedCalls.map((c) => c.tool), ['Grep'], 'a row naming another detail past the result stays apart');
+    assert.strictEqual(cov.unmatchedRowCount, 1);
+    assert.match(text([file, '--hook-log', ledger]), /joined: 5 call\(s\) - 2 by tool_use_id, 1 by tool \+ timestamp within 750ms, 2 by detail/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C07 (05c925e9): a session bundle keeps its block ledger as `hook-blocks-<sid>.jsonl` beside the transcript; passing
+// the bundle folder read nothing and printed a measured '0 whole-file denial(s)'.
+test('C07: --hook-blocks on a bundle folder reads hook-blocks-<sid>.jsonl, and a folder with no ledger says so', () => {
+  const dir = tmp();
+  try {
+    const sid = '11111111-2222-4333-8444-555555555555';
+    const file = write(dir, [asst('m1', T(0), [tool('r1', 'Read', { file_path: '/p/Big.cs' })]), res(T(1), 'r1', 'Blocked: whole-file Read', true)], `${sid}.jsonl`);
+    fs.writeFileSync(path.join(dir, `hook-blocks-${sid}.jsonl`), line({ ts: T(0), hook: 'guard-read-whole-file.js', event: 'PreToolUse', tool: 'Read', reason: 'whole-file Read of Big.cs' }));
+    const j = run([file, '--hook-blocks', dir]).hookBlocks;
+    assert.deepStrictEqual([j.rows, j.given], [1, true]);
+    assert.match(text([file, '--hook-blocks', dir]), /1 whole-file denial\(s\) \(hook-block ledger\)/);
+    const empty = fs.mkdtempSync(path.join(dir, 'none-'));
+    const k = run([file, '--hook-blocks', empty]).hookBlocks;
+    assert.deepStrictEqual([k.rows, k.given], [0, false], 'no file read is no measurement');
+    assert.match(k.missing, /^no ledger file for 11111111-2222-4333-8444-555555555555 in /);
+    const out = text([file, '--hook-blocks', empty]);
+    assert.match(out, /whole-file denial\(s\) \(transcript bracket - no ledger file for /);
+    assert.match(out, /HOOK BLOCKS: no ledger file for .* - no measurement, never a zero/);
+    assert.match(text([file, '--hook-blocks', empty, '--report-md']), /_no ledger file for .* - no measurement, never a zero\. Pass the ledger file itself\._/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C07 (229e2715, b35afe70): `--check-report` printed clean over a TOKEN VERDICT whose avoidable share was a word.
+test('C07: --check-report fails a TOKEN VERDICT that states no avoidable <N> of <M> with a percent', () => {
+  const dir = tmp();
+  try {
+    const report = (verdict) => {
+      const f = path.join(dir, 'report-usage.md');
+      fs.writeFileSync(f, ['# Stack usage report', '', '## Tokens (deduped per API message)', '', '| scope | cache-read | avoidable |', '|---|---|---|',
+        '| main session | 40.2M | 672k |', '| share | 1.7% | |', '', '## Verdict', '', verdict, ''].join('\n'));
+      try { return { status: 0, out: execFileSync('node', [SCRIPT, '--check-report', f], { encoding: 'utf8' }) }; } catch (e) { return { status: e.status, out: String(e.stdout) }; }
+    };
+    const vague = report('- **TOKEN VERDICT**: delivered a fix / cost 40.2M / avoidable: the resume reads, small. PASS.');
+    assert.strictEqual(vague.status, 1);
+    assert.match(vague.out, /TOKEN VERDICT without a share +line 12 - needs 'avoidable <N> of <M> tok, <P>%'/);
+    const none = report('- **TOKEN VERDICT: PASS (small spend, delivered).** Delivered a fix / cost 40.2M');
+    assert.strictEqual(none.status, 1, 'a verdict with no avoidable clause at all fails too');
+    const measured = report('- **TOKEN VERDICT**: delivered a fix / cost 40.2M / avoidable 672k of 40.2M tok, 1.7%. PASS.');
+    assert.strictEqual(measured.status, 0, measured.out);
+    assert.match(measured.out, /clean - .*the TOKEN VERDICT states its avoidable share/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C07 (516e653d): the compaction re-read row counted 7 files for 1 - a pipe's `| tail -40` keyed `-40` as a file, and
+// a relative shell read and an absolute Read of one file keyed apart.
+test('C07: a pipe option is no read target, and one file read by two spellings is one re-read', () => {
+  const dir = tmp();
+  try {
+    const cwd = '/work/app';
+    const at = (row) => ({ ...row, cwd });
+    const rows = [
+      at(asst('m1', T(0), [tool('r1', 'Read', { file_path: '/work/app/src/Handler.cs' }), sh('s1', 'grep -n Foo src/x.cs | tail -40'), sh('s2', 'ls -la | head -n +5')])),
+      res(T(1), 'r1', 'a'.repeat(400)), res(T(1), 's1', 'x'), res(T(1), 's2', 'y'),
+      { type: 'system', timestamp: T(2), compactMetadata: { trigger: 'auto' } },
+      { type: 'user', timestamp: T(2), isCompactSummary: true, message: { content: 'summary' } },
+      at(asst('m2', T(3), [sh('s3', 'sed -n 1,40p src/Handler.cs'), sh('s4', 'grep -n Bar src/y.cs | tail -20'), sh('s5', 'npm test 2>&1 | tail -30')])),
+      res(T(4), 's3', 'b'.repeat(300)), res(T(4), 's4', 'z'), res(T(4), 's5', 'ok'),
+    ];
+    const { main } = run([write(dir, rows)]);
+    assert.deepStrictEqual(main.efficiency.compactionRereads.map((c) => [c.files, c.chars]), [[1, 300]], 'Handler.cs once, by its relative spelling; no `-N` option is a file');
+    assert.ok(!Object.keys(main.fileTouches).some((k) => /^[-+]\d/.test(k)), `no option keyed as a file: ${Object.keys(main.fileTouches)}`);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C07 (bda299a8, a6a24815): a prompt typed while the model works is a `queued_command` attachment, and the header
+// counted 3 user prompts over 5.
+test('C07: a queued human prompt is a user turn; a queued task notification is not', () => {
+  const dir = tmp();
+  try {
+    const queued = (ts, prompt, human) => ({ type: 'attachment', timestamp: ts, attachment: { type: 'queued_command', prompt, commandMode: human ? 'prompt' : 'task-notification', origin: { kind: human ? 'human' : 'task-notification' }, ...(human ? { humanTurn: true } : {}) } });
+    const rows = [
+      human(T(0), 'build the page'),
+      asst('m1', T(1), [sh('b1', 'npm run build')]),
+      queued(T(2), 'also move the modules link and commit', true),
+      queued(T(2), '<task-notification>\n<task-id>x</task-id>\n</task-notification>', false),
+      res(T(3), 'b1', 'ok'),
+      queued(T(4), [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } }, { type: 'text', text: 'this one is wrong' }], true),
+      said('m2', T(5), 'Done.'),
+    ];
+    const file = write(dir, rows);
+    const { main } = run([file]);
+    assert.deepStrictEqual([main.userPrompts, main.queuedPrompts], [3, 2]);
+    assert.match(text([file]), /user prompts 3 \(2 queued while the model worked\)/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C07 (bc2fa83e): a queued `/clear` 3h41m after the last turn stretched the session to 5h 17m and the ledger's
+// coverage to ~30%.
+test('C07: the session window ends at the last activity row, and a queue-operation tail is printed as idle', () => {
+  const dir = tmp();
+  try {
+    const rows = [
+      human(T(0), 'go'),
+      asst('m1', T(1), [sh('b1', 'ls', { description: 'List' })]),
+      res(T(2), 'b1', 'x'),
+      said('m2', T(3), 'done'),
+      { type: 'system', subtype: 'away_summary', timestamp: T(5) },
+      { type: 'queue-operation', operation: 'enqueue', timestamp: '2026-07-15T10:41:00.000Z', content: '/clear' },
+      { type: 'queue-operation', operation: 'dequeue', timestamp: '2026-07-15T10:41:00.100Z' },
+    ];
+    const file = write(dir, rows);
+    const { main } = run([file]);
+    assert.deepStrictEqual([main.firstTs, main.lastTs], [T(0), T(5)]);
+    assert.deepStrictEqual(main.idleTail, { from: T(5), to: '2026-07-15T10:41:00.100Z', rowType: 'queue-operation' });
+    const out = text([file]);
+    assert.match(out, /→ 2026-07-15T07:00:05\.000Z \(0m\)/);
+    assert.match(out, /idle tail 3h 41m after the last turn, to a queue-operation row/);
+    assert.match(text([file, '--report-md']), /\| Session window \| .*; idle tail .* to a `queue-operation` row .* - not session time \|/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C07 (b35afe70): 70 screenshot results read as 'Read ~933' and a spike cause '~2 tok' - an image is billed as pixels,
+// and its cost is the context growth of the turn that carried it.
+test('C07: image results are counted per tool and measured from the context growth of their turn', () => {
+  const dir = tmp();
+  try {
+    const img = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'A'.repeat(4000) } };
+    const at = (id, ts, cr, content) => ({ ...asst(id, ts, content), message: { id, model: 'claude-sonnet-5', usage: usage(1, 0, cr, 100), content } });
+    const rows = [
+      human(T(0), 'check the screens'),
+      at('m1', T(1), 10000, [tool('r1', 'Read', { file_path: '/p/a.png' }), tool('r2', 'Read', { file_path: '/p/b.png' })]),
+      { type: 'user', timestamp: T(2), message: { content: [{ type: 'tool_result', tool_use_id: 'r1', content: [img] }, { type: 'tool_result', tool_use_id: 'r2', content: [img] }] } },
+      // the next context grew 2,100: 100 of the previous answer's output, the rest the two images
+      at('m2', T(3), 12100, [{ type: 'text', text: 'Both screens match.' }]),
+    ];
+    const file = write(dir, rows);
+    const { main } = run([file]);
+    assert.deepStrictEqual([main.imageResults, main.imageTok, main.imagesMeasured, main.toolCalls.Read.images], [2, 1999, 2, 2], "2,100 growth less 100 of output and 1 of the empty text parts");
+    const out = text([file]);
+    assert.match(out, /images 2 in tool results \(Read 2\) ~2\.0k tok, from the context growth of the turns that carried 2 of them/);
+    assert.match(out, /after: image×2 \(~2\.0k tok, from the context growth\)/);
+    assert.match(text([file, '--report-md']), /> images 2 in tool results \(Read 2\) ~2\.0k tok/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C07 (b35afe70): a reference skill loaded after the flow's own clarify ask took the flow's attribution - 148 of 180
+// messages charged to a plugin reference, 11 to the flow whose cycle was the whole session.
+test('C07: a reference skill loaded while a flow cycle is open folds into it; another flow skill opens its own phase', () => {
+  const dir = tmp();
+  try {
+    const stamped = (id, ts, skill, content) => ({ ...asst(id, ts, content), attributionSkill: skill });
+    const rows = [human(T(0), '/task-solve the brief'), stamped('m0', T(1), null, [tool('k1', 'Skill', { skill: 'task-solve' })]), res(T(2), 'k1', 'ok')];
+    for (let i = 0; i < 7; i += 1) rows.push(stamped(`a${i}`, T(3 + i), 'task-solve', [{ type: 'text', text: 'working' }]));
+    rows.push(stamped('q1', T(11), 'task-solve', [tool('ask', 'AskUserQuestion', { questions: [] })]), res(T(12), 'ask', 'B'));
+    rows.push(stamped('m1', T(13), 'task-solve', [tool('k2', 'Skill', { skill: 'figma:figma-use' })]), res(T(14), 'k2', 'ok'));
+    for (let i = 0; i < 6; i += 1) rows.push(stamped(`f${i}`, T(15 + i), 'figma:figma-use', [{ type: 'text', text: 'designing' }]));
+    rows.push(stamped('q2', T(22), 'figma:figma-use', [tool('ask2', 'AskUserQuestion', { questions: [] })]), res(T(23), 'ask2', 'go'));
+    rows.push(stamped('m2', T(24), 'figma:figma-use', [tool('k3', 'Skill', { skill: 'alfred-code:task-verify-plan' })]), res(T(25), 'k3', 'ok'));
+    for (let i = 0; i < 3; i += 1) rows.push(stamped(`v${i}`, T(26 + i), 'alfred-code:task-verify-plan', [{ type: 'text', text: 'checking' }]));
+    const { main } = run([write(dir, rows)]);
+    assert.strictEqual(main.companionOf['figma:figma-use'], 'task-solve', 'the reference serves the open flow');
+    assert.strictEqual(main.companionOf['alfred-code:task-verify-plan'], undefined, 'a flow phase after an ask is its own phase');
+    assert.strictEqual(main.skillAttribution['figma:figma-use'], undefined, "the reference's messages are the flow's");
+    assert.ok(main.skillAttribution['task-solve'].msgs >= 15, `task-solve carries its cycle: ${JSON.stringify(main.skillAttribution)}`);
+    assert.strictEqual(main.skillAttribution['alfred-code:task-verify-plan'].msgs, 3);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C07 (d37841e9, f10cb06a): the session-start `instructions` attachment carries each standing file with its text; the
+// analyzer never read it, so the floor was one number, a renamed rule loaded under both names was invisible, and the
+// rules inventory came from today's disk only.
+test('C07: the instructions attachment is the floor breakdown, flags a rule loaded under both names, and joins the rules inventory', () => {
+  const dir = tmp();
+  try {
+    const renamed = require('../meta/stack-manifest.json').renamed.rules;
+    const [old, now] = Object.entries(renamed)[0];
+    const root = path.join(dir, 'proj');
+    fs.mkdirSync(path.join(root, '.claude', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'rules', `${now}.md`), '# rule\\n');
+    const rows = [
+      { type: 'attachment', timestamp: T(0), cwd: root, attachment: { type: 'instructions', files: [
+        { path: `${root}/.claude/rules/${old}.md`, type: 'Project', content: 'x'.repeat(4000) },
+        { path: `${root}/.claude/rules/${now}.md`, type: 'Project', content: 'y'.repeat(3000) },
+        { path: `${root}/CLAUDE.md`, type: 'Project', content: 'z'.repeat(8000) },
+      ] } },
+      { ...human(T(1), 'go'), cwd: root },
+      said('m1', T(2), 'ok'),
+    ];
+    const file = write(dir, rows);
+    const { main, inventory } = run([file]);
+    assert.deepStrictEqual(main.instructionFiles.map((f) => f.chars), [4000, 3000, 8000]);
+    const out = text([file]);
+    assert.match(out, new RegExp(`instructions at session start: 3 file\\(s\\), 15000 chars \\(~3\\.8k tok\\) - proj/CLAUDE\\.md 8000, ${old}\\.md 4000, ${now}\\.md 3000`));
+    assert.match(out, new RegExp(`LOADED TWICE under a renamed rule's old and new name: ${old}\\.md \\+ ${now}\\.md - ~1\\.0k tok`));
+    const r = inventory.rules.find((x) => x.name === `${old}.md`);
+    assert.ok(r, "the stale copy the session was given is in its rules inventory");
+    assert.match(text([file, '--report-md']), /\*\*Loaded twice\*\* under a renamed rule's old and new name/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C07 (e499fc94): cost-state sums every model the session billed, seats included; subtracting the main transcript alone
+// named a 66.5M 'untranscribed' gap where main + seats left 17.6M.
+test('C07: the untranscribed gap subtracts the seats\' transcripts, and none is named when they cover the bill', () => {
+  const dir = tmp();
+  try {
+    const cost = (cr) => ({ type: 'cost-state', sessionId: 'x', modelUsage: { 'claude-sonnet-5': { inputTokens: 1, outputTokens: 1, cacheReadInputTokens: cr, cacheCreationInputTokens: 0 } } });
+    const seat = (cr) => {
+      const sub = path.join(dir, 'session', 'subagents');
+      fs.mkdirSync(sub, { recursive: true });
+      fs.writeFileSync(path.join(sub, 'agent-s1.meta.json'), JSON.stringify({ agentType: 'demo-seat' }));
+      fs.writeFileSync(path.join(sub, 'agent-s1.jsonl'), line({ ...asst('s1', T(2), [{ type: 'text', text: 'ok' }]), message: { id: 's1', model: 'claude-sonnet-5', usage: usage(1, 0, cr, 5), content: [{ type: 'text', text: 'ok' }] } }));
+    };
+    const main = (cr) => write(dir, [human(T(0), 'go'), { ...asst('m1', T(1), [{ type: 'text', text: 'ok' }]), message: { id: 'm1', model: 'claude-sonnet-5', usage: usage(1, 0, 1000, 5), content: [{ type: 'text', text: 'ok' }] } }, cost(cr)]);
+    seat(6000);
+    const file = main(10000);
+    const j = run([file]).main;
+    assert.deepStrictEqual(j.untranscribed, { cacheRead: 3000, contexts: 3, seatsCacheRead: 6000 }, '10,000 billed less 1,000 main and 6,000 seats');
+    assert.match(text([file]), /untranscribed calls: cost-state cache-read 10\.0k vs transcript 1\.0k \+ seats 6\.0k - gap 3\.0k/);
+    const covered = main(7000);
+    assert.strictEqual(run([covered]).main.untranscribed, undefined, 'main + seats cover the bill: no gap is named');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C23: docs-session's first-change hold opens 'Docs not read yet', carries neither 'Blocked' nor 'Do NOT retry', and
+// landed in the TOOLS errors column and no denials-by-hook row (81264f0d, a3d497f8, c5000cb1, f24eb967).
+test('C23: a result opening with the harness PreToolUse hook-error prefix is a hook block, joined to its ledger row', () => {
+  const dir = tmp();
+  try {
+    const sid = '22222222-3333-4444-8555-666666666666';
+    const rows = [
+      human(T(0), 'write it'),
+      asst('m1', T(1), [tool('w1', 'Write', { file_path: '/p/src/a.ts', content: 'x' }), sh('b1', 'false', { description: 'Fail on purpose' })]),
+      res(T(2), 'w1', 'PreToolUse:Write hook error: Docs not read yet in this session. Read the section first.', true),
+      res(T(2), 'b1', 'Exit code 1', true),
+    ];
+    const file = write(dir, rows, `${sid}.jsonl`);
+    const blocks = path.join(dir, 'hook-blocks');
+    fs.mkdirSync(blocks);
+    fs.writeFileSync(path.join(blocks, `${sid}.jsonl`), line({ ts: T(2), hook: 'docs-session.js', event: 'PreToolUse', tool: 'Write', reason: 'docs not read' }));
+    const { main } = run([file, '--hook-blocks', blocks]);
+    assert.deepStrictEqual([main.toolCalls.Write.hookBlocks, main.toolCalls.Write.errors], [1, 0], 'a hold, not an error');
+    assert.strictEqual(main.toolCalls.Bash.errors, 1, 'a plain failure is still an error');
+    assert.strictEqual(main.denialsByHook['(unattributed)'], 1);
+    assert.match(text([file, '--hook-blocks', blocks]), /joined by ledger timestamp \(within \d+ms\): docs-session\.js×1/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C16: a red run the test-first method meant (ca65b406: 'Run the mapper unit tests expecting the new ordering test
+// red', habits-test-first loaded before it) was printed as a root-cause streak 'loaded after the fix'. It is intended
+// red, outside the streak count - only with the method in context (loaded earlier, or preloaded by the seat) and a
+// description that expects red.
+test('C16: a red run expected red inside a test-first window is intended red, not a root-cause streak', () => {
+  const dir = tmp();
+  try {
+    const sid = '33333333-4444-4555-8666-777777777777';
+    const red = 'Exit code 1\nFailed! - Failed: 1';
+    const edit = (id, f) => tool(id, 'Edit', { file_path: f, old_string: 'a', new_string: 'b' });
+    const file = write(dir, [
+      asst('m1', T(0), [tool('k1', 'Skill', { skill: 'alfred-code:habits-test-first' })]), res(T(1), 'k1', 'ok'),
+      asst('m2', T(2), [sh('r1', 'npm test', { description: 'Run the mapper tests expecting the new ordering test red' })]), res(T(3), 'r1', red, true),
+      asst('m3', T(4), [edit('e1', 'src/mapper.js')]), res(T(5), 'e1', 'ok'),
+      asst('m4', T(6), [sh('r2', 'npm test', { description: 'Run the suite expecting no failures' })]), res(T(7), 'r2', red, true),
+      asst('m5', T(8), [edit('e2', 'src/other.js')]), res(T(9), 'e2', 'ok'),
+    ], `${sid}.jsonl`);
+    const sub = path.join(dir, sid, 'subagents');
+    fs.mkdirSync(sub, { recursive: true });
+    const seat = (name, rows) => fs.writeFileSync(path.join(sub, `agent-${name}.jsonl`), rows.map(line).join(''));
+    // a seat without the method in context: its 'expecting red' is still a streak
+    seat('a1', [asst('s1', T(10), [sh('x1', 'npm test', { description: 'Run it expecting red' })]), res(T(11), 'x1', red, true), asst('s2', T(12), [edit('x2', 'src/b.js')]), res(T(13), 'x2', 'ok')]);
+    // a seat whose definition preloads the method
+    seat('a2', [asst('s3', T(14), [sh('y1', 'dotnet test', { description: 'Run the new test, expecting it to fail' })]), res(T(15), 'y1', red, true), asst('s4', T(16), [edit('y2', 'src/c.cs')]), res(T(17), 'y2', 'ok')]);
+    const probe = (id, extra) => line({ ts: T(3), hook: 'guard-stop-contract.js', event: 'PostToolUse', tool: 'Bash', mode: 'probe', kind: 'root-cause',
+      reason: 'probe: a red test run - logged, nothing injected', detail: { run: 'npm test', key: 'npm test', tool_use_id: id, agent: null, agent_type: null, ...(extra || {}) } });
+    const blocks = path.join(dir, 'hook-blocks');
+    fs.mkdirSync(blocks);
+    fs.writeFileSync(path.join(blocks, `${sid}.jsonl`), [probe('r1'), probe('r2'), probe('x1', { agent: 'a1' }), probe('y1', { agent: 'a2', agent_type: 'alfred-code:aspnet-implementer' })].join(''));
+    const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+    assert.deepStrictEqual(hookBlocks.rootCause, { streaks: 2, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 2, noFix: 0, unmatched: 0, intended: 2, testFirstRed: 0 });
+    assert.match(text([file, '--hook-blocks', blocks]), /ROOT CAUSE \(probe\): 2 red streak\(s\) - .*, 2 MISSED, .*; 2 intended red \(expected red after habits-test-first, not counted\)/);
+    assert.match(execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--report-md'], { encoding: 'utf8' }), /\| root cause \| 2 \| 0 \| 0 \| 0 \| 0 \| 2 \| 0 \| 0 \| 2 \|/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C16 (T1 cross-track, f6c591fa): a red-first run the hook logs apart as `test-first-red` is counted beside ROOT CAUSE,
+// so a low MISSED is read with the method's own red runs in view - even in a session with no streak row at all.
+test('C16: the test-first red runs the hook logged apart print beside ROOT CAUSE', () => {
+  const dir = tmp();
+  try {
+    const sid = '44444444-5555-4666-8777-888888888888';
+    const file = write(dir, [asst('m1', T(0), [sh('r1', 'npm test', { description: 'Run the new test, expecting red' })]), res(T(1), 'r1', 'Exit code 1\nFailed! - Failed: 1', true)], `${sid}.jsonl`);
+    const tfr = (id) => line({ ts: T(1), hook: 'guard-stop-contract.js', event: 'PostToolUse', tool: 'Bash', mode: 'probe', kind: 'test-first-red',
+      reason: 'probe: a test-first red test run - the method working, logged apart from root-cause', detail: { tool_use_id: id } });
+    const blocks = path.join(dir, 'hook-blocks');
+    fs.mkdirSync(blocks);
+    fs.writeFileSync(path.join(blocks, `${sid}.jsonl`), [tfr('r1'), tfr('r2')].join(''));
+    const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+    assert.strictEqual(hookBlocks.rootCause.testFirstRed, 2);
+    assert.strictEqual(hookBlocks.rootCause.streaks, 0);
+    assert.match(text([file, '--hook-blocks', blocks]), /ROOT CAUSE \(probe\): 0 red streak\(s\) - .*; 2 test-first red run\(s\) logged apart \(test-first-red rows, not streaks\)/);
+    // over a run of sessions the sum carries it too
+    assert.match(text([dir, '--hook-blocks', blocks]), /2 test-first red run\(s\) logged apart/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C07 (T1 cross-track, 0498718d): every guard's block row carries `agent` and `tool_use_id`, and the HOOK BLOCKS total
+// splits the main session from the seats - a seat's blocks read as the main session's before. Driven through a real
+// guard, so the shared telemetry copy and the analyzer are held to each other.
+test('C07: a block row names the agent and the call, and HOOK BLOCKS splits main from seat', () => {
+  const dir = tmp();
+  try {
+    const sid = '55555555-6666-4777-8888-999999999999';
+    const proj = path.join(dir, 'proj');
+    fs.mkdirSync(proj);
+    const rm = (extra) => require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, '..', 'stack', 'hooks', 'guard-catastrophic-rm.js')], {
+      input: JSON.stringify({ session_id: sid, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'rm -rf /' }, cwd: proj, ...extra }),
+      encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: proj } }).status;
+    assert.strictEqual(rm({ tool_use_id: 'toolu_main' }), 2);
+    assert.strictEqual(rm({ tool_use_id: 'toolu_seat', agent_id: 'a1b2', agent_type: 'Explore' }), 2);
+    const blocks = path.join(proj, '.alfred', 'docs', 'hook-blocks');
+    const rows = fs.readFileSync(path.join(blocks, `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepStrictEqual(rows.map((r) => [r.agent, r.tool_use_id]), [[null, 'toolu_main'], ['a1b2', 'toolu_seat']]);
+    // a row from before the field is counted apart, never guessed
+    fs.appendFileSync(path.join(blocks, `${sid}.jsonl`), JSON.stringify({ ts: T(9), hook: 'guard-catastrophic-rm.js', event: 'PreToolUse', tool: 'Bash', reason: 'Blocked: old row' }) + '\n');
+    const file = write(dir, [asst('m1', T(0), [sh('toolu_main', 'rm -rf /')]), res(T(1), 'toolu_main', 'Blocked', true)], `${sid}.jsonl`);
+    assert.match(text([file, '--hook-blocks', blocks]), /3 block\(s\) total \(1 main session, 1 seat, 1 from rows with no agent field\)/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C05: a commit that opens its own line of a multi-line call (390aebcb, 49cb4b82, f6c591fa: 'git commits 0' over a
+// receipted commit). A heredoc message naming the commit verb still counts nothing.
+test('C05: a git commit or gh pr merge on a later line of a multi-line call counts; a heredoc body never does', () => {
+  const dir = tmp();
+  try {
+    const rows = [
+      asst('m1', T(0), [sh('c1', "cd /work/repo\ngit add src/a.ts src/b.ts\ngit commit -q -F - <<'EOF'\nfix: one\n\ngit commit -m inside-the-message\nEOF\necho \"commit=$?\"")]),
+      res(T(1), 'c1', 'commit=0'),
+      asst('m2', T(2), [sh('c2', 'cd /work/repo\ngh pr merge 12 --squash')]),
+      res(T(3), 'c2', 'merged'),
+    ];
+    const file = write(dir, rows);
+    const { main } = run([file]);
+    assert.strictEqual(main.gitCommits, 1);
+    assert.strictEqual(main.prMerges, 1);
+    assert.match(text([file]), /git commits 1 \(\+1 pr-merge\)/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

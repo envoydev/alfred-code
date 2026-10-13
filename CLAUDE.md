@@ -40,7 +40,9 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
   `setup-plugin/.claude-plugin/plugin.json`. Bump it (plus `marketplace.json` metadata and `package.json`; lint enforces
   equality) on `develop` with any release-worthy change - a merge that reuses a version whose tag names another
   commit FAILS the release job (2.1.5 M27; only a manual run with `replace_tag` moves it). Never commit feature work to `main`; keep `main`
-  the GitHub default branch. Lint + test workflows gate every push and PR.
+  the GitHub default branch. Lint + test workflows gate every push and PR; `npm run gate` runs both here
+  first, on the committed tree, on macOS, Linux (Docker) and Windows (a Parallels VM) in parallel, and the
+  pre-push hook runs it on every push (`node scripts/gate.js --install-hook`; skip one with `--no-verify`).
 - **Public repo.** No private project names or absolute local paths in tracked files.
 - **The 1.x name is gone, never reused.** Every install moved onto `alfred-code` (the user's ruling of
   2026-10-07), so no reader of the old spellings is left - not the env prefix, the stamp, the marketplace
@@ -103,11 +105,13 @@ The mechanism notes for each part live in a path-scoped rule in `.claude/rules/`
   a ZWJ between two emoji parts or two non-ASCII letters, a ZWNJ between two non-ASCII letters, an
   LRM / RLM / Arabic letter mark (U+061C) beside one.
 - **The always-on surface has a BUDGET.** Lint check 33 (`scripts/always-on-surface.js`) sums what the model is sent - the pathless
-  `alfred-*.md` rules as injected (frontmatter and HTML comments stripped), every agent DESCRIPTION,
+  `alfred-*.md` rules as injected (frontmatter and HTML comments stripped), every agent DESCRIPTION and its
+  `(Tools: ...)` listing suffix,
   every skill DESCRIPTION plus `when_to_use` (a `disable-model-invocation` skill's is not in context, so
   its description is skipped), and the fixed text every generated capabilities rule carries (the usage
-  policy and the locked-server row) - prints each part, and fails over 70,000 chars (lowered from 160,000
-  on 2026-09-29, about 40% over the measured total; 50,007 on 2026-10-06 (2.1.7): pathless rules 23,759, agent
+  policy and the locked-server row) - prints each part, and fails over 80,000 chars (raised from 70,000 on
+  2026-10-13 when the seats' tools lists began to count - 76,449 measured, 21,955 of it the lists; lowered from
+  160,000 on 2026-09-29, about 40% over the measured total; 50,007 on 2026-10-06 (2.1.7): pathless rules 23,759, agent
   descriptions 12,532, skill descriptions 11,886 with 13 manual-only skipped, capabilities fixed text
   1,830 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories
   moving to `docs/baseline-rules-evidence.md`, and the 2.1.2 cap below cut the skill descriptions from

@@ -7,15 +7,23 @@
 //   node scripts/agents-md-check.js [--root <dir>] [--file <path> ...] [--template <file>]
 //   node scripts/agents-md-check.js --list [--root <dir>]   - the files it would check, each with its size,
 //                                                             the untouched seed marked; nothing checked
+//   node scripts/agents-md-check.js --outline [--root <dir>] [--file <path> ...]
+//                                                           - per file, each numbered section of the template's
+//                                                             outline with the heading that holds it, or `lacks`;
+//                                                             informational, exit 0 (a lacks row is a candidate
+//                                                             addition, never a finding)
 //
 //   path        - a path the file names does not exist (a code span, an @import, a relative link); a
-//                 clause that denies it ('No `x`') claims nothing
+//                 clause that denies it ('No `x`') claims nothing, a name in a list of glob patterns is a
+//                 pattern, and a line placing it in the parent directory is read from there too
 //   command     - a command's program does not resolve on PATH or in the project (node_modules/.bin, a
 //                 package.json dependency, a dotnet tool manifest, a script in the folder) - a shell
 //                 block, or a code span under a commands / setup / build / run heading
 //   placeholder - a `__NAME__` placeholder the template seeds is still there
 //   todo        - a TODO left in the live text
 //   template    - a live line still carries the template's own authoring text
+//   rule        - the `## Rules` list names a rule `.claude/rules/` does not hold; or, once it names a rule
+//                 the install copies, a rule file there it neither names nor covers with a glob (`alfred-*`)
 //
 // Only the LIVE text is read: HTML comments are stripped from what Claude loads, so they are stripped
 // here too, line numbers kept. With no --file it checks the root and .claude/ AGENTS.md and CLAUDE.md and
@@ -29,7 +37,7 @@ const { parseJson } = require('./install/json-file.js');
 const TEMPLATE_DEFAULT = path.join(__dirname, '..', 'stack', 'AGENTS.template.md');
 // The seeded file is AGENTS.md; a project that already keeps a CLAUDE.md keeps it checked all the same.
 const INSTRUCTION_FILES = ['AGENTS.md', 'CLAUDE.md'];
-const USAGE = 'usage: node agents-md-check.js [--root <dir>] [--file <path> ...] [--template <file>] | --list [--root <dir>]';
+const USAGE = 'usage: node agents-md-check.js [--root <dir>] [--file <path> ...] [--template <file>] | --list [--root <dir>] | --outline [--root <dir>] [--file <path> ...]';
 
 // Folders that hold someone else's files or a build's output - never an AGENTS.md or CLAUDE.md of the project's own. The
 // data root's default (`.alfred`: the stack's docs and its servers' data) and the 2.0.0 server folders too.
@@ -98,6 +106,8 @@ const WHY = {
     placeholder: "the template's placeholder was never filled",
     todo: 'a TODO left in the live text',
     template: "still the template's own authoring text - replace it with this project's",
+    rule: 'named in the Rules list, but .claude/rules/ holds no such file',
+    ruleUnnamed: 'installed in .claude/rules/, but the Rules list neither names it nor covers it with a glob',
 };
 
 const posix = (p) => p.split(path.sep).join('/');
@@ -190,6 +200,55 @@ function localPrograms(root, tree)
     }
     return found;
 }
+
+// Every package name the project's package.json files depend on: a backticked `driver.js` is that package,
+// not a file (audit 2026-10-10 C24).
+function dependencyNames(root, tree)
+{
+    const names = new Set();
+    for (const rel of tree.files)
+    {
+        if (rel.split('/').pop() !== 'package.json') continue;
+        let pkg;
+        try { pkg = parseJson(fs.readFileSync(path.join(root, rel), 'utf8')); } catch { continue; }
+        if (!pkg || typeof pkg !== 'object') continue;
+        for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'])
+            for (const dep of Object.keys(pkg[field] || {})) names.add(dep);
+    }
+    return names;
+}
+
+// A line the user kept on purpose carries this marker in a comment, and no row is raised on it again -
+// validate re-asked the same kept rows every run (audit 2026-10-10 C24).
+const KEEP_MARKER = /<!--\s*agents-md-check:\s*keep\s*-->/;
+
+// Code spans joined only by list separators - `a`, `b` or `c` - are one list; a list holding a glob is a list of attach
+// patterns, and a bare name in it (`nuget.config` beside `**/*.csproj`) is a pattern, never a claimed path. Audit
+// 2026-10-11 SD04: two such rows on every run in six sessions, all correct text.
+const LIST_SEP = /^\s*(?:[,/]\s*)?(?:(?:or|and)\s+)?$/i;
+function patternSpans(line, spans)
+{
+    const out = new Set();
+    let group = [];
+    const close = () => { if (group.some((k) => spans[k].text.includes('*'))) for (const k of group) out.add(k); group = []; };
+    spans.forEach((s, k) =>
+    {
+        const prev = spans[k - 1];
+        if (group.length && !LIST_SEP.test(line.slice(prev.col + prev.text.length + 2, s.col))) close();
+        group.push(k);
+    });
+    close();
+    return out;
+}
+// A line that places what it names in the parent directory ('exists at the parent directory', 'one level up') is read
+// from there as well (audit 2026-10-11 SD04: a run script beside the repo raised a row on every run of four sessions).
+const PARENT_DIR = /\bparent\s+(?:directory|folder|dir)\b|\b(?:one|a)\s+(?:level|folder|directory)\s+(?:up|above)\b/i;
+// A line naming a generated rule points at it, as the outline asks - its words are no copied authoring text (audit
+// 2026-10-11 SD04, session 6288ad94: a correct pointer reworded to silence the row). The generated rules by name
+// (scripts/install/selection.js GENERATED_RULES, renamed 2026-10-13) plus the `alfred-project-*` / `project-*` spellings
+// before them - a bare `alfred-*` stem is the shipped baseline's, never generated.
+const GENERATED_STEM = '(?:alfred-(?:architecture|related-context|agent-awareness)|(?:alfred-)?project-[a-z0-9-]+)';
+const GENERATED_RULE_REF = new RegExp(`(?:^|[\\s\`/])${GENERATED_STEM}\\.md\\b`);
 
 // True when the clause holding columns [from, to) of `prose` denies what it names.
 function denied(prose, from, to)
@@ -320,9 +379,13 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
     };
 
     // A path counts when it exists from a base the file reads from, when it is unanchored and some path
-    // in the project ends with it, or when git ignores it (a local file the setup creates - `.env`, a
-    // build output). `anchored` - `./x`, `../x`, a resolved `<docs-path>/x`, an @import - is read from
-    // its bases only.
+    // in the project ends with it, when it is a package the project depends on (`driver.js`), or when git
+    // ignores it (a local file the setup creates - `.env`, `appsettings.Development.json`, a build output) -
+    // except a STALE docs pointer, ignored or not: one under the legacy docs root whose twin sits under
+    // the configured root (a docs move), or one under the configured root whose folder exists (a capture
+    // ran, the file is not there). Audit 2026-10-10 C24: 13 dead `.claude/docs/...` pointers drew 0 rows. A
+    // domain no capture has written yet stays quiet. `anchored` - `./x`, `../x`, a resolved `<docs-path>/x`,
+    // an @import - is read from its bases only.
     const pathMissing = (p, bases, { anchored = false } = {}) =>
     {
         const target = p.replace(/^\?/, '');
@@ -330,8 +393,49 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
         if (candidates.some(exists)) return false;
         if (!anchored && !/^\.{1,2}\//.test(target) && somewhere(target)) return false;
         if (p.startsWith('?') && !bases.some((b) => exists(path.join(b, target.split('/')[0])))) return false;   // `origin/main`, `application/json`
+        if (!anchored && !target.includes('/') && dependency(target)) return false;
         const rels = candidates.map((c) => posix(path.relative(root, c))).filter((r) => r && !r.startsWith('..'));
-        return !rels.some((r) => ignored(r));
+        return !rels.some((r) => ignored(r) && !staleDoc(r));
+    };
+    const LEGACY_DOCS = `${require('./install/docs.js').LEGACY_DOCS_ROOT}/`;
+    const docsNow = docs.replace(/^\.\//, '').replace(/\/+$/, '');
+    const movedTwin = (rel) => rel.startsWith(LEGACY_DOCS) && `${docsNow}/` !== LEGACY_DOCS && exists(path.join(root, docsNow, rel.slice(LEGACY_DOCS.length)));
+    const staleDoc = (rel) => movedTwin(rel) || (rel.startsWith(`${docsNow}/`) && exists(path.dirname(path.join(root, rel))));
+    let deps = null;
+    const dependency = (name) =>
+    {
+        tree = tree || projectIndex(root);
+        deps = deps || dependencyNames(root, tree);
+        return deps.has(name);
+    };
+    // A path under the legacy docs root whose twin under the configured one exists: name the move.
+    const movedWhy = (target) => (movedTwin(target)
+        ? `does not exist - the docs root is \`${docsNow}\` now, where \`${docsNow}/${target.slice(LEGACY_DOCS.length)}\` does`
+        : WHY.path);
+
+    // The `## Rules` list against `.claude/rules/` (usage audit 2026-10-10, 65abb00a: an improve pass missed an unlisted
+    // rule and twice called the table stale, both against the folder it never compared). A named rule file the folder
+    // lacks is a `rule` row whatever git ignores; a GENERATED name (GENERATED_STEM) waits for its
+    // capture, as the template seeds them first. Unnamed files count only once the list ENUMERATES - names a rule the
+    // install copies - since the template covers the rest by pattern (`alfred-*`, 'the other path-scoped rules').
+    const RULES_DIR = path.join(root, '.claude', 'rules');
+    const hasRules = (() => { try { return fs.statSync(RULES_DIR).isDirectory(); } catch { return false; } })();
+    const generatedRule = (stem) => new RegExp(`^${GENERATED_STEM}$`).test(stem);
+    const globRe = (g) => new RegExp(`^${g.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
+    let rules = null;
+    // A span in the Rules list: true when it was a rule name this check answered, so the path check skips it.
+    const ruleSpan = (text, n, col) =>
+    {
+        const t = text.trim();
+        // `.claude/rules/<name>.md`, a bare rule-shaped `<name>.md` (lowercase, hyphenated - never a `README.md`), or a glob.
+        const m = /^\.claude\/rules\/([A-Za-z0-9_.*-]+)\.md$/.exec(t) || /^([a-z0-9*]+(?:-[a-z0-9*]+)+)\.md$/.exec(t)
+            || (/^[A-Za-z0-9_-]*\*[A-Za-z0-9_*-]*$/.test(t) ? [t, t] : null);
+        if (!m) return false;
+        if (m[1].includes('*')) { rules.globs.push(globRe(m[1])); return true; }
+        rules.named.add(m[1]);
+        if (!hasRules || generatedRule(m[1]) || isFile(path.join(RULES_DIR, `${m[1]}.md`))) return false;
+        add(n, col, 'rule', `${m[1]}.md`);
+        return true;
     };
 
     let fence = null;
@@ -360,23 +464,31 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
             continue;
         }
         if (opener) { fence = { mark: opener[1], lang: opener[2].toLowerCase() }; continue; }
-        const h = /^\s{0,3}#{1,6}\s+(.*)$/.exec(line);
-        if (h) heading = h[1];
+        const h = /^\s{0,3}(#{1,6})\s+(.*)$/.exec(line);
+        if (h)
+        {
+            heading = h[2];
+            if (h[1].length === 2 && /^Rules\b/i.test(heading)) rules = { line: n, named: new Set(), globs: [], open: true };
+            else if (h[1].length <= 2 && rules) rules.open = false;
+        }
 
         const spans = spansOf(line);
+        const patterns = patternSpans(line, spans);
         // A code span MENTIONS a placeholder or a TODO (`__DOCS_ROOT__` is stamped by the installer);
         // only the prose around it is left unfilled.
         const prose = line.replace(/`[^`\n]+`/g, (m) => ' '.repeat(m.length));
         for (const m of prose.matchAll(PLACEHOLDER)) add(n, m.index, 'placeholder', m[0]);
         for (const m of prose.matchAll(/\bTODO\b/g)) add(n, m.index, 'todo', 'TODO');
+        const bases = PARENT_DIR.test(prose) ? [...new Set([base, root, path.dirname(base), path.dirname(root)])] : [base, root];
 
-        for (const span of spans)
+        for (const [k, span] of spans.entries())
         {
+            if (rules && rules.open && ruleSpan(span.text, n, span.col)) continue;
             // A dot-token written onto a word (appsettings`.local`) is that word's suffix.
             const suffix = span.text.trim().startsWith('.') && /[\w*]/.test(line[span.col - 1] || '');
-            const p = suffix ? null : pathOf(span.text, docs);
-            if (p && !denied(prose, span.col, span.col + span.text.length + 2) && pathMissing(p.path, [base, root], { anchored: p.anchored }))
-                add(n, span.col, 'path', p.path.replace(/^\?/, ''));
+            const p = suffix || patterns.has(k) ? null : pathOf(span.text, docs);
+            if (p && !denied(prose, span.col, span.col + span.text.length + 2) && pathMissing(p.path, bases, { anchored: p.anchored }))
+                add(n, span.col, 'path', p.path.replace(/^\?/, ''), movedWhy(p.path.replace(/^\?/, '')));
             if (COMMAND_HEADING.test(heading) && /\s/.test(span.text.trim()))
                 for (const program of programsOf(span.text)) checkProgram(program, n, span.col);
         }
@@ -394,8 +506,20 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
         }
     }
     if (template) checkTemplateText();
+    if (rules && hasRules && [...rules.named].some((s) => !generatedRule(s) && isFile(path.join(RULES_DIR, `${s}.md`))))
+    {
+        let files = [];
+        try { files = fs.readdirSync(RULES_DIR).filter((f) => f.endsWith('.md') && isFile(path.join(RULES_DIR, f))).sort(); }
+        catch { files = []; }
+        for (const f of files)
+        {
+            const stem = f.slice(0, -3);
+            if (!rules.named.has(stem) && !rules.globs.some((re) => re.test(stem))) add(rules.line, 0, 'rule', `.claude/rules/${f}`, WHY.ruleUnnamed);
+        }
+    }
     if (unfilledSeed(text, template === null ? readTemplate() : template)) add(1, -1, 'template', 'the template', 'never filled: only its H1 and ## Rules are live');
-    return findings.sort((a, b) => a.line - b.line || a.col - b.col).map(({ col, ...f }) => f);
+    const kept = new Set(normalize(text).split('\n').map((l, k) => (KEEP_MARKER.test(l) ? k + 1 : 0)).filter(Boolean));
+    return findings.filter((f) => !kept.has(f.line)).sort((a, b) => a.line - b.line || a.col - b.col).map(({ col, ...f }) => f);
 
     function checkProgram(program, line, col)
     {
@@ -433,6 +557,7 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
                 if (!shingles.has(pw.slice(k, k + SHINGLE).map((x) => x.k).join(' '))) continue;
                 let end = k + SHINGLE;
                 while (end < pw.length && shingles.has(pw.slice(end - SHINGLE + 1, end + 1).map((x) => x.k).join(' '))) end++;
+                if (pw.slice(k, end).some((x) => GENERATED_RULE_REF.test(lines[x.n - 1]))) { k = end - 1; continue; }
                 const run = pw.slice(k, end).map((x) => x.w).join(' ');
                 add(pw[k].n, 0, 'template', run.length > 80 ? `${run.slice(0, 77)}...` : run);
                 k = end - 1;
@@ -455,11 +580,13 @@ function main(argv, { out = (s) => process.stdout.write(s), err = (s) => process
     let templateFile = TEMPLATE_DEFAULT;
     const files = [];
     let list = false;
+    let outline = false;
     for (let i = 0; i < argv.length; i++)
     {
         const flag = argv[i];
         const value = argv[i + 1];
         if (flag === '--list') { list = true; continue; }
+        if (flag === '--outline') { outline = true; continue; }
         if (['--root', '--file', '--template'].includes(flag) && value && !value.startsWith('--'))
         {
             if (flag === '--root') root = path.resolve(value);
@@ -472,6 +599,7 @@ function main(argv, { out = (s) => process.stdout.write(s), err = (s) => process
         return 2;
     }
     if (list) return listMain(root, files.length ? files : findFiles(root), { out, err, template: readFileOrNull(templateFile) });
+    if (outline) return outlineMain(root, files.length ? files : findFiles(root), { out, err, template: readFileOrNull(templateFile) });
     const template = readFileOrNull(templateFile);
     if (template === null) err(`agents-md-check: template ${templateFile} unreadable - the template-text check did not run\n`);
     const targets = files.length ? files : findFiles(root);
@@ -508,5 +636,64 @@ function listMain(root, targets, { out, err, template = null })
     return 0;
 }
 
-if (require.main === module) process.exit(main(process.argv.slice(2)));
+// The improve pass's section compare, stated by the script (audit 2026-10-11 SD04, session bca100bd: the compare never
+// read the outline and the close said nothing about it). Each numbered section of the template's authoring outline is
+// matched against the file's live `##`-`######` headings by its title words or a common heading for it; section 1 is
+// the paragraph under the H1. A heuristic listing: `lacks` names a candidate addition, which still needs a fact.
+const OUTLINE_STOP = new Set(['what', 'this', 'project', 'is', 'key', 'by', 'the', 'and', 'a', 'of', 'code', 'approach', 'cross', 'cutting']);
+const OUTLINE_ALIASES = {
+    stack: ['tech', 'technology', 'dependency', 'dependencies'], setup: ['prerequisite', 'requirement', 'install', 'installation', 'environment', 'env', 'getting'],
+    commands: ['build', 'run', 'script', 'usage'], files: ['entry', 'entrypoint'], architecture: ['layer', 'module', 'structure', 'design'],
+    patterns: ['idiom'], operational: ['gotcha', 'pitfall', 'caveat', 'runtime'], secrets: ['credential', 'configuration'],
+    conventions: ['style'], testing: ['test'], artifact: ['skill'],
+};
+const stem = (w) => w.toLowerCase().replace(/ing$/, '').replace(/s$/, '');
+// Equal stems, or a prefix of four letters or more (`config` / `configuration`) - a shorter one (`run` / `runtime`) lies.
+const stemMatch = (a, b) => { const [s, l] = a.length <= b.length ? [a, b] : [b, a]; return s === l || (s.length >= 4 && l.startsWith(s)); };
+function outlineSections(template)
+{
+    const block = stripComments(normalize(template || '')).comments.find((c) => /Authoring outline/.test(c)) || '';
+    return [...block.matchAll(/^\s*(\d+)\.\s+(.+?)\s+-\s/gm)].map((m) => ({ n: Number(m[1]), title: m[2].trim() }));
+}
+function outlineMain(root, targets, { out, err, template = null })
+{
+    const sections = outlineSections(template);
+    if (!sections.length) { err('agents-md-check: the template\'s authoring outline is unreadable - no section list to compare against\n'); return 2; }
+    if (!targets.length) { out('agents-md-check: no AGENTS.md or CLAUDE.md in this project\n'); return 0; }
+    for (const file of targets)
+    {
+        let text;
+        try { text = fs.readFileSync(path.join(root, file), 'utf8'); }
+        catch (e) { err(`agents-md-check: ${file} unreadable (${e.code || e.message})\n`); return 2; }
+        const lines = stripComments(normalize(text)).live.split('\n');
+        const heads = [];
+        let intro = 0;
+        let seenH1 = false;
+        lines.forEach((line, i) =>
+        {
+            const h = /^\s{0,3}(#{1,6})\s+(.*)$/.exec(line);
+            if (h && h[1] === '#') { seenH1 = true; return; }
+            if (h) { heads.push({ n: i + 1, text: line.trim(), words: h[2].split(/[^A-Za-z]+/).filter(Boolean).map(stem) }); return; }
+            if (seenH1 && !heads.length && !intro && line.trim() && !line.trim().startsWith('@')) intro = i + 1;
+        });
+        for (const s of sections)
+        {
+            let where = null;
+            if (s.n === 1) where = intro ? `line ${intro}` : null;
+            const keys = s.title.split(/[^A-Za-z]+/).filter((w) => w && !OUTLINE_STOP.has(w.toLowerCase()));
+            const want = [...keys, ...keys.flatMap((w) => OUTLINE_ALIASES[w.toLowerCase()] || [])].map(stem);
+            if (!where && s.n === 1) want.push(...['overview', 'about', 'purpose', 'introduction'].map(stem));
+            const head = where ? null : heads.find((h) => h.words.some((w) => want.some((x) => stemMatch(w, x))));
+            if (head) where = `line ${head.n} '${head.text}'`;
+            out(`${file}: outline ${s.n}. ${s.title} - ${where ? `has (${where})` : 'lacks'}\n`);
+        }
+    }
+    return 0;
+}
+
+if (require.main === module)
+{
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
+    process.exit(main(process.argv.slice(2)));
+}
 module.exports = { checkText, findFiles, main, stripComments };

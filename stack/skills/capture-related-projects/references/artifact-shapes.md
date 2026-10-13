@@ -4,6 +4,13 @@ Read at steps 3 and 4, before either file is written. The doc's section order li
 `SKILL.md`; this file carries the two literal shapes, the write mechanics, and the provenance
 rule behind them.
 
+## Contents
+
+- The doc's section shape - the entry, its `read_at:` and `captured:` provenance
+- watch.json
+- The generated rule - copy target
+- Write mechanics
+
 ## The doc's section shape
 
 Every sibling gets its own `##` heading in `RELATED-PROJECTS.md`, with its metadata as comment
@@ -17,6 +24,7 @@ lines directly under it, same convention as every other domain:
     relation:   provides-to
     first_read: [docs/architecture/ARCHITECTURE.md]
     seam:       the OrderCreated contract in src/Contracts - this repo publishes, billing consumes
+    read_at:    main@9f8e7d6
     captured:   develop@a1b2c3d, 2026-07-24
     ```
 
@@ -38,6 +46,12 @@ only records the LAST run, never stands in for an entry's own. It matters most f
 born on a feature branch (the seam code exists only there): on any other branch that entry is a
 claim from elsewhere - verify the seam exists before relying on it. Re-running the capture for
 that sibling after the branch merges refreshes the entry with the base branch's stamp.
+
+`read_at:` is the other side's provenance: the SIBLING's own `<branch>@<short-sha>` as the seat read
+it (a URL sibling: its clone's), stamped by the seat - `n/a - not a git checkout` when it is none. It
+makes sibling drift a git question: a re-capture hands the old value to the seat, which starts from
+`git -C <sibling> log --oneline <sha>..HEAD`, and a reader checks the same range before trusting the
+seam. `captured:` stays this repo's stamp, written at merge.
 
 ## watch.json
 
@@ -72,6 +86,8 @@ a session on another branch knows that edge may not exist in its code>
   Every OTHER sibling-repo doc (cross-repo plans, change requests, run recipes) belongs instead in
   the plain folder `<docs-path>/related-context/` - check it before re-deriving sibling state, and
   file new sibling-repo docs there, never in `related-projects/`.
+- A task card addressed to THIS repo is written in the SIBLING's tree, under its own docs root's
+  `cross-project-tasks/<this repo>.md` - search there before calling a named card absent.
 - The navigation server binds to THIS repo: Read/Grep a sibling directly, but symbol-navigate it only from a
   context rooted there.
 - Dynamic cross-repo findings go to the shared `alfred-memory` MCP instead of a committed file - tag them

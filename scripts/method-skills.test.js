@@ -67,7 +67,7 @@ test('the flows load their method skills by name, at the step that needs them', 
 
     assert.match(squash(read('stack/skills/task-solve/SKILL.md')), /1\. \*\*DESIGN\*\* - run `task-design`, with `habits-clarify` loaded first/);
     assert.match(squash(read('stack/skills/task-solve-cross/SKILL.md')), /## Clarify before you design \(feature family\) Before you scope a feature or dispatch any designer, load `habits-clarify`/);
-    assert.match(squash(read('stack/skills/task-build-from-scratch/SKILL.md')), /### 1\. DESIGN - in-session, on Opus Load `habits-clarify` first/);
+    assert.match(squash(read('stack/skills/task-build-from-scratch/SKILL.md')), /### 1\. DESIGN - in-session Load `habits-clarify` first/);
 });
 
 test('the clarify discipline and the plan format each have one home', () => {
@@ -277,6 +277,9 @@ test('audit 2026-10-08: the execution verdict stays out of plan files, small tas
     // C1: the 10+ file mechanical change is a small task with no plan, not a second rule beside the trigger
     const rule = read('stack/rules/alfred-interaction.md');
     assert.doesNotMatch(rule, /^- A mechanical change across 10\+ files: confirm the scope list, no plan\./m, 'the separate no-plan line is folded in');
+    // F14 (user ruling 2026-10-09): a single resolver hand-off is no fan-out, so it does not load the skill
+    assert.match(squash(rule), /or one that would fan work out to seats - the FIRST action is the `habits-execution-strategy` Skill call/, 'the trigger is a fan-out, not any dispatch');
+    assert.doesNotMatch(rule + strategy, /would dispatch a seat/, 'no copy keeps the wider trigger');
     assert.match(squash(rule), /A small task settles it inline, no Skill call, and gets no plan: a typo, a one-line fix, formatting, a dep bump, a single-file rename, or a mechanical change across 10\+ files once the user confirms its scope list\. Any other task/, 'one line holds both sides of the threshold');
 });
 
@@ -331,9 +334,10 @@ test('audit 2026-10-08: the checkpoint carries the test-only carve-out, a templa
     assert.deepStrictEqual(lintAskTemplates([{ file: 'habits-commit-checkpoint', text: raw }]), []);
     const commitAsk = raw.match(/^[ \t]*```ask[ \t]*\n[ \t]*Commit <[\s\S]*?^[ \t]*```/m);
     assert.ok(commitAsk, 'the commit consent is an ask template');
-    // the git baseline: no commit until the user says so, and the diff shown for review first
-    assert.match(squash(read('stack/rules/alfred-git.md')), /Show the diff for review first/);
-    assert.match(commitAsk[0], /- 'Show the diff first \(Recommended\)'/, 'the recommended option is the git baseline\'s review-first');
+    // the git baseline: no commit until the user says so (a pick is that word); the local commit recommended, the diff offered
+    assert.match(squash(read('stack/rules/alfred-git.md')), /a picked ask option is that word\. A commit ask recommends the local commit/);
+    assert.match(commitAsk[0], /- 'Commit now \(Recommended\)'[^\n]*\n\s*- 'Show the diff first'/, 'the local commit is recommended, the diff offered next');
+    assert.match(cp, /when the question names anything still owed, 'Show the diff first' takes the mark instead/, 'an owed gate keeps the commit unrecommended');
     assert.ok(cp.includes('a picked option is the receipt\'s `answered:` line'), 'a pick is the answered: line');
     assert.ok(cp.includes('read `git log -1 --stat` back into the close'), 'the commit is read back');
     assert.doesNotMatch(raw, /## Discarding uncommitted work/, 'the discard section is gone');
@@ -370,4 +374,19 @@ test('the inline task skills load their method skill through the Skill tool at t
     const verify = body('task-verify-code');
     assert.match(verify, /Before the verdict is stamped, load `habits-done-gate` \(the Skill tool\)/, 'verify-code loads the done gate');
     assert.match(verify, /only on a build and suite run this session/, 'a pass needs a run this session');
+});
+
+test('skills S5: the judging captures and their loops run on the session model and ask for no switch to Opus (A/B 2026-10-09)', () => {
+    const body = (n) => squash(read(`stack/skills/${n}/SKILL.md`));
+    for (const n of ['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'loop-architecture-quality', 'loop-quality', 'task-version-upgrade', 'task-build-from-scratch']) {
+        const text = body(n);
+        assert.doesNotMatch(text, /Opus with `\/model`|not on Opus|switch to `\/model` Opus|on Opus \(checked|in-session, on Opus/, `${n} still asks for Opus`);
+        assert.match(text, /no `model` pin/i, `${n} keeps the no-pin reason`);
+    }
+    for (const n of ['capture-architecture-quality', 'capture-code-quality'])
+        assert.match(body(n), /`<model> - the judgment above ran on it`, or `raised for this run - run \/model <prior model> to drop back`/, `${n}: the Model: row`);
+    const fields = squash(read('stack/skills/capture-architecture/references/report-fields.md'));
+    assert.match(fields, /Two shapes, pick the true one: - `<model> - the judgment above ran on it`/);
+    assert.doesNotMatch(fields, /already on Opus|not on Opus/);
+    assert.match(squash(read('stack/skills/capture-architecture/references/evidence.md')), /\*\*no switch to Opus is asked for\*\* - measured 2026-10-09/);
 });

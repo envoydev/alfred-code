@@ -21,7 +21,13 @@ Before you claim your own change done, fixed, passing, works or ready - the FIRS
 ### Claims about the outside world
 
 - A green build proves the code compiles, not that its API is current: a claim about a package, version floor, API shape, config key or deprecation is checked against the `alfred-documentation` server (Context7, locked into every install) as you write it - recall is not the authority. Prefer the durable policy plus a fetch-at-use pointer over a pinned number.
-- Use that server, not a shell stand-in (an `npx` or a registry `curl` answers only a version number). Its tools are DEFERRED: `ToolSearch select:mcp__plugin_alfred-documentation_alfred-documentation__resolve-library-id,mcp__plugin_alfred-documentation_alfred-documentation__query-docs`, then the query. Unreachable: say the claim is unverified.
+- Use that server, not a shell stand-in (an `npx` or a registry `curl` answers only a version number). Its tools are DEFERRED: `ToolSearch select:mcp__plugin_alfred-documentation_alfred-documentation__resolve-library-id,mcp__plugin_alfred-documentation_alfred-documentation__query-docs`, then the query (a seat whose `tools:` list names them calls them directly). Unreachable: say the claim is unverified.
+
+### Completeness verdicts
+
+A verdict that something is complete against a reference (parity with another app, everything a spec lists) leads
+with what its evidence covers - 'every audited row is built; N surfaces never audited' - and offers the check that
+settles the rest as the recommended option, in the same turn.
 
 ### Partial work
 
@@ -30,6 +36,7 @@ one option each, recommendation marked (a prose-only ask gets skipped).
 
 ## Long-running and leftover work
 
-- A wait measured in MINUTES (a CI run, a container build, a full suite, an emulator boot) runs in the background while you do work that does not depend on it; arm the wait when you start it - the `Monitor` tool, deferred: `ToolSearch select:Monitor` first. Poll it through `Monitor` or its new lines, never a whole-log re-read. A 'what is running' check keys on a specific PID, marker file or output sentinel, never a bare process-name grep; task lists track tasks, not shells.
+- A wait measured in MINUTES (a CI run, a container build, a full suite, an emulator boot) runs in the background while you do work that does not depend on it. One `run_in_background` command whose end is all that matters needs nothing more - its exit re-invokes you; a suite of unknown length (failures show long before its end), a condition inside a run or across several arms the `Monitor` tool when you start it - on the failure lines plus an alert when the output goes quiet (deferred: `ToolSearch select:Monitor` first), never a foreground `until` / `while` sleep loop. Poll it through `Monitor` or its new lines, never a whole-log re-read. A 'what is running' check keys on a specific PID, marker file or output sentinel, never a bare process-name grep; task lists track tasks, not shells.
+- A red test or build run is captured once to a scratch log (`<cmd> > <scratch>/run.log 2>&1; tail -n 60 <scratch>/run.log`); every later look greps that log, never a re-run.
 - Infrastructure the run started to build, test or verify (a container or compose stack, a test database and its data, a dev server, an emulator, a watcher) never outlives the work silently: at close list what is still up and put tear-down-vs-keep through AskUserQuestion (batched into the flow's close ask), teardown recommended for the disposable. Tear down only AFTER the answer, and never what you did not start.
 - Files the run wrote only to build, test or verify (a scratch script, a temp fixture, a coverage or log dump, a downloaded sample) are deleted once their check passes, no ask - unless the user asked for them, a later step needs them, or they are a deliverable; name those in the close. Never delete what this run did not create; `git status` at the close shows only the intended change.

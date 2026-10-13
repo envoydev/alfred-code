@@ -145,3 +145,24 @@ test('seed update: a blind listing read keeps the stamp picks it cannot see', PO
     });
     for (const name of ['angular-conventions', 'angular-testing']) assert.ok(picks.includes(name), `the blind run forgot ${name}: ${picks.join(',')}`);
 });
+
+// audit 2026-10-10 apply (T5 matrix): a recorded file the run cannot read (a .claude/AGENTS.md left mode 000) failed the
+// whole update at its last step - the files ledger hashed it and threw EACCES. Its row now stands as recorded.
+test('seed update: an unreadable recorded file keeps its ledger row and the run completes', { skip: POSIX_ONLY.skip || (process.getuid && process.getuid() === 0 && 'root reads a mode-000 file') }, () =>
+{
+    const ledger = (repo) => (/^managed-files: (.*)$/m.exec(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) || [])[1] || '';
+    const { steps, code } = seedRun(['install', 'update'], SELECTION, {
+        args: [[], ['--installed-only']], failOk: true,
+        each: (repo, i) =>
+        {
+            const f = path.join(repo, '.claude', 'AGENTS.md');
+            if (i === 0) { const row = ledger(repo); fs.chmodSync(f, 0o000); return row; }
+            fs.chmodSync(f, 0o644);
+            return ledger(repo);
+        },
+    });
+    assert.strictEqual(code, 0, 'the update failed on the unreadable file');
+    const row = (s) => (/AGENTS\.md=[0-9a-f]+/.exec(s) || [])[0];
+    assert.ok(row(steps[0]), `the install did not record its seed: ${steps[0]}`);
+    assert.strictEqual(row(steps[1]), row(steps[0]), 'the row moved or went');
+});

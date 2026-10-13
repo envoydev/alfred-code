@@ -25,7 +25,7 @@ function project({ settings } = {})
     return root;
 }
 const INV = (over = {}) => ({
-    skills: ['capture-related-projects', 'capture-architecture', 'capture-code-style', 'capture-project-capabilities', 'capture-agent-capabilities'],
+    skills: ['capture-related-projects', 'capture-architecture', 'capture-code-style', 'capture-project-awareness', 'capture-agent-awareness'],
     agents: ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer'],
     mcps: ['alfred-navigation', 'alfred-documentation', 'alfred-memory', 'playwright'],
     plugins: [{ name: 'alfred-code', scope: 'project' }, { name: 'csharp-lsp', scope: 'project' }],
@@ -235,6 +235,19 @@ test('machine: no playwright kept, no engine lines; the engine is found under PL
     assert.match(lineOf(lines, /playwright firefox/), / - missing: /);
 });
 
+test('a plan path is project-relative inside, absolute outside, and forward-slashed on one drive or two', () =>
+{
+    const { shownPath } = require('./init-plan.js');
+    const w = path.win32;
+    assert.strictEqual(shownPath('C:\\t\\proj', 'C:\\t\\proj\\notes\\ai\\A.md', w), 'notes/ai/A.md');
+    // one drive - a real Windows machine: this printed C:\a\repo\... before
+    assert.strictEqual(shownPath('C:\\t\\proj', 'C:\\a\\repo\\stack\\x\\SKILL.md', w), 'C:/a/repo/stack/x/SKILL.md');
+    // two drives - the CI runner: relative() answers an absolute path
+    assert.strictEqual(shownPath('C:\\t\\proj', 'D:\\a\\repo\\stack\\x\\SKILL.md', w), 'D:/a/repo/stack/x/SKILL.md');
+    assert.strictEqual(shownPath('/t/proj', '/a/repo/stack/x/SKILL.md', path.posix), '/a/repo/stack/x/SKILL.md');
+    assert.strictEqual(shownPath('/t/proj', '/t/proj/.claude/skills/x/SKILL.md', path.posix), '.claude/skills/x/SKILL.md');
+});
+
 test('captures: the fixed order; run, done and skip each say why; the library copy wins over the plugin\'s', () =>
 {
     const root = project({ settings: { env: { ALFRED_CODE_DOCS_PATH: 'notes/ai' } } });
@@ -247,7 +260,7 @@ test('captures: the fixed order; run, done and skip each say why; the library co
         .filter((l) => l.startsWith('capture:'));
     assert.deepStrictEqual(lines.map((l) => l.split(' - ')[0]), [
         'capture: capture-related-projects', 'capture: capture-architecture',
-        'capture: capture-code-style', 'capture: capture-project-capabilities', 'capture: capture-agent-capabilities',
+        'capture: capture-code-style', 'capture: capture-project-awareness', 'capture: capture-agent-awareness',
     ]);
     assert.strictEqual(lines[0], 'capture: capture-related-projects - run: read .claude/skills/capture-related-projects/SKILL.md');
     assert.strictEqual(lines[1], 'capture: capture-architecture - done: notes/ai/architecture/ARCHITECTURE.md exists');
@@ -256,14 +269,14 @@ test('captures: the fixed order; run, done and skip each say why; the library co
     // backslash is an escape (windows-2025 CI printed `D:/a/...` against a native-separator expectation).
     const libPath = (skill) => path.join(__dirname, '..', 'stack', 'skills', skill, 'SKILL.md').split(path.sep).join('/');
     // The run book has no seat: the capture reads the repo and asks in the main session.
-    assert.strictEqual(lines[3], `capture: capture-project-capabilities - run: read ${libPath('capture-project-capabilities')}`);
-    assert.strictEqual(lines[4], `capture: capture-agent-capabilities - run: read ${libPath('capture-agent-capabilities')}`);
+    assert.strictEqual(lines[3], `capture: capture-project-awareness - run: read ${libPath('capture-project-awareness')}`);
+    assert.strictEqual(lines[4], `capture: capture-agent-awareness - run: read ${libPath('capture-agent-awareness')}`);
     fs.mkdirSync(path.join(root, 'notes', 'ai', 'project-capabilities'), { recursive: true });
     fs.writeFileSync(path.join(root, 'notes', 'ai', 'project-capabilities', 'PROJECT-CAPABILITIES.md'), '# run book\n');
     const again = render(plan({ inv, root, platform: 'linux', env: E(), probe: NONE })).filter((l) => l.startsWith('capture:'));
-    assert.strictEqual(again[3], 'capture: capture-project-capabilities - done: notes/ai/project-capabilities/PROJECT-CAPABILITIES.md exists');
+    assert.strictEqual(again[3], 'capture: capture-project-awareness - done: notes/ai/project-capabilities/PROJECT-CAPABILITIES.md exists');
 
-    const bare = render(plan({ inv: INV({ skills: ['capture-agent-capabilities'], agents: [] }), root, platform: 'linux', env: E(), probe: NONE }))
+    const bare = render(plan({ inv: INV({ skills: ['capture-agent-awareness'], agents: [] }), root, platform: 'linux', env: E(), probe: NONE }))
         .filter((l) => l.startsWith('capture:'));
     assert.strictEqual(bare[0], 'capture: capture-related-projects - skip: the skill is not installed');
     assert.strictEqual(bare[1], 'capture: capture-architecture - skip: the skill is not installed');

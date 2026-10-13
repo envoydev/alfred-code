@@ -36,14 +36,15 @@ since the user-scope core stays loaded). 'Keep it' -> end the turn, nothing down
 
 ## 3. Resolve the snapshot, then run the seed
 
-The shared contract is `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`: resolve
+The shared contract is `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`, read in ONE Bash `cat`: resolve
 the snapshot once into `$TMP/repo` from the plugin cache, exactly as it says, and remove `$TMP` on
 every exit path (step 5). A resolve line reporting `seed=shell` (`ALFRED_CODE_SEED=shell`) is refused:
 print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer` and stop.
 
 `node "$TMP/repo/scripts/install/alfred-code.js" uninstall --source "$TMP/repo" 2>&1 | tee "$TMP/install.log"`
 
-Read `${PIPESTATUS[0]}`. Exit 1 carries one `error:` line and nothing was touched:
+Open the call with `set -o pipefail;` and append `; echo "install exit: $?"`, then read that exit - the pipe
+makes a bare `$?` `tee`'s, and `${PIPESTATUS[0]}` reads empty in zsh. Exit 1 carries one `error:` line and nothing was touched:
 
 - `predates the install ledger` -> the stamp is from before the ledger, so the stack's entries
   cannot be told from the user's: run `/alfred-code:update` once (it records the ledger), then this

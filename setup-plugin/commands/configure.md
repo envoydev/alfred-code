@@ -36,15 +36,16 @@ per message with no ask at all, and one of them authored its own prose decision 
 to the user.
 
 **THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing** - the shared contract lives at
-`${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`; read it first and hold the whole run to
+`${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`; read it first, in ONE Bash `cat`, and hold the whole run to
 it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none (the reference owns the fallback), use every tool
 from that snapshot, hand it back with `--source` in step 12, and remove `$TMP` per the 'Clean up'
 section on every exit path. The protocol's 'Narrate, don't trace' section governs every tool
 call: one quiet call per recompute, no pasted tool output except the decision tables, one narration line between steps.
-This command's extra stake in the snapshot: its `RELEASE-SOURCE` commit is what step 1 compares
-the stamp against to report what an update would bring.
+This command's extra stake in the snapshot: its revision is what step 1 compares the stamp against
+to report what an update would bring - an archive's `RELEASE-SOURCE` commit, or the `v<version>` tag of
+a plugin-cache copy, which carries no `RELEASE-SOURCE` (never probe for one there).
 
-**Table before question - no exceptions.** Any table or report the user decides from (every layer's `stack-select.js --table` catalog, the `plugin-settings.js` report) is pasted into YOUR message, byte-for-byte in a fenced block, BEFORE the AskUserQuestion that asks about it - never after, never only in the ask's preview panel, never replaced by 'shown above' or a prose summary. A tool result is collapsed in the UI, so a table you only ran is a table the user never saw (measured: agents and skills asks answered 'I do not see any table'). This is the one sanctioned exception to 'no pasted tool output', and the plugin's `guard-layer-table.js` hook denies an ask whose table is missing.
+**Table before question - no exceptions.** Any table or report the user decides from (step 1's `--inventory` table, every layer's `stack-select.js --table` catalog, the `plugin-settings.js` report) is pasted into YOUR message, byte-for-byte in a fenced block, BEFORE the AskUserQuestion that asks about it - never after, never only in the ask's preview panel, never replaced by 'shown above' or a prose summary. A tool result is collapsed in the UI, so a table you only ran is a table the user never saw (measured: agents and skills asks answered 'I do not see any table'). This is the one sanctioned exception to 'no pasted tool output', and the plugin's `guard-layer-table.js` hook denies an ask whose table is missing.
 
 **Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one
 marked, free text via Other; a prose question or a bare stop-and-wait is invalid (measured: prose asks
@@ -113,7 +114,16 @@ comparable banner by banner; the content varies, the skeleton never does.
   `skills=plugin` means the plugin listing could not be read or the core entry is parked - stop and
   report which, since every carried seat would read as dropped. `hooks=no` means the hooks layer is
   not walked this run: its table would be a guess.
-- Show the inventory grouped by category, with counts. Also run the evidence scan quietly -
+- Show the inventory from the read-back, never a hand table:
+
+  ```bash
+  node "$TMP/repo/scripts/update-preflight.js" --inventory "$TMP/installed.json"
+  ```
+
+  It prints the fixed `| category | count | items |` table, the six rows in order, and a `total: <n> installed` line -
+  block (1) below, pasted byte-for-byte in a fenced block. The plugin's `guard-layer-table.js` denies the step-1 ask
+  until this call ran and its `total:` line is in your message (audit 2026-10-11, session a9e06780: the inventory
+  sat in a collapsed tool result and the ask said 'Installed set is shown above'). Also run the evidence scan quietly -
   `node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json"
   --out "$TMP/found.json"` - so the walk's tables can label what the project provably uses
   (`--found`).
@@ -126,7 +136,7 @@ node "$TMP/repo/scripts/stamp-compare.js" --snapshot "$TMP/repo" --stamp .claude
 ```
 
 (A fork install passes `--repo <owner/name>`; the script reads the snapshot's `RELEASE-SOURCE`,
-falling back to the clone's git HEAD.) It prints the version delta first (`version: 0.1.0 ->
+falling back to the clone's git HEAD, then to the `v<version>` tag of its `plugin.json`.) It prints the version delta first (`version: 0.1.0 ->
 0.2.0` - the plugin/marketplace version; `unknown` when either side lacks one), then
 `status<TAB>path` lines (`modified`/`added`/`removed`, and `renamed` with `<- old-path`)
 filtered to stack-owned paths. Summarise by category, naming the items - that is the honest
@@ -144,18 +154,32 @@ so never diff against or mention `develop`. Two signal lines to handle, neither 
 
 A `TRUNCATED` line (the third, after the version and base lines) means the preview may be missing files - say so alongside the summary.
 
-**This step's output has ONE fixed shape** - three blocks, nothing else: (1) the inventory table,
-fixed columns `category | count | items`, six rows in the fixed order
-rules/agents/skills/hooks/mcps/plugins (note excluded generated files in one trailing line, not
-per-row prose); (2) the update-preview verdict - one line leading with the version delta or 'no
+**This step's output has ONE fixed shape** - the `[step 1/13 - install status]` banner, then three blocks, nothing
+else: (1) the `--inventory` output in a fenced block (note excluded generated files in one trailing line under it,
+not per-row prose); (2) the update-preview verdict - one line leading with the version delta or 'no
 upstream changes', then the category summary only when there IS a diff; (3) the closing question.
 Detection detail, tool notes, and narration beyond these three blocks is the chaos this shape
 exists to prevent.
 
-Close the step with one AskUserQuestion: **adjust the selection** (continue to the area pick at step 2), or
-**refresh as-is** (nothing to change - skip straight to step 11; when upstream changed nothing
-either, offer to stop rather than running a no-op, and note the sibling `update` command is the
-no-questions path for plain refreshes).
+Close the step with ONE AskUserQuestion, the template for the case. Upstream changed something:
+
+```ask
+Adjust the installed selection? <the update-preview line>
+- 'Adjust the selection (Recommended)' - continue to the area pick at step 2
+- 'Refresh as-is' - nothing to change; skip to step 11 and take the release in step 12
+```
+
+Upstream changed nothing (`no upstream changes`, or `no-stamp` / `compare-unreachable` with nothing to name) - a
+refresh would be a no-op, so stopping takes the mark:
+
+```ask
+Adjust the installed selection? No upstream changes since the install.
+- 'Stop here (Recommended)' - nothing to refresh; the sibling /alfred-code:update is the no-questions path when a release lands
+- 'Adjust the selection' - continue to the area pick at step 2
+```
+
+'Stop here' prints the remaining banners with their one skip line each, then the cleanup (audit 2026-10-11, session
+a9e06780: an improvised step-1 ask listed the marked stop last of three, and the user took it).
 
 ## 2. Choose the areas
 
@@ -164,7 +188,9 @@ installer run at step 12, which works from the whole selection - and gets one na
 
 ## The walk - steps 3-8, one layer at a time
 
-Read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/walk.md` before step 3 and run it in **DELTA**
+Read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/walk.md` AT step 3, never earlier - a run that stops at step 1 or
+skips to step 11 never needs it (audit 2026-10-11, session a9e06780: read at the start, ~7.6k re-sent on 5 requests
+of a run that stopped at step 1) - and run it in **DELTA**
 mode - setup's own walk, over the installer's read-back instead of the recommendations, so the two
 cannot drift. The layers run in dependency order, rules -> agents -> skills -> hooks -> MCPs ->
 plugins (only the areas picked at step 2), over `raw.json` and `dropped.json` seeded from step 1's
@@ -207,7 +233,7 @@ account-wide registration, so `project` is safe there too.
 Pre-select the level just read back, and ask ONE AskUserQuestion: keep it, or change to the
 other one(s) shown. Picking or keeping `project` while this project's related-projects domain
 already names sibling repos (`<docs-path>/related-projects/RELATED-PROJECTS.md`, or the generated
-`alfred-project-related-context.md`) means those projects' memories are not visible from this
+`alfred-related-context.md`) means those projects' memories are not visible from this
 one - name that in the post-check, not here. Changing level never copies or deletes a database -
 it re-points the registration, and the installer prints
 `memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`; read that line verbatim
@@ -221,7 +247,7 @@ own drop handling applies like any other server.
 
 Presence, never the value - run this and paste its lines as-is:
 `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
-(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
+(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)`, `KEY=empty (present, no value)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
 
 ## 8. Plugins
 
@@ -320,7 +346,9 @@ question there at 4 options, already spent on rules+agents+skills / hooks / MCPs
 environment). Read the account settings.json (`~/.claude/settings.json`, or the `--space` profile's)
 `permissions.defaultMode` and whether the project's own scope file (`.claude/settings.local.json` at
 local scope, else `.claude/settings.json`) already sets one - report both in one line (`account:
-auto · project: unset`). Ask ONE
+auto · project: unset`). Read the key with ONE call per file, the file piped into a stdin reader -
+`cat "<file>" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let v;try{v=(JSON.parse(s).permissions||{}).defaultMode}catch{}console.log(v||"unset")})'` -
+it prints the mode, or `unset` for an absent key or a missing or unreadable file. The secret guard serves a settings file that holds a credential as a redacted view, which still parses; `jq` is absent on Git for Windows, and `--presence` prints only a length. Ask ONE
 AskUserQuestion: **keep it as it is** (recommended - leave the project's `permissions` block
 untouched, whatever it currently holds) or **set the default for this project** (write/overwrite
 `permissions.defaultMode` in that scope file only, pre-filled with the account's current value,
@@ -433,12 +461,12 @@ it, which is how the wrong post-check above was written); (2) removals - what th
 `grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|plugin moved|plugin move failed|scope, not this run|narrower than this run|managed scope|deniedMcpServers|removed \(dropped\)|overwriting a hand-edited copy' "$TMP/install.log"` (a `plugin moved` line is a scope move the walk asked for, reported as one: `<item>: <old> -> <new>`, the `!!` one with the line it names) - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out,
 one line per item, never deleted a second time by hand; then each removal the installer does not
 make, with its command shown before running it: `claude mcp remove <name> -s <the scope it is registered at>` for an MCP on the copy
-route (browser = every `browser-<engine>` server) - always with its scope, since the CLI's default (`local`) differs from the plugin one (`user`);
+route (browser = every `<engine>-control` server) - always with its scope, since the CLI's default (`local`) differs from the plugin one (`user`);
 `claude plugin uninstall <name> --scope <the scope step 1's inventory carries for it>` for a plugin -
 and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
 it for every project'), since account-wide and project-local are different consents and the wrong
 `--scope` fails with `not installed in project scope`. 'removals: none' when nothing was dropped;
-(3) the follow-through line - telling the USER to re-run `/capture-agent-capabilities` (when
+(3) the follow-through line - telling the USER to re-run `/capture-agent-awareness` (when
 installed, and ONLY when this run added or removed a skill, agent, MCP server or plugin - the
 inventory that rule lists; a run that changed only env or settings names none) so the generated awareness rule reflects the new inventory (the skill is manual-only,
 `disable-model-invocation` - a Skill call from this run is blocked; the line is addressed to the
@@ -493,11 +521,11 @@ and apply it with `--apply gitignore` or `--apply exclude`, reporting the `appli
 `none (...)` line is not reported.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-capabilities`
+follow-ups that are the USER's to run - restart for an MCP change, `/capture-agent-awareness`
 (when installed and this run changed the inventory it lists), a manual-only capture whose output this
 run made stale, the navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
-matters ('`/capture-agent-capabilities` - the selection changed, so the generated rule still
+matters ('`/capture-agent-awareness` - the selection changed, so the generated rule still
 names what this project dropped'). No AskUserQuestion over them: the walk's asks end with the
 installer (a write still gets its consent ask where it happens - step 13's AGENTS.md reconcile),
 and the closing ask over follow-ups was dropped as friction - the user's call, made knowing a

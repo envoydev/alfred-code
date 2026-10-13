@@ -19,6 +19,11 @@ on size or domain count: a one-file change with two readings is clarified, a lar
 
 1. **List the readings.** Read the ask for what changes, for whom, what must keep working and what
    must go away. Each place where two defensible answers lead to different designs is a reading.
+   An ask that cites a source row - a spec table row, an audit finding, a card - is read against
+   the row whole: hold the user's words against EVERY clause of it (the defect it describes and the
+   fix it names), and a clause the words leave uncovered is a second reading - asked, or under AUTO
+   recorded as a `## Decisions` line naming the dropped half (measured: a row's 'returns across
+   tabs' clause, outside the user's one-line fix, went unbuilt and was pushed).
    One reading left: record the ask verbatim as the requirement and go on to the design - nothing
    to ask.
 2. **Ask one question at a time.** Through AskUserQuestion: the question names the fork and why it

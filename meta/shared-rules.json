@@ -21,7 +21,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/task-solve/SKILL.md",
+          "file": "stack/skills/task-solve/references/step-mechanics.md",
           "marker": "never integration replays or another minutes-long run; the slow full run happens once, in this session"
         },
         {
@@ -64,168 +64,314 @@
       ]
     },
     "memory-handoff-mechanism": {
-      "_note": "The navigation server's per-project memory handoff: name-addressed, local, never the shared memory MCP. Owner reference defines it; every seat restates it inline.",
+      "_note": "The seat memory handoff through the alfred-memory MCP (the user's 2026-10-13 ruling: the navigation server is navigation only, its memory tools off): read by exact tags, never searched - the project tag fences the project, the run tag the run. Owner reference defines it; every seat restates it inline.",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/capability-reuse.md",
-        "marker": "Navigation-server memory is local to this project and addressed by name, not searched"
+        "marker": "Handoff notes are read by exact tags, never searched"
       },
       "sites": [
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/aspnet-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/dotnet-build-error-resolver.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/issue-diagnoser-runtime.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/issue-diagnoser-ci.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
         },
         {
           "file": "stack/agents/security-auditor.md",
-          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
+          "marker": "Memory handoff: through the alfred-memory MCP, never the navigation server"
+        }
+      ]
+    },
+    "seat-start-docs-anchors": {
+      "_note": "A seat's START orientation reads the docs sections its brief names as the card's anchors (task-solve's brief carries each card's `docs.js where` ids), and the whole ARCHITECTURE.md / CODE-STYLE.md only without them - measured (usage audit 2026-10-10, e499fc94): 0 docs reads in 18 of 18 seat transcripts under the unconditional clause. Byte-identical across the 24 seats that carry it.",
+      "owner": {
+        "file": "stack/agents/aspnet-implementer.md",
+        "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/aspnet-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/integration-reviewer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/issue-diagnoser-ci.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/issue-diagnoser-runtime.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/security-auditor.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/web-angular-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/windows-service-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "the sections a brief names as the card's docs anchors (`docs.js where` ids), and without them"
+        }
+      ]
+    },
+    "verifier-format-check": {
+      "_note": "A verifier runs the project's own format check beside the build and tests and quotes it - measured (usage audit 2026-10-10, a6a24815): 'lint + typecheck green' stood over 2 prettier-dirty specs the project's CI fails on, caught on the verifier's second pass and costing a third. Byte-identical tail of each verifier's check 1.",
+      "owner": {
+        "file": "stack/agents/aspnet-verifier.md",
+        "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "Where the project has its own format check (a `format:check` script, the CI's format step), run it too and quote it - a format slip the CI fails on is a finding."
         }
       ]
     },
     "orient-docs-durable-truth": {
-      "_note": "Committed docs are the durable truth, the navigation-server note only the transient handoff.",
+      "_note": "Committed docs are the durable truth, the alfred-memory handoff note only the transient handoff.",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/capability-reuse.md",
         "marker": "the durable map lives in the docs, the transient handoff in the note"
@@ -233,99 +379,99 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/issue-diagnoser-runtime.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/issue-diagnoser-ci.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         },
         {
           "file": "stack/agents/security-auditor.md",
-          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the alfred-memory handoff note only the transient handoff"
         }
       ]
     },
@@ -1130,7 +1276,7 @@
           "marker": "Captured: <branch>@<short-sha>, <YYYY-MM-DD>"
         },
         {
-          "file": "stack/skills/capture-project-capabilities/SKILL.md",
+          "file": "stack/skills/capture-project-awareness/SKILL.md",
           "marker": "Captured: <branch>@<short-sha>, <date>"
         }
       ]
@@ -1573,11 +1719,11 @@
           "marker": "deliberately NOT in the stack installer's catalog"
         },
         {
-          "file": "stack/skills/capture-agent-capabilities/SKILL.md",
+          "file": "stack/skills/capture-agent-awareness/SKILL.md",
           "marker": "stays out of the installer's catalog"
         },
         {
-          "file": "stack/skills/capture-project-capabilities/SKILL.md",
+          "file": "stack/skills/capture-project-awareness/SKILL.md",
           "marker": "It stays out of the installer's catalog"
         }
       ]
@@ -1773,7 +1919,7 @@
         },
         {
           "file": "setup-plugin/commands/validate.md",
-          "marker": "`node \"$TMP/repo/scripts/install/alfred-code.js\" update --source \"$TMP/repo\" --scope <scope> --installed-only [--add"
+          "marker": "`node \"$TMP/repo/scripts/install/alfred-code.js\" update --source \"$TMP/repo\" --scope \"$(node \"$TMP/repo/scripts/install/stamp.js\" scope .)\" --installed-only [--add"
         },
         {
           "file": "setup-plugin/commands/uninstall.md",
@@ -1893,7 +2039,7 @@
       ]
     },
     "capabilities-refresh-user-run": {
-      "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except capture-architecture and capture-architecture-quality carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one - except /alfred-code:init (R30), which runs the captures the install lists by READING each SKILL.md and following it inline: still never a Skill call. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by capture-agent-capabilities' usage policy.",
+      "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except capture-architecture and capture-architecture-quality carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one - except /alfred-code:init (R30), which runs the captures the install lists by READING each SKILL.md and following it inline: still never a Skill call. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by capture-agent-awareness' usage policy.",
       "owner": {
         "file": "setup-plugin/commands/update.md",
         "marker": "Never invoke it from this run - the skill is manual-only"
@@ -1916,7 +2062,7 @@
           "marker": "the assistant cannot invoke one on your behalf"
         },
         {
-          "file": "stack/skills/capture-agent-capabilities/SKILL.md",
+          "file": "stack/skills/capture-agent-awareness/SKILL.md",
           "marker": "is the USER's to type - never call it yourself"
         }
       ]
@@ -1963,19 +2109,19 @@
       ]
     },
     "loop-close-commit-ask": {
-      "_note": "The loop close-out commit decision goes through AskUserQuestion - Hold recommended and listed first, a picked commit running habits-commit-checkpoint whole (the flows' close template; the commit guard blocks a commit with no receipt) - never a prose 'your call' bullet. Verbatim in all three loops because each installs alone.",
+      "_note": "The loop close-out commit decision goes through AskUserQuestion - the local commit recommended and listed first, Hold second (the user's ruling 2026-10-13: a commit stays on this machine and is undone with git reset --soft HEAD~1; a push is held), a picked commit running habits-commit-checkpoint whole (the flows' close template; the commit guard blocks a commit with no receipt) - never a prose 'your call' bullet. Verbatim in all three loops because each installs alone.",
       "owner": {
         "file": "stack/skills/loop-architecture-quality/SKILL.md",
-        "marker": "'Hold - review the diff first (Recommended)' / 'Commit now', which runs `habits-commit-checkpoint` whole - never a prose 'your call' bullet"
+        "marker": "'Commit now (Recommended)', which runs `habits-commit-checkpoint` whole / 'Hold - review the diff first' - never a prose 'your call' bullet"
       },
       "sites": [
         {
           "file": "stack/skills/loop-test-coverage/SKILL.md",
-          "marker": "'Hold - review the diff first (Recommended)' / 'Commit now', which runs `habits-commit-checkpoint` whole - never a prose 'your call' bullet"
+          "marker": "'Commit now (Recommended)', which runs `habits-commit-checkpoint` whole / 'Hold - review the diff first' - never a prose 'your call' bullet"
         },
         {
           "file": "stack/skills/loop-quality/SKILL.md",
-          "marker": "'Hold - review the diff first (Recommended)' / 'Commit now', which runs `habits-commit-checkpoint` whole - never a prose 'your call' bullet"
+          "marker": "'Commit now (Recommended)', which runs `habits-commit-checkpoint` whole / 'Hold - review the diff first' - never a prose 'your call' bullet"
         }
       ]
     },
@@ -2029,7 +2175,7 @@
     "capture-docs-engine-write-route": {
       "_note": "How a capture lands its doc through the docs engine: a first capture writes the file whole, because `docs.js set` refuses a file that does not exist yet (stack/hooks/docs.js `no such doc file`); a re-run lands each changed section through `docs.js set`, and the ENGINE picks in place (mainline, no git, git versioning) or the branch overlay - the capture never checks the mode. Two copies once said both 'writes directly' and 'calls set unconditionally' (audit 2026-10-08 C9), so a first capture on an overlay branch failed. Owned by the run-book capture's doc shape; restated in the code-style and related-projects write mechanics.",
       "owner": {
-        "file": "stack/skills/capture-project-capabilities/references/doc-shape.md",
+        "file": "stack/skills/capture-project-awareness/references/doc-shape.md",
         "marker": "and into this branch's overlay otherwise - the capture never decides which"
       },
       "sites": [
@@ -2415,6 +2561,24 @@
         }
       ]
     },
+    "implementer-edit-route": {
+      "_note": "Implementer seats edit source through Edit / Write, the tools the edit hooks watch - measured (audit 2026-10-10): one run's seats made 155 shell writes against 28 Edit calls (85% unseen by check-turn-build, matched only on Write|Edit|MultiEdit), another 132 against 5. A shell splice stays for a mechanical rename across many sites. Byte-identical across all 10 implementers.",
+      "owner": {
+        "file": "stack/agents/aspnet-implementer.md",
+        "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first."
+      },
+      "sites": [
+        { "file": "stack/agents/web-angular-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
+        { "file": "stack/agents/ionic-angular-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
+        { "file": "stack/agents/wpf-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
+        { "file": "stack/agents/winforms-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
+        { "file": "stack/agents/console-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
+        { "file": "stack/agents/windows-service-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
+        { "file": "stack/agents/data-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
+        { "file": "stack/agents/devops-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." },
+        { "file": "stack/agents/browser-extension-implementer.md", "marker": "Every source edit goes through Edit / Write, the tools the edit hooks watch (config protection, the docs gate, the turn build check) - never a python, perl or heredoc write, and never `sed -i` for a change Edit can make; a shell splice is for a mechanical rename across many sites, its anchor counted first." }
+      ]
+    },
     "implementer-worktree-step-zero": {
       "_note": "Worktree-isolated implementers verify HEAD == the brief's pinned base at step zero, ff-only on mismatch, else STOP as BLOCKED - measured: seats pinned 77 and 91 commits behind built discarded work. The OWNER is the protocol, not a seat: the protocol is the only place that knows the sha and carries the ff-only recovery and the per-stack stale-base tells; each seat keeps one sentence pointing at it.",
       "owner": {
@@ -2678,7 +2842,7 @@
       ]
     },
     "trio-note-naming-grammar-restated": {
-      "_note": "The navigation-server note naming grammar (<feature>/<contract_version>/<seat>/<task>, each / a folder list_memories' topic filters by - 2.1.6) minted by the orchestrator - owned by the trio protocol's memory-hygiene bullet, restated operatively in solve-task's dispatch-prompt step.",
+      "_note": "The handoff note naming grammar (<feature>/<contract_version>/<seat>/<task>, carried as the alfred-memory row's note:<name> tag beside handoff:<feature>/<contract_version>) minted by the orchestrator - owned by the trio protocol's memory-hygiene bullet, restated operatively in solve-task's dispatch-prompt step.",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
         "marker": "<feature>/<contract_version>/<seat>"
@@ -2728,7 +2892,7 @@
       ]
     },
     "memories-purge-count": {
-      "_note": "The purge receipt made a FACT: at close the orchestrator counts what is left of <data root>/serena/memories/<feature>/ plus a pre-2.1.6 run's flat <feature>__* notes (and a 2.0.0 .serena/memories) with one node line (2.1.6 review B2: a find-based line read 0 wherever a foreign find came first on PATH - Windows' find.exe), and above zero the close is not done. task-solve's step mechanics carry the same line for its close, since it never loads the protocol and its body sits at the 18,000-char cap. Lives in the trio protocol's bookkeeping, so it rides every vendored copy; pinned on its own marker because domain-trio-protocol-vendored checks only one sentence of the whole file.",
+      "_note": "The purge receipt made a FACT: at close the orchestrator runs `node .claude/hooks/memory.js handoff <feature>`, which reads the memory database itself and prints the number of this project's handoff:<feature> rows left plus an older release's navigation-server notes still on disk (<data root>/serena/memories/<feature>/, a pre-2.1.6 flat <feature>__*, a 2.0.0 .serena/memories) - an unreadable database prints no number and exits 1, so a count is never guessed; above zero the close is not done. task-solve's step mechanics carry the same line for its close, since it never loads the protocol and its body sits at its cap. Lives in the trio protocol's bookkeeping, so it rides every vendored copy; pinned on its own marker because domain-trio-protocol-vendored checks only one sentence of the whole file.",
       "owner": {
         "file": "stack/skills/task-solve-cross/references/domain-trio-protocol.md",
         "marker": "The purge is counted, not claimed"
@@ -3364,7 +3528,7 @@
       ]
     },
     "hook-block-telemetry": {
-      "_note": "One JSONL row per BLOCK, appended by every guard hook to <docs-path>/hook-blocks/<session>.jsonl. A block costs its denial text plus the retried turn, so a FALSE block is 10-100x the gate's own cost (measured 2026-09-04: a hook runs in 22-25ms, almost all node spawn) - and the transcript records only WHICH TOOL was denied, never which hook denied it. scripts/analyze-usage.js --hook-blocks reads the ledger. The block is identical in every guard hook that blocks and must stay that way: it wraps process.exit and stderr.write, and it is best-effort in both directions - telemetry never changes a verdict and never throws.",
+      "_note": "One JSONL row per BLOCK, appended by every guard hook to <docs-path>/hook-blocks/<session>.jsonl. A block costs its denial text plus the retried turn, so a FALSE block is 10-100x the gate's own cost (measured 2026-09-04: a hook runs in 22-25ms, almost all node spawn) - and the transcript records only WHICH TOOL was denied, never which hook denied it. scripts/analyze-usage.js --hook-blocks reads the ledger. Each row carries `agent` (a seat's id, null for the main session) and `tool_use_id`, so HOOK BLOCKS splits main from seat and joins a row to its call. The block is identical in every guard hook that blocks and must stay that way: it wraps process.exit and stderr.write, and it is best-effort in both directions - telemetry never changes a verdict and never throws.",
       "owner": {
         "file": "stack/hooks/guard-cross-project-write.js",
         "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
@@ -3504,7 +3668,7 @@
       ]
     },
     "flow-state-two-layers-resume": {
-      "_note": "Flow state lives in two layers (the ledger file + the navigation-server note) and every invocation resumes from them before starting anew. Owned by the solve-task flow; restated in the diagnosis flow.",
+      "_note": "Flow state lives in two layers (the ledger file + the alfred-memory handoff note) and every invocation resumes from them before starting anew. Owned by the solve-task flow; restated in the diagnosis flow.",
       "owner": {
         "file": "stack/skills/task-solve/SKILL.md",
         "marker": "On invocation, resume before starting"
@@ -3704,7 +3868,7 @@
       ]
     },
     "where-to-run-ask-threshold": {
-      "_note": "The guided commands' step-0 'where to run it' ask is THRESHOLDED, not unconditional: it fires only past the same trigger guard-fresh-session-start.js uses (the resolved window's own trigger - ALFRED_CODE_FRESH_SESSION_200K, default 150000, ALFRED_CODE_FRESH_SESSION_1M, default 400000, or ALFRED_CODE_FRESH_SESSION_DEFAULT, default 180000, for any other or unreadable window), or when that hook has already injected it. Below the trigger, or with no readable context figure at all, the run starts silently - measured: the unconditional prose form fired on the FIRST message of a brand-new session, twice in one run, with no number behind it. The hook owns the trigger; each command body restates it so the walk and the gate can never sit on different numbers.",
+      "_note": "The guided commands' step-0 'where to run it' ask is THRESHOLDED, not unconditional: it fires only past the same trigger guard-fresh-session-start.js uses (the resolved window's own trigger - ALFRED_CODE_FRESH_SESSION_200K, default 150000, ALFRED_CODE_FRESH_SESSION_1M, default 400000, or ALFRED_CODE_FRESH_SESSION_DEFAULT, default 180000, for any other or unreadable window), or when that hook has already injected it. Below the trigger, or with no readable context figure at all, the run starts silently - measured: the unconditional prose form fired on the FIRST message of a brand-new session, twice in one run, with no number behind it. The hook owns the trigger; each command body restates it so the walk and the gate can never sit on different numbers. update.md carries no copy: its step 0 acts on the hook note alone and never measures (audit 2026-10-11, session bca100bd: a prose-measured step 0 narrated its own skip), and setup-plugin.test.js holds the note text it quotes to the hook.",
       "owner": {
         "file": "stack/hooks/fresh-session.js",
         "marker": "The trigger is an ABSOLUTE token count per WINDOW TIER"
@@ -3720,10 +3884,6 @@
         },
         {
           "file": "setup-plugin/commands/validate.md",
-          "marker": "or when that hook has already injected the ask into this turn"
-        },
-        {
-          "file": "setup-plugin/commands/update.md",
           "marker": "or when that hook has already injected the ask into this turn"
         },
         {
@@ -3837,7 +3997,7 @@
       "_note": "The generated capabilities rule carries the usage policy VERBATIM from the skill and is never re-fetched - only a user re-run regenerates it - so a project can carry a two-release-old policy with nothing to notice it (measured: one project's rule still described the fresh-session gate as '40% of the context window, 150k floor', retired at 0.2.70). The `<!-- policy-rev: ... -->` content stamp is what makes that detectable, and the comparison lives in the two commands that can see both sides: validate runs the two greps and reports a finding, update reads the `policy-rev:` row update-preflight.js prints (the hand-run pair was re-confirmed 3 extra times in one audited run, ~275k tokens) and makes it a second trigger for the re-run row. The skill owns the stamp itself; lint check 29 recomputes it when the block moves.",
       "owner": {
         "file": "setup-plugin/commands/validate.md",
-        "marker": "grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/alfred-project-agent-capabilities.md"
+        "marker": "grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/alfred-agent-awareness.md"
       },
       "sites": [
         {
@@ -3845,21 +4005,8 @@
           "marker": "`policy-rev: stale ...` (the installed usage-policy rule's stamped revision is behind the shipped"
         },
         {
-          "file": "stack/skills/capture-agent-capabilities/SKILL.md",
+          "file": "stack/skills/capture-agent-awareness/SKILL.md",
           "marker": "`/alfred-code:validate` compares a project's stamp against the snapshot's"
-        }
-      ]
-    },
-    "add-n-reset-chained": {
-      "_note": "`git add -N .` makes untracked files visible to a diff, and the `git reset -q` that undoes it belongs in the SAME Bash call. Stated as a parenthetical 'then reset' it was ignored in 3 of 4 audited sessions, leaving intent-to-add entries in the index for whatever ran next. Both always-on rules that ask for the full change set carry the chained spelling.",
-      "owner": {
-        "file": "stack/rules/alfred-git.md",
-        "marker": "git add -N . && git diff HEAD --stat; git reset -q"
-      },
-      "sites": [
-        {
-          "file": "stack/rules/alfred-security.md",
-          "marker": "git add -N . && git diff HEAD; git reset -q"
         }
       ]
     },
@@ -3995,12 +4142,12 @@
       "_note": "What loads the execution-strategy habit: the always-on interaction line binds the load, the skill's When to use restates the same trigger in house skill shape. A trigger widened in one home and not the other mis-fires the load (2026-10-08 rules audit D2, F8).",
       "owner": {
         "file": "stack/rules/alfred-interaction.md",
-        "marker": "one spanning stacks or touching auth, a migration or a public contract, or one that would dispatch a seat"
+        "marker": "one spanning stacks or touching auth, a migration or a public contract, or one that would fan work out to seats"
       },
       "sites": [
         {
           "file": "stack/skills/habits-execution-strategy/SKILL.md",
-          "marker": "spans stacks, touches auth, a migration or a public contract, or would dispatch a seat"
+          "marker": "spans stacks, touches auth, a migration or a public contract, or would fan work out to seats"
         }
       ]
     },
@@ -4306,159 +4453,159 @@
       ]
     },
     "seat-start-memory-read": {
-      "_note": "The trio memory bus START step - list_memories with the run's <feature>/<contract_version> topic, then read_memory the notes it lists - in every dispatched seat that hands off through navigation-server memory. Owner aspnet-implementer (the reference twin); since 2.1.6 serena 1.7.0's topic filters by folder, so the server returns the run's notes and the seat matches no pattern. Then 'the notes it lists' (implementers, verifiers, security-auditor - every note of the run, as before) or 'the one note it lists under your own seat name' (designers, resolvers, diagnosers, integration-reviewer - their own earlier pass, as before; a run's whole folder measured p95 17,535 chars, max 42,082 over 39 local runs). The marker is the shared head.",
+      "_note": "The trio memory bus START step - memory_list on the alfred-memory MCP with exact tags and tag_match 'all' - in every dispatched seat that hands off through it (the user's 2026-10-13 ruling moved the bus off the navigation server). Owner aspnet-implementer (the reference twin). Then 'the notes it lists' with handoff:<feature>/<contract_version> plus the project tag (implementers, verifiers, security-auditor - every note of the run) or 'the newest note it lists' with note:<own note name> plus the project tag (designers, resolvers, diagnosers, integration-reviewer - their own earlier pass; a run's whole note set measured p95 17,535 chars, max 42,082 over 39 local runs, so they never list the run). The marker is the shared head.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+        "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/security-auditor.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/dotnet-build-error-resolver.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/issue-diagnoser-ci.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/issue-diagnoser-runtime.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "At START, `mcp__plugin_alfred-navigation_alfred-navigation__list_memories` with `topic: '<feature>/<contract_version>'` then `mcp__plugin_alfred-navigation_alfred-navigation__read_memory`"
+          "marker": "At START, `mcp__plugin_alfred-memory_alfred-memory__memory_list` with `tags: ['"
         }
       ]
     },
@@ -4466,44 +4613,44 @@
       "_note": "An implementer writes its memory note the moment production edits land with tests pending, so a killed seat leaves a resume brief (measured: four implementers died in one outage window before HAND-OFF). Restated in every *-implementer.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+        "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "Checkpoint early: the moment production edits land with tests still pending, write the note"
+          "marker": "Checkpoint early: the moment production edits land with tests still pending, store the note"
         }
       ]
     },
@@ -5016,7 +5163,7 @@
       ]
     },
     "credential-presence-line": {
-      "_note": "The sanctioned presence read of the account settings.json - guard-secret-value.js --presence, pasted as-is, KEY=set (N chars) / KEY=absent - carried by every command that touches the file. The hook owns the mode; the commands restate the call because none of them co-load.",
+      "_note": "The sanctioned presence read of the account settings.json - guard-secret-value.js --presence, pasted as-is, KEY=set (N chars) / KEY=empty (present, no value) / KEY=absent - carried by every command that touches the file. The hook owns the mode; the commands restate the call because none of them co-load.",
       "owner": {
         "file": "stack/hooks/guard-secret-value.js",
         "marker": "--presence <file> [KEY ...]"
@@ -5092,23 +5239,23 @@
       ]
     },
     "skill-model-pin-turn-scoped": {
-      "_note": "A skill-level `model` pin applies only for the rest of the TURN in which the skill activates and is never saved to settings - so a deliberate capture that must run on one model says so and lets the user set it, rather than trusting the frontmatter to hold across the walk. The earlier reading of this - 'the pin is not reliably honored' - was wrong about the mechanism and is retired; the pin works, its SCOPE is the turn. As of 2026-09-12 NO shipped skill carries a `model` or `effort` pin at all: a turn-scoped pin cannot hold across a multi-turn capture, so the four capture skills ask the user to set the session model instead, and the pins live only on agents, where they cover the whole subagent run.",
+      "_note": "A skill-level `model` pin applies only for the rest of the TURN in which the skill activates and is never saved to settings - so a deliberate capture that must run on one model says so and lets the user set it, rather than trusting the frontmatter to hold across the walk. The earlier reading of this - 'the pin is not reliably honored' - was wrong about the mechanism and is retired; the pin works, its SCOPE is the turn. As of 2026-09-12 NO shipped skill carries a `model` or `effort` pin at all: a turn-scoped pin cannot hold across a multi-turn capture, and the pins live only on agents, where they cover the whole subagent run. Since 2026-10-09 the three judging captures, their two loops and the version-upgrade and greenfield flows run on the session model and ask for no switch - measured in docs/model-ab-evidence.md: Sonnet at xhigh matched Opus at the same cost or less.",
       "owner": {
         "file": "stack/skills/capture-architecture/SKILL.md",
-        "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
+        "marker": "a skill-level pin lasts only for the turn it activates in"
       },
       "sites": [
         {
           "file": "stack/skills/loop-architecture-quality/SKILL.md",
-          "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
+          "marker": "a skill-level pin lasts only for the turn it activates in"
         },
         {
           "file": "stack/skills/task-version-upgrade/SKILL.md",
-          "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
+          "marker": "a skill-level pin lasts only for the turn it activates in"
         },
         {
           "file": "stack/skills/task-build-from-scratch/SKILL.md",
-          "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
+          "marker": "a skill-level pin lasts only for the turn it activates in"
         },
         {
           "file": "stack/skills/capture-code-quality/SKILL.md",
@@ -5116,7 +5263,7 @@
         },
         {
           "file": "stack/skills/capture-architecture-quality/SKILL.md",
-          "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
+          "marker": "a skill-level pin lasts only for the turn it activates in"
         }
       ]
     },
@@ -5267,12 +5414,12 @@
       "_note": "The post-install capture ORDER and its manual-only property: the four deliberate captures run related-context (only where the project has siblings) -> architecture -> code-style -> agent-capabilities LAST, the order init-plan.js CAPTURES runs, so the generated inventory reflects the final install, and the user types them because they carry disable-model-invocation. It lives in two homes because each one reaches a different reader at a different moment - the reference the guided walks open, and the seeded CLAUDE.md the adopter fills in. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to print this same order in their own next-steps log as a third and fourth home; the Node seed never carried this text (the walk's own report covers it).",
       "owner": {
         "file": "setup-plugin/references/post-install.md",
-        "marker": "`/capture-agent-capabilities` - LAST, so the generated usage-policy rule reflects the final inventory"
+        "marker": "`/capture-agent-awareness` - LAST, so the generated usage-policy rule reflects the final inventory"
       },
       "sites": [
         {
           "file": "stack/AGENTS.template.md",
-          "marker": "/capture-agent-capabilities LAST, so its generated inventory reflects the final install"
+          "marker": "/capture-agent-awareness LAST, so its generated inventory reflects the final install"
         }
       ]
     },
@@ -5415,7 +5562,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/capture-agent-capabilities/SKILL.md",
+          "file": "stack/skills/capture-agent-awareness/SKILL.md",
           "marker": "Do NOT `rm` it first"
         },
         {
@@ -5423,7 +5570,7 @@
           "marker": "READ the existing rule first (it is short), then Write the fresh one over it"
         },
         {
-          "file": "stack/skills/capture-project-capabilities/SKILL.md",
+          "file": "stack/skills/capture-project-awareness/SKILL.md",
           "marker": "READ the existing rule first, then Write the fresh one over it"
         }
       ]
@@ -5798,7 +5945,7 @@
       ]
     },
     "verifier-memory-before-report": {
-      "_note": "A seat writes any memory BEFORE it composes the report, then delivers the report as its final hand-off - through SubagentHandback when its tools include it (Claude Code gives that tool to every locally run, non-fork subagent in auto mode and delivers only what goes through it - tools-reference, v2.1.271+; the 2026-09-29 agents audit counted 188 of 205 local seat runs reporting through it), else as its last message; nothing after it, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then write_memory, then a pointer close forced a resend). 13 copies: the ten trio verifiers and the three support seats whose structured return IS the deliverable.",
+      "_note": "A seat writes any memory BEFORE it composes the report, then delivers the report as its final hand-off - through SubagentHandback when its tools include it (Claude Code gives that tool to every locally run, non-fork subagent in auto mode and delivers only what goes through it - tools-reference, v2.1.271+; the 2026-09-29 agents audit counted 188 of 205 local seat runs reporting through it), else as its last message; nothing after it, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then the note write, then a pointer close forced a resend). 13 copies: the ten trio verifiers and the three support seats whose structured return IS the deliverable.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
         "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
@@ -5943,15 +6090,15 @@
       ]
     },
     "navigation-edit-tools": {
-      "_note": "Which edits stay on the navigation server (the user's 2026-09-29 ruling on audit I12, 'Keep rename + safe delete'): symbol lookup, rename_symbol, safe_delete_symbol and the seat memory handoff; every other edit goes through Edit / Write, because the navigation server's text-edit tools bypassed config protection, the docs hold, the turn-edit list and the done-gate probe (41 such calls measured in main sessions). The launcher switches those tools off; the always-on rule and the generated capabilities rule's locked-server row say the same thing, so a session never reads the old routing in one of them.",
+      "_note": "Which edits stay on the navigation server (the user's 2026-09-29 ruling on audit I12, 'Keep rename + safe delete'): symbol lookup, rename_symbol and safe_delete_symbol (the seat memory handoff left it on the user's 2026-10-13 ruling - every note goes to alfred-memory); every other edit goes through Edit / Write, because the navigation server's text-edit tools bypassed config protection, the docs hold, the turn-edit list and the done-gate probe (41 such calls measured in main sessions). The launcher switches those tools off; the always-on rule and the generated capabilities rule's locked-server row say the same thing, so a session never reads the old routing in one of them.",
       "owner": {
         "file": "stack/rules/alfred-navigation.md",
-        "marker": "keeps symbol lookup, `rename_symbol`, `safe_delete_symbol` and the seat memory handoff"
+        "marker": "keeps symbol lookup, `rename_symbol` and `safe_delete_symbol`"
       },
       "sites": [
         {
-          "file": "stack/skills/capture-agent-capabilities/references/generated-rule-template.md",
-          "marker": "keeps symbol lookup, `rename_symbol`, `safe_delete_symbol` and the seat memory handoff, and every other edit goes through Edit / Write"
+          "file": "stack/skills/capture-agent-awareness/references/generated-rule-template.md",
+          "marker": "keeps symbol lookup, `rename_symbol` and `safe_delete_symbol`, and every other edit goes through Edit / Write"
         }
       ]
     },
@@ -6244,7 +6391,7 @@
       ]
     },
     "capture-expensive-seat-reads": {
-      "_note": "The three deliberate captures that judge in-session (architecture map, architecture pros/cons, code quality) all tell the Opus seat it never reads the codebase wholesale - the analyzer seats absorb the reads. Owned by the architecture capture; restated in the two quality captures because each runs alone.",
+      "_note": "The three deliberate captures that judge in-session (architecture map, architecture pros/cons, code quality) all tell the in-session judge it never reads the codebase wholesale - the analyzer seats absorb the reads. Owned by the architecture capture; restated in the two quality captures because each runs alone.",
       "owner": {
         "file": "stack/skills/capture-architecture/SKILL.md",
         "marker": "You are the expensive seat: never read the codebase wholesale yourself"
@@ -6278,19 +6425,19 @@
       ]
     },
     "capture-model-report-line": {
-      "_note": "The capture report states the model the judgment ran on, and a run that started on Opus says there was nothing to reset. Owned by the architecture-quality capture; restated in the code-quality capture and the architecture capture's report-fields reference.",
+      "_note": "The capture report states the model the judgment ran on, and a run the user raised for this capture ends in the /model command to drop back. Owned by the architecture-quality capture; restated in the code-quality capture and the architecture capture's report-fields reference.",
       "owner": {
         "file": "stack/skills/capture-architecture-quality/SKILL.md",
-        "marker": "already on Opus before this run started - nothing to reset"
+        "marker": "the judgment above ran on it"
       },
       "sites": [
         {
           "file": "stack/skills/capture-code-quality/SKILL.md",
-          "marker": "already on Opus before this run started - nothing to reset"
+          "marker": "the judgment above ran on it"
         },
         {
           "file": "stack/skills/capture-architecture/references/report-fields.md",
-          "marker": "already on Opus before this run started - nothing to reset"
+          "marker": "the judgment above ran on it"
         }
       ]
     },
@@ -6465,19 +6612,19 @@
       "_note": "The single-turn correction test - a short typed turn that follows an answer of any length and carries a correction marker. guard-answer-length.js writes its correction probe row on it, and analyze-usage.js counts the corrections-saved row with it, so the probe rate and the saved share are measured over the SAME turns. The hook reads stdin on load, so the analyzer cannot require it - which is why the analyzer carries a verbatim copy.",
       "owner": {
         "file": "stack/hooks/guard-answer-length.js",
-        "marker": "const CORRECTION_STRONG_RE = /^\\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\\b|(?:^|[.,;:!?]\\s*|\\b(?:but|and|please|pls|so|then|also|just)\\s+)(?:do not|don'?t|dont|never|stop \\w+ing)\\b|\\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\\b|\\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\\b(?! (?:cannot|can'?t|can not|couldn'?t)\\b)|\\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\\b|\\b(?:still|again) (?:there|broken|fail\\w*|wrong|the same|red|happen\\w*|error\\w*|doesn'?t|does not|isn'?t|is not|not)\\b|\\bsame (?:error|issue|problem|bug)\\b|\\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\\b|\\bnot what i\\b|\\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\\b|\\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\\b|\\bnot working\\b|\\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\\b/i;\nconst CORRECTION_WEAK_RE = /^\\W*but\\b|^\\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\\b\\W*but\\b|^\\W*stop\\b|\\binstead\\b|\\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\\b/i;\nconst CORRECTION_CYR_RE = /(?<![\\p{L}])(?:ні(?=[\\s,.!]|$)|нет(?=[\\s,.!]|$)|не (?:так|те|то)(?![\\p{L}])|не ?правильн|не (?:треба|потрібно|надо|нужно|роби|делай)(?![\\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав|говорил|просил|сказал)|(?:чому ти|почему ты)(?! не мож)|навіщо ти|зачем ты|коротше|покороче|простіше|проще|забагато|слишком|(?:та сама|та ж|та же|та самая) (?:помилк|ошибк|проблем)|не (?:працює|работает)|(?:досі|все ще|всё ещё|все еще) не(?![\\p{L}]))/iu;\nfunction correctionMarker(text) {\n  const t = String(text || '').replace(/[‘’]/g, \"'\").trim();\n  const m = t.match(CORRECTION_STRONG_RE) || t.match(CORRECTION_CYR_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));\n  return m ? m[0].trim().slice(0, 40) : null;\n}\n// --- end correction-turn test"
+        "marker": "const CORRECTION_STRONG_RE = /^\\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\\b|(?:^|[.,;:!?]\\s*|\\b(?:but|and|please|pls|so|then|also|just)\\s+)(?:do not|don'?t|dont|never|stop \\w+ing)\\b|\\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\\b|\\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\\b(?! (?:cannot|can'?t|can not|couldn'?t)\\b)|\\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\\b|\\b(?:still|again) (?:there|broken|fail\\w*|wrong|the same|red|happen\\w*|error\\w*|doesn'?t|does not|isn'?t|is not|not)\\b|\\bsame (?:error|issue|problem|bug)\\b|\\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\\b|\\bnot what i\\b|\\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\\b|\\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\\b|\\bnot working\\b|\\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\\b/i;\nconst CORRECTION_WEAK_RE = /^\\W*but\\b|^\\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\\b\\W*but\\b|^\\W*stop\\b|\\binstead\\b|(?<!\\b(?:what|which|how|whether|where|when|who|why)\\b[^.,;:!?\\n]{0,60})\\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\\b/i;\nconst CORRECTION_CYR_RE = /(?<![\\p{L}])(?:ні(?=[\\s,.!]|$)|нет(?=[\\s,.!]|$)|не (?:так|те|то)(?![\\p{L}])|не ?правильн|не (?:треба|потрібно|надо|нужно|роби|делай)(?![\\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав|говорил|просил|сказал)|(?:чому ти|почему ты)(?! не мож)|навіщо ти|зачем ты|коротше|покороче|простіше|проще|забагато|слишком|(?:та сама|та ж|та же|та самая) (?:помилк|ошибк|проблем)|не (?:працює|работает)|(?:досі|все ще|всё ещё|все еще) не(?![\\p{L}]))/iu;\nfunction correctionMarker(text) {\n  const t = String(text || '').replace(/[‘’]/g, \"'\").trim();\n  const m = t.match(CORRECTION_STRONG_RE) || t.match(CORRECTION_CYR_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));\n  return m ? m[0].trim().slice(0, 40) : null;\n}\n// --- end correction-turn test"
       },
       "sites": [
         {
           "file": "scripts/analyze-usage.js",
-          "marker": "const CORRECTION_STRONG_RE = /^\\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\\b|(?:^|[.,;:!?]\\s*|\\b(?:but|and|please|pls|so|then|also|just)\\s+)(?:do not|don'?t|dont|never|stop \\w+ing)\\b|\\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\\b|\\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\\b(?! (?:cannot|can'?t|can not|couldn'?t)\\b)|\\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\\b|\\b(?:still|again) (?:there|broken|fail\\w*|wrong|the same|red|happen\\w*|error\\w*|doesn'?t|does not|isn'?t|is not|not)\\b|\\bsame (?:error|issue|problem|bug)\\b|\\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\\b|\\bnot what i\\b|\\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\\b|\\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\\b|\\bnot working\\b|\\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\\b/i;\nconst CORRECTION_WEAK_RE = /^\\W*but\\b|^\\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\\b\\W*but\\b|^\\W*stop\\b|\\binstead\\b|\\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\\b/i;\nconst CORRECTION_CYR_RE = /(?<![\\p{L}])(?:ні(?=[\\s,.!]|$)|нет(?=[\\s,.!]|$)|не (?:так|те|то)(?![\\p{L}])|не ?правильн|не (?:треба|потрібно|надо|нужно|роби|делай)(?![\\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав|говорил|просил|сказал)|(?:чому ти|почему ты)(?! не мож)|навіщо ти|зачем ты|коротше|покороче|простіше|проще|забагато|слишком|(?:та сама|та ж|та же|та самая) (?:помилк|ошибк|проблем)|не (?:працює|работает)|(?:досі|все ще|всё ещё|все еще) не(?![\\p{L}]))/iu;\nfunction correctionMarker(text) {\n  const t = String(text || '').replace(/[‘’]/g, \"'\").trim();\n  const m = t.match(CORRECTION_STRONG_RE) || t.match(CORRECTION_CYR_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));\n  return m ? m[0].trim().slice(0, 40) : null;\n}\n// --- end correction-turn test"
+          "marker": "const CORRECTION_STRONG_RE = /^\\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\\b|(?:^|[.,;:!?]\\s*|\\b(?:but|and|please|pls|so|then|also|just)\\s+)(?:do not|don'?t|dont|never|stop \\w+ing)\\b|\\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\\b|\\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\\b(?! (?:cannot|can'?t|can not|couldn'?t)\\b)|\\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\\b|\\b(?:still|again) (?:there|broken|fail\\w*|wrong|the same|red|happen\\w*|error\\w*|doesn'?t|does not|isn'?t|is not|not)\\b|\\bsame (?:error|issue|problem|bug)\\b|\\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\\b|\\bnot what i\\b|\\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\\b|\\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\\b|\\bnot working\\b|\\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\\b/i;\nconst CORRECTION_WEAK_RE = /^\\W*but\\b|^\\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\\b\\W*but\\b|^\\W*stop\\b|\\binstead\\b|(?<!\\b(?:what|which|how|whether|where|when|who|why)\\b[^.,;:!?\\n]{0,60})\\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\\b/i;\nconst CORRECTION_CYR_RE = /(?<![\\p{L}])(?:ні(?=[\\s,.!]|$)|нет(?=[\\s,.!]|$)|не (?:так|те|то)(?![\\p{L}])|не ?правильн|не (?:треба|потрібно|надо|нужно|роби|делай)(?![\\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав|говорил|просил|сказал)|(?:чому ти|почему ты)(?! не мож)|навіщо ти|зачем ты|коротше|покороче|простіше|проще|забагато|слишком|(?:та сама|та ж|та же|та самая) (?:помилк|ошибк|проблем)|не (?:працює|работает)|(?:досі|все ще|всё ещё|все еще) не(?![\\p{L}]))/iu;\nfunction correctionMarker(text) {\n  const t = String(text || '').replace(/[‘’]/g, \"'\").trim();\n  const m = t.match(CORRECTION_STRONG_RE) || t.match(CORRECTION_CYR_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));\n  return m ? m[0].trim().slice(0, 40) : null;\n}\n// --- end correction-turn test"
         }
       ]
     },
     "run-book-read-first": {
-      "_note": "The run book is read before a seat builds, starts, logs into or hand-checks the app. The generated pointer rule (alfred-project-run-book.md, from the capture's template) is canonical and reaches every session and subagent once the capture ran; the seats that run the app restate it as a step, because a seat dispatched before the capture ran still needs to know where the doc will be. The seat line leaves 'build' to the generated rule (2.1.5 M60): the resolvers and implementers build too and carry no seat line.",
+      "_note": "The run book is read before a seat builds, starts, logs into or hand-checks the app. The generated pointer rule (alfred-project-awareness.md, from the capture's template) is canonical and reaches every session and subagent once the capture ran; the seats that run the app restate it as a step, because a seat dispatched before the capture ran still needs to know where the doc will be. The seat line leaves 'build' to the generated rule (2.1.5 M60): the resolvers and implementers build too and carry no seat line.",
       "owner": {
-        "file": "stack/skills/capture-project-capabilities/references/run-book-rule.template.md",
+        "file": "stack/skills/capture-project-awareness/references/run-book-rule.template.md",
         "marker": "read it before you build, start, log into or hand-check the app"
       },
       "sites": [
@@ -6647,6 +6794,10 @@
           "marker": "exactly as the roster spells it"
         },
         {
+          "file": "stack/skills/task-solve/references/step-mechanics.md",
+          "marker": "exactly as the roster spells it"
+        },
+        {
           "file": "stack/skills/task-verify-code/SKILL.md",
           "marker": "exactly as the roster spells it"
         },
@@ -6657,6 +6808,43 @@
         {
           "file": "stack/skills/task-version-upgrade/SKILL.md",
           "marker": "exactly as the roster spells it"
+        }
+      ]
+    },
+    "blocking-stdio": {
+      "_note": "hook-prelude.js blockingStdio makes stdout and stderr blocking, so a pipe gets every byte before process.exit - Node writes a pipe async on macOS, and a hook decision or CLI report past the pipe buffer reached its reader cut off (2026-10-10: the secret guard rewrite of a 100 KB command arrived as 65,536 bytes and ran unredacted). Every hook loads the prelude; a CLI beside it calls it in its main block. The two engines that ship without the prelude on one route, the three skill scripts a skill copy carries alone and the gate leg (copied to a VM with only install/runtime.js) each carry this byte-identical copy. A change to it is eight edits, not one.",
+      "owner": {
+        "file": "stack/hooks/hook-prelude.js",
+        "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+      },
+      "sites": [
+        {
+          "file": "stack/hooks/docs.js",
+          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+        },
+        {
+          "file": "stack/hooks/memory.js",
+          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+        },
+        {
+          "file": "stack/skills/capture-agent-awareness/scripts/capabilities-inventory.js",
+          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+        },
+        {
+          "file": "stack/skills/task-solve/scripts/spec-check.js",
+          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+        },
+        {
+          "file": "stack/skills/task-solve-cross/scripts/spec-check.js",
+          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+        },
+        {
+          "file": "stack/skills/dev-log-convert/scripts/total-time.js",
+          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
+        },
+        {
+          "file": "scripts/gate-leg.js",
+          "marker": "function blockingStdio(streams = [process.stdout, process.stderr])\n{\n    for (const s of streams)\n    {\n        try { if (s && s._handle && typeof s._handle.setBlocking === 'function') s._handle.setBlocking(true); }\n        catch { /* a stream that cannot block keeps Node's default */ }\n    }\n}"
         }
       ]
     }

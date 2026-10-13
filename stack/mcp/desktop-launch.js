@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 'use strict';
-// THE DESKTOP SERVERS' LAUNCHER - windows-desktop (Windows-MCP) and macos-desktop (MacOS-MCP).
+// THE DESKTOP SERVERS' LAUNCHER - windows-control (Windows-MCP) and macos-control (MacOS-MCP).
 //
-//   node desktop-launch.js --server <windows-desktop|macos-desktop> --package <spec> [--exclude-newer <cut-off>] -- <server arguments>
+//   node desktop-launch.js --server <windows-control|macos-control> --package <spec> [--exclude-newer <cut-off>] -- <server arguments>
 //
 // Three things a fixed plugin argv cannot do:
 //   - THE PYTHON. uvx takes the newest interpreter it can find, and windows-mcp 0.8.6 already needs
@@ -10,12 +10,12 @@
 //   - THE OS. Each server drives THIS machine's own desktop, and an entry enabled at project scope
 //     reaches every machine that opens the project. On the other OS it exits at once with one line
 //     naming why, instead of downloading a package that cannot import there.
-//   - THE TOOL GATE (windows-desktop). The entry passes `--exclude-tools PowerShell,Registry,Process,FileSystem`:
+//   - THE TOOL GATE (windows-control). The entry passes `--exclude-tools PowerShell,Registry,Process,FileSystem`:
 //     shell, registry, process control and file writes, moves and deletes stay off. Windows-MCP gates by
 //     tool NAME, never by mode, so `App` stays on whole - launch, switch and resize, and its
 //     `launch_executable` mode, which starts any program with the arguments given (windows-mcp 0.8.5
 //     tools/app.py): a house guard denies that mode unless the user allowed it in
-//     <docs-path>/flow/DESKTOP-EXEC-ALLOW. ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE replaces the list, and
+//     <docs-path>/flow/DESKTOP-EXEC-ALLOW. ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE replaces the list, and
 //     `none` passes no flag at all (Windows-MCP's own config then decides) - read from the shell, then
 //     settings.local.json, settings.json and the account settings, since a plugin server never gets a
 //     PROJECT settings env key. MacOS-MCP 0.4.6 has no exclude flag; its own config.toml `[tools] exclude` removes
@@ -31,8 +31,8 @@ const path = require('node:path');
 const { pythonRequest, runUvx, settingFrom } = require('./uv-python.js');
 
 const DESKTOP = {
-    'windows-desktop': { os: 'win32', bin: 'windows-mcp', upstream: 'Windows-MCP' },
-    'macos-desktop': { os: 'darwin', bin: 'macos-mcp', upstream: 'MacOS-MCP' },
+    'windows-control': { os: 'win32', bin: 'windows-mcp', upstream: 'Windows-MCP' },
+    'macos-control': { os: 'darwin', bin: 'macos-mcp', upstream: 'MacOS-MCP' },
 };
 const DESKTOP_OS = Object.fromEntries(Object.entries(DESKTOP).map(([name, row]) => [name, row.os]));
 const DEFAULT_EXCLUDE = 'PowerShell,Registry,Process,FileSystem';
@@ -76,8 +76,17 @@ function platformOf(env = process.env)
 // A server that is no desktop server runs anywhere.
 const offeredOn = (name, platform) => !Object.hasOwn(DESKTOP, name) || DESKTOP[name].os === platform;
 
-// The override as the user wrote it: '' (none given), 'none', or a csv.
-const excludeSetting = ({ env, projectDir }) => settingFrom({ env, projectDir, suffix: 'WINDOWS_DESKTOP_EXCLUDE' });
+// The override as the user wrote it: '' (none given), 'none', or a csv. The key the server's old name spelled
+// (WINDOWS_DESKTOP_EXCLUDE, renamed with windows-desktop on 2026-10-13) is still read when the new one is unset,
+// with one line naming the rename - a lifted gate the user set by hand never quietly closes on an update.
+const excludeSetting = ({ env, projectDir, log = () => {} }) =>
+{
+    const now = settingFrom({ env, projectDir, suffix: 'WINDOWS_CONTROL_EXCLUDE' });
+    if (now) return now;
+    const old = settingFrom({ env, projectDir, suffix: 'WINDOWS_DESKTOP_EXCLUDE' });
+    if (old) log('ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE read as ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE - the server is windows-control now; rename the key where you set it');
+    return old;
+};
 
 // The override checked against the pinned names: a name in another case is mended ('powershell' would
 // exclude nothing), an unknown one is said and dropped, and a list naming no real tool keeps the safe
@@ -90,12 +99,12 @@ function checkedExclude(override, { log = () => {} } = {})
     for (const name of String(override).split(',').map((t) => t.trim()).filter(Boolean))
     {
         const real = byLower.get(name.toLowerCase());
-        if (!real) { log(`ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: ${name} is no Windows-MCP tool (${WINDOWS_TOOLS.join(', ')}) - dropped`); continue; }
-        if (real !== name) log(`ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: ${name} read as ${real} - Windows-MCP matches tool names case-sensitively`);
+        if (!real) { log(`ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: ${name} is no Windows-MCP tool (${WINDOWS_TOOLS.join(', ')}) - dropped`); continue; }
+        if (real !== name) log(`ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: ${name} read as ${real} - Windows-MCP matches tool names case-sensitively`);
         if (!kept.includes(real)) kept.push(real);
     }
     if (kept.length) return kept.join(',');
-    log(`ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE names no Windows-MCP tool - the default gate stays (${DEFAULT_EXCLUDE}); none lifts it`);
+    log(`ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE names no Windows-MCP tool - the default gate stays (${DEFAULT_EXCLUDE}); none lifts it`);
     return DEFAULT_EXCLUDE;
 }
 
@@ -112,7 +121,7 @@ function withExclude(args, override)
 // WINDOWS_MCP_EXCLUDE_TOOLS, resolved at install time - empty for `none`, which Windows-MCP reads as unset.
 function copyRouteExclude({ env, projectDir, log = () => {} })
 {
-    const override = checkedExclude(excludeSetting({ env, projectDir }), { log });
+    const override = checkedExclude(excludeSetting({ env, projectDir, log }), { log });
     if (!override) return DEFAULT_EXCLUDE;
     return /^none$/i.test(override) ? '' : override;
 }
@@ -130,28 +139,31 @@ function skipNote(name, platform, market = STACK_MARKET)
 // 'A, B and C' from a csv of tool names.
 const spoken = (csv) => csv.split(',').join(', ').replace(/, (?=[^,]*$)/, ' and ');
 
-// windows-desktop's gate as it stands: the list in effect (copyRouteExclude's answer - the default, the
+// windows-control's gate as it stands: the list in effect (copyRouteExclude's answer - the default, the
 // user's checked list, or '' when `none` lifted it), never the default four when an override replaced them.
 function gateNote(exclude)
 {
-    if (exclude === DEFAULT_EXCLUDE) return `${spoken(DEFAULT_EXCLUDE)} stay off (ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: another list, or none for every tool)`;
+    if (exclude === DEFAULT_EXCLUDE) return `${spoken(DEFAULT_EXCLUDE)} stay off (ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE: another list, or none for every tool)`;
     const dflt = `the default keeps ${spoken(DEFAULT_EXCLUDE)} off`;
-    if (!exclude) return `every tool is on (ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE is none; ${dflt})`;
-    return `${spoken(exclude)} ${exclude.includes(',') ? 'stay' : 'stays'} off (ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE's list; ${dflt})`;
+    if (!exclude) return `every tool is on (ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE is none; ${dflt})`;
+    return `${spoken(exclude)} ${exclude.includes(',') ? 'stay' : 'stays'} off (ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE's list; ${dflt})`;
 }
 
 // What a server needs before its first start, said on the run that brings it in. `exclude` is
-// windows-desktop's gate in effect (copyRouteExclude), the default when not given.
+// windows-control's gate in effect (copyRouteExclude), the default when not given.
 function prereqNotes(name, { uvx = true, exclude = DEFAULT_EXCLUDE } = {})
 {
     const first = `its first start downloads Python and ${DESKTOP[name].upstream}, and a timeout then clears with a reconnect from /mcp`;
-    const lines = name === 'windows-desktop'
-        ? ["  desktop: windows-desktop needs the Windows display language set to English (Windows-MCP's App tool reads app names in English), and Claude Code at the same privilege level as the app it drives - a UAC prompt can never be automated",
-            `  desktop: windows-desktop - ${gateNote(exclude)}; ${first}`]
+    const lines = name === 'windows-control'
+        ? ["  desktop: windows-control needs the Windows display language set to English (Windows-MCP's App tool reads app names in English), and Claude Code at the same privilege level as the app it drives - a UAC prompt can never be automated",
+            `  desktop: windows-control - ${gateNote(exclude)}; ${first}`,
+            // SD08 (audit 2026-10-11): full-size screenshots were a third of one session's cache reads. The knob is the
+            // server's own and stays unset here until a readability measurement picks a value.
+            "  desktop: windows-control sends screenshots at full display size - WINDOWS_MCP_SCREENSHOT_SCALE (0.1 to 1.0, Windows-MCP's own, unset by the stack) shrinks every one; set it in the environment that starts Claude Code once a smaller size proves readable for your apps"]
         // I45: MacOS-MCP 0.4.6 checks its grants before it serves and exits when one is missing
         // (permissions.py validate_permissions) - an empty snapshot needs MACOS_MCP_SKIP_PERMISSION_CHECK=1 first.
-        : ["  !! desktop: macos-desktop needs Accessibility and Screen Recording (System Settings > Privacy & Security) for the terminal or IDE running Claude Code and for the uv-managed Python it runs on - approve the 'would like to control this computer' dialog at its first start; a server that fails to connect at start while System Settings opens is missing a grant - its log names which; a black vision snapshot means Screen Recording is missing",
-            `  desktop: macos-desktop - its Shell tool stays in the list, and a house guard denies every Shell call unless DESKTOP-EXEC-ALLOW allows it (MacOS-MCP has no exclude flag; its own config.toml removes it - exclude = ['Shell'] under [tools] in ~/.macos-mcp/config.toml); ${first}`];
+        : ["  !! desktop: macos-control needs Accessibility and Screen Recording (System Settings > Privacy & Security) for the terminal or IDE running Claude Code and for the uv-managed Python it runs on - approve the 'would like to control this computer' dialog at its first start; a server that fails to connect at start while System Settings opens is missing a grant - its log names which; a black vision snapshot means Screen Recording is missing",
+            `  desktop: macos-control - its Shell tool stays in the list, and a house guard denies every Shell call unless DESKTOP-EXEC-ALLOW allows it (MacOS-MCP has no exclude flag; its own config.toml removes it - exclude = ['Shell'] under [tools] in ~/.macos-mcp/config.toml); ${first}`];
     if (!uvx) lines.unshift(`  !! desktop: ${name} starts through uvx, which is not on PATH - install uv (https://docs.astral.sh/uv/)`);
     return lines;
 }
@@ -186,16 +198,16 @@ function main(argv, env = process.env)
     let args = rest < 0 ? [] : argv.slice(rest + 1);
     const log = (line) => process.stderr.write(`desktop-launch: ${line}\n`);
     let childEnv = env;
-    if (server === 'windows-desktop')
+    if (server === 'windows-control')
     {
-        args = withExclude(args, checkedExclude(excludeSetting({ env, projectDir }), { log }));
+        args = withExclude(args, checkedExclude(excludeSetting({ env, projectDir, log }), { log }));
         // Windows-MCP's --tools (WINDOWS_MCP_TOOLS) OVERRIDES --exclude-tools: one inherited from the shell
         // would lift the whole gate, so it never reaches the child.
         if (Object.hasOwn(env, 'WINDOWS_MCP_TOOLS'))
         {
             childEnv = { ...env };
             delete childEnv.WINDOWS_MCP_TOOLS;
-            log('WINDOWS_MCP_TOOLS in the environment dropped - it would override the tool gate; ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE is the setting');
+            log('WINDOWS_MCP_TOOLS in the environment dropped - it would override the tool gate; ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE is the setting');
         }
     }
     process.stderr.write(`desktop-launch: ${spec}, python ${pythonRequest({ env, projectDir })}, ${row.bin} ${args.join(' ')}\n`);

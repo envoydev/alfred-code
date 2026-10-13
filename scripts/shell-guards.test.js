@@ -598,8 +598,9 @@ test('a stalled guard ahead of the secret guard in the manifest cannot drop its 
   const read = spawnIt('file-guards.js', filePayload('Read', { file_path: path.join(dir, '.env') }, dir, 'stall-read'));
   assert.strictEqual(read.status, 2, `file-guards: the secret block arrives though the read guard stalls (status ${read.status})`);
   assert.deepStrictEqual(hooksOf(ledgerRows(dir, 'stall-read')), ['guard-secret-value.js']);
-  // a second read of the file forces the whole-command rewrite, which would drop the build - a block, not a splice
-  const sh = spawnIt('shell-guards.js', { ...bashPayload('cat .env && grep -c API_KEY .env && npm run build', dir), session_id: 'stall-bash' });
+  // a second read that PRINTS the file forces the whole-command rewrite, which would drop the build - a block, not a
+  // splice (a count of it no longer forces it: audit 2026-10-11 SD01)
+  const sh = spawnIt('shell-guards.js', { ...bashPayload('cat .env && head -1 .env && npm run build', dir), session_id: 'stall-bash' });
   assert.strictEqual(sh.status, 2, `shell-guards: the secret block arrives though the read guard stalls (status ${sh.status})`);
   assert.deepStrictEqual(hooksOf(ledgerRows(dir, 'stall-bash')), ['guard-secret-value.js']);
 });
@@ -641,4 +642,79 @@ test('the docs label every shell guard with the shell route, never Bash alone (2
     assert.match(cell, /the shell route/, `${g}: the matcher cell names the shell route - ${cell}`);
   }
   assert.match((html.match(/\["guard-secret-value", "([^"]*)"/) || [])[1], /Grep/, 'the secret guard\'s Grep row is named');
+});
+
+// ---------------------------------------------------------------------------------------------
+// audit 2026-10-10 (C14, C25, T5 cross-track): the dispatcher's own checks - zsh quoting, the foreground poll loop,
+// an unaddressed sed -i over several lines, the symbol-grep probe
+// ---------------------------------------------------------------------------------------------
+const own = (dir, command, { env = {}, extra = {} } = {}) => {
+  const r = run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command, ...extra }, session_id: 'own', cwd: dir }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, ...env } });
+  let h = {};
+  try { h = JSON.parse(r.stdout).hookSpecificOutput || {}; } catch { h = {}; }
+  return { status: r.status, stderr: r.stderr, command: h.updatedInput ? h.updatedInput.command : null, context: h.additionalContext || '' };
+};
+const ZSH = { env: { SHELL: '/bin/zsh' } };
+const rowsIn = (dir) => { try { return fs.readFileSync(path.join(dir, '.alfred', 'docs', 'hook-blocks', 'own.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
+
+test('audit 2026-10-10 C14: under zsh a tool-owned glob and a bare =word are quoted before any guard reads the command', () => {
+  const dir = project('zsh-');
+  assert.equal(own(dir, 'grep -n --include=*.ts foo a.txt', ZSH).command, "grep -n --include='*.ts' foo a.txt", '7491ab75, 0498718d');
+  assert.equal(own(dir, 'grep -n --include=*.{ts,tsx} foo a.txt', ZSH).command, "grep -n --include='*.ts' --include='*.tsx' foo a.txt", 'a brace list, expanded as the shell would');
+  assert.equal(own(dir, 'find . -name *.md -type f', ZSH).command, "find . -name '*.md' -type f");
+  assert.equal(own(dir, 'echo =====; cat a.txt | head -1', ZSH).command, "echo '====='; cat a.txt | head -1", '458953b8, f10cb06a, db6c1ae1');
+  assert.equal(own(dir, '[ "$a" == "b" ] && echo y', ZSH).command, `[ "$a" '==' "b" ] && echo y`);
+  for (const c of ["grep -n --include='*.ts' foo a.txt", '[[ $a == b ]] && echo y', '(( 1 == 1 )) && echo y', 'echo "====="', 'X=1; echo $X', "cat <<'EOF'\n=====\n--include=*.ts\nEOF"])
+    assert.equal(own(dir, c, ZSH).command, null, `left as written: ${c}`);
+  assert.equal(own(dir, 'grep -n --include=*.ts foo a.txt', { env: { SHELL: '/bin/bash' } }).command, null, 'bash leaves an unmatched glob as written');
+  assert.ok(rowsIn(dir).some((r) => r.mode === 'rewrite' && r.detail.branch === 'zsh-quote'), 'each rewrite is one rewrite row');
+  // audit 2026-10-10 C09: the permission mode a rewrite met is counted
+  run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'echo =====' }, session_id: 'own', cwd: dir, permission_mode: 'auto' }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, SHELL: '/bin/zsh' } });
+  assert.equal(rowsIn(dir).filter((r) => r.detail && r.detail.branch === 'zsh-quote').pop().detail.permissionMode, 'auto');
+  // the guards judge the fixed command: the commit gate still blocks an unreceipted commit, and nothing else changes
+  assert.equal(own(dir, 'echo ===== && git commit -am x', ZSH).status, 2, 'a block wins over the quoting');
+});
+
+test('audit 2026-10-10 C25: a foreground until / while loop that sleeps is blocked, naming the background routes', () => {
+  const dir = project('poll-');
+  const r = own(dir, 'until grep -q READY run.log; do sleep 5; done');
+  assert.equal(r.status, 2, '516e653d, 3b53e0e8');
+  assert.match(r.stderr, /FOREGROUND `until` \/ `while` loop[\s\S]*run_in_background: true[\s\S]*ToolSearch select:Monitor/);
+  assert.equal(own(dir, 'while true; do curl -s localhost:1 && break; sleep 2; done').status, 2);
+  assert.equal(own(dir, "bash -c 'until test -f done.flag; do sleep 1; done'").status, 2, 'inside a shell -c string');
+  assert.equal(own(dir, 'until grep -q READY run.log; do sleep 5; done', { extra: { run_in_background: true } }).status, 0, 'in the background');
+  assert.equal(own(dir, 'timeout 60 bash -c "until test -f done.flag; do sleep 1; done"').status, 0, 'bounded at 60s');
+  assert.equal(own(dir, 'timeout 600 bash -c "until test -f done.flag; do sleep 1; done"').status, 2, 'a 600s bound is the wait it replaces');
+  assert.equal(own(dir, 'while read -r l; do echo "$l"; sleep 0.1; done < a.txt').status, 0, 'a read loop reads input');
+  assert.equal(own(dir, 'echo "until x; do sleep 1; done"').status, 0, 'text in quotes');
+  assert.equal(own(dir, 'for i in 1 2 3; do sleep 1; done').status, 0, 'a for loop is bounded by its list');
+  assert.ok(rowsIn(dir).some((x) => !x.mode && x.detail && x.detail.branch === 'poll-loop'), 'a block row');
+});
+
+test('audit 2026-10-10: an unaddressed sed -i s/// over several lines of its file gets a note naming them', () => {
+  const dir = project('sed-');
+  fs.writeFileSync(path.join(dir, 'plan.md'), '# plan\n- status: TODO\nx\n- status: TODO\n');
+  const r = own(dir, "sed -i '' 's/^- status: TODO$/- status: IN_PROGRESS/' plan.md");
+  assert.match(r.context, /has no address and its pattern matches 2 lines of plan\.md \(lines 2, 4\)/, '49cb4b82');
+  assert.equal(own(dir, "sed -i '' '2s/^- status: TODO$/- status: IN_PROGRESS/' plan.md").context, '', 'an addressed command');
+  assert.equal(own(dir, "sed -i '' 's/^# plan$/# Plan/' plan.md").context, '', 'one line matches');
+  assert.equal(own(dir, "sed -i '' 's/(/[/' plan.md").context, '', 'a pattern that is not a regex in JS is skipped, never thrown');
+});
+
+test('audit 2026-10-10: a recursive grep for a code identifier in the main session writes one probe row; a seat writes none', () => {
+  const dir = project('sym-');
+  own(dir, 'grep -rn SearchTermNormalizer .');
+  own(dir, 'grep -rn "todo list" .');
+  run(DISPATCH, { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'grep -rn OrderService .' }, session_id: 'own', cwd: dir, agent_id: 'seat-1' }, { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } });
+  const probes = rowsIn(dir).filter((x) => x.mode === 'probe' && x.detail.branch === 'symbol-grep');
+  assert.deepStrictEqual(probes.map((x) => x.detail.pattern), ['SearchTermNormalizer'], 'bc2fa83e');
+});
+
+test('audit 2026-10-10: the dispatcher\'s own checks stand down where the stack does - a repo never set up, hook_profile minimal', () => {
+  const bare = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'unset-')));
+  git(bare, 'init', '-q');
+  assert.equal(own(bare, 'until test -f x; do sleep 1; done', { env: { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT } }).status, 0, 'never set up');
+  const dir = project('min-');
+  assert.equal(own(dir, 'until test -f x; do sleep 1; done', { env: { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' } }).status, 0, 'minimal');
+  assert.equal(own(dir, 'echo =====', { env: { SHELL: '/bin/zsh', CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' } }).command, null);
 });

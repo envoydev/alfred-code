@@ -4,10 +4,12 @@ The measured anecdotes behind this skill's rules, kept out of the run-time body 
 for them. Audit material: read it to learn WHY a rule is shaped the way it is, never to run the skill.
 
 ## Intro and inputs
-- **Run the audit from a FRESH session** - measured: an in-session run at ~620k accumulated context paid six 529-retry re-sends (629k cache-write for 11 messages) for a report a fresh session produces from ~20k.
+- **Run the audit from a FRESH session** - measured: an in-session run at ~620k accumulated context paid six 529-retry re-sends (629k cache-write for 11 messages) for a report a fresh session produces from its cold floor. The floor is the install's own: a fixed '~20k' quoted in an ask (usage audit 2026-10-10, session 516e653d) stood where the stop hook measured ~87.2k, so the body quotes the measured figure or says it is unmeasured.
 - **The batch is BOUNDED at 12 bundles per run** - measured: two runs took 45 and 53 bundles in one chat for 42.1M and 78.2M cache-read and 2 and 4 forced compactions, because the biggest scope was the one marked Recommended.
+- **... or at the first bundle boundary past the fresh-session trigger** - measured (audit 2026-10-11, session ae38c08f): a 12-bundle single-turn run on a 1M window, inside the bound, crossed the 400k trigger right after bundle 4 and peaked at 719.5k; the context at the boundaries ran 142k, 221k, 292k, 386k, 450k ... 694k, and 48.15M of its 68.6M cache-read sat at or above 400k. One turn means no Stop, and 1M means no compaction, so nothing offered the fresh session; a hand-off after bundle 4 would have saved ~24.2M cache-read (35%). The gate script reads the trigger the Stop offer reads.
 
 ## Step 1 - FIND
+- **The marker pattern allows a plugin prefix** - measured (audit 2026-10-11, session ae38c08f): a hand-written `<command-name>/?(alfred-[a-z-]+)</command-name>` grep found 2 files, so every scope option offered 6 unaudited sessions while 13 existed - the 7 it missed were all `/alfred-code:*` runs - and the run widened to 12 and said so only at the close.
 - **Never pick a scope yourself and never default to the current session** - measured: one run picked 'two sessions' unasked from its own tail, another started analyzing the current session with no ask - the prose form of this step was skipped both times; the tool call is the step.
 - **never audit the live session's own tail** - measured: four sessions did, one burning its whole 529-retry budget over 44 minutes and shipping a bundle that undercounts its own tail - the prose rule alone did not hold, this check is the gate.
 - **The folder alone is not the test** - measured: the folder becomes true at the SKELETON write, up to 74 minutes before the report is authored, so a run resumed after an interruption would have skipped all 53 of its own unfinished bundles as done.
@@ -44,6 +46,9 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 - **Read EVERY user turn, not the ones next to command markers** - measured: a report omitted the run's only real ask and the user's 'no' to it entirely, because neither was adjacent to a command marker.
 - **A consent claim cites the ask -> mutation PAIR, by timestamp** - measured: a report's consent proof was inverted - two Writes at 09:11 and 09:14 against the first ask at 09:16 - and another scored two DECLINES that landed after the installer had already run as the run's 'biggest strength'.
 - **A layer the run CHANGED is checked against the installer's contract too** - measured: a report graded a plugin failure as a syntax slip and proposed hardcoding the command shape, missing that both plugins were still DISABLED after the installer ran.
+
+## Step 4 / 5 - the per-bundle gate and SUMMARY
+- **The bundle list is the gate's, rewritten after each bundle** - measured (audit 2026-10-11, session ae38c08f): with 'rewrite it after EACH bundle closes' loaded as prose, SUMMARY.md was first written after bundle 8 and again after bundle 12; a run cut short before bundle 8 would have left no summary. A row the gate writes is a mechanism, the sentence was a reminder.
 
 ## Don't game it and the diagnosis discipline
 - **Hand-written analysis is the failure mode the checks exist to replace** - measured: a sweep found 14 wrong or mislabeled claims across 12 shipped reports, including one verdict that inverted its own table.

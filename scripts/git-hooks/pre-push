@@ -1,0 +1,6 @@
+#!/bin/sh
+# Runs the local CI gate (scripts/gate.js) on what this push sends: lint and tests on macOS, Linux and
+# Windows, the way the workflows run them. Turned on by `node scripts/gate.js --install-hook`.
+# Skip it for one push: git push --no-verify
+command -v node >/dev/null 2>&1 || { echo "alfred-gate: node is not on PATH here, so the gate cannot run - push with --no-verify to skip it" >&2; exit 1; }
+exec node "$(git rev-parse --show-toplevel)/scripts/gate.js" --pre-push "$@"

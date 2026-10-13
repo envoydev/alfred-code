@@ -23,10 +23,13 @@ const { createSource, compareVersions } = require('./source.js');
 const { loadManifest, stackNames, stackOwnName } = require('./manifest.js');
 const selection = require('./selection.js');
 const plugins = require('./plugins.js');
-const { pythonRequest, userExcludeNewer } = require('../../stack/mcp/uv-python.js');
+const { pythonRequest, userExcludeNewer, settingFrom } = require('../../stack/mcp/uv-python.js');
 const { serenaHomeFor, copyRouteProject } = require('../../stack/mcp/serena-launch.js');
 const dataRoot = require('../../stack/mcp/data-root.js');
 const { copyRouteExclude, platformOf, prereqNotes, DESKTOP_OS } = require('../../stack/mcp/desktop-launch.js');
+const { copyRouteEnv: mobileCopyEnv, prereqNotes: mobileNotes } = require('../../stack/mcp/mobile-launch.js');
+// The optional servers whose prerequisites a run says once, on the run that brings one in (prereqNotes).
+const NOTED = (name) => Boolean(DESKTOP_OS[name]) || name === 'mobile-control';
 const mcp = require('./mcp.js');
 const copy = require('./copy.js');
 const settings = require('./settings.js');
@@ -39,6 +42,7 @@ const seeds = require('./seeds.js');
 const pinsLayer = require('./pins.js');
 const stampLayer = require('./stamp.js');
 const library = require('./library.js');
+const { shippedText } = require('./retired-rules.js');
 const uninstallLayer = require('./uninstall.js');
 const runtime = require('./runtime.js');
 const { readJson } = require('./json-file.js');
@@ -64,11 +68,13 @@ the repo's CLAUDE.md covers the install surface end to end.`;
 const { CORE_DEP_PLUGINS } = plugins;
 // D1: the frozen twins are gone; the setting that chose them refuses.
 const SHELL_SEED_RETIRED = 'the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer';
-// permissions.deny, the Read-tool half of the credential gate: it reaches the Read TOOL ONLY (a
-// shell `cat` of a denied file is not blocked by anything here - guard-secret-value.js is that
-// route). RETIRED_DENY are the four ACCOUNT-settings entries releases up to 0.2.62 wrote; they are
-// dropped on every run, by exact string.
-const SECRET_DENY = ['Read(.env)', 'Read(.env.*)', 'Read(*.pem)', 'Read(*.pfx)', 'Read(*.p12)', 'Read(*.key)'];
+// permissions.deny, the Read-tool half of the credential gate. A bare name matches at any depth (gitignore semantics,
+// code.claude.com/docs/en/permissions: 'Read(.env)' and 'Read(**/.env)' are equivalent) and reaches the Read tool, Grep and
+// Glob best-effort, and the Bash file commands Claude Code recognizes (cat, head, tail, sed, tee) - never a command that
+// reads a file without naming it, so guard-secret-value.js stays the shell's gate. `.sensitive-data` is the project's own
+// store under the data root (stack/mcp/data-root.js). RETIRED_DENY are the four ACCOUNT-settings entries releases up to
+// 0.2.62 wrote; they are dropped on every run, by exact string.
+const SECRET_DENY = ['Read(.env)', 'Read(.env.*)', 'Read(*.pem)', 'Read(*.pfx)', 'Read(*.p12)', 'Read(*.key)', 'Read(.sensitive-data)'];
 // R10: every deny entry a release has written into a project's settings besides the seat denies - the
 // ledger removes no other, since a stamp is project text. A release that stops writing one keeps it here.
 const SHIPPED_DENY = [...SECRET_DENY];
@@ -401,17 +407,17 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // each the settings files' disabledMcpjsonServers - an entry in any of them rejects the server.
         const mcpjsonOff = [path.join(claudeDir, 'settings.json'), path.join(claudeDir, 'settings.local.json'), path.join(configDir, 'settings.json')]
             .flatMap((f) => { const v = readJson(f).disabledMcpjsonServers; return Array.isArray(v) ? v : []; });
-        // X1: an engine is read from .mcp.json only when the prior stamp's managed-mcp ledger records its browser-<e>
+        // X1: an engine is read from .mcp.json only when the prior stamp's managed-mcp ledger records its <e>-control, browser-<e>
         // or playwright-<e> name - a user's own server under that name was otherwise adopted, overwritten and ledgered.
         // A stamp with no ledger, or no stamp, keeps every engine, as mcpjsonPicks does; the stamp's line stays the record.
         const engineLedger = stampFile && priorLedger && priorLedger.mcp;
         const mcpjsonEngines = registeredEngines(mcpFile)
-            .filter((e) => !engineLedger || [`browser-${e}`, `playwright-${e}`].some((n) => Object.hasOwn(engineLedger, n)));
+            .filter((e) => !engineLedger || [dataRoot.engineServer(e), `browser-${e}`, `playwright-${e}`].some((n) => Object.hasOwn(engineLedger, n)));
         // Registered under the CURRENT name: one .mcp.json still holds as `playwright-<engine>` registers
-        // anew as `browser-<engine>`, so its off-state is listed anew too (mcp.mcpjsonSwitch).
+        // anew as `<engine>-control`, so its off-state is listed anew too (mcp.mcpjsonSwitch).
         const mcpjsonCurrent = registeredEngines(mcpFile, { legacy: false });
         // An engine .mcp.json registers under its pre-rename name is switched off under that name.
-        const liveCopy = (e) => (mcpjsonEngines.includes(e) ? !mcpjsonOff.includes(`browser-${e}`) && !mcpjsonOff.includes(`playwright-${e}`) : undefined);
+        const liveCopy = (e) => (mcpjsonEngines.includes(e) ? ![dataRoot.engineServer(e), `browser-${e}`, `playwright-${e}`].some((n) => mcpjsonOff.includes(n)) : undefined);
 
         let picked = null;
         // The desktop servers drive THIS machine's own apps (stack/mcp/desktop-launch.js): each is kept on its
@@ -489,7 +495,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 const stackOwn = Object.keys(servers).filter((name) => !Object.hasOwn(ours, name) && !mcp.isLocked(name)
                     && mcp.exactStack(name, servers[name], { catalog: manifest.catalogs.mcps, remotes: { 'alfred-documentation': mcp.CONTEXT7_REMOTE }, projectRoot })
                     && mcp.stackAuthored(name, servers[name], { engines: stampEngines || [] })
-                    && (/^browser-/.test(name) || (rowOf(name).skills || []).some((sk) => recordedSkills.has(sk))));
+                    && (Boolean(dataRoot.engineOfServer(name)) || (rowOf(name).skills || []).some((sk) => recordedSkills.has(sk))));
                 if (!stackOwn.length) return recordedNames;
                 // ... and only a loss an EARLIER release could have made: its stamp carries no installed-ms: line (this release
                 // writes one, so a configure drop made since is never undone), and the CLI replaced the account file after this
@@ -646,7 +652,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
 
         // --- the two entries assembled at install time -----------------------------
         const pins = args.printPlan
-            ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', WINDOWS_DESKTOP_PIN: '', MACOS_DESKTOP_PIN: '', MEMORY_BACKEND: 'sqlite_vec', UV_EXCLUDE_FLAG: '', UV_EXCLUDE_NEWER: '' }
+            ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', WINDOWS_CONTROL_PIN: '', MACOS_CONTROL_PIN: '', MOBILE_CONTROL_PIN: '', MEMORY_BACKEND: 'sqlite_vec', UV_EXCLUDE_FLAG: '', UV_EXCLUDE_NEWER: '' }
             : (() =>
             {
                 const file = readJson(path.join(resolved.dir, 'meta', 'mcp-pins.json'));
@@ -684,7 +690,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 // ON NOW - the settings file where each is installed, which a /plugin toggle writes; the
                 // stamp's last answer only where that file names nothing. Plugin route only.
                 const isOn = engineOn({ configDir, claudeDir });
-                const specOf = (e) => `browser-${e}@${market}`;
+                const specOf = (e) => `${dataRoot.engineServer(e)}@${market}`;
                 inv.browser = mcp.playwrightLive({
                     kept: pw.browsers, prior: priorPw,
                     live: (e) => (routes.mcps ? isOn(specOf(e), plugins.scopeFor(specOf(e), cliScope, listing)) : liveCopy(e)),
@@ -699,7 +705,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // route), what it leaves to a launcher's next start - then where each class lives now, which is what
         // the copy route registers and the settings name.
         const lockedPlugin = Boolean(routes.mcps) || plugins.corePluginOn(routes);
-        const launched = (cls) => (cls === 'serena' || cls === 'memory' ? lockedPlugin : Boolean(routes.mcps));
+        // The sensitive-data file has no server of its own: every route moves it here, with the root change.
+        const launched = (cls) => (cls === 'sensitive' ? false : cls === 'serena' || cls === 'memory' ? lockedPlugin : Boolean(routes.mcps));
         const dataPlan = planDataMove({
             projectRoot, info: dataInfo, engines: pw.browsers, memoryProject: level.level === 'project', launched,
             answer: args.dataMove, stamped: (Boolean(stampFile) && fs.existsSync(stampFile)) || Boolean(legacyUnstamped), log, note,
@@ -736,14 +743,18 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // M26: how serena finds this project - the cwd walk, or `--project .` where the walk cannot.
             ...copyRouteProject({ projectDir: projectRoot, serenaDir: liveOf('serena') }),
             // Each browser engine's profile folder (mcp.pwArgsFor spells the manifest's @BROWSER_DIR@ per engine).
-            ...Object.fromEntries(dataRoot.ENGINES.map((e) => [`BROWSER_DIR_${e.toUpperCase()}`, liveOf(`browser-${e}`)])),
+            ...Object.fromEntries(dataRoot.ENGINES.map((e) => [`BROWSER_DIR_${e.toUpperCase()}`, liveOf(dataRoot.engineServer(e))])),
             SERENA_PIN: pins.SERENA_PIN, PW_PIN: pins.PW_PIN, UV_EXCLUDE_FLAG: pins.UV_EXCLUDE_FLAG, UV_EXCLUDE_NEWER: pins.UV_EXCLUDE_NEWER,
             MEMORY_PIN: pins.MEMORY_PIN, MEMORY_BACKEND: pins.MEMORY_BACKEND,
-            WINDOWS_DESKTOP_PIN: pins.WINDOWS_DESKTOP_PIN, MACOS_DESKTOP_PIN: pins.MACOS_DESKTOP_PIN,
-            // windows-desktop's tool gate on the copy route, which registers no launcher: the list the
+            WINDOWS_CONTROL_PIN: pins.WINDOWS_CONTROL_PIN, MACOS_CONTROL_PIN: pins.MACOS_CONTROL_PIN, MOBILE_CONTROL_PIN: pins.MOBILE_CONTROL_PIN,
+            // mobile-control's safe defaults (the user's own value where set) and output dirs under the data root, which the
+            // plugin route's launcher sets at each start - the copy route registers no launcher (stack/mcp/mobile-launch.js).
+            ...mobileCopyEnv({ env: cliEnv, projectDir: projectRoot, root: dataInfo.root,
+                log: lists.mcps.some((e) => String(e).split('|')[0] === 'mobile-control') ? (line) => log(`  mobile: ${line}`) : () => {} }),
+            // windows-control's tool gate on the copy route, which registers no launcher: the list the
             // launcher would pass, as Windows-MCP's own WINDOWS_MCP_EXCLUDE_TOOLS.
-            WINDOWS_DESKTOP_EXCLUDE: copyRouteExclude({ env: cliEnv, projectDir: projectRoot,
-                log: lists.mcps.some((e) => String(e).split('|')[0] === 'windows-desktop') ? (line) => log(`  desktop: ${line}`) : () => {} }),
+            WINDOWS_CONTROL_EXCLUDE: copyRouteExclude({ env: cliEnv, projectDir: projectRoot,
+                log: lists.mcps.some((e) => String(e).split('|')[0] === 'windows-control') ? (line) => log(`  desktop: ${line}`) : () => {} }),
         };
         // The one remote server the copy route registers: documentation (Context7), the hosted transport only (2.0.0).
         const remotes = { 'alfred-documentation': mcp.CONTEXT7_REMOTE };
@@ -875,7 +886,7 @@ function runLayers(ctx)
     installHooksAndRules(ctx);
     importMemory(ctx);
     const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
-    docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log });
+    docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log });
     // The root states its own versioning to git (docs.ensureDocsIgnore) - after the settings pass, so
     // it reads the decision this run just wrote.
     try
@@ -887,7 +898,7 @@ function runLayers(ctx)
     // After the root's .gitignore names the new folder, so a raw transcript copy never lands unignored.
     try { docs.migrateUsageReport({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
     catch (err) { ctx.note(`the usage report folder could not be renamed under ${docsPath} (${err.message}) - it stays as alfred-code-usage-report/`); }
-    try { docs.migratePlans({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log }); }
+    try { docs.migratePlans({ projectRoot: ctx.projectRoot, docsPath, rules: selection.generatedRules(ctx.projectRoot), instructions: selection.instructionFiles(ctx.projectRoot), log: ctx.log }); }
     catch (err) { ctx.note(`the folders under ${docsPath}/superpowers could not be moved up (${err.message}) - move each one to ${docsPath}/ by hand`); }
     if (args.action === 'install') ctx.stackAgentsMd = seeds.seedAgentsMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
     // An update moves the seed an earlier release wrote as .claude/CLAUDE.md - only while it is still unedited.
@@ -917,6 +928,15 @@ function runLayers(ctx)
     });
     if (plugins.corePluginOn(ctx.routes))
         selection.respellRosterSeats({ projectRoot: ctx.projectRoot, core: CORE, seats: placement().plugins[CORE].agents, log: ctx.log, note: ctx.note });
+    // A registration of the name answers the bare spelling, the stack's own (bareNames) or the project's in .mcp.json.
+    const servers = (readJson(ctx.mcpFile) || {}).mcpServers;
+    const registered = new Set([...bareNames(ctx), ...(servers && typeof servers === 'object' && !Array.isArray(servers) ? Object.keys(servers) : [])]);
+    selection.respellMcpRows({
+        projectRoot: ctx.projectRoot,
+        plugin: ctx.lists.mcps.map((e) => String(e).split('|')[0]).filter((name) => !registered.has(name)),
+        outputs: Object.fromEntries(pwEngines(ctx).map((e) => [e, `${dataRoot.targetOf(dataRoot.engineServer(e), ctx.dataInfo.root)}/output/`])),
+        log: ctx.log, note: ctx.note,
+    });
     dataRootLayer(ctx, docsPath);
     seeds.playwrightDownloads({
         browsers: pwEngines(ctx),
@@ -926,6 +946,30 @@ function runLayers(ctx)
     });
     downconvert(ctx);
     mcp.keepMcpOrder({ mcpFile: ctx.mcpFile, before: mcpBefore });
+}
+
+// The run book's old credentials file goes into the project's sensitive data (data-root.js adoptCredentials): one line,
+// keys by name and never a value; a clash or a store git would commit moves nothing and is said every run until fixed.
+// Two docs roots are looked in: this run's (settings.json's at project scope, R98) and the one a session reads, where
+// settings.local.json wins - a capture writes the run book under the latter.
+function adoptCredentials(ctx, root, docsPath)
+{
+    const norm = (p) => String(p || '').trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+    const session = settingFrom({ env: process.env, projectDir: ctx.projectRoot, suffix: 'DOCS_PATH' });
+    for (const at of [...new Set([docsPath, session].map(norm).filter(Boolean))]) adoptCredentialsAt(ctx, root, at);
+}
+function adoptCredentialsAt(ctx, root, docsPath)
+{
+    const { projectRoot, log } = ctx;
+    const r = dataRoot.adoptCredentials({ projectDir: projectRoot, root, docsPath });
+    if (r.state === 'moved')
+        log(`  sensitive data: ${r.from} -> ${r.to} (${r.added.length ? `${r.added.join(', ')} added` : 'every key already there'}${r.added.length < r.keys.length ? `, ${r.keys.filter((k) => !r.added.includes(k)).join(', ')} already there` : ''})${r.repointed ? '; the run book names it now' : ''}`);
+    else if (r.state === 'clash')
+        log(`  !! sensitive data: ${r.from} not moved - ${r.to} holds ${r.keys.join(', ')} with another value; keep one value per key (drop it from one file), then run /alfred-code:update`);
+    else if (r.state === 'exposed')
+        log(`  !! sensitive data: ${r.from} not moved - git would commit ${r.to}; ignore it (the data root's .gitignore is the project's own), then run /alfred-code:update`);
+    else if (r.state === 'empty') log(`  sensitive data: ${r.from} holds no KEY=value line - left as it is`);
+    else if (r.state === 'blocked' || r.state === 'failed') log(`  !! sensitive data: ${r.from} not moved (${r.why}) - the next run tries again`);
 }
 
 // The data root's own files, once the docs root is settled: its `.gitignore` (docs.ensureDataIgnore - the
@@ -938,8 +982,10 @@ function dataRootLayer(ctx, docsPath)
 {
     const { projectRoot, log, note } = ctx;
     const root = ctx.dataInfo.root;
+    let ignoreOk = true;
     try { docs.ensureDataIgnore({ projectRoot, root, docsPath, log }); }
-    catch (err) { note(`${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore, keeping its docs/ folder visible`); }
+    catch (err) { ignoreOk = false; note(`${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore, keeping its docs/ folder visible`); }
+    if (ignoreOk) adoptCredentials(ctx, root, docsPath);
     const navigation = ctx.lists.mcps.some((e) => e.startsWith('alfred-navigation|'));
     const serenaDir = ctx.liveOf('serena');
     serena.seedProject({ projectRoot, selected: navigation, dir: serenaDir, root, log });
@@ -960,7 +1006,7 @@ function dataRootLayer(ctx, docsPath)
         try { serena.ensureSerenaIgnore({ projectRoot, selected: navigation || holdsAt(dataRoot.LEGACY.serena), log }); }
         catch (err) { note(`.serena/.gitignore could not be written (${err.message}) - add .serena/ to the repo's own .gitignore`); }
     }
-    const legacyEngines = pwEngines(ctx).filter((e) => ctx.liveOf(`browser-${e}`) === dataRoot.legacyOf(`browser-${e}`) || holdsAt(dataRoot.legacyOf(`browser-${e}`)));
+    const legacyEngines = pwEngines(ctx).map(dataRoot.engineServer).filter((cls) => ctx.liveOf(cls) === dataRoot.legacyOf(cls) || holdsAt(dataRoot.legacyOf(cls))).map(dataRoot.engineOfServer);
     try { mcp.ensurePlaywrightIgnore({ projectRoot, engines: legacyEngines, log }); }
     catch (err) { note(`.playwright/.gitignore could not be written (${err.message}) - add .playwright/ to the repo's own .gitignore`); }
     for (const old of new Set([ctx.dataInfo.prior, ...ctx.dataPlan.left].filter((r) => r && r !== root)))
@@ -1022,14 +1068,24 @@ function planDataMove({ projectRoot, info, engines, memoryProject, launched, ans
 {
     const abs = (rel) => path.join(projectRoot, ...rel.split('/'));
     // A folder holding nothing but its `.gitignore` holds no data (data-root.js reads it the same way).
-    // A link is no data (M5: the project memory folder's 2.0.0 place, linked to its moved folder).
-    const holds = (rel) => { try { return !fs.lstatSync(abs(rel)).isSymbolicLink() && fs.readdirSync(abs(rel)).some((n) => n !== '.gitignore'); } catch { return false; } };
+    // A link is no data (M5: the project memory folder's 2.0.0 place, linked to its moved folder). The sensitive-data
+    // class is one file, which is its data.
+    const holds = (rel, cls) =>
+    {
+        try
+        {
+            const st = fs.lstatSync(abs(rel));
+            if (cls === 'sensitive') return st.isFile();
+            return !st.isSymbolicLink() && fs.readdirSync(abs(rel)).some((n) => n !== '.gitignore');
+        }
+        catch { return false; }
+    };
     const same = (a, b) => a.cls === b.cls && a.from === b.from && a.to === b.to;
     const server = (cls) => (cls === 'serena' ? 'alfred-navigation' : cls === 'memory' ? 'alfred-memory' : cls);
     const inline = (row) =>
     {
         // M2: serena's own check too - on the copy route the session running this installer has its serena open there.
-        const busy = row.cls.startsWith('browser-') ? dataRoot.profileLocks : row.cls === 'memory' ? dataRoot.busyDbs : row.cls === 'serena' ? dataRoot.serenaBusy : () => [];
+        const busy = dataRoot.engineOfServer(row.cls) ? dataRoot.profileLocks : row.cls === 'memory' ? dataRoot.busyDbs : row.cls === 'serena' ? dataRoot.serenaBusy : () => [];
         const held = busy(abs(row.from));
         if (held.length) return { ok: false, why: `held open: ${held.join(', ')}` };
         const r = dataRoot.movePlace({ projectDir: projectRoot, cls: row.cls, from: row.from, to: row.to });
@@ -1040,15 +1096,15 @@ function planDataMove({ projectRoot, info, engines, memoryProject, launched, ans
     };
     const moved = [];
     // A root a recorded move has now emptied (its launcher ran) is pruned by the data-root layer.
-    const left = info.recorded.pending.filter((p) => !holds(p.from)).map((p) => dataRoot.rootOfPlace(p.cls, p.from)).filter(Boolean);
-    let pending = info.recorded.pending.filter((p) => holds(p.from) && p.to === dataRoot.targetOf(p.cls, info.root));
+    const left = info.recorded.pending.filter((p) => !holds(p.from, p.cls)).map((p) => dataRoot.rootOfPlace(p.cls, p.from)).filter(Boolean);
+    let pending = info.recorded.pending.filter((p) => holds(p.from, p.cls) && p.to === dataRoot.targetOf(p.cls, info.root));
     // A target that already holds the data was filled by its launcher's move; what sits at `from` now was
     // written after it, by a reader still on the old place (a second session's server, or Cursor's). The line
     // clears - kept, every later run would wait for a move that already ran and ask for a restart forever -
     // and the leftover is named once here; later runs see it as a plain clash (below).
     pending = pending.filter((p) =>
     {
-        if (!holds(p.to)) return true;
+        if (!holds(p.to, p.cls)) return true;
         log(`  !! data root: ${p.from} still holds data after the move to ${p.to} - remove or merge it`);   // a warning, not a failed step
         return false;
     });
@@ -1063,23 +1119,26 @@ function planDataMove({ projectRoot, info, engines, memoryProject, launched, ans
         return !r.ok;
     });
     const rows = stamped ? dataRoot.dataMovePlan({ projectRoot, root: info.root, prior: info.prior, engines, memory: memoryProject }) : [];
-    const open = rows.filter((r) => !pending.some((p) => same(p, r)));
-    if (answer === 'move')
+    const place = (row) =>
     {
-        for (const row of open)
+        if (row.conflict) { note(`data root: ${row.from} not moved - ${row.to} already holds data; move or remove one of them, then run /alfred-code:update --data-move move`); return; }
+        if (launched(row.cls))
         {
-            if (row.conflict) { note(`data root: ${row.from} not moved - ${row.to} already holds data; move or remove one of them, then run /alfred-code:update --data-move move`); continue; }
-            if (launched(row.cls))
-            {
-                pending.push({ cls: row.cls, from: row.from, to: row.to });
-                log(`data root: ${row.from} -> ${row.to} moves at the ${server(row.cls)} server's next start, once nothing holds it - restart the session`);
-                continue;
-            }
-            const r = inline(row);
-            if (r.ok) { moved.push(row); log(`data root: moved ${row.from} -> ${row.to}${r.said}`); }
-            else { pending.push({ cls: row.cls, from: row.from, to: row.to }); log(`data root: ${row.from} not moved yet (${r.why}) - the next run tries again`); }
+            pending.push({ cls: row.cls, from: row.from, to: row.to });
+            log(`data root: ${row.from} -> ${row.to} moves at the ${server(row.cls)} server's next start, once nothing holds it - restart the session`);
+            return;
         }
-    }
+        const r = inline(row);
+        if (r.ok) { moved.push(row); log(`data root: moved ${row.from} -> ${row.to}${r.said}`); }
+        else { pending.push({ cls: row.cls, from: row.from, to: row.to }); log(`data root: ${row.from} not moved yet (${r.why}) - the next run tries again`); }
+    };
+    // An engine's profile in the root's 2.1.0 shared folder (<root>/browser/<engine>) is the stack's own layout inside the
+    // root, never an offer (the user's ruling of 2026-10-13: no shared browser folder): it moves to <root>/<engine>-control
+    // whatever the data-move answer, and a clash still stops it.
+    const relayout = rows.filter((r) => dataRoot.isRelayout(r, info.root) && !pending.some((p) => same(p, r)));
+    for (const row of relayout) place(row);
+    const open = rows.filter((r) => !dataRoot.isRelayout(r, info.root) && !pending.some((p) => same(p, r)));
+    if (answer === 'move') for (const row of open) place(row);
     else if (open.length && !kept)
     {
         // A clash is no offer: a move would overwrite nothing, so it never runs until one side is cleared.
@@ -1251,16 +1310,13 @@ function retiredKeep(ctx, kind, dir)
     const picked = stampLayer.readPicked(ctx.stampFile) || { agents: [] };
     const names = stackNames(ctx.manifest);
     const bare = (n) => n.replace(/\.md$/, '');
-    // A stamp that records rules already judged every name it lacks (a run since 2.0.0 kept an edited copy as the
-    // user's and dropped it from the record), so only one that records none - pre-2.0.0, or garbled - is claimed.
-    const rulesRecorded = Object.keys(lib.rules || {}).length > 0;
     return (name) =>
     {
         const held = kind === 'hook' ? ctx.ledger && ctx.ledger.files && ctx.ledger.files[`hooks/${name}`] : (lib[`${kind}s`] || {})[bare(name)];
         if (held) return library.hashItem(path.join(dir, name)) === held ? false : 'edited since the stack wrote it, so it is yours - merge what you need, then remove it by hand';
         const claimed = kind === 'skill' ? skillClaim(ctx)(name)
             : kind === 'agent' ? picked.agents.some((e) => e.split('@')[0] === bare(name)) || stackOwnName(names, 'agents', bare(name))
-                : !rulesRecorded && renamedRuleClaim(ctx, dir, bare(name));
+                : renamedRuleClaim(ctx, dir, bare(name), lib.rules || {});
         return claimed ? false : 'the stamp does not record it, so it is yours - remove it by hand if it is the stack\'s';
     };
 }
@@ -1311,14 +1367,26 @@ const ruleClaim = (ctx) => (name) =>
     const ours = ruleOpening(path.join(ctx.source.dir, 'stack', 'rules', `${name}.md`));
     return Boolean(ours) && ruleOpening(path.join(ctx.claudeDir, 'rules', `${name}.md`)) === ours;
 };
-// A retired rule under a stamp that records no rule hash (a 0.2.x or 1.x stamp predates library-rules) is the stack's when it was
-// RENAMED and opens with its successor's first line: the 2.1.x baseline-* copies each open with their alfred-* heading.
-// A retired name with no successor stays the user's - nothing shipped is left to compare it with.
-function renamedRuleClaim(ctx, dir, name)
+// A RENAMED rule's old copy the stamp holds no hash for. Under a stamp that records no rule (a 0.2.x or 1.x stamp predates
+// library-rules, or a garbled line) it is the stack's when it opens with its successor's first line: the baseline-* copies
+// each open with their alfred-* heading. Under one that records rules it is the stack's only when the stamp records its
+// SUCCESSOR and the copy is, byte for byte, a text the stack shipped under the old name (retired-rules.js): a 2.2.0 or
+// 2.2.1 run kept all seven unjudged and recorded the alfred-* names (audit 2026-10-10 C10, 34,059 chars on every
+// message), while a copy an earlier run kept as edited differs from every shipped text and stays. A retired name with no
+// successor stays the user's - nothing shipped is left to compare it with.
+function renamedRuleClaim(ctx, dir, name, recorded)
 {
     const next = ((ctx.manifest.renamed || {}).rules || {})[name];
-    const ours = next && ruleOpening(path.join(ctx.source.dir, 'stack', 'rules', `${next}.md`));
-    return Boolean(ours) && ruleOpening(path.join(dir, `${name}.md`)) === ours;
+    if (!next) return false;
+    const file = path.join(dir, `${name}.md`);
+    if (Object.keys(recorded).length) return Object.hasOwn(recorded, next) && shippedText(name, readText(file));
+    const ours = ruleOpening(path.join(ctx.source.dir, 'stack', 'rules', `${next}.md`));
+    return Boolean(ours) && ruleOpening(file) === ours;
+}
+function readText(file)
+{
+    try { return fs.readFileSync(file, 'utf8'); }
+    catch { return null; }
 }
 function withoutForeign(picked, foreign)
 {
@@ -1440,7 +1508,9 @@ function installPlugins(ctx)
     const listing = plugins.parsePluginList(raw, ctx.projectRoot, { byMarketplace: true });
     const rows = plugins.parsePluginList(raw, ctx.projectRoot, { everyScope: true });
     const blind = !listingRead(raw);
-    if (ctx.routes.mcps) ctx.desktopHeld = new Set(rows.filter((r) => r.marketplace === ctx.market && DESKTOP_OS[r.name]).map((r) => r.name));
+    // Under an old name too (windows-desktop): a rename brings no server into the project, so its notes stay unsaid.
+    const nowName = (n) => mcp.currentMcp(n, ctx.manifest.renamed.mcps);
+    if (ctx.routes.mcps) ctx.desktopHeld = new Set(rows.filter((r) => r.marketplace === ctx.market && NOTED(nowName(r.name))).map((r) => nowName(r.name)));
     const engines = playwrightMoves(ctx, { blind, rows });
     // R107 / R111: what the copy route registers in .mcp.json after this layer must never also load as
     // a plugin. On the full copy route the stack's own rows go off (the core and the locked three) -
@@ -1455,11 +1525,13 @@ function installPlugins(ctx)
     // C11: at user scope on the full copy route an engine's user-scope row is switched off here only, and
     // joins the core's in the stamp's stood-down record.
     // The 2.0.0 rename: on the full copy route an old id is stood down with its successor's name - the
-    // core is off there, so no swap runs (plugins.migrateRenamed); on a plugin route it is swapped below.
-    const legacyEngines = copyRoute ? ctx.legacyMcps.filter((n) => n.startsWith('playwright-')) : [];
-    const legacyLocked = copyRoute ? ctx.legacyMcps.filter((n) => !n.startsWith('playwright-')) : [];
-    // I8: a desktop server the copy route registers loses its plugin row the engine way.
-    const engineOff = !ctx.routes.mcps && !blind ? plugins.engineStandDown({ ...stand, engines: pwEngines(ctx), desktop: desktopKept(ctx), hereOnly: copyRoute, legacy: legacyEngines }).off : [];
+    // core is off there, so no swap runs (plugins.migrateRenamed); on a plugin route it is swapped below. An old
+    // engine or desktop id goes the engine way, an old locked one the core's.
+    const lockedSuccessor = (n) => mcp.isLocked(mcp.currentMcp(n, ctx.manifest.renamed.mcps));
+    const legacyEngines = copyRoute ? ctx.legacyMcps.filter((n) => !lockedSuccessor(n)) : [];
+    const legacyLocked = copyRoute ? ctx.legacyMcps.filter(lockedSuccessor) : [];
+    // I8: a desktop server (and mobile-control) the copy route registers loses its plugin row the engine way.
+    const engineOff = !ctx.routes.mcps && !blind ? plugins.engineStandDown({ ...stand, engines: pwEngines(ctx), desktop: soloKept(ctx), hereOnly: copyRoute, legacy: legacyEngines }).off : [];
     const standDown = () => { if (copyRoute && !blind) ctx.standDown.now = [...engineOff, ...plugins.copyRouteStandDown({ ...stand, locked: [...mcp.LOCKED, ...legacyLocked] })]; };
     let set = plugins.pluginSet({
         routes: ctx.routes, thirdParty: ctx.lists.plugins,
@@ -1473,7 +1545,7 @@ function installPlugins(ctx)
     // new scope from here on.
     const relocated = ctx.leavingLocal && !blind
         ? plugins.moveLocalRows({
-            plugins: set, rows, scope: ctx.cliScope, scopes, engines: pwEngines(ctx).map((e) => `browser-${e}@${ctx.market}`),
+            plugins: set, rows, scope: ctx.cliScope, scopes, engines: pwEngines(ctx).map((e) => `${dataRoot.engineServer(e)}@${ctx.market}`),
             isOn, cli: ctx.cli, log: ctx.log, note: ctx.note,
         })
         : { moved: [], dropped: [] };
@@ -1487,7 +1559,7 @@ function installPlugins(ctx)
     const rescoped = !blind
         ? plugins.moveScoped({
             plugins: set, rows, scope: ctx.cliScope, scopes, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note,
-            engines: [...pwEngines(ctx).map((e) => `browser-${e}@${ctx.market}`), ...desktopKept(ctx).map((n) => `${n}@${ctx.market}`)],
+            engines: [...pwEngines(ctx).map((e) => `${dataRoot.engineServer(e)}@${ctx.market}`), ...soloKept(ctx).map((n) => `${n}@${ctx.market}`)],
         })
         : [];
     for (const row of listing)
@@ -1514,7 +1586,8 @@ function installPlugins(ctx)
     // install would otherwise run both. A
     // listing the run could not read shows no old row: the ids a pre-rename stamp implies are named.
     const renamedMove = plugins.corePluginOn(ctx.routes) && !blind
-        ? plugins.migrateRenamed({ rows, renamed: ctx.manifest.renamed.mcps, set, market: ctx.market, scope: ctx.cliScope, engines, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note })
+        ? plugins.migrateRenamed({ rows, renamed: ctx.manifest.renamed.mcps, set, market: ctx.market, scope: ctx.cliScope, engines, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note,
+            keep: (name) => Boolean(ctx.routes.mcps) && Object.hasOwn(DESKTOP_OS, name) })
         : { fresh: [], gone: [] };
     if (blind && predatesRename(ctx))
         ctx.log(`  !! the plugin listing could not be read, and this install predates the 2.0.0 rename - an old id still installed loads beside its successor; check /plugin, or: ${ctx.legacyMcps.map((n) => `claude plugin uninstall ${n}@${ctx.market} --scope ${ctx.cliScope}`).join('; ')}`);
@@ -1525,12 +1598,15 @@ function installPlugins(ctx)
     const back = copyRoute ? { restored: [], owed: null }
         : plugins.restoreStoodDown({ record: ctx.standDown.prior, plugins: set, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note });
     ctx.standDown.owed = back.owed;
+    // A stack row already at this snapshot's release is not updated again (plugins.atRelease): the source step
+    // updated every stack entry before the snapshot was read (audit 2026-10-11, session 5b9ce9c5).
+    const release = { market: ctx.market, version: releaseVersion(ctx.source.dir) };
     if (ctx.args.action === 'update')
     {
         plugins.prunedRetired({ rows, retired, retiredRows, market: ctx.market, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log, note: ctx.note });
         standDown();
         plugins.updatePlugins({
-            plugins: set, scope: ctx.cliScope, scopes, pinned, marketplaces, before: listing, rows, fresh, restored: back.restored, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
+            plugins: set, scope: ctx.cliScope, scopes, pinned, marketplaces, before: listing, rows, fresh, restored: back.restored, refreshed: ctx.refreshed, engines, release, cli: ctx.cli, log: ctx.log, note: ctx.note,
             after: readListing,
         });
         hudLine();
@@ -1558,12 +1634,12 @@ function installPlugins(ctx)
     }
     standDown();
     plugins.installPlugins({
-        plugins: set, scope: ctx.cliScope, scopes, pinned, marketplaces, before: listing, rows, fresh, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
+        plugins: set, scope: ctx.cliScope, scopes, pinned, marketplaces, before: listing, rows, fresh, refreshed: ctx.refreshed, engines, release, cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
     hudLine();
 }
 
-// The desktop servers' prerequisites (stack/mcp/desktop-launch.js prereqNotes), said ONCE: on the run
+// The desktop servers' and mobile-control's prerequisites (each launcher's prereqNotes), said ONCE: on the run
 // that brings a server into this project - its plugin row, or on the copy route its registration, was not
 // there before - never on every update after it. No claude CLI installs nothing, so nothing is said.
 function desktopNotes(ctx)
@@ -1573,8 +1649,11 @@ function desktopNotes(ctx)
     for (const entry of ctx.lists.mcps)
     {
         const name = String(entry).split('|')[0];
-        if (!DESKTOP_OS[name] || ctx.desktopHeld.has(name)) continue;
-        for (const line of prereqNotes(name, { uvx, exclude: ctx.tokens.WINDOWS_DESKTOP_EXCLUDE })) ctx.log(line);
+        if (!NOTED(name) || ctx.desktopHeld.has(name)) continue;
+        const lines = name === 'mobile-control'
+            ? mobileNotes({ env: ctx.env, projectDir: ctx.projectRoot, route: ctx.routes.mcps ? 'plugin' : 'copy' })
+            : prereqNotes(name, { uvx, exclude: ctx.tokens.WINDOWS_CONTROL_EXCLUDE });
+        for (const line of lines) ctx.log(line);
     }
 }
 
@@ -1585,7 +1664,7 @@ function blindStandDown(ctx, copyRoute)
     const at = plugins.standDownScope(ctx.cliScope);
     const cmds = [
         ...(copyRoute ? [BRAND.core, ...mcp.LOCKED].map((n) => `claude plugin disable ${n}@${ctx.market} --scope ${at}`) : []),
-        ...[...pwEngines(ctx).map((e) => `browser-${e}`), ...desktopKept(ctx)].map((name) => (copyRoute && at !== ctx.cliScope
+        ...[...pwEngines(ctx).map(dataRoot.engineServer), ...soloKept(ctx)].map((name) => (copyRoute && at !== ctx.cliScope
             ? `claude plugin disable ${name}@${ctx.market} --scope ${at}`
             : `claude plugin uninstall ${name}@${ctx.market} --scope ${ctx.cliScope}`)),
     ];
@@ -1617,8 +1696,8 @@ function playwrightMoves(ctx, { blind, rows })
     const none = { specs: [], present: [], presentScope: {}, off: [], on: null, isOn: () => undefined, uninstalled: [] };
     if (!ctx.routes.mcps) return none;
     const kept = pwEngines(ctx);
-    const specOf = (e) => `browser-${e}@${ctx.market}`;
-    // A pre-rename stamp's engines were installed as playwright-<engine>: none of them is a browser-<engine>
+    const specOf = (e) => `${dataRoot.engineServer(e)}@${ctx.market}`;
+    // A pre-rename stamp's engines were installed as playwright-<engine> or browser-<engine>: none of them is an <engine>-control
     // to update in place or to uninstall - the rename swap (plugins.migrateRenamed) owns those rows.
     const prior = ctx.pw.prior.legacy ? [] : (ctx.pw.prior.browsers || []);
     const uninstalled = plugins.uninstallEngines({
@@ -1794,6 +1873,10 @@ function navigationContext(ctx)
 function installMcps(ctx)
 {
     if (!ctx.hasClaude) return;
+    // The servers registered before this run removes anything, read under today's names: a desktop server registered
+    // under its old one (windows-desktop) is no server this run brings in, so desktopNotes stays quiet for it.
+    const registeredBefore = Object.keys(mcp.registrationsAt({ scope: mcp.registrationScope(ctx.routes, ctx.cliScope), mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers)
+        .map((n) => mcp.currentMcp(n, ctx.manifest.renamed.mcps));
     // The admin's MCP config is read-only to this run (mcp.adminMcp): a server it provides is never registered over,
     // removed or denied, and a managed-mcp.json leaves nothing else loading - the stack's plugin servers included.
     ctx.admin = mcp.adminMcp({ env: ctx.env });
@@ -1804,7 +1887,7 @@ function installMcps(ctx)
     // M-F5-1: the names this run currently wants active - the locked three (always) and a playwright
     // engine this project keeps - shared by every registrationOf call below so the `!!` marker lands only
     // where a collision is actionable.
-    const liveMcpNames = new Set([...mcp.LOCKED, ...pwEngines(ctx).map((e) => `browser-${e}`)]);
+    const liveMcpNames = new Set([...mcp.LOCKED, ...pwEngines(ctx).map(dataRoot.engineServer)]);
     // A-M2 / A-M3: a user-scope removal of a stack name, and a retired name's at any scope, takes only a
     // registration of the stack's own shape - another under the name is the user's (a server added back
     // with the add-back line included). An absent one costs no call.
@@ -1860,7 +1943,7 @@ function installMcps(ctx)
     // Whatever still sits ABOVE a plugin this run carries once the prunes are done (read fresh - they
     // changed the files): named, never removed here.
     if (mcp.corePluginOn(ctx.routes))
-        warnShadowed(ctx, ctx.routes.mcps ? [...mcp.LOCKED, ...pwEngines(ctx).map((e) => `browser-${e}`)] : mcp.LOCKED);
+        warnShadowed(ctx, ctx.routes.mcps ? [...mcp.LOCKED, ...pwEngines(ctx).map(dataRoot.engineServer)] : mcp.LOCKED);
 
     if (ctx.routes.mcps)
     {
@@ -1881,7 +1964,7 @@ function installMcps(ctx)
         if (scope === ctx.cliScope && ctx.legacyMcps.includes(name)) continue;
         // S4: at local and user scope an engine this release names goes only as vouchedAt vouches for it; an absent one
         // costs no call. An old name keeps the rule above (its shape is an older release's, judged by its package).
-        const ours = scope !== 'project' && /^browser-/.test(name) ? vouchedAt(ctx, name, scope, false) === 'stack' : mayPrune(name, scope);
+        const ours = scope !== 'project' && dataRoot.engineOfServer(name) ? vouchedAt(ctx, name, scope, false) === 'stack' : mayPrune(name, scope);
         if (ours && ctx.cli(['mcp', 'remove', name, '-s', scope], { quiet: true, expect: MCP_ABSENT })) ctx.log(`  mcp removed: ${name}`);
     }
     // M2 (review 2.1.6): a configure drop of a non-browser server (the engines go with `dropped` above) removes the stack's
@@ -1939,7 +2022,8 @@ function installMcps(ctx)
                 ctx.log(name === 'playwright'
                     ? '  playwright is registered at user scope - if an earlier stack run added it and no other project uses it: claude mcp remove playwright -s user; if you added it yourself, keep it'
                     : `  !! mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`);
-    ctx.desktopHeld = new Set(Object.keys(mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers).filter((n) => DESKTOP_OS[n]));
+    ctx.desktopHeld = new Set([...registeredBefore, ...Object.keys(mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers)]
+        .filter(NOTED));
     // I12: the navigation registration names the stack's serena context, copied first - the registration
     // and the verify pass below both read the token.
     if (live.some((e) => e.split('|')[0] === 'alfred-navigation')) ctx.tokens.SERENA_CONTEXT = navigationContext(ctx);
@@ -2209,7 +2293,7 @@ function installHooksAndRules(ctx)
     // an engine this run enabled that it still lists is named with its file, never left to look on.
     const accountFile = path.join(ctx.configDir, 'settings.json');
     const accountOff = readJson(accountFile).disabledMcpjsonServers;
-    const enabledNow = ctx.routes.mcps ? [] : (ctx.pw.enabled || []).map((e) => `browser-${e}`).filter((n) => ctx.pw.mcpjson.enable.includes(n));
+    const enabledNow = ctx.routes.mcps ? [] : (ctx.pw.enabled || []).map(dataRoot.engineServer).filter((n) => ctx.pw.mcpjson.enable.includes(n));
     for (const name of (Array.isArray(accountOff) ? accountOff : []).filter((n) => enabledNow.includes(n)))
         ctx.log(`browser: ${name} is still rejected by ${accountFile}'s disabledMcpjsonServers - the installer never edits the account file; take it out there to load it`);
 }
@@ -2400,10 +2484,23 @@ function managedFiles(ctx)
     // No ledger to read (an older stamp): an AGENTS.md still byte for byte the seed is the stack's.
     const agentsMd = path.join(ctx.claudeDir, 'AGENTS.md');
     if (!(ctx.ledger && ctx.ledger.files) && !out['AGENTS.md'] && fs.existsSync(agentsMd)
-        && fs.readFileSync(agentsMd, 'utf8') === seeds.agentsMdBody({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir })) put('AGENTS.md', agentsMd);
+        && readOrNull(agentsMd) === seeds.agentsMdBody({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir })) put('AGENTS.md', agentsMd);
+    // A recorded file this run cannot read holds no evidence either way, so its row stands as the last run recorded it -
+    // the settings rule (an unreadable file keeps its rows); hashing it threw and failed the whole run at its last step.
     for (const [rel, h] of Object.entries((ctx.ledger && ctx.ledger.files) || {}))
-        if (!out[rel] && (library.hashItem(ledgerPath(ctx, rel)) === h || (ctx.respelledSeeds && ctx.respelledSeeds.has(rel)))) out[rel] = library.hashItem(ledgerPath(ctx, rel));
+    {
+        if (out[rel]) continue;
+        let now;
+        try { now = library.hashItem(ledgerPath(ctx, rel)); }
+        catch { out[rel] = h; continue; }
+        if (now === h || (ctx.respelledSeeds && ctx.respelledSeeds.has(rel))) out[rel] = now;
+    }
     return out;
+}
+function readOrNull(file)
+{
+    try { return fs.readFileSync(file, 'utf8'); }
+    catch { return null; }
 }
 
 const ledgerPath = (ctx, rel) => (rel.startsWith('skills/') ? path.join(ctx.skillsDir, rel.slice(7)) : path.join(ctx.claudeDir, ...rel.split('/')));
@@ -2634,15 +2731,17 @@ function inProject(projectRoot, p)
     return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel.split(path.sep).join('/') : '';
 }
 
-// Under its pre-rename name too (`playwright-<engine>`, 2.0.0) - an older copy-route install's engines -
-// unless `legacy` is false.
+// Under its pre-rename names too (`browser-<engine>`, 2.0.0; `playwright-<engine>` before) - an older copy-route
+// install's engines - unless `legacy` is false.
 const registeredEngines = (mcpFile, { legacy = true } = {}) => [...new Set(Object.keys(readJson(mcpFile).mcpServers || {})
-    .map((n) => ((legacy ? /^(?:browser|playwright)-(chrome|msedge|firefox|webkit)$/ : /^browser-(chrome|msedge|firefox|webkit)$/).exec(n) || [])[1])
+    .map((n) => dataRoot.engineOfServer(n) || (legacy ? (/^(?:browser|playwright)-(chrome|msedge|firefox|webkit)$/.exec(n) || [])[1] : undefined))
     .filter(Boolean))];
 
-const pwEngines = (ctx) => ctx.lists.mcps.filter((e) => e.startsWith('browser-')).map((e) => e.split('|')[0].slice('browser-'.length));
-// The desktop servers this run keeps - the OS gate has already left out one this machine cannot run.
-const desktopKept = (ctx) => ctx.lists.mcps.map((e) => String(e).split('|')[0]).filter((name) => Object.hasOwn(DESKTOP_OS, name));
+const pwEngines = (ctx) => ctx.lists.mcps.map((e) => dataRoot.engineOfServer(String(e).split('|')[0])).filter(Boolean);
+// The optional one-plugin servers this run keeps beside the engines - the desktop servers (the OS gate has already left
+// out one this machine cannot run) and mobile-control. Each goes the engine way on the copy route (engineStandDown) and
+// moves to the scope the user gave it (moveScoped).
+const soloKept = (ctx) => ctx.lists.mcps.map((e) => String(e).split('|')[0]).filter(NOTED);
 
 const pinFiles = (ctx) => pinsLayer.pinFiles({
     projectRoot: ctx.projectRoot, skillsDir: ctx.skillsDir,
@@ -2670,6 +2769,7 @@ const npxInstall = (ctx, engine) => ctx.rt.capture('npx', ['-y', '-p', `@playwri
 
 if (require.main === module)
 {
+    require('../../stack/hooks/hook-prelude.js').blockingStdio();
     process.exitCode = main(process.argv.slice(2), process.env, {
         out: (s) => process.stdout.write(s),
         err: (s) => process.stderr.write(s),

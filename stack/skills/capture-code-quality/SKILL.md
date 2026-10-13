@@ -15,7 +15,7 @@ You are the judgment seat for this run: you gather the project's quality rules, 
 
 **No first-run/update split, no zero-drift shortcut.** Every run reads fresh and writes fresh - a changed rule, an accepted decision or a shipped fix changes the answer even when the code did not.
 
-**Model check, at run start rather than after.** The judgment is the expensive kind, and this skill carries NO `model` pin, deliberately: a skill-level pin lasts only for the turn it activates in, so set the session itself to Opus with `/model` before a run. When this session is not on Opus, say so in the first thing the user sees (inside the mode ask where one fires, otherwise the opening line); the REPORT step's `Model:` line closes the loop.
+**Model: the session's.** The judgment runs on the model the session is on; ask for no switch - a measured capture A/B found Sonnet at xhigh matching Opus at the same cost. No `model` pin either - a skill-level pin lasts only for the turn it activates in. The REPORT step's `Model:` line names the model the judgment ran on.
 
 ## When to use
 
@@ -81,7 +81,7 @@ Confirm the file written (created vs refreshed), then lean: gather rounds used a
 | `Findings gate:` | candidates considered, passed, routed to Worth knowing, folded into an existing entry, handed off, and rejected (naming the question each rejected one failed) |
 | `Write:` | created / refreshed, and the post-write line count against the ~300 target |
 | `Run gate:` | the answer verbatim, or `invoked by the quality loop` |
-| `Model:` | what the session is on NOW and the exact `/model` command for the USER to paste - `raised for this run - run /model <prior model> to drop back`, `already on Opus before this run started - nothing to reset` (only when you can point at the message that proves it), or `not on Opus - the judgment above ran on <model>` |
+| `Model:` | the model the judgment ran on, and the exact `/model` command for the USER to paste when the run raised it - `<model> - the judgment above ran on it`, or `raised for this run - run /model <prior model> to drop back` (only when a message in this session shows the user switched for this run) |
 
 No re-paste of the doc body - point to the file.
 

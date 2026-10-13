@@ -13,7 +13,9 @@ you loaded, or say it was already in context - the receipt is what makes the loa
      so a sentence saying so here could never reach the run it describes - guard-read-whole-file.js
      names this rule on the first shell write instead (audit M67). The description cap and its lint
      check live in the skill this rule loads and in this repo's CLAUDE.md, never in a rule every
-     consuming project installs (audit M65). -->
+     consuming project installs (audit M65). A flow skill READING its own reference attaches this rule
+     too (usage audit 2026-10-10: one attach, ~48k cache read over 84 messages) - accepted: a glob cannot
+     negate, and narrowing to SKILL.md would drop the reference files this rule exists to cover. -->
 
 Where the markdown rule attached on the same touch, its skill loads in that SAME first action, on
 top of this one - one first action, not two competing ones. Skip one-line tweaks.

@@ -129,7 +129,7 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
 // family that fans a catalog row out into several plugins.
 const HOOKS_HOME = BRAND.core;
 const catalogServer = (name) => String(name)
-    .replace(/^browser-(chrome|msedge|firefox|webkit)$/, 'browser');
+    .replace(/^(?:browser-(?:chrome|msedge|firefox|webkit)|(?:chrome|msedge|firefox|webkit)-control)$/, 'browser');
 
 // THE INVERSE, for a run that asks nothing (`update --installed-only`): the selection lines the
 // project carries NOW on each plugin route. On those routes `.claude/` holds only the copies, so the
@@ -500,6 +500,7 @@ function main(argv)
 
 if (require.main === module)
 {
+    require('../stack/hooks/hook-prelude.js').blockingStdio();
     try { process.exit(main(process.argv.slice(2))); }
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }

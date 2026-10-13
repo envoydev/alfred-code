@@ -82,17 +82,19 @@ The memory levels and stores, where the docs root and the data root live, and th
   when its new vector is still not unit length. `memory.js duplicates` reports same-content pairs and
   deletes nothing.
 
-- **Three memory stores and one record, don't conflate:** the `memory` MCP is the SHARED memory - preferences,
+- **Two memory stores and one record, don't conflate:** the `memory` MCP is the SHARED memory - preferences,
   corrections, project facts and agent lessons, searchable by meaning, one database per chosen
-  level (global/scoped/project) read by every Claude account and Cursor at that level; the navigation server's
-  per-project memory (`<data root>/serena/memories/`) is the EPHEMERAL handoff bus between agents within one
-  feature, never a place for what should outlast it; Claude's own built-in memory (`MEMORY.md` +
+  level (global/scoped/project) read by every Claude account and Cursor at that level - and, since the user's
+  2026-10-13 ruling ('Serena is just for navigation, for memory it's only alfred memory'), the EPHEMERAL handoff bus
+  between agents within one feature too: rows tagged `handoff`, read by exact tags, purged at the run's close, never
+  re-sent by the session-start push (`memory.js` `isHandoff`), and never a place for what should outlast the run. The
+  navigation server's six memory tools are off in `navigation-context.yml`; Claude's own built-in memory (`MEMORY.md` +
   `memory/*.md`) is SWITCHED OFF (`autoMemoryEnabled: false`) by the install when the project has no
   notes, else by `/alfred-code:init` after a one-time import of its existing notes into the `memory` MCP - it has no search and is not shared
   with Cursor, which is why the MCP replaces it rather than sitting beside it. Which repos are
-  related lives in the generated `.claude/rules/alfred-project-related-context.md` (the
+  related lives in the generated `.claude/rules/alfred-related-context.md` (the
   `/capture-related-projects` skill), not memory. The session HISTORY (`<docs-path>/history/`,
-  `history-session.js`) is the fourth, machine-local and never shared: what each session did and what
+  `history-session.js`) is the third, machine-local and never shared: what each session did and what
   the user ruled, script-written, read back at the next start on the same branch - a record, not memory.
 - **The docs root lives outside `.claude/`** (2.0.0, the user's decision of 2026-09-26). Claude Code
   protects `.claude/` (only `.claude/worktrees` is exempt): a write there is prompted in default and
@@ -114,7 +116,7 @@ The memory levels and stores, where the docs root and the data root live, and th
   move below: `update-preflight.js` names it in its `data-move: offer` line, update asks move (recommended)
   or keep, and the answer is `--data-move move|keep`. Move: one step, `git mv` for tracked files (history kept, staged as
   renames), a rename for the rest, every file put back on any failure, the key re-pointed and the rule
-  re-stamped - with every generated pointer rule (`alfred-project-*`, `project-code-style`) that names the
+  re-stamped - with every generated pointer rule (`selection.js` GENERATED_RULES, `project-code-style`) that names the
   old root, which a capture baked in literally (`selection.respellDocsRoot`, M11) - a restart named. Keep: the key becomes the user's own value, out of the ledger; a 2.1 keep writes `data-move: kept` and no
   update offers again, while a 2.0.0 keep (no such line) is offered once more, marked `yours=yes` - never answered by
   an unattended run (2.1.7, the user's ruling of 2026-10-06: all of the stack's data belongs under the data root). No answer: nothing moves, and an absent key is written back as the old root so
@@ -127,7 +129,11 @@ The memory levels and stores, where the docs root and the data root live, and th
 - **One data root for the project's data** (2.1.0, the user's decision of 2026-09-29): `ALFRED_CODE_DATA_PATH`,
   default `.alfred` at the project root - relative, never under `.claude/`, no space, no `..` (`data-root.js
   checkDataPath`) - holds the docs (`<root>/docs`), serena's folder and home (`<root>/serena`), the browser
-  profiles (`<root>/browser/<engine>`) and a project-level memory database (`<root>/.alfred-memory`).
+  profiles (`<root>/<engine>-control`), a project-level memory database (`<root>/.alfred-memory`) and the project's
+  sensitive data (`<root>/.sensitive-data`, a dotenv the user fills by hand - 2026-10-13; the secret guard keeps its
+  values out of the chat, `withSensitive` hands them to every launcher's server where the shell and a settings file
+  set nothing, and a root change moves it inline on every route, into a root whose `.gitignore` is written first;
+  `Read(.sensitive-data)` is in the shipped deny, a bare name matching at any depth per code.claude.com/docs/en/permissions).
   `stack/mcp/data-root.js` is the one home of every place, read by the three launchers, the installer, init's
   plan and the preflight. The docs root is written as `<root>/docs` unless the user set their own (a value the
   ledger does not record is never moved). `<root>/.gitignore` is `/*` plus `!/.gitignore` and `!/docs/`
@@ -163,11 +169,18 @@ The memory levels and stores, where the docs root and the data root live, and th
   style lives in `<docs-path>/code-style/CODE-STYLE.md` + the path-scoped `project-code-style.md` rule
   (owned by `capture-code-style`). The run book lives in
   `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` (owned by
-  `capture-project-capabilities`, repo facts first, the user's answers for the gaps): a
+  `capture-project-awareness`, repo facts first, the user's answers for the gaps): a
   credential appears there only as WHERE it lives - an env var, a vault item, or a key in the
-  `credentials.local.env` template the capture writes empty and gitignores in its own folder - never
-  as a value. The findings (`quality/ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the
+  project's `<data root>/.sensitive-data` (the capture writes its keys empty only when the file is absent) - never
+  as a value. The capture's own `credentials.local.env` before 2026-10-13 is moved into that store by every install
+  run (`data-root.js adoptCredentials`, the user's call: one credential home, by update) - the values read and written
+  by the installer, never printed, the run book's line re-pointed; a key the store holds with another value, a store
+  git would commit (`git check-ignore`) or one that is not a file moves nothing and is said every run until fixed. The findings (`quality/ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the
   two `*-quality` captures) are the opposite of durable - recomputed fresh every run, so
-  `quality/` carries no `watch.json` and is no docs domain. Navigation-server memory (`<feature>/<contract_version>/<seat>`, each `/` a
-  folder serena's `list_memories` `topic` filters by - 2.1.6; never the `memory` MCP) is the EPHEMERAL inter-seat bus; anything that must survive a fresh clone
+  `quality/` carries no `watch.json` and is no docs domain. A doc an older capture left at a former home moves on
+  update (`docs.migrateDocsDomains`, absent-only: `PROJECT-CODE-STYLE.md`, `architecture/ASSESSMENT.md`, and the
+  orientation doc from `related-context/` or loose at the root, its pre-folder home), and each generated rule naming
+  the old path is re-pointed whenever the doc sits only at its new home - the project's own AGENTS.md / CLAUDE.md is
+  named, never rewritten (2026-10-10: a moved doc would leave the always-on pointer dangling). The seat handoff note (`<feature>/<contract_version>/<seat>`, an `alfred-memory`
+  row tagged `note:<name>` and `handoff:<feature>/<contract_version>`) is the EPHEMERAL inter-seat bus; anything that must survive a fresh clone
   belongs in the committed docs.

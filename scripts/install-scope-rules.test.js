@@ -99,16 +99,16 @@ test('rule 5: the full copy route switches a broader core off for this project a
 
 test('rule 5: on the full copy route an engine\'s broader row is switched off here; on the MCP copy route its command is named', () =>
 {
-    const rows = [row('browser-chrome', 'user')];
+    const rows = [row('chrome-control', 'user')];
     const full = cli();
     const r1 = P.engineStandDown({ rows, scope: 'local', engines: ['chrome'], hereOnly: true, isOn: () => undefined, cli: full });
-    assert.deepStrictEqual(full.calls, ['plugin disable browser-chrome@envoydev --scope local']);
-    assert.deepStrictEqual(r1.off, [{ scope: 'local', spec: 'browser-chrome@envoydev' }]);
+    assert.deepStrictEqual(full.calls, ['plugin disable chrome-control@envoydev --scope local']);
+    assert.deepStrictEqual(r1.off, [{ scope: 'local', spec: 'chrome-control@envoydev' }]);
     const part = cli();
     const log = [];
     P.engineStandDown({ rows, scope: 'project', engines: ['chrome'], isOn: () => undefined, cli: part, log: (l) => log.push(l) });
     assert.deepStrictEqual(part.calls, [], 'nothing switched at another scope off the full copy route');
-    assert.match(log.join('\n'), /claude plugin disable browser-chrome@envoydev --scope project/);
+    assert.match(log.join('\n'), /claude plugin disable chrome-control@envoydev --scope project/);
 });
 
 // --- rule 4 and 8: every scope updated, managed update-only -----------------------------
@@ -161,7 +161,7 @@ test('rule 8: no prune, rename, move or uninstall touches a managed row - each i
     const log = [];
     const run = cli();
     P.prunedRetired({ rows: [row('old-x', 'managed')], retired: ['old-x'], scope: 'project', cli: run, log: (l) => log.push(l) });
-    P.uninstallEngines({ specs: ['browser-chrome@envoydev'], rows: [row('browser-chrome', 'managed')], scope: 'project', cli: run, log: (l) => log.push(l) });
+    P.uninstallEngines({ specs: ['chrome-control@envoydev'], rows: [row('chrome-control', 'managed')], scope: 'project', cli: run, log: (l) => log.push(l) });
     const moved = P.moveScoped({ plugins: ['claude-hud@claude-hud'], rows: [row('claude-hud', 'managed', { marketplace: 'claude-hud' })], scope: 'project', scopes: { 'claude-hud': 'user' }, cli: run });
     P.migrateRenamed({ rows: [row('navigation', 'managed')], renamed: { navigation: 'alfred-navigation' }, set: ['alfred-navigation@envoydev'], scope: 'project', cli: run, log: (l) => log.push(l) });
     assert.deepStrictEqual(run.calls, [], run.calls.join('\n'));
@@ -174,12 +174,12 @@ test('rule 8: no prune, rename, move or uninstall touches a managed row - each i
 test('rule 4: an engine installed at two scopes is updated at both, and switched only where this project loads it', () =>
 {
     const run = cli();
-    const rows = [row('browser-chrome', 'user'), row('browser-chrome', 'project')];
+    const rows = [row('chrome-control', 'user'), row('chrome-control', 'project')];
     const before = P.parsePluginList(JSON.stringify(rows.map((r) => ({ ...r, id: `${r.name}@envoydev`, projectPath: r.scope === 'user' ? undefined : process.cwd() }))), process.cwd(), { byMarketplace: true });
-    const engines = { specs: ['browser-chrome@envoydev'], present: [], presentScope: {}, off: [], on: [], isOn: () => true };
-    P.updatePlugins({ plugins: ['browser-chrome@envoydev'], scope: 'project', before, rows, engines, cli: run, after: [] });
+    const engines = { specs: ['chrome-control@envoydev'], present: [], presentScope: {}, off: [], on: [], isOn: () => true };
+    P.updatePlugins({ plugins: ['chrome-control@envoydev'], scope: 'project', before, rows, engines, cli: run, after: [] });
     assert.deepStrictEqual(run.matching(/^plugin update /).map((c) => /--scope (\w+)/.exec(c)[1]), ['project', 'user']);
-    assert.deepStrictEqual(run.matching(/^plugin (enable|disable) /), ['plugin disable browser-chrome@envoydev --scope project']);
+    assert.deepStrictEqual(run.matching(/^plugin (enable|disable) /), ['plugin disable chrome-control@envoydev --scope project']);
 });
 
 // --- rule 3: one scope's row -------------------------------------------------------------
@@ -188,8 +188,8 @@ test('rule 3: an engine dropped at project scope leaves its user and local rows'
 {
     const run = cli();
     const log = [];
-    P.uninstallEngines({ specs: ['browser-chrome@envoydev'], rows: [row('browser-chrome', 'user'), row('browser-chrome', 'project'), row('browser-chrome', 'local')], scope: 'project', cli: run, log: (l) => log.push(l) });
-    assert.deepStrictEqual(run.calls, ['plugin uninstall browser-chrome@envoydev --scope project -y']);
+    P.uninstallEngines({ specs: ['chrome-control@envoydev'], rows: [row('chrome-control', 'user'), row('chrome-control', 'project'), row('chrome-control', 'local')], scope: 'project', cli: run, log: (l) => log.push(l) });
+    assert.deepStrictEqual(run.calls, ['plugin uninstall chrome-control@envoydev --scope project -y']);
     assert.strictEqual(log.filter((l) => /kept for the projects that use it/.test(l)).length, 2, log.join('\n'));
 });
 
@@ -198,8 +198,8 @@ test('rule 3: an engine dropped at project scope leaves its user and local rows'
 test('scopes: the read-back names local and managed items as such, and an item at several reads its narrowest', () =>
 {
     const at = (name, scope) => ({ name, version: '1', scope });
-    assert.deepStrictEqual(itemScopes([at('claude-hud', 'user'), at('typescript-lsp', 'local'), at('csharp-lsp', 'managed'), at('browser-chrome', 'project')]),
-        { 'claude-hud': 'global', 'typescript-lsp': 'local', 'csharp-lsp': 'managed', 'browser-chrome': 'project' });
+    assert.deepStrictEqual(itemScopes([at('claude-hud', 'user'), at('typescript-lsp', 'local'), at('csharp-lsp', 'managed'), at('chrome-control', 'project')]),
+        { 'claude-hud': 'global', 'typescript-lsp': 'local', 'csharp-lsp': 'managed', 'chrome-control': 'project' });
     assert.deepStrictEqual(itemScopes([at('claude-hud', 'user'), at('claude-hud', 'local'), at('claude-hud', 'project')]), { 'claude-hud': 'local' });
     assert.deepStrictEqual(itemScopes([at('claude-hud', 'managed'), at('claude-hud', 'user')]), { 'claude-hud': 'global' });
     assert.strictEqual(P.itemScope('claude-hud@claude-hud', 'project', { 'claude-hud': 'local' }), 'local');
@@ -262,17 +262,17 @@ test('rule 5 (MCP): the deny entry is written once, lifted only in its own shape
     {
         const log = [];
         // Missing file: made.
-        assert.deepStrictEqual(settings.applyMcpDeny({ file, add: ['macos-desktop'], log: (l) => log.push(l) }), { added: ['macos-desktop'], lifted: [] });
-        assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).deniedMcpServers, [{ serverName: 'macos-desktop' }]);
+        assert.deepStrictEqual(settings.applyMcpDeny({ file, add: ['macos-control'], log: (l) => log.push(l) }), { added: ['macos-control'], lifted: [] });
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).deniedMcpServers, [{ serverName: 'macos-control' }]);
         // Re-run: nothing written.
         const mtime = fs.statSync(file).mtimeMs;
-        settings.applyMcpDeny({ file, add: ['macos-desktop'] });
+        settings.applyMcpDeny({ file, add: ['macos-control'] });
         assert.strictEqual(fs.statSync(file).mtimeMs, mtime);
         // The user's own rows stay, and keep their order; a lift takes only the bare serverName row.
-        fs.writeFileSync(file, JSON.stringify({ permissions: { deny: ['Read(.env)'] }, deniedMcpServers: [{ serverUrl: 'https://bad/*' }, { serverName: 'macos-desktop' }, { serverName: 'macos-desktop', note: 'mine' }] }));
-        assert.deepStrictEqual(settings.applyMcpDeny({ file, lift: ['macos-desktop'] }), { added: [], lifted: ['macos-desktop'] });
+        fs.writeFileSync(file, JSON.stringify({ permissions: { deny: ['Read(.env)'] }, deniedMcpServers: [{ serverUrl: 'https://bad/*' }, { serverName: 'macos-control' }, { serverName: 'macos-control', note: 'mine' }] }));
+        assert.deepStrictEqual(settings.applyMcpDeny({ file, lift: ['macos-control'] }), { added: [], lifted: ['macos-control'] });
         const after = JSON.parse(fs.readFileSync(file, 'utf8'));
-        assert.deepStrictEqual(after.deniedMcpServers, [{ serverUrl: 'https://bad/*' }, { serverName: 'macos-desktop', note: 'mine' }]);
+        assert.deepStrictEqual(after.deniedMcpServers, [{ serverUrl: 'https://bad/*' }, { serverName: 'macos-control', note: 'mine' }]);
         assert.deepStrictEqual(after.permissions, { deny: ['Read(.env)'] });
         // A list emptied by the lift goes.
         fs.writeFileSync(file, JSON.stringify({ deniedMcpServers: [{ serverName: 'x' }] }));
@@ -297,11 +297,11 @@ test('rule 5 (MCP): the stamp\'s mcp-denied line round-trips, and a hand-edited 
     try
     {
         const file = path.join(dir, 'alfred-code.stamp');
-        fs.writeFileSync(file, 'version: 2.2.2\nmcp-denied: project:macos-desktop, local:browser-chrome, user:x, managed:y, project:../evil\n');
-        assert.deepStrictEqual(stamp.readMcpDenied(file), [{ scope: 'project', name: 'macos-desktop' }, { scope: 'local', name: 'browser-chrome' }]);
+        fs.writeFileSync(file, 'version: 2.2.2\nmcp-denied: project:macos-control, local:chrome-control, user:x, managed:y, project:../evil\n');
+        assert.deepStrictEqual(stamp.readMcpDenied(file), [{ scope: 'project', name: 'macos-control' }, { scope: 'local', name: 'chrome-control' }]);
         assert.deepStrictEqual(stamp.readMcpDenied(path.join(dir, 'none')), []);
         const base = { sha: 'abc', hooks: [], alwaysRules: [], alwaysMcps: [] };
-        assert.match(stamp.renderStamp({ ...base, mcpDenied: [{ scope: 'project', name: 'macos-desktop' }] }), /^mcp-denied: project:macos-desktop$/m);
+        assert.match(stamp.renderStamp({ ...base, mcpDenied: [{ scope: 'project', name: 'macos-control' }] }), /^mcp-denied: project:macos-control$/m);
         assert.doesNotMatch(stamp.renderStamp(base), /mcp-denied/);
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -348,41 +348,41 @@ test('seed install: a core the admin installed alone is updated at managed scope
 
 test('seed update --installed-only --drop: an entry enabled at USER scope is switched off for this project alone, and the next update keeps it off', POSIX_ONLY, () =>
 {
-    const desktop = { id: 'macos-desktop@envoydev', version: '2.2.2', scope: 'user', enabled: true };
+    const desktop = { id: 'macos-control@envoydev', version: '2.2.2', scope: 'user', enabled: true };
     const listing = coreRows('project', [desktop]);
     const env = { ALFRED_CODE_PLATFORM: 'darwin' };
-    const sel = 'rule markdown-docs\nskill desktop-automation\nmcp macos-desktop\n';
+    const sel = 'rule markdown-docs\nskill desktop-automation\nmcp macos-control\n';
     const { calls, outs, steps } = seedRun(['update', 'update'], sel, {
         plugins: listing, env, prepare: installed,
-        args: [['--installed-only', '--scope', 'project', '--drop', 'mcp macos-desktop'], ['--installed-only', '--scope', 'project']],
+        args: [['--installed-only', '--scope', 'project', '--drop', 'mcp macos-control'], ['--installed-only', '--scope', 'project']],
         // The CLI writes the override the first run asked for; the stub records calls only, so it is written here.
         each: (repo, i) =>
         {
             const file = path.join(repo, '.claude', 'settings.json');
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-            if (i === 0) { (data.enabledPlugins ||= {})['macos-desktop@envoydev'] = false; fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
+            if (i === 0) { (data.enabledPlugins ||= {})['macos-control@envoydev'] = false; fs.writeFileSync(file, JSON.stringify(data, null, 2)); }
             return fs.readFileSync(path.join(repo, '..', 'claude-calls.log'), 'utf8').split('\n').filter(Boolean).length;
         },
     });
     const first = calls.slice(0, steps[0]);
     const second = calls.slice(steps[0]);
-    assert.ok(first.includes('plugin disable macos-desktop@envoydev --scope project'), `${outs[0]}\n${first.join('\n')}`);
-    assert.ok(!first.some((c) => /macos-desktop@envoydev --scope user/.test(c) && !/^plugin update /.test(c)), 'the user row is never disabled or removed');
-    assert.match(outs[0], /plugin disabled \[project\]: macos-desktop@envoydev \(nothing kept needs it after --drop - this project only, the user-scope install stays on for every other project\)/);
-    assert.ok(!second.some((c) => /^plugin (install|enable) macos-desktop@/.test(c)), `the next update brought it back:\n${second.join('\n')}`);
+    assert.ok(first.includes('plugin disable macos-control@envoydev --scope project'), `${outs[0]}\n${first.join('\n')}`);
+    assert.ok(!first.some((c) => /macos-control@envoydev --scope user/.test(c) && !/^plugin update /.test(c)), 'the user row is never disabled or removed');
+    assert.match(outs[0], /plugin disabled \[project\]: macos-control@envoydev \(nothing kept needs it after --drop - this project only, the user-scope install stays on for every other project\)/);
+    assert.ok(!second.some((c) => /^plugin (install|enable) macos-control@/.test(c)), `the next update brought it back:\n${second.join('\n')}`);
 });
 
 test('seed update --installed-only --drop: a row NARROWER than the run (local under a project run) and a managed row are named, never switched', POSIX_ONLY, () =>
 {
     for (const scope of ['local', 'managed'])
     {
-        const listing = coreRows('project', [{ id: 'macos-desktop@envoydev', version: '2.2.2', scope, enabled: true }]);
-        const { calls, out } = seedRun('update', 'rule markdown-docs\nskill desktop-automation\nmcp macos-desktop\n', {
+        const listing = coreRows('project', [{ id: 'macos-control@envoydev', version: '2.2.2', scope, enabled: true }]);
+        const { calls, out } = seedRun('update', 'rule markdown-docs\nskill desktop-automation\nmcp macos-control\n', {
             plugins: listing, env: { ALFRED_CODE_PLATFORM: 'darwin' }, prepare: installed,
-            args: ['--installed-only', '--scope', 'project', '--drop', 'mcp macos-desktop'],
+            args: ['--installed-only', '--scope', 'project', '--drop', 'mcp macos-control'],
         });
-        assert.ok(!calls.some((c) => /^plugin (disable|uninstall) macos-desktop@/.test(c)), `${scope}:\n${calls.join('\n')}`);
-        assert.match(out, scope === 'managed' ? /macos-desktop@envoydev is installed at managed scope - your organization's managed settings own it/ : /macos-desktop@envoydev is enabled at local scope, narrower than this run's project/, out);
+        assert.ok(!calls.some((c) => /^plugin (disable|uninstall) macos-control@/.test(c)), `${scope}:\n${calls.join('\n')}`);
+        assert.match(out, scope === 'managed' ? /macos-control@envoydev is installed at managed scope - your organization's managed settings own it/ : /macos-control@envoydev is enabled at local scope, narrower than this run's project/, out);
     }
 });
 
@@ -391,12 +391,12 @@ test('seed install (MCP): a managed-mcp.json is said loud, and a server the mana
     const managed = tmp();
     try
     {
-        fs.writeFileSync(path.join(managed, 'managed-settings.json'), JSON.stringify({ managedMcpServers: { 'macos-desktop': { type: 'http', url: 'https://desk' } } }));
+        fs.writeFileSync(path.join(managed, 'managed-settings.json'), JSON.stringify({ managedMcpServers: { 'macos-control': { type: 'http', url: 'https://desk' } } }));
         const env = { ALFRED_CODE_MANAGED_DIR: managed, ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_PLATFORM: 'darwin' };
-        const sel = 'rule markdown-docs\nskill desktop-automation\nmcp macos-desktop\n';
+        const sel = 'rule markdown-docs\nskill desktop-automation\nmcp macos-control\n';
         const a = seedRun('install', sel, { env, account: true });
-        assert.ok(!a.calls.some((c) => /^mcp (add|remove) .*macos-desktop/.test(c)), a.calls.join('\n'));
-        assert.match(a.out, /mcp macos-desktop: provided by your organization's managed MCP config - not registered here/);
+        assert.ok(!a.calls.some((c) => /^mcp (add|remove) .*macos-control/.test(c)), a.calls.join('\n'));
+        assert.match(a.out, /mcp macos-control: provided by your organization's managed MCP config - not registered here/);
         assert.doesNotMatch(a.out, /managed-mcp\.json is deployed/);
         fs.writeFileSync(path.join(managed, 'managed-mcp.json'), JSON.stringify({ mcpServers: { github: {} } }));
         for (const route of [env, { ALFRED_CODE_MANAGED_DIR: managed }])
@@ -412,14 +412,14 @@ test('seed install (MCP): a managed-mcp.json is said loud, and a server the mana
 // The MCP copy route with the core on registers at the run's own scope, so a user-scope run leaves a user-scope
 // registration in the account file - the BROADER registration a later project-scope install sits under.
 const MCP_COPY = { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_PLATFORM: 'darwin' };
-const DESK = 'rule markdown-docs\nskill desktop-automation\nmcp macos-desktop\n';
+const DESK = 'rule markdown-docs\nskill desktop-automation\nmcp macos-control\n';
 const deskState = (repo) =>
 {
     const read = (p) => { try { return fs.readFileSync(path.join(repo, p), 'utf8'); } catch { return ''; } };
     const json = (p) => { try { return JSON.parse(read(p)); } catch { return {}; } };
     return {
-        user: (json('../acct/.claude.json').mcpServers || {})['macos-desktop'] || null,
-        mcpjson: (json('.mcp.json').mcpServers || {})['macos-desktop'] || null,
+        user: (json('../acct/.claude.json').mcpServers || {})['macos-control'] || null,
+        mcpjson: (json('.mcp.json').mcpServers || {})['macos-control'] || null,
         denied: json('.claude/settings.json').deniedMcpServers || null,
         line: (/^mcp-denied: (.*)$/m.exec(read('.claude/alfred-code.stamp')) || [])[1] || '',
     };
@@ -430,21 +430,21 @@ test('seed (MCP copy route): a configure drop under a user-scope registration de
     const project = ['--installed-only', '--scope', 'project'];
     const { steps, outs } = seedRun(['install', 'install', 'update', 'update', 'update'], DESK, {
         env: MCP_COPY, account: true, plugins: coreRows('project'),
-        args: [['--scope', 'user'], ['--scope', 'project'], [...project, '--drop', 'mcp macos-desktop'], [...project, '--add', 'mcp macos-desktop'], project],
+        args: [['--scope', 'user'], ['--scope', 'project'], [...project, '--drop', 'mcp macos-control'], [...project, '--add', 'mcp macos-control'], project],
         each: deskState,
     });
     assert.ok(steps[0].user, `the user-scope run registered it at user scope:\n${outs[0]}`);
     assert.ok(steps[1].mcpjson, `the project-scope run registered it in .mcp.json:\n${outs[1]}`);
     // The drop: gone from this project's .mcp.json, denied here, the user-scope registration untouched.
     assert.strictEqual(steps[2].mcpjson, null, outs[2]);
-    assert.deepStrictEqual(steps[2].denied, [{ serverName: 'macos-desktop' }], outs[2]);
-    assert.strictEqual(steps[2].line, 'project:macos-desktop');
+    assert.deepStrictEqual(steps[2].denied, [{ serverName: 'macos-control' }], outs[2]);
+    assert.strictEqual(steps[2].line, 'project:macos-control');
     assert.deepStrictEqual(steps[2].user, steps[0].user, 'the broader registration stays for every other project');
     // Picked again: the deny is lifted, the record gone.
     assert.strictEqual(steps[3].denied, null, outs[3]);
     assert.strictEqual(steps[3].line, '');
     assert.ok(steps[3].mcpjson, outs[3]);
-    assert.match(outs[3], /settings\.json: deniedMcpServers - macos-desktop \(picked again\)/);
+    assert.match(outs[3], /settings\.json: deniedMcpServers - macos-control \(picked again\)/);
     // A plain re-run writes no deny and lifts nothing.
     assert.strictEqual(steps[4].denied, null);
     assert.doesNotMatch(outs[4], /deniedMcpServers/);
@@ -455,19 +455,19 @@ test('seed (MCP copy route): a drop with NO broader registration writes no deny;
     const project = ['--installed-only', '--scope', 'project'];
     const a = seedRun(['install', 'update'], DESK, {
         env: MCP_COPY, account: true, plugins: coreRows('project'),
-        args: [['--scope', 'project'], [...project, '--drop', 'mcp macos-desktop']], each: deskState,
+        args: [['--scope', 'project'], [...project, '--drop', 'mcp macos-control']], each: deskState,
     });
     assert.strictEqual(a.steps[1].denied, null, a.outs[1]);
     assert.strictEqual(a.steps[1].line, '');
     const local = ['--installed-only', '--scope', 'local'];
     const b = seedRun(['install', 'install', 'update'], DESK, {
         env: MCP_COPY, account: true, plugins: coreRows('local'),
-        args: [['--scope', 'user'], ['--scope', 'local'], [...local, '--drop', 'mcp macos-desktop']],
+        args: [['--scope', 'user'], ['--scope', 'local'], [...local, '--drop', 'mcp macos-control']],
         inspect: (repo) => ({ ...deskState(repo), localDenied: (() => { try { return JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')).deniedMcpServers; } catch { return null; } })() }),
     });
-    assert.deepStrictEqual(b.result.localDenied, [{ serverName: 'macos-desktop' }], b.outs[2]);
+    assert.deepStrictEqual(b.result.localDenied, [{ serverName: 'macos-control' }], b.outs[2]);
     assert.strictEqual(b.result.denied, null, 'the shared settings.json is not touched by a local run');
-    assert.strictEqual(b.result.line, 'local:macos-desktop');
+    assert.strictEqual(b.result.line, 'local:macos-control');
 });
 
 test('seed uninstall: the deny entries the stack wrote are lifted, a row of the user\'s own stays', POSIX_ONLY, () =>
@@ -475,7 +475,7 @@ test('seed uninstall: the deny entries the stack wrote are lifted, a row of the 
     const project = ['--installed-only', '--scope', 'project'];
     const { result, outs } = seedRun(['install', 'install', 'update', 'uninstall'], DESK, {
         env: MCP_COPY, account: true, plugins: coreRows('project'),
-        args: [['--scope', 'user'], ['--scope', 'project'], [...project, '--drop', 'mcp macos-desktop'], []],
+        args: [['--scope', 'user'], ['--scope', 'project'], [...project, '--drop', 'mcp macos-control'], []],
         each: (repo, i) =>
         {
             if (i !== 2) return null;
@@ -501,16 +501,16 @@ test('seed update (MCP copy route): the stack\'s registration at another account
             if (i !== 0) return deskState(repo);
             const file = path.join(repo, '..', 'acct', '.claude.json');
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-            const mine = Object.values(data.projects || {})[0].mcpServers['macos-desktop'];
-            (data.mcpServers ||= {})['macos-desktop'] = { ...mine, args: [...(mine.args || []), '--stale-flag'] };
+            const mine = Object.values(data.projects || {})[0].mcpServers['macos-control'];
+            (data.mcpServers ||= {})['macos-control'] = { ...mine, args: [...(mine.args || []), '--stale-flag'] };
             fs.writeFileSync(file, JSON.stringify(data, null, 2));
             return null;
         },
         inspect: deskState,
     });
-    assert.match(outs[1], /mcp refreshed \[user\]: macos-desktop/, outs[1]);
+    assert.match(outs[1], /mcp refreshed \[user\]: macos-control/, outs[1]);
     assert.doesNotMatch(outs[2], /mcp refreshed/, 'a second update finds it current');
-    assert.ok(calls.some((c) => /^mcp add --scope user macos-desktop/.test(c)), calls.join('\n'));
+    assert.ok(calls.some((c) => /^mcp add --scope user macos-control/.test(c)), calls.join('\n'));
     assert.ok(!(result.user.args || []).includes('--stale-flag'), JSON.stringify(result.user));
 });
 
@@ -523,12 +523,12 @@ test('seed install --scope local (MCP copy route): a user-scope registration of 
         {
             const acct = JSON.parse(fs.readFileSync(path.join(repo, '..', 'acct', '.claude.json'), 'utf8'));
             const local = (Object.values(acct.projects || {})[0] || {}).mcpServers || {};
-            return { local: local['macos-desktop'] || null, user: (acct.mcpServers || {})['macos-desktop'] || null };
+            return { local: local['macos-control'] || null, user: (acct.mcpServers || {})['macos-control'] || null };
         },
     });
     assert.ok(steps[0].user, outs[0]);
     assert.ok(steps[1].local, `the local install skipped it as configured:\n${outs[1]}`);
-    assert.doesNotMatch(outs[1], /mcp macos-desktop already configured - skipping/);
+    assert.doesNotMatch(outs[1], /mcp macos-control already configured - skipping/);
     assert.ok(steps[2].local, `the update dropped the pick:\n${outs[2]}`);
     assert.doesNotMatch(outs[2], /mcps=3\b/);
     void calls;

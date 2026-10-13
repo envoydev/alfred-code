@@ -15,7 +15,7 @@ You are the judgment seat for this run: you read the project's architecture map,
 
 **No first-run/update split, no zero-drift shortcut.** Every other capture in this stack skips its expensive work when nothing changed since the last stamp; this one cannot, because 'nothing changed in the code' does not mean 'nothing changed in what should be recorded' - a person may have just accepted a decision this run needs to fold in, or the last round may have shipped a fix. Every run reads fresh and writes fresh.
 
-**Model check, at run start rather than after.** This judgment is the expensive kind, and this skill carries NO `model` pin, deliberately: a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings, so a multi-turn run returns to the session model, so set the session itself to Opus with `/model` before a run and drop it back after. When this session is not on Opus, say so in the first thing the user sees (inside the mode ask where one fires, otherwise the opening line) so the switch can happen before the judgment is spent; the REPORT step's `Model:` line closes the loop.
+**Model: the session's.** The judgment runs on the model the session is on; ask for no switch - a measured capture A/B found Sonnet at xhigh matching Opus at the same cost. No `model` pin either - a skill-level pin lasts only for the turn it activates in. The REPORT step's `Model:` line names the model the judgment ran on.
 
 The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
@@ -80,7 +80,7 @@ Confirm the file written (created vs refreshed), then lean: gather rounds used a
 | `Write:` | created / refreshed, and the post-write line count against the ~300 target |
 | `Run gate:` | the answer verbatim, or `invoked by the quality loop` |
 | `Ceilings:` | the Known-ceilings rows with no 'revisit when', for a person to supply one, or `none` |
-| `Model:` | what the session is on NOW and the exact `/model` command for the USER to paste - `raised for this run - run /model <prior model> to drop back`, `already on Opus before this run started - nothing to reset` (only when you can point at the message that proves it), or `not on Opus - the judgment above ran on <model>` |
+| `Model:` | the model the judgment ran on, and the exact `/model` command for the USER to paste when the run raised it - `<model> - the judgment above ran on it`, or `raised for this run - run /model <prior model> to drop back` (only when a message in this session shows the user switched for this run) |
 
 No re-paste of the doc body - point to the file.
 

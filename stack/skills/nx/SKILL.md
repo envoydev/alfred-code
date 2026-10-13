@@ -1,6 +1,6 @@
 ---
 name: nx
-description: "Use when working in an Nx monorepo - nx.json, project.json, 'what does this change affect', 'test only what changed', nx generate. Not for non-Nx repos."
+description: "Use when working in an Nx monorepo - nx.json, project.json, running nx test/lint/build, 'what does this change affect', nx generate. Not for non-Nx repos."
 ---
 
 # Nx Monorepo
@@ -86,3 +86,6 @@ or you pay for the wrong tool:
 - Nx output is context you pay for: run tasks with `--output-style=static` so the captured log is
   compact rather than a stream of live spinners, and window a failing task's log to the first real
   error, not the whole run. Reach for `--skip-nx-cache` only when a genuinely cold run is needed.
+- Filtering task output: it carries ANSI colour codes and bytes that make `grep` treat the stream
+  as binary and print nothing - strip the codes first (`sed 's/\x1b\[[0-9;]*m//g'`) and grep with
+  `-a`, so the first filter returns the lines instead of an empty result and a retry.

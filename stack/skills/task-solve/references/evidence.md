@@ -23,7 +23,7 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 - **Never offer 'retry the same command' or 'you run it'** - measured (pilot 3, cell data-02 r2): that pick left a model change with no migration, and every integration test failed; a blocker stated in prose with no ask left the user to supply the next move unprompted
 - **INVOKE the reviewer chosen at the step-4 stop** - measured twice: a chosen reviewer was never invoked, and one COMMIT-GATE receipt cited a pass with no matching invocation anywhere in the session
 - **the fix delta gets the SAME reviewer again** - measured: a cycle stamped Completed with its fix delta unreviewed sat 1h42m until the user asked what was left
-- **purge the run's minted seat notes** - measured corpus-wide: 28 write_memory, 0 delete_memory
+- **purge the run's minted seat notes** - measured corpus-wide: 28 handoff notes written, 0 deleted
 - **this stop is where the close-out decisions live** - measured: this was the one step without the Stop tag, and prose closes here cost a 31-minute stall, a 12-hour ungated corridor, and a green reviewed diff that died uncommitted at a /clear
 - **A picked commit runs the checkpoint whole** - measured (pilot 3): the recommended commit was taken 6 of 6 times and cost $6.36 across the flow block
 - **New scope arriving in-chat after `Completed:` is a NEW cycle** - measured: 8 scope additions over one 55-hour session with zero plan-file writes and no ungated statement either; every user-caught defect in two audited sessions lived in post-close ad hoc scope the gates never saw

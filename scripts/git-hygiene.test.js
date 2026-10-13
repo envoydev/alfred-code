@@ -75,7 +75,7 @@ test('apply: the exclude file names the root from the top level, and no committe
     assert.deepStrictEqual([r.state, r.line], ['applied', '/apps/web/.alfred/']);
     assert.match(fs.readFileSync(path.join(top, '.git', 'info', 'exclude'), 'utf8'), /^\/apps\/web\/\.alfred\/$/m);
     assert.ok(!fs.existsSync(path.join(sub, '.gitignore')) && !fs.existsSync(path.join(top, '.gitignore')));
-    assert.ok(ignored(sub, '.alfred/browser/chrome/x'));
+    assert.ok(ignored(sub, '.alfred/chrome-control/x'));
     assert.ok(!ignored(top, '.alfred/x'), 'the anchor keeps another folder of the same name untouched');
 });
 

@@ -1,4 +1,4 @@
-# capture-agent-capabilities - evidence appendix
+# capture-agent-awareness - evidence appendix
 
 The measured anecdotes behind this skill's rules, kept out of the run-time body so every session stops paying
 for them. Audit material: read it to learn WHY a rule is shaped the way it is, never to run the skill.
@@ -22,6 +22,10 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 ## 3. COMPOSE and COMPARE
 - **COMPOSE the whole body, then compare - the write is always the whole file** - measured: an upsert run silently missed a new usage-policy bullet.
 - **Identical? Do not write.** - measured: two projects and four runs produced a byte-for-byte identical rule (one pair 7,582 bytes, zero delta) and each still paid a delete plus a full write, and the next session paid the changed mtime.
+- **The script composes, compares and writes - the model only reports** - audit 2026-10-10, session b91d6135: the
+  read-template, compose, compare and write turns copied the script's own rows and the policy block by hand, ~281k of
+  467k context tokens (60%) and ~$0.19 of $0.74 (26%), and the hand-run legacy `ls` probe was the run's one error.
+  The same session hand-summed the three MCP figures into `MCP 6`, so the `Inventory:` line is printed ready-made.
 - **Do NOT `rm` it first** - measured on the sibling architecture capture, which had the same instruction: the auto-mode classifier denied the delete, which cost exactly the blocked round trip the delete was meant to save.
 
 ## Usage policy (the stamped block)
@@ -32,7 +36,7 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 - **Orchestration row: the first CLAUSE, max 120 chars** - measured on a 16-seat project: house first sentences run 460-588 chars, so 'the first sentence' put 4,594 chars of orchestration block into a rule every session and every subagent pays for.
 - **Each MCP row carries its `first call:` line VERBATIM** - measured: across 164 audited sessions in 9 projects, `alfred-navigation` made zero calls in 6 of the 9 and `alfred-documentation` in 8 of the 9, with 42-110 of their tools sitting deferred and unloaded - both servers are locked into every install, both are named in an always-on baseline rule, and naming them is what did not work.
 - **The locked servers share ONE row that points at their baselines** - the 2026-09-29 rules audit (I5): each of the three baselines now carries the full `ToolSearch select:` line, always-on in the same session, so three generated rows repeating them cost ~1,600 chars per install for nothing; the row keeps only what the baselines do not route (the navigation server's rename, safe delete and handoff, every other edit on Edit / Write). The same audit dropped the policy's docs-placement and memory-recall lines (their baselines own them) and its fresh-session figures, which an `ALFRED_CODE_FRESH_SESSION_*` override made wrong in a rule only a re-run refreshes.
-- **Every slot is resolved by the script** - the same audit found `<data root>/browser/<engine>/output/` shipped literally into generated rules, the one path the browser row tells the model to prefix a filename with; the script fills `<data root>`, `<engine>` and `<docs-path>` and `--verify` fails a rule still holding one.
+- **Every slot is resolved by the script** - the same audit found `<data root>/<engine>-control/output/` (then `<data root>/browser/<engine>/output/`) shipped literally into generated rules, the one path the browser row tells the model to prefix a filename with; the script fills `<data root>`, `<engine>` and `<docs-path>` and `--verify` fails a rule still holding one.
 - **The browser server: a full-page PNG Read is for the FINAL accepted state only** - measured: two sessions Read ~260k tokens of full-page PNGs while iterating styling, then re-paid them as cache-read every turn after; the evaluate/snapshot sessions verified the same class of change for under 10k each, and a target-scoped read cost 0.6k where the full page cost 22k.
 
 ## 4. VERIFY
@@ -47,7 +51,7 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 - **Every count comes from the command that produced the list** - measured: four audited sessions miscounted the seats, every one of them off by one and every one of them LOW (17 vs 18, 18 vs 19, 21 vs 22).
 - **`Live from:` is UNCONDITIONAL** - the report line once carried a `Next run:` field for the same reason (measured: a first-act run that recommended nothing chained a second orchestration run 3 minutes later and wrote off 205.9k tokens).
 - **Say the `Live from:` line the one way it is true on both branches** - measured: the un-scripted version got it wrong in 4 of 5 audited runs - two called a first-act session 'mid-session', and one told the user a rule written 90 seconds in was 'live for the rest of it'.
-- **No `Next run:` field** - removed 2026-09-14: filled from 'the command they named', it named `/capture-agent-capabilities` itself after a run the user had just typed, and the user ruled that a skill is suggested only when its output is stale. Chaining runs into one session (measured: three chained orchestration runs, every context spike above 320k) is `guard-fresh-session-start.js`'s to catch, not a report line's.
+- **No `Next run:` field** - removed 2026-09-14: filled from 'the command they named', it named `/capture-agent-awareness` itself after a run the user had just typed, and the user ruled that a skill is suggested only when its output is stale. Chaining runs into one session (measured: three chained orchestration runs, every context spike above 320k) is `guard-fresh-session-start.js`'s to catch, not a report line's.
 - **The flags are MECHANICAL - compute them, never eyeball them** - measured: the prose form was missed by a run that had the evidence in front of it.
 - **`ls .claude/rules/` and report a seat family with no convention rule** - measured: a run asserted that cross-check having never listed the directory.
 - **Never assert WHY a plugin is installed or disabled without the per-project records** - measured: a 'rides the stack closure, inert' claim was confidently wrong - the plugin belonged to a sibling repo - and cost a user challenge plus 5 corrective calls.

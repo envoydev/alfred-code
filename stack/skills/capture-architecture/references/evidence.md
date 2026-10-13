@@ -5,6 +5,7 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 
 ## Intro
 - **a skill-level `model` pin applies only for the rest of the turn in which the skill activates** - measured: invocations ran on the session model, while agent-level pins in the same session held exactly; the documented turn scope is what the measurement shows, so the session model is the lever
+- **no switch to Opus is asked for** - measured 2026-10-09, one run per arm on a public .NET 8 sample (eShopOnWeb, 254 C# files), same install and prompt, the analyzer seats at their own pin: Sonnet at xhigh $2.96 / 7.4 min, Opus at high $3.01 / 4.8 min; both 15 of 15 on a checklist written from the code before either output was read, and both found the one non-obvious edge (a core-to-client project reference that two other projects compile through). Same accuracy for the same money, so the nudge to switch was dropped; the line that told the user to drop back after a raised run stays
 
 ## Execution modes
 - **An interrupted or declined ask is answered by RE-ASKING, never by inference** - measured: one run took exactly that sequence as 'run it'

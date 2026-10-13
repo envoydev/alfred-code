@@ -164,7 +164,7 @@ test('guard-stop-contract: a suggestion close that says nothing is pending on th
   // it), and the one line that resolves it is the disclaimer - without it the same card stays blocked.
   const card = 'Install complete - 9 skills, 4 agents, 11 hooks.\n\nSuggested next steps:\n'
     + '1. Reload the session - the next step everything else depends on; nothing installed this run is live until the MCPs connect.\n'
-    + '2. `/capture-agent-capabilities` - so the generated rule reflects the final inventory.\n\n'
+    + '2. `/capture-agent-awareness` - so the generated rule reflects the final inventory.\n\n'
     + 'Nothing is pending on this run - these are yours to run when you choose.';
   const sug = transcript('sug', [assistantRow('m6', card)]);
   assert.equal(run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: sug }), 0, 'the disclaimer line makes the close a finished one');
@@ -213,15 +213,19 @@ test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and ALFRED
   const shape = 'ghp_' + 'B'.repeat(24); // fake by construction
   const leak = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: `TOKEN=${shape}` }] } };
   const answered = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't2', content: 'Your questions have been answered: "A GitHub token (ghp_ shape) entered this session through a tool result. Rotate it now?"="Acknowledge and defer"' }] } };
-  // pushes the answer out of askJustAnswered's 8KB tail, so the once-per-exposure rule is what is judged
-  const filler = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't3', content: 'x'.repeat(9000) }] } };
+  // four tool calls after the answer, so it is no longer 'just answered' (askJustAnswered counts calls - audit
+  // 2026-10-10 C01) and the once-per-exposure rule is what is judged
+  const filler = [1, 2, 3, 4].flatMap((n) => [
+    { type: 'assistant', message: { id: `f${n}`, content: [{ type: 'tool_use', id: `tf${n}`, name: 'Bash', input: { command: 'ls' } }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `tf${n}`, content: 'x'.repeat(2000) }] } },
+  ]);
   const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
   const stop = (name, rows, extra = {}) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: transcript(name, rows) }, { env: { ...env, ...extra } });
   assert.equal(stop('r1', [leak, assistantRow('a1', 'Wired the token as asked; tests green.')]).status, 2, 'the first exposure asks');
-  const quiet = stop('r2', [leak, answered, filler, assistantRow('a2', 'Deferred as you chose. Remember to rotate the token when you get to it; the rest is done.')]);
+  const quiet = stop('r2', [leak, answered, ...filler, assistantRow('a2', 'Deferred as you chose. Remember to rotate the token when you get to it; the rest is done.')]);
   assert.equal(quiet.status, 0, 'an answered rotate ask covers the exposure - even a later close that names rotation');
   const second = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't4', content: `OTHER=${'ghp_' + 'C'.repeat(24)}` }] } };
-  const again = stop('r3', [leak, answered, filler, second, assistantRow('a3', 'Copied the second token as asked; done.')]);
+  const again = stop('r3', [leak, answered, ...filler, second, assistantRow('a3', 'Copied the second token as asked; done.')]);
   assert.equal(again.status, 2, 'a NEW exposure after the answer asks again');
   assert.match(again.stderr, /once/, 'and says the ask comes once');
   assert.match(again.stderr, /ALFRED_CODE_ROTATE_ASK=0/, 'and names the switch');
@@ -244,17 +248,21 @@ test('guard-stop-contract: any ask answered after the rotate-ask block covers th
   const freeText = answer('t2', 'Your questions have been answered: "The GitHub token showed up in a tool result. What should happen to it?"="leave it, test token". You can now continue with these answers in mind.');
   const declined = answer('t2', 'The user declined to answer the questions.');
   const unrelated = answer('t0', 'Your questions have been answered: "Build it now?"="Yes (Recommended)"');
-  const filler = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't3', content: 'x'.repeat(9000) }] } };
+  // four tool calls: past askJustAnswered's bound (audit 2026-10-10 C01), so the answer-after-block rule decides
+  const filler = [1, 2, 3, 4].flatMap((n) => [
+    { type: 'assistant', message: { id: `f${n}`, content: [{ type: 'tool_use', id: `tf${n}`, name: 'Bash', input: { command: 'ls' } }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `tf${n}`, content: 'x'.repeat(2000) }] } },
+  ]);
   const readSource = answer('t5', `grep hit: '${head.split('\n')[0]}' in guard-stop-contract.js`);
   const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
   const stop = (name, rows) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: transcript(name, rows) }, { env }).status;
   const close = assistantRow('m3', 'Left the token as you said; the rest is done.');
   const verdicts = {
-    'free-text answer after the block': stop('m3a', [leak, ...block, freeText, filler, close]),
-    'declined after the block': stop('m3b', [leak, ...block, declined, filler, close]),
-    'answer BEFORE the block': stop('m3c', [leak, unrelated, filler, ...block, filler, close]),
-    'the block text read from source, then an unrelated answer': stop('m3d', [leak, readSource, unrelated, filler, close]),
-    'a new exposure after the answer': stop('m3e', [leak, ...block, freeText, filler, answer('t4', `OTHER=${'ghp_' + 'E'.repeat(24)}`), close]),
+    'free-text answer after the block': stop('m3a', [leak, ...block, freeText, ...filler, close]),
+    'declined after the block': stop('m3b', [leak, ...block, declined, ...filler, close]),
+    'answer BEFORE the block': stop('m3c', [leak, unrelated, ...filler, ...block, ...filler, close]),
+    'the block text read from source, then an unrelated answer': stop('m3d', [leak, readSource, unrelated, ...filler, close]),
+    'a new exposure after the answer': stop('m3e', [leak, ...block, freeText, ...filler, answer('t4', `OTHER=${'ghp_' + 'E'.repeat(24)}`), close]),
   };
   assert.deepEqual(verdicts, {
     'free-text answer after the block': 0,
@@ -460,6 +468,9 @@ test('the stop contract, the fresh-session offer and the read guard sweep their 
   // the hook's temp dir is this suite's own (isolateHookSuite ownTmp), the parent of TMP
   const readOld = plant(os.tmpdir(), 'guard-read-gone.json', 8, '{}');
   const readFresh = plant(os.tmpdir(), 'guard-read-kept.json', 6, '{}');
+  // the sweep runs once a day per dir: an earlier case's shell span already logged a range (audit 2026-10-10 C11) and
+  // stamped today's sweep, so the stamp goes first
+  fs.rmSync(path.join(os.tmpdir(), '.alfred-sweep-guard-read-'), { force: true });
   assert.equal(run('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: BIG, offset: 1, limit: 10 }, session_id: 'sweep-read' }), 0);
   assert.ok(!fs.existsSync(readOld) && fs.existsSync(readFresh), 'the read guard swept its own session files past 7 days');
 });
@@ -489,7 +500,12 @@ test('guard-read-whole-file: runtime dumps, file redirects, multi-file cats and 
   assert.equal(bash('guard-read-whole-file.js', `cat ${BIG} 2>&1`), 2, 'an fd redirect still prints');
   assert.equal(bash('guard-read-whole-file.js', `cat ${SMALL} ${BIG}`), 2, 'every file of a multi-file cat is sized');
   const rel = (payload, cwd) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', ...payload }, { cwd, env: noRoot }).status;
-  assert.equal(rel({ tool_input: { command: 'cat scripts/lint-skills.js' } }, TMP), 2, 'a relative path that resolves nowhere fails CLOSED');
+  // audit 2026-10-10 C11: nothing at any anchor is nothing to dump (a wrong path, a file the command creates first) - only
+  // a cd the guard cannot follow leaves the anchor unknown, and that still fails CLOSED
+  assert.equal(rel({ tool_input: { command: 'cat scripts/lint-skills.js' } }, TMP), 0, 'a relative path with no file at any anchor prints nothing');
+  const unknown = runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command: 'cd "$X" && cat scripts/lint-skills.js' } }, { cwd: TMP, env: noRoot });
+  assert.equal(unknown.status, 2, 'after a cd the guard cannot follow, a relative path that resolves nowhere fails CLOSED');
+  assert.match(unknown.stderr, /no file at .* - and this\n?|no file at /, 'the denial says there is no file at the anchors it tried');
   assert.equal(rel({ tool_input: { command: 'cat scripts/lint-skills.js' }, cwd: REPO }, TMP), 2, 'anchored on the session cwd it is sized - and blocked');
   assert.equal(rel({ tool_input: { command: 'cat stack/hooks/instrument-tool-usage.js' }, cwd: REPO }, TMP), 0, 'anchored and small - passes');
 });
@@ -616,6 +632,8 @@ test('guard-ungated-commit: the receipt states', () => {
     over.head === null ? null : `head: ${over.head || head}`,
     over.spec === null ? null : (over.spec || 'spec: 3 files'),
     over.probe === null ? null : (over.probe || 'live-probe: `npm test` 238/238'),
+    over.format === null ? null : (over.format || 'format: npx prettier --check - clean over 3 staged files'),
+    over.findings === null ? null : (over.findings || 'findings: none'),
   ].filter((l) => l != null).join('\n') + '\n';
 
   receipt('WAIVED - "skip the review"\n'); assert.equal(gateIn(dir, 'git commit -am x'), 0, 'WAIVED');
@@ -691,7 +709,7 @@ test('guard-ungated-commit: an option label THIS run wrote is not the user askin
   const tp = transcript('own-label', [
     { type: 'assistant', message: { id: 'q1', content: [{ type: 'tool_use', id: 'u1', name: 'AskUserQuestion', input: { questions: [{ question: 'Next?', options: [{ label: 'Commit now (Recommended)', description: 'land it' }, { label: 'Hold', description: 'wait' }] }] } }] } },
   ]);
-  const body = (auth) => `VERIFIED the checkpoint\n${auth}\nhead: ${head}\nspec: 3 files\nlive-probe: npm test\n`;
+  const body = (auth) => `VERIFIED the checkpoint\n${auth}\nhead: ${head}\nspec: 3 files\nlive-probe: npm test\nformat: npx prettier --check - clean over 3 staged files\nfindings: none\n`;
   const gateT = () => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -am x' }, transcript_path: tp },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
   fs.writeFileSync(gate, body('authorized: "Commit now (Recommended)"')); assert.equal(gateT(), 2, 'the model\'s own option label, marker included');
@@ -822,6 +840,33 @@ test('guard-catastrophic-rm: git destroys a working tree too, and prose about it
   assert.equal(rm('git commit -m "undo the git reset --hard"'), 0, 'nor a commit message');
   assert.equal(rm("cat > plan.md <<'EOF'\nThen: git clean -fdx\nEOF"), 0, 'nor a plan document');
   assert.equal(rm('echo "careful" && git clean -fdx'), 2, 'but a real one after a prose mention still blocks');
+});
+
+// audit 2026-10-10 C17 (session 349e4825): an approved `git merge --abort && ... git reset --hard` was denied over the
+// conflicted merge's index rows, which the abort drops before the reset runs.
+test('guard-catastrophic-rm: a reset after an abort of a merge in progress is judged without the merge\'s rows', () => {
+  const dir = cleanRepo();
+  const g = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  const rm = (command) => runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
+  const base = g('rev-parse', '--abbrev-ref', 'HEAD').stdout.trim();
+  g('checkout', '-qb', 'other'); fs.writeFileSync(path.join(dir, 'seed.txt'), 'theirs\n'); fs.writeFileSync(path.join(dir, 'added.txt'), 'a\n');
+  g('add', '-A'); g('commit', '-qm', 'theirs');
+  g('checkout', '-q', base); fs.writeFileSync(path.join(dir, 'seed.txt'), 'ours\n'); g('commit', '-qam', 'ours');
+  g('merge', 'other');
+  assert.ok(fs.existsSync(path.join(dir, '.git', 'MERGE_HEAD')), 'a conflicted merge is in progress');
+  assert.equal(rm('git reset --hard'), 2, 'without the abort the merge rows are still judged');
+  assert.equal(rm('git merge --abort && git reset --hard'), 0, 'the abort drops them first');
+  assert.equal(rm('git merge --abort; git reset --hard HEAD'), 0, 'chained by ; too');
+  assert.equal(rm('git rebase --abort && git reset --hard'), 2, 'an abort of an operation not in progress changes nothing');
+  g('merge', '--abort');
+  fs.writeFileSync(path.join(dir, 'tracked-edit.md'), 'y\n'); g('add', 'tracked-edit.md'); g('commit', '-qm', 't');
+  fs.writeFileSync(path.join(dir, 'tracked-edit.md'), 'mine\n');
+  g('merge', 'other');
+  assert.ok(fs.existsSync(path.join(dir, '.git', 'MERGE_HEAD')), 'the merge starts beside an unstaged edit of a file it does not touch');
+  assert.equal(rm('git merge --abort && git reset --hard'), 2, 'a work-tree edit of the user\'s own is still a loss');
+  fs.writeFileSync(path.join(dir, 'tracked-edit.md'), 'y\n');
+  assert.equal(rm('git merge --abort && git reset --hard'), 0, 'and without it the abort and reset lose nothing of the user\'s');
 });
 
 test('guard-catastrophic-rm: the gate reads the PATHSPEC, and honours a discard receipt', () => {
@@ -1334,10 +1379,18 @@ test('guard-stop-contract: the AskUserQuestion branch injects its notes, and den
     { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir } });
   const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
 
-  const deep = ask(hot, [{ question: 'Which next?', options: [{ label: 'Continue', description: 'x' }, { label: 'Stop', description: 'y' }] }]);
+  const deep = ask(hot, [{ question: 'Which next?', options: [{ label: 'Continue (Recommended)', description: 'x' }, { label: 'Stop', description: 'y' }] }]);
   assert.equal(deep.status, 0, 'no fresh option, deep into a 1M session - it injects, it does not deny');
   assert.match(ctxOf(deep), /resume in a fresh session/i, 'the fresh-session offer reaches a flow whose every stop is a tool call');
-  assert.equal(ask(hot, [{ question: 'Continue or resume in a fresh session?', options: [{ label: 'Fresh session', description: 'resume' }] }]).status, 0);
+  assert.equal(ask(hot, [{ question: 'Continue or resume in a fresh session?', options: [{ label: 'Fresh session', description: 'resume - ~900k per message here' }] }]).status, 0);
+  // audit 2026-10-10 C09: a fresh option quoting no measured number is denied once, its description carrying both numbers
+  const bare = [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: 'start clean' }, { label: 'Continue', description: 'here' }] }];
+  const numbered = ask(hot, bare);
+  assert.equal(numbered.status, 2, 'a numberless fresh option is sent back once');
+  assert.match(numbered.stderr, /start clean Measured now: ~900k tokens per message in this session/, 'with the measured carry appended to its description');
+  assert.equal(ask(hot, bare).status, 0, 'the same ask re-sent passes - never a loop');
+  assert.equal(ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session (Recommended)', description: '~150k here vs ~90k fresh' }, { label: 'Continue', description: 'here' }] }]).status, 2,
+    'a stale number - 150k quoted while the carry is 900k - is sent back too');
   assert.doesNotMatch(ctxOf(ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session', description: 'start clean' }] }])), /offered no fresh session/i,
     'an ask that already offers it is not told to offer it');
 
@@ -1817,7 +1870,10 @@ test('guard-cross-project-write: the session\'s own scratch and the account dir 
   assert.equal(inRepo({ tool_name: 'Bash', tool_input: { command: 'echo x > /tmp/probe.txt' } }), 0, 'a temp file from the shell');
   const home = os.homedir();
   if (home) assert.equal(w(path.join(home, '.claude', 'projects', 'p', 'memory', 'm.md')), 0, 'memory writes must keep working');
-  assert.equal(w(path.join(path.dirname(repoRoot), 'some-other-repo', 'src', 'a.ts')), 2, 'a real sibling repo is still blocked');
+  // the sibling of the main checkout: run from a linked worktree (`.claude/worktrees/<x>`), the worktree's own parent is
+  // inside the main checkout - the same repository, which a write may reach (audit 2026-10-11 SD16)
+  const mainTop = (function up(d) { const g = path.join(d, '.git'); return fs.existsSync(g) && fs.statSync(g).isDirectory() ? d : path.dirname(d) === d ? repoRoot : up(path.dirname(d)); })(repoRoot);
+  assert.equal(w(path.join(path.dirname(mainTop), 'some-other-repo', 'src', 'a.ts')), 2, 'a real sibling repo is still blocked');
 });
 
 // Audit 2026-10-08 row 23: the shell runs in the Bash tool's persisted cwd (`payload.cwd`), and the guard anchored every
@@ -1837,8 +1893,77 @@ test('guard-cross-project-write: a shell path is anchored at the payload cwd, bo
   assert.equal(xp({ tool_name: 'Write', cwd: XP_OTHER, tool_input: { file_path: 'src/a.ts' } }), 0, 'a file tool keeps the project root');
 });
 
+// audit 2026-10-10 C31 (session 0d070bcc): `rm -f` of the session's own link to a sibling repo was judged as a write into
+// the sibling, because the link was resolved before the removal was judged.
+test('guard-cross-project-write: a removal judges a symbolic link where it lives, not where it points', { skip: process.platform === 'win32' && 'symlinks need privileges' }, () => {
+  const link = path.join(XP_ROOT, 'link-to-b');
+  const back = path.join(XP_OTHER, 'link-to-a');
+  const drop = (p) => { try { fs.unlinkSync(p); } catch { /* not there */ } };
+  drop(link); drop(back);
+  fs.symlinkSync(XP_OTHER, link); fs.symlinkSync(XP_ROOT, back);
+  try {
+    assert.equal(xpBash(`rm -f ${link}`), 0, 'the project\'s own link to the sibling');
+    assert.equal(xpBash(`ln -s ${XP_OTHER} ${link}2 && rm -f ${link}2`), 0, 'the finding\'s chain, the link not made yet');
+    assert.equal(xpBash(`rm -rf ${link}/`), 2, 'a trailing slash follows the link');
+    assert.equal(xpBash(`rm -rf ${link}/dist`), 2, 'and so does a path through it');
+    assert.equal(xpBash(`rm -f ${back}`), 2, 'a link living in the sibling is the sibling\'s');
+    assert.equal(xpBash(`echo x > ${link}`), 2, 'a write through the link still lands in the sibling');
+    assert.equal(xpBash(`rm -rf ${path.join(XP_OTHER, 'dist')}`), 2, 'a plain path is unchanged');
+  } finally { drop(link); drop(back); }
+});
+
+// Audit 2026-10-11 SD16, session 42951e5b: two Edits in a `git worktree add` sibling of the session's own repo were blocked
+// as another project; the ask ended in the worktree's removal (569.1k). A linked worktree of ROOT's repo is the project.
+test('guard-cross-project-write: a linked worktree of the project\'s own repository is the project (audit 2026-10-11 SD16)', () => {
+  const { execFileSync } = require('node:child_process');
+  const base = fs.mkdtempSync(path.join(TMP, 'xw-wt-'));
+  const g = (cwd, ...args) => execFileSync('git', ['-c', 'user.email=t@example.com', '-c', 'user.name=t', '-c', 'init.defaultBranch=main', ...args], { cwd, stdio: 'pipe' });
+  const main = path.join(base, 'app');
+  fs.mkdirSync(main);
+  g(main, 'init', '-q');
+  fs.writeFileSync(path.join(main, 'a.txt'), 'a\n');
+  g(main, 'add', 'a.txt');
+  g(main, 'commit', '-qm', 'init');
+  const wt = path.join(base, 'app-wt');
+  g(main, 'worktree', 'add', '-q', '-b', 'tasks/t1', wt);
+  const clone = path.join(base, 'app-clone');
+  g(base, 'clone', '-q', main, clone);
+  const other = path.join(base, 'other');
+  fs.mkdirSync(other);
+  g(other, 'init', '-q');
+  const forged = path.join(base, 'forged');
+  fs.mkdirSync(forged);
+  fs.writeFileSync(path.join(forged, '.git'), `gitdir: ${path.join(other, '.git')}\n`);
+  const garbage = path.join(base, 'garbage');
+  fs.mkdirSync(garbage);
+  fs.writeFileSync(path.join(garbage, '.git'), '{not a gitdir line');
+  const run = (root, payload) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' } }).status;
+  const write = (root, f) => run(root, { tool_name: 'Write', tool_input: { file_path: f } });
+  assert.equal(write(main, path.join(wt, 'Server', 'Socket.csproj')), 0, 'the measured Edit: a file in the session\'s own worktree');
+  assert.equal(run(main, { tool_name: 'Edit', tool_input: { file_path: path.join(wt, 'a.txt'), old_string: 'a', new_string: 'b' } }), 0, 'an Edit too');
+  assert.equal(run(main, { tool_name: 'Bash', cwd: main, tool_input: { command: `echo x > ${path.join(wt, 'b.txt')}` } }), 0, 'and the shell route');
+  assert.equal(write(wt, path.join(main, 'a.txt')), 0, 'from the worktree, the main checkout is the same repo');
+  assert.equal(write(main, path.join(clone, 'a.txt')), 2, 'a clone has its own git dir: another checkout');
+  assert.equal(write(main, path.join(other, 'a.txt')), 2, 'an unrelated repo stays blocked');
+  assert.equal(write(main, path.join(forged, 'a.txt')), 2, 'a .git file pointing at another repo is that repo');
+  assert.equal(write(main, path.join(garbage, 'a.txt')), 2, 'a malformed .git file is no worktree');
+  const plain = path.join(base, 'not-a-repo');
+  fs.mkdirSync(plain);
+  assert.equal(write(plain, path.join(wt, 'a.txt')), 2, 'a project outside git has no worktrees');
+});
+
 // Audit 2026-10-08 row 37: a relocated account dir holds the harness's memory writes, and a project under /tmp dropped
 // /tmp - and with it the harness scratch root - by the containment rule.
+// The fork-liveness probe is retired (2026-10-09, the user's ruling after its rows were read): no transcript head read
+// on a mutating call, no `mode: probe` row.
+test('guard-cross-project-write: the retired fork-liveness probe reads no transcript head and writes no probe row', () => {
+  const src = fs.readFileSync(path.join(HOOKS, 'guard-cross-project-write.js'), 'utf8');
+  assert.doesNotMatch(src, /forkProbe|fork-liveness|FORK_LIVE_MS|FORK_HEAD_BYTES/, 'no fork probe code is left in the hook');
+  // the one probe it writes now is the interpreter-write count (audit 2026-10-10)
+  assert.deepStrictEqual([...src.matchAll(/reason: 'probe: ([\w-]+)'/g)].map((m) => m[1]), ['interpreter-write']);
+});
+
 test('guard-cross-project-write: a relocated CLAUDE_CONFIG_DIR and the harness scratch root stay writable (audit 2026-10-08)', (t) => {
   const cfg = fs.mkdtempSync(path.join(TMP, 'xw-cfg-'));
   const run = (root, payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
@@ -1948,7 +2073,9 @@ test('guard-cross-project-write: a script file a shell runs is read as its comma
   for (const command of [`bash ${rel}/fix.sh`, `sh ./${rel}/fix.sh`, `zsh -e ${rel}/fix.sh arg`, `bash -o pipefail ${rel}/fix.sh`,
     `. ${rel}/fix.sh`, `source ${rel}/fix.sh`, `cat ${rel}/fix.sh | sh`, `sh < ${rel}/fix.sh`, `./${rel}/fix.sh`, `${rel}/bare`,
     `cd ${rel} && bash fix.sh`, `bash ${dir}/fix.sh`, `sh ${rel}/cd.sh`, `bash ${rel}/nested.sh`,
-    `cat > ${rel}/new.sh <<'EOF'\ntouch ${XP_OTHER}/g\nEOF\nbash ${rel}/new.sh`, `printf 'touch ${XP_OTHER}/g\\n' > ${rel}/p.sh && sh ${rel}/p.sh`]) {
+    // printf's format is spelled with forward slashes: a backslash path there is printf's own escapes (`\a` in
+    // C:\alfred-..., `\n` in C:\Users\nick), so the script printf writes - and the guard reads - names another path
+    `cat > ${rel}/new.sh <<'EOF'\ntouch ${XP_OTHER}/g\nEOF\nbash ${rel}/new.sh`, `printf 'touch ${XP_OTHER.split(path.sep).join('/')}/g\\n' > ${rel}/p.sh && sh ${rel}/p.sh`]) {
     if (xpBash(command) !== 2) wrong.push(`passed: ${command}`);
   }
   for (const command of [`bash ${rel}/ok.sh`, `./${rel}/ok.sh`, `bash -n ${rel}/fix.sh`, `bash ${rel}/missing.sh`, `cat ${rel}/fix.sh`,
@@ -2330,7 +2457,7 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
     assert.equal(slash.status, 0, 'the slash route never denies');
     assert.match(injected(slash), /Do NOT start the run yet/, '... it injects the ask instead');
     assert.equal(JSON.parse(slash.stdout).hookSpecificOutput.hookEventName, 'UserPromptExpansion', 'answered on its own event');
-    assert.match(injected(upe('capture-agent-capabilities', hot)), /Do NOT start the run yet/, 'a capture is a run');
+    assert.match(injected(upe('capture-agent-awareness', hot)), /Do NOT start the run yet/, 'a capture is a run');
     assert.match(injected(upe('alfred-code:update', hot)), /Do NOT start the run yet/, 'the guided plugin walks are orchestration too');
     assert.match(injected(upe('update', hot, undefined, { typed: 'alfred-code:update' })), /Do NOT start the run yet/,
         'a plugin command named bare takes its namespace from the typed prompt');
@@ -2531,7 +2658,8 @@ test('guard-read-whole-file: a shell touch names the convention rule the file to
   const blocked = call(`cat ${BIG.replace(/\.js$/, '.js')}`, s2);
   assert.equal(blocked.status, 2, 'a whole-file dump of a large .js file is still blocked');
   assert.equal(ctxOf(blocked), '', 'and announces nothing');
-  assert.match(ctxOf(call(`cp x.js ${BIG}`, s2)), /javascript-conventions\.md/, 'the next allowed write still gets it');
+  // (an in-project target: a write outside the project is governed by no rule of its own - audit 2026-10-10 C13)
+  assert.match(ctxOf(call('cp x.js lib/out.js', s2)), /javascript-conventions\.md/, 'the next allowed write still gets it');
   // The Angular row is the twin of angular-conventions.md's `paths:`, and that rule matches
   // `**/src/app/**/*.ts` because the Angular style guide now recommends suffix-less names. Matching
   // only the .component/.service/... suffixes announced a `src/app/user-profile.ts` write as
@@ -3175,11 +3303,14 @@ test('guard-read-whole-file: the denial names the call that LOADS the serena too
   // serena calls. The remedy belongs in the denial the model is already reading.
   // 2.1.6 K4: a fixture outside the repo - a checkout under a `.claude/` directory (every .claude/worktrees/<x>) puts
   // BIG in a tree the navigation server ignores, where the denial rightly names grep instead of the load call.
-  const big = path.join(TMP, 'navigable.ts');
+  // audit 2026-10-11 SD16: and inside the project - a file outside it is in no index either, and takes the grep route
+  const big = path.join(process.env.CLAUDE_PROJECT_DIR, 'navigable.ts');
   fs.writeFileSync(big, Array.from({ length: 400 }, (_, i) => `export const v${i} = ${i};`).join('\n'));
   const r = runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: big } }, {});
   assert.equal(r.status, 2);
   assert.match(r.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview,mcp__plugin_alfred-navigation_alfred-navigation__find_symbol/);
+  // agents F03 (live probe 2026-10-09): a seat whose tools: list names an MCP tool has it loaded, so the denial says so
+  assert.match(r.stderr, /a seat whose tools: list names them has them loaded already - call them directly/);
   // ... and the same file under a `.claude/` tree takes the grep route, so the fixture's place is what decides
   const hidden = path.join(TMP, '.claude', 'worktrees', 'x', 'navigable.ts');
   fs.mkdirSync(path.dirname(hidden), { recursive: true });
@@ -3242,7 +3373,7 @@ test('guard-ungated-commit: an ABSOLUTE docs root inside the repo does not fail 
   fs.mkdirSync(path.join(docs, 'flow'), { recursive: true });
   const head = spawnSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
   fs.writeFileSync(path.join(docs, 'flow', 'COMMIT-GATE'),
-    `VERIFIED the three fixtures\nauthorized: "commit it"\nhead: ${head}\nspec: 3 files - the fixtures\nlive-probe: tests green\n`);
+    `VERIFIED the three fixtures\nauthorized: "commit it"\nhead: ${head}\nspec: 3 files - the fixtures\nlive-probe: tests green\nformat: npx prettier --check - clean over 3 staged files\nfindings: none\n`);
   const status = spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git commit -am wip' } }),
     encoding: 'utf8',
@@ -3371,7 +3502,14 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     const offered = slash(second, env);
     assert.match(offered, /ALREADY run one/, 'the offer names the reason - the prior run, not the size');
     assert.match(offered, /fresh session/, 'and carries the same offer the size trigger does');
-    // ONCE per session: the user has answered, so the retry must go through.
+    // c6142301 (audit 2026-10-10 C09): the chained variant dropped the measured carry, so the ask said 'size unmeasured'
+    assert.match(offered, /already carries ~60k tokens per message/, 'and the session\'s own carry');
+    // Spent only once ANSWERED (audit 2026-10-10 C09, ca65b406): a double-submitted command put the offer on the
+    // abandoned branch, and the live branch's re-expansion found it spent - so an unanswered offer is made again ...
+    assert.match(slash(second, env), /ALREADY run one/, 'an offer nobody answered is made again on the next expansion');
+    // ... and once the user has answered, the retry goes through.
+    fs.appendFileSync(second, JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'ask-fresh',
+      content: 'Your questions have been answered: "Start the loop in a fresh session?"="Run it here anyway"' }] } }) + '\n');
     assert.equal(slash(second, env), '', 'an answered offer is not asked again');
     // UserPromptExpansion fires as the command expands, so the typed prompt's own row may not be on disk
     // yet: the command being judged IS the human turn after the prior run's answer (2.1.5 M14).
@@ -3542,59 +3680,6 @@ test('guard-stop-contract: a credential the USER pasted demands the rotate ask t
     assert.match(blocked.stderr, /pasted into the chat/, 'and the denial names the route it came in by');
     assert.ok(!blocked.stderr.includes(shape), 'the value itself is never repeated back');
     assert.equal(stop(clean).status, 0, 'a turn with no credential shape is untouched');
-});
-
-// --- guard-cross-project-write: the fork-liveness probe (log-only) ---------
-// A backgrounded turn continues under a NEW session id whose transcript opens as a copy of the
-// parent's rows while the user keeps talking to the other copy. Measured once: five test cycles,
-// five WINWORD kills and an edit collision, 15 minutes after the foreground's user said stop. The
-// probe writes a row and denies nothing; the week's rows decide whether a denial follows.
-test('guard-cross-project-write: the fork-liveness probe logs a mutating call beside a live sibling of the same lineage, and denies nothing', () => {
-  const dir = fs.mkdtempSync(path.join(TMP, 'forks-'));
-  const docs = fs.mkdtempSync(path.join(TMP, 'forkdocs-'));
-  const ids = {
-    parent: '11111111-1111-4111-8111-111111111111',
-    own: '22222222-2222-4222-8222-222222222222',
-    sib: '33333333-3333-4333-8333-333333333333',
-    other: '44444444-4444-4444-8444-444444444444',
-  };
-  // the measured shape: a copied row keeps the ORIGINAL id under session_id while sessionId is
-  // rewritten to the fork's own (387 of 1,093 rows in one fork carried a parent's session_id)
-  const row = (own, origin, text) => JSON.stringify({ type: 'user', sessionId: own, session_id: origin, message: { role: 'user', content: text } }) + '\n';
-  // this session is a FORK: its transcript opens with the parent's rows
-  fs.writeFileSync(path.join(dir, ids.own + '.jsonl'), row(ids.own, ids.parent, 'summary') + row(ids.own, ids.own, 'continue'));
-  // a sibling fork of the same parent, touched now - the foreground the user is talking to
-  fs.writeFileSync(path.join(dir, ids.sib + '.jsonl'), row(ids.sib, ids.parent, 'summary') + row(ids.sib, ids.sib, 'stop'));
-  // an unrelated session touched now - not this lineage, never a probe hit
-  fs.writeFileSync(path.join(dir, ids.other + '.jsonl'), row(ids.other, ids.other, 'hello'));
-  const probe = (payload, sid) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
-    input: JSON.stringify({ ...payload, transcript_path: path.join(dir, sid + '.jsonl'), session_id: sid }),
-    encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_DOCS_PATH: docs, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
-  }).status;
-  const ledger = (sid) => {
-    const p = path.join(docs, 'hook-blocks', sid + '.jsonl');
-    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
-  };
-  assert.equal(probe({ tool_name: 'Edit', tool_input: { file_path: path.join(XP_ROOT, 'a.cs') } }, ids.own), 0, 'the probe never denies');
-  let rows = ledger(ids.own);
-  assert.equal(rows.length, 1, 'one probe row for the edit');
-  assert.equal(rows[0].mode, 'probe');
-  assert.equal(rows[0].kind, 'fork-liveness');
-  assert.equal(rows[0].detail.live[0].id, ids.sib, 'the live sibling of the same lineage is named');
-  assert.equal(rows[0].detail.live[0].relation, 'sibling');
-  assert.equal(probe({ tool_name: 'Bash', tool_input: { command: 'dotnet test ./tests' } }, ids.own), 0);
-  assert.equal(probe({ tool_name: 'Bash', tool_input: { command: 'git status --short' } }, ids.own), 0);
-  rows = ledger(ids.own);
-  assert.equal(rows.length, 2, 'a test run is a mutation; a git status is not');
-  // the unrelated session edits freely: it is nobody's fork
-  assert.equal(probe({ tool_name: 'Edit', tool_input: { file_path: path.join(XP_ROOT, 'a.cs') } }, ids.other), 0);
-  assert.equal(ledger(ids.other).length, 0, 'no lineage, no row');
-  // a sibling gone quiet (older than the liveness window) is not live
-  const old = new Date(Date.now() - 5 * 60 * 1000);
-  fs.utimesSync(path.join(dir, ids.sib + '.jsonl'), old, old);
-  assert.equal(probe({ tool_name: 'Edit', tool_input: { file_path: path.join(XP_ROOT, 'b.cs') } }, ids.own), 0);
-  assert.equal(ledger(ids.own).length, 2, 'a quiet sibling is not live');
 });
 
 // ---------------------------------------------------------------------------
@@ -3828,6 +3913,36 @@ test('guard-config-protection: a heredoc body or a quoted message naming a confi
     assert.strictEqual(sh('rm ".eslintrc.json"'), 2, 'a quoted target is still the target');
     assert.strictEqual(sh("cat > .editorconfig <<'EOF'\nroot = false\nEOF"), 2, "a heredoc's own redirect still writes");
     assert.strictEqual(sh("git add -A && rm .eslintrc.json"), 2, 'a real second step');
+  });
+});
+
+// Audit 2026-10-11 SD16, session 2ca8e8ee: removing `CS9057` from a NoWarn re-enables the warning, and was blocked as
+// weakening a check (an ask, a receipt, a retry - 3 messages at 417k). A change that only tightens passes.
+test('guard-config-protection: an MSBuild change that only makes a check stricter passes (audit 2026-10-11 SD16)', () => {
+  const H = 'guard-config-protection.js';
+  const { root, at } = cfgProject('cfg-tight-');
+  const edit = (file, old_string, new_string) => run(H, { tool_name: 'Edit', cwd: root, tool_input: { file_path: file, old_string, new_string } });
+  withProject(root, {}, () => {
+    const props = at('Directory.Build.props', '<Project>\n  <PropertyGroup>\n    <NoWarn>$(NoWarn);CS9057;NU1608</NoWarn>\n    <WarningLevel>4</WarningLevel>\n    <Nullable>annotations</Nullable>\n  </PropertyGroup>\n</Project>\n');
+    assert.strictEqual(edit(props, '$(NoWarn);CS9057;NU1608', '$(NoWarn);NU1608'), 0, 'the measured edit: one NoWarn entry removed');
+    assert.strictEqual(edit(props, '    <NoWarn>$(NoWarn);CS9057;NU1608</NoWarn>\n', ''), 0, 'the whole NoWarn removed');
+    assert.strictEqual(edit(props, '<WarningLevel>4</WarningLevel>', '<WarningLevel>5</WarningLevel>'), 0, 'a higher warning level');
+    assert.strictEqual(edit(props, '<Nullable>annotations</Nullable>', '<Nullable>enable</Nullable>'), 0, 'Nullable toward enable');
+    assert.strictEqual(edit(props, '  </PropertyGroup>', '    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>\n  </PropertyGroup>'), 0, 'TreatWarningsAsErrors added as true');
+    assert.strictEqual(edit(props, '  </PropertyGroup>', '    <WarningsAsErrors>CS8602</WarningsAsErrors>\n  </PropertyGroup>'), 0, 'a WarningsAsErrors entry added');
+    // every loosening, and anything mixed, still blocks
+    assert.strictEqual(edit(props, '$(NoWarn);CS9057;NU1608', '$(NoWarn);CS9057;NU1608;CS8602'), 2, 'a NoWarn entry added');
+    assert.strictEqual(edit(props, '$(NoWarn);CS9057;NU1608', '$(NoWarn);NU1608;CS8602'), 2, 'one removed and another added');
+    assert.strictEqual(edit(props, '<WarningLevel>4</WarningLevel>', '<WarningLevel>3</WarningLevel>'), 2, 'a lower warning level');
+    assert.strictEqual(edit(props, '<Nullable>annotations</Nullable>', '<Nullable>disable</Nullable>'), 2, 'Nullable toward disable');
+    assert.strictEqual(edit(props, '<Nullable>annotations</Nullable>', '<Nullable>maybe</Nullable>'), 2, 'an unknown Nullable value');
+    assert.strictEqual(edit(props, '<WarningLevel>4</WarningLevel>', '<WarningLevel Condition="\'$(CI)\'==\'\'">5</WarningLevel>'), 2, 'an attribute change');
+    assert.strictEqual(edit(props, '$(NoWarn);CS9057;NU1608</NoWarn>', '$(NoWarn);NU1608</NoWarn>\n    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>'), 2, 'a tightening beside a loosening');
+    assert.strictEqual(edit(props, '  </PropertyGroup>', '    <AnalysisLevel>latest</AnalysisLevel>\n  </PropertyGroup>'), 2, 'a key with no direction rule keeps the block');
+    assert.strictEqual(edit(props, '  </PropertyGroup>', '    <NoWarn>CS1591</NoWarn>\n  </PropertyGroup>'), 2, 'a property named twice keeps the block');
+    assert.strictEqual(edit(props, 'not in the file', '<NoWarn></NoWarn>'), 2, 'an old_string the file lacks is judged on the fragments');
+    const tw = at('src/App/App.csproj', '<Project><PropertyGroup><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup></Project>');
+    assert.strictEqual(edit(tw, '<TreatWarningsAsErrors>true</TreatWarningsAsErrors>', ''), 2, 'removing TreatWarningsAsErrors');
   });
 });
 
@@ -4127,8 +4242,8 @@ test('every hook-blocks ledger file is named from a sanitised session id', () =>
 // executable with caller-given args (wheel windows_mcp/tools/app.py:90 at 0.8.5) - and MacOS-MCP's `Shell` runs a
 // shell command no shell guard sees. Both spellings: the plugin route's and the copy route's (built at run time -
 // lint check 54 bans the bare server spelling as literal text).
-const WIN_APP = ['mcp__plugin_windows-desktop_windows-desktop__App', `mcp__${'windows-desktop'}__App`];
-const MAC_SHELL = ['mcp__plugin_macos-desktop_macos-desktop__Shell', `mcp__${'macos-desktop'}__Shell`];
+const WIN_APP = ['mcp__plugin_windows-control_windows-control__App', `mcp__${'windows-control'}__App`];
+const MAC_SHELL = ['mcp__plugin_macos-control_macos-control__Shell', `mcp__${'macos-control'}__Shell`];
 function desktopRun(root, tool_name, tool_input, extra = {}) {
   return spawnSync(process.execPath, [path.join(HOOKS, 'guard-desktop-exec.js')], {
     input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'desk', tool_name, tool_input, ...extra }), encoding: 'utf8',
@@ -4151,7 +4266,7 @@ test('guard-desktop-exec: App launch_executable and every macOS Shell call are d
     assert.equal(r.status, 2, `${tool}`);
     assert.match(r.stderr, /Bash tool/, 'the command goes back to the shell route the guards see');
   }
-  for (const tool of ['mcp__plugin_windows-desktop_windows-desktop__Click', 'mcp__plugin_macos-desktop_macos-desktop__App', 'Bash'])
+  for (const tool of ['mcp__plugin_windows-control_windows-control__Click', 'mcp__plugin_macos-control_macos-control__App', 'Bash'])
     assert.equal(desktopRun(root, tool, { mode: 'launch_executable', command: 'ls' }).status, 0, `${tool} is not this guard's`);
   const rows = fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'desk.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.equal(rows.length, WIN_APP.length + MAC_SHELL.length, 'one ledger row per block');
@@ -4218,4 +4333,47 @@ test('guard-desktop-exec: the csv opt-out switches it off, and garbage input nev
   assert.equal(off.status, 0);
   assert.equal(spawnSync(process.execPath, [path.join(HOOKS, 'guard-desktop-exec.js')], { input: 'not json', encoding: 'utf8' }).status, 0);
   assert.equal(desktopRun(root, WIN_APP[0], null).status, 0, 'no tool_input');
+});
+
+// audit 2026-10-10 (0498718d, 349e4825 - T5 cross-track): an interpreter script writing a source file of this project is
+// the shell route around Edit / Write - one log-only probe row per command, never a verdict.
+test('guard-cross-project-write: an interpreter write to an in-project source file writes one probe row and passes', () => {
+  const ledger = fs.mkdtempSync(path.join(os.tmpdir(), 'xp-probe-'));
+  const runP = (command, agent) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
+    input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'xp-probe', ...(agent ? { agent_id: agent } : {}) }),
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_DOCS_PATH: ledger, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
+  });
+  const rows = () => { try { return fs.readFileSync(path.join(ledger, 'hook-blocks', 'xp-probe.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
+  try {
+    assert.strictEqual(runP("python3 - <<'EOF'\np='src/a.cs'\ns=open(p).read()\nopen(p,'w').write(s)\nEOF").status, 0);
+    assert.strictEqual(runP("python3 - <<'EOF'\nfrom pathlib import Path\nfor f in files: Path(f).write_text('x')\nEOF", 'seat-1').status, 0);
+    assert.strictEqual(runP("python3 - <<'EOF'\nopen('notes.txt','w').write('x')\nEOF").status, 0, 'not a source file');
+    assert.strictEqual(runP('echo x > src/b.cs').status, 0, 'a redirect is no interpreter write');
+    assert.deepStrictEqual(rows().map((r) => [r.mode, r.detail.branch, r.detail.files, r.detail.unknown, r.detail.agent]),
+      [['probe', 'interpreter-write', 1, false, 'main'], ['probe', 'interpreter-write', 1, true, 'seat']]);
+  } finally { fs.rmSync(ledger, { recursive: true, force: true }); }
+});
+
+// audit 2026-10-10 (f24eb967 - T5 cross-track): the main session's first dispatch with no execution verdict before it is
+// counted, never judged.
+test('guard-unapproved-dispatch: a first dispatch with no Execution: verdict writes one probe row and passes', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'exec-probe-'));
+  fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\n');
+  const ledger = path.join(root, 'ledger');
+  const tp = (name, rows) => { const f = path.join(root, `${name}.jsonl`); fs.writeFileSync(f, rows.map((r) => JSON.stringify(r)).join('\n') + '\n'); return f; };
+  const dispatch = (id) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Agent', input: { subagent_type: 'Explore', prompt: 'map the folders' } }] } });
+  const go = (transcript, extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-unapproved-dispatch.js')], {
+    input: JSON.stringify({ tool_name: 'Agent', tool_input: { subagent_type: 'Explore', prompt: 'map the folders' }, session_id: 'exec', tool_use_id: 'toolu_now', transcript_path: transcript, ...extra }),
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: ledger },
+  });
+  const rows = () => { try { return fs.readFileSync(path.join(ledger, 'hook-blocks', 'exec.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
+  try {
+    assert.strictEqual(go(tp('bare', [{ type: 'user', message: { role: 'user', content: 'audit the docs' } }, dispatch('toolu_now')])).status, 0, 'the Explore brief still passes');
+    go(tp('with-verdict', [{ type: 'assistant', message: { content: [{ type: 'text', text: 'Execution: route direct - mode parallel seats: 3 - model session - x' }] } }, dispatch('toolu_now')]));
+    go(tp('with-skill', [{ type: 'assistant', message: { content: [{ type: 'tool_use', id: 's1', name: 'Skill', input: { skill: 'alfred-code:habits-execution-strategy' } }] } }]));
+    go(tp('second', [dispatch('toolu_before'), dispatch('toolu_now')]));
+    go(tp('seat', []), { agent_id: 'seat-1' });
+    assert.deepStrictEqual(rows().map((r) => [r.mode, r.detail.branch]), [['probe', 'no-execution-verdict']], 'only the bare first dispatch');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

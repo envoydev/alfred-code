@@ -62,9 +62,9 @@ test('a rule pulls its skills', () => {
 test('a kept rule makes its mcp required; the capabilities skill locks none', () => {
     const c = computeClosure(graph, { rules: ['alfred-navigation'] });
     assert.ok(c.mcps.includes('alfred-navigation'), 'the alfred-navigation rule genuinely depends on its server');
-    // The routing-map mentions in capture-agent-capabilities are subject matter, not needs -
+    // The routing-map mentions in capture-agent-awareness are subject matter, not needs -
     // picking it must never lock the whole MCP baseline into an install.
-    const cap = computeClosure(graph, { skills: ['capture-agent-capabilities'] });
+    const cap = computeClosure(graph, { skills: ['capture-agent-awareness'] });
     assert.deepStrictEqual(cap.mcps, [], 'the capabilities skill pulls no MCPs');
 });
 
@@ -214,9 +214,9 @@ test('the browser server keeping msedge warns when Edge is not installed; the ot
     assert.ok(!edge(evaluatePrereqs({ skills: [], mcps: [], plugins: [] }, { bins, envs: {} }, { playwrightBrowsers: ['msedge'] })), 'no browser selected, no Edge warning');
 });
 
-test('installed browser-<engine> servers read back as the one manifest entry', () => {
+test('installed <engine>-control servers (browser-<engine> before 2026-10-13) read back as the one manifest entry', () => {
     const { normalizeInventory } = require('./stack-select.js');
-    const inv = normalizeInventory({ mcps: ['navigation', 'browser-chrome', { name: 'browser-firefox' }, 'playwright', 'playwright-extra'] });
+    const inv = normalizeInventory({ mcps: ['navigation', 'chrome-control', { name: 'firefox-control' }, 'browser-webkit', 'playwright', 'playwright-extra'] });
     assert.deepStrictEqual(inv.mcps, ['navigation', 'browser', 'playwright', 'playwright-extra'], 'engine servers collapse to browser; a non-engine name is left alone');
 });
 
@@ -1013,7 +1013,7 @@ test('findStackMissing: a left_out item is switched off here, never missing', ()
 });
 
 test('findStackMissing: a parked MCP entry is that server switched off here, never missing', () => {
-    const installed = { rules: [], agents: [], skills: [], mcps: ['navigation'], plugins: [], hooks: [], plugins_disabled: ['browser-chrome'] };
+    const installed = { rules: [], agents: [], skills: [], mcps: ['navigation'], plugins: [], hooks: [], plugins_disabled: ['chrome-control'] };
     const names = new Set(findStackMissing(graph, recommendations, installed, ['web-angular']).map(m => `${m.category} ${m.name}`));
     assert.ok(!names.has('mcp browser'), 'the parked engine entry folds onto its catalog row');
 });
@@ -1113,8 +1113,8 @@ test('the --browsers option, with --playwright-browsers read as its alias', () =
     assert.deepStrictEqual(from({}), []);
 });
 
-// THE DESKTOP SERVERS BY OS. windows-desktop drives Windows apps and macos-desktop macOS ones, so the walk
-// offers each on its own OS only and neither on Linux; the wpf and winforms stacks seed windows-desktop,
+// THE DESKTOP SERVERS BY OS. windows-control drives Windows apps and macos-control macOS ones, so the walk
+// offers each on its own OS only and neither on Linux; the wpf and winforms stacks seed windows-control,
 // which on another OS is named once on stderr instead of pre-selected. --platform forces the OS.
 test('the MCP table offers each desktop server on its own OS only, seeded for wpf / winforms on Windows', () => {
     const fs = require('node:fs');
@@ -1131,21 +1131,21 @@ test('the MCP table offers each desktop server on its own OS only, seeded for wp
         for (const stack of ['wpf', 'winforms'])
         {
             const win = table('win32', stack);
-            assert.match(row(win.stdout, 'windows-desktop'), new RegExp(`\\| stack:${stack} \\|`), `${stack} seeds windows-desktop on Windows`);
-            assert.strictEqual(row(win.stdout, 'macos-desktop'), '', 'macos-desktop is never offered on Windows');
+            assert.match(row(win.stdout, 'windows-control'), new RegExp(`\\| stack:${stack} \\|`), `${stack} seeds windows-control on Windows`);
+            assert.strictEqual(row(win.stdout, 'macos-control'), '', 'macos-control is never offered on Windows');
             assert.ok(!/skipped/.test(win.stderr), win.stderr);
             const mac = table('darwin', stack);
-            assert.strictEqual(row(mac.stdout, 'windows-desktop'), '', 'windows-desktop is never offered on macOS');
-            assert.match(row(mac.stdout, 'macos-desktop'), /\| - \|/, 'macos-desktop is addable on macOS, pre-selected by nothing');
-            assert.match(mac.stderr, new RegExp(`skipped: mcp windows-desktop - stack:${stack} seeds it on Windows; this machine runs macOS`));
+            assert.strictEqual(row(mac.stdout, 'windows-control'), '', 'windows-control is never offered on macOS');
+            assert.match(row(mac.stdout, 'macos-control'), /\| - \|/, 'macos-control is addable on macOS, pre-selected by nothing');
+            assert.match(mac.stderr, new RegExp(`skipped: mcp windows-control - stack:${stack} seeds it on Windows; this machine runs macOS`));
             const footer = Number((mac.stdout.match(/^total: (\d+) mcps/m) || [])[1]);
             assert.strictEqual(mac.stdout.split('\n').filter((l) => /^\s*\d+ \|/.test(l)).length, footer, 'the footer counts the rows offered here');
         }
         const linux = table('linux', 'wpf');
-        assert.strictEqual(row(linux.stdout, 'windows-desktop') + row(linux.stdout, 'macos-desktop'), '', 'no desktop server is offered on Linux');
-        assert.match(linux.stderr, /skipped: mcp windows-desktop - stack:wpf seeds it on Windows; this machine runs Linux/);
+        assert.strictEqual(row(linux.stdout, 'windows-control') + row(linux.stdout, 'macos-control'), '', 'no desktop server is offered on Linux');
+        assert.match(linux.stderr, /skipped: mcp windows-control - stack:wpf seeds it on Windows; this machine runs Linux/);
         const web = table('win32', 'web-angular');
-        assert.match(row(web.stdout, 'windows-desktop'), /\| - \|/, 'only wpf and winforms seed it');
+        assert.match(row(web.stdout, 'windows-control'), /\| - \|/, 'only wpf and winforms seed it');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -1160,12 +1160,12 @@ test('the desktop gate reaches --missing and a selection: a wrong-OS server is n
     try
     {
         const missing = (platform) => spawnSync('node', [script, '--missing', '--recs', recs, '--stacks', 'wpf', '--platform', platform], { encoding: 'utf8' }).stdout;
-        assert.match(missing('win32'), /^missing: mcp windows-desktop - needed by wpf, not installed$/m);
-        assert.ok(!/windows-desktop/.test(missing('darwin')), missing('darwin'));
-        assert.ok(!/windows-desktop/.test(missing('linux')), missing('linux'));
+        assert.match(missing('win32'), /^missing: mcp windows-control - needed by wpf, not installed$/m);
+        assert.ok(!/windows-control/.test(missing('darwin')), missing('darwin'));
+        assert.ok(!/windows-control/.test(missing('linux')), missing('linux'));
 
         const rawFile = path.join(dir, 'raw.json');
-        fs.writeFileSync(rawFile, JSON.stringify({ skills: [], mcps: ['windows-desktop', 'macos-desktop'] }));
+        fs.writeFileSync(rawFile, JSON.stringify({ skills: [], mcps: ['windows-control', 'macos-control'] }));
         const emit = (platform) =>
         {
             const out = path.join(dir, `${platform}.sel`);
@@ -1173,9 +1173,9 @@ test('the desktop gate reaches --missing and a selection: a wrong-OS server is n
             return { lines: fs.readFileSync(out, 'utf8').split('\n').filter((l) => l.startsWith('mcp ')), out: r.stdout };
         };
         const mac = emit('darwin');
-        assert.deepStrictEqual(mac.lines, ['mcp macos-desktop']);
-        assert.match(mac.out, /^skipped: mcp windows-desktop - it drives Windows apps; this machine runs macOS$/m);
-        assert.deepStrictEqual(emit('win32').lines, ['mcp windows-desktop']);
+        assert.deepStrictEqual(mac.lines, ['mcp macos-control']);
+        assert.match(mac.out, /^skipped: mcp windows-control - it drives Windows apps; this machine runs macOS$/m);
+        assert.deepStrictEqual(emit('win32').lines, ['mcp windows-control']);
         assert.deepStrictEqual(emit('linux').lines, []);
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -1189,26 +1189,26 @@ test('a server pulls the skill it brings; dropping the server orphans it, and th
     const g = {
         skills: { 'desktop-automation': { mcps: [], plugins: [] }, csharp: { mcps: [], plugins: [] } },
         agents: {}, rules: {},
-        mcps: { 'windows-desktop': { skills: ['desktop-automation'] }, 'macos-desktop': { skills: ['desktop-automation'] } },
-        catalog: { mcps: ['windows-desktop', 'macos-desktop', 'navigation'], plugins: [], hooks: [] },
+        mcps: { 'windows-control': { skills: ['desktop-automation'] }, 'macos-control': { skills: ['desktop-automation'] } },
+        catalog: { mcps: ['windows-control', 'macos-control', 'navigation'], plugins: [], hooks: [] },
     };
-    const c = computeClosure(g, { mcps: ['macos-desktop'] });
+    const c = computeClosure(g, { mcps: ['macos-control'] });
     assert.deepStrictEqual(c.skills, ['desktop-automation']);
-    assert.strictEqual(c.reasons['desktop-automation'], 'required by mcp macos-desktop');
+    assert.strictEqual(c.reasons['desktop-automation'], 'required by mcp macos-control');
     assert.deepStrictEqual(computeClosure(g, { mcps: ['navigation'] }).skills, [], 'a server that brings nothing pulls nothing');
-    assert.deepStrictEqual(computeClosure({ ...g, mcps: undefined }, { mcps: ['windows-desktop'] }).skills, [], 'a graph with no mcps block (an older release) still closes');
-    assert.deepStrictEqual(findDependents(g, { mcps: ['windows-desktop'], skills: ['desktop-automation'] }, 'skills', 'desktop-automation'),
-        [{ category: 'mcp', name: 'windows-desktop' }]);
-    const orphans = findOrphans(g, { skills: ['desktop-automation', 'csharp'], mcps: [] }, { mcps: ['windows-desktop'] });
+    assert.deepStrictEqual(computeClosure({ ...g, mcps: undefined }, { mcps: ['windows-control'] }).skills, [], 'a graph with no mcps block (an older release) still closes');
+    assert.deepStrictEqual(findDependents(g, { mcps: ['windows-control'], skills: ['desktop-automation'] }, 'skills', 'desktop-automation'),
+        [{ category: 'mcp', name: 'windows-control' }]);
+    const orphans = findOrphans(g, { skills: ['desktop-automation', 'csharp'], mcps: [] }, { mcps: ['windows-control'] });
     assert.deepStrictEqual(orphans.map((o) => `${o.category} ${o.name}`), ['skill desktop-automation']);
 });
 
 test('the generated graph: each desktop server brings desktop-automation, and the skill\'s own server mentions pull nothing', () => {
-    for (const name of ['windows-desktop', 'macos-desktop'])
+    for (const name of ['windows-control', 'macos-control'])
         assert.deepStrictEqual((graph.mcps || {})[name], { skills: ['desktop-automation'] }, name);
     const c = computeClosure(graph, { skills: ['desktop-automation'] });
     assert.deepStrictEqual(c.mcps, [], 'naming both servers in the skill must never install both');
-    assert.ok(computeClosure(graph, { rules: ['wpf-conventions'], mcps: ['windows-desktop'] }).skills.includes('desktop-automation'));
+    assert.ok(computeClosure(graph, { rules: ['wpf-conventions'], mcps: ['windows-control'] }).skills.includes('desktop-automation'));
 });
 
 // Re-verify 4 T4: the installer loads this module for its closure, and it replaced the process-wide fs.readFileSync with

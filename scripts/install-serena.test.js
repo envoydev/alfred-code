@@ -173,7 +173,7 @@ test('seed: an EXISTING config with an empty language list gets both keys filled
 // 2026-10-06 (Windows): serena rewrites project.yml with CRLF and block lists at column 1. The old line test read
 // `language_servers:\r` as an empty key and wrote an inline value above the block items - 'expected <block end>, but
 // found '-'' at line 42, and the navigation server stopped loading.
-const CRLF_BLOCK = 'project_name: "Speech"\r\nlanguage_servers:\r\n- csharp\r\nignored_paths:\r\n- ".alfred"\r\n- ".claude"\r\n- ".serena"\r\n- ".playwright"\r\nread_only: false\r\n';
+const CRLF_BLOCK = 'project_name: "App"\r\nlanguage_servers:\r\n- csharp\r\nignored_paths:\r\n- ".alfred"\r\n- ".claude"\r\n- ".serena"\r\n- ".playwright"\r\nread_only: false\r\n';
 
 test('seed: a CRLF block list is a key with entries - left byte for byte', () =>
 {
@@ -185,7 +185,7 @@ test('seed: a CRLF block list is a key with entries - left byte for byte', () =>
 
 test('seed: a file an earlier release broke (an inline value above stray block items) is repaired, then idempotent', () =>
 {
-    const broken = 'project_name: "Speech"\r\nlanguage_servers: ["csharp"]\r\n- csharp\r\nignored_paths: [".serena", ".claude", ".playwright"]\r\n- ".serena"\r\n- ".claude"\r\nread_only: false\r\n';
+    const broken = 'project_name: "App"\r\nlanguage_servers: ["csharp"]\r\n- csharp\r\nignored_paths: [".serena", ".claude", ".playwright"]\r\n- ".serena"\r\n- ".claude"\r\nread_only: false\r\n';
     const root = project({ '.serena/project.yml': broken, 'src/App.csproj': '' });
     const logs = [];
     serena.seedProject({ projectRoot: root, selected: true, log: (m) => logs.push(m) });

@@ -565,7 +565,8 @@ test('four owning sections: the ask names three', () => {
     r.write('src/Api/Program.cs', 'y\n');
     const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
     assert.match(reason, /^3 sections document this file:/m);
-    assert.match(reason, /set p#a --expect [0-9a-f]{12}\n {11}node .*set p#b --expect [0-9a-f]{12}\n {11}node .*set p#c --expect [0-9a-f]{12}/);
+    // audit 2026-10-11 SD09: each command names where the new text comes from
+    assert.match(reason, /set p#a --expect [0-9a-f]{12} < <file holding its new text>\n {11}node .*set p#b --expect [0-9a-f]{12} < <file holding its new text>\n {11}node .*set p#c --expect [0-9a-f]{12} < <file holding its new text>\n {9}\(the section's new text as `show` prints it - from a file as above, or piped in\)/);
     assert.doesNotMatch(reason, /p#d/);
   } finally { r.rm(); }
 });
@@ -608,7 +609,7 @@ test('a finished agent is asked about the section documenting what it changed, q
     touchBy(r, s, 'a1');
     const body = JSON.parse(r.hook(subStop(s, 'a1'), GIT).stdout);
     assert.strictEqual(body.decision, 'block');
-    assert.match(body.reason, /^Docs check: you changed src\/Api\/Program\.cs\n\nOne section documents this file - 'orders', in \.claude\/docs\/architecture\/references\/patterns\.md:\n  "Refunds are ledgered before the payment call\."\n\nDoes your change still leave that true\?\n\n  Yes -> reply: docs ok\n  No  -> rewrite the section, then run\n {11}node \.claude\/hooks\/docs\.js set patterns#orders --expect [0-9a-f]{12}\n {9}and commit the doc with your code, so it travels with this branch\.\n\nThis reply is what your caller receives: the docs line first, then your report as your brief asks for it -\nits status: and contract_version: lines, where it has them, unchanged\.$/);
+    assert.match(body.reason, /^Docs check: you changed src\/Api\/Program\.cs\n\nOne section documents this file - 'orders', in \.claude\/docs\/architecture\/references\/patterns\.md:\n  "Refunds are ledgered before the payment call\."\n\nDoes your change still leave that true\?\n\n  Yes -> reply: docs ok\n  No  -> rewrite the section, then run\n {11}node \.claude\/hooks\/docs\.js set patterns#orders --expect [0-9a-f]{12} < <file holding its new text>\n {9}\(the section's new text as `show` prints it - from a file as above, or piped in\)\n {9}and commit the doc with your code, so it travels with this branch\.\n\nThis reply is what your caller receives: the docs line first, then your report as your brief asks for it -\nits status: and contract_version: lines, where it has them, unchanged\.$/);
     assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"ask-update"/);
     assert.match(r.read(`.claude/docs/hook-blocks/${s}.jsonl`), /"event":"SubagentStop"/);
   } finally { r.rm(); }
@@ -1619,4 +1620,211 @@ test('with no watch entry Stop never diffs the tree', { skip: process.platform =
     assert.strictEqual(r.hook(stopEv(s), env).stdout, '');
     assert.doesNotMatch(fs.readFileSync(calls, 'utf8'), /status --porcelain|diff --name-only/);
   } finally { r.rm(); fs.rmSync(bin, { recursive: true, force: true }); }
+});
+
+// audit 2026-10-10 (84eedb4b, T4 cross-track): a plan stamped Completed: is a record - new scope opens a new plan file.
+test('a write to a plan stamped Completed: is denied unless it changes only stamp lines', () => {
+  const PLAN = '# Plan: csv export\nGated: 2026-10-09\nApproved: 2026-10-09 - build inline\nCompleted: 2026-10-09\n\n## Tasks\n- [x] Task 1 - export\n';
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    r.write('.claude/docs/plans/csv-export.md', PLAN);
+    r.write('.claude/docs/plans/open.md', '# Plan: open\nGated: 2026-10-10\n\n## Tasks\n- [ ] Task 1\n');
+    const s = sid();
+    const edit = (o, nw, file = 'csv-export.md') => r.hook(pre('Edit', { file_path: `${r.root}/.claude/docs/plans/${file}`, old_string: o, new_string: nw }, s));
+    const add = edit('- [x] Task 1 - export\n', '- [x] Task 1 - export\n- [ ] Task 2 - the form fixes\n');
+    assert.ok(denied(add), 'new scope appended to the stamped plan');
+    assert.match(JSON.parse(add.stdout).hookSpecificOutput.permissionDecisionReason, /stamped Completed: .*NEW plan file.*ungated: <why>/s);
+    assert.ok(!denied(edit('Completed: 2026-10-09\n', 'Completed: 2026-10-09 - Conformance: sound\n')), 'a stamp line may change');
+    assert.ok(!denied(edit('- [ ] Task 1\n', '- [x] Task 1\n', 'open.md')), 'an open plan is edited freely');
+    assert.ok(denied(r.hook(pre('Write', { file_path: `${r.root}/.claude/docs/plans/csv-export.md`, content: `${PLAN}- [ ] Task 2\n` }, s))), 'a Write that adds a task');
+    assert.ok(!denied(r.hook(pre('Write', { file_path: `${r.root}/.claude/docs/plans/next-cycle.md`, content: '# Plan: next\n' }, s))), 'a NEW plan file');
+    assert.ok(denied(r.hook(pre('MultiEdit', { file_path: `${r.root}/.claude/docs/plans/csv-export.md`, edits: [{ old_string: 'Gated: 2026-10-09', new_string: 'Gated: 2026-10-10' }, { old_string: '## Tasks', new_string: '## Tasks\n- [ ] Task 0' }] }, s))), 'one non-stamp edit in a MultiEdit');
+    assert.ok(denied(r.hook(pre('Bash', { command: 'echo "- [ ] Task 2" >> .claude/docs/plans/csv-export.md' }, s))), 'a shell append');
+    assert.ok(!denied(r.hook(pre('Bash', { command: 'grep -c Task .claude/docs/plans/csv-export.md' }, s))), 'a read');
+    const rows = r.read(`.claude/docs/hook-blocks/${s}.jsonl`).trim().split('\n').map((l) => JSON.parse(l));
+    assert.ok(rows.length >= 4 && rows.every((x) => /stamped Completed/.test(x.reason)), 'one block row per denial');
+  } finally { r.rm(); }
+});
+
+// ---- audit 2026-10-10 C03 / C23: the hold pastes only a covering section, and calls only a code-style one the convention ----
+test('audit 2026-10-10 C03 C23: a word-only hit is named as a candidate, never pasted as the convention; the hold does not repeat', () => {
+  const WORDS = section('di-selection', '', 'The staff role composition table: staff role selection happens in the composition root, and the staff role seed reads it.');
+  const r = repo({ files: { 'src/Api/Seeding/StaffRoleSeed.cs': 'class StaffRoleSeed {}\n' }, docs: { 'references/integrations.md': WORDS, 'references/patterns.md': PATTERNS } });
+  try {
+    const s = sid();
+    const held = r.hook(pre('Edit', { file_path: 'src/Api/Seeding/StaffRoleSeed.cs' }, s));
+    assert.ok(denied(held), 'still one hold');
+    assert.match(held.stdout, /No section declares src\/Api\/Seeding\/StaffRoleSeed\.cs; these name its words:/);
+    assert.match(held.stdout, /integrations#di-selection \(\d+ chars, `node \.claude\/hooks\/docs\.js show integrations#di-selection`\)/);
+    assert.doesNotMatch(held.stdout, /selection happens in the composition root/, 'the section is not pasted');
+    assert.doesNotMatch(held.stdout, /convention this change follows/);
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Api/Seeding/StaffRoleSeed.cs' }, s))), 'the retry goes through');
+    assert.match(r.read('.claude/docs/docs-log.jsonl'), /"event":"hold".*"via":"words"/);
+  } finally { r.rm(); }
+});
+
+test('audit 2026-10-10 C23: a covering section is the documented context; a covering code-style section is preferred and is the convention', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const plain = r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, sid()));
+    assert.match(plain.stdout, /patterns#orders covers src\/Api\/Orders\/Refund\.cs - here it is/);
+    assert.match(plain.stdout, /That is the documented context for this path\. Now make the change\./);
+    assert.doesNotMatch(plain.stdout, /convention this change follows/);
+    r.write('.claude/docs/code-style/watch.json', '{}\n');
+    r.write('.claude/docs/code-style/csharp.md', section('handlers', 'src/Api/Orders/**', 'A handler returns a Result, never throws for a business rule, and stays under forty lines of body text.'));
+    const styled = r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, sid()));
+    assert.match(styled.stdout, /csharp#handlers covers src\/Api\/Orders\/Refund\.cs - here it is/, 'the code-style section is the one pasted');
+    assert.match(styled.stdout, /Also covering it: patterns#orders/);
+    assert.match(styled.stdout, /That is the convention this change follows\./);
+  } finally { r.rm(); }
+});
+
+test('audit 2026-10-10 C23: a section naming the changed file verbatim is asked about first; a near spelling is not', () => {
+  const CODES = section('codes', '', 'src/Api/Program.cs registers 148 codes, 136 validator + 12 handler.')
+    + '\n' + section('near', '', 'other/src/Api/Program.cs and src/Api/Program.cs.bak and src/Api/Program.csx are not it.');
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'references/slices.md': CODES, 'watch.json': WATCH() } });
+  try {
+    const s = sid(); start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    const reason = JSON.parse(r.hook(stopEv(s)).stdout).reason;
+    assert.match(reason, /^2 sections document this file:/m);
+    assert.ok(reason.indexOf('set slices#codes') >= 0 && reason.indexOf('set slices#codes') < reason.indexOf('set patterns#orders'), reason);
+    assert.doesNotMatch(reason, /slices#near/);
+  } finally { r.rm(); }
+});
+
+test('audit 2026-10-10 C23: a file a checkout brought in is not the session\'s change; its own commit is', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  const older = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+  try {
+    r.git('checkout', '-qb', 'staging');
+    r.write('src/Api/Program.cs', 'app.UseStaging();\napp.Run();\n');
+    process.env.GIT_COMMITTER_DATE = older;
+    try { r.git('commit', '-qam', 'staging config'); } finally { delete process.env.GIT_COMMITTER_DATE; }
+    r.git('checkout', '-q', 'develop');
+    const s = sid(); start(r, s);
+    r.git('checkout', '-q', 'staging');
+    assert.strictEqual(r.hook(stopEv(s)).stdout, '', 'staging\'s own commit is not this session\'s change');
+    r.write('src/Api/Program.cs', 'app.UseStaging();\napp.UseAuth();\napp.Run();\n');
+    r.git('commit', '-qam', 'mine');
+    assert.match(JSON.parse(r.hook(stopEv(s)).stdout).reason, /^Docs check: you changed src\/Api\/Program\.cs\n/, 'a commit the session made is');
+  } finally { r.rm(); }
+});
+
+// Audit 2026-10-11 SD09, sessions cc87fa6c / e7c8cbb6: a rebase replays a pre-snapshot commit with a new committer time,
+// and a pull brings a commit made elsewhere after the snapshot - both read as 'you changed'. HEAD's reflog says how each
+// commit arrived.
+test('audit 2026-10-11 SD09: a rebase, a pull and a cherry-pick of others\' work are not the session\'s change; its own commit, amend and rebased commit are', () => {
+  const older = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+  const at = (date, fn) => { process.env.GIT_AUTHOR_DATE = date; process.env.GIT_COMMITTER_DATE = date; try { fn(); } finally { delete process.env.GIT_AUTHOR_DATE; delete process.env.GIT_COMMITTER_DATE; } };
+  const asked = (r, s) => { const out = r.hook(stopEv(s)).stdout; return out ? JSON.parse(out).reason : ''; };
+  // the rebase replay (cc87fa6c)
+  let r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n', 'src/Api/Other.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  try {
+    r.git('checkout', '-qb', 'feature');
+    r.write('src/Api/Program.cs', 'app.UseFeature();\napp.Run();\n');
+    at(older, () => r.git('commit', '-qam', 'old feature work'));
+    r.git('checkout', '-q', 'develop');
+    r.write('src/Api/Other.cs', 'y\n');
+    at(older, () => r.git('commit', '-qam', 'develop moved'));
+    // the measured shape: the session starts on one branch, checks another out and rebases it onto the first
+    const s = sid(); start(r, s);
+    r.git('checkout', '-q', 'feature');
+    r.git('rebase', '-q', 'develop');
+    assert.strictEqual(asked(r, s), '', 'the measured case: a rebased pre-snapshot commit is no change of this session');
+    r.write('src/Api/Program.cs', 'app.UseFeature();\napp.UseAuth();\napp.Run();\n');
+    r.git('commit', '-qam', 'mine');
+    assert.match(asked(r, s), /you changed src\/Api\/Program\.cs/, 'a commit the session made after it is');
+  } finally { r.rm(); }
+  r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  try {
+    const s = sid(); start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    r.git('commit', '-qam', 'mine');
+    r.git('commit', '-q', '--amend', '-m', 'mine, amended');
+    assert.match(asked(r, s), /you changed src\/Api\/Program\.cs/, 'an amended commit is the session\'s own');
+  } finally { r.rm(); }
+  // the session's own commit moved by a rebase stays its own
+  r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n', 'src/Api/Other.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  try {
+    r.git('checkout', '-qb', 'base');
+    r.write('src/Api/Other.cs', 'y\n');
+    at(older, () => r.git('commit', '-qam', 'base moved'));
+    r.git('checkout', '-q', 'develop');
+    const s = sid(); start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    r.git('commit', '-qam', 'mine');
+    r.git('rebase', '-q', 'base');
+    assert.match(asked(r, s), /you changed src\/Api\/Program\.cs/, 'a commit authored in the session and rebased is still its own');
+  } finally { r.rm(); }
+  // a pull (fast-forward) of a commit made elsewhere AFTER the snapshot (e7c8cbb6), and a cherry-pick of an old one
+  r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  try {
+    const other = `${r.root}-teammate`;
+    r.git('clone', '-q', r.root, other);
+    const s = sid(); start(r, s);
+    fs.writeFileSync(require('node:path').join(other, 'src', 'Api', 'Program.cs'), 'app.UseTeam();\napp.Run();\n');
+    r.git('-C', other, '-c', 'user.email=t@example.com', '-c', 'user.name=t', 'commit', '-qam', 'teammate pushed during the session');
+    try {
+      r.git('pull', '-q', '--ff-only', other, 'HEAD');
+      assert.strictEqual(asked(r, s), '', 'a pull brings a commit made elsewhere after the snapshot - no reflog commit entry names it');
+    } finally { fs.rmSync(other, { recursive: true, force: true }); }
+  } finally { r.rm(); }
+  r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  try {
+    r.git('checkout', '-qb', 'old');
+    r.write('src/Api/Program.cs', 'app.UseOld();\napp.Run();\n');
+    at(older, () => r.git('commit', '-qam', 'old fix'));
+    r.git('checkout', '-q', 'develop');
+    const s = sid(); start(r, s);
+    r.git('cherry-pick', 'old');
+    assert.strictEqual(asked(r, s), '', 'a cherry-pick of a commit authored before the session is a replay');
+  } finally { r.rm(); }
+});
+
+// Audit 2026-10-11 SD09, session 5f9fec85: `rm -f` of a git-ignored `.trx` under a test project's TestResults/ was held
+// as a source change, with a 3,606-char section pasted beside it.
+test('audit 2026-10-11 SD09: a run artifact git ignores, or one under TestResults/, is never held; a tracked source file still is', () => {
+  const p = require('node:path');
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n', '.gitignore': '*.log\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    const s = sid();
+    fs.mkdirSync(p.join(r.root, 'tests', 'App.IntegrationTests', 'TestResults'), { recursive: true });
+    fs.writeFileSync(p.join(r.root, 'tests', 'App.IntegrationTests', 'TestResults', 'ib10.trx'), '<x/>');
+    fs.writeFileSync(p.join(r.root, 'src', 'Api', 'debug.log'), 'x');
+    assert.ok(!denied(r.hook(pre('Bash', { command: 'rm -f tests/App.IntegrationTests/TestResults/ib10.trx' }, s))), 'the measured TestResults artifact');
+    assert.ok(!denied(r.hook(pre('Bash', { command: 'rm -f src/Api/debug.log' }, s))), 'a file git ignores');
+    assert.ok(!denied(r.hook(pre('Write', { file_path: 'src/Api/debug.log', content: 'y' }, s))), 'on the file route too');
+    assert.ok(denied(r.hook(pre('Bash', { command: 'rm -f src/Api/Orders/Refund.cs' }, s))), 'a tracked source file is still a change the hold reads');
+    assert.ok(denied(r.hook(pre('Bash', { command: 'rm -f src/Api/debug.log src/Api/Orders/Refund.cs' }, sid()))), 'an artifact beside a source file does not open the hold');
+  } finally { r.rm(); }
+});
+
+// Audit 2026-10-11 SD09, session fdce35ae: 'you changed Directory.Build.props' for the user's own version bump, made in
+// the IDE during a 4h33m idle gap of a session that wrote nothing.
+test('audit 2026-10-11 SD09: an unclaimed change made while the session sat idle is not asked about; one made while it worked is', () => {
+  const p = require('node:path');
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  const tp = `${r.root}-t.jsonl`;
+  const row = (ms) => JSON.stringify({ type: 'assistant', timestamp: new Date(ms).toISOString(), message: { content: [{ type: 'text', text: 'ok' }] } });
+  try {
+    const s = sid(); start(r, s);
+    const now = Date.now();
+    fs.writeFileSync(tp, [row(now - 5 * 3600e3), row(now - 5 * 3600e3 + 60e3), row(now - 60e3)].join('\n') + '\n');
+    r.write('src/Api/Program.cs', 'app.UseVersion(3);\napp.Run();\n');
+    const inGap = new Date(now - 2 * 3600e3);
+    fs.utimesSync(p.join(r.root, 'src', 'Api', 'Program.cs'), inGap, inGap);
+    const ask = () => { const out = r.hook({ ...stopEv(s), transcript_path: tp }).stdout; return out ? JSON.parse(out).reason : ''; };
+    assert.strictEqual(ask(), '', 'the measured case: written mid-gap, claimed by no tool of the session');
+    const edge = new Date(now - 5 * 3600e3 + 60e3 + 10e3);
+    fs.utimesSync(p.join(r.root, 'src', 'Api', 'Program.cs'), edge, edge);
+    assert.match(ask(), /you changed src\/Api\/Program\.cs/, 'written within 30s of the gap\'s edge: still the session\'s');
+  } finally { r.rm(); fs.rmSync(tp, { force: true }); }
+  const r2 = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  try {
+    const s = sid(); start(r2, s);
+    r2.write('src/Api/Program.cs', 'app.UseVersion(3);\napp.Run();\n');
+    const out = r2.hook({ ...stopEv(s), transcript_path: p.join(r2.root, 'missing.jsonl') }).stdout;
+    assert.match(out ? JSON.parse(out).reason : '', /you changed src\/Api\/Program\.cs/, 'no transcript to read: the change stays the session\'s');
+  } finally { r2.rm(); }
 });

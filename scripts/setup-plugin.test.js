@@ -3,6 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+require('./hook-test-env').isolateHookSuite({ ownTmp: true });
 
 const ROOT = path.join(__dirname, '..');
 const PLUGIN_DIR = path.join(ROOT, 'setup-plugin');
@@ -110,15 +111,15 @@ test('setup: no memory level, the init prerequisites deferred, and a close that 
 test('the walk: the playwright ENABLE pre-selection reads plan-out\'s live state in DELTA (R77)', () => {
     const walk = walkBody();
     const mcps = flat(walk.slice(walk.indexOf('## MCPs'), walk.indexOf('## Plugins')));
-    assert.match(mcps, /DELTA pre-selects from the LIVE install, never by hand: `jq -c '\.browser' "\$TMP\/installed\.json"`/);
-    assert.match(mcps, /Never pre-select from the stamp's own `browser-enabled:` line/);
+    assert.match(mcps, /DELTA pre-selects from the LIVE install, never by hand: `node -e '[^']*\.browser\)\)' "\$TMP\/installed\.json"`/);
+    assert.match(mcps, /Never pre-select from the stamp's own `control-enabled:` line/);
     assert.match(mcps, /pre-selected: `enabled` plus any newly added one in DELTA, every one in FRESH/);
     assert.match(mcps, /18\.7k characters of schema/, 'the per-session cost stays named (R67)');
     // M2: picking a Playwright-built engine installs it in THIS run - the ask says so; init only reports.
     assert.match(mcps, /Picking one IS installing it, and the question says so in one line: the install downloads a picked `firefox` \/ `webkit`/);
     assert.match(mcps, /`\/alfred-code:init` reports one that is not there/);
     assert.match(flat(cmdBody('setup')), /references\/walk\.md` before step 4 and run it in \*\*FRESH\*\*/);
-    assert.match(flat(cmdBody('configure')), /references\/walk\.md` before step 3 and run it in \*\*DELTA\*\*/);
+    assert.match(flat(cmdBody('configure')), /references\/walk\.md` AT step 3, never earlier - [^*]*and run it in \*\*DELTA\*\*/);
     assert.match(cmdBody('configure'), /--installed-only --print-plan --plan-out "\$TMP\/installed\.json"/, 'the DELTA walk reads the plan configure wrote');
 });
 
@@ -144,7 +145,7 @@ test('init: the bootstrap order - read, plan, one machine ask, memory, captures 
     assert.match(flat(init), /follow it inline, start to finish - never a Skill call/);
     // The five captures, in the brief's order, are the SCRIPT's table - the body cites the script.
     const { CAPTURES } = require('./init-plan.js');
-    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), ['capture-related-projects', 'capture-architecture', 'capture-code-style', 'capture-project-capabilities', 'capture-agent-capabilities']);
+    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), ['capture-related-projects', 'capture-architecture', 'capture-code-style', 'capture-project-awareness', 'capture-agent-awareness']);
     assert.deepStrictEqual(CAPTURES.map((c) => c.seat), ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer', null, null]);
     assert.ok(!/sentry/i.test(init), 'no sentry step (R28)');
     assert.ok(!/allowed-tools/.test(init.split('---')[1]), 'no command carries allowed-tools');
@@ -522,8 +523,24 @@ test('D1: on seed=shell every command body prints the refusal and runs no twin',
 // spells a stack entry `@envoydev`: it names the key the core is listed under - the resolve line's
 // `key=`. The resolve line's own row filter (`@envoydev$`, the anchored match it derives `key=` from)
 // is the one place the key is spelled.
+// audit 2026-10-11 (sessions 37d7a42c, 902182d2, 1c66b16d): every downloading command reads the whole protocol first,
+// through Bash; a 30,382-byte copy spilled past the Bash tool's output cap to a tool-results file and was read a second
+// time (~8.0k result, +13.6k context carried on every later message), and 28,910 bytes fit by ~1.1k with nothing holding
+// it there. The PowerShell route moved beside it, read only when bash cannot run; the cap keeps a third of headroom.
+const PROTOCOL_CAP = 20000;
+test(`source-protocol.md, read whole by every command, stays under ${PROTOCOL_CAP} chars; the PowerShell route lives beside it`, () => {
+    const protocol = fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'source-protocol.md'), 'utf8');
+    assert.ok(protocol.length <= PROTOCOL_CAP, `source-protocol.md is ${protocol.length} chars, over the ${PROTOCOL_CAP} cap - move a branch out, as the PowerShell route was`);
+    assert.doesNotMatch(protocol, /```powershell/, 'a PowerShell block belongs in source-protocol-powershell.md');
+    assert.match(protocol, /`source-protocol-powershell\.md`/, 'the protocol names where the PowerShell route lives');
+    const ps = fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'source-protocol-powershell.md'), 'utf8');
+    assert.match(ps, /```powershell\n\$TMP = Join-Path/, 'the PowerShell resolve');
+    for (const name of ['init', 'setup', 'update', 'configure', 'validate', 'uninstall'])
+        assert.match(flat(cmdBody(name)), /source-protocol\.md`?[^.]*(?:ONE Bash `cat`|one Bash `cat`)/, `${name} reads the protocol in one Bash cat`);
+});
+
 test('the command bodies read stack entries under the key the core is listed under, never a literal @envoydev', () => {
-    const files = ['references/source-protocol.md', ...fs.readdirSync(path.join(PLUGIN_DIR, 'commands')).map((f) => `commands/${f}`)];
+    const files = ['references/source-protocol.md', 'references/source-protocol-powershell.md', ...fs.readdirSync(path.join(PLUGIN_DIR, 'commands')).map((f) => `commands/${f}`)];
     for (const file of files)
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, file), 'utf8');
@@ -568,7 +585,7 @@ test('every command gate and the router stop in a worktree of an installed check
     }
     // M5: validate's scope comes from the same script, which reads either stamp name - never a grep.
     const validate = cmdBody('validate');
-    assert.match(flat(validate), /`<scope>` below is `node "\$TMP\/repo\/scripts\/install\/stamp\.js" scope \.`/);
+    assert.match(flat(validate), /Every installer call below carries its scope inline, `--scope "\$\(node "\$TMP\/repo\/scripts\/install\/stamp\.js" scope \.\)"`/);
     assert.ok(!/grep -m1 '\^scope:'/.test(validate), 'no grep of one stamp name');
     // The installer refuses the same tree, so a gate skipped by hand cannot restart the loop either.
     assert.match(fs.readFileSync(path.join(ROOT, 'scripts', 'install', 'alfred-code.js'), 'utf8'), /this is a git worktree of \$\{worktreeOf\}, which holds the install - run the installer from there/);
@@ -663,8 +680,12 @@ test('validate reconciles both ways (--redundant + --missing), walks layers, run
     assert.ok(!/project mode only/i.test(body), 'validate runs at every scope');
     assert.match(flat(body), /\*\*Every scope\.\*\* A project, user or local install keeps its stamp, its library copies and its settings in the project's `\.claude\/`/);
     assert.match(flat(body), /Find the install with `node "\$TMP\/repo\/scripts\/install\/stamp\.js" state \.`/);
-    assert.match(body, /install\/alfred-code\.js" update --source "\$TMP\/repo" --scope <scope> --installed-only --print-plan --plan-out/, 'validate reads the install back at its own scope');
-    assert.match(body, /install\/alfred-code\.js" update --source "\$TMP\/repo" --scope <scope> --installed-only \[--add/, 'validate applies the accepted adds and removes via the seed, over the read-back, at its own scope');
+    // audit 2026-10-11, session 6288ad94: a literal `<scope>` left the value to infer - the run guessed `project`,
+    // read `user` back and re-ran the read-back. The stamp's own scope is inline now.
+    const SCOPE = '--scope "\\$\\(node "\\$TMP\\/repo\\/scripts\\/install\\/stamp\\.js" scope \\.\\)"';
+    assert.match(body, new RegExp(`install\\/alfred-code\\.js" update --source "\\$TMP\\/repo" ${SCOPE} --installed-only --print-plan --plan-out`), 'validate reads the install back at its own scope');
+    assert.match(body, new RegExp(`install\\/alfred-code\\.js" update --source "\\$TMP\\/repo" ${SCOPE} --installed-only \\[--add`), 'validate applies the accepted adds and removes via the seed, over the read-back, at its own scope');
+    assert.doesNotMatch(body, /--scope <scope>/, 'no scope placeholder is left to infer');
     assert.ok(!/--scope project --installed-only/.test(body), 'no apply pinned to project scope');
     assert.match(body, /ALFRED_CODE_SEED=shell/, '... and still names the shell switch it refuses');
     // the judgment step: two gates (code-corroborated non-use, verbatim doc conflict), never
@@ -912,14 +933,14 @@ test('update: the stale-registration, kept, unreadable and here-only lines reach
         prepare: (repo, work) => account(work, '{not json'),
     }).out;
     const logs = [];
-    const row = (scope, enabled = true) => ({ name: 'browser-chrome', marketplace: 'envoydev', version: '2.0.0', scope, enabled });
+    const row = (scope, enabled = true) => ({ name: 'chrome-control', marketplace: 'envoydev', version: '2.0.0', scope, enabled });
     P.engineStandDown({ rows: [row('user')], market: 'envoydev', scope: 'user', engines: ['chrome'], hereOnly: true, isOn: () => undefined, cli: () => true, log: (m) => logs.push(m) });
     P.moveLocalRows({ plugins: ['alfred-navigation@envoydev'], rows: [{ ...row('local'), name: 'alfred-navigation' }], scope: 'project', cli: () => true, log: (m) => logs.push(m) });
     const report = reportOf([stale, unreadable, ...logs.map((m) => `==> ${m}`)].join('\n'));
     assertSurfaced(report, 'mcp: navigation still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove navigation -s user');
     assertSurfaced(report, 'mcp alfred-memory: the user-scope registration is not the stack\'s (another server under the same name) - kept; if it should go: claude mcp remove alfred-memory -s user');
     assertSurfaced(report, '.claude.json could not be read - no user-scope registration was removed; fix the file and re-run', { start: 'mcp: /' });
-    assertSurfaced(report, 'plugin disabled [project]: browser-chrome@envoydev (the copy route registers it in .mcp.json; this project only - the user-scope install stays on for every other project)');
+    assertSurfaced(report, 'plugin disabled [project]: chrome-control@envoydev (the copy route registers it in .mcp.json; this project only - the user-scope install stays on for every other project)');
     assertSurfaced(report, 'plugin moved [local -> project]: alfred-navigation@envoydev', { firstRun: false });
 });
 
@@ -1080,4 +1101,155 @@ test('setup and configure name option asks, not typed numbers, for stacks and th
     assert.doesNotMatch(setup, /Recommended \/ All \/ None, or typed numbers/);
     assert.doesNotMatch(configure, /an ADD round and a DROP round/);
     assert.match(configure, /walk\.md's DELTA/);
+});
+
+// ------------------------------------------------------------------ audit 2026-10-11 SD06 / SD04 / SD09 (update)
+
+const updateBody = () => fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
+const stepOf = (body, from, to) => flat(body.slice(body.indexOf(from), body.indexOf(to)));
+
+// 37d7a42c: step 0 said 'continue either way' and the Never list 'never run on the expensive tier'; the run went on on
+// Opus and the user redid it on Sonnet. bca100bd: a measured-in-prose step 0 narrated its own skip. One rule each.
+test('update step 0: the tier hint is a stop the Never list agrees with, and the fresh-session ask is the hook note alone', () =>
+{
+    const body = updateBody();
+    const zero = stepOf(body, '## 0. Where to run it', '## 1. Preconditions');
+    assert.doesNotMatch(zero, /continue either way/, 'the tier hint no longer lets the run go on');
+    assert.match(zero, /step 0 is a STOP, not an ask/);
+    assert.match(zero, /the turn ends before the snapshot is resolved/);
+    assert.match(zero, /A second `\/alfred-code:update` in this session goes ahead/);
+    assert.match(zero, /unattended: tier -> run here/, 'an unattended launch never stops on it');
+    assert.match(flat(body.slice(body.indexOf('## Do not'))), /- Never start this walk on the expensive tier when a cheap one is available - step 0's tier stop/,
+        'the Never line says the same thing as step 0');
+    assert.doesNotMatch(zero, /cache_read \+ cache_creation|Measure before you ask/, 'no model-side measurement is left');
+    assert.match(zero, /the measuring is the hook's, never yours/);
+    assert.match(zero, /Without it, step 0 does not exist: never measure, never mention it/);
+    // the note step 0 keys on is the hook's own text
+    const hook = fs.readFileSync(path.join(ROOT, 'stack', 'hooks', 'guard-fresh-session-start.js'), 'utf8');
+    const quoted = zero.match(/says '([^']+)'/);
+    assert.ok(quoted && hook.includes(quoted[1]), `step 0 quotes '${quoted && quoted[1]}', which the hook's note must carry`);
+});
+
+// bca100bd: after a docs move the hooks kept writing the OLD root until the restart; the body said the new one.
+test('update: the docs move says the hooks keep the old root until the restart', () =>
+{
+    const body = flat(updateBody());
+    assert.doesNotMatch(body, /this session writes the docs under the NEW root/);
+    assert.match(body, /until that restart this session's hooks keep writing under the OLD root/);
+    assert.match(body, /a `flow\/` file left under the old root is this session's record and safe to delete/);
+});
+
+// b3f8193f: the project's own AGENTS.md was spliced by hand after an ask with no diff. 5b9ce9c5: the compare never ran
+// and nothing in the close showed it.
+test('update step 6: the own-file re-spell goes through the preflight plan and one ask, and the step closes on a receipt', () =>
+{
+    const body = updateBody();
+    const six = body.slice(body.indexOf('## 6. Reconcile'), body.indexOf('## 7. Post-check'));
+    assert.doesNotMatch(flat(six), /leave the names to it/, 'the installer does not re-spell the project\'s own file');
+    assert.match(six, /update-preflight\.js" --respell --root \./);
+    assert.match(flat(six), /the same call with `--apply` writes those lines alone/);
+    const ask = askBlocks(six);
+    assert.strictEqual(ask.length, 1, 'one ask template for the re-spell');
+    assert.match(ask[0].filter((l) => /^- '/.test(l))[0], /^- 'Re-spell them \(Recommended\)'/);
+    assert.match(flat(six), /`agents-md: compare <clean\|N additions> - check <N rows>`/);
+    assert.match(flat(body.slice(body.indexOf('## 7. Post-check'))), /step 6's `agents-md:` receipt/);
+    assert.strictEqual(askBlocks(body).length, SETUP_ASK_TEMPLATES['setup-plugin/commands/update.md'], 'update.md\'s asks are pinned');
+});
+
+// ------------------------------------------------------------------ audit 2026-10-11 SD06 / SD10 (validate)
+
+// 6288ad94 / 757a4ac0: a credential rotation the user deferred through the run's own ask was listed as 'Still owed',
+// and the stop guard blocked the close. The pinned contract: a `Deferred by you:` line, which the guard never counts.
+test('validate: an item the user deferred through this run\'s ask closes on a Deferred by you: line, not as owed', () =>
+{
+    const body = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'validate.md'), 'utf8'));
+    assert.match(body, /An item the user DEFERRED through an AskUserQuestion answer in this run[^.]*is not owed: list it on ONE line that starts `Deferred by you:` and close with the line above/);
+});
+
+// The pinned agents-md contract: validate's ask over the check rows lists its (Recommended) option first, as a template.
+// 6288ad94: 'Review' first and unmarked was taken, ~825k on 4 false-positive rows - 'Leave them' takes the mark.
+test('validate: the AGENTS.md check rows get one ask template, Leave them recommended and first (6288ad94)', () =>
+{
+    const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'validate.md'), 'utf8');
+    const ask = askBlocks(body).filter((b) => /^Review the AGENTS\.md check rows/.test(b[0]));
+    assert.strictEqual(ask.length, 1, 'one template for the check rows');
+    assert.match(ask[0].filter((l) => /^- '/.test(l))[0], /^- 'Leave them \(Recommended\)'/);
+    assert.doesNotMatch(flat(body), /NO option marked recommended/);
+    assert.strictEqual(askBlocks(body).length, SETUP_ASK_TEMPLATES['setup-plugin/commands/validate.md'], 'validate.md\'s asks are pinned');
+});
+
+// Git for Windows ships no jq (SUMMARY premise check): every JSON read a setup text runs is `node -e`.
+test('setup texts read JSON with node -e, never jq', () =>
+{
+    const files = [];
+    for (const dir of ['commands', 'references']) for (const f of fs.readdirSync(path.join(PLUGIN_DIR, dir))) if (f.endsWith('.md')) files.push(path.join(dir, f));
+    for (const rel of files)
+    {
+        const text = fs.readFileSync(path.join(PLUGIN_DIR, rel), 'utf8');
+        const runs = text.split('\n').filter((l) => /(^|[`$(|;&]\s*)jq\s+-/.test(l));
+        assert.deepStrictEqual(runs, [], `${rel} runs jq`);
+    }
+    assert.match(fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'walk.md'), 'utf8'), /node -e '[^']*\.browser\)\)' "\$TMP\/installed\.json"/);
+});
+
+// ------------------------------------------------------------------ audit 2026-10-11 SD06 (configure step 1)
+
+// a9e06780: step 1 printed none of its blocks, asked an improvised question with the marked stop listed last, and read
+// walk.md at the start of a run that stopped at step 1.
+test('configure step 1: the inventory comes from the preflight, the close is one of two templates, walk.md waits for step 3', () =>
+{
+    const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
+    const one = body.slice(body.indexOf('## 1. Install status'), body.indexOf('## 2. Choose the areas'));
+    assert.match(one, /node "\$TMP\/repo\/scripts\/update-preflight\.js" --inventory "\$TMP\/installed\.json"/);
+    assert.doesNotMatch(one, /Show the inventory grouped by category, with counts/, 'no hand table');
+    const asks = askBlocks(one);
+    assert.strictEqual(asks.length, 2, 'one template per case');
+    for (const a of asks) assert.match(a[0], /^Adjust the installed selection\?/, 'the question the layer-table gate keys on');
+    assert.match(asks[0].filter((l) => /^- '/.test(l))[0], /^- 'Adjust the selection \(Recommended\)'/);
+    assert.match(asks[1][0], /No upstream changes/);
+    assert.match(asks[1].filter((l) => /^- '/.test(l))[0], /^- 'Stop here \(Recommended\)'/, 'an empty delta: stopping takes the mark, first');
+    const gate = fs.readFileSync(path.join(PLUGIN_DIR, 'hooks', 'guard-layer-table.js'), 'utf8');
+    assert.match(gate, /const STEP1_ASK = \/\^\\s\*Adjust the installed selection\\\?\/i;/, 'the gate keys on the same question');
+    assert.match(flat(body), /walk\.md` AT step 3, never earlier/);
+    assert.strictEqual(askBlocks(body).length, SETUP_ASK_TEMPLATES['setup-plugin/commands/configure.md'], 'configure.md\'s asks are pinned');
+});
+
+// Audit 2026-10-11 (SD01, session 5f9fec85): configure step 10's settings read went through `jq` (absent on Git for
+// Windows, exit 127) and `--presence` (a length, never the mode), and the step's 'account: <mode>' line never appeared.
+// Both texts now name ONE reader; it must survive the secret guard's redacted view of a credential-bearing file and
+// print `unset` for an absent key or file.
+test('setup and configure read permissions.defaultMode with the same stdin reader, and it survives the secret guard', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+    const { spawnSync } = require('node:child_process');
+    const os = require('node:os');
+    const reader = (rel) => {
+        const m = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', rel), 'utf8').replace(/\s*\n\s*/g, ' ').match(/`(cat "<file>" \| node -e '[^']+')`/);
+        assert.ok(m, `${rel} names the stdin reader`);
+        return m[1];
+    };
+    const cmd = reader('configure.md');
+    assert.strictEqual(reader('setup.md'), cmd, 'one reader in both texts');
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'setup-reader-')));
+    try {
+        const token = 'sntrys_' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0';
+        const f = path.join(dir, 'settings.json');
+        const read = () => {
+            const command = cmd.replace('<file>', 'settings.json');
+            const g = spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-secret-value.js')],
+                { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd: dir }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+            assert.notStrictEqual(g.status, 2, g.stderr);
+            let ran = command;
+            try { ran = JSON.parse(g.stdout).hookSpecificOutput.updatedInput.command || command; } catch { /* passed as written */ }
+            const r = spawnSync('sh', ['-c', ran], { cwd: dir, encoding: 'utf8' });
+            assert.ok(!`${r.stdout}${r.stderr}`.includes(token), 'no credential value printed');
+            return r.stdout;
+        };
+        fs.writeFileSync(f, JSON.stringify({ permissions: { defaultMode: 'acceptEdits' }, env: { SENTRY_ACCESS_TOKEN: token } }, null, 2));
+        assert.strictEqual(read(), 'acceptEdits\n', 'a credential-bearing file still yields its mode');
+        fs.writeFileSync(f, JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: token } }));
+        assert.strictEqual(read(), 'unset\n', 'an absent key');
+        fs.writeFileSync(f, '{ not json');
+        assert.strictEqual(read(), 'unset\n', 'an unreadable file');
+        fs.rmSync(f);
+        assert.strictEqual(read(), 'unset\n', 'a missing file');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

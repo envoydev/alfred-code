@@ -132,12 +132,12 @@ test('update over a 2.0.0 layout, --data-move move, plugin route: the docs move 
     assert.strictEqual(r.env.ALFRED_CODE_DATA_PATH, '.alfred');
     assert.strictEqual(r.rule, '.alfred/docs');
     assert.deepStrictEqual(pendingOf(r.stamp), [
-        'data-pending: browser-chrome .playwright/chrome -> .alfred/browser/chrome',
+        'data-pending: chrome-control .playwright/chrome -> .alfred/chrome-control',
         'data-pending: memory .memory-mcp -> .alfred/.alfred-memory',
         'data-pending: serena .serena -> .alfred/serena',
     ]);
     assert.ok(r.has('.serena/project.yml') && r.has('.playwright/chrome/Default/Cookies') && r.has('.memory-mcp/memory.db'), 'the live data waits for its launcher');
-    for (const target of ['.alfred/serena', '.alfred/browser/chrome', '.alfred/.alfred-memory'])
+    for (const target of ['.alfred/serena', '.alfred/chrome-control', '.alfred/.alfred-memory'])
         assert.ok(!r.has(target), `${target} was created before its launcher moved the data - the move would find it taken`);
     assert.match(outs[1], /restart/i);
     assert.strictEqual(r.local.ALFRED_CODE_MEMORY_DB, path.join(r.real, '.alfred', '.alfred-memory', 'memory.db'));
@@ -152,13 +152,13 @@ test('update: a pending line goes once its launcher moved the data, and a root i
         prepare: prep, args: [['--scope', 'project', '--browsers', 'chrome'], [...UPDATE, '--data-path', '.data', '--data-move', 'move'], UPDATE],
         each: (repo, i) =>
         {
-            if (i === 0) { put(path.join(repo, '.alfred', 'browser', 'chrome', 'Cookies'), 'c'); return null; }
+            if (i === 0) { put(path.join(repo, '.alfred', 'chrome-control', 'Cookies'), 'c'); return null; }
             if (i === 1)   // the launchers at the next start
             {
                 fs.rmSync(path.join(repo, '.data', 'serena'), { recursive: true, force: true });
                 fs.renameSync(path.join(repo, '.alfred', 'serena'), path.join(repo, '.data', 'serena'));
                 fs.mkdirSync(path.join(repo, '.data', 'browser'), { recursive: true });
-                fs.renameSync(path.join(repo, '.alfred', 'browser', 'chrome'), path.join(repo, '.data', 'browser', 'chrome'));
+                fs.renameSync(path.join(repo, '.alfred', 'chrome-control'), path.join(repo, '.data', 'chrome-control'));
             }
             return null;
         },
@@ -166,7 +166,7 @@ test('update: a pending line goes once its launcher moved the data, and a root i
     });
     assert.deepStrictEqual(pendingOf(r.stamp), []);
     assert.ok(!r.has('.alfred'), 'the old root, emptied by the launchers, is removed');
-    assert.ok(r.has('.data/browser/chrome/Cookies') && r.has('.data/docs/.gitignore'));
+    assert.ok(r.has('.data/chrome-control/Cookies') && r.has('.data/docs/.gitignore'));
 });
 
 test('update: a pending line goes once its launcher moved the data', POSIX_ONLY, () =>
@@ -181,7 +181,7 @@ test('update: a pending line goes once its launcher moved the data', POSIX_ONLY,
                 fs.rmSync(path.join(repo, '.alfred', 'serena'), { recursive: true, force: true });
                 fs.renameSync(path.join(repo, '.serena'), path.join(repo, '.alfred', 'serena'));
                 fs.mkdirSync(path.join(repo, '.alfred', 'browser'), { recursive: true });
-                fs.renameSync(path.join(repo, '.playwright', 'chrome'), path.join(repo, '.alfred', 'browser', 'chrome'));
+                fs.renameSync(path.join(repo, '.playwright', 'chrome'), path.join(repo, '.alfred', 'chrome-control'));
             }
             return null;
         },
@@ -197,14 +197,14 @@ test('update over a 2.0.0 layout, --data-move move, full copy route: everything 
         each: (repo, i) => (i === 0 ? twoZeroLayout(repo) : null), inspect: look,
     });
     assert.ok(r.has('.alfred/serena/project.yml') && !r.has('.serena'), outs[1]);
-    assert.strictEqual(r.text('.alfred/browser/chrome/Default/Cookies'), 'session');
+    assert.strictEqual(r.text('.alfred/chrome-control/Default/Cookies'), 'session');
     assert.strictEqual(r.text('.alfred/.alfred-memory/memory.db'), 'PROJ');
     assert.deepStrictEqual(pendingOf(r.stamp), []);
     const env = r.mcp["alfred-navigation"] && r.mcp["alfred-navigation"].env;
     assert.strictEqual(env && env.SERENA_HOME, '.alfred/serena/home', JSON.stringify(r.mcp["alfred-navigation"]));
     // Re-verify 3 S2: the rows start at their project through ROOT_BOOT, so the committed .mcp.json names each place by its
     // project-relative path - no checkout's path (re-verify 2 R3), and no parse-time variable.
-    assert.ok(r.mcp['browser-chrome'].args.includes('.alfred/browser/chrome'), JSON.stringify(r.mcp['browser-chrome']));
+    assert.ok(r.mcp['chrome-control'].args.includes('.alfred/chrome-control'), JSON.stringify(r.mcp['chrome-control']));
     assert.strictEqual(r.mcp["alfred-memory"].env.MCP_MEMORY_SQLITE_PATH, '.alfred/.alfred-memory/memory.db', 'the committed .mcp.json names no checkout');
     assert.match(r.text('.alfred/serena/home/serena_config.yml'), /project_serena_folder_location: "\$projectDir\/\.alfred\/serena"/);
 });
@@ -221,13 +221,63 @@ test('update --data-move keep: the old layout stays, the docs root becomes the u
     assert.doesNotMatch(outs[2], /offers the move/, outs[2]);
 });
 
+// 2026-10-13 (the user's call): no shared browser folder. A profile 2.1.0-2.3.x kept at <root>/browser/<engine> is the
+// stack's own layout inside the root: it moves to <root>/<engine>-control whatever the data-move answer - inline on the
+// full copy route, at the engine server's next start on the plugin route - and is never offered.
+function sharedBrowserLayout(repo)
+{
+    const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
+    fs.writeFileSync(stampFile, `${read(stampFile).replace(/\n*$/, '')}\ndata-move: kept\n`);
+    for (const e of ['chrome', 'firefox'])
+    {
+        fs.rmSync(path.join(repo, '.alfred', `${e}-control`), { recursive: true, force: true });
+        put(path.join(repo, '.alfred', 'browser', e, 'Default', 'Cookies'), `session-${e}`);
+    }
+    return null;
+}
+for (const [route, env] of [['full copy route', COPY_ENV], ['plugin route', {}]])
+{
+    test(`update over the shared browser folder (${route}): each profile goes to <root>/<engine>-control unasked, even with data-move kept; a re-run is quiet`, POSIX_ONLY, () =>
+    {
+        const { steps, outs } = seedRun(['install', 'update', 'update'], SELECTION, {
+            prepare: prep, env, args: [['--scope', 'project', '--browsers', 'chrome,firefox'], UPDATE, UPDATE],
+            each: (repo, i) => (i === 0 ? sharedBrowserLayout(repo) : look(repo)),
+        });
+        for (const i of [1, 2]) assert.doesNotMatch(outs[i], /offers the move|sit outside/, `run ${i} offered the relayout:\n${outs[i]}`);
+        const [, first, again] = steps;
+        assert.match(first.stamp, /^data-move: kept$/m, 'the answer stands for every other move');
+        if (env === COPY_ENV)
+        {
+            for (const e of ['chrome', 'firefox'])
+            {
+                assert.strictEqual(first.text(`.alfred/${e}-control/Default/Cookies`), `session-${e}`, outs[1]);
+                assert.match(outs[1], new RegExp(`data root: moved \\.alfred/browser/${e} -> \\.alfred/${e}-control`), outs[1]);
+                assert.ok(first.mcp[`${e}-control`].args.includes(`.alfred/${e}-control`), JSON.stringify(first.mcp[`${e}-control`]));
+            }
+            assert.ok(!first.has('.alfred/browser'), 'the emptied shared folder is gone');
+            assert.deepStrictEqual(pendingOf(first.stamp), []);
+            assert.doesNotMatch(outs[2], /data root:/, outs[2]);
+        }
+        else
+        {
+            assert.deepStrictEqual(pendingOf(first.stamp), [
+                'data-pending: chrome-control .alfred/browser/chrome -> .alfred/chrome-control',
+                'data-pending: firefox-control .alfred/browser/firefox -> .alfred/firefox-control',
+            ], outs[1]);
+            assert.match(outs[1], /\.alfred\/browser\/chrome -> \.alfred\/chrome-control moves at the chrome-control server's next start/, outs[1]);
+            assert.strictEqual(first.text('.alfred/browser/chrome/Default/Cookies'), 'session-chrome', 'the launcher moves it, not the installer');
+            assert.deepStrictEqual(pendingOf(again.stamp), pendingOf(first.stamp), 'a re-run keeps the lines once');
+        }
+    });
+}
+
 test('a custom root: --data-path moves everything from .alfred, re-points the docs key and the rule, and a re-run changes nothing', POSIX_ONLY, () =>
 {
     const { result: r, outs, steps } = seedRun(['install', 'update', 'update'], SELECTION, {
         prepare: prep, env: COPY_ENV, args: [['--scope', 'project', '--memory-level', 'project', '--browsers', 'chrome'], [...UPDATE, '--data-path', '.data', '--data-move', 'move'], UPDATE],
         each: (repo, i) =>
         {
-            if (i === 0) { put(path.join(repo, '.alfred', 'docs', 'architecture', 'ARCHITECTURE.md'), '# a\n'); put(path.join(repo, '.alfred', 'browser', 'chrome', 'Cookies'), 'c'); put(path.join(repo, '.alfred', '.alfred-memory', 'memory.db'), 'M'); }
+            if (i === 0) { put(path.join(repo, '.alfred', 'docs', 'architecture', 'ARCHITECTURE.md'), '# a\n'); put(path.join(repo, '.alfred', 'chrome-control', 'Cookies'), 'c'); put(path.join(repo, '.alfred', '.alfred-memory', 'memory.db'), 'M'); }
             return { settings: read(path.join(repo, '.claude', 'settings.json')), mcp: read(path.join(repo, '.mcp.json')) };
         },
         inspect: look,
@@ -235,7 +285,7 @@ test('a custom root: --data-path moves everything from .alfred, re-points the do
     assert.strictEqual(r.env.ALFRED_CODE_DATA_PATH, '.data', outs[1]);
     assert.strictEqual(r.env.ALFRED_CODE_DOCS_PATH, '.data/docs');
     assert.strictEqual(r.rule, '.data/docs');
-    assert.ok(r.has('.data/docs/architecture/ARCHITECTURE.md') && r.has('.data/serena/project.yml') && r.has('.data/browser/chrome/Cookies') && r.has('.data/.alfred-memory/memory.db'));
+    assert.ok(r.has('.data/docs/architecture/ARCHITECTURE.md') && r.has('.data/serena/project.yml') && r.has('.data/chrome-control/Cookies') && r.has('.data/.alfred-memory/memory.db'));
     assert.ok(!r.has('.alfred'), 'the emptied old root is gone');
     assert.match(r.text('.data/.gitignore'), /^!\/docs\/$/m);
     assert.strictEqual(r.local.ALFRED_CODE_MEMORY_DB, path.join(r.real, '.data', '.alfred-memory', 'memory.db'));
@@ -338,8 +388,8 @@ test('M5 full copy route: the project memory folder moves inline and .memory-mcp
 // carries the docs elsewhere re-stamps each of them with the new root, as it re-stamps alfred-docs-root;
 // a rule of the project's own is never touched, and a re-run changes nothing.
 const POINTERS = {
-    'alfred-project-run-book.md': (root) => `---\ndescription: Project run book pointer - generated by /capture-project-capabilities; edit via a re-run.\n---\n\nRun book: \`${root}/project-capabilities/PROJECT-CAPABILITIES.md\` - read it before you build.\n`,
-    'alfred-project-architecture.md': (root) => `---\ndescription: Project architecture docs pointer - generated by /capture-architecture; edit via a re-run.\n---\n\nArchitecture docs: \`${root}/architecture/\` - read them before a structural change.\n`,
+    'alfred-project-awareness.md': (root) => `---\ndescription: Project run book pointer - generated by /capture-project-awareness; edit via a re-run.\n---\n\nRun book: \`${root}/project-capabilities/PROJECT-CAPABILITIES.md\` - read it before you build.\n`,
+    'alfred-architecture.md': (root) => `---\ndescription: Project architecture docs pointer - generated by /capture-architecture; edit via a re-run.\n---\n\nArchitecture docs: \`${root}/architecture/\` - read them before a structural change.\n`,
     'project-code-style.md': (root) => `---\npaths:\n  - "**/*.ts"\n---\n# Project code style (generated)\n\nFull capture: \`${root}/code-style/CODE-STYLE.md\`.\n`,
 };
 const MINE = (root) => `# my rule\n\nOld notes sit in \`${root}/notes/\` - keep them there.\n`;
@@ -388,6 +438,42 @@ test('M11 a data move re-stamps every generated rule that names the docs root - 
     assert.strictEqual(twoZero.result.rules['my-own-rule.md'], MINE('.claude/docs'));
 });
 
+// A capabilities rule captured on the copy route before 2.1.0 names every server bare and the browser's single
+// `.playwright/output/`, and a capture never re-runs by itself: the model kept writing screenshots to the repo root's
+// `.playwright/output/` (2026-10-10). An update re-spells the routing rows to the route this run serves and the browser
+// row to the engine's dir under the data root - the plugin route here, the copy route and a custom root below.
+const tool = (server, name, plugin) => (plugin ? `mcp__plugin_${server}_${server}__${name}` : `mcp_${'_'}${server}__${name}`);
+const CAPS = 'alfred-agent-awareness.md';
+const capsRule = (out, plugin) => [
+    '---', 'description: generated', '---', '', '## MCP routing',
+    `- \`alfred-navigation\` - first call: \`ToolSearch select:${tool('alfred-navigation', 'find_symbol', plugin)}\``,
+    `- \`chrome-control\` - auto-names land in \`${out}\`, or prefix an explicit name with \`${out}\`. first call: \`ToolSearch select:${tool('chrome-control', 'browser_snapshot', plugin)}\``,
+    '',
+].join('\n');
+const capsOf = (repo) => read(path.join(repo, '.claude', 'rules', CAPS));
+
+test('a stale capabilities rule: an update re-spells its tool names to the route served and the browser output dir under the data root; a re-run is quiet', POSIX_ONLY, () =>
+{
+    const stale = (repo, i) => { if (i === 0) put(path.join(repo, '.claude', 'rules', CAPS), capsRule('.playwright/output/', false)); return capsOf(repo); };
+    const plugin = seedRun(['install', 'update', 'update'], SELECTION, {
+        prepare: prep, args: [['--scope', 'project', '--browsers', 'chrome'], UPDATE, UPDATE], each: stale, inspect: (repo) => ({ caps: capsOf(repo) }),
+    });
+    assert.strictEqual(plugin.result.caps, capsRule('.alfred/chrome-control/output/', true), plugin.outs[1]);
+    assert.match(plugin.outs[1], /route: alfred-agent-awareness\.md - 2 MCP tool name\(s\) re-spelled to the plugin spelling/, plugin.outs[1]);
+    assert.match(plugin.outs[1], /browser: alfred-agent-awareness\.md - 2 output dir\(s\) re-stamped/);
+    assert.strictEqual(plugin.steps[2], plugin.steps[1], 'a re-run rewrote the rule');
+    assert.doesNotMatch(plugin.outs[2], /route: |browser: alfred-project/);
+
+    // The copy route registers every server bare: the names stay bare, the browser row follows a custom root.
+    const copyRoute = seedRun(['install', 'update', 'update'], SELECTION, {
+        env: COPY_ENV, prepare: prep, args: [['--scope', 'project', '--browsers', 'chrome'], [...UPDATE, '--data-path', '.data', '--data-move', 'move'], UPDATE],
+        each: stale, inspect: (repo) => ({ caps: capsOf(repo) }),
+    });
+    assert.strictEqual(copyRoute.result.caps, capsRule('.data/chrome-control/output/', false), copyRoute.outs[1]);
+    assert.doesNotMatch(copyRoute.outs[1], /route: alfred-project/);
+    assert.strictEqual(copyRoute.steps[2], copyRoute.steps[1], 'a re-run rewrote the rule');
+});
+
 // I1: the root's .gitignore re-includes itself - with `/*` alone it ignored its own file, so it never reached a
 // teammate's clone, where the launchers then wrote cookies and serena's home with nothing ignoring them.
 test('I1 fresh install: the data root\'s .gitignore is itself tracked, and still keeps the machine state out', POSIX_ONLY, () =>
@@ -396,7 +482,7 @@ test('I1 fresh install: the data root\'s .gitignore is itself tracked, and still
     const ignored = (repo, rel) => { try { execFileSync('git', ['check-ignore', '-q', rel], { cwd: repo, stdio: 'ignore' }); return true; } catch { return false; } };
     const { result: r, out } = seedRun('install', SELECTION, {
         prepare: prep, args: ['--scope', 'project', '--browsers', 'chrome'],
-        inspect: (repo) => ({ self: ignored(repo, '.alfred/.gitignore'), cookies: ignored(repo, '.alfred/browser/chrome/Default/Cookies'), docs: ignored(repo, '.alfred/docs/architecture/ARCHITECTURE.md'), text: read(path.join(repo, '.alfred', '.gitignore')) }),
+        inspect: (repo) => ({ self: ignored(repo, '.alfred/.gitignore'), cookies: ignored(repo, '.alfred/chrome-control/Default/Cookies'), docs: ignored(repo, '.alfred/docs/architecture/ARCHITECTURE.md'), text: read(path.join(repo, '.alfred', '.gitignore')) }),
     });
     assert.strictEqual(r.self, false, `the ignore file ignores itself:\n${r.text}\n${out}`);
     assert.strictEqual(r.cookies, true);
@@ -414,7 +500,9 @@ test('I3 update: a pending move whose target already holds the data clears - no 
     const restart = (text) =>
     {
         const file = path.join(require('node:os').tmpdir(), `i3-log-${process.pid}-${Math.random().toString(36).slice(2)}.log`);
-        fs.writeFileSync(file, text.replace(/mcps=\d+/g, 'mcps=0'));   // the plugin refresh's own restart is not the data move's
+        // The plugin refresh's own restart is not the data move's: the stub CLI lists nothing and removes anything, so its
+        // install and prune lines (which the preflight reads as session changes since audit 2026-10-10 C29) are dropped.
+        fs.writeFileSync(file, text.split('\n').filter((l) => !/^==>\s+(?:!! )?(?:mcp |plugin |renamed: plugin )/.test(l)).join('\n'));
         try { return execFileSync(process.execPath, [path.join(__dirname, 'update-preflight.js'), '--log', file], { encoding: 'utf8' }); }
         finally { fs.rmSync(file, { force: true }); }
     };
@@ -428,7 +516,7 @@ test('I3 update: a pending move whose target already holds the data clears - no 
                 fs.rmSync(path.join(repo, '.alfred', 'serena'), { recursive: true, force: true });
                 fs.renameSync(path.join(repo, '.serena'), path.join(repo, '.alfred', 'serena'));
                 fs.mkdirSync(path.join(repo, '.alfred', 'browser'), { recursive: true });
-                fs.renameSync(path.join(repo, '.playwright', 'chrome'), path.join(repo, '.alfred', 'browser', 'chrome'));
+                fs.renameSync(path.join(repo, '.playwright', 'chrome'), path.join(repo, '.alfred', 'chrome-control'));
                 put(path.join(repo, '.serena', 'home', 'logs', 'x.log'), 'log');
             }
             return null;
@@ -446,4 +534,142 @@ test('I3 update: a pending move whose target already holds the data clears - no 
     assert.match(outs[3], /data root: \.serena still holds data beside \.alfred\/serena - remove or merge it; nothing moved/, outs[3]);
     assert.doesNotMatch(outs[3], /!! .*\.serena/, 'a later run names the clash, never as a warning again');
     assert.strictEqual(r.serenaIgnored, true, 'the re-created .serena is untracked noise a git add -A would take in');
+});
+
+// The orientation doc's pre-folder home, loose at the docs root (a 0.2.x capture, carried to .alfred/docs/ by the
+// data move): an update moves it into related-projects/ and re-points the generated rule that names it.
+test('an update moves the loose orientation doc into related-projects/ and re-points its rule; a re-run is quiet', POSIX_ONLY, () =>
+{
+    const RULE = (p) => `---\ndescription: generated\n---\n\nThe evidence lives in the committed \`${p}\`.\n`;
+    const files = (repo) => ({
+        loose: read(path.join(repo, '.alfred', 'docs', 'PROJECT-RELATED-CONTEXT.md')),
+        doc: read(path.join(repo, '.alfred', 'docs', 'related-projects', 'RELATED-PROJECTS.md')),
+        watch: read(path.join(repo, '.alfred', 'docs', 'related-projects', 'watch.json')),
+        rule: read(path.join(repo, '.claude', 'rules', 'alfred-related-context.md')),
+    });
+    const r = seedRun(['install', 'update', 'update'], SELECTION, {
+        prepare: prep, args: [['--scope', 'project', '--browsers', 'chrome'], UPDATE, UPDATE],
+        each: (repo, i) =>
+        {
+            if (i === 0)
+            {
+                put(path.join(repo, '.alfred', 'docs', 'PROJECT-RELATED-CONTEXT.md'), '# Related projects\n');
+                put(path.join(repo, '.claude', 'rules', 'alfred-related-context.md'), RULE('.alfred/docs/PROJECT-RELATED-CONTEXT.md'));
+            }
+            return files(repo);
+        },
+    });
+    assert.deepStrictEqual(r.steps[1], { loose: null, doc: '# Related projects\n', watch: '{}\n', rule: RULE('.alfred/docs/related-projects/RELATED-PROJECTS.md') }, r.outs[1]);
+    assert.match(r.outs[1], /docs migration: \.claude\/rules\/alfred-related-context\.md - 1 path\(s\) re-pointed/);
+    assert.deepStrictEqual(r.steps[2], r.steps[1], 'a re-run changed something');
+    assert.doesNotMatch(r.outs[2], /docs migration/);
+});
+
+// The project's sensitive data (<root>/.sensitive-data, the user's ruling of 2026-10-13) is the user's file, not a server's:
+// a root change takes it along inline on EVERY route - no launcher owes it a move - into a root whose .gitignore is
+// written first, and every install denies the Read tool on it.
+test('sensitive data: a root change moves the store inline on the plugin and the copy route; a re-run is quiet; the Read deny is written', POSIX_ONLY, () =>
+{
+    for (const [route, env] of [['plugin', {}], ['copy', COPY_ENV]])
+    {
+        const { result: r, outs, steps } = seedRun(['install', 'update', 'update'], SELECTION, {
+            prepare: prep, env, args: [['--scope', 'project'], [...UPDATE, '--data-path', '.data', '--data-move', 'move'], UPDATE],
+            each: (repo, i) =>
+            {
+                if (i === 0) put(path.join(repo, '.alfred', '.sensitive-data'), 'API_TOKEN=tok-abcdef123456\n');
+                return { settings: read(path.join(repo, '.claude', 'settings.json')), stamp: pendingOf(read(path.join(repo, '.claude', 'alfred-code.stamp')) || '') };
+            },
+            inspect: (repo) => ({ ...look(repo), deny: (json(path.join(repo, '.claude', 'settings.json')).permissions || {}).deny || [] }),
+        });
+        assert.strictEqual(r.env.ALFRED_CODE_DATA_PATH, '.data', `${route}:\n${outs[1]}`);
+        assert.strictEqual(r.text('.data/.sensitive-data'), 'API_TOKEN=tok-abcdef123456\n', `${route}: moved as it was`);
+        assert.ok(!r.has('.alfred/.sensitive-data'), route);
+        assert.match(outs[1], /data root: moved \.alfred\/\.sensitive-data -> \.data\/\.sensitive-data/, route);
+        assert.ok(!/data-pending: sensitive/.test(r.stamp), `${route}: no launcher owes it a move`);
+        assert.ok(r.deny.includes('Read(.sensitive-data)'), `${route}: ${JSON.stringify(r.deny)}`);
+        assert.ok(!outs.join('\n').includes('tok-abcdef123456'), `${route}: a value was printed`);
+        assert.deepStrictEqual(steps[2], steps[1], `${route}: a re-run changed settings.json or the pending lines`);
+    }
+});
+
+test('sensitive data: a store alone holds the root - --data-path without --data-move changes nothing; a store at both places is a clash', POSIX_ONLY, () =>
+{
+    const alone = seedRun(['install', 'update'], SELECTION, {
+        prepare: prep, args: [['--scope', 'project'], [...UPDATE, '--data-path', '.data']],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return;
+            const root = path.join(repo, '.alfred');
+            for (const name of fs.readdirSync(root)) if (name !== '.gitignore') fs.rmSync(path.join(root, name), { recursive: true, force: true });
+            put(path.join(root, '.sensitive-data'), 'K=v1234\n');
+        },
+        inspect: look,
+    });
+    assert.match(alone.outs[1], /--data-path \.data not applied - \.alfred holds this project's data/, alone.outs[1]);
+    assert.strictEqual(alone.result.text('.alfred/.sensitive-data'), 'K=v1234\n');
+    const both = seedRun(['install', 'update'], SELECTION, {
+        prepare: prep, env: COPY_ENV, args: [['--scope', 'project'], [...UPDATE, '--data-path', '.data', '--data-move', 'move']],
+        each: (repo, i) => { if (i === 0) { put(path.join(repo, '.alfred', '.sensitive-data'), 'K=old\n'); put(path.join(repo, '.data', '.sensitive-data'), 'K=new\n'); } },
+        inspect: look,
+    });
+    assert.match(both.outs[1], /data root: \.alfred\/\.sensitive-data not moved - \.data\/\.sensitive-data already holds data/, both.outs[1]);
+    assert.strictEqual(both.result.text('.alfred/.sensitive-data'), 'K=old\n');
+    assert.strictEqual(both.result.text('.data/.sensitive-data'), 'K=new\n', 'neither side touched');
+});
+
+// The run book's credentials file from before 2026-10-13 moves into the store on any run, both routes - keys named,
+// values never printed - and the run book names the store; a re-run says nothing; a clash is said and moves nothing.
+test('old credentials: an update moves credentials.local.env into the store and re-points the run book; a re-run is quiet', POSIX_ONLY, () =>
+{
+    const CAP = (repo) => path.join(repo, '.alfred', 'docs', 'project-capabilities');
+    const old = (repo) =>
+    {
+        put(path.join(CAP(repo), 'credentials.local.env'), 'ADMIN_EMAIL=me@x.io\nADMIN_PASSWORD=pa55-w0rd-xyz\n');
+        put(path.join(CAP(repo), '.gitignore'), 'credentials.local.env\n');
+        put(path.join(CAP(repo), 'PROJECT-CAPABILITIES.md'), '- Credentials live in: `.alfred/docs/project-capabilities/credentials.local.env`, key `ADMIN_PASSWORD`\n');
+    };
+    for (const [route, env] of [['plugin', {}], ['copy', COPY_ENV]])
+    {
+        const { steps, outs } = seedRun(['install', 'update', 'update'], SELECTION, {
+            prepare: prep, env, args: [['--scope', 'project'], UPDATE, UPDATE],
+            each: (repo, i) =>
+            {
+                if (i === 0) old(repo);
+                return { store: read(path.join(repo, '.alfred', '.sensitive-data')), cred: fs.existsSync(path.join(CAP(repo), 'credentials.local.env')), book: read(path.join(CAP(repo), 'PROJECT-CAPABILITIES.md')) };
+            },
+        });
+        // The install itself already moves a file present before it ran; here the file lands after it, so the first update moves it.
+        assert.ok(steps[0].cred, route);
+        assert.match(outs[1], /sensitive data: \.alfred\/docs\/project-capabilities\/credentials\.local\.env -> \.alfred\/\.sensitive-data \(ADMIN_EMAIL, ADMIN_PASSWORD added\); the run book names it now/, `${route}:\n${outs[1]}`);
+        assert.match(steps[1].store, /^ADMIN_PASSWORD=pa55-w0rd-xyz$/m, route);
+        assert.ok(!steps[1].cred, route);
+        assert.strictEqual(steps[1].book, '- Credentials live in: `.alfred/.sensitive-data`, key `ADMIN_PASSWORD`\n', route);
+        assert.ok(!outs.join('\n').includes('pa55-w0rd-xyz') && !outs.join('\n').includes('me@x.io'), `${route}: a value was printed`);
+        assert.doesNotMatch(outs[2], /sensitive data:/, `${route}: the re-run says nothing`);
+        assert.deepStrictEqual(steps[2], steps[1], route);
+    }
+    const clash = seedRun(['install', 'update', 'update'], SELECTION, {
+        prepare: prep, env: COPY_ENV, args: [['--scope', 'project'], UPDATE, UPDATE],
+        each: (repo, i) => { if (i === 0) { old(repo); put(path.join(repo, '.alfred', '.sensitive-data'), 'ADMIN_PASSWORD=another\n'); } return read(path.join(repo, '.alfred', '.sensitive-data')); },
+    });
+    for (const i of [1, 2]) assert.match(clash.outs[i], /!! sensitive data: \.alfred\/docs\/project-capabilities\/credentials\.local\.env not moved - \.alfred\/\.sensitive-data holds ADMIN_PASSWORD with another value/, clash.outs[i]);
+    assert.strictEqual(clash.steps[2], 'ADMIN_PASSWORD=another\n');
+});
+
+// Found by the temp-project matrix: a docs root only settings.local.json names is the one a session (and so the capture)
+// writes the run book under, while this run's docs root is settings.json's at project scope (R98) - the file there moved
+// nowhere. Both roots are looked in.
+test('old credentials: a run book under a docs root only settings.local.json names is moved too', POSIX_ONLY, () =>
+{
+    const { steps, outs } = seedRun(['install', 'update'], SELECTION, {
+        prepare: (repo) => { prep(repo); put(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'handbook' } })); },
+        env: COPY_ENV, args: [['--scope', 'project'], UPDATE],
+        each: (repo, i) =>
+        {
+            if (i === 0) put(path.join(repo, 'handbook', 'project-capabilities', 'credentials.local.env'), 'ADMIN_PASSWORD=pa55-w0rd-xyz\n');
+            return read(path.join(repo, '.alfred', '.sensitive-data'));
+        },
+    });
+    assert.match(outs[1], /sensitive data: handbook\/project-capabilities\/credentials\.local\.env -> \.alfred\/\.sensitive-data \(ADMIN_PASSWORD added\)/, outs[1]);
+    assert.match(steps[1] || '', /^ADMIN_PASSWORD=pa55-w0rd-xyz$/m);
 });
