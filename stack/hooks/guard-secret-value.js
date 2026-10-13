@@ -211,6 +211,7 @@ const NETRC_FILE = /(?:^|[\\/])[._]netrc$/i;
 const NPMRC_FILE = /(?:^|[\\/])\.npmrc$/i;
 const NAMES_A_KEY = /(?:^|[._-])(?:signing|public|pub)[_-]?key$|publickeytoken$/i;
 const KEY_STORE = 'key store';
+const SENSITIVE_FILE = '.sensitive-data';
 const KEYSTORE_FILE = /\.(?:p12|pfx|jks|jceks|keystore|bks|kdbx)$|^\.mylogin\.cnf$|^(?:credentials|access_tokens)\.db$/i;
 const PEM_BEGIN_LINE = /^\s*-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----\s*$/;
 const GPG_PRIVATE = /^\s*(?:Key:\s*)?\((?:\d+:)?(?:protected-)?private-key\b/m;
@@ -226,6 +227,7 @@ function kindByName(file) {
   if (/(?:^|\.)htpasswd$/.test(b)) return 'htpasswd';
   if (NETRC_FILE.test(String(file))) return 'netrc';
   if (b === '.vault-token') return 'token';
+  if (b === SENSITIVE_FILE) return 'sensitive';
   if (b === '.yarnrc') return 'spaced';
   if (NPMRC_FILE.test(String(file))) return 'ini';
   if (/^(?:\.terraformrc|terraform\.rc)$/.test(b) || /^(?:tf|tfvars|hcl)$/.test(e)) return 'hcl';
@@ -464,8 +466,11 @@ function hclPairs(lines) {
   }
   return out;
 }
+// The project's own secret store (`<data root>/.sensitive-data`, the user's ruling of 2026-10-13): a dotenv whose EVERY
+// value is a credential, whatever its key is called - DB_HOST and API_URL included, since the user put them there.
+const sensitivePairs = (lines) => lines.map((l) => l.match(DOTENV_LINE)).filter(Boolean).map((m) => [m[1], unquote(m[2]), 'always']);
 const READERS = {
-  ini: iniPairs, netrc: netrcPairs, urls: urlPairs, pgpass: pgpassPairs, htpasswd: htpasswdPairs, spaced: spacedPairs,
+  sensitive: sensitivePairs, ini: iniPairs, netrc: netrcPairs, urls: urlPairs, pgpass: pgpassPairs, htpasswd: htpasswdPairs, spaced: spacedPairs,
   ppk: ppkPairs, pem: pemPairs, token: tokenPairs, yaml: yamlPairs, xml: xmlPairs, hcl: hclPairs,
 };
 function otherPairs(text, file) {
@@ -877,7 +882,8 @@ function maskFormatText(text, file, mask, count) {
       line = line.replace(/(\b(?:password|account)\s+)(\S+)/g, (all, head, v) => (holdsCredential('password', v) ? head + mask(v) : all));
     }
     const m = dotenvToo ? line.match(DOTENV_LINE) : null;
-    if (m && maskable(m[1], unquote(m[2]))) return `${m[1]}=${mask(unquote(m[2]))}`;
+    // In the project's .sensitive-data every live value is masked, whatever its key is called.
+    if (m && (kind === 'sensitive' ? isLive(unquote(m[2])) : maskable(m[1], unquote(m[2])))) return `${m[1]}=${mask(unquote(m[2]))}`;
     if (m) { const v = unquote(m[2]); const inPlace = maskEmbedded(v, mask); if (inPlace !== v) return `${m[1]}=${inPlace}`; }
     // a URL on a line of its own (a git-credentials store); a dotenv pair was judged by its value above - `PWD=/home` is no password
     return (m ? line : maskEmbedded(line, mask)).replace(SECRET_SHAPE_G, (x) => mask(x));
@@ -885,6 +891,77 @@ function maskFormatText(text, file, mask, count) {
   return out.join('\n');
 }
 
+
+// ---- the project's sensitive data: where it is, and the run that uses it -------------------------
+// `<data root>/.sensitive-data` (ALFRED_CODE_DATA_PATH, default .alfred) in the checkout the command runs in, else in the
+// main worktree beside it - a gitignored file a new worktree does not have. Its values never reach the chat: a Read is
+// blocked and a shell dump is masked (the 'sensitive' kind above), and a command that needs them runs through
+// --with-sensitive, which puts them in that command's environment and masks every one in its output.
+function sensitiveFile(start = process.cwd()) {
+  const raw = String(envOf(process.env, 'DATA_PATH') || '').trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+  const root = raw && !pathMod.isAbsolute(raw) && !raw.split('/').includes('..') ? raw : '.alfred';
+  let places = [start];
+  try {
+    const { projectRootOf } = require(pathMod.join(__dirname, 'memory.js'));
+    const r = projectRootOf(start);
+    places = [...new Set([r.checkout, r.project])];
+  } catch { /* no engine beside the hook: the start directory alone */ }
+  const at = places.map((p) => pathMod.join(p, ...root.split('/'), SENSITIVE_FILE));
+  return at.find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } }) || at[0];
+}
+function sensitiveValues(file) {
+  const out = {};
+  for (const line of readText(file).split(LINES)) {
+    const m = line.match(DOTENV_LINE);
+    if (m && !COMMENT_LINE.test(line)) out[m[1]] = unquote(m[2]);
+  }
+  return out;
+}
+// The shortest value masked in a run's output: a value under 4 characters (PORT=80, DEBUG=1) would mask every match of
+// it in the output and say nothing a guess would not.
+const MASK_MIN = 4;
+// `node guard-secret-value.js --with-sensitive -- "<command line>"` - the command runs in this shell (sh, or cmd.exe on
+// Windows) with every KEY of the project's .sensitive-data in its environment (the file's value wins over one already
+// set: the run asked for the project's), and every value of MASK_MIN or more characters is printed as <KEY> in its
+// stdout and stderr, line by line. Several words after `--` are one command line, quoted for the shell. The exit code
+// is the command's.
+if (process.argv[2] === '--with-sensitive') {
+  const rest = process.argv.slice(3);
+  const words = rest[0] === '--' ? rest.slice(1) : rest;
+  if (!words.length) {
+    process.stderr.write('usage: node guard-secret-value.js --with-sensitive -- "<command line>"\n');
+    process.exit(2);
+  }
+  const quote = (w) => (process.platform === 'win32' ? (/[\s"&|<>^]/.test(w) ? `"${w.replace(/"/g, '\\"')}"` : w) : (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`));
+  const line = words.length === 1 ? words[0] : words.map(quote).join(' ');
+  const file = sensitiveFile();
+  let values = {};
+  try { values = sensitiveValues(file); } catch { process.stderr.write(`# with-sensitive: ${file} not found - the command runs without it\n`); }
+  const keys = Object.keys(values);
+  const masks = Object.entries(values).filter(([, v]) => v.length >= MASK_MIN).sort((a, b) => b[1].length - a[1].length);
+  const maskLine = (s) => masks.reduce((acc, [k, v]) => acc.split(v).join(`<${k}>`), s);
+  if (keys.length) process.stderr.write(`# with-sensitive: ${keys.length} value(s) from ${file} in the environment (${keys.join(', ')}), each shown as <KEY> in this output\n`);
+  const { spawn } = require('child_process');
+  const child = spawn(line, { shell: true, env: { ...process.env, ...values }, stdio: ['inherit', 'pipe', 'pipe'] });
+  const pipe = (from, to) => {
+    const { StringDecoder } = require('string_decoder');
+    const decoder = new StringDecoder('utf8');
+    let carry = '';
+    from.on('data', (chunk) => {
+      const text = carry + decoder.write(chunk);
+      const cut = text.lastIndexOf('\n');
+      carry = cut < 0 ? text : text.slice(cut + 1);
+      if (cut >= 0) to.write(maskLine(text.slice(0, cut + 1)));
+    });
+    return () => { const tail = carry + decoder.end(); if (tail) to.write(maskLine(tail)); };
+  };
+  const flushOut = pipe(child.stdout, process.stdout);
+  const flushErr = pipe(child.stderr, process.stderr);
+  child.on('error', (err) => { process.stderr.write(`# with-sensitive: could not start the command - ${err.message}\n`); process.exit(1); });
+  child.on('close', (code, signal) => { flushOut(); flushErr(); process.exitCode = signal ? 1 : (code ?? 0); });
+  for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(signal, () => { try { child.kill(signal); } catch { /* gone */ } });
+  return;
+}
 
 // ---- CLI mode: the sanctioned presence-only read --------------------------------------------
 // `node guard-secret-value.js --presence <file> [KEY ...]` - what the denials and the guided
@@ -1210,6 +1287,25 @@ try {
   process.exit(0); // unparseable stdin - don't block
 }
 if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/null - nothing to judge
+// SessionStart: the project's sensitive data by KEY only, and the run that uses it - nothing when there is none.
+if (payload.hook_event_name === 'SessionStart') {
+  const file = sensitiveFile(payload.cwd || process.cwd());
+  let keys = [];
+  try { keys = Object.keys(sensitiveValues(file)); } catch { /* none: nothing to say */ }
+  if (keys.length) {
+    const rel = pathMod.relative(payload.cwd || process.cwd(), file).split(pathMod.sep).join('/');
+    // The data root's own .gitignore covers the file; one a user wrote elsewhere, or tracked by hand, is said here -
+    // a commit would publish every value. git's status 1 is 'not ignored' (a tracked file too); 128 is no repository.
+    let exposed = '';
+    try {
+      const r = require('child_process').spawnSync('git', ['check-ignore', '-q', '--', pathMod.basename(file)], { cwd: pathMod.dirname(file), timeout: 5000, stdio: 'ignore' });
+      if (r.status === 1) exposed = ` WARNING: git does not ignore ${rel} (or it is tracked) - a commit publishes every value; tell the user to add it to .gitignore, and to untrack it with git rm --cached if it is tracked.`;
+    } catch { /* no git: nothing to commit it with */ }
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext:
+      `Sensitive data: ${rel} holds ${keys.join(', ')} - values the chat never sees (a Read is blocked, a dump is masked; never ask the user to paste one). A command that needs them: node "${__filename}" --with-sensitive -- "<command line>" - they are in its environment, and each prints as <KEY> in its output.${exposed}` } }));
+  }
+  process.exit(0);
+}
 // A cwd that is not a path is no anchor: the probes handed `cwd: 5` to spawnSync, which threw, and a throwing guard
 // fails open in the dispatcher - the dump it was judging ran (audit 2026-10-08).
 if (payload.cwd != null && (typeof payload.cwd !== 'string' || !payload.cwd)) delete payload.cwd;
@@ -2694,7 +2790,30 @@ if (isShellTool(payload.tool_name)) {
       `(${err.message === 'depth' ? `brackets nested past ${JUDGE_MAX_DEPTH} levels` : `${JUDGE_WORK.max} characters of judging`}) - nothing ran. A command it cannot judge might print a\n` +
       `credential, so it is judged the safe way. Split it into smaller commands, or flatten the nesting.\n`);
   }
+  refuseSensitiveMention(raw);
   process.exit(0);
+}
+
+// The project's .sensitive-data named by a command the judge above let through unchanged: a `source` of it (every value
+// then sits in the shell, where a print of a key no credential pattern names - DB_HOST - shows it), a copy under another
+// name (which no longer reads as the store), a move or a delete. An existence check (test, [, [[, ls, stat, wc) and the
+// guard's own modes pass; a dump was already rewritten into the masked view before this point.
+function refuseSensitiveMention(text) {
+  if (allowAll) return;
+  const MENTION = /(?:^|[\s"'=/\\])\.sensitive-data(?=$|[\s"';&|)<>])/;
+  const LOOKS = new Set(['test', '[', '[[', 'ls', 'stat', 'wc', 'Test-Path', 'Get-Item', 'Get-ChildItem']);
+  for (const seg of String(text).split(/[;&|\n]+/)) {
+    if (!MENTION.test(seg) || /guard-secret-value\.js/.test(seg)) continue;
+    const words = seg.trim().split(/\s+/).filter((w) => !/^[A-Za-z_]\w*=/.test(w) && w !== 'sudo' && w !== '!');
+    if (LOOKS.has(words[0] || '')) continue;
+    global.BLOCK_DETAIL = { branch: 'sensitive-data', matched: (words[0] || '').slice(0, 40) };
+    block('Blocked: this command names the project\'s sensitive data (.sensitive-data under the data root). Its values never\n' +
+      'enter a shell or a file the chat can read - a source, a copy or a print would put them there. Its keys:\n' +
+      `  node "${__filename}" --presence <that file>\n` +
+      'A command that needs the values gets them in its own environment, each printed as <KEY>:\n' +
+      `  node "${__filename}" --with-sensitive -- "<command line>"\n` +
+      'The file itself is the user\'s to edit, by hand.\n');
+  }
 }
 
 // A print of a credential-shaped variable becomes that variable's presence line - the idiom the

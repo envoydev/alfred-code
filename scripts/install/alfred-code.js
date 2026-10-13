@@ -68,11 +68,13 @@ the repo's CLAUDE.md covers the install surface end to end.`;
 const { CORE_DEP_PLUGINS } = plugins;
 // D1: the frozen twins are gone; the setting that chose them refuses.
 const SHELL_SEED_RETIRED = 'the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED to use the Node installer';
-// permissions.deny, the Read-tool half of the credential gate: it reaches the Read TOOL ONLY (a
-// shell `cat` of a denied file is not blocked by anything here - guard-secret-value.js is that
-// route). RETIRED_DENY are the four ACCOUNT-settings entries releases up to 0.2.62 wrote; they are
-// dropped on every run, by exact string.
-const SECRET_DENY = ['Read(.env)', 'Read(.env.*)', 'Read(*.pem)', 'Read(*.pfx)', 'Read(*.p12)', 'Read(*.key)'];
+// permissions.deny, the Read-tool half of the credential gate. A bare name matches at any depth (gitignore semantics,
+// code.claude.com/docs/en/permissions: 'Read(.env)' and 'Read(**/.env)' are equivalent) and reaches the Read tool, Grep and
+// Glob best-effort, and the Bash file commands Claude Code recognizes (cat, head, tail, sed, tee) - never a command that
+// reads a file without naming it, so guard-secret-value.js stays the shell's gate. `.sensitive-data` is the project's own
+// store under the data root (stack/mcp/data-root.js). RETIRED_DENY are the four ACCOUNT-settings entries releases up to
+// 0.2.62 wrote; they are dropped on every run, by exact string.
+const SECRET_DENY = ['Read(.env)', 'Read(.env.*)', 'Read(*.pem)', 'Read(*.pfx)', 'Read(*.p12)', 'Read(*.key)', 'Read(.sensitive-data)'];
 // R10: every deny entry a release has written into a project's settings besides the seat denies - the
 // ledger removes no other, since a stamp is project text. A release that stops writing one keeps it here.
 const SHIPPED_DENY = [...SECRET_DENY];
@@ -703,7 +705,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // route), what it leaves to a launcher's next start - then where each class lives now, which is what
         // the copy route registers and the settings name.
         const lockedPlugin = Boolean(routes.mcps) || plugins.corePluginOn(routes);
-        const launched = (cls) => (cls === 'serena' || cls === 'memory' ? lockedPlugin : Boolean(routes.mcps));
+        // The sensitive-data file has no server of its own: every route moves it here, with the root change.
+        const launched = (cls) => (cls === 'sensitive' ? false : cls === 'serena' || cls === 'memory' ? lockedPlugin : Boolean(routes.mcps));
         const dataPlan = planDataMove({
             projectRoot, info: dataInfo, engines: pw.browsers, memoryProject: level.level === 'project', launched,
             answer: args.dataMove, stamped: (Boolean(stampFile) && fs.existsSync(stampFile)) || Boolean(legacyUnstamped), log, note,
@@ -1039,8 +1042,18 @@ function planDataMove({ projectRoot, info, engines, memoryProject, launched, ans
 {
     const abs = (rel) => path.join(projectRoot, ...rel.split('/'));
     // A folder holding nothing but its `.gitignore` holds no data (data-root.js reads it the same way).
-    // A link is no data (M5: the project memory folder's 2.0.0 place, linked to its moved folder).
-    const holds = (rel) => { try { return !fs.lstatSync(abs(rel)).isSymbolicLink() && fs.readdirSync(abs(rel)).some((n) => n !== '.gitignore'); } catch { return false; } };
+    // A link is no data (M5: the project memory folder's 2.0.0 place, linked to its moved folder). The sensitive-data
+    // class is one file, which is its data.
+    const holds = (rel, cls) =>
+    {
+        try
+        {
+            const st = fs.lstatSync(abs(rel));
+            if (cls === 'sensitive') return st.isFile();
+            return !st.isSymbolicLink() && fs.readdirSync(abs(rel)).some((n) => n !== '.gitignore');
+        }
+        catch { return false; }
+    };
     const same = (a, b) => a.cls === b.cls && a.from === b.from && a.to === b.to;
     const server = (cls) => (cls === 'serena' ? 'alfred-navigation' : cls === 'memory' ? 'alfred-memory' : cls);
     const inline = (row) =>
@@ -1057,15 +1070,15 @@ function planDataMove({ projectRoot, info, engines, memoryProject, launched, ans
     };
     const moved = [];
     // A root a recorded move has now emptied (its launcher ran) is pruned by the data-root layer.
-    const left = info.recorded.pending.filter((p) => !holds(p.from)).map((p) => dataRoot.rootOfPlace(p.cls, p.from)).filter(Boolean);
-    let pending = info.recorded.pending.filter((p) => holds(p.from) && p.to === dataRoot.targetOf(p.cls, info.root));
+    const left = info.recorded.pending.filter((p) => !holds(p.from, p.cls)).map((p) => dataRoot.rootOfPlace(p.cls, p.from)).filter(Boolean);
+    let pending = info.recorded.pending.filter((p) => holds(p.from, p.cls) && p.to === dataRoot.targetOf(p.cls, info.root));
     // A target that already holds the data was filled by its launcher's move; what sits at `from` now was
     // written after it, by a reader still on the old place (a second session's server, or Cursor's). The line
     // clears - kept, every later run would wait for a move that already ran and ask for a restart forever -
     // and the leftover is named once here; later runs see it as a plain clash (below).
     pending = pending.filter((p) =>
     {
-        if (!holds(p.to)) return true;
+        if (!holds(p.to, p.cls)) return true;
         log(`  !! data root: ${p.from} still holds data after the move to ${p.to} - remove or merge it`);   // a warning, not a failed step
         return false;
     });

@@ -564,3 +564,55 @@ test('an update moves the loose orientation doc into related-projects/ and re-po
     assert.deepStrictEqual(r.steps[2], r.steps[1], 'a re-run changed something');
     assert.doesNotMatch(r.outs[2], /docs migration/);
 });
+
+// The project's sensitive data (<root>/.sensitive-data, the user's ruling of 2026-10-13) is the user's file, not a server's:
+// a root change takes it along inline on EVERY route - no launcher owes it a move - into a root whose .gitignore is
+// written first, and every install denies the Read tool on it.
+test('sensitive data: a root change moves the store inline on the plugin and the copy route; a re-run is quiet; the Read deny is written', POSIX_ONLY, () =>
+{
+    for (const [route, env] of [['plugin', {}], ['copy', COPY_ENV]])
+    {
+        const { result: r, outs, steps } = seedRun(['install', 'update', 'update'], SELECTION, {
+            prepare: prep, env, args: [['--scope', 'project'], [...UPDATE, '--data-path', '.data', '--data-move', 'move'], UPDATE],
+            each: (repo, i) =>
+            {
+                if (i === 0) put(path.join(repo, '.alfred', '.sensitive-data'), 'API_TOKEN=tok-abcdef123456\n');
+                return { settings: read(path.join(repo, '.claude', 'settings.json')), stamp: pendingOf(read(path.join(repo, '.claude', 'alfred-code.stamp')) || '') };
+            },
+            inspect: (repo) => ({ ...look(repo), deny: (json(path.join(repo, '.claude', 'settings.json')).permissions || {}).deny || [] }),
+        });
+        assert.strictEqual(r.env.ALFRED_CODE_DATA_PATH, '.data', `${route}:\n${outs[1]}`);
+        assert.strictEqual(r.text('.data/.sensitive-data'), 'API_TOKEN=tok-abcdef123456\n', `${route}: moved as it was`);
+        assert.ok(!r.has('.alfred/.sensitive-data'), route);
+        assert.match(outs[1], /data root: moved \.alfred\/\.sensitive-data -> \.data\/\.sensitive-data/, route);
+        assert.ok(!/data-pending: sensitive/.test(r.stamp), `${route}: no launcher owes it a move`);
+        assert.ok(r.deny.includes('Read(.sensitive-data)'), `${route}: ${JSON.stringify(r.deny)}`);
+        assert.ok(!outs.join('\n').includes('tok-abcdef123456'), `${route}: a value was printed`);
+        assert.deepStrictEqual(steps[2], steps[1], `${route}: a re-run changed settings.json or the pending lines`);
+    }
+});
+
+test('sensitive data: a store alone holds the root - --data-path without --data-move changes nothing; a store at both places is a clash', POSIX_ONLY, () =>
+{
+    const alone = seedRun(['install', 'update'], SELECTION, {
+        prepare: prep, args: [['--scope', 'project'], [...UPDATE, '--data-path', '.data']],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return;
+            const root = path.join(repo, '.alfred');
+            for (const name of fs.readdirSync(root)) if (name !== '.gitignore') fs.rmSync(path.join(root, name), { recursive: true, force: true });
+            put(path.join(root, '.sensitive-data'), 'K=v1234\n');
+        },
+        inspect: look,
+    });
+    assert.match(alone.outs[1], /--data-path \.data not applied - \.alfred holds this project's data/, alone.outs[1]);
+    assert.strictEqual(alone.result.text('.alfred/.sensitive-data'), 'K=v1234\n');
+    const both = seedRun(['install', 'update'], SELECTION, {
+        prepare: prep, env: COPY_ENV, args: [['--scope', 'project'], [...UPDATE, '--data-path', '.data', '--data-move', 'move']],
+        each: (repo, i) => { if (i === 0) { put(path.join(repo, '.alfred', '.sensitive-data'), 'K=old\n'); put(path.join(repo, '.data', '.sensitive-data'), 'K=new\n'); } },
+        inspect: look,
+    });
+    assert.match(both.outs[1], /data root: \.alfred\/\.sensitive-data not moved - \.data\/\.sensitive-data already holds data/, both.outs[1]);
+    assert.strictEqual(both.result.text('.alfred/.sensitive-data'), 'K=old\n');
+    assert.strictEqual(both.result.text('.data/.sensitive-data'), 'K=new\n', 'neither side touched');
+});

@@ -129,7 +129,11 @@ The memory levels and stores, where the docs root and the data root live, and th
 - **One data root for the project's data** (2.1.0, the user's decision of 2026-09-29): `ALFRED_CODE_DATA_PATH`,
   default `.alfred` at the project root - relative, never under `.claude/`, no space, no `..` (`data-root.js
   checkDataPath`) - holds the docs (`<root>/docs`), serena's folder and home (`<root>/serena`), the browser
-  profiles (`<root>/<engine>-control`) and a project-level memory database (`<root>/.alfred-memory`).
+  profiles (`<root>/<engine>-control`), a project-level memory database (`<root>/.alfred-memory`) and the project's
+  sensitive data (`<root>/.sensitive-data`, a dotenv the user fills by hand - 2026-10-13; the secret guard keeps its
+  values out of the chat, `withSensitive` hands them to every launcher's server where the shell and a settings file
+  set nothing, and a root change moves it inline on every route, into a root whose `.gitignore` is written first;
+  `Read(.sensitive-data)` is in the shipped deny, a bare name matching at any depth per code.claude.com/docs/en/permissions).
   `stack/mcp/data-root.js` is the one home of every place, read by the three launchers, the installer, init's
   plan and the preflight. The docs root is written as `<root>/docs` unless the user set their own (a value the
   ledger does not record is never moved). `<root>/.gitignore` is `/*` plus `!/.gitignore` and `!/docs/`
@@ -167,7 +171,7 @@ The memory levels and stores, where the docs root and the data root live, and th
   `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` (owned by
   `capture-project-awareness`, repo facts first, the user's answers for the gaps): a
   credential appears there only as WHERE it lives - an env var, a vault item, or a key in the
-  `credentials.local.env` template the capture writes empty and gitignores in its own folder - never
+  project's `<data root>/.sensitive-data` (the capture writes its keys empty only when the file is absent) - never
   as a value. The findings (`quality/ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the
   two `*-quality` captures) are the opposite of durable - recomputed fresh every run, so
   `quality/` carries no `watch.json` and is no docs domain. A doc an older capture left at a former home moves on

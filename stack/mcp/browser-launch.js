@@ -63,8 +63,10 @@ function main(argv)
     const log = (line) => process.stderr.write(`${line}\n`);
     const args = browserArgs({ spec, engine, projectDir, extra: rest < 0 ? [] : argv.slice(rest + 1), log });
     log(`browser-launch: ${spec} ${engine}, profile ${args[args.indexOf('--user-data-dir') + 1]}`);
+    const sensitive = dataRoot.withSensitive(process.env, { projectDir });
+    if (sensitive.count) log(`browser-launch: ${sensitive.count} value(s) from the project's sensitive data in the environment`);
     const { spawnCommandAsync } = require('../../scripts/install/runtime.js');
-    const child = spawnCommandAsync('npx', args, { stdio: 'inherit', env: process.env, cwd: projectDir });
+    const child = spawnCommandAsync('npx', args, { stdio: 'inherit', env: sensitive.env, cwd: projectDir });
     // A stop signal is passed on: Claude Code stops a server by signalling the process it started.
     const forward = (signal) => { try { child.kill(signal); } catch { /* already gone */ } };
     for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(signal, forward);

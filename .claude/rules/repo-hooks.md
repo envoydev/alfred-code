@@ -345,6 +345,21 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     the block rate skips like the probe rows (2.1.5 M17). The row carries the payload's `permissionMode` when it has one
     (audit 2026-10-10 C09: an auto-mode classifier gave one rewritten call no verdict and stalled it 80s, 1 of 89
     rewrites in that session) - the rate a denial-in-auto would be decided on; the dispatcher's `zsh-quote` row does too.
+    THE PROJECT'S SENSITIVE DATA (the user's ruling of 2026-10-13: per project, model-blind): `<data root>/.sensitive-data`,
+    a dotenv the user fills by hand, in the checkout the call runs in, else its main worktree (`sensitiveFile`, memory.js
+    `projectRootOf`; the root from `ALFRED_CODE_DATA_PATH`, relative and `..`-free, else `.alfred`). Its kind is `sensitive` by
+    NAME: every value is a credential whatever its key (`DB_HOST` too), so a Read and a Grep of its content block and a dump
+    becomes the redacted view with every value masked. A shell command NAMING it is refused unless it only looks
+    (`test`, `[`, `ls`, `stat`, `wc`, the PowerShell `Test-Path` / `Get-Item` / `Get-ChildItem`) or runs the guard itself -
+    a `source`, a `cp`, a `git add` or an `rm` would carry the values somewhere the chat can read (`refuseSensitiveMention`,
+    probed: `source` then `echo` and a `cp` then `cat` both leaked before it). The run that USES the values:
+    `node <guard> --with-sensitive -- "<command line>"` puts them in that command's environment (the file wins over an
+    inherited value - the run asked for the project's) and prints each value of 4+ characters as `<KEY>` in its stdout and
+    stderr, line-buffered; the exit code is the command's. SessionStart (its own manifest row, silent with no store, an
+    empty or an unparseable one) says the KEYS and that command line, plus a warning when `git check-ignore` exits 1 (not
+    ignored, or tracked). The launchers read the same file through `data-root.js readSensitive` (a twin parser - the hooks
+    ship apart from `stack/mcp` on the copy route; `guard-sensitive-data.test.js` holds both to one fixture), where the
+    shell and a settings file's env win.
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch (bare or
     `alfred-code:`-prefixed; a foreign plugin's is not the flow's seat) without the `<docs-path>/flow/APPROVAL` gate file (written on explicit approval or an AUTO waiver),
     blocks a generic `general-purpose`/`claude` dispatch while that stamp is live (stamps older than 8h

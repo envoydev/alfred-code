@@ -40,6 +40,9 @@ const LEGACY = { serena: '.serena', browser: '.playwright', memory: LEGACY_MEMOR
 const SHARED_BROWSER = 'browser';
 // mobile-control's screenshots, recordings and saved page sources (stack/mcp/mobile-launch.js).
 const MOBILE_FOLDER = 'mobile-control';
+// The project's own secret store, a dotenv the user fills by hand (the user's ruling of 2026-10-13): every value in it is
+// a credential to stack/hooks/guard-secret-value.js, and each launcher hands them to its server (withSensitive).
+const SENSITIVE_FILE = '.sensitive-data';
 
 // ------------------------------------------------------------------ the setting
 
@@ -78,23 +81,26 @@ function layout(root = DATA_ROOT_DEFAULT)
         serenaHome: `${root}/serena/home`,
         browser: (engine) => `${root}/${engineServer(engine)}`,
         mobile: `${root}/${MOBILE_FOLDER}`,
+        sensitive: `${root}/${SENSITIVE_FILE}`,
         memory: `${root}/${MEMORY_FOLDER}`,
         memoryDb: `${root}/${MEMORY_FOLDER}/memory.db`,
     };
 }
 
 // The server-data CLASSES a move carries: `serena`, `<engine>-control`, `memory` (the project level's
-// folder). Each has one place under the root and one 2.0.0 place; an engine has the 2.1.0 shared folder too.
+// folder) and `sensitive` (the .sensitive-data FILE, which a root change takes along and nothing else moves). Each has
+// one place under the root and (but `sensitive`) one 2.0.0 place; an engine has the 2.1.0 shared folder too.
 function targetOf(cls, root = DATA_ROOT_DEFAULT)
 {
     if (cls === 'serena') return `${root}/serena`;
     if (cls === 'memory') return `${root}/${MEMORY_FOLDER}`;
+    if (cls === 'sensitive') return `${root}/${SENSITIVE_FILE}`;
     return engineOfServer(cls) ? `${root}/${cls}` : null;
 }
 // The data root a class's place sits under - the inverse of targetOf; null for a 2.0.0 place or a foreign one.
 function rootOfPlace(cls, rel)
 {
-    const suffix = targetOf(cls, '').slice(1);   // 'serena', '<engine>-control', '.alfred-memory'
+    const suffix = targetOf(cls, '').slice(1);   // 'serena', '<engine>-control', '.alfred-memory', '.sensitive-data'
     const root = String(rel || '').endsWith(`/${suffix}`) ? rel.slice(0, -(suffix.length + 1)) : '';
     return root && checkDataPath(root).ok ? root : null;
 }
@@ -352,6 +358,7 @@ function writeText(file, text)
 // ------------------------------------------------------------------ moving
 
 const isDir = (p) => { try { return fs.lstatSync(p).isDirectory(); } catch { return false; } };
+const isFile = (p) => { try { return fs.lstatSync(p).isFile(); } catch { return false; } };
 // A folder holding nothing but a `.gitignore` holds no data: the installer's ignore files land before a
 // launcher moves the data in, and must never read as the data already being there.
 const isEmptyDir = (p) => { try { return fs.readdirSync(p).every((n) => n === '.gitignore'); } catch { return false; } };
@@ -359,12 +366,13 @@ const isEmptyDir = (p) => { try { return fs.readdirSync(p).every((n) => n === '.
 // One folder, one rename: 'moved', 'absent' (nothing there, or a link or file that is not ours to move),
 // 'conflict' (the target already holds data - neither side is touched) or 'failed' (the rename refused:
 // EBUSY / EPERM on Windows for a folder a process holds, EXDEV across filesystems).
-function moveEntry(from, to)
+// `file`: the entry is one file (the .sensitive-data store) - any file already at the target is a conflict.
+function moveEntry(from, to, { file = false } = {})
 {
-    if (!isDir(from)) return { state: 'absent' };
+    if (file ? !isFile(from) : !isDir(from)) return { state: 'absent' };
     if (fs.existsSync(to))
     {
-        if (!isEmptyDir(to)) return { state: 'conflict' };
+        if (file || !isEmptyDir(to)) return { state: 'conflict' };
         try { fs.rmSync(to, { recursive: true }); } catch (err) { return { state: 'failed', why: err.code || err.message }; }
     }
     try
@@ -409,12 +417,20 @@ function moveHomeMemory({ home, platform = process.platform, symlink = fs.symlin
 // there. Only that place: a server's other data and a move between two of the stack's own roots leave none
 // (a link would keep the old root from ever being pruned). The link is no data to every reader (hasData
 // reads the entry itself), so it never reads as a clash or an offer. An engine's profile leaving the 2.1.0 shared
-// folder (`<root>/browser/<engine>`) takes that folder with it once it is empty - the last engine to move clears it.
+// folder (`<root>/browser/<engine>`) takes that folder with it once it is empty - the last engine to move clears it. The
+// sensitive-data file moves as one file, into a root whose .gitignore is written first.
 // { state (moveEntry's), linked?, why? }.
 function movePlace({ projectDir, cls, from, to, platform = process.platform, symlink = fs.symlinkSync })
 {
     const abs = (rel) => path.join(projectDir, ...rel.split('/'));
-    const moved = moveEntry(abs(from), abs(to));
+    // The sensitive-data file never lands in a root its .gitignore does not cover yet - not even for one moment.
+    if (cls === 'sensitive')
+    {
+        const root = rootOfPlace(cls, to);
+        try { if (root) ensureRootIgnore({ projectDir, root }); }
+        catch (err) { return { state: 'failed', why: `${to} has no .gitignore yet (${err.code || err.message})` }; }
+    }
+    const moved = moveEntry(abs(from), abs(to), { file: cls === 'sensitive' });
     if (moved.state === 'moved' && engineOfServer(cls) && path.posix.basename(path.posix.dirname(from)) === SHARED_BROWSER)
     {
         try { fs.rmdirSync(abs(path.posix.dirname(from))); }
@@ -430,33 +446,84 @@ function movePlace({ projectDir, cls, from, to, platform = process.platform, sym
     catch (err) { return { ...moved, linked: false, why: err.code || err.message }; }
 }
 
+// ------------------------------------------------------------------ the project's sensitive data
+
+// The project's .sensitive-data: <root>/.sensitive-data in the checkout `projectDir` belongs to, else in its main worktree
+// (a gitignored file a new worktree does not have) - where guard-secret-value.js sensitiveFile() looks. null with none.
+function sensitivePlaceOf({ projectDir, root = DATA_ROOT_DEFAULT })
+{
+    let places = [projectDir];
+    try
+    {
+        const r = require('../hooks/memory.js').projectRootOf(projectDir);
+        places = [...new Set([r.checkout, r.project])];
+    }
+    catch { /* no engine beside this folder: the project directory alone */ }
+    return places.map((p) => path.join(p, ...root.split('/'), SENSITIVE_FILE)).find(isFile) || null;
+}
+
+// The values of the project's .sensitive-data, {} when there is none. The dotenv reading is the twin of
+// guard-secret-value.js (DOTENV_LINE, unquote - the hooks ship apart from this folder on the copy route); a test holds
+// the two to the same fixture.
+const SENSITIVE_LINE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/;
+function readSensitive({ projectDir, root = DATA_ROOT_DEFAULT })
+{
+    const file = sensitivePlaceOf({ projectDir, root });
+    let buf;
+    try { buf = fs.readFileSync(file); }
+    catch { return {}; }
+    // Notepad's 'Unicode' is UTF-16 LE with a BOM; anything else reads as UTF-8, its BOM dropped.
+    const text = buf[0] === 0xff && buf[1] === 0xfe ? buf.subarray(2).toString('utf16le') : buf.toString('utf8').replace(/^\uFEFF/, '');
+    const out = {};
+    for (const line of text.split(/\r?\n/))
+    {
+        if (/^\s*#/.test(line)) continue;
+        const m = line.match(SENSITIVE_LINE);
+        if (m) out[m[1]] = m[2].trim().replace(/^(["'])(.*)\1$/, '$2');
+    }
+    return out;
+}
+
+// A launcher's child environment with the project's sensitive data in it: a variable already set (the shell, a settings
+// file's env) keeps its value - a launch takes the store only where nothing else answers, the dotenv convention.
+// { env, count } - the count is for the launcher's one stderr line; no value is ever logged.
+function withSensitive(env, { projectDir, root } = {})
+{
+    const values = readSensitive({ projectDir, root: root || dataRootOf({ env, projectDir }).root });
+    const added = Object.keys(values).filter((k) => !Object.hasOwn(env, k));
+    return { env: { ...env, ...Object.fromEntries(added.map((k) => [k, values[k]])) }, count: added.length };
+}
+
 // ------------------------------------------------------------------ the move plan and the pending record
 
 const hasData = (p) => isDir(p) && !isEmptyDir(p);
+// A class's place holds something to move: a folder with data, or for `sensitive` the file itself.
+const holds = (cls, p) => (cls === 'sensitive' ? isFile(p) : hasData(p));
 
 // One row per class whose data sits somewhere other than its place under `root`: the prior root's place
 // first (a root change), then an engine's 2.1.0 shared-folder place (the prior root's, then this one's), then the
 // 2.0.0 place. `conflict` when the target already holds data too. The
-// classes are the kept engines' profiles, serena, and the memory folder only at the project level.
+// classes are the kept engines' profiles, serena, the memory folder only at the project level, and the sensitive-data
+// file - which has no 2.0.0 place, so only a root change moves it.
 function dataMovePlan({ projectRoot, root, prior = null, engines = [], memory = false })
 {
     const abs = (rel) => path.join(projectRoot, ...rel.split('/'));
-    const classes = ['serena', ...engines.map(engineServer), ...(memory ? ['memory'] : [])];
+    const classes = ['serena', ...engines.map(engineServer), ...(memory ? ['memory'] : []), 'sensitive'];
     const rows = [];
     for (const cls of classes)
     {
         const to = targetOf(cls, root);
         const moved = prior && prior !== root;
         const from = [moved ? targetOf(cls, prior) : null, moved ? sharedBrowserOf(cls, prior) : null, sharedBrowserOf(cls, root), legacyOf(cls)]
-            .filter((c) => c && c !== to).find((c) => hasData(abs(c)));
-        if (from) rows.push({ cls, from, to, conflict: hasData(abs(to)) });
+            .filter((c) => c && c !== to).find((c) => holds(cls, abs(c)));
+        if (from) rows.push({ cls, from, to, conflict: holds(cls, abs(to)) });
     }
     return rows;
 }
 
 // `data-pending: <class> <from> -> <to>` - the move the installer recorded for a launcher to make. Read
 // back strictly: a class the stack knows, and two relative paths that stay inside the project.
-const CLASS = new RegExp(`^(serena|memory|(?:${ENGINES.join('|')})-control)$`);
+const CLASS = new RegExp(`^(serena|memory|sensitive|(?:${ENGINES.join('|')})-control)$`);
 const renderPending = (rows) => rows.map((r) => `data-pending: ${r.cls} ${r.from} -> ${r.to}`);
 // A line an install before the 2026-10-13 rename recorded (`browser-<engine>`, to `<root>/browser/<engine>`) reads as
 // the engine's move to its own folder: the user's answer carried, the place renamed.
@@ -555,7 +622,7 @@ function ensureSerenaConfig(homeAbs, folder = `${DATA_ROOT_DEFAULT}/serena`)
 }
 
 module.exports = {
-    DATA_ROOT_DEFAULT, MEMORY_FOLDER, LEGACY_MEMORY_FOLDER, MOBILE_FOLDER, ENGINES, LEGACY, SHARED_BROWSER, engineServer, engineOfServer, ENGINE_SERVER, sharedBrowserOf, isRelayout,
+    DATA_ROOT_DEFAULT, MEMORY_FOLDER, LEGACY_MEMORY_FOLDER, MOBILE_FOLDER, SENSITIVE_FILE, sensitivePlaceOf, readSensitive, withSensitive, ENGINES, LEGACY, SHARED_BROWSER, engineServer, engineOfServer, ENGINE_SERVER, sharedBrowserOf, isRelayout,
     checkDataPath, dataRootOf, layout, targetOf, rootOfPlace, legacyOf,
     DATA_IGNORE_HEAD, dataIgnoreText, ensureRootIgnore,
     memoryDbFor, memoryLevelOf, legacyTwinOf, homeTwinOf, liveMemoryDb,

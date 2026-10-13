@@ -59,7 +59,7 @@ lives, never by value.
 - Reach: <the URL and port, the window, or the CLI entry>
 - Log in: <numbered steps - the screen, the fields, the role to pick - or 'no login, the app is open'>
 - Accounts: <one line per role - its purpose and the user name's home>
-- Credentials live in: <env var `<NAME>` | `<docs-path>/project-capabilities/credentials.local.env`, key `<NAME>` | vault item `<name>`> - checked for presence, never printed; typing a value goes through the secret guard's ask
+- Credentials live in: <env var `<NAME>` | `<data root>/.sensitive-data`, key `<NAME>` | vault item `<name>`> - checked for presence, never printed; typing a value goes through the secret guard's ask
 
 ## Flows to verify
 <!-- id: flows-to-verify -->
@@ -105,22 +105,23 @@ first-change gate to the domains that map the code. For a project whose commands
 Run `node .claude/hooks/docs.js watch <a cited file>` once after the write: it names the sections that
 file feeds, or the glob is wrong.
 
-## The credentials template
+## The keys in the sensitive data
 
-Written only when the login answer asked for it, and only when absent - a filled one is the user's, never
-read or rewritten. One key per account the answer named, every value EMPTY; a key ending in `PASSWORD`,
-`TOKEN` or `SECRET` is what the secret guard judges, so the filled file stays protected:
+The project's sensitive data, `<data root>/.sensitive-data`, is written only when the login answer asked for the
+keys, and only when absent - one that exists is the user's, never read, rewritten or appended to. One key per
+account the answer named, every value EMPTY; the secret guard holds every value in the file as a credential,
+whatever its key:
 
 ```dotenv
-# Test credentials for the run book - fill the values by hand. Never commit this file, never paste a value into chat.
-# Agents check it for presence only and ask before they type a value into the app.
+# The project's sensitive data - fill the values by hand. Never commit this file, never paste a value into chat.
+# Agents never see a value: they check it for presence, and a command that needs one runs through --with-sensitive.
 APP_TEST_USER=
 APP_TEST_PASSWORD=
 ```
 
-The folder lists `credentials.local.env` in its own `.gitignore` - a one-line file inside
-`project-capabilities/`, never an edit to the project's own `.gitignore`. The doc's `Credentials live in`
-line names the file and each key.
+The data root's own `.gitignore` covers the file - nothing is added to any `.gitignore`. The doc's `Credentials
+live in` line names the file and each key. A `credentials.local.env` an older capture wrote in
+`project-capabilities/` keeps working where it is; moving its values is the user's, by hand.
 
 ## Write mechanics
 

@@ -279,6 +279,58 @@ test('pending lines: rendered and read back; a malformed or foreign line is drop
     assert.deepStrictEqual(dr.readPending(text), rows);
 });
 
+// ------------------------------------------------------------------ the project's sensitive data (2026-10-13)
+
+test('sensitive data: its place is <root>/.sensitive-data; a root change moves the file and nothing else does', () =>
+{
+    assert.strictEqual(dr.layout('.data').sensitive, '.data/.sensitive-data');
+    assert.strictEqual(dr.targetOf('sensitive', '.data'), '.data/.sensitive-data');
+    assert.strictEqual(dr.rootOfPlace('sensitive', 'var/data/.sensitive-data'), 'var/data');
+    assert.strictEqual(dr.legacyOf('sensitive'), null, 'no 2.0.0 place');
+    const p = fresh('sensitive-plan');
+    put(path.join(p, '.alfred', '.sensitive-data'), 'K=v\n');
+    assert.deepStrictEqual(dr.dataMovePlan({ projectRoot: p, root: '.alfred' }), [], 'at its place already');
+    assert.deepStrictEqual(dr.dataMovePlan({ projectRoot: p, root: '.data', prior: '.alfred' }),
+        [{ cls: 'sensitive', from: '.alfred/.sensitive-data', to: '.data/.sensitive-data', conflict: false }]);
+    put(path.join(p, '.data', '.sensitive-data'), 'K=other\n');
+    assert.strictEqual(dr.dataMovePlan({ projectRoot: p, root: '.data', prior: '.alfred' })[0].conflict, true, 'a store at both places');
+    const q = fresh('sensitive-dir');
+    fs.mkdirSync(path.join(q, '.alfred', '.sensitive-data'), { recursive: true });
+    put(path.join(q, '.alfred', '.sensitive-data', 'x'));
+    assert.deepStrictEqual(dr.dataMovePlan({ projectRoot: q, root: '.data', prior: '.alfred' }), [], 'a folder of that name is no store');
+    assert.deepStrictEqual(dr.readPending('data-pending: sensitive .alfred/.sensitive-data -> .data/.sensitive-data\n'),
+        [{ cls: 'sensitive', from: '.alfred/.sensitive-data', to: '.data/.sensitive-data' }]);
+});
+
+test('sensitive data: the move writes the new root\'s .gitignore first and refuses to overwrite a store already there', () =>
+{
+    const p = fresh('sensitive-move');
+    put(path.join(p, '.alfred', '.sensitive-data'), 'K=v\n');
+    assert.deepStrictEqual(dr.movePlace({ projectDir: p, cls: 'sensitive', from: '.alfred/.sensitive-data', to: 'var/data/.sensitive-data' }), { state: 'moved' });
+    assert.strictEqual(fs.readFileSync(path.join(p, 'var', 'data', '.sensitive-data'), 'utf8'), 'K=v\n');
+    assert.ok(!fs.existsSync(path.join(p, '.alfred', '.sensitive-data')));
+    assert.ok(fs.readFileSync(path.join(p, 'var', 'data', '.gitignore'), 'utf8').startsWith(dr.DATA_IGNORE_HEAD), 'the new root ignores it');
+    put(path.join(p, '.alfred', '.sensitive-data'), 'K=new\n');
+    assert.strictEqual(dr.movePlace({ projectDir: p, cls: 'sensitive', from: '.alfred/.sensitive-data', to: 'var/data/.sensitive-data' }).state, 'conflict');
+    assert.strictEqual(fs.readFileSync(path.join(p, 'var', 'data', '.sensitive-data'), 'utf8'), 'K=v\n', 'neither side touched');
+    assert.strictEqual(dr.movePlace({ projectDir: p, cls: 'sensitive', from: '.none/.sensitive-data', to: '.x/.sensitive-data' }).state, 'absent');
+});
+
+test('sensitive data: a launch takes the store where nothing else set the key, and never logs a value', () =>
+{
+    const p = fresh('sensitive-env');
+    assert.deepStrictEqual(dr.withSensitive({ PATH: '/bin' }, { projectDir: p }), { env: { PATH: '/bin' }, count: 0 }, 'no store: the env as it was');
+    put(path.join(p, '.alfred', '.sensitive-data'), '# mine\nAPI_TOKEN="abc-123"\nDB_HOST=db\nPATH=/evil\n');
+    assert.deepStrictEqual(dr.withSensitive({ PATH: '/bin', DB_HOST: 'shell' }, { projectDir: p }),
+        { env: { PATH: '/bin', DB_HOST: 'shell', API_TOKEN: 'abc-123' }, count: 1 }, 'the shell or a settings file wins: dotenv\'s own rule');
+    put(path.join(p, 'var', 'data', '.sensitive-data'), 'OTHER=1\n');
+    assert.deepStrictEqual(dr.withSensitive({}, { projectDir: p, root: 'var/data' }).env, { OTHER: '1' }, 'an explicit root');
+    assert.deepStrictEqual(dr.withSensitive({ ALFRED_CODE_DATA_PATH: 'var/data' }, { projectDir: p }).env, { ALFRED_CODE_DATA_PATH: 'var/data', OTHER: '1' }, 'the root setting');
+    settings(p, { ALFRED_CODE_DATA_PATH: 'var/data' });
+    assert.deepStrictEqual(dr.withSensitive({}, { projectDir: p }).env, { OTHER: '1' }, 'the root a settings file names');
+    assert.strictEqual(dr.sensitivePlaceOf({ projectDir: p, root: '.none' }), null);
+});
+
 // 2026-10-13 (the user's call): no shared browser folder - each engine's profile is <root>/<engine>-control. A
 // profile 2.1.0-2.3.x kept in the root's own <root>/browser/<engine> is a relayout inside the root: a plan row the
 // installer never offers, and the folder goes with its last engine.

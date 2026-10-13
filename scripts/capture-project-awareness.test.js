@@ -59,25 +59,28 @@ test('credentials: never asked for in chat, never in the doc - the doc names whe
     const skill = squash(body());
     assert.ok(skill.includes('Never ask for a credential\'s VALUE'), 'the skill forbids asking for a value');
     assert.ok(skill.includes('the doc never holds one'), 'the skill forbids a value in the doc');
-    assert.match(skill, /WHERE it lives - an environment variable, a key in a gitignored local file, a vault item/);
+    assert.match(skill, /WHERE it lives - an environment variable, a key in a gitignored local file \(the project's sensitive data, `<data root>\/\.sensitive-data`, first\), a vault item/);
     // A pasted value is stopped, redacted and never written - the security baseline's rotation ask follows.
     assert.match(skill, /A value the user pastes anyway is never written anywhere: redact it as `<redacted>`/);
-    // The deterministic check before the report, over the doc AND the template file.
-    assert.ok(skill.includes("grep -nE '(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z0-9_]*[:=][[:space:]]*[^[:space:]<]'"), 'the value check is a command, not a reminder');
+    // The deterministic check before the report, over the doc - never the sensitive data, which holds values by design.
+    assert.ok(skill.includes("grep -HnE '(PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|password|passwd)[A-Za-z0-9_]*[:=][[:space:]]*[^[:space:]<]'"), 'the value check is a command, not a reminder');
 
     const doc = skeleton();
     const login = doc.slice(doc.indexOf('## Reach and log in'), doc.indexOf('## Flows to verify'));
     assert.match(login, /Credentials live in/, 'the login section records where the credentials live');
     assert.ok(!VALUE_RE.test(doc), 'the skeleton itself holds no credential value');
 
-    // The template the user fills by hand: empty keys, gitignored inside its own folder.
+    // The keys the user fills by hand: empty, in the project's sensitive data, which the data root's .gitignore covers.
     const shape = read('references/doc-shape.md');
     const tpl = shape.match(/```dotenv\n([\s\S]*?)\n```/);
-    assert.ok(tpl, 'the credentials template is spelled in doc-shape.md');
+    assert.ok(tpl, 'the keys are spelled in doc-shape.md');
     assert.ok(!VALUE_RE.test(tpl[1]), 'every template key is empty');
-    assert.match(tpl[1], /^[A-Z_]*PASSWORD=$/m, 'a password key, empty, so the secret guard judges the filled file');
-    assert.match(shape, /`credentials\.local\.env` in its own `\.gitignore`/);
-    assert.match(skill, /git check-ignore -q/, 'the ignore is proven, not assumed');
+    assert.match(tpl[1], /^[A-Z_]*PASSWORD=$/m, 'a password key, empty');
+    assert.match(shape, /`<data root>\/\.sensitive-data`, key `<NAME>`/, 'the doc names the store and the key');
+    assert.match(skill, /git check-ignore -q <data root>\/\.sensitive-data` exits 0/, 'the ignore is proven, not assumed');
+    assert.match(skill, /Prove it is ignored BEFORE writing/, 'checked before the write: the guard refuses a delete of the store');
+    assert.match(skill, /never read, rewritten or appended to/, 'a store that exists is the user\'s');
+    assert.doesNotMatch(skill, /credentials\.local\.env/, 'one credential home');
 });
 
 // M14: the value check is the skill's own command, run as written over a doc holding every shape a
@@ -88,7 +91,8 @@ test('M14 the value check catches env, YAML and lower-case password keys, and ne
 {
     const os = require('node:os');
     const { spawnSync } = require('node:child_process');
-    const block = body().match(/```bash\n(grep -nE [^\n]*)\n/);
+    // -H: one file is grepped, and a hit still names it.
+    const block = body().match(/```bash\n(grep -HnE [^\n]*)\n/);
     assert.ok(block, 'SKILL.md carries the value check as a bash grep line');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'runbook-values-'));
     try
@@ -105,9 +109,8 @@ test('M14 the value check catches env, YAML and lower-case password keys, and ne
             `STRIPE_API_KEY: ${values[4]}`,
             'ADMIN_PASSWORD=',
             'SMTP_PASSWORD: <in the vault>',
-            '- Credentials live in: `credentials.local.env`, key `ADMIN_PASSWORD` - checked for presence',
+            '- Credentials live in: `.alfred/.sensitive-data`, key `ADMIN_PASSWORD` - checked for presence',
         ].join('\n') + '\n');
-        fs.writeFileSync(path.join(cap, 'credentials.local.env'), 'ADMIN_EMAIL=\nADMIN_PASSWORD=\n');
         const cmd = block[1].split('<docs-path>').join(dir);
         const r = spawnSync('bash', ['-c', cmd], { encoding: 'utf8' });
         const hits = r.stdout.split('\n').filter(Boolean);

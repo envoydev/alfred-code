@@ -185,7 +185,10 @@ function main(argv, { env = process.env, node = process.versions.node } = {})
     const rest = argv.indexOf('--');
     const projectDir = require('../hooks/memory.js').projectRootOf(process.cwd()).checkout;
     const log = (line) => process.stderr.write(`${line}\n`);
-    const childEnv = mobileEnv({ env, projectDir, log });
+    // The project's sensitive data first, so a key it holds (say ALLOW_REMOTE_APP_URLS) reads like one the shell set.
+    const sensitive = require('./data-root.js').withSensitive(env, { projectDir });
+    if (sensitive.count) log(`mobile-launch: ${sensitive.count} value(s) from the project's sensitive data in the environment`);
+    const childEnv = mobileEnv({ env: sensitive.env, projectDir, log });
     log(`mobile-launch: ${spec}, output under ${path.dirname(childEnv.SCREENSHOTS_DIR)}`);
     const { spawnCommandAsync } = require('../../scripts/install/runtime.js');
     const child = spawnCommandAsync('npx', ['-y', spec, ...(rest < 0 ? [] : argv.slice(rest + 1))], { stdio: 'inherit', env: childEnv, cwd: projectDir });

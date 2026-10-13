@@ -198,17 +198,12 @@
             ]
           },
           {
-            "matcher": "compact",
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
                 "timeout": 10
-              }
-            ]
-          },
-          {
-            "hooks": [
+              },
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
@@ -227,6 +222,16 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "compact",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
                 "timeout": 10
               }
             ]
