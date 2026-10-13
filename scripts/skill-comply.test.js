@@ -194,7 +194,7 @@ test('skipping the resume check fails it; a self-written Approved stamp fails no
 test('an MCP tool counts in both spellings: the plugin route and the registration route', () =>
 {
     assert.strictEqual(sc.canonical('mcp__plugin_alfred-memory_alfred-memory__memory_list'), BARE('alfred-memory', 'memory_list'));
-    assert.strictEqual(sc.canonical('mcp__plugin_browser-chrome_browser-chrome__browser_navigate'), BARE('browser-chrome', 'browser_navigate'));
+    assert.strictEqual(sc.canonical('mcp__plugin_chrome-control_chrome-control__browser_navigate'), BARE('chrome-control', 'browser_navigate'));
     assert.strictEqual(sc.canonical('Read'), 'Read');
     const r = sc.grade(expectOf('task-solve'), solveRun({ resume: BARE('alfred-memory', 'memory_list') }));
     assert.strictEqual(verdicts(r)['resume-first'], 'PASS');

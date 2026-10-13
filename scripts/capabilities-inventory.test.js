@@ -69,7 +69,7 @@ function project(name, opts = {})
     }
     write(path.join(root, '.claude', 'rules', 'alfred-navigation.md'), '---\n---\n\n# nav\n', -100);
     write(path.join(root, '.claude', 'rules', 'markdown-docs.md'), '---\npaths: ["**/*.md"]\n---\n\n# md\n', -100);
-    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'alfred-navigation': {}, 'alfred-documentation': {}, 'alfred-memory': {}, 'browser-chrome': {} } }, null, 2), -100);
+    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'alfred-navigation': {}, 'alfred-documentation': {}, 'alfred-memory': {}, 'chrome-control': {} } }, null, 2), -100);
     write(path.join(root, '.claude', 'alfred-code.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\n', -100);
     if (opts.rule !== false) write(path.join(root, '.claude', 'rules', 'alfred-agent-awareness.md'), opts.rule || '---\ndescription: generated\n---\n\n# This project\'s capabilities\n\nCaptured: 2026-09-01 from 0.2.79@abcdef1\n', 0);
     return root;
@@ -156,15 +156,15 @@ test('inventory: the MCP block is the LIVE list, not .mcp.json alone, and every 
 test('inventory: a browser engine server gets the catalog row with its own registered name', { skip: posixOnly }, () =>
 {
     const root = project('browser');
-    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'browser-chrome': {} } }), -100);
+    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'chrome-control': {} } }), -100);
     const { out } = run([], { cwd: root, bin: stubCli(path.join(TMP, 'pw-cli')) });
-    assert.match(out, /browser-chrome\s+registered .*routing: browser/);
-    assert.match(out, /- `browser-chrome` - the browser server \(Playwright MCP\): drive a browser/);
+    assert.match(out, /chrome-control\s+registered .*routing: browser/);
+    assert.match(out, /- `chrome-control` - the browser server \(Playwright MCP\): drive a browser/);
     // A .mcp.json server's tools are `mcp__<name>__<tool>` - the plugin spelling finds nothing there
     // (R63). The bare name is assembled here so lint check 54 never reads it as shipped text.
-    const bare = `mcp_${'_browser-chrome__'}`;
+    const bare = `mcp_${'_chrome-control__'}`;
     assert.ok(out.includes(`${bare}browser_snapshot`), 'the catalog row is re-spelled for the registration');
-    assert.doesNotMatch(out, /mcp__plugin_browser-chrome_browser-chrome__/);
+    assert.doesNotMatch(out, /mcp__plugin_chrome-control_chrome-control__/);
 });
 
 // Every add-back line of the 2.0.0 MCP cut registers into .mcp.json, and those servers carry no
@@ -514,8 +514,8 @@ const PLUGIN_LIST = JSON.stringify([
     { id: 'alfred-navigation@envoydev', enabled: true, mcpServers: { 'alfred-navigation': {} } },
     { id: 'alfred-documentation@envoydev', enabled: true, mcpServers: { 'alfred-documentation': {} } },
     { id: 'alfred-memory@envoydev', enabled: true, mcpServers: { 'alfred-memory': {} } },
-    { id: 'browser-chrome@envoydev', enabled: true, mcpServers: { 'browser-chrome': {} } },
-    { id: 'browser-firefox@envoydev', enabled: false, mcpServers: { 'browser-firefox': {} } },
+    { id: 'chrome-control@envoydev', enabled: true, mcpServers: { 'chrome-control': {} } },
+    { id: 'firefox-control@envoydev', enabled: false, mcpServers: { 'firefox-control': {} } },
     { id: 'windows-control@envoydev', enabled: true, mcpServers: { 'windows-control': {} }, projectPath: '/nowhere/else' },
     { id: 'csharp-lsp@claude-plugins-official', enabled: true },
 ]);
@@ -535,9 +535,9 @@ test('inventory: every server an enabled plugin provides gets its routing row in
     assert.match(out, /alfred-documentation\s+plugin\s+live: not in the live list/);
     assert.doesNotMatch(out, /plugin:alfred-navigation:alfred-navigation.*reaches the session from the account or the harness/, 'a plugin server is not an account connector');
     const rows = routingRows(out);
-    assert.deepStrictEqual(rows.map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`alfred-navigation`, `alfred-documentation`, `alfred-memory`', '`browser-chrome`'],
+    assert.deepStrictEqual(rows.map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`alfred-navigation`, `alfred-documentation`, `alfred-memory`', '`chrome-control`'],
         'one row per enabled plugin server, the locked ones on one - never a disabled one, another project\'s, or a plugin with no server');
-    assert.match(rows[1], /first call: `ToolSearch select:mcp__plugin_browser-chrome_browser-chrome__browser_snapshot/, 'plugin spelling');
+    assert.match(rows[1], /first call: `ToolSearch select:mcp__plugin_chrome-control_chrome-control__browser_snapshot/, 'plugin spelling');
     assert.match(rows[0], /first call: the `ToolSearch select:` line its baseline names/, 'the locked row points at the baselines\' load lines');
 });
 

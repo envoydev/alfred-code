@@ -112,7 +112,7 @@ test('the walk: the playwright ENABLE pre-selection reads plan-out\'s live state
     const walk = walkBody();
     const mcps = flat(walk.slice(walk.indexOf('## MCPs'), walk.indexOf('## Plugins')));
     assert.match(mcps, /DELTA pre-selects from the LIVE install, never by hand: `node -e '[^']*\.browser\)\)' "\$TMP\/installed\.json"`/);
-    assert.match(mcps, /Never pre-select from the stamp's own `browser-enabled:` line/);
+    assert.match(mcps, /Never pre-select from the stamp's own `control-enabled:` line/);
     assert.match(mcps, /pre-selected: `enabled` plus any newly added one in DELTA, every one in FRESH/);
     assert.match(mcps, /18\.7k characters of schema/, 'the per-session cost stays named (R67)');
     // M2: picking a Playwright-built engine installs it in THIS run - the ask says so; init only reports.
@@ -933,14 +933,14 @@ test('update: the stale-registration, kept, unreadable and here-only lines reach
         prepare: (repo, work) => account(work, '{not json'),
     }).out;
     const logs = [];
-    const row = (scope, enabled = true) => ({ name: 'browser-chrome', marketplace: 'envoydev', version: '2.0.0', scope, enabled });
+    const row = (scope, enabled = true) => ({ name: 'chrome-control', marketplace: 'envoydev', version: '2.0.0', scope, enabled });
     P.engineStandDown({ rows: [row('user')], market: 'envoydev', scope: 'user', engines: ['chrome'], hereOnly: true, isOn: () => undefined, cli: () => true, log: (m) => logs.push(m) });
     P.moveLocalRows({ plugins: ['alfred-navigation@envoydev'], rows: [{ ...row('local'), name: 'alfred-navigation' }], scope: 'project', cli: () => true, log: (m) => logs.push(m) });
     const report = reportOf([stale, unreadable, ...logs.map((m) => `==> ${m}`)].join('\n'));
     assertSurfaced(report, 'mcp: navigation still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove navigation -s user');
     assertSurfaced(report, 'mcp alfred-memory: the user-scope registration is not the stack\'s (another server under the same name) - kept; if it should go: claude mcp remove alfred-memory -s user');
     assertSurfaced(report, '.claude.json could not be read - no user-scope registration was removed; fix the file and re-run', { start: 'mcp: /' });
-    assertSurfaced(report, 'plugin disabled [project]: browser-chrome@envoydev (the copy route registers it in .mcp.json; this project only - the user-scope install stays on for every other project)');
+    assertSurfaced(report, 'plugin disabled [project]: chrome-control@envoydev (the copy route registers it in .mcp.json; this project only - the user-scope install stays on for every other project)');
     assertSurfaced(report, 'plugin moved [local -> project]: alfred-navigation@envoydev', { firstRun: false });
 });
 

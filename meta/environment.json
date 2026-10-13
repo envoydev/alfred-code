@@ -6,7 +6,7 @@
       "key": "ALFRED_CODE_DATA_PATH",
       "default": ".alfred",
       "ask": true,
-      "what": "the ONE folder, relative to the project, where Alfred Code keeps this project's data: the docs (`<root>/docs`), the navigation server's index, handoff notes and language servers (`<root>/serena`), the browser profiles (`<root>/browser/<engine>`) and a project-level memory database (`<root>/.alfred-memory`). Default `.alfred` at the project root - outside `.claude/`, where Claude Code prompts for every write. Its own `.gitignore` keeps everything but the docs out of git. Changing it (configure) MOVES the data: the docs at once, each server's data at that server's next start, once nothing holds it. No space, no `..`, never under `.claude/`.",
+      "what": "the ONE folder, relative to the project, where Alfred Code keeps this project's data: the docs (`<root>/docs`), the navigation server's index, handoff notes and language servers (`<root>/serena`), the browser profiles (`<root>/<engine>-control`) and a project-level memory database (`<root>/.alfred-memory`). Default `.alfred` at the project root - outside `.claude/`, where Claude Code prompts for every write. Its own `.gitignore` keeps everything but the docs out of git. Changing it (configure) MOVES the data: the docs at once, each server's data at that server's next start, once nothing holds it. No space, no `..`, never under `.claude/`.",
       "validate": {
         "type": "relative-path"
       }

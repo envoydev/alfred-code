@@ -746,7 +746,7 @@ test('browser-launch: npx gets the pinned package, the engine, and a profile and
     const real = fs.realpathSync(dir);
     // I11: --no-webmcp - a page the browser opens never adds tools of its own to the session.
     assert.deepStrictEqual(rec.got().argv, ['-y', '@playwright/mcp@0.0.82', '--browser', 'firefox',
-        '--user-data-dir', path.join(real, '.alfred', 'browser', 'firefox'), '--output-dir', path.join(real, '.alfred', 'browser', 'firefox', 'output'), '--no-webmcp']);
+        '--user-data-dir', path.join(real, '.alfred', 'firefox-control'), '--output-dir', path.join(real, '.alfred', 'firefox-control', 'output'), '--no-webmcp']);
 });
 
 test('browser-launch: a 2.0.0 profile keeps serving until a move is agreed, then moves at start unless a browser holds it', POSIX, () =>
@@ -763,14 +763,41 @@ test('browser-launch: a 2.0.0 profile keeps serving until a move is agreed, then
         return { dataDir: argv[argv.indexOf('--user-data-dir') + 1], argv };
     };
     assert.strictEqual(run('browser-move-1').dataDir, path.join(real, '.playwright', 'chrome'), 'no move agreed: the old profile, where it is');
-    stamp(dir, ['data-pending: browser-chrome .playwright/chrome -> .alfred/browser/chrome']);
+    stamp(dir, ['data-pending: chrome-control .playwright/chrome -> .alfred/chrome-control']);
     fs.symlinkSync('host-1', path.join(dir, '.playwright', 'chrome', 'SingletonLock'));
     assert.strictEqual(run('browser-move-2').dataDir, path.join(real, '.playwright', 'chrome'), 'a running browser holds it: not this start');
     fs.unlinkSync(path.join(dir, '.playwright', 'chrome', 'SingletonLock'));
     const moved = run('browser-move-3');
-    assert.strictEqual(moved.dataDir, path.join(real, '.alfred', 'browser', 'chrome'));
-    assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', 'browser', 'chrome', 'Default', 'Cookies'), 'utf8'), 'session', 'the login moved with the profile');
+    assert.strictEqual(moved.dataDir, path.join(real, '.alfred', 'chrome-control'));
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', 'chrome-control', 'Default', 'Cookies'), 'utf8'), 'session', 'the login moved with the profile');
     assert.strictEqual(moved.argv[moved.argv.length - 1], '--isolated-no', 'arguments after -- reach the server unchanged');
+});
+
+// 2026-10-13: no shared browser folder. A profile 2.1.0-2.3.x kept at .alfred/browser/<engine> serves where it is until
+// its line is recorded, then moves to .alfred/<engine>-control at start; the emptied .alfred/browser goes with the last
+// engine. A pending line a 2.3.x install wrote (browser-<engine>, to .alfred/browser/<engine>) is read as today's move.
+test('browser-launch: a profile in the shared .alfred/browser folder serves, then moves to .alfred/<engine>-control; a 2.3.x pending line still moves', POSIX, () =>
+{
+    const { dir } = project('browser-shared');
+    put(path.join(dir, '.alfred', 'browser', 'chrome', 'Default', 'Cookies'), 'shared');
+    put(path.join(dir, '.playwright', 'firefox', 'prefs.js'), 'old');
+    const real = fs.realpathSync(dir);
+    const run = (name, engine) =>
+    {
+        const rec = stubRecorder(name, 'npx');
+        execFileSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.82', '--browser', engine],
+            { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
+        const argv = rec.got().argv;
+        return argv[argv.indexOf('--user-data-dir') + 1];
+    };
+    assert.strictEqual(run('browser-shared-1', 'chrome'), path.join(real, '.alfred', 'browser', 'chrome'), 'no line yet: the profile serves where it is');
+    stamp(dir, ['data-pending: chrome-control .alfred/browser/chrome -> .alfred/chrome-control',
+        'data-pending: browser-firefox .playwright/firefox -> .alfred/browser/firefox']);
+    assert.strictEqual(run('browser-shared-2', 'chrome'), path.join(real, '.alfred', 'chrome-control'));
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', 'chrome-control', 'Default', 'Cookies'), 'utf8'), 'shared');
+    assert.ok(!fs.existsSync(path.join(dir, '.alfred', 'browser')), 'the emptied shared folder is gone');
+    assert.strictEqual(run('browser-shared-3', 'firefox'), path.join(real, '.alfred', 'firefox-control'), 'the 2.3.x line moves to the engine\'s own folder');
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', 'firefox-control', 'prefs.js'), 'utf8'), 'old');
 });
 
 test('browser-launch: an entry with no --package or no --browser says so instead of launching something else', () =>
@@ -847,9 +874,9 @@ test('I1 browser-launch: a never-used engine on a 2.0.0 project gets the data ro
     const rec = stubRecorder('i1-browser', 'npx');
     execFileSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.82', '--browser', 'chrome'],
         { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
-    put(path.join(dir, '.alfred', 'browser', 'chrome', 'Default', 'Cookies'), 'session');   // what Playwright writes next
+    put(path.join(dir, '.alfred', 'chrome-control', 'Default', 'Cookies'), 'session');   // what Playwright writes next
     assert.ok(fs.existsSync(path.join(dir, '.alfred', '.gitignore')), 'the launcher wrote the root\'s .gitignore');
-    assert.ok(ignored(dir, '.alfred/browser/chrome/Default/Cookies'), 'the session cookies are ignored');
+    assert.ok(ignored(dir, '.alfred/chrome-control/Default/Cookies'), 'the session cookies are ignored');
     assert.ok(!ignored(dir, '.alfred/docs/architecture/ARCHITECTURE.md'), 'the docs stay visible to git');
     assert.ok(!ignored(dir, '.alfred/.gitignore'), 'the ignore file re-includes itself, so a teammate\'s clone inherits it');
 });
@@ -950,7 +977,7 @@ test('S3 launchers: started in a subdirectory, or under another folder\'s CLAUDE
         const br = stubRecorder('s3-browser', 'npx');
         execFileSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.83', '--browser', 'chrome'], { cwd: sub, env: env(br), stdio: 'pipe' });
         const argv = br.got().argv;
-        assert.deepStrictEqual([argv[argv.indexOf('--user-data-dir') + 1], br.got().cwd], [path.join(real, '.alfred', 'browser', 'chrome'), real], `browser ${said}`);
+        assert.deepStrictEqual([argv[argv.indexOf('--user-data-dir') + 1], br.got().cwd], [path.join(real, '.alfred', 'chrome-control'), real], `browser ${said}`);
         const se = stubRecorder('s3-serena', 'uvx');
         execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server', '--project-from-cwd'], { cwd: sub, env: env(se), stdio: 'pipe' });
         // serena's home stays relative (Windows cmd.exe cuts an absolute one at a space), so serena starts AT the project.

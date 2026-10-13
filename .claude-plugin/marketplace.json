@@ -10,9 +10,9 @@
   },
   "plugins": [
     {
-      "name": "browser-chrome",
+      "name": "chrome-control",
       "source": "./",
-      "description": "The browser server (Playwright MCP) driving chrome, as a plugin: a real chrome browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/chrome, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
+      "description": "The browser server (Playwright MCP) driving chrome, as a plugin: a real chrome browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/chrome-control, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
       "version": "2.3.0",
       "author": {
         "name": "envoydev",
@@ -20,7 +20,7 @@
       },
       "strict": false,
       "mcpServers": {
-        "browser-chrome": {
+        "chrome-control": {
           "command": "node",
           "args": [
             "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
@@ -33,9 +33,9 @@
       }
     },
     {
-      "name": "browser-msedge",
+      "name": "msedge-control",
       "source": "./",
-      "description": "The browser server (Playwright MCP) driving msedge, as a plugin: a real msedge browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/msedge, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
+      "description": "The browser server (Playwright MCP) driving msedge, as a plugin: a real msedge browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/msedge-control, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
       "version": "2.3.0",
       "author": {
         "name": "envoydev",
@@ -43,7 +43,7 @@
       },
       "strict": false,
       "mcpServers": {
-        "browser-msedge": {
+        "msedge-control": {
           "command": "node",
           "args": [
             "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
@@ -56,9 +56,9 @@
       }
     },
     {
-      "name": "browser-firefox",
+      "name": "firefox-control",
       "source": "./",
-      "description": "The browser server (Playwright MCP) driving firefox, as a plugin: a real firefox browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/firefox, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
+      "description": "The browser server (Playwright MCP) driving firefox, as a plugin: a real firefox browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/firefox-control, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
       "version": "2.3.0",
       "author": {
         "name": "envoydev",
@@ -66,7 +66,7 @@
       },
       "strict": false,
       "mcpServers": {
-        "browser-firefox": {
+        "firefox-control": {
           "command": "node",
           "args": [
             "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
@@ -79,9 +79,9 @@
       }
     },
     {
-      "name": "browser-webkit",
+      "name": "webkit-control",
       "source": "./",
-      "description": "The browser server (Playwright MCP) driving webkit, as a plugin: a real webkit browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/webkit, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
+      "description": "The browser server (Playwright MCP) driving webkit, as a plugin: a real webkit browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/webkit-control, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
       "version": "2.3.0",
       "author": {
         "name": "envoydev",
@@ -89,7 +89,7 @@
       },
       "strict": false,
       "mcpServers": {
-        "browser-webkit": {
+        "webkit-control": {
           "command": "node",
           "args": [
             "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",

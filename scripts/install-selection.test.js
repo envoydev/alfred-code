@@ -164,7 +164,7 @@ test('derive: the four playwright engines collapse back to the ONE manifest entr
 {
     const lines = sel.deriveFromDisk({
         claudeDir: target({ skills: ['x'] }),
-        mcpServers: ['alfred-navigation', 'browser-chrome', 'browser-firefox', 'my-own'],
+        mcpServers: ['alfred-navigation', 'chrome-control', 'firefox-control', 'my-own'],
         knownPlugins: [],
     });
     assert.deepStrictEqual(lines.filter((l) => l.startsWith('mcp ')), ['mcp alfred-navigation', 'mcp browser', 'mcp my-own']);
@@ -323,28 +323,28 @@ test('read-back: a PARKED entry reads back nothing - a disabled browser stays di
 {
     const r = readBackCase({ listing: [
         row('alfred-code@envoydev', { enabled: false }),
-        row('browser-firefox@envoydev', { enabled: false }), row('browser-webkit@envoydev'),
+        row('firefox-control@envoydev', { enabled: false }), row('webkit-control@envoydev'),
     ] });
     assert.strictEqual(r.answered.hooks, true, 'the core carrying the hooks is locked on - HOOKS_OFF is the hook state, not its listing flag (S22)');
     assert.deepStrictEqual(r.engines, ['webkit']);
 });
 
-// R67: an engine the user left off is still installed. The stamp's `browser-engines:` says what
+// R67: an engine the user left off is still installed. The stamp's `control-engines:` says what
 // was installed - the listing flag never does (S22) - and only an engine it does not name is the
 // user's parked off-state.
 test('read-back: an engine the stamp picked stays picked while disabled; one it does not name stays parked', () =>
 {
     const listing = [
         row('alfred-code@envoydev'),
-        row('browser-chrome@envoydev', { enabled: false }), row('browser-firefox@envoydev', { enabled: false }),
-        row('browser-webkit@envoydev', { enabled: false }),
+        row('chrome-control@envoydev', { enabled: false }), row('firefox-control@envoydev', { enabled: false }),
+        row('webkit-control@envoydev', { enabled: false }),
     ];
     const r = readBackCase({ listing, stampEngines: ['chrome', 'firefox'] });
     assert.deepStrictEqual(r.engines, ['chrome', 'firefox']);
     assert.ok(r.lines.includes('mcp browser') && r.closeFrom.includes('mcp browser'), r.lines.filter((l) => l.startsWith('mcp ')).join(','));
-    assert.deepStrictEqual(r.parked.filter((n) => n.startsWith('browser-')), ['browser-webkit'], 'a picked engine read as parked');
+    assert.deepStrictEqual(r.parked.filter((n) => n.match(/^(?:chrome|msedge|firefox|webkit)-control$/)), ['webkit-control'], 'a picked engine read as parked');
     // With a record, an enabled engine it does not name is NOT kept: the record is the user's choice.
-    const mixed = readBackCase({ listing: [row('alfred-code@envoydev'), row('browser-msedge@envoydev'), row('browser-firefox@envoydev', { enabled: false })], stampEngines: ['firefox'] });
+    const mixed = readBackCase({ listing: [row('alfred-code@envoydev'), row('msedge-control@envoydev'), row('firefox-control@envoydev', { enabled: false })], stampEngines: ['firefox'] });
     assert.deepStrictEqual(mixed.engines, ['firefox']);
     // Nothing recorded (an older stamp, no stamp): the listing alone speaks, as before.
     for (const stampEngines of [undefined, null, []])
@@ -352,7 +352,7 @@ test('read-back: an engine the stamp picked stays picked while disabled; one it 
         const old = readBackCase({ listing, stampEngines });
         assert.deepStrictEqual(old.engines, [], JSON.stringify(stampEngines));
         assert.ok(!old.lines.includes('mcp browser'));
-        assert.deepStrictEqual(old.parked.filter((n) => n.startsWith('browser-')), ['browser-chrome', 'browser-firefox', 'browser-webkit']);
+        assert.deepStrictEqual(old.parked.filter((n) => n.match(/^(?:chrome|msedge|firefox|webkit)-control$/)), ['chrome-control', 'firefox-control', 'webkit-control']);
     }
     // A listing this run could not read is no reason to lose the picks: the stamp still names them.
     const blind = readBackCase({ listing: [], stampEngines: ['webkit'] });
@@ -372,17 +372,17 @@ test('read-back: with the stamp\'s record, an engine it does not name is never r
 {
     const logs = [];
     const listing = [
-        row('alfred-code@envoydev'), row('browser-chrome@envoydev'), row('browser-firefox@envoydev'),
-        row('browser-webkit@envoydev', { scope: 'user' }),
+        row('alfred-code@envoydev'), row('chrome-control@envoydev'), row('firefox-control@envoydev'),
+        row('webkit-control@envoydev', { scope: 'user' }),
     ];
     const r = readBackCase({ listing, stampEngines: ['chrome'], log: (m) => logs.push(m) });
     assert.deepStrictEqual(r.engines, ['chrome']);
     assert.ok(r.lines.includes('mcp browser'));
-    assert.ok(logs.some((m) => /browser-firefox@envoydev is installed but not among the browsers the last install kept .*claude plugin uninstall browser-firefox@envoydev --scope project/.test(m)), logs.join(' | '));
-    assert.ok(logs.some((m) => /browser-webkit@envoydev is installed but not among .*claude plugin uninstall browser-webkit@envoydev --scope user/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /firefox-control@envoydev is installed but not among the browsers the last install kept .*claude plugin uninstall firefox-control@envoydev --scope project/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /webkit-control@envoydev is installed but not among .*claude plugin uninstall webkit-control@envoydev --scope user/.test(m)), logs.join(' | '));
     // Every engine dropped (--drop mcp browser) but one still listed: no playwright is kept at all,
     // or the kept set would fall back to chrome and install it again.
-    const dropped = readBackCase({ listing: [row('alfred-code@envoydev'), row('browser-chrome@envoydev')], stampEngines: [] });
+    const dropped = readBackCase({ listing: [row('alfred-code@envoydev'), row('chrome-control@envoydev')], stampEngines: [] });
     assert.deepStrictEqual(dropped.engines, []);
     assert.ok(!dropped.lines.includes('mcp browser'), dropped.lines.filter((l) => l.startsWith('mcp ')).join(','));
     // No record (no stamp): the listing speaks, as before.
@@ -726,7 +726,7 @@ test('planInventory: the inventory JSON - names per category, playwright folded,
         lists: {
             skills: ['a|csharp'], agents: ['evidence-gatherer.md'], rules: ['alfred-security.md'],
             hooks: ['guard-read-whole-file.js::Read', 'guard-read-whole-file.js::Bash', 'docs-session.js'],
-            mcps: ['browser-chrome|x', 'browser-firefox|y', 'alfred-navigation|z'], plugins: ['claude-hud@claude-plugins-official', 'csharp-lsp@claude-plugins-official'],
+            mcps: ['chrome-control|x', 'firefox-control|y', 'alfred-navigation|z'], plugins: ['claude-hud@claude-plugins-official', 'csharp-lsp@claude-plugins-official'],
         },
         listing: [row('claude-hud@claude-plugins-official', { scope: 'user' }), row('csharp-lsp@claude-plugins-official', { enabled: false }), row('alfred-code-devops@envoydev', { enabled: false }), row('superpowers@claude-plugins-official', { scope: 'user' })],
         answered: { hooks: true, agents: false },
@@ -751,15 +751,15 @@ test('planInventory: a kept engine the user left off is no DISABLED plugin - an 
     // validate turns every plugins_disabled name into a DISABLED row whose accept is `claude plugin
     // enable` - for a kept engine that would undo the user's choice to leave it off (R67).
     const inv = sel.planInventory({
-        lists: { mcps: ['browser-chrome|x', 'browser-firefox|y', 'alfred-navigation|z'] },
+        lists: { mcps: ['chrome-control|x', 'firefox-control|y', 'alfred-navigation|z'] },
         listing: [
-            row('browser-chrome@envoydev', { enabled: false }), row('browser-firefox@envoydev'),
-            row('browser-webkit@envoydev', { enabled: false }), row('alfred-navigation@claude-plugins-official', { enabled: false }),
+            row('chrome-control@envoydev', { enabled: false }), row('firefox-control@envoydev'),
+            row('webkit-control@envoydev', { enabled: false }), row('alfred-navigation@claude-plugins-official', { enabled: false }),
         ],
         answered: { hooks: true, agents: true },
     });
     assert.deepStrictEqual(inv.mcps, ['browser', 'alfred-navigation']);
-    assert.deepStrictEqual(inv.plugins_disabled, ['browser-webkit', 'alfred-navigation'], 'only the engines are exempt, and only the picked ones');
+    assert.deepStrictEqual(inv.plugins_disabled, ['webkit-control', 'alfred-navigation'], 'only the engines are exempt, and only the picked ones');
 });
 
 // T4: a --drop that takes a stack entry out of the plugin set must DISABLE that entry, or the
@@ -768,8 +768,8 @@ test('droppedEntries: what the drop took out of the set, folded onto the listing
 {
     const listing = [
         row('alfred-code-aspnet@envoydev'), row('alfred-code-csharp@envoydev'),
-        row('alfred-code-devops@envoydev'), row('browser-chrome@envoydev'),
-        row('browser-firefox@envoydev', { enabled: false }),
+        row('alfred-code-devops@envoydev'), row('chrome-control@envoydev'),
+        row('firefox-control@envoydev', { enabled: false }),
     ];
     const deps = { 'alfred-code-aspnet': ['alfred-code-csharp'], 'alfred-code-csharp': ['alfred-code'] };
     const got = sel.droppedEntries({
@@ -777,7 +777,7 @@ test('droppedEntries: what the drop took out of the set, folded onto the listing
         after: ['alfred-code', 'alfred-code-devops'],
         listing, deps, marketplace: 'envoydev',
     });
-    assert.deepStrictEqual(got.map((r) => r.name), ['alfred-code-aspnet', 'alfred-code-csharp', 'browser-chrome'],
+    assert.deepStrictEqual(got.map((r) => r.name), ['alfred-code-aspnet', 'alfred-code-csharp', 'chrome-control'],
         'aspnet before the csharp it depends on; the parked firefox browser is not touched; devops stays');
 });
 
@@ -793,9 +793,9 @@ test('leftOut: every item a parked entry carries, and every stack seat the deny 
 
 test('droppedEntries: the core and the locked servers are never queued', () =>
 {
-    const listing = ['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory', 'browser-chrome'].map((n) => row(`${n}@envoydev`));
+    const listing = ['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory', 'chrome-control'].map((n) => row(`${n}@envoydev`));
     const got = sel.droppedEntries({ before: ['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory', 'browser'], after: [], listing, deps: {}, marketplace: 'envoydev' });
-    assert.deepStrictEqual(got.map((r) => r.name), ['browser-chrome'], 'only the droppable browser server');
+    assert.deepStrictEqual(got.map((r) => r.name), ['chrome-control'], 'only the droppable browser server');
 });
 
 test('deriveFromDisk: a global install reads its skills from the account dir, the rest from the project', () =>
@@ -872,7 +872,7 @@ test('read-back: an older install\'s serena, context7 and playwright-<engine> re
         assert.ok(r.lines.includes(line), `${line}: ${r.lines.filter((l) => l.startsWith('mcp ')).join(',')}`);
     assert.ok(!r.lines.some((l) => /^mcp (serena|context7|playwright)/.test(l)), 'no old name reaches a selection line');
     assert.deepStrictEqual(r.engines, ['chrome']);
-    assert.deepStrictEqual(r.parked, ['browser-webkit'], 'the unpicked engine left off is parked, under its new name');
+    assert.deepStrictEqual(r.parked, ['webkit-control'], 'the unpicked engine left off is parked, under its new name');
     // A copy-route install's .mcp.json names them the old way too.
     const claudeDir = target({ rules: ['alfred-security'] });
     const copy = sel.readBack({ claudeDir, mcpServers: ['serena', 'playwright-firefox', 'mine'], listing: [], settings: {}, routes: { hooks: false, skills: false, mcps: false },
@@ -971,7 +971,7 @@ test('read-back (2.1.0): a stamp missing its `seats-route:` line never reads a s
 test('planInventory: scopes - global for a user row, project and local as such, the narrowest when at several, required items none', () =>
 {
     const r = (name, scope, version = '1.0.0') => ({ name, marketplace: 'm', version, scope, enabled: true });
-    const inv = sel.planInventory({ lists: {}, listing: [r('claude-hud', 'user'), r('claude-hud', 'project'), r('browser-webkit', 'local'), r('windows-control', 'user'),
+    const inv = sel.planInventory({ lists: {}, listing: [r('claude-hud', 'user'), r('claude-hud', 'project'), r('webkit-control', 'local'), r('windows-control', 'user'),
         r('alfred-navigation', 'user'), r('alfred-code', 'user'), r('typescript-lsp', 'project', '')] });
-    assert.deepStrictEqual(inv.scopes, { 'claude-hud': 'project', 'browser-webkit': 'local', 'windows-control': 'global' }, 'a row with no version is not installed');
+    assert.deepStrictEqual(inv.scopes, { 'claude-hud': 'project', 'webkit-control': 'local', 'windows-control': 'global' }, 'a row with no version is not installed');
 });

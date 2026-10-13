@@ -79,7 +79,7 @@ touches no committed file). The lines, minus anything the project already covers
 - `.alfred/` - the data root (`ALFRED_CODE_DATA_PATH`), outside `.claude/` because Claude Code prompts
   for every write there: the docs (`.alfred/docs/`), the navigation server's index, handoff notes and
   language servers (`.alfred/serena/`), the browser profiles holding session cookies
-  (`.alfred/browser/<engine>/`) and a project-level memory database (`.alfred/.alfred-memory/`). It
+  (`.alfred/<engine>-control/`) and a project-level memory database (`.alfred/.alfred-memory/`). It
   carries its own `.gitignore`, which keeps everything but `docs/` out of git, so while the docs are
   committed it needs no line here. The docs carry their own, written from `ALFRED_CODE_DOCS_VERSIONING`:
   `local` keeps them out of git, `git` (a fresh project's default) commits them and keeps only the hooks'

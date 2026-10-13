@@ -56,6 +56,9 @@ generated file both exist, and the old one is the user's to remove.
 `macos-control` (were `windows-desktop` / `macos-desktop`): update swaps the plugin with its on/off kept, re-spells
 their tools in the generated rules, and `ALFRED_CODE_WINDOWS_CONTROL_EXCLUDE` is the gate key - the old
 `ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` is still read while the new one is unset, with a line saying to rename it.
+Each browser server is `<engine>-control` (was `browser-<engine>`): update swaps the plugin with its on/off kept,
+and the profile moves from `.alfred/browser/<engine>` to `.alfred/<engine>-control` at that server's next start,
+unasked - `.alfred/browser` goes once its last engine has moved.
 `/loop-quality` now works a code-quality assessment by tier, with the `loops/`
 prompts as its rules; `/loop-quality staged` is the stage-by-stage run a project may rely on.
 
@@ -450,10 +453,10 @@ line; pass the removals, their add-back lines and every kept row's line through 
 `context7-local` also logs `context7-local removed - if you ran /mcp disable context7 for it, run /mcp enable context7`
 - paste that line too, since the hosted server stays disabled by the user's own earlier command
 otherwise. The browser server keeps its browsers the same
-way: every browser the stamp's `browser-engines:` names is updated in place, never installed over (a legacy single `playwright` server
+way: every browser the stamp's `control-engines:` names is updated in place, never installed over (a legacy single `playwright` server
 migrates to `browser-<its --browser>`, none = `chrome`), a `firefox` / `webkit` build is downloaded again
 at the release's pin, and no browser is switched on or off - the user's `/plugin` toggle stands. One the user uninstalled by hand
-comes back as the stamp's `browser-enabled:` last left it; a disabled browser the stamp does not name stays parked.
+comes back as the stamp's `control-enabled:` last left it; a disabled browser the stamp does not name stays parked.
 
 **ONE post-install read.** When the installer returns, everything the report needs is in its log,
 so take it in a single call - never a tail, never a second grep. A tail is ~75% static boilerplate,

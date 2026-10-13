@@ -167,11 +167,11 @@ test('derive-state: rules and MCP servers pass through as picked - they are copi
     // backwards and let an unsorted list pass.
     const file = selectionFile([
         'skill csharp', 'agent security-auditor', 'rule csharp-conventions', 'rule alfred-security',
-        'mcp alfred-documentation', 'mcp alfred-navigation', 'mcp browser-chrome', 'hook guard-secret-value',
+        'mcp alfred-documentation', 'mcp alfred-navigation', 'mcp chrome-control', 'hook guard-secret-value',
     ]);
     const got = derive(file);
     assert.deepStrictEqual(got.rules.copy, ['alfred-security', 'csharp-conventions']);
-    assert.deepStrictEqual(got.mcps, ['alfred-documentation', 'alfred-navigation', 'browser-chrome']);
+    assert.deepStrictEqual(got.mcps, ['alfred-documentation', 'alfred-navigation', 'chrome-control']);
     assert.deepStrictEqual(got.hooks.on, ['guard-secret-value']);
 });
 
@@ -292,7 +292,7 @@ test('readInstalled: each surface reads back only while its own route is on', ()
 test('readInstalled: MCP entries fold back onto the catalog, once each - a cut server is no catalog line', () =>
 {
     const lines = readInstalled({
-        plugins: ['alfred-navigation', 'alfred-documentation', 'context7-local', 'browser-firefox', 'browser-webkit', 'claude-hud'],
+        plugins: ['alfred-navigation', 'alfred-documentation', 'context7-local', 'firefox-control', 'webkit-control', 'claude-hud'],
         routes: { mcps: true }, sourceDir: ROOT,
     });
     assert.deepStrictEqual(lines.sort(), ['mcp alfred-documentation', 'mcp alfred-navigation', 'mcp browser']);

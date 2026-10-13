@@ -129,7 +129,7 @@ The memory levels and stores, where the docs root and the data root live, and th
 - **One data root for the project's data** (2.1.0, the user's decision of 2026-09-29): `ALFRED_CODE_DATA_PATH`,
   default `.alfred` at the project root - relative, never under `.claude/`, no space, no `..` (`data-root.js
   checkDataPath`) - holds the docs (`<root>/docs`), serena's folder and home (`<root>/serena`), the browser
-  profiles (`<root>/browser/<engine>`) and a project-level memory database (`<root>/.alfred-memory`).
+  profiles (`<root>/<engine>-control`) and a project-level memory database (`<root>/.alfred-memory`).
   `stack/mcp/data-root.js` is the one home of every place, read by the three launchers, the installer, init's
   plan and the preflight. The docs root is written as `<root>/docs` unless the user set their own (a value the
   ledger does not record is never moved). `<root>/.gitignore` is `/*` plus `!/.gitignore` and `!/docs/`

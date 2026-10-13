@@ -342,7 +342,7 @@ prints `{"installed": [...], "enabled": [...]}`:
 what the settings files say is ON NOW, a `/plugin` toggle included (on the MCP copy route: at project
 scope every registered browser `disabledMcpjsonServers` does not name, at local and user scope the
 last enable answer, since only an enabled browser is registered there). Never pre-select from the
-stamp's own `browser-enabled:` line - it is the last answer, and a toggle made since would be
+stamp's own `control-enabled:` line - it is the last answer, and a toggle made since would be
 reverted.
 
 1. Which browsers to INSTALL (multi-select; pre-selected: `installed` in DELTA, since a run
@@ -357,7 +357,7 @@ reverted.
    naming the cost in one line: each enabled browser adds its own ~25 tools (about 18.7k characters
    of schema) to every session.
 
-Each installed browser is its own plugin (`browser-chrome`, `browser-firefox`, ...); any
+Each installed browser is its own plugin (`chrome-control`, `firefox-control`, ...); any
 number can be enabled together, and one left unticked is installed, then disabled. Pass the answers
 to the installer as `--browsers <csv>` (a browser left out is uninstalled by the run) and
 `--browser-enabled <csv|none>`; in DELTA an unchanged answer passes nothing, and the run switches
@@ -392,7 +392,7 @@ Plugins: install the <n> marked rows? <the marked rows and their reasons, one cl
 DELTA takes the two layer questions above (add, drop) like every layer.
 
 **Where each optional item installs - the last ask of the walk.** The core and the three `alfred-` servers
-follow the run's scope. Every OTHER kept item - each kept browser engine (`browser-<engine>`), a kept desktop
+follow the run's scope. Every OTHER kept item - each kept browser engine (`<engine>-control`), a kept desktop
 server, a kept LSP, `claude-hud` - goes where the user chooses, item by item: `project` (this project only,
 the default for every one), `global` (every project on this account loads it) or `local` (this checkout only,
 never shared through the repo). Never `managed`: that scope is the admin's, and no run installs there. Nothing

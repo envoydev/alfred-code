@@ -61,12 +61,12 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
   where a reader needs it ('the navigation server (Serena)'). A backticked `browser` is no graph edge
   (`stack-graph.js` MCP_COMMON_WORDS): the word is too common to prove a need. Catalog of 6 names, 9 plugins:
   - `browser` (Playwright MCP) - seeded for web-angular / ionic / extension, evidence-proven elsewhere. One catalog
-    entry, expanded after the selection into ONE PLUGIN per kept browser (`browser-chrome|msedge|firefox|
-    webkit`, each started through `stack/mcp/browser-launch.js` with `--browser <engine>` + profile
-    `<data root>/browser/<engine>` - a 2.0.0 `.playwright/<engine>` serves until its move; firefox/webkit downloaded at the
+    entry, expanded after the selection into ONE PLUGIN per kept browser (`<engine>-control` for chrome,
+    msedge, firefox, webkit, each started through `stack/mcp/browser-launch.js` with `--browser <engine>` + profile
+    `<data root>/<engine>-control` - an older `.playwright/<engine>` (2.0.0) or `<data root>/browser/<engine>` (2.1.0-2.3.x) serves until its move; firefox/webkit downloaded at the
     release pin) - not one plugin declaring four, which would load four copies of the tool schemas every
     session. Setup/configure ask `--browsers` (install) and `--browser-enabled` (absent: all
-    on at install, none flipped by update); the stamp's two lines (`browser-engines:`, `browser-enabled:`) are the record on EVERY route (a
+    on at install, none flipped by update); the stamp's two lines (`control-engines:`, `control-enabled:`) are the record on EVERY route (a
     switch onto the copy route carries them over, R116), and a stamped engine a run drops is
     uninstalled. On the copy route an engine's plugin row is uninstalled, on or off - except at user
     scope on the FULL copy route (C11): there the engine registers in THIS project's `.mcp.json`
@@ -134,7 +134,11 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     `documentation` and `browser-<engine>`; 2.2.0 (the user's call, 2026-10-06) made `navigation`, `documentation` and
     `memory` `alfred-navigation`, `alfred-documentation` and `alfred-memory`, plugin and server alike; 2026-10-13 (the user's
     call) made `windows-desktop` and `macos-desktop` `windows-control` and `macos-control`, the gate key with them
-    (`ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` is still read while the new one is unset, named as renamed). The old ids were
+    (`ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` is still read while the new one is unset, named as renamed), and each
+    `browser-<engine>` `<engine>-control`, with no shared folder: a profile moves from `<data root>/browser/<engine>` to
+    `<data root>/<engine>-control` at the server's next start, unasked (a relayout inside the root, `data-root.js isRelayout`),
+    the emptied `browser/` removed by the last move, and the stamp lines are `control-engines:` / `control-enabled:`
+    (`browser-*` and `playwright-*` read as the fallback). The catalog name `browser` stays the selection token. The old ids were
     listed as RETIRED aliases through 2.2.0 and are UNLISTED from 2.2.1 (the user's ruling of 2026-10-06, every install
     updated), the old tool spellings leaving every seat grant with them; the
     memory readers take either server name (`MEMORY_SERVERS`, `stack/hooks/memory.js` and `scripts/install/memory.js`). An install still on an old id
@@ -152,8 +156,8 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     still holds it at its hash - the user's own is named, never rewritten). A capture never re-runs by itself, so
     each update also re-spells the generated rules' routing rows to the route this run serves (`selection.respellMcpRows`):
     a bare `mcp__<server>__` of a server on the plugin route with no registration of its name takes the plugin
-    spelling (the copy route's downconvert is the reverse), and a `browser-<engine>` row's backticked `.../output/`
-    dir takes `<data root>/browser/<engine>/output/`, the dir a fresh capture names (2026-10-10: a pre-2.1.0 rule
+    spelling (the copy route's downconvert is the reverse), and an `<engine>-control` row's backticked `.../output/`
+    dir takes `<data root>/<engine>-control/output/`, the dir a fresh capture names (2026-10-10: a pre-2.1.0 rule
     kept a project writing screenshots to the repo root's `.playwright/output/`). The old flags
     (`--playwright-browsers`, `--playwright-enabled`) and stamp lines (`playwright-browsers:`,
     `playwright-enabled:`) are read for one release.

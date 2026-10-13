@@ -209,7 +209,7 @@ test('scope: an optional item goes where the user chose (default the run\'s scop
     assert.strictEqual(P.scopeFor('claude-hud@m', 'user', [], { 'claude-hud': 'project' }), 'project', 'a user-scope run puts a project choice at project scope');
     assert.strictEqual(P.scopeFor('claude-hud@m', 'project', [{ name: 'claude-hud', marketplace: 'm', version: '1', scope: 'user', enabled: true }], { 'claude-hud': 'project' }), 'user', 'an existing row is kept where it is - only moveScoped moves it');
     assert.strictEqual(P.scopeFor('claude-hud@m', 'user', []), 'project', 'an optional item on a user-scope run defaults to this project');
-    assert.strictEqual(P.scopeFor('browser-chrome@envoydev', 'user', []), 'project');
+    assert.strictEqual(P.scopeFor('chrome-control@envoydev', 'user', []), 'project');
     assert.strictEqual(P.scopeFor('alfred-navigation@envoydev', 'user', []), 'user', 'a required item follows the run');
     assert.strictEqual(P.scopeFor('alfred-code@envoydev', 'project', []), 'project');
     // `claude plugin update --scope <other>` is a silent no-op, so the plugin's OWN scope wins.
@@ -430,10 +430,10 @@ test('R105: a call whose failure the caller notes itself is marked reported; one
 {
     const notes = [];
     const run = cli(['plugin install', 'plugin disable']);
-    P.installPlugins({ plugins: ['x@mp', 'browser-webkit@envoydev'], scope: 'project', engines: { specs: [], present: [], presentScope: {}, off: ['browser-webkit@envoydev'], on: null, isOn: () => undefined }, cli: run, note: (m) => notes.push(m) });
+    P.installPlugins({ plugins: ['x@mp', 'webkit-control@envoydev'], scope: 'project', engines: { specs: [], present: [], presentScope: {}, off: ['webkit-control@envoydev'], on: null, isOn: () => undefined }, cli: run, note: (m) => notes.push(m) });
     assert.deepStrictEqual(run.expectOf(/^plugin install /), ['reported', 'reported']);
     assert.deepStrictEqual(run.expectOf(/^plugin marketplace (add|update) /).filter(Boolean), [], 'a marketplace call is never silenced');
-    assert.deepStrictEqual(notes, ['plugin x@mp failed', 'plugin browser-webkit@envoydev failed']);
+    assert.deepStrictEqual(notes, ['plugin x@mp failed', 'plugin webkit-control@envoydev failed']);
     const up = cli(['plugin install']);
     P.updatePlugins({ plugins: ['y@mp'], scope: 'project', cli: up, after: [] });
     assert.deepStrictEqual(up.expectOf(/^plugin (install|update) /), [undefined, undefined], 'update notes no failed install itself - the runner prints it');
@@ -606,18 +606,18 @@ test('update: a third-party marketplace is registered before an absent plugin fr
 // one (S28). It is updated in place, and switched only when the user answered (`on`); a switch the
 // settings file shows already made is skipped, since a no-op enable or disable exits 1 (S28).
 
-const PW = ['browser-chrome@envoydev', 'browser-firefox@envoydev'];
+const PW = ['chrome-control@envoydev', 'firefox-control@envoydev'];
 const ENG = (over = {}) => ({ specs: PW, present: [], presentScope: {}, off: [], on: null, isOn: () => undefined, ...over });
-const PW_MOVES = /^plugin (install|disable|enable|update|uninstall) browser-/;
+const PW_MOVES = /^plugin (install|disable|enable|update|uninstall) (?:chrome|msedge|firefox|webkit)-control/;
 
 test('install: a new engine is installed, and disabled right after only when the user chose it off', () =>
 {
     const run = cli();
-    P.installPlugins({ plugins: ['alfred-code@envoydev', ...PW], scope: 'project', engines: ENG({ off: ['browser-firefox@envoydev'] }), cli: run });
+    P.installPlugins({ plugins: ['alfred-code@envoydev', ...PW], scope: 'project', engines: ENG({ off: ['firefox-control@envoydev'] }), cli: run });
     assert.deepStrictEqual(run.matching(PW_MOVES), [
-        'plugin install browser-chrome@envoydev --scope project -y',
-        'plugin install browser-firefox@envoydev --scope project -y',
-        'plugin disable browser-firefox@envoydev --scope project',
+        'plugin install chrome-control@envoydev --scope project -y',
+        'plugin install firefox-control@envoydev --scope project -y',
+        'plugin disable firefox-control@envoydev --scope project',
     ]);
     assert.deepStrictEqual(run.matching(/^plugin disable alfred-code/), [], 'only an engine chosen off is disabled');
 });
@@ -626,24 +626,24 @@ test('install: an engine already installed never gets the install verb - it woul
 {
     const run = cli();
     const before = [
-        { name: 'browser-chrome', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: false },
-        { name: 'browser-firefox', marketplace: 'envoydev', version: '1.0.0', scope: 'user', enabled: false },
+        { name: 'chrome-control', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: false },
+        { name: 'firefox-control', marketplace: 'envoydev', version: '1.0.0', scope: 'user', enabled: false },
     ];
     P.installPlugins({ plugins: PW, scope: 'project', before, engines: ENG(), cli: run });
     assert.deepStrictEqual(run.matching(PW_MOVES), [
-        'plugin update browser-chrome@envoydev --scope project -y',
-        'plugin update browser-firefox@envoydev --scope user -y',
+        'plugin update chrome-control@envoydev --scope project -y',
+        'plugin update firefox-control@envoydev --scope user -y',
     ], 'an installed engine was installed over, or its flag was flipped with no answer to apply');
 });
 
 test('install: on a listing it could not read, an engine the stamp names is present - updated, never installed over', () =>
 {
     const run = cli();
-    P.installPlugins({ plugins: PW, scope: 'project', engines: ENG({ present: ['browser-chrome@envoydev'], off: PW }), cli: run });
+    P.installPlugins({ plugins: PW, scope: 'project', engines: ENG({ present: ['chrome-control@envoydev'], off: PW }), cli: run });
     assert.deepStrictEqual(run.matching(PW_MOVES), [
-        'plugin update browser-chrome@envoydev --scope project -y',
-        'plugin install browser-firefox@envoydev --scope project -y',
-        'plugin disable browser-firefox@envoydev --scope project',
+        'plugin update chrome-control@envoydev --scope project -y',
+        'plugin install firefox-control@envoydev --scope project -y',
+        'plugin disable firefox-control@envoydev --scope project',
     ], 'a present engine was installed over or disabled - off is for an engine this run installs');
 });
 
@@ -652,10 +652,10 @@ test('install: on a listing it could not read, an engine the stamp names is pres
 test('install: on a listing it could not read, an engine present at user scope is updated there, never installed', () =>
 {
     const run = cli();
-    P.installPlugins({ plugins: PW, scope: 'project', engines: ENG({ present: PW, presentScope: { 'browser-firefox@envoydev': 'user' } }), cli: run });
+    P.installPlugins({ plugins: PW, scope: 'project', engines: ENG({ present: PW, presentScope: { 'firefox-control@envoydev': 'user' } }), cli: run });
     assert.deepStrictEqual(run.matching(PW_MOVES), [
-        'plugin update browser-chrome@envoydev --scope project -y',
-        'plugin update browser-firefox@envoydev --scope user -y',
+        'plugin update chrome-control@envoydev --scope project -y',
+        'plugin update firefox-control@envoydev --scope user -y',
     ]);
 });
 
@@ -663,72 +663,72 @@ test('install: the user\'s answer is applied to the installed engines - a switch
 {
     const run = cli();
     const before = [
-        { name: 'browser-chrome', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true },
-        { name: 'browser-firefox', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true },
-        { name: 'browser-webkit', marketplace: 'envoydev', version: '1.0.0', scope: 'user', enabled: true },
+        { name: 'chrome-control', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true },
+        { name: 'firefox-control', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true },
+        { name: 'webkit-control', marketplace: 'envoydev', version: '1.0.0', scope: 'user', enabled: true },
     ];
-    const specs = [...PW, 'browser-webkit@envoydev'];
+    const specs = [...PW, 'webkit-control@envoydev'];
     const logs = [];
-    const isOn = (spec) => ({ 'browser-chrome@envoydev': true, 'browser-firefox@envoydev': true })[spec];
-    P.installPlugins({ plugins: specs, scope: 'project', before, engines: ENG({ specs, on: ['browser-chrome@envoydev'], off: specs.slice(1), isOn }), cli: run, log: (m) => logs.push(m) });
+    const isOn = (spec) => ({ 'chrome-control@envoydev': true, 'firefox-control@envoydev': true })[spec];
+    P.installPlugins({ plugins: specs, scope: 'project', before, engines: ENG({ specs, on: ['chrome-control@envoydev'], off: specs.slice(1), isOn }), cli: run, log: (m) => logs.push(m) });
     assert.deepStrictEqual(run.matching(PW_MOVES), [
-        'plugin update browser-chrome@envoydev --scope project -y',
-        'plugin update browser-firefox@envoydev --scope project -y',
-        'plugin disable browser-firefox@envoydev --scope project',
-        'plugin update browser-webkit@envoydev --scope user -y',
+        'plugin update chrome-control@envoydev --scope project -y',
+        'plugin update firefox-control@envoydev --scope project -y',
+        'plugin disable firefox-control@envoydev --scope project',
+        'plugin update webkit-control@envoydev --scope user -y',
     ], 'chrome is on already (no enable that exits 1), firefox is switched off, a user-scope engine is left there');
-    assert.ok(logs.some((m) => /browser-webkit@envoydev is installed at user scope, not this run's .*claude plugin disable browser-webkit@envoydev --scope user/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /webkit-control@envoydev is installed at user scope, not this run's .*claude plugin disable webkit-control@envoydev --scope user/.test(m)), logs.join(' | '));
     // Unknown state (no settings entry): the switch is made, and a refusal is noted with its command.
     const notes = [];
-    P.installPlugins({ plugins: PW, scope: 'project', before, engines: ENG({ on: PW }), cli: cli(['enable browser-firefox']), note: (m) => notes.push(m) });
-    assert.ok(notes.some((m) => /plugin enable failed: browser-firefox@envoydev .*claude plugin enable browser-firefox@envoydev --scope project/.test(m)), notes.join(' | '));
+    P.installPlugins({ plugins: PW, scope: 'project', before, engines: ENG({ on: PW }), cli: cli(['enable firefox-control']), note: (m) => notes.push(m) });
+    assert.ok(notes.some((m) => /plugin enable failed: firefox-control@envoydev .*claude plugin enable firefox-control@envoydev --scope project/.test(m)), notes.join(' | '));
 });
 
 test('install: a failed engine install runs no disable, and a failed disable is noted with its hand command', () =>
 {
-    const failed = cli(['install browser-chrome']);
+    const failed = cli(['install chrome-control']);
     const notes = [];
     P.installPlugins({ plugins: PW, scope: 'user', engines: ENG({ off: PW }), cli: failed, note: (m) => notes.push(m) });
     // A user-scope run puts a fresh engine in this project (2.2.0: global only when chosen per item).
-    assert.deepStrictEqual(failed.matching(/^plugin disable /), ['plugin disable browser-firefox@envoydev --scope project']);
-    const stuck = cli(['disable browser-firefox']);
+    assert.deepStrictEqual(failed.matching(/^plugin disable /), ['plugin disable firefox-control@envoydev --scope project']);
+    const stuck = cli(['disable firefox-control']);
     P.installPlugins({ plugins: PW, scope: 'project', engines: ENG({ off: PW }), cli: stuck, note: (m) => notes.push(m) });
-    assert.ok(notes.some((m) => /plugin disable failed: browser-firefox@envoydev.*claude plugin disable browser-firefox@envoydev --scope project/.test(m)), notes.join(' | '));
+    assert.ok(notes.some((m) => /plugin disable failed: firefox-control@envoydev.*claude plugin disable firefox-control@envoydev --scope project/.test(m)), notes.join(' | '));
 });
 
 test('update: an installed engine is updated in place and never flipped with no answer; an absent one comes back as last chosen', () =>
 {
     const run = cli();
     const before = [
-        { name: 'browser-chrome', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true },
-        { name: 'browser-firefox', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: false },
+        { name: 'chrome-control', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true },
+        { name: 'firefox-control', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: false },
     ];
-    const specs = [...PW, 'browser-webkit@envoydev'];
-    const report = P.updatePlugins({ plugins: specs, scope: 'project', before, after: before, engines: ENG({ specs, off: ['browser-webkit@envoydev'] }), cli: run });
+    const specs = [...PW, 'webkit-control@envoydev'];
+    const report = P.updatePlugins({ plugins: specs, scope: 'project', before, after: before, engines: ENG({ specs, off: ['webkit-control@envoydev'] }), cli: run });
     assert.deepStrictEqual(run.matching(PW_MOVES), [
-        'plugin update browser-chrome@envoydev --scope project -y',
-        'plugin update browser-firefox@envoydev --scope project -y',
-        'plugin install browser-webkit@envoydev --scope project -y',
-        'plugin disable browser-webkit@envoydev --scope project',
-        'plugin update browser-webkit@envoydev --scope project -y',
+        'plugin update chrome-control@envoydev --scope project -y',
+        'plugin update firefox-control@envoydev --scope project -y',
+        'plugin install webkit-control@envoydev --scope project -y',
+        'plugin disable webkit-control@envoydev --scope project',
+        'plugin update webkit-control@envoydev --scope project -y',
     ]);
     assert.ok(!report.some((l) => /DISABLED|claude plugin enable/.test(l)), `an engine left off was reported as something to enable: ${report.join(' | ')}`);
     // A parked plugin that is NOT an engine is still enabled, as before.
     const other = cli();
-    P.updatePlugins({ plugins: ['browser-firefox@envoydev'], scope: 'project', before, after: before, cli: other });
-    assert.deepStrictEqual(other.matching(/^plugin enable /), ['plugin enable browser-firefox@envoydev --scope project']);
+    P.updatePlugins({ plugins: ['firefox-control@envoydev'], scope: 'project', before, after: before, cli: other });
+    assert.deepStrictEqual(other.matching(/^plugin enable /), ['plugin enable firefox-control@envoydev --scope project']);
 });
 
 test('update: an engine installed at ANOTHER scope is updated at that scope, and an absent one is disabled where it went', () =>
 {
     const run = cli();
-    const before = [{ name: 'browser-chrome', marketplace: 'envoydev', version: '1.0.0', scope: 'user', enabled: false }];
+    const before = [{ name: 'chrome-control', marketplace: 'envoydev', version: '1.0.0', scope: 'user', enabled: false }];
     P.updatePlugins({ plugins: PW, scope: 'project', before, after: before, engines: ENG({ off: PW }), cli: run });
     assert.deepStrictEqual(run.matching(PW_MOVES), [
-        'plugin update browser-chrome@envoydev --scope user -y',
-        'plugin install browser-firefox@envoydev --scope project -y',
-        'plugin disable browser-firefox@envoydev --scope project',
-        'plugin update browser-firefox@envoydev --scope project -y',
+        'plugin update chrome-control@envoydev --scope user -y',
+        'plugin install firefox-control@envoydev --scope project -y',
+        'plugin disable firefox-control@envoydev --scope project',
+        'plugin update firefox-control@envoydev --scope project -y',
     ]);
 });
 
@@ -739,33 +739,33 @@ test('uninstall: an engine no longer kept goes at this scope; one at another sco
     const run = cli();
     const logs = [];
     const rows = [
-        { name: 'browser-firefox', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: false },
-        { name: 'browser-webkit', marketplace: 'envoydev', version: '1.0.0', scope: 'user', enabled: true },
-        { name: 'browser-firefox', marketplace: 'claude-plugins-official', version: '1.0.0', scope: 'project', enabled: true },
+        { name: 'firefox-control', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: false },
+        { name: 'webkit-control', marketplace: 'envoydev', version: '1.0.0', scope: 'user', enabled: true },
+        { name: 'firefox-control', marketplace: 'claude-plugins-official', version: '1.0.0', scope: 'project', enabled: true },
     ];
-    const gone = P.uninstallEngines({ specs: ['browser-firefox@envoydev', 'browser-webkit@envoydev', 'browser-msedge@envoydev'], rows, scope: 'project', cli: run, log: (m) => logs.push(m) });
-    assert.deepStrictEqual(run.matching(PW_MOVES), ['plugin uninstall browser-firefox@envoydev --scope project -y']);
-    assert.deepStrictEqual(gone, ['browser-firefox@envoydev']);
-    assert.ok(logs.some((m) => /^plugin uninstalled \[project\]: browser-firefox@envoydev/.test(m)), logs.join(' | '));
-    assert.ok(logs.some((m) => /browser-webkit@envoydev is installed at user scope, not this run's .*claude plugin uninstall browser-webkit@envoydev --scope user/.test(m)), logs.join(' | '));
+    const gone = P.uninstallEngines({ specs: ['firefox-control@envoydev', 'webkit-control@envoydev', 'msedge-control@envoydev'], rows, scope: 'project', cli: run, log: (m) => logs.push(m) });
+    assert.deepStrictEqual(run.matching(PW_MOVES), ['plugin uninstall firefox-control@envoydev --scope project -y']);
+    assert.deepStrictEqual(gone, ['firefox-control@envoydev']);
+    assert.ok(logs.some((m) => /^plugin uninstalled \[project\]: firefox-control@envoydev/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /webkit-control@envoydev is installed at user scope, not this run's .*claude plugin uninstall webkit-control@envoydev --scope user/.test(m)), logs.join(' | '));
     const notes = [];
-    P.uninstallEngines({ specs: ['browser-firefox@envoydev'], rows, scope: 'project', cli: cli(['uninstall']), note: (m) => notes.push(m) });
-    assert.ok(notes.some((m) => /plugin uninstall failed: browser-firefox@envoydev .*claude plugin uninstall browser-firefox@envoydev --scope project/.test(m)), notes.join(' | '));
+    P.uninstallEngines({ specs: ['firefox-control@envoydev'], rows, scope: 'project', cli: cli(['uninstall']), note: (m) => notes.push(m) });
+    assert.ok(notes.some((m) => /plugin uninstall failed: firefox-control@envoydev .*claude plugin uninstall firefox-control@envoydev --scope project/.test(m)), notes.join(' | '));
 });
 
 test('uninstall: on a listing it could not read, the uninstall is tried at this scope, and a refusal is said, never counted', () =>
 {
-    const run = cli(['uninstall browser-webkit']);
+    const run = cli(['uninstall webkit-control']);
     const logs = [];
     const notes = [];
-    const gone = P.uninstallEngines({ specs: ['browser-firefox@envoydev', 'browser-webkit@envoydev'], rows: [], blind: true, scope: 'project', cli: run, log: (m) => logs.push(m), note: (m) => notes.push(m) });
+    const gone = P.uninstallEngines({ specs: ['firefox-control@envoydev', 'webkit-control@envoydev'], rows: [], blind: true, scope: 'project', cli: run, log: (m) => logs.push(m), note: (m) => notes.push(m) });
     assert.deepStrictEqual(run.matching(PW_MOVES), [
-        'plugin uninstall browser-firefox@envoydev --scope project -y',
-        'plugin uninstall browser-webkit@envoydev --scope project -y',
+        'plugin uninstall firefox-control@envoydev --scope project -y',
+        'plugin uninstall webkit-control@envoydev --scope project -y',
     ]);
-    assert.deepStrictEqual(gone, ['browser-firefox@envoydev']);
+    assert.deepStrictEqual(gone, ['firefox-control@envoydev']);
     assert.deepStrictEqual(notes, [], 'an engine already gone is no failure');
-    assert.ok(logs.some((m) => /browser-webkit@envoydev: not uninstalled - the plugin listing could not be read.*claude plugin uninstall browser-webkit@envoydev --scope project/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /webkit-control@envoydev: not uninstalled - the plugin listing could not be read.*claude plugin uninstall webkit-control@envoydev --scope project/.test(m)), logs.join(' | '));
 });
 
 // --- the seed, end to end, against a recording CLI --------------------------------------------------
@@ -1498,7 +1498,7 @@ test('seed plan: --print-plan over a project with cut plugins prints no removal 
 // --- R67 end to end: the engines installed and enabled as the user picked --------------------------
 const PW_SELECTION = 'skill markdown-style\nrule markdown-docs\nmcp browser\n';
 const stampOf = (repo) => { try { return fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'); } catch { return ''; } };
-const pwMoves = (calls) => calls.filter((c) => /^plugin (install|disable|enable|update|uninstall) browser-/.test(c));
+const pwMoves = (calls) => calls.filter((c) => /^plugin (install|disable|enable|update|uninstall) (?:chrome|msedge|firefox|webkit)-control/.test(c));
 const ROW = (id, extra = {}) => ({ id, version: '1.0.0', scope: 'project', enabled: true, ...extra });
 const CORE_ROWS = [ROW('alfred-code@envoydev'), ROW('alfred-navigation@envoydev'), ROW('alfred-documentation@envoydev'), ROW('alfred-memory@envoydev')];
 // A project the stack installed: a copied rule (so --installed-only finds an install), the stamp, and
@@ -1535,10 +1535,10 @@ test('seed install: a fresh install ENABLES every engine it installs - none is d
 {
     const { calls, out, result } = seedRun('install', PW_SELECTION, { args: ['--playwright-browsers', 'firefox,chrome'], inspect: stampOf });
     assert.deepStrictEqual(pwMoves(calls), [
-        'plugin install browser-chrome@envoydev --scope project -y',
-        'plugin install browser-firefox@envoydev --scope project -y',
+        'plugin install chrome-control@envoydev --scope project -y',
+        'plugin install firefox-control@envoydev --scope project -y',
     ]);
-    assert.match(result, /^browser-engines: chrome,firefox\nbrowser-enabled: chrome,firefox$/m);
+    assert.match(result, /^control-engines: chrome,firefox\ncontrol-enabled: chrome,firefox$/m);
     assert.match(out, /browser: installs chrome,firefox; no enable answer given - one already installed keeps its on\/off, one installed now arrives on \(\/plugin toggles them\)/);
 });
 
@@ -1546,119 +1546,119 @@ test('seed install --browser-enabled: an engine the user did not enable is insta
 {
     const { calls, out, result } = seedRun('install', PW_SELECTION, { args: ['--playwright-browsers', 'chrome,firefox', '--playwright-enabled', 'chrome'], inspect: stampOf });
     assert.deepStrictEqual(pwMoves(calls), [
-        'plugin install browser-chrome@envoydev --scope project -y',
-        'plugin install browser-firefox@envoydev --scope project -y',
-        'plugin disable browser-firefox@envoydev --scope project',
+        'plugin install chrome-control@envoydev --scope project -y',
+        'plugin install firefox-control@envoydev --scope project -y',
+        'plugin disable firefox-control@envoydev --scope project',
     ]);
-    assert.match(result, /^browser-engines: chrome,firefox\nbrowser-enabled: chrome$/m);
+    assert.match(result, /^control-engines: chrome,firefox\ncontrol-enabled: chrome$/m);
     assert.match(out, /browser: installs chrome,firefox; enabled as picked: chrome \(\/plugin toggles them\)/);
     // none: every engine installed and left off.
     const none = seedRun('install', PW_SELECTION, { args: ['--playwright-browsers', 'chrome', '--playwright-enabled', 'none'], inspect: stampOf });
-    assert.deepStrictEqual(pwMoves(none.calls), ['plugin install browser-chrome@envoydev --scope project -y', 'plugin disable browser-chrome@envoydev --scope project']);
-    assert.match(none.result, /^browser-enabled: $/m);
+    assert.deepStrictEqual(pwMoves(none.calls), ['plugin install chrome-control@envoydev --scope project -y', 'plugin disable chrome-control@envoydev --scope project']);
+    assert.match(none.result, /^control-enabled: $/m);
 });
 
 test('seed update --installed-only with no answer flips nothing - installed engines are updated in place, a never-stamped disabled one is left alone', POSIX_ONLY, () =>
 {
     const plugins = JSON.stringify([...CORE_ROWS,
-        ROW('browser-chrome@envoydev'), ROW('browser-firefox@envoydev', { enabled: false }),
-        ROW('browser-webkit@envoydev', { enabled: false }),
+        ROW('chrome-control@envoydev'), ROW('firefox-control@envoydev', { enabled: false }),
+        ROW('webkit-control@envoydev', { enabled: false }),
     ]);
     const { calls, result } = seedRun('update', PW_SELECTION, { plugins, args: ['--installed-only'],
-        prepare: installedProject('browser-engines: chrome,firefox\nbrowser-enabled: chrome\n'), inspect: stampOf });
+        prepare: installedProject('control-engines: chrome,firefox\ncontrol-enabled: chrome\n'), inspect: stampOf });
     assert.deepStrictEqual(pwMoves(calls), [
-        'plugin update browser-chrome@envoydev --scope project -y',
-        'plugin update browser-firefox@envoydev --scope project -y',
+        'plugin update chrome-control@envoydev --scope project -y',
+        'plugin update firefox-control@envoydev --scope project -y',
     ], 'an engine flag was flipped, an installed engine was installed over, or the never-stamped one was touched');
-    assert.match(result, /^browser-engines: chrome,firefox\nbrowser-enabled: chrome$/m, 'the recorded choice changed with no answer given');
+    assert.match(result, /^control-engines: chrome,firefox\ncontrol-enabled: chrome$/m, 'the recorded choice changed with no answer given');
 });
 
 test('seed update: the reviewer\'s probe - an engine a narrower install set leaves out is UNINSTALLED, and a plain update never brings it back', POSIX_ONLY, () =>
 {
-    const plugins = JSON.stringify([...CORE_ROWS, ROW('browser-chrome@envoydev'), ROW('browser-firefox@envoydev')]);
+    const plugins = JSON.stringify([...CORE_ROWS, ROW('chrome-control@envoydev'), ROW('firefox-control@envoydev')]);
     const { calls, steps, outs, result } = seedRun(['update', 'update'], PW_SELECTION, {
         plugins, tools: LIVE_CLAUDE,
         args: [['--installed-only', '--playwright-browsers', 'chrome'], ['--installed-only']],
-        prepare: installedProject('browser-engines: chrome,firefox\n'),
-        each: (repo) => ({ stamp: (/^browser-engines: (.*)$/m.exec(stampOf(repo)) || [])[1], ids: listingOf(repo).map((r) => r.id) }),
+        prepare: installedProject('control-engines: chrome,firefox\n'),
+        each: (repo) => ({ stamp: (/^control-engines: (.*)$/m.exec(stampOf(repo)) || [])[1], ids: listingOf(repo).map((r) => r.id) }),
         inspect: listingOf,
     });
-    assert.deepStrictEqual(calls.filter((c) => /browser-firefox/.test(c) && /^plugin (install|uninstall|enable) /.test(c)),
-        ['plugin uninstall browser-firefox@envoydev --scope project -y'], 'firefox was not uninstalled once, or came back');
-    assert.match(outs[0], /plugin uninstalled \[project\]: browser-firefox@envoydev \(no longer picked\)/);
+    assert.deepStrictEqual(calls.filter((c) => /firefox-control/.test(c) && /^plugin (install|uninstall|enable) /.test(c)),
+        ['plugin uninstall firefox-control@envoydev --scope project -y'], 'firefox was not uninstalled once, or came back');
+    assert.match(outs[0], /plugin uninstalled \[project\]: firefox-control@envoydev \(no longer picked\)/);
     assert.deepStrictEqual(steps.map((s) => s.stamp), ['chrome', 'chrome'], 'the stamp did not stay chrome after both runs');
-    assert.ok(!result.some((r) => r.id === 'browser-firefox@envoydev'), 'firefox is installed again after the plain update');
-    assert.ok(result.some((r) => r.id === 'browser-chrome@envoydev' && r.enabled), 'chrome was lost or switched off');
+    assert.ok(!result.some((r) => r.id === 'firefox-control@envoydev'), 'firefox is installed again after the plain update');
+    assert.ok(result.some((r) => r.id === 'chrome-control@envoydev' && r.enabled), 'chrome was lost or switched off');
 });
 
 test('seed update --drop mcp browser: every engine the stamp names is uninstalled, never merely disabled', POSIX_ONLY, () =>
 {
-    const plugins = JSON.stringify([...CORE_ROWS, ROW('browser-chrome@envoydev'), ROW('browser-firefox@envoydev', { enabled: false })]);
+    const plugins = JSON.stringify([...CORE_ROWS, ROW('chrome-control@envoydev'), ROW('firefox-control@envoydev', { enabled: false })]);
     const { calls, result } = seedRun('update', PW_SELECTION, {
         plugins, tools: LIVE_CLAUDE, args: ['--installed-only', '--drop', 'mcp browser'],
-        prepare: installedProject('browser-engines: chrome,firefox\nbrowser-enabled: chrome\n'),
+        prepare: installedProject('control-engines: chrome,firefox\ncontrol-enabled: chrome\n'),
         inspect: (repo) => ({ stamp: stampOf(repo), ids: listingOf(repo).map((r) => r.id) }),
     });
     assert.deepStrictEqual(pwMoves(calls), [
-        'plugin uninstall browser-chrome@envoydev --scope project -y',
-        'plugin uninstall browser-firefox@envoydev --scope project -y',
+        'plugin uninstall chrome-control@envoydev --scope project -y',
+        'plugin uninstall firefox-control@envoydev --scope project -y',
     ]);
-    assert.ok(!result.ids.some((id) => id.startsWith('browser-')), result.ids.join(','));
-    assert.match(result.stamp, /^browser-engines: $/m);
+    assert.ok(!result.ids.some((id) => id.match(/^(?:chrome|msedge|firefox|webkit)-control$/)), result.ids.join(','));
+    assert.match(result.stamp, /^control-engines: $/m);
 });
 
 test('seed update: an engine uninstalled by hand comes back in its last chosen state', POSIX_ONLY, () =>
 {
-    const plugins = JSON.stringify([...CORE_ROWS, ROW('browser-chrome@envoydev')]);
+    const plugins = JSON.stringify([...CORE_ROWS, ROW('chrome-control@envoydev')]);
     const off = seedRun('update', PW_SELECTION, { plugins, args: ['--installed-only'],
-        prepare: installedProject('browser-engines: chrome,firefox\nbrowser-enabled: chrome\n'), inspect: stampOf });
+        prepare: installedProject('control-engines: chrome,firefox\ncontrol-enabled: chrome\n'), inspect: stampOf });
     assert.match(off.out, /one installed now arrives on, except firefox \(last left off\)/);
     assert.deepStrictEqual(pwMoves(off.calls), [
-        'plugin update browser-chrome@envoydev --scope project -y',
-        'plugin install browser-firefox@envoydev --scope project -y',
-        'plugin disable browser-firefox@envoydev --scope project',
-        'plugin update browser-firefox@envoydev --scope project -y',
+        'plugin update chrome-control@envoydev --scope project -y',
+        'plugin install firefox-control@envoydev --scope project -y',
+        'plugin disable firefox-control@envoydev --scope project',
+        'plugin update firefox-control@envoydev --scope project -y',
     ], 'firefox, last left off, did not come back off');
-    assert.match(off.result, /^browser-engines: chrome,firefox\nbrowser-enabled: chrome$/m);
+    assert.match(off.result, /^control-engines: chrome,firefox\ncontrol-enabled: chrome$/m);
     const on = seedRun('update', PW_SELECTION, { plugins, args: ['--installed-only'],
-        prepare: installedProject('browser-engines: chrome,firefox\nbrowser-enabled: chrome,firefox\n') });
+        prepare: installedProject('control-engines: chrome,firefox\ncontrol-enabled: chrome,firefox\n') });
     assert.deepStrictEqual(pwMoves(on.calls).filter((c) => /firefox/.test(c)), [
-        'plugin install browser-firefox@envoydev --scope project -y',
-        'plugin update browser-firefox@envoydev --scope project -y',
+        'plugin install firefox-control@envoydev --scope project -y',
+        'plugin update firefox-control@envoydev --scope project -y',
     ], 'firefox, last left on, came back off');
 });
 
 test('seed install (init re-run) over installed engines: no install verb - it would turn a disabled one back on (S28)', POSIX_ONLY, () =>
 {
-    const plugins = JSON.stringify([...CORE_ROWS, ROW('browser-chrome@envoydev'), ROW('browser-firefox@envoydev', { enabled: false })]);
+    const plugins = JSON.stringify([...CORE_ROWS, ROW('chrome-control@envoydev'), ROW('firefox-control@envoydev', { enabled: false })]);
     const { calls } = seedRun('install', PW_SELECTION, {
         plugins, args: ['--playwright-browsers', 'chrome,firefox', '--playwright-enabled', 'chrome'],
-        prepare: installedProject('browser-engines: chrome,firefox\nbrowser-enabled: chrome\n',
-            { 'browser-chrome@envoydev': true, 'browser-firefox@envoydev': false }),
+        prepare: installedProject('control-engines: chrome,firefox\ncontrol-enabled: chrome\n',
+            { 'chrome-control@envoydev': true, 'firefox-control@envoydev': false }),
     });
     assert.deepStrictEqual(pwMoves(calls), [
-        'plugin update browser-chrome@envoydev --scope project -y',
-        'plugin update browser-firefox@envoydev --scope project -y',
+        'plugin update chrome-control@envoydev --scope project -y',
+        'plugin update firefox-control@envoydev --scope project -y',
     ], 'an installed engine was installed over, or a switch the settings file shows made was made again');
 });
 
 test('seed update --playwright-enabled (configure): the answer is applied to the installed engines and recorded', POSIX_ONLY, () =>
 {
-    const plugins = JSON.stringify([...CORE_ROWS, ROW('browser-chrome@envoydev'), ROW('browser-firefox@envoydev', { enabled: false })]);
+    const plugins = JSON.stringify([...CORE_ROWS, ROW('chrome-control@envoydev'), ROW('firefox-control@envoydev', { enabled: false })]);
     const { calls, out, result } = seedRun('update', PW_SELECTION, {
         plugins, args: ['--installed-only', '--playwright-enabled', 'firefox'],
-        prepare: installedProject('browser-engines: chrome,firefox\nbrowser-enabled: chrome\n',
-            { 'browser-chrome@envoydev': true, 'browser-firefox@envoydev': false }),
+        prepare: installedProject('control-engines: chrome,firefox\ncontrol-enabled: chrome\n',
+            { 'chrome-control@envoydev': true, 'firefox-control@envoydev': false }),
         inspect: stampOf,
     });
     assert.deepStrictEqual(pwMoves(calls), [
-        'plugin update browser-chrome@envoydev --scope project -y',
-        'plugin disable browser-chrome@envoydev --scope project',
-        'plugin update browser-firefox@envoydev --scope project -y',
-        'plugin enable browser-firefox@envoydev --scope project',
+        'plugin update chrome-control@envoydev --scope project -y',
+        'plugin disable chrome-control@envoydev --scope project',
+        'plugin update firefox-control@envoydev --scope project -y',
+        'plugin enable firefox-control@envoydev --scope project',
     ]);
-    assert.match(out, /plugin enabled \[project\]: browser-firefox@envoydev \(as picked/);
-    assert.match(result, /^browser-engines: chrome,firefox\nbrowser-enabled: firefox$/m);
+    assert.match(out, /plugin enabled \[project\]: firefox-control@envoydev \(as picked/);
+    assert.match(result, /^control-engines: chrome,firefox\ncontrol-enabled: firefox$/m);
 });
 
 // A listing the run cannot read shows every engine as absent. The STAMP then says which are new: an
@@ -1668,24 +1668,24 @@ test('seed install on a listing it cannot read: the stamp says which engines are
 {
     const fresh = seedRun('install', PW_SELECTION, { plugins: 'not json', args: ['--playwright-browsers', 'chrome,firefox', '--playwright-enabled', 'chrome'] });
     assert.deepStrictEqual(pwMoves(fresh.calls), [
-        'plugin install browser-chrome@envoydev --scope project -y',
-        'plugin install browser-firefox@envoydev --scope project -y',
-        'plugin disable browser-firefox@envoydev --scope project',
+        'plugin install chrome-control@envoydev --scope project -y',
+        'plugin install firefox-control@envoydev --scope project -y',
+        'plugin disable firefox-control@envoydev --scope project',
     ], 'no stamp: every engine is new, and the one chosen off must be disabled');
     assert.match(fresh.out, /browser: the plugin listing could not be read and neither the stamp nor the settings name an installed engine - each installs as new/);
     const noAnswer = seedRun('install', PW_SELECTION, { plugins: 'not json', args: ['--playwright-browsers', 'chrome'] });
-    assert.deepStrictEqual(pwMoves(noAnswer.calls), ['plugin install browser-chrome@envoydev --scope project -y'], 'no answer: nothing is disabled');
+    assert.deepStrictEqual(pwMoves(noAnswer.calls), ['plugin install chrome-control@envoydev --scope project -y'], 'no answer: nothing is disabled');
     const stamped = seedRun('install', PW_SELECTION, { plugins: 'not json', args: ['--playwright-browsers', 'chrome,firefox', '--playwright-enabled', 'chrome'],
-        prepare: installedProject('browser-engines: chrome\nbrowser-enabled: chrome\n', { 'browser-chrome@envoydev': true }) });
+        prepare: installedProject('control-engines: chrome\ncontrol-enabled: chrome\n', { 'chrome-control@envoydev': true }) });
     assert.deepStrictEqual(pwMoves(stamped.calls), [
-        'plugin update browser-chrome@envoydev --scope project -y',
-        'plugin install browser-firefox@envoydev --scope project -y',
-        'plugin disable browser-firefox@envoydev --scope project',
+        'plugin update chrome-control@envoydev --scope project -y',
+        'plugin install firefox-control@envoydev --scope project -y',
+        'plugin disable firefox-control@envoydev --scope project',
     ], 'the stamped engine was installed over, or the new one was left on');
     assert.match(stamped.out, /browser: the plugin listing could not be read - the stamp or the settings name chrome as installed \(updated in place\); the rest install as new/);
     // A stamp with no engine line: nothing is known, so each is installed, and with no answer none is disabled.
     const old = seedRun('install', PW_SELECTION, { plugins: 'not json', args: ['--playwright-browsers', 'chrome'], prepare: installedProject('') });
-    assert.deepStrictEqual(pwMoves(old.calls), ['plugin install browser-chrome@envoydev --scope project -y']);
+    assert.deepStrictEqual(pwMoves(old.calls), ['plugin install chrome-control@envoydev --scope project -y']);
 });
 
 // R116 (j): applied on the MCP copy route too - an engine left off is registered AND named in
@@ -1697,8 +1697,8 @@ test('seed install on the MCP copy route: --playwright-enabled is applied throug
         inspect: (repo) => ({ stamp: stampOf(repo), settings: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')) }) });
     assert.deepStrictEqual(pwMoves(calls), [], 'the copy route installed or switched an engine plugin');
     assert.match(out, /browser: firefox left off - disabledMcpjsonServers keeps it from loading/);
-    assert.deepStrictEqual(result.settings.disabledMcpjsonServers, ['browser-firefox']);
-    assert.match(result.stamp, /^browser-engines: chrome,firefox\nbrowser-enabled: chrome$/m);
+    assert.deepStrictEqual(result.settings.disabledMcpjsonServers, ['firefox-control']);
+    assert.match(result.stamp, /^control-engines: chrome,firefox\ncontrol-enabled: chrome$/m);
 });
 
 // --- round 2 ---------------------------------------------------------------------------------------
@@ -1707,7 +1707,7 @@ test('seed install on the MCP copy route: --playwright-enabled is applied throug
 // question from the plan's LIVE set, so the answer it passes leaves firefox off - no enable call.
 test('seed configure: the enable question is pre-selected from the LIVE state - a /plugin switch-off survives adding webkit', POSIX_ONLY, () =>
 {
-    const plugins = JSON.stringify([...CORE_ROWS, ROW('browser-chrome@envoydev'), ROW('browser-firefox@envoydev')]);
+    const plugins = JSON.stringify([...CORE_ROWS, ROW('chrome-control@envoydev'), ROW('firefox-control@envoydev')]);
     const planFile = (work) => path.join(work, 'plan.json');
     const plan = (work) => JSON.parse(fs.readFileSync(planFile(work), 'utf8')).browser;
     // What configure does with the plan: today's sets pre-selected, webkit added and left ticked.
@@ -1716,27 +1716,27 @@ test('seed configure: the enable question is pre-selected from the LIVE state - 
     const { calls, steps, result } = seedRun(['update', 'update'], PW_SELECTION, {
         plugins,
         args: [(repo, work) => ['--installed-only', '--print-plan', '--plan-out', planFile(work)], walk],
-        prepare: installedProject('browser-engines: chrome,firefox\nbrowser-enabled: chrome,firefox\n',
-            { 'browser-chrome@envoydev': true, 'browser-firefox@envoydev': false }),
+        prepare: installedProject('control-engines: chrome,firefox\ncontrol-enabled: chrome,firefox\n',
+            { 'chrome-control@envoydev': true, 'firefox-control@envoydev': false }),
         each: (repo, i) => (i === 0 ? plan(path.dirname(repo)) : null),
         inspect: stampOf,
     });
     assert.deepStrictEqual(steps[0], { installed: ['chrome', 'firefox'], enabled: ['chrome'] }, 'the plan took the stamp over the settings file');
     assert.deepStrictEqual(pwMoves(calls), [
-        'plugin update browser-chrome@envoydev --scope project -y',
-        'plugin update browser-firefox@envoydev --scope project -y',
-        'plugin install browser-webkit@envoydev --scope project -y',
-        'plugin update browser-webkit@envoydev --scope project -y',
+        'plugin update chrome-control@envoydev --scope project -y',
+        'plugin update firefox-control@envoydev --scope project -y',
+        'plugin install webkit-control@envoydev --scope project -y',
+        'plugin update webkit-control@envoydev --scope project -y',
     ], 'an engine whose live state the answer did not change was switched');
-    assert.match(result, /^browser-engines: chrome,firefox,webkit\nbrowser-enabled: chrome,webkit$/m);
+    assert.match(result, /^control-engines: chrome,firefox,webkit\ncontrol-enabled: chrome,webkit$/m);
 });
 
 test('seed plan: an engine the settings file does not name falls back to the stamp\'s last answer', POSIX_ONLY, () =>
 {
-    const plugins = JSON.stringify([...CORE_ROWS, ROW('browser-chrome@envoydev'), ROW('browser-firefox@envoydev')]);
+    const plugins = JSON.stringify([...CORE_ROWS, ROW('chrome-control@envoydev'), ROW('firefox-control@envoydev')]);
     const { result } = seedRun('update', PW_SELECTION, {
         plugins, args: [(repo, work) => ['--installed-only', '--print-plan', '--plan-out', path.join(work, 'plan.json')]],
-        prepare: installedProject('browser-engines: chrome,firefox\nbrowser-enabled: chrome\n', { 'browser-chrome@envoydev': true }),
+        prepare: installedProject('control-engines: chrome,firefox\ncontrol-enabled: chrome\n', { 'chrome-control@envoydev': true }),
         inspect: (repo) => JSON.parse(fs.readFileSync(path.join(path.dirname(repo), 'plan.json'), 'utf8')).browser,
     });
     assert.deepStrictEqual(result, { installed: ['chrome', 'firefox'], enabled: ['chrome'] }, 'firefox, off in the stamp and unnamed in settings, read as on');
@@ -1746,17 +1746,17 @@ test('seed plan: an engine the settings file does not name falls back to the sta
 // plain update must not read it back as kept - the stamp stays the user's choice.
 test('seed update: a dropped engine still installed is never kept again - the stamp holds, and the log names its uninstall', POSIX_ONLY, () =>
 {
-    const plugins = JSON.stringify([...CORE_ROWS, ROW('browser-chrome@envoydev'), ROW('browser-firefox@envoydev')]);
+    const plugins = JSON.stringify([...CORE_ROWS, ROW('chrome-control@envoydev'), ROW('firefox-control@envoydev')]);
     const { calls, out, result } = seedRun('update', PW_SELECTION, { plugins, args: ['--installed-only'],
-        prepare: installedProject('browser-engines: chrome\nbrowser-enabled: chrome\n'), inspect: stampOf });
+        prepare: installedProject('control-engines: chrome\ncontrol-enabled: chrome\n'), inspect: stampOf });
     assert.deepStrictEqual(pwMoves(calls).filter((c) => /firefox/.test(c)), [], 'the dropped engine was touched');
-    assert.match(result, /^browser-engines: chrome\nbrowser-enabled: chrome$/m, 'the leftover was written back as kept');
-    assert.match(out, /browser-firefox@envoydev is installed but not among the browsers the last install kept .*claude plugin uninstall browser-firefox@envoydev --scope project/);
+    assert.match(result, /^control-engines: chrome\ncontrol-enabled: chrome$/m, 'the leftover was written back as kept');
+    assert.match(out, /firefox-control@envoydev is installed but not among the browsers the last install kept .*claude plugin uninstall firefox-control@envoydev --scope project/);
     // Every engine dropped, one left over: nothing is kept, and chrome is never installed as a default.
-    const all = seedRun('update', PW_SELECTION, { plugins: JSON.stringify([...CORE_ROWS, ROW('browser-chrome@envoydev')]), args: ['--installed-only'],
-        prepare: installedProject('browser-engines: \nbrowser-enabled: \n'), inspect: stampOf });
+    const all = seedRun('update', PW_SELECTION, { plugins: JSON.stringify([...CORE_ROWS, ROW('chrome-control@envoydev')]), args: ['--installed-only'],
+        prepare: installedProject('control-engines: \ncontrol-enabled: \n'), inspect: stampOf });
     assert.deepStrictEqual(pwMoves(all.calls), []);
-    assert.match(all.result, /^browser-engines: $/m);
+    assert.match(all.result, /^control-engines: $/m);
 });
 
 // Minor 2: blind, an engine the settings file names is present - at the scope whose file names it -
@@ -1768,15 +1768,15 @@ test('seed install on a listing it cannot read: an engine the settings name is u
         prepare: (repo, work) =>
         {
             fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
-            fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'browser-chrome@envoydev': false } }));
+            fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'chrome-control@envoydev': false } }));
             fs.mkdirSync(path.join(work, 'acct'), { recursive: true });
-            fs.writeFileSync(path.join(work, 'acct', 'settings.json'), JSON.stringify({ enabledPlugins: { 'browser-firefox@envoydev': true } }));
+            fs.writeFileSync(path.join(work, 'acct', 'settings.json'), JSON.stringify({ enabledPlugins: { 'firefox-control@envoydev': true } }));
         },
     });
     assert.deepStrictEqual(pwMoves(calls), [
-        'plugin update browser-chrome@envoydev --scope project -y',
-        'plugin update browser-firefox@envoydev --scope user -y',
-        'plugin install browser-webkit@envoydev --scope project -y',
+        'plugin update chrome-control@envoydev --scope project -y',
+        'plugin update firefox-control@envoydev --scope user -y',
+        'plugin install webkit-control@envoydev --scope project -y',
     ], 'an engine the settings show installed got the install verb');
     assert.match(out, /browser: the plugin listing could not be read - the stamp or the settings name chrome,firefox as installed \(updated in place\); the rest install as new/);
 });
@@ -2130,8 +2130,8 @@ test('retired: a context7-local prune says how to switch the hosted context7 bac
 test('seed update: a move off local scope moves each plugin row found only at local scope to the new one, an engine left off staying off (C12)', POSIX_ONLY, () =>
 {
     const rows = [
-        ...['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory', 'browser-chrome'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'local', enabled: true })),
-        { id: 'browser-firefox@envoydev', version: '2.0.0', scope: 'local', enabled: false },
+        ...['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory', 'chrome-control'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'local', enabled: true })),
+        { id: 'firefox-control@envoydev', version: '2.0.0', scope: 'local', enabled: false },
         { id: 'typescript-lsp@claude-plugins-official', version: '1.0.0', scope: 'local', enabled: true },
         { id: 'claude-hud@claude-hud', version: '0.8.0', scope: 'user', enabled: true },
     ];
@@ -2142,7 +2142,7 @@ test('seed update: a move off local scope moves each plugin row found only at lo
     });
     const out = outs[1];
     const moves = calls.filter((c) => /^plugin (install|uninstall|disable|enable|update) /.test(c) && !/claude-hud/.test(c));
-    const specs = ['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory', 'browser-chrome', 'browser-firefox'].map((n) => `${n}@envoydev`).concat('typescript-lsp@claude-plugins-official');
+    const specs = ['alfred-code', 'alfred-navigation', 'alfred-documentation', 'alfred-memory', 'chrome-control', 'firefox-control'].map((n) => `${n}@envoydev`).concat('typescript-lsp@claude-plugins-official');
     for (const spec of specs)
     {
         const inst = moves.indexOf(`plugin install ${spec} --scope project -y`);
@@ -2150,8 +2150,8 @@ test('seed update: a move off local scope moves each plugin row found only at lo
         assert.ok(inst > -1 && gone > inst, `${spec} was not moved:\n${moves.join('\n')}\n${out}`);
         assert.ok(out.includes(`plugin moved [local -> project]: ${spec}`), out);
     }
-    assert.ok(moves.includes('plugin disable browser-firefox@envoydev --scope project'), `the engine's off-state was lost:\n${moves.join('\n')}`);
-    assert.ok(!moves.includes('plugin disable browser-chrome@envoydev --scope project'), 'an engine left on was switched off');
+    assert.ok(moves.includes('plugin disable firefox-control@envoydev --scope project'), `the engine's off-state was lost:\n${moves.join('\n')}`);
+    assert.ok(!moves.includes('plugin disable chrome-control@envoydev --scope project'), 'an engine left on was switched off');
     assert.deepStrictEqual(moves.filter((c) => / --scope local/.test(c) && !/^plugin uninstall /.test(c)), [], 'a local row was still acted on');
     assert.ok(!calls.some((c) => /^plugin (install|uninstall) claude-hud@claude-hud --scope (project|local)/.test(c)), 'claude-hud left user scope');
 });
@@ -2179,13 +2179,14 @@ test('seed install: claude-hud with no status line in the account settings names
 });
 
 // --- the 2.0.0 rename: an old MCP plugin is swapped for its successor where it is installed ---------
-// serena, context7 and playwright-<engine> are navigation, documentation and browser-<engine> now. An
+// serena, context7 and playwright-<engine> are alfred-navigation, alfred-documentation and <engine>-control now. An
 // install made before the rename holds the old rows; update installs the new one at the scope the
 // listing reports for the old one, then removes the old one there - never both loading at once after
 // the run, and the new one before the old goes, so a failed install leaves the server running.
-const RENAMED_MCPS = { serena: 'alfred-navigation', context7: 'alfred-documentation', playwright: 'browser' };
+const ENGINE_ROWS = (from) => Object.fromEntries(['chrome', 'msedge', 'firefox', 'webkit'].map((e) => [`${from}-${e}`, `${e}-control`]));
+const RENAMED_MCPS = { serena: 'alfred-navigation', context7: 'alfred-documentation', playwright: 'browser', ...ENGINE_ROWS('playwright'), ...ENGINE_ROWS('browser') };
 const oldRow = (name, over = {}) => ({ name, marketplace: 'envoydev', version: '1.3.0', scope: 'project', enabled: true, ...over });
-const RENAME_SET = ['alfred-code@envoydev', 'alfred-navigation@envoydev', 'alfred-documentation@envoydev', 'alfred-memory@envoydev', 'browser-chrome@envoydev', 'browser-firefox@envoydev'];
+const RENAME_SET = ['alfred-code@envoydev', 'alfred-navigation@envoydev', 'alfred-documentation@envoydev', 'alfred-memory@envoydev', 'chrome-control@envoydev', 'firefox-control@envoydev'];
 
 // I2 (final review of the rename): a user-scope old row serves every project on the account, and a project
 // not yet updated still spells the old tools (its library agents' `tools:`, its navigation rule's
@@ -2201,12 +2202,12 @@ test('rename: an old row at this run\'s scope is swapped in place; one at anothe
     assert.deepStrictEqual(run.calls, [
         'plugin install alfred-navigation@envoydev --scope project -y',
         'plugin uninstall serena@envoydev --scope project -y',
-        'plugin install browser-chrome@envoydev --scope project -y',
+        'plugin install chrome-control@envoydev --scope project -y',
         'plugin uninstall playwright-chrome@envoydev --scope project -y',
         'plugin install alfred-documentation@envoydev --scope project -y',
         'plugin disable context7@envoydev --scope project',
     ], 'this scope\'s own old rows first, then the stand-downs');
-    assert.deepStrictEqual(out.fresh, ['alfred-navigation@envoydev', 'browser-chrome@envoydev', 'alfred-documentation@envoydev'], 'installed this run - the install and update passes leave them alone');
+    assert.deepStrictEqual(out.fresh, ['alfred-navigation@envoydev', 'chrome-control@envoydev', 'alfred-documentation@envoydev'], 'installed this run - the install and update passes leave them alone');
     assert.deepStrictEqual(out.gone.map((r) => r.name), ['serena', 'playwright-chrome'], 'the user-scope row is still installed');
     const bang = logs.filter((m) => /^\s*!!/.test(m));
     assert.strictEqual(bang.length, 1, logs.join('\n'));
@@ -2253,7 +2254,7 @@ test('rename: a user-scope run swaps a user-scope old row at user scope; a user-
     const off = cli();
     const isOn = (spec, scope) => (spec === 'playwright-firefox@envoydev' && scope === 'user' ? false : undefined);
     P.migrateRenamed({ rows: [oldRow('playwright-firefox', { scope: 'user', enabled: false })], renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', isOn, cli: off });
-    assert.deepStrictEqual(off.calls, ['plugin install browser-firefox@envoydev --scope project -y', 'plugin disable browser-firefox@envoydev --scope project'],
+    assert.deepStrictEqual(off.calls, ['plugin install firefox-control@envoydev --scope project -y', 'plugin disable firefox-control@envoydev --scope project'],
         'an old id already off at its own scope and never on here needs no disable');
 });
 
@@ -2263,8 +2264,8 @@ test('rename: a browser engine the user left off arrives off; a locked server ar
     const isOn = (spec) => ({ 'playwright-firefox@envoydev': false, 'serena@envoydev': false })[spec];
     P.migrateRenamed({ rows: [oldRow('playwright-firefox'), oldRow('serena')], renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', isOn, cli: run });
     assert.deepStrictEqual(run.calls, [
-        'plugin install browser-firefox@envoydev --scope project -y',
-        'plugin disable browser-firefox@envoydev --scope project',
+        'plugin install firefox-control@envoydev --scope project -y',
+        'plugin disable firefox-control@envoydev --scope project',
         'plugin uninstall playwright-firefox@envoydev --scope project -y',
         'plugin install alfred-navigation@envoydev --scope project -y',
         'plugin uninstall serena@envoydev --scope project -y',
@@ -2272,8 +2273,30 @@ test('rename: a browser engine the user left off arrives off; a locked server ar
     // An enable answer given this run wins over the old row's state.
     const answered = cli();
     P.migrateRenamed({ rows: [oldRow('playwright-firefox')], renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', isOn,
-        engines: { on: ['browser-firefox@envoydev'] }, cli: answered });
+        engines: { on: ['firefox-control@envoydev'] }, cli: answered });
     assert.deepStrictEqual(answered.matching(/disable/), [], 'the answer switches it on');
+});
+
+// 2026-10-13 (the user's call): each browser-<engine> is <engine>-control. The swap keeps the engine's on/off, and an
+// engine this run no longer carries goes with no successor.
+test('rename: browser-<engine> is swapped for <engine>-control with its on/off kept; one not carried goes', () =>
+{
+    const run = cli();
+    const isOn = (spec) => ({ 'browser-firefox@envoydev': false })[spec];
+    const out = P.migrateRenamed({ rows: [oldRow('browser-chrome', { version: '2.3.0' }), oldRow('browser-firefox', { version: '2.3.0' }), oldRow('browser-webkit', { version: '2.3.0' })],
+        renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', isOn, cli: run });
+    assert.deepStrictEqual(run.calls, [
+        'plugin install chrome-control@envoydev --scope project -y',
+        'plugin uninstall browser-chrome@envoydev --scope project -y',
+        'plugin install firefox-control@envoydev --scope project -y',
+        'plugin disable firefox-control@envoydev --scope project',
+        'plugin uninstall browser-firefox@envoydev --scope project -y',
+        'plugin uninstall browser-webkit@envoydev --scope project -y',
+    ]);
+    assert.deepStrictEqual(out.fresh, ['chrome-control@envoydev', 'firefox-control@envoydev']);
+    const again = cli();
+    P.migrateRenamed({ rows: [oldRow('chrome-control', { version: '2.3.0' })], renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', cli: again });
+    assert.deepStrictEqual(again.calls, [], 'a re-run swaps nothing');
 });
 
 test('rename: the new one already there is not installed again - only the old one goes (a re-run after a partial one)', () =>
@@ -2317,7 +2340,7 @@ test('rename: an old desktop server is swapped with its on/off kept; one this ru
     const renamed = { 'windows-desktop': 'windows-control', 'macos-desktop': 'macos-control' };
     const set = ['alfred-code@envoydev', 'windows-control@envoydev', 'macos-control@envoydev'];
     const on = cli();
-    P.migrateRenamed({ rows: [oldRow('windows-desktop')], renamed, set, market: 'envoydev', scope: 'project', engines: { on: ['browser-chrome@envoydev'] }, cli: on });
+    P.migrateRenamed({ rows: [oldRow('windows-desktop')], renamed, set, market: 'envoydev', scope: 'project', engines: { on: ['chrome-control@envoydev'] }, cli: on });
     assert.deepStrictEqual(on.calls, ['plugin install windows-control@envoydev --scope project -y', 'plugin uninstall windows-desktop@envoydev --scope project -y'],
         'on before, on after - an engine answer never switches a desktop server');
     const off = cli();
@@ -2368,7 +2391,7 @@ test('seed update over a pre-rename install: every old id is swapped where it is
     });
     const moves = calls.filter((c) => /^plugin (install|uninstall|disable|enable) /.test(c));
     const at = (c) => moves.indexOf(c);
-    for (const [from, to, scope] of [['serena', 'alfred-navigation', 'project'], ['playwright-chrome', 'browser-chrome', 'project'], ['playwright-firefox', 'browser-firefox', 'project']])
+    for (const [from, to, scope] of [['serena', 'alfred-navigation', 'project'], ['playwright-chrome', 'chrome-control', 'project'], ['playwright-firefox', 'firefox-control', 'project']])
     {
         const install = `plugin install ${to}@envoydev --scope ${scope} -y`;
         const remove = `plugin uninstall ${from}@envoydev --scope ${scope} -y`;
@@ -2381,9 +2404,9 @@ test('seed update over a pre-rename install: every old id is swapped where it is
     assert.ok(at(install) >= 0 && at('plugin disable context7@envoydev --scope project') > at(install), moves.join('\n'));
     assert.ok(!moves.some((c) => /context7@envoydev --scope user|alfred-documentation@envoydev --scope user/.test(c)), `the account-wide row was touched:\n${moves.join('\n')}`);
     assert.match(out, /!! .*context7@envoydev.*claude plugin uninstall context7@envoydev --scope user/);
-    assert.deepStrictEqual(moves.filter((c) => /^plugin disable browser-/.test(c)), ['plugin disable browser-firefox@envoydev --scope project'], moves.join('\n'));
-    assert.match(result, /^browser-engines: chrome,firefox$/m, 'the stamp records the engines under the new line');
-    assert.match(result, /^browser-enabled: chrome$/m);
+    assert.deepStrictEqual(moves.filter((c) => /^plugin disable (?:chrome|msedge|firefox|webkit)-control/.test(c)), ['plugin disable firefox-control@envoydev --scope project'], moves.join('\n'));
+    assert.match(result, /^control-engines: chrome,firefox$/m, 'the stamp records the engines under the new line');
+    assert.match(result, /^control-enabled: chrome$/m);
     assert.doesNotMatch(result, /^playwright-/m, 'the old lines are not written again');
 });
 
@@ -2397,7 +2420,7 @@ test('seed update over a pre-rename install with a listing it cannot read: the o
     assert.deepStrictEqual(calls.filter((c) => /^plugin uninstall (serena|context7|playwright-)/.test(c)), [], 'a blind run removes nothing it cannot see');
     assert.match(out, /!! the plugin listing could not be read, and this install predates the 2\.0\.0 rename.*claude plugin uninstall serena@envoydev --scope project/);
     // The stamp's old engine line names what the OLD ids installed - never a browser-<engine> already there.
-    assert.ok(calls.includes('plugin install browser-chrome@envoydev --scope project -y'), calls.join('\n'));
+    assert.ok(calls.includes('plugin install chrome-control@envoydev --scope project -y'), calls.join('\n'));
 });
 
 // --- 2.2.0: each optional item at the scope the user chose (--scope-of) ------------------------------------------
@@ -2455,9 +2478,9 @@ test('moveScoped: a failed install removes nothing; a row already at the target 
     P.moveScoped({ plugins: ['claude-hud@claude-hud'], rows: [hudRow('project'), hudRow('local')], scope: 'project', scopes: { 'claude-hud': 'user' }, cli: toUser });
     assert.deepStrictEqual(toUser.calls, ['plugin install claude-hud@claude-hud --scope user -y', 'plugin uninstall claude-hud@claude-hud --scope local -y', 'plugin uninstall claude-hud@claude-hud --scope project -y']);
     const engine = cli();
-    P.moveScoped({ plugins: ['browser-firefox@envoydev'], rows: [{ name: 'browser-firefox', marketplace: 'envoydev', version: '2.1.8', scope: 'user', enabled: false }],
-        scope: 'project', scopes: { 'browser-firefox': 'project' }, engines: ['browser-firefox@envoydev'], cli: engine });
-    assert.deepStrictEqual(engine.calls, ['plugin install browser-firefox@envoydev --scope project -y', 'plugin disable browser-firefox@envoydev --scope project', 'plugin uninstall browser-firefox@envoydev --scope user -y']);
+    P.moveScoped({ plugins: ['firefox-control@envoydev'], rows: [{ name: 'firefox-control', marketplace: 'envoydev', version: '2.1.8', scope: 'user', enabled: false }],
+        scope: 'project', scopes: { 'firefox-control': 'project' }, engines: ['firefox-control@envoydev'], cli: engine });
+    assert.deepStrictEqual(engine.calls, ['plugin install firefox-control@envoydev --scope project -y', 'plugin disable firefox-control@envoydev --scope project', 'plugin uninstall firefox-control@envoydev --scope user -y']);
     // A local run's 'project' is the run's own scope - this checkout.
     const local = cli();
     P.moveScoped({ plugins: ['claude-hud@claude-hud'], rows: [hudRow('user')], scope: 'local', scopes: { 'claude-hud': 'project' }, cli: local });
@@ -2506,35 +2529,35 @@ test('unreachedPlugins: a plugin the settings switch on with no record reaching 
         fs.mkdirSync(path.join(project, '.claude'), { recursive: true });
         fs.mkdirSync(account, { recursive: true });
         fs.writeFileSync(path.join(project, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: {
-            'browser-chrome@envoydev': true, 'alfred-code@envoydev': true, 'claude-hud@claude-hud': true, 'browser-webkit@envoydev': true, 'parked@envoydev': false } }));
-        fs.writeFileSync(path.join(project, '.claude', 'settings.local.json'), JSON.stringify({ enabledPlugins: { 'browser-webkit@envoydev': false } }));
+            'chrome-control@envoydev': true, 'alfred-code@envoydev': true, 'claude-hud@claude-hud': true, 'webkit-control@envoydev': true, 'parked@envoydev': false } }));
+        fs.writeFileSync(path.join(project, '.claude', 'settings.local.json'), JSON.stringify({ enabledPlugins: { 'webkit-control@envoydev': false } }));
         fs.writeFileSync(path.join(account, 'settings.json'), JSON.stringify({ enabledPlugins: { 'typescript-lsp@claude-plugins-official': true } }));
         const listing = JSON.stringify([
-            { id: 'browser-chrome@envoydev', version: '2.3.0', scope: 'local', projectPath: path.join(work, 'other'), enabled: true },
+            { id: 'chrome-control@envoydev', version: '2.3.0', scope: 'local', projectPath: path.join(work, 'other'), enabled: true },
             { id: 'alfred-code@envoydev', version: '2.3.0', scope: 'project', projectPath: project, enabled: true },
             { id: 'claude-hud@claude-hud', version: '0.8.0', scope: 'user', enabled: true },
         ]);
         const found = P.unreachedPlugins({ listing, projectRoot: project, configDir: account });
         assert.deepStrictEqual(found.map((u) => [u.spec, path.basename(u.file), u.elsewhere]), [
-            ['browser-chrome@envoydev', 'settings.json', 1],
+            ['chrome-control@envoydev', 'settings.json', 1],
             ['typescript-lsp@claude-plugins-official', 'settings.json', 0],
-        ], 'a narrower off (browser-webkit), an explicit off and a reaching record (project or user scope) are not named');
+        ], 'a narrower off (webkit-control), an explicit off and a reaching record (project or user scope) are not named');
         const file = path.join(work, 'listing.json');
         fs.writeFileSync(file, listing);
         const cli = (args) => execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'install', 'plugins.js'), 'unreached', project, ...args], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: account } });
         const out = cli(['--listing', file]);
-        assert.match(out, /^unreached: browser-chrome@envoydev\t\.claude\/settings\.json\tinstalled for 1 other project\(s\) only - switched on, loads nothing here; .*claude plugin install browser-chrome@envoydev --scope project$/m);
+        assert.match(out, /^unreached: chrome-control@envoydev\t\.claude\/settings\.json\tinstalled for 1 other project\(s\) only - switched on, loads nothing here; .*claude plugin install chrome-control@envoydev --scope project$/m);
         assert.match(out, /^unreached: typescript-lsp@claude-plugins-official\t.*settings\.json\tno install record/m);
         fs.writeFileSync(file, 'not json');
         assert.strictEqual(cli(['--listing', file]).trim(), 'unreached: unknown - the plugin listing could not be read');
-        fs.writeFileSync(file, JSON.stringify([...JSON.parse(listing), { id: 'browser-chrome@envoydev', version: '2.3.0', scope: 'user', enabled: true },
+        fs.writeFileSync(file, JSON.stringify([...JSON.parse(listing), { id: 'chrome-control@envoydev', version: '2.3.0', scope: 'user', enabled: true },
             { id: 'typescript-lsp@claude-plugins-official', version: '1.0.0', scope: 'user', enabled: true }]));
         assert.strictEqual(cli(['--listing', file]).trim(), 'unreached: none');
         // A record that spells the project through a link (macOS /var for /private/var) is still this project's.
         const link = path.join(work, 'link');
         try { fs.symlinkSync(project, link, 'dir'); } catch { return; }
-        const viaLink = JSON.stringify([{ id: 'browser-chrome@envoydev', version: '2.3.0', scope: 'local', projectPath: link, enabled: true }]);
-        assert.ok(!P.unreachedPlugins({ listing: viaLink, projectRoot: project, configDir: account }).some((u) => u.spec === 'browser-chrome@envoydev'), 'the linked spelling reaches');
+        const viaLink = JSON.stringify([{ id: 'chrome-control@envoydev', version: '2.3.0', scope: 'local', projectPath: link, enabled: true }]);
+        assert.ok(!P.unreachedPlugins({ listing: viaLink, projectRoot: project, configDir: account }).some((u) => u.spec === 'chrome-control@envoydev'), 'the linked spelling reaches');
     }
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 });

@@ -2687,8 +2687,8 @@ function lintMcpEntries()
     const carried = new Set();
     for (const entry of wanted) for (const server of Object.keys(entry.mcpServers)) carried.add(server);
     // browser expands into one plugin per engine; each maps back to its catalog name, the way
-    // every installed-name reader already maps `browser-*`.
-    const family = name => name.replace(/^browser-.*/, 'browser');
+    // every installed-name reader already maps `<engine>-control`.
+    const family = name => name.replace(/^(?:chrome|msedge|firefox|webkit)-control$/, 'browser');
     const families = new Set([...carried].map(family));
     for (const name of catalog.active)
         if (!families.has(name))
@@ -3033,7 +3033,7 @@ function lintMarketplaceEntries(liveIn)
         if (!p || elsewhere.has(p.name) || generated.has(p.name)) continue;
         if ((build.FOLDED_ENTRIES || []).includes(p.name))
             findings.push(`marketplace.json carries ${p.name}, whose hooks folded into the core in 2.0.0 - run \`npm run marketplace\`, which drops it`);
-        else if (Object.hasOwn(require('./install/manifest.js').loadManifest(ROOT).renamed.mcps, p.name.replace(/-(chrome|msedge|firefox|webkit)$/, '')))
+        else if (Object.hasOwn(require('./install/manifest.js').loadManifest(ROOT).renamed.mcps, p.name))
             findings.push(`marketplace.json carries ${p.name}, a RETIRED alias no longer listed (2.2.1) - run \`npm run marketplace\`, which drops it`);
         else findings.push(`marketplace.json carries ${p.name}, which the placement does not produce - remove it or give it a home in plugin-placement.js`);
     }

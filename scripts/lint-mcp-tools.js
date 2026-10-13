@@ -43,19 +43,12 @@ const each = (files, fn) =>
         text.split('\n').forEach((line, i) => { if (!MCP_FIXTURE_MARKER.test(line)) fn(file, i + 1, line); });
 };
 
-// The renamed and retired server names (meta/stack-manifest.json), each old browser spelling per engine plus the
-// 1.x single `playwright`, and each alias's successor.
+// The renamed and retired server names (meta/stack-manifest.json) - each old browser spelling per engine is its own
+// row there, plus the 1.x single `playwright` - and each alias's successor.
 function oldNames(manifest)
 {
     const m = manifest || JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-manifest.json'), 'utf8'));
-    const { PW_ENGINES } = require('./build-marketplace.js');
-    const renamed = (m.renamed && m.renamed.mcps) || {};
-    const successor = {};
-    for (const [from, to] of Object.entries(renamed))
-    {
-        successor[from] = to;
-        if (to === 'browser') for (const e of PW_ENGINES) successor[`${from}-${e}`] = `${to}-${e}`;
-    }
+    const successor = { ...((m.renamed && m.renamed.mcps) || {}) };
     return { successor, retired: [...((m.retired && m.retired.mcps) || [])] };
 }
 
@@ -141,7 +134,7 @@ function lintMcpToolsAtPin({ files, tools } = {})
     const roleOf = (plugin) =>
     {
         const now = successor[plugin] || plugin;
-        return /^browser-/.test(now) ? 'browser' : now;
+        return /^(?:chrome|msedge|firefox|webkit)-control$/.test(now) ? 'browser' : now;
     };
     const out = [];
     each(files, (file, n, line) =>

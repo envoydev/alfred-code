@@ -461,7 +461,7 @@ it, which is how the wrong post-check above was written); (2) removals - what th
 `grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|plugin moved|plugin move failed|scope, not this run|narrower than this run|managed scope|deniedMcpServers|removed \(dropped\)|overwriting a hand-edited copy' "$TMP/install.log"` (a `plugin moved` line is a scope move the walk asked for, reported as one: `<item>: <old> -> <new>`, the `!!` one with the line it names) - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out,
 one line per item, never deleted a second time by hand; then each removal the installer does not
 make, with its command shown before running it: `claude mcp remove <name> -s <the scope it is registered at>` for an MCP on the copy
-route (browser = every `browser-<engine>` server) - always with its scope, since the CLI's default (`local`) differs from the plugin one (`user`);
+route (browser = every `<engine>-control` server) - always with its scope, since the CLI's default (`local`) differs from the plugin one (`user`);
 `claude plugin uninstall <name> --scope <the scope step 1's inventory carries for it>` for a plugin -
 and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
 it for every project'), since account-wide and project-local are different consents and the wrong

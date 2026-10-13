@@ -261,9 +261,9 @@ test('--log mode: the summary\'s selection count alone is no restart', () => {
 test('--log mode: every line that changed what the session loaded is a restart', () => {
     for (const line of [
         '==> mcp [project]: alfred-navigation', '==>   mcp repaired: alfred-memory (local scope)', '==>   mcp pruned: browser',
-        '==>   mcp removed: browser-chrome (.mcp.json)', '==> mcp refreshed [user]: alfred-memory (this release\'s shape)',
+        '==>   mcp removed: chrome-control (.mcp.json)', '==> mcp refreshed [user]: alfred-memory (this release\'s shape)',
         '==> plugin install [project]: alfred-navigation@envoydev', '==> plugin enable [project]: alfred-memory@envoydev (installed but disabled)',
-        '==>   !! plugin disabled [local]: browser-chrome@envoydev (the copy route registers it)', '==> plugin uninstalled [project]: typescript-lsp@claude-plugins-official (no longer picked)',
+        '==>   !! plugin disabled [local]: chrome-control@envoydev (the copy route registers it)', '==> plugin uninstalled [project]: typescript-lsp@claude-plugins-official (no longer picked)',
         '==> plugin moved [local -> project]: claude-hud@claude-hud', '==>   plugin pruned (retired upstream) [project]: ponytail@ponytail',
         '==>   renamed: plugin navigation@envoydev -> alfred-navigation@envoydev [project]', '==>   plugin alfred-navigation: 2.2.1 -> 2.2.2',
         '==>   plugin claude-hud: 0.0.9 (installed this run)',

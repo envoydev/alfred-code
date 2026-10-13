@@ -40,7 +40,7 @@ function bodyAfterFrontmatter(text)
 // Every distinct backticked token in the text (content between a pair of
 // backticks, trimmed). Catalog membership - not a shape regex - decides what is
 // an edge, so single-word MCPs (`navigation`, `documentation`) resolve as well as
-// hyphenated ones (`browser-chrome`). Tokenized LINE BY LINE - a markdown inline-code
+// hyphenated ones (`chrome-control`). Tokenized LINE BY LINE - a markdown inline-code
 // span never crosses a line, so scanning each line independently prevents a stray
 // or odd backtick count (including a ```` ```bash ```` fence line) from desyncing
 // the open/close pairing into later lines.

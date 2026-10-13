@@ -115,10 +115,10 @@ test('install-stamp: mcp-held records the held picks, and its reader drops what 
 {
     const p = project();
     assert.doesNotMatch(write(p).text, /^mcp-held:/m, 'no line with none held');
-    const { dest, text } = write(p, { mcpHeld: [{ scope: 'local', name: 'macos-control' }, { scope: 'user', name: 'browser-chrome' }, { scope: 'project', name: 'macos-control' }] });
-    assert.match(text, /^mcp-held: local:macos-control,user:browser-chrome,project:macos-control$/m);
+    const { dest, text } = write(p, { mcpHeld: [{ scope: 'local', name: 'macos-control' }, { scope: 'user', name: 'chrome-control' }, { scope: 'project', name: 'macos-control' }] });
+    assert.match(text, /^mcp-held: local:macos-control,user:chrome-control,project:macos-control$/m);
     const { readMcpHeld } = require('./install/stamp.js');
-    assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-control' }, { scope: 'user', name: 'browser-chrome' }, { scope: 'project', name: 'macos-control' }]);
+    assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-control' }, { scope: 'user', name: 'chrome-control' }, { scope: 'project', name: 'macos-control' }]);
     fs.writeFileSync(dest, text.replace(/^mcp-held: .*$/m, 'mcp-held: local:macos-control, project:navigation,global:x,user:../x,local:,user:memory'));
     assert.deepStrictEqual(readMcpHeld(dest), [{ scope: 'local', name: 'macos-control' }, { scope: 'project', name: 'navigation' }, { scope: 'user', name: 'memory' }]);
     assert.deepStrictEqual(readMcpHeld(path.join(p.base, 'absent.stamp')), []);
@@ -175,11 +175,11 @@ test('install-stamp: a server riding its PLUGIN counts as carried - there is no 
 
 test('install-stamp: a browser ENGINE counts as its family', () =>
 {
-    assert.strictEqual(family('browser-firefox'), 'browser');
+    assert.strictEqual(family('firefox-control'), 'browser');
     assert.strictEqual(family('alfred-navigation'), 'alfred-navigation');
     const p = project({
         always: { rules: [], mcps: ['browser', 'alfred-documentation'] },
-        plugins: { 'browser-firefox@envoydev': true, 'alfred-documentation@envoydev': true },
+        plugins: { 'firefox-control@envoydev': true, 'alfred-documentation@envoydev': true },
     });
     const { text } = write(p);
     assert.match(text, /^installed-always-mcps: browser,alfred-documentation$/m);
@@ -244,13 +244,13 @@ test('install-stamp: hooks-route records the route the hooks took, and a stamp w
 
 // The stamp line is the record of the installed engines, never the listing: an engine the user left
 // disabled is still installed, and the listing's project-scope flag can read a stale false (S22).
-test('install-stamp: browser-engines records the picked engines and reads back; a stamp without the line reads as null', () =>
+test('install-stamp: control-engines records the picked engines and reads back; a stamp without the line reads as null', () =>
 {
     const { dest, text } = write(project(), { playwright: ['chrome', 'firefox'] });
-    assert.match(text, /^browser-engines: chrome,firefox$/m);
+    assert.match(text, /^control-engines: chrome,firefox$/m);
     assert.deepStrictEqual(readPlaywright(dest), ['chrome', 'firefox']);
     const none = write(project());
-    assert.match(none.text, /^browser-engines: $/m, 'no engine picked is an empty line - the record says none');
+    assert.match(none.text, /^control-engines: $/m, 'no engine picked is an empty line - the record says none');
     assert.deepStrictEqual(readPlaywright(none.dest), [], 'recorded empty is an answer');
     const p = project();
     const file = path.join(p.base, 'old.stamp');
@@ -258,26 +258,26 @@ test('install-stamp: browser-engines records the picked engines and reads back; 
     assert.strictEqual(readPlaywright(file), null, 'an older stamp never recorded the picks');
     assert.strictEqual(readPlaywright(path.join(p.base, 'absent.stamp')), null);
     // Only the four engines, in the one canonical order, whatever a hand edit left there.
-    fs.writeFileSync(file, 'browser-engines: webkit, safari,CHROME,webkit\n');
+    fs.writeFileSync(file, 'control-engines: webkit, safari,CHROME,webkit\n');
     assert.deepStrictEqual(readPlaywright(file), ['chrome', 'webkit']);
 });
 
 // R67: which installed engines the user chose to ENABLE - their last explicit answer, read back so an
 // engine the run installs again (one uninstalled by hand) comes back the way the user left it.
-test('install-stamp: browser-enabled records the enabled engines beside the installed ones; no line reads as null', () =>
+test('install-stamp: control-enabled records the enabled engines beside the installed ones; no line reads as null', () =>
 {
     const { dest, text } = write(project(), { playwright: ['chrome', 'firefox'], playwrightEnabled: ['firefox'] });
-    assert.match(text, /^browser-engines: chrome,firefox\nbrowser-enabled: firefox$/m);
+    assert.match(text, /^control-engines: chrome,firefox\ncontrol-enabled: firefox$/m);
     assert.deepStrictEqual(readPlaywrightEnabled(dest), ['firefox']);
     const none = write(project(), { playwright: ['chrome'], playwrightEnabled: [] });
-    assert.match(none.text, /^browser-enabled: $/m, 'none enabled is an empty line - an answer, never a missing record');
+    assert.match(none.text, /^control-enabled: $/m, 'none enabled is an empty line - an answer, never a missing record');
     assert.deepStrictEqual(readPlaywrightEnabled(none.dest), []);
     const p = project();
     const file = path.join(p.base, 'old.stamp');
-    fs.writeFileSync(file, 'sha: abc\nbrowser-engines: chrome\n');
+    fs.writeFileSync(file, 'sha: abc\ncontrol-engines: chrome\n');
     assert.strictEqual(readPlaywrightEnabled(file), null, 'a stamp from before the line recorded no choice');
     assert.strictEqual(readPlaywrightEnabled(path.join(p.base, 'absent.stamp')), null);
-    fs.writeFileSync(file, 'browser-enabled: webkit,safari, Chrome\n');
+    fs.writeFileSync(file, 'control-enabled: webkit,safari, Chrome\n');
     assert.deepStrictEqual(readPlaywrightEnabled(file), ['chrome', 'webkit']);
 });
 
@@ -292,9 +292,24 @@ test('install-stamp: the old playwright-* lines read back as the fallback, and s
     assert.deepStrictEqual(readPlaywright(file), ['chrome', 'webkit']);
     assert.deepStrictEqual(readPlaywrightEnabled(file), ['chrome']);
     assert.deepStrictEqual(readBrowserLines(file), { browsers: ['chrome', 'webkit'], enabled: ['chrome'], legacy: true });
-    fs.writeFileSync(file, 'browser-engines: firefox\nbrowser-enabled: \nplaywright-browsers: chrome\nplaywright-enabled: chrome\n');
+    fs.writeFileSync(file, 'control-engines: firefox\ncontrol-enabled: \nplaywright-browsers: chrome\nplaywright-enabled: chrome\n');
     assert.deepStrictEqual(readBrowserLines(file), { browsers: ['firefox'], enabled: [], legacy: false }, 'the new line wins');
     assert.deepStrictEqual(readBrowserLines(path.join(p.base, 'absent.stamp')), { browsers: null, enabled: null, legacy: false });
+});
+
+// 2026-10-13: the engines are <engine>-control, and the lines `control-engines` / `control-enabled`. A stamp from 2.0.0 to
+// that rename spells them `browser-*` and its engines were installed as browser-<engine>: read as the fallback, `legacy`
+// set, so the rename swap (not an in-place update) owns those rows. The newest spelling wins over both older ones.
+test('install-stamp: the browser-* lines of 2.0.0 to 2.3.x read back as the fallback, and say so; the newest line wins', () =>
+{
+    const p = project();
+    const file = path.join(p.base, 'pre-control.stamp');
+    fs.writeFileSync(file, 'sha: abc\nbrowser-engines: chrome,firefox\nbrowser-enabled: firefox\nplaywright-browsers: webkit\n');
+    assert.deepStrictEqual(readBrowserLines(file), { browsers: ['chrome', 'firefox'], enabled: ['firefox'], legacy: true }, 'browser-* over playwright-*');
+    fs.writeFileSync(file, 'control-engines: msedge\ncontrol-enabled: msedge\nbrowser-engines: chrome\nbrowser-enabled: chrome\n');
+    assert.deepStrictEqual(readBrowserLines(file), { browsers: ['msedge'], enabled: ['msedge'], legacy: false }, 'control-* over browser-*');
+    fs.writeFileSync(file, 'browser-engines: \n');
+    assert.deepStrictEqual(readBrowserLines(file), { browsers: [], enabled: null, legacy: true }, 'recorded empty under the old spelling');
 });
 
 // NM1 (fix round 3): markHooksRoute patches ONLY the route line, in place, before the hooks layer
@@ -402,7 +417,7 @@ const LEDGER = {
     hooks: [{ file: 'settings.json', hook: 'guard-secret-value.js', id: 'a'.repeat(64) }],
     mcp: { navigation: 'b'.repeat(64) },
     // Review finding 7: a local- or user-scope registration (the MCP copy route) is recorded with its scope.
-    mcpAt: { local: { memory: '9'.repeat(64) }, user: { 'browser-chrome': '8'.repeat(64) } },
+    mcpAt: { local: { memory: '9'.repeat(64) }, user: { 'chrome-control': '8'.repeat(64) } },
     files: { 'hooks/docs.js': 'c'.repeat(64), 'skills/csharp': 'd'.repeat(64), 'agents/angular-verifier.md': 'e'.repeat(64), 'CLAUDE.md': 'f'.repeat(64) },
     settings: { 'settings.json': { 'attribution.commit': valueHash('""'), 'attribution.sessionUrl': valueHash('false') } },
 };
@@ -414,7 +429,7 @@ test('install-stamp: the ledger lines record what the run manages and read back 
     assert.match(text, /^managed-env: settings\.json:ALFRED_CODE_INSTRUMENT=[0-9a-f]{64},settings\.local\.json:ALFRED_CODE_MEMORY_DB=[0-9a-f]{64}$/m);
     assert.match(text, /^managed-deny: settings\.json:Read\(\.env\),settings\.json:Agent\(alfred-code:angular-verifier\)$/m);
     assert.match(text, /^managed-hooks: settings\.json:guard-secret-value\.js:a{64}$/m);
-    assert.match(text, /^managed-mcp: navigation=b{64},local:memory=9{64},user:browser-chrome=8{64}$/m);
+    assert.match(text, /^managed-mcp: navigation=b{64},local:memory=9{64},user:chrome-control=8{64}$/m);
     assert.match(text, /^managed-files: hooks\/docs\.js=c{64},skills\/csharp=d{64},agents\/angular-verifier\.md=e{64},CLAUDE\.md=f{64}$/m);
     assert.match(text, /^managed-settings: settings\.json:attribution\.commit=[0-9a-f]{64},settings\.json:attribution\.sessionUrl=[0-9a-f]{64}$/m);
     assert.deepStrictEqual(readLedger(dest), LEDGER);

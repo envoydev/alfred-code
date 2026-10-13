@@ -32,6 +32,7 @@ const path = require('node:path');
 const { parseJson } = require('./json-file.js');
 const { BRAND, alwaysOn, marketOf, marketKey } = require('./brand.js');
 const { envOf } = require('../../stack/hooks/hook-prelude.js');
+const { engineServer, engineOfServer } = require('../../stack/mcp/data-root.js');
 
 // 2.2.0: no plugin is pinned to a scope any more - each OPTIONAL item (a browser engine, a desktop server, an
 // LSP, claude-hud) goes where the user chose it (`--scope-of`, `itemScope` below), the required ones follow the
@@ -700,9 +701,10 @@ function engineStandDown({ rows = [], market = BRAND.marketplace, scope, engines
 {
     const gone = [];
     const off = [];
-    // `legacy`: the full copy route's old `playwright-<engine>` ids (the 2.0.0 rename) - whichever are
-    // installed, since no swap runs with the core off; they go the same way as the engines kept here.
-    const names = [...engines.map((e) => `browser-${e}`), ...desktop, ...legacy];
+    // `legacy`: the full copy route's old engine and desktop ids (the renames: playwright-<engine>, browser-<engine>,
+    // windows-desktop, macos-desktop) - whichever are installed, since no swap runs with the core off; they go the same
+    // way as the engines kept here.
+    const names = [...engines.map(engineServer), ...desktop, ...legacy];
     const on = new Set(rowsOn({ rows, names, market, isOn }));
     const ours = names.flatMap((name) => rows.filter((r) => r.name === name && r.marketplace === market));
     const at = standDownScope(scope);
@@ -856,8 +858,8 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], market =
 
 // THE MCP RENAMES (meta/stack-manifest.json `renamed.mcps`): 2.0.0 made serena, context7 and
 // playwright-<engine> navigation, documentation and browser-<engine>, and 2.2.0 made navigation, documentation
-// and memory alfred-navigation, alfred-documentation and alfred-memory, and 2026-10-13 made windows-desktop and
-// macos-desktop windows-control and macos-control. An install made before one
+// and memory alfred-navigation, alfred-documentation and alfred-memory, and 2026-10-13 made browser-<engine>,
+// windows-desktop and macos-desktop <engine>-control, windows-control and macos-control. An install made before one
 // holds the old rows; each one this run's set carries a successor for, at THIS run's scope, is SWAPPED
 // there - the new one installed first, so a failed install leaves the old server running, then the old
 // one removed, so the same server never loads twice after the run. An old row at ANOTHER scope serves
@@ -918,7 +920,7 @@ function migrateRenamed({ rows = [], renamed = {}, set = [], market = BRAND.mark
             }
             here.add(newName);
             out.fresh.push(newSpec);
-            const engine = /^browser-/.test(newName);
+            const engine = Boolean(engineOfServer(newName));
             const desktop = Object.hasOwn(require('../../stack/mcp/desktop-launch.js').DESKTOP_OS, newName);
             if (engine ? !(engines.on ? engines.on.includes(newSpec) : wasOn) : desktop && !wasOn) switchOff(newSpec, scope, { cli, log, note });
         }

@@ -526,10 +526,10 @@ test('ROOT_BOOT: on Windows a checkout row starts its command through cmd.exe as
     const repo = path.join(outer, 'repo');
     fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
     fs.mkdirSync(path.join(repo, 'sub'));
-    const r = spawnSync(process.execPath, ['--require', preload, '-e', m.ROOT_BOOT, '--', 'checkout', 'npx', '-y', '@playwright/mcp@0.0.82', '--user-data-dir', '.alfred/browser/chrome'],
+    const r = spawnSync(process.execPath, ['--require', preload, '-e', m.ROOT_BOOT, '--', 'checkout', 'npx', '-y', '@playwright/mcp@0.0.82', '--user-data-dir', '.alfred/chrome-control'],
       { cwd: path.join(repo, 'sub'), encoding: 'utf8', env: { PATH: process.env.PATH, HOME: path.join(outer, 'home'), ComSpec: comspec } });
     assert.strictEqual(r.status, 0, r.stderr);
-    assert.deepStrictEqual(JSON.parse(fs.readFileSync(record, 'utf8')), { cwd: repo, argv: ['/d', '/s', '/c', '"npx -y @playwright/mcp@0.0.82 --user-data-dir .alfred/browser/chrome"'] });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(record, 'utf8')), { cwd: repo, argv: ['/d', '/s', '/c', '"npx -y @playwright/mcp@0.0.82 --user-data-dir .alfred/chrome-control"'] });
   } finally { rmDir(outer); }
 });
 

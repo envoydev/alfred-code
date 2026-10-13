@@ -2130,8 +2130,8 @@ test('MCP failures: a server error counts per server across main and seats; a gu
   //       serena get_symbols_overview ok | context7 query-docs ERROR (MCP timeout)
   //       context7 resolve-library-id: a guard denial -> REJECTED, never ran
   //       memory memory_search: an InputValidationError -> REJECTED by the harness, never ran
-  //       browser-chrome browser_click: the user declined -> an answer, not a failure
-  // seat: serena find_symbol ERROR | browser-firefox browser_navigate ok
+  //       chrome-control browser_click: the user declined -> an answer, not a failure
+  // seat: serena find_symbol ERROR | firefox-control browser_navigate ok
   // hand count: 9 calls, 3 server errors (serena 2 of 4, context7 1 of 2), 2 rejected
   const dir = tmp();
   const file = path.join(dir, 'session.jsonl');
@@ -2143,7 +2143,7 @@ test('MCP failures: a server error counts per server across main and seats; a gu
     navCall('e4', mcpName('documentation', 'query-docs'), { query: 'x' }),
     navCall('e5', mcpName('documentation', 'resolve-library-id'), { libraryName: 'y' }),
     navCall('e6', mcpName('memory', 'memory_search'), {}),
-    navCall('e7', mcpName('browser-chrome', 'browser_click'), { element: 'OK' }),
+    navCall('e7', mcpName('chrome-control', 'browser_click'), { element: 'OK' }),
   ], {
     e2: { text: 'Error executing tool find_symbol: language server not running', error: true },
     e4: { text: 'MCP error -32001: Request timed out', error: true },
@@ -2155,7 +2155,7 @@ test('MCP failures: a server error counts per server across main and seats; a gu
   fs.mkdirSync(sub);
   navTranscript(path.join(sub, 'agent-s1.jsonl'), [
     navCall('f1', mcpName('navigation', 'find_symbol'), { name_path: 'C' }),
-    navCall('f2', mcpName('browser-firefox', 'browser_navigate'), { query: 'z' }),
+    navCall('f2', mcpName('firefox-control', 'browser_navigate'), { query: 'z' }),
   ], { f1: { text: 'Error executing tool find_symbol: timeout', error: true } });
   const { main, agents } = run([file]);
   assert.strictEqual(main.mcp.navigation.errors, 1);
@@ -2163,7 +2163,7 @@ test('MCP failures: a server error counts per server across main and seats; a gu
   assert.strictEqual(main.mcp.documentation.rejected, 1, 'a guard denial is a rejection, not a server failure');
   assert.strictEqual(main.mcp.memory.errors, 0);
   assert.strictEqual(main.mcp.memory.rejected, 1, 'a schema failure never reached the server');
-  assert.strictEqual(main.mcp['browser-chrome'].errors, 0, 'a decline is an answer');
+  assert.strictEqual(main.mcp['chrome-control'].errors, 0, 'a decline is an answer');
   assert.strictEqual(agents[0].stats.mcp.navigation.errors, 1);
   const txt = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
   assert.match(txt, /MCP failures\s+3 of 9 MCP call\(s\) returned an error: navigation 2\/4, documentation 1\/2; 2 more rejected before the server ran \(a guard or the harness\)/);

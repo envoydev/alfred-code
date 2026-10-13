@@ -615,7 +615,7 @@ function moveDocsRoot({ projectRoot, plan })
 // THE DATA ROOT'S OWN .gitignore - its text and why live in stack/mcp/data-root.js (dataIgnoreText), the one
 // home the launchers read too. The installer keeps it CURRENT: absent or the stack's own older text is
 // written, any other text is the project's own and is left alone.
-const { DATA_IGNORE_HEAD, dataIgnoreText } = require('../../stack/mcp/data-root.js');
+const { DATA_IGNORE_HEAD, dataIgnoreText, engineOfServer } = require('../../stack/mcp/data-root.js');
 
 // 'written' | 'replaced' | 'current' | 'kept' (the project's own file).
 function ensureDataIgnore({ projectRoot, root, docsPath, log = () => {} })
@@ -675,8 +675,9 @@ function dataOffer({ projectRoot, claudeDir, scope, ledger, stamped, stampText =
     const priorLine = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
     const prior = priorLine && dr.checkDataPath(priorLine).ok && priorLine !== root ? priorLine : null;
     const pending = dr.readPending(stampText);
+    // An engine's profile leaving the root's own shared folder is no offer: the installer moves it unasked (isRelayout).
     const rows = dr.dataMovePlan({ projectRoot, root, prior, engines, memory: memoryProject })
-        .filter((r) => !pending.some((p) => p.cls === r.cls && p.from === r.from && p.to === r.to));
+        .filter((r) => !dr.isRelayout(r, root) && !pending.some((p) => p.cls === r.cls && p.from === r.from && p.to === r.to));
     if (docsPlan.state !== 'offer' && !rows.length) return { ...none(docsPlan.state === 'repoint' ? 'nothing to move - the docs root is re-pointed' : 'nothing to move'), docs: docsPlan };
     return { state: 'offer', why: 'data outside the root', docs: docsPlan, rows, root };
 }
@@ -690,7 +691,7 @@ function dataOfferLine(offer)
     const docs = offer.docs && offer.docs.state === 'offer' ? offer.docs : null;
     const from = [...(docs ? [docs.from] : []), ...offer.rows.map((r) => r.from)];
     const has = (cls) => (offer.rows.some((r) => r.cls === cls) ? 'yes' : 'no');
-    const engines = offer.rows.filter((r) => r.cls.startsWith('browser-')).map((r) => r.cls.slice('browser-'.length));
+    const engines = offer.rows.map((r) => engineOfServer(r.cls)).filter(Boolean);
     const conflicts = (docs ? docs.conflicts.length : 0) + offer.rows.filter((r) => r.conflict).length;
     return `data-move: offer ${offer.root}\tfrom=${from.join(',')}\tdocs=${docs ? docs.tracked.length + docs.untracked.length : 0} serena=${has('serena')} browser=${engines.join(',') || 'none'} memory=${has('memory')}`
         + (docs && docs.ignored ? '\tignored=yes' : '') + (conflicts ? `\tconflicts=${conflicts}` : '') + (docs && docs.yours ? '\tyours=yes' : '');

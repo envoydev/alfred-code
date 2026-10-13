@@ -47,7 +47,7 @@ const RULE_EXCLUDE = { test: (name) => GENERATED_FILES.has(name) };
 // docs.js / memory.js / history.js / fresh-session.js / shell-writes.js / hidden-chars.js are ENGINES, hook-prelude.js the shared gate
 // module and shell-guards.js / file-guards.js the dispatchers that run the picked shell and file guards - none is a hook item.
 const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|history|hook-prelude|fresh-session|shell-writes|hidden-chars|shell-guards|file-guards)$/;
-const PW_ENGINE = /^browser-(chrome|msedge|firefox|webkit)$/;
+const { ENGINE_SERVER: PW_ENGINE, engineServer } = require('../../stack/mcp/data-root.js');
 const { ENGINES: PW_ORDER } = require('../../stack/mcp/data-root.js');
 const engineOf = (name) => (PW_ENGINE.exec(String(name)) || [])[1];
 
@@ -253,7 +253,7 @@ function readBack({ claudeDir, skillsDir, foreignSkill = () => false, mcpServers
     const stored = renameDeny(settings && typeof settings === 'object' ? settings : {}, { ...renaming, sharedOnly: sharedOnlyDeny });
     const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
-    // The browser engines the last install INSTALLED (the stamp's `browser-engines:`): a
+    // The browser engines the last install INSTALLED (the stamp's `control-engines:`): a
     // disabled row of one is the user's choice to leave it off (R67), still installed and kept, never
     // a parked entry - and the listing's flag is no evidence either way (S22). On every route (R116):
     // a switch onto the copy route has no registration yet, and read from .mcp.json alone it dropped
@@ -518,7 +518,7 @@ function mcpRespellPairs(renamedMcps = {}, engines = [])
     }
     const first = engines.find((e) => PW_ENGINES.includes(e)) || 'chrome';
     for (const [from, to] of Object.entries(renamedMcps || {}))
-        if (to === 'browser') out[`mcp__${from}__`] = `mcp__${to}-${first}__`;
+        if (to === 'browser') out[`mcp__${from}__`] = `mcp__${engineServer(first)}__`;
     return out;
 }
 
@@ -742,12 +742,12 @@ function respellRosterSeats({ projectRoot, core, seats = [], log = () => {}, not
 // - a server in `plugin` (one this run serves as a plugin, with no `.mcp.json` registration of its name) takes the
 //   plugin spelling `mcp__plugin_<server>_<server>__` - the bare one names no tool, so the row's first call loads
 //   nothing. The reverse, plugin to bare for a registration, is the copy route's downconvert.
-// - in a `browser-<engine>` row, each backticked `.../output/` dir takes `outputs[engine]`, the dir a capture names now.
+// - in an `<engine>-control` row, each backticked `.../output/` dir takes `outputs[engine]`, the dir a capture names now.
 function respellMcpRows({ projectRoot, plugin = [], outputs = {}, log = () => {}, note = () => {} })
 {
     const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const toolRe = plugin.length ? new RegExp(`(?<![A-Za-z0-9_])mcp__(${plugin.map(escape).join('|')})__`, 'g') : null;
-    const rowRe = /^\s*[-*]\s+`browser-([A-Za-z0-9_-]+)`/;
+    const rowRe = /^\s*[-*]\s+`(chrome|msedge|firefox|webkit)-control`/;
     const dirRe = /`(?:[A-Za-z0-9_.-]+\/)+output\/`/g;
     let total = 0;
     for (const file of generatedRules(projectRoot))

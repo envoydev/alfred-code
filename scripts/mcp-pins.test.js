@@ -43,7 +43,7 @@ test('the release pins cover every package server, and the generator spells a pi
     }
     // The entry starts the browser launcher (the profile's place is the project's data root), which hands
     // npx the package it is given.
-    const args = (pins) => { const a = mcpServerShapes({ pins })['browser-chrome'].servers['browser-chrome'].args; return a.slice(a.indexOf('--package'), a.indexOf('--package') + 2); };
+    const args = (pins) => { const a = mcpServerShapes({ pins })['chrome-control'].servers['chrome-control'].args; return a.slice(a.indexOf('--package'), a.indexOf('--package') + 2); };
     assert.deepStrictEqual(args({ browser: { version: '9.8.7', spelling: '@<v>' } }), ['--package', '@playwright/mcp@9.8.7']);
     // A pin that never resolved ships unpinned - npx then takes the newest, which is what @latest
     // said out loud; the fallback is the same, only the default moved.
@@ -74,7 +74,7 @@ const servers = (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'
 // The row starts through the project-root anchor (`node -e <ROOT_BOOT> -- checkout`, re-verify 3 S2/S3); the launch is what it runs.
 const launch = (repo) =>
 {
-    const { command, args = [] } = servers(repo)['browser-chrome'] || {};
+    const { command, args = [] } = servers(repo)['chrome-control'] || {};
     const words = command === 'node' && args[0] === '-e' && args[2] === '--' ? args.slice(4) : [command, ...args];
     return words.slice(0, 3);
 };
@@ -97,7 +97,7 @@ test('seed install with the registry unreachable writes the same release pin, ne
 test('seed update over an install still on @latest rewrites the row to the pin', POSIX_ONLY, () =>
 {
     const old = { mcpServers: {
-        'browser-chrome': { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@latest', '--browser', 'chrome'], env: {} },
+        'chrome-control': { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@latest', '--browser', 'chrome'], env: {} },
         'my-browser': { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@latest', '--isolated'], env: {} },
     } };
     // A 2.x install has its ledger (managed-mcp), which is what says the row is the stack's: with no ledger, a project-scope
@@ -106,7 +106,7 @@ test('seed update over an install still on @latest rewrites the row to the pin',
     {
         fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(old, null, 2) + '\n');
         fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
-        fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), `sha: abc\nversion: 2.0.0\nmanaged-mcp: browser-chrome=${require('./install/stamp.js').entryHash(old.mcpServers['browser-chrome'])}\n`);
+        fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), `sha: abc\nversion: 2.0.0\nmanaged-mcp: chrome-control=${require('./install/stamp.js').entryHash(old.mcpServers['chrome-control'])}\n`);
     };
     const inspect = (repo) => ({ pw: launch(repo), mine: servers(repo)['my-browser'] });
     const { result } = seedRun('update', SELECTION, { env: COPY_ROUTE, tools: REGISTRY, prepare, inspect });

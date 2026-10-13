@@ -291,7 +291,7 @@ const { ENGINES: PW_ENGINES } = require('../stack/mcp/data-root.js');
 // check 53 fails on any entry that breaks it.
 //
 // The names are the ROLE (2.0.0, the user's rename), `alfred-` prefixed for the locked three (2.2.0): alfred-navigation,
-// alfred-documentation, alfred-memory, one browser-<engine> per browser, and windows-control / macos-control. The upstream each one runs -
+// alfred-documentation, alfred-memory, one <engine>-control per browser, and windows-control / macos-control. The upstream each one runs -
 // Serena, Context7, Playwright MCP, Windows-MCP, MacOS-MCP - is named once in its description, where a
 // reader needs it.
 
@@ -304,9 +304,9 @@ function mcpServerShapes(options = {})
     const browsers = {};
     for (const engine of PW_ENGINES)
     {
-        const name = `browser-${engine}`;
+        const name = `${engine}-control`;
         browsers[name] = {
-            description: `The browser server (Playwright MCP) driving ${engine}, as a plugin: a real ${engine} browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/${engine}, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.`,
+            description: `The browser server (Playwright MCP) driving ${engine}, as a plugin: a real ${engine} browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/${engine}-control, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.`,
             servers: {
                 [name]: {
                     // The launcher, not npx directly: the profile's place is the project's data root

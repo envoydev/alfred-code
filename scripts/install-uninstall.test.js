@@ -81,7 +81,7 @@ test('removePlugins: the stack\'s rows at project or local scope are uninstalled
     const rows = [
         { name: 'alfred-code', marketplace: 'envoydev', scope: 'project', version: '2.0.0', enabled: true },
         { name: 'alfred-navigation', marketplace: 'envoydev', scope: 'project', version: '2.0.0', enabled: true },
-        { name: 'browser-chrome', marketplace: 'envoydev', scope: 'user', version: '2.0.0', enabled: true },
+        { name: 'chrome-control', marketplace: 'envoydev', scope: 'user', version: '2.0.0', enabled: true },
         { name: 'csharp-lsp', marketplace: 'claude-plugins-official', scope: 'project', version: '1.0.0', enabled: true },
     ];
     const calls = [];
@@ -91,10 +91,10 @@ test('removePlugins: the stack\'s rows at project or local scope are uninstalled
     uninstall.removePlugins({ rows, market: 'envoydev', scope: 'project', thirdParty: ['csharp-lsp@claude-plugins-official'], cli, log: (m) => logs.push(m), note: (m) => logs.push(`NOTE ${m}`) });
     assert.ok(calls.includes('plugin uninstall alfred-code@envoydev --scope project -y'));
     assert.ok(calls.includes('plugin uninstall alfred-navigation@envoydev --scope project -y'));
-    assert.ok(!calls.some((c) => /browser-chrome|csharp-lsp/.test(c)), calls.join('\n'));
+    assert.ok(!calls.some((c) => /chrome-control|csharp-lsp/.test(c)), calls.join('\n'));
     const text = logs.join('\n');
     assert.doesNotMatch(text, /NOTE/, 'a dependency refused first is retried once its dependent is gone');
-    assert.match(text, /browser-chrome@envoydev is installed at user scope - every project on this account loads it, so it is not removed here: claude plugin uninstall browser-chrome@envoydev --scope user/);
+    assert.match(text, /chrome-control@envoydev is installed at user scope - every project on this account loads it, so it is not removed here: claude plugin uninstall chrome-control@envoydev --scope user/);
     assert.match(text, /csharp-lsp@claude-plugins-official .*not removed.*claude plugin uninstall csharp-lsp@claude-plugins-official --scope project/);
 
     const userCalls = [];
@@ -356,15 +356,15 @@ test('X1 seed update --installed-only (full copy route, project scope): a server
 });
 
 // X1, the browser-engine half (review 2.1.5 plugin, MATERIAL 3): the engines .mcp.json registers were read back with no
-// ledger gate, so a user's own `browser-firefox` was overwritten with the stack's npx entry, entered managed-mcp (so
-// uninstall would delete it) and grew the stamp's browser-engines. An engine is read back only when the prior stamp's
-// managed-mcp ledger records its browser-<e> / playwright-<e> name; the stamp's browser-engines stays the record.
+// ledger gate, so a user's own `firefox-control` was overwritten with the stack's npx entry, entered managed-mcp (so
+// uninstall would delete it) and grew the stamp's control-engines. An engine is read back only when the prior stamp's
+// managed-mcp ledger records its <e>-control / browser-<e> / playwright-<e> name; the stamp's control-engines stays the record.
 const engineState = (repo) => ({
-    firefox: mcpjsonOf(repo)['browser-firefox'] || null,
+    firefox: mcpjsonOf(repo)['firefox-control'] || null,
     stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
 });
 const stampLine = (stamp, key) => (stamp.split('\n').find((l) => l.startsWith(`${key}:`)) || '').slice(key.length + 1).trim();
-test('X1 seed update --installed-only (full copy route): the user\'s own browser-<engine> in .mcp.json is never taken as a kept engine - project and user scope', POSIX_ONLY, () =>
+test('X1 seed update --installed-only (full copy route): the user\'s own <engine>-control in .mcp.json is never taken as a kept engine - project and user scope', POSIX_ONLY, () =>
 {
     const own = { command: 'node', args: ['my-ff.js'] };
     for (const scope of ['project', 'user'])
@@ -376,7 +376,7 @@ test('X1 seed update --installed-only (full copy route): the user\'s own browser
                 if (i === 0)
                 {
                     const data = JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8'));
-                    data.mcpServers['browser-firefox'] = own;
+                    data.mcpServers['firefox-control'] = own;
                     fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(data, null, 2));
                 }
                 return engineState(repo);
@@ -385,8 +385,8 @@ test('X1 seed update --installed-only (full copy route): the user\'s own browser
         for (const i of [1, 2])
         {
             assert.deepStrictEqual(steps[i].firefox, own, `${scope}, update ${i}: the user's server was rewritten:\n${outs[i]}`);
-            assert.doesNotMatch(stampLine(steps[i].stamp, 'managed-mcp'), /browser-firefox/, `${scope}, update ${i}: it entered the ledger`);
-            assert.strictEqual(stampLine(steps[i].stamp, 'browser-engines'), 'chrome', `${scope}, update ${i}: browser-engines grew`);
+            assert.doesNotMatch(stampLine(steps[i].stamp, 'managed-mcp'), /firefox-control/, `${scope}, update ${i}: it entered the ledger`);
+            assert.strictEqual(stampLine(steps[i].stamp, 'control-engines'), 'chrome', `${scope}, update ${i}: control-engines grew`);
         }
     }
 });
@@ -401,15 +401,15 @@ test('X1 seed update --installed-only (full copy route): an engine the stack reg
             {
                 // Only .mcp.json and the ledger can answer: the stamp's own browser lines are taken away.
                 const file = path.join(repo, '.claude', 'alfred-code.stamp');
-                const drop = preLedger ? /^(browser-(engines|enabled)|managed-[a-z]+):/ : /^browser-(engines|enabled):/;
+                const drop = preLedger ? /^(control-(engines|enabled)|managed-[a-z]+):/ : /^control-(engines|enabled):/;
                 if (i === 0) fs.writeFileSync(file, fs.readFileSync(file, 'utf8').split('\n').filter((l) => !drop.test(l)).join('\n'));
                 return engineState(repo);
             },
         });
         assert.ok(steps[0].firefox, `the install registered firefox (preLedger=${preLedger}):\n${outs[0]}`);
         assert.ok(steps[1].firefox, `the update dropped firefox (preLedger=${preLedger}):\n${outs[1]}`);
-        assert.strictEqual(stampLine(steps[1].stamp, 'browser-engines'), 'chrome,firefox', `preLedger=${preLedger}\n${outs[1]}`);
-        assert.match(stampLine(steps[1].stamp, 'managed-mcp'), /\bbrowser-firefox=/, `preLedger=${preLedger}`);
+        assert.strictEqual(stampLine(steps[1].stamp, 'control-engines'), 'chrome,firefox', `preLedger=${preLedger}\n${outs[1]}`);
+        assert.match(stampLine(steps[1].stamp, 'managed-mcp'), /\bfirefox-control=/, `preLedger=${preLedger}`);
     }
 });
 
@@ -1028,8 +1028,8 @@ test('seed update --installed-only (full copy route, local scope): the user\'s o
 const ledgerOf = (repo) => stampLine(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'), 'managed-mcp');
 const OWN_FIREFOX = {
     plain: { type: 'stdio', command: 'npx', args: ['@playwright/mcp@latest', '--browser', 'firefox', '--user-data-dir', '/home/me/ff'], env: {} },
-    marks: { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@0.0.83', '--browser', 'firefox', '--user-data-dir', '${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox', '--output-dir', '${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox/output', '--no-webmcp', '--isolated'], env: {} },
-    exact: { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@0.0.83', '--browser', 'firefox', '--user-data-dir', '${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox', '--output-dir', '${CLAUDE_PROJECT_DIR:-.}/.alfred/browser/firefox/output', '--no-webmcp'], env: {} },
+    marks: { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@0.0.83', '--browser', 'firefox', '--user-data-dir', '${CLAUDE_PROJECT_DIR:-.}/.alfred/firefox-control', '--output-dir', '${CLAUDE_PROJECT_DIR:-.}/.alfred/firefox-control/output', '--no-webmcp', '--isolated'], env: {} },
+    exact: { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@0.0.83', '--browser', 'firefox', '--user-data-dir', '${CLAUDE_PROJECT_DIR:-.}/.alfred/firefox-control', '--output-dir', '${CLAUDE_PROJECT_DIR:-.}/.alfred/firefox-control/output', '--no-webmcp'], env: {} },
 };
 test('seed update --installed-only (full copy route, local scope): an engine left off keeps the user\'s own registration under its name', POSIX_ONLY, () =>
 {
@@ -1044,21 +1044,21 @@ test('seed update --installed-only (full copy route, local scope): an engine lef
                 if (i === 0)
                 {
                     const account = accountOf(repo);
-                    Object.values(account.projects)[0].mcpServers['browser-firefox'] = own;
+                    Object.values(account.projects)[0].mcpServers['firefox-control'] = own;
                     fs.writeFileSync(file, JSON.stringify(account));
                     return fs.readFileSync(path.join(path.dirname(repo), 'claude-calls.log'), 'utf8').split('\n').filter(Boolean).length;
                 }
-                return { entry: Object.values(accountOf(repo).projects)[0].mcpServers['browser-firefox'], ledger: ledgerOf(repo) };
+                return { entry: Object.values(accountOf(repo).projects)[0].mcpServers['firefox-control'], ledger: ledgerOf(repo) };
             },
         });
         for (const i of [1, 2])
         {
             assert.deepStrictEqual(steps[i].entry, own, `${label}: update ${i} removed or rewrote the user's server:\n${outs[i]}`);
-            assert.doesNotMatch(steps[i].ledger, /browser-firefox/, `${label}: update ${i} ledgered it`);
-            assert.match(outs[i], /mcp browser-firefox: .*claude mcp remove browser-firefox -s local/, `${label}: update ${i} did not name it:\n${outs[i]}`);
-            assert.doesNotMatch(outs[i], /mcp removed: browser-firefox/, `${label}: update ${i}`);
+            assert.doesNotMatch(steps[i].ledger, /firefox-control/, `${label}: update ${i} ledgered it`);
+            assert.match(outs[i], /mcp firefox-control: .*claude mcp remove firefox-control -s local/, `${label}: update ${i} did not name it:\n${outs[i]}`);
+            assert.doesNotMatch(outs[i], /mcp removed: firefox-control/, `${label}: update ${i}`);
         }
-        assert.ok(!calls.slice(steps[0]).some((c) => /^mcp (add|remove) .*browser-firefox/.test(c)), `${label}:\n${calls.slice(steps[0]).join('\n')}`);
+        assert.ok(!calls.slice(steps[0]).some((c) => /^mcp (add|remove) .*firefox-control/.test(c)), `${label}:\n${calls.slice(steps[0]).join('\n')}`);
     }
 });
 
@@ -1071,10 +1071,10 @@ test('seed update --installed-only (full copy route, local scope): an engine swi
         each: (repo, i) => (i === 0 ? calls0(repo) : { servers: localServers(accountOf(repo)), ledger: ledgerOf(repo) }),
     });
     function calls0(repo) { return { n: fs.readFileSync(path.join(path.dirname(repo), 'claude-calls.log'), 'utf8').split('\n').filter(Boolean).length, ledger: ledgerOf(repo) }; }
-    assert.match(steps[0].ledger, /local:browser-firefox=/, 'the fixture: the install ledgered firefox');
-    assert.ok(calls.slice(steps[0].n).includes('mcp remove browser-firefox -s local'), `${calls.slice(steps[0].n).join('\n')}\n${outs[1]}`);
-    assert.ok(!steps[1].servers.includes('browser-firefox'), outs[1]);
-    assert.doesNotMatch(steps[1].ledger, /browser-firefox/);
+    assert.match(steps[0].ledger, /local:firefox-control=/, 'the fixture: the install ledgered firefox');
+    assert.ok(calls.slice(steps[0].n).includes('mcp remove firefox-control -s local'), `${calls.slice(steps[0].n).join('\n')}\n${outs[1]}`);
+    assert.ok(!steps[1].servers.includes('firefox-control'), outs[1]);
+    assert.doesNotMatch(steps[1].ledger, /firefox-control/);
 });
 
 // Re-verify 3 S7 (xOwnFresh): a FRESH local-scope install - no stamp, so no ledger - picking a server whose name the user
@@ -1104,18 +1104,18 @@ test('seed install (full copy route, local scope): a fresh install keeps the use
     assert.ok(!calls.some((c) => /^mcp (add|remove) .*macos-control/.test(c)), calls.join('\n'));
 });
 
-test('seed update --installed-only (full copy route, local scope): the user\'s own Playwright under browser-firefox is never taken as a kept engine', POSIX_ONLY, () =>
+test('seed update --installed-only (full copy route, local scope): the user\'s own Playwright under firefox-control is never taken as a kept engine', POSIX_ONLY, () =>
 {
-    const own = { 'browser-firefox': { type: 'stdio', command: 'npx', args: ['@playwright/mcp@latest', '--browser', 'firefox', '--isolated'], env: { MY_PROFILE: 'work' } } };
+    const own = { 'firefox-control': { type: 'stdio', command: 'npx', args: ['@playwright/mcp@latest', '--browser', 'firefox', '--isolated'], env: { MY_PROFILE: 'work' } } };
     const { steps, calls, outs } = ownServerCase('rule markdown-docs\n', own);
     for (const i of [1, 2])
     {
-        assert.deepStrictEqual(steps[i].servers['browser-firefox'], own['browser-firefox'], `update ${i} rewrote or removed the user's server:\n${outs[i]}`);
-        assert.ok(!steps[i].servers['browser-chrome'], `update ${i} registered a browser the install never picked:\n${outs[i]}`);
-        assert.doesNotMatch(stampLine(steps[i].stamp, 'managed-mcp'), /browser-/, `update ${i} ledgered it`);
-        assert.strictEqual(stampLine(steps[i].stamp, 'browser-engines'), '', `update ${i}: browser-engines grew`);
+        assert.deepStrictEqual(steps[i].servers['firefox-control'], own['firefox-control'], `update ${i} rewrote or removed the user's server:\n${outs[i]}`);
+        assert.ok(!steps[i].servers['chrome-control'], `update ${i} registered a browser the install never picked:\n${outs[i]}`);
+        assert.doesNotMatch(stampLine(steps[i].stamp, 'managed-mcp'), /(?:chrome|msedge|firefox|webkit)-control/, `update ${i} ledgered it`);
+        assert.strictEqual(stampLine(steps[i].stamp, 'control-engines'), '', `update ${i}: control-engines grew`);
     }
-    assert.ok(!calls.slice(steps[0]).some((c) => /^mcp (add|remove) .*browser-/.test(c)), calls.slice(steps[0]).join('\n'));
+    assert.ok(!calls.slice(steps[0]).some((c) => /^mcp (add|remove) .*(?:chrome|msedge|firefox|webkit)-control/.test(c)), calls.slice(steps[0]).join('\n'));
 });
 
 // The same recovery on the plugin route (the temp-project matrix, 2.1.6): the run's first `plugin list --json` met the
@@ -1262,8 +1262,8 @@ test('uninstall prints the user-scope registrations\' remove commands and never 
     });
     const uninstallCalls = calls.slice(calls.lastIndexOf('plugin list --json'));
     assert.ok(!uninstallCalls.some((c) => c.startsWith('mcp remove')), uninstallCalls.join('\n'));
-    assert.deepStrictEqual(result, ['browser-chrome'], outs[0]);
-    assert.match(outs[1], /browser-chrome is registered at user scope.*claude mcp remove browser-chrome -s user/);
+    assert.deepStrictEqual(result, ['chrome-control'], outs[0]);
+    assert.match(outs[1], /chrome-control is registered at user scope.*claude mcp remove chrome-control -s user/);
 });
 
 // M4: the kept-data line read ALFRED_CODE_DATA_PATH after the settings pass had removed it, so a custom root was

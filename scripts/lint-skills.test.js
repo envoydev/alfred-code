@@ -548,7 +548,7 @@ test('check 40: an agent tools: entry must be a real tool name or an mcp__ grant
     const { lintAgentTools, TOOL_NAMES } = require('./lint-skills.js');
     assert.ok(TOOL_NAMES.has('LSP'), 'LSP is in the tools reference - the audit left this unverified');
 
-    const clean = 'tools: Read, Grep, Glob, LSP, Skill, mcp__plugin_alfred-navigation_alfred-navigation__find_symbol, mcp__plugin_browser-chrome_browser-chrome__*, mcp__github\n';
+    const clean = 'tools: Read, Grep, Glob, LSP, Skill, mcp__plugin_alfred-navigation_alfred-navigation__find_symbol, mcp__plugin_chrome-control_chrome-control__*, mcp__github\n';
     assert.deepStrictEqual(lintAgentTools('agents/x.md', clean), []);
     assert.deepStrictEqual(lintAgentTools('agents/x.md', 'no frontmatter tools line here\n'), []);
 
@@ -1149,7 +1149,7 @@ test('M35 check 59 lets a seat\'s grant line name a listed alias, and nothing el
 test('M31 check 62 flags a plugin tool spelling whose tool the pinned server does not have', () => {
     const { lintMcpToolsAtPin } = require('./lint-mcp-tools.js');
     const tools = { servers: { 'alfred-memory': { version: '1', tools: ['memory_store', 'memory_search'] }, browser: { version: '1', tools: ['browser_navigate'] }, 'alfred-navigation': { version: '1', tools: ['find_symbol'] } } };
-    const ok = 'mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_browser-webkit_browser-webkit__browser_navigate, mcp__plugin_browser-chrome_browser-chrome__*\n';
+    const ok = 'mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_webkit-control_webkit-control__browser_navigate, mcp__plugin_chrome-control_chrome-control__*\n';
     assert.deepStrictEqual(lintMcpToolsAtPin({ tools, files: [{ file: 'stack/a.md', text: ok }] }), []);
     const bad = lintMcpToolsAtPin({ tools, files: [{ file: 'stack/b.md', text: 'x\nmcp__plugin_alfred-memory_alfred-memory__retrieve_memory\n' }] }); // mcp-fixture
     assert.strictEqual(bad.length, 1);
@@ -1167,9 +1167,9 @@ test('lintStaleMcpToolNames flags a plugin tool spelling no shipped server answe
     const { lintStaleMcpToolNames } = require('./lint-skills.js');
     const entries = [
         { name: 'alfred-memory', mcpServers: { 'alfred-memory': {} } },
-        { name: 'browser-chrome', mcpServers: { 'browser-chrome': {} } },
+        { name: 'chrome-control', mcpServers: { 'chrome-control': {} } },
     ];
-    const clean = 'tools: mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_browser-chrome_browser-chrome__browser_navigate\n'; // mcp-fixture
+    const clean = 'tools: mcp__plugin_alfred-memory_alfred-memory__memory_store, mcp__plugin_chrome-control_chrome-control__browser_navigate\n'; // mcp-fixture
     assert.deepStrictEqual(lintStaleMcpToolNames({ entries, files: [{ file: 'stack/agents/a.md', text: clean }] }), [], 'shipped spellings pass');
     const stale = 'line one\ntools: mcp__plugin_gone_gone__find_symbol\n'; // mcp-fixture
     const hit = lintStaleMcpToolNames({ entries, files: [{ file: 'stack/agents/b.md', text: stale }] });

@@ -214,9 +214,9 @@ test('the browser server keeping msedge warns when Edge is not installed; the ot
     assert.ok(!edge(evaluatePrereqs({ skills: [], mcps: [], plugins: [] }, { bins, envs: {} }, { playwrightBrowsers: ['msedge'] })), 'no browser selected, no Edge warning');
 });
 
-test('installed browser-<engine> servers read back as the one manifest entry', () => {
+test('installed <engine>-control servers (browser-<engine> before 2026-10-13) read back as the one manifest entry', () => {
     const { normalizeInventory } = require('./stack-select.js');
-    const inv = normalizeInventory({ mcps: ['navigation', 'browser-chrome', { name: 'browser-firefox' }, 'playwright', 'playwright-extra'] });
+    const inv = normalizeInventory({ mcps: ['navigation', 'chrome-control', { name: 'firefox-control' }, 'browser-webkit', 'playwright', 'playwright-extra'] });
     assert.deepStrictEqual(inv.mcps, ['navigation', 'browser', 'playwright', 'playwright-extra'], 'engine servers collapse to browser; a non-engine name is left alone');
 });
 
@@ -1013,7 +1013,7 @@ test('findStackMissing: a left_out item is switched off here, never missing', ()
 });
 
 test('findStackMissing: a parked MCP entry is that server switched off here, never missing', () => {
-    const installed = { rules: [], agents: [], skills: [], mcps: ['navigation'], plugins: [], hooks: [], plugins_disabled: ['browser-chrome'] };
+    const installed = { rules: [], agents: [], skills: [], mcps: ['navigation'], plugins: [], hooks: [], plugins_disabled: ['chrome-control'] };
     const names = new Set(findStackMissing(graph, recommendations, installed, ['web-angular']).map(m => `${m.category} ${m.name}`));
     assert.ok(!names.has('mcp browser'), 'the parked engine entry folds onto its catalog row');
 });

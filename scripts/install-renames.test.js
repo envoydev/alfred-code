@@ -277,7 +277,7 @@ test('respellRenamed: a generated rule\'s old MCP tool spellings and routing key
             '## MCP routing',
             `- \`alfred-navigation\` - first call: \`ToolSearch select:${pluginTool('alfred-navigation', 'find_symbol')},${pluginTool('alfred-navigation', 'get_symbols_overview')}\``,
             `- \`alfred-documentation\` - first call: \`ToolSearch select:${pluginTool('alfred-documentation', 'query-docs')}\``,
-            `- \`browser-firefox\` - registered: \`${bareTool('browser-firefox', 'browser_snapshot')}\``,
+            `- \`firefox-control\` - registered: \`${bareTool('firefox-control', 'browser_snapshot')}\``,
             `- \`alfred-memory\` - \`${pluginTool('alfred-memory', 'memory_search')}\`, and my own \`serena-notes\` stay`,
             `- \`windows-control\` - first call: \`ToolSearch select:${pluginTool('windows-control', 'Snapshot')}\`; registered: \`${bareTool('macos-control', 'Snapshot')}\``,
             '',
@@ -310,10 +310,10 @@ test('M46 respellRenamed: the single pre-per-engine browser spelling follows to 
         const logs = [];
         selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, engines: ['firefox', 'chrome'], log: (m) => logs.push(m), note: (m) => assert.fail(m) });
         const text = fs.readFileSync(path.join(dir, rule), 'utf8');
-        assert.strictEqual(text, `- browser - \`${bareTool('browser-firefox', 'browser_navigate')}\`, \`${bareTool('browser-firefox', 'browser_snapshot')}\`\n`);
+        assert.strictEqual(text, `- browser - \`${bareTool('firefox-control', 'browser_navigate')}\`, \`${bareTool('firefox-control', 'browser_snapshot')}\`\n`);
         write(dir, rule, `\`${bareTool('playwright', 'browser_click')}\`\n`);
         selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, log: () => {}, note: (m) => assert.fail(m) });
-        assert.strictEqual(fs.readFileSync(path.join(dir, rule), 'utf8'), `\`${bareTool('browser-chrome', 'browser_click')}\`\n`, 'no kept engine: chrome');
+        assert.strictEqual(fs.readFileSync(path.join(dir, rule), 'utf8'), `\`${bareTool('chrome-control', 'browser_click')}\`\n`, 'no kept engine: chrome');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -330,20 +330,20 @@ test('respellRenamed (I2): no CLAUDE.md and no rules folder is nothing to do', (
 const STALE_ROWS = [
     '## MCP routing',
     `- \`alfred-memory\` - first call: \`ToolSearch select:\` plus the \`${bareTool('alfred-memory', '*')}\` names`,
-    `- \`browser-chrome\` - Screenshots: omit \`filename\` (auto-names land in the registered output dir, \`.playwright/output/\`), or prefix an explicit name with \`.playwright/output/\`. first call: \`ToolSearch select:${bareTool('browser-chrome', 'browser_snapshot')},${bareTool('browser-chrome', 'browser_evaluate')}\``,
-    `- \`browser-firefox\` - auto-names land in \`.playwright/firefox/output/\`. first call: \`ToolSearch select:${bareTool('browser-firefox', 'browser_snapshot')}\``,
+    `- \`chrome-control\` - Screenshots: omit \`filename\` (auto-names land in the registered output dir, \`.playwright/output/\`), or prefix an explicit name with \`.playwright/output/\`. first call: \`ToolSearch select:${bareTool('chrome-control', 'browser_snapshot')},${bareTool('chrome-control', 'browser_evaluate')}\``,
+    `- \`firefox-control\` - auto-names land in \`.playwright/firefox/output/\`. first call: \`ToolSearch select:${bareTool('firefox-control', 'browser_snapshot')}\``,
     `- \`my-server\` - writes to \`.playwright/output/\`; \`${bareTool('my-server', 'run')}\` and \`${pluginTool('alfred-navigation', 'find_symbol')}\` stay`,
     '',
 ].join('\n');
 const FRESH_ROWS = [
     '## MCP routing',
     `- \`alfred-memory\` - first call: \`ToolSearch select:\` plus the \`${pluginTool('alfred-memory', '*')}\` names`,
-    `- \`browser-chrome\` - Screenshots: omit \`filename\` (auto-names land in the registered output dir, \`.alfred/browser/chrome/output/\`), or prefix an explicit name with \`.alfred/browser/chrome/output/\`. first call: \`ToolSearch select:${pluginTool('browser-chrome', 'browser_snapshot')},${pluginTool('browser-chrome', 'browser_evaluate')}\``,
-    `- \`browser-firefox\` - auto-names land in \`.alfred/browser/firefox/output/\`. first call: \`ToolSearch select:${bareTool('browser-firefox', 'browser_snapshot')}\``,
+    `- \`chrome-control\` - Screenshots: omit \`filename\` (auto-names land in the registered output dir, \`.alfred/chrome-control/output/\`), or prefix an explicit name with \`.alfred/chrome-control/output/\`. first call: \`ToolSearch select:${pluginTool('chrome-control', 'browser_snapshot')},${pluginTool('chrome-control', 'browser_evaluate')}\``,
+    `- \`firefox-control\` - auto-names land in \`.alfred/firefox-control/output/\`. first call: \`ToolSearch select:${bareTool('firefox-control', 'browser_snapshot')}\``,
     `- \`my-server\` - writes to \`.playwright/output/\`; \`${bareTool('my-server', 'run')}\` and \`${pluginTool('alfred-navigation', 'find_symbol')}\` stay`,
     '',
 ].join('\n');
-const OUTPUTS = { chrome: '.alfred/browser/chrome/output/', firefox: '.alfred/browser/firefox/output/' };
+const OUTPUTS = { chrome: '.alfred/chrome-control/output/', firefox: '.alfred/firefox-control/output/' };
 
 test('respellMcpRows: a plugin server\'s bare tool names take the plugin spelling, a browser row its engine\'s output dir under the data root, and a second run changes nothing', () =>
 {
@@ -354,8 +354,8 @@ test('respellMcpRows: a plugin server\'s bare tool names take the plugin spellin
         write(dir, rule, STALE_ROWS);
         write(dir, '.claude/rules/my-browser-notes.md', STALE_ROWS);
         const logs = [];
-        // browser-firefox is registered bare (a copy-route pick or the project's own .mcp.json row): its names stay.
-        const run = () => selection.respellMcpRows({ projectRoot: dir, plugin: ['alfred-memory', 'browser-chrome', 'alfred-navigation'], outputs: OUTPUTS, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        // firefox-control is registered bare (a copy-route pick or the project's own .mcp.json row): its names stay.
+        const run = () => selection.respellMcpRows({ projectRoot: dir, plugin: ['alfred-memory', 'chrome-control', 'alfred-navigation'], outputs: OUTPUTS, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
         assert.strictEqual(run(), 6);
         assert.strictEqual(fs.readFileSync(path.join(dir, rule), 'utf8'), FRESH_ROWS);
         assert.deepStrictEqual(logs, [
@@ -382,14 +382,14 @@ test('respellMcpRows: nothing on the plugin route and no kept engine is nothing 
         assert.strictEqual(selection.respellMcpRows({ projectRoot: dir, log: (m) => assert.fail(m), note: (m) => assert.fail(m) }), 0);
         assert.strictEqual(fs.readFileSync(path.join(dir, rule), 'utf8'), STALE_ROWS);
         write(dir, rule, STALE_ROWS.split('\n').join('\r\n'));
-        selection.respellMcpRows({ projectRoot: dir, plugin: ['alfred-memory', 'browser-chrome', 'alfred-navigation'], outputs: OUTPUTS, log: () => {}, note: (m) => assert.fail(m) });
+        selection.respellMcpRows({ projectRoot: dir, plugin: ['alfred-memory', 'chrome-control', 'alfred-navigation'], outputs: OUTPUTS, log: () => {}, note: (m) => assert.fail(m) });
         assert.strictEqual(fs.readFileSync(path.join(dir, rule), 'utf8'), FRESH_ROWS.split('\n').join('\r\n'), 'a CRLF rule keeps its line ends');
         write(dir, rule, STALE_ROWS);
         fs.chmodSync(path.join(dir, rule), 0o444);
         const notes = [];
         if (process.getuid && process.getuid() !== 0)
         {
-            assert.strictEqual(selection.respellMcpRows({ projectRoot: dir, plugin: ['browser-chrome'], outputs: OUTPUTS, log: (m) => assert.fail(m), note: (m) => notes.push(m) }), 0);
+            assert.strictEqual(selection.respellMcpRows({ projectRoot: dir, plugin: ['chrome-control'], outputs: OUTPUTS, log: (m) => assert.fail(m), note: (m) => notes.push(m) }), 0);
             assert.match(notes.join('\n'), /alfred-agent-awareness\.md names \d+ stale MCP tool name\(s\) or browser output dir\(s\) and could not be re-spelled .* re-run \/capture-agent-awareness/);
         }
     }

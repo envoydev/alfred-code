@@ -28,8 +28,16 @@ const DATA_ROOT_DEFAULT = '.alfred';
 const MEMORY_FOLDER = '.alfred-memory';
 const LEGACY_MEMORY_FOLDER = '.memory-mcp';
 const ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
+// Each browser engine's server, plugin and data class: `<engine>-control` (the user's rename of 2026-10-13;
+// `browser-<engine>` from 2.0.0, `playwright-<engine>` before) - the one spelling every reader takes from here.
+const engineServer = (engine) => `${engine}-control`;
+const ENGINE_SERVER = new RegExp(`^(${ENGINES.join('|')})-control$`);
+const engineOfServer = (name) => (ENGINE_SERVER.exec(String(name)) || [])[1];
 // Where 2.0.0 kept each server's data, relative to the project (the docs' old root is docs.js LEGACY_DOCS_ROOT).
 const LEGACY = { serena: '.serena', browser: '.playwright', memory: LEGACY_MEMORY_FOLDER };
+// Where 2.1.0 to 2.3.x kept every engine's profile under the root, one folder for all of them: <root>/browser/<engine>.
+// Each engine has its own <root>/<engine>-control now, and the shared folder goes once the last profile left it.
+const SHARED_BROWSER = 'browser';
 
 // ------------------------------------------------------------------ the setting
 
@@ -66,25 +74,24 @@ function layout(root = DATA_ROOT_DEFAULT)
         docs: `${root}/docs`,
         serena: `${root}/serena`,
         serenaHome: `${root}/serena/home`,
-        browser: (engine) => `${root}/browser/${engine}`,
+        browser: (engine) => `${root}/${engineServer(engine)}`,
         memory: `${root}/${MEMORY_FOLDER}`,
         memoryDb: `${root}/${MEMORY_FOLDER}/memory.db`,
     };
 }
 
-// The server-data CLASSES a move carries: `serena`, `browser-<engine>`, `memory` (the project level's
-// folder). Each has one place under the root and one 2.0.0 place.
+// The server-data CLASSES a move carries: `serena`, `<engine>-control`, `memory` (the project level's
+// folder). Each has one place under the root and one 2.0.0 place; an engine has the 2.1.0 shared folder too.
 function targetOf(cls, root = DATA_ROOT_DEFAULT)
 {
     if (cls === 'serena') return `${root}/serena`;
     if (cls === 'memory') return `${root}/${MEMORY_FOLDER}`;
-    const m = /^browser-(.+)$/.exec(cls);
-    return m ? `${root}/browser/${m[1]}` : null;
+    return engineOfServer(cls) ? `${root}/${cls}` : null;
 }
 // The data root a class's place sits under - the inverse of targetOf; null for a 2.0.0 place or a foreign one.
 function rootOfPlace(cls, rel)
 {
-    const suffix = targetOf(cls, '').slice(1);   // 'serena', 'browser/<engine>', '.alfred-memory'
+    const suffix = targetOf(cls, '').slice(1);   // 'serena', '<engine>-control', '.alfred-memory'
     const root = String(rel || '').endsWith(`/${suffix}`) ? rel.slice(0, -(suffix.length + 1)) : '';
     return root && checkDataPath(root).ok ? root : null;
 }
@@ -93,8 +100,18 @@ function legacyOf(cls)
 {
     if (cls === 'serena') return LEGACY.serena;
     if (cls === 'memory') return LEGACY.memory;
-    const m = /^browser-(.+)$/.exec(cls);
-    return m ? `${LEGACY.browser}/${m[1]}` : null;
+    const engine = engineOfServer(cls);
+    return engine ? `${LEGACY.browser}/${engine}` : null;
+}
+
+// A move row out of the root's own 2.1.0 shared folder: a re-layout inside the root, which the installer never offers.
+const isRelayout = (row, root) => Boolean(row) && row.from === sharedBrowserOf(row.cls, root);
+
+// An engine's place in a root's 2.1.0 shared folder (`<root>/browser/<engine>`); null for any other class.
+function sharedBrowserOf(cls, root = DATA_ROOT_DEFAULT)
+{
+    const engine = engineOfServer(cls);
+    return engine ? `${root}/${SHARED_BROWSER}/${engine}` : null;
 }
 
 // ------------------------------------------------------------------ the root's own .gitignore
@@ -388,12 +405,18 @@ function moveHomeMemory({ home, platform = process.platform, symlink = fs.symlin
 // still open <project>/.memory-mcp/memory.db, and without the link would create a second, empty database
 // there. Only that place: a server's other data and a move between two of the stack's own roots leave none
 // (a link would keep the old root from ever being pruned). The link is no data to every reader (hasData
-// reads the entry itself), so it never reads as a clash or an offer.
+// reads the entry itself), so it never reads as a clash or an offer. An engine's profile leaving the 2.1.0 shared
+// folder (`<root>/browser/<engine>`) takes that folder with it once it is empty - the last engine to move clears it.
 // { state (moveEntry's), linked?, why? }.
 function movePlace({ projectDir, cls, from, to, platform = process.platform, symlink = fs.symlinkSync })
 {
     const abs = (rel) => path.join(projectDir, ...rel.split('/'));
     const moved = moveEntry(abs(from), abs(to));
+    if (moved.state === 'moved' && engineOfServer(cls) && path.posix.basename(path.posix.dirname(from)) === SHARED_BROWSER)
+    {
+        try { fs.rmdirSync(abs(path.posix.dirname(from))); }
+        catch { /* another engine's profile is still there - its own move clears the folder */ }
+    }
     if (moved.state !== 'moved' || cls !== 'memory' || from !== LEGACY.memory) return moved;
     try
     {
@@ -409,17 +432,19 @@ function movePlace({ projectDir, cls, from, to, platform = process.platform, sym
 const hasData = (p) => isDir(p) && !isEmptyDir(p);
 
 // One row per class whose data sits somewhere other than its place under `root`: the prior root's place
-// first (a root change), then the 2.0.0 place. `conflict` when the target already holds data too. The
+// first (a root change), then an engine's 2.1.0 shared-folder place (the prior root's, then this one's), then the
+// 2.0.0 place. `conflict` when the target already holds data too. The
 // classes are the kept engines' profiles, serena, and the memory folder only at the project level.
 function dataMovePlan({ projectRoot, root, prior = null, engines = [], memory = false })
 {
     const abs = (rel) => path.join(projectRoot, ...rel.split('/'));
-    const classes = ['serena', ...engines.map((e) => `browser-${e}`), ...(memory ? ['memory'] : [])];
+    const classes = ['serena', ...engines.map(engineServer), ...(memory ? ['memory'] : [])];
     const rows = [];
     for (const cls of classes)
     {
         const to = targetOf(cls, root);
-        const from = [prior && prior !== root ? targetOf(cls, prior) : null, legacyOf(cls)]
+        const moved = prior && prior !== root;
+        const from = [moved ? targetOf(cls, prior) : null, moved ? sharedBrowserOf(cls, prior) : null, sharedBrowserOf(cls, root), legacyOf(cls)]
             .filter((c) => c && c !== to).find((c) => hasData(abs(c)));
         if (from) rows.push({ cls, from, to, conflict: hasData(abs(to)) });
     }
@@ -428,14 +453,24 @@ function dataMovePlan({ projectRoot, root, prior = null, engines = [], memory = 
 
 // `data-pending: <class> <from> -> <to>` - the move the installer recorded for a launcher to make. Read
 // back strictly: a class the stack knows, and two relative paths that stay inside the project.
-const CLASS = /^(serena|memory|browser-[a-z]+)$/;
+const CLASS = new RegExp(`^(serena|memory|(?:${ENGINES.join('|')})-control)$`);
 const renderPending = (rows) => rows.map((r) => `data-pending: ${r.cls} ${r.from} -> ${r.to}`);
+// A line an install before the 2026-10-13 rename recorded (`browser-<engine>`, to `<root>/browser/<engine>`) reads as
+// the engine's move to its own folder: the user's answer carried, the place renamed.
+const OLD_ENGINE_CLASS = /^browser-(chrome|msedge|firefox|webkit)$/;
 function readPending(text)
 {
     const out = [];
     for (const m of String(text || '').matchAll(/^data-pending: *(\S+) +(\S+) +-> +(\S+) *$/gm))
     {
-        const [, cls, from, to] = m;
+        let [, cls, from, to] = m;
+        const old = OLD_ENGINE_CLASS.exec(cls);
+        if (old)
+        {
+            cls = engineServer(old[1]);
+            const shared = `/${SHARED_BROWSER}/${old[1]}`;
+            if (to.endsWith(shared)) to = `${to.slice(0, -shared.length)}/${cls}`;
+        }
         if (!CLASS.test(cls) || !checkDataPath(from).ok || !checkDataPath(to).ok) continue;
         out.push({ cls, from, to });
     }
@@ -455,7 +490,8 @@ function pendingOf(projectDir)
 
 // Where a launcher finds a class's data this start: { dir (relative), state }. 'current' - already under
 // the root; 'moved' - a pending move ran now; 'busy' / 'failed' - a pending move could not run, so the old
-// place serves this start; 'legacy' - no move was agreed, the 2.0.0 place serves; 'fresh' - nothing yet.
+// place serves this start; 'legacy' - no move was agreed, an older place serves (an engine's 2.1.0 shared folder,
+// then the 2.0.0 place); 'fresh' - nothing yet.
 function liveDir({ projectDir, cls, root = DATA_ROOT_DEFAULT, pending = [], busy = () => [], move = true })
 {
     const abs = (rel) => path.join(projectDir, ...rel.split('/'));
@@ -473,8 +509,8 @@ function liveDir({ projectDir, cls, root = DATA_ROOT_DEFAULT, pending = [], busy
         if (hasData(abs(want)) && !hasData(abs(line.from))) return { dir: want, state: 'current' };
         return { dir: line.from, state: 'failed', why: moved.why || moved.state };
     }
-    const legacy = legacyOf(cls);
-    if (legacy && legacy !== want && hasData(abs(legacy))) return { dir: legacy, state: 'legacy' };
+    const legacy = [sharedBrowserOf(cls, root), legacyOf(cls)].find((p) => p && p !== want && hasData(abs(p)));
+    if (legacy) return { dir: legacy, state: 'legacy' };
     return { dir: want, state: 'fresh' };
 }
 
@@ -516,7 +552,7 @@ function ensureSerenaConfig(homeAbs, folder = `${DATA_ROOT_DEFAULT}/serena`)
 }
 
 module.exports = {
-    DATA_ROOT_DEFAULT, MEMORY_FOLDER, LEGACY_MEMORY_FOLDER, ENGINES, LEGACY,
+    DATA_ROOT_DEFAULT, MEMORY_FOLDER, LEGACY_MEMORY_FOLDER, ENGINES, LEGACY, SHARED_BROWSER, engineServer, engineOfServer, ENGINE_SERVER, sharedBrowserOf, isRelayout,
     checkDataPath, dataRootOf, layout, targetOf, rootOfPlace, legacyOf,
     DATA_IGNORE_HEAD, dataIgnoreText, ensureRootIgnore,
     memoryDbFor, memoryLevelOf, legacyTwinOf, homeTwinOf, liveMemoryDb,

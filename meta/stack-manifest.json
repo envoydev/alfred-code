@@ -1028,7 +1028,7 @@
     {
       "name": "browser",
       "args": "-- node -e @ROOT_BOOT@ -- checkout npx -y @playwright/mcp@PW_PIN@ --user-data-dir @BROWSER_DIR@ --output-dir @BROWSER_DIR@/output --no-webmcp",
-      "note": "the browser server (Playwright MCP): drive a real browser for visual checks / web app verification - expanded after the selection into one browser-<engine> server per kept browser; --no-webmcp, so a visited page never adds tools of its own"
+      "note": "the browser server (Playwright MCP): drive a real browser for visual checks / web app verification - expanded after the selection into one <engine>-control server per kept browser; --no-webmcp, so a visited page never adds tools of its own"
     },
     {
       "name": "alfred-memory",
@@ -1281,6 +1281,14 @@
       "serena": "alfred-navigation",
       "context7": "alfred-documentation",
       "playwright": "browser",
+      "playwright-chrome": "chrome-control",
+      "playwright-msedge": "msedge-control",
+      "playwright-firefox": "firefox-control",
+      "playwright-webkit": "webkit-control",
+      "browser-chrome": "chrome-control",
+      "browser-msedge": "msedge-control",
+      "browser-firefox": "firefox-control",
+      "browser-webkit": "webkit-control",
       "navigation": "alfred-navigation",
       "documentation": "alfred-documentation",
       "memory": "alfred-memory",

@@ -513,7 +513,7 @@ profile), output to `$TMP/select.out` - then:
   report it as kept, with the reason; a stack entry enabled at a broader scope is switched off for this
   scope alone, a narrower or managed one is named, never switched. Two removals the installer never makes, each with its command shown first:
   `claude mcp remove <name> -s <its scope>` for an MCP on the copy route (browser = every
-  `browser-<engine>` server), and
+  `<engine>-control` server), and
   `claude plugin uninstall <name> --scope <the scope step 1 recorded for it>` (2.2.0: no plugin rides
   beside the core any more - claude-hud is a pick like the LSP pair). The removal ask that proposed it
   NAMES that scope ('enabled at USER scope - removing it removes it for every

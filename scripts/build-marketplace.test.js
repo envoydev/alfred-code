@@ -142,11 +142,12 @@ test('mergeHooks keeps one group per matcher, the first block\'s hooks first', (
 });
 
 // 2.2.1 (the user's ruling of 2026-10-06): no RETIRED alias is listed - every id `renamed.mcps` left behind
-// (a browser engine renamed by its prefix) is out of the live file, which an update migrates without.
-const RETIRED_ALIAS_NAMES = [...Object.keys(require('./install/manifest.js').loadManifest(path.join(__dirname, '..')).renamed.mcps)
-    .flatMap((old) => (old === 'playwright' ? ['chrome', 'msedge', 'firefox', 'webkit'].map((e) => `${old}-${e}`) : [old]))];
+// is out of the live file, which an update migrates without. The bare 1.x `playwright` row names the catalog group,
+// never a plugin id, so it is not one.
+const RETIRED_ALIAS_NAMES = Object.keys(require('./install/manifest.js').loadManifest(path.join(__dirname, '..')).renamed.mcps)
+    .filter((old) => old !== 'playwright');
 test('no RETIRED alias is generated or listed: the renamed MCP ids are gone', () => {
-    assert.strictEqual(RETIRED_ALIAS_NAMES.length, 11, 'serena, context7, the four playwright engines, the three 2.2.0 ids and the two desktop servers (2026-10-13)');
+    assert.strictEqual(RETIRED_ALIAS_NAMES.length, 15, 'serena, context7, the four playwright engines, the three 2.2.0 ids, the two desktop servers and the four browser engines (2026-10-13)');
     for (const name of RETIRED_ALIAS_NAMES) assert.strictEqual(shippedBy[name], undefined, `${name} is still listed`);
     assert.strictEqual(SHIPPED.plugins.filter((p) => /^RETIRED/.test(p.description || '')).length, 0, 'no RETIRED row at all');
     assert.ok(!('aliasEntries' in require('./build-marketplace.js')) && !('mcpAliasEntries' in require('./build-marketplace.js')), 'no generator is left to bring one back');
@@ -302,7 +303,7 @@ test('M24 each uvx MCP entry hands its launcher the release cut-off, and the bro
         assert.ok(rest < 0 || at < rest, `${name}: the cut-off is a launcher flag, before the server's own arguments`);
     }
     for (const engine of ['chrome', 'msedge', 'firefox', 'webkit'])
-        assert.ok(!shippedBy[`browser-${engine}`].mcpServers[`browser-${engine}`].args.includes('--exclude-newer'));
+        assert.ok(!shippedBy[`${engine}-control`].mcpServers[`${engine}-control`].args.includes('--exclude-newer'));
 });
 
 // M25: Context7 documents `Context7-API-Key` (or Authorization: Bearer) and warns a header name with an underscore

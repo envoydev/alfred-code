@@ -32,7 +32,7 @@ const LEGACY_RULE_REL = '.claude/rules/baseline-project-capabilities.md';
 const MODEL_INVOCABLE_BY_DESIGN = new Set(['capture-architecture', 'capture-architecture-quality', 'capture-code-quality', 'capture-test-coverage']);
 // One catalog server expands into one registration per kept browser; every installed-name reader
 // maps them back to the catalog name, and so does the routing row.
-const PLAYWRIGHT_SERVER = /^browser-(chrome|msedge|firefox|webkit)$/;
+const PLAYWRIGHT_SERVER = /^(?:browser-(chrome|msedge|firefox|webkit)|(chrome|msedge|firefox|webkit)-control)$/;
 const SEAT_ROLES = ['-solution-designer', '-implementer', '-verifier'];
 const REQUIRED_HEADINGS = ['## Orchestration skills', '## Subagent seats', '## MCP routing'];
 
@@ -470,7 +470,8 @@ function fillSlots(row, server, slots = {})
 {
     let out = row;
     if (slots.dataRoot) out = out.replace(/<data root>/g, slots.dataRoot);
-    const engine = (PLAYWRIGHT_SERVER.exec(server) || [])[1];
+    const m = PLAYWRIGHT_SERVER.exec(server);
+    const engine = m && (m[1] || m[2]);
     if (engine) out = out.replace(/<engine>/g, engine);
     if (slots.docsRoot) out = out.replace(/<docs-path>/g, String(slots.docsRoot).replace(/[\\/]+$/, ''));
     return out;

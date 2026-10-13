@@ -99,16 +99,16 @@ test('rule 5: the full copy route switches a broader core off for this project a
 
 test('rule 5: on the full copy route an engine\'s broader row is switched off here; on the MCP copy route its command is named', () =>
 {
-    const rows = [row('browser-chrome', 'user')];
+    const rows = [row('chrome-control', 'user')];
     const full = cli();
     const r1 = P.engineStandDown({ rows, scope: 'local', engines: ['chrome'], hereOnly: true, isOn: () => undefined, cli: full });
-    assert.deepStrictEqual(full.calls, ['plugin disable browser-chrome@envoydev --scope local']);
-    assert.deepStrictEqual(r1.off, [{ scope: 'local', spec: 'browser-chrome@envoydev' }]);
+    assert.deepStrictEqual(full.calls, ['plugin disable chrome-control@envoydev --scope local']);
+    assert.deepStrictEqual(r1.off, [{ scope: 'local', spec: 'chrome-control@envoydev' }]);
     const part = cli();
     const log = [];
     P.engineStandDown({ rows, scope: 'project', engines: ['chrome'], isOn: () => undefined, cli: part, log: (l) => log.push(l) });
     assert.deepStrictEqual(part.calls, [], 'nothing switched at another scope off the full copy route');
-    assert.match(log.join('\n'), /claude plugin disable browser-chrome@envoydev --scope project/);
+    assert.match(log.join('\n'), /claude plugin disable chrome-control@envoydev --scope project/);
 });
 
 // --- rule 4 and 8: every scope updated, managed update-only -----------------------------
@@ -161,7 +161,7 @@ test('rule 8: no prune, rename, move or uninstall touches a managed row - each i
     const log = [];
     const run = cli();
     P.prunedRetired({ rows: [row('old-x', 'managed')], retired: ['old-x'], scope: 'project', cli: run, log: (l) => log.push(l) });
-    P.uninstallEngines({ specs: ['browser-chrome@envoydev'], rows: [row('browser-chrome', 'managed')], scope: 'project', cli: run, log: (l) => log.push(l) });
+    P.uninstallEngines({ specs: ['chrome-control@envoydev'], rows: [row('chrome-control', 'managed')], scope: 'project', cli: run, log: (l) => log.push(l) });
     const moved = P.moveScoped({ plugins: ['claude-hud@claude-hud'], rows: [row('claude-hud', 'managed', { marketplace: 'claude-hud' })], scope: 'project', scopes: { 'claude-hud': 'user' }, cli: run });
     P.migrateRenamed({ rows: [row('navigation', 'managed')], renamed: { navigation: 'alfred-navigation' }, set: ['alfred-navigation@envoydev'], scope: 'project', cli: run, log: (l) => log.push(l) });
     assert.deepStrictEqual(run.calls, [], run.calls.join('\n'));
@@ -174,12 +174,12 @@ test('rule 8: no prune, rename, move or uninstall touches a managed row - each i
 test('rule 4: an engine installed at two scopes is updated at both, and switched only where this project loads it', () =>
 {
     const run = cli();
-    const rows = [row('browser-chrome', 'user'), row('browser-chrome', 'project')];
+    const rows = [row('chrome-control', 'user'), row('chrome-control', 'project')];
     const before = P.parsePluginList(JSON.stringify(rows.map((r) => ({ ...r, id: `${r.name}@envoydev`, projectPath: r.scope === 'user' ? undefined : process.cwd() }))), process.cwd(), { byMarketplace: true });
-    const engines = { specs: ['browser-chrome@envoydev'], present: [], presentScope: {}, off: [], on: [], isOn: () => true };
-    P.updatePlugins({ plugins: ['browser-chrome@envoydev'], scope: 'project', before, rows, engines, cli: run, after: [] });
+    const engines = { specs: ['chrome-control@envoydev'], present: [], presentScope: {}, off: [], on: [], isOn: () => true };
+    P.updatePlugins({ plugins: ['chrome-control@envoydev'], scope: 'project', before, rows, engines, cli: run, after: [] });
     assert.deepStrictEqual(run.matching(/^plugin update /).map((c) => /--scope (\w+)/.exec(c)[1]), ['project', 'user']);
-    assert.deepStrictEqual(run.matching(/^plugin (enable|disable) /), ['plugin disable browser-chrome@envoydev --scope project']);
+    assert.deepStrictEqual(run.matching(/^plugin (enable|disable) /), ['plugin disable chrome-control@envoydev --scope project']);
 });
 
 // --- rule 3: one scope's row -------------------------------------------------------------
@@ -188,8 +188,8 @@ test('rule 3: an engine dropped at project scope leaves its user and local rows'
 {
     const run = cli();
     const log = [];
-    P.uninstallEngines({ specs: ['browser-chrome@envoydev'], rows: [row('browser-chrome', 'user'), row('browser-chrome', 'project'), row('browser-chrome', 'local')], scope: 'project', cli: run, log: (l) => log.push(l) });
-    assert.deepStrictEqual(run.calls, ['plugin uninstall browser-chrome@envoydev --scope project -y']);
+    P.uninstallEngines({ specs: ['chrome-control@envoydev'], rows: [row('chrome-control', 'user'), row('chrome-control', 'project'), row('chrome-control', 'local')], scope: 'project', cli: run, log: (l) => log.push(l) });
+    assert.deepStrictEqual(run.calls, ['plugin uninstall chrome-control@envoydev --scope project -y']);
     assert.strictEqual(log.filter((l) => /kept for the projects that use it/.test(l)).length, 2, log.join('\n'));
 });
 
@@ -198,8 +198,8 @@ test('rule 3: an engine dropped at project scope leaves its user and local rows'
 test('scopes: the read-back names local and managed items as such, and an item at several reads its narrowest', () =>
 {
     const at = (name, scope) => ({ name, version: '1', scope });
-    assert.deepStrictEqual(itemScopes([at('claude-hud', 'user'), at('typescript-lsp', 'local'), at('csharp-lsp', 'managed'), at('browser-chrome', 'project')]),
-        { 'claude-hud': 'global', 'typescript-lsp': 'local', 'csharp-lsp': 'managed', 'browser-chrome': 'project' });
+    assert.deepStrictEqual(itemScopes([at('claude-hud', 'user'), at('typescript-lsp', 'local'), at('csharp-lsp', 'managed'), at('chrome-control', 'project')]),
+        { 'claude-hud': 'global', 'typescript-lsp': 'local', 'csharp-lsp': 'managed', 'chrome-control': 'project' });
     assert.deepStrictEqual(itemScopes([at('claude-hud', 'user'), at('claude-hud', 'local'), at('claude-hud', 'project')]), { 'claude-hud': 'local' });
     assert.deepStrictEqual(itemScopes([at('claude-hud', 'managed'), at('claude-hud', 'user')]), { 'claude-hud': 'global' });
     assert.strictEqual(P.itemScope('claude-hud@claude-hud', 'project', { 'claude-hud': 'local' }), 'local');
@@ -297,8 +297,8 @@ test('rule 5 (MCP): the stamp\'s mcp-denied line round-trips, and a hand-edited 
     try
     {
         const file = path.join(dir, 'alfred-code.stamp');
-        fs.writeFileSync(file, 'version: 2.2.2\nmcp-denied: project:macos-control, local:browser-chrome, user:x, managed:y, project:../evil\n');
-        assert.deepStrictEqual(stamp.readMcpDenied(file), [{ scope: 'project', name: 'macos-control' }, { scope: 'local', name: 'browser-chrome' }]);
+        fs.writeFileSync(file, 'version: 2.2.2\nmcp-denied: project:macos-control, local:chrome-control, user:x, managed:y, project:../evil\n');
+        assert.deepStrictEqual(stamp.readMcpDenied(file), [{ scope: 'project', name: 'macos-control' }, { scope: 'local', name: 'chrome-control' }]);
         assert.deepStrictEqual(stamp.readMcpDenied(path.join(dir, 'none')), []);
         const base = { sha: 'abc', hooks: [], alwaysRules: [], alwaysMcps: [] };
         assert.match(stamp.renderStamp({ ...base, mcpDenied: [{ scope: 'project', name: 'macos-control' }] }), /^mcp-denied: project:macos-control$/m);

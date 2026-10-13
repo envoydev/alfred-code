@@ -117,7 +117,7 @@ const MAIN_THREAD_ONLY = { 'browser-extension': ['browser'] };
 const grantedServers = (seat) => new Set(tools(seat)
     .map((t) => (t.match(/^mcp__plugin_([A-Za-z0-9][A-Za-z0-9.-]*)_\1__/) || [])[1])
     .filter(Boolean)
-    .map((p) => (p.startsWith('browser-') ? 'browser' : p)));
+    .map((p) => (p.match(/^(?:chrome|msedge|firefox|webkit)-control$/) ? 'browser' : p)));
 
 test('I14: every MCP a stack seeds is granted to one of that stack\'s seats, or listed main-thread-only', () =>
 {
@@ -140,13 +140,13 @@ test('I14: every MCP a stack seeds is granted to one of that stack\'s seats, or 
 });
 
 // --- I11: the browser wildcard minus browser_run_code_unsafe --------------------------------------
-// The ruling ('Wildcard minus unsafe'): the four read-only seats keep `mcp__plugin_browser-<engine>_...__*`
+// The ruling ('Wildcard minus unsafe'): the four read-only seats keep `mcp__plugin_<engine>-control_...__*`
 // and deny the one RCE-equivalent tool (Playwright MCP 0.0.82 README: 'executes arbitrary JavaScript in
 // the Playwright server process and is RCE-equivalent') through the documented `disallowedTools` field,
 // which is applied first, then `tools` resolves against what is left.
 const BROWSER_SEATS = ['evidence-gatherer', 'integration-reviewer', 'ionic-angular-verifier', 'web-angular-verifier'];
-const browserWild = (engine) => `mcp__plugin_browser-${engine}_browser-${engine}__*`;
-const unsafe = (engine) => `mcp__plugin_browser-${engine}_browser-${engine}__browser_run_code_unsafe`;
+const browserWild = (engine) => `mcp__plugin_${engine}-control_${engine}-control__*`;
+const unsafe = (engine) => `mcp__plugin_${engine}-control_${engine}-control__browser_run_code_unsafe`;
 
 test('I11: the four read-only seats keep the browser wildcard for every engine', () =>
 {

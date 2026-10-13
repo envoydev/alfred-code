@@ -198,7 +198,7 @@ On the copy route the set is joined against the scope file's `hooks` block:
 | instrument-tool-usage.js | yes (env-gated, off) | .* |
 
 **MCPs** - the ROUTE decides the set: with a `<server>@<key>` MCP entry in the plugins listing the
-installed set is those entry NAMES folded back onto the catalog (`browser-<engine>` ->
+installed set is those entry NAMES folded back onto the catalog (`<engine>-control` ->
 `browser`, everything else is already its catalog name); without any such entry (the full copy
 route), the server names in `<root>/.mcp.json`, or at `user` scope the account's registrations.
 The `health` column is ONE `claude mcp list` call, which checks every server it lists: copy its
@@ -213,12 +213,12 @@ listed`. No CLI: the banner + `claude CLI unavailable - skipped` for the column.
 | alfred-navigation | stdio | node .../serena-launch.js ... --project-from-cwd | ✔ Connected |
 | alfred-memory | stdio | node .../memory-launch.js | ✔ Connected |
 | alfred-documentation | http | https://mcp.context7.com/mcp | ✔ Connected |
-| browser-firefox | stdio | node .../browser-launch.js --package @playwright/mcp@<pin> --browser firefox | ✘ Failed to connect |
+| firefox-control | stdio | node .../browser-launch.js --package @playwright/mcp@<pin> --browser firefox | ✘ Failed to connect |
 
 `target` is the command or URL, middle-truncated to keep the row one line; on the plugin route it
 is the entry's own declaration. The browser server has one server per installed browser
-(`browser-<engine>`), and any number can be on together; which are on is the user's `/plugin`
-toggle (the stamp's `browser-enabled:` is their last answer, not the live state). Never print
+(`<engine>-control`), and any number can be on together; which are on is the user's `/plugin`
+toggle (the stamp's `control-enabled:` is their last answer, not the live state). Never print
 env values embedded in a registration - show `${VAR}` literally as written.
 
 `alfred-memory` is locked like `alfred-navigation` and `alfred-documentation` (every install carries it). Add ONE line under
@@ -248,7 +248,7 @@ machine's Node)`.
 | plugin | version | scope | enabled | health |
 |---|---|---|---|---|
 | alfred-code@<key> | 2.0.0 | project | yes | ok |
-| browser-webkit@<key> | 2.0.0 | project | yes | plugin-not-found |
+| webkit-control@<key> | 2.0.0 | project | yes | plugin-not-found |
 
 `enabled` is the row's own `enabled` field. A disabled row is REPORTED, never dropped: a stack
 plugin that is installed but parked is invisible to every inventory that filters the listing down

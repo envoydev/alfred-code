@@ -48,7 +48,7 @@ function routingMapText()
 }
 
 // A project the script can inventory with no CLI on PATH: its servers come from .mcp.json.
-function project(name, { servers = ['alfred-navigation', 'alfred-documentation', 'alfred-memory', 'browser-chrome'], settings, local, account } = {})
+function project(name, { servers = ['alfred-navigation', 'alfred-documentation', 'alfred-memory', 'chrome-control'], settings, local, account } = {})
 {
     const root = path.join(TMP, name);
     write(path.join(root, '.claude', 'skills', 'capture-agent-awareness', 'SKILL.md'), '---\nname: capture-agent-awareness\ndescription: "x"\ndisable-model-invocation: true\n---\n');
@@ -90,19 +90,19 @@ test('I19: alfred-security says a Read deny covers the shell file commands Claud
 
 test('I20: the browser row names the resolved data root and engine, never the slots', () =>
 {
-    const { root, home } = project('data-root-default', { servers: ['browser-chrome', 'browser-firefox'] });
+    const { root, home } = project('data-root-default', { servers: ['chrome-control', 'firefox-control'] });
     const rows = rowsOf(run([], { cwd: root, home }).out);
     assert.equal(rows.length, 2, rows.join('\n'));
-    assert.ok(rows[0].includes('`.alfred/browser/chrome/output/`'), rows[0]);
-    assert.ok(rows[1].includes('`.alfred/browser/firefox/output/`'), rows[1]);
+    assert.ok(rows[0].includes('`.alfred/chrome-control/output/`'), rows[0]);
+    assert.ok(rows[1].includes('`.alfred/firefox-control/output/`'), rows[1]);
     for (const row of rows) assert.doesNotMatch(row, /<data root>|<engine>|<server>|<docs-path>/, row);
 });
 
 test('I20: the data root follows ALFRED_CODE_DATA_PATH, settings.local.json over settings.json', () =>
 {
-    const { root, home } = project('data-root-local', { servers: ['browser-chrome'], settings: { env: { ALFRED_CODE_DATA_PATH: 'data/shared' } }, local: { env: { ALFRED_CODE_DATA_PATH: 'data/mine' } } });
+    const { root, home } = project('data-root-local', { servers: ['chrome-control'], settings: { env: { ALFRED_CODE_DATA_PATH: 'data/shared' } }, local: { env: { ALFRED_CODE_DATA_PATH: 'data/mine' } } });
     const [row] = rowsOf(run([], { cwd: root, home }).out);
-    assert.ok(row.includes('`data/mine/browser/chrome/output/`'), row);
+    assert.ok(row.includes('`data/mine/chrome-control/output/`'), row);
 });
 
 test('I20: the script resolves the data root the way stack/mcp/data-root.js does', () =>
@@ -137,14 +137,14 @@ test('I20: routingRow leaves no slot outside the first call names', () =>
     const map = routingMap();
     const slots = { dataRoot: 'data/x', docsRoot: 'data/x/docs' };
     const rows = [
-        routingRow('browser-webkit', map, slots),
-        pluginRoutingRow('browser-msedge', 'browser-msedge', map, slots),
+        routingRow('webkit-control', map, slots),
+        pluginRoutingRow('msedge-control', 'msedge-control', map, slots),
         routingRow('windows-control', map, slots),
         pluginRoutingRow('macos-control', 'macos-control', map, slots),
     ];
     for (const row of rows) assert.doesNotMatch(row.split('first call:')[0], /<[a-z][a-z -]*>/, row);
-    assert.ok(rows[0].includes('`data/x/browser/webkit/output/`'), rows[0]);
-    assert.ok(rows[1].includes('`data/x/browser/msedge/output/`'), rows[1]);
+    assert.ok(rows[0].includes('`data/x/webkit-control/output/`'), rows[0]);
+    assert.ok(rows[1].includes('`data/x/msedge-control/output/`'), rows[1]);
     assert.ok(rows[2].includes('data/x/docs/flow/DESKTOP-EXEC-ALLOW'), rows[2]);
 });
 
@@ -160,7 +160,7 @@ test('I20: the rows\' docs root follows a local-scope install\'s settings.local.
 test('I20: --verify fails a rule still holding an unresolved slot', () =>
 {
     const { root, home } = project('verify-slot');
-    const rule = write(path.join(root, 'rule.md'), '---\ndescription: generated\n---\n\n# x\n\n## Orchestration skills\n\n## Subagent seats\n\n## MCP routing\n- `browser-chrome` - screenshots land in `<data root>/browser/<engine>/output/`. first call: `ToolSearch select:x`.\n');
+    const rule = write(path.join(root, 'rule.md'), '---\ndescription: generated\n---\n\n# x\n\n## Orchestration skills\n\n## Subagent seats\n\n## MCP routing\n- `chrome-control` - screenshots land in `<data root>/browser/<engine>/output/`. first call: `ToolSearch select:x`.\n');
     const { status, out } = run(['--verify', rule], { cwd: root, home });
     assert.match(out, /slots:\s+FAIL - unresolved <data root>, <engine>/);
     assert.equal(status, 1, out);
@@ -280,7 +280,7 @@ test('I24: the report prints one locked-server row, and --verify passes a rule b
     const rows = rowsOf(out);
     assert.equal(rows.length, 2, rows.join('\n'));
     assert.equal(rows.filter((r) => /^- `alfred-navigation`, `alfred-documentation`, `alfred-memory` - /.test(r)).length, 1, rows.join('\n'));
-    assert.equal(rows.filter((r) => /^- `browser-chrome` - /.test(r)).length, 1, rows.join('\n'));
+    assert.equal(rows.filter((r) => /^- `chrome-control` - /.test(r)).length, 1, rows.join('\n'));
     const partial = rowsOf(run([], { cwd: project('locked-partial', { servers: ['alfred-memory', 'alfred-navigation'] }).root, home }).out);
     assert.deepStrictEqual(partial.map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`alfred-navigation`, `alfred-memory`'], 'a locked server the install lacks is not named');
 
