@@ -152,7 +152,11 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     no SDK path. Its plugin row goes the engine way on the copy route and takes its own scope (`soloKept`); its
     prerequisites are said once, on the run that brings it in. Tools: the pinned server's own `tools/list`
     (`refresh-mcp-pins.js --only mobile-control`, which moves no other pin and keeps the uvx cut-off day); `appium_ai`
-    registers only with `AI_VISION_ENABLED=true` and a vision key, so it is not listed. No seat holds its tools.
+    registers only with `AI_VISION_ENABLED=true` and a vision key, so it is not listed. `ionic-angular-verifier` and
+    `evidence-gatherer` hold only its read-only observe subset (`appium_screenshot`, `appium_get_page_source`,
+    `appium_find_element`, `appium_find_elements`, `appium_get_text`, `appium_get_element_attribute` - no session tool,
+    so they read a session already open; audit 2026-10-14 AG08), named in their `meta/seat-tools.json` rows and described
+    in the body, so no graph edge pulls the opt-in server in.
   - plus `alfred-navigation` (Serena - started with `SERENA_USAGE_REPORTING=false`, the entry's `env` and the copy route's
     `-e` pair alike: serena-agent 1.7.0 pings its maker's host with the OS, version and context at every start otherwise,
     `serena/agent.py _send_usage_info`; audit 2026-10-14, PL1), `alfred-documentation` (Context7, the hosted remote only - its `Context7-API-Key` header, the name

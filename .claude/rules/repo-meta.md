@@ -24,9 +24,10 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
     the placement rule in `scripts/plugin-placement.js`: the core is the router skill, every seat and
     every stack hook, every stack skill is library (2.1.0). Regenerate with `npm run marketplace`; lint
     checks 44 and 45 fail when the file is stale, a second plugin appears, or an item has no home or
-    two. The renamed MCP ids were listed as RETIRED aliases through 2.2.0; from 2.2.1 (the user's ruling of
-    2026-10-06) none is (the MCP prune drops each from the live file, lint 49 names one still there), and update
-    still migrates an install that holds one. No `renames` key - a rename strands an install
+    two. The 2.0.0 and 2.2.0 renamed MCP ids were listed as RETIRED aliases through 2.2.0; from 2.2.1 (the user's
+    ruling of 2026-10-06) none is (the MCP prune drops each from the live file, lint 49 names one still there), and
+    update still migrates an install that holds one. The six 2.4.0 ids are listed again as RETIRED aliases (audit
+    2026-10-14 PL5, `build-marketplace.js mcpAliasEntries`; lint 53 holds them to the generator). No `renames` key - a rename strands an install
     (`docs/plugin-cli-evidence.md` S11); lint 49 fails on a `renames` key or an
     `alfred-code-hooks` entry.
   - `evals/library/` - one `claude plugin eval` case per stack profile, graded `arm: both`, plus the

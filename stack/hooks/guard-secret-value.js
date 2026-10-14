@@ -1303,7 +1303,7 @@ if (payload.hook_event_name === 'SessionStart') {
       if (r.status === 1) exposed = ` WARNING: git does not ignore ${rel} (or it is tracked) - a commit publishes every value; tell the user to add it to .gitignore, and to untrack it with git rm --cached if it is tracked.`;
     } catch { /* no git: nothing to commit it with */ }
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext:
-      `Sensitive data: ${rel} holds ${keys.join(', ')} - kept out of the chat: a Read is blocked and a printed value is masked, but only its exact text, so never print one in another form (encoded, split, reversed) and never ask the user to paste one. A command that needs them: node "${__filename}" --with-sensitive -- "<command line>" - they are in its environment, and each prints as <KEY> in its output.${exposed}` } }));
+      `Sensitive data: ${rel} holds ${keys.join(', ')} - kept out of the chat: a Read is blocked and a printed value is masked, but only its exact text, so never print one in another form (encoded, split, reversed) and never ask the user to paste one. A command that needs them: node "${__filename}" --with-sensitive -- "<command line>" - they are in its environment, and each prints as <KEY> in its output. In the browser, type a KEY name in browser_type / browser_fill_form: the browser server fills its value and shows it as <secret>KEY</secret>.${exposed}` } }));
   }
   process.exit(0);
 }
