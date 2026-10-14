@@ -1298,6 +1298,22 @@ function lintPluginComponents(manifest, listings)
 
 // Check 19: every disable-model-invocation skill carries the "manual" row flag and every user-invocable: false
 // skill the "model-only" one (2.1.6 M128 part 3), and no row claims a state its SKILL.md does not set.
+// Check 12a: the word the README's headline MCP row describes each opt-in MCP server (manifest `active: false`) by. A new
+// opt-in server has no word here, so it fails until the row describes it (audit 2026-10-14 PL12 - mobile-control shipped
+// with the row silent about it).
+const OPT_IN_README_WORDS = { 'windows-control': 'desktop', 'macos-control': 'desktop', 'mobile-control': 'mobile' };
+function lintReadmeOptInMcps(row, optInNames)
+{
+    const out = [];
+    for (const name of optInNames)
+    {
+        const word = OPT_IN_README_WORDS[name];
+        if (!word) out.push(`README.md: opt-in MCP server '${name}' has no README word - add it to OPT_IN_README_WORDS in scripts/lint-skills.js and describe it in the '| **MCP servers** |' row`);
+        else if (!new RegExp(`\\b${word}\\b`, 'i').test(row)) out.push(`README.md: the '| **MCP servers** |' row does not describe the opt-in ${name} (no '${word}')`);
+    }
+    return out;
+}
+
 function lintInvocationFlags(skills, html)
 {
     const out = [];
@@ -1767,6 +1783,12 @@ function main()
         {
             flag(`README.md: headline ${rowLabel} count is ${got} but the installer holds ${expected}`);
         }
+    }
+
+    // 12a. Every opt-in MCP server is described in the README's headline MCP row (lintReadmeOptInMcps).
+    {
+        const row = (fs.readFileSync(CLAUDE_README, 'utf8').match(/^\| \*\*MCP servers\*\* \|.*$/m) || [''])[0];
+        for (const finding of lintReadmeOptInMcps(row, (raw.mcps || []).filter((r) => r && r.active === false).map((r) => r.name))) flag(finding);
     }
 
     // 12b. The on-disk agents/*.md set must equal the agents the manifest carries. A drift means a
@@ -3169,6 +3191,7 @@ module.exports = {
     lintMarketplaceEntries,
     lintAgentPreloads,
     lintInvocationFlags,
+    lintReadmeOptInMcps,
     lintRepoRootReserved,
     lintMarketplaceSchema,
     RESERVED_ROOT_NAMES,

@@ -1343,3 +1343,17 @@ test('check 19: the live HTML legend names the model-only state and the four fla
     const flagged = [...house.matchAll(/\["([a-z0-9-]+)",[^\n]*"model-only"\]/g)].map((m) => m[1]).sort();
     assert.deepStrictEqual(flagged, ['dotnet-winforms', 'dotnet-wpf', 'javascript', 'typescript']);
 });
+
+// Check 12a (audit 2026-10-14 PL12): mobile-control shipped opt-in while the README's MCP row described only the desktop
+// pair. Each opt-in server (manifest active: false) needs its word in that row; one with no word fails until it gets one.
+test('check 12a: the README MCP row describes every opt-in MCP server, and a new opt-in server fails until it does', () =>
+{
+    const { lintReadmeOptInMcps } = require('./lint-skills.js');
+    const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
+    const row = (readme.match(/^\| \*\*MCP servers\*\* \|.*$/m) || [''])[0];
+    const optIn = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).mcps.filter((r) => r.active === false).map((r) => r.name);
+    assert.ok(optIn.includes('mobile-control') && optIn.length >= 3, optIn.join(','));
+    assert.deepStrictEqual(lintReadmeOptInMcps(row, optIn), [], 'the live README row');
+    assert.match(lintReadmeOptInMcps(row.replace(/mobile/gi, 'phone'), ['mobile-control'])[0], /does not describe the opt-in mobile-control/);
+    assert.match(lintReadmeOptInMcps(row, ['tv-control'])[0], /has no README word - add it to OPT_IN_README_WORDS/);
+});
