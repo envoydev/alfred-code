@@ -1733,8 +1733,9 @@ function rangeCap(abs, shown, lineCount, a, b) {
   process.exit(2);
 }
 
-// The nine path-scoped convention rules attach on a FILE-TOOL touch and on nothing else. Under a
-// Bash-first working mode they therefore never attach at all: measured with a control for the first
+// The path-scoped convention rules attach on a Read / Write / Edit of a matching file and on a Bash command that counts as
+// a READ of one (`cat` or `head` on a single file - code.claude.com/docs/en/memory, re-read 2026-10-14), never on a shell
+// WRITE. Under a Bash-first working mode an edit therefore never attaches them: measured with a control for the first
 // time, 19 Bash calls naming `.cs` files produced 0 attachments, while the session's single
 // Read-tool call on a `.cs` file attached BOTH `.cs`-scoped rules 0.94 s later - so the C# rule was
 // absent for the whole DESIGN, PLAN and GATE phase of a C# build. Corroborated at 0 attaches over
@@ -1742,7 +1743,11 @@ function rangeCap(abs, shown, lineCount, a, b) {
 // already parses the extension, so it is the one place that can close the gap: it names the rule
 // that governs the file, ONCE per rule per session, as non-blocking additionalContext.
 const CONVENTION_RULES = [
-  [/\.Designer\.cs\b|\w*Form(\.[^\s\/]+)?\.cs\b/, 'winforms-conventions.md'], // twin of the rule's paths (Designer + *Form.cs + *Form.*.cs); case-SENSITIVE so Platform.cs / Transform.cs stay plain C#
+  // Twin of the rule's paths (Designer + *Form.cs + *Form.*.cs); case-SENSITIVE so Platform.cs / Transform.cs stay plain C#.
+  // An EF migration's `*.Designer.cs` under Migrations/ is schema work, never a form (audit 2026-10-14 RU12).
+  [/^(?!.*(?:^|\/)Migrations\/).*(?:\.Designer\.cs\b|\w*Form(\.[^\s\/]+)?\.cs\b)/, 'winforms-conventions.md'],
+  // Twin of sql-conventions.md's `**/Migrations/**/*.cs`: an EF migration is schema work (audit 2026-10-14 RU12).
+  [/(?:^|\/)Migrations\/(?:[^\s\/]+\/)*[^\s\/]+\.cs$/, 'sql-conventions.md'],
   [/\.cs\b/i, 'csharp-conventions.md'],
   [/\.xaml\b/i, 'wpf-conventions.md'],
   // Twin of the rule's own `paths:`. The suffixes are the pre-v20 spelling; the directory shapes are

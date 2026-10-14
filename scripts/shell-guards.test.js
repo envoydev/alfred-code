@@ -718,3 +718,47 @@ test('audit 2026-10-10: the dispatcher\'s own checks stand down where the stack 
   assert.equal(own(dir, 'until test -f x; do sleep 1; done', { env: { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' } }).status, 0, 'minimal');
   assert.equal(own(dir, 'echo =====', { env: { SHELL: '/bin/zsh', CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' } }).command, null);
 });
+
+// ---------------------------------------------------------------------------------------------
+// audit 2026-10-14 HK15: 86 dispatcher runs took 1s or more in a week (max 12,086ms) and no row named the guard that
+// spent it - a run past 1,000ms now writes one probe row with each guard's ms
+// ---------------------------------------------------------------------------------------------
+test('HK15: slowProbe is null at 1,000ms and a probe row one over', () => {
+  assert.strictEqual(shell.SLOW_MS, 1000);
+  assert.strictEqual(shell.slowProbe({ guards: {} }, 1000), null, 'at the line');
+  assert.strictEqual(shell.slowProbe({ guards: {} }, 999), null, 'under it');
+  const row = shell.slowProbe({ startup_ms: 30, own_ms: 2, guards: { 'guard-catastrophic-rm': 1 } }, 1001);
+  assert.deepStrictEqual(row, { mode: 'probe', kind: 'slow', reason: 'probe: slow - the dispatcher ran 1001ms',
+    detail: { branch: 'slow', total_ms: 1001, startup_ms: 30, own_ms: 2, guards: { 'guard-catastrophic-rm': 1 } } });
+});
+
+test('HK15: a dispatcher run past 1s writes one slow row naming each guard\'s ms; a fast run and a repo never set up write none', () => {
+  const copy = path.join(TMP, 'slowpoke');
+  fs.cpSync(HOOKS, copy, { recursive: true });
+  fs.writeFileSync(path.join(copy, 'guard-read-whole-file.js'), "'use strict';\nAtomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1100);\n");
+  const dir = project('slow-');
+  const res = spawnSync(process.execPath, [path.join(copy, 'shell-guards.js')], {
+    input: JSON.stringify(bashPayload('ls', dir)), encoding: 'utf8', cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, timeout: 15000,
+  });
+  assert.strictEqual(res.status, 0, res.stderr);
+  const slow = ledgerRows(dir).filter((r) => r.kind === 'slow');
+  assert.strictEqual(slow.length, 1, JSON.stringify(ledgerRows(dir)));
+  assert.strictEqual(slow[0].mode, 'probe');
+  assert.strictEqual(slow[0].hook, 'shell-guards.js');
+  assert.strictEqual(slow[0].tool, 'Bash');
+  assert.ok(slow[0].detail.total_ms > 1000, `total ${slow[0].detail.total_ms}`);
+  assert.ok(slow[0].detail.guards['guard-read-whole-file'] >= 1000, 'the stalled guard is named with its own ms');
+  assert.deepStrictEqual(Object.keys(slow[0].detail.guards).sort(), [...shell.GUARDS].sort(), 'every guard that ran');
+  assert.ok(Number.isInteger(slow[0].detail.startup_ms) && Number.isInteger(slow[0].detail.own_ms));
+  // the real dispatcher on an ordinary command stays under the line and writes nothing
+  const fast = project('fast-');
+  assert.strictEqual(run(DISPATCH, bashPayload('ls', fast), { cwd: fast, env: { CLAUDE_PROJECT_DIR: fast } }).status, 0);
+  assert.deepStrictEqual(ledgerRows(fast).filter((r) => r.kind === 'slow'), []);
+  // a repo never set up keeps its ledger empty (GATE 4)
+  const bare = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'slow-unset-')));
+  git(bare, 'init', '-q');
+  spawnSync(process.execPath, [path.join(copy, 'shell-guards.js')], {
+    input: JSON.stringify(bashPayload('ls', bare)), encoding: 'utf8', cwd: bare, env: { ...process.env, CLAUDE_PROJECT_DIR: bare, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT }, timeout: 15000,
+  });
+  assert.ok(!fs.existsSync(path.join(bare, '.alfred', 'docs', 'hook-blocks')), 'no row where the stack was never set up');
+});

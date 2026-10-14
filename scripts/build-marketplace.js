@@ -237,7 +237,7 @@ function hooksBlock(wirings)
         // A side-effect hook runs async, off the call's path (settings.js asyncFor). Its env gate stays inside the hook:
         // the copy route's `[ ... ] ||` shell test fails under PowerShell, the shell form's runner where Git Bash is
         // absent (code.claude.com/docs/en/hooks, 'Exec form and shell form'), and every other plugin hook runs there.
-        group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: timeoutFor(w.file, w.event), ...(asyncFor(w.file) ? { async: true } : {}) });
+        group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: timeoutFor(w.file, w.event), ...(asyncFor(w.file, w.event) ? { async: true } : {}) });
     }
     return block;
 }

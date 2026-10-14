@@ -134,6 +134,25 @@ test('an empty database still names the project tag and the search hint - never 
   } finally { p.rm(); }
 });
 
+// Audit 2026-10-14 RU10: the seat's memory-tools line moves out of the always-on rule into the SubagentStart push, so
+// a seat learns both the tag and how its tools load - with the carve-out, since a stack seat holds no ToolSearch.
+test('SubagentStart: the tag line, then the tool line with the seat carve-out (RU10)', { skip: skipNoSqlite }, () => {
+  const p = fixtureProject({ rows: [{ content: 'a project fact', tags: 'project:x', memory_type: 'reference' }] });
+  try {
+    const r = p.hook({ hook_event_name: 'SubagentStart', session_id: 's9', agent_id: 'a1', agent_type: 'reviewer', cwd: p.root });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout).hookSpecificOutput;
+    assert.strictEqual(out.hookEventName, 'SubagentStart');
+    assert.strictEqual(out.additionalContext, [
+      `This project's memory tag: project:${path.basename(p.root)}`,
+      'Store, search or list more: ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list - a seat whose tools grant them, by name or as the whole server, has them loaded already and calls them directly.',
+    ].join('\n'));
+    // no registration: still silent
+    const bare = fixtureProject({ registered: false });
+    try { assert.strictEqual(bare.hook({ hook_event_name: 'SubagentStart', agent_id: 'a1', cwd: bare.root }).stdout, ''); } finally { bare.rm(); }
+  } finally { p.rm(); }
+});
+
 test('inside a real git worktree, the pushed tag and own-project rows both use the MAIN checkout name (I5)', { skip: skipNoSqlite }, () => {
   // This house works out of .claude/worktrees/* itself (see cross-task-facts.md) - a worktree session
   // must never tag or read memories under its own folder name, only the main repo's.

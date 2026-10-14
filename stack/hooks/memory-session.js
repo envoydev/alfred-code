@@ -8,8 +8,10 @@
 // own selectForSession degrades to an empty selection there), selects nothing, and the push is then the
 // tag and search lines alone. Fully silent only with no registration, garbage stdin, or any other error -
 // exit 0 throughout, since a session start that cannot be enriched must never be a session start that fails.
-// SubagentStart gets the tag line alone: SessionStart context never reaches a dispatched seat, and a seat's
-// handoff note is stored and read under that tag (alfred-memory.md) - the hook states it, the seat never guesses it.
+// SubagentStart gets the tag line and the tool line: SessionStart context never reaches a dispatched seat, and a seat's
+// handoff note is stored and read under that tag (alfred-memory.md) - the hook states it, the seat never guesses it. The
+// tool line carries the seat carve-out: a stack seat holds no ToolSearch, its tools grant the server, so it calls the
+// tools directly (the rule-side line moves here, audit 2026-10-14 RU10).
 'use strict';
 const os = require('os');
 
@@ -81,7 +83,10 @@ async function main() {
   process.env.CLAUDE_PROJECT_DIR = checkout;
   const dbPath = memory.registeredDbPath(root, { home });
   if (!dbPath) return; // no memory server registered for this project - nothing to push
-  if (event === 'SubagentStart') return emit('SubagentStart', `This project's memory tag: project:${memory.projectName(root)}`);
+  if (event === 'SubagentStart') {
+    return emit('SubagentStart', [`This project's memory tag: project:${memory.projectName(root)}`,
+      `Store, search or list more: ${TOOL_SEARCH_LINE} - a seat whose tools grant them, by name or as the whole server, has them loaded already and calls them directly.`].join('\n'));
+  }
   const level = memory.levelOfPath(dbPath, { home, projectRoot: root }) || 'unknown';
   const project = memory.projectName(root);
   // related-projects is read through docs.js's own docs-root resolution (ALFRED_CODE_DOCS_PATH in the

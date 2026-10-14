@@ -78,3 +78,26 @@ test('I12: CLAUDE.md names the two kept navigation edit tools on docs-session an
   assert.match(text, /the navigation server's two kept edit tools `rename_symbol` \/ `safe_delete_symbol` - held like an Edit/);
   assert.match(text, /`check-turn-build\.js` \(`PostToolUse` on `Write\|Edit\|MultiEdit` and the navigation server's `rename_symbol` \/\s+`safe_delete_symbol`/);
 });
+
+// Audit 2026-10-14 HK08: the rule, the audit skill and the HTML said 80 / 50 for the two dispatchers' timeouts, 'five' file
+// guards and 'seven' (then 'eight') shell guards, while the generated wiring stamped 90 / 60 over nine and six. The numbers
+// are read from the tables that produce them, so the prose moves with a guard added or dropped.
+test('HK08: the dispatcher timeouts and guard counts in the prose are the ones HOOK_TIMEOUTS and the GUARDS tables give', () => {
+  const { HOOK_TIMEOUTS } = require(path.join(ROOT, 'scripts', 'install', 'settings.js'));
+  const shellGuards = require(path.join(HOOKS, 'shell-guards.js'));
+  const fileGuards = require(path.join(HOOKS, 'file-guards.js'));
+  const shellSecs = HOOK_TIMEOUTS['shell-guards.js'].PreToolUse;
+  const fileSecs = HOOK_TIMEOUTS['file-guards.js'].PreToolUse;
+  const words = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+  const nShell = words[shellGuards.GUARDS.length];
+  const nFile = words[fileGuards.GUARDS.length];
+  const rule = read('.claude/rules/repo-hooks.md');
+  assert.match(rule, new RegExp(`\`shell-guards\\.js\`'s ${shellSecs} and \`file-guards\\.js\`'s ${fileSecs} `), 'the rule states the generated timeouts');
+  assert.match(rule, new RegExp(`The ${nFile} guards with a file-tool row ride ONE hook`), 'the rule counts the file guards');
+  assert.match(rule, new RegExp(`The ${nShell} guards with a\\s+\`Bash\\|PowerShell\\|Monitor\` row`), 'the rule counts the shell guards');
+  assert.match(read('.claude/skills/repo-audit-hooks/references/discovery.md'), new RegExp(`the ${nShell} \`Bash\\|PowerShell\\|Monitor\` PreToolUse guards`));
+  const html = read('docs/alfred-code.html');
+  assert.match(html, new RegExp(`The ${nShell} guards judging a Bash, PowerShell or Monitor call run in ONE process, <code>shell-guards\\.js</code> \\(timeout ${shellSecs}s`));
+  assert.match(html, new RegExp(`the ${nFile} judging a file tool in another, <code>file-guards\\.js</code> \\(timeout ${fileSecs}s`));
+  assert.match(read('.claude/skills/repo-audit-hooks/references/rubric.md'), /^Six dimensions, 100 points per hook\./m, 'the rubric counts its own six (HK17)');
+});

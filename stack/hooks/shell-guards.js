@@ -313,22 +313,9 @@ function ownChecks(stdin)
     let sw;
     try { sw = require('./shell-writes.js'); }
     catch { return out; }
-    const envOf = prelude && prelude.envOf ? prelude.envOf : (env, k) => env[`ALFRED_CODE_${k}`];
     const root = process.env.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' && payload.cwd) || process.cwd();
     const cwd = typeof payload.cwd === 'string' && payload.cwd ? payload.cwd : root;
-    const row = (fields) =>
-    {
-        try
-        {
-            if (prelude && prelude.neverSetUp && prelude.neverSetUp()) return;
-            const dir = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs', 'hook-blocks');
-            fs.mkdirSync(dir, { recursive: true });
-            fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
-                ts: new Date().toISOString(), hook: `${SELF}.js`, event: payload.hook_event_name || '', tool, ...fields,
-            }) + '\n');
-        }
-        catch { /* telemetry never changes a verdict */ }
-    };
+    const row = (fields) => ledgerRow(payload, prelude, fields);
     let masked = command;
     try { masked = sw.blankComments(sw.blankHeredocs(command)); }
     catch { masked = command; }
@@ -485,6 +472,35 @@ function ownChecks(stdin)
     return out;
 }
 
+// One row in the session's hook-blocks ledger under the dispatcher's own name - its own checks' rows and the slow probe.
+// A repo never set up writes none (GATE 4); telemetry never changes a verdict.
+function ledgerRow(payload, prelude, fields)
+{
+    try
+    {
+        if (prelude && prelude.neverSetUp && prelude.neverSetUp()) return;
+        const envOf = prelude && prelude.envOf ? prelude.envOf : (env, k) => env[`ALFRED_CODE_${k}`];
+        const root = process.env.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' && payload.cwd) || process.cwd();
+        const dir = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs', 'hook-blocks');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
+            ts: new Date().toISOString(), hook: `${SELF}.js`, event: payload.hook_event_name || '', tool: String(payload.tool_name || ''), ...fields,
+        }) + '\n');
+    }
+    catch { /* telemetry never changes a verdict */ }
+}
+
+// THE SLOW-RUN PROBE (audit 2026-10-14 HK15): 86 dispatcher runs took 1s or more in one week (max 12,086ms) and no row
+// named the guard that spent it. A run past SLOW_MS - timed from the process's own start, so a slow node boot counts -
+// writes one `mode: probe`, `kind: slow` row with each guard's ms, its own checks' and the boot's. Log only: the budget
+// a guard gets is tuned on a week of these rows, never on one.
+const SLOW_MS = 1000;
+function slowProbe(timings, totalMs)
+{
+    if (!(totalMs > SLOW_MS)) return null;
+    return { mode: 'probe', kind: 'slow', reason: `probe: slow - the dispatcher ran ${totalMs}ms`, detail: { branch: 'slow', total_ms: totalMs, ...timings } };
+}
+
 // ---- the hook -----------------------------------------------------------------------------------
 function main()
 {
@@ -497,22 +513,41 @@ function main()
     try { stdin = fs.readFileSync(0); }
     catch { stdin = Buffer.alloc(0); }
     // the dispatcher's own checks first: a zsh fix hands every guard the command that will run
+    const started = performance.now();
     let own = { stdin, results: [] };
     try { own = ownChecks(stdin); }
     catch { /* never breaks the guards */ }
     stdin = own.stdin;
+    const ownMs = performance.now() - started;
     const named = process.argv.slice(2).filter((a) => GUARDS.includes(a));
     const guards = named.length ? RUN_ORDER.filter((g) => named.includes(g)) : RUN_ORDER;
     const results = [...own.results];
+    const spent = {};
     for (const g of guards)
     {
+        const at = performance.now();
         const r = runGuard(path.join(__dirname, `${g}.js`), stdin);
+        spent[g] = Math.round(performance.now() - at);
         results.push(r);
         // A protective block is a correct answer alone, so it is answered now: a guard still to run that
         // stalls past the budget would otherwise drop it - a timed-out command hook's output is discarded and the
         // call runs (code.claude.com/docs/en/hooks, 'Timeouts').
         if (r.code === 2 && PROTECTIVE.has(g)) break;
     }
+    try
+    {
+        const slow = slowProbe({ startup_ms: Math.round(started), own_ms: Math.round(ownMs), guards: spent }, Math.round(performance.now()));
+        if (slow)
+        {
+            const payload = JSON.parse(stdin.toString('utf8'));
+            let prelude = null;
+            try { prelude = require('./hook-prelude.js'); }
+            catch { prelude = null; }
+            if (payload && typeof payload === 'object' && !(prelude && (prelude.standDown(SELF) || prelude.cursorStandDown(payload, __filename))))
+                ledgerRow(payload, prelude, slow);
+        }
+    }
+    catch { /* telemetry never changes a verdict */ }
     const verdict = combine(results.sort((a, b) => GUARDS.indexOf(a.guard.replace(/\.js$/, '')) - GUARDS.indexOf(b.guard.replace(/\.js$/, ''))));
     // Exit only once both streams have flushed: a pipe write can still be pending on macOS.
     let pending = 0;
@@ -522,5 +557,5 @@ function main()
     if (!pending) process.exit(verdict.code);
 }
 
-module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, wiringRows, runGuard, combine, parseOut, ownChecks };
+module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, SLOW_MS, wiringRows, runGuard, combine, parseOut, ownChecks, slowProbe };
 if (require.main === module) main();

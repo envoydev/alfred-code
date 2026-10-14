@@ -86,6 +86,34 @@ test('sensitive data: a command naming the store is refused - source, copy, add,
     assert.match(r.stderr, /--with-sensitive/, 'the refusal names the run that uses the values');
 });
 
+// Audit 2026-10-14 HK11 (replays sens.js, sens2.js): the refusal read the literal name only, so a glob, a quoted split or the
+// folder holding the store passed while the dump half resolved the same globs. Each replayed shape is refused now; an
+// ordinary command on the data root or the project passes.
+test('sensitive data: a glob, a quoted split or an archive / add / copy of the folder holding the store is refused (HK11)', () =>
+{
+    const { dir } = project('spelled');
+    fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'src', 'a.js'), '1\n');
+    fs.mkdirSync(path.join(dir, '.alfred', 'docs'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.alfred', 'docs', 'x.md'), '# x\n');
+    for (const command of ['source .alfred/.sens*', 'set -a; . .alfred/.sens*; set +a; npm run migrate', 'source .alfred/.sens* && echo $DB_HOST',
+        'tar cf - .alfred | tar xOf -', 'tar cf - .alfred | tar tvf -', 'docker compose --env-file .alfred/.sens* up -d', 'docker compose --env-file=.alfred/.sens* up',
+        'git add -f .alfred/.sens*', 'zip -r /tmp/a.zip .alfred && unzip -p /tmp/a.zip', 'cp -r .alfred /tmp/bk', 'rsync -a .alfred/ /tmp/bk/',
+        "cat .alfred/'.sensitive-data'", 'cat .alfred/.sensitive""-data', 'cd .alfred && source .sens*', 'cd .alfred && git add -f .',
+        "bash -c 'source .alfred/.sens*'", 'ln -s .alfred/.sens* env.local', 'mv .alfred/.sens{itive-data,} /tmp/'])
+        assert.strictEqual(bash(dir, command), 2, command);
+    // a link to the store is the store, by its real path
+    fs.symlinkSync(path.join(dir, '.alfred', '.sensitive-data'), path.join(dir, 'env.link'));
+    assert.strictEqual(bash(dir, 'source env.link'), 2, 'a symlink resolves to the store');
+    for (const command of ['ls -la .alfred', 'ls .alfred/.sens*', 'test -f .alfred/.sens* && echo y', 'git add .', 'git add -A', 'git add .alfred/docs/x.md',
+        'tar czf /tmp/src.tgz src', 'cp -r src /tmp/src-copy', 'cp .alfred/docs/x.md /tmp/', 'zip -r /tmp/docs.zip .alfred/docs', 'find .alfred -name "*.md"',
+        'cd .alfred && ls', 'git status', "git commit -m 'note: the store stays out of git'", 'echo .alfred/.sensitive-data.example',
+        "cat > notes.md <<'EOF'\nsource .alfred/.sens*\nEOF"])
+        assert.strictEqual(bash(dir, command), 0, command);
+    const r = run({ tool_name: 'Bash', tool_input: { command: 'source .alfred/.sens*' }, cwd: dir, session_id: 'suite' });
+    assert.match(r.stderr, /--with-sensitive/, 'the same refusal, naming the run that uses the values');
+});
+
 test('--with-sensitive: the values are in the command\'s environment and each prints as <KEY>; the exit code is the command\'s', () =>
 {
     const { dir } = project('wrap');

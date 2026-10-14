@@ -261,9 +261,13 @@ test('compact-state: an automatic compaction records its context, and the trigge
         fresh.use({ transcript_path: tp, cwd: p.root });
         assert.strictEqual(fresh.knownWindow(), 200000, "a model's own entry wins over the file's top-level key");
         set(path.join(p.root, '.claude', 'settings.json'), { autoCompactWindow: 'auto' });
+        fresh.use({ transcript_path: tp, cwd: p.root });
+        assert.strictEqual(fresh.knownWindow(), 1000000, "'auto' is no window");
+        // audit HK03: the USER file's top-level key is 'Scope: Any file' with no model limit (settings-reference) - it
+        // lowers an Opus 5.5 window like any other file's
         set(path.join(BASE_ENV.CLAUDE_CONFIG_DIR, 'settings.json'), { autoCompactWindow: 500000 });
         fresh.use({ transcript_path: tp, cwd: p.root });
-        assert.strictEqual(fresh.knownWindow(), 1000000, "'auto' is no window, and the USER file's top-level key does not reach Opus 5.5 (settings-reference)");
+        assert.strictEqual(fresh.knownWindow(), 500000, "the USER file's top-level key reaches Opus 5.5");
         set(path.join(BASE_ENV.CLAUDE_CONFIG_DIR, 'settings.json'), {});
     }
     finally { process.env = saved; }

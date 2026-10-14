@@ -149,16 +149,29 @@ function judgeFileTool() {
   const abs = resolveIn(target);
   if (!fs.existsSync(abs)) return null; // creation - there is nothing to weaken yet
   const base = path.basename(abs);
-  if (WHOLE_FILE.some((re) => re.test(base))) return { abs, why: WHOLE_WHY };
+  if (WHOLE_FILE.some((re) => re.test(base))) {
+    // An eslint config edit that only RAISES rule severities is no weakening (audit 2026-10-14 HK19, below).
+    const change = ESLINT_FILE.test(base) ? appliedChange(ti, abs) : null;
+    return change && change.applied && severitiesOnlyRise(change.before, change.after, base) ? null : { abs, why: WHOLE_WHY };
+  }
   const keyed = KEYED.find((k) => k.file.test(base));
   if (!keyed) return null;
+  const change = appliedChange(ti, abs);
+  if (!change) return null;
+  const { before, after, applied } = change;
+  if (keyPairs(before, keyed) === keyPairs(after, keyed)) return null;
+  const tightens = applied && (keyed === KEYED[1] ? onlyTightens(before, after, keyed) : tsOnlyTightens(before, after, keyed));
+  return tightens ? null : { abs, why: 'the change touches a strictness / warning setting' };
+}
+// The text the call leaves. An edit is judged on the WHOLE file it leaves: a fragment can cut a setting in half
+// (`<TreatWarningsAsErrors>` -> `<TreatWarningsAsErrors Condition="false">` names no closing tag, so neither side read a
+// pair - audit 2026-10-08). An old_string the file does not hold falls back to the fragments (`applied: false`), the edit
+// Claude Code will refuse anyway. null when the file cannot be read.
+function appliedChange(ti, abs) {
   const edits = Array.isArray(ti.edits) ? ti.edits : [{ old_string: ti.old_string, new_string: ti.new_string, replace_all: ti.replace_all }];
   const whole = typeof ti.content === 'string';
   let text;
   try { text = fs.readFileSync(abs, 'utf8'); } catch { return null; }
-  // An edit is judged on the WHOLE file it leaves: a fragment can cut a setting in half (`<TreatWarningsAsErrors>` ->
-  // `<TreatWarningsAsErrors Condition="false">` names no closing tag, so neither side read a pair - audit 2026-10-08).
-  // An old_string the file does not hold falls back to the fragments, the edit Claude Code will refuse anyway.
   let applied = whole ? ti.content : text;
   for (const e of whole ? [] : edits) {
     const o = e && typeof e.old_string === 'string' ? e.old_string : '';
@@ -166,10 +179,89 @@ function judgeFileTool() {
     const n = e && typeof e.new_string === 'string' ? e.new_string : '';
     applied = e.replace_all ? applied.split(o).join(n) : applied.replace(o, () => n);
   }
-  const before = applied !== null ? text : edits.map((e) => (e && e.old_string) || '').join('\n');
-  const after = applied !== null ? applied : edits.map((e) => (e && e.new_string) || '').join('\n');
-  if (keyPairs(before, keyed) === keyPairs(after, keyed)) return null;
-  return applied !== null && keyed === KEYED[1] && onlyTightens(before, after, keyed) ? null : { abs, why: 'the change touches a strictness / warning setting' };
+  if (applied !== null) return { before: text, after: applied, applied: true };
+  return { before: edits.map((e) => (e && e.old_string) || '').join('\n'), after: edits.map((e) => (e && e.new_string) || '').join('\n'), applied: false };
+}
+// A change that only makes a tsconfig check STRICTER passes too (audit 2026-10-14 HK19: `strict: false` -> `true` was
+// blocked as a weakening). Every changed key moves to its strict value: true for the strict / noImplicit / noUnused
+// family, false for the three that loosen when true (allowUnreachableCode, allowUnusedLabels, skipLibCheck). A key
+// removed, a key named twice or any other value keeps the block.
+const TS_LOOSE_WHEN_TRUE = new Set(['allowUnreachableCode', 'allowUnusedLabels', 'skipLibCheck']);
+function tsOnlyTightens(before, after, keyed) {
+  const props = (t) => {
+    const m = new Map();
+    for (const x of keyed.strip(String(t || '')).matchAll(keyed.pair)) {
+      if (m.has(x[1])) return null;
+      m.set(x[1], x[2].trim());
+    }
+    return m;
+  };
+  const b = props(before);
+  const a = props(after);
+  if (!b || !a) return false;
+  for (const k of new Set([...b.keys(), ...a.keys()])) {
+    if (b.get(k) === a.get(k)) continue;
+    if (!a.has(k)) return false;
+    const strict = TS_LOOSE_WHEN_TRUE.has(k) ? 'false' : 'true';
+    if (a.get(k) !== strict || (b.has(k) && b.get(k) === strict)) return false;
+  }
+  return true;
+}
+// ESLINT SEVERITIES (audit 2026-10-14 HK19: `"warn"` -> `"error"` was blocked as a weakening). An eslint config is a
+// whole-file check, so the edit passes only when the file it leaves differs from the one it found in rule SEVERITIES
+// alone, each one RAISED (off / 0 -> warn / 1 -> error / 2). JSON and JS are compared token by token - the same tokens, the
+// same brackets - and a severity counts only as a rule's value straight inside a `rules` object (`"no-console": "warn"`,
+// `"no-console": ["warn", ...]`), never an option deeper down (`{ "max": 1 }`). YAML is compared line by line, a
+// `<rule>: <severity>` line (or its `[<severity>, ...]` flow form) whose nearest parent line is `rules:`. Anything else -
+// a comment, a new rule, an option, whitespace alone - keeps the block.
+const ESLINT_FILE = /^\.eslintrc(\.(js|cjs|mjs|json|ya?ml))?$|^eslint\.config\.[cm]?[jt]s$/;
+const SEVERITY = { off: 0, warn: 1, error: 2, 0: 0, 1: 1, 2: 2 };
+const severityOf = (tok) => { const m = String(tok).match(/^(["'`]?)(off|warn|error|[012])\1$/); return m && (m[1] || /^\d$/.test(m[2])) ? SEVERITY[m[2]] : undefined; };
+function severitiesOnlyRise(before, after, base) {
+  if (/\.ya?ml$/.test(base)) return yamlSeveritiesOnlyRise(before, after);
+  const tokens = (s) => String(s).match(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`|[A-Za-z_$][\w$]*|\d+(?:\.\d+)?|\S/g) || [];
+  const tb = tokens(before);
+  const ta = tokens(after);
+  if (tb.length !== ta.length) return false;
+  const stack = [];
+  const keyAt = (i) => (i >= 2 && ta[i - 1] === ':' ? unq(ta[i - 2]) : null);
+  let raised = 0;
+  for (let i = 0; i < ta.length; i++) {
+    const tok = ta[i];
+    if (tb[i] !== tok) {
+      const was = severityOf(tb[i]);
+      const now = severityOf(tok);
+      const top = stack[stack.length - 1];
+      const parent = stack[stack.length - 2];
+      const inRules = (top && top.open === '{' && top.key === 'rules' && ta[i - 1] === ':')
+        || (top && top.open === '[' && ta[i - 1] === '[' && ta[i - 2] === ':' && parent && parent.open === '{' && parent.key === 'rules');
+      if (was === undefined || now === undefined || !inRules || !(now > was)) return false;
+      raised++;
+      continue;
+    }
+    if (tok === '{' || tok === '[') stack.push({ open: tok, key: keyAt(i) });
+    else if (tok === '}' || tok === ']') stack.pop();
+  }
+  return raised > 0;
+}
+function yamlSeveritiesOnlyRise(before, after) {
+  const lb = String(before).split(/\r?\n/);
+  const la = String(after).split(/\r?\n/);
+  if (lb.length !== la.length) return false;
+  const RULE_LINE = /^(\s+)((?:"[^"]+"|'[^']+'|[^\s:#'"][^:#]*?)):\s*(\[\s*)?(["']?)(off|warn|error|[012])\4(\s*(?:,[^\]#]*)?\])?\s*(#.*)?$/;
+  const indent = (l) => l.match(/^\s*/)[0].length;
+  const parentOf = (i) => { const n = indent(la[i]); for (let j = i - 1; j >= 0; j--) if (/\S/.test(la[j]) && !/^\s*#/.test(la[j]) && indent(la[j]) < n) return la[j]; return ''; };
+  let raised = 0;
+  for (let i = 0; i < la.length; i++) {
+    if (lb[i] === la[i]) continue;
+    const b = lb[i].match(RULE_LINE);
+    const a = la[i].match(RULE_LINE);
+    if (!a || !b || a[1] !== b[1] || a[2] !== b[2] || !!a[3] !== !!b[3] || (a[6] || '') !== (b[6] || '') || (a[7] || '') !== (b[7] || '')) return false;
+    if (!/^\s*rules:\s*(#.*)?$/.test(parentOf(i))) return false;
+    if (!(SEVERITY[a[5]] > SEVERITY[b[5]])) return false;
+    raised++;
+  }
+  return raised > 0;
 }
 // A change that only makes an MSBuild check STRICTER is no weakening (audit 2026-10-11 SD16, session 2ca8e8ee: removing
 // `CS9057` from a `NoWarn` re-enables the warning and was blocked as weakening a check, an ask and a receipt for the

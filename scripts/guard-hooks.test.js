@@ -2683,6 +2683,15 @@ test('guard-read-whole-file: a shell touch names the convention rule the file to
   assert.doesNotMatch(platCtx, /winforms-conventions\.md/, "Platform.cs is not a form");
   assert.match(platCtx, /csharp-conventions\.md/, "... it is plain C#");
   assert.match(ctxOf(call("sed -i '' 's/a/b/' src/Forms/MainForm.Designer.cs", `m5-${Math.random().toString(36).slice(2)}`)), /winforms-conventions\.md/, "the designer file still names it");
+  // audit 2026-10-14 RU12: sql-conventions.md matches `**/Migrations/**/*.cs` - an EF migration is schema work - and a
+  // migration's `*.Designer.cs` is no WinForms form
+  const sMig = `m5-${Math.random().toString(36).slice(2)}`;
+  const migCtx = ctxOf(call("sed -i '' 's/a/b/' src/Data/Migrations/20260101_Init.Designer.cs", sMig));
+  assert.match(migCtx, /sql-conventions\.md/, 'a migration names the SQL rule');
+  assert.match(migCtx, /csharp-conventions\.md/, '... and the C# baseline beside it');
+  assert.doesNotMatch(migCtx, /winforms-conventions\.md/, "a migration's designer file is not a form");
+  assert.match(ctxOf(call("sed -i '' 's/a/b/' src/Data/Migrations/Snapshots/AppModelSnapshot.cs", `m5-${Math.random().toString(36).slice(2)}`)), /sql-conventions\.md/, 'a nested Migrations folder too');
+  assert.doesNotMatch(ctxOf(call("sed -i '' 's/a/b/' src/Migrations.cs", `m5-${Math.random().toString(36).slice(2)}`)), /sql-conventions\.md/, 'a file named Migrations.cs is not under one');
   // a denial and an injection are two answers to one call: the rule is not spent on a blocked command
   const s2 = `m5-${Math.random().toString(36).slice(2)}`;
   const blocked = call(`cat ${BIG.replace(/\.js$/, '.js')}`, s2);
@@ -3974,6 +3983,53 @@ test('guard-config-protection: an MSBuild change that only makes a check stricte
     assert.strictEqual(edit(props, 'not in the file', '<NoWarn></NoWarn>'), 2, 'an old_string the file lacks is judged on the fragments');
     const tw = at('src/App/App.csproj', '<Project><PropertyGroup><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup></Project>');
     assert.strictEqual(edit(tw, '<TreatWarningsAsErrors>true</TreatWarningsAsErrors>', ''), 2, 'removing TreatWarningsAsErrors');
+  });
+});
+
+// Audit 2026-10-14 HK19 (replay cfg.js): outside MSBuild a tightening edit was still blocked - eslint `"warn"` -> `"error"` and
+// tsconfig `"strict": false` -> `true` both exit 2. The one-way rule reaches tsconfig's strictness booleans and eslint's
+// rule severities; every loosening, and anything beside the severity, still blocks.
+test('guard-config-protection: a tsconfig strictness flag turned on and an eslint severity raised pass (audit 2026-10-14 HK19)', () => {
+  const H = 'guard-config-protection.js';
+  const { root, at } = cfgProject('cfg-hk19-');
+  const edit = (file, old_string, new_string) => run(H, { tool_name: 'Edit', cwd: root, tool_input: { file_path: file, old_string, new_string } });
+  const write = (file, content) => run(H, { tool_name: 'Write', cwd: root, tool_input: { file_path: file, content } });
+  withProject(root, {}, () => {
+    const ts = at('tsconfig.json', '{"compilerOptions":{"strict":false,"skipLibCheck":true,"noImplicitAny":false}}\n');
+    assert.strictEqual(edit(ts, '"strict":false', '"strict":true'), 0, 'the replayed edit: strict false -> true');
+    assert.strictEqual(edit(ts, '"skipLibCheck":true', '"skipLibCheck":false'), 0, 'a loosening-when-true key turned off');
+    assert.strictEqual(edit(ts, '"strict":false', '"strict":false,"noUncheckedIndexedAccess":true'), 0, 'a strict flag added as true');
+    assert.strictEqual(write(ts, '{"compilerOptions":{"strict":true,"skipLibCheck":false,"noImplicitAny":true}}\n'), 0, 'a whole-file Write that only tightens');
+    assert.strictEqual(edit(ts, '"strict":false,', ''), 2, 'a strict key removed');
+    assert.strictEqual(edit(ts, '"noImplicitAny":false', '"noImplicitAny":true,"allowUnreachableCode":true'), 2, 'a tightening beside a loosening');
+    assert.strictEqual(edit(ts, '"skipLibCheck":true', '"skipLibCheck":"yes"'), 2, 'a value that is no boolean');
+    assert.strictEqual(edit(ts, '"strict":false', '"strict":true,"strict":true'), 2, 'a key named twice');
+    const on = at('tsconfig.base.json', '{"compilerOptions":{"strict":true}}\n');
+    assert.strictEqual(edit(on, '"strict":true', '"strict":false'), 2, 'strict true -> false still blocks');
+
+    const json = at('.eslintrc.json', '{"rules":{"no-console":"warn","eqeqeq":0,"max-depth":["warn",4],"complexity":[1,{"max":10}]},"overrides":[{"files":["*.ts"],"rules":{"no-var":"off"}}]}\n');
+    assert.strictEqual(edit(json, '"no-console":"warn"', '"no-console":"error"'), 0, 'the replayed edit: warn -> error');
+    assert.strictEqual(edit(json, '"eqeqeq":0', '"eqeqeq":"error"'), 0, 'a numeric severity raised to a word');
+    assert.strictEqual(edit(json, '["warn",4]', '["error",4]'), 0, 'the array form, its options kept');
+    assert.strictEqual(edit(json, '"no-var":"off"', '"no-var":"warn"'), 0, 'inside an override\'s rules');
+    assert.strictEqual(edit(json, '"no-console":"warn"', '"no-console":"off"'), 2, 'a severity lowered');
+    assert.strictEqual(edit(json, '["warn",4]', '["error",6]'), 2, 'a raise beside a loosened option');
+    assert.strictEqual(edit(json, '{"max":10}', '{"max":2}'), 2, 'an option is never read as a severity');
+    assert.strictEqual(edit(json, '"no-console":"warn"', '"no-console":"warn","no-alert":"error"'), 2, 'a new rule is a change to the check');
+    assert.strictEqual(edit(json, '"no-console":"warn",', '"no-console": "warn" ,'), 2, 'whitespace alone keeps the block');
+    assert.strictEqual(edit(json, 'not in the file', '"error"'), 2, 'an old_string the file lacks');
+    const flat = at('eslint.config.js', 'export default [{ files: ["**/*.js"], rules: { "no-console": "off", semi: [1, "always"] } }];\n');
+    assert.strictEqual(edit(flat, '"no-console": "off"', '"no-console": "warn"'), 0, 'flat config, unquoted rules key');
+    assert.strictEqual(edit(flat, 'semi: [1,', 'semi: [2,'), 0, 'numeric severity in the array form');
+    assert.strictEqual(edit(flat, 'files: ["**/*.js"]', 'files: ["src/**/*.js"]'), 2, 'any other change keeps the block');
+    const yml = at('.eslintrc.yml', 'env:\n  node: true\nrules:\n  no-console: warn\n  quotes: [warn, single]\n  max-len: off  # later\n');
+    assert.strictEqual(edit(yml, '  no-console: warn', '  no-console: error'), 0, 'YAML warn -> error');
+    assert.strictEqual(edit(yml, 'quotes: [warn, single]', 'quotes: [error, single]'), 0, 'the YAML flow form');
+    assert.strictEqual(edit(yml, 'max-len: off  # later', 'max-len: warn  # later'), 0, 'a trailing comment kept');
+    assert.strictEqual(edit(yml, '  no-console: warn', '  no-console: off'), 2, 'YAML lowered');
+    assert.strictEqual(edit(yml, 'quotes: [warn, single]', 'quotes: [error, double]'), 2, 'YAML option changed beside it');
+    assert.strictEqual(edit(yml, '  node: true', '  node: false'), 2, 'a line outside rules');
+    assert.strictEqual(edit(at('.prettierrc.json', '{"semi":false}\n'), 'false', 'true'), 2, 'another whole-file config keeps the block');
   });
 });
 

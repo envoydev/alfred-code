@@ -135,8 +135,9 @@ function envWindow() {
 // window': 'how full the context window can get before Claude Code compacts'; settings-reference `autoCompactWindow` /
 // `modelSettings`). Read in the documented order: the environment variable (both spellings the docs use), then each
 // settings file from the highest scope down - a `modelSettings` entry for this session's model before that file's
-// top-level key. A top-level key in the USER file is skipped: the docs scope it to Opus 5, Fable 5.1 and earlier
-// models, and a newer model keeps its own tuned window, which no file names - the compaction record below measures it.
+// top-level key. The top-level key counts in EVERY file, the user's included: the settings reference gives it 'Scope:
+// Any file' and no model limit (re-read 2026-10-14, audit HK03) - the Opus 5 / Fable 5.1 limit on the user file is
+// `effortLevel`'s, and skipping it here left a user window under the trigger (390k) unread until a compaction was recorded.
 // 'auto', garbage or a value outside 100K-1M is no window. This only ever LOWERS the window: the harness caps the
 // auto-compact window at the model's own.
 function autoCompactWindow() {
@@ -151,14 +152,14 @@ function autoCompactWindow() {
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
     const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir() || '', '.claude');
     const id = String(sessionModelId() || '').toLowerCase();
-    const files = [[path.join(root, '.claude', 'settings.local.json'), true], [path.join(root, '.claude', 'settings.json'), true], [path.join(account, 'settings.json'), false]];
-    for (const [file, topLevelApplies] of files) {
+    const files = [path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json'), path.join(account, 'settings.json')];
+    for (const file of files) {
       let s;
       try { s = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { continue; }
       if (!s || typeof s !== 'object') continue;
       const per = s.modelSettings && typeof s.modelSettings === 'object' && id
         ? Object.entries(s.modelSettings).find(([k]) => k.toLowerCase() === id || id.endsWith(`/${k.toLowerCase()}`) || id.endsWith(`.${k.toLowerCase()}`)) : null;
-      const n = valid(per && per[1] && per[1].autoCompactWindow) || (topLevelApplies ? valid(s.autoCompactWindow) : null);
+      const n = valid(per && per[1] && per[1].autoCompactWindow) || valid(s.autoCompactWindow);
       if (n) return n;
     }
   } catch { /* no root, no home */ }

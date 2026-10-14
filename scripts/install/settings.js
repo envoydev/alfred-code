@@ -34,9 +34,10 @@ const fileGuards = require('../../stack/hooks/file-guards.js');
 // Both dispatchers fold their guards' rows into one row each (R11 for the shell tools, 2.1.5 M3 for the file tools).
 const foldDispatchers = (rows, opts) => fileGuards.wiringRows(shellGuards.wiringRows(rows, opts), opts);
 
-// Every hook does under 30ms of work (measured: 22-25ms, almost all of it the node spawn), but a
-// `command` hook with no timeout takes Claude Code's 600s default - so one stalled subprocess
-// freezes the session for ten minutes. 10s is ~400x the measured cost and still fails fast.
+// A hook's run is mostly its node spawn (audit 2026-10-14, cold p50 of 10 runs: a bare `node -e 0` 23.8ms, a single hook
+// 26-52ms, the stop contract's Stop 181.8ms on a 19MB transcript, the shell dispatcher 58.7-209.9ms with a commit's git
+// reads), but a `command` hook with no timeout takes Claude Code's 600s default - so one stalled subprocess
+// freezes the session for ten minutes. 10s is ~50x the slowest single hook measured and still fails fast.
 const HOOK_TIMEOUT = 10;
 // The ONE declared exception: check-turn-build.js runs a scoped tsc / dotnet build at Stop, which is
 // seconds of real work, not a 25ms spawn - and it keeps its checks inside 50s of this. Keyed by EVENT:
@@ -47,12 +48,16 @@ const HOOK_TIMEOUT = 10;
 const HOOK_TIMEOUTS = { 'check-turn-build.js': { Stop: 60 }, [`${shellGuards.SELF}.js`]: { PreToolUse: HOOK_TIMEOUT * shellGuards.GUARDS.length },
     [`${fileGuards.SELF}.js`]: { PreToolUse: HOOK_TIMEOUT * fileGuards.GUARDS.length } };
 const timeoutFor = (file, event) => (HOOK_TIMEOUTS[file] || {})[event] || HOOK_TIMEOUT;
-// A hook whose only work is a side effect - the tool-usage log - runs with `async: true`: the call never waits on its
-// node spawn (23.9ms on every tool call, audit 2026-10-08 row 28), and an async hook can neither block nor decide
-// (code.claude.com/docs/en/hooks, 'Run hooks in the background'). The plugin entry's generator reads the same set.
-const ASYNC_HOOKS = new Set(['instrument-tool-usage.js']);
-const asyncFor = (file) => ASYNC_HOOKS.has(file);
-const hookEntry = (command, timeout, file) => ({ type: 'command', command, timeout, ...(asyncFor(file) ? { async: true } : {}) });
+// A hook whose only work is a side effect runs with `async: true`: the call never waits on its node spawn, and an async
+// hook can neither block nor decide ('Async hooks can't block or control Claude's behavior', code.claude.com/docs/en/hooks,
+// 'Run hooks in the background'). Keyed by file and EVENT, `*` for every event: the tool-usage log (23.9ms on every tool
+// call, audit 2026-10-08 row 28), and the stop contract's PostToolUse / PostToolUseFailure halves - a red-run probe row
+// and its streak file, nothing said to the model (32.1ms on every shell result, ~20,000 a week; audit 2026-10-14 HK12) -
+// while its Stop, SubagentStop and AskUserQuestion halves must block, so they stay synchronous. The plugin entry's
+// generator reads the same table.
+const ASYNC_HOOKS = { 'instrument-tool-usage.js': '*', 'guard-stop-contract.js': ['PostToolUse', 'PostToolUseFailure'] };
+const asyncFor = (file, event) => { const on = ASYNC_HOOKS[file]; return on === '*' || (Array.isArray(on) && on.includes(event)); };
+const hookEntry = (command, timeout, file, event) => ({ type: 'command', command, timeout, ...(asyncFor(file, event) ? { async: true } : {}) });
 // The `attribution` keys the seed writes when absent (code.claude.com settings reference).
 const ATTRIBUTION_OFF = [['commit', ''], ['pr', ''], ['sessionUrl', false]];
 // Every settings path the stack seeds, with its seed value - the ledger records them and a scope move takes them along.
@@ -171,7 +176,7 @@ function wireHooks(data, specs, retiredHooks)
             {
                 if (ours.has(h.command) && h.timeout !== timeoutFor(fileOf(h.command), event)) { h.timeout = timeoutFor(fileOf(h.command), event); changed = true; }
                 // ...and the async flag onto a side-effect hook an earlier install wired blocking.
-                if (ours.has(h.command) && asyncFor(fileOf(h.command)) && h.async !== true) { h.async = true; changed = true; }
+                if (ours.has(h.command) && asyncFor(fileOf(h.command), event) && h.async !== true) { h.async = true; changed = true; }
             }
 
     // Prune OUR hook file from a PreToolUse matcher this version no longer wires. Keyed on the
@@ -225,7 +230,7 @@ function wireHooks(data, specs, retiredHooks)
             const already = list.some((e) => (e.matcher || '') === eventMatcher
                 && (e.hooks || []).some((h) => h.command === command));
             if (already) continue;
-            const entry = { hooks: [hookEntry(command, timeoutFor(fileOf(command), event), fileOf(command))] };
+            const entry = { hooks: [hookEntry(command, timeoutFor(fileOf(command), event), fileOf(command), event)] };
             if (eventMatcher) entry.matcher = eventMatcher;
             list.push(entry);
             changed = true;
@@ -236,7 +241,7 @@ function wireHooks(data, specs, retiredHooks)
         // on the command alone dropped the second (measured - no install carried the Bash matcher).
         const have = new Set(list.flatMap((e) => (e.hooks || []).map((h) => `${e.matcher || ''}\u0000${h.command}`)));
         if (have.has(`${matcher}\u0000${command}`)) continue;
-        list.push({ matcher, hooks: [hookEntry(command, timeoutFor(fileOf(command), 'PreToolUse'), fileOf(command))] });
+        list.push({ matcher, hooks: [hookEntry(command, timeoutFor(fileOf(command), 'PreToolUse'), fileOf(command), 'PreToolUse')] });
         changed = true;
     }
 

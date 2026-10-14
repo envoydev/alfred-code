@@ -213,7 +213,7 @@ function hookProject(registered = true) {
   return { root, dbPath, run, rm: () => { rmDir(root); rmDir(config); } };
 }
 
-test('SubagentStart hands the seat its project tag line and nothing else', { skip: skipNoSqlite }, () => {
+test('SubagentStart hands the seat its project tag line and the tool line, never the rows', { skip: skipNoSqlite }, () => {
   const p = hookProject();
   try {
     buildDb(p.dbPath, [{ content: 'a project fact', tags: `project:${path.basename(p.root)}`, memory_type: 'reference' }]);
@@ -221,7 +221,9 @@ test('SubagentStart hands the seat its project tag line and nothing else', { ski
     assert.strictEqual(r.status, 0, r.stderr);
     const out = JSON.parse(r.stdout).hookSpecificOutput;
     assert.strictEqual(out.hookEventName, 'SubagentStart');
-    assert.strictEqual(out.additionalContext, `This project's memory tag: project:${path.basename(p.root)}`);
+    assert.strictEqual(out.additionalContext.split('\n')[0], `This project's memory tag: project:${path.basename(p.root)}`);
+    assert.strictEqual(out.additionalContext.split('\n').length, 2, 'the tag line and the tool line (RU10)');
+    assert.ok(!out.additionalContext.includes('a project fact'), 'no row reaches a seat');
     const start = JSON.parse(p.run({ hook_event_name: 'SessionStart', cwd: p.root }).stdout).hookSpecificOutput;
     assert.ok(start.additionalContext.includes('a project fact'), 'SessionStart still pushes the rows');
   } finally { p.rm(); }

@@ -389,6 +389,16 @@
             ]
           },
           {
+            "matcher": "^mcp__(plugin_(chrome|msedge|firefox|webkit)-control_)?(chrome|msedge|firefox|webkit)-control__browser_file_upload$",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
             "matcher": "Task|Agent",
             "hooks": [
               {
@@ -555,7 +565,8 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
-                "timeout": 10
+                "timeout": 10,
+                "async": true
               }
             ]
           }
@@ -567,7 +578,8 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
-                "timeout": 10
+                "timeout": 10,
+                "async": true
               }
             ]
           },

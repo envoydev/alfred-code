@@ -2795,9 +2795,11 @@ if (isShellTool(payload.tool_name)) {
       'Per alfred-security.md a secret never passes through a tool call or the chat: the user puts it\n' +
       'in the file by hand, or runs a copy-ready command in their own terminal (getpass, not an argument).\n');
   }
+  let judged = raw; // the command with its heredoc bodies blanked - the steps the shell runs, read by the store refusal
   try {
   const code = [];
   const command = stripHeredocsOf(raw, code);
+  judged = command;
   // A whole-environment dump is replaced WHERE IT STANDS - its filter and every other step kept - and the
   // result is judged like any command, so a credential printed elsewhere still takes its own form.
   // A git command that prints file content gets the stream redactor piped in the same way (redactGitStages).
@@ -2826,7 +2828,7 @@ if (isShellTool(payload.tool_name)) {
       `(${err.message === 'depth' ? `brackets nested past ${JUDGE_MAX_DEPTH} levels` : `${JUDGE_WORK.max} characters of judging`}) - nothing ran. A command it cannot judge might print a\n` +
       `credential, so it is judged the safe way. Split it into smaller commands, or flatten the nesting.\n`);
   }
-  refuseSensitiveMention(raw);
+  refuseSensitiveMention(raw, judged);
   process.exit(0);
 }
 
@@ -2834,22 +2836,86 @@ if (isShellTool(payload.tool_name)) {
 // then sits in the shell, where a print of a key no credential pattern names - DB_HOST - shows it), a copy under another
 // name (which no longer reads as the store), a move or a delete. An existence check (test, [, [[, ls, stat, wc) and the
 // guard's own modes pass; a dump was already rewritten into the masked view before this point.
-function refuseSensitiveMention(text) {
+// Named also when the shell would SPELL it (audit 2026-10-14 HK11, replayed: `source .alfred/.sens*`, `git add -f
+// .alfred/.sens*`, `--env-file .alfred/.sens*` and `tar cf - .alfred | tar xOf -` passed while the dump half resolved the
+// same globs): adjacent quoted spans are joined first (`.sensitive""-data`), and each operand of the steps the shell runs
+// (heredoc bodies blanked) goes through the dump judge's own resolver - list variables, braces, a last-component glob,
+// a `cd` earlier in the command - to the real path, refused when it IS the store, or on an archive / add / recursive copy
+// verb when it is a directory holding the store directly. A folder further up (`tar cf x.tgz .`) is not judged: the
+// command that reads the store back out of the archive names it, and is refused for that.
+// Its tables live inside the function: the shell branch above runs at load, before a module-level const below it exists.
+function refuseSensitiveMention(text, steps = text) {
   if (allowAll) return;
   const MENTION = /(?:^|[\s"'=/\\])\.sensitive-data(?=$|[\s"';&|)<>])/;
-  const LOOKS = new Set(['test', '[', '[[', 'ls', 'stat', 'wc', 'Test-Path', 'Get-Item', 'Get-ChildItem']);
-  for (const seg of String(text).split(/[;&|\n]+/)) {
-    if (!MENTION.test(seg) || /guard-secret-value\.js/.test(seg)) continue;
-    const words = seg.trim().split(/\s+/).filter((w) => !/^[A-Za-z_]\w*=/.test(w) && w !== 'sudo' && w !== '!');
-    if (LOOKS.has(words[0] || '')) continue;
-    global.BLOCK_DETAIL = { branch: 'sensitive-data', matched: (words[0] || '').slice(0, 40) };
+  const SENSITIVE_LOOKS = new Set(['test', '[', '[[', 'ls', 'stat', 'wc', 'Test-Path', 'Get-Item', 'Get-ChildItem']);
+  const SENSITIVE_ARCHIVE = /^(?:tar|gtar|bsdtar|zip|7z|7za|7zz|rar|cpio|pax|rsync|scp|compress-archive)$/i;
+  const joinQuoted = (s) => String(s).replace(/(["'])([^"'\n]*)\1/g, '$2');
+  const refuse = (verb) => {
+    global.BLOCK_DETAIL = { branch: 'sensitive-data', matched: String(verb || '').slice(0, 40) };
     block('Blocked: this command names the project\'s sensitive data (.sensitive-data under the data root). Its values never\n' +
       'enter a shell or a file the chat can read - a source, a copy or a print would put them there. Its keys:\n' +
       `  node "${__filename}" --presence <that file>\n` +
       'A command that needs the values gets them in its own environment, each printed as <KEY>:\n' +
       `  node "${__filename}" --with-sensitive -- "<command line>"\n` +
       'The file itself is the user\'s to edit, by hand.\n');
+  };
+  const plain = (w) => !/^[A-Za-z_]\w*=/.test(w) && w !== 'sudo' && w !== '!';
+  // the literal name, quoted spans joined
+  for (const seg of String(text).split(/[;&|\n]+/)) {
+    const joined = joinQuoted(seg);
+    if (!MENTION.test(joined) || /guard-secret-value\.js/.test(seg)) continue;
+    const words = joined.trim().split(/\s+/).filter(plain);
+    if (SENSITIVE_LOOKS.has(words[0] || '')) continue;
+    refuse(words[0]);
   }
+  // the spelled name: each operand resolved the way the dump half resolves it
+  let budget = 64;
+  const isStore = (p) => baseOf(p) === SENSITIVE_FILE || baseOf(realOf(p)) === SENSITIVE_FILE;
+  const statAny = (p) => {
+    for (const c of pathMod.isAbsolute(p) ? [p] : anchorDirs().map((d) => pathMod.join(d, p))) {
+      try { const st = fs.statSync(c); return { at: c, dir: st.isDirectory() }; } catch { /* next anchor */ }
+    }
+    return null;
+  };
+  const judgeStage = (stage, depth) => {
+    const words = shellTokens(stage.trim()).map(joinQuoted).filter(plain);
+    const verb = baseOf(words[0] || '');
+    if (!verb || /guard-secret-value\.js/.test(stage)) return;
+    if (verb === 'cd' || verb === 'pushd') {
+      const d = words[1] && expandPath(words[1]);
+      // relative to where the shell stands: the payload's cwd, never the project root when the two differ
+      const from = cwdAnchor || (payload && typeof payload.cwd === 'string' && payload.cwd) || anchorDirs()[0] || '.';
+      if (d && d !== '-') cwdAnchor = pathMod.isAbsolute(d) ? d : pathMod.join(from, d);
+      return;
+    }
+    if (SENSITIVE_LOOKS.has(verb)) return;
+    // a shell's -c string is a command of its own
+    const c = words.indexOf('-c');
+    if (/^(?:ba|z|da|k)?sh$/.test(verb) && c > 0 && words[c + 1] && depth < 2) { judgeAll(words[c + 1], depth + 1); return; }
+    const args = words.slice(1);
+    const sub = args.find((w) => !w.startsWith('-'));
+    const recursive = args.some((w) => /^-[A-Za-z]*[rRa][A-Za-z]*$|^--(?:recursive|archive)$|^-recurse$/i.test(w));
+    const bundles = SENSITIVE_ARCHIVE.test(verb) || (verb === 'git' && sub === 'add')
+      || (/^(?:cp|copy-item|cpi|copy|xcopy|robocopy|ditto)$/i.test(verb) && (recursive || /^(?:ditto|robocopy|xcopy)$/i.test(verb)));
+    for (const raw of args) {
+      if (budget <= 0) return;
+      const word = raw.replace(/^\d*[<>]+&?/, '');
+      const value = /^-[^=]*=/.test(word) ? word.slice(word.indexOf('=') + 1) : word;
+      if (!value || value.startsWith('-') || value.length > 512) continue;
+      budget--;
+      for (const p of candidatePaths(value)) {
+        const hit = statAny(p);
+        if (!hit) continue;
+        if (!hit.dir && isStore(hit.at)) refuse(verb);
+        if (hit.dir && bundles) { try { if (fs.statSync(pathMod.join(hit.at, SENSITIVE_FILE)).isFile()) refuse(verb); } catch { /* not here */ } }
+      }
+    }
+  };
+  const judgeAll = (cmd, depth) => {
+    for (const seg of splitSegments(String(cmd))) for (const stage of splitPipes(seg)) judgeStage(stage, depth);
+  };
+  cwdAnchor = null;
+  try { judgeAll(steps, 0); } catch (err) { if (err instanceof JudgeBudget) return; throw err; }
 }
 
 // A print of a credential-shaped variable becomes that variable's presence line - the idiom the
@@ -3443,6 +3509,20 @@ if (payload.tool_name === 'Read') {
   const file = resolveFile(String(input.file_path || ''));
   const key = file && secretInUnlessAllowed(file);
   if (key) block(`Blocked: Read of ${file}, which holds a credential under \`${key}\`.\n` + presenceHint(file));
+}
+// The FOURTH read route (audit 2026-10-14 PL3): Playwright MCP's `browser_file_upload` hands each file in
+// `tool_input.paths` (absolute paths, its schema) to whatever page asked for it - and the server reaches every file in the
+// workspace, `<data root>/.sensitive-data` and a `.env` included, so a page's injected 'upload your config' would get them.
+// Each path takes the Read judgement above; both routes' spellings of the four engine servers.
+if (/^mcp__(?:plugin_(?:chrome|msedge|firefox|webkit)-control_)?(?:chrome|msedge|firefox|webkit)-control__browser_file_upload$/.test(String(payload.tool_name || ''))) {
+  for (const p of (Array.isArray(input.paths) ? input.paths : []).slice(0, 50)) {
+    const file = resolveFile(String(p || ''));
+    const key = file && secretInUnlessAllowed(file);
+    if (key) {
+      global.BLOCK_DETAIL = { branch: 'file-upload', matched: pathMod.basename(file).slice(0, 40) };
+      block(`Blocked: upload of ${file} to a browser page - it holds a credential under \`${key}\`, and the page gets every byte.\n` + presenceHint(file));
+    }
+  }
 }
 
 // The first credential file a content-mode Grep over `root` would print a line of: a file the (glob / type) filters let the

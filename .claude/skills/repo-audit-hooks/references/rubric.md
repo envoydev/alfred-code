@@ -2,7 +2,7 @@
 
 Read at Phase 1. Every point awarded or deducted cites the line that justifies it.
 
-Five dimensions, 100 points per hook. Every point cites its evidence. A dimension below its floor caps the grade at B whatever the total.
+Six dimensions, 100 points per hook. Every point cites its evidence. A dimension below its floor caps the grade at B whatever the total.
 
 **D1 - Placement (15 pts, floor 9).** The job is deterministic (a gate at a discrete event, a reaction, a record) and not a judgment dressed as a regex; a static allow or deny that the permission system can express is not re-implemented as a hook; the event fits the job (`PreToolUse` gates, `PostToolUse` reacts, `Stop` gives the verdict, `UserPromptSubmit` and `SessionStart` inject, a hook whose `Stop` needs the final text reads `last_assistant_message`, never the lagging transcript); no second hook does the same job on the same event; the handler runs on every platform the stack installs to.
 
