@@ -75,6 +75,11 @@ fresh-session trigger: `0` offers a fresh session as before, `1` compacts there 
 model's `modelSettings.<model>.autoCompactWindow` set in the project's own settings file, add-only (a top-level
 `autoCompactWindow` the user set anywhere wins, and a model another settings file names is left alone). Configure
 switches it; report the `autoCompactWindow per model` line when one prints.
+**The project's tools skip the data root after 2.4.0.** Prettier reads no nested `.gitignore`, so `prettier --check .`
+walked `.alfred/` and the stack's copies in `.claude/`: every run now writes one marked block naming both (the data
+root's path, and a folder the project's own lines already ignore left out) into `.prettierignore` - made where Prettier
+is in use - and into an existing `.eslintignore`, `.stylelintignore` or `.markdownlintignore`. Report each
+`tool ignores:` line; a block the user takes out stays out.
 `/loop-code-quality` now works a code-quality assessment by tier, with the `loops/`
 prompts as its rules; `/loop-code-quality staged` is the stage-by-stage run a project may rely on.
 

@@ -13,7 +13,7 @@ The one installer route, the plugin commands, the delivery surfaces and the snap
 - `scripts/install/` - THE INSTALLER, and the ONLY route: `alfred-code.js` is the entry, one module
   per layer beside it (`args`, `brand`, `source`, `manifest`, `selection`, `library`, `copy`,
   `settings`, `env-migrations`, `plugins`, `mcp`, `docs`, `serena`, `memory`, `seeds`, `pins`,
-  `stamp`, `uninstall`, `runtime`, `json-file` - the one JSON reader, below). One `node` command on every OS, so no OS branch in the command bodies. The
+  `stamp`, `uninstall`, `tool-ignores`, `runtime`, `json-file` - the one JSON reader, below). One `node` command on every OS, so no OS branch in the command bodies. The
   frozen shell twins are deleted (2.0.0) and `ALFRED_CODE_SEED=shell` refuses with one line.
   `meta/stack-manifest.json`, hand-edited, is the one source of the six lists the seed reads;
   `docs/alfred-code.html` is the browser inventory (lint check 60 runs `node --check` over its inline
@@ -156,6 +156,20 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   its hash and removes one it no longer seeds (every one once the key goes back to `0`), a hand-changed value is the user's. Nothing is seeded while this file, the
   sibling project file or the account file sets a top-level `autoCompactWindow`, and a model the sibling or the account
   file names is left to it.
+- **The project's own tools skip the data root (the user's ruling of 2026-10-14; `install/tool-ignores.js`).** A tool
+  that walks the tree reads its own ignore file and at most the ROOT `.gitignore`, never the data root's nested one:
+  `prettier --check .` flagged 272 files under a project's `.alfred/` (measured on Prettier 3.9.1 - a browser profile,
+  the docs, serena's memories), and the config guard keeps the model out of an existing ignore file. `.claude/` too (the
+  user's call, same day): a fresh install's Prettier run flagged 13 of the stack's library copies there, and `prettier
+  --write .` rewrote them for the next update to write back and validate to call drift. So every run writes one marked
+  block - `/<data root>/` and `/.claude/` between `# alfred-code:` mark and end lines - into `.prettierignore` (made
+  where Prettier is in use - a config file, a `package.json` `prettier` key or dependency) and into an existing
+  `.eslintignore`, `.stylelintignore` or `.markdownlintignore`, re-pointed when the data root moves. The stamp's
+  `tool-ignores:` line (`<file>=created|appended`) is what it wrote: a block the user took out stays out, a file the user
+  deleted is not made again, a folder a line of the project's own already ignores leaves the block (both, and the block
+  leaves the file), an edit inside the block is rewritten, and uninstall takes the block back - and a file the stack
+  made, once nothing else is left in it. An ESLint flat config is code the installer never edits: `loop-code-quality`
+  leaves a finding under either folder out of its gate and report instead.
 - **`.mcp.json` is the COPY ROUTE only** (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`); on the default
   plugin route the installer registers nothing and prunes every stack name it ever wrote, including
   the four `browser-<engine>` spellings of 2.0.0-2.3.x and the pre-2.0.0 names (`serena`, `context7`, `playwright-*`), out of `.mcp.json` and out of `enabledMcpjsonServers`. On that

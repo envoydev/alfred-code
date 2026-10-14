@@ -49,6 +49,9 @@
 // without this line the next update would read the pick back as gone; with it the pick stays, and the first update
 // after the user removes theirs registers the stack's own. A run writes it afresh from what it held.
 //
+// `tool-ignores` is each project tool ignore file the run keeps the data root's line in (tool-ignores.js,
+// `<file>=created|appended`): what tells a block the user took out from one never written, and a file the stack made.
+//
 // `mcp-denied` is each `deniedMcpServers` serverName entry the stack wrote (`<file scope>:<name>`, `local` for
 // settings.local.json, `project` for settings.json): a configure drop of a server the stack registered at a BROADER
 // scope switches it off for this scope alone (code.claude.com/docs/en/managed-mcp - the denylist merges from every
@@ -243,7 +246,7 @@ function readLedger(file)
 
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, stoodDown = [], mcpHeld = [], mcpDenied = [], library = {}, ledger = null, data = null } = fields;
+    const { repoUrl, ref, sha, version, installed, installedMs, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, stoodDown = [], mcpHeld = [], mcpDenied = [], toolIgnores = {}, library = {}, ledger = null, data = null } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
@@ -271,6 +274,7 @@ function renderStamp(fields)
         ...(Array.isArray(playwrightEnabled) ? [`control-enabled: ${playwrightEnabled.join(',')}`] : []),
         ...(stoodDown.length ? [`stood-down: ${stoodDown.map((e) => `${e.scope}:${e.spec}`).join(',')}`] : []),
         ...(mcpHeld.length ? [`mcp-held: ${mcpHeld.map((e) => `${e.scope}:${e.name}`).join(',')}`] : []),
+        ...(Object.keys(toolIgnores || {}).length ? [`tool-ignores: ${Object.entries(toolIgnores).map(([f, how]) => `${f}=${how}`).join(',')}`] : []),
         ...(mcpDenied.length ? [`mcp-denied: ${mcpDenied.map((e) => `${e.scope}:${e.name}`).join(',')}`] : []),
         ...(data && data.root ? [`data-root: ${data.root}`] : []),
         ...(data ? require('../../stack/mcp/data-root.js').renderPending(data.pending || []) : []),
@@ -299,7 +303,7 @@ function stampFiles(at)
 function writeStamp(opts)
 {
     const {
-        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, seatsRoute, picked, playwright, playwrightEnabled, stoodDown, mcpHeld, mcpDenied, library, ledger, data,
+        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, seatsRoute, picked, playwright, playwrightEnabled, stoodDown, mcpHeld, mcpDenied, toolIgnores, library, ledger, data,
         version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
     const initialised = opts.initialised || initialisedValue({ claudeDir: stampDir({ projectRoot }), now });
@@ -328,7 +332,7 @@ function writeStamp(opts)
             installed: now.toISOString().replace(/\.\d{3}Z$/, 'Z'), installedMs: now.getTime(),
             action, scope, initialised,
             hooks: shippedHooks(hooksCatalog), hooksRoute, seatsRoute,
-            alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, playwrightEnabled, stoodDown, mcpHeld, mcpDenied, library, ledger, data,
+            alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, playwrightEnabled, stoodDown, mcpHeld, mcpDenied, toolIgnores, library, ledger, data,
         }));
     }
     catch (err) { note(`stamp could not be written to ${dest} (${err.message})`); return null; }
@@ -475,6 +479,17 @@ function readMcpHeld(file)
     const m = /^mcp-held:(.*)$/m.exec(text);
     if (!m) return [];
     return m[1].split(',').map((s) => /^(project|local|user):(.+)$/.exec(s.trim())).filter((e) => e && validItemName(e[2])).map(([, scope, name]) => ({ scope, name }));
+}
+// The `tool-ignores` record - {} with no stamp or no line; only the files tool-ignores.js knows, so a hand-edited line
+// never names a path the run would write or delete.
+function readToolIgnores(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return {}; }
+    const m = /^tool-ignores:(.*)$/m.exec(text);
+    if (!m) return {};
+    const known = require('./tool-ignores.js').TOOLS.map((t) => t.file);
+    return Object.fromEntries(m[1].split(',').map((s) => /^([^=]+)=(created|appended)$/.exec(s.trim())).filter((e) => e && known.includes(e[1])).map(([, f, how]) => [f, how]));
 }
 // The `mcp-denied` record - [] with no stamp or no line; an entry of any other shape is dropped, so a hand-edited
 // line never makes a run lift an entry from a file it did not name.
@@ -686,7 +701,7 @@ function markInitialised(claudeDir, now = new Date())
 
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
-    readPicked, readLibrary, readLedger, renderLedger, emptyLedger, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, readStoodDown, readMcpHeld, readMcpDenied, readVersion, readInstalledAt, validItemName,
+    readPicked, readLibrary, readLedger, renderLedger, emptyLedger, readToolIgnores, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, readStoodDown, readMcpHeld, readMcpDenied, readVersion, readInstalledAt, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacySignature, legacyUnstamped, worktreeMain, installScope, readDataLines,
     accountDir,
 };

@@ -44,6 +44,7 @@ const stampLayer = require('./stamp.js');
 const library = require('./library.js');
 const { shippedText } = require('./retired-rules.js');
 const uninstallLayer = require('./uninstall.js');
+const toolIgnoresLayer = require('./tool-ignores.js');
 const runtime = require('./runtime.js');
 const { readJson } = require('./json-file.js');
 const { envMigrations } = require('./env-migrations.js');
@@ -836,6 +837,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             picked: withoutForeign(stampPickLists(lists, stampPicks, carriedPicks), ctx.foreignSkills), playwright: pwEngines(ctx), playwrightEnabled: ctx.pw.enabled,
             stoodDown: stoodDownRecord(ctx),
             mcpDenied: ctx.mcpDenied.now || ctx.mcpDenied.prior,
+            toolIgnores: ctx.toolIgnores || stampLayer.readToolIgnores(stampFile),
             // Delta F-UNREAD: a .mcp.json this run could not read was judged for no hold, so the holds the stamp recorded stay.
             mcpHeld: registrationsAt(ctx, 'project').state === 'unreadable'
                 ? [...ctx.mcpHeld, ...stampLayer.readMcpHeld(stampFile).filter((e) => e.scope === 'project' && !ctx.mcpHeld.some((h) => h.scope === 'project' && h.name === e.name))]
@@ -1020,6 +1022,8 @@ function dataRootLayer(ctx, docsPath)
         adoptCredentials(ctx, root, docsPath);
         sensitiveFile(ctx, root);
     }
+    // The project's own tree-walking tools skip the data root (tool-ignores.js): one marked line per ignore file.
+    ctx.toolIgnores = toolIgnoresLayer.ensureToolIgnores({ projectRoot, root, prior: stampLayer.readToolIgnores(ctx.stampFile), log, note });
     const navigation = ctx.lists.mcps.some((e) => e.startsWith('alfred-navigation|'));
     const serenaDir = ctx.liveOf('serena');
     serena.seedProject({ projectRoot, selected: navigation, dir: serenaDir, root, log });
@@ -2655,6 +2659,7 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, accountU
     const keptRoot = stampLayer.readDataLines(file).root || dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root;
     settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, log });
+    toolIgnoresLayer.removeToolIgnores({ projectRoot, record: stampLayer.readToolIgnores(file), log, note });
     const memoryOff = ['settings.json', 'settings.local.json'].some((n) => readJson(path.join(claudeDir, n)).autoMemoryEnabled === false);
     log(`  kept, yours or your data: an AGENTS.md you filled in, the data root (the docs, the navigation index, the browser profiles - ${keptRoot}/, or a 2.0.0 .serena/ / .playwright/), the memory database${memoryOff ? '; autoMemoryEnabled: false stays - Claude\'s own memory is off until you remove that key' : ''}`);
     if (failures()) { log(`  stamp kept - ${path.basename(file)} still lists what is left; run uninstall again to finish`); return 0; }
