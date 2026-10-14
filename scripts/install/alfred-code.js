@@ -2312,6 +2312,14 @@ function installHooksAndRules(ctx)
         attribution: { inherited: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).attribution : null },
         // R6: isolated seats branch from this HEAD; at local scope settings.json's own value stays.
         worktreeBase: { inherited: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).worktree : null },
+        // The per-model auto-compact window (settings.js compactWindowSeeds), in this project's own file at every scope (user
+        // scope writes the project's settings.json too, never the account's). At local scope settings.json is the sibling it
+        // never hides; the account file's own window outranks no project file, so a model it names is left to it.
+        compactWindows: {
+            models: readJson(path.join(ctx.source.dir, 'stack', 'hooks', 'model-windows.json')).models || {},
+            inherited: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }) : null,
+            account: readJson(path.join(ctx.configDir, 'settings.json')),
+        },
         renamed: ctx.manifest.renamed,
         log: ctx.log, note: ctx.note,
     });

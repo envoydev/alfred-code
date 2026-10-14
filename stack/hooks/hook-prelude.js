@@ -287,35 +287,56 @@ function transcriptEntrypoint(file)
 // seats ran under AUTO (9a4ef375), and a post-compaction 'ask the user' that a literal follower would have ended an
 // overnight run on (c6142301). The project root is the env's or the payload's own cwd, never this process's cwd.
 const AUTO_STAMP_MAX_MS = 8 * 60 * 60 * 1000;
-function autoStampLive(input, env)
+// A stamp an auto-mode start writes (guard-fresh-session-start.js, `auto-mode` in a task or loop call) names its session on
+// a `session: <id>` line. It is live for THAT session for as long as the run takes - an unattended loop outlives the 8h a
+// hand-written stamp gets - and never for another session in the same project, which the age and birth checks cannot
+// tell apart from it. A week is the backstop for a stamp whose run died without its close.
+const SESSION_STAMP_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+// The approval stamp's state for this payload: its path, first line, named session and whether it is live. null when absent.
+function approvalStamp(input, env)
 {
     try
     {
         const source = env || process.env;
         const payload = input && typeof input === 'object' ? input : {};
         const root = source.CLAUDE_PROJECT_DIR || (typeof payload.cwd === 'string' ? payload.cwd : '');
-        if (!root) return false;
-        const gate = path.resolve(root, envOf(source, 'DOCS_PATH') || '.alfred/docs', 'flow', 'APPROVAL');
-        const stamp = fs.statSync(gate);
-        if (!stamp.isFile() || Date.now() - stamp.mtimeMs > AUTO_STAMP_MAX_MS) return false;
-        if (typeof payload.transcript_path === 'string' && payload.transcript_path)
-        {
-            try
-            {
-                const t = fs.statSync(payload.transcript_path);
-                const born = t.birthtimeMs && t.birthtimeMs !== t.ctimeMs ? t.birthtimeMs : 0;
-                if (born && stamp.mtimeMs < born) return false;
-            }
-            catch { /* no transcript - the age cap decides */ }
-        }
-        const fd = fs.openSync(gate, 'r');
-        const head = Buffer.alloc(512);
+        if (!root) return null;
+        const file = path.resolve(root, envOf(source, 'DOCS_PATH') || '.alfred/docs', 'flow', 'APPROVAL');
+        const stamp = fs.statSync(file);
+        if (!stamp.isFile()) return null;
+        const fd = fs.openSync(file, 'r');
+        const head = Buffer.alloc(2048);
         let n = 0;
         try { n = fs.readSync(fd, head, 0, head.length, 0); }
         finally { fs.closeSync(fd); }
-        return /^\s*AUTO\b/.test(head.toString('utf8', 0, n).split('\n')[0]);
+        const text = head.toString('utf8', 0, n);
+        const first = text.split('\n')[0].trim();
+        const session = (/^session:[ \t]*(\S+)/m.exec(text) || [])[1] || '';
+        const age = Date.now() - stamp.mtimeMs;
+        let live;
+        if (session) live = age <= SESSION_STAMP_MAX_MS && String(payload.session_id || '') === session;
+        else
+        {
+            live = age <= AUTO_STAMP_MAX_MS;
+            if (live && typeof payload.transcript_path === 'string' && payload.transcript_path)
+            {
+                try
+                {
+                    const t = fs.statSync(payload.transcript_path);
+                    const born = t.birthtimeMs && t.birthtimeMs !== t.ctimeMs ? t.birthtimeMs : 0;
+                    if (born && stamp.mtimeMs < born) live = false;
+                }
+                catch { /* no transcript - the age cap decides */ }
+            }
+        }
+        return { file, first, session, live, mtimeMs: stamp.mtimeMs };
     }
-    catch { return false; }
+    catch { return null; }
+}
+function autoStampLive(input, env)
+{
+    const stamp = approvalStamp(input, env);
+    return Boolean(stamp && stamp.live && /^AUTO\b/.test(stamp.first));
 }
 
 function unattended(input, env)
@@ -574,4 +595,4 @@ function scanBudget(limits = {})
 // the stop contract's ask deny and the answer-length Stop block, which disagreed ([\u2014\u2013] vs [\u2014\u2015], audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };

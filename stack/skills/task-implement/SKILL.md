@@ -16,6 +16,8 @@ The plan FILE is the whole input - not the chat that produced it. Run this in a 
 - You have a task plan and want to build it in this chat: it honors each task's contract, writes code + tests, gates each task green before the next, then hands to the build review.
 - Not for a plan-less ad-hoc edit, or the whole gated cycle from design to done (/task-solve).
 
+**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option, an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged or deployed, and the `AUTO` stamp in `<docs-path>/flow/APPROVAL` stays until the close deletes it.
+
 ## Build mode - this chat or the implementer seats
 
 1. **Pick the mode.** When the invocation names no mode and no calling flow has already recorded one (`task-solve`'s `mode <session|agents>` approval line, an orchestrator's brief), ask ONE question before building, via AskUserQuestion - this chat, or the implementer seats? - one option marked `(Recommended)` and listed first, the one the `habits-execution-strategy` verdict picks (`parallel seats` marks the seats), the reason in its description - and hold the answer; a mode the run already picked is inherited, never re-asked.

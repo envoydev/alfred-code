@@ -15,6 +15,8 @@ The full team is not the default. Classify size, risk, domains, and contract imp
 - Issue / bug modes
 - Cost rules
 
+**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option, an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged or deployed, and the `AUTO` stamp in `<docs-path>/flow/APPROVAL` stays until the close deletes it.
+
 ## DELEGATED vs INLINE - dispatch capability
 Before the size/risk modes below, every skill carrying the session-or-agents decision - the orchestrators (`task-solve-cross`, `task-build-from-scratch`, `loop-architecture-quality`, `loop-test-coverage`, `loop-code-quality`), the captures, and the single-chat twins (`task-design` / `task-implement` / `task-verify-plan`) - picks one dispatch mode at the start and holds it for the run. This is the canonical statement of that policy; the skills that must run without this file installed carry their own pinned copies or restatements:
 

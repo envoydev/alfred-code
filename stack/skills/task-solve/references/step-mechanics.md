@@ -54,6 +54,7 @@ are in `SKILL.md`; these are the mechanics around them.
   next dispatch asks. Step 4's
   delete-when-fan-out-completes applies to per-plan APPROVED stamps, and a step-5 punch-list
   re-dispatch under AUTO rides the still-live waiver.
+- **auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option, an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged or deployed, and the `AUTO` stamp in `<docs-path>/flow/APPROVAL` stays until the close deletes it.
 - **Under AUTO nobody is at the terminal** (audit 2026-10-10, sessions c6142301 and 9a4ef375: an overnight run
   asked for a fresh session nobody could take, and a waived close printed none of its fields). So the fresh-session
   offer and the post-compaction hold are logged, not asked - the hooks read a live AUTO stamp as unattended - and the

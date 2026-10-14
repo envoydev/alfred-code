@@ -697,6 +697,58 @@ function gatedStepHold() {
   );
   process.exit(2);
 }
+
+// --- AUTO-MODE: `auto-mode` on a task or loop call runs that call unattended (the user's ruling, 2026-10-14) ----------
+// The word on the call is the user's own waiver - the one task-solve's AUTO stamp records - so this hook writes the stamp
+// itself, naming the session (hook-prelude.js approvalStamp), BEFORE the run's first step. From there every hook that
+// asks a person reads the session as unattended - this gate's fresh-session offers below, the post-compaction hold, the
+// stop contract's prose and pending-close blocks - while the stop contract answers each ask that marks a Recommended
+// option and keeps the session going until the run's close deletes the stamp. A stamp already live for this session is
+// kept, so a second flow in the same run rides it. A seat never starts one: the session that dispatched it owns the run.
+const AUTO_SKILL_RE = /^(?:alfred-code:)?(?:alfred-)?(?:task|loop)-[a-z][a-z-]*$/;
+const AUTO_WORD_RE = /(?:^|\s)auto-mode(?=\s|$)/i;
+function autoArgs() {
+  if (IS_SKILL_CALL) return String((payload.tool_input || {}).args || '');
+  if (EVENT !== 'UserPromptExpansion') return '';
+  if (typeof payload.command_args === 'string') return payload.command_args;
+  return String(payload.prompt || '').replace(/^\s*\/[A-Za-z0-9:_-]+/, '');
+}
+function autoModeStart() {
+  const sid = String(payload.session_id || '');
+  if (!sid || payload.agent_id || !AUTO_SKILL_RE.test(skill) || !AUTO_WORD_RE.test(autoArgs())) return null;
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+  const file = nodePath.resolve(root, docsRootEnv(), 'flow', 'APPROVAL');
+  let current = null;
+  try { current = require('./hook-prelude.js').approvalStamp({ ...payload, cwd: root }); } catch { /* no prelude: written fresh */ }
+  const kept = Boolean(current && current.live && current.session === sid && /^AUTO\b/.test(current.first));
+  // The user's words, verbatim but for the line breaks and double quotes the stamp's one-line quote cannot hold.
+  const typed = IS_SKILL_CALL ? `/${skill} ${autoArgs()}` : String(payload.prompt || `/${skill} ${autoArgs()}`);
+  const words = typed.replace(/\s+/g, ' ').trim().replace(/"/g, "'").slice(0, 400);
+  if (!kept) {
+    try {
+      fs.mkdirSync(nodePath.dirname(file), { recursive: true });
+      fs.writeFileSync(file, `AUTO - "${words}"\nsession: ${sid}\nskill: ${skill}\nat: ${new Date().toISOString()}\n`);
+    } catch { return null; }   // no stamp, no auto-mode: the run asks as it always has
+  }
+  ledgerRow({ mode: 'auto', kind: 'auto-start', reason: `auto-mode: ${kept ? 'the live stamp kept' : 'stamp written'} for ${skill}`, detail: { skill, kept } });
+  return { file: nodePath.relative(root, file).split(nodePath.sep).join('/') || file };
+}
+const auto = (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) || EVENT === 'UserPromptExpansion' ? autoModeStart() : null;
+if (auto) {
+  const contract = `auto-mode is ON for this /${skill} run: the user typed it on the call, and ${auto.file} holds their words for this session. `
+    + 'Nobody answers until the run ends. '
+    + '(1) Every stop takes its (Recommended) option: an AskUserQuestion whose every question marks one is answered with it by the stop hook, '
+    + 'and one carrying a question that marks none - or whose recommended option pushes, merges, deploys or publishes - waits for the user, so put only those. '
+    + '(2) Do not end a turn between steps: the Stop hook sends you back while the stamp stands. A wait on work this session started is a one-line turn end; the harness wakes you when it lands. '
+    + '(3) Commit through the usual gates; never push, merge or deploy - list those for the user in the close. '
+    + '(4) The fresh-session offers are off and the fresh-session hand-off is never taken or recommended: the session compacts at its auto-compact window and the run goes on from its own state files. '
+    + "(5) 'auto-mode' is a mode word, not a target - leave it out of the run's arguments. "
+    + `(6) The stamp is the run's approval too: never write an APPROVED line over it and never delete it before the close. `
+    + `(7) When the whole run is finished, print its close and delete ${auto.file}: that ends auto-mode.`;
+  const event = EVENT === 'UserPromptExpansion' ? 'UserPromptExpansion' : 'PreToolUse';
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: contract } }));
+  process.exit(0);
+}
 if (IS_SKILL_CALL && (EVENT === 'PreToolUse' || !EVENT)) gatedStepHold();
 
 if (EVENT !== 'SessionStart' && !isOrchestration(skill)) process.exit(0);

@@ -58,6 +58,55 @@ const ATTRIBUTION_OFF = [['commit', ''], ['pr', ''], ['sessionUrl', false]];
 // Every settings path the stack seeds, with its seed value - the ledger records them and a scope move takes them along.
 const SEEDED_SETTINGS = [...ATTRIBUTION_OFF.map(([k, v]) => [`attribution.${k}`, v]), ['worktree.baseRef', 'head']];
 
+// THE AUTO-COMPACT WINDOW PER MODEL (the user's ruling, 2026-10-14): each model `hooks/model-windows.json` lists compacts
+// where the fresh-session gate offers a resume - its window tier's ALFRED_CODE_FRESH_SESSION_* value (200k -> _200K,
+// 1M -> _1M, any other -> _DEFAULT), read from the env this file applies - so an unattended auto-mode run compacts and goes
+// on instead of running to the harness's own point (about 967k on a 1M window). A tier switched off (`0`) seeds nothing;
+// a trigger at or past its window is held at 90% of it (fresh-session.js ctxThreshold's clamp), and the value stays inside
+// the 100,000-1,000,000 Claude Code accepts (settings-reference `modelSettings`). Returns { <model id>: <tokens> }.
+const COMPACT_TIER_KEYS = { 200000: 'ALFRED_CODE_FRESH_SESSION_200K', 1000000: 'ALFRED_CODE_FRESH_SESSION_1M' };
+function compactWindowSeeds(models, env = {}, catalog = [])
+{
+    const seedOf = (key) => parseInt((catalog.find((r) => r.key === key) || {}).default, 10);
+    const tier = (key) =>
+    {
+        const n = parseInt(env && Object.hasOwn(env, key) ? env[key] : NaN, 10);
+        return Number.isNaN(n) || n < 0 ? seedOf(key) : n;   // garbage reads as the seed, as fresh-session.js freshAt does
+    };
+    const out = {};
+    for (const [id, n] of Object.entries(plain(models) ? models : {}))
+    {
+        const window = Number(n);
+        // only an id the stamp's ledger reads back (stamp.js SETTINGS_PATH), or its window could never be taken back
+        if (!(window >= 100000) || !/^[a-z0-9][a-z0-9-]{0,99}$/.test(id)) continue;
+        let at = tier(COMPACT_TIER_KEYS[window] || 'ALFRED_CODE_FRESH_SESSION_DEFAULT');
+        if (!(at > 0)) continue;
+        if (at >= window) at = Math.floor(window * 0.9);
+        out[id] = Math.max(100000, Math.min(1000000, at));
+    }
+    return out;
+}
+const compactAt = (id) => `modelSettings.${id}.autoCompactWindow`;
+// A seeded setting's dotted path (`attribution.commit`, `modelSettings.<id>.autoCompactWindow`): the object holding its last
+// key, or null when a step on the way is missing or not an object.
+function settingAt(data, at)
+{
+    const parts = at.split('.');
+    let holder = data;
+    for (const part of parts.slice(0, -1)) holder = holder && typeof holder === 'object' && !Array.isArray(holder)
+        && holder[part] && typeof holder[part] === 'object' && !Array.isArray(holder[part]) ? holder[part] : null;
+    return holder ? { holder, key: parts[parts.length - 1] } : null;
+}
+// Drops a seeded setting, then every object it leaves empty on the way up.
+function dropSetting(data, at)
+{
+    const parts = at.split('.');
+    const chain = [data];
+    for (const part of parts.slice(0, -1)) chain.push(chain[chain.length - 1][part]);
+    delete chain[chain.length - 1][parts[parts.length - 1]];
+    for (let i = parts.length - 2; i >= 0 && !Object.keys(chain[i + 1]).length; i--) delete chain[i][parts[i]];
+}
+
 const HOOKS_DIR_MARK = '/.claude/hooks/';
 
 function readSettings(file)
@@ -483,7 +532,7 @@ function writeSettings(opts)
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], mcpjsonDisable = [], mcpjsonEnable = [], catalog = [], migrations = {},
         docsVersioning, docsPath = null, dataPath = null, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
-        inheritedOverrides = null, sharedFile = null, sharedKeys = [], attribution = null, worktreeBase = null, ledger = {},
+        inheritedOverrides = null, sharedFile = null, sharedKeys = [], attribution = null, worktreeBase = null, compactWindows = null, ledger = {},
         log = () => {}, note = () => {},
     } = opts;
     // R10: the last run's ledger (null - no stamp, or one from before it: the fallback) and the hook
@@ -654,6 +703,67 @@ function writeSettings(opts)
     const overlayBefore = overlay && !createdLocal ? JSON.stringify(overlay) : null;
     if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
         overlayLabel: localFile ? path.basename(localFile) : undefined })) changed = true;
+    // The auto-compact window per model (compactWindowSeeds). Claude Code reads it at session START only - measured
+    // 2026-10-14: written mid-session it changed nothing in print or interactive mode, set before the start it compacted
+    // at 76k of a 100k window - so it is this project's standing setting, never a per-run one, written in the project's
+    // own file at every scope and never in the account's (every project's). Per model under
+    // `modelSettings`, add-only, each entry the stack's only while it holds the value the ledger recorded: an update
+    // re-derives it, a value the user set stays. Left out: a model the sibling project file or the account file names,
+    // since this file would outrank theirs, and every model when one of the three sets the top-level window for all.
+    const acwOwned = new Set();
+    const acwPrior = prior && prior.settings ? prior.settings[label] || {} : null;
+    if (compactWindows && (data.modelSettings === undefined || plain(data.modelSettings)))
+    {
+        const sibling = plain(compactWindows.inherited) ? compactWindows.inherited : (plain(local) ? local : {});
+        const account = plain(compactWindows.account) ? compactWindows.account : {};
+        const topLevel = (o) => plain(o) && o.autoCompactWindow !== undefined;
+        const named = (o, id) => plain(o) && plain(o.modelSettings) && plain(o.modelSettings[id]) && o.modelSettings[id].autoCompactWindow !== undefined;
+        const held = (id) =>
+        {
+            const entry = plain(data.modelSettings) ? data.modelSettings[id] : undefined;
+            return plain(entry) && Object.hasOwn(entry, 'autoCompactWindow') && Boolean(acwPrior)
+                && acwPrior[compactAt(id)] === valueHash(JSON.stringify(entry.autoCompactWindow));
+        };
+        const env = { ...(plain(inheritedEnv) ? inheritedEnv : {}), ...(plain(data.env) ? data.env : {}), ...(overlay || {}) };
+        const seeds = topLevel(data) || topLevel(sibling) || topLevel(account) ? {} : compactWindowSeeds(compactWindows.models, env, catalog);
+        const seeded = [];
+        const moved = [];
+        for (const [id, value] of Object.entries(seeds))
+        {
+            if (named(sibling, id) || named(account, id)) continue;
+            const entry = plain(data.modelSettings) ? data.modelSettings[id] : undefined;
+            if (entry !== undefined && !plain(entry)) continue;
+            if (!entry || !Object.hasOwn(entry, 'autoCompactWindow'))
+            {
+                ((data.modelSettings ??= {})[id] ??= {}).autoCompactWindow = value;
+                seeded.push(id);
+                acwOwned.add(id);
+            }
+            else if (held(id))
+            {
+                if (entry.autoCompactWindow !== value) { entry.autoCompactWindow = value; moved.push(id); }
+                acwOwned.add(id);
+            }
+        }
+        // An entry the stack wrote for a model it no longer seeds here - a row the table dropped, a tier switched off, a
+        // window the user set in another file since - leaves; one the user changed is theirs and stays.
+        const gone = plain(data.modelSettings) ? Object.keys(data.modelSettings).filter((id) => !acwOwned.has(id) && held(id)) : [];
+        for (const id of gone)
+        {
+            delete data.modelSettings[id].autoCompactWindow;
+            if (!Object.keys(data.modelSettings[id]).length) delete data.modelSettings[id];
+        }
+        if (plain(data.modelSettings) && !Object.keys(data.modelSettings).length) delete data.modelSettings;
+        if (seeded.length || moved.length)
+        {
+            const byValue = new Map();
+            for (const id of [...seeded, ...moved]) byValue.set(data.modelSettings[id].autoCompactWindow, (byValue.get(data.modelSettings[id].autoCompactWindow) || 0) + 1);
+            const spread = [...byValue].sort((a, b) => a[0] - b[0]).map(([v, n]) => `${v} on ${n} model${n === 1 ? '' : 's'}`).join(', ');
+            log(`  ${label}: autoCompactWindow per model - ${spread}: each model compacts at its window's fresh-session trigger, so an auto-mode run compacts and goes on (read at session start)`);
+        }
+        if (gone.length) log(`  ${label}: autoCompactWindow removed for ${gone.join(', ')} - the stack wrote it and no longer seeds it here`);
+        if (seeded.length || moved.length || gone.length) changed = true;
+    }
     // R10: the ledger pass, over the env of each file this run writes, the deny lists and the wirings.
     const localName = localFile ? path.basename(localFile) : null;
     const reseeds = (key) => (migrations.reseed || []).filter(([k]) => k === key).flatMap(([, bad, to]) => [bad, to]);
@@ -726,6 +836,9 @@ function writeSettings(opts)
         const json = JSON.stringify(data.worktree.baseRef);
         if (!baseRefBefore || (priorSettings && priorSettings['worktree.baseRef'] === valueHash(json))) managedAttr['worktree.baseRef'] = valueHash(json);
     }
+    // The per-model windows this run seeded or still holds at the recorded value. No release before 2.5.0 seeded them,
+    // so a stamp with no ledger adopts nothing here.
+    for (const id of acwOwned) managedAttr[compactAt(id)] = valueHash(JSON.stringify(data.modelSettings[id].autoCompactWindow));
     const managed = { env: managedEnv, deny: managedDeny, hooks: managedHooks, settings: Object.keys(managedAttr).length ? { [label]: managedAttr } : {} };
 
     // A personal skillOverrides switch-off follows a renamed skill the same way as a shared one.
@@ -961,27 +1074,30 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
     // The settings seeds (attribution, worktree.baseRef) leave too: left here they would override a value the
     // team later sets in settings.json. The ledger's entries exactly; with no ledger, the seed value.
     const settingsGone = [];
-    for (const [at, seed] of SEEDED_SETTINGS)
+    // The per-model auto-compact windows go by the ledger alone: their value is derived, so there is no seed to compare.
+    const seededPaths = [...SEEDED_SETTINGS, ...Object.keys(ledgerSettings || {}).filter((at) => at.startsWith('modelSettings.')).map((at) => [at, undefined])];
+    for (const [at, seed] of seededPaths)
     {
-        const [obj, key] = at.split('.');
-        const holder = isObj(local[obj]) ? local[obj] : null;
-        if (!holder || !Object.hasOwn(holder, key)) continue;
-        const json = JSON.stringify(holder[key]);
-        if (ledgerSettings ? ledgerSettings[at] !== valueHash(json) : json !== JSON.stringify(seed))
+        const spot = settingAt(local, at);
+        if (!spot || !Object.hasOwn(spot.holder, spot.key)) continue;
+        const json = JSON.stringify(spot.holder[spot.key]);
+        if (ledgerSettings ? ledgerSettings[at] !== valueHash(json) : (seed === undefined || json !== JSON.stringify(seed)))
         {
             say(`${at} stays here (your value) - it applies over settings.json`);
             continue;
         }
-        delete holder[key];
-        if (!Object.keys(holder).length) delete local[obj];
+        dropSetting(local, at);
         settingsGone.push(at);
         localChanged = true;
     }
-    // C18: every seed that left is ONE line.
-    const alsoSettings = settingsGone.length ? `; and the settings seeds ${settingsGone.join(', ')}` : '';
+    // C18: every seed that left is ONE line - the per-model windows as one count.
+    const windowsGone = settingsGone.filter((at) => at.startsWith('modelSettings.')).length;
+    const settingsShown = settingsGone.filter((at) => !at.startsWith('modelSettings.'))
+        .concat(windowsGone ? [`autoCompactWindow for ${windowsGone} model${windowsGone === 1 ? '' : 's'}`] : []);
+    const alsoSettings = settingsGone.length ? `; and the settings seeds ${settingsShown.join(', ')}` : '';
     if (seedsGone.length)
         say(`${seedsGone.length} stack env key${seedsGone.length === 1 ? '' : 's'} removed - each held the stack's own seed, so settings.json's value or its seed applies from here on: ${seedsGone.join(', ')}${alsoSettings}`);
-    else if (settingsGone.length) say(`the stack's settings seeds removed - settings.json's value or its seed applies from here on: ${settingsGone.join(', ')}`);
+    else if (settingsGone.length) say(`the stack's settings seeds removed - settings.json's value or its seed applies from here on: ${settingsShown.join(', ')}`);
 
     const perms = isObj(local.permissions) ? local.permissions : null;
     const deny = perms && Array.isArray(perms.deny) ? perms.deny : [];
@@ -1097,13 +1213,11 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
         if (unwireIds(data, ids).length) changed = true;
         for (const [at, hash] of Object.entries(attr))
         {
-            const [obj, key] = at.split('.');
-            const holder = plain(data[obj]) ? data[obj] : null;
-            if (!holder || !Object.hasOwn(holder, key)) continue;
-            if (valueHash(JSON.stringify(holder[key])) !== hash) { log(`  ${name}: ${at} kept - changed since the stack wrote it, so it is yours`); continue; }
-            delete holder[key];
+            const spot = settingAt(data, at);
+            if (!spot || !Object.hasOwn(spot.holder, spot.key)) continue;
+            if (valueHash(JSON.stringify(spot.holder[spot.key])) !== hash) { log(`  ${name}: ${at} kept - changed since the stack wrote it, so it is yours`); continue; }
+            dropSetting(data, at);
             changed = true;
-            if (!Object.keys(holder).length) delete data[obj];
         }
         for (const listKey of ['enabledMcpjsonServers', 'disabledMcpjsonServers'])
         {
@@ -1119,10 +1233,10 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
             if (Object.hasOwn(data, key) && empty(data[key])) { delete data[key]; changed = true; }
         if (!changed) continue;
         if (named && !Object.keys(data).length) { fs.rmSync(file, { force: true }); log(`  ${name} removed - it held nothing but the stack's entries`); }
-        else { fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`); log(`  ${name}: the stack's env keys, deny entries, hook wirings and attribution / worktree keys removed`); }
+        else { fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`); log(`  ${name}: the stack's env keys, deny entries, hook wirings and attribution / worktree / auto-compact keys removed`); }
     }
     if (keptOff.length)
         log(`  kept at user scope: ${keptOff.join(', ')} - the user-scope core stays loaded for this account, so these keep what you switched off here off; remove them once it is uninstalled`);
 }
 
-module.exports = { removeManagedSettings, isStackKey, writeSettings, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor };
+module.exports = { compactWindowSeeds, removeManagedSettings, isStackKey, writeSettings, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor };

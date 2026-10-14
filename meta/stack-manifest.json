@@ -779,7 +779,7 @@
       "file": "guard-stop-contract.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (ALFRED_CODE_DONE_GATE=0 off), and the first red build or test run of a streak; and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test"
+      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth; and two log-only probes the analyzer counts - a done claim over a source edit (a file tool's or a shell write), unrun when nothing ran after it (ALFRED_CODE_DONE_GATE=0 off), and the first red build or test run of a streak; and a close dismissing a failure ('pre-existing', 'unrelated to my change', 'flaky') in a turn with a red run or a skipped test Under an auto-mode run's stamp (a `session:` line naming this session) a Stop is sent back to the run until its close deletes the stamp - held again only after a tool call (the Stop chain's workSince)."
     },
     {
       "file": "guard-stop-contract.js",
@@ -791,7 +791,7 @@
       "file": "guard-stop-contract.js",
       "matcher": "AskUserQuestion",
       "event": "",
-      "note": "PreToolUse AskUserQuestion: DENY once per ask text an ask whose own shape is wrong - its house voice (an em- or en-dash, a double quote), a fresh-session option quoting no number near the measured carry (both carrying the corrected strings), an option telling the user to type into Other, a single-select question without exactly one (Recommended), a new cycle's first ask with no fresh option; INJECT the judgement notes, which land beside the user's answer and are worded for it - stale scope (an option naming repo/remote/job state with no fresh read this turn: verify before acting, re-ask if it moved), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for the next ask, a live credential. Presence only"
+      "note": "PreToolUse AskUserQuestion: DENY once per ask text an ask whose own shape is wrong - its house voice (an em- or en-dash, a double quote), a fresh-session option quoting no number near the measured carry (both carrying the corrected strings), an option telling the user to type into Other, a single-select question without exactly one (Recommended), a new cycle's first ask with no fresh option; INJECT the judgement notes, which land beside the user's answer and are worded for it - stale scope (an option naming repo/remote/job state with no fresh read this turn: verify before acting, re-ask if it moved), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for the next ask, a live credential. Presence only Under a live AUTO stamp it ANSWERS an ask whose every question marks one (Recommended) option - allow plus an answers map in updatedInput - except a recommended push, merge, deploy or publish, and takes the next option over a recommended fresh-session hand-off; anything else waits for the user."
     },
     {
       "file": "guard-stop-contract.js",
@@ -809,13 +809,13 @@
       "file": "guard-fresh-session-start.js",
       "matcher": "Skill",
       "event": "",
-      "note": "PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice"
+      "note": "PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice `auto-mode` in the call's args on a task or loop skill writes the run's session-named AUTO stamp first and injects the auto-mode contract instead."
     },
     {
       "file": "guard-fresh-session-start.js",
       "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])((alfred-)?(loop-(quality|code-quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|usage-report|related-projects|agent-awareness|project-awareness|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
       "event": "",
-      "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling, so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only)"
+      "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling, so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only) `auto-mode` in command_args on a task or loop command writes the run's session-named AUTO stamp before the run and injects the auto-mode contract instead of any offer."
     },
     {
       "file": "guard-fresh-session-start.js",

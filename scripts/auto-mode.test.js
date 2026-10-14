@@ -1,0 +1,325 @@
+// auto-mode (the user's ruling, 2026-10-14): `auto-mode` on a task or loop call runs it unattended. The fresh-session
+// hook writes the AUTO stamp naming the session before the run's first step, the stop contract answers each ask that
+// marks one Recommended option and sends a Stop back to the run until its close deletes the stamp, and the installer
+// seeds each model's auto-compact window at its fresh-session trigger, because Claude Code reads that key at session
+// start only (measured 2026-10-14: written mid-session it changed nothing; set before the start it compacted at 76k of
+// a 100k window). Every hook case runs through the hook's real entry.
+'use strict';
+const test = require('node:test');
+require('./hook-test-env').isolateHookSuite();
+const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+for (const k of Object.keys(process.env)) if (k.startsWith('ALFRED_CODE_')) delete process.env[k];
+delete process.env.CLAUDE_PLUGIN_ROOT;
+delete process.env.CLAUDE_CODE_ENTRYPOINT;
+
+const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'auto-mode-'));
+process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
+delete process.env.CLAUDE_PROJECT_DIR;
+const { approvalStamp, autoStampLive } = require('../stack/hooks/hook-prelude.js');
+const settings = require('../scripts/install/settings.js');
+const { valueHash, renderLedger, readLedger } = require('../scripts/install/stamp.js');
+
+let n = 0;
+function project()
+{
+    const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+    const flow = path.join(root, '.alfred', 'docs', 'flow');
+    fs.mkdirSync(flow, { recursive: true });
+    return { root, flow, gate: path.join(flow, 'APPROVAL'), blocks: path.join(root, '.alfred', 'docs', 'hook-blocks') };
+}
+// An interactive transcript: the first message's context, then the newest one's.
+function transcript(rows = [], model = 'claude-opus-5-5', ctx = 30000)
+{
+    const p = path.join(TMP, `t-${++n}.jsonl`);
+    const at = new Date(Date.now() - 60000).toISOString();
+    const base = [
+        { type: 'user', entrypoint: 'cli', timestamp: at, message: { role: 'user', content: [{ type: 'text', text: 'go' }] } },
+        { type: 'assistant', entrypoint: 'cli', timestamp: at, message: { id: `m${++n}`, model, role: 'assistant', content: [{ type: 'text', text: 'ok' }], usage: { cache_creation_input_tokens: 20000 } } },
+        { type: 'assistant', entrypoint: 'cli', timestamp: at, message: { id: `m${++n}`, model, role: 'assistant', content: [{ type: 'text', text: 'ok' }], usage: { cache_read_input_tokens: ctx } } },
+    ];
+    fs.writeFileSync(p, [...base, ...rows].map((r) => JSON.stringify(r)).join('\n') + '\n');
+    return p;
+}
+const run = (hook, payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, hook)],
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: env.ALFRED_CODE_HOOK_LOG_DIR || fs.mkdtempSync(path.join(TMP, 'log-')), ...env } });
+const rows = (p, sid) => { try { return fs.readFileSync(path.join(p.blocks, `${sid}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } };
+const autoStamp = (p, sid, extra = '') => fs.writeFileSync(p.gate, `AUTO - "/loop-code-quality auto-mode"\nsession: ${sid}\nskill: loop-code-quality\n${extra}`);
+
+// ---------------------------------------------------------------------------------------------
+// the stamp
+// ---------------------------------------------------------------------------------------------
+test('auto-mode stamp: one naming its session is that session\'s for the whole run, and never another\'s', () =>
+{
+    const p = project();
+    const t = transcript();
+    const env = { CLAUDE_PROJECT_DIR: p.root };
+    autoStamp(p, 'sess-a');
+    assert.strictEqual(autoStampLive({ session_id: 'sess-a', transcript_path: t }, env), true, 'its own session');
+    assert.strictEqual(autoStampLive({ session_id: 'sess-b', transcript_path: t }, env), false, 'another session in the same project');
+    assert.strictEqual(autoStampLive({ transcript_path: t }, env), false, 'a payload with no session');
+    const old = (Date.now() - 30 * 3600 * 1000) / 1000;
+    fs.utimesSync(p.gate, old, old);
+    assert.strictEqual(autoStampLive({ session_id: 'sess-a', transcript_path: t }, env), true, 'past the 8h a hand-written stamp gets - an unattended loop outlives it');
+    const week = (Date.now() - 8 * 24 * 3600 * 1000) / 1000;
+    fs.utimesSync(p.gate, week, week);
+    assert.strictEqual(autoStampLive({ session_id: 'sess-a', transcript_path: t }, env), false, 'a week is the backstop for a run that died without its close');
+    // a hand-written stamp keeps its rules: 8h, and never older than the transcript
+    fs.writeFileSync(p.gate, 'AUTO - "take every recommendation"\n');
+    assert.strictEqual(autoStampLive({ session_id: 'sess-b', transcript_path: t }, env), true, 'a hand-written stamp is no one session\'s');
+    fs.utimesSync(p.gate, old, old);
+    assert.strictEqual(autoStampLive({ session_id: 'sess-b', transcript_path: t }, env), false, 'and lives 8h');
+    assert.deepStrictEqual(Object.keys(approvalStamp({ session_id: 'x' }, env)).sort(), ['file', 'first', 'live', 'mtimeMs', 'session']);
+    assert.strictEqual(approvalStamp({ session_id: 'x' }, { CLAUDE_PROJECT_DIR: fs.mkdtempSync(path.join(TMP, 'none-')) }), null, 'no stamp');
+});
+
+// ---------------------------------------------------------------------------------------------
+// the start: guard-fresh-session-start.js
+// ---------------------------------------------------------------------------------------------
+const expand = (p, sid, prompt, t, extra = {}) => run('guard-fresh-session-start.js', {
+    hook_event_name: 'UserPromptExpansion', session_id: sid, cwd: p.root, transcript_path: t, expansion_type: 'slash_command',
+    command_name: prompt.slice(1).split(' ')[0], command_args: prompt.split(' ').slice(1).join(' '), prompt, ...extra,
+}, { CLAUDE_PROJECT_DIR: p.root });
+const context = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext || ''; } catch { return ''; } };
+
+test('auto-mode start: the typed command writes the stamp before the run, and the fresh-session offer never fires', () =>
+{
+    const p = project();
+    // 450k of a 1M window over a 20k first message: the size offer is due, and without the word it is made
+    const big = transcript([], 'claude-opus-5-5', 450000);
+    const plain = expand(p, 's1', '/loop-code-quality src/', big);
+    assert.match(context(plain), /Do NOT start the run yet/, 'the offer, without auto-mode');
+    assert.ok(!fs.existsSync(p.gate), 'and no stamp');
+    const auto = expand(p, 's2', '/loop-code-quality auto-mode src/', big);
+    assert.strictEqual(auto.status, 0);
+    const said = context(auto);
+    assert.match(said, /^auto-mode is ON for this \/loop-code-quality run/);
+    assert.doesNotMatch(said, /Do NOT start the run yet/, 'the offer is never made under auto-mode');
+    for (const rule of [/\(Recommended\) option/, /Do not end a turn between steps/, /never push, merge or deploy/, /fresh-session hand-off is never taken/,
+        /never write an APPROVED line over it/, /delete \.alfred\/docs\/flow\/APPROVAL: that ends auto-mode/])
+        assert.match(said, rule);
+    const stamp = fs.readFileSync(p.gate, 'utf8');
+    assert.match(stamp, /^AUTO - "\/loop-code-quality auto-mode src\/"\nsession: s2\nskill: loop-code-quality\nat: \d{4}-/);
+    assert.ok(rows(p, 's2').some((r) => r.mode === 'auto' && r.kind === 'auto-start'), 'one auto-start row');
+    // a second flow in the same run rides the live stamp: its words and time stay
+    const before = fs.readFileSync(p.gate, 'utf8');
+    assert.match(context(expand(p, 's2', '/task-solve auto-mode fix the cache', big)), /auto-mode is ON for this \/task-solve run/);
+    assert.strictEqual(fs.readFileSync(p.gate, 'utf8'), before, 'the live stamp is kept');
+    // another session's stamp is not this run's: it is replaced
+    expand(p, 's3', '/task-solve-cross auto-mode', big);
+    assert.match(fs.readFileSync(p.gate, 'utf8'), /\nsession: s3\n/);
+});
+
+test('auto-mode start: only a task or loop, only the exact word, never a seat, and the model\'s Skill call too', () =>
+{
+    const t = transcript();
+    const none = (prompt, extra) => { const p = project(); const r = expand(p, 'sx', prompt, t, extra); return !fs.existsSync(p.gate) && !/auto-mode is ON/.test(context(r)); };
+    assert.ok(none('/capture-architecture auto-mode'), 'a capture is no flow of steps');
+    assert.ok(none('/loop-code-quality automode'), 'the word is exact');
+    assert.ok(none('/loop-code-quality no-auto-mode'), 'and whole');
+    assert.ok(none('/loop-code-quality auto-mode', { agent_id: 'seat-1' }), 'a seat never starts one');
+    assert.ok(none('/loop-code-quality auto-mode', { session_id: '' }), 'no session, nothing to name');
+    const p = project();
+    assert.match(context(expand(p, 'sy', '/alfred-code:loop-test-coverage AUTO-MODE', t)), /auto-mode is ON/, 'a scoped name, any case');
+    // the model's own Skill call, with the word in its args
+    const q = project();
+    const call = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-design', args: 'auto-mode the cache plan' },
+        session_id: 'sz', cwd: q.root, transcript_path: t }, { CLAUDE_PROJECT_DIR: q.root });
+    assert.strictEqual(call.status, 0, call.stderr);
+    assert.strictEqual(JSON.parse(call.stdout).hookSpecificOutput.hookEventName, 'PreToolUse');
+    assert.match(context(call), /auto-mode is ON for this \/task-design run/);
+    assert.match(fs.readFileSync(q.gate, 'utf8'), /^AUTO - "\/task-design auto-mode the cache plan"\nsession: sz\n/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// the asks: guard-stop-contract.js PreToolUse AskUserQuestion
+// ---------------------------------------------------------------------------------------------
+const ask = (p, sid, questions, extra = {}) => run('guard-stop-contract.js', {
+    hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions }, session_id: sid, cwd: p.root, transcript_path: transcript(), ...extra,
+}, { CLAUDE_PROJECT_DIR: p.root });
+const q = (question, labels, multiSelect = false) => ({ question, header: 'H', multiSelect, options: labels.map((label) => ({ label, description: 'd' })) });
+const answered = (r) => { try { const o = JSON.parse(r.stdout).hookSpecificOutput; return o.permissionDecision === 'allow' ? o.updatedInput.answers : null; } catch { return null; } };
+
+test('auto-mode asks: every question marking one Recommended option is answered with it; anything else waits for the user', () =>
+{
+    const p = project();
+    autoStamp(p, 'a1');
+    const two = [q('Plan ready. Build it?', ['Approve and build (Recommended)', 'Changes needed']), q('Which mode?', ['Run in this session (Recommended)', 'Dispatch the seats'])];
+    const r = ask(p, 'a1', two);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout).hookSpecificOutput;
+    assert.strictEqual(out.permissionDecision, 'allow');
+    assert.deepStrictEqual(out.updatedInput.questions, two, 'the questions are echoed, as the docs require');
+    assert.deepStrictEqual(out.updatedInput.answers, { 'Plan ready. Build it?': 'Approve and build (Recommended)', 'Which mode?': 'Run in this session (Recommended)' });
+    assert.match(out.additionalContext, /auto: <question> -> <choice>/);
+    assert.ok(rows(p, 'a1').some((x) => x.kind === 'auto-answer'), 'one auto-answer row');
+    // waits: a question with no Recommended option, or two
+    assert.strictEqual(answered(ask(p, 'a1', [two[0], q('Which name?', ['alpha', 'beta'])])), null, 'one unmarked question holds the whole ask');
+    assert.strictEqual(answered(ask(p, 'a1', [q('Pick', ['A (Recommended)', 'B (Recommended)'])])), null, 'two marked is no recommendation');
+    assert.ok(rows(p, 'a1').some((x) => x.kind === 'auto-ask-waits'), 'and the wait is logged');
+    // auto-mode commits but never ships
+    for (const outward of [q('Commit is done. Next?', ['Push to origin (Recommended)', 'Stop here']), q('Ready to merge into main?', ['Yes (Recommended)', 'No']),
+        q('Next?', ['Deploy the staging build (Recommended)', 'Wait'])])
+        assert.strictEqual(answered(ask(p, 'a1', [outward])), null, `waits: ${outward.question}`);
+    assert.deepStrictEqual(answered(ask(p, 'a1', [q('Commit the fix?', ['Commit now (Recommended)', 'Leave it staged'])])), { 'Commit the fix?': 'Commit now (Recommended)' }, 'a commit is answered');
+    // the fresh-session hand-off is never taken: the next option in the template's order is
+    assert.deepStrictEqual(answered(ask(p, 'a1', [q('Size large. Run it where?', ['Resume in a fresh session (Recommended)', 'Run in this session', 'Dispatch the agent seats'])])),
+        { 'Size large. Run it where?': 'Run in this session' });
+    assert.strictEqual(answered(ask(p, 'a1', [q('Go on?', ['Start a fresh session (Recommended)'])])), null, 'no other option - the ask waits');
+    // a multi-select question with one marked option
+    assert.deepStrictEqual(answered(ask(p, 'a1', [q('Which layers?', ['Hooks (Recommended)', 'Rules'], true)])), { 'Which layers?': 'Hooks (Recommended)' });
+    // not auto-mode: another session's stamp, a seat, no stamp
+    assert.strictEqual(answered(ask(p, 'other', two)), null, "another session's stamp");
+    assert.strictEqual(answered(ask(p, 'a1', two, { agent_id: 'seat-1' })), null, 'a seat');
+    fs.rmSync(p.gate);
+    assert.strictEqual(answered(ask(p, 'a1', two)), null, 'no stamp - the user answers');
+});
+
+// ---------------------------------------------------------------------------------------------
+// the run goes on: guard-stop-contract.js Stop
+// ---------------------------------------------------------------------------------------------
+test('auto-mode Stop: the run is sent back until its close deletes the stamp, and the chain bounds it', () =>
+{
+    const p = project();
+    const log = fs.mkdtempSync(path.join(TMP, 'chain-'));
+    const t = transcript();
+    const stop = (sid, extra = {}) => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: sid, cwd: p.root, transcript_path: t,
+        last_assistant_message: 'Stage 2 of 4 is done; stage 3 starts next.', ...extra }, { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_HOOK_LOG_DIR: log });
+    autoStamp(p, 'r1');
+    const held = stop('r1');
+    assert.strictEqual(held.status, 2, 'a turn ending between steps is sent back');
+    assert.match(held.stderr, /auto-mode is on and its run is not closed/);
+    assert.match(held.stderr, /delete .*APPROVAL - that ends auto-mode/);
+    // the continuation with no tool call since: the run can only wait or ask - it ends its turn
+    assert.strictEqual(stop('r1', { stop_hook_active: true }).status, 0, 'never a loop');
+    // work since the hold re-arms it
+    fs.appendFileSync(t, JSON.stringify({ type: 'assistant', timestamp: new Date(Date.now() + 1000).toISOString(),
+        message: { id: 'w', role: 'assistant', content: [{ type: 'tool_use', id: 'tu', name: 'Bash', input: { command: 'npm test' } }] } }) + '\n');
+    assert.strictEqual(stop('r1', { stop_hook_active: true }).status, 2, 'a tool call since the hold - the run is going, held again');
+    // the close deleted the stamp: the Stop stands
+    fs.rmSync(p.gate);
+    assert.strictEqual(stop('r1', { last_assistant_message: 'Result: 4 of 4 stages - docs/plans/q.md\nProgress: 4 of 4\nLeftovers: none' }).status, 0, 'closed');
+    // not this run: another session, a seat, a hand-written stamp (its flow closes itself)
+    autoStamp(p, 'r1');
+    assert.strictEqual(stop('r2', { last_assistant_message: 'Report written to docs/report.md.' }).status, 0, "another session's stamp");
+    assert.strictEqual(run('guard-stop-contract.js', { hook_event_name: 'SubagentStop', agent_id: 'seat', session_id: 'r1', cwd: p.root, transcript_path: t, last_assistant_message: 'done' },
+        { CLAUDE_PROJECT_DIR: p.root }).status, 0, 'a seat');
+    fs.writeFileSync(p.gate, 'AUTO - "take every recommendation"\n');
+    assert.strictEqual(stop('r3', { last_assistant_message: 'Report written to docs/report.md.' }).status, 0, 'a hand-written AUTO stamp is not held here');
+});
+
+// ---------------------------------------------------------------------------------------------
+// the dispatch guard reads the same stamp
+// ---------------------------------------------------------------------------------------------
+test('auto-mode dispatch: the run\'s stamp approves its implementer seats past 8h, for its own session only', () =>
+{
+    const p = project();
+    const disp = (sid) => run('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: 'aspnet-implementer', prompt: 'x' }, session_id: sid, transcript_path: transcript() },
+        { CLAUDE_PROJECT_DIR: p.root }).status;
+    autoStamp(p, 'd1');
+    const old = (Date.now() - 12 * 3600 * 1000) / 1000;
+    fs.utimesSync(p.gate, old, old);
+    assert.strictEqual(disp('d1'), 0, 'a 12h auto run still dispatches');
+    assert.strictEqual(disp('d2'), 2, "another session's run is no approval");
+});
+
+// ---------------------------------------------------------------------------------------------
+// the window: settings.js compactWindowSeeds and the writer
+// ---------------------------------------------------------------------------------------------
+const CATALOG = require('../meta/environment.json').env;
+const MODELS = { 'claude-opus-5-5': 1000000, 'claude-haiku-4-5': 200000, 'claude-x-500k': 500000 };
+
+test('auto-mode window: each model compacts at its window tier\'s fresh-session trigger', () =>
+{
+    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, {}, CATALOG), { 'claude-opus-5-5': 400000, 'claude-haiku-4-5': 150000, 'claude-x-500k': 300000 }, 'the seeded triggers');
+    assert.deepStrictEqual(settings.compactWindowSeeds(MODELS, { ALFRED_CODE_FRESH_SESSION_1M: '350000', ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: 'x' }, CATALOG),
+        { 'claude-opus-5-5': 350000, 'claude-x-500k': 300000 }, 'the env the file applies; a tier switched off seeds nothing; garbage reads as the seed');
+    assert.deepStrictEqual(settings.compactWindowSeeds({ a: 200000, b: 1000000 }, { ALFRED_CODE_FRESH_SESSION_200K: '250000', ALFRED_CODE_FRESH_SESSION_1M: '50000' }, CATALOG),
+        { a: 180000, b: 100000 }, 'a trigger past its window is held at 90% of it, and the value never under Claude Code\'s 100,000');
+    assert.deepStrictEqual(settings.compactWindowSeeds({ tiny: 50000, junk: 'x' }, {}, CATALOG), {}, 'a row under 100k or not a number seeds nothing');
+    assert.deepStrictEqual(settings.compactWindowSeeds({ 'us.anthropic.claude-x': 200000, 'Claude-X': 200000 }, {}, CATALOG), {}, 'nor an id the stamp could not read back');
+});
+
+function writer(dir, opts = {})
+{
+    const file = path.join(dir, '.claude', opts.local ? 'settings.local.json' : 'settings.json');
+    return settings.writeSettings({ file, catalog: CATALOG, migrations: {}, log: opts.log || (() => {}), note: () => {},
+        localFile: opts.local ? null : path.join(dir, '.claude', 'settings.local.json'),
+        inheritedEnv: opts.inheritedEnv || null,
+        compactWindows: opts.windows === null ? null : { models: MODELS, inherited: opts.inherited || null, account: opts.account || {} },
+        ledger: { prior: opts.prior || null } });
+}
+const read = (dir, name = 'settings.json') => JSON.parse(fs.readFileSync(path.join(dir, '.claude', name), 'utf8'));
+// The ledger as the next run reads it: written into a stamp and read back, never handed over in memory (the 2026-10-14
+// matrix: the stamp reader dropped every window row, so no update, move or uninstall could take one back).
+function throughStamp(managed)
+{
+    const file = path.join(TMP, `stamp-${++n}`);
+    fs.writeFileSync(file, renderLedger(managed).join('\n') + '\n');
+    return readLedger(file);
+}
+
+test('auto-mode window: install seeds it per model in the project file, ledgers it, and an update re-derives only its own', () =>
+{
+    const dir = fs.mkdtempSync(path.join(TMP, 'win-'));
+    fs.mkdirSync(path.join(dir, '.claude'));
+    const said = [];
+    const first = writer(dir, { log: (l) => said.push(l) });
+    assert.deepStrictEqual(read(dir).modelSettings, { 'claude-opus-5-5': { autoCompactWindow: 400000 }, 'claude-haiku-4-5': { autoCompactWindow: 150000 }, 'claude-x-500k': { autoCompactWindow: 300000 } });
+    assert.ok(said.some((l) => /settings\.json: autoCompactWindow per model - 150000 on 1 model, 300000 on 1 model, 400000 on 1 model/.test(l)), said.join('\n'));
+    const ledger = first.managed.settings['settings.json'];
+    assert.strictEqual(ledger['modelSettings.claude-opus-5-5.autoCompactWindow'], valueHash('400000'));
+    // a re-run changes nothing
+    const again = [];
+    assert.deepStrictEqual(throughStamp(first.managed).settings['settings.json'], ledger, 'every window row survives the stamp');
+    const second = writer(dir, { prior: throughStamp(first.managed), log: (l) => again.push(l) });
+    assert.ok(!again.some((l) => /autoCompactWindow/.test(l)), 'idempotent');
+    // the user changes one, the trigger moves: the stack's two follow, the user's stays
+    const data = read(dir);
+    data.modelSettings['claude-haiku-4-5'].autoCompactWindow = 120000;
+    data.env = { ...data.env, ALFRED_CODE_FRESH_SESSION_1M: '350000' };
+    data.modelSettings['claude-opus-5-5'].effortLevel = 'high';
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify(data));
+    const third = writer(dir, { prior: throughStamp(second.managed) });
+    const ms = read(dir).modelSettings;
+    assert.deepStrictEqual(ms['claude-opus-5-5'], { autoCompactWindow: 350000, effortLevel: 'high' }, 're-derived, the other key kept');
+    assert.strictEqual(ms['claude-haiku-4-5'].autoCompactWindow, 120000, "the user's value stays");
+    assert.strictEqual(third.managed.settings['settings.json']['modelSettings.claude-haiku-4-5.autoCompactWindow'], undefined, 'and is not the stack\'s');
+    // uninstall removes the stack's own, keeps the user's and the other key
+    settings.removeManagedSettings({ claudeDir: path.join(dir, '.claude'), ledger: throughStamp(third.managed) });
+    assert.deepStrictEqual(read(dir).modelSettings, { 'claude-opus-5-5': { effortLevel: 'high' }, 'claude-haiku-4-5': { autoCompactWindow: 120000 } });
+});
+
+test('auto-mode window: a window the user set for every model, or for this one elsewhere, is left alone', () =>
+{
+    const fresh = () => { const d = fs.mkdtempSync(path.join(TMP, 'own-')); fs.mkdirSync(path.join(d, '.claude')); return d; };
+    let dir = fresh();
+    writer(dir, { account: { autoCompactWindow: 500000 } });
+    assert.strictEqual(read(dir).modelSettings, undefined, 'the account file sets one window for all - this file would outrank it');
+    dir = fresh();
+    writer(dir, { account: { modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 600000 } } } });
+    assert.deepStrictEqual(Object.keys(read(dir).modelSettings), ['claude-haiku-4-5', 'claude-x-500k'], 'a model the account names is the account\'s');
+    dir = fresh();
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), JSON.stringify({ modelSettings: { 'claude-haiku-4-5': { autoCompactWindow: 180000 } } }));
+    writer(dir);
+    assert.deepStrictEqual(Object.keys(read(dir).modelSettings), ['claude-opus-5-5', 'claude-x-500k'], 'settings.local.json names one - it applies over this file');
+    dir = fresh();
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ autoCompactWindow: 250000 }));
+    writer(dir);
+    assert.strictEqual(read(dir).modelSettings, undefined, 'this file\'s own top-level window');
+    dir = fresh();
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ modelSettings: 'garbage' }));
+    writer(dir);
+    assert.strictEqual(read(dir).modelSettings, 'garbage', 'a modelSettings that is not an object is never touched');
+    dir = fresh();
+    writer(dir, { windows: null });
+    assert.strictEqual(read(dir).modelSettings, undefined, 'no compactWindows option, nothing seeded');
+    // local scope: settings.json's own entry is never hidden by a local seed
+    dir = fresh();
+    writer(dir, { local: true, inherited: { modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 450000 } } } });
+    assert.deepStrictEqual(Object.keys(read(dir, 'settings.local.json').modelSettings), ['claude-haiku-4-5', 'claude-x-500k']);
+});

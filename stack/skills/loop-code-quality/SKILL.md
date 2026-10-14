@@ -15,6 +15,8 @@ Best run in Claude Code, where you can dispatch the analysis and build seats and
 - The deliberate analyze-triage-fix loop over the code: each round recomputes the code-quality assessment against the project's own rules (the numbered prompts under the loops folder, the convention rules, the recorded code style) and works its fixable findings by tier. `staged` keeps the numbered-prompt pipeline, one stage at a time.
 - Not for architecture restructuring (loop-architecture-quality), measuring or raising test coverage (the coverage capture and loop), an assessment with no fixes (capture-code-quality alone), or a single diff (task-verify-code or /security-review).
 
+**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option, an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged or deployed, and the `AUTO` stamp in `<docs-path>/flow/APPROVAL` stays until the close deletes it.
+
 ## Execution modes
 DELEGATED vs INLINE keys on dispatch capability, not file presence - a project can carry the agent files on disk with no Agent tool to dispatch them, which is still INLINE. When dispatch is available, ask ONE question before ANALYZE, via AskUserQuestion - run the loop in the current session, or dispatch the stack seats? - one option marked `(Recommended)` and listed first, the one the `habits-execution-strategy` verdict picks (`parallel seats` marks the seats), the reason in its description - then hold the answer for the run; the capture inherits it and never re-asks. No dispatch capability is INLINE without asking. Every AskUserQuestion below falls back to plain-text options where the harness lacks the tool.
 

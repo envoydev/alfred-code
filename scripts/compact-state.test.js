@@ -245,11 +245,16 @@ test('compact-state: an automatic compaction records its context, and the trigge
         fs.writeFileSync(path.join(p.flow, 'compact-points.json'), '{not json');
         fresh.use({ transcript_path: tp, cwd: p.root });
         assert.strictEqual(fresh.ctxThreshold(), 400000, 'a garbage record reads as none');
-        // the documented auto-compact window lowers the window it is judged in: 500k is neither tier - the DEFAULT 300k
+        // the documented auto-compact window lowers the window it is judged in, never the tier: the tier is the model's own
+        // window (1M), so its 400k trigger stands inside a 500k window, and inside the 400k one the installer seeds from that
+        // same trigger it is held at 90% of it - never the DEFAULT 300k a lowered window used to pick (2026-10-14)
         process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = '500000';
         fresh.use({ transcript_path: tp, cwd: p.root });
         assert.strictEqual(fresh.knownWindow(), 500000);
-        assert.strictEqual(fresh.ctxThreshold(), 300000);
+        assert.strictEqual(fresh.ctxThreshold(), 400000);
+        process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = '400000';
+        fresh.use({ transcript_path: tp, cwd: p.root });
+        assert.strictEqual(fresh.ctxThreshold(), 360000);
         delete process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
         const set = (file, json) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(json)); };
         set(path.join(p.root, '.claude', 'settings.json'), { modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 200000 } }, autoCompactWindow: 600000 });

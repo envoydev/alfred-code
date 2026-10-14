@@ -26,6 +26,8 @@ Both are the house review protocol; this skill just keeps it in your chat. `/cod
 - Not the parallel-angle sweep - if you want breadth or an isolated subagent, use `/code-review` or dispatch the `<stack>-verifier`. This one stays inline by design.
 - Not the done gate on your own change - `habits-done-gate` is that gate, and this review loads it before its verdict.
 
+**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option, an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged or deployed, and the `AUTO` stamp in `<docs-path>/flow/APPROVAL` stays until the close deletes it.
+
 ## The review - in order, all inline
 
 Load the stack's house skill FIRST (the one your convention rules auto-attach for these file types; its router names the specialist siblings), so you check against ITS trap list, not a generic one. Dispatch nothing at any step. Before the verdict is stamped, load `habits-done-gate` (the Skill tool): a pass is claimed only on a build and suite run this session, quoted.

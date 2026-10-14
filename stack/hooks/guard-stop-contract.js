@@ -42,6 +42,7 @@ const fs = require('fs');
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let unattended = () => false;
 let autoLive = () => false;   // hook-prelude.js autoStampLive - a live AUTO waiver of this session
+let stampOf = () => null;     // hook-prelude.js approvalStamp - the stamp's state, an auto-mode run's named session included
 // The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
 let stopHeld = (input) => !!(input && input.stop_hook_active);
 let markHeld = () => {};
@@ -52,6 +53,7 @@ if (require.main === module) {
     envOf = prelude.envOf;
     unattended = prelude.unattended || unattended;
     autoLive = prelude.autoStampLive || autoLive;
+    stampOf = prelude.approvalStamp || stampOf;
     houseDash = prelude.HOUSE_DASH || houseDash;
     if (prelude.stopHeldThisCycle) {
       stopHeld = (input) => prelude.stopHeldThisCycle('guard-stop-contract', input, undefined, { workSince: true });
@@ -1959,6 +1961,22 @@ if (payload.hook_event_name === 'Stop') {
       + '`none`) - and a headline that agrees with the leftovers. Nothing else changes.');
     process.exit(2);
   }
+  // AUTO-MODE (the user's ruling, 2026-10-14): an auto-mode run is over when its close deletes the stamp the start wrote
+  // (guard-fresh-session-start.js, a `session:` line naming this session) - until then nobody is at the terminal to say
+  // 'go on', and a turn that ends between steps idles the run until a person comes back. So a Stop under that stamp is
+  // sent back to the run. The Stop chain bounds it: once held, the next Stop passes unless a tool call ran in between
+  // (hook-prelude.js stopHeldThisCycle, workSince), so a run that can only wait - or only ask - ends its turn on the
+  // second Stop. A hand-written AUTO stamp (task-solve's, no session line) is never held here: its flow closes itself.
+  const autoStamp = payload.agent_id ? null : stampOf(payload);
+  if (autoStamp && autoStamp.live && autoStamp.session && /^AUTO\b/.test(autoStamp.first)) {
+    blockDetail('auto-continue', autoStamp.first.slice(0, 120));
+    process.stderr.write(`auto-mode is on and its run is not closed (${autoStamp.file} stands). Nobody is at the terminal to\n`
+      + 'say go on: carry on with the run\'s next step now, taking each stop\'s (Recommended) option. If the run is finished,\n'
+      + `print its close and delete ${autoStamp.file} - that ends auto-mode. If it waits on work this session started, end the\n`
+      + 'turn with one line saying so; if only the user can decide the next step (an ask with no Recommended option, a push),\n'
+      + 'put that ask now.');
+    process.exit(2);
+  }
   // Every branch below asks a PERSON something - a decision, a pending step, a fresh session - and
   // with nobody at the terminal (hook-prelude.js unattended) the block only buys another turn. The
   // probes above still log, and so does the credential branch - its row is the record of the exposure.
@@ -2159,6 +2177,50 @@ function blockStateFile() {
 // The stale-scope note's remote half (read by freshStateReadThisTurn, so declared before the branch runs).
 const REMOTE_STATE_RE = /\b(?:merged?|merging|pull request|PRs?|remote|upstream|deploy(?:ed|ment)?|pipeline|CI|workflow run)\b/i;
 const REMOTE_READ_RE = /\bgit\s+(?:fetch|pull|ls-remote|remote\s+(?:update|show))\b|\bgit\s+(?:log|rev-list|branch|show|merge-base|diff|cherry)\b[^\n;|&]*\s(?:origin|upstream)\/|\bgit\s+branch\b[^\n;|&]*\s(?:-r|-a|--remotes|--all)\b|\bgh\s+(?:pr|run|api|repo)\b/;
+// AUTO-MODE answers the ask (the user's ruling, 2026-10-14). Under a live AUTO stamp nobody is at the terminal, and the
+// user's word was 'run everything with the recommended options'. So an ask whose every question marks ONE option
+// '(Recommended)' is answered with it - the documented route: `allow` with the questions echoed and an `answers` map in
+// `updatedInput` (code.claude.com/docs/en/hooks, 'Tools that require user interaction'), which records a real answer the
+// commit gate's `answered:` line can name. An ask with a question that marks none, or two, waits for the user - that is
+// the 'ask only when nothing is recommended' half - and so does one whose recommended answer pushes, merges, deploys or
+// publishes: auto-mode commits but never ships. A seat has no AskUserQuestion; its parent's ask is the one judged.
+const AUTO_FRESH_RE = /\bfresh session\b|\bresume (?:it |this |the run )?(?:in|from) a (?:new|fresh)\b/i;
+const AUTO_OUTWARD_RE = /\b(?:push(?:es|ed|ing)?|merg(?:e|es|ed|ing)|deploy(?:s|ed|ing|ment)?|publish(?:es|ed|ing)?|release[sd]?|tag(?:s|ged)? (?:and|then) (?:push|release))\b/i;
+function autoAnswers(questions) {
+  if (!Array.isArray(questions) || !questions.length) return null;
+  const answers = {};
+  for (const q of questions) {
+    if (!q || typeof q.question !== 'string' || !Array.isArray(q.options)) return null;
+    const marked = q.options.filter((o) => o && typeof o.label === 'string' && /\(Recommended\)/i.test(o.label));
+    if (marked.length !== 1) return null;
+    // The fresh-session hand-off is never taken: nobody is there to paste its resume block (task-solve's AUTO rule). An
+    // ask that recommends it past a trigger gets the next option in the template's order, the smallest safe mode.
+    const pick = AUTO_FRESH_RE.test(marked[0].label)
+      ? q.options.find((o) => o && typeof o.label === 'string' && o !== marked[0] && !AUTO_FRESH_RE.test(o.label)) : marked[0];
+    if (!pick) return null;
+    if (AUTO_OUTWARD_RE.test(`${q.question} ${pick.label} ${pick.description || ''}`)) return null;
+    answers[q.question] = pick.label;
+  }
+  return answers;
+}
+if (payload.tool_name === 'AskUserQuestion' && !payload.agent_id && autoLive(payload)) {
+  const input = payload.tool_input || {};
+  const answers = autoAnswers(input.questions);
+  if (answers) {
+    const picked = Object.entries(answers).map(([q, a]) => `'${q}' -> '${a}'`).join('; ');
+    ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-answer', reason: 'auto-mode: answered with the Recommended option', detail: { answers } });
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'allow',
+      permissionDecisionReason: 'auto-mode: the Recommended option',
+      updatedInput: { ...input, answers },
+      additionalContext: `auto-mode answered this ask with its Recommended option (${picked}) - nobody is at the terminal. `
+        + 'Log it in the run\'s close as `auto: <question> -> <choice>` and go on with the run.',
+    } }));
+    process.exit(0);
+  }
+  ledgerRow({ tool: 'AskUserQuestion', mode: 'auto', kind: 'auto-ask-waits', reason: 'auto-mode: no single Recommended option, or an outward one - the ask waits for the user' });
+}
 if (payload.tool_name === 'AskUserQuestion') {
   const notes = [];
   try {

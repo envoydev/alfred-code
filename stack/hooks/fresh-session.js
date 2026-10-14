@@ -214,8 +214,13 @@ function knownWindow() {
 // 200k account anything at all.
 function ctxThreshold() {
   const window = knownWindow();
-  let at = window === 200000 ? FRESH_AT_200K
-    : window === 1000000 ? FRESH_AT_1M
+  // The TIER is the model's own window - the table row, else the declared default - and an auto-compact window only
+  // lowers the room the trigger must fit in (the clamp below). Tiering by the lowered window put a 1M model under a 400k
+  // compaction window on the DEFAULT trigger, so the window the installer seeds from the 1M trigger (settings.js,
+  // compactWindowSeeds) moved that trigger to 300k (2026-10-14).
+  const tier = tableWindow() || envWindow() || window;
+  let at = tier === 200000 ? FRESH_AT_200K
+    : tier === 1000000 ? FRESH_AT_1M
       : FRESH_AT_DEFAULT;
   // A trigger at or above the window it applies to can never be reached, and a gate that cannot
   // fire is the gate not existing. Honour the number that was set up to the point it goes

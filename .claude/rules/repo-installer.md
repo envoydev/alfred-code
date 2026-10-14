@@ -142,6 +142,17 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `--scope managed` command (`plugins.leftAt`); on MCP, `mcp.adminMcp` reads `managed-mcp.json` and
   `managedMcpServers` from the managed folder (`ALFRED_CODE_MANAGED_DIR` overrides it): a server it provides is
   never registered over, and an exclusive `managed-mcp.json` is said `!!` - it suppresses every plugin server.
+- **The auto-compact window per model (after 2.4.0, the user's ruling of 2026-10-14).** Every run writes
+  `modelSettings.<id>.autoCompactWindow` into the project's own settings file (settings.json, settings.local.json at local
+  scope - never the account's) for each `model-windows.json` row, at its window tier's fresh-session trigger
+  (`settings.js compactWindowSeeds`: `_200K` / `_1M` / `_DEFAULT` from the env the file applies, `0` skips the tier, past
+  the window held at 90%, inside 100k-1M), so an auto-mode run compacts where the fresh-session gate would offer a resume
+  and goes on. Claude Code reads the key at session start only. Add-only and ledgered (`managed-settings:
+  <file>:modelSettings.<id>.autoCompactWindow=<hash>`; `stamp.js SETTINGS_PATH` must read the path back, or no update,
+  move or uninstall can take the row back - the 2026-10-14 matrix caught exactly that): an update re-derives a row still at
+  its hash and removes one it no longer seeds, a hand-changed value is the user's. Nothing is seeded while this file, the
+  sibling project file or the account file sets a top-level `autoCompactWindow`, and a model the sibling or the account
+  file names is left to it.
 - **`.mcp.json` is the COPY ROUTE only** (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`); on the default
   plugin route the installer registers nothing and prunes every stack name it ever wrote, including
   the four `browser-<engine>` spellings of 2.0.0-2.3.x and the pre-2.0.0 names (`serena`, `context7`, `playwright-*`), out of `.mcp.json` and out of `enabledMcpjsonServers`. On that

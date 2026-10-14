@@ -25,6 +25,8 @@ The staged plan is presented and NOTHING is edited until the user approves - an 
 
 **Auto mode skips the gate - only when the user explicitly asked for it in the invocation** ('run it in auto mode', '/task-version-upgrade --auto'). Never infer auto from urgency, from a clean plan, or from past runs; absent those words, the gate stands. Auto mode still stops on every hard signal below - it skips the approval pause, not the safety rails. (Side effect worth knowing: an auto run never pauses, so the model the session is on at run start carries the whole run; a gated run can switch at the approval pause and drop to a cheaper model for execution.)
 
+**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option, an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged or deployed, and the `AUTO` stamp in `<docs-path>/flow/APPROVAL` stays until the close deletes it.
+
 ## The run
 
 ### 1. DETECT

@@ -35,7 +35,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   stack never touched - revisit when a plugin's agents can be scoped per project); and a Cursor host, judged from the PAYLOAD alone (`cursor_version`, or a camelCase event name - never Cursor's environment variables, which a `claude` session in its terminal inherits): Cursor loads Claude hooks by default and turns a Stop block into an unbounded follow-up, so only the rm, secret, force-push and desktop exec guards run there and every other hook stands down silently, no ledger row. Each non-protective hook makes the call itself, `cursorStandDown(payload, __filename)`, right after parsing its own payload (no stdin is read or patched by the prelude; a test fails a hook file that lacks it). All fail open. Beside the gates,
   `unattended(input)` says nobody is at the terminal - `ALFRED_CODE_UNATTENDED=1`; a live AUTO waiver of this session
   (`<docs-path>/flow/APPROVAL` opening `AUTO`, under 8h and not older than the transcript - the dispatch guard's
-  stamp, `autoStampLive`; audit 2026-10-10); else
+  stamp, `autoStampLive`; audit 2026-10-10 - or, for a stamp naming its session on a `session:` line, that session
+  alone for up to a week, `approvalStamp`, which the dispatch guard reads too); else
   `CLAUDE_CODE_ENTRYPOINT` when set (the 2.1.283 CLI sets `sdk-cli` in print mode, rewriting an inherited
   `cli`, and keeps an SDK launch's `sdk-ts` / `sdk-py`, which stay interactive); else the transcript's newest
   row carrying an `entrypoint` (`sdk-cli` for `claude -p`, `cli` interactive; bookkeeping rows carry none). A
@@ -44,6 +45,20 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   instead), no answer-length Stop block, no fresh-session offer, and the credential rotation ask becomes one
   `mode: unattended` row per exposure (it replaced 2 of 12 pilot-3 finals). Every protective denial is
   unchanged; a missing, empty or torn-last-row transcript reads as a person.
+  **auto-mode** (the user's ruling, 2026-10-14): `auto-mode` in a `task-*` or `loop-*` call - typed
+  (`UserPromptExpansion`, `command_args`) or the model's `Skill` call (`args`), never a seat's - makes
+  `guard-fresh-session-start.js` write that session-named AUTO stamp (`AUTO - "<the typed words>"`, `session:`, `skill:`,
+  `at:`) before the run's first step, inject the contract as `additionalContext` and leave, so its own offers and every
+  person-directed hook read the session as unattended; a stamp already live for the session is kept. `guard-stop-contract.js`
+  then answers each `AskUserQuestion` whose every question marks ONE `(Recommended)` option - `allow` with the questions
+  echoed and an `answers` map in `updatedInput` (code.claude.com/docs/en/hooks, 'Tools that require user interaction'), a
+  real answer the commit gate's `answered:` reads - taking the next option when the marked one is the fresh-session
+  hand-off, and leaving to the user an ask with an unmarked question or a recommended push / merge / deploy / publish;
+  and it sends a Stop back to the run while the stamp stands (`auto-continue`, bounded by the Stop chain's `workSince`:
+  held again only after a tool call), until the run's close deletes the stamp. A hand-written stamp (task-solve's, no
+  `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` at
+  session START only (measured 2026-10-14 on 2.1.299: written mid-session it changed nothing, set before the start it
+  compacted at 76k of a 100k window), so the installer seeds it per model (`settings.js compactWindowSeeds`, `repo-installer.md`).
   The fresh-session arithmetic (trigger per window tier, window lookup, cold floor) lives in one
   engine, `fresh-session.js`, which the two fresh-session hooks and the monitor require from their
   own directory; a hook that runs before it lands keeps every offer off. `shell-writes.js` parses a
@@ -545,7 +560,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     documented auto-compact window (`CLAUDE_CODE_AUTO_COMPACT_WINDOW`, else the highest settings file naming one - its
     `modelSettings` entry for the model first; the USER file's top-level `autoCompactWindow` does not reach Opus 5.5 and
     later, per the settings reference) and 90% of the lowest automatic compaction this project recorded for the model
-    (`<docs-path>/flow/compact-points.json`, 30 days). A context read stops at a `compact_boundary` row (unknown until
+    (`<docs-path>/flow/compact-points.json`, 30 days). The TIER is the model's own window (its table row, else the declared
+    default): a lowered window only clamps the trigger inside it, so a 1M model under the 400k window the installer seeds
+    keeps its 1M trigger, held at 360k - tiering by the lowered window had dropped it to the DEFAULT 300k (2026-10-14). A context read stops at a `compact_boundary` row (unknown until
     the next model call), and the model id read widens to 8MB and takes the harness's `model` attachment row. A key matches its id, a dated snapshot, a Bedrock version, the `[1m]` suffix and a provider prefix, never a point release: `claude-opus-5-5` took `claude-opus-5`'s row until every model got its own (2.1.5 M6, which added Opus 4.5 and Sonnet 4.5 at 200K). A trigger at or above its window is clamped
     inside it, and `_DEFAULT` must stay below the smallest window it can land on. The offer fires only
     when a resume recovers something (carry minus the session's first-message floor >= 40% of carry),
