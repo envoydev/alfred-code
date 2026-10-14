@@ -2021,6 +2021,51 @@
         }
       ]
     },
+    "verifier-direct-dispatch": {
+      "_note": "The verifiers' direct-dispatch carve-out (audit 2026-10-14 AG02, the user's ruling: option a): a brief with no contract_version - a review over a diff from the single-chat review or the commit checkpoint, or a plan audit from the plan-gate flow - is its own spec: review the diff (and a named plan file), a plan audit runs no build or test, the ledger checks and the memory-handoff WRITE are skipped, and the close keeps the status vocabulary with `contract_version: none`. Before it those dispatches got a build rerun or a CONTRACT_MISMATCH for 'missing task context'. The footer clause says the direct dispatch is excepted beside the rubric audit. Identical in all 10 verifier seats for the same selective-install reason as the rubric carve-out beside it.",
+      "owner": {
+        "file": "stack/agents/aspnet-verifier.md",
+        "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "for a plan audit run the brief's passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE"
+        }
+      ]
+    },
     "assessment-coverage-carve-out": {
       "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to capture-test-coverage's COVERAGE.md, never ARCHITECTURE-ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shape.md; restated at the JUDGE step and in the skill's '## When to use' section because a live run flagged coverage as a weakness with the reference-only statement (the description carried it until 2.1.2 capped descriptions at 160 chars, lint check 15c). Moved from capture-architecture to capture-architecture-quality when the findings judgment split out of the map capture.",
       "owner": {

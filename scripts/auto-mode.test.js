@@ -261,6 +261,31 @@ test('auto-mode asks: every question marking one Recommended option is answered 
     assert.strictEqual(answered(ask(p, 'a1', two)), null, 'no stamp - the user answers');
 });
 
+// audit 2026-10-14 SKF-04 (the user's ruling, option A): the upgrade's hard stop is a rail. Put as the attended run puts
+// it, the hook answers its marked 'Re-plan' and a stage that stays red re-plans unattended; so under auto-mode the skill
+// puts it with no mark and the question saying why, and the hook leaves it for the user without denying it.
+test('auto-mode asks: the upgrade hard stop waits when put unmarked with its reason, as task-version-upgrade says', () =>
+{
+    const p = project();
+    fs.writeFileSync(p.gate, 'AUTO - "/task-version-upgrade auto-mode"\nsession: u1\nskill: task-version-upgrade\n');
+    const labels = ['Re-plan from this stage', "Roll back to the last stage's rollback point", 'Stop here'];
+    const marked = q('Stage 3 stays red after its resolver pass. How do we go on?', [`${labels[0]} (Recommended)`, ...labels.slice(1)]);
+    assert.deepStrictEqual(answered(ask(p, 'u1', [marked])), { [marked.question]: 'Re-plan from this stage (Recommended)' },
+        'the attended shape is answered unattended - the reason auto-mode drops the mark');
+    const skillText = fs.readFileSync(path.join(__dirname, '..', 'stack', 'skills', 'task-version-upgrade', 'SKILL.md'), 'utf8').replace(/\s+/g, ' ');
+    const opener = (/the question opening '([^']+)'/.exec(skillText) || [])[1];
+    assert.ok(opener, 'the skill names the opener its auto-mode hard stop carries');
+    const waits = q(`${opener}. Stage 3 stays red after its resolver pass. How do we go on?`, labels);
+    const r = ask(p, 'u1', [waits]);
+    assert.strictEqual(answered(r), null, 'the unmarked hard stop is not answered');
+    assert.strictEqual(r.status, 0, `the mark check lets it through: ${r.stderr}`);
+    assert.doesNotMatch(r.stderr, /Blocked/);
+    assert.ok(rows(p, 'u1').some((x) => x.kind === 'auto-ask-waits'), 'the wait is logged');
+    const bare = ask(p, 'u1', [q('Stage 3 stays red after its resolver pass. How do we go on?', labels)]);
+    assert.strictEqual(bare.status, 2, 'unmarked with no reason is handed back by the mark check');
+    assert.match(bare.stderr, /without exactly one option marked '\(Recommended\)'/);
+});
+
 // ---------------------------------------------------------------------------------------------
 // the run goes on: guard-stop-contract.js Stop
 // ---------------------------------------------------------------------------------------------

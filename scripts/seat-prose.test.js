@@ -425,3 +425,31 @@ test('AG03 / AG07: the data implementer hands app-side mapping to the app stack,
     assert.doesNotMatch(squash(read('code-style-analyzer')), /primary caller/, 'code-style-analyzer: a caller attribution');
     assert.doesNotMatch(squash(read('security-auditor')), /code-quality stage's ARCHITECTURE\.md orientation/, 'security-auditor: verifier-only text (AG05)');
 });
+
+// --- audit 2026-10-14 AG02 (the user's ruling, option a): a verifier dispatched with no contract_version ---------------
+// task-verify-plan sends `<stack>-verifier` to audit a plan file, task-verify-code and the commit checkpoint send it to
+// review a diff where a plan is optional - but the seat gated only landed trio work against the ledger, footered EVERY
+// trio-verify report, and turned 'missing task context' into CONTRACT_MISMATCH. One registered carve-out beside the
+// rubric one, and the footer names the exception.
+const DIRECT = '- When the brief carries no contract_version - a direct review (task-verify-code, the commit checkpoint) or a plan audit (task-verify-plan) - the brief is the spec: review the diff, and the plan file when the brief names one; for a plan audit run the brief\'s passes over the plan file with no build or test rerun; skip the ledger checks and the memory handoff WRITE; close with the same `status:` vocabulary and `contract_version: none`.';
+const DIRECT_FOOTER = 'and this footer MUST NOT be appended; a direct dispatch (a brief with no contract_version) is excepted too - its Conventions carve-out is authoritative, and its last line reads `contract_version: none`:';
+test('AG02: every verifier carries the direct-dispatch carve-out beside the rubric one, pinned, and its footer excepts it', () =>
+{
+    const checking = seats.filter((s) => s.endsWith('-verifier'));
+    assert.strictEqual(checking.length, 10);
+    for (const s of checking)
+    {
+        const conv = section(body(s), 'Conventions');
+        const lines = conv.split('\n');
+        const rubric = lines.findIndex((l) => l.startsWith('- When dispatched by the `loop-code-quality` skill with a stage rubric'));
+        assert.ok(rubric >= 0, `${s}: the rubric carve-out`);
+        assert.strictEqual(lines[rubric + 1], DIRECT, `${s}: the direct-dispatch carve-out sits right after it, verbatim`);
+        assert.ok(squash(body(s)).includes(DIRECT_FOOTER), `${s}: the footer names the exception`);
+        // the trio footer and its two closing lines are unchanged for a trio verify (AG04)
+        assert.ok(squash(body(s)).includes('on EVERY trio-verify report this seat returns'), `${s}: the trio footer stands`);
+    }
+    const files = listedIn('verifier-direct-dispatch');
+    assert.deepStrictEqual([...files].sort(), checking.map((s) => `stack/agents/${s}.md`).sort(), 'all 10 pinned');
+    assert.strictEqual(rules()['verifier-direct-dispatch'].owner.file, 'stack/agents/aspnet-verifier.md');
+    for (const c of copiesOf('verifier-direct-dispatch')) assert.ok(squash(readRel(c.file)).includes(squash(c.marker)), `${c.file}: the marker`);
+});

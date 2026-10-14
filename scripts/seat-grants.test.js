@@ -114,6 +114,47 @@ test('I14: winforms-verifier runs the app the way wpf-verifier does - bounded, a
     }
 });
 
+// --- audit 2026-10-14 AG08 (the user's ruling): the opt-in mobile server's read-only subset ---------------------------
+// Since 2.4.0 a project can opt into the mobile server, but no seat could read a device screen: the Ionic verifier drove
+// native flows only through the project's device suite and the gatherer had no device evidence at all. The two get the
+// tools that only look (appium-mcp README: screenshot, page source, find, text; the attribute read is in the pinned
+// tools/list) - never a tap, a value, a gesture or the session tool, so they observe a session already open.
+const MOBILE_OBSERVE = ['appium_screenshot', 'appium_get_page_source', 'appium_find_element', 'appium_find_elements', 'appium_get_text', 'appium_get_element_attribute'];
+const MOBILE_SEATS = ['evidence-gatherer', 'ionic-angular-verifier'];
+const mobileTools = (seat) => held(seat).filter((t) => /^mcp__plugin_mobile-control_mobile-control__/.test(t));
+
+test('AG08: the two mobile observe seats hold exactly the read-only subset, and no other seat holds a mobile tool', () =>
+{
+    const pinned = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'mcp-tools.json'), 'utf8')).servers['mobile-control'].tools;
+    for (const t of MOBILE_OBSERVE) assert.ok(pinned.includes(t), `${t} is a tool at the mobile server's pin`);
+    const want = MOBILE_OBSERVE.map((t) => `mcp__plugin_mobile-control_mobile-control__${t}`).sort();
+    for (const seat of MOBILE_SEATS)
+    {
+        assert.deepStrictEqual(mobileTools(seat).sort(), want, `${seat}: the observe subset, nothing more`);
+        assert.ok(!intent(seat).includes('mobile-control:*'), `${seat}: named tool by tool, so a pin's new tool reaches it only when named`);
+    }
+    for (const t of ['appium_session_management', 'appium_gesture', 'appium_set_value', 'appium_perform_actions', 'appium_app_lifecycle'])
+        for (const seat of MOBILE_SEATS) assert.ok(!held(seat).includes(`mcp__plugin_mobile-control_mobile-control__${t}`), `${seat}: no ${t}`);
+    const extra = seats.filter((s) => !MOBILE_SEATS.includes(s) && mobileTools(s).length);
+    assert.deepStrictEqual(extra, [], 'a mobile tool drives a device - the two observe seats only');
+});
+
+test('AG08: each mobile observe seat describes the server, observes only, and draws no graph edge to it', () =>
+{
+    const graph = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-graph.json'), 'utf8'));
+    for (const seat of MOBILE_SEATS)
+    {
+        const text = squash(body(seat));
+        assert.doesNotMatch(text, /`mobile-control`/, `${seat}: described, never named`);
+        assert.match(text, /through the mobile MCP - the server that drives Android and iOS apps through Appium - with its read-only tools only, against a device session already open/, `${seat}: the described cite`);
+        assert.match(text, /You observe, you never tap, type or open a session/, `${seat}: observe-only`);
+        assert.match(text, /That MCP is optional per project/, `${seat}: the absence clause`);
+        assert.ok(!graph.agents[seat].mcps.includes('mobile-control'), `${seat}: no graph edge to the opt-in server`);
+    }
+    assert.match(squash(body('evidence-gatherer')), /say plainly that the device evidence was not obtainable here/);
+    assert.match(squash(body('ionic-angular-verifier')), /a native screen nothing observed is never a silent pass/);
+});
+
 // Every MCP a stack seeds must be usable where that stack's work is judged, or be declared a main-session
 // tool. Before I14 the WPF and WinForms stacks seeded the desktop server and granted it to no seat.
 // browser-extension seeds the browser, but its verifier proves live behavior through the workspace's own
