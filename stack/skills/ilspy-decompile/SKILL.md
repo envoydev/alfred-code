@@ -37,7 +37,7 @@ Arguments after `--` go to the tool - without it, `-h` prints dnx's own help. `d
 ## Locate the assembly
 
 - NuGet package: `~/.nuget/packages/<package-name>/<version>/lib/<tfm>/`
-- Build output: `./bin/Debug/net8.0/<AssemblyName>.dll` (or `Release/.../publish/`)
+- Build output: `./bin/Debug/net10.0/<AssemblyName>.dll` (or `Release/.../publish/`)
 - Runtime libraries: the shared-framework folder under the SDK (`dotnet --list-runtimes` shows the paths). Reference assemblies hold no implementation - decompile the runtime `.dll`, not the ref.
 
 ## Commands

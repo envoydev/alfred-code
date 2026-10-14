@@ -10,7 +10,8 @@ For any WPF or NuGet API surface not pinned down here, resolve signatures with t
 
 WPF is a retained-mode XAML UI on the data-binding engine. The whole discipline below exists to keep
 view concerns (visuals, the visual tree, the dispatcher) on one side of a line and application state
-on the other, so the state side stays a plain testable C# object. Floor is .NET 8 / C# 12.
+on the other, so the state side stays a plain testable C# object. Floor is .NET 10 / C# 14; .NET 8 / 9
+are past support from 2026-11-10 - deltas below the floor are marked.
 
 **XAML formatting and naming style - attribute ordering (XAML Styler), `x:Name` vs `Name`, property-element syntax, namespace prefixes, value-converter naming, and binding style - live in `references/xaml-style.md`.** This SKILL.md owns the WPF architecture (strict MVVM, dependency/attached properties, threading); styles, resource dictionaries, and theming are `references/styling-theming.md`; the C# naming baseline is the `csharp` skill. Above these general conventions, a project's own `Settings.XamlStyler` / `.editorconfig` and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority - follow the project where it diverges.
 
@@ -61,9 +62,9 @@ A companion Windows Service is a separate generic-host process (the hosted-worke
 
 ## Observable state with the toolkit, not by hand
 
-Use `CommunityToolkit.Mvvm`. Derive the ViewModel from `ObservableObject`, declare backing fields
-with `[ObservableProperty]`, and let the source generator emit the property, the `PropertyChanged`
-raise, and partial change hooks. Hand-writing `INotifyPropertyChanged` with `SetField` /
+Use `CommunityToolkit.Mvvm`. Derive the ViewModel from `ObservableObject`, declare partial
+properties with `[ObservableProperty]`, and let the source generator implement them with the
+`PropertyChanged` raise and partial change hooks. Hand-writing `INotifyPropertyChanged` with `SetField` /
 `CallerMemberName` boilerplate is wasted code and a place for bugs.
 
 - `[NotifyPropertyChangedFor(nameof(FullName))]` keeps a derived property in sync without a manual
@@ -76,7 +77,7 @@ public sealed partial class OrderListViewModel : ObservableObject
 {
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
-    private string? customerName;                 // generates CustomerName + change raise
+    public partial string? CustomerName { get; set; }   // generator implements it + change raise
 
     [RelayCommand(CanExecute = nameof(CanSave))]
     private void Save()
@@ -88,7 +89,7 @@ public sealed partial class OrderListViewModel : ObservableObject
 }
 ```
 
-On C# 14 (.NET 10) write `[ObservableProperty] public partial string? CustomerName { get; set; }` - CommunityToolkit.Mvvm 8.4.1+ supports it without `preview`, and MVVMTK0042 flags the field form.
+The partial-property form needs CommunityToolkit.Mvvm 8.4.1+ on C# 14 (no `preview`), and MVVMTK0042 flags the old field form. Below the floor (C# 12, or C# 13 without `preview`) use the field form - `[ObservableProperty] private string? customerName;` generates `CustomerName`.
 
 ## Commands, not Click handlers
 

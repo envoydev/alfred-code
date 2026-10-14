@@ -4,7 +4,7 @@ The hub (`SKILL.md`) stays version-agnostic. This file is the orientation map fo
 
 ## Ionic Framework
 
-Floor: Ionic 7. Current: Ionic 9 (needs Angular 18-22; Ionic 8 supports Angular 16-20 - an Angular 21 or 22 workspace needs Ionic 9; the house floor is Angular 17+ either way). Prefer the 9 path.
+Floor: Ionic 8 (Ionic 7 left support on 2025-04-17 - a v7 app takes the 7 -> 8 hop below first). Current: Ionic 9 (needs Angular 18-22; Ionic 8 supports Angular 16-20 - an Angular 21 or 22 workspace needs Ionic 9; the house floor is Angular 17+ either way). Prefer the 9 path.
 
 - **Standalone entry point, per major** - Ionic 8: import UI components and `provideIonicAngular()` from `@ionic/angular/standalone`, because the bare `@ionic/angular` barrel pulls in lazy-loaded code that defeats tree-shaking. Ionic 9: standalone IS the default `@ionic/angular` entry and the lazy barrel moved to `@ionic/angular/lazy`. Resolve the path against the installed major via the documentation server before the first import, never from recall. (Hub: Components and structure.)
 - **Zoneless, per major** - Ionic 8 keeps Zone.js as a peer dependency and is not zoneless-compatible whatever Angular runs underneath: keep `zone.js` in the polyfills; signals are still fine in your own layer, they just do not make Ionic's components zoneless. Ionic 9 ships official zoneless support and Angular 21+ defaults to it, so a plain field set from an async callback no longer repaints on its own - state flows through signals (or `markForCheck()`), which the hub's signals-first rules already satisfy. (Hub: Change detection and zoneless.)
@@ -20,7 +20,7 @@ Floor: Ionic 7. Current: Ionic 9 (needs Angular 18-22; Ionic 8 supports Angular 
 
 ## Capacitor
 
-Floor: Capacitor 6 (a live v6 project is in scope). Current: Capacitor 8. Prefer the 8 path. Majors cannot be skipped - upgrade 6 -> 7 -> 8 in steps, and `npx cap migrate` automates most of each hop.
+Floor: Capacitor 7 (v6 left support on 2026-01-20, and Ionic 9 supports Capacitor 7+ only). Current: Capacitor 8. Prefer the 8 path. A v6 project: upgrade first, `npx cap migrate` - majors cannot be skipped, so go 6 -> 7 -> 8 in steps, the command automating most of each hop.
 
 - **6 -> 7** (fetch <https://capacitorjs.com/docs/updating/7-0>): Node 20+, Xcode 16, iOS target 14, Android Studio Ladybug + JDK 21, Kotlin 1.9.25, minSdk 23 / targetSdk 35; removed `bundledWebRuntime` and `cordova.staticPlugins`.
 - **7 -> 8** (fetch <https://capacitorjs.com/docs/updating/8-0>): Node 22+, Xcode 26, iOS target 15, Swift Package Manager is the default iOS dependency manager (CocoaPods via `--packagemanager CocoaPods`), Android Studio Otter + Kotlin 2.2.20, minSdk 24 / compile+target 36, edge-to-edge via the System Bars plugin + CSS `env()` (Hub: Components; `capacitor-release` owns the SPM iOS-build change).

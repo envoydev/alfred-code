@@ -11,14 +11,33 @@ npm's dominant risk is the supply chain: self-replicating worm campaigns (Shai-H
 
 Use for consuming and publishing packages: package.json / package-lock.json / .npmrc work, npm install/ci/publish questions, dependency updates or vulnerability reports, supply-chain concerns, 'set up npm for this repo'.
 
-Covers lockfile and npm ci discipline, the supply-chain baseline (ignore-scripts, min-release-age, allow-git, OIDC publishing), honest npm-audit gating, peer-conflict resolution, and ESM-first publishing.
+Covers lockfile and npm ci discipline, the supply-chain baseline (npm 12 `allowScripts` approvals or npm 11 ignore-scripts, min-release-age, allow-git, OIDC publishing), honest npm-audit gating, peer-conflict resolution, and ESM-first publishing.
 
 Not for language-level TypeScript style or a framework's own conventions - those are their own skills where the project has them - or for authoring CI pipelines beyond npm's own steps, which is the pipeline-authoring skill's ground.
 
 ## Non-negotiables (any repo that has a package.json)
 
 - **Commit `package-lock.json`; install with `npm ci` in every non-interactive context** - CI, Docker, reproducible local resets. `npm ci` installs strictly from the lockfile and fails on package.json drift; `npm install` is only for intentionally changing dependencies. Lockfile merge conflict: resolve package.json, regenerate with `npm install` (or `--package-lock-only`) - never hand-edit, never delete-and-regenerate blindly (that discards the pinned integrity hashes).
-- **Project `.npmrc` baseline** (committed, non-secret):
+- **Project `.npmrc` baseline** (committed, non-secret). Read `npm -v` first: npm 12 moved dependency install scripts behind an approval list, so the baseline branches on the major.
+
+  **npm >= 12** - dependency install scripts are blocked by default unless the root package.json's `allowScripts` approves them, and `allow-git=none` / `allow-remote=none` are already the defaults:
+
+  ```ini
+  min-release-age=7
+  engine-strict=true
+  ```
+
+  No `ignore-scripts=true` here: it overrides `allowScripts` and would skip the approved scripts too. Landing it, in order:
+
+  1. Install, then list the packages whose install scripts were skipped - the install names them in `npm warn install-scripts` lines, and `npm install-scripts ls` (read-only) prints every one `allowScripts` does not cover yet.
+  2. Vet each one: a known publisher, and a script that only builds native code - anything that fetches or runs more stays out of the list.
+  3. Adding the baseline is its own change: when the task did not ask for it, propose it through ONE AskUserQuestion naming the vetted list - add the baseline and approve that list (Recommended; merged into an existing `.npmrc`, never an overwrite) or leave npm config as it is.
+  4. Write the two lines, then `npm install-scripts approve <name> ...` for the vetted list - it writes pinned `pkg@version` entries into `allowScripts`, so a new version comes back to step 2.
+  5. Verify: `npm install-scripts ls` no longer names a vetted package, and `npm config get min-release-age engine-strict` shows `min-release-age=7` and `engine-strict=true` with no `npm warn Unknown project config` line above them.
+  6. `npm rebuild <name>` runs the newly approved scripts the install skipped; later installs run them on their own (measured on npm 12.2.0, as is the `ignore-scripts=true` override above).
+  7. Close on the project's build and test run with their result lines quoted, never on the config echo alone.
+
+  **npm 11.10 - 11.x** - the four-line baseline:
 
   ```ini
   ignore-scripts=true
@@ -47,7 +66,7 @@ Not for language-level TypeScript style or a framework's own conventions - those
 - **Pin Node**: `.nvmrc` + `engines.node`; CI reads `node-version-file: '.nvmrc'` with `cache: 'npm'` so dev and CI match exactly.
 - **Scope internal packages** (`@yourorg/...`), map the scope to the private registry in `.npmrc` (`@yourorg:registry=...`), and reserve the scope on public npm - closes dependency confusion. Never commit auth tokens; CI injects `${NODE_AUTH_TOKEN}` or, better, uses OIDC and has no token at all.
 - **One package manager per repo**, pinned via the `packageManager` field - mixed lockfiles are the real hazard. Corepack is not bundled from Node 25+ - install the manager explicitly (mechanics in `references/ci-and-operations.md`).
-- **CI install + audit as separate steps**: `npm ci --no-audit --no-fund --prefer-offline --ignore-scripts`, then a dedicated gate - `npm audit --omit=dev --audit-level=high` with no `|| true`, plus `npm audit signatures` (verifies registry signatures and provenance for the installed tree). Never `npm audit fix --force` in automation - it silently takes breaking majors. npm audit sees only known CVEs with a high false-positive rate; the worm class needs a behavioral scanner on top - the layering is in `references/supply-chain.md`.
+- **CI install + audit as separate steps**: `npm ci --no-audit --no-fund --prefer-offline --ignore-scripts` (on npm >= 12 drop `--ignore-scripts` - `allowScripts` already gates dependency scripts, and the flag would skip the approved ones), then a dedicated gate - `npm audit --omit=dev --audit-level=high` with no `|| true`, plus `npm audit signatures` (verifies registry signatures and provenance for the installed tree). Never `npm audit fix --force` in automation - it silently takes breaking majors. npm audit sees only known CVEs with a high false-positive rate; the worm class needs a behavioral scanner on top - the layering is in `references/supply-chain.md`.
 
 ## Everyday dependency rules
 

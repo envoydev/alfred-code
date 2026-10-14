@@ -219,7 +219,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "npm",
-      "note": "professional npm: lockfile+ci discipline, supply-chain baseline (ignore-scripts/cooldown/allow-git), audit gating, overrides vs legacy-peer-deps, exports maps + ESM-first publishing, update-bot cooldowns"
+      "note": "professional npm: lockfile+ci discipline, supply-chain baseline by npm -v (npm 12 allowScripts approvals / npm 11 ignore-scripts, cooldown, allow-git), audit gating, overrides vs legacy-peer-deps, exports maps + ESM-first publishing, update-bot cooldowns"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -289,7 +289,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "dotnet-architecture-tests",
-      "note": "architecture fitness tests: NetArchTest (default)/ArchUnitNET - layer+dependency+naming+isolation rules as build-failing tests"
+      "note": "architecture fitness tests: NetArchTest.eNhancedEdition (default)/ArchUnitNET - layer+dependency+naming+isolation rules as build-failing tests"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -359,7 +359,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "dotnet-openapi",
-      "note": "OpenAPI doc (Swashbuckle / built-in .NET 9+) + Scalar docs UI"
+      "note": "OpenAPI doc (built-in on the .NET 10 floor / Swashbuckle below it) + Scalar docs UI"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -369,7 +369,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "dotnet-security",
-      "note": "OWASP Top 10 (2021) -> .NET 8 mitigations; deprecated-pattern warnings"
+      "note": "OWASP Top 10 (2021, findings labelled A06:2021) -> .NET 10 mitigations; deprecated-pattern warnings"
     },
     {
       "repo": "envoydev/alfred-code",

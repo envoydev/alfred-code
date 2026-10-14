@@ -5,7 +5,7 @@ description: "Use when setting up formatting, analyzers, .editorconfig, warnings
 
 # .NET code quality - enforcement, not opinion
 
-The `csharp` skill says *what* good C# looks like; this skill makes a build *prove* it. The goal is that style and correctness rules are a gate the compiler and CI enforce, so they never depend on a reviewer noticing. Baseline is .NET 8 / C# 12. This is about configuring the tools - authoring a source generator belongs to the skill covering source-generator authoring, a Roslyn analyzer has no house skill (resolve its API through the documentation server), and judging whether the *tests* are any good belongs to the .NET testing hub.
+The `csharp` skill says *what* good C# looks like; this skill makes a build *prove* it. The goal is that style and correctness rules are a gate the compiler and CI enforce, so they never depend on a reviewer noticing. Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked. This is about configuring the tools - authoring a source generator belongs to the skill covering source-generator authoring, a Roslyn analyzer has no house skill (resolve its API through the documentation server), and judging whether the *tests* are any good belongs to the .NET testing hub.
 
 ## When to use
 

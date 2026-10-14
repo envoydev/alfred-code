@@ -5,7 +5,7 @@ description: "Use when writing a Roslyn source generator - IIncrementalGenerator
 
 # .NET source generators
 
-A source generator is a compiler plugin: it runs during the build, reads the code being compiled, and adds *new* C# to that same compilation. It cannot mutate what you wrote - it only appends partial members, new types, or attributes. The payoff is moving work that would otherwise happen with runtime reflection (or by hand) to compile time, where it is faster, AOT-safe, and visible to the IDE. Baseline is .NET 8 / C# 12; the generator's own language conventions follow the C# language baseline.
+A source generator is a compiler plugin: it runs during the build, reads the code being compiled, and adds *new* C# to that same compilation. It cannot mutate what you wrote - it only appends partial members, new types, or attributes. The payoff is moving work that would otherwise happen with runtime reflection (or by hand) to compile time, where it is faster, AOT-safe, and visible to the IDE. Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked. The generator's own language conventions follow the C# language baseline.
 
 ## When to use
 

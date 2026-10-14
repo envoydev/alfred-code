@@ -18,7 +18,7 @@ Layers onto a clean layout or across vsa slices when the domain has real invaria
 
 ```csharp
 public readonly record struct CustomerId(Guid Value)
-{ public static CustomerId New() => new(Guid.CreateVersion7()); }  // CreateVersion7 needs .NET 9; on the .NET 8 floor use Guid.NewGuid()
+{ public static CustomerId New() => new(Guid.CreateVersion7()); }  // below the floor, .NET 8 has no CreateVersion7 - use Guid.NewGuid()
 
 public abstract class AggregateRoot : Entity
 {

@@ -15,7 +15,7 @@ Out of scope, by design: raw SQL / index / planner tuning -> the engine skill (P
 
 ## When to use
 
-- Also fires on: reviewing a query, designing a read/write store (.NET 8 floor).
+- Also fires on: reviewing a query, designing a read/write store (.NET 10 floor).
 - Do NOT use for the engine side - raw SQL, indexes, the query planner (the database skills) - nor for the migration playbook, which is dotnet-migrate.
 
 ## Session lifetime and thread-safety

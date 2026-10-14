@@ -11,7 +11,7 @@ C# style, structure, and runtime conventions in one place: how code is shaped (n
 
 **Formatting, naming, and language-feature style is authoritative in `references/csharp-style.md`** (with the full canonical `.editorconfig`); the .NET Framework 4.8 delta (the C# 7.3 ceiling, polyfills, the SynchronizationContext async caveat) is `references/net-framework-48.md`. This file keeps the house rules those do not cover, and where it overlaps them, the style docs win. **Above all of these, a project's own `.editorconfig` and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority: where a project diverges from these general conventions, follow the project.**
 
-**Floor: .NET 8 / C# 12.** Every rule below assumes at least this target - `TimeProvider`, `UnsafeAccessorAttribute`, the static argument throw-helpers, and the C# 12 collection expressions / primary constructors are all in. Where a convention names a newer feature (.NET 9 `System.Threading.Lock`, the C# 14 `field` keyword), it flags the version inline; treat those as opt-in once the project's target moves up.
+**Floor: .NET 10 / C# 14.** .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked. Every rule below assumes at least this target - `TimeProvider`, `UnsafeAccessorAttribute`, the static argument throw-helpers, collection expressions / primary constructors, `System.Threading.Lock` and the `field` keyword are all in.
 
 ## When to use
 
@@ -80,7 +80,7 @@ Reach for the framework-native construct before hand-rolling a GoF pattern - mos
 
 ## Modern C# syntax preferences
 
-Two house preferences: prefer `params ReadOnlySpan<T>` (C# 13) for new internal zero-alloc APIs over `params T[]`, and `System.Threading.Lock` (.NET 9+) for new lock objects (do not retrofit existing `lock(object)` sites).
+Two house preferences: prefer `params ReadOnlySpan<T>` for new internal zero-alloc APIs over `params T[]`, and `System.Threading.Lock` for new lock objects (do not retrofit existing `lock(object)` sites). Below the floor, .NET 8 / C# 12 has neither - keep `lock(object)` and `params T[]` there.
 
 Performance concerns (readonly structs, `Span<T>` / `ArrayPool<T>`, collection choice) belong to the skill covering .NET performance and memory layout, when your skill list has one; without it, prefer the framework default and measure before optimizing.
 

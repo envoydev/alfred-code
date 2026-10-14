@@ -7,7 +7,7 @@ description: "Load before wiring ASP.NET Core sign-in, JWT bearer, cookies, Open
 
 Two questions, never one. **Authentication** answers who the caller is and hands you a `ClaimsPrincipal`. **Authorization** answers what that principal may do. The framework keeps them as separate middlewares - `UseAuthentication()` then `UseAuthorization()`, in that order - and so should your thinking. A 401 means the framework could not establish identity; a 403 means it knows who you are and the answer is still no.
 
-Baseline is .NET 8 / C# 12. On .NET Framework 4.8 the OWIN / Katana + ASP.NET Identity 2.x auth stack is in `references/net-framework-48.md`.
+Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked. On .NET Framework 4.8 the OWIN / Katana + ASP.NET Identity 2.x auth stack is in `references/net-framework-48.md`.
 
 ## When to use
 

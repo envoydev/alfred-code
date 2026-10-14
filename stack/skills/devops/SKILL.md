@@ -30,11 +30,11 @@ Do NOT load for application or schema code, or for editing the Aspire AppHost it
 - Harden past non-root at runtime - drop all Linux capabilities, set no-new-privileges, cap memory / CPU / PID count, and keep the default seccomp profile plus an AppArmor or SELinux profile instead of reaching for `--privileged`, so a compromised or leaking process cannot escalate, exhaust PIDs, or starve the host. Then add back what the image's own binary needs: one carrying a file capability (caddy's `cap_net_bind_service`) fails exec under `cap_drop: ALL` until `cap_add` names it. The full checklist with the compose keys: `references/docker-hardening.md`.
 - Give the container a health check and proper PID-1 signal handling (an init shim) so the orchestrator can tell ready from dead and a SIGTERM drains rather than kills. A chiseled or distroless image has no shell and no `curl`, so `HEALTHCHECK CMD curl ...` cannot run there: under Kubernetes use the orchestrator's HTTP probe against the app's health endpoint; where Docker or Compose judges health itself, publish a small probe executable (GET the URL, exit 0 on a 2xx, 1 otherwise) in the build stage and call it in exec form, as below.
 
-The shape in one Dockerfile - multi-stage, cache-ordered, digest-pinned, non-root, health-checked:
+The shape in one Dockerfile - multi-stage, cache-ordered, digest-pinned, non-root, health-checked (the .NET 10 LTS images; each digest is the multi-arch index as read 2026-10-14 - re-read the current one with `docker buildx imagetools inspect <image>` before you pin):
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM mcr.microsoft.com/dotnet/sdk:8.0@sha256:<digest> AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:0d99ebf1ccad15037b5c98c9fe8979d6b8dbac23812feae2277a0b277b5c5ffa AS build
 WORKDIR /src
 COPY ["App/App.csproj", "App/"]
 RUN --mount=type=cache,target=/root/.nuget/packages dotnet restore App/App.csproj
@@ -42,7 +42,7 @@ COPY . .
 RUN --mount=type=cache,target=/root/.nuget/packages dotnet publish App/App.csproj -c Release -o /app
 RUN --mount=type=cache,target=/root/.nuget/packages dotnet publish HealthProbe/HealthProbe.csproj -c Release -o /probe
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble-chiseled@sha256:<digest>
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:84def277556c2843a44fdeefbd3145d0a2e32d8f736d0c1a7b0a96b2880b0187
 WORKDIR /app
 COPY --from=build /app .
 COPY --from=build /probe /probe

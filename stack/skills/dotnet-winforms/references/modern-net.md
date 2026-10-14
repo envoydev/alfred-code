@@ -1,7 +1,8 @@
-# WinForms on modern .NET 8 / 9 / 10
+# WinForms on modern .NET - the .NET 10 floor and below it
 
 Modern .NET is the strategic target and it changes real things for WinForms. Floor new work at
-**.NET 8** and prefer **.NET 10 (LTS, three-year support)** over .NET 9 (STS) for anything you ship.
+**.NET 10 (LTS, supported to 2028-11-14)**; .NET 8 and 9 leave support on 2026-11-10, so an app on
+either is below the floor - the per-version rows below mark what it lacks.
 The version-agnostic conventions live in the parent SKILL.md; this reference is the modern-runtime
 mechanics plus the WinForms-specific migration deltas. The frozen 4.8 counterpart is
 **net-framework-48.md**.

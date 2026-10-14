@@ -28,7 +28,7 @@ using BenchmarkDotNet.Running;
 BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
 ```
 
-`BenchmarkSwitcher` forwards CLI flags (`--filter`, `--job`) and lets you select cases; always pass `--filter` so it never hangs on an interactive prompt. To compare across runtimes, the `.csproj` must list them plural - `<TargetFrameworks>net8.0;net9.0</TargetFrameworks>` - or a multi-runtime run fails at build.
+`BenchmarkSwitcher` forwards CLI flags (`--filter`, `--job`) and lets you select cases; always pass `--filter` so it never hangs on an interactive prompt. To compare across runtimes, the `.csproj` must list them plural - `<TargetFrameworks>net9.0;net10.0</TargetFrameworks>` - or a multi-runtime run fails at build.
 
 ## Writing a benchmark
 
@@ -114,4 +114,4 @@ public class SortBenchmark
 
 Both cases pay the clone, so the Ratio understates the gap - add a clone-only baseline when the gap matters.
 
-Prefer this side-by-side form whenever both versions compile together - it controls for environmental variance that separate runs cannot. To compare the same code across runtimes, mark no method baseline; pass `--runtimes net8.0 net9.0` (first listed is the baseline) with the plural `<TargetFrameworks>` set. To compare against a version you have already changed past, build and save the old output first (`dotnet build -o ./baseline`) and reference the saved DLL from a second job.
+Prefer this side-by-side form whenever both versions compile together - it controls for environmental variance that separate runs cannot. To compare the same code across runtimes, mark no method baseline; pass `--runtimes net9.0 net10.0` (first listed is the baseline) with the plural `<TargetFrameworks>` set. To compare against a version you have already changed past, build and save the old output first (`dotnet build -o ./baseline`) and reference the saved DLL from a second job.

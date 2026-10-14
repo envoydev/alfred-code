@@ -5,7 +5,7 @@ description: "Use when building a .NET CLI tool or chat/trading bot - System.Com
 
 # .NET console apps - the CLI and bot interface surface
 
-A console binary is one of two things by its external interface: a **one-shot CLI tool** (parse arguments, do the work, return an exit code) or a **long-running gateway app** (a bot or consumer that stays connected and reacts to events). The generic host under a long-running bot (lifecycle, shutdown, 24/7 I/O hardening) is the hosted-worker skill's; this skill owns the interface layer - argument parsing and each bot SDK. Floor is .NET 8 / C# 12.
+A console binary is one of two things by its external interface: a **one-shot CLI tool** (parse arguments, do the work, return an exit code) or a **long-running gateway app** (a bot or consumer that stays connected and reacts to events). The generic host under a long-running bot (lifecycle, shutdown, 24/7 I/O hardening) is the hosted-worker skill's; this skill owns the interface layer - argument parsing and each bot SDK. Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked.
 
 ## When to use
 

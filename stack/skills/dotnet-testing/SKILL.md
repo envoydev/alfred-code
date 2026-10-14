@@ -7,7 +7,7 @@ description: "Use before writing, changing or reviewing .NET tests, auditing tes
 
 This skill captures the **approach**, not a single library. The principles below apply regardless of which test runner, substitute library, or assertion library a project picks. Library routing is in §Library choices.
 
-**Floor: .NET 8 / C# 12.** Testing classic ASP.NET on .NET Framework 4.8 (in-memory OWIN `TestServer`, `HttpContextBase`) is `references/net-framework-48.md`.
+**Floor: .NET 10 / C# 14.** .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked. Testing classic ASP.NET on .NET Framework 4.8 (in-memory OWIN `TestServer`, `HttpContextBase`) is `references/net-framework-48.md`.
 
 ## When to use
 

@@ -82,4 +82,4 @@ the layout diff during migration is expected, not alarming.
 4.8 apps are typically classic (non-SDK) `.csproj` with `packages.config`. The first migration move is
 to **convert to SDK-style while still targeting 4.8** and switch `packages.config` to
 `PackageReference` - it shrinks the diff before any runtime change. That conversion and the full path
-to .NET 8/9/10 live in **modern-net.md**; the upgrade safety playbook is the `dotnet-migrate` skill's.
+to the .NET 10 floor live in **modern-net.md**; the upgrade safety playbook is the `dotnet-migrate` skill's.

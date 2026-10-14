@@ -100,8 +100,8 @@ Placed at the solution root, MSBuild auto-imports it into every project below. K
 
   <!-- target frameworks defined once, referenced by each csproj -->
   <PropertyGroup>
-    <NetLibVersion>net8.0</NetLibVersion>
-    <NetTestVersion>net8.0</NetTestVersion>
+    <NetLibVersion>net10.0</NetLibVersion>
+    <NetTestVersion>net10.0</NetTestVersion>
   </PropertyGroup>
 
   <!-- usings every project gets - keep to truly project-wide ones -->
@@ -127,12 +127,12 @@ Where the house config-protection guard runs, it blocks a change that loosens `N
 
 ## global.json - pin the SDK
 
-Pin the SDK so every machine and CI runner builds with the same toolchain. Projects can still target `net8.0`; the SDK version and the project framework are independent (9.0.200+ is what unlocks `.slnx`).
+Pin the SDK so every machine and CI runner builds with the same toolchain. The SDK version and the project framework are independent - the 10.0 SDK also builds a project still below the floor (`net8.0` / `net9.0`), and any SDK from 9.0.200 reads `.slnx`.
 
 ```json
 {
   "sdk": {
-    "version": "9.0.200",
+    "version": "10.0.100",
     "rollForward": "latestFeature"
   }
 }

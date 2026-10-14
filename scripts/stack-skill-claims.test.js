@@ -234,3 +234,83 @@ test('I44: dotnet-project-setup names the config-protection gate, pinned with ty
     assert.match(text, /never route around the block/);
     assertPinned(['stack/skills/typescript/SKILL.md', 'stack/skills/dotnet-project-setup/SKILL.md', 'stack/skills/dotnet-code-quality/SKILL.md'], 'stack/skills/typescript/SKILL.md');
 });
+
+// audit 2026-10-14 SKS01 - npm 12 blocks dependency install scripts behind the root `allowScripts` policy
+// (v12.0.0 release notes; docs.npmjs.com/cli/v12/commands/npm-install-scripts), and `ignore-scripts=true`
+// overrides it (measured on npm 12.2.0); the npm 11 steps stay verbatim so I42 and M120 still hold.
+test('SKS01: the npm baseline branches on npm -v, npm 12 approving through allowScripts', () =>
+{
+    const text = squash(section(read('stack/skills/npm/SKILL.md'), 'Non-negotiables (any repo that has a package.json)'));
+    assert.match(text, /Read `npm -v` first/);
+    assert.match(text, /\*\*npm >= 12\*\*/);
+    assert.match(text, /\*\*npm 11\.10 - 11\.x\*\*/);
+    assert.match(text, /`npm install-scripts approve <name> \.\.\.`/);
+    assert.match(text, /pinned `pkg@version` entries into `allowScripts`/);
+    assert.match(text, /`npm install-scripts ls`/);
+    assert.match(text, /No `ignore-scripts=true` here: it overrides `allowScripts`/);
+    const npm12 = text.slice(text.indexOf('**npm >= 12**'), text.indexOf('**npm 11.10 - 11.x**'));
+    assert.doesNotMatch(npm12, /```ini ignore-scripts=true/, 'the npm 12 .npmrc must not carry ignore-scripts');
+});
+
+// audit 2026-10-14 SKD-01 + SKS08 - .NET 8 and .NET 9 leave support on 2026-11-10, .NET 10 LTS runs to 2028-11-14
+// (dotnet.microsoft.com support policy): the family floors at .NET 10 / C# 14, and a .NET 8 mention of the old
+// floor survives only on a line that marks it below the floor.
+test('SKD-01: the .NET family floors at .NET 10 / C# 14, the old floor only in below-the-floor lines', () =>
+{
+    const family = skillFiles((n) => n.endsWith('.md')).filter((p) => /[\\/](csharp|csharp-design-patterns|dotnet[^\\/]*|ilspy-decompile)[\\/]/.test(p));
+    assert.ok(family.length > 50, `found only ${family.length} .NET family files`);
+    for (const p of family)
+    {
+        for (const line of fs.readFileSync(p, 'utf8').split('\n'))
+        {
+            if (!/\.NET 8 \/ C# 12|\.NET 8 floor|net8\.0/.test(line)) continue;
+            assert.match(line, /below the floor|below it/i, `${path.relative(ROOT, p)} still states the old floor: ${line.trim().slice(0, 120)}`);
+        }
+    }
+    assert.match(read('stack/skills/csharp/SKILL.md'), /\*\*Floor: \.NET 10 \/ C# 14\.\*\* \.NET 8 \/ 9 are past support from 2026-11-10 - deltas below the floor are marked\./);
+    const setup = read('stack/skills/dotnet-project-setup/SKILL.md');
+    assert.match(setup, /<NetLibVersion>net10\.0<\/NetLibVersion>/);
+    assert.match(setup, /"version": "10\.0\.100",\s*"rollForward": "latestFeature"/);
+    const devops = read('stack/skills/devops/SKILL.md');
+    assert.match(devops, /FROM mcr\.microsoft\.com\/dotnet\/sdk:10\.0@sha256:[0-9a-f]{64} AS build/);
+    assert.match(devops, /FROM mcr\.microsoft\.com\/dotnet\/aspnet:10\.0-noble-chiseled@sha256:[0-9a-f]{64}/);
+    assert.doesNotMatch(devops, /@sha256:<digest>/);
+});
+
+// audit 2026-10-14 SKD-16 - NetArchTest.Rules is dormant since 1.3.2 (2021-05-23); NetArchTest.eNhancedEdition
+// 1.4.5 (2025-06-04) keeps the `NetArchTest.Rules` namespace and the `Types.InAssembly(...)` chain but exposes
+// `FailingTypes`, not `FailingTypeNames` (its README and sources/NetArchTest/TestResult.cs).
+test('SKD-16: architecture tests default to the maintained NetArchTest fork and assert with the runner', () =>
+{
+    const text = squash(section(read('stack/skills/dotnet-architecture-tests/SKILL.md'), 'Pick the library: NetArchTest by default'));
+    assert.match(text, /Default to \*\*NetArchTest\.eNhancedEdition\*\*/);
+    assert.doesNotMatch(text, /Default to \*\*NetArchTest\.Rules\*\*/);
+    assert.match(text, /Types\.InAssembly\(typeof\(Order\)\.Assembly\)/);
+    assert.match(text, /Assert\.True\(result\.IsSuccessful,/);
+    assert.match(text, /result\.FailingTypes\.Select\(t => t\.FullName\)/);
+    assert.doesNotMatch(text, /\.Should\(\)\.BeTrue|FailingTypeNames\)/);
+});
+
+// audit 2026-10-14 SKD-14 - OWASP's 2025 list reuses A01-A10 for other categories (A06:2025 is Insecure Design),
+// so a finding keeps the 2021 sections and names its edition.
+test('SKD-14: dotnet-security findings label the OWASP edition', () =>
+{
+    const review = squash(section(read('stack/skills/dotnet-security/SKILL.md'), 'Review output'));
+    assert.match(review, /the category naming the A0x above with its edition - `A06:2021`/);
+    assert.match(review, /when no installed skill matches, keep the finding in this report tagged with its surface/);
+    assert.match(squash(read('stack/skills/dotnet-security/references/desktop-and-service-apps.md')), /the category labelled with its edition \(`A08:2021`\)/);
+});
+
+// audit 2026-10-14 SKS11 - Capacitor 6 left support 2026-01-20 and Ionic 7 2025-04-17; Ionic 9 supports Capacitor 7+
+// (capacitorjs.com support policy; ionicframework.com/docs/reference/support).
+test('SKS11: the mobile floors are Capacitor 7 / Ionic 8, a v6 project upgrading first', () =>
+{
+    const versions = squash(read('stack/skills/ionic/references/versions.md'));
+    assert.match(versions, /Floor: Ionic 8/);
+    assert.match(versions, /Floor: Capacitor 7/);
+    assert.match(versions, /A v6 project: upgrade first, `npx cap migrate`/);
+    assert.match(read('stack/skills/capacitor-release/SKILL.md'), /Floored at Capacitor 7, current on 8/);
+    assert.match(read('stack/skills/ionic-security/SKILL.md'), /Targets Capacitor 7\+\./);
+    for (const rel of ['stack/skills/capacitor-release/SKILL.md', 'stack/skills/ionic/references/versions.md', 'stack/skills/ionic-security/SKILL.md'])
+        assert.doesNotMatch(read(rel), /Capacitor 6\+|Floor(ed)?:? (at )?Capacitor 6|Floor: Ionic 7/, rel);
+});

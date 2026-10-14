@@ -5,12 +5,11 @@ description: "Use before writing or editing ASP.NET Core minimal API endpoints -
 
 # ASP.NET Core minimal API - endpoint mechanics
 
-This skill owns the shape of a minimal API endpoint: where it is registered, what it returns, how parameters bind, and how a cross-cutting concern hangs off it. It stops at the endpoint boundary. The pipeline-wide concerns - validation library choice, resilience, observability, response caching - belong to the ASP.NET Core cross-cutting hub, the failure-to-`ProblemDetails` contract to the HTTP error-handling skill, OpenAPI document generation and the docs UI to the OpenAPI skill, and auth configuration to the .NET authentication skill; the controller-based counterpart is the skill covering controller-based Web APIs. Where your skill list has none of them, the endpoint rules below still execute - keep the concern out of the lambda and report the surrounding wiring as unowned rather than inventing a second convention for it. Floor is .NET 8 / C# 12; anything newer is marked optional.
+This skill owns the shape of a minimal API endpoint: where it is registered, what it returns, how parameters bind, and how a cross-cutting concern hangs off it. It stops at the endpoint boundary. The pipeline-wide concerns - validation library choice, resilience, observability, response caching - belong to the ASP.NET Core cross-cutting hub, the failure-to-`ProblemDetails` contract to the HTTP error-handling skill, OpenAPI document generation and the docs UI to the OpenAPI skill, and auth configuration to the .NET authentication skill; the controller-based counterpart is the skill covering controller-based Web APIs. Where your skill list has none of them, the endpoint rules below still execute - keep the concern out of the lambda and report the surrounding wiring as unowned rather than inventing a second convention for it. Floor is .NET 10 / C# 14; .NET 8 / 9 are past support from 2026-11-10 - deltas below the floor are marked.
 
 ## When to use
 
 - Covers how an endpoint is shaped and wired, not what surrounds it: MapGroup registration, TypedResults and Results-of-T outcome unions, IEndpointFilter, parameter binding, endpoint metadata, and hardened IFormFile uploads.
-- Later additions (beyond the .NET 8 floor) are flagged optional.
 - Do NOT use for MVC or API controllers (that is the controller-based Web API skill), gRPC, SignalR, or non-HTTP code.
 
 ## Where endpoints live
@@ -130,6 +129,6 @@ Report: the three quoted results. An endpoint whose `CancellationToken` was neve
 
 - A `try`/`catch`, an EF Core query, or any business logic inside the route lambda - the lambda is a route declaration, not a method body. Move the logic to a handler or service and let the global exception handler own the failure path.
 
-## Newer versions (optional)
+## Version-gated additions
 
-Everything above stands on the .NET 8 floor. The version-gated additions - the .NET 9+ built-in OpenAPI generator, .NET 10 first-party validation (and its no-async-rule gap), group-attachable rate limiting and output caching, Native AOT publishing, and .NET 10 server-sent events - live in `references/newer-versions.md`; open it when the project targets past the floor or is weighing AOT.
+Everything above holds on the floor and below it. What the floor adds - the built-in OpenAPI generator, first-party validation (and its no-async-rule gap), server-sent events - plus group-attachable rate limiting and output caching and Native AOT publishing live in `references/newer-versions.md`; open it when wiring one of them or weighing AOT.

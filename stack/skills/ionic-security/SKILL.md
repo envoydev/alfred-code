@@ -9,7 +9,7 @@ An Ionic app is an Angular app running in a native WebView with a bridge to nati
 
 ## When to use
 
-Load when hardening or reviewing an Ionic/Capacitor feature - 'is it safe to store the token like this', 'lock the app behind Face ID', 'review our deep links' - or when a security audit sweeps the mobile stack. Targets Capacitor 6+.
+Load when hardening or reviewing an Ionic/Capacitor feature - 'is it safe to store the token like this', 'lock the app behind Face ID', 'review our deep links' - or when a security audit sweeps the mobile stack. Targets Capacitor 7+.
 
 Covers Keychain / Keystore secret storage (never localStorage or Preferences), deep links as untrusted input, least-privilege native permissions, release-build WebView settings, navigation allowlisting, screen-capture and backgrounding, plugin trust, pinning and biometric gating.
 
