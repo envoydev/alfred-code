@@ -1,6 +1,6 @@
 ---
 name: task-verify-plan
-description: "Use to audit a plan or design before writing code - 'review this plan', 'is this design sound', 'does the plan miss anything'. Not the built-code review."
+description: "Use to audit an existing plan or design before code - 'review this plan', 'is this design sound', 'does it miss anything'. Not plan writing or code review."
 ---
 
 # Verify Plan - a risk-coverage audit of a plan before you build

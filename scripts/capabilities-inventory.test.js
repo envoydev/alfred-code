@@ -150,7 +150,7 @@ test('inventory: the MCP block is the LIVE list, not .mcp.json alone, and every 
     const rows = out.split('\n').filter((l) => /^\s+- `/.test(l));
     // The locked three share one row pointing at the load line their baselines carry (audit I24).
     assert.equal(rows.length, 2, 'one routing row per registered server, the locked servers on one');
-    for (const row of rows) assert.match(row, /first call: (`ToolSearch select:|the `ToolSearch select:` line its baseline names)/, `no first call: in ${row.slice(0, 60)}`);
+    for (const row of rows) assert.match(row, /first call: (`ToolSearch select:|the `ToolSearch select:` line each names)/, `no first call: in ${row.slice(0, 60)}`);
 });
 
 test('inventory: a browser engine server gets the catalog row with its own registered name', { skip: posixOnly }, () =>
@@ -538,7 +538,7 @@ test('inventory: every server an enabled plugin provides gets its routing row in
     assert.deepStrictEqual(rows.map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`alfred-navigation`, `alfred-documentation`, `alfred-memory`', '`chrome-control`'],
         'one row per enabled plugin server, the locked ones on one - never a disabled one, another project\'s, or a plugin with no server');
     assert.match(rows[1], /first call: `ToolSearch select:mcp__plugin_chrome-control_chrome-control__browser_snapshot/, 'plugin spelling');
-    assert.match(rows[0], /first call: the `ToolSearch select:` line its baseline names/, 'the locked row points at the baselines\' load lines');
+    assert.match(rows[0], /first call: the `ToolSearch select:` line each names/, 'the locked row points at the baselines\' load lines');
 });
 
 test('inventory: with no CLI, the project settings enabledPlugins name the plugin servers', { skip: posixOnly }, () =>
@@ -550,7 +550,7 @@ test('inventory: with no CLI, the project settings enabledPlugins name the plugi
     const { out } = run([], { cwd: root });
     assert.match(out, /live list unavailable - CLI absent/);
     assert.deepStrictEqual(routingRows(out).map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`alfred-navigation`'], 'settings.local.json switches memory off; the core and the LSP carry no server');
-    assert.match(routingRows(out)[0], /first call: the `ToolSearch select:` line its baseline names/);
+    assert.match(routingRows(out)[0], /first call: the `ToolSearch select:` line each names/);
 });
 
 test('inventory: a registered server keeps its own row, and a third-party plugin server is spelled by its plugin', { skip: posixOnly }, () =>

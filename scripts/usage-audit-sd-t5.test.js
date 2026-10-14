@@ -22,7 +22,7 @@ const asks = (text) => [...String(text).matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?
 test('SD04 5b9ce9c5#3 6288ad94#8 bca100bd#5: check rows alone still get the ask, with a keep option; the diffs ride the ask; the outline compare is a script row', () => {
     const text = read('stack/skills/habits-adjust-agents-md/SKILL.md');
     const t = flat(text);
-    const [mixed, checkOnly] = asks(text);
+    const [mixed, checkOnly] = asks(text).filter((a) => !/^Write <file> from the outline/.test(a.question));
     assert.ok(checkOnly, 'the check-rows-only ask is a template of its own');
     assert.strictEqual(checkOnly.options[0], 'Skip (Recommended)');
     assert.ok(checkOnly.options.some((o) => /^Keep the lines as written for good$/.test(o)), 'the keep marker is one of its options');
@@ -128,4 +128,17 @@ test('SD14 ae38c08f#5 (skill half): an error on a call a PreToolUse hook rewrote
     assert.match(a, /rpad\('hook-rw', 7\)/);
     assert.match(a, /ran with input a PreToolUse hook REWROTE/);
     assert.match(d, /hook-rw column and the skeleton's 'ran with input a PreToolUse hook REWROTE' line/);
+});
+
+// Audit 2026-10-14 SKC13 / SKC14: create mode's unrequested write went out through a prose pointer at step 5's improve
+// ask, which marks a different option; it has its own marked template now. The memory docs (2026-10-14) name the
+// `/config` Project instructions value that loads CLAUDE.md and AGENTS.md together.
+test('SKC14 + SKC13: the create-mode write ask is a marked template, and the both-files setting is named', () => {
+    const text = read('stack/skills/habits-adjust-agents-md/SKILL.md');
+    const create = asks(text).find((a) => /^Write <file> from the outline above/.test(a.question));
+    assert.ok(create, 'the create-mode write ask is a template');
+    assert.strictEqual(create.options[0], 'Write it (Recommended)');
+    assert.ok(create.options.includes('Skip'));
+    assert.doesNotMatch(flat(text), /puts it through the step-5 AskUserQuestion/);
+    assert.strictEqual((flat(text).match(/Project instructions to 'claude-md-and-agents-md' in `\/config`/g) || []).length, 2, 'both sites name the setting');
 });

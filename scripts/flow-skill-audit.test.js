@@ -223,7 +223,12 @@ test('task-build-from-scratch: the architecture pick, the mode ask and each slic
 // MINOR task-design:12, :86, write-and-hand-off.md:18, evidence.md:14.
 test('task-design: a marked mode ask, the mode left to the build step, a flow-aware hand-off and no stale evidence row', () => {
     const text = flat(skill('task-design'));
-    assert.match(text, /ask ONE question before designing, via AskUserQuestion - this chat, or the designer seat\? - one option marked `\(Recommended\)` and listed first: this chat, unless the user asked for isolation - and hold the answer/);
+    // audit 2026-10-14 SKF-10: the mode ask moved to a reference read in this chat - the 10 designer seats preload no ask text
+    const mode = flat(read('stack/skills/task-design/references/design-mode.md'));
+    assert.match(mode, /ask ONE question before designing, via AskUserQuestion - this chat, or the designer seat\? - one option marked `\(Recommended\)` and listed first: this chat, unless the user asked for isolation - and hold the answer/);
+    assert.match(text, /In this chat, ask the mode per `references\/design-mode\.md` - read it before designing/);
+    assert.match(text, /Inside a designer seat: no ask, no dispatch/);
+    assert.doesNotMatch(text, /Research fan-out|AskUserQuestion - this chat, or the designer seat/, 'the ask mechanics left the preloaded body');
     assert.doesNotMatch(text, /belongs to `task-solve`'s mode ask/);
     assert.match(text, /The execution mode is the build step's ask, never the plan's\./);
     const hand = flat(read('stack/skills/task-design/references/write-and-hand-off.md'));
@@ -391,4 +396,86 @@ test('D10: the two gatherer fan-out references share one registered ask rule, ow
 test('task-verify-code: the in-process probe is stated for any stack, the .NET host named as its example', () => {
     const b = flat(body(skill('task-verify-code')));
     assert.match(b, /For a web API an in-process run through the app's real entry point IS that call - the stack's in-memory host test \(on \.NET a `WebApplicationFactory<Program>` test through the real `Program`/);
+});
+
+// ---- audit 2026-10-14 (skills-flows): the no-decision rows ----------------------------------------------------------
+const FLOW_SKILLS = ['issue-diagnoser', 'issue-signatures-ci', 'issue-signatures-runtime', 'loop-architecture-quality', 'loop-code-quality',
+    'loop-test-coverage', 'task-build-from-scratch', 'task-design', 'task-implement', 'task-solve', 'task-solve-cross', 'task-verify-code',
+    'task-verify-plan', 'task-version-upgrade'];
+const flowFiles = () => FLOW_SKILLS.flatMap((n) => {
+    const dir = path.join(ROOT, 'stack/skills', n);
+    const refs = fs.existsSync(path.join(dir, 'references')) ? fs.readdirSync(path.join(dir, 'references')).map((f) => `references/${f}`) : [];
+    return ['SKILL.md', ...refs].filter((f) => f.endsWith('.md')).map((f) => `stack/skills/${n}/${f}`);
+});
+const description = (name) => (skill(name).match(/^description:\s*"(.*)"\s*$/m) || [])[1] || '';
+const askBlocks = (text) => [...text.matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?)^[ \t]*```/gm)].map((m) => {
+    const lines = m[1].split('\n').map((l) => l.trim()).filter(Boolean);
+    return { question: lines[0], options: lines.slice(1).map((l) => (/^- '(.*)' - /.exec(l) || [])[1]).filter(Boolean) };
+});
+
+// SKF-05: 042640ca moved the cursor and handoff notes to alfred-memory; five lines still sent them to the navigation server.
+test('SKF-05: no flow skill hands off, purges or deletes a note on the navigation server', () => {
+    for (const f of flowFiles())
+        assert.doesNotMatch(flat(read(f)), /navigation-server hand-off|navigation server cursor note|purge the navigation-server/, f);
+    const close = flat(skill('issue-diagnoser'));
+    assert.match(close, /Delete this run's cursor rows \(`memory_delete`, tags `note:<slug>\/diagnosis` and the project tag, `tag_match: 'all'`\)/);
+    assert.match(close, /store the signature and its fix as ONE alfred-memory row without the `handoff` \/ `note:` tags - the reusable half/);
+    assert.match(flat(read('stack/skills/loop-code-quality/references/staged-mode.md')), /purge the run's alfred-memory handoff notes fold-first/);
+});
+
+// SKF-09 / SKF-15: task-design and task-verify-plan collided at Jaccard 0.278 with neither naming the other's case; the
+// cross-task flow's description hid its bug family.
+test('SKF-09 + SKF-15: the design and plan-audit descriptions each exclude the other, and the cross flow names its bug family', () => {
+    assert.match(description('task-design'), /Not for one-line edits or a plan audit\.$/);
+    assert.match(description('task-verify-plan'), /^Use to audit an existing plan or design before code - .*Not plan writing or code review\.$/);
+    assert.match(description('task-solve-cross'), /a cross-stack bug/);
+    for (const n of ['task-design', 'task-verify-plan', 'task-solve-cross']) assert.ok(description(n).length <= 160, `${n}: ${description(n).length}`);
+});
+
+// SKF-11: both closes left a large uncommitted diff with no commit decision, while every sibling flow asks one.
+test('SKF-11: the greenfield and upgrade closes put the commit through a marked ask', () => {
+    for (const n of ['task-build-from-scratch', 'task-version-upgrade']) {
+        const commit = askBlocks(skill(n)).find((a) => a.options.some((o) => /^Commit now/.test(o)));
+        assert.ok(commit, `${n}: a commit ask template`);
+        assert.deepStrictEqual(commit.options, ['Commit now (Recommended)', 'Hold - review the diff first'], n);
+        assert.match(flat(skill(n)), /runs `habits-commit-checkpoint` in full/, n);
+    }
+    assert.match(skill('task-build-from-scratch'), /^Commit: {4}<the commit `git log -1 --stat` read back \| held - the diff is uncommitted \| no git - the scaffold is not a repository>$/m);
+});
+
+// SKF-12: the playbooks are the upgrade's contract, but nothing recorded the read.
+test('SKF-12: the upgrade plan opens on a playbooks receipt', () => {
+    const t = flat(skill('task-version-upgrade'));
+    assert.match(t, /The printed plan's first line is the receipt: `playbooks: read - <the stack section\(s\) applied>`/);
+    assert.match(t, /PRINT the staged plan in the chat first - the `playbooks:` line, then every stage/);
+});
+
+// SKF-13: the body sent multi-source evidence to the gated flow while its reference dispatched gatherers for it.
+test('SKF-13: the runtime catalogue routes multi-source evidence one way - the gatherer fan-out', () => {
+    const t = flat(skill('issue-signatures-runtime'));
+    assert.match(t, /When the evidence spans more than one source, the gatherer fan-out below handles it/);
+    assert.doesNotMatch(t, /that is the gated four-step investigation flow, not a lookup/);
+    assert.match(flat(read('stack/skills/issue-signatures-runtime/references/gatherer-fan-out.md')), /the evidence spans two or more independent sources/);
+});
+
+// SKF-14: plan_review is the user's approval field; the plan audit's own record is its Passes: line.
+test('SKF-14: the loops record the plan audit by its Passes: line', () => {
+    for (const n of ['loop-architecture-quality', 'loop-code-quality']) {
+        assert.match(flat(skill(n)), /\*\*Gate the plan\*\* - `task-verify-plan`, an actual Skill invocation, recording its `Passes:` line\./, n);
+        assert.doesNotMatch(skill(n), /recording `plan_review: approved\|waived`/, n);
+    }
+    assert.match(skill('task-verify-plan'), /^Passes: {4}risk <v> \| scope <v>/m, 'the field the loops copy exists');
+});
+
+// SKF-16: the coverage loop forbade weakened and assertion-free tests with no sweep and no report field behind the rule.
+test('SKF-16: the coverage loop vendors the anti-gaming sweep, records its baseline and reports the verdict', () => {
+    const t = flat(skill('loop-test-coverage'));
+    assert.match(t, /round 1 also records the sweep baseline: HEAD, or on a dirty tree the sha `git stash create` prints/);
+    assert.match(t, /Read `references\/anti-gaming-sweep\.md` and run its four commands against the sweep baseline/);
+    assert.match(t, /`Anti-gaming: <clean \| what was reverted>`/);
+    assert.match(skill('loop-test-coverage'), /^ {2}Sweep baseline: <sha recorded at round 1>/m, 'the RESUME BLOCK carries the baseline');
+    const entry = shared()['anti-gaming-sweep-commands'];
+    assert.deepStrictEqual(copiesOf(entry), ['stack/skills/loop-code-quality/references/anti-gaming-sweep.md', 'stack/skills/loop-test-coverage/references/anti-gaming-sweep.md']);
+    assert.deepStrictEqual(registryFindings('anti-gaming-sweep-commands'), []);
+    assert.match(flat(read('stack/skills/loop-test-coverage/references/anti-gaming-sweep.md')), /Any hit is a BLOCKER/);
 });

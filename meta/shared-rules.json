@@ -1760,7 +1760,7 @@
           "marker": "ask ONE question before building"
         },
         {
-          "file": "stack/skills/task-design/SKILL.md",
+          "file": "stack/skills/task-design/references/design-mode.md",
           "marker": "ask ONE question before designing"
         },
         {
@@ -6102,19 +6102,6 @@
         }
       ]
     },
-    "navigation-edit-tools": {
-      "_note": "Which edits stay on the navigation server (the user's 2026-09-29 ruling on audit I12, 'Keep rename + safe delete'): symbol lookup, rename_symbol and safe_delete_symbol (the seat memory handoff left it on the user's 2026-10-13 ruling - every note goes to alfred-memory); every other edit goes through Edit / Write, because the navigation server's text-edit tools bypassed config protection, the docs hold, the turn-edit list and the done-gate probe (41 such calls measured in main sessions). The launcher switches those tools off; the always-on rule and the generated capabilities rule's locked-server row say the same thing, so a session never reads the old routing in one of them.",
-      "owner": {
-        "file": "stack/rules/alfred-navigation.md",
-        "marker": "keeps symbol lookup, `rename_symbol` and `safe_delete_symbol`"
-      },
-      "sites": [
-        {
-          "file": "stack/skills/capture-agent-awareness/references/generated-rule-template.md",
-          "marker": "keeps symbol lookup, `rename_symbol` and `safe_delete_symbol`, and every other edit goes through Edit / Write"
-        }
-      ]
-    },
     "project-config-outranks-conventions": {
       "_note": "A house convention skill is the default, never the authority: the project's own config and its captured `<docs-path>/code-style/CODE-STYLE.md` win where they diverge, and the skill says so in its own opening so a seat that loaded only that skill still knows. The language and desktop skills carry the clause; the surrounding sentence names each stack's own config files, which is why only the priority clause is pinned. Eight copies: the Angular and SQL copies said the same thing in their own words and were normalized onto this clause so the lint can see them, and the WinForms and WPF copies were normalized the same way in 2.1.5.",
       "owner": {
@@ -6795,7 +6782,7 @@
           "marker": "exactly as the roster spells it"
         },
         {
-          "file": "stack/skills/task-design/SKILL.md",
+          "file": "stack/skills/task-design/references/design-mode.md",
           "marker": "exactly as the roster spells it"
         },
         {
@@ -6886,6 +6873,26 @@
         { "file": "stack/skills/loop-test-coverage/SKILL.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
         { "file": "stack/skills/task-solve/references/step-mechanics.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." },
         { "file": "stack/skills/task-solve-cross/references/execution-modes.md", "marker": "**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it." }
+      ]
+    },
+    "plugin-cache-newest-entry": {
+      "_note": "The plugin-cache resolver a skill body or the source protocol runs to find the stack's newest core entry when no project copy holds the file it needs (audit 2026-10-14 SKC10): one glob over every marketplace key (`plugins/cache/*/*/*`), the plugin name read off the path, the newest version by `sort -V`, and a dir the CLI marked `.orphaned_at` never taken - a stale copy never serves a run. Each site checks the file it needs; the orphan test is the shared rule.",
+      "owner": { "file": "setup-plugin/references/source-protocol.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
+      "sites": [
+        { "file": "stack/skills/capture-agent-awareness/SKILL.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
+        { "file": "stack/skills/capture-first-look/SKILL.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
+        { "file": "stack/skills/capture-usage-report/SKILL.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
+        { "file": "stack/skills/capture-project-awareness/SKILL.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
+        { "file": "stack/skills/habits-adjust-agents-md/SKILL.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
+        { "file": "stack/skills/task-solve/references/full-spec.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" },
+        { "file": "stack/skills/task-solve-cross/references/full-spec.md", "marker": "[ ! -e \"$d/.orphaned_at\" ]" }
+      ]
+    },
+    "anti-gaming-sweep-commands": {
+      "_note": "The final-gate anti-gaming sweep's four commands (audit 2026-10-14 SKF-16): the code-quality loop owns them, and the coverage loop vendors the same list, since either loop may be installed alone and its never-weaken rule needs a mechanical check behind it. Each copy keeps its own intro (where the baseline is recorded) and report line; the commands are the shared rule.",
+      "owner": { "file": "stack/skills/loop-code-quality/references/anti-gaming-sweep.md", "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<docs-path>/flow/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page." },
+      "sites": [
+        { "file": "stack/skills/loop-test-coverage/references/anti-gaming-sweep.md", "marker": "1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name alone. 2. `git diff -M <BASE>` - every remaining content hunk, paged deterministically until exhausted. Never cap it (`head`, first-N lines): a gamed bar past the cap is exactly the one that survives. 3. `git ls-files --others --exclude-standard`, minus the paths in `<docs-path>/flow/untracked-at-start-<HEAD sha>` (the record the session start wrote; absent = none to subtract) - the files untracked since the run began. A plain diff is blind to brand-new files, so a gamed bar added in one would never surface. 4. Read each file left by 3 in full - it has no diff to page." }
       ]
     }
   }

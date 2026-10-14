@@ -134,7 +134,7 @@ test('42951e5b#10: a command the cycle proved wrong is doc drift, named against 
 test('2ca8e8ee#1 #2: the upgrade gate follows a printed plan and offers the in-session mode, never drops seats alone', () =>
 {
     const up = read('stack/skills/task-version-upgrade/SKILL.md');
-    assert.match(flat(up), /PRINT the staged plan in the chat first - every stage with its edits, its verification command and its rollback point - in the same turn as the gate/);
+    assert.match(flat(up), /PRINT the staged plan in the chat first - the `playbooks:` line, then every stage with its edits, its verification command and its rollback point - in the same turn as the gate/);   // + SKF-12's receipt line
     const gates = asksOf(up).filter((a) => /^The staged plan above/.test(a.question));
     assert.strictEqual(gates.length, 2, 'both gate templates say the plan is above');
     assert.ok(!asksOf(up).some((a) => /^The staged plan is ready:/.test(a.question)), 'no gate over an unshown plan');

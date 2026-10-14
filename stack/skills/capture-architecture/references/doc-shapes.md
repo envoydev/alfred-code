@@ -77,8 +77,8 @@ Load `docs-as-code` before writing - its Mermaid ground rules govern the core-ma
 sequence/ER diagram (one exception: a reconcile whose diagrams carry forward verified unchanged may skip the load
 and say so in the report). This file fixes WHAT each doc contains - including the format-for-agents discipline
 above (tables and grouped rows over prose, no ASCII art) that keeps the docs cheap for every seat that reads them
-at orientation; `docs-as-code` fixes HOW the diagrams are written. Both docs are clean, scannable Markdown per the
-`markdown-style` skill.
+at orientation; `docs-as-code` fixes HOW the diagrams are written. Both docs are clean, scannable Markdown in the
+shape this file fixes.
 
 ### The folder
 

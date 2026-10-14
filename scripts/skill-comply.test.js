@@ -43,6 +43,8 @@ const RECEIPT = [
     'head: 1a2b3c4',
     'spec: 4 files - git diff HEAD plus the untracked token module, the whole change set',
     'live-probe: npm test - 2 passed',
+    'format: npm run format:check - clean over 4 staged files',
+    'findings: none',
     'security: auth ok, secrets ok, injection n/a, data-access n/a',
     '',
 ].join('\n');
@@ -77,7 +79,21 @@ test('a compliant commit-checkpoint trace follows every step', () =>
     const r = sc.grade(expectOf('habits-commit-checkpoint'), checkpointRun(), { level: 'plain' });
     assert.deepStrictEqual(failing(r), []);
     assert.strictEqual(r.passed, r.graded);
-    assert.strictEqual(r.graded, 9);
+    assert.strictEqual(r.graded, 10);
+});
+
+// Audit 2026-10-14 SKC16: the guard refuses a receipt with no format: / findings: line since d597d0c0, and the
+// skill's own ask route writes answered:, not authorized: - the expectation grades both.
+test('a receipt with no format: or findings: line fails its step; an answered: receipt passes the five-line step', () =>
+{
+    const bare = RECEIPT.replace(/^format: .*\n/m, '').replace(/^findings: .*\n/m, '');
+    assert.deepStrictEqual(failing(sc.grade(expectOf('habits-commit-checkpoint'), checkpointRun({ receipt: bare }), { level: 'plain' })), ['receipt-format-findings']);
+    const unclean = RECEIPT.replace(/^format: .*$/m, 'format: npm run format:check - 2 files need formatting');
+    assert.deepStrictEqual(failing(sc.grade(expectOf('habits-commit-checkpoint'), checkpointRun({ receipt: unclean }), { level: 'plain' })), ['receipt-format-findings']);
+    const answered = RECEIPT.replace(/^authorized: .*$/m, 'answered: Commit now (Recommended)');
+    const r = sc.grade(expectOf('habits-commit-checkpoint'), checkpointRun({ receipt: answered }), { level: 'plain' });
+    assert.strictEqual(verdicts(r)['receipt-five-lines'], 'PASS');
+    assert.strictEqual(verdicts(r)['receipt-format-findings'], 'PASS');
 });
 
 // 42951e5b (usage audit 2026-10-11): the add -N / reset recipe dropped MERGE_HEAD mid-merge - it fails its step now.
@@ -502,10 +518,10 @@ test('grade CLI: a report per step, --json, and an empty or missing transcript i
         fs.writeFileSync(t, checkpointRun({ format: false }));
         const text = cli(['grade', 'habits-commit-checkpoint', t, '--level', 'plain']);
         assert.strictEqual(text.code, 0, text.err);
-        assert.match(text.out, /habits-commit-checkpoint \(level plain\) - 8 of 9 graded steps followed/);
+        assert.match(text.out, /habits-commit-checkpoint \(level plain\) - 9 of 10 graded steps followed/);
         assert.match(text.out, /^ {2}FAIL {2}formatter-fresh/m);
         const json = JSON.parse(cli(['grade', 'habits-commit-checkpoint', t, '--json']).out);
-        assert.strictEqual(json.passed, 8);
+        assert.strictEqual(json.passed, 9);
 
         fs.writeFileSync(t, '');
         const empty = cli(['grade', 'habits-commit-checkpoint', t]);

@@ -21,7 +21,7 @@ You are the judgment seat for this run: you gather the project's quality rules, 
 
 - A tiered, gated assessment against the numbered prompts under the loops folder, the convention rules and the recorded code style; every finding is tied to its file:line and rule and recomputed fresh each run into `quality/CODE-ASSESSMENT.md`.
 - Deliberate only, never mid-build; fixes nothing and never writes the decision log.
-- Not for fixing the findings (/loop-code-quality), the architecture (capture-architecture-quality), test coverage (the coverage capture), recording the code style (/capture-code-style), a security audit (/security-review or the security-auditor seat) or one diff (task-verify-code).
+- Not for fixing the findings (/loop-code-quality), the architecture (capture-architecture-quality), test coverage (the coverage capture), recording the code style (/capture-code-style), a security audit (the security-auditor seat; `/security-review` covers only the branch's diff against origin's default branch) or one diff (task-verify-code).
 
 ## Execution modes
 
@@ -36,7 +36,7 @@ Judge the code against its rules and replace CODE-ASSESSMENT.md?
 DELEGATED vs INLINE keys on dispatch capability, not file presence. When dispatch is available, ask ONE question before GATHER, via AskUserQuestion - judge the modules via code-quality-analyzer seats (recommend it: the cheap seats absorb the reads), or in-session? - unless a calling flow (the quality loop) already picked the run's mode, which is inherited, never re-asked.
 
 - **DELEGATED** - dispatch code-quality-analyzer per module as below; the gate, the tiers and the writing stay here.
-- **INLINE** (chosen, or no dispatch - Cursor, or a scope too small to fan out): judge the modules yourself, navigation-server-first and bounded, by the seat's own finding shape, and continue at JUDGE identically.
+- **INLINE** (chosen, or no dispatch, or a scope too small to fan out): judge the modules yourself, navigation-server-first and bounded, by the seat's own finding shape, and continue at JUDGE identically.
 
 ## The run
 

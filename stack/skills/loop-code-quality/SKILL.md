@@ -28,7 +28,7 @@ Run this loop here or through the stack seats? <the verdict's reason>
 No dispatch capability is INLINE without asking. Every AskUserQuestion below falls back to plain-text options where the harness lacks the tool.
 
 - **DELEGATED** (the user chose agents) - the main session dispatches every seat, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it) - the capture's code-quality-analyzers, then an implementer for a small fix or the domain designer / implementers / verifier for a substantial one - never doing their work itself. Seats are always the NAMED domain seats, never a generic one; a surface with no matching installed seat is fixed INLINE and said so.
-- **INLINE** (the user chose the current session - or forced: Cursor, a non-stack project, a scope too small to fan out) - the same steps in-session: the capture judges in-session, then you apply the fixable findings directly, smallest blast radius first, loading the convention skill of each file family you edit.
+- **INLINE** (the user chose the current session - or forced: no dispatch, a non-stack project, a scope too small to fan out) - the same steps in-session: the capture judges in-session, then you apply the fixable findings directly, smallest blast radius first, loading the convention skill of each file family you edit.
 - **STAGED** (the pre-2.0.0 numbered-prompt run, kept for a project that relies on it) - each stage prompt runs in numeric order as its own review-fix loop to that prompt's bar, with no assessment and no tiers. Reached ONLY when the invocation names it (`/loop-code-quality staged [TARGET]`) or resumes a staged run (its RESUME BLOCK names `RUN-STATE.md`); then Read `references/staged-mode.md` and run it exactly as written - its own mode ask, stages, stage closes and final report - instead of everything below. Its companions, each Read at its step and never up front: `references/rules.md` (before the first stage's first pass), `references/stage-close.md` (at each stage STOP or pause, and on resume), `references/delegated-mode.md` (DELEGATED only, before the first dispatch), `references/worked-example.md` (optional, when the inner loop's shape is unclear) and `references/bootstrap.md` (a missing or empty loops folder). The default run never switches into it on its own.
 
 ## The rule source - the loops folder
@@ -55,7 +55,7 @@ Take the open findings in the assessment's rank order (severity first) with the 
 - **small** (a localized edit) - dispatch the matching domain implementer with the module's small findings batched into one scoped brief - shape in `references/loop-mechanics.md`; it states `memory: none` unless it hands a note, which it then names literally. An ambiguity the remediation leaves open is decided by the codebase's own precedent, never asked, and appended to `<docs-path>/loops/DECISIONS.md` with that precedent. Re-run build + tests.
 - **substantial** (a designer-led multi-task change) - five steps in order, none of them optional:
   1. **Decompose** - dispatch the domain solution-designer to turn the remediation into a decomposition.
-  2. **Gate the plan** - `task-verify-plan`, an actual Skill invocation, recording `plan_review: approved|waived`.
+  2. **Gate the plan** - `task-verify-plan`, an actual Skill invocation, recording its `Passes:` line.
   3. **Get the user's approval on that plan before building** - never fan out against an unapproved plan. Present the plan, then:
 
      ```ask

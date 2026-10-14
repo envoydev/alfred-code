@@ -167,7 +167,7 @@ test('C21 f450ea64#8 e499fc94#3 + C03 e499fc94#4: agents-mode seats dispatch wit
 });
 
 test('C21 7491ab75#2 0498718d#16: task-design offers a read fan-out at its mode ask and names its seats\' model', () => {
-    const t = skill('task-design');
+    const t = read('stack/skills/task-design/references/design-mode.md');   // SKF-10: the mode ask is a chat-only reference
     assert.match(t, /'Research fan-out: <N> read-only seats, design here'/);
     assert.match(t, /on the model the dispatch names \(Sonnet for search and classification - a seat type with no pin runs on the session's model\)/);
     assert.match(t, /nothing is dispatched that the answer did not pick/);
@@ -264,7 +264,7 @@ test('C02 adaa2ef3#5: the nx skill fires on running targets and says how to filt
 test('C24 65abb00a#4 65abb00a#5 f10cb06a#3 f10cb06a#4 + C16 65abb00a#2: the AGENTS.md improve ask is a marked template, verified fixes join it', () => {
     const text = read('stack/skills/habits-adjust-agents-md/SKILL.md');
     const t = flat(text);
-    const ask = asks(text)[0];
+    const ask = asks(text).find((a) => !/^Write <file> from the outline/.test(a.question));
     assert.ok(ask, 'step 5.4 is an ask template');
     assert.strictEqual(ask.options[0], 'Apply the additions and verified fixes (Recommended)');
     assert.match(t, /\*\*a verified fix\*\* - a stale path whose new target this run confirmed on disk/);
@@ -276,7 +276,7 @@ test('C24 65abb00a#4 65abb00a#5 f10cb06a#3 f10cb06a#4 + C16 65abb00a#2: the AGEN
     assert.doesNotMatch(t, /env var NAMES a test reads \(`\.env\.example`/);
     assert.match(t, /Before the write, `git ls-files <file>`: an untracked target \(git-ignored, or never added\) has no diff to review and no history to restore/);
     const { ASK_FLOW_TEMPLATES } = require('./lint-skills.js');
-    assert.strictEqual(ASK_FLOW_TEMPLATES['habits-adjust-agents-md'], 2, 'pinned, so the ask (and its check-rows-only twin) cannot drop back to prose');
+    assert.strictEqual(ASK_FLOW_TEMPLATES['habits-adjust-agents-md'], 3, 'pinned, so the ask, its check-rows-only twin and the create-mode write ask (SKC14) cannot drop back to prose');
 });
 
 test('C16 7fae0c39#5 (skill half): a red over a run that never compiled is a sign the cycle was skipped', () => {

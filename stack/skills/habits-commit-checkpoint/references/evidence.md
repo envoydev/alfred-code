@@ -46,6 +46,13 @@ Each line closed a measured way the receipt passed while recording nothing.
   untracked `.env` key raw, while the same `git diff --no-index -- /dev/null .env` named in the command
   was rewritten and masked.
 
+## How the trivial bar counts
+
+The hook sums this commit and the session's earlier commits that passed without a receipt: a reviewed
+commit, or one a pull brought in, adds nothing, and when the session's start cannot be read it counts
+the whole uncommitted tree. A receipt left behind after the batch is the stale-stamp failure the hook's
+2h age cap exists for, which is why the close clears it.
+
 ## Why the receipt is its own tool call
 
 The shipped hook accepts the atomic write+commit shape, so only the rule binds: 9 of 13 commits in

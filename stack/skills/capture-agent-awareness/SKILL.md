@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Agent Capabilities - inventory what is installed, generate the awareness rule
 
-Every project trims the stack differently - skills commented out of the manifest, MCPs dropped (`browser` where nothing renders a browser UI), seats it never picked (each denied in `permissions.deny`). A predefined list would name capabilities the project does not have; this skill reads the REAL inventory and generates the rule from it, so every session knows exactly what this project can do - and never gets steered at a capability that is not there.
+Every project trims the stack differently - skills left out of the pick, MCPs dropped (`browser` where nothing renders a browser UI), seats it never picked (each denied in `permissions.deny`). A predefined list would name capabilities the project does not have; this skill reads the REAL inventory and generates the rule from it, so every session knows exactly what this project can do - and never gets steered at a capability that is not there.
 
 The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
@@ -150,6 +150,8 @@ Then the prose, short - four things, each its own line so none of them is skimme
 - **Say that the rule is MACHINE-LOCAL, not committed** - the installers tell every project to gitignore `.claude/*` and re-include only `.claude/AGENTS.md`, so this file is untracked, a fresh clone does not carry it, and the command has to be re-run there.
 
 ## Don't game it
+How each section is filled is `references/generated-rule-template.md` - read it only to audit a row.
+
 The rule lists what the inventory proved, nothing else - no capability assumed from the house defaults, no row for a server or skill the project dropped, and an unreadable source reported as unreadable (the script prints it that way) rather than filled from memory.
 
 A thin `.claude/agents` is not by itself a broken install: the core carries the seats (every skill is a copy under `.claude/skills`), so when a layer comes from plugins the script prints `SOURCE: PLUGIN-COVERED` and reports the UNION - what the enabled plugins carry plus whatever is copied locally. Stop and say so only when it printed neither a local nor a plugin source.

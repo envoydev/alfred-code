@@ -1175,10 +1175,11 @@ function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
 // AGENTS.md improve ask joined them (usage audit 2026-10-10: as prose it went out with no option marked), and its
 // check-rows-only twin (audit 2026-10-11 SD04: with only check rows drafted the run ruled them itself, no ask). The
 // three loops, task-implement and task-build-from-scratch joined them (audit 2026-10-14 SKF-06): auto-mode answers an
-// ask only when it marks one option, and their prose stops carried no mark on four of them, so the run waited.
+// ask only when it marks one option, and their prose stops carried no mark on four of them, so the run waited. The
+// AGENTS.md create-mode write ask (audit 2026-10-14 SKC14) and task-build-from-scratch's commit ask (SKF-11) followed.
 const ASK_FLOW_TEMPLATES = {
-    'task-solve': 9, 'task-solve-cross': 5, 'issue-diagnoser': 4, 'habits-adjust-agents-md': 2,
-    'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage': 8, 'task-implement': 10, 'task-build-from-scratch': 4,
+    'task-solve': 9, 'task-solve-cross': 5, 'issue-diagnoser': 4, 'habits-adjust-agents-md': 3,
+    'loop-architecture-quality': 10, 'loop-code-quality': 10, 'loop-test-coverage': 8, 'task-implement': 10, 'task-build-from-scratch': 5,
 };
 const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
 // The setup / configure walk's layer asks are templates too (2026-09-29: a walk with whole-layer verdicts only left every

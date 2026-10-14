@@ -10,7 +10,7 @@ You drive a breaking version event - framework, runtime, or load-bearing package
 
 The event kind - framework vs package - is not the user's call to make up front: DETECT reads the manifests and classifies it. The workflow is identical either way; only the breaking-change surface differs. A routine minor/patch bump with no breaking changes needs none of this - say so and exit.
 
-Read `references/upgrade-playbooks.md` before PLAN - the stack-keyed sequencing rules and the runtime-break catalog are this skill's contract, not suggestions.
+Read `references/upgrade-playbooks.md` before PLAN - the stack-keyed sequencing rules and the runtime-break catalog are this skill's contract, not suggestions. The printed plan's first line is the receipt: `playbooks: read - <the stack section(s) applied>`.
 
 ## When to use
 
@@ -40,7 +40,7 @@ Green baseline first - build + tests green, zero pending EF migrations, before a
 Cross the surface against located usage: a breaking change nothing uses is not a task. Split engine-applied vs hand edits. Sequence foundation-first per the playbooks (SDK pin -> TFM -> framework packages in lockstep -> code edits on .NET; one major at a time with `ng update` + the peer matrix on Angular). Each stage carries: its edits, its verification command, its rollback point. Genuinely user-level calls (accept a new major's baseline, drop a deprecated dependency) go to the gate as questions, never guessed. **Hard cap: 2 planning passes.**
 
 ### 4. APPROVAL GATE
-PRINT the staged plan in the chat first - every stage with its edits, its verification command and its rollback point - in the same turn as the gate: an approval over a plan the chat never showed approves nothing. Load `habits-execution-strategy` (the Skill tool); its `Execution:` line is the mode reason, and stages that share files read `serial`. Then put the gate through AskUserQuestion as ONE call - free text stays available via Other, and the PLAN step's user-level calls join the same call as their own questions (plain-text options where the harness lacks the tool). With no user-level call open:
+PRINT the staged plan in the chat first - the `playbooks:` line, then every stage with its edits, its verification command and its rollback point - in the same turn as the gate: an approval over a plan the chat never showed approves nothing. Load `habits-execution-strategy` (the Skill tool); its `Execution:` line is the mode reason, and stages that share files read `serial`. Then put the gate through AskUserQuestion as ONE call - free text stays available via Other, and the PLAN step's user-level calls join the same call as their own questions (plain-text options where the harness lacks the tool). With no user-level call open:
 
 ```ask
 The staged plan above: <n> stages, each with its verification and rollback point. Execute it stage by stage <through the seats | in this session>: <the Execution: line's reason>.
@@ -67,7 +67,7 @@ Before the first implementer dispatch, write the approval gate file `<docs-path>
 Per stage, in the plan's order, in the mode the gate's answer chose: through the seats, dispatch the domain **implementer (sonnet/medium)** with the stage as a scoped brief (trivial manifest bumps: edit inline); in this session, make the stage's edits here (no approval stamp needed - nothing dispatches); run the stage's verification (build + tests); a red routes to the matching **resolver (sonnet/high)** for that stack - the seat covering build errors, or the one covering test failures, matched from your installed agents; with none matching, resolve the red inline and say so; gate green before the next stage. Hard stops, auto mode included: a resolver returning BLOCKED_CONTRACT_CHANGE, a stage that stays red after its resolver pass, or reality contradicting the plan - stop and put it through ONE AskUserQuestion - 'Re-plan from this stage (Recommended)' / 'Roll back to the last stage's rollback point' / 'Stop here' - never push through or skip a stage gate.
 
 ### 6. VERIFY + REPORT
-Full suite green at the end; on a large upgrade, optionally the domain **verifier (sonnet/xhigh)** over the assembled result. Report: current -> target, stages landed and what each changed, runtime-break checks done, anything deferred or user-declined, the rollback points. If the run stopped early: which stage, why, and the state it left. Shaped like:
+Full suite green at the end; on a large upgrade, optionally the domain **verifier (sonnet/xhigh)** over the assembled result. Report: current -> target, stages landed and what each changed, runtime-break checks done, anything deferred or user-declined, the rollback points, and the commit line. If the run stopped early: which stage, why, and the state it left. Shaped like:
 
 ```
 .NET 8 -> 10: 4 stages landed, full suite green (412 passed)
@@ -75,6 +75,15 @@ Full suite green at the end; on a large upgrade, optionally the domain **verifie
   3 obsolete-API swaps (SYSLIB warnings)       4 hand edits - TimeProvider swap, 3 call sites
 runtime-break checks: serializer defaults reviewed, zero [Obsolete] warnings left
 deferred: FluentAssertions major (user-declined)
+commit: held - the diff is uncommitted
+```
+
+Then the commit decision, ONE AskUserQuestion once the report prints (an early stop asks it too when a stage landed):
+
+```ask
+<N> upgrade stage(s) landed, uncommitted (<suite green | stopped at stage <k>>). Commit them on this machine?
+- 'Commit now (Recommended)' - runs `habits-commit-checkpoint` in full, then commits
+- 'Hold - review the diff first' - nothing is committed; the diff stays as it is
 ```
 
 ## Don't game it

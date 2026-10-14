@@ -43,7 +43,7 @@ Build here or through the stack seats? <the verdict's reason>
 - 'Dispatch the stack seats' - <the slices that run in parallel>
 ```
 
-No dispatch (Cursor) or a scaffold too small to fan out is INLINE without asking.
+No dispatch or a scaffold too small to fan out is INLINE without asking.
 
 **DELEGATED** - for each vertical slice, dispatch that slice's stack seats directly from the main session (its designer, then implementer(s), then verifier - the domain-trio vertical, this skill's own `references/domain-trio-protocol.md`). Each slice's designer plan goes through ONE ask before its first implementer, and the stamp below quotes the answer:
 
@@ -79,7 +79,16 @@ Scaffold:  <the new-project command actually run> + <the baseline wired: DI, con
 Slices:    <n> built, <n> verified green - <the milestone reached>
 Baseline:  build <green|red>, tests <n passed / n failed>, quoted from the command that produced it
 Leftovers: APPROVAL stamp <deleted|still present>; <anything this run started and left up - a container, seeded data, a background process - or `none started`>
+Commit:    <the commit `git log -1 --stat` read back | held - the diff is uncommitted | no git - the scaffold is not a repository>
 Next run:  <each capture whose output does not exist yet, in order: /capture-architecture (no architecture docs under <docs-path>/architecture/), /capture-code-style (no <docs-path>/code-style/CODE-STYLE.md), /capture-project-awareness (no <docs-path>/project-capabilities/PROJECT-CAPABILITIES.md - the run book the verifiers read first), /capture-agent-awareness LAST (no .claude/rules/alfred-agent-awareness.md) - each in a FRESH session; `none` when all four exist>
+```
+
+Then the commit decision, ONE AskUserQuestion after the close prints, when the scaffold is a git repository (no git: the `Commit:` field says so and nothing is asked):
+
+```ask
+The first milestone is green and the scaffold is uncommitted. Commit it on this machine?
+- 'Commit now (Recommended)' - runs `habits-commit-checkpoint` in full, then commits
+- 'Hold - review the diff first' - nothing is committed; the diff stays as it is
 ```
 
 Every count comes from the command that produced it, never a hand tally. A capture is named in `Next run:` only when its output is missing - check the four paths, never list them by default. Those named go TO THE USER as their next commands, never invoked from here - all but the architecture one are slash-only and a Skill call on them is refused, and each wants a fresh session anyway. They give the new repo its map, style doc, run book and generated awareness rules, and from there the standing flow machinery owns the project.

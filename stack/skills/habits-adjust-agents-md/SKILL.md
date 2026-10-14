@@ -30,7 +30,8 @@ came from; after a core update it can be newer) - the block prints its path, and
 own shell, so a variable set here is gone by the next):
 
 ```bash
-STACK=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/alfred-code/*; do
+STACK=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/*/*; do   # one glob: zsh aborts the loop when any named glob matches nothing
+  PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || continue
   [ -f "$d/scripts/agents-md-check.js" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
 echo "stack: ${STACK:-absent}"
@@ -57,7 +58,8 @@ it, and it is improved in place with every change shown first, never overwritten
 template. A project's own `CLAUDE.md` is improved as it stands and never renamed for the user - say in
 the report that Claude Code (2.1.277 or later) reads an AGENTS.md itself only while no CLAUDE.md or
 CLAUDE.local.md sits beside or above it, so with both files the CLAUDE.md wins, and an
-`@AGENTS.md` import from it keeps both loading. Never the same facts written twice.
+`@AGENTS.md` import from it keeps both loading, or the user sets Project instructions to
+'claude-md-and-agents-md' in `/config`. Never the same facts written twice.
 
 ## 3. Gather the facts - read, never guessed
 
@@ -95,8 +97,15 @@ two parts share stays in the root file.
 4. Write each part's `<part>/AGENTS.md`.
 
 The write needs no second ask when the user asked for it; a run the user did not ask for shows the
-outline it would write and puts it through the step-5 AskUserQuestion first. Either way the report
-names every file written with its line count.
+outline it would write, then asks through ONE AskUserQuestion:
+
+```ask
+Write <file> from the outline above (<N> sections, facts from step 3)?
+- 'Write it (Recommended)' - <file> is written with those sections, each fact from step 3
+- 'Skip' - nothing is written
+```
+
+Either way the report names every file written with its line count.
 
 ## 5. Improve - show before writing, never rewrite the project's prose
 
@@ -167,7 +176,7 @@ this file is never the home of:
 
 - **A session's learnings, a correction or a personal preference** - the shared memory server keeps
   them (`alfred-memory.md`), searchable and shared across accounts; an AGENTS.md line is neither.
-- **A `CLAUDE.local.md` of personal notes** - the same server, for the same reason; it also makes Claude Code stop reading AGENTS.md.
+- **A `CLAUDE.local.md` of personal notes** - the same server, for the same reason; it also makes Claude Code stop reading AGENTS.md, unless the user sets Project instructions to 'claude-md-and-agents-md' in `/config`.
 - **A score or a grade** of the file - a judgment no check can hold it to; the check's rows are the
   verdict.
 

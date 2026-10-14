@@ -563,6 +563,46 @@ test("the protocol's PowerShell snippet reads a core cached under another key, s
     finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
 
+// Audit 2026-10-14 SKC10: the four lookups that still spelled `*/alfred-code/*` now share the one-glob form of the
+// others, registered as `plugin-cache-newest-entry`; each still takes the newest entry and never an orphaned one.
+test('the aligned lookups (run book, AGENTS.md check, both spec checks) read a core cached under any key, never an orphaned one', () => {
+    const snippets = {
+        runBook: [bodySnippet('stack/skills/capture-project-awareness/SKILL.md', /```bash\n( *SCAN=\$\(for d in[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SCAN"', '/scripts/scan-evidence.js'],
+        agentsMd: [bodySnippet('stack/skills/habits-adjust-agents-md/SKILL.md', /```bash\n(STACK=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$STACK"', ''],
+        solve: ['SPEC=.claude/skills/task-solve/scripts/spec-check.js\n' + bodySnippet('stack/skills/task-solve/references/full-spec.md', /\n(\[ -f "\$SPEC" \] \|\| SPEC=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SPEC"', '/stack/skills/task-solve/scripts/spec-check.js'],
+        cross: ['SPEC=.claude/skills/task-solve-cross/scripts/spec-check.js\n' + bodySnippet('stack/skills/task-solve-cross/references/full-spec.md', /\n(\[ -f "\$SPEC" \] \|\| SPEC=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SPEC"', '/stack/skills/task-solve-cross/scripts/spec-check.js'],
+    };
+    const plantAll = (cfg, marketplace, version, opts) => {
+        const dir = plantBare(cfg, marketplace, 'alfred-code', version, opts);
+        for (const f of ['scripts/agents-md-check.js', 'stack/skills/task-solve/scripts/spec-check.js', 'stack/skills/task-solve-cross/scripts/spec-check.js'])
+        {
+            fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
+            fs.writeFileSync(path.join(dir, f), '');
+        }
+    };
+    for (const [plant, want] of [
+        [(cfg) => plantAll(cfg, OTHER_KEY, '1.3.0'), `/${OTHER_KEY}/alfred-code/1.3.0`],
+        [(cfg) => { plantAll(cfg, 'envoydev', '2.1.0', { orphaned: true }); plantAll(cfg, OTHER_KEY, '2.0.0'); }, `/${OTHER_KEY}/alfred-code/2.0.0`],
+    ])
+    {
+        const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cache lookup '));
+        try
+        {
+            plant(path.join(home, 'acct'));
+            const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, 'acct') };
+            for (const [name, [script, tail]] of Object.entries(snippets))
+                for (const sh of hasZsh ? ['bash', 'zsh'] : ['bash'])
+                {
+                    const got = execFileSync(sh, ['-c', script], { cwd: home, env, encoding: 'utf8' }).trim();
+                    assert.ok(got.endsWith(`${want}${tail}`), `${sh} ${name}: took '${got}', want ...${want}${tail}`);
+                }
+        }
+        finally { fs.rmSync(home, { recursive: true, force: true }); }
+    }
+    const entry = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'shared-rules.json'), 'utf8')).rules['plugin-cache-newest-entry'];
+    assert.strictEqual(entry.sites.length, 7, 'seven skill sites beside the source protocol');
+});
+
 test('the three body snippets read a core cached under any key, and never an orphaned one', () => {
     const snippets = {
         capabilities: [bodySnippet('stack/skills/capture-agent-awareness/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS" --write\n```/) + 'printf %s "$CAPS"', '/stack/skills/capture-agent-awareness/scripts/capabilities-inventory.js'],

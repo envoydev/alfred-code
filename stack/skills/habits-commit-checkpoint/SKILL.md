@@ -25,8 +25,9 @@ On any non-trivial diff, before committing or presenting, in order:
    Its clean verdict is the receipt's `format:` line. One unformatted commit is a red CI run and a
    fixup commit, and an inherited file is the one the session never thought to format.
 2. **Review.** Run the house review `task-verify-code` - model-invocable, so the gate holds
-   in autonomous flows too (`/code-review` is a user-run parallel sweep, not this gate; `/simplify`
-   applies its quality findings in place) - plus any diff gates named in the project's `AGENTS.md`.
+   in autonomous flows too (`/code-review` - the bundled correctness review of the current diff - is
+   not this gate; `/simplify` applies cleanup findings in place) - plus any diff gates named in the
+   project's `AGENTS.md`.
    The review half may also run as a DISPATCHED domain-verifier pass over exactly this diff - the
    right call when the session's carried context is already heavy, since the seat reviews from a
    clean context - and its sign-off satisfies the checkpoint the same way. Either way the review is
@@ -123,24 +124,20 @@ format: <the format CHECK command run> - clean over <N> staged files
 findings: <the review's Findings field, copied - a count by severity, or none>
 ```
 
+The quality-loop and cross-task gate exemptions count as VERIFIED - name the loop or gate. On the
+user's explicit waiver the receipt is `WAIVED - "<the user's words, verbatim>"` alone - 'commit it' is
+an instruction to commit, never a waiver of the review. `spec:` proves it covered every file the commit
+takes in: the index, plus what `-a`, a chained `git add` or the paths it names add - the guard counts
+that set, never the rest of the tree. The quoted words must carry a commit verb left standing in its
+clause ('push it, don't commit' consents to no commit; the PUSH-GATE below reads its publish verb the
+same way) and must not be an option label this run wrote: consent given by picking an option is spelled
+`answered: <the chosen label>` instead, which is a different claim and reads as one. A review carried
+from an earlier cycle says so: `carried: <cycle id>, reviewed <date>`. What each line was added to
+catch is `references/evidence.md`.
+
 A project with no formatter at all (no format script, no CI format step, no formatter config) writes
 `format: none configured - clean over <N> staged files, nothing to check`; a format line without the
 word `clean` is a check that did not pass, and the commit guard refuses it.
-
-(the quality-loop and cross-task gate exemptions count as VERIFIED - name the loop or gate); or
-`WAIVED - "<the user's words, verbatim>"` alone on their explicit waiver - 'commit it' is an
-instruction to commit, never a waiver of the review. Each line answers a way the receipt once
-passed while recording nothing: the VERIFIED line proves the review ran, `authorized:`
-proves the user asked, `head:` proves it reviewed THIS tree, `spec:` proves it covered every file
-the commit takes in (the index, plus what `-a`, a chained `git add` or the paths it names add - the
-guard counts that set, never the rest of the tree), `live-probe:` proves it ran the thing, `format:`
-proves the check covered what the commit takes in, and `findings:` carries the review's verdict to
-the user's eyes. The
-quoted words must carry a commit verb left standing in its clause ('push it, don't commit' consents to
-no commit; the PUSH-GATE below reads its publish verb the same way) and must not be an option label
-this run wrote: consent given by picking an option is spelled `answered: <the chosen label>` instead,
-which is a different claim and reads as one. A review carried from an earlier cycle says so:
-`carried: <cycle id>, reviewed <date>`.
 
 On a security-relevant diff the receipt adds an extra line: `security:` naming each category
 checked and its verdict (`security: auth ok, secrets ok, injection ok, data-access n/a`). A
@@ -149,23 +146,20 @@ VERIFIED line that claims a security review with no `security:` line, or one tha
 guard reads it as no review at all. A review carried from an earlier cycle names its categories in
 THAT session's receipt, not this one - the `carried:` line above is enough.
 
-Write the receipt as its OWN tool call, before the call that runs `git commit` - the enforcing
-hook checks the file at commit time, so a receipt written inside the same compound command is
-invisible to a stricter gate and unauditable in the ledger. The shipped hook still ACCEPTS the atomic
-write+commit shape (blocking it would reject the receipt discipline itself), so nothing stops you
-mechanically - which is exactly why the rule is the binding one. Own-call receipt, then
-the commit, then clear it.
+Write the receipt as its OWN tool call, before the call that runs `git commit` - one written inside
+the same compound command is unauditable in the ledger. The shipped hook still ACCEPTS the atomic
+write+commit shape (blocking it would reject the receipt discipline itself), so only this rule binds.
+Own-call receipt, then the commit, then clear it.
 
 The `guard-ungated-commit` hook blocks a non-trivial `git commit` without a fresh receipt. It
 judges 'trivial' mechanically - at most 2 files and 15 changed lines across the session's change - this
-commit plus the session's earlier commits that passed without a receipt (a reviewed commit, or one a pull
-brought in, adds nothing; the whole uncommitted tree when the session's start cannot be read) - so one
-small commit stays exempt, and a prose-exempt diff above that bar (a formatting-only sweep) still writes
-`VERIFIED` naming the exemption; never split a real change into small commits to slip under it - the
-earlier small ones count. One receipt covers a reviewed batch: a later commit passes on it while its
-`head:` is an ancestor of HEAD and every commit since touches only files its review covered - a file
-outside that set needs a fresh checkpoint. Clear the file once the commit lands - after the LAST
-commit of the batch - a leftover receipt is the stale-stamp failure the hook's 2h age cap exists for.
+commit plus the session's earlier commits that passed without a receipt (how it counts is
+`references/evidence.md`) - so one small commit stays exempt, and a prose-exempt diff above that bar (a
+formatting-only sweep) still writes `VERIFIED` naming the exemption; never split a real change into
+small commits to slip under it - the earlier small ones count. One receipt covers a reviewed batch: a
+later commit passes on it while its `head:` is an ancestor of HEAD and every commit since touches only
+files its review covered - a file outside that set needs a fresh checkpoint. Clear the file after the
+LAST commit of the batch.
 
 The same hook runs a staged-diff scan first - a conflict marker, a debugger, a focused test, a
 credential-shaped literal or a hidden character on an added line. That is a fact check this receipt

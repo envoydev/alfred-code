@@ -53,8 +53,7 @@ plausible-looking spelling instead of the correct one. Test every `covers:` glob
 ## The five pieces
 
 Read at step 3 MERGE, before the doc is written. The seats' per-language reports are the input; this is
-the shape they are consolidated into, in this order. Apply the `markdown-style` skill to the result - it
-is a quick reference, not a wall of prose.
+the shape they are consolidated into, in this order - a quick reference, not a wall of prose.
 
 1. **One opening line** - the project's actual style; configs stay enforced; this captures what they
    cannot; where this doc and a house convention skill disagree, THIS doc wins.

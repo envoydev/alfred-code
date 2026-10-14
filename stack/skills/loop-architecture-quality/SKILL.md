@@ -28,7 +28,7 @@ Run this loop here or through the stack seats? <the verdict's reason>
 No dispatch capability is INLINE without asking - never offer seats that cannot run. Every AskUserQuestion below falls back to plain-text options where the harness lacks the tool.
 
 - **DELEGATED** (the user chose agents) - the main session dispatches every seat, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it) - architecture-analyzer for the capture's gathering, then the domain designer / implementers / verifier for a substantial fix, or an implementer for a small one - never doing their work itself. This skill stays the orchestrator - a substantial fix dispatches that stack's seats directly, never a re-entry into the full router.
-- **INLINE** (the user chose the current session - or forced, no question asked: Cursor, a non-stack project, a scope too small to fan out) - the same steps in-session: map and assess against the house architecture skills yourself, then apply the fixable cons directly, smallest blast radius first.
+- **INLINE** (the user chose the current session - or forced, no question asked: no dispatch, a non-stack project, a scope too small to fan out) - the same steps in-session: map and assess against the house architecture skills yourself, then apply the fixable cons directly, smallest blast radius first.
 
 ## The loop
 
@@ -51,7 +51,7 @@ Take the open weaknesses in leverage order (the assessment's top-few first) and 
 - **small** (a localized edit) - dispatch the matching domain implementer with the remediation as a scoped brief - shape in `references/loop-mechanics.md`; it states `memory: none` unless it hands a note, which it then names literally, read side included. Re-run build + tests.
 - **substantial** (a designer-led multi-task change) - five steps in order, none of them optional:
   1. **Decompose** - dispatch the domain solution-designer to turn the remediation into a decomposition.
-  2. **Gate the plan** - `task-verify-plan`, an actual Skill invocation, recording `plan_review: approved|waived`.
+  2. **Gate the plan** - `task-verify-plan`, an actual Skill invocation, recording its `Passes:` line.
   3. **Get the user's approval on that plan before building** - never fan out against an unapproved plan. Present the plan, then:
 
      ```ask

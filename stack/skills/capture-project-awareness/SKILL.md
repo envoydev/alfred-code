@@ -59,7 +59,8 @@ keeps the file it came from: that list becomes the sections' `covers:` lines and
    plugin cache, NEWEST version first, and run it with no `--out` - it prints and writes nothing:
 
    ```bash
-   SCAN=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/alfred-code/*; do
+   SCAN=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/*/*; do   # one glob: zsh aborts the loop when any named glob matches nothing
+     PN=${d%/*}; PN=${PN##*/}; [ "$PN" = alfred-code ] || continue
      f="$d/scripts/scan-evidence.js"
      [ -f "$f" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
    done 2>/dev/null | sort -V | tail -1 | cut -f2)
@@ -95,7 +96,7 @@ How is the app started and reached for a manual check? The repo shows: <start co
 
 ```ask
 How does an agent log in? The repo shows: <a login route, an auth config - or no login>. Never type a password here - via Other, type the login steps, the account's role and WHERE its credentials already live (an env var, a file and key, a vault item).
-- 'A test account - add its keys to the project's sensitive data for me to fill (Recommended)' - its keys, empty, in `<data root>/.sensitive-data`, gitignored; the doc points at them
+- 'A test account - name its keys and I add them to the sensitive data (Recommended)' - the report hands one `KEY=` line per key for `<data root>/.sensitive-data`; the doc points at them
 - 'No login - the app is open' - the section says so
 - 'Unknown for now' - the section says unknown; the next capture asks again
 ```

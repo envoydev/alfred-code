@@ -25,5 +25,8 @@ doc's path and the skill that owns them moved.
 ## Don't game it
 - **keep the re-measuring; kill the inflating** - measured: the 2026-08-21 round that inflated three lens artifacts into tiered findings ALSO caught four wrong numbers by re-measurement - one where the doc and the code's own XML doc agreed with each other and were both wrong
 
+## WRITE
+- **a calling flow's status brief is context for the report, never the scope** - 2026-10-13, a consuming project's loop: a 'W2 and W3 built, W1 remains' brief turned one run into three in-place edits of the old file (two Edits and a `sed` deletion) instead of a recomputed assessment
+
 ## Reads decisions, never writes them
 - **an analyzer that could write its own decisions would be marking its own homework against its own gate** - the design reason this rule is a hard rule rather than a preference: gate question 4 ('has the project already decided this') only means anything if the decision log is a source this skill cannot also be the author of

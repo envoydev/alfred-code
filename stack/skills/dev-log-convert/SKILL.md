@@ -3,6 +3,8 @@ name: dev-log-convert
 description: "Use when the user says 'dev-log' - converts a day's raw work notes into a past-tense English work log. Not for meeting minutes or commit messages."
 ---
 
+# Dev log - raw notes to a past-tense work log
+
 You will receive text (Ukrainian, English, or mixed) describing work done during one or more days. Convert it into a concise English work log written in past tense.
 
 ## When to use
@@ -63,7 +65,7 @@ Total time: <sum across all groups>.
 **Ordering**
 - Order groups by total time spent that day, largest first.
 - Within a group: ticketed tasks first (largest time first), then `Other` items.
-- The date in the title is today's date in `dd.mm.yyyy` format - for single-day input with no date of its own; a dated or multi-day input takes each entry's resolved date (see Multiple days and Edge cases).
+- The date in the title is today's date in `dd.mm.yyyy` format - for single-day input with no date of its own; a dated or multi-day input takes each entry's resolved date (see Multiple days, and Edge cases under Per-input-shape rules).
 
 ## Rules
 

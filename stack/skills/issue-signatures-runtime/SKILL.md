@@ -13,7 +13,7 @@ Use when something breaks at runtime on your own machine and you have the eviden
 
 Keywords: NullReferenceException, Cannot read properties of undefined, Unable to resolve service, NG0201 No provider, ObjectDisposedException, deadlock, hang, 401/403, config drift.
 
-Not for a CI or build/test-gate failure (the resolvers and the CI diagnoser own those) or a production incident - local-runtime evidence only. When the evidence spans more than one source, that is the gated four-step investigation flow, not a lookup.
+Not for a CI or build/test-gate failure (the resolvers and the CI diagnoser own those) or a production incident - local-runtime evidence only. When the evidence spans more than one source, the gatherer fan-out below handles it; a run with a gate between every step is the user's gated investigation command.
 
 ## The signatures - and where each isolates
 
