@@ -9,7 +9,7 @@ The protocol `alfred-git.md` points at: what runs before a non-trivial commit, t
 
 ## When to use
 
-- Before any non-trivial git commit, git push or gh pr merge - 'commit this', 'push it', 'open the PR', 'merge it' - or when the commit guard denies one for a missing COMMIT-GATE or PUSH-GATE receipt.
+- Before any non-trivial git commit, git push or gh pr merge - 'commit this', 'push it', 'open the PR', 'merge it' - or before presenting a crypto / secret / auth / payment / data-access change, or when the commit guard denies one for a missing COMMIT-GATE or PUSH-GATE receipt.
 - Not for the done gate before it, which proves the change works, or the commit message's shape, which the git baseline owns.
 
 ## Pre-commit checkpoint

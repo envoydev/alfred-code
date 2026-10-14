@@ -6,9 +6,8 @@ description: House baseline - security. Always-on (no paths), installer-managed 
 
 ## Reviewing a security-relevant diff
 
-- Crypto / secret / auth / payment / data-access work: review the FULL change set for vulnerabilities before presenting it - `git diff HEAD`, plus `git diff --no-index -- /dev/null <file>` for each file `git ls-files -o --exclude-standard` lists, each named, never a loop (the secret guard masks only a named dump), since a diff-fed review skips brand-new files; never `git add -N` or `git reset` for it (a mixed reset mid-merge drops MERGE_HEAD). The method, the `/security-review` bound and the exemptions are `habits-commit-checkpoint`'s security half; on these paths the `COMMIT-GATE` receipt (habits-commit-checkpoint) is written `VERIFIED` only after the review ran.
-- A 'test-only diff' skip is a claim: verify it from the diff's file list and name the carve-out in the close ('security review: skipped - test-only diff: <paths>').
-- An inline review names a finding per category, and the categories land in the receipt's own `security:` row (`security: auth ok, secrets ok, injection ok, data-access n/a`) - a one-line 'no issues' is no review.
+- Crypto / secret / auth / payment / data-access work: review the FULL change set, untracked files included, for vulnerabilities - the FIRST action is the `habits-commit-checkpoint` Skill call, before the change is presented; its security half is the method, and on these paths the `COMMIT-GATE` receipt (habits-commit-checkpoint) is written `VERIFIED` only after the review ran.
+- The receipt's `security:` row names a verdict per category (`security: auth ok, secrets ok, injection ok, data-access n/a`) - a one-line 'no issues' is no review. A 'test-only diff' skip is a claim: verify it from the diff's file list and name the carve-out in the close ('security review: skipped - test-only diff: <paths>').
 - A user override of a security recommendation: proceed, and record it with the risk named and their words quoted, in the close and any receipt.
 - Never log PII, tokens, passwords or full payment data; a change that WIDENS logging (a verbose default, a removed redaction, a new sink) rides the review above.
 

@@ -4171,6 +4171,10 @@
       },
       "sites": [
         {
+          "file": "stack/rules/alfred-security.md",
+          "marker": "the FIRST action is the `habits-commit-checkpoint` Skill call, before the change is presented"
+        },
+        {
           "file": "stack/rules/alfred-interaction.md",
           "marker": "the FIRST action is the `habits-plan-writing` Skill call, before the plan file is written"
         },
