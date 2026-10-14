@@ -1311,7 +1311,7 @@ test('a capped agent description still names the seat to use instead', () =>
     for (const [seat, alternative] of [
         ['console-solution-designer', 'windows-service-solution-designer'],
         ['devops-solution-designer', 'issue-diagnoser-ci'],
-        ['data-implementer', 'aspnet-implementer'],
+        ['data-implementer', "the app stack's implementer"], // audit 2026-10-14 AG03: any app stack's, never aspnet-implementer alone
     ])
     {
         const d = desc(seat);
