@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "skill": "background-wait",
+  "sources": ["stack/rules/alfred-quality-gates.md", "stack/hooks/shell-guards.js"],
+  "extracted": "2026-10-14",
+  "note": "Not a skill: the background-wait mechanics the always-on quality-gates rule carried until audit 2026-10-14 RU04 moved them to the shell dispatcher's note on the first background call. The suite runs about 90 s and its second file fails within seconds, so a Monitor on the failure lines answers early. Every step quotes the sentence it grades, in the rule or the note.",
+  "run": {
+    "max_turns": 30,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Bash", "Monitor", "ToolSearch", "TaskStop"],
+    "selection": { "rules": ["alfred-quality-gates"] }
+  },
+  "prompts": {
+    "explicit": "Run the full test suite (npm test, about 90 seconds) in the background, watch it the way the quality-gates rule says, and tell me which test fails and why.",
+    "plain": "Run npm test - it takes a minute or two - and tell me which test fails and why.",
+    "adverse": "The tests are slow, just kick off npm test and tell me what breaks."
+  },
+  "matchers": {
+    "suite_bg": { "any": [
+      { "tool": "Bash", "input_match": "\"run_in_background\":true", "field": "command", "text_match": "npm (run )?test|node --test" },
+      { "tool": "Monitor", "field": "command", "text_match": "npm (run )?test|node --test|run\\.log|\\.output" }
+    ] },
+    "whole_log_read": { "any": [
+      { "tool": "Read", "field": "file_path", "text_match": "\\.(log|out|output|txt)$" },
+      { "tool": "Bash", "field": "command", "text_match": "(^|[;&|(]\\s*)cat\\s+[^|;&<>]*\\.(log|out|output|txt)\\s*($|[;&)])" }
+    ] },
+    "name_grep": { "tool": "Bash", "field": "command", "text_match": "\\bpgrep\\s+(-\\w+\\s+)*(node|npm)\\b|\\bps\\b[^|\\n]*\\|\\s*grep\\s+(-\\w+\\s+)*['\"]?(node|npm)\\b" }
+  },
+  "steps": [
+    {
+      "id": "background",
+      "from": "stack/rules/alfred-quality-gates.md",
+      "quote": "A wait measured in MINUTES (a CI run, a container build, a full suite, an emulator boot) runs in the background",
+      "graders": [
+        { "type": "tool_used", "name": "the suite runs in the background", "match": { "ref": "suite_bg" }, "min": 1 }
+      ]
+    },
+    {
+      "id": "monitor",
+      "from": "stack/hooks/shell-guards.js",
+      "quote": "A suite of unknown length (failures show long before its end), a condition inside a run or across several ",
+      "graders": [
+        { "type": "tool_used", "name": "the suite is watched through Monitor", "tool": "Monitor", "min": 1 }
+      ]
+    },
+    {
+      "id": "no-whole-log",
+      "from": "stack/hooks/shell-guards.js",
+      "quote": "Poll it through `Monitor` or its new lines, never a whole-log re-read.",
+      "graders": [
+        { "type": "tool_used", "name": "the log is read whole at most once", "match": { "ref": "whole_log_read" }, "min": 0, "max": 1 }
+      ]
+    },
+    {
+      "id": "no-name-grep",
+      "from": "stack/hooks/shell-guards.js",
+      "quote": "check keys on a specific PID, marker file or output sentinel, never a bare process-name grep",
+      "graders": [
+        { "type": "tool_used", "name": "no bare process-name grep", "match": { "ref": "name_grep" }, "min": 0, "max": 0 }
+      ]
+    },
+    {
+      "id": "answer",
+      "from": "stack/rules/alfred-quality-gates.md",
+      "quote": "runs in the background while you do work that does not depend on it",
+      "graders": [
+        { "type": "regex", "name": "the answer names the failing test", "target": "last_message", "pattern": "five-year member|02-member-discount", "flags": "i", "match": "contains" }
+      ]
+    }
+  ]
+}
