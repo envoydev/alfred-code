@@ -46,19 +46,27 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   `mode: unattended` row per exposure (it replaced 2 of 12 pilot-3 finals). Every protective denial is
   unchanged; a missing, empty or torn-last-row transcript reads as a person.
   **auto-mode** (the user's ruling, 2026-10-14): `auto-mode` in a `task-*` or `loop-*` call - typed
-  (`UserPromptExpansion`, `command_args`) or the model's `Skill` call (`args`), never a seat's - makes
+  (`UserPromptExpansion`, `command_args`; the matcher takes every `task-*` / `loop-*` name, audit 2026-10-14 HK06) or
+  the model's `Skill` call (`args`) only when the user's newest TYPED prompt in the transcript carries the word too (the
+  user's ruling after audit HK04: a skill body, a seat's hand-back, a task notice or a tool result is no typed prompt;
+  a refused start writes an `auto-start-refused` row), never a seat's - makes
   `guard-fresh-session-start.js` write that session-named AUTO stamp (`AUTO - "<the typed words>"`, `session:`, `skill:`,
   `at:`) before the run's first step, inject the contract as `additionalContext` and leave, so its own offers and every
   person-directed hook read the session as unattended; a stamp already live for the session is kept. `guard-stop-contract.js`
-  then answers each `AskUserQuestion` whose every question marks ONE `(Recommended)` option - `allow` with the questions
+  then answers - under a stamp naming THIS session only, never a hand-written one (audit HK02: it answered a second
+  session's asks) - each `AskUserQuestion` whose every question marks ONE `(Recommended)` option - `allow` with the questions
   echoed and an `answers` map in `updatedInput` (code.claude.com/docs/en/hooks, 'Tools that require user interaction'), a
   real answer the commit gate's `answered:` reads - taking the next option when the marked one is the fresh-session
-  hand-off, and leaving to the user an ask with an unmarked question or a recommended push / merge / deploy / publish;
+  hand-off, and leaving to the user an ask with an unmarked question or a recommended OUTWARD act (`AUTO_OUTWARD_RE`:
+  push, merge, deploy, publish, release, ship, a PR, an issue or ticket filed, post, send, upload, a remote branch or tag
+  deleted, a hard reset, a database dropped, rotate, revoke, pay - audit HK01: an auto-answered 'Open the PR' was push
+  consent to the commit gate);
   and it sends a Stop back to the run while the stamp stands (`auto-continue`, bounded by the Stop chain's `workSince`:
   held again only after a tool call), until the run's close deletes the stamp - or a prompt the user TYPES in that
-  session, which deletes it (`UserPromptSubmit`, `autoModeEnd`: someone is at the terminal; a task notice, a command's
-  output or a prompt carrying the word itself is not; review 2026-10-14 - an interrupted run's stamp otherwise answered
-  the user's own asks for the week). A hand-written stamp (task-solve's, no `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` at
+  session, which deletes it (`UserPromptSubmit`, `autoModeEnd`: someone is at the terminal; a harness prompt - a task
+  notice, a command's output, a seat's hand-back, `hook-prelude.js` `harnessPrompt` - or a slash command carrying the
+  word is not, while 'stop auto-mode' is; review 2026-10-14 - an interrupted run's stamp otherwise answered the user's own
+  asks for the week; audit HK13 / HK14 - a hand-back ended the run, the likeliest off-switch did not). A hand-written stamp (task-solve's, no `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` at
   session START only (measured 2026-10-14 on 2.1.299: written mid-session it changed nothing, set before the start it
   compacted at 76k of a 100k window), so the installer seeds it per model where the project compacts instead
   (`ALFRED_CODE_AUTO_COMPACT=1`; `settings.js compactWindowSeeds`, `repo-installer.md`). **Compact instead** (the user's
@@ -674,7 +682,8 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     denies: one actor running the same tool with the same input 5 times in a turn, more than 20 distinct files
     written in a turn, the context at 80% of the fresh-session trigger (read from `fresh-session.js`, once per
     session). A Read's input includes the file's mtime and size, so a file regenerated between reads is a new input, and a
-    harness `<task-notification>` prompt opens no turn - the same exit in the answer-length hook (audit 2026-10-10 C25).
+    harness prompt (`harnessPrompt`: a task notice, a seat's hand-back) opens no turn - the same exit in the answer-length
+    hook (audit 2026-10-10 C25, 2026-10-14 HK14).
     An MCP call's repeat count restarts when the same actor ACTED on that server between (any call but a look -
     Snapshot, Screenshot, WaitFor, a get / list / read / find / search), so a Screenshot after each Click is a new look,
     and a desktop server action right after the same actor's previous desktop action, no look between, is one

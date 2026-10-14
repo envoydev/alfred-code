@@ -84,7 +84,7 @@ no 'one more step', no new work in this chat. A CONSTRUCTION check, not a memory
 ask, 'has this cycle crossed the trigger?' - if yes and the option is missing, rebuild it.
 
 **Autonomy waiver (AUTO).** When the user explicitly asks for a no-stops run ('run all
-recommended without asking me', `auto-mode`), never self-authorize silently - write `<docs-path>/flow/APPROVAL`
+recommended without asking me'), never self-authorize silently - write `<docs-path>/flow/APPROVAL`
 with first line `AUTO - "<their words, verbatim>"`, say in one line that stops are waived under it, and take each stop's recommended option; the
 pre-commit checkpoint and its receipt still apply. A session past the trigger, or one that already closed a cycle, first puts ONE ask - the fresh-session resume recommended - and AUTO starts after its answer. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. `references/step-mechanics.md` holds the rest.
 
@@ -225,8 +225,8 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
    ```ask
    Next: <the deferred item or follow-up>. It opens a NEW cycle in a NEW plan file.
    - 'Start it in a fresh session (Recommended)' - the paste-ready block above; this context stays behind
-   - 'Start it here' - a new cycle in this chat, from step 1
    - 'Leave it for later' - named in Leftovers
+   - 'Start it here' - a new cycle in this chat, from step 1
    ```
 
    An unpushed commit is its own question too (several branches: the merge order):

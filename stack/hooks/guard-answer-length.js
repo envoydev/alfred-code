@@ -39,12 +39,14 @@ let stopHeld = (input) => !!(input && input.stop_hook_active);
 let markHeld = () => {};
 let contractHeld = () => false;
 let houseDash = /[\u2014\u2013\u2015]/; // hook-prelude.js HOUSE_DASH, the one dash class
+let harnessPrompt = (prompt) => /^\s*<task-notification>/.test(String(prompt || ''));   // hook-prelude.js harnessPrompt
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     unattended = prelude.unattended || unattended;
     houseDash = prelude.HOUSE_DASH || houseDash;
+    harnessPrompt = prelude.harnessPrompt || harnessPrompt;
     if (prelude.stopHeldThisCycle) {
       stopHeld = (input) => prelude.stopHeldThisCycle('guard-answer-length', input);
       markHeld = (input) => prelude.markStopHeld('guard-answer-length', input);
@@ -424,9 +426,10 @@ if (payload.hook_event_name === 'PostToolUse' && payload.tool_name === 'AskUserQ
 }
 
 if (payload.hook_event_name === 'UserPromptSubmit') {
-  // A harness task notice is no user turn: no budget, no correction test (audit 2026-10-10 C25, 758ce661: the 780-char
-  // budget rode a background gate's completion notice, ~195 tokens carried on every later message).
-  if (/^\s*<task-notification>/.test(String(payload.prompt || ''))) process.exit(0);
+  // A harness prompt is no user turn: no budget, no correction test (audit 2026-10-10 C25, 758ce661: the 780-char
+  // budget rode a background gate's completion notice, ~195 tokens carried on every later message; 2026-10-14 HK14: and
+  // every seat's hand-back - 351 of 960 injections in a week).
+  if (harnessPrompt(payload.prompt)) process.exit(0);
   const repeat =repeatsLastPrompt(payload.prompt) ? ' VERBATIM RE-ASK: this prompt is identical to ' +
     'the previous one. The last answer missed - do not re-answer it longer or from a different angle. ' +
     'Ask ONE AskUserQuestion about the goal, with the readings you are choosing between as options ' +

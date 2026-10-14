@@ -334,7 +334,7 @@ test('the loop runs the capture each round and routes its findings by tier', () 
     }
     const structural = tier('structural');
     assert.match(structural, /do NOT auto-apply/);
-    assert.match(structural, /AskUserQuestion/, 'structural is the user\'s call');
+    assert.match(structural, /```ask [^]*- 'Defer \(Recommended\)'/, 'structural is the user\'s call, an ask template (audit 2026-10-14 SKF-06)');
     // Past the trigger the STOP reconcile offers the fresh session before the capture runs again.
     const stop = squash(raw.slice(raw.indexOf('### 3. LOOP or STOP')));
     assert.match(stop, /reconcile ONCE[^]*When this session is already past the fresh-session trigger, the same fresh-session choice above applies before the capture runs/);

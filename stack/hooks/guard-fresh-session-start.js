@@ -40,11 +40,14 @@ const nodePath = require('path');
 // this hook running.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 let unattended = () => false;
+// hook-prelude.js harnessPrompt - a prompt the harness wrote (a task notice, a command's output, a seat's hand-back).
+let harnessPrompt = (prompt) => /^\s*<(?:task-notification|local-command-stdout|local-command-caveat)>/.test(String(prompt || ''));
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     unattended = prelude.unattended || unattended;
+    harnessPrompt = prelude.harnessPrompt || harnessPrompt;
     if (prelude.standDown('guard-fresh-session-start')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
@@ -275,7 +278,7 @@ function idleGapOffer() {
   const n = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS'));
   const hours = Number.isNaN(n) || n < 0 ? 2 : n;
   if (!(hours > 0)) return;
-  if (/^\s*<(?:task-notification|local-command-stdout|local-command-caveat)>/.test(String(payload.prompt || ''))) return;
+  if (harnessPrompt(payload.prompt)) return;
   const last = lastReply();
   if (!last || !last.usage) return;
   const gapH = (Date.now() - last.at) / 3600000;
@@ -321,13 +324,15 @@ function idleGapOffer() {
 }
 // A prompt the user TYPES ends auto-mode in this session (the 2026-10-14 review): someone is at the terminal, so each
 // decision goes to them again and the Stop hold stops - an interrupted run's stamp lived on for the week, answering the
-// user's own later asks. A harness row (a task notice, a command's output) is nobody typing, and a prompt carrying the
-// word is the next auto-mode run, which the expansion route starts. Only this session's own AUTO stamp is taken back.
+// user's own later asks. A harness prompt (a task notice, a command's output, a seat's hand-back - hook-prelude.js
+// harnessPrompt) is nobody typing, and a SLASH command carrying the word is the next auto-mode run, which the expansion
+// route starts. Any other prompt ends it, one naming the word included: 'stop auto-mode' and 'auto-mode off' are the
+// likeliest off-switches (audit 2026-10-14 HK13, HK14). Only this session's own AUTO stamp is taken back.
+const AUTO_SLASH_RE = /^\s*\/[A-Za-z0-9:_-]+\b.*(?:^|\s)auto-mode(?=\s|$)/is;
 function autoModeEnd() {
   const sid = String(payload.session_id || '');
   const prompt = String(payload.prompt || '');
-  if (!sid || payload.agent_id || /^\s*<(?:task-notification|local-command-stdout|local-command-caveat)>/.test(prompt)
-    || /(?:^|\s)auto-mode(?=\s|$)/i.test(prompt)) return false;
+  if (!sid || payload.agent_id || harnessPrompt(prompt) || AUTO_SLASH_RE.test(prompt)) return false;
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
   let stamp = null;
   try { stamp = require('./hook-prelude.js').approvalStamp({ ...payload, cwd: root }); } catch { return false; }
@@ -738,9 +743,42 @@ function autoArgs() {
   if (typeof payload.command_args === 'string') return payload.command_args;
   return String(payload.prompt || '').replace(/^\s*\/[A-Za-z0-9:_-]+/, '');
 }
+// The Skill route is the MODEL's call, so the word on its args is the model's: it starts auto-mode only when the user's
+// newest TYPED prompt carries the word too - a slash command's args or a prose ask (the user's ruling, 2026-10-14, after
+// audit HK04 replayed a self-start: 'look at the cache layer' typed, then Skill(task-implement, 'auto-mode') opened the
+// implementer gate). A harness row (a skill body, a seat's hand-back, a task notice, a tool result) is no typed prompt.
+const TYPED_WORD_RE = /(?:^|[^\w-])auto-mode(?![\w-])/i;
+function lastTypedPrompt() {
+  try {
+    const p = payload.transcript_path;
+    if (!p) return '';
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - 4 * 1024 * 1024);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
+    const lines = buf.toString('utf8').split('\n');
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      if (!lines[i].includes('"user"')) continue;
+      let row;
+      try { row = JSON.parse(lines[i]); } catch { continue; }
+      if (!row || row.type !== 'user' || row.isMeta || row.isCompactSummary || row.isSidechain) continue;
+      const c = row.message && row.message.content;
+      if (Array.isArray(c) && c.some((x) => x && x.type === 'tool_result')) continue;
+      const text = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((x) => x && x.type === 'text').map((x) => x.text || '').join('\n') : '';
+      if (!text.trim() || harnessPrompt(text)) continue;
+      return text;
+    }
+  } catch { /* no transcript - no typed word */ }
+  return '';
+}
 function autoModeStart() {
   const sid = String(payload.session_id || '');
   if (!sid || payload.agent_id || !AUTO_SKILL_RE.test(skill) || !AUTO_WORD_RE.test(autoArgs())) return null;
+  if (IS_SKILL_CALL && !TYPED_WORD_RE.test(lastTypedPrompt())) {
+    ledgerRow({ mode: 'auto', kind: 'auto-start-refused', reason: `auto-mode: ${skill} called with the word, but the user's newest typed prompt does not carry it` });
+    return null;
+  }
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
   const file = nodePath.resolve(root, docsRootEnv(), 'flow', 'APPROVAL');
   let current = null;
@@ -763,12 +801,12 @@ if (auto) {
   const contract = `auto-mode is ON for this /${skill} run: the user typed it on the call, and ${auto.file} holds their words for this session. `
     + 'Nobody answers until the run ends. '
     + '(1) Every stop takes its (Recommended) option: an AskUserQuestion whose every question marks one is answered with it by the stop hook, '
-    + 'and one carrying a question that marks none - or whose recommended option pushes, merges, deploys or publishes - waits for the user, so put only those. '
+    + 'and one carrying a question that marks none - or whose recommended option acts outward (push, merge, deploy, publish, open a PR, post, send, delete a remote, rotate, reset, drop) - waits for the user, so put only those. '
     + '(2) Do not end a turn between steps: the Stop hook sends you back while the stamp stands. A wait on work this session started is a one-line turn end; the harness wakes you when it lands. '
-    + '(3) Commit through the usual gates; never push, merge or deploy - list those for the user in the close. '
+    + '(3) Commit through the usual gates; never push, merge, deploy or send anything out - list those for the user in the close (an unpushed commit is a Leftovers line, never an ask). '
     + '(4) The fresh-session offers are off and the fresh-session hand-off is never taken or recommended: the session compacts at its auto-compact window and the run goes on from its own state files. '
     + "(5) 'auto-mode' is a mode word, not a target - leave it out of the run's arguments. "
-    + `(6) The stamp is the run's approval too: never write an APPROVED line over it and never delete it before the close. `
+    + `(6) The stamp is the run's approval too: never write an APPROVED or AUTO line over it and never delete it before the close. An answered ask is the go - carry on in the same turn. `
     + `(7) When the whole run is finished, print its close and delete ${auto.file}: that ends auto-mode.`;
   const event = EVENT === 'UserPromptExpansion' ? 'UserPromptExpansion' : 'PreToolUse';
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: contract } }));

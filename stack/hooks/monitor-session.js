@@ -170,10 +170,12 @@ if (require.main === module)
   // every hook. Fail-open - no prelude leaves this hook running, and envOf falls back to the bare
   // ALFRED_CODE_ read (pre-2.0.0 behaviour) the same way.
   let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+  let harnessPrompt = (prompt) => /^\s*<task-notification>/.test(String(prompt || ''));   // hook-prelude.js harnessPrompt
   try
   {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
+    harnessPrompt = prelude.harnessPrompt || harnessPrompt;
     if (prelude.standDown('monitor-session')) process.exit(0);
   }
   catch { /* an install without the prelude runs the hook unchanged */ }
@@ -189,9 +191,9 @@ if (require.main === module)
   if (cursorOff) process.exit(0);
   const event = payload.hook_event_name;
   if (event !== 'PostToolUse' && event !== 'UserPromptSubmit') process.exit(0);
-  // A harness task notice arrives as a prompt but opens no turn: the turn log it would empty is still the turn's
-  // (audit 2026-10-10 C25, 758ce661: a background gate's completion notice reset the count mid-turn).
-  if (event === 'UserPromptSubmit' && /^\s*<task-notification>/.test(String(payload.prompt || ''))) process.exit(0);
+  // A harness prompt - a task notice, a seat's hand-back - opens no turn: the turn log it would empty is still the turn's
+  // (audit 2026-10-10 C25, 758ce661: a background gate's completion notice reset the count mid-turn; 2026-10-14 HK14).
+  if (event === 'UserPromptSubmit' && harnessPrompt(payload.prompt)) process.exit(0);
 
   // The docs root, ALFRED_CODE_DOCS_PATH.
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();

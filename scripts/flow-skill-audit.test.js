@@ -54,7 +54,14 @@ test('trio protocol: two failed fix rounds end in ONE marked ask, never a bare e
 
 // ---- the three improvement loops ------------------------------------------------------------------------------
 const LOOPS = ['loop-architecture-quality', 'loop-code-quality', 'loop-test-coverage'];
-const BLOCKED_RETRY = "is the gate working, not a fault: put the choice through AskUserQuestion - 'Resume in a fresh session (Recommended)', ending this turn with the RESUME BLOCK / 'Continue here' - and on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it";
+const BLOCKED_RETRY = "is the gate working, not a fault - on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it";
+// The ask templates a skill carries (lint check 61's shape): the question line, then each option's label in order.
+const asksIn = (text) => [...String(text).matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?)^[ \t]*```/gm)].map((m) =>
+{
+    const lines = m[1].split('\n').map((l) => l.trim()).filter(Boolean);
+    return { question: lines[0], options: lines.filter((l) => /^- '/.test(l)).map((l) => l.replace(/^- '(.*)' - .*$/, '$1')) };
+});
+const askWith = (text, first) => asksIn(text).find((a) => a.options[0] === first);
 
 // C5, D5, MATERIAL loop-architecture-quality:27 / loop-code-quality:33: guard-fresh-session-start re-arms on 1.5x growth
 // (scripts/guard-hooks.test.js 'the size offer is answerable - the retry passes'), so a loop retries an answered block.
@@ -65,6 +72,8 @@ test('C5: a loop re-issues a capture call the fresh-session guard blocked, never
         assert.doesNotMatch(text, /blocks EACH Skill call independently/, `${name}: the offer is per session, not per call`);
         assert.doesNotMatch(text, /protocol in-session by reading its `SKILL\.md`/, `${name}: no read into another skill's folder on a block`);
         assert.ok(text.includes(BLOCKED_RETRY), `${name}: the one registered retry sentence`);
+        const fresh = askWith(skill(name), 'Resume in a fresh session (Recommended)');
+        assert.ok(fresh && fresh.options.includes('Continue here'), `${name}: the blocked capture's fresh-session ask is a template`);
     }
     const entry = shared()['loop-blocked-capture-retry'];
     assert.ok(entry, 'registered');
@@ -75,11 +84,15 @@ test('C5: a loop re-issues a capture call the fresh-session guard blocked, never
 // C6, D6, MATERIAL loop-*:63/67/55: the close's commit ask is the flows' template - the local commit recommended (the user's
 // ruling 2026-10-13), a commit runs the checkpoint.
 test('C6: every loop close recommends the local commit and routes it through the commit checkpoint', () => {
-    const ask = "AskUserQuestion - 'Commit now (Recommended)', which runs `habits-commit-checkpoint` whole / 'Hold - review the diff first' - never a prose 'your call' bullet";
+    const ask = "the commit decision is the ask below, never a prose 'your call' bullet";
     for (const name of LOOPS) {
         const text = flat(skill(name));
         assert.doesNotMatch(text, /\(commit now \/ hold\)/, `${name}: the unmarked, commit-first ask is gone`);
-        assert.ok(text.includes(ask), `${name}: the marked ask`);
+        assert.ok(text.includes(ask), `${name}: the registered sentence`);
+        const commit = askWith(skill(name), 'Commit now (Recommended)');
+        assert.ok(commit && commit.options[1] === 'Hold - review the diff first', `${name}: the marked ask, a template (audit 2026-10-14 SKF-06)`);
+        assert.match(flat(skill(name)), /- 'Commit now \(Recommended\)' - `habits-commit-checkpoint`, whole/, `${name}: a commit runs the checkpoint`);
+        assert.ok(askWith(skill(name), 'Tear it down (Recommended)'), `${name}: the tear-down ask is marked too`);
     }
     for (const name of ['loop-architecture-quality', 'loop-code-quality']) {
         const mech = flat(read(`stack/skills/${name}/references/loop-mechanics.md`));
@@ -95,11 +108,14 @@ test('loops: the mode, plan-approval and structural asks each mark exactly one o
     for (const name of LOOPS) {
         const text = flat(skill(name));
         assert.match(text, /ask ONE question before ANALYZE/, `${name}: the mode-ask-at-start marker stays`);
-        assert.match(text, /one option marked `\(Recommended\)` and listed first, the one the `habits-execution-strategy` verdict picks/, `${name}: the mode ask's mark`);
+        assert.match(text, /the mark sits on the mode the `habits-execution-strategy` verdict picks/, `${name}: the mode ask's mark`);
+        const raw = skill(name);
+        assert.ok(askWith(raw, 'In this session (Recommended)'), `${name}: the mode ask is a template, this session first`);
         assert.doesNotMatch(text, /approve-and-build vs changes-needed/, `${name}: the unmarked approval ask is gone`);
-        assert.match(text, /'Approve and build \(Recommended\)' \/ 'Changes needed'/, `${name}: the approval ask's mark`);
+        assert.deepStrictEqual((askWith(raw, 'Approve and build (Recommended)') || {}).options, ['Approve and build (Recommended)', 'Changes needed'], `${name}: the approval ask's mark`);
         assert.doesNotMatch(text, /apply \(routes as substantial\) vs decline vs defer/, `${name}: the unmarked structural ask is gone`);
-        assert.match(text, /'Defer \(Recommended\)' \/ 'Apply - routes as substantial' \/ 'Decline'/, `${name}: the structural ask's mark`);
+        assert.deepStrictEqual((askWith(raw, 'Defer (Recommended)') || {}).options, ['Defer (Recommended)', 'Apply - routes as substantial', 'Decline'], `${name}: the structural ask's mark`);
+        assert.ok(askWith(raw, 'Retry the stamp (Recommended)'), `${name}: the refused-stamp ask is marked (audit 2026-10-14 SKF-06)`);
     }
     assert.deepStrictEqual(registryFindings('mode-ask-at-start'), []);
 });
@@ -145,7 +161,10 @@ test('loop-test-coverage: the runner default is the house testing skill\'s, and 
 test('task-implement: a surfaced shared contract is ONE marked ask naming /task-solve-cross as the user\'s command', () => {
     const text = flat(skill('task-implement'));
     assert.doesNotMatch(text, /stop - that is `task-solve-cross` territory/, 'the bare stop is gone');
-    assert.match(text, /stop the task and put it through ONE AskUserQuestion - 'Hand it to the cross-domain flow \(Recommended\)' \(name `\/task-solve-cross` as the user's command; this build stops here\) \/ 'Keep it in this plan as a scoped change' \/ 'Stop the build'/);
+    assert.match(text, /stop the task and put it through ONE ask/);
+    assert.deepStrictEqual(askWith(skill('task-implement'), 'Hand it to the cross-domain flow (Recommended)').options,
+        ['Hand it to the cross-domain flow (Recommended)', 'Keep it in this plan as a scoped change', 'Stop the build']);
+    assert.match(text, /- 'Hand it to the cross-domain flow \(Recommended\)' - you run `\/task-solve-cross`; this build stops here/);
     assert.match(text, /BLOCKED_CONTRACT_CHANGE discipline the dispatched seats follow/);
 });
 
@@ -159,13 +178,20 @@ test('C13: task-implement\'s fifth-red ask stands alone, with no see-also into t
 // MATERIAL task-implement:21,26,34,35,59 + MINOR :64: every ask marks one option first.
 test('task-implement: the mode, approval, fifth-red, FAILED, scope and reviewer asks each mark one option', () => {
     const text = flat(skill('task-implement'));
-    assert.match(text, /ask ONE question before building, via AskUserQuestion - this chat, or the implementer seats\? - one option marked `\(Recommended\)` and listed first, the one the `habits-execution-strategy` verdict picks/);
-    assert.match(text, /ONE approval AskUserQuestion before task 1 - 'Approve - build task 1 \(Recommended\)' \/ 'Changes needed'/);
-    assert.match(text, /after the FIFTH red run of one task's gate the next act is ONE AskUserQuestion - 'Keep fixing inline' \/ 'Hand it to a resolver seat' \/ 'Stop', one marked `\(Recommended\)` and listed first: 'Keep fixing inline' when the last red run changed, else the resolver seat \(or 'Stop' where the project installed none\) - never a sixth run/);
-    assert.match(text, /ONE AskUserQuestion - 'Stop and report \(Recommended\)' \/ 'Continue inline' \/ 'Resolver seat' \/ 'Revert' - before any further run or edit/);
-    assert.match(text, /'Leave it for later \(Recommended\)' \/ 'Add it to the plan'/);
-    assert.match(text, /'Defer \(Recommended\)' \/ 'Fix now, ad hoc' \/ 'Open a new cycle'/);
-    assert.match(text, /the reviewer through ONE AskUserQuestion unless a calling flow already chose it - 'task-verify-code in-session \(Recommended\)' \([^)]*\) \/ 'The `<stack>-verifier` seat'/);
+    const raw = skill('task-implement');
+    const opts = (first) => (askWith(raw, first) || {}).options;
+    assert.match(text, /ask ONE question before building and hold the answer; a mode the run already picked is inherited, never re-asked\. The mark sits on the mode the `habits-execution-strategy` verdict picks/);
+    assert.deepStrictEqual(opts('In this chat (Recommended)'), ['In this chat (Recommended)', 'Dispatch the implementer seats']);
+    assert.deepStrictEqual(opts('Approve - build task 1 (Recommended)'), ['Approve - build task 1 (Recommended)', 'Changes needed']);
+    assert.match(text, /after the FIFTH red run of one task's gate the next act is ONE ask, never a sixth run - the mark on 'Keep fixing inline' when the last red run changed, else on the resolver seat \(or 'Stop' where the project installed none\), listed first/);
+    assert.deepStrictEqual(opts('Keep fixing inline (Recommended)'), ['Keep fixing inline (Recommended)', 'Hand it to a resolver seat', 'Stop']);
+    assert.deepStrictEqual(opts('Stop and report (Recommended)'), ['Stop and report (Recommended)', 'Continue inline', 'Resolver seat', 'Revert']);
+    assert.match(text, /ends the turn with ONE ask before any further run or edit/);
+    assert.deepStrictEqual(opts('Leave it for later (Recommended)'), ['Leave it for later (Recommended)', 'Add it to the plan']);
+    assert.deepStrictEqual(opts('Defer (Recommended)'), ['Defer (Recommended)', 'Fix now, ad hoc', 'Open a new cycle']);
+    assert.deepStrictEqual(opts('task-verify-code in-session (Recommended)'), ['task-verify-code in-session (Recommended)', 'The <stack>-verifier seat']);
+    assert.match(text, /the reviewer through ONE ask unless a calling flow already chose it/);
+    assert.deepStrictEqual(opts('Re-design this slice with task-design (Recommended)'), ['Re-design this slice with task-design (Recommended)', 'Continue against the delta', 'Stop the build here']);
     assert.doesNotMatch(text, /your choice of reviewer:/, 'no unasked reviewer pick');
     assert.deepStrictEqual(registryFindings('mode-ask-at-start'), []);
 });
@@ -184,9 +210,13 @@ test('task-implement: Known ceilings keeps its rule in the body and its docs.js 
 // MATERIAL task-build-from-scratch:23 + MINOR :29, :31: the pick, the mode and each slice's plan are marked asks.
 test('task-build-from-scratch: the architecture pick, the mode ask and each slice\'s plan approval mark one option', () => {
     const text = flat(skill('task-build-from-scratch'));
-    assert.match(text, /one option per architecture, its stack and one-line tradeoff as the description, exactly one marked `\(Recommended\)` and listed first with the reason that decides it/);
-    assert.match(text, /ask ONE question before the first slice, via AskUserQuestion - build in the current session, or dispatch the stack seats\? - one option marked `\(Recommended\)` per the `habits-execution-strategy` verdict - then hold the answer/);
-    assert.match(text, /Each slice's designer plan goes through ONE AskUserQuestion before its first implementer - 'Approve and build \(Recommended\)' \/ 'Changes needed' - and the stamp below quotes the answer\./);
+    const raw = skill('task-build-from-scratch');
+    assert.match(text, /put the pick through one ask - one option per architecture, a custom direction always available via Other/);
+    assert.match(text, /- '<architecture A> \(Recommended\)' - <its stack; the reason that decides it>/);
+    assert.match(text, /ask ONE question before the first slice and hold the answer for the run \(an invocation that already names the mode is the answer\) - the mark on the mode the `habits-execution-strategy` verdict picks, listed first/);
+    assert.ok(askWith(raw, 'In this session (Recommended)'), 'the mode ask is a template');
+    assert.match(text, /Each slice's designer plan goes through ONE ask before its first implementer, and the stamp below quotes the answer:/);
+    assert.deepStrictEqual((askWith(raw, 'Approve and build (Recommended)') || {}).options, ['Approve and build (Recommended)', 'Changes needed']);
     assert.deepStrictEqual(registryFindings('mode-ask-at-start'), []);
 });
 

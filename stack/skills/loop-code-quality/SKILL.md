@@ -15,10 +15,17 @@ Best run in Claude Code, where you can dispatch the analysis and build seats and
 - The deliberate analyze-triage-fix loop over the code: each round recomputes the code-quality assessment against the project's own rules (the numbered prompts under the loops folder, the convention rules, the recorded code style) and works its fixable findings by tier. `staged` keeps the numbered-prompt pipeline, one stage at a time.
 - Not for architecture restructuring (loop-architecture-quality), measuring or raising test coverage (the coverage capture and loop), an assessment with no fixes (capture-code-quality alone), or a single diff (task-verify-code or /security-review).
 
-**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option, an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged or deployed, and the `AUTO` stamp in `<docs-path>/flow/APPROVAL` stays until the close deletes it.
+**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it.
 
 ## Execution modes
-DELEGATED vs INLINE keys on dispatch capability, not file presence - a project can carry the agent files on disk with no Agent tool to dispatch them, which is still INLINE. When dispatch is available, ask ONE question before ANALYZE, via AskUserQuestion - run the loop in the current session, or dispatch the stack seats? - one option marked `(Recommended)` and listed first, the one the `habits-execution-strategy` verdict picks (`parallel seats` marks the seats), the reason in its description - then hold the answer for the run; the capture inherits it and never re-asks. No dispatch capability is INLINE without asking. Every AskUserQuestion below falls back to plain-text options where the harness lacks the tool.
+DELEGATED vs INLINE keys on dispatch capability, not file presence - a project can carry the agent files on disk with no Agent tool to dispatch them, which is still INLINE. When dispatch is available, ask ONE question before ANALYZE and hold the answer for the run - the capture inherits it and never re-asks; the mark sits on the mode the `habits-execution-strategy` verdict picks (`parallel seats` moves it to the seats, listed first):
+
+```ask
+Run this loop here or through the stack seats? <the verdict's reason>
+- 'In this session (Recommended)' - <why it fits one chat>
+- 'Dispatch the stack seats' - <the fixes that run in parallel>
+```
+No dispatch capability is INLINE without asking. Every AskUserQuestion below falls back to plain-text options where the harness lacks the tool.
 
 - **DELEGATED** (the user chose agents) - the main session dispatches every seat, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it) - the capture's code-quality-analyzers, then an implementer for a small fix or the domain designer / implementers / verifier for a substantial one - never doing their work itself. Seats are always the NAMED domain seats, never a generic one; a surface with no matching installed seat is fixed INLINE and said so.
 - **INLINE** (the user chose the current session - or forced: Cursor, a non-stack project, a scope too small to fan out) - the same steps in-session: the capture judges in-session, then you apply the fixable findings directly, smallest blast radius first, loading the convention skill of each file family you edit.
@@ -32,7 +39,13 @@ The numbered prompt files under `<docs-path>/loops/` are the rules the capture j
 ### 1. ANALYZE
 Round 1 opens with the green baseline (build + tests, command-first) - a red one is fixed first through the matching resolver or recorded, so the round is measured against a green start - and records the sweep baseline: HEAD, or on a dirty tree the sha `git stash create` prints. The final anti-gaming sweep diffs against it.
 
-Then the code-quality capture, a Skill call - `capture-code-quality`, which judges the code against the loops prompts, the convention rules and the recorded code style and recomputes `<docs-path>/quality/CODE-ASSESSMENT.md` fresh; it has no zero-drift shortcut, so it always runs in full. Hand it the run's mode and TARGET only - never a status of the findings (which shipped, which remain): the capture recomputes them from the code, and a status brief turns a reconcile into a patch of the old file. A Skill call the fresh-session guard blocks is the gate working, not a fault: put the choice through AskUserQuestion - 'Resume in a fresh session (Recommended)', ending this turn with the RESUME BLOCK / 'Continue here' - and on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it.
+Then the code-quality capture, a Skill call - `capture-code-quality`, which judges the code against the loops prompts, the convention rules and the recorded code style and recomputes `<docs-path>/quality/CODE-ASSESSMENT.md` fresh; it has no zero-drift shortcut, so it always runs in full. Hand it the run's mode and TARGET only - never a status of the findings (which shipped, which remain): the capture recomputes them from the code, and a status brief turns a reconcile into a patch of the old file. A Skill call the fresh-session guard blocks is the gate working, not a fault - on 'continue', re-issue the same Skill call: the answered offer lets it through until the context grows 1.5x past it:
+
+```ask
+The fresh-session guard held the capture at <N>k; a fresh session restarts at <M>k.
+- 'Resume in a fresh session (Recommended)' - this turn ends with the RESUME BLOCK
+- 'Continue here' - the same Skill call again
+```
 
 The capture's output is this loop's work list: the assessment's Must-fix findings - each with its rule, its file:line, its severity and its tier, the tier being the routing key; counts are outputs, never targets. The Worth-knowing and Deliberate-tradeoff buckets are left alone - never 'fix' a recorded choice - and a finding you decline this round goes on the in-run declined set (step 2) rather than being asked about again before this run ends.
 
@@ -43,16 +56,43 @@ Take the open findings in the assessment's rank order (severity first) with the 
 - **substantial** (a designer-led multi-task change) - five steps in order, none of them optional:
   1. **Decompose** - dispatch the domain solution-designer to turn the remediation into a decomposition.
   2. **Gate the plan** - `task-verify-plan`, an actual Skill invocation, recording `plan_review: approved|waived`.
-  3. **Get the user's approval on that plan before building** - never fan out against an unapproved plan. Present the plan and ask via AskUserQuestion - 'Approve and build (Recommended)' / 'Changes needed', free text via Other.
+  3. **Get the user's approval on that plan before building** - never fan out against an unapproved plan. Present the plan, then:
+
+     ```ask
+     <plan id>, <N> tasks. Build it?
+     - 'Approve and build (Recommended)' - stamp, then fan out
+     - 'Changes needed' - say what in Other
+     ```
   4. **Stamp the approval**, in four parts:
      - *Shape* - write `<docs-path>/flow/APPROVAL`, first line `APPROVED <plan id> - "<the user's words, verbatim>"`; the selected answer IS those words. The dispatch hook blocks an unstamped implementer; delete the file when the run completes.
      - *Path* - Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool. Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it. A relative write follows whatever cwd the shell drifted to, and the dispatch then bounces.
      - *Ownership* - the stamp belongs to the session that dispatches, written when its own decision lands and deleted at its own close; an earlier session's leftover stamp is not consent.
-     - *Refused* - if BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and put the choice through AskUserQuestion (retry the stamp, or run this fix inline) rather than retrying blind or dispatching around the gate.
+     - *Refused* - if BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and ask rather than retrying blind or dispatching around the gate:
+
+       ```ask
+       Both write routes refused the approval stamp: <the refusal>.
+       - 'Retry the stamp (Recommended)' - allow the write at the prompt
+       - 'Run this fix inline' - no dispatch, no stamp
+       ```
   5. **Build and verify** - fan the tasks out to the domain implementers, then gate the assembled result with the domain verifier, looping its punch-list back. This is the domain-trio vertical (this skill's own `references/domain-trio-protocol.md`), dispatched directly.
 
-  Re-tier only through the ask: when the designer's findings SHRINK the item ('this is actually small'), the re-tier still routes through an AskUserQuestion before any implementer dispatch - a self-declared downgrade that proceeds on the old small-tier stamp is the silent downgrade this tiering forbids.
-- **structural** (a risky, cross-cutting rework) - do NOT auto-apply. Present the finding, its rule and the remediation, then ask the decision via AskUserQuestion - 'Defer (Recommended)' / 'Apply - routes as substantial' / 'Decline', the reason in each option's description. **decline or defer adds the entry to this run's declined set** - an in-context list only, never written to a file: the same finding reappearing in the next round's fresh capture is checked against it and skipped without a second ask. A fresh session starts clean and may ask again - an undecided finding stays undecided until someone writes it to the decision log.
+  Re-tier only through the ask: when the designer's findings SHRINK the item ('this is actually small'), the re-tier still routes through this ask before any implementer dispatch - a self-declared downgrade that proceeds on the old small-tier stamp is the silent downgrade this tiering forbids:
+
+  ```ask
+  The designer reads <finding> as small: <why>.
+  - 'Keep it substantial (Recommended)' - the gated plan stands
+  - 'Re-tier to small' - one implementer, scoped brief
+  ```
+- **structural** (a risky, cross-cutting rework) - do NOT auto-apply. Present the finding, its rule and the remediation, then ask:
+
+  ```ask
+  <finding> is structural: <the remediation>.
+  - 'Defer (Recommended)' - <why it can wait>
+  - 'Apply - routes as substantial' - <what it touches>
+  - 'Decline' - <the tradeoff kept>
+  ```
+
+  **decline or defer adds the entry to this run's declined set** - an in-context list only, never written to a file: the same finding reappearing in the next round's fresh capture is checked against it and skipped without a second ask. A fresh session starts clean and may ask again - an undecided finding stays undecided until someone writes it to the decision log.
 
 Keep the build and tests green across the round: after each fix batch, re-run them, and a red routes, in DELEGATED mode, to the matching build- or test-failure resolver seat where the project installed one, before the next finding. INLINE, or with no matching seat installed, fix the red in-session - never carry a red into the next finding.
 
@@ -64,9 +104,29 @@ Read `references/loop-mechanics.md` now - the RESUME BLOCK shape and the final r
 - **CAPPED** - you reached the round cap (see Bounded and honest).
 - **BLOCKED** - only structural findings remain and the user has not approved a rework - report and stop.
 
-On STOP, when any fix shipped: run the final build + tests (a finding under the data root - `.alfred/` unless `ALFRED_CODE_DATA_PATH` names another - or under `.claude/` is the stack's own file, never this project's code: it counts in neither the gate nor the report), then the anti-gaming sweep - Read `references/anti-gaming-sweep.md` and run its four commands against the sweep baseline, reading the cumulative diff for a gamed bar (a disabled or skipped test, a new warning suppression, a swallowed exception, a weakened assertion, a lowered threshold). Any hit is a BLOCKER: revert the shortcut, fix what it dodged, re-run the gate. Then reconcile ONCE: run the capture again so `<docs-path>/quality/CODE-ASSESSMENT.md` reflects the code as it now stands (this run's declined set still applies). When this session is already past the fresh-session trigger, the same fresh-session choice above applies before the capture runs. Substituting anything lighter goes through an AskUserQuestion first. A run that shipped nothing skips both. Then emit the final report with the fields `references/loop-mechanics.md` defines: **Outcome**, **Resolved**, **Deferred**, **Proposed decisions**, **Docs**, **Baseline**, **Anti-gaming**, **Memories** (`memories purged: <names|none>`, fold-first), **Next actions**, **Mechanics**.
+On STOP, when any fix shipped: run the final build + tests (a finding under the data root - `.alfred/` unless `ALFRED_CODE_DATA_PATH` names another - or under `.claude/` is the stack's own file, never this project's code: it counts in neither the gate nor the report), then the anti-gaming sweep - Read `references/anti-gaming-sweep.md` and run its four commands against the sweep baseline, reading the cumulative diff for a gamed bar (a disabled or skipped test, a new warning suppression, a swallowed exception, a weakened assertion, a lowered threshold). Any hit is a BLOCKER: revert the shortcut, fix what it dodged, re-run the gate. Then reconcile ONCE: run the capture again so `<docs-path>/quality/CODE-ASSESSMENT.md` reflects the code as it now stands (this run's declined set still applies). When this session is already past the fresh-session trigger, the same fresh-session choice above applies before the capture runs. Substituting anything lighter goes through this ask first:
 
-When the report closes with uncommitted work and no next round queued, the commit decision goes through AskUserQuestion - 'Commit now (Recommended)', which runs `habits-commit-checkpoint` whole / 'Hold - review the diff first' - never a prose 'your call' bullet. The same close names what this round's runs started and still have up - a Docker container or compose stack, seeded integration-test data, a background process - and puts tear-down-vs-keep through the same AskUserQuestion call (teardown recommended; started-nothing is said plainly, and what the round did not start is never touched).
+```ask
+The reconcile reruns the capture; <the substitute> covers <what>.
+- 'Run the reconcile capture (Recommended)' - the doc matches the code
+- '<the substitute>' - <what it leaves stale>
+```
+
+A run that shipped nothing skips both. Then emit the final report with the fields `references/loop-mechanics.md` defines: **Outcome**, **Resolved**, **Deferred**, **Proposed decisions**, **Docs**, **Baseline**, **Anti-gaming**, **Memories** (`memories purged: <names|none>`, fold-first), **Next actions**, **Mechanics**.
+
+When the report closes with uncommitted work and no next round queued, the commit decision is the ask below, never a prose 'your call' bullet. The same close names what this round's runs started and still have up - a Docker container or compose stack, seeded integration-test data, a background process - and puts tear-down-vs-keep through the same AskUserQuestion call (started-nothing is said plainly, and what the round did not start is never touched):
+
+```ask
+<N> files changed, uncommitted.
+- 'Commit now (Recommended)' - `habits-commit-checkpoint`, whole
+- 'Hold - review the diff first' - nothing committed
+```
+
+```ask
+This round started <what is still up>.
+- 'Tear it down (Recommended)' - only what this round started
+- 'Keep it running' - named in the report
+```
 
 ## Example
 
@@ -77,7 +137,13 @@ DELEGATED, one run over `src/Orders/`, with the 1.x starter prompts in `loops/`:
 
 ## Bounded and honest
 - **Hard cap: 3 improve rounds.** Do not loop indefinitely chasing the last debatable finding.
-- **Each round boundary is a fresh-session resume point** - carried-forward conversation (not tool output) dominates session cost, and the loops folder plus a fresh capture is the handoff. A step, not advice: at each LOOP decision, ask via AskUserQuestion - resume in a fresh session (recommended) vs continue here, the fresh-session option ALWAYS one of the ask's options; on 'fresh', end the turn with the RESUME BLOCK shaped in `references/loop-mechanics.md` and nothing else.
+- **Each round boundary is a fresh-session resume point** - carried-forward conversation (not tool output) dominates session cost, and the loops folder plus a fresh capture is the handoff. A step, not advice: at each LOOP decision, ask - the fresh-session option ALWAYS one of its options; on 'fresh', end the turn with the RESUME BLOCK shaped in `references/loop-mechanics.md` and nothing else.
+
+  ```ask
+  Round <N>: LOOP - <what is left>. A fresh session restarts at <M>k.
+  - 'Resume in a fresh session (Recommended)' - the RESUME BLOCK, then this turn ends
+  - 'Continue here' - the next round in this chat
+  ```
 - Never weaken, skip or delete a test or an assertion to make a finding look resolved - that is a new finding, not a fix, and the anti-gaming sweep exists to catch it.
 - Make the smallest change that resolves each finding; a rewrite that introduces new findings makes the loop diverge.
 - The tier is the routing authority - do not silently upgrade a small finding into a rewrite, or downgrade a structural one to sneak it past the approval gate.

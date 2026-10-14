@@ -37,8 +37,8 @@ resume that carries DELEGATED, because the stamp belongs to the session that dis
   root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt
   for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' -
   take that, since `permissions.allow` cannot pre-approve it.
-- **First line.** `AUTO - "<the mode-ask answer, verbatim>"` - the hook reads that line; never fabricate
-  or paraphrase the quote.
+- **First line.** `APPROVED staged - "<the mode-ask answer, verbatim>"`, never fabricated or paraphrased - never `AUTO`, which
+  reads as nobody at the terminal. Under auto-mode the hook's own `AUTO` stamp already stands - leave it.
 - **Ownership.** Written when this session's own decision lands, deleted at its own close (the run's end,
   or a stage close that ends the session). An earlier session's leftover stamp is not consent - the hook
   expires stamps older than the session or older than 8h - and a leftover stamp from another flow is not

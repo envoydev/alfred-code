@@ -430,5 +430,12 @@ test('a task notice arriving as a prompt gets no budget and no correction row', 
     assert.strictEqual(r.status, 0);
     assert.strictEqual(r.stdout, '', 'nothing injected');
     assert.deepStrictEqual(correctionRows(sid), [], 'no row');
+    // a seat's hand-back is the same: 351 of 960 budget injections in a week rode one (audit 2026-10-14 HK14)
+    const back = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: sid,
+        prompt: 'Another Claude session sent a message:\n<agent-message from="a1b2">\n[Subagent hand-back] no, the gate is wrong\n</agent-message>' }),
+        encoding: 'utf8', env: { ...process.env } });
+    assert.strictEqual(back.status, 0);
+    assert.strictEqual(back.stdout, '', 'nothing injected for a hand-back');
+    assert.deepStrictEqual(correctionRows(sid), [], 'and no row');
     assert.match(prompted('next step please').ctx, /3 sentences/, 'a typed prompt still gets the budget');
 });

@@ -27,7 +27,7 @@ A mode the run already picked is inherited, never re-asked - with ONE boundary: 
 - Not code review - that is `task-verify-code`, after the build.
 - Not plan *creation* - that is `task-design` (`habits-plan-writing` is the format), after `habits-clarify` settles an ambiguous ask. This audits a plan that already exists.
 
-**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option, an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged or deployed, and the `AUTO` stamp in `<docs-path>/flow/APPROVAL` stays until the close deletes it.
+**auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it.
 
 ## The audit - five passes, in order
 

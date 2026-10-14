@@ -2186,8 +2186,25 @@ const REMOTE_READ_RE = /\bgit\s+(?:fetch|pull|ls-remote|remote\s+(?:update|show)
 // commit gate's `answered:` line can name. An ask with a question that marks none, or two, waits for the user - that is
 // the 'ask only when nothing is recommended' half - and so does one whose recommended answer pushes, merges, deploys or
 // publishes: auto-mode commits but never ships. A seat has no AskUserQuestion; its parent's ask is the one judged.
+// OUTWARD is anything another person sees or nothing local undoes (audit 2026-10-14 HK01, replayed: 'Open the PR',
+// 'Post the comment', 'Send it to the team channel', 'Create the GitHub issue', 'Delete the 4 remote branches', 'Ship',
+// 'Rotate it now', 'Reset the branch to origin/main' and a database 'Drop it' were all answered, and an answered 'Open
+// the PR' is push consent to the commit gate). The ask waits: a false hit costs one wait, a miss acts for the user.
 const AUTO_FRESH_RE = /\bfresh session\b|\bresume (?:it |this |the run )?(?:in|from) a (?:new|fresh)\b/i;
-const AUTO_OUTWARD_RE = /\b(?:push(?:es|ed|ing)?|merg(?:e|es|ed|ing)|deploy(?:s|ed|ing|ment)?|publish(?:es|ed|ing)?|release[sd]?|tag(?:s|ged)? (?:and|then) (?:push|release))\b/i;
+const AUTO_OUTWARD_RE = new RegExp([
+  String.raw`\b(?:push(?:es|ed|ing)?|merg(?:e|es|ed|ing)|deploy(?:s|ed|ing|ment)?|publish(?:es|ed|ing)?|release[sd]?|ship(?:s|ped|ping)?)\b`,
+  String.raw`\b(?:pull requests?|merge requests?|PRs?|MRs?)\b`,
+  String.raw`\b(?:open|create|raise|submit|file|report)\b[^.;?\n]{0,40}\b(?:issues?|tickets?|bugs?|incidents?)\b`,
+  String.raw`\b(?:post(?:s|ed|ing)?|send(?:s|ing)?|sent|e-?mail(?:s|ed|ing)?|upload(?:s|ed|ing)?|announc(?:e|es|ed|ing)|notif(?:y|ies|ied))\b(?!-)`,
+  String.raw`\b(?:delet(?:e|es|ed|ing)|remov(?:e|es|ed|ing)|prun(?:e|es|ed|ing))\b[^.;?\n]{0,40}\b(?:remote|origin|upstream|branch(?:es)?|tags?|releases?|repo(?:sitor(?:y|ies))?|environments?)\b`,
+  String.raw`\breset\b[^.;?\n]{0,40}(?:--hard|\bhard\b|\borigin\b|\bupstream\b|\bbranch\b)`,
+  String.raw`\b(?:drop(?:s|ped|ping)?|truncat(?:e|es|ed|ing)|wip(?:e|es|ed|ing))\b[^.;?\n]{0,40}\b(?:database|db|tables?|schemas?|collections?|data)\b`,
+  String.raw`\b(?:drop(?:s|ped|ping)?|truncat(?:e|es|ed|ing))\b[^.;?\n]{0,10}\b(?:it|them)\b[^\n]{0,80}\b(?:database|db|tables?|schemas?)\b`,
+  String.raw`\b(?:databases?|db|tables?|schemas?)\b[^\n]{0,80}\bdrop(?:s|ped|ping)?\b`,
+  String.raw`\bforce[- ]?push|--force\b|\brotat(?:e|es|ed|ing|ion)\b|\brevok(?:e|es|ed|ing)\b|\b(?:pay|purchas(?:e|es|ed|ing)|buy|charg(?:e|ed|ing))\b`,
+  // The user's other languages (alfred-interaction: answer in the language of the user's prompts).
+  '(?:запуш|пуш|змерж|смерж|мерж|задеплой|деплой|опублік|опублик|надісл|відправ|отправ|реліз|релиз|видали\\S*\\s+\\S*\\s*(?:гілк|ремоут|remote)|удали\\S*\\s+\\S*\\s*(?:ветк|remote))',
+].join('|'), 'i');
 function autoAnswers(questions) {
   if (!Array.isArray(questions) || !questions.length) return null;
   const answers = {};
@@ -2205,7 +2222,11 @@ function autoAnswers(questions) {
   }
   return answers;
 }
-if (payload.tool_name === 'AskUserQuestion' && !payload.agent_id && autoLive(payload)) {
+// The answer is this session's alone: only a stamp naming it (the auto-mode start's `session:` line) answers its asks, as
+// only such a stamp holds its Stop. A hand-written AUTO stamp (task-solve's waiver, no session line) is live for every
+// session born before it, so it answered a second session's asks in the same project (audit 2026-10-14 HK02, replayed).
+const askStamp = payload.tool_name === 'AskUserQuestion' && !payload.agent_id ? stampOf(payload) : null;
+if (askStamp && askStamp.live && askStamp.session && /^AUTO\b/.test(askStamp.first)) {
   const input = payload.tool_input || {};
   const answers = autoAnswers(input.questions);
   if (answers) {

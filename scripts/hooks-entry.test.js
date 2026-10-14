@@ -220,8 +220,12 @@ test('the slash route is UserPromptExpansion, its matcher naming every orchestra
         assert.ok(matches(n) && matches(n.replace(/^.*:/, '')), `${n} reaches the hook under either spelling`);
         if (!n.includes(':')) assert.ok(matches(`alfred-code:${n}`), `${n} reaches it plugin-scoped too`);
     }
-    for (const n of ['help', 'clear', 'compact', 'dev-log-convert', 'my-setup', 'task-solved', 'csharp', 'alfred-code:status'])
+    for (const n of ['help', 'clear', 'compact', 'dev-log-convert', 'my-setup', 'tasks', 'my-task-x', 'csharp', 'alfred-code:status'])
         assert.ok(!matches(n), `${n} never spawns the hook`);
+    // every task-* and loop-* name reaches it, a project's own and a digit included: `auto-mode` on any of them starts a
+    // run, and the hook exits at once for one that is no orchestration run (audit 2026-10-14 HK06)
+    for (const n of ['task-migrate-v2', 'task-solved', 'loop-perf', 'alfred-code:task-x2'])
+        assert.ok(matches(n), `${n} reaches the hook`);
 });
 
 test('the retired tool names are kept evenly: every file-write matcher names MultiEdit, the dispatch one Task (2.1.5 M7)', () => {

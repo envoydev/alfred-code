@@ -47,14 +47,16 @@ are in `SKILL.md`; these are the mechanics around them.
 - A relative write follows whatever cwd the shell drifted to, and the dispatch then bounces
   because the guard reads the absolute path.
 - If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier,
-  stop and put the choice through AskUserQuestion (retry the stamp, or run this stage inline)
+  stop and put the choice through AskUserQuestion - 'Retry the stamp (Recommended)' / 'Run this stage inline' -
   rather than retrying blind or dispatching around the gate.
 - **Lifetime.** The AUTO stamp lives until step 6's close deletes it or the session ends - a
   resumed session re-writes it only from the user's waiver words typed in THAT session, else the
   next dispatch asks. Step 4's
   delete-when-fan-out-completes applies to per-plan APPROVED stamps, and a step-5 punch-list
   re-dispatch under AUTO rides the still-live waiver.
-- **auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option, an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged or deployed, and the `AUTO` stamp in `<docs-path>/flow/APPROVAL` stays until the close deletes it.
+- **auto-mode.** `auto-mode` in the arguments is a mode word, not a target: the run goes unattended. Each stop takes its `(Recommended)` option and an answered ask is the go, in the same turn; an ask without one waits for the user, the fresh-session hand-off is never taken, nothing is pushed, merged, deployed or sent out, and the hook's `AUTO` stamp in `<docs-path>/flow/APPROVAL` is the run's approval: write no APPROVED or AUTO line over it, and only the close deletes it.
+- **Under auto-mode an unpushed commit is a `Leftovers:` line, never an ask** - the hook leaves an ask naming a push to
+  the user, and in the same AskUserQuestion call it would hold the commit question too (audit 2026-10-14 SKF-03).
 - **Under AUTO nobody is at the terminal** (audit 2026-10-10, sessions c6142301 and 9a4ef375: an overnight run
   asked for a fresh session nobody could take, and a waived close printed none of its fields). So the fresh-session
   offer and the post-compaction hold are logged, not asked - the hooks read a live AUTO stamp as unattended - and the
