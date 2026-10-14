@@ -265,22 +265,23 @@ test('a fresh install records alfred-docs-root\'s hash AFTER the placeholder sub
 
 // On the FULL copy route (no plugin runs), a registered server answers its BARE tool name, so
 // downconvertToolNames re-spells every `mcp__plugin_<n>_<n>__` occurrence in a copied rule's body -
-// alfred-memory.md's own ToolSearch line is real, shipped content that does exactly this. The
+// alfred-navigation.md's own ToolSearch line is real, shipped content that does exactly this (alfred-memory.md carried one
+// until audit 2026-10-14 RU10 moved it into the hook). The
 // rewrite lands AFTER copyLibrary already hashed the rule, so the stamp must be re-hashed too.
 test('the copy-route MCP tool-name re-spelling is hashed too - a rewritten rule never reads as drift', POSIX_ONLY, () =>
 {
     // The FULL copy route: no plugin runs, so a registered server answers its bare tool name and
     // downconvertToolNames has real work to do.
-    const { result } = seedRun('install', 'skill markdown-style\nrule alfred-memory\nmcp memory\n', {
+    const { result } = seedRun('install', 'skill markdown-style\nrule alfred-navigation\nmcp navigation\n', {
         env: { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
         inspect: (repo) =>
         {
-            const rulePath = path.join(repo, '.claude', 'rules', 'alfred-memory.md');
+            const rulePath = path.join(repo, '.claude', 'rules', 'alfred-navigation.md');
             const content = fs.readFileSync(rulePath, 'utf8');
             const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
             return {
                 content,
-                recorded: (/^library-rules:.*\balfred-memory=([0-9a-f]+)/m.exec(stamp) || [])[1],
+                recorded: (/^library-rules:.*\balfred-navigation=([0-9a-f]+)/m.exec(stamp) || [])[1],
                 computed: hashItem(rulePath),
             };
         },
@@ -288,8 +289,8 @@ test('the copy-route MCP tool-name re-spelling is hashed too - a rewritten rule 
     // Built, never typed literally: lint check 54 bans the bare `mcp__<server>__` spelling
     // anywhere under scripts/, and the down-converter itself builds it the same way.
     const bareTool = (server, tool) => `mcp__${server}__${tool}`;
-    assert.ok(result.content.includes(bareTool('alfred-memory', 'memory_store')), 'the bare-registered server name was re-spelled into the rule');
-    assert.ok(!result.content.includes('mcp__plugin_alfred-memory_alfred-memory__'), 'the plugin spelling did not survive the copy route');
+    assert.ok(result.content.includes(bareTool('alfred-navigation', 'find_symbol')), 'the bare-registered server name was re-spelled into the rule');
+    assert.ok(!result.content.includes('mcp__plugin_alfred-navigation_alfred-navigation__'), 'the plugin spelling did not survive the copy route');
     assert.strictEqual(result.recorded, result.computed, 'the recorded hash must match the RE-SPELLED file, not what copyLibrary wrote before the downconvert pass');
 });
 

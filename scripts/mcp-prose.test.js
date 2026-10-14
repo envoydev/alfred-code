@@ -279,15 +279,17 @@ test('M43 alfred-memory names metadata.tags for the project tag', () =>
     assert.match(text, /`metadata\.tags` `project:<name>`/);
 });
 
-// M44: the memory ToolSearch line had two homes no pin tied together.
-test('M44 the memory ToolSearch line is pinned across its homes', () =>
+// M44: the memory ToolSearch line had two homes no pin tied together. Audit 2026-10-14 RU10 left it ONE: the session-start
+// hook hands it to the session and, since then, to every seat at SubagentStart, so the always-on rule no longer repeats it.
+test('M44 the memory ToolSearch line has one home, the hook, at SessionStart and SubagentStart', () =>
 {
-    const pin = JSON.parse(read('meta/shared-rules.json')).rules['memory-toolsearch-line'];
-    assert.ok(pin, 'a memory-toolsearch-line pin');
     const line = 'ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list';
-    assert.strictEqual(pin.owner.file, 'stack/rules/alfred-memory.md');
-    assert.strictEqual(pin.owner.marker, line);
-    assert.deepStrictEqual(pin.sites.map((s) => [s.file, s.marker]), [['stack/hooks/memory-session.js', line]]);
+    assert.ok(!read('stack/rules/alfred-memory.md').includes('ToolSearch select:'), 'the rule carries no ToolSearch line');
+    assert.strictEqual(JSON.parse(read('meta/shared-rules.json')).rules['memory-toolsearch-line'], undefined, 'no pin for a one-home line');
+    const hook = read('stack/hooks/memory-session.js');
+    assert.ok(hook.includes(`const TOOL_SEARCH_LINE = '${line}';`));
+    assert.match(hook, /emit\('SubagentStart', \[[^\]]*\$\{TOOL_SEARCH_LINE\}/);
+    assert.match(hook, /const searchLine = `Store, search or list more: \$\{TOOL_SEARCH_LINE\}`/);
 });
 
 // M45: where the capabilities capture never ran, nothing told the main thread the browser tools are deferred.

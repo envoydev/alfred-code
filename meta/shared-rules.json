@@ -6304,19 +6304,6 @@
         }
       ]
     },
-    "memory-toolsearch-line": {
-      "_note": "The memory MCP's tools are DEFERRED, so the rule and the session-start hook each hand the model the ONE ToolSearch line that loads them (2.1.5 audit M44: the line had two homes nothing tied together). A renamed tool or server is one edit here and the lint names every copy.",
-      "owner": {
-        "file": "stack/rules/alfred-memory.md",
-        "marker": "ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list"
-      },
-      "sites": [
-        {
-          "file": "stack/hooks/memory-session.js",
-          "marker": "ToolSearch select:mcp__plugin_alfred-memory_alfred-memory__memory_store,mcp__plugin_alfred-memory_alfred-memory__memory_search,mcp__plugin_alfred-memory_alfred-memory__memory_list"
-        }
-      ]
-    },
     "env-reader": {
       "_note": "hook-prelude.js's envOf(env, suffix) reads the stack's ALFRED_CODE_* setting and is the ONE implementation every ordinary hook requires; the three engines (docs.js, memory.js, history.js) and the uv-python.js launcher ship without the prelude beside them on at least one route, so each carries its own byte-identical inline copy instead of a require (the memory launcher reads its key through memory.js settingsDbState, the one reader it shares with the installer - review 2.1.6 R5). A change to the reader is five edits, not one.",
       "owner": {

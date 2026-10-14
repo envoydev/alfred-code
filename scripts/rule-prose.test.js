@@ -262,8 +262,10 @@ test('rules F12 + F13: the commit header and the memory verify clause are each s
 test('agents F03 + AG01: a seat whose tools grant a locked server\'s tools - by name or whole - calls them directly - live probes 2026-10-09, 2026-10-14', () =>
 {
     const clause = 'A seat whose tools grant them - by name or as the whole server - has them loaded already; it calls them directly.';
-    for (const name of ['alfred-navigation', 'alfred-memory'])
-        assert.ok(injected(name).includes(clause), name);
+    assert.ok(injected('alfred-navigation').includes(clause), 'alfred-navigation');
+    // RU10 moved the memory line into the hook's SubagentStart push, carve-out and all.
+    assert.ok(fs.readFileSync(path.join(ROOT, 'stack', 'hooks', 'memory-session.js'), 'utf8')
+        .includes('a seat whose tools grant them, by name or as the whole server, has them loaded already and calls them directly'), 'memory-session.js');
     assert.ok(injected('alfred-quality-gates').includes('then the query (a seat whose tools grant them - by name or as the whole server - calls them directly)'));
     for (const name of ['alfred-navigation', 'alfred-memory', 'alfred-quality-gates'])
         assert.ok(!injected(name).includes('list names them'), `${name}: the exact-name-only clause`);

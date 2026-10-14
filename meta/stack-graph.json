@@ -926,9 +926,7 @@
     "alfred-memory": {
       "skills": [],
       "agents": [],
-      "mcps": [
-        "alfred-memory"
-      ],
+      "mcps": [],
       "plugins": [],
       "paths": []
     },
