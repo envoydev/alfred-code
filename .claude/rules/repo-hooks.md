@@ -265,7 +265,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     `pages` pass the size test, extensions match in any case, and the 60% range cap is a per-session log of ranges
     appended before each verdict and replayed in order, keyed by real path, so parallel Reads cannot each pass it.
     Audit 2026-10-10 C11: a row counts only for its own actor (the main session, or a seat by `agent_id`) and file
-    version (mtime and line count); the shell's literal spans (`sed -n a,bp`, `head`, `tail`, `awk 'NR>=a && NR<=b'`)
+    version (mtime and line count); the cap does not bind `code-quality-analyzer` (bare or `alfred-code:`, by the payload's
+    `agent_type` beside an `agent_id` - audit 2026-10-14 HK16, the user's ruling: its 85 runs made 143 of a week's 277
+    range-cap blocks, the verifiers 9), whose size and sweep gates still do; the shell's literal spans (`sed -n a,bp`, `head`, `tail`, `awk 'NR>=a && NR<=b'`)
     printed to the terminal are rows on the same log; a file the working tree ADDS completes past the cap, and a
     changed one's denial names `git diff HEAD -- <file>`; an inverted grep (`grep -v`, or a pipe into one) prints the
     file minus its matches and is judged like `cat`; a loop whose `cat` reads its variable over literal paths or a

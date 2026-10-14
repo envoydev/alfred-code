@@ -1668,6 +1668,13 @@ const sessionStateFile = () => pathMod.join(os.tmpdir(), `guard-read-${(payload.
 // c6142301, 0498718d, 81264f0d).
 const CAP = 0.6;
 const actorKey = String(payload.agent_id || 'main');
+// Seats the cap does not bind (audit 2026-10-14 HK16, the user's ruling): code-quality-analyzer reads code to judge it,
+// and over 2026-10-07..14 its 85 runs made 143 of the 277 range-cap blocks (and 290 of all 588 read-guard blocks), while
+// the verifiers made 9. The size and sweep gates still bind it. Bare or the house's own prefix - another plugin's seat
+// of that name is not ours.
+const RANGE_CAP_EXEMPT_SEATS = new Set(['code-quality-analyzer']);
+const rangeCapExempt = () => payload.agent_id !== undefined && payload.agent_id !== null
+  && RANGE_CAP_EXEMPT_SEATS.has(String(payload.agent_type || '').replace(/^alfred-code:/, ''));
 const fileVersion = (abs, lineCount) => { try { return `${Math.floor(fs.statSync(abs).mtimeMs)}:${lineCount}`; } catch { return `?:${lineCount}`; } };
 // The file's state in the working tree: 'new' (untracked or added), 'changed', or '' (clean, or no repo).
 const treeState = (abs) => {
@@ -1711,7 +1718,7 @@ function rangeCap(abs, shown, lineCount, a, b) {
   } catch { /* no log - this range alone */ }
   if (!mine) { prior = merged; merged = mergeIn(merged, a, b); }
   const covered = coverOf(merged);
-  if (covered <= lineCount * CAP) return;
+  if (covered <= lineCount * CAP || rangeCapExempt()) return;
   // A file the working tree ADDS is under review whole - a verifier seat left half of a new 251-line test file unread
   // behind this cap (audit 2026-10-10, session 05c925e9) - so its ranges complete it. A changed file names its diff.
   const state = treeState(fileKey);
