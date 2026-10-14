@@ -2010,7 +2010,7 @@ test('price table: every row is complete, sourced and dated, and the page\'s sta
   // The page states the cache columns as multipliers of the base input price: 1.25x for a
   // 5-minute write, 2x for a 1-hour write, 0.1x for a hit except the two it names. A refresh that
   // mistypes one column breaks here, not in a report.
-  const hit = { 'claude-fable-5-1': 0.025, 'claude-mythos-5-1': 0.025, 'claude-opus-5-5': 0.05 };
+  const hit = { 'claude-fable-5-1': 0.025, 'claude-mythos-5-1': 0.025, 'claude-opus-5-5': 0.05, 'claude-sonnet-5-5': 0.05 };
   const near = (a, b) => Math.abs(a - b) < 1e-9;
   for (const m of t.models) {
     // the pre-4 generation is named version first (claude-3-5-haiku-20241022, per the deprecations page)
@@ -2020,6 +2020,12 @@ test('price table: every row is complete, sourced and dated, and the page\'s sta
     assert.ok(near(m.cache_write_1h, 2 * m.input), `${m.id}: 1h write is 2x input`);
     assert.ok(near(m.cache_read, (hit[m.id] || 0.1) * m.input), `${m.id}: cache hit multiplier`);
     if (m.fast) assert.ok(m.fast.input > m.input && m.fast.output > m.output, `${m.id}: fast mode is a premium`);
+    if (m.long_prompt) {
+      const l = m.long_prompt;
+      assert.ok(Number.isInteger(l.over) && l.over > 0, `${m.id}: long_prompt.over`);
+      assert.ok(l.input > m.input && l.output > m.output, `${m.id}: a long prompt is a premium`);
+      assert.ok(near(l.cache_write_5m, 1.25 * l.input) && near(l.cache_write_1h, 2 * l.input) && near(l.cache_read, 0.1 * l.input), `${m.id}: the long tier keeps the cache multipliers`);
+    }
   }
   // 2.1.6 K3: every model the stack itself knows a context window for is priced - the shipped
   // model-windows.json is the stack's other model list, and a model on it with no row here reported every
@@ -2044,6 +2050,24 @@ function writePrices(dir) {
 }
 const costUsage = (i, cc, cr, out, split, extra = {}) => ({ ...usage(i, cc, cr, out), ...(split ? { cache_creation: { ephemeral_5m_input_tokens: split[0], ephemeral_1h_input_tokens: split[1] } } : {}), ...extra });
 const costAsst = (id, ts, model, u) => line({ type: 'assistant', timestamp: ts, message: { id, model, usage: u, content: [] } });
+
+test('cost: a row priced by prompt length bills a message past its threshold at the long rates, input, reads and writes counted', () => {
+  // claude-test-l: 1 / 1.25 / 2 / 0.1 / 5 up to 1000 prompt tokens, x5 past it.
+  // m1 (prompt 100 + 400 written + 500 read = 1000, at the line): 100*1 + 400*1.25 + 500*0.1 + 10*5 = 700
+  // m2 (prompt 1001 by its cache reads alone): 1*5 + 1000*0.5 + 10*25 = 755 -> together 1455 -> $0.001455
+  const dir = tmp();
+  const file = path.join(dir, 'session.jsonl');
+  fs.writeFileSync(file,
+    costAsst('m1', scT(0), 'claude-test-l', costUsage(100, 400, 500, 10, [400, 0])) +
+    costAsst('m2', scT(1), 'claude-test-l', costUsage(1, 0, 1000, 10, [0, 0])));
+  const prices = path.join(dir, 'prices.json');
+  fs.writeFileSync(prices, JSON.stringify({ source: 'https://example.test/pricing', fetched: '2026-01-01', models: [
+    { id: 'claude-test-l', input: 1, cache_write_5m: 1.25, cache_write_1h: 2, cache_read: 0.1, output: 5,
+      long_prompt: { over: 1000, input: 5, cache_write_5m: 6.25, cache_write_1h: 10, cache_read: 0.5, output: 25 } },
+  ] }));
+  const out = run([file, '--prices', prices]);
+  assert.ok(Math.abs(out.main.cost.usd - 0.001455) < 1e-12, String(out.main.cost.usd));
+});
 
 test('cost: priced once per message from the folded usage, split by cache TTL, fast mode scaled, unpriced named, seats summed', () => {
   // main m1 (claude-test-a, a dated id): three STREAMED rows of one message, output growing 10 ->

@@ -22,9 +22,10 @@
 // sessions, one of which NAMED the fresh-session need in its own text ('a fresh session is the
 // right home for a loop like this') and then ran the loop anyway, to 380k tokens per message.
 // Same step run fresh in the next session cost 134k. This is that rule mechanized.
-//   UserPromptSubmit        - only the idle-gap offer (audit 2026-10-10 C09): the prompt ending a gap past the
-//                             clock route's hours injects the offer once per gap. It runs beside the two other
-//                             prompt hooks, in parallel, and reads one 1MB tail; it never judges a command.
+//   UserPromptSubmit        - the auto-mode end (a prompt typed in a session holding its own AUTO stamp ends
+//                             it, 2026-10-14), else the idle-gap offer (audit 2026-10-10 C09): the prompt ending a
+//                             gap past the clock route's hours injects the offer once per gap. It runs beside the
+//                             two other prompt hooks, in parallel, and reads one 1MB tail; it never judges a command.
 //
 // The incoming skill must be one of the orchestration entry points below - everything else passes -
 // and then EITHER trigger is enough: the session's context is already past the threshold, or - on

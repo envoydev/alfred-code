@@ -519,7 +519,10 @@ const priceId = (model) => String(model || '').toLowerCase().replace(/\[[^\]]*\]
 // usage.cache_creation splits a write by TTL, and the two bill differently (1.25x and 2x input) -
 // measured locally at 56% 5-minute and 44% 1-hour writes by tokens, so one rate would misprice both.
 // Fast mode scales every input column by the row's fast/standard input ratio and bills its own output.
-function messageUsd(p, r) {
+// A row priced by prompt length (`long_prompt`, Claude Haiku 5.5) bills a message whose whole prompt - input, cache
+// reads and writes - is over its threshold at the block's rates, every column (the source page, 2026-10-14).
+function messageUsd(row, r) {
+  const p = row.long_prompt && r.u.in + r.u.cr + r.u.cc > row.long_prompt.over ? { ...row, ...row.long_prompt } : row;
   const fast = r.fast && p.fast;
   const f = fast ? p.fast.input / p.input : 1;
   const w1h = r.split ? Math.min(r.c1h, r.u.cc) : 0;
