@@ -134,6 +134,12 @@ test('auto-mode start: only a task or loop, only the exact word, never a seat, a
     assert.strictEqual(JSON.parse(call.stdout).hookSpecificOutput.hookEventName, 'PreToolUse');
     assert.match(context(call), /auto-mode is ON for this \/task-design run/);
     assert.match(fs.readFileSync(q.gate, 'utf8'), /^AUTO - "\/task-design auto-mode the cache plan"\nsession: sz\n/);
+    // a project's own task skill, a digit in its name, through the Skill call
+    const v = project();
+    const own = run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'task-migrate-v2', args: 'auto-mode' },
+        session_id: 'sv', cwd: v.root, transcript_path: t }, { CLAUDE_PROJECT_DIR: v.root });
+    assert.match(context(own), /auto-mode is ON for this \/task-migrate-v2 run/);
+    assert.ok(fs.existsSync(v.gate), 'its stamp is written');
 });
 
 test('auto-mode end: a prompt the user types ends it in that session; a harness row, the word itself or another session does not', () =>

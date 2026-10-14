@@ -728,7 +728,8 @@ function gatedStepHold() {
 // stop contract's prose and pending-close blocks - while the stop contract answers each ask that marks a Recommended
 // option and keeps the session going until the run's close deletes the stamp. A stamp already live for this session is
 // kept, so a second flow in the same run rides it. A seat never starts one: the session that dispatched it owns the run.
-const AUTO_SKILL_RE = /^(?:alfred-code:)?(?:alfred-)?(?:task|loop)-[a-z][a-z-]*$/;
+// A digit is part of a skill name (`task-migrate-v2`): the live probe of 2026-10-14 started none for `task-probe2`.
+const AUTO_SKILL_RE = /^(?:alfred-code:)?(?:alfred-)?(?:task|loop)-[a-z][a-z0-9-]*$/;
 const AUTO_WORD_RE = /(?:^|\s)auto-mode(?=\s|$)/i;
 function autoArgs() {
   if (IS_SKILL_CALL) return String((payload.tool_input || {}).args || '');
