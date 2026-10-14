@@ -27,7 +27,7 @@ Do NOT load for application or schema code, or for editing the Aspire AppHost it
 - Pin the BuildKit frontend on the Dockerfile's first line - `# syntax=docker/dockerfile:1` (to a digest for a fully locked build) - so an untrusted or moving frontend cannot run build-time code you never vetted; and treat `buildx` `--sbom` / `--provenance` attestations as metadata, not signatures - sign the image with cosign if you need provenance you can verify.
 - Build multi-arch images with `buildx --platform linux/amd64,linux/arm64` when developers are on Apple Silicon but production runs x64 - a locally-built image is otherwise the wrong architecture for the server.
 - Run as a non-root USER, mount the root filesystem read-only where the app allows, and keep a .dockerignore that excludes bin, obj, node_modules, .git, and every secret-bearing file.
-- Harden past non-root at runtime - drop all Linux capabilities, set no-new-privileges, cap memory / CPU / PID count, and keep the default seccomp profile plus an AppArmor or SELinux profile instead of reaching for `--privileged`, so a compromised or leaking process cannot escalate, exhaust PIDs, or starve the host. The full checklist with the compose keys: `references/docker-hardening.md`.
+- Harden past non-root at runtime - drop all Linux capabilities, set no-new-privileges, cap memory / CPU / PID count, and keep the default seccomp profile plus an AppArmor or SELinux profile instead of reaching for `--privileged`, so a compromised or leaking process cannot escalate, exhaust PIDs, or starve the host. Then add back what the image's own binary needs: one carrying a file capability (caddy's `cap_net_bind_service`) fails exec under `cap_drop: ALL` until `cap_add` names it. The full checklist with the compose keys: `references/docker-hardening.md`.
 - Give the container a health check and proper PID-1 signal handling (an init shim) so the orchestrator can tell ready from dead and a SIGTERM drains rather than kills. A chiseled or distroless image has no shell and no `curl`, so `HEALTHCHECK CMD curl ...` cannot run there: under Kubernetes use the orchestrator's HTTP probe against the app's health endpoint; where Docker or Compose judges health itself, publish a small probe executable (GET the URL, exit 0 on a 2xx, 1 otherwise) in the build stage and call it in exec form, as below.
 
 The shape in one Dockerfile - multi-stage, cache-ordered, digest-pinned, non-root, health-checked:
@@ -72,8 +72,9 @@ A workflow that parses is not a workflow that runs. Before any done word on a ch
 1. `docker build` on the Dockerfile you touched - an image that does not build is the whole finding.
 2. `actionlint` on the workflow you touched.
 3. `gitleaks` over the diff.
+4. A change to how a container RUNS - its `cap_drop` / `cap_add`, `security_opt`, `read_only`, `tmpfs`, `user`, entrypoint, command or healthcheck - is STARTED under those options: `docker compose up -d <service>` with `docker compose ps` showing it running (healthy where it has a check), or `docker run --rm <the same options> <image> <a version command of its binary>` for an exec-level check. `docker compose config` proves the file parses, never that the container starts.
 
-Quote each result line. Where a tool is not installed, name it and report that leg UNVERIFIED rather than skipping it silently.
+Quote each result line. Where a tool is not installed, name it and report that leg UNVERIFIED rather than skipping it silently; with Docker on the machine, 'unproven at runtime' is a step left unrun, not a flag.
 
 ## .NET Aspire - orchestration
 

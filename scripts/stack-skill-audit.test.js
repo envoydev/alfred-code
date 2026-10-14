@@ -341,6 +341,24 @@ test('m devops: the pipeline proof is three numbered checks with named tools', (
     assert.match(skill('devops', 'references/github-actions.md'), /\(packages\.lock\.json, package-lock\.json, yarn\.lock\)/);
 });
 
+// Field report 2026-10-14: a devops-implementer hardened a caddy service with `cap_drop: ALL`, proved it with
+// `docker compose config -q` alone and flagged it 'unproven at runtime' with Docker on the machine - the binary carries
+// `cap_net_bind_service=ep`, so exec fails (exit 255) until `cap_add` names it. A run-option change is proven by
+// starting the container, in the skill, the implementer and the verifier.
+test('devops: a change to how a container runs is proven by starting it, and a file capability is added back', () =>
+{
+    const prove = squash(section(skill('devops'), 'Prove the pipeline change'));
+    assert.match(prove, /4\. A change to how a container RUNS .* is STARTED under those options/);
+    assert.match(prove, /`docker compose config` proves the file parses, never that the container starts/);
+    assert.match(prove, /'unproven at runtime' is a step left unrun/);
+    assert.match(squash(skill('devops')), /fails exec under `cap_drop: ALL` until `cap_add` names it/);
+    assert.match(squash(skill('devops', 'references/docker-hardening.md')), /`cap_add: \[NET_BIND_SERVICE\]`.*no-new-privileges alone did not break it/);
+    const implementer = squash(read('stack/agents/devops-implementer.md'));
+    assert.match(implementer, /START the container when the task changed how it runs/);
+    assert.match(implementer, /with Docker present, that flag is a step left undone/);
+    assert.match(squash(read('stack/agents/devops-verifier.md')), /a hardening change .* the container was never started under: start it with those options before the verdict/);
+});
+
 // MATERIAL desktop-automation:61-63, :87 - a stop puts its question through the ask tool with a marked recommendation.
 test('M desktop-automation: the two stops ask through AskUserQuestion, and the listing names its boundary', () =>
 {

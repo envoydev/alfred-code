@@ -37,6 +37,7 @@ Build it clean the first time - the container and CI traps to hunt as you write 
 - Pin base images by digest and actions by commit SHA - never a floating :latest or a moving major tag.
 - Order the Dockerfile restore-before-copy-source and key the Actions cache on the lockfile hash.
 - Run as a non-root USER with a healthcheck and a .dockerignore.
+- Drop capabilities, then add back what the image's binary needs - one carrying a file capability (caddy's `cap_net_bind_service`) fails exec under `cap_drop: ALL` until `cap_add` names it.
 - Never write a secret into an image layer or an unmasked log - mask derived secrets, keep a least-privilege permissions block, and federate with OIDC over a stored credential.
 - Wire an integration job against a real service container, not a mock.
 - Run a migration as a gated expand-contract step, never folded into the app roll.
@@ -58,7 +59,7 @@ The review-and-fix loop's five stages - structure, code quality, naming, logging
 ## Loop (bounded)
 1. Locate the task's files by scoped grep (the navigation server for the AppHost C# only) and read just enough of the existing pipeline to build correctly.
 2. Implement the minimal correct files for the task, inside its contract - hunting the container and CI traps above as you write. The card's `log_points` go in with the slice, through the repo's logging seam at the level and with the identifiers the card names - never left for a later pass, never a second logger. Every line meets 'The bar I build to' - structure, quality, naming, comments - and every judgment call lands with its precedent.
-3. Validate locally - docker build the image, actionlint the workflow, dotnet build the AppHost, and an act dry-run where the trigger allows it. A workflow that only runs on a real push event cannot be fully proven locally: validate its syntax and logic and flag exactly what needs a live run.
+3. Validate locally - docker build the image; START the container when the task changed how it runs (capabilities, security options, read-only root, user, entrypoint, command, healthcheck) under exactly those options - `docker compose up -d <service>` then `docker compose ps`, or `docker run --rm <the options> <image> <a version command>` - since `docker compose config` proves only that the file parses; actionlint the workflow, dotnet build the AppHost, and an act dry-run where the trigger allows it. A workflow that only runs on a real push event cannot be fully proven locally: validate its syntax and logic and flag exactly what needs a live run. A leg a tool on this machine can run is run, never flagged 'unproven at runtime' - with Docker present, that flag is a step left undone.
 4. Run the check. A red that traces to code OUTSIDE your boundary - a sibling's in-flight task failing the shared build or validation - is not yours to fix and does not burn your attempts: report it as BLOCKED, naming the failing job or file. Green -> report. Red -> fix and re-check. **Hard cap: 3 attempts.** If the task's contract is wrong or a dependency another task owns is missing, stop and report rather than reach outside the boundary.
 
 ## Don't game it
