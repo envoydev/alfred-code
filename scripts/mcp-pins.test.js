@@ -66,7 +66,8 @@ test('PL4 mobile-control takes its pin\'s own cut-off day on both routes; a row 
     const pins = JSON.parse(read('meta/mcp-pins.json'));
     const day = pins.pins['mobile-control'].refreshed;
     assert.match(day, /^\d{4}-\d{2}-\d{2}$/, 'the committed mobile-control row records its own day');
-    assert.ok(day > pins.refreshed, 'the pin is newer than the shared uvx day, which would not resolve it');
+    // An --only pin is newer than the shared uvx day, which would not resolve it; a whole refresh (PL10) sets both to one day.
+    assert.ok(day >= pins.refreshed, 'the row\'s own day is never older than the shared uvx day');
     const shipped = require('../.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'mobile-control').mcpServers['mobile-control'].args;
     assert.deepStrictEqual(shipped.slice(-2), ['--before', `${day}T23:59:59Z`]);
     const shape = (row) => mcpServerShapes({ pins: { 'mobile-control': row } })['mobile-control'].servers['mobile-control'].args;

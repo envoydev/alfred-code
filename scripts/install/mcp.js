@@ -849,6 +849,17 @@ const TOKEN_WORDS = {
 // stack's, while one that carries it must carry the template's value. Audit 2026-10-14: serena's usage ping off (PL1),
 // mobile-control's npm cut-off (PL4).
 const ADDED_ENV_KEYS = new Set(['SERENA_USAGE_REPORTING', 'npm_config_before']);
+// The same for the argument words a later release ADDED: absent from an earlier release's registration, still the stack's.
+// Audit 2026-10-14 PL10: serena 2.0.0's interface pinned to tools.
+const ADDED_ARG_WORDS = [['--agent-interface', 'tools']];
+function withAddedArgs(matchers, words)
+{
+    const out = matchers.slice();
+    for (const run of ADDED_ARG_WORDS)
+        for (let i = 0; i + run.length <= words.length; i += 1)
+            if (run.every((w, k) => words[i + k] === w)) for (let k = 0; k < run.length; k += 1) out[i + k] = { ...out[i + k], optional: true };
+    return out;
+}
 const TOKEN_RE = /@[A-Z][A-Z0-9_]*@/g;
 const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 function wordMatcher(word)
@@ -903,7 +914,8 @@ function exactStack(name, entry, { catalog = [], remotes = {}, projectRoot = '',
     if (!wantKeys.every((k) => envRe(want.env[k]).test(String(env[k])))) return false;
     const { words, code } = anchorOf(entry);
     if (code !== null && !boots.includes(code)) return false;
-    if (!wordsMatch(serverWords(want).map(wordMatcher), words)) return false;
+    const template = serverWords(want);
+    if (!wordsMatch(withAddedArgs(template.map(wordMatcher), template), words)) return false;
     if (!engine) return true;
     const dir = words[words.indexOf('--user-data-dir') + 1] || '';
     return ownProfile(dir, projectRoot) && new RegExp(`(^|[\\\\/])(?:${engine}-control|(?:browser|\\.playwright)[\\\\/]${engine})$`).test(dir.replace(/[\\/]+$/, ''));

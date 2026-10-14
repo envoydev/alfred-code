@@ -340,7 +340,10 @@ function mcpServerShapes(options = {})
                         // cursor-stack's). The launcher swaps it for the stack's own context file beside
                         // it (navigation-context.yml, I12) - named here as claude-code so a project whose
                         // plugin cache predates that file still starts serena after a catalog refresh.
-                        '--context', 'claude-code', '--enable-web-dashboard', 'false', '--project-from-cwd'],
+                        '--context', 'claude-code', '--enable-web-dashboard', 'false', '--project-from-cwd',
+                        // serena 2.0.0's interface pinned to tools (audit 2026-10-14 PL10): its own config template
+                        // says REPL, which ignores the context's exclusions and edits through serena_repl unseen.
+                        '--agent-interface', 'tools'],
                     // serena's usage ping off (PL1): the launcher hands its whole env to uvx, so this reaches serena.
                     env: NAVIGATION_ENV,
                 },

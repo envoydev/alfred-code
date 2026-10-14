@@ -479,8 +479,11 @@ test('M26 copy route: the navigation row names the project outright where --proj
     const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
     const row = manifest.mcps.find((m) => m.name === 'alfred-navigation').args;
     const words = (t) => mcp.mcpArgv(row, { UV_PYTHON: '3.13', SERENA_HOME: '.alfred/serena/home', SERENA_CONTEXT: 'claude-code', ...t });
-    assert.deepStrictEqual(words({ SERENA_PROJECT_FLAG: '--project', SERENA_PROJECT_DIR: '.' }).slice(-2), ['--project', '.']);
-    assert.deepStrictEqual(words({ SERENA_PROJECT_FLAG: '--project-from-cwd', SERENA_PROJECT_DIR: '' }).slice(-1), ['--project-from-cwd']);
+    // The project words come right before PL10's interface pair, which ends the row.
+    const head = (w) => w.slice(0, w.indexOf('--agent-interface'));
+    assert.deepStrictEqual(words({ SERENA_PROJECT_FLAG: '--project', SERENA_PROJECT_DIR: '.' }).slice(-2), ['--agent-interface', 'tools']);
+    assert.deepStrictEqual(head(words({ SERENA_PROJECT_FLAG: '--project', SERENA_PROJECT_DIR: '.' })).slice(-2), ['--project', '.']);
+    assert.deepStrictEqual(head(words({ SERENA_PROJECT_FLAG: '--project-from-cwd', SERENA_PROJECT_DIR: '' })).slice(-1), ['--project-from-cwd']);
 });
 
 test('pins: each is spelled as its row says - memory ==<ver> inside the extras brackets, the others @<ver>', () =>
@@ -1965,6 +1968,30 @@ test('PL1 copy route: navigation registers SERENA_USAGE_REPORTING=false, and the
     assert.strictEqual(mobile({ npm_config_before: '2026-10-13T23:59:59Z' }), true, 'this release\'s shape');
     assert.strictEqual(mobile({}), true, 'the 2.4.0 shape, before the cut-off');
     assert.strictEqual(mobile({ npm_config_before: '' }), true, 'a release with no day recorded registers it empty');
+});
+
+// Audit 2026-10-14 PL10: serena 2.0.0's config template sets agent_interface REPL, where the context's exclusions do not
+// apply and serena_repl edits files unseen; both routes pin `--agent-interface tools`. A registration an earlier release
+// wrote without the pair is still the stack's (ADDED_ARG_WORDS), so update rewrites it; another interface is the user's.
+test('PL10: navigation pins --agent-interface tools on both routes, and the pre-2.0.0 shape without it is still the stack\'s', () =>
+{
+    const row = require('../meta/stack-manifest.json').mcps.find((m) => m.name === 'alfred-navigation');
+    assert.match(row.args, / --agent-interface tools"?$/, 'the copy-route template carries the pair');
+    const market = require('../.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'alfred-navigation');
+    const args = market.mcpServers['alfred-navigation'].args;
+    assert.deepStrictEqual(args.slice(args.indexOf('--agent-interface')), ['--agent-interface', 'tools'], 'the plugin entry carries the pair');
+    const catalog = [`alfred-navigation|${row.args}`];
+    const boot = require('../stack/hooks/memory.js').ROOT_BOOT;
+    const nav = (tail) => ({ type: 'stdio', command: 'node', args: ['-e', boot, '--', 'checkout', 'uvx', '--python', '3.13', '--exclude-newer', '2026-10-14T23:59:59Z', '--from', 'serena-agent@2.0.0', 'serena', 'start-mcp-server', '--context', '.claude/navigation-context.yml', '--enable-web-dashboard', 'false', '--project-from-cwd', ...tail],
+        env: { SERENA_HOME: '.alfred/serena/home', SERENA_USAGE_REPORTING: 'false' } });
+    const exact = (tail) => mcp.exactStack('alfred-navigation', nav(tail), { catalog });
+    assert.strictEqual(exact(['--agent-interface', 'tools']), true, 'this release\'s shape');
+    assert.strictEqual(exact([]), true, 'the shape an earlier release registered');
+    assert.strictEqual(exact(['--agent-interface', 'REPL']), false, 'another interface is the user\'s choice');
+    assert.strictEqual(exact(['--agent-interface', 'tools', '--mode', 'planning']), false, 'a word of the user\'s own');
+    const spec = mcp.registerSpec({ name: 'alfred-navigation', args: row.args, scope: 'project',
+        tokens: { SERENA_HOME: '.alfred/serena/home', ROOT_BOOT: boot, UV_PYTHON: '3.13', UV_EXCLUDE_FLAG: '--exclude-newer', UV_EXCLUDE_NEWER: '2026-10-14T23:59:59Z', SERENA_PIN: '@2.0.0', SERENA_CONTEXT: '.claude/navigation-context.yml', SERENA_PROJECT_FLAG: '--project-from-cwd', SERENA_PROJECT_DIR: '' } });
+    assert.deepStrictEqual(spec.slice(-2), ['--agent-interface', 'tools'], 'the copy route registers the pair');
 });
 
 test('accountBackups: the CLI\'s corrupted copies and its last good ones, oldest first, from every folder named once', () =>

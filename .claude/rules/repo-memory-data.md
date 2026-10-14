@@ -61,7 +61,12 @@ The memory levels and stores, where the docs root and the data root live, and th
   the `[sqlite]` extra - `mcp-memory-service[sqlite]==<ver>` via `uvx --with numpy --from ...` - for
   real 384-dim embeddings; without it the server refuses to start on a database already holding
   memories. Env: `MCP_MEMORY_STORAGE_BACKEND=sqlite_vec`, `MCP_MEMORY_SQLITE_PATH=<db>`,
-  `MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000` (a shared file, several writers). SETUP never
+  `MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000` (a shared file, several writers). 12.0.0 (audit 2026-10-14 PL10) migrates
+  the file on its first open, one-way and additive - schema 12 to 19, an `embedding_pending` column with a default and the
+  delta-sync tables (off unless `MCP_SYNC_EVENTLOG` is set); measured on a copy of a real database: 11.14.0 then stored,
+  listed and searched over the migrated file, `memory.js export` read it, and both versions returned the same top hit.
+  So installs on either pin may share one file; the readers here use columns by name (the re-embed's whole-row read only
+  carries the new one into its backup, and re-stores through the service). SETUP never
   imports: `/alfred-code:init`, in the session after setup's restart (`scripts/install/memory.js
   init`), imports the project's existing `MEMORY.md` / `memory/*.md` notes into the chosen database
   once, through the service (idempotent), and only after that import succeeds switches Claude's own
