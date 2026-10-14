@@ -288,7 +288,8 @@ test('M44 the memory ToolSearch line has one home, the hook, at SessionStart and
     assert.strictEqual(JSON.parse(read('meta/shared-rules.json')).rules['memory-toolsearch-line'], undefined, 'no pin for a one-home line');
     const hook = read('stack/hooks/memory-session.js');
     assert.ok(hook.includes(`const TOOL_SEARCH_LINE = '${line}';`));
-    assert.match(hook, /emit\('SubagentStart', \[[^\]]*\$\{TOOL_SEARCH_LINE\}/);
+    // audit 2026-10-14 RU13: the seat's push ends on the host's shell lines (withHost)
+    assert.match(hook, /emit\('SubagentStart', withHost\(\[[^\]]*\$\{TOOL_SEARCH_LINE\}/);
     assert.match(hook, /const searchLine = `Store, search or list more: \$\{TOOL_SEARCH_LINE\}`/);
 });
 

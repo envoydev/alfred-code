@@ -374,7 +374,8 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/shell-guards.js\"",
-                "timeout": 90
+                "timeout": 90,
+                "onFailure": "block"
               }
             ]
           },

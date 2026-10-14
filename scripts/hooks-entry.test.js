@@ -293,3 +293,46 @@ test('copy route: the stop contract\'s PostToolUse / PostToolUseFailure entries 
         assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'a re-run changes nothing');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// Audit 2026-10-14 HK07 (the user's ruling): a hook that fails - cannot start, times out, exits other than 0 / 2 - lets the
+// call through unless it sets `onFailure: "block"` (code.claude.com/docs/en/hooks, 'Block the action when a hook fails',
+// 2.1.295+). The shell-guard dispatcher alone carries it, on both routes: its rm, force-push and secret guards are the ones a
+// crashed or stalled dispatcher would silently pass. The copy route backfills it onto an older entry once, touches no
+// hook of the user's, and a re-run changes nothing.
+test('the shell-guard dispatcher alone blocks the call when it fails - plugin and copy routes, backfilled once (HK07)', () => {
+    const flagged = Object.entries(block).flatMap(([event, groups]) => groups.flatMap((b) => b.hooks.filter((h) => h.onFailure !== undefined)
+        .map((h) => `${event} ${b.matcher} ${h.onFailure} ${h.command.replace(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\//, '').replace(/"$/, '')}`)));
+    assert.deepStrictEqual(flagged, [`PreToolUse ${dispatcher.MATCHER} block shell-guards.js`]);
+    const core = JSON.stringify(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8')));
+    assert.strictEqual((core.match(/"onFailure":"block"/g) || []).length, 1, 'the generated entry carries it once');
+    assert.match(core, /shell-guards\.js\\"","timeout":\d+,"onFailure":"block"/, 'on the dispatcher');
+    const { onFailureFor, writeSettings, hookCommand } = require('./install/settings.js');
+    assert.strictEqual(onFailureFor('shell-guards.js', 'PreToolUse'), 'block');
+    for (const [file, event] of [['file-guards.js', 'PreToolUse'], ['guard-stop-contract.js', 'Stop'], ['instrument-tool-usage.js', 'PreToolUse'], ['shell-guards.js', 'PostToolUse']])
+        assert.strictEqual(onFailureFor(file, event), undefined, `${file} ${event}`);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hooks-entry-onfailure-'));
+    try {
+        const file = path.join(dir, '.claude', 'settings.json');
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        const cmd = hookCommand('shell-guards.js', '').command;
+        const mine = { type: 'command', command: 'node my-own-bash-hook.js', timeout: 5 };
+        // an older install wired the dispatcher without it, beside the user's own Bash hook
+        fs.writeFileSync(file, JSON.stringify({ hooks: { PreToolUse: [{ matcher: dispatcher.MATCHER, hooks: [{ type: 'command', command: cmd, timeout: 90 }] },
+            { matcher: 'Bash', hooks: [mine] }] } }));
+        const specs = [...dispatcher.GUARDS.map((g) => ({ file: `${g}.js`, matcher: dispatcher.MATCHER })), { file: 'guard-stop-contract.js', matcher: '@Stop' }];
+        const opts = { file, catalog: require('../meta/environment.json').env, migrations: {}, log: () => {}, note: () => {}, hookSpecs: specs };
+        writeSettings(opts);
+        const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+        const ours = data.hooks.PreToolUse.flatMap((e) => e.hooks).filter((h) => h.command === cmd);
+        assert.deepStrictEqual(ours.map((h) => h.onFailure), ['block'], 'backfilled onto the older entry, not doubled');
+        assert.deepStrictEqual(data.hooks.PreToolUse.find((e) => e.matcher === 'Bash').hooks, [mine], 'the user\'s own hook is untouched');
+        assert.deepStrictEqual(data.hooks.Stop.flatMap((e) => e.hooks).map((h) => h.onFailure), [undefined], 'a Stop hook never carries it');
+        const before = fs.readFileSync(file, 'utf8');
+        writeSettings(opts);
+        assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'a re-run changes nothing');
+        // a fresh file gets it written with the entry
+        fs.rmSync(file);
+        writeSettings(opts);
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).hooks.PreToolUse.flatMap((e) => e.hooks).map((h) => h.onFailure), ['block']);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

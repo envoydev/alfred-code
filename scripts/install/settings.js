@@ -57,7 +57,16 @@ const timeoutFor = (file, event) => (HOOK_TIMEOUTS[file] || {})[event] || HOOK_T
 // generator reads the same table.
 const ASYNC_HOOKS = { 'instrument-tool-usage.js': '*', 'guard-stop-contract.js': ['PostToolUse', 'PostToolUseFailure'] };
 const asyncFor = (file, event) => { const on = ASYNC_HOOKS[file]; return on === '*' || (Array.isArray(on) && on.includes(event)); };
-const hookEntry = (command, timeout, file, event) => ({ type: 'command', command, timeout, ...(asyncFor(file, event) ? { async: true } : {}) });
+// A hook that FAILS - cannot start, times out, exits other than 0 / 2, prints invalid output - lets the call through by
+// default; `onFailure: "block"` blocks it instead, as an exit 2 would (code.claude.com/docs/en/hooks, 'Block the action
+// when a hook fails', Claude Code 2.1.295+). Only the shell-guard dispatcher carries it (audit 2026-10-14 HK07, the user's
+// ruling): its rm, force-push and secret guards are the ones a crashed or stalled dispatcher would silently pass, and the
+// price - a broken install blocks every shell call until fixed - is paid on the shell route only. An older Claude Code drops the
+// key: its hook entry is a non-strict zod object (2.1.100 and 2.1.294 bundles read 2026-10-14), so nothing is rejected.
+const BLOCK_ON_FAILURE = { [`${shellGuards.SELF}.js`]: ['PreToolUse'] };
+const onFailureFor = (file, event) => ((BLOCK_ON_FAILURE[file] || []).includes(event) ? 'block' : undefined);
+const hookEntry = (command, timeout, file, event) => ({ type: 'command', command, timeout, ...(asyncFor(file, event) ? { async: true } : {}),
+    ...(onFailureFor(file, event) ? { onFailure: onFailureFor(file, event) } : {}) });
 // The `attribution` keys the seed writes when absent (code.claude.com settings reference).
 const ATTRIBUTION_OFF = [['commit', ''], ['pr', ''], ['sessionUrl', false]];
 // Every settings path the stack seeds, with its seed value - the ledger records them and a scope move takes them along.
@@ -177,6 +186,8 @@ function wireHooks(data, specs, retiredHooks)
                 if (ours.has(h.command) && h.timeout !== timeoutFor(fileOf(h.command), event)) { h.timeout = timeoutFor(fileOf(h.command), event); changed = true; }
                 // ...and the async flag onto a side-effect hook an earlier install wired blocking.
                 if (ours.has(h.command) && asyncFor(fileOf(h.command), event) && h.async !== true) { h.async = true; changed = true; }
+                // ...and the block-on-failure flag onto the shell-guard dispatcher an earlier install wired without it.
+                if (ours.has(h.command) && onFailureFor(fileOf(h.command), event) && h.onFailure !== onFailureFor(fileOf(h.command), event)) { h.onFailure = onFailureFor(fileOf(h.command), event); changed = true; }
             }
 
     // Prune OUR hook file from a PreToolUse matcher this version no longer wires. Keyed on the
@@ -1262,4 +1273,4 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
         log(`  kept at user scope: ${keptOff.join(', ')} - the user-scope core stays loaded for this account, so these keep what you switched off here off; remove them once it is uninstalled`);
 }
 
-module.exports = { compactWindowSeeds, removeManagedSettings, isStackKey, writeSettings, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor };
+module.exports = { compactWindowSeeds, removeManagedSettings, isStackKey, writeSettings, applyMcpDeny, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor, asyncFor, onFailureFor };

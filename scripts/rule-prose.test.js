@@ -98,7 +98,13 @@ test('M68: the browser-only screenshot line leaves the always-on navigation rule
     assert.ok(!/screenshot/i.test(nav), 'the browser row owns screenshot readback');
     const row = read('stack/skills/capture-agent-awareness/references/generated-rule-template.md').split('\n').find((l) => l.startsWith('- `browser` - '));
     assert.ok(row && row.includes('never the iteration loop'), 'the browser row carries the mid-loop rule');
-    assert.ok(nav.includes('Git Bash'), 'the Windows line stays: a per-OS rule copy would differ between teammates');
+    // The M68 ruling stands - one rule text for every teammate, never a per-OS rule COPY. Audit 2026-10-14 RU13 (the
+    // user's ruling): a per-host hook line is no copy, so the Windows line rides memory-session.js on win32 only, and the
+    // rule keeps one pointer at it (the hook's own cases: memory-session.test.js, RU13).
+    assert.ok(nav.includes('- The traps of this host\'s own shell (zsh, Git Bash on Windows) arrive in the session-start context, only where they apply.'), 'the pointer');
+    assert.ok(!nav.includes('cygpath'), 'the Windows line left the always-on rule');
+    const { hostLines } = require('../stack/hooks/memory-session.js');
+    assert.ok(hostLines('win32', 'C:\\Program Files\\Git\\usr\\bin\\bash.exe').some((l) => l.startsWith('- On Windows (Git Bash): pass a `/tmp/x` path')), 'the hook carries it on win32');
 });
 
 // ------------------------------------------------------------------ M69
@@ -293,8 +299,11 @@ test('C14: no shipped instruction prescribes the bash-only PIPESTATUS read; the 
     assert.match(nav, /Read `\$\?` on the very next line, with `set -o pipefail` before a pipe/);
     // audit 2026-10-14 RU05: shell-guards.js quotes a tool-owned glob and a bare `=word` under zsh (shell-guards.test.js C14), so the rule drops both
     assert.ok(!/opening with `=`|a glob the TOOL owns/.test(nav), 'a hook-held clause left the rule');
-    assert.match(nav, /never word-splits `\$VAR`/);
-    assert.match(nav, /a path glob that may match nothing with `find <dir> -name '<pat>'`/);
+    // audit 2026-10-14 RU13: the two zsh traps ride memory-session.js on a zsh host only; the rule points at them
+    assert.ok(!/word-splits|bare path glob/.test(nav), 'the zsh lines left the always-on rule');
+    const zsh = require('../stack/hooks/memory-session.js').hostLines('darwin', '/bin/zsh').join('\n');
+    assert.match(zsh, /never word-splits `\$VAR`/);
+    assert.match(zsh, /a path glob that may match nothing with `find <dir> -name '<pat>'`/);
 });
 
 // ------------------------------------------------------------------ audit 2026-10-10 C22
@@ -468,4 +477,26 @@ test('SKC02: the git rule and the checkpoint mark the same option on an owed com
     const entry = registry()['commit-ask-owed-mark'];
     assert.ok(entry, 'a commit-ask-owed-mark pin');
     assert.deepStrictEqual(homes(entry).map((h) => h.file).sort(), ['stack/rules/alfred-git.md', 'stack/skills/habits-commit-checkpoint/SKILL.md']);
+});
+
+// ------------------------------------------------------------------ audit 2026-10-14 RU03
+
+// RU03: the credentials section restated the guards' own block texts - the value ask with its receipt (guard-secret-value.js
+// askLine, on every denial) and the rotate ask's once-per-exposure switch (guard-stop-contract.js) - which arrive exactly when
+// they apply. The rule keeps every constraint; the Read-deny coverage line, which changes no model action, is a maintainer note.
+test('RU03: the credentials section keeps its constraints and leaves the ask, the receipt and the switch to the guards', () =>
+{
+    const sec = injected('alfred-security');
+    for (const gone of ['ROTATE_ASK', 'once per exposure', 'SECRET-READ-ALLOW', 'When the VALUE', 'nested key', 'Read rules cover'])
+        assert.ok(!sec.includes(gone), `the always-on copy still carries '${gone}'`);
+    for (const kept of ['End the turn on the ask (rotate now / acknowledge and defer), never on prose.', "(the secret guard's `--presence` view - its denial prints the command)",
+        'a pasted one may do the job it was pasted for, inline in that one call', '`.sensitive-data`', '`--with-sensitive`', 'never a fragment of the value',
+        'Each rotation option names its site, action and command itself'])
+        assert.ok(sec.includes(kept), `the constraint '${kept}' stays`);
+    assert.ok(squash(rule('alfred-security')).includes('`guard-secret-value.js` covers those by content'), 'the coverage line is a maintainer note');
+    const guard = read('stack/hooks/guard-secret-value.js');
+    assert.ok(guard.includes("'Presence only (Recommended)'") && guard.includes("'flow', 'SECRET-READ-ALLOW'"), 'the value ask and its receipt ride every denial');
+    const stop = read('stack/hooks/guard-stop-contract.js');
+    assert.ok(stop.includes('This ask comes once') && stop.includes('ALFRED_CODE_ROTATE_ASK=0 in the settings.json env turns it off'), 'the rotate ask names its switch');
+    assert.ok(!homes(registry()['secret-read-allow-receipt']).some((h) => h.file === 'stack/rules/alfred-security.md'), 'the registry drops the rule site');
 });

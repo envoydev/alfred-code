@@ -21,6 +21,7 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const m = require('../stack/hooks/memory.js');
 const ENGINE = path.join(ROOT, 'stack', 'hooks', 'memory.js');
 const HOOK = path.join(ROOT, 'stack', 'hooks', 'memory-session.js');
+const host = require(HOOK).hostLines(process.platform, '/bin/bash'); // the lines a bash host gets: none, or win32's own
 
 let DatabaseSync = null;
 try { process.removeAllListeners('warning'); ({ DatabaseSync } = require('node:sqlite')); } catch {}
@@ -209,7 +210,8 @@ function hookProject(registered = true) {
   const config = tmpDir('handoff-hook-config-');
   const dbPath = path.join(root, '.memory-mcp', 'memory.db');
   fs.writeFileSync(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: registered ? { memory: { type: 'stdio', command: 'uvx', args: [], env: { MCP_MEMORY_SQLITE_PATH: dbPath } } } : {} }));
-  const run = (payload) => spawnSync(process.execPath, [HOOK], { cwd: root, input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config } });
+  // a bash $SHELL: no zsh trap line rides the push (memory-session.js hostLines, audit 2026-10-14 RU13); win32 adds its own
+  const run = (payload) => spawnSync(process.execPath, [HOOK], { cwd: root, input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, SHELL: '/bin/bash', CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: config } });
   return { root, dbPath, run, rm: () => { rmDir(root); rmDir(config); } };
 }
 
@@ -222,7 +224,7 @@ test('SubagentStart hands the seat its project tag line and the tool line, never
     const out = JSON.parse(r.stdout).hookSpecificOutput;
     assert.strictEqual(out.hookEventName, 'SubagentStart');
     assert.strictEqual(out.additionalContext.split('\n')[0], `This project's memory tag: project:${path.basename(p.root)}`);
-    assert.strictEqual(out.additionalContext.split('\n').length, 2, 'the tag line and the tool line (RU10)');
+    assert.strictEqual(out.additionalContext.split('\n').length, 2 + (host.length ? host.length + 1 : 0), 'the tag line and the tool line (RU10), then the host\'s shell lines (RU13)');
     assert.ok(!out.additionalContext.includes('a project fact'), 'no row reaches a seat');
     const start = JSON.parse(p.run({ hook_event_name: 'SessionStart', cwd: p.root }).stdout).hookSpecificOutput;
     assert.ok(start.additionalContext.includes('a project fact'), 'SessionStart still pushes the rows');

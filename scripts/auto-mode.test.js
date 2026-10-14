@@ -319,6 +319,51 @@ test('auto-mode Stop: the run is sent back until its close deletes the stamp, an
     assert.strictEqual(stop('r3', { last_assistant_message: 'Report written to docs/report.md.' }).status, 0, 'a hand-written AUTO stamp is not held here');
 });
 
+// Audit 2026-10-14 HK05 (the user's ruling): Claude Code's 8-continuation cap resets on every tool call, so a run that keeps
+// calling tools was sent back for as long as its stamp stood. The holds are counted per stamp beside the chain marker; the
+// 50th Stop passes with one auto-continue-cap row, and a new stamp counts from 0.
+test('auto-mode Stop: the 50th Stop under one stamp passes with one auto-continue-cap row, and a new stamp counts again (HK05)', () =>
+{
+    const p = project();
+    const log = fs.mkdtempSync(path.join(TMP, 'cap-'));
+    const t = transcript();
+    // each Stop opens a new cycle (no stop_hook_active), so the chain never stands one down and only the count decides
+    const stop = () => run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: 'c1', cwd: p.root, transcript_path: t,
+        last_assistant_message: 'Stage 2 of 4 is done; stage 3 starts next.' }, { CLAUDE_PROJECT_DIR: p.root, ALFRED_CODE_HOOK_LOG_DIR: log });
+    const capRows = () => rows(p, 'c1').filter((r) => r.kind === 'auto-continue-cap');
+    autoStamp(p, 'c1', `at: ${new Date().toISOString()}\n`);
+    assert.strictEqual(stop().status, 2, 'the first Stop is sent back');
+    const counter = fs.readdirSync(log).filter((f) => /^alfred-stop-held-guard-stop-contract-Stop-c1-main\.auto$/.test(f));
+    assert.strictEqual(counter.length, 1, `the count sits beside the chain marker: ${fs.readdirSync(log)}`);
+    const file = path.join(log, counter[0]);
+    const first = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.strictEqual(first.count, 1, 'one hold counted');
+    assert.strictEqual(stop().status, 2, 'the second is sent back too');
+    assert.strictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).count, 2, 'and counted');
+    // 48 holds made: the 49th Stop is still sent back, the 50th passes with its row, the 51st passes with no second row
+    fs.writeFileSync(file, JSON.stringify({ ...first, count: 48 }));
+    assert.strictEqual(stop().status, 2, '49: sent back');
+    assert.deepStrictEqual(capRows(), [], 'no cap row before the cap');
+    const fifty = stop();
+    assert.strictEqual(fifty.status, 0, '50: passes');
+    assert.strictEqual(fifty.stderr, '', 'no continuation is asked for');
+    assert.strictEqual(capRows().length, 1, 'one auto-continue-cap row');
+    assert.strictEqual(capRows()[0].mode, 'auto', 'a record, never a block');
+    assert.strictEqual(capRows()[0].detail.count, 50);
+    assert.strictEqual(stop().status, 0, '51: passes');
+    assert.strictEqual(capRows().length, 1, 'still the one row');
+    assert.ok(fs.existsSync(p.gate), 'the stamp stands - only its close or a typed prompt ends auto-mode');
+    // a new auto-mode start writes a new stamp: its count starts over
+    autoStamp(p, 'c1', 'at: 2026-10-14T12:00:00.000Z\n');
+    const past = new Date(Date.now() - 30000);
+    fs.utimesSync(p.gate, past, past);
+    assert.strictEqual(stop().status, 2, 'a new stamp is sent back again');
+    assert.strictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).count, 1, 'counted from 1');
+    // a torn count file reads as 0, never as a cap
+    fs.writeFileSync(file, '{"stamp":');
+    assert.strictEqual(stop().status, 2, 'a torn count file holds');
+});
+
 // ---------------------------------------------------------------------------------------------
 // the dispatch guard reads the same stamp
 // ---------------------------------------------------------------------------------------------

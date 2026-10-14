@@ -46,6 +46,10 @@ let stampOf = () => null;     // hook-prelude.js approvalStamp - the stamp's sta
 // The Stop chain (hook-prelude.js stopHeldThisCycle): without the prelude, any continuation stands down - the old reading.
 let stopHeld = (input) => !!(input && input.stop_hook_active);
 let markHeld = () => {};
+// Where the auto-continue count lives (audit 2026-10-14 HK05): beside this hook's chain marker, never in it - the marker
+// is cleared at every new cycle and every workSince reopen, which is exactly what an auto-mode run does between holds.
+let autoCountFile = (input) => require('path').join(envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir(),
+  `alfred-stop-held-guard-stop-contract-Stop-${String(input.session_id || 'nosession').replace(/[^\w.-]/g, '_').slice(-80)}-main.auto`);
 let houseDash = /[\u2014\u2013\u2015]/; // hook-prelude.js HOUSE_DASH, the one dash class
 let withoutShortLived = (text) => text; // hook-prelude.js withoutShortLived - a short-lived link's own token blanked
 if (require.main === module) {
@@ -61,6 +65,7 @@ if (require.main === module) {
       stopHeld = (input) => prelude.stopHeldThisCycle('guard-stop-contract', input, undefined, { workSince: true });
       markHeld = (input) => prelude.markStopHeld('guard-stop-contract', input);
     }
+    if (prelude.stopMarkerFile) autoCountFile = (input) => `${prelude.stopMarkerFile('guard-stop-contract', input)}.auto`;
     if (prelude.standDown('guard-stop-contract')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
@@ -1257,6 +1262,19 @@ function rotateAskAnswered() {
   }
 }
 
+// The auto-continue count per stamp (HK05): this Stop's number under the live stamp, 1 for the first. The key is the stamp's
+// session and mtime - the start writes a stamp once and keeps a live one, so a rewritten stamp is a new run and starts
+// over. A torn or foreign file reads as 0; an unwritable one counts nothing (0), the uncapped reading.
+const AUTO_CONTINUE_CAP = 50;
+function countAutoContinue(stamp) {
+  const file = autoCountFile(payload);
+  const key = `${stamp.session}@${stamp.mtimeMs}`;
+  let n = 0;
+  try { const o = JSON.parse(fs.readFileSync(file, 'utf8')); if (o && o.stamp === key && Number.isInteger(o.count) && o.count > 0) n = o.count; } catch { /* absent or torn: 0 */ }
+  try { fs.writeFileSync(file, JSON.stringify({ stamp: key, count: n + 1 })); } catch { return 0; }
+  return n + 1;
+}
+
 // A silent fail-open is indistinguishable from a clean turn, which is how the misses above
 // stayed invisible across 74 audited bundles. Every path that declines to judge says so.
 // Name the BRANCH that fired and the substring that matched it, in the ledger row AND in the
@@ -1972,8 +1990,20 @@ if (payload.hook_event_name === 'Stop') {
   // sent back to the run. The Stop chain bounds it: once held, the next Stop passes unless a tool call ran in between
   // (hook-prelude.js stopHeldThisCycle, workSince), so a run that can only wait - or only ask - ends its turn on the
   // second Stop. A hand-written AUTO stamp (task-solve's, no session line) is never held here: its flow closes itself.
+  // The chain bounds a cycle, not the run: Claude Code's own 8-continuation cap 'resets each time Claude calls a tool'
+  // (code.claude.com/docs/en/hooks, Stop decision control), so a run that keeps calling tools was held for as long as its
+  // stamp stood - the week backstop. So the holds are counted per stamp, and the AUTO_CONTINUE_CAP-th Stop passes with one
+  // `auto-continue-cap` row (audit 2026-10-14 HK05, the user's ruling: 50); a new stamp counts from 0 again.
   const autoStamp = payload.agent_id ? null : stampOf(payload);
   if (autoStamp && autoStamp.live && autoStamp.session && /^AUTO\b/.test(autoStamp.first)) {
+    const nth = countAutoContinue(autoStamp);
+    if (nth >= AUTO_CONTINUE_CAP) {
+      if (nth === AUTO_CONTINUE_CAP) {
+        ledgerRow({ tool: '', mode: 'auto', kind: 'auto-continue-cap', detail: { count: nth, stamp: autoStamp.file },
+          reason: `auto-mode: the ${AUTO_CONTINUE_CAP}th Stop under this stamp passes - the run was sent back ${AUTO_CONTINUE_CAP - 1} times; the stamp stands until its close or a typed prompt` });
+      }
+      process.exit(0);
+    }
     blockDetail('auto-continue', autoStamp.first.slice(0, 120));
     process.stderr.write(`auto-mode is on and its run is not closed (${autoStamp.file} stands). Nobody is at the terminal to\n`
       + 'say go on: carry on with the run\'s next step now, taking each stop\'s (Recommended) option. If the run is finished,\n'
