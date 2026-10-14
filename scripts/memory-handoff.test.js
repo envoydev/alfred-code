@@ -107,11 +107,20 @@ test('no shipped text tells the model to use a navigation-server memory tool', (
   assert.deepStrictEqual(hits, []);
 });
 
-test('the rules: alfred-memory.md owns the handoff protocol, alfred-navigation.md and the locked row keep no memory on the server', () => {
+test('the rules: alfred-memory.md routes the handoff notes, the trio protocol holds their calls, alfred-navigation.md and the locked row keep no memory on the server', () => {
   const mem = read('stack/rules/alfred-memory.md');
   assert.ok(!mem.includes("handoff notes go to the navigation server's memory"), 'the old routing is gone');
-  for (const piece of ["`conversation_id: '<feature>/<contract_version>'`", "`metadata.type: 'note'`", '`handoff`, `handoff:<feature>`, `handoff:<feature>/<contract_version>`, `note:<note name>` and the project tag', "`tag_match: 'all'`", '`memory_delete`', 'The session-start block never carries a `handoff` row'])
-    assert.ok(mem.includes(piece), `alfred-memory.md: ${piece}`);
+  assert.match(mem, /A seat's handoff note - what one agent leaves the next within a run - lives here too, never in the navigation server \(its memory tools are off\); its dispatch brief names it, and the session-start block never carries a `handoff` row\./);
+  // audit 2026-10-14 RU01: the call shapes left the always-on rule - every seat body carries its own, the orchestrator's protocol the rest
+  assert.ok(!mem.includes('conversation_id'), 'no call shape in the always-on rule');
+  const trio = read('stack/skills/task-solve-cross/references/domain-trio-protocol.md');
+  for (const piece of ["`conversation_id: '<feature>/<contract_version>'`", "`metadata.type: 'note'`", '`handoff`, `handoff:<feature>`, `handoff:<feature>/<contract_version>`, `note:<note name>` and the project tag', "`tag_match: 'all'`", 'memory_delete', 'the newest note per name wins'])
+    assert.ok(trio.includes(piece), `domain-trio-protocol.md: ${piece}`);
+  const seats = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).filter((f) => /Memory handoff:/.test(read(`stack/agents/${f}`)));
+  assert.ok(seats.length >= 30, `the seats carrying a handoff line (${seats.length})`);
+  for (const f of seats)
+    for (const piece of ["`conversation_id: '<feature>/<contract_version>'`", "`metadata.type: 'note'`", "`tag_match: 'all'`"])
+      assert.ok(read(`stack/agents/${f}`).includes(piece), `${f}: ${piece}`);
   const nav = read('stack/rules/alfred-navigation.md');
   assert.ok(!/write_memory|seat memory handoff/.test(nav), 'alfred-navigation.md keeps no memory on the server');
   assert.match(nav, /The navigation server is navigation only: its memory tools are off/);
