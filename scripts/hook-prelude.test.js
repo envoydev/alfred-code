@@ -814,7 +814,7 @@ test('shortLivedLinks / withoutShortLived: an hour or less, by the link\'s own l
     const { shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S } = require(PRELUDE);
     const b64url = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
     const jwt = (claims) => [b64url({ alg: 'HS256' }), b64url(claims), 'c2lnbmF0dXJlLW5vdC1jaGVja2Vk'].join('.');
-    const now = Date.now();
+    const now = Math.floor(Date.now() / 1000) * 1000; // a whole second, so `seconds` (rounded) is exactly the 600 set below
     const s = Math.floor(now / 1000);
     const link = (token, sep = '&') => `https://media.example.test/f?client=y${sep}token=${token}${sep}name=a.png`;
     const s3 = (seconds, id = 'AKIA') => `https://b.s3.example.test/k?X-Amz-Credential=${id}${'A'.repeat(16)}%2F20261014%2Fus-east-1&X-Amz-Expires=${seconds}&X-Amz-Signature=ab`;
