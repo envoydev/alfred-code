@@ -68,7 +68,8 @@ test('no seat grants a navigation-server memory tool, and every seat with a hand
   let handoffSeats = 0;
   for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.md'))) {
     const text = fs.readFileSync(path.join(dir, f), 'utf8');
-    const tools = (/^tools:(.*)$/m.exec(text) || [, ''])[1];
+    // what the seat holds as Claude Code resolves it: a whole-server grant minus its removals (scripts/seat-tools.js)
+    const tools = [...require('./seat-tools.js').effectiveTools((/^tools:(.*)$/m.exec(text) || [, ''])[1], (/^disallowedTools:(.*)$/m.exec(text) || [, ''])[1])];
     for (const t of SERENA_MEMORY_TOOLS) assert.ok(!tools.includes(`${NAV}${t}`), `${f} grants ${t}`);
     if (!/^- Memory handoff:/m.test(text)) continue;
     handoffSeats++;

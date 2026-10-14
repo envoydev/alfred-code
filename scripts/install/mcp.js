@@ -499,7 +499,9 @@ function playwrightDrop({ routes, browsers = [] })
 // the shipped files carry. Only the names THIS run registered bare are re-spelled - on a hooks-only
 // copy route the locked three are still plugins beside the core, and re-spelling them was the bug this
 // list exists to prevent.
-const TOOL_NAME_RE = /mcp__plugin_[A-Za-z0-9][A-Za-z0-9.-]*_([A-Za-z0-9][A-Za-z0-9.-]*)__/g;
+// A tool (`mcp__plugin_<p>_<s>__<tool>`) or, since the seats' generated lines (scripts/seat-tools.js, 2026-10-14), a
+// whole-server grant (`mcp__plugin_<p>_<s>` ending the word), which the registered spelling names as `mcp__<s>`.
+const TOOL_NAME_RE = /mcp__plugin_[A-Za-z0-9][A-Za-z0-9.-]*_([A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)(__|(?![A-Za-z0-9_-]))/g;
 const DOWNCONVERT_EXT = ['.md', '.mdc', '.js', '.json', '.txt'];
 
 // One text re-spelled: each plugin tool name whose server is in `bare` takes the registered spelling.
@@ -508,14 +510,14 @@ function respellToolNames(body, bare = [])
 {
     const names = new Set(bare);
     if (!names.size) return body;
-    return String(body).replace(TOOL_NAME_RE, (full, server) => (names.has(server) ? `mcp__${server}__` : full));
+    return String(body).replace(TOOL_NAME_RE, (full, server, tail) => (names.has(server) ? `mcp__${server}${tail}` : full));
 }
 
 // The servers a copied text already names by the registered spelling - the evidence library-check reads
 // to compare the shipped source with the text the installer wrote (it never sees the run's routes).
 function bareServersIn(text)
 {
-    return [...new Set([...String(text).matchAll(/mcp__(?!plugin_)([A-Za-z0-9][A-Za-z0-9.-]*)__/g)].map((m) => m[1]))];
+    return [...new Set([...String(text).matchAll(/mcp__(?!plugin_)([A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)(?:__|(?![A-Za-z0-9_-]))/g)].map((m) => m[1]))];
 }
 
 function downconvertToolNames({ roots = [], bare = [], log = () => {} })

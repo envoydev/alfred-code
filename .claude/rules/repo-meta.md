@@ -50,7 +50,9 @@ What each meta file owns and what the repo-level scripts (lint, usage analysis, 
     add-only by default (`--replace` overwrites); each row names the verified plugin VERSION (lint 28).
   - `mcp-pins.json` / `mcp-tools.json` - the MCP runtime pins with their `refreshed` day (the uvx dependency
     cut-off), and each pinned server's tool names at its pin (lint check 62), both written only by
-    `node scripts/refresh-mcp-pins.js --write`.
+    `node scripts/refresh-mcp-pins.js --write`, which then regenerates the seats' removals.
+  - `seat-tools.json` - hand-edited, the one home of what each seat holds (`Read`, `<server>:<tool>`, `<server>:*`,
+    `<server>:!<tool>`); the seats' `tools:` / `disallowedTools:` lines are its output (`scripts/seat-tools.js`, check 63).
   - `model-prices.json` - the list prices `analyze-usage.js` bills its cost row from, with the source page and
     fetch date inside; refreshed from that page, never from memory (a unit test pins the page's multipliers). It
     keeps every row the page prices, retired ones included, and every model in `model-windows.json`, so a model with

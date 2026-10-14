@@ -85,7 +85,8 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     manifest row): 0.0.82 collects and lists the tools a visited PAGE registers through WebMCP by default,
     and a page is data, never a toolbox. The browser agents grant all four, each minus `browser_run_code_unsafe`
     (RCE-equivalent) through their `disallowedTools`, which Claude Code applies before `tools` resolves
-    (code.claude.com/docs/en/sub-agents). The data root's own `.gitignore` keeps the profiles out of
+    (code.claude.com/docs/en/sub-agents) - `<engine>-control:*` and `<engine>-control:!browser_run_code_unsafe` in
+    `meta/seat-tools.json`; the copy route's downconvert re-spells the grant and the removal alike (`mcp.respellToolNames`). The data root's own `.gitignore` keeps the profiles out of
     git (they hold session cookies); a 2.0.0 `.playwright/<engine>` still in use gets `.playwright/.gitignore` (`*`).
   - `windows-control` (Windows-MCP) and `macos-control` (MacOS-MCP) - each drives the machine's OWN
     desktop apps, so each installs on its own OS only and neither on Linux (`stack/mcp/desktop-launch.js`
@@ -120,8 +121,8 @@ One plugin per server, the tool-name rule, scopes, the navigation server, projec
     registration): both wheels read it, defaulting to `true`, and send PostHog usage events otherwise.
     Each server brings the `desktop-automation` skill through the graph (the 'Select a skill by DESCRIPTION' invariant in `CLAUDE.md`). `wpf-verifier`, `winforms-verifier`
     and `evidence-gatherer` hold only its read-only observe tools (Windows `Snapshot` / `Screenshot` / `WaitFor`,
-    macOS `Snapshot` / `Wait` - the pinned wheels' readOnlyHint tools that look at the desktop), named in `tools:`
-    and described in the body, so no graph edge pulls the opt-in server into an install; a stack that seeds a
+    macOS `Snapshot` / `Wait` - the pinned wheels' readOnlyHint tools that look at the desktop), named in their
+    `meta/seat-tools.json` rows (every other tool of the server removed) and described in the body, so no graph edge pulls the opt-in server into an install; a stack that seeds a
     server no seat of it holds is listed main-thread-only in `scripts/seat-grants.test.js` (browser-extension's browser).
   - `mobile-control` (appium-mcp, the user's call of 2026-10-13) - drives Android and iOS apps on an emulator, a
     simulator or a device through Appium's embedded UiAutomator2 / XCUITest drivers. Every OS, seeded by no stack,

@@ -54,6 +54,12 @@ How the skills, the 44 agents, the shipped rules and the per-project AGENTS temp
 
 - `stack/agents/` - 44 subagents, all in the core plugin (2.1.0), each one the selection did not pick
   denied as `Agent(alfred-code:<seat>)` (a seat whose preloaded skills were not copied is never picked);
+  each seat's `tools:` / `disallowedTools:` lines are GENERATED from its row in `meta/seat-tools.json` by
+  `node scripts/seat-tools.js --write` (lint check 63; 2026-10-14): one whole-server grant per MCP server, the tools the
+  seat must not hold removed, because the dispatcher lists the `tools:` value verbatim in every session's first call and
+  never lists `disallowedTools` (measured live on a plugin seat and plugin server) - 21,955 listed characters became
+  9,109, every seat's effective tool set unchanged. A server named tool by tool gets no tool a pin adds until the row
+  names it (`refresh-mcp-pins.js --write` regenerates the removals); `<server>:*` takes them;
   their `skills:` preloads are BARE - the project copy (`npm run scope-preloads`, lint check 50;
   plugin-migration-evidence S6 measured a plugin seat's bare preload load the project copy). A plugin
   seat answers only to `alfred-code:<seat>` (spike S1: a bare name is 'Agent type not found'), so every

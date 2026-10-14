@@ -2099,8 +2099,13 @@ test('seed install + re-run (full copy route): copies hold the registered tool n
     const front = steps[0].seat.split('\n---')[0];
     assert.match(front, /^ {2}- habits-root-cause$/m, front);
     assert.doesNotMatch(front, /alfred-code:/, 'a preload still names the core plugin');
-    // Built, never written out: a bare spelling in a tracked file is lint check 54's finding.
-    assert.ok(front.includes(['mcp', 'alfred-navigation', 'find_symbol'].join('__')), 'the tools list keeps the plugin spelling');
+    // Built, never written out: a bare spelling in a tracked file is lint check 54's finding. The seat grants the server
+    // whole and removes the rest (scripts/seat-tools.js), so both lines take the registered spelling.
+    const tokens = (key) => ((front.split('\n').find((l) => l.startsWith(`${key}:`)) || '').slice(key.length + 1)).split(',').map((t) => t.trim()).filter(Boolean);
+    assert.ok(tokens('tools').includes(['mcp', 'alfred-navigation'].join('__')), `the tools list grants the registered server:\n${front}`);
+    assert.ok(!tokens('tools').some((t) => t.startsWith('mcp__plugin_alfred-navigation_')), 'no plugin spelling of a registered server is left in tools:');
+    const removed = tokens('disallowedTools').filter((t) => t.includes('alfred-navigation'));
+    assert.ok(removed.length && removed.every((t) => t.startsWith(['mcp', 'alfred-navigation', ''].join('__'))), `the removals take the registered spelling too:\n${front}`);
     assert.ok(steps[0].preloaded, 'the preloaded skill is not installed as a copy');
     const touched = Object.keys(steps[0].mtimes).filter((f) => steps[1].mtimes[f] !== steps[0].mtimes[f]);
     assert.deepStrictEqual(touched, [], `a re-run rewrote unchanged copies:\n${outs[1]}`);
@@ -2140,8 +2145,11 @@ test('seed install (plugin route): the skills are copied, no seat is, and every 
 // registers bare takes its own bare name; an engine it does not register (not kept, or left off at user
 // scope, where the registration is the enable) keeps the plugin spelling. The mixed-pair line names the
 // engines for the same reason. Bare spellings are BUILT, never typed (lint check 54).
-const bareTools = (server) => ['mcp', server, '*'].join('__');
-const pluginTools = (server) => `mcp__plugin_${server}_${server}__*`;
+// The seat grants each engine whole and removes browser_run_code_unsafe (scripts/seat-tools.js): the removal must
+// take the same spelling as the grant, or the copy route would hand the seat the RCE-equivalent tool.
+const bareTools = (server) => ['mcp', server].join('__');
+const pluginTools = (server) => `mcp__plugin_${server}_${server}`;
+const lineTokens = (text, key) => ((String(text).split('\n').find((l) => l.startsWith(`${key}:`)) || '').slice(key.length + 1)).split(',').map((t) => t.trim()).filter(Boolean);
 const SEATS = ['evidence-gatherer', 'integration-reviewer'];
 for (const [route, env, scope, registered] of [
     ['MCP copy route', MCP_COPY_ENV, 'project', ['chrome', 'webkit']],
@@ -2153,15 +2161,19 @@ for (const [route, env, scope, registered] of [
     {
         const { result, out } = seedRun('install', `skill markdown-style\nrule markdown-docs\nmcp browser\n${SEATS.map((s) => `agent ${s}\n`).join('')}`, {
             env, args: ['--scope', scope, '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'],
-            inspect: (repo) => Object.fromEntries(SEATS.map((s) => [s, fs.readFileSync(path.join(repo, '.claude', 'agents', `${s}.md`), 'utf8').split('\n').find((l) => l.startsWith('tools:'))])),
+            inspect: (repo) => Object.fromEntries(SEATS.map((s) => [s, fs.readFileSync(path.join(repo, '.claude', 'agents', `${s}.md`), 'utf8').split('\n---')[0]])),
         });
         for (const seat of SEATS)
             for (const engine of mcp.PW_ENGINES)
             {
                 const server = `${engine}-control`;
                 const bare = registered.includes(engine);
-                assert.ok(result[seat].includes(bare ? bareTools(server) : pluginTools(server)), `${seat}: ${server} is not spelled ${bare ? 'bare' : 'as the plugin'}:\n${result[seat]}\n${out}`);
-                assert.ok(!result[seat].includes(bare ? pluginTools(server) : bareTools(server)), `${seat}: ${server} kept the other spelling:\n${result[seat]}`);
+                const tools = lineTokens(result[seat], 'tools');
+                const removed = lineTokens(result[seat], 'disallowedTools');
+                const [want, other] = bare ? [bareTools(server), pluginTools(server)] : [pluginTools(server), bareTools(server)];
+                assert.ok(tools.includes(want), `${seat}: ${server} is not spelled ${bare ? 'bare' : 'as the plugin'}:\n${result[seat]}\n${out}`);
+                assert.ok(!tools.includes(other), `${seat}: ${server} kept the other spelling:\n${result[seat]}`);
+                assert.ok(removed.includes(`${want}__browser_run_code_unsafe`), `${seat}: ${server}'s unsafe tool is not removed in the grant's spelling:\n${result[seat]}`);
             }
     });
 }

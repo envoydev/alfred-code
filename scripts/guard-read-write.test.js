@@ -161,7 +161,7 @@ test('guard-read-whole-file: no serena remedy for a path serena is seeded to ign
   fs.writeFileSync(inClaude, LONG_JS);
   const r = run(READ, { tool_name: 'Read', tool_input: { file_path: inClaude } });
   assert.equal(r.status, 2, 'the whole-file read is still blocked');
-  // M30: the hook's remedy line is the plugin spelling - the old `select:mcp__serena` pattern matched nothing any hook
+  // M30: the hook's remedy line is the plugin spelling - the old `select:mcp__serena` pattern matched nothing any hook (mcp-fixture)
   // writes, so it could never fail (the ordinary-path case below proves this pattern does match a real remedy).
   assert.doesNotMatch(r.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__/, 'but no tools that cannot index this tree');
   assert.match(r.stderr, /ignored_paths/, 'the denial says why');

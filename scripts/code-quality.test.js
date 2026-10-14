@@ -102,7 +102,8 @@ test('the seat is a read-only sonnet support seat whose findings each name a fil
     assert.strictEqual(fm.name, 'code-quality-analyzer');
     assert.strictEqual(fm.model, 'sonnet', 'pinned like the other support seats');
     assert.match(fm.description, /^Use /);
-    const tools = fm.tools.split(',').map((t) => t.trim());
+    // what the seat holds as Claude Code resolves it: a whole-server grant minus its removals (scripts/seat-tools.js)
+    const tools = [...require('./seat-tools.js').effectiveTools(fm.tools, fm.disallowedTools)];
     for (const banned of ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Agent', 'Task'])
         assert.ok(!tools.includes(banned), `a read-only seat carries no ${banned}`);
     for (const need of ['mcp__plugin_alfred-navigation_alfred-navigation__find_symbol', 'mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols',

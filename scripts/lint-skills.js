@@ -1119,7 +1119,8 @@ function lintAgentTools(label, text)
 // search but not save, or save but not search, defeats the point - the spec gives every seat both,
 // read-only support seats included (the rule that scopes what gets SAVED to lessons lives beside
 // the grant, not instead of it). An agent with no `tools:` line inherits every tool, memory
-// included, so it has nothing to fix.
+// included, so it has nothing to fix. What a seat holds is read as Claude Code resolves it - a whole-server grant
+// is every pinned tool of that server, minus its `disallowedTools` (scripts/seat-tools.js, check 63).
 const MEMORY_TOOLS = ['mcp__plugin_alfred-memory_alfred-memory__memory_store', 'mcp__plugin_alfred-memory_alfred-memory__memory_search', 'mcp__plugin_alfred-memory_alfred-memory__memory_list'];
 
 function lintAgentMemoryTools(label, text)
@@ -1127,8 +1128,9 @@ function lintAgentMemoryTools(label, text)
     const line = /^tools:\s*(.+)$/m.exec(text || '');
     if (!line) return [];
 
-    const tools = line[1].split(',').map(t => t.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
-    const missing = MEMORY_TOOLS.filter(t => !tools.includes(t));
+    const removed = /^disallowedTools:\s*(.+)$/m.exec(text || '');
+    const tools = require('./seat-tools.js').effectiveTools(line[1], removed ? removed[1] : '');
+    const missing = MEMORY_TOOLS.filter(t => !tools.has(t));
     if (missing.length === 0) return [];
 
     return [`${label} tools: allowlist is missing ${missing.join(', ')} - every seat must be able to `
@@ -2456,6 +2458,13 @@ function main()
     for (const finding of lintStaleMcpToolNames()) flag(finding);
     // 62. No shipped file names a tool its pinned server does not have (meta/mcp-tools.json).
     for (const finding of lintMcpToolsAtPin()) flag(finding);
+    // 63. Every seat's tools: / disallowedTools: lines are what meta/seat-tools.json generates (scripts/seat-tools.js):
+    // a server granted whole, the tools the seat must not hold removed - so a hand edit, a new seat with no row, or a
+    // pin that adds a tool (which reaches no seat until the json names it) is a finding until --write runs.
+    let seatDrift;
+    try { seatDrift = require('./seat-tools.js').drift(); }
+    catch (err) { seatDrift = [`meta/seat-tools.json or meta/mcp-tools.json could not be read (${err.message}), so no seat's tool lines were checked`]; }
+    for (const finding of seatDrift) flag(finding);
     // 60. The inventory page's inline script parses - a broken string there renders an empty page.
     for (const finding of lintPageScripts()) flag(finding);
     // 60b. The inventory page shows every seat at its frontmatter pin.

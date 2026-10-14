@@ -364,6 +364,14 @@ async function main(argv, deps = {})
         servers: Object.fromEntries(Object.entries(servers).sort(([a], [b]) => a.localeCompare(b))),
     }, null, 2) + '\n');
     d.log(`${lines.join('\n')}\ntools written: ${path.relative(REPO, d.toolsFile)}`);
+    // The seats remove each server's tools they do not name (scripts/seat-tools.js), so a list that moved moves their
+    // removals: a tool a pin adds lands on that side until meta/seat-tools.json names it (lint check 63). Only the
+    // shipped list - a test's own file never rewrites the shipped seats.
+    if (path.resolve(d.toolsFile) === path.resolve(TOOLS))
+    {
+        const { changed, errors } = require('./seat-tools.js').writeAll();
+        d.log([`seats regenerated: ${changed}`, ...errors.map((e) => `  !! seat-tools: ${e}`)].join('\n'));
+    }
     return refused ? 1 : 0;
 }
 
