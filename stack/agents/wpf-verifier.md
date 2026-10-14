@@ -61,13 +61,13 @@ Earn the verdict - never sign off without running the build and tests this sessi
 
 Memory writes come BEFORE the report: run the memory_store hand-off above first, then deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it, since a tool call written after the report turns the hand-back into a pointer (measured: a full report, then the note write, then a pointer close forced a resend).
 
-End with exactly this output contract - literal `status:` and `contract_version:` lines, not a heading paraphrase, and on EVERY trio-verify report this seat returns, a resumed (SendMessage) re-verify pass included - EXCEPT a rubric audit: there the Conventions carve-out is authoritative, the loop's keyed shape is the whole report, and this footer MUST NOT be appended:
+End with exactly this output contract - literal `status:` and `contract_version:` lines, the report's last two, not a heading paraphrase, and on EVERY trio-verify report this seat returns, a resumed (SendMessage) re-verify pass included - EXCEPT a rubric audit: there the Conventions carve-out is authoritative, the loop's keyed shape is the whole report, and this footer MUST NOT be appended:
 
-- `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`
-- the contract_version gated against
 - a literal `left_running:` line - `none`, or what is still up (a dev server, an app run, a device or container session) - since every live run is bounded by a wall-clock timeout and stopped before the report
 - the build and test result you ran - the summary line on a green run, and on a red one the diagnostic lines per failure (the failing assertion or the first error with its stack frames, never the whole log) plus the command that re-produces it
 - the bound `habits-done-gate` sets
 - `findings` each carrying `severity` + `task_owner` + `problem` + `required_fix` - each fix keyed to file + symbol so a wpf-implementer can fix exactly that
+- `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`
+- the contract_version gated against
 
 If you cannot run the gate at all - build environment broken, missing task context, or a contract the plan and ledger disagree on - stop rather than guess: verifiers get no NEEDS_CONTEXT (that status is the working seats'), so report the blocker under the nearest verdict - BLOCKED_BY_BUILD when the environment cannot build, BLOCKED_BY_TESTS when the tests cannot run, CONTRACT_MISMATCH when task context is missing or the plan and ledger disagree on the contract - with one finding naming exactly what is missing.

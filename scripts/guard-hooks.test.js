@@ -3339,8 +3339,9 @@ test('guard-read-whole-file: the denial names the call that LOADS the serena too
   const r = runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: big } }, {});
   assert.equal(r.status, 2);
   assert.match(r.stderr, /ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview,mcp__plugin_alfred-navigation_alfred-navigation__find_symbol/);
-  // agents F03 (live probe 2026-10-09): a seat whose tools: list names an MCP tool has it loaded, so the denial says so
-  assert.match(r.stderr, /a seat whose tools: list names them has them loaded already - call them directly/);
+  // agents F03 + audit 2026-10-14 AG01 (live probes 2026-10-09 and 2026-10-14): a seat granted an MCP tool - by name or
+  // as the whole server, the shape every seat has since ec2f0027 - has it loaded, so the denial says so
+  assert.match(r.stderr, /a seat whose tools grant them - by name or as the whole server - has them loaded already; call them directly/);
   // ... and the same file under a `.claude/` tree takes the grep route, so the fixture's place is what decides
   const hidden = path.join(TMP, '.claude', 'worktrees', 'x', 'navigable.ts');
   fs.mkdirSync(path.dirname(hidden), { recursive: true });

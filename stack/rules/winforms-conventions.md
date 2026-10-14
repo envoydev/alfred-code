@@ -16,9 +16,10 @@ Governs the Form/UserControl designer surface (control serialization, resx-backe
 the session's edit is the form's hand-written behavior (code-behind, presenter, binding, disposal),
 load `dotnet-winforms` for that too; the plain C# layer stays governed by `csharp`.
 
-A `Resources.Designer.cs` / `Settings.Designer.cs` (generated wrappers, any .NET project) is not
-WinForms - skip, and so is a type whose name merely ends in the letters form (a `ContactForm` DTO, a
-`Platform` or `Transform` class). Skip one-line tweaks.
+A `Resources.Designer.cs` / `Settings.Designer.cs` (generated wrappers, any .NET project) or an EF
+migration's `*.Designer.cs` (generated, under `Migrations/`) is not WinForms - skip, and so is a type
+whose name merely ends in the letters form (a `ContactForm` DTO, a `Platform` or `Transform` class).
+Skip one-line tweaks.
 
 <!-- Maintainer note: the *Form.cs globs are the coverage fix for this rule's own code-behind clause - a Designer-only
      glob never attached on a hand-written MainForm.cs edit, so the clause telling the session to load dotnet-winforms

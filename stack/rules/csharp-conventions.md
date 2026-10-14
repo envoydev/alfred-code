@@ -9,7 +9,7 @@ measured 9.9-22 s late) - even when the `.cs` touch is incidental to the session
 whose focus WAS the C# work loaded it on cue). Name the skill you loaded, or say it was already in
 context - the receipt is what makes the load happen.
 
-<!-- Maintainer note: a run working through the shell gets no attach at all until it uses a file tool,
+<!-- Maintainer note: a run working through the shell gets no attach on a shell write,
      so a sentence saying so here could never reach the run it describes - guard-read-whole-file.js
      names this rule on the first shell write instead (audit M67). -->
 

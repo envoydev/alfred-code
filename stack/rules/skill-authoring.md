@@ -9,7 +9,7 @@ trigger). Skip the load only when it is already in context this session - a comp
 loaded skill forward only within a shared budget, so the load is owed again after one. Name the skill
 you loaded, or say it was already in context - the receipt is what makes the load happen.
 
-<!-- Maintainer note: a run working through the shell gets no attach at all until it uses a file tool,
+<!-- Maintainer note: a run working through the shell gets no attach on a shell write,
      so a sentence saying so here could never reach the run it describes - guard-read-whole-file.js
      names this rule on the first shell write instead (audit M67). The description cap and its lint
      check live in the skill this rule loads and in this repo's CLAUDE.md, never in a rule every

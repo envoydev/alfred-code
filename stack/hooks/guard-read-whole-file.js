@@ -229,7 +229,7 @@ const underDataRoot = (p) =>
 // saying exactly that and still made 100 Bash calls and 0 navigation calls. The loading call goes in
 // the denial itself, where the model is already looking for what to do instead.
 const LOAD_SERENA = `  ToolSearch select:mcp__plugin_alfred-navigation_alfred-navigation__get_symbols_overview,mcp__plugin_alfred-navigation_alfred-navigation__find_symbol,mcp__plugin_alfred-navigation_alfred-navigation__find_referencing_symbols\n`
-  + `  (a seat whose tools: list names them has them loaded already - call them directly)\n`;
+  + `  (a seat whose tools grant them - by name or as the whole server - has them loaded already; call them directly)\n`;
 // A markup template has no symbols the navigation server indexes: get_symbols_overview on a 326-line Angular template
 // was the remedy a denial named, and the session read the lines through `sed -n` instead (audit 2026-10-10, 81264f0d).
 const MARKUP_EXT = /\.(?:html|razor|cshtml|xaml)$/i;

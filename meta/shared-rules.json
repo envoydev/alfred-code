@@ -2125,6 +2125,19 @@
         }
       ]
     },
+    "commit-ask-owed-mark": {
+      "_note": "The commit ask that names anything still owed (a gate not run, a review skipped) marks 'Show the diff first', never Hold - the user's ruling 2026-10-13 (76d40e53). The always-on git rule restated it with Hold marked while the checkpoint template marked the diff, and the stop-contract hook asks for one mark in every home (audit 2026-10-14 SKC02).",
+      "owner": {
+        "file": "stack/skills/habits-commit-checkpoint/SKILL.md",
+        "marker": "when the question names anything still owed, 'Show the diff first' takes the mark instead"
+      },
+      "sites": [
+        {
+          "file": "stack/rules/alfred-git.md",
+          "marker": "when it names anything still owed, 'Show the diff first' takes the mark, and every push or publish ask marks holding"
+        }
+      ]
+    },
     "loop-blocked-capture-retry": {
       "_note": "A capture Skill call the fresh-session guard blocks is answered through one marked ask, and a 'continue' answer re-issues the same call - the guard records the offer and passes the retry until the context grows 1.5x past it (scripts/guard-hooks.test.js 'the size offer is answerable'). Replaces 'never retry a blocked call - read the capture's SKILL.md instead' (2026-10-08 audit C5), verbatim in all three loops.",
       "owner": {

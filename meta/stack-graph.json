@@ -1149,7 +1149,7 @@
       "plugins": [],
       "paths": [
         "**/*.sql",
-        "**/Migrations/*.cs"
+        "**/Migrations/**/*.cs"
       ]
     },
     "typescript-conventions": {

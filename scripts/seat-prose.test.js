@@ -380,3 +380,48 @@ test('agents F06: every quoted skill-section pointer in a trap list resolves to 
     for (const h of ['Session lifetime and thread-safety', 'Identity map and change tracking', 'Loading strategy and N+1', 'Model expected failures as return values'])
         assert.ok(asp.includes(`'## ${h}'`), h);
 });
+
+// --- audit 2026-10-14 AG04: every working seat closes on its status line --------------------------------------
+// The routers read 'a closing status line' (domain-trio-protocol, step-mechanics); the implementers and verifiers still
+// opened their close with it ('end with X, then Y'), the order 10-08 F04 fixed for the designers. One shape for all.
+test('AG04: implementers and verifiers put the status and contract_version lines last', () =>
+{
+    const working = seats.filter((s) => s.endsWith('-implementer'));
+    const checking = seats.filter((s) => s.endsWith('-verifier'));
+    assert.strictEqual(working.length, 10);
+    assert.strictEqual(checking.length, 10);
+    for (const s of working)
+    {
+        const report = squash(section(body(s), 'Report')).trim();
+        assert.ok(!report.includes('End with a status'), `${s}: the 'end with X, then Y' order`);
+        const close = report.indexOf('Close with a literal `status:` line - DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED, or BLOCKED_CONTRACT_CHANGE - then the task\'s contract_version as a literal `contract_version:` line');
+        assert.ok(close > report.indexOf('Report the task built'), `${s}: the close follows the report items`);
+        assert.ok(report.endsWith('the last two lines of the report.'), `${s}: the close is the section's last sentence`);
+    }
+    for (const s of checking)
+    {
+        const text = body(s);
+        const lines = text.slice(text.indexOf('End with exactly this output contract')).split('\n');
+        const start = lines.findIndex((l) => l.startsWith('- '));
+        let end = start;
+        while (end < lines.length && lines[end].startsWith('- ')) end++;
+        const items = lines.slice(start, end);
+        assert.ok(items.length >= 5, `${s}: the footer list`);
+        assert.ok(text.includes("literal `status:` and `contract_version:` lines, the report's last two"), `${s}: the header says where they go`);
+        assert.deepStrictEqual(items.slice(-2), ['- `status: SIGNED_OFF | PUNCH_LIST | BLOCKED_BY_BUILD | BLOCKED_BY_TESTS | CONTRACT_MISMATCH`', '- the contract_version gated against'], s);
+    }
+});
+
+// --- audit 2026-10-14 AG03 / AG07: a seat names the boundary, never the skill that calls it -------------------------
+test('AG03 / AG07: the data implementer hands app-side mapping to the app stack, and no analyzer names its capture', () =>
+{
+    assert.match(meta('data-implementer').description, /or for the app-side EF Core mapping \(the app stack's implementer\)\.$/);
+    for (const s of ['code-style-analyzer', 'test-coverage-analyzer', 'related-project-analyzer'])
+    {
+        const text = squash(read(s));
+        assert.doesNotMatch(text, /capture-(code-style|test-coverage|related-projects) skill/, `${s}: a named caller`);
+        assert.ok(text.includes('The capture that dispatched you'), `${s}: the described caller`);
+    }
+    assert.doesNotMatch(squash(read('code-style-analyzer')), /primary caller/, 'code-style-analyzer: a caller attribution');
+    assert.doesNotMatch(squash(read('security-auditor')), /code-quality stage's ARCHITECTURE\.md orientation/, 'security-auditor: verifier-only text (AG05)');
+});

@@ -112,3 +112,35 @@ test('the lint checks and the copy route read a whole-server grant', () =>
     assert.strictEqual(copied, `tools: ${MEM}, ${chromeBare}, Read\ndisallowedTools: ${chromeBare}__browser_run_code_unsafe\n`, 'only the registered server takes the bare spelling, grant and removal alike');
     assert.deepStrictEqual(mcp.bareServersIn(copied), ['chrome-control']);
 });
+
+// audit 2026-10-14 AG06: a server a seat names tool by tool is granted WHOLE minus the pinned list's other tools, so on
+// the installer's unpinned fallback a newer server's added tools would reach that seat. Every such server must carry a
+// release pin; the exact-name grants before ec2f0027 were immune, this keeps the whole-server shape as tight.
+function unpinnedNamedServers(intent, pins)
+{
+    const out = new Set();
+    for (const [seat, tokens] of Object.entries(intent))
+        for (const raw of tokens)
+        {
+            const token = String(raw).trim();
+            const at = token.indexOf(':');
+            if (at < 0) continue;
+            const tool = token.slice(at + 1);
+            if (tool === '*' || tool.startsWith('!')) continue;
+            const role = st.roleOf(token.slice(0, at));
+            const row = pins[role];
+            if (!row || typeof row.version !== 'string' || !/^[0-9]/.test(row.version)) out.add(`${role} (${seat})`);
+        }
+    return [...out];
+}
+
+test('every server a seat names tool by tool carries a release pin, so the unpinned fallback widens no seat', () =>
+{
+    const intent = JSON.parse(fs.readFileSync(st.INTENT_FILE, 'utf8')).seats;
+    const pins = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins;
+    assert.deepStrictEqual(unpinnedNamedServers(intent, pins), []);
+    const named = new Set(Object.values(intent).flat().filter((t) => /:[^*!]/.test(t)).map((t) => st.roleOf(t.slice(0, t.indexOf(':')))));
+    assert.ok(named.has('alfred-navigation') && named.has('alfred-memory'), 'the walk saw the named grants');
+    const nulled = { ...pins, 'alfred-memory': { ...pins['alfred-memory'], version: null } };
+    assert.ok(unpinnedNamedServers(intent, nulled).some((r) => r.startsWith('alfred-memory ')), 'red with one pin nulled');
+});
