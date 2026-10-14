@@ -232,6 +232,33 @@ test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and ALFRED
   assert.equal(stop('r4', [leak, assistantRow('a4', 'Wired the token as asked; tests green.')], { ALFRED_CODE_ROTATE_ASK: '0' }).status, 0, 'the switch turns the ask off');
 });
 
+// The user's ruling 2026-10-14: a Jira issue read returned an image's media link carrying a ten-minute `?token=<JWT>`,
+// and the close asked to rotate a token that expires by itself. A link stating an hour of life or less asks nothing; the
+// same session with a long-lived token beside it still asks.
+test('guard-stop-contract: a short-lived link\'s token in a tool result asks no rotation; a long-lived one still does', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'projSL-'));
+  const b64url = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const jwt = (claims) => [b64url({ alg: 'HS256' }), b64url(claims), 'c2lnbmF0dXJlLW5vdC1jaGVja2Vk'].join('.');
+  const s = Math.floor(Date.now() / 1000);
+  const media = (token) => `https://media.example.test/file/abc/binary?client=x\\u0026token=${token}\\u0026name=shot.png`;
+  const result = (id, text) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: text }] } });
+  const issue = (token) => result('t1', JSON.stringify({ fields: { attachment: [{ content: media(token) }] } }));
+  const close = assistantRow('m1', 'Downloaded the screenshot from the issue; the layout bug is in the header.');
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
+  const stop = (name, rows) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: transcript(name, rows) }, { env }).status;
+  assert.deepStrictEqual({
+    'a ten-minute media token': stop('sl1', [issue(jwt({ exp: s + 600, iat: s - 60 })), close]),
+    'the same token, expired by the close': stop('sl2', [issue(jwt({ exp: s - 60, iat: s - 660 })), close]),
+    'a one-day token in the same link': stop('sl3', [issue(jwt({ exp: s + 86400, iat: s })), close]),
+    'a short link, then a long-lived token': stop('sl4', [issue(jwt({ exp: s + 600, iat: s })), result('t2', `TOKEN=${'ghp_' + 'F'.repeat(24)}`), close]),
+  }, {
+    'a ten-minute media token': 0,
+    'the same token, expired by the close': 0,
+    'a one-day token in the same link': 2,
+    'a short link, then a long-lived token': 2,
+  });
+});
+
 // Review of pilot 4, M3: an answer naming neither rotation nor the defer option - a free-text 'Other' ('leave it, test
 // token'), or a question the model worded without the word - kept the ask coming on every turn for the rest of the
 // session. Any AskUserQuestion answered after the rotate-ask block is the user's answer to it.

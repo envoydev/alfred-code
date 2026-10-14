@@ -350,6 +350,63 @@ function harnessPrompt(prompt)
     return HARNESS_PROMPT_RE.test(String(prompt || ''));
 }
 
+// SHORT-LIVED LINKS (the user's ruling, 2026-10-14). A download link that carries its own short-lived token - Jira's
+// media `?token=<JWT>`, good for about 10 minutes; an S3 presigned URL's `X-Amz-Credential=AKIA...` - matched the
+// credential shapes, so the secret guard refused the fetch in every session and the stop contract could ask to rotate a
+// token that expires by itself. A token in a URL's QUERY whose link states a lifetime of an hour or less - the JWT's own
+// `exp` (and `exp - iat`, when it carries one), S3's `X-Amz-Expires` - is a capability for that fetch, not a login.
+// `shortLivedLinks` names each one (host, seconds left, kind, never the value) and `withoutShortLived` blanks them out of
+// a text, so every OTHER shape in it is still judged. A header, a token outside a URL, one with no lifetime or a longer
+// one keeps every check. The JWT is decoded, never verified: a forged short `exp` buys nothing a forger did not have.
+const SHORT_LIVED_MAX_S = 60 * 60;
+const LINK_RE = /https?:\/\/[^\s'"`<>\\]+/gi;
+const LINK_JWT_RE = /^eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$/;
+function jwtClaims(token)
+{
+    try { return JSON.parse(Buffer.from(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')); }
+    catch { return null; }
+}
+function linkTokens(link, nowS)
+{
+    let url;
+    try { url = new URL(link); }
+    catch { return []; }
+    const out = [];
+    for (const [key, value] of url.searchParams)
+    {
+        if (!LINK_JWT_RE.test(value)) continue;
+        const claims = jwtClaims(value);
+        const exp = claims && typeof claims === 'object' ? Number(claims.exp) : NaN;
+        const iat = claims && typeof claims === 'object' && claims.iat !== undefined ? Number(claims.iat) : null;
+        if (!Number.isFinite(exp) || exp - nowS > SHORT_LIVED_MAX_S) continue;
+        if (iat !== null && (!Number.isFinite(iat) || exp - iat > SHORT_LIVED_MAX_S)) continue;
+        out.push({ token: value, key, host: url.host, seconds: Math.max(0, Math.round(exp - nowS)), kind: 'jwt' });
+    }
+    const credential = /^((?:AKIA|ASIA)[0-9A-Z]{16})\//.exec(url.searchParams.get('X-Amz-Credential') || '');
+    const expires = Number(url.searchParams.get('X-Amz-Expires'));
+    if (credential && url.searchParams.get('X-Amz-Signature') && Number.isFinite(expires) && expires > 0 && expires <= SHORT_LIVED_MAX_S)
+        out.push({ token: credential[1], key: 'X-Amz-Credential', host: url.host, seconds: expires, kind: 's3' });
+    return out;
+}
+// A JSON-escaped ampersand is the link's own `&`: a Go CLI's JSON prints `&`, and a transcript row escapes that
+// backslash again.
+const unescapeLinks = (text) => String(text || '').replace(/\\+u0026/g, '&');
+function shortLivedLinks(text, now = Date.now())
+{
+    const out = [];
+    for (const m of unescapeLinks(text).matchAll(LINK_RE)) out.push(...linkTokens(m[0], now / 1000));
+    return out;
+}
+function withoutShortLived(text, now = Date.now())
+{
+    return unescapeLinks(text).replace(LINK_RE, (link) =>
+    {
+        let kept = link;
+        for (const t of linkTokens(link, now / 1000)) kept = kept.split(t.token).join('<short-lived>');
+        return kept;
+    });
+}
+
 function unattended(input, env)
 {
     try
@@ -606,4 +663,4 @@ function scanBudget(limits = {})
 // the stop contract's ask deny and the answer-length Stop block, which disagreed ([\u2014\u2013] vs [\u2014\u2015], audit 2026-10-08).
 const HOUSE_DASH = /[\u2014\u2013\u2015]/;
 
-module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };
+module.exports = { HOUSE_DASH, blockingStdio, hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, autoStampLive, approvalStamp, harnessPrompt, shortLivedLinks, withoutShortLived, SHORT_LIVED_MAX_S, AUTO_STAMP_MAX_MS, COPIED_PREFIX, CORE_PLUGIN, envOf, stopHeldThisCycle, markStopHeld, stopHeldBy, stopMarkerFile, scanBudget, SCAN_LIMITS, sweepStale, sweepStamp, capLog, STALE_MS, SWEEP_EVERY_MS };

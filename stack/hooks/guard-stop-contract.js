@@ -47,6 +47,7 @@ let stampOf = () => null;     // hook-prelude.js approvalStamp - the stamp's sta
 let stopHeld = (input) => !!(input && input.stop_hook_active);
 let markHeld = () => {};
 let houseDash = /[\u2014\u2013\u2015]/; // hook-prelude.js HOUSE_DASH, the one dash class
+let withoutShortLived = (text) => text; // hook-prelude.js withoutShortLived - a short-lived link's own token blanked
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
@@ -55,6 +56,7 @@ if (require.main === module) {
     autoLive = prelude.autoStampLive || autoLive;
     stampOf = prelude.approvalStamp || stampOf;
     houseDash = prelude.HOUSE_DASH || houseDash;
+    withoutShortLived = prelude.withoutShortLived || withoutShortLived;
     if (prelude.stopHeldThisCycle) {
       stopHeld = (input) => prelude.stopHeldThisCycle('guard-stop-contract', input, undefined, { workSince: true });
       markHeld = (input) => prelude.markStopHeld('guard-stop-contract', input);
@@ -1172,7 +1174,10 @@ function transcriptTail() {
   fs.closeSync(fd);
   return (TAIL = buf.toString('utf8'));
 }
-// The newest row that put a credential shape in front of the model, or null.
+// The newest row that put a credential shape in front of the model, or null. A token inside a link that states an hour
+// of life or less (hook-prelude.js shortLivedLinks - a Jira media `?token=`, an S3 presigned URL) is that link's own
+// capability and expires by itself, so it is blanked before the shape test: rotating it is no answer to anything.
+const exposedShape = (row) => SECRET_SHAPE.test(withoutShortLived(row));
 function secretExposure() {
   try {
     let found = null;
@@ -1182,7 +1187,7 @@ function secretExposure() {
       // USER-role rows: both the tool_results the model's own reads returned, and the user's own
       // typed or pasted text. The assistant's own text is judged separately, by ROTATE_RE.
       if (!seen.includes('"tool_result"') && !/"type"\s*:\s*"user"/.test(seen)) continue;
-      if (SECRET_SHAPE.test(seen)) found = line;
+      if (exposedShape(seen)) found = line;
     }
     return found;
   } catch {
@@ -1244,7 +1249,7 @@ function rotateAskAnswered() {
     transcriptTail().split('\n').forEach((line, i) => {
       if (isRotateBlock(line)) lastBlock = i;
       if (ROTATE_ANSWER_RE.test(line) || (lastBlock >= 0 && ANY_ANSWER_RE.test(line))) lastAnswer = i;
-      if (SECRET_SHAPE.test(line) && SECRET_SHAPE.test(visibleRow(line))) lastShape = i;
+      if (SECRET_SHAPE.test(line) && exposedShape(visibleRow(line))) lastShape = i;
     });
     return lastAnswer >= 0 && lastAnswer > lastShape;
   } catch {

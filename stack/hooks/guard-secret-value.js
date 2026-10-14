@@ -2749,13 +2749,48 @@ try { ({ isShellTool } = require(pathMod.join(__dirname, 'shell-writes.js'))); }
 const IS_PWSH = payload.tool_name === 'PowerShell';
 // A PowerShell single-quoted literal: nothing expands inside it, and `'` doubles.
 const psSingle = (s) => `'${String(s).replace(/'/g, "''")}'`;
+// SHORT-LIVED LINKS (hook-prelude.js shortLivedLinks, the user's ruling 2026-10-14): a token in a link's query whose
+// link states an hour or less - a Jira media `?token=<JWT>`, an S3 presigned URL - is that link's own capability, and a
+// FETCH of it sends it only to the host that issued it. So a command whose every step naming such a token is a fetch OF
+// that link - the step's first URL carries it, so `curl https://other -d 'u=<link>'` is no such fetch - passes the
+// literal check below, and only when no other credential shape is left once those tokens are blanked out (a bearer
+// header keeps the block). Without the prelude nothing is short-lived: the check blocks as it always did.
+let shortLivedLinks = () => [];
+let withoutShortLived = (text) => text;
+try { ({ shortLivedLinks, withoutShortLived } = require(pathMod.join(__dirname, 'hook-prelude.js'))); } catch { /* blocks as before */ }
+const FETCH_STEP_RE = /^\s*(?:[A-Za-z_]\w*=\S*\s+)*(?:(?:sudo|nohup|time|command|exec|timeout\s+\S+)\s+)*(?:curl|wget|xh|https?|Invoke-WebRequest|iwr|Invoke-RestMethod|irm)(?:\.exe)?(?=\s)/i;
+function shortLivedFetch(raw) {
+  const links = shortLivedLinks(raw);
+  if (!links.length || SECRET_SHAPE.test(withoutShortLived(raw))) return null;
+  const steps = raw.split(/\r?\n|;|&&|\|\||\|/);
+  const target = (step) => (/https?:\/\/[^\s'"`<>\\]+/i.exec(step) || [''])[0];
+  return steps.every((step) => {
+    const named = links.filter((l) => step.includes(l.token));
+    return !named.length || (FETCH_STEP_RE.test(step) && named.every((l) => target(step).includes(l.token)));
+  }) ? links : null;
+}
+// One MEASUREMENT row per passed fetch: the host, the seconds left and the kind - never the token.
+function shortLivedRow(links) {
+  if (unsetRepo) return;
+  try {
+    const dir = pathMod.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(pathMod.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
+      ts: new Date().toISOString(), hook: pathMod.basename(__filename), event: payload.hook_event_name || payload.tool_name || '',
+      tool: payload.tool_name || '', mode: 'probe', kind: 'short-lived-link', reason: 'probe: a fetch of a short-lived link passed the literal check',
+      detail: { links: links.map((l) => ({ host: l.host, seconds: l.seconds, kind: l.kind, key: l.key })) },
+    }) + '\n');
+  } catch { /* never throws */ }
+}
 if (isShellTool(payload.tool_name)) {
   const raw = String(input.command || '');
   // A credential-shaped literal typed into a command is already in the transcript as the call's own
   // input; blocking still keeps it out of a file, a header and a remote, and names the rule. Judged
   // on the RAW text: a heredoc that writes the value into a file is the same leak. The denial names
-  // the shape only - the value is never repeated.
-  if (!receiptLive && SECRET_SHAPE.test(raw)) {
+  // the shape only - the value is never repeated. A fetch of a short-lived link passes (above).
+  const fetched = !receiptLive && SECRET_SHAPE.test(raw) ? shortLivedFetch(raw) : null;
+  if (fetched) shortLivedRow(fetched);
+  if (!receiptLive && !fetched && SECRET_SHAPE.test(raw)) {
     block('Blocked: the command carries a credential-shaped literal (a token / key / JWT).\n' +
       'Per alfred-security.md a secret never passes through a tool call or the chat: the user puts it\n' +
       'in the file by hand, or runs a copy-ready command in their own terminal (getpass, not an argument).\n');

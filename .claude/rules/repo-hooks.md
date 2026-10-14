@@ -286,7 +286,14 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     (`dd if=`, `iconv`, curl `file://`, vim's print, a copy onto `/dev/stdout`, sqlite3's `readfile()`, php's
     `file_get_contents` / `getenv`), a bare name after a `cd` resolved against the `cd` target. On the shell route the dump / `echo $SECRET` / bare `env` are REWRITTEN via
     `hookSpecificOutput.updatedInput` to redacted forms (`--redacted <file>`, `--redacted-env`); the
-    Read tool and a credential literal stay blocked. The comparison verbs (`diff`, `sdiff`, `cmp`, `comm`, `rev`)
+    Read tool and a credential literal stay blocked - but a FETCH of a short-lived link passes the literal check (the
+    user's ruling 2026-10-14, after a Jira image download's `?token=<JWT>` was refused in every session): a token in a
+    link's query whose link states an hour or less (`hook-prelude.js` `shortLivedLinks` - a JWT's `exp`, and `exp - iat`
+    when it has one; S3's `X-Amz-Expires` beside an `AKIA`/`ASIA` credential and a signature), when every step naming it
+    is a fetch (curl, wget, xh, httpie, `Invoke-WebRequest` / `-RestMethod`) whose first URL carries it and no other shape
+    is left once it is blanked (`withoutShortLived`). A header, a lifeless or longer token, a write, an assignment and a
+    post to another host keep the block; each pass writes one `short-lived-link` probe row (host, seconds, kind, key -
+    never the token). The JWT is decoded, never verified: a forged short `exp` buys a forger nothing. The comparison verbs (`diff`, `sdiff`, `cmp`, `comm`, `rev`)
     are judged like `cat` (I2). A git command that prints file content (`git diff`, `git show`, `git log -p`,
     `git stash show -p`) is PROBED - the same read run as argv, no shell, 3s / 8MB, external diff, textconv and
     fsmonitor off, at most four probes per call - and only when its output would carry a credential, or it cannot be probed (a word the shell
@@ -547,7 +554,9 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
     file the streak CREATED ('File created') beside a test edit is test-first scaffolding, not a root-cause streak. A tool-ended transcript read retries once after 300ms (`no-tail` probe row). Credential branch: asks for rotation ONCE per exposure (`ALFRED_CODE_ROTATE_ASK=0` off; any ask
     answered or declined after its block is the answer, a free-text 'Other' included), judged
     on what the model was SENT - a tool result's `message`, never the CLI's stored `toolUseResult` copy (an
-    Edit's `originalFile` held a JWT the secret guard had kept out of context, pilot 3).
+    Edit's `originalFile` held a JWT the secret guard had kept out of context, pilot 3) - with a short-lived link's own
+    token blanked first (`withoutShortLived`, the secret guard's rule), so a ten-minute media link in a Jira read asks
+    no rotation.
     Three LOG-ONLY probes (2026-09-25 - the habits skills lean on their descriptions and the flows that load
     them, and the misses are counted, never held or injected): a done claim over a turn's source edit
     (file tool, a shell write on the whole shell route, or a navigation `rename_symbol` / `safe_delete_symbol` credited to
