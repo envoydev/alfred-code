@@ -18,6 +18,7 @@ delete process.env.CLAUDE_CODE_ENTRYPOINT;
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'auto-mode-'));
+test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 delete process.env.CLAUDE_PROJECT_DIR;
 const { approvalStamp, autoStampLive } = require('../stack/hooks/hook-prelude.js');
@@ -133,6 +134,30 @@ test('auto-mode start: only a task or loop, only the exact word, never a seat, a
     assert.strictEqual(JSON.parse(call.stdout).hookSpecificOutput.hookEventName, 'PreToolUse');
     assert.match(context(call), /auto-mode is ON for this \/task-design run/);
     assert.match(fs.readFileSync(q.gate, 'utf8'), /^AUTO - "\/task-design auto-mode the cache plan"\nsession: sz\n/);
+});
+
+test('auto-mode end: a prompt the user types ends it in that session; a harness row, the word itself or another session does not', () =>
+{
+    const p = project();
+    const t = transcript();
+    const submit = (sid, prompt) => run('guard-fresh-session-start.js', { hook_event_name: 'UserPromptSubmit', session_id: sid, cwd: p.root, transcript_path: t, prompt },
+        { CLAUDE_PROJECT_DIR: p.root });
+    autoStamp(p, 'e1');
+    for (const [sid, prompt, why] of [['e2', 'take over here', "another session's prompt"], ['e1', '<task-notification>\n<task-id>x</task-id>', 'a task notice'],
+        ['e1', '/loop-code-quality auto-mode src/', 'the next auto-mode run']])
+    {
+        assert.strictEqual(submit(sid, prompt).status, 0);
+        assert.ok(fs.existsSync(p.gate), `kept: ${why}`);
+    }
+    const typed = submit('e1', 'stop, I will take it from here');
+    assert.strictEqual(typed.status, 0);
+    assert.ok(!fs.existsSync(p.gate), 'the stamp is gone');
+    assert.match(context(typed), /^auto-mode is OFF: the user typed this prompt/);
+    assert.ok(rows(p, 'e1').some((r) => r.kind === 'auto-end'), 'one auto-end row');
+    // a stamp written by hand (task-solve's waiver, no session line) is no auto-mode run of this hook's
+    fs.writeFileSync(p.gate, 'AUTO - "take every recommendation"\n');
+    submit('e1', 'next thing');
+    assert.ok(fs.existsSync(p.gate), 'a hand-written stamp stays');
 });
 
 // ---------------------------------------------------------------------------------------------

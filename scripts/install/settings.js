@@ -777,7 +777,7 @@ function writeSettings(opts)
             const byValue = new Map();
             for (const id of [...seeded, ...moved]) byValue.set(data.modelSettings[id].autoCompactWindow, (byValue.get(data.modelSettings[id].autoCompactWindow) || 0) + 1);
             const spread = [...byValue].sort((a, b) => a[0] - b[0]).map(([v, n]) => `${v} on ${n} model${n === 1 ? '' : 's'}`).join(', ');
-            log(`  ${label}: autoCompactWindow per model - ${spread}: each model compacts at its window's fresh-session trigger, so an auto-mode run compacts and goes on (read at session start)`);
+            log(`  ${label}: autoCompactWindow per model - ${spread}: ALFRED_CODE_AUTO_COMPACT=1, so each model compacts at its window's fresh-session trigger instead of offering a fresh session (read at session start)`);
         }
         if (gone.length) log(`  ${label}: autoCompactWindow removed for ${gone.join(', ')} - the stack wrote it and no longer seeds it here`);
         if (seeded.length || moved.length || gone.length) changed = true;

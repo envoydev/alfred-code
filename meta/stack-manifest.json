@@ -809,7 +809,7 @@
       "file": "guard-fresh-session-start.js",
       "matcher": "Skill",
       "event": "",
-      "note": "PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice `auto-mode` in the call's args on a task or loop skill writes the run's session-named AUTO stamp first and injects the auto-mode contract instead. COMPACT INSTEAD: under ALFRED_CODE_AUTO_COMPACT=1 nothing is offered or held; the session's first orchestration run and an automatic compaction's start are told the session compacts and goes on."
+      "note": "PreToolUse Skill: block a deliberate orchestration run starting on another run's carried history past the window-scaled trigger - route it through an AskUserQuestion fresh-session choice `auto-mode` in the call's args on a task or loop skill writes the run's session-named AUTO stamp first and injects the auto-mode contract instead. A prompt the user types in that session ends the run's auto-mode (its stamp deleted). COMPACT INSTEAD: under ALFRED_CODE_AUTO_COMPACT=1 nothing is offered or held; the session's first orchestration run and an automatic compaction's start are told the session compacts and goes on."
     },
     {
       "file": "guard-fresh-session-start.js",

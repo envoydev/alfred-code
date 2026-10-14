@@ -55,8 +55,10 @@ The eighteen hooks folded into the core plugin: gates, guards, engines and what 
   real answer the commit gate's `answered:` reads - taking the next option when the marked one is the fresh-session
   hand-off, and leaving to the user an ask with an unmarked question or a recommended push / merge / deploy / publish;
   and it sends a Stop back to the run while the stamp stands (`auto-continue`, bounded by the Stop chain's `workSince`:
-  held again only after a tool call), until the run's close deletes the stamp. A hand-written stamp (task-solve's, no
-  `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` at
+  held again only after a tool call), until the run's close deletes the stamp - or a prompt the user TYPES in that
+  session, which deletes it (`UserPromptSubmit`, `autoModeEnd`: someone is at the terminal; a task notice, a command's
+  output or a prompt carrying the word itself is not; review 2026-10-14 - an interrupted run's stamp otherwise answered
+  the user's own asks for the week). A hand-written stamp (task-solve's, no `session:` line) is never held there. The compaction point is no runtime act: Claude Code reads `autoCompactWindow` at
   session START only (measured 2026-10-14 on 2.1.299: written mid-session it changed nothing, set before the start it
   compacted at 76k of a 100k window), so the installer seeds it per model where the project compacts instead
   (`ALFRED_CODE_AUTO_COMPACT=1`; `settings.js compactWindowSeeds`, `repo-installer.md`). **Compact instead** (the user's

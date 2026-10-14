@@ -318,8 +318,28 @@ function idleGapOffer() {
     },
   }));
 }
+// A prompt the user TYPES ends auto-mode in this session (the 2026-10-14 review): someone is at the terminal, so each
+// decision goes to them again and the Stop hold stops - an interrupted run's stamp lived on for the week, answering the
+// user's own later asks. A harness row (a task notice, a command's output) is nobody typing, and a prompt carrying the
+// word is the next auto-mode run, which the expansion route starts. Only this session's own AUTO stamp is taken back.
+function autoModeEnd() {
+  const sid = String(payload.session_id || '');
+  const prompt = String(payload.prompt || '');
+  if (!sid || payload.agent_id || /^\s*<(?:task-notification|local-command-stdout|local-command-caveat)>/.test(prompt)
+    || /(?:^|\s)auto-mode(?=\s|$)/i.test(prompt)) return false;
+  const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+  let stamp = null;
+  try { stamp = require('./hook-prelude.js').approvalStamp({ ...payload, cwd: root }); } catch { return false; }
+  if (!stamp || stamp.session !== sid || !/^AUTO\b/.test(stamp.first)) return false;
+  try { fs.rmSync(stamp.file); } catch { return false; }
+  ledgerRow({ mode: 'auto', kind: 'auto-end', reason: 'auto-mode ended: the user typed a prompt' });
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext:
+    'auto-mode is OFF: the user typed this prompt, so they are at the terminal - put each decision to them again, and a '
+    + 'turn is no longer sent back at its Stop. `auto-mode` on the next task or loop call starts a new run.' } }));
+  return true;
+}
 if (EVENT === 'UserPromptSubmit') {
-  idleGapOffer();
+  if (!autoModeEnd()) idleGapOffer();
   process.exit(0);
 }
 

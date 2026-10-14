@@ -188,7 +188,7 @@ test('migration: the architecture assessment takes its ARCHITECTURE-ASSESSMENT.m
     assert.ok(!fs.existsSync(path.join(root, '.alfred/docs/quality/ASSESSMENT.md')));
     assert.strictEqual(read('.alfred/docs/architecture/ASSESSMENT.md'), '# older\n', 'the older copy is left, never overwritten');
     assert.strictEqual(read('.alfred/docs/quality/CODE-ASSESSMENT.md'), '# code\n', 'the code assessment is not this rename');
-    assert.ok(logs.some((m) => /architecture\/ASSESSMENT\.md left in place, nothing overwritten/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /architecture[\\/]ASSESSMENT\.md left in place, nothing overwritten/.test(m)), logs.join(' | '));
     assert.match(read('.claude/rules/alfred-architecture.md'), /`\.alfred\/docs\/quality\/ARCHITECTURE-ASSESSMENT\.md`/, 'the pointer rule follows the move');
     assert.deepStrictEqual(run().moved, [], 'a re-run moves nothing');
 
