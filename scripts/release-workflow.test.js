@@ -86,3 +86,116 @@ test('M27 release workflow: the guard step itself - another commit fails, the sa
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// One tree, one test run: ci.yml and lint.yml no longer run on a push to main (the merge carries the tree develop
+// already ran them on - 2.4.0 ran the same tree twice, 14 minutes each, and released before the second ended), so
+// the release itself requires a green run of each on the tree it ships.
+const workflowDoc = (name) => yaml.load(fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', name), 'utf8'));
+
+function treeStep()
+{
+    const steps = yaml.load(WORKFLOW).jobs.release.steps;
+    const at = steps.findIndex((s) => s && /Require a green test and lint run/.test(s.name || ''));
+    return { steps, at, step: steps[at] };
+}
+
+test('release workflow: it requires a green test and lint run of its tree before it builds, and CI skips main for it', () => {
+    const doc = yaml.load(WORKFLOW);
+    const { steps, at, step } = treeStep();
+    assert.ok(step, 'a tested-tree step exists');
+    assert.ok(at < steps.findIndex((s) => s && /Build the source archives/.test(s.name || '')), 'it runs before the archives are built');
+    assert.strictEqual(steps[0].with['fetch-depth'], 2, 'the parents are fetched, so their trees compare');
+    assert.strictEqual(doc.permissions.actions, 'read', 'the step reads the runs of this tree');
+    for (const wf of ['ci.yml', 'lint.yml'])
+    {
+        const on = workflowDoc(wf).on;
+        assert.deepStrictEqual(on.push, { 'branches-ignore': ['main'] }, `${wf} runs on every push but main's`);
+        assert.ok('workflow_dispatch' in on, `${wf} can be run on main by hand, for a tree no branch ran`);
+        assert.ok(step.run.includes(`for wf in ci.yml lint.yml`), `the step asks for ${wf} by its file name`);
+    }
+});
+
+test('release workflow: the tested-tree step - the merged tip\'s green runs pass, a red, absent or other-tree run fails, a running one is waited on', { skip: process.platform === 'win32' && 'bash' }, () => {
+    const { step } = treeStep();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-tree-'));
+    try
+    {
+        const git = (...args) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'init.defaultBranch=main', ...args], { cwd: work, encoding: 'utf8' }).trim();
+        const work = path.join(dir, 'work');
+        fs.mkdirSync(work);
+        git('init', '-q');
+        fs.writeFileSync(path.join(work, 'f'), 'a\n');
+        git('add', 'f');
+        git('commit', '-qm', 'a');
+        const a = git('rev-parse', 'HEAD');
+        git('checkout', '-qb', 'develop');
+        fs.writeFileSync(path.join(work, 'f'), 'b\n');
+        git('commit', '-qam', 'b');
+        const b = git('rev-parse', 'HEAD');
+        git('checkout', '-q', 'main');
+        git('merge', '-q', '--no-ff', '-m', 'merge', 'develop');
+        const merge = git('rev-parse', 'HEAD');
+        // A stub gh: the state of each workflow's runs per commit, from RUNS ('<sha> <wf>' -> states, one per call, the last one sticking).
+        const bin = path.join(dir, 'bin');
+        fs.mkdirSync(bin);
+        fs.writeFileSync(path.join(bin, 'gh'), `#!/usr/bin/env node
+const fs = require('fs');
+const sha = /head_sha=([0-9a-f]+)/.exec(process.argv[3])[1];
+const wf = /workflows\\/([\\w.]+)/.exec(process.argv[5])[1];
+const key = sha + ' ' + wf;
+const seen = process.env.CALLS + '/' + key.replace(' ', '-');
+const n = fs.existsSync(seen) ? Number(fs.readFileSync(seen, 'utf8')) : 0;
+fs.writeFileSync(seen, String(n + 1));
+const states = JSON.parse(process.env.RUNS)[key] || [];
+if (states.length) console.log(states[Math.min(n, states.length - 1)]);
+`, { mode: 0o755 });
+        const run = (runs, extra = {}) =>
+        {
+            const calls = fs.mkdtempSync(path.join(dir, 'calls-'));
+            const r = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', step.run], {
+                cwd: work, encoding: 'utf8',
+                env: { PATH: `${bin}${path.delimiter}${process.env.PATH}`, HOME: dir, GITHUB_REPOSITORY: 'o/r', CALLS: calls, RUNS: JSON.stringify(runs), WAIT_MINUTES: '40', POLL_SECONDS: '0', ...extra },
+            });
+            return { status: r.status, out: r.stdout + r.stderr };
+        };
+        const green = (sha) => ({ [`${sha} ci.yml`]: ['green'], [`${sha} lint.yml`]: ['green'] });
+
+        let r = run(green(b));
+        assert.strictEqual(r.status, 0, r.out);
+        assert.match(r.out, /ci\.yml: green on this tree[\s\S]*lint\.yml: green on this tree/);
+        assert.strictEqual(run(green(merge)).status, 0, 'a run on main itself (workflow_dispatch) counts');
+        r = run({ ...green(b), [`${b} ci.yml`]: ['red'] });
+        assert.strictEqual(r.status, 1, r.out);
+        assert.match(r.out, /no green ci\.yml run for this tree/);
+        assert.strictEqual(run({ ...green(b), [`${b} ci.yml`]: ['red', 'green'] }).status, 1, 'a red run is no wait');
+        r = run({ [`${b} ci.yml`]: ['green'] });
+        assert.strictEqual(r.status, 1, 'lint must pass too');
+        assert.match(r.out, /no green lint\.yml run/);
+        assert.strictEqual(run(green(a)).status, 1, 'the old main parent ran another tree');
+        assert.strictEqual(run({}).status, 1, 'no run at all');
+        r = run({ ...green(b), [`${b} ci.yml`]: ['running', 'running', 'green'] });
+        assert.strictEqual(r.status, 0, r.out);
+        assert.strictEqual((r.out.match(/ci\.yml: running on this tree - waiting/g) || []).length, 2, 'it polls until the run ends');
+        r = run({ ...green(b), [`${b} ci.yml`]: ['running'] }, { WAIT_MINUTES: '0' });
+        assert.strictEqual(r.status, 1, r.out);
+        assert.match(r.out, /ci\.yml is still running on this tree after 0 minutes/);
+        assert.strictEqual(run({ ...green(b), [`${b} ci.yml`]: ['red'], [`${merge} ci.yml`]: ['green'] }).status, 0, 'any green run of the tree is enough');
+
+        // A merge that resolved something carries a tree neither parent ran: only a run on it counts.
+        git('checkout', '-q', 'develop');
+        fs.writeFileSync(path.join(work, 'g'), 'c\n');
+        git('add', 'g');
+        git('commit', '-qm', 'c');
+        const c = git('rev-parse', 'HEAD');
+        git('checkout', '-q', 'main');
+        git('merge', '-q', '--no-ff', '--no-commit', 'develop');
+        fs.writeFileSync(path.join(work, 'f'), 'resolved\n');
+        git('commit', '-qam', 'merge with a fix');
+        const fixed = git('rev-parse', 'HEAD');
+        r = run({ ...green(c), ...green(merge) });
+        assert.strictEqual(r.status, 1, r.out);
+        assert.match(r.out, new RegExp(`no green ci\\.yml run for this tree \\(${fixed}\\)`), 'it names the one commit that carries the tree');
+        assert.strictEqual(run(green(fixed)).status, 0, 'a run on the merge itself passes it');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

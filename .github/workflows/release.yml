@@ -28,13 +28,18 @@ on:
 
 permissions:
   contents: write
+  actions: read   # the tested-tree step reads the CI runs of this tree
 
 jobs:
   release:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
+      # Depth 2: the merge commit and its parents, whose trees the tested-tree step compares.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
 
       - name: Resolve the version (the plugin/marketplace version)
         id: ver
@@ -54,6 +59,39 @@ jobs:
           fi
           echo "::error::v$VERSION already names $tagged, not $GITHUB_SHA - bump the version in setup-plugin/.claude-plugin/plugin.json (and marketplace.json), or re-run by hand with replace_tag"
           exit 1
+
+      # The commits carrying this exact tree are HEAD and any parent with the same tree (develop's tip under
+      # a merge that changed nothing). Each workflow needs a green run on one of them: a red or absent run
+      # fails the job, a running one is waited on up to WAIT_MINUTES. A tree no branch ran (a conflict
+      # resolved in the merge) is run on main by hand through workflow_dispatch, then this job re-run.
+      - name: Require a green test and lint run of this tree
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WAIT_MINUTES: '40'
+          POLL_SECONDS: '30'
+        run: |
+          tree=$(git rev-parse 'HEAD^{tree}')
+          shas=''
+          for c in $(git rev-list --parents -n 1 HEAD); do
+            if [ "$(git rev-parse "$c^{tree}")" = "$tree" ]; then shas="$shas $c"; fi
+          done
+          deadline=$((SECONDS + WAIT_MINUTES * 60))
+          for wf in ci.yml lint.yml; do
+            while :; do
+              states=''
+              for c in $shas; do
+                states="$states $(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$c&per_page=100" \
+                  --jq ".workflow_runs[] | select(.path == \".github/workflows/$wf\") | if .status != \"completed\" then \"running\" elif .conclusion == \"success\" then \"green\" else \"red\" end" | tr '\n' ' ')"
+              done
+              case " $states " in
+                *' green '*) echo "$wf: green on this tree"; break ;;
+                *' running '*)
+                  if [ "$SECONDS" -ge "$deadline" ]; then echo "::error::$wf is still running on this tree after $WAIT_MINUTES minutes - re-run this job once it ends"; exit 1; fi
+                  echo "$wf: running on this tree - waiting"; sleep "$POLL_SECONDS" ;;
+                *) echo "::error::no green $wf run for this tree (${shas# }) - let CI pass on develop first, or run $wf on main by hand, then re-run this job"; exit 1 ;;
+              esac
+            done
+          done
 
       - name: Build the source archives
         run: |
